@@ -506,6 +506,12 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
 /**
  * Grant XP to one army card, emitting UNIT_RANK_UP when a threshold is
  * crossed. Shared by the combat award and the Drill action.
+ *
+ * A WON Creature Bank card (`side: "bank"` — the Dragon Fly Hive / Griffin
+ * Conservatory reward) is refused here, the ONE producer seam, because the read
+ * side cannot honour the XP: `makeCombatUnitFromArmy` zeroes a bank face's
+ * experience and `armyUnitRankInfo` returns null for it. Banking XP on such a
+ * card would only produce a UNIT_RANK_UP feed line for a rank that never folds.
  */
 export function grantArmyUnitExperience(
   state: GameState,
@@ -514,7 +520,7 @@ export function grantArmyUnitExperience(
   amount: number
 ): void {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  if (!def || amount <= 0) {
+  if (!def || amount <= 0 || armyUnit.side === "bank") {
     return;
   }
   const before = unitRankForExperience(def.tier, armyUnit.experience ?? 0);

@@ -123,6 +123,54 @@ Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
   must stay in lockstep with the `HOMM3BG_APP_URL` GitHub Actions secret —
   the secret OVERRIDES the json at deploy time.
 
+## Desktop command HUD (in-game layout, ≥1101px) — what runs vs. limits
+
+A CSS-only layout for the two IN-GAME table screens on a real desktop. It lives
+in ONE `@media (min-width: 1101px)` block (`globals.css`, section "DESKTOP
+COMMAND HUD", immediately BEFORE the phone block) and every selector carries
+`:not(.phoneMode)`, so phone mode and every viewport below 1101px are untouched.
+Nothing here changes an engine rule; the only JSX is a collapse trigger.
+
+What runs: the top row (HUD + resources) is `position: sticky` and one row tall
+on the MAP screen; the town/hero/army `.leftRail` (218px) and the shared-deck
+`.advDecksBottom` library (210px) become fixed side rails; the hand
+`.playerCardBar` becomes a fixed 198px bottom tray, with the prompt/reaction
+trays, chat dock, helper chip and reaction bar all lifted above it; the site
+masthead/footer collapse for a live table (`.appShell:has(.tableMenuInline)`).
+The in-game table controls (seat switcher, Room panel, status, music/UI-mode
+toggles, game controls, single-player saves) collapse behind ONE `Table`
+trigger (`.tableControlsToggle` → `.controlsOpen` on `.tableMenu`, page.tsx),
+and the join-by-room-ID row leaves the band (the invite link inside the Room
+panel is the in-game way to share a table). Wiring is pinned in
+`src/app/page-phone-mode.test.tsx` ("in-game table controls — the collapse
+trigger": trigger present in-game on BOTH screens, aria-expanded + class flip,
+lobby CONTROL with no trigger and the join row kept).
+
+Leading with what does NOT work / deliberate limits:
+- **jsdom cannot compute CSS**, so only the wiring above is unit-pinned. Every
+  visible claim (sticky, fixed rails, the panel's anchor) is a real-browser
+  concern; there is NO e2e spec for this layout yet.
+- **The fixed rails float over the WHOLE viewport band**, not just the mid row.
+  Any full-width row that stays in the flow must be inset to the map column's
+  gutters or its first/last ~218px sit under a rail — `.logDrawer` (the event
+  feed), `.errorBanner` and `.preBattlePanel` are inset for exactly that reason.
+  A NEW full-width child of `.adventureRoot` needs the same inset.
+- **The open controls panel is `position: absolute` against the top row.** The
+  MAP top row is sticky (positioned) so it anchors naturally; the COMBAT top row
+  is a plain static grid and needs the explicit
+  `.tableRoot:not(.adventureRoot):not(.phoneMode) > .tableTopRow { position: relative }`
+  — without it `top: calc(100% + 6px)` resolves against the initial containing
+  block and the panel (with its own trigger) lands a full viewport below,
+  off-screen.
+- **The room-password gate is deliberately EXEMPT from the collapse**
+  (`.roomPasswordRow`): a joiner following a direct link into a locked, running
+  table must be able to type the password without first finding a menu button.
+- **z-index band stays under the overlays**: top row 55, controls panel 88, room
+  manager 90, hand 48, library 42, left rail 36 — all below the documented
+  chat dock 200 / hub backdrop 210 / hero info 220 / mod windows 230.
+- Below 1101px NOTHING of this applies and the trigger is hidden, so the classic
+  expanded table menu is the only surface there.
+
 ## Phone UI mode (per-device layout choice) — what runs vs. limits
 
 At the very start of the app flow (the main menu `/menu` and the multiplayer
@@ -2695,6 +2743,57 @@ is NOT done:
   `creature-bank-combat.test.ts` ("adds the gained Dragon Flies card to the army"
   + "the bank card carries a chosen Stack Token": choose, fold, absorb, and the survivor
   sync-back with an un-absorbed CONTROL).
+  **What a `side:"bank"` ARMY card is and is NOT** (the reward became a real
+  `bankUnit` in combat — `makeCombatUnitFromArmy` stamps the flag — so it
+  inherits every gradeless bank rule, in the player's favour and against it;
+  each item below is what the engine actually does today):
+  - **Tierless BOTH ways, exactly like a bank guard**: tier-gated spells and
+    riders (Blind / Berserk / Frenzy / Slayer / Disrupting Ray / a graded Death
+    Stare follow-up) can never target it, grade-matched lethal-save cards
+    (`CANCEL_LETHAL_ATTACK`) are never offered for it, and the neutral AI hits
+    it LAST. `gradeRankOfUnit` reads `bankUnit` → no grade.
+  - **A fallen bank card is NOT restorable by the commander First Aid window**
+    (`collectFirstAidCandidates` skips `bankUnit`). That is a correctness gate,
+    not just scope: the option builder derives its restored side from
+    `armyUnit.side`/`unit.variant`, and a bank card would have come back as a
+    plain FEW faction card.
+  - **No veteran track.** `makeCombatUnitFromArmy` zeroes its `experience` and
+    `armyUnitRankInfo` returns null, so the PRODUCERS refuse it too:
+    `grantArmyUnitExperience` no-ops on a bank card (no post-combat XP, no
+    `UNIT_RANK_UP` line) and `drillableArmyUnits` never offers it (a forged
+    `DRILL_UNIT` throws "A Creature Bank card has no veteran track"). Pinned in
+    `unit-experience.test.ts` ("a won Creature Bank card stays out of the
+    veteran tracks"), with the same creature as a recruited NEUTRAL card as the
+    CONTROL that still ranks and still drills.
+  - **No Few/Pack flip, no Polish Stack layers, no Sandro's-Cloak transform**
+    (no printed side carries `bank`, and `playTransformCard` rejects it), and
+    **no BINH side-rule tweak** (`applyUnitSideRules` is bypassed — the bank
+    face's printed stats are the whole card). A defeat removes it from the game
+    (it is not recycled to a Neutral tier discard, which is right — it is not a
+    Neutral-deck card).
+  - **It does NOT occupy the same-named unit's recruit slot**: every "already in
+    your army" ownership read (town recruit offer + `populationAction`, Garden
+    of Life, Legion discount targets, the AI's dwelling score) skips bank cards,
+    so a Castle player who wins the Griffin Conservatory can still recruit
+    Castle Griffins. That collision is the bug this change fixed — the reward
+    used to add a SECOND `castle.griffins` / `fortress.dragon_flies` Few card.
+  - **Known consequence, not fixed**: the bank face prints `cost: {}`, so the
+    "cheapest army card" reads (the Cursed Swamp Event's automatic discard and
+    the Heavenly Tribulation toll's cheapest-first ordering) value it at 0 gold
+    and pick it FIRST. Pricing a costless card would be an invention, so it is
+    documented rather than special-cased.
+  - **The Stacked reward is a MANDATORY player choice** (no decline branch), so
+    a computer winner must be able to answer it: the generic CHOOSE_ONE scorer
+    ranks all four token options in the `RECRUIT_FREE` utility band — pinned in
+    `computer/visit-event-policy.test.ts` ("answers the Hive/Conservatory token
+    choice instead of stalling on it").
+  - **Latent, currently unreachable**: `applyUnitCurrentSide`'s bank branch adds
+    the Neutral-Rank-Up STACKS fold whenever `neutralRankUp` is on and a live
+    `stackToken` is present. No call site can reach it for a PLAYER's bank card
+    (the token is nulled before the absorb recompute, and the flip / Polish-layer
+    / transform recomputes are all impossible for this card), so today it only
+    ever folds on a real bank DEFENDER — but a future recompute path would
+    silently rank up a player's reward card.
   HOUSE-RULE bonus: each of these two banks ALSO grants an **Ability Empower
   token** (the `GAIN_ABILITY_EMPOWER_TOKEN` interaction, additive in the reward
   `SEQUENCE`; `player.abilityEmpowerToken`, max storage 1 — a surplus gain while

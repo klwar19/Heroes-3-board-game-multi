@@ -428,3 +428,73 @@ describe("in-game top-row table menu — the box-free variant class", () => {
     expect(menu?.classList.contains("tableMenuInline")).toBe(false);
   });
 });
+
+describe("in-game table controls — the collapse trigger", () => {
+  // Desktop ≥1101px collapses the in-game table controls behind one "Table"
+  // trigger (globals.css hides every other child of `.tableMenuInline` until
+  // `.controlsOpen`). jsdom cannot compute CSS, so this pins the WIRING the CSS
+  // keys on — the trigger, the aria state, the class flip, and the ONE child
+  // deliberately exempt from the collapse. The paint is a real-browser concern.
+  const toggle = () => document.querySelector<HTMLButtonElement>(".tableControlsToggle");
+  const menu = () => document.querySelector(".tableMenu");
+
+  it("the adventure map renders the trigger; clicking flips `.controlsOpen` + aria-expanded", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureGameState({ seed: "controls-toggle-map", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    expect(toggle(), "the Table trigger").toBeTruthy();
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("false");
+    expect(menu()?.classList.contains("controlsOpen")).toBe(false);
+
+    fireEvent.click(toggle()!);
+    await settle();
+    expect(toggle()?.getAttribute("aria-expanded")).toBe("true");
+    expect(menu()?.classList.contains("controlsOpen")).toBe(true);
+
+    fireEvent.click(toggle()!);
+    await settle();
+    expect(menu()?.classList.contains("controlsOpen")).toBe(false);
+  });
+
+  it("the combat table renders it too, and both screens drop the join-by-ID row", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createInitialGameState("controls-toggle-combat"));
+    render(<Home />);
+    await settle();
+
+    expect(toggle(), "the Table trigger on the battle screen").toBeTruthy();
+    // The room-ID field is lobby chrome: in-game the invite link inside the Room
+    // panel is the way to share a table, so the row is gone from the band.
+    expect(document.querySelector(".tableMenu .roomRow")).toBeNull();
+  });
+
+  it("a LOCKED room keeps its password gate out of the collapse (`.roomPasswordRow`)", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const locked = createAdventureGameState({ seed: "controls-toggle-locked", rollFirstPlayer: false });
+    // A joiner following a direct link into a running, password-protected room:
+    // room has a hash, and this browser is not a member yet.
+    locked.room = { ...(locked.room ?? { members: [] }), passwordHash: "hash", members: [] } as GameState["room"];
+    serveRoom(locked);
+    render(<Home />);
+    await settle();
+
+    const gate = document.querySelector('.tableMenu [aria-label="Room password"]');
+    expect(gate, "the password gate").toBeTruthy();
+    // The class the collapse rule excludes — without it the one control this
+    // viewer must reach would be hidden behind the "Table" trigger.
+    expect(gate?.classList.contains("roomPasswordRow")).toBe(true);
+    expect(menu()?.classList.contains("controlsOpen"), "still collapsed").toBe(false);
+  });
+
+  it("CONTROL — the setup lobby renders no trigger (nothing is collapsed pre-game)", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureLobbyState({ seed: "controls-toggle-lobby" }));
+    render(<Home />);
+    await settle();
+
+    expect(toggle()).toBeNull();
+    expect(document.querySelector(".tableMenu .roomRow"), "the lobby keeps join-by-ID").toBeTruthy();
+  });
+});

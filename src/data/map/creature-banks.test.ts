@@ -298,15 +298,28 @@ describe("Creature Bank rewards", () => {
     }
   });
 
-  it("only fields units whose gained card exists with the Few/Pack side it grants", () => {
-    // The gain-a-unit reward hands out a recruitable card, which must have the side.
+  it("only grants a card whose GRANTED side really resolves (else it can never be deployed)", () => {
+    // The load-bearing invariant: `getUnitSide(unitDefId, side)` must find a
+    // side for whatever the reward hands out. A `side: "bank"` grant resolves
+    // through CREATURE_BANK_UNIT_SIDES, NOT through the unit definition — miss
+    // it and makeCombatUnitFromArmy returns null, so the won card sits in the
+    // army and can never be placed in a fight.
+    const sideFor = (unitDefId: string, side: "few" | "pack" | "neutral" | "bank") =>
+      side === "bank" ? CREATURE_BANK_UNIT_SIDES[unitDefId] : coreUnitDefinitions[unitDefId]?.[side];
+
     for (const id of ["dragon_fly_hive", "griffin_conservatory"] as const) {
       const reward = unitGain(CREATURE_BANKS[id].buildReward(2));
       expect(reward?.type).toBe("GAIN_UNIT");
       if (!reward || reward.type !== "GAIN_UNIT") continue;
-      const def = coreUnitDefinitions[reward.unitDefId];
-      expect(def, reward.unitDefId).toBeTruthy();
-      expect(def.neutral, `${reward.unitDefId} neutral`).toBeTruthy();
+      expect(coreUnitDefinitions[reward.unitDefId], `${reward.unitDefId} definition`).toBeTruthy();
+      const side = sideFor(reward.unitDefId, reward.side);
+      expect(side, `${reward.unitDefId} ${reward.side} side`).toBeTruthy();
+      // A real fighting face, not an empty stub.
+      expect(side!.health, `${reward.unitDefId} health`).toBeGreaterThan(0);
+      // CONTROL: these two ids carry NO faction Few/Pack face at all, so the old
+      // "grant the recruitable Few" reading could not have named them — the
+      // dedicated bank face is the only card these banks can hand out.
+      expect(coreUnitDefinitions[reward.unitDefId].few, `${reward.unitDefId} few`).toBeFalsy();
     }
   });
 

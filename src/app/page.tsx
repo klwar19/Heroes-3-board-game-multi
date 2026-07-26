@@ -4873,8 +4873,12 @@ export default function Home() {
     joinedRoomRef.current = null;
     setJoinPasswordEntry({ roomId, value: attempt });
   };
+  // `.roomPasswordRow` keeps this gate VISIBLE while the in-game table controls
+  // are collapsed behind the "Table" trigger (globals.css excludes it from the
+  // collapse) — a locked-room joiner must be able to type the password without
+  // first discovering a menu button.
   const roomPasswordPrompt = roomLockedForViewer ? (
-    <div className="menuRow seatLocked" aria-label="Room password">
+    <div className="menuRow seatLocked roomPasswordRow" aria-label="Room password">
       <Lock aria-hidden="true" size={13} />
       <span className="seatClaimHint">
         {joinRoomPassword && roomJoinError && /password/i.test(roomJoinError)

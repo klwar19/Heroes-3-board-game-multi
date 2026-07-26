@@ -468,6 +468,36 @@ describe("choice policy — map discovery / garrison", () => {
   });
 });
 
+describe("visit step policy — Creature Bank Stack-Token reward", () => {
+  it("answers the Hive/Conservatory token choice instead of stalling on it", () => {
+    // A won Dragon Fly Hive with 2+ Stacked defenders opens a MANDATORY
+    // four-option CHOOSE_ONE before the bank card joins the army. There is no
+    // decline branch, so a computer winner that could not score it would park
+    // the whole table on an unanswerable window.
+    const options: { label: string; steps: VisitStep[] }[] = (
+      ["attack", "defense", "health", "initiative"] as const
+    ).map((stackToken) => ({
+      label: stackToken === "initiative" ? "+2 Initiative" : `+1 ${stackToken}`,
+      steps: [
+        { type: "RECRUIT_FREE", unitDefId: "neutral.dragon_flies", side: "bank", stackToken } as VisitStep,
+      ],
+    }));
+    const state = visitState([
+      { type: "CHOOSE_ONE", prompt: "Dragon Flies: choose its Stack Token bonus", options },
+    ]);
+    const legal = options.map((_, index) => resolveOption(index));
+
+    const decision = chooseComputerAction(observe(state, legal));
+    expect(decision?.action.type).toBe("RESOLVE_VISIT_STEP");
+    const pick = (decision!.action as { optionIndex?: number }).optionIndex ?? -1;
+    expect(pick).toBeGreaterThanOrEqual(0);
+    expect(pick).toBeLessThanOrEqual(3);
+    // Scored as a real gain (the RECRUIT_FREE utility band), not the
+    // leave/cancel floor a decline branch would sit at.
+    expect(decision!.score).toBeGreaterThan(1_050);
+  });
+});
+
 describe("decision owner — post-combat gates", () => {
   it("SKIP_NECROMANCY is scored as a mandatory resolve (not foundation 0)", () => {
     const state = visitState([]);

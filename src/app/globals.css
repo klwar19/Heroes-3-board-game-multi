@@ -29084,6 +29084,28 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 /* bottom. This is deliberately desktop-only: phone mode keeps its tabbed    */
 /* full-screen panels below.                                                 */
 /* ======================================================================== */
+
+/* Below the command-HUD breakpoint nothing collapses the table controls, so
+   the "Table" trigger would be a dead button beside a menu that is already
+   fully expanded. (Phone mode hides it in its own block too.) */
+@media (max-width: 1100px) {
+  .tableControlsToggle {
+    display: none;
+  }
+}
+
+/* Once a live desktop table owns the viewport, its sticky HUD replaces the
+   generic site masthead. Keep setup/menu pages branded, but do not spend a
+   second header and footer row inside the game. (Lives HERE, not in the PHONE
+   UI MODE block: it is a desktop rule and every selector in that block must be
+   `.phoneMode`-prefixed.) */
+@media (min-width: 1101px) {
+  .appShell:has(.tableMenuInline) .topBar,
+  .appShell:has(.tableMenuInline) .footerNotice {
+    display: none;
+  }
+}
+
 @media (min-width: 1101px) {
   .adventureRoot:not(.phoneMode) {
     --desktop-hud-height: 62px;
@@ -29180,9 +29202,26 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     min-height: 0;
   }
 
+  /* Collapsed: only the toggle shows — EXCEPT the room-password gate. A viewer
+     who follows a direct link into a locked, already-running table has exactly
+     one thing to do (type the password); hiding it behind a button labelled
+     "Table" reads as "this room is broken". `.roomPasswordRow` is stamped on
+     that row in page.tsx, and pinned by page-phone-mode.test.tsx so this
+     exclusion always has a target. */
   .tableRoot:not(.phoneMode) > .tableTopRow > .tableMenu.tableMenuInline:not(.controlsOpen)
-    > :not(.tableControlsToggle) {
+    > :not(.tableControlsToggle):not(.roomPasswordRow) {
     display: none;
+  }
+
+  /* The open panel is absolutely positioned against the top row. The ADVENTURE
+     top row is `position: sticky` (below), which anchors it; the COMBAT top row
+     is a plain static grid, so without this the panel's containing block became
+     the initial containing block and `top: calc(100% + 6px)` dropped it a full
+     viewport down — the button and every table control jumped off-screen the
+     moment a player opened them mid-battle. Relative on a static grid item is
+     visually a no-op; :not(.adventureRoot) keeps the map screen's sticky HUD. */
+  .tableRoot:not(.adventureRoot):not(.phoneMode) > .tableTopRow {
+    position: relative;
   }
 
   .tableRoot:not(.phoneMode) .tableControlsToggle {
@@ -29359,6 +29398,20 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
   .adventureRoot:not(.phoneMode) > .logDrawer {
     order: 6;
+  }
+
+  /* The left rail and the shared library are FIXED, so they float over the
+     whole viewport band — not just over the mid row. Every other full-width row
+     that stays in the flow (the event feed, the rules-error banner, the
+     pre-battle panel) therefore has to keep out of those two columns, or its
+     first 218px and last 218px sit UNDER a rail: the feed's lines begin under
+     the town/hero dock and end under the library. Inset them to exactly the map
+     column's gutters so the whole page reads as one column of content. */
+  .adventureRoot:not(.phoneMode) > .logDrawer,
+  .adventureRoot:not(.phoneMode) > .errorBanner,
+  .adventureRoot:not(.phoneMode) > .preBattlePanel {
+    margin-right: calc(var(--desktop-library-width) + 8px);
+    margin-left: 226px;
   }
 
   /* Town / Hero / Army stay in view. Less-used morale/VP panels remain in the
@@ -29886,15 +29939,9 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   display: none;
 }
 
-/* Once a live desktop table owns the viewport, its sticky HUD replaces the
-   generic site masthead. Keep setup/menu pages branded, but do not spend a
-   second header and footer row inside the game. */
-@media (min-width: 1101px) {
-  .appShell:has(.tableMenuInline) .topBar,
-  .appShell:has(.tableMenuInline) .footerNotice {
-    display: none;
-  }
-}
+/* (The desktop twin of the rule above — hiding the masthead for a live
+   `.tableMenuInline` table at ≥1101px — lives in the DESKTOP COMMAND HUD
+   section, so every selector in THIS block stays `.phoneMode`-prefixed.) */
 
 /* ---------- shared phone shell (all table branches) ---------- */
 
