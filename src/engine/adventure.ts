@@ -171,7 +171,9 @@ import {
 } from "./raid-bosses";
 import {
   dungeonBossId,
+  dungeonDescentCostOf,
   dungeonDoorsForFloor,
+  dungeonFloorCapOf,
   dungeonFloorDifficulty,
   dungeonFloorOf,
   dungeonThemeOf
@@ -13774,7 +13776,12 @@ function applyRaidBossRoundStart(state: GameState): void {
 
   const spawnRound = Math.max(
     2,
-    Math.min(30, adventure.mapPreset?.raidBosses?.spawnRound ?? RAID_BOSS_SPAWN_ROUND)
+    Math.min(
+      30,
+      adventure.raidBossSpawnRound ??
+        adventure.mapPreset?.raidBosses?.spawnRound ??
+        RAID_BOSS_SPAWN_ROUND
+    )
   );
   const scheduledSpawned = Object.values(bosses).some((boss) => boss.scheduled);
 
@@ -14022,11 +14029,11 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
   field.settlementResource = null;
   delete field.grailDiggable;
   adventure.dungeonSite.fieldId = spaceId;
+  const floorCap = dungeonFloorCapOf(state);
   appendEvent(state, {
     type: "DUNGEON_PLACED",
     fieldId: spaceId,
-    message:
-      "The Dungeon's gate stands open — a shared, repeatable delve (floors 1–10). Each floor costs 1 movement; victors may descend immediately or resume later. Layered bosses guard floors 5 and 10."
+    message: `The Dungeon's gate stands open — a shared, repeatable delve (floors 1–${floorCap}). Victors may descend immediately or resume later. Layered wardens guard the campaign's boss floors.`
   });
   return field;
 }
@@ -14050,11 +14057,12 @@ function handleDungeonGateVisit(
   if (!adventure || !adventure.dungeonSite || !player) {
     return;
   }
-  if (continuing && (state.heroes[heroId]?.movementPoints ?? 0) < 1) {
+  const descentCost = dungeonDescentCostOf(state);
+  if (continuing && (state.heroes[heroId]?.movementPoints ?? 0) < descentCost) {
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: "You need 1 movement to descend another Dungeon floor; resume here on a later turn."
+      message: `You need ${descentCost} movement to descend another Dungeon floor; resume here on a later turn.`
     });
     return;
   }
@@ -14062,9 +14070,10 @@ function handleDungeonGateVisit(
   const bossId = dungeonBossId(state, floor);
   const repeat = Boolean(player.dungeonConquered);
   const fightStep: VisitStep = { type: "DUNGEON_FLOOR_FIGHT", floor };
-  const movementCost: VisitStep[] = continuing
-    ? [{ type: "SPEND_HERO_MOVEMENT", heroId, amount: 1 }]
+  const movementCost: VisitStep[] = continuing && descentCost > 0
+    ? [{ type: "SPEND_HERO_MOVEMENT", heroId, amount: descentCost }]
     : [];
+  const descentLabel = descentCost === 0 ? "free descent" : `${descentCost} movement`;
 
   if (bossId) {
     const boss = resolveBossDefinition(state, bossId);
@@ -14080,7 +14089,7 @@ function handleDungeonGateVisit(
           } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
           options: [
             {
-              label: `${continuing ? "Descend (1 movement) and " : ""}Face ${
+              label: `${continuing ? `Descend (${descentLabel}) and ` : ""}Face ${
                 boss?.name ?? "the floor boss"
               }`,
               steps: [...movementCost, fightStep]
@@ -14109,11 +14118,11 @@ function handleDungeonGateVisit(
         )} war party) waits. Which way?`,
         options: [
           {
-            label: `${continuing ? "Descend (1 movement) — " : ""}Left door: ${left.label}`,
+            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Left door: ${left.label}`,
             steps: [...movementCost, ...left.steps, fightStep]
           },
           {
-            label: `${continuing ? "Descend (1 movement) — " : ""}Right door: ${right.label}`,
+            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Right door: ${right.label}`,
             steps: [...movementCost, ...right.steps, fightStep]
           },
           { label: "Leave the Dungeon", steps: [] }

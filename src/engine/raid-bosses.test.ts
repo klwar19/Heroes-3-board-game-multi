@@ -106,6 +106,28 @@ describe("Raid Bosses — spawn schedule", () => {
     expect(state.eventLog.some((event) => event.type === "RAID_BOSS_SPAWNED")).toBe(true);
   });
 
+  it("the lobby chooses round 4/5/6 arrival, while a designed map's round wins", () => {
+    const lobby = raidGame("raid-lobby-round", {
+      wog: { enabled: true, raidBosses: true, raidBossSpawnRound: 6 }
+    });
+    expect(lobby.adventure?.raidBossSpawnRound).toBe(6);
+    startRound(lobby, 5);
+    expect(lobby.eventLog.some((event) => event.type === "RAID_BOSS_ANNOUNCED")).toBe(true);
+    expect(Object.keys(lobby.adventure?.raidBosses ?? {})).toHaveLength(0);
+    startRound(lobby, 6);
+    expect(Object.keys(lobby.adventure?.raidBosses ?? {})).toHaveLength(1);
+
+    const designed = raidGame("raid-map-round", {
+      wog: { enabled: true, raidBosses: true, raidBossSpawnRound: 6 },
+      customMapPreset: { raidBosses: { spawnRound: 4 } }
+    });
+    expect(designed.adventure?.raidBossSpawnRound).toBe(4);
+    startRound(designed, 3);
+    expect(designed.eventLog.some((event) => event.type === "RAID_BOSS_ANNOUNCED")).toBe(true);
+    startRound(designed, 4);
+    expect(Object.keys(designed.adventure?.raidBosses ?? {})).toHaveLength(1);
+  });
+
   it("retries the spawn every round until a candidate field is revealed", () => {
     const state = raidGame("raid-retry");
     // Strip every candidate: no revealed field carries a printed difficulty.
@@ -340,6 +362,8 @@ describe("Designer sanitize — the monsterWaves / raidBosses preset blocks", ()
     const preset = sanitizeCustomMapPreset({
       monsterWaves: {
         cadence: 5,
+        pressure: "brutal",
+        defeatLimit: 2,
         waves: {
           1: { units: ["neutral.skeletons"] },
           2: { level: 3 },
@@ -350,6 +374,8 @@ describe("Designer sanitize — the monsterWaves / raidBosses preset blocks", ()
       }
     });
     expect(preset?.monsterWaves?.cadence).toBe(5);
+    expect(preset?.monsterWaves?.pressure).toBe("brutal");
+    expect(preset?.monsterWaves?.defeatLimit).toBe(2);
     expect(preset?.monsterWaves?.waves?.[1]).toEqual({ units: ["neutral.skeletons"] });
     expect(preset?.monsterWaves?.waves?.[2]).toEqual({ level: 3 });
     expect(preset?.monsterWaves?.waves?.[0]).toBeUndefined();
@@ -411,13 +437,27 @@ describe("Designer sanitize — the monsterWaves / raidBosses preset blocks", ()
 
   it("both blocks survive a save/load round-trip through the sanitizer unchanged", () => {
     const original = sanitizeCustomMapPreset({
-      monsterWaves: { cadence: 3, waves: { 2: { level: 4 } } },
-      raidBosses: { spawnRound: 7, bosses: [{ id: "b1", name: "B1", attack: 4, defense: 1, health: 3, initiative: 6, layers: 2, abilities: ["boss-devour"] }] }
+      pveTheme: "doom",
+      monsterWaves: { cadence: 3, pressure: "standard", defeatLimit: 3, waves: { 2: { level: 4 } } },
+      raidBosses: { spawnRound: 7, bosses: [{ id: "b1", name: "B1", attack: 4, defense: 1, health: 3, initiative: 6, layers: 2, abilities: ["boss-devour"] }] },
+      dungeon: {
+        maxFloor: 5,
+        descentCost: 2,
+        floorBosses: { 5: "b1", 10: "floor_wyrm", 7: "invalid-floor" }
+      }
     });
+    expect(original?.pveTheme).toBe("doom");
     expect(original?.monsterWaves).toBeTruthy();
     expect(original?.raidBosses).toBeTruthy();
+    expect(original?.dungeon).toEqual({
+      maxFloor: 5,
+      descentCost: 2,
+      floorBosses: { 5: "b1", 10: "floor_wyrm" }
+    });
     const roundTripped = sanitizeCustomMapPreset(JSON.parse(JSON.stringify(original)));
+    expect(roundTripped?.pveTheme).toEqual(original?.pveTheme);
     expect(roundTripped?.monsterWaves).toEqual(original?.monsterWaves);
     expect(roundTripped?.raidBosses).toEqual(original?.raidBosses);
+    expect(roundTripped?.dungeon).toEqual(original?.dungeon);
   });
 });

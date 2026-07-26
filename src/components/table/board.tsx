@@ -153,6 +153,18 @@ export const COMBAT_BOARD_ART_VARIANTS: readonly CombatBoardArtVariant[] = [
     scenery: "/assets/board/battlefield-4x5-creature-bank-dungeon-scenery.webp"
   },
   {
+    id: "pve-calamity-classic",
+    label: "Erathian calamity rift battlefield",
+    terrain: "/assets/board/battlefield-4x5-pve-calamity-classic.webp",
+    scenery: "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"
+  },
+  {
+    id: "pve-calamity-doom",
+    label: "Doom invasion breach battlefield",
+    terrain: "/assets/board/battlefield-4x5-pve-calamity-doom.webp",
+    scenery: "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"
+  },
+  {
     id: "castle-siege",
     label: "Castle siege battlefield",
     terrain: "/assets/board/battlefield-4x5-castle-siege.webp",
@@ -1073,6 +1085,14 @@ export function BattlefieldBoard({
         </div>
       ) : null}
       <div className="battlefieldFrame" data-board-art={boardArt.id} title={boardArt.label}>
+        {boardArt.id === "pve-calamity-classic" || boardArt.id === "pve-calamity-doom" ? (
+          <div className="pveBattlefieldTitle" aria-hidden="true">
+            <span>Calamity encounter</span>
+            <strong>
+              {boardArt.id === "pve-calamity-doom" ? "The Infernal Breach" : "The Shattered Rift"}
+            </strong>
+          </div>
+        ) : null}
         <img
           alt=""
           aria-hidden="true"

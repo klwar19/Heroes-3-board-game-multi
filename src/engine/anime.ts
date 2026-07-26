@@ -42,7 +42,10 @@ export const DEFAULT_ANIME_OPTIONS: AnimeModOptions = {
   neutralRankUp: false,
   pveTheme: "classic",
   wavePressure: "standard",
-  waveDefeatLimit: 0
+  waveDefeatLimit: 0,
+  raidBossSpawnRound: 5,
+  dungeonDepth: 10,
+  dungeonDescentCost: 1
 };
 
 /** Master crest / skin gate. */
@@ -55,7 +58,14 @@ export function animeModuleEnabled(
   state: Pick<GameState, "anime"> | { anime?: AnimeModOptions } | null | undefined,
   module: keyof Omit<
     AnimeModOptions,
-    "enabled" | "waveCadence" | "pveTheme" | "wavePressure" | "waveDefeatLimit"
+    | "enabled"
+    | "waveCadence"
+    | "pveTheme"
+    | "wavePressure"
+    | "waveDefeatLimit"
+    | "raidBossSpawnRound"
+    | "dungeonDepth"
+    | "dungeonDescentCost"
   >
 ): boolean {
   const anime = state?.anime;
@@ -84,7 +94,16 @@ export function resolveAnimeOptions(partial?: Partial<AnimeModOptions> | null): 
     waveDefeatLimit:
       merged.waveDefeatLimit === 2 || merged.waveDefeatLimit === 3
         ? merged.waveDefeatLimit
-        : 0
+        : 0,
+    raidBossSpawnRound:
+      merged.raidBossSpawnRound === 4 || merged.raidBossSpawnRound === 6
+        ? merged.raidBossSpawnRound
+        : 5,
+    dungeonDepth: merged.dungeonDepth === 5 ? 5 : 10,
+    dungeonDescentCost:
+      merged.dungeonDescentCost === 0 || merged.dungeonDescentCost === 2
+        ? merged.dungeonDescentCost
+        : 1
   };
 }
 

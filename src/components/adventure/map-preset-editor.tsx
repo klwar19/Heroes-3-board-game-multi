@@ -5,7 +5,11 @@ import { ArrowUpDown, Clock3, Copy, Plus, Trash2 } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { DESIGNER_UI_ICONS, REWARD_GLYPH_ICONS, SECRET_FEATURE_ICONS } from "@/data/assets/homm-assets";
 import { listStoryScenes } from "@/data/story/scenes";
-import { RAID_BOSS_ABILITY_CHOICES } from "@/data/anime/bosses";
+import {
+  DUNGEON_FLOOR_BOSSES,
+  RAID_BOSSES,
+  RAID_BOSS_ABILITY_CHOICES
+} from "@/data/anime/bosses";
 import { unitAbilities } from "@/data/units/abilities";
 import {
   CUSTOM_BOSS_LIMITS,
@@ -78,6 +82,11 @@ const OFFERED_WIN_CONDITION_OPTIONS = CUSTOM_WIN_CONDITION_OPTIONS.filter(
     entry.id !== "obelisks" &&
     entry.id !== "defeat-dragon-utopia"
 );
+
+const BUILT_IN_DUNGEON_WARDENS = [
+  ...Object.values(RAID_BOSSES),
+  ...Object.values(DUNGEON_FLOOR_BOSSES)
+].map((boss) => ({ id: boss.id, name: boss.name }));
 
 /** Plain-words tile label for the SPECIFIC lists ("Ⅱ–Ⅲ tile N15 @4,6"). */
 function specificTileLabel(plan: CustomMapTilePlan): string {
@@ -514,6 +523,24 @@ export function MapPresetEditor({
     setTimed([...timed, event]);
   };
 
+  const patchMonsterWaves = (partial: Partial<NonNullable<CustomMapPreset["monsterWaves"]>>) => {
+    const next = { ...(value.monsterWaves ?? {}), ...partial };
+    for (const key of Object.keys(next) as Array<keyof typeof next>) {
+      if (next[key] === undefined) {
+        delete next[key];
+      }
+    }
+    patch({ monsterWaves: Object.keys(next).length > 0 ? next : undefined });
+  };
+
+  const patchDungeon = (partial: Partial<NonNullable<CustomMapPreset["dungeon"]>>) => {
+    const next = { ...(value.dungeon ?? {}), ...partial };
+    if (next.maxFloor === undefined) delete next.maxFloor;
+    if (next.descentCost === undefined) delete next.descentCost;
+    if (!next.floorBosses || Object.keys(next.floorBosses).length === 0) delete next.floorBosses;
+    patch({ dungeon: Object.keys(next).length > 0 ? next : undefined });
+  };
+
   // Active-entry count per collapsible group. Single source of truth: mirrors
   // the per-field entries that `describeCustomMapPresetEntries` produces (the
   // multi-line objectives / Victory-Points blocks reuse the SAME describe
@@ -554,6 +581,11 @@ export function MapPresetEditor({
         0
       ),
     timedEvents: timed.length,
+    pve:
+      (value.pveTheme ? 1 : 0) +
+      (value.monsterWaves ? 1 : 0) +
+      (value.raidBosses ? 1 : 0) +
+      (value.dungeon ? 1 : 0),
     designerNote: value.notes ? 1 : 0
   };
 
@@ -674,6 +706,7 @@ export function MapPresetEditor({
           count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Seeds the lobby on pick.
         </small>
       </section>
+
       </MapPresetGroup>
 
       <MapPresetGroup
@@ -2072,10 +2105,53 @@ export function MapPresetEditor({
       </MapPresetGroup>
 
       <MapPresetGroup
-        title="Waves & Raid bosses"
-        glyphEmoji="🐉"
-        count={(value.monsterWaves ? 1 : 0) + (value.raidBosses ? 1 : 0)}
+        title="PvE encounter director"
+        glyphEmoji="⚔️"
+        count={groupCounts.pve}
       >
+      <section className="mapPresetSection mapPresetPveTheme" aria-label="PvE encounter theme (map)">
+        <div className="mapPresetSectionLabel">Encounter art &amp; army theme</div>
+        <div className="pveThemeCards mapPresetPveThemeCards" role="group" aria-label="PvE theme override">
+          {([
+            ["classic", "Erathian", "Arcane calamity", "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"],
+            ["doom", "Doom", "Infernal invasion", "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"]
+          ] as const).map(([theme, label, subtitle, image]) => (
+            <button
+              aria-label={label}
+              aria-pressed={value.pveTheme === theme}
+              className={value.pveTheme === theme ? "selected" : ""}
+              key={theme}
+              onClick={() => patch({ pveTheme: theme })}
+              type="button"
+            >
+              <img alt="" aria-hidden="true" src={assetUrl(image)} />
+              <span><strong>{label}</strong><small>{subtitle}</small></span>
+            </button>
+          ))}
+          <button
+            aria-label="Lobby default"
+            aria-pressed={value.pveTheme === undefined}
+            className={`pveThemeRandom${value.pveTheme === undefined ? " selected" : ""}`}
+            onClick={() => patch({ pveTheme: undefined })}
+            type="button"
+          >
+            <span><strong>Lobby</strong><small>Use setup pick</small></span>
+          </button>
+          <button
+            aria-label="Random theme"
+            aria-pressed={value.pveTheme === "random"}
+            className={`pveThemeRandom${value.pveTheme === "random" ? " selected" : ""}`}
+            onClick={() => patch({ pveTheme: "random" })}
+            type="button"
+          >
+            <span><strong>Random</strong><small>Seeded once</small></span>
+          </button>
+        </div>
+        <small className="mapPresetHint">
+          Directs monster rosters, map-object art and the dedicated PvE combat board. Lobby keeps control when
+          left on Lobby.
+        </small>
+      </section>
       <section className="mapPresetSection" aria-label="Calamity Waves">
         <div className="mapPresetSectionLabel">Calamity Waves (map overrides)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Wave cadence (map)">
@@ -2091,18 +2167,45 @@ export function MapPresetEditor({
               aria-pressed={value.monsterWaves?.cadence === opt.id}
               className={`mapPresetChip${value.monsterWaves?.cadence === opt.id ? " active" : ""}`}
               key={opt.label}
-              onClick={() => {
-                const next = { ...(value.monsterWaves ?? {}), cadence: opt.id };
-                if (next.cadence === undefined) {
-                  delete next.cadence;
-                }
-                patch({
-                  monsterWaves: next.cadence !== undefined || next.waves ? next : undefined
-                });
-              }}
+              onClick={() => patchMonsterWaves({ cadence: opt.id })}
               type="button"
             >
               {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="mapPresetChipRow" role="group" aria-label="Wave pressure (map)">
+          {([
+            [undefined, "Lobby rewards"],
+            ["standard", "Standard"],
+            ["brutal", "Brutal"]
+          ] as const).map(([pressure, label]) => (
+            <button
+              aria-pressed={value.monsterWaves?.pressure === pressure}
+              className={`mapPresetChip${value.monsterWaves?.pressure === pressure ? " active" : ""}`}
+              key={label}
+              onClick={() => patchMonsterWaves({ pressure })}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mapPresetChipRow" role="group" aria-label="Wave loss limit (map)">
+          {([
+            [undefined, "Lobby loss rule"],
+            [0, "Pillage only"],
+            [3, "Eliminate after 3"],
+            [2, "Eliminate after 2"]
+          ] as const).map(([limit, label]) => (
+            <button
+              aria-pressed={value.monsterWaves?.defeatLimit === limit}
+              className={`mapPresetChip${value.monsterWaves?.defeatLimit === limit ? " active" : ""}`}
+              key={label}
+              onClick={() => patchMonsterWaves({ defeatLimit: limit })}
+              type="button"
+            >
+              {label}
             </button>
           ))}
         </div>
@@ -2120,18 +2223,7 @@ export function MapPresetEditor({
                 } else {
                   delete waves[Number(waveKey)];
                 }
-                const hasWaves = Object.keys(waves).length > 0;
-                patch({
-                  monsterWaves:
-                    hasWaves || value.monsterWaves?.cadence !== undefined
-                      ? {
-                          ...(value.monsterWaves?.cadence !== undefined
-                            ? { cadence: value.monsterWaves.cadence }
-                            : {}),
-                          ...(hasWaves ? { waves } : {})
-                        }
-                      : undefined
-                });
+                patchMonsterWaves({ waves: Object.keys(waves).length > 0 ? waves : undefined });
               }}
             />
           </div>
@@ -2146,9 +2238,7 @@ export function MapPresetEditor({
                 wave += 1;
               }
               waves[wave] = { level: 2 };
-              patch({
-                monsterWaves: { ...(value.monsterWaves ?? {}), waves }
-              });
+              patchMonsterWaves({ waves });
             }}
             type="button"
           >
@@ -2339,6 +2429,85 @@ export function MapPresetEditor({
           Applies only while a mod surface ticks Raid bosses. Custom bosses REPLACE the built-in catalog pool for
           this map&apos;s Rift Lair spawn; stats are per health-layer, abilities come from the curated implemented
           list.
+        </small>
+      </section>
+
+      <section className="mapPresetSection" aria-label="Dungeon campaign">
+        <div className="mapPresetSectionLabel">Dungeon (campaign direction)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Dungeon campaign length (map)">
+          {([
+            [undefined, "Lobby length"],
+            [5, "5-floor expedition"],
+            [10, "10-floor campaign"]
+          ] as const).map(([depth, label]) => (
+            <button
+              aria-pressed={value.dungeon?.maxFloor === depth}
+              className={`mapPresetChip${value.dungeon?.maxFloor === depth ? " active" : ""}`}
+              key={label}
+              onClick={() => patchDungeon({ maxFloor: depth })}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mapPresetChipRow" role="group" aria-label="Dungeon descent cost (map)">
+          {([
+            [undefined, "Lobby cost"],
+            [0, "Free descent"],
+            [1, "1 movement"],
+            [2, "2 movement"]
+          ] as const).map(([cost, label]) => (
+            <button
+              aria-pressed={value.dungeon?.descentCost === cost}
+              className={`mapPresetChip${value.dungeon?.descentCost === cost ? " active" : ""}`}
+              key={label}
+              onClick={() => patchDungeon({ descentCost: cost })}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {([5, 10] as const)
+          .filter((floor) => floor === 5 || (value.dungeon?.maxFloor ?? 10) === 10)
+          .map((floor) => (
+            <label className="mapPresetRow" key={floor}>
+              <span className="mapPresetRowLabel">Floor {floor} warden</span>
+              <select
+                aria-label={`Dungeon floor ${floor} boss`}
+                onChange={(event) => {
+                  const floorBosses = { ...(value.dungeon?.floorBosses ?? {}) };
+                  if (event.target.value) {
+                    floorBosses[floor] = event.target.value;
+                  } else {
+                    delete floorBosses[floor];
+                  }
+                  patchDungeon({
+                    floorBosses: Object.keys(floorBosses).length > 0 ? floorBosses : undefined
+                  });
+                }}
+                value={value.dungeon?.floorBosses?.[floor] ?? ""}
+              >
+                <option value="">Theme default</option>
+                <optgroup label="Built-in bosses">
+                  {BUILT_IN_DUNGEON_WARDENS.map((boss) => (
+                    <option key={boss.id} value={boss.id}>{boss.name}</option>
+                  ))}
+                </optgroup>
+                {(value.raidBosses?.bosses?.length ?? 0) > 0 ? (
+                  <optgroup label="This map's custom bosses">
+                    {value.raidBosses!.bosses!.map((boss) => (
+                      <option key={boss.id} value={boss.id}>{boss.name}</option>
+                    ))}
+                  </optgroup>
+                ) : null}
+              </select>
+            </label>
+          ))}
+        <small className="mapPresetHint">
+          Applies only while a mod surface ticks The Dungeon. A short expedition crowns floor 5 as the final,
+          repeatable floor; custom wardens may reuse the monsters authored above.
         </small>
       </section>
       </MapPresetGroup>
