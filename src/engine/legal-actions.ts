@@ -505,6 +505,19 @@ function canAffordCardCost(
       if (activeSchoolFetches(state, playerId).some(matches)) {
         valued.push({ basic: 0, expertGain: 3 });
       }
+      // Polish Spell Book: the map boost window offers a SPARE "Cast a Spell"
+      // for its printed +1 Power (cardCanBoostPower deliberately hides it from
+      // the generic power-source filter, so the hand scan above misses it).
+      // Scoped to a BOOK cast — the only Polish play that opens that window —
+      // and one copy is consumed as the cast's own enabler, so only the rest
+      // add Power. Without this a Book Spell whose only useful tier needs +1
+      // was hidden from the offer list even though the window could pay it.
+      if (polishSpellBookEnabled(state) && (player.spellBook ?? []).includes(cardId)) {
+        const spare = rest.filter((id) => isCastASpellCard(id)).length - 1;
+        for (let index = 0; index < spare; index += 1) {
+          valued.push({ basic: 1, expertGain: 0 });
+        }
+      }
     }
     valued.sort((a, b) => b.expertGain - a.expertGain);
     let crowns = crownsLeft;
@@ -9667,6 +9680,13 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // actions that skip this legal-action check.)
   // Round 1: only under-limit cards may be discarded here (bonus artifact);
   // a full hand is draw-only, then OPENING_HAND_MULLIGAN when the option is ON.
+  // "End turn" stays offered while the draw is owed — ending a turn is a
+  // deliberate pass, never a forgotten draw (pinned in
+  // mandatory-draw-six-rounds.test.ts). CONSEQUENCE: the "beginning of your
+  // turn" town buildings are queued by REFRESH_HAND (they read the settled
+  // post-draw hand), so a seat that passes without drawing forfeits them for
+  // that turn — the rulebook resolves them "after drawing". Pinned in
+  // siege-tokens.test.ts.
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",

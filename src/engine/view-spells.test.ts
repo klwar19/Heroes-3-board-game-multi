@@ -402,6 +402,94 @@ describe("View Earth reach scales with the Power paid", () => {
     expect(viewEarthCasts(state)).toBe(0);
   });
 
+  // The offer gate reads the SAME standing Power the cast itself starts from —
+  // standingSpellPower + getSchoolPowerBonus + the map bank. A school source
+  // that the gate forgets would HIDE a Spell the player can genuinely cast.
+  it("a school-aura +1 keeps the distance-2 Mine castable — and captures it", () => {
+    let state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    const farMine = spaceAtDistance(hero.spaceId!, 2);
+    placeMine(state, farMine, "p2", "gold", 1);
+
+    // CONTROL: with no Power source at all the Power-1 tier is unaffordable.
+    expect(viewEarthCasts(state)).toBe(0);
+
+    state.activeEffects.push({
+      id: "earth-school-aura",
+      name: "Earth school aura",
+      scope: "player",
+      duration: { type: "permanent" },
+      modifiers: [{ type: "SPELL_SCHOOL_POWER_BONUS", school: "earth", amount: 1 }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+    expect(viewEarthCasts(state)).toBe(1);
+
+    // Starting Power 1 with nothing to boost → resolves straight to the pick.
+    state = cast(state, "spell.view_earth");
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "view-earth") {
+      throw new Error("expected the view-earth pick at Power 1");
+    }
+    expect(choice.viewEarth?.mineSpaceIds).toEqual([farMine]);
+    state = choose(state, 0);
+    expect(state.adventure!.fields[farMine].flagOwnerId).toBe("p1");
+  });
+
+  it("a School of Magic permanent's crown-gated expert half keeps the distance-3 Mine castable", () => {
+    const state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    placeMine(state, spaceAtDistance(hero.spaceId!, 3), "p2", "valuables", 1);
+    state.players.p1.permanents = ["ability.earth_magic"];
+
+    // Basic +1 alone cannot reach the Power-2 tier (CONTROL: no crown).
+    state.players.p1.limits.expertUses = 0;
+    expect(viewEarthCasts(state)).toBe(0);
+
+    // With a crown the expert half (+1 more) reaches it, so the cast is offered.
+    state.players.p1.limits.expertUses = 1;
+    expect(viewEarthCasts(state)).toBe(1);
+  });
+
+  it("a Basic Earth Magic permanent + a crown keeps the distance-3 Mine castable — and captures it", () => {
+    let state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    const mine3 = spaceAtDistance(hero.spaceId!, 3);
+    placeMine(state, mine3, "p2", "valuables", 1);
+    state.players.p1.permanents = ["ability.basic_earth_magic"];
+
+    // CONTROL: the +3 is crown-gated, so with no crown the Power-2 tier is out
+    // of reach and the cast is not offered at all.
+    state.players.p1.limits.expertUses = 0;
+    expect(viewEarthCasts(state)).toBe(0);
+
+    state.players.p1.limits.expertUses = 1;
+    expect(viewEarthCasts(state)).toBe(1);
+
+    state = cast(state, "spell.view_earth");
+    const boostChoice = state.pendingChoice;
+    const fetchIndex =
+      boostChoice?.type === "OPTION_CHOICE" && boostChoice.mapSpellBoost
+        ? boostChoice.mapSpellBoost.offers.findIndex(
+            (offer) => offer.kind === "school-fetch-expert" && offer.school === "earth"
+          )
+        : -1;
+    expect(fetchIndex).toBeGreaterThanOrEqual(0);
+    state = choose(state, fetchIndex);
+
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "view-earth") {
+      throw new Error("expected the view-earth pick at Power 3");
+    }
+    expect(choice.viewEarth?.mineSpaceIds).toEqual([mine3]);
+    state = choose(state, 0);
+    expect(state.adventure!.fields[mine3].flagOwnerId).toBe("p1");
+  });
+
   it("a Mine two fields away is captured after boosting to Power 1", () => {
     let state = withHand(makeGame(), ["spell.view_earth", "spell.haste", "spell.slow"]);
     const hero = heroP1(state);

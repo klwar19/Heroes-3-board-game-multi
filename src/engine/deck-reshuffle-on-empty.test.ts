@@ -354,6 +354,35 @@ describe("Tazar's War Hero VI (draw the top Artifact card)", () => {
 
     expect(drawn.players.p1.hand.length).toBe(handBefore + 1);
     expect(drawn.pendingChoice).toBeNull();
+    // The draw reports the reshuffle honestly (it used to hardcode false).
+    const event = [...drawn.eventLog].reverse().find((entry) => entry.type === "CARDS_DRAWN");
+    expect(event && "reshuffledDiscard" in event && event.reshuffledDiscard).toBe(true);
+  });
+
+  it("CONTROL: a draw off a stocked pile reports no reshuffle", () => {
+    const state = adventureState("tazar-no-reshuffle", "tazar", "fortress");
+    state.players.p1.hand = ["specialty.tazar.6", "stat.attack"];
+    state.players.p1.discard = [];
+    const played = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.tazar.6",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" },
+      costCardIds: ["stat.attack"]
+    });
+    const choice = played.pendingChoice;
+    const deckIds = choice?.type === "OPTION_CHOICE" ? (choice.artifactDeckPick?.deckIds ?? []) : [];
+    const minorIndex = Math.max(0, deckIds.indexOf("artifacts-minor"));
+    const drawn = applyOk(played, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: minorIndex
+    });
+    const event = [...drawn.eventLog].reverse().find((entry) => entry.type === "CARDS_DRAWN");
+    expect(event && "reshuffledDiscard" in event && event.reshuffledDiscard).toBe(false);
   });
 
   it("CONTROL: with every Artifact deck completely empty it is not offered", () => {

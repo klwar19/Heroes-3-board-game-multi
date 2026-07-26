@@ -4,6 +4,8 @@ import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
+  hexDistance,
+  parseHexSpaceId,
   type GameAction,
   type GameState
 } from "./index";
@@ -86,6 +88,30 @@ function pickBoost(
     choiceId: choice.id,
     optionIndex: index
   });
+}
+
+/** Drops an enemy-owned Mine exactly `distance` fields east of p1's hero. */
+function enemyMineAtDistance(state: GameState, distance: number): string {
+  const origin = parseHexSpaceId(state.heroes.hero_p1!.spaceId!);
+  if (!origin) {
+    throw new Error("no hero position");
+  }
+  const target = { row: origin.row, col: origin.col + distance };
+  expect(hexDistance(origin, target)).toBe(distance);
+  const spaceId = `h:${target.row}:${target.col}`;
+  state.adventure!.fields[spaceId] = {
+    spaceId,
+    tileInstanceId: "test-mine",
+    slot: 0,
+    location: "mine",
+    resource: "gold",
+    amount: 1,
+    blackCube: false,
+    flagOwnerId: "p2",
+    everFlagged: true,
+    settlementResource: null
+  };
+  return spaceId;
 }
 
 function resolveBoostNow(state: GameState): GameState {
@@ -331,6 +357,51 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
     });
     expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
     expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
+  });
+
+  // A destination-gated map Spell (View Earth / Dimension Door / Town Portal) is
+  // only OFFERED when some tier is both reachable and affordable. The boost
+  // window offers a SPARE "Cast a Spell" for its printed +1 Power, so the offer
+  // gate must count it too — otherwise a Book Spell the player can genuinely
+  // cast at the needed tier is hidden from them entirely.
+  it("a SPARE Cast a Spell pays the +1 a Book View Earth needs — offer AND capture", () => {
+    let state = polishBookGame("polish-book-cast-a-spell-power");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.view_earth"];
+    state.players.p1.limits.expertUses = 0;
+    const mine = enemyMineAtDistance(state, 2);
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.view_earth"
+    );
+    expect(play, "a spare Cast a Spell can pay the Power-1 tier").toBeTruthy();
+
+    state = applyOk(state, play!.action);
+    state = pickBoost(state, (offer) => offer.kind === "card" && offer.cardId === CAST_A_SPELL_CARD_ID);
+
+    // Power 1 → range 2 → the enemy Mine is in reach and is captured.
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("view-earth");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    expect(state.adventure!.fields[mine]!.flagOwnerId).toBe("p1");
+  });
+
+  it("CONTROL: with the only Cast a Spell spent on the cast itself, the same View Earth is not offered", () => {
+    const state = polishBookGame("polish-book-cast-a-spell-control");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.view_earth"];
+    state.players.p1.limits.expertUses = 0;
+    enemyMineAtDistance(state, 2);
+
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.view_earth"
+      )
+    ).toBe(false);
   });
 
   it("Polish Book Fly: spell stays used (no ongoing hold); Knowledge still returns Cast a Spell", () => {

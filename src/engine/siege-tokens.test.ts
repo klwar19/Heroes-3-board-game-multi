@@ -706,6 +706,36 @@ describe("turn-start town buildings", () => {
     }
   });
 
+  // CONSEQUENCE of queueing the buildings from REFRESH_HAND (they must read the
+  // settled post-draw hand): a seat that PASSES — ends its turn without taking
+  // the deliberate-pass draw, which stays legal (mandatory-draw-six-rounds.test.ts)
+  // — forfeits its beginning-of-your-turn buildings for that turn. The rulebook
+  // resolves them "after drawing", so no draw means no prompt.
+  it("a seat that ends its turn WITHOUT drawing forfeits that turn's building prompt", () => {
+    let state = createAdventureGameState({ seed: "amp-skip-seed", rollFirstPlayer: false });
+    for (const _pl of Object.values(state.players)) {
+      _pl.canMulligan = false;
+      _pl.needsHandRefresh = false;
+    }
+    state.towns.town_p2.buildings.push("necropolis.necromancy_amplifier");
+
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.players.p2.canMulligan).toBe(true);
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "END_TURN")).toBe(true);
+
+    // p2 passes without drawing: no amplifier prompt opens, for anyone.
+    state = applyOk(state, { type: "END_TURN", playerId: "p2" });
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(state.adventure?.rewardQueue.some((reward) => reward.playerId === "p2")).toBe(false);
+
+    // CONTROL: on p2's NEXT turn, taking the draw opens it as normal.
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    expect(state.adventure?.pendingVisit?.playerId).toBe("p2");
+    expect(state.adventure?.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+  });
+
   it("runs the Mana Vortex discard-shuffle-search at turn start", () => {
     let state = createAdventureGameState({ seed: "vortex-seed", rollFirstPlayer: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
