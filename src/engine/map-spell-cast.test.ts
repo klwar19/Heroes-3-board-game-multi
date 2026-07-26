@@ -336,6 +336,102 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
   });
 });
 
+describe("Map casts share the non-combat spell lifecycle", () => {
+  it("Grim Warlock boosts only the first map Spell of the turn", () => {
+    let state = mapHand(["spell.view_air", "spell.view_air"]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.grim_warlock",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const goldBefore = state.players.p1.resources.gold;
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+
+    for (let cast = 0; cast < 2; cast += 1) {
+      state = applyOk(state, {
+        type: "PLAY_CARD",
+        playerId: "p1",
+        cardId: "spell.view_air",
+        mode: "basic",
+        target: { type: "none" }
+      });
+      if (
+        state.pendingChoice?.type === "OPTION_CHOICE" &&
+        state.pendingChoice.context === "map-spell-boost"
+      ) {
+        state = applyOk(state, {
+          type: "CHOOSE_OPTION",
+          playerId: "p1",
+          choiceId: state.pendingChoice.id,
+          optionIndex:
+            state.pendingChoice.mapSpellBoost?.offers.length ??
+            state.pendingChoice.options.length - 1
+        });
+      }
+    }
+
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+    expect(state.players.p1.combatStats.spellsCastThisTurn).toBe(2);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    expect(state.players.p1.combatStats.anySpellCastThisRound).not.toBe(true);
+  });
+
+  it("Crazy Wizard returns the first resolved map Spell to hand", () => {
+    let state = mapHand(["spell.view_air"]);
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.crazy_wizard",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+
+    expect(state.players.p1.hand).toContain("spell.view_air");
+    expect(state.players.p1.discard).not.toContain("spell.view_air");
+    expect(state.adventure!.astrologers!.crazyWizardUsedBy).toContain("p1");
+  });
+
+  it("DRAW_ON_SPELL_CAST fires on the map without recycling the resolving Spell", () => {
+    let state = mapHand(["spell.view_air"]);
+    state.players.p1.deck = [];
+    state.players.p1.discard = ["stat.attack"];
+    state.activeEffects.push({
+      id: "map-draw-on-cast",
+      name: "Draw after casting",
+      scope: "player",
+      duration: { type: "permanent" },
+      modifiers: [{ type: "DRAW_ON_SPELL_CAST", amount: 1 }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air",
+      mode: "basic",
+      target: { type: "none" }
+    });
+
+    expect(state.players.p1.hand).toEqual(["stat.attack"]);
+    expect(state.players.p1.deck).toEqual([]);
+    expect(state.players.p1.discard).toContain("spell.view_air");
+  });
+});
+
 // Per-side offers (combat parity): every printed "+Power" side of a CHOOSE_ONE
 // card is its own offer — never one collapsed value. The reported bug: the
 // Tunic of the Cyclops King only ever offered its "+1, draw 1" side; the "+2
@@ -416,6 +512,61 @@ describe("map-spell-boost — every printed power side is offered", () => {
       });
     }
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+  });
+
+  it("at the highest useful tier, draw-rider boosts remain playable and protect every resolving card", () => {
+    let state = mapHand(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
+    state.players.p1.mapSpellPowerBank = 2;
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    const valuablesBefore = state.players.p1.resources.valuables;
+
+    state = castViewAir(state);
+    const offers = cardOffers(state, "artifact.tunic_of_the_cyclops_king");
+    expect(offers).toHaveLength(1);
+    expect(offers[0]!.offer).toMatchObject({ kind: "card", value: 1, drawCards: 1 });
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: offers[0]!.index
+    });
+
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
+    expect(state.players.p1.hand).toEqual([]);
+    expect(state.players.p1.deck).toEqual([]);
+    expect(state.players.p1.discard).toEqual(
+      expect.arrayContaining(["spell.view_air", "artifact.tunic_of_the_cyclops_king"])
+    );
+  });
+
+  it("an ongoing map Spell is held correctly after an empty-deck support draw", () => {
+    let state = mapHand(["spell.fly", "artifact.tunic_of_the_cyclops_king"]);
+    state.players.p1.mapSpellPowerBank = 4;
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fly",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const offers = cardOffers(state, "artifact.tunic_of_the_cyclops_king");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: offers[0]!.index
+    });
+
+    expect(state.players.p1.ongoingCards).toEqual(
+      expect.arrayContaining([expect.objectContaining({ cardId: "spell.fly" })])
+    );
+    expect(state.players.p1.discard).toContain("artifact.tunic_of_the_cyclops_king");
+    expect(state.players.p1.discard).not.toContain("spell.fly");
   });
 
   it("Scales of the Greater Basilisk offers +3 AND +1/draw as separate sides", () => {

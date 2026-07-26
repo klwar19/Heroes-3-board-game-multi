@@ -12471,7 +12471,14 @@ export function openDrawChooseMinorArtifacts(
   // Prefer drawing straight off the Minor pile. On a combined deck, skip
   // non-minors back under the pile so we never offer a Major/Relic here.
   const skipped: CardId[] = [];
-  while (drawn.length < drawCount && deck.drawPile.length > 0) {
+  let reshuffled = false;
+  while (drawn.length < drawCount) {
+    if (deck.drawPile.length === 0) {
+      if (reshuffled || !reshuffleSharedDeckIfEmpty(state, deckId, "polish-minor-draw-reshuffle")) {
+        break;
+      }
+      reshuffled = true;
+    }
     const cardId = deck.drawPile.pop() as CardId;
     const card = cardLibrary[cardId];
     const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
@@ -12563,11 +12570,20 @@ export function revealUntilMinorArtifact(state: GameState, playerId: PlayerId): 
     if (!deck) {
       continue;
     }
-    while (deck.drawPile.length > 0) {
+    const revealed: CardId[] = [];
+    let reshuffled = false;
+    for (;;) {
+      if (deck.drawPile.length === 0) {
+        if (reshuffled || !reshuffleSharedDeckIfEmpty(state, deckId, "starting-minor-reveal-reshuffle")) {
+          break;
+        }
+        reshuffled = true;
+      }
       const cardId = deck.drawPile.pop() as CardId;
       const card = cardLibrary[cardId];
       const isMinor = card?.kind === "artifact" && (effectiveArtifactTier(state, cardId) ?? "minor") === "minor";
       if (isMinor && canAcquireSharedDeckCard(state, playerId, deckId, cardId)) {
+        deck.discardPile.push(...revealed);
         player.hand.push(cardId);
         appendEvent(state, {
           type: "DECK_SEARCH_RESOLVED",
@@ -12579,8 +12595,11 @@ export function revealUntilMinorArtifact(state: GameState, playerId: PlayerId): 
         });
         return cardId;
       }
-      deck.discardPile.push(cardId);
+      // Hold rejects aside until this scan ends so an empty-deck reshuffle can
+      // never reveal the same rejected card repeatedly.
+      revealed.push(cardId);
     }
+    deck.discardPile.push(...revealed);
   }
   return null;
 }
@@ -15185,13 +15204,12 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   // both keep a fresh full hand AND swap on top of it — it is one either/or
   // choice. Only an over-the-limit hand forces a discard before acting.
   //
-  // The snapshot (forced discard + optional draw) is NOT taken here. The first
-  // player of a Round starts their turn in the same engine step that just queued
-  // the "beginning of the round" building effects (City Hall income/draws,
-  // Wall of Knowledge, …) and the "beginning of your turn" effects queued just
-  // below — all of which can still change the hand. So the hand step is queued
-  // as the LAST start-of-turn reward and the snapshot is taken when it pumps,
-  // once every earlier phase has resolved (see "start-turn-hand").
+  // The snapshot (forced discard + optional draw) is NOT taken here. For the
+  // first player of a round, every "beginning of the round" effect already
+  // queued (City Hall, Wall of Knowledge, and so on) resolves first. The
+  // start-turn-hand divider then opens the player's draw/discard phase.
+  // "Beginning of your turn" buildings are deliberately queued only after
+  // REFRESH_HAND resolves, so their draws/searches see the settled new hand.
   player.canMulligan = false;
   player.needsHandRefresh = false;
   player.canOpeningMulligan = false;
@@ -15211,12 +15229,10 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
   // Necromancy Amplifier, Portal of Summoning, Mana Vortex.
-  queueTurnStartBuildingChoices(state, playerId);
 
-  // Phase divider: the hand-limit snapshot runs after every effect queued above
-  // (this turn's start-of-turn effects) and every round-start effect queued
-  // before this call. A pure-combat fixture has no reward queue — take the
-  // snapshot inline there.
+  // Phase divider: the hand-limit snapshot runs after every round-start effect
+  // queued before this call. A pure-combat fixture has no reward queue, so take
+  // the snapshot inline there.
   if (state.adventure) {
     state.adventure.rewardQueue.push({ playerId, kind: "start-turn-hand" });
   } else {
@@ -15301,8 +15317,8 @@ function beginStartTileRotation(state: GameState, playerId: PlayerId): void {
 /**
  * Opens the start-of-turn hand step for `playerId`: the optional discard-and-draw
  * (`canMulligan`) plus the forced discard-down (`needsHandRefresh`) when the hand
- * sits over the effective limit. Called from the "start-turn-hand" reward so the
- * snapshot reflects every round-start and start-of-turn effect that ran first.
+ * sits over the effective limit. Called from the "start-turn-hand" reward after
+ * round-start effects and before beginning-of-player-turn buildings.
  */
 export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
@@ -15323,7 +15339,7 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
  * for the player whose turn just started. Each opens as a prompt with a Skip
  * option once the queue pumps.
  */
-function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): void {
+export function queueTurnStartBuildingChoices(state: GameState, playerId: PlayerId): void {
   const adventure = state.adventure;
   const player = state.players[playerId];
   const town = getTownOfPlayer(state, playerId);

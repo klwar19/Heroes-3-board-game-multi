@@ -59,6 +59,8 @@ import {
   isDefendingOwnFactionTown,
   isHerolessMineDefender,
   isMapPowerTierSpell,
+  dimensionDoorDestinations,
+  townPortalDestinations,
   canHeroDiscoverAdjacentTile,
   isTileRotationConnected,
   TILE_ROTATION_SEAL_GATE_ENABLED,
@@ -477,7 +479,8 @@ function canAffordCardCost(
     // Power exactly like standing Power, so a banked +1 makes a higher tier
     // affordable with one fewer discard. Zero in combat (guarded in the helper).
     const standing =
-      (card ? standingSpellPower(state, playerId, card) : 0) + mapSpellPowerBankAvailable(state, playerId);
+      (card ? standingSpellPower(state, playerId, card) + getSchoolPowerBonus(state, playerId, card) : 0) +
+      mapSpellPowerBankAvailable(state, playerId);
     const crownsLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -489,6 +492,20 @@ function canAffordCardCost(
       const expert = spellPowerValueOfCard(cardLibrary[id], schools, "expert");
       return { basic, expertGain: Math.max(0, expert - basic) };
     });
+    if (!state.combat && card) {
+      const school = getPermanentSchoolBonus(state, playerId, card);
+      if (school) {
+        valued.push({
+          basic: 0,
+          expertGain: Math.max(0, school.expertPower - school.basicPower)
+        });
+      }
+      const matches = (schoolName: "air" | "earth" | "fire" | "water") =>
+        schools.includes(schoolName) || schools.includes("any");
+      if (activeSchoolFetches(state, playerId).some(matches)) {
+        valued.push({ basic: 0, expertGain: 3 });
+      }
+    }
     valued.sort((a, b) => b.expertGain - a.expertGain);
     let crowns = crownsLeft;
     let fromCards = 0;
@@ -2722,9 +2739,13 @@ function isOptionEffectPlayable(
       }
       return Boolean(state.adventure);
     case "TELEPORT_HERO_TO_TOWN":
+      return (
+        context === "map" &&
+        Boolean(state.adventure) &&
+        townPortalDestinations(state, playerId, effect.movementBonus ?? 0).length > 0
+      );
     case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
-    case "DIMENSION_DOOR":
     // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
     // and the location-dice buff are all resolved through a queued map visit.
     case "RESOURCE_FORTUNE_PLAY":
@@ -2733,6 +2754,15 @@ function isOptionEffectPlayable(
     case "PANDORA_VISIT":
     case "PANDORA_SCRY":
       return context === "map" && Boolean(state.adventure);
+    case "DIMENSION_DOOR": {
+      const hero = getMainHero(state, playerId);
+      return Boolean(
+        context === "map" &&
+          state.adventure &&
+          hero &&
+          dimensionDoorDestinations(state, hero, effect.fields).length > 0
+      );
+    }
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
       // Play that removes a card matching the filter (default "removable" =
       // ability / artifact / spell; Miriam's Scouting I narrows it to "ability"),
@@ -3099,8 +3129,10 @@ function addOptionPlays(
     // Dimension Door / Town Portal / View Earth need a reachable destination at
     // SOME tier — gate on any option being playable (higher Power can open more
     // cells than the free tier alone).
-    const anyPlayable = card.effect.options.some((option) =>
-      isOptionEffectPlayable(state, playerId, option.effect, "map", cardId)
+    const anyPlayable = card.effect.options.some(
+      (option) =>
+        isOptionEffectPlayable(state, playerId, option.effect, "map", cardId) &&
+        canAffordCardCost(state, playerId, cardId, option.cost)
     );
     if (!anyPlayable) {
       return;
@@ -5409,7 +5441,10 @@ function getLegalActionsCore(
       // card from — only decks that still hold a card are offered.
       const actions: LegalAction[] = [];
       const decks = [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
-        (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0
+        (deckId) =>
+          (state.decks[deckId]?.drawPile.length ?? 0) +
+            (state.decks[deckId]?.discardPile.length ?? 0) >
+          0
       );
       for (const [optionIndex, deckId] of decks.entries()) {
         actions.push({
@@ -6297,7 +6332,12 @@ function getInnateMagicMirrorReactions(
 
 /** Whether either shared Spell deck still holds a card for Tarnum VI to Search. */
 function tarnumSearchableDeckExists(state: GameState): boolean {
-  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].some((deckId) => (state.decks[deckId]?.drawPile.length ?? 0) > 0);
+  return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].some(
+    (deckId) =>
+      (state.decks[deckId]?.drawPile.length ?? 0) +
+        (state.decks[deckId]?.discardPile.length ?? 0) >
+      0
+  );
 }
 
 export function getLegalReactionsForTrigger(

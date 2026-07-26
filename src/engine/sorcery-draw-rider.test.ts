@@ -103,6 +103,19 @@ describe("Sorcery played on the map (outside any spell cast)", () => {
     state = applyOk(state, mapPlays(state, "ability.sorcery")[0]);
     expect(state.players.p1.deck.length).toBe(deckBefore - 1);
   });
+
+  it("an empty deck cannot recycle Sorcery while its draw rider is resolving", () => {
+    let state = mapHand(["ability.sorcery"]);
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    state = applyOk(state, mapPlays(state, "ability.sorcery")[0]);
+
+    expect(state.players.p1.hand).toEqual([]);
+    expect(state.players.p1.deck).toEqual([]);
+    expect(state.players.p1.discard).toEqual(["ability.sorcery"]);
+    expect(state.players.p1.mapSpellPowerBank).toBe(1);
+  });
 });
 
 // ===========================================================================
@@ -146,6 +159,31 @@ describe("Sorcery in a spell-cast window refreshes the reaction list with its dr
     }
     // Sorcery (+1) + the drawn Power (+1) = Magic Arrow resolves at Power 2.
     expect(lastEvent(state, "SPELL_CAST_RESOLVED")).toMatchObject({ power: 2 });
+  });
+
+  it("an empty deck protects both the cast Spell and its draw-support reaction", () => {
+    let state = createInitialGameState("sorcery-cast-empty-deck");
+    state.players.p1.hand = ["spell.magic_arrow", "ability.sorcery"];
+    state.players.p2.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+
+    state = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p2_vampires" }
+    });
+    const sorcery = reactionFor(state, "p1", "ability.sorcery");
+    expect(sorcery).toBeTruthy();
+    state = applyOk(state, sorcery!.action);
+
+    expect(state.players.p1.hand).toEqual([]);
+    expect(state.players.p1.deck).toEqual([]);
+    expect(state.players.p1.discard).toEqual(
+      expect.arrayContaining(["spell.magic_arrow", "ability.sorcery"])
+    );
+    expect(lastEvent(state, "SPELL_CAST_RESOLVED")).toBeTruthy();
   });
 });
 

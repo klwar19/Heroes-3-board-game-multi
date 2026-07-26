@@ -17,14 +17,15 @@ import { startAdventureRound, startPlayerTurn } from "./adventure";
 //      apply and its per-player rewards queue FIRST.
 //   2. "Beginning of the round" town-building effects (City Hall income/draws,
 //      Mystic Pond die, faction cubes, Wall of Knowledge, Blood Obelisk, …).
-//   3. The Turn then begins: "beginning of your turn" building effects, and
-//      finally the hand step — if the round-start effects pushed the hand over
-//      the limit the player MUST discard back down before acting.
+//   3. The Turn then begins with the hand draw/discard phase. If round-start
+//      effects pushed the hand over the limit, the player MUST discard down.
+//   4. "Beginning of your turn" building effects resolve against that settled
+//      post-refresh hand.
 //
 // The first player of a Round is the tricky case: their Turn starts in the same
 // engine step that just queued the round-start effects, so the hand-limit
 // snapshot must be taken AFTER those effects run, not before. The engine does
-// this with a "start-turn-hand" reward queued LAST by startPlayerTurn.
+// this with a "start-turn-hand" phase divider queued by startPlayerTurn.
 // ---------------------------------------------------------------------------
 
 function makeGame(): GameState {
