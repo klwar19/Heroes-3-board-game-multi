@@ -147,6 +147,17 @@ describe("Boss data — ability hygiene", () => {
     }
   });
 
+  it("each boss card face is its OWN id's file (the art bakes in that boss's name, title and health pips)", () => {
+    // scripts/build-raid-dungeon-art.mjs renders `<id>.webp` from `<id>.png` and
+    // stamps THAT boss's NAME, TITLE and one pip per layer into the frame. So a
+    // cardImage pointing at another boss's file shows the wrong name and the
+    // wrong number of health bars on the card — the four Doom bosses shipped
+    // cross-wired exactly that way. Pinned per-boss so a transposition fails.
+    for (const def of listAllBossDefinitions()) {
+      expect(def.cardImage, def.id).toBe(`/assets/bosses/${def.id}.webp`);
+    }
+  });
+
   it("every designer whitelist id (RAID_BOSS_ABILITY_CHOICES) is implemented", () => {
     for (const abilityId of RAID_BOSS_ABILITY_CHOICES) {
       const ability = unitAbilities[abilityId];

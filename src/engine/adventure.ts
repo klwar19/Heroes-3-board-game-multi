@@ -9143,6 +9143,15 @@ const TOKEN_FORBIDDEN_LOCATIONS = new Set([
   "dragon_utopia",
   "subterranean_gate",
   "creature_bank",
+  // The three PvE-module map objects are one-per-map singletons whose ids are
+  // latched in adventure state (`monsterWaves.gateFieldId`,
+  // `dungeonSite.fieldId`, the `raidBosses[id].fieldId` lair record). Letting a
+  // designer token overwrite the hex would leave that latch pointing at a
+  // Monolith and silently kill the module for the rest of the game — the
+  // Creature-Bank reasoning, verbatim.
+  "calamity_gate",
+  "dungeon_gate",
+  "rift_lair",
   "monolith",
   "whirlpool",
   "gate"
@@ -13944,11 +13953,18 @@ export function placeCalamityGate(state: GameState, spaceId: MapSpaceId): MapFie
   delete field.resource;
   delete field.amount;
   delete field.faction;
+  // Same clean-carve as placeCreatureBank / placeDungeonSite: a module map
+  // object must be WALKABLE. A Blocked Field can carry water terrain (an island
+  // hex on a mixed tile) and designed yellow border edges, either of which would
+  // leave the Gate unreachable — nobody could ever scout it.
+  delete field.terrain;
+  delete field.borderEdges;
   field.blackCube = false;
   field.flagOwnerId = null;
   delete field.extraFlagOwnerIds;
   field.everFlagged = false;
   field.settlementResource = null;
+  delete field.grailDiggable;
   config.gateFieldId = spaceId;
   appendEvent(state, {
     type: "CALAMITY_GATE_PLACED",

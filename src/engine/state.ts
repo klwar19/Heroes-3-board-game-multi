@@ -7384,9 +7384,10 @@ export type PlayerState = {
   /** The Dungeon: floor 10 cleared — the Conqueror title (relic paid once). */
   dungeonConquered?: boolean;
   /**
-   * The Dungeon: the game round this player last OPENED a floor fight ("once
-   * per turn" — the Drill-style per-round latch; both turn modes give each
-   * seat one turn per round).
+   * DEAD FIELD (legacy snapshots only). It used to be the Dungeon's
+   * once-per-turn latch (the round this player last OPENED a floor fight).
+   * The Dungeon now charges 1 MOVEMENT per floor instead, so NOTHING writes or
+   * reads this any more — do not resurrect it as a gate.
    */
   dungeonDelveRound?: number;
   /** Calamity Waves: number of wave assaults this player has lost. */

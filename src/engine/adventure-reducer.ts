@@ -15220,6 +15220,15 @@ export function pumpAdventureQueues(state: GameState): void {
     // the whole-table freeze.
     if (reward.kind === "wave-assault") {
       adventure.rewardQueue.shift();
+      // The optional wave-loss elimination (`waveDefeatLimit`) can END the game
+      // in the MIDDLE of the queue: the pillage eliminates the last opponent, so
+      // last-faction-standing is declared and the phase is already "game-over".
+      // Opening the survivor's queued assault would clear that phase and drag
+      // the winner into a pointless fight after the game was won. Drop the rest
+      // of the assaults; the barrier sentinel below still lifts the freeze.
+      if (adventure.winnerPlayerId) {
+        continue;
+      }
       openMonsterWaveAssault(state, reward.playerId, reward.wave);
       if (state.combat) {
         return;

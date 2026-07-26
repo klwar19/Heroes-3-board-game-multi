@@ -10,10 +10,15 @@ import {
 import {
   applyWavePillage,
   beginFieldVisit,
+  canCrossEdge,
   drawWaveArmy,
   eliminatePlayer,
+  getTileFootprintSpaceIds,
   grantWaveVictoryRewards,
   instantiateTile,
+  isSeaField,
+  placeCalamityGate,
+  tokenPlacementCandidates,
   startAdventureRound
 } from "./adventure";
 import {
@@ -23,6 +28,7 @@ import {
 } from "./adventure-reducer";
 import { waveArmyLevel, waveNumberForRound } from "./monster-waves";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { coreUnitDefinitions } from "@/data/factions/units";
 
 /**
  * Calamity Waves (§6.6) — every claim engine-enforced with CONTROLs:
@@ -63,6 +69,47 @@ function apply(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+/** Reveal + rotate a Far tile through the real seam (materializes its fields). */
+function placeFarTile(
+  state: GameState,
+  tileDefId: string,
+  at: { row: number; col: number }
+) {
+  const adventure = state.adventure!;
+  const tile = instantiateTile(adventure, tileDefId, at, 0, true);
+  expect(tile.group).toBe("far");
+  tile.awaitingRotation = true;
+  adventure.pendingTileChoice = { tileInstanceId: tile.id, playerId: "p1", kind: "place" };
+  setTileRotation(state, {
+    type: "SET_TILE_ROTATION",
+    playerId: "p1",
+    tileInstanceId: tile.id,
+    rotation: 0
+  });
+  state.pendingChoice = null;
+  return tile;
+}
+
+/** Open the wave due at `round` for seat 1 (the barrier's first assault). */
+function openWave(state: GameState, round: number): GameState {
+  startRound(state, round);
+  const context = state.combat?.context;
+  expect(context && "waveAssault" in context && context.waveAssault).toBeTruthy();
+  return state;
+}
+
+/** The invaders as minted for this fight — the stats a battle event must move. */
+function neutralStats(state: GameState) {
+  return Object.values(state.combat!.units)
+    .filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)
+    .map((unit) => ({
+      unitDefId: unit.unitDefId,
+      attack: unit.attack,
+      defense: unit.defense,
+      initiative: unit.initiative
+    }));
 }
 
 /** Deploy one hero unit and reveal the waiting wave army. */
@@ -153,6 +200,142 @@ describe("Calamity Waves — shared map object", () => {
     ).toBe(true);
     // It is personal preparation: the shared object's other visitors must scout it too.
     expect(state.players.p2.wavePreparedFor).toBeUndefined();
+  });
+
+  it("places with Creature Banks OFF too (the Gate carves ahead of the absent token pile)", () => {
+    const state = wavesGame("waves-gate-no-banks", {
+      creatureBanks: false,
+      wog: { enabled: true, monsterWaves: true, waveCadence: 3 }
+    });
+    expect(state.adventure?.creatureBankTokensFar).toBeUndefined();
+    placeFarTile(state, "F1", { row: -9, col: -9 });
+    const gateId = state.adventure!.monsterWaves?.gateFieldId;
+    expect(gateId).toBeTruthy();
+    expect(state.adventure!.fields[gateId!].location).toBe("calamity_gate");
+    // ONE per map: a second Far Blocked Field is not converted.
+    const before = gateId;
+    placeFarTile(state, "F5", { row: 9, col: 9 });
+    expect(state.adventure!.monsterWaves?.gateFieldId).toBe(before);
+  });
+
+  it("carves a WALKABLE Gate: the Blocked Field's water terrain and designed border edges are dropped", () => {
+    // placeCreatureBank / placeDungeonSite both clear these; the Gate must too,
+    // or a mixed-terrain or designer-sealed Blocked Field would carve a hex no
+    // hero can ever enter (the preparation would be unreachable).
+    const state = wavesGame("waves-gate-walkable");
+    const adventure = state.adventure!;
+    // The first Far tile's Blocked Field is claimed by the Gate at rotation;
+    // a SECOND Far tile keeps its (materialized) Blocked Field, so use that one
+    // to drive placeCalamityGate over a hostile hex.
+    placeFarTile(state, "F1", { row: -9, col: -9 });
+    const second = placeFarTile(state, "F5", { row: 9, col: 9 });
+    const blockedId = getTileFootprintSpaceIds(second).find(
+      (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
+    )!;
+    expect(blockedId).toBeTruthy();
+    adventure.fields[blockedId].terrain = "water";
+    adventure.fields[blockedId].borderEdges = [0, 1, 2, 3, 4, 5];
+    const neighbour = getTileFootprintSpaceIds(second).find((spaceId) => spaceId !== blockedId)!;
+    // A Blocked Field is not crossable at all before the carve.
+    expect(canCrossEdge(state, neighbour, blockedId)).toBeFalsy();
+    expect(isSeaField(state, blockedId)).toBe(true);
+
+    expect(placeCalamityGate(state, blockedId)).toBeTruthy();
+    expect(adventure.fields[blockedId].location).toBe("calamity_gate");
+    // The observable effect: the Gate hex is crossable again from both sides and
+    // is no longer open sea, so a hero can actually walk in and scout it.
+    expect(isSeaField(state, blockedId)).toBe(false);
+    expect(canCrossEdge(state, neighbour, blockedId)).toBe(true);
+    expect(canCrossEdge(state, blockedId, neighbour)).toBe(true);
+  });
+
+  it("a designer Monolith token can never overwrite a PvE module hex (Gate / Dungeon / Rift Lair)", () => {
+    // All three are one-per-map singletons whose field id is LATCHED in
+    // adventure state; overwriting the hex would leave the latch pointing at a
+    // Monolith and silently kill the module. They must be as untouchable as a
+    // Creature Bank.
+    const state = wavesGame("waves-gate-token-safe");
+    const adventure = state.adventure!;
+    const tile = placeFarTile(state, "F1", { row: -9, col: -9 });
+    const gateId = adventure.monsterWaves!.gateFieldId!;
+    expect(adventure.fields[gateId].location).toBe("calamity_gate");
+    expect(tokenPlacementCandidates(state, tile, "monolith")).not.toContain(gateId);
+    // CONTROL: a plain hex of the same tile IS offered, so the exclusion is the
+    // location and not the whole tile.
+    expect(tokenPlacementCandidates(state, tile, "monolith").length).toBeGreaterThan(0);
+
+    for (const location of ["dungeon_gate", "rift_lair"] as const) {
+      const plain = tokenPlacementCandidates(state, tile, "monolith")[0]!;
+      const previous = adventure.fields[plain].location;
+      adventure.fields[plain].location = location;
+      expect(tokenPlacementCandidates(state, tile, "monolith"), location).not.toContain(plain);
+      adventure.fields[plain].location = previous;
+    }
+  });
+
+  it("the wave's battle event REALLY changes the invaders' stats, and Gate preparation REALLY cancels it", () => {
+    // Wave 1 rotates in War Drums (+1 Attack). The engine folds the modifier
+    // into the minted neutral stats at reveal; the feed line alone proves
+    // nothing, so compare the actual Attack values.
+    const exposed = wavesGame("waves-event-effect");
+    startRound(exposed, 3);
+    const revealed = revealWaveArmy(exposed);
+    const exposedAttacks = neutralStats(revealed).map((unit) => unit.attack);
+    expect(exposedAttacks.length).toBeGreaterThan(0);
+
+    const prepared = wavesGame("waves-event-effect");
+    prepared.players.p1.wavePreparedFor = 1;
+    startRound(prepared, 3);
+    const canceled = revealWaveArmy(prepared);
+    const preparedUnits = neutralStats(canceled);
+    // Same seed ⇒ the SAME army; only the modifier differs.
+    expect(preparedUnits.map((unit) => unit.unitDefId)).toEqual(
+      neutralStats(revealed).map((unit) => unit.unitDefId)
+    );
+    expect(preparedUnits.map((unit) => unit.attack)).toEqual(
+      exposedAttacks.map((attack) => attack - 1)
+    );
+    // CONTROL: preparation is per-WAVE — a hero prepared for a LATER wave is
+    // not protected from this one.
+    const stale = wavesGame("waves-event-effect");
+    stale.players.p1.wavePreparedFor = 2;
+    startRound(stale, 3);
+    expect(neutralStats(revealWaveArmy(stale)).map((unit) => unit.attack)).toEqual(exposedAttacks);
+  });
+
+  it("the Defense / Initiative rotations are real too, and the Gate prepares the NEXT numbered wave", () => {
+    // Waves 2 and 3 rotate in Shield Wall (+1 Defense) and Stampede (+2
+    // Initiative) — one deterministic rotation, so every wave carries a
+    // mechanically real modifier.
+    const bare = wavesGame("waves-event-rotation");
+    const baseline = neutralStats(revealWaveArmy(openWave(bare, 6)));
+
+    const shielded = wavesGame("waves-event-rotation");
+    shielded.players.p1.wavePreparedFor = 2;
+    const shieldedUnits = neutralStats(revealWaveArmy(openWave(shielded, 6)));
+    expect(baseline.map((unit) => unit.defense)).toEqual(
+      shieldedUnits.map((unit) => unit.defense + 1)
+    );
+
+    const rushed = wavesGame("waves-event-rotation-3");
+    const rushedBase = neutralStats(revealWaveArmy(openWave(rushed, 9)));
+    const rushedPrepared = wavesGame("waves-event-rotation-3");
+    rushedPrepared.players.p1.wavePreparedFor = 3;
+    const rushedUnits = neutralStats(revealWaveArmy(openWave(rushedPrepared, 9)));
+    expect(rushedBase.map((unit) => unit.initiative)).toEqual(
+      rushedUnits.map((unit) => unit.initiative + 2)
+    );
+
+    // The Gate's arithmetic: on round 4 (cadence 3) wave 1 has already fired, so
+    // scouting prepares for wave 2.
+    const gate = wavesGame("waves-gate-next-wave");
+    placeFarTile(gate, "F1", { row: -9, col: -9 });
+    const gateId = gate.adventure!.monsterWaves!.gateFieldId!;
+    expect(gateId).toBeTruthy();
+    gate.round = 4;
+    gate.heroes.hero_p1.spaceId = gateId;
+    beginFieldVisit(gate, gate.heroes.hero_p1.id, gateId, true);
+    expect(gate.players.p1.wavePreparedFor).toBe(2);
   });
 });
 
@@ -454,6 +637,24 @@ describe("Calamity Waves — themes and pressure", () => {
     expect(draws.length).toBeGreaterThan(0);
     expect(draws.every((draw) => draw.unitDefId.startsWith("doom."))).toBe(true);
     expect(draws.every((draw) => draw.bankGuard)).toBe(true);
+
+    // The EFFECT: a minted doom card is a real fighting body (its definition is
+    // always registered, independent of the "Doom neutrals" DECK option) and it
+    // is NOT a gradeless bank unit — it keeps its printed tier, so tier-gated
+    // spells / the neutral AI's tier order / Neutral Rank-Up all still see it.
+    const fought = revealWaveArmy(openWave(state, 3));
+    const invaders = Object.values(fought.combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    expect(invaders.length).toBeGreaterThan(0);
+    for (const unit of invaders) {
+      const def = coreUnitDefinitions[unit.unitDefId!];
+      expect(def, unit.unitDefId).toBeDefined();
+      expect(unit.unitDefId!.startsWith("doom.")).toBe(true);
+      expect(unit.maxHealth).toBeGreaterThan(0);
+      expect(unit.bankUnit).toBeFalsy();
+      expect(unit.grade).toBe(def.tier);
+    }
   });
 
   it("Brutal pressure increases rewards/pillage and an optional loss limit eliminates only at the threshold", () => {
@@ -481,5 +682,52 @@ describe("Calamity Waves — themes and pressure", () => {
     applyWavePillage(state, "p1", 2);
     expect(state.players.p1.waveDefeats).toBe(2);
     expect(state.players.p1.eliminated).toBe(true);
+  });
+
+  it("a wave-loss elimination that ENDS the game stops the queue: the winner is not dragged into their own assault", () => {
+    // The pillage runs inside finalizeAdventureCombat, so hitting the limit
+    // eliminates the last opponent MID-QUEUE and last-faction-standing is
+    // declared right there. The remaining queued assault must be dropped — the
+    // pump would otherwise open a combat for the winner and clear "game-over".
+    const state = wavesGame("waves-limit-ends-game", {
+      wog: {
+        enabled: true,
+        monsterWaves: true,
+        waveCadence: 3,
+        waveDefeatLimit: 2
+      }
+    });
+    state.players.p1.waveDefeats = 1;
+    startRound(state, 3);
+    expect(state.combat?.attackerPlayerId).toBe("p1");
+    settleWaveCombat(state, {
+      winner: NEUTRAL_PLAYER_ID,
+      loser: "p1",
+      reason: "all-enemy-units-defeated"
+    });
+
+    expect(state.players.p1.eliminated).toBe(true);
+    expect(state.adventure?.winnerPlayerId).toBe("p2");
+    expect(state.combat).toBeNull();
+    expect(state.phase).toBe("game-over");
+    // The barrier still lifts (the sentinel is pumped past the dropped assault).
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.adventure?.rewardQueue.some((reward) => reward.kind === "wave-assault")).toBe(
+      false
+    );
+
+    // CONTROL: with no defeat limit the same loss only pillages, so seat 2's
+    // assault DOES open behind the barrier.
+    const control = wavesGame("waves-limit-ends-game");
+    control.players.p1.waveDefeats = 1;
+    startRound(control, 3);
+    settleWaveCombat(control, {
+      winner: NEUTRAL_PLAYER_ID,
+      loser: "p1",
+      reason: "all-enemy-units-defeated"
+    });
+    expect(control.players.p1.eliminated).not.toBe(true);
+    expect(control.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(control.combat?.attackerPlayerId).toBe("p2");
   });
 });
