@@ -1690,16 +1690,26 @@ TWO tick surfaces resolving to ONE frozen adventure field (the
 (rows in the WOG mod window) and `anime.monsterWaves|raidBosses|dungeon` (rows in
 the Anime mod window; these anime flags existed as unshipped types and are now
 SHIPPED). `waveCadence` (3|4|5, chip row shown while waves are ticked, default 4)
-exists on both option types; the designed-map preset override wins. THREE shared
-PvE settings ride the same two surfaces (chip rows in both mod windows,
-`pve-content.ts` labels; sanitised in `setGameOptions` for wog and in
+exists on both option types; the designed-map preset override wins. SIX shared
+PvE settings ride the same two surfaces (chip rows / theme cards in both mod
+windows, `pve-content.ts` labels; sanitised in `setGameOptions` for wog and in
 `resolveAnimeOptions` for anime): `pveTheme` ("classic" | "doom" | "random",
-default classic), `wavePressure` ("standard" | "brutal", default standard) and
-`waveDefeatLimit` (0 | 2 | 3, default 0 = no elimination). Default OFF ⇒
-byte-identical (legacy snapshots unaffected). Engine:
+default classic), `wavePressure` ("standard" | "brutal", default standard),
+`waveDefeatLimit` (0 | 2 | 3, default 0 = no elimination),
+`raidBossSpawnRound` (4|5|6, default 5), `dungeonDepth` (5|10, default 10) and
+`dungeonDescentCost` (0|1|2 movement, default 1). A DESIGNED MAP may direct all
+of them from its own preset (`preset.pveTheme`, `preset.monsterWaves.{cadence,
+pressure,defeatLimit}`, `preset.raidBosses.spawnRound`, `preset.dungeon.{maxFloor,
+descentCost,floorBosses}`) — designer-first at every read, sanitised by
+`sanitizeCustomMapPreset` (so the map-registry save/load round-trip carries them)
+and surfaced in the map-pick banner by `describeCustomMapPresetEntries`. Default
+OFF ⇒ byte-identical (legacy snapshots unaffected; every frozen field is stamped
+only when it differs from the historical default). Engine:
 `src/engine/pve-content.ts` (theme resolution, the wave battle-event rotation,
 the pressure profile, the themed field art path) + `monster-waves.ts` /
-`raid-bosses.ts` / `dungeon.ts` (pure helpers) +
+`raid-bosses.ts` / `dungeon.ts` (pure helpers, incl. `dungeonFloorCapOf` /
+`dungeonDescentCostOf`) + `combat-board-art.ts` (`isPveEncounterCombat` and the
+two theme-locked battlefields) +
 wiring in `adventure.ts` (round-start hooks, gate/lair/dungeon visits,
 pillage/rewards, `drawPveThemedArmy`), `adventure-reducer.ts` (assault/lair/floor
 combat opens, the wave battle-event fold at reveal, the placement→draw seam
@@ -1707,9 +1717,9 @@ branches, finalize outcome routing), `combat-units.ts` (boss layer shed +
 layer-break payout). Boss data: `src/data/anime/bosses.ts`. Behaviour pinned in
 `monster-waves.test.ts`, `raid-bosses.test.ts`, `boss-abilities.test.ts`,
 `dungeon.test.ts` (every claim mutation-checked with off/side CONTROLs), the
-lobby rows in `game-options-tabs.test.tsx`, the designer section in
-`map-preset-editor.test.tsx`, and all three flags run in the all-on
-`anime-coexistence-soak.test.ts`.
+lobby rows in `game-options-tabs.test.tsx`, the designer sections in
+`map-preset-editor.test.tsx`, the board art in `board.test.tsx`, and all three
+flags run in the all-on `anime-coexistence-soak.test.ts`.
 
 Leading with what does NOT run / deliberate limits (ALL three):
 - **No guild rank points, no fate/karma** (those modules are unshipped — the
@@ -1729,8 +1739,13 @@ Leading with what does NOT run / deliberate limits (ALL three):
   which a themed draw does not set — so a doom guard keeps its printed tier:
   tier-gated spells still reach it, the neutral AI still targets by tier, and
   Neutral Rank-Up still round-ranks it, exactly like a classic draw.
-- **The theme is a LOBBY option only** — there is no per-map `preset.pveTheme`,
-  so a designed map cannot pick one (per-wave armies and cadence still can).
+- **A designed map's `preset.pveTheme` WINS over both mod windows** — and the
+  mod-window theme card is NOT repainted to say so: it keeps showing the lobby's
+  own pick while the game plays the map's theme (a UI honesty limit shared with
+  `waveCadence`; the map's theme IS named in the map-pick banner, "PvE theme:
+  Doom invasion"). "Lobby" is the editor's default card (field absent ⇒ the
+  lobby pick stands). Pinned in `monster-waves.test.ts` ("the wave director
+  freezes designer-first").
 - **`pveTheme` is frozen at setup only when a PvE module is on**
   (`adventure.pveTheme`; absent ⇒ "classic" everywhere). `"random"` is resolved
   ONCE from the game seed by `resolvePveEncounterTheme` (FNV hash, never
@@ -1771,10 +1786,29 @@ Leading with what does NOT run / deliberate limits (ALL three):
   `tokenPlacementCandidates` in `monster-waves.test.ts`.
 - **No `boss_lair` / `dungeon` / `calamity_gate` DESIGNER MAP OBJECTS yet** (the
   plan's §6.5.3(b) hex-pinned lair): designer control ships at the PRESET level
-  instead — custom bosses + the spawn-round override (`preset.raidBosses`) and
-  per-wave armies + cadence (`preset.monsterWaves`) in the "Waves & Raid bosses"
-  editor group; the scheduled spawn still picks its own field, and both the
-  Dungeon and the Calamity Gate place themselves via the tile-rotation seam.
+  instead — the "PvE encounter director" editor group (renamed from "Waves &
+  Raid bosses") holds the theme override, per-wave armies + cadence + pressure +
+  loss limit (`preset.monsterWaves`), custom bosses + the spawn-round override
+  (`preset.raidBosses`) and the Dungeon campaign block (`preset.dungeon`); the
+  scheduled spawn still picks its own field, and both the Dungeon and the
+  Calamity Gate place themselves via the tile-rotation seam.
+- **Waves, Rift Lairs and Dungeon floors are fought on TWO dedicated
+  battlefields** — `pve-calamity-classic` / `pve-calamity-doom`
+  (`public/assets/board/battlefield-4x5-pve-calamity-*[-scenery].webp`, 2500×2000
+  + 2500×520 like every other board, built by `scripts/build-pve-battlefields.mjs`
+  from committed ImageGen masters, with the 5×4 grid drawn IN CODE at exactly
+  500px so it can never drift off the twenty logical cells). Selection is
+  SERVER-AUTHORITATIVE, not client guesswork: `isPveEncounterCombat` reads the
+  combat CONTEXT marks (`waveAssault` / `raidBossId` / `dungeonFloor`) and
+  `assignCombatBoardArt` stamps `combat.boardArtId` at combat creation, forced by
+  the frozen `adventure.pveTheme`; the two ids never enter the random open-field
+  pool. Ordinary guards, Creature Banks, sieges, naval fights, PvP and the
+  sandbox are untouched (CONTROLs in `monster-waves.test.ts` +
+  `board.test.tsx`). The board also draws a small "Calamity encounter" plate
+  (`.pveBattlefieldTitle`) — pure presentation, pinned as DOM wiring in
+  `board.test.tsx`. LIMIT: the PvE check runs BEFORE the sea check, so a wave
+  assault on a water hex shows the calamity board, not the ship board (flavour
+  only — no rules read).
 
 **Calamity Waves** (`monsterWaves`): every Nth round (cadence; wave k = round
 k×N), EVERY live seat fights a wave army at round start — announced the round
@@ -1856,8 +1890,11 @@ while a living enemy Fear unit stands, morale cannot be USED — the +1 token an
 Positive Morale cards are withheld from `addMoraleActions`, the reaction-window
 combat bonus, BOTH reroll-source builders (attack + ability windows) and
 `spendMorale` rejects a forged spend; gains/draws untouched; unlocks the moment
-it dies). Schedule: announced round 4, spawned round 5 (preset
-`raidBosses.spawnRound` override 2–30) — the highest-difficulty REVEALED plain
+it dies). Schedule: the arrival round is the lobby chip 4|5|6 (default 5, frozen
+onto `adventure.raidBossSpawnRound` only when it differs from 5) and the
+announcement is always `spawnRound − 1`; a designed map's
+`raidBosses.spawnRound` (2–30) still beats the lobby, clamped at setup — the
+highest-difficulty REVEALED plain
 guard field (objectives/flags/banks/outposts/teleports/hero-hexes excluded,
 center bands preferred) converts to a **Rift Lair** (`field.riftLair`, location
 `rift_lair`, printed guard cleared — the boss IS the guard); nothing revealed ⇒
@@ -1872,7 +1909,7 @@ the per-player `layerBreaks` ledger); the kill pays 5 gold + a relic-tier
 Artifact search (split deck when present; the normal BINH search gates apply)
 and clears the lair (black cube; later visits inert). Ignored, the boss regrows
 +1 layer every 4th round, capped at printed layers. DESIGNER custom bosses
-(preset `raidBosses.bosses`, cap 6, editor section "Waves & Raid bosses"):
+(preset `raidBosses.bosses`, cap 6, editor group "PvE encounter director"):
 name + per-layer stats (clamped to `CUSTOM_BOSS_LIMITS`) + layers 1–8 + type +
 abilities from the curated implemented whitelist `RAID_BOSS_ABILITY_CHOICES`
 (sanitizer-filtered, dedupe, every id pinned implemented) — a custom list
@@ -1890,15 +1927,34 @@ bank piles; later Near tiles offer banks normally; a map whose Near blocked
 fields never reveal simply never hosts it (a stated deviation from the plan's "at
 setup"). Pinned by driving the real rotation with `creatureBanks: false` and then
 opening the floor-1 menu — the frozen flag alone proved nothing.
-Per player: `dungeonFloor` (1..10). **The once-per-turn latch is GONE**
+Per player: `dungeonFloor` (1..the floor cap). **The once-per-turn latch is GONE**
 (`dungeonDelveRound` is dead state, kept only for legacy snapshots): MOVEMENT is
 the limiter. Entering the field pays the walk, a later delve is the ordinary
 1-MP Revisit, and after a WIN a `DUNGEON_CONTINUE` reward step re-opens the menu
 for the NEXT floor immediately, whose door options each carry a
-`SPEND_HERO_MOVEMENT` 1 step — so a hero can chain floors while movement lasts
-("Descend (1 movement) — …" labels). With <1 MP left the continuation is refused
-with a note and the new floor is simply saved for a later turn; "Leave the
-Dungeon" is always free. Ordinary floors offer TWO rooms + Leave (the user-spec
+`SPEND_HERO_MOVEMENT` step for the frozen DESCENT COST — so a hero can chain
+floors while movement lasts ("Descend (1 movement) — …" labels). With less than
+the descent cost left the continuation is refused with a note and the new floor
+is simply saved for a later turn; "Leave the Dungeon" is always free.
+**Campaign direction (`adventure.dungeonSite`, frozen at setup; absent fields =
+the historical 10 floors / 1 movement, so legacy snapshots are unchanged):**
+`maxFloor` 5|10 read through `dungeonFloorCapOf` (the cap floor is the
+repeatable bottom AND the Conqueror floor), `descentCost` 0|1|2 read through
+`dungeonDescentCostOf` (label "free descent" at 0, and NO `SPEND_HERO_MOVEMENT`
+step is emitted), and `floorBosses` — designer wardens for floors 5/10 naming
+ANY built-in boss (`RAID_BOSSES` + `DUNGEON_FLOOR_BOSSES`, 11 ids) or a custom
+boss authored in `preset.raidBosses.bosses`, resolved through the ordinary
+`resolveBossDefinition` so a warden works even with the Raid Bosses module OFF.
+Three DELIBERATE limits: a 5-floor expedition crowns floor 5 (its MAJOR-artifact
+rung + the DUNGEON CONQUERED title) — the floor-10 relic rung is simply never
+reached; FREE descent removes the movement limiter entirely, so a delve is
+bounded only by winning (each floor is still a real fight, and the AI stops at
+`playerArmyStrength < 4`); and `sanitizeDungeonPreset` keeps ANY ≤40-char
+warden string, so a hand-edited typo cannot be resolved and that floor fields a
+PLAIN party instead of a boss (never a stall — the editor only offers real ids).
+All three halves — the carry into `dungeonSite`, the warden actually on the
+board, and the free/2-movement descent — are mutation-checked in
+`dungeon.test.ts`. Ordinary floors offer TWO rooms + Leave (the user-spec
 door crawl), now seeded by (game seed, THEME, floor) — a SHARED layout every
 player sees, no longer per-player, and abandoning cannot reroll it. Classic rooms:
 treasure vault (+gold), forgotten shrine (PAY_TO 2 gold → +1 morale), whispering
@@ -1913,13 +1969,15 @@ grind site pays normal hero AND unit XP — never Quick Combat, normal round-lim
 rules, normal defender-rows formation (the plan's bank-corner formation is
 dropped: variable party sizes don't fit 4 corners — stated deviation; the plan's
 spike-pit combat tokens are NOT modeled either). Floors 5/10 skip the doors and
-field the LAYERED floor bosses, themed: classic Minotaur of the Depths / Floor
+field the LAYERED floor bosses — a designer warden if the map named one, else
+themed: classic Minotaur of the Depths / Floor
 Wyrm (2 bars each), doom Baron Warden (2 bars, damage cap + Enrage) / Cyberdemon
 Tyrant (3 bars, line attack + ignores retaliation) — §6.5.2 anatomy, minted
 FRESH each attempt (the Dungeon deals fair, no boss-wound bookkeeping), with a
 themed minion escort (a doom floor fields `doom.*` minions). Win: floor+1 + the
-reward ladder (gold → valuables → minor/major artifact searches; floor 10 = a
-relic search + the DUNGEON CONQUERED title, once) unshifted to the queue front;
+reward ladder (gold → valuables → minor/major artifact searches; floor 5 = a
+major search, floor 10 = a relic search; the DUNGEON CONQUERED title fires once
+on the CAP floor) unshifted to the queue front;
 the conquered bottom floor stays repeatable for a fallback (Treasure die + 3
 gold). Loss/retreat: nothing lost, the hero stays at the gate and may retry
 (paying the Revisit MP). Visit-step kinds `RAID_BOSS_FIGHT` /
@@ -1927,8 +1985,9 @@ gold). Loss/retreat: nothing lost, the hero stays at the gate and may retry
 the door menu via registered hooks — the hex-event-hook pattern) and
 `PLAY_STORY_SCENE` (auto, fires STORY_SCENE_TRIGGERED); none pause for input, so
 AFK defaults and AI seats resolve every dungeon/lair menu through the normal
-CHOOSE_ONE machinery (the AI scores by step TYPE, so the descend prefix is
-invisible to it, and the MP cost bounds the chain).
+CHOOSE_ONE machinery (the AI scores by step TYPE, so the "Descend (free
+descent)" / "(2 movement)" prefixes are invisible to it; the MP cost bounds the
+chain unless the map set descent FREE, where only losing/army strength does).
 
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 

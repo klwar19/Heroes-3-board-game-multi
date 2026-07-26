@@ -447,6 +447,96 @@ describe("The Dungeon — delving floors", () => {
     expect(minions.length).toBeLessThanOrEqual(DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths.minionCount);
   });
 
+  it("a designed map's floor WARDEN replaces the theme default on the board (an unknown id degrades to a plain party)", () => {
+    // The editor advertises "custom wardens may reuse the monsters authored
+    // above", and the warden may be named even with the Raid Bosses module OFF
+    // (only `dungeon` is ticked here). The EFFECT is the unit that shows up.
+    const gloomfang = {
+      id: "gloomfang",
+      name: "Gloomfang",
+      attack: 5,
+      defense: 1,
+      health: 3,
+      initiative: 6,
+      layers: 3
+    };
+    const state = dungeonGame("dungeon-designed-warden", {
+      customMapPreset: {
+        raidBosses: { bosses: [gloomfang] },
+        dungeon: { floorBosses: { 5: "gloomfang" } }
+      }
+    });
+    expect(state.adventure?.dungeonSite?.floorBosses).toEqual({ 5: "gloomfang" });
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.dungeonFloor = 5;
+    beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
+    const menu = firstPendingVisitStep(state);
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the warden confirm");
+    }
+    expect(menu.prompt).toMatch(/Gloomfang/);
+    expect(menu.prompt).not.toMatch(/Minotaur/);
+    let fight = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    fight = revealFloorArmy(fight);
+    const warden = Object.values(fight.combat!.units).find((unit) => unit.bossUnit);
+    expect(warden?.unitDefId).toBe("boss.gloomfang");
+    expect(warden?.attack).toBe(5);
+    expect(warden?.armyStacks).toBe(2); // 3 layers = body + 2 bars
+
+    // CONTROL — the SAME seed with no designed warden fields the theme default.
+    const control = dungeonGame("dungeon-designed-warden");
+    const controlField = placeSiteUnderHero(control);
+    control.players.p1.dungeonFloor = 5;
+    beginFieldVisit(control, control.heroes.hero_p1.id, controlField, false);
+    const controlMenu = firstPendingVisitStep(control);
+    if (controlMenu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the default boss confirm");
+    }
+    expect(controlMenu.prompt).toMatch(/Minotaur of the Depths/);
+    let controlFight = apply(control, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: 0
+    });
+    controlFight = revealFloorArmy(controlFight);
+    expect(
+      Object.values(controlFight.combat!.units).find((unit) => unit.bossUnit)?.unitDefId
+    ).toBe("boss.minotaur_of_the_depths");
+
+    // DOCUMENTED LIMIT: the sanitizer keeps any 40-char string, so a hand-edited
+    // (typo'd) warden id cannot be resolved — the floor then fields a PLAIN
+    // party instead of stalling or throwing.
+    const typo = dungeonGame("dungeon-warden-typo", {
+      customMapPreset: { dungeon: { floorBosses: { 5: "no_such_boss" } } }
+    });
+    const typoField = placeSiteUnderHero(typo);
+    typo.players.p1.dungeonFloor = 5;
+    let typoFight = visitGate(typo, typoField, 0);
+    typoFight = revealFloorArmy(typoFight);
+    expect(Object.values(typoFight.combat!.units).some((unit) => unit.bossUnit)).toBe(false);
+    expect(
+      Object.values(typoFight.combat!.units).filter(
+        (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("a dungeon floor fight is FOUGHT on the theme's dedicated calamity board", () => {
+    // The player-visible EFFECT: the engine stamps the frozen theme's PvE board
+    // onto the opened floor fight (the client only renders `combat.boardArtId`).
+    for (const [theme, expected] of [
+      ["classic", "pve-calamity-classic"],
+      ["doom", "pve-calamity-doom"]
+    ] as const) {
+      const state = dungeonGame(`dungeon-board-${theme}`, {
+        wog: { enabled: true, dungeon: true, pveTheme: theme }
+      });
+      const fieldId = placeSiteUnderHero(state);
+      const fought = delveFloor(state, fieldId);
+      expect(fought.combat?.boardArtId, theme).toBe(expected);
+    }
+  });
+
   it("the Doom dungeon swaps in Doom rooms, guards, and its own layered floor bosses", () => {
     const state = dungeonGame("dungeon-doom-floor", {
       wog: { enabled: true, dungeon: true, pveTheme: "doom" }

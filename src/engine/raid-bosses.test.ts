@@ -107,6 +107,10 @@ describe("Raid Bosses — spawn schedule", () => {
   });
 
   it("the lobby chooses round 4/5/6 arrival, while a designed map's round wins", () => {
+    // Byte-identical default: the historical round-5 schedule stamps NOTHING on
+    // adventure state, so a legacy snapshot reads the same fall-back.
+    expect(raidGame("raid-default-round").adventure?.raidBossSpawnRound).toBeUndefined();
+
     const lobby = raidGame("raid-lobby-round", {
       wog: { enabled: true, raidBosses: true, raidBossSpawnRound: 6 }
     });
@@ -242,6 +246,23 @@ describe("Raid Bosses — the lair fight", () => {
 
     // The visit is done (no stale empty menu under the fight).
     expect(after.adventure!.pendingVisit).toBeNull();
+  });
+
+  it("a lair attempt is FOUGHT on the theme's dedicated calamity board", () => {
+    // The player-visible EFFECT: the engine stamps the frozen theme's PvE board
+    // onto the opened combat (the client only renders `combat.boardArtId`).
+    for (const [theme, expected] of [
+      ["classic", "pve-calamity-classic"],
+      ["doom", "pve-calamity-doom"]
+    ] as const) {
+      const state = raidGame(`raid-board-${theme}`, {
+        wog: { enabled: true, raidBosses: true, pveTheme: theme }
+      });
+      const { fieldId } = spawnLair(state);
+      const fight = challengeLair(state, fieldId);
+      expect(fight.combat?.context.kind, theme).toBe("neutral");
+      expect(fight.combat?.boardArtId, theme).toBe(expected);
+    }
   });
 
   it("Withdraw opens no fight — the hero stands at the lair mouth (revisitable), free to Revisit later", () => {

@@ -21,6 +21,7 @@ import {
   SHIP_BATTLE_OBSTACLES,
   weightedCombatBoardArtIds,
   type ActiveEffectModifier,
+  type CombatBoardArtId,
   type GameAction,
   type GameState,
   type LegalAction
@@ -146,6 +147,54 @@ describe("combat board art variants", () => {
     const ordinary = createInitialGameState("pve-board-ordinary");
     expect(eligibleCombatBoardArtIds(ordinary, ordinary.combat)).not.toContain("pve-calamity-classic");
     expect(eligibleCombatBoardArtIds(ordinary, ordinary.combat)).not.toContain("pve-calamity-doom");
+  });
+
+  it("renders the calamity terrain art + its encounter plate; an ordinary board renders neither", () => {
+    // The VISIBLE half of the PvE board (jsdom cannot compute CSS, so this pins
+    // the DOM wiring): the frame carries the board id, the terrain <img> points
+    // at that board's own webp, and the encounter plate names the theme.
+    function renderBoard(seed: string, boardArtId: CombatBoardArtId) {
+      const state = createInitialGameState(seed);
+      state.combat!.boardArtId = boardArtId;
+      render(
+        <CardZoomProvider>
+          <BattlefieldBoard
+            state={state}
+            viewerPlayerId="p1"
+            legalActions={[]}
+            selectedCardAction={null}
+            onAction={vi.fn()}
+            onInspect={() => {}}
+          />
+        </CardZoomProvider>
+      );
+    }
+
+    renderBoard("pve-plate-doom", "pve-calamity-doom");
+    const doomFrame = document.querySelector('.battlefieldFrame[data-board-art="pve-calamity-doom"]');
+    expect(doomFrame).toBeTruthy();
+    expect(doomFrame?.querySelector("img.battlefieldTerrain")?.getAttribute("src")).toContain(
+      "battlefield-4x5-pve-calamity-doom.webp"
+    );
+    expect(document.querySelector(".pveBattlefieldTitle")?.textContent).toContain("The Infernal Breach");
+    cleanup();
+
+    renderBoard("pve-plate-classic", "pve-calamity-classic");
+    expect(document.querySelector(".pveBattlefieldTitle")?.textContent).toContain("The Shattered Rift");
+    expect(
+      document
+        .querySelector('.battlefieldFrame[data-board-art="pve-calamity-classic"] img.battlefieldTerrain')
+        ?.getAttribute("src")
+    ).toContain("battlefield-4x5-pve-calamity-classic.webp");
+    cleanup();
+
+    // CONTROL: an ordinary battlefield keeps its own art and shows NO plate.
+    renderBoard("pve-plate-control", "frozen");
+    expect(document.querySelector(".pveBattlefieldTitle")).toBeNull();
+    expect(
+      document.querySelector('.battlefieldFrame[data-board-art="frozen"] img.battlefieldTerrain')
+        ?.getAttribute("src")
+    ).toContain("battlefield-4x5-frozen.webp");
   });
 
   it("fights EVERY Creature Bank on the dungeon board (all current and future banks)", () => {
