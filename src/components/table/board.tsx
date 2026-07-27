@@ -2435,7 +2435,7 @@ const SINGLE_PLAYER_HISTORY_LIMIT = 500;
 
 export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerPlayerId?: PlayerId }) {
   const singlePlayer = state.sessionMode === "single-player";
-  const [open, setOpen] = useState(singlePlayer);
+  const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "dice" | "cards" | "events">("all");
   const logState = useMemo(() => {
     if (singlePlayer || !viewerPlayerId) {
@@ -2500,18 +2500,24 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
     };
     return reversed.filter((event) => groups[filter].has(event.type));
   }, [filter, logState.eventLog, singlePlayer]);
-  const latest = logState.eventLog.at(-1);
   const truncated = singlePlayer && logState.eventLog.length > SINGLE_PLAYER_HISTORY_LIMIT;
 
   return (
     <section className={`logDrawer ${open ? "open" : ""}${singlePlayer ? " singlePlayerHistory" : ""}`} aria-label={singlePlayer ? "Single-player history" : "Game log"}>
-      <button className="logToggle" onClick={() => setOpen(!open)} type="button">
+      <button
+        aria-expanded={open}
+        aria-label={open ? "Close event log" : "Open event log"}
+        className="logToggle"
+        onClick={() => setOpen(!open)}
+        title={open ? "Close event log" : "Open event log"}
+        type="button"
+      >
         <ScrollText aria-hidden="true" size={14} />
-        <span>{latest ? formatEvent(latest, logState) : "Game log"}</span>
+        <span>Event log</span>
         {open ? <ChevronDown aria-hidden="true" size={14} /> : <ChevronUp aria-hidden="true" size={14} />}
       </button>
       {open ? (
-        <>
+        <div className="logPopover">
           {singlePlayer ? (
             <div className="historyFilters" role="group" aria-label="History filters">
               {(["all", "dice", "cards", "events"] as const).map((entry) => (
@@ -2541,7 +2547,7 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
               </li>
             ))}
           </ol>
-        </>
+        </div>
       ) : null}
     </section>
   );

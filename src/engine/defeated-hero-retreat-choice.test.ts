@@ -91,6 +91,9 @@ function stagePvp(state: GameState, attackerIsLoser: boolean): { loserId: Player
 
   const loserId: PlayerId = attackerIsLoser ? "p1" : "p2";
   const winnerId: PlayerId = attackerIsLoser ? "p2" : "p1";
+  // The approach/fight already consumed its normal cost. Falling back home
+  // must preserve what remains instead of imposing an extra zero-MP penalty.
+  state.heroes[attackerIsLoser ? attacker.id : defender.id].movementPoints = 2;
 
   state.combat = {
     id: "c1",
@@ -135,8 +138,9 @@ describe("Defeated-hero retreat CHOICE (town or settlement)", () => {
     expect(teleportTargets.every((s) => s.type === "TELEPORT_HERO")).toBe(true);
     const offered = teleportTargets.map((s) => s.spaceId).sort();
     expect(offered).toEqual([settlement.spaceId, townField].sort());
-    // The hero is still on the fight field (movement spent) until it picks.
-    expect(state.heroes[loserHeroId].movementPoints).toBe(0);
+    // The hero is still on the fight field until it picks, retaining the MP
+    // left after the normal approach/combat deduction.
+    expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 
   it("picking the Settlement teleports the hero there; picking the Town teleports home (mutation control)", () => {
@@ -164,6 +168,7 @@ describe("Defeated-hero retreat CHOICE (town or settlement)", () => {
       const result = applyAction(state, chosen!.action);
       expect(result.errors).toEqual([]);
       expect(result.state.heroes[loserHeroId].spaceId).toBe(wanted);
+      expect(result.state.heroes[loserHeroId].movementPoints).toBe(2);
       expect(result.state.adventure!.pendingVisit).toBeNull();
     }
   });
@@ -178,6 +183,7 @@ describe("Defeated-hero retreat CHOICE (town or settlement)", () => {
 
     expect(state.adventure!.pendingVisit).toBeNull();
     expect(state.heroes[loserHeroId].spaceId).toBe(townField);
+    expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 
   it("CONTROL: a beaten DEFENDER (not the turn-owner) auto-homes even with a Town AND Settlement", () => {
@@ -192,6 +198,7 @@ describe("Defeated-hero retreat CHOICE (town or settlement)", () => {
     // p2 is the defender on p1's turn — no cross-turn prompt; auto-home to town.
     expect(state.adventure!.pendingVisit).toBeNull();
     expect(state.heroes[loserHeroId].spaceId).toBe(townField);
+    expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 });
 
@@ -200,6 +207,7 @@ describe("Defeated-hero retreat CHOICE — neutral loss", () => {
     const hero = getMainHero(state, "p1")!;
     const field = injectField(state, "50,50", "empty_field");
     hero.spaceId = field.spaceId;
+    hero.movementPoints = 1;
     state.activePlayerId = "p1";
     state.players.p1.army = [{ id: "a1", unitDefId: "castle.pikemen", side: "few" }];
 
@@ -238,5 +246,6 @@ describe("Defeated-hero retreat CHOICE — neutral loss", () => {
       .map((option) => option.steps[0]?.spaceId)
       .sort();
     expect(offered).toEqual([settlement.spaceId, townField].sort());
+    expect(state.heroes.hero_p1.movementPoints).toBe(1);
   });
 });

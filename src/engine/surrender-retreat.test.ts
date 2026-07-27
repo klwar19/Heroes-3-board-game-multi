@@ -187,12 +187,13 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
   it("sends the surrendering hero home (to its town)", () => {
     const state = makeGame();
     const { loserHeroId, loserHomeFieldId } = stageFinishedPvpFight(state, "surrender");
+    state.heroes[loserHeroId].movementPoints = 2;
 
     finalizeAdventureCombat(state);
 
     expect(loserHomeFieldId).toBeTruthy();
     expect(state.heroes[loserHeroId].spaceId).toBe(loserHomeFieldId);
-    expect(state.heroes[loserHeroId].movementPoints).toBe(0);
+    expect(state.heroes[loserHeroId].movementPoints).toBe(2);
   });
 
   it("does NOT count toward the opponent's defeat-every-hero victory (grail mode)", () => {
