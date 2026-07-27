@@ -816,8 +816,12 @@ Leading with what does NOT run (deliberate limits):
   a main hero with NOTHING beatable on the map STAGES adjacent to the nearest
   future fight instead of standing still turn after turn (`collectStagingObjectives`,
   entry still blocked while unbeatable — `map-navigation.test.ts` "fallback
-  staging"); Legion vouchers are played for the discount in EVERY phase (held
-  only while one voucher is outstanding) and Learning is priced as an A-tier
+  staging"); Legion vouchers are played for the discount in EVERY phase (a piece
+  is withheld once it has already banked — see the reinforcement-discount
+  section for what "already banked" means in each reading), a banked
+  Necromancy / Hill Fort offer is redeemed (`REDEEM_REINFORCEMENT_DISCOUNT`,
+  score 820 reinforce / 760 stack — no bespoke "hold it and stack Legion first"
+  planning, so the AI may walk and lose an unredeemed bank), and Learning is priced as an A-tier
   climb engine below hero level 6 with the expert full-level pick preferred
   when a crown is spare (`legion-learning.test.ts`); a REVISIT_FIELD is noted
   in per-turn memory so a Stables (its +1 MP refunds the revisit cost) can no
@@ -2623,8 +2627,11 @@ is NOT done:
   Hall's "reinforce 1 bronze free" pick also offers a FREE Stack on a bronze
   Pack/Neutral card (and stays offered when only a Stack target exists);
   Necromancy's after-combat play also sells ONE Stack at half gold rounded down
-  (basic bronze/silver, expert any tier; the card is spent only when the Stack
-  lands); Rampart Saplings and the Cove Pub extend their Astrologers'-round
+  (basic bronze/silver, expert any tier — since 2026-07-27 that sale is the
+  BANKED `REDEEM_REINFORCEMENT_DISCOUNT` offer, not an immediate prompt, and the
+  card is spent when PLAYED, not only when the Stack lands; the old
+  spend-on-landing prompt is the `immediate-reinforcement-prompts` toggle — see
+  the reinforcement-discount section below); Rampart Saplings and the Cove Pub extend their Astrologers'-round
   deals to ONE Stack (half gold rounded up / −3 gold, same tier lists); Conflux
   Garden of Life's freebie can be a FREE Stack on the owned Sprites Pack; ALL
   Stack purchases now pay through the recruit path, so the Freelancer's Guild
@@ -4724,20 +4731,38 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `performSpellCast` (folded into `stackItem.modifiers.spellPowerBonus`). Cleared
   on consume and each combat round. Pinned in `sorcery-draw-rider.test.ts` (bank
   + cast lands the +Power, with an already-moved CONTROL that banks nothing).
-- **Knowledge (basic OR expert) recalls ANY spell — combat AND map.** In combat
+- **Knowledge / Mysticism recall ANY spell — combat AND map.** In combat
   the recall is the pre-existing `RECALL_SPELL` reaction to `SPELL_CAST_STARTED`
   (any spell you cast) and the attack-window instant recall; both basic and
   expert are offered whenever the caster holds Knowledge (crown for expert).
   Pinned in `knowledge-recall-instants.test.ts` (cast-window basic + expert,
   attack-window instants). On the map — where there is no per-turn spell limit —
   every resolved map Spell (View Air, Dimension Door, Fly, Town Portal, Water
-  Walk, …) offers a Knowledge recall: BASIC takes the Spell back for FREE (no
-  crown), EXPERT (when a crown remains) also raises the combat-round spell limit,
-  Empowered Knowledge always recalls with the limit bonus crown-free. Wired in
-  `playCard` (the map recall offer) + `processPendingVisit`
+  Walk, …) offers a recall from EVERY `RECALL_SPELL` card in hand: BASIC takes
+  the Spell back for FREE (no crown). **Knowledge's EXPERT side is no longer
+  offered on the map (2026-07-27)** — its only expert rider is a combat-round
+  spell-limit bonus, which buys nothing outside combat, so paying a crown for it
+  was a trap (the `map-movement-spells.test.ts` case that used to pin it is now
+  the CONTROL asserting it is absent even with crowns in hand). **Mysticism**
+  works on the map instead (`phaseLimit` gained `"map"`; it is still never a
+  plain map PLAY — its `trigger` keeps it out of the card-play list): basic is
+  the same free recall, and EXPERT (1 crown) additionally returns every other
+  discardable card played into that cast — the hand power cards, a consumed
+  School/Basic-Magic source, a Tome — from the discard to hand
+  (`recallPlayedCardIds`, multiplicity preserved; a `removed`-zone card stays
+  removed). Empowered Knowledge still recalls with its printed limit bonus.
+  Wired in `offerMapSpellKnowledgeRecall` (adventure-reducer, the live path for
+  all six tiered map spells) + `processPendingVisit`
   (`KNOWLEDGE_RECALL_MAP_SPELL` with a `mode`). Pinned in
-  `map-movement-spells.test.ts` (basic no-crown / expert crown+limit / zero-crown
-  basic) and `view-spells.test.ts` (Knowledge retakes View Air).
+  `map-spell-cast.test.ts` ("basic Mysticism … no crown", "expert Mysticism also
+  recovers discardable support cards", the Tome case, and "regular Knowledge
+  offers only its free basic recall" as the CONTROL),
+  `map-movement-spells.test.ts` and `view-spells.test.ts`.
+  KNOWN DEAD TWIN: `playCard` in reducer.ts keeps a second copy of this offer
+  for a non-tiered map Spell. Every map-playable Spell is currently tiered, so
+  that copy is unreachable; it also only enumerates the FIRST `RECALL_SPELL`
+  card in hand, so if a flat map Spell is ever added, make it match
+  `offerMapSpellKnowledgeRecall` before relying on it.
 - **Map Power-tier spells cast then add Power (like combat / Visions).** View
   Air, View Earth, Dimension Door, Fly, Water Walk and Town Portal are a single
   **Cast** action — no up-front tier pick / cost picker. The spell is spent,
@@ -4780,15 +4805,36 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   its twin Scales' 3) and never a removeSelf side (discarding a relic for its
   +5 while it recycled was an exploit). All pinned in `map-spell-cast.test.ts`
   ("every printed power side is offered" + "cost valuation", each with
-  CONTROLs). **UI:** the boost window is `MapSpellBoostModal`
-  (`src/components/table/map-spell-boost-modal.tsx`) — a battle-style picker
-  (spell face, live Power over the printed tier ladder, sources as card tiles
-  grouped hand/Book/School/cost, Resolve button) replacing the old PromptTray
-  text-button list; presentation only, every tile dispatches the exact
-  index-aligned CHOOSE_OPTION, PromptTray excludes the context (three spots in
-  screen.tsx). Pinned in `map-spell-boost-modal.test.tsx` (both Tunic sides
-  render + dispatch, cost window withholds Resolve, non-owner waiting strip,
-  PromptTray-renders-nothing CONTROL).
+  CONTROLs).
+  **Tome of X in the map tray (2026-07-27):** a matching Tome held in hand is
+  offered as a `tome-max` boost — discard it to lift the cast straight to the
+  spell's top breakpoint, the map timing window for the Tome's printed option B
+  ("resolve at maximum Power without paying"). It is the SAME school gate combat
+  uses (`schoolOnly` vs the spell's `spellSchools`, an `"any"` spell qualifies;
+  a wrong-school Tome is not offered — CONTROL), it is a basic play (no crown),
+  and it joins `inFlightCardIds` so expert Mysticism can buy it back. The
+  option's `combatOnly` flag still keeps it out of the generic map card list —
+  the open cast IS its only map window. Pinned in `map-spell-cast.test.ts`.
+  **Orb doubling is shown, not just applied:** the choice now carries
+  `effectivePower` (raw `power` × `getSchoolPowerMultiplier`) so the tray reads
+  the number the cast will actually resolve at; the stored `power` stays RAW and
+  `applyMapSpellAtPower` multiplies once at resolve (no double-count). The
+  offer-exhaustion gate and the Tome's target both use the multiplied value.
+  **UI:** the boost window is `MapSpellBoostModal`
+  (`src/components/table/map-spell-boost-modal.tsx`) — since 2026-07-27 it is
+  the combat REACTION TRAY (`.reactionTray.mapSpellPowerTray`, no modal
+  backdrop, the map stays visible), one tile per source with a one-click "Add
+  +N Power" and a "Commit Power & Cast" pass button. The printed tier LADDER was
+  removed with the tier picker; because that also removed the "what does more
+  Power buy" readout, the live meter now names the NEXT unreached breakpoint
+  ("Next at Power 2: …", or "Highest effect reached") — otherwise adding Power
+  is a blind choice. Every source tile still SAYS what it consumes (the
+  "Expert — 1 crown" / "discards the permanent" / "discards the Tome" chips).
+  Presentation only: every tile dispatches the exact index-aligned
+  CHOOSE_OPTION, PromptTray excludes the context (three spots in screen.tsx).
+  Pinned in `map-spell-boost-modal.test.tsx` (both Tunic sides render +
+  dispatch, the next-tier readout + maxed CONTROL, cost window withholds
+  Resolve, non-owner waiting strip, PromptTray-renders-nothing CONTROL).
   **Both Spell Books:** old stash Book may burn one Book Spell for +1 Power
   (once/turn) and Knowledge can return a Book-cast map Spell to the Book;
   Polish Book needs Cast a Spell to cast, never burns Book Spells for Power
@@ -4848,6 +4894,80 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
 
+## Reinforcement discounts unified: stacking Legion + banked Necromancy/Hill Fort (2026-07-27) — what runs vs. limits
+
+Legion vouchers, the Necromancy half-cost and the Hill Fort −3 used to be RIVAL
+sources resolved by "take the single biggest"; Necromancy and the Hill Fort also
+forced a blocking pick-and-pay prompt on the spot. They are now ONE additive
+pipeline. The OLD behaviour is preserved behind the new house rule
+`immediate-reinforcement-prompts` (registry `src/engine/house-rules.ts`,
+category `abilities`, **default OFF in BOTH binh and legacy** — so an untouched
+table plays the NEW reading; the lobby row renders from the registry and is
+pinned in `game-options-tabs.test.tsx`). Engine: `reinforceCostFor` /
+`legionVoucherDiscount` / `bankReinforcementDiscount` /
+`reinforcementDiscountCostFor` / `redeemReinforcementDiscount` (adventure.ts),
+`redeemReinforcementDiscountAction` + `performHeroStep` (adventure-reducer.ts),
+`addBankedReinforcementActions` (legal-actions.ts). Behaviour pinned in
+`legion-artifacts.test.ts`, `necromancy.test.ts`,
+`extra-heroes-batch2-specialties.test.ts` and `map-tile-effects-audit.test.ts`.
+HONEST LIMIT on that coverage: the old readings are kept as explicit rule-ON
+regression suites in `legion-artifacts.test.ts` / `necromancy.test.ts` /
+`map-tile-effects-audit.test.ts` (they simply flip the flag on the old cases),
+but the Vidomina specialty case in `extra-heroes-batch2-specialties.test.ts`
+pins the NEW behaviour only — it has no rule-ON twin.
+
+Leading with what does NOT work / the deliberate limits:
+- **Unredeemed banks die the moment ANY of your heroes takes a step.** Movement
+  — including a free Subterranean-Gate crossing and a SECONDARY hero's step — is
+  the new expiry seam for Legion vouchers, the `legionDiscountCardIdsUsed`
+  ledger and the Necromancy/Hill-Fort banks. So "play Legion, then walk to the
+  town" now LOSES the voucher (recruiting is a town-token action playable from
+  anywhere, so the fix is to play the piece after moving). Under the old toggle
+  they instead survive movement and expire at the owner's next turn.
+- **Playing Necromancy is now a commitment.** The card resolves to the discard
+  when played, even if the bank is never affordable; the old "kept unless it
+  actually upgrades a unit" rule is only in the toggle. Same for Vidomina's
+  I/VI specialty cards (`extra-heroes-batch2-specialties.test.ts`).
+- **The now-or-never window is gone.** The old Necromancy prompt priced off the
+  gold held BEFORE the withheld field reward landed; the bank is redeemable
+  after it lands, and on later turns, until a hero moves.
+- **Two things the old-behaviour toggle does NOT restore** (stated in the rule's
+  own lobby description): the Hill Fort prices through the shared
+  `reinforceCostFor(…, flatGoldDiscount = 3)` seam in BOTH readings, so a Legion
+  voucher reserved for that unit applies there too (the old bespoke
+  `hillFortCost` helper ignored vouchers and has been deleted — it was left
+  wired to nothing); and a half-ALL source (Isra) still halves the non-gold
+  resources even when the flat discount wins the gold.
+- **The AI has no bank strategy** — see the single-player section: it redeems
+  when it can afford to, and may simply walk and lose an unredeemed bank.
+
+What runs (each mutation-checked):
+- **Distinct Legion pieces STACK by addition** with each other and with the
+  building/location sources (`legionVoucherDiscount` sums per distinct `cardId`;
+  toggle ON = the largest single voucher). The SAME physical piece can never
+  bank twice before movement, even after Scholar returns it — the
+  `player.legionDiscountCardIdsUsed` ledger is the guard, read by BOTH the
+  legal-action offer and `bankRecruitDiscountVoucher`.
+- **Source first, flats second.** `reinforceCostFor` halves the PRINTED gold for
+  a half source (Necromancy floor / settlement ceil / Isra), then subtracts the
+  flat total (Hill Fort / Cove Pub / Champions' Stables / every Legion voucher)
+  from what remains. Toggle ON restores the "cheaper of half vs flat wins" read.
+- **Necromancy and the Hill Fort BANK instead of prompting**
+  (`player.reinforcementDiscounts: ReinforcementDiscountBank[]`, a new optional
+  PlayerState field — absent on legacy snapshots = old behaviour, nothing to
+  mask in player views since a played card is public). The Hill Fort visit
+  offers "Bank … (-3 gold; expires when you move)" or Skip; Necromancy banks a
+  half-gold-round-down offer (basic bronze/silver, expert any tier incl. azure,
+  `allowStack` for a Polish Unit-Stack layer). Redeeming is the new
+  `REDEEM_REINFORCEMENT_DISCOUNT` action, offered per army card from the map
+  Army panel with the real charged price in the label.
+- **`REDEEM_REINFORCEMENT_DISCOUNT` is handler-validated**, so its handler is
+  the only gate: it refuses during combat AND off-turn
+  (`hasOpenAdventureTurn`) — without the turn gate a forged action could flip a
+  Few to a Pack in the middle of an opponent's turn, e.g. as an enemy hero walks
+  onto a mine you are about to defend (pinned with a forged-off-turn rejection +
+  an own-turn CONTROL in `legion-artifacts.test.ts`).
+
 ## Map spell-power bank, map notice icons, teleport-guard bank fights & Rule 111 UI — what runs
 
 Five additions; each engine claim fails a named test if its wiring is removed.
@@ -4858,11 +4978,16 @@ Five additions; each engine claim fails a named test if its wiring is removed.
   `player.mapSpellPowerBank` and draws a card. That bank is the **starting
   Power** of the next map Power-tier cast (cast-then-boost window above) — a
   banked +1 alone auto-resolves View Air at the materials tier with no power
-  cards in hand. Zero in combat (`mapSpellPowerBankAvailable`); consumed when the
-  cast opens; cleared on hero **move** and the owner's next turn. CHOOSE_ONE
-  draw-rider artifacts (Scales / Tunic / Armor of Wonder) stay map-playable
-  draw-only. Pinned in `map-spell-power-bank.test.ts` (bank + cast, clear-on-move,
-  Scales, no-bank CONTROL).
+  cards in hand. Zero in combat (`mapSpellPowerBankAvailable`); consumed WHOLE
+  when the cast opens (tier surplus is not refunded). **Since 2026-07-27 the
+  owner's next turn no longer clears it** — a hero **move** is now its only
+  expiry seam (`performHeroStep`, unconditional: this half is NOT under the
+  `immediate-reinforcement-prompts` toggle), so a banked +Power survives a turn
+  boundary if nobody walks. CHOOSE_ONE draw-rider artifacts (Scales / Tunic /
+  Armor of Wonder) stay map-playable draw-only. Pinned in
+  `map-spell-power-bank.test.ts` (bank + cast, clear-on-move, the whole-bank
+  consume, "does not clear … merely because a new turn starts", Scales, no-bank
+  CONTROL).
 - **Polish "Cast a Spell" is NEVER a Power source (crash fix).** The enabler is
   excluded from `cardCanBoostPower` / `spellPowerValueOfCard`, so it never appears
   as a map-spell-boost discard (or a combat Power cost). Its combat `asPowerBoost`

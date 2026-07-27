@@ -301,6 +301,22 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("renders the Old-Legion/reinforcement row OFF by default (the new adjustable banks are the default)", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Old Legion \/ reinforcement behavior/i });
+    expect(
+      toggle.getAttribute("aria-pressed"),
+      "the NEW stacking/banking reading is the default; the old one is opt-in"
+    ).toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "immediate-reinforcement-prompts": true } }
+    });
+  });
+
   it("renders the Torso-of-Legion re-tier row ON by default; unticking dispatches just that flag", () => {
     const onAction = openOptions();
     expandBinhHouseRules();

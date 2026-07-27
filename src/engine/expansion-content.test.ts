@@ -24,7 +24,6 @@ import {
   type MapFieldState
 } from "./index";
 import {
-  hillFortCost,
   observatoryDiscoverTargets,
   observatoryPlacementCenters,
   observatoryRevealTargets,
@@ -990,11 +989,11 @@ describe("rulebook conformance fixes", () => {
     expect(field.extraFlagOwnerIds).toEqual(["p2"]);
   });
 
-  it("discounts Hill Fort reinforcement by 3 gold to a minimum of zero", () => {
-    expect(hillFortCost({ gold: 5, valuables: 1 })).toEqual({ gold: 2, valuables: 1 });
-    expect(hillFortCost({ gold: 2 })).toEqual({});
-    expect(hillFortCost({ buildingMaterials: 2 })).toEqual({ buildingMaterials: 2 });
-  });
+  // The Hill Fort's own −3 gold is pinned through the REAL visit (both
+  // readings, gold-only and floored at zero) in map-tile-effects-audit.test.ts.
+  // The old `hillFortCost` pure-helper assertions that lived here were deleted
+  // with the helper: Hill Fort now prices through `reinforceCostFor(…, 3)`, so
+  // asserting the dead helper proved nothing about the game.
 });
 
 describe("Zydar (Inferno hero)", () => {

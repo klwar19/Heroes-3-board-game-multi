@@ -13,10 +13,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MapSpellBoostModal } from "./map-spell-boost-modal";
 import { CardZoomProvider } from "./zoom";
 import { PromptTray } from "@/components/adventure/screen";
+import { cardLibrary } from "@/data/cards/library";
 import {
   applyAction,
   createAdventureGameState,
   getLegalActions,
+  mapSpellPowerTiers,
   type GameAction,
   type GameState
 } from "@/engine";
@@ -93,6 +95,44 @@ describe("MapSpellBoostModal — battle-style Power tray", () => {
     fireEvent.click(resolve);
     const resolveAction = onAction.mock.calls[1]![0] as Extract<GameAction, { type: "CHOOSE_OPTION" }>;
     expect(resolveAction.optionIndex).toBe(boost!.offers.length);
+  });
+
+  // AUDIT FIX. The rework dropped the printed tier LADDER (it was a picker AND a
+  // readout). Without any "what does more Power buy" line the tray only says
+  // what the cast does NOW, so deciding whether to burn a card for +1 is blind.
+  // The next unreached breakpoint is spelled out beside the live Power instead.
+  it("names the NEXT Power breakpoint beside the live meter, and says so when maxed", () => {
+    const state = openBoost(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
+    wrap(
+      <MapSpellBoostModal
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    const tiers = mapSpellPowerTiers(cardLibrary["spell.view_air"])!;
+    const next = tiers.tiers.find((tier) => tier.minPower > 0)!;
+    expect(screen.getByTestId("spell-boost-next-tier").textContent).toBe(
+      `Next at Power ${next.minPower}: ${next.label}`
+    );
+
+    // CONTROL: at the top breakpoint there is no next tier to name.
+    cleanup();
+    const maxed = openBoost(["spell.view_air", "artifact.tunic_of_the_cyclops_king"]);
+    const boost =
+      maxed.pendingChoice?.type === "OPTION_CHOICE" ? maxed.pendingChoice.mapSpellBoost : null;
+    boost!.power = tiers.maxPower;
+    boost!.effectivePower = tiers.maxPower;
+    wrap(
+      <MapSpellBoostModal
+        legalActions={getLegalActions(maxed, "p1")}
+        onAction={vi.fn()}
+        state={maxed}
+        viewerPlayerId="p1"
+      />
+    );
+    expect(screen.getByTestId("spell-boost-next-tier").textContent).toBe("Highest effect reached");
   });
 
   it("withholds Resolve while a printed cost discard is owed (Titan's Cuirass +4)", () => {

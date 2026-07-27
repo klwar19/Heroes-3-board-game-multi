@@ -34,6 +34,7 @@ function makeState(
       { controllerId: string; kind: string; level: number }
     >;
     pendingChoice?: PendingChoice | null;
+    houseRules?: Record<string, boolean>;
   } = {},
 ): PlayerVisibleState {
   const playerMap: Record<string, unknown> = {};
@@ -64,7 +65,7 @@ function makeState(
     players: playerMap,
     towns: {},
     heroes: extras.heroes ?? {},
-    adventure: { fields: {} },
+    adventure: { fields: {}, houseRules: extras.houseRules ?? {} },
   } as unknown as PlayerVisibleState;
 }
 
@@ -152,16 +153,19 @@ describe("Legion voucher — played for the discount in every phase", () => {
     }
   });
 
-  function scoreLegionPlay(recruitDiscounts?: unknown[]): number {
-    const state = makeState({
-      p2: {
-        factionId: "castle",
-        hand: ["artifact.legs_of_legion"],
-        army: bronzePacks,
-        recruitDiscounts,
+  function scoreLegionPlay(recruitDiscounts?: unknown[], oldRule = false): number {
+    const state = makeState(
+      {
+        p2: {
+          factionId: "castle",
+          hand: ["artifact.legs_of_legion"],
+          army: bronzePacks,
+          recruitDiscounts,
+        },
+        p1: {},
       },
-      p1: {},
-    });
+      oldRule ? { houseRules: { "immediate-reinforcement-prompts": true } } : {}
+    );
     const action: GameAction = {
       type: "PLAY_CARD",
       playerId: "p2",
@@ -177,11 +181,23 @@ describe("Legion voucher — played for the discount in every phase", () => {
     expect(scoreLegionPlay()).toBeGreaterThan(700);
   });
 
-  it("CONTROL: an outstanding voucher holds the next Legion piece back", () => {
-    const heldBack = scoreLegionPlay([
+  // AUDIT FIX (2026-07-27). Distinct Legion pieces now STACK, so an already
+  // outstanding voucher is no longer a reason to sit on the next piece — the
+  // hold belongs to the OLD non-stacking reading alone.
+  it("plays the next piece anyway while a voucher is outstanding (pieces stack)", () => {
+    const outstanding = scoreLegionPlay([
       { cardId: "artifact.head_of_legion", amount: 6 },
     ]);
+    expect(outstanding, "a second distinct piece adds, so play it").toBeGreaterThan(700);
+    expect(outstanding).toBe(scoreLegionPlay());
+  });
+
+  it("CONTROL: under the old non-stacking rule an outstanding voucher still holds it back", () => {
+    const heldBack = scoreLegionPlay(
+      [{ cardId: "artifact.head_of_legion", amount: 6 }],
+      true
+    );
     expect(heldBack).toBeLessThan(700);
-    expect(scoreLegionPlay()).toBeGreaterThan(heldBack);
+    expect(scoreLegionPlay(undefined, true)).toBeGreaterThan(heldBack);
   });
 });

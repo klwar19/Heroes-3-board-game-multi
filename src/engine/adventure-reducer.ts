@@ -1141,12 +1141,22 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   // unspent/surplus Spell Power and every not-yet-redeemed Legion,
   // Necromancy or Hill Fort reinforcement discount. Even a free Subterranean
   // Gate crossing is a moved step.
+  //
+  // The map draw-rider Power bank ALWAYS expires here ("goes away after you
+  // move" — its rule in both readings). The reinforcement banks do NOT: under
+  // the OLD `immediate-reinforcement-prompts` reading a Legion voucher lives
+  // until the owner's NEXT TURN (startPlayerTurn), so a hero could bank the
+  // discount and then walk to the town it was banked for. Wiping them on a step
+  // there would silently make the "old behavior" toggle stricter than the
+  // behaviour it restores. Pinned in legion-artifacts.test.ts.
   const mover = state.players[hero.controllerId];
   if (mover) {
     mover.mapSpellPowerBank = 0;
-    mover.recruitDiscounts = [];
-    mover.legionDiscountCardIdsUsed = [];
-    mover.reinforcementDiscounts = [];
+    if (!houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+      mover.recruitDiscounts = [];
+      mover.legionDiscountCardIdsUsed = [];
+      mover.reinforcementDiscounts = [];
+    }
   }
 
   appendEvent(state, {
@@ -4280,28 +4290,14 @@ function resolveRemoveHandCard(
 }
 
 /**
- * Hill Fort: reinforce one bronze/silver Few unit; the pack cost drops by
- * 3 gold in total, never below zero (gold absorbs the discount first).
+ * Hill Fort pricing no longer has a bespoke helper: it is `reinforceCostFor(…,
+ * flatGoldDiscount = 3)`, the SAME seam every other reinforcement discount uses,
+ * so a Legion voucher reserved for the unit is honoured and the label, the
+ * affordability gate and the charge can never disagree. (The old `hillFortCost`
+ * helper was left behind by that switch — tested but wired to nothing — and was
+ * deleted; the live −3-gold-only, floor-at-zero behaviour is pinned through the
+ * real visit in map-tile-effects-audit.test.ts.)
  */
-export function hillFortCost(packCost: Record<string, number | undefined>): ResourceCost {
-  const cost: ResourceCost = {};
-  for (const [resource, amount] of Object.entries(packCost) as ["gold" | "buildingMaterials" | "valuables", number][]) {
-    if (amount) {
-      cost[resource] = amount;
-    }
-  }
-  let discount = 3;
-  if (cost.gold) {
-    const used = Math.min(cost.gold, discount);
-    cost.gold -= used;
-    discount -= used;
-    if (cost.gold === 0) {
-      delete cost.gold;
-    }
-  }
-  return cost;
-}
-
 function resolveHillFort(state: GameState, action: Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>): void {
   const player = state.players[action.playerId];
   if (!player) {
@@ -4337,6 +4333,14 @@ export function redeemReinforcementDiscountAction(
 ): void {
   if (state.combat) {
     throw new Error("Banked reinforcement discounts cannot be redeemed during combat.");
+  }
+  // REDEEM_REINFORCEMENT_DISCOUNT is HANDLER-validated, so it skips the
+  // getLegalActions membership check — this IS its turn gate, and it must match
+  // the offer's (`addBankedReinforcementActions`). Without it a forged action
+  // could upgrade Few→Pack in the middle of an opponent's turn (e.g. right
+  // before an incoming garrison/mine defense). Pinned in legion-artifacts.test.ts.
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Banked reinforcement discounts can only be redeemed on your own turn.");
   }
   redeemReinforcementDiscount(
     state,
