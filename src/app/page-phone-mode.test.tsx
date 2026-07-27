@@ -498,3 +498,48 @@ describe("in-game table controls — the collapse trigger", () => {
     expect(document.querySelector(".tableMenu .roomRow"), "the lobby keeps join-by-ID").toBeTruthy();
   });
 });
+
+describe("hand-step directives banner — the mandatory start-of-turn draw", () => {
+  // The draw/mulligan/discard controls must live OUTSIDE the one-line hand
+  // header (`.handTopBar`): the desktop HUD anchors `.handDirectives` as a
+  // fixed banner above the tray, and inside the header the hand cards used to
+  // paint OVER the mandatory "Draw new" button, leaving it unclickable. jsdom
+  // cannot compute the fixed positioning — this pins the DOM contract the CSS
+  // keys on (container outside the header + `.mandatory` while the draw is
+  // owed), the visible half lives in the Playwright screenshots.
+  it("renders `.handDirectives.mandatory` outside the hand header with the Draw button inside", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const state = createAdventureGameState({ seed: "banner-draw", rollFirstPlayer: false });
+    expect(state.activePlayerId).toBe("p1");
+    expect(state.players.p1?.canMulligan).toBe(true);
+    serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    const banner = mainEl().querySelector(".handDirectives");
+    expect(banner, "the directives banner").toBeTruthy();
+    expect(banner?.classList.contains("mandatory")).toBe(true);
+    // Outside the header — the fixed desktop anchor depends on it.
+    expect(banner?.closest(".handTopBar")).toBeNull();
+    expect(banner?.querySelector(".handDirectivesTitle")?.textContent).toMatch(/Start of turn/i);
+    const draw = Array.from(banner?.querySelectorAll("button") ?? []).find((button) =>
+      /Draw new/.test(button.textContent ?? "")
+    );
+    expect(draw, "the mandatory Draw button inside the banner").toBeTruthy();
+    // The header itself holds ONLY the hand-size plaque now.
+    expect(mainEl().querySelector(".handTopBar")?.querySelector("button")).toBeNull();
+  });
+
+  it("CONTROL — with the draw already taken the banner is gone", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const state = createAdventureGameState({ seed: "banner-draw-done", rollFirstPlayer: false });
+    // The flag that owes the draw is what mounts the banner — clear it.
+    state.players.p1!.canMulligan = false;
+    state.players.p1!.canOpeningMulligan = false;
+    serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    expect(mainEl().querySelector(".handDirectives")).toBeNull();
+  });
+});

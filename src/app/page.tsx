@@ -5313,6 +5313,17 @@ export default function Home() {
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard || (canOpeningMulligan && handMode === "opening-mulligan");
+    // Hand-step directives banner: a MANDATORY step (start-of-turn draw,
+    // over-limit discard, opening Mulligan, or an open discard pick) gets the
+    // prominent scroll banner; optional morale plays share the container in
+    // its quiet form. Rendered OUTSIDE the one-line hand header so the fixed
+    // desktop tray can anchor it above the cards — the cards used to paint
+    // over the mandatory "Draw new" button there, making it unclickable.
+    const handStepMandatory = canDraw || canOpeningMulligan || selecting;
+    const handOptionalPlays =
+      handMode === null &&
+      !forcedDiscard &&
+      (hasMorale || moraleRedrawCardAvailable || moraleCombatPlays.length > 0);
     // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
@@ -5880,6 +5891,33 @@ export default function Home() {
                 <small>
                   Hand {handCards.length}/{handLimit}
                 </small>
+              </div>
+              {/* Hand-step directives: the mandatory start-of-turn draw /
+                  over-limit discard / opening Mulligan / discard pick, plus
+                  optional morale plays. Lives OUTSIDE the one-line header —
+                  the desktop HUD re-anchors it as a fixed banner ABOVE the
+                  tray, so the hand cards can never paint over its buttons. */}
+              {handStepMandatory || handOptionalPlays ? (
+              <div
+                className={`handDirectives${handStepMandatory ? " mandatory" : ""}`}
+                role="group"
+                aria-label="Hand step"
+              >
+                {handStepMandatory ? (
+                  <strong className="handDirectivesTitle">
+                    {forcedDiscard
+                      ? "Over the hand limit"
+                      : handMode === "opening-mulligan"
+                        ? "Opening Mulligan"
+                        : handMode === "mulligan"
+                          ? "Discard & draw"
+                          : handMode === "morale-redraw"
+                            ? "Morale redraw"
+                            : canDraw
+                              ? "Start of turn — draw your hand"
+                              : "Opening Mulligan"}
+                  </strong>
+                ) : null}
                 {forcedDiscard ? (
                   <span className="handWarning">
                     Over the hand limit: discard down to {handLimit}.{overLimit > 0 ? ` Pick ${overLimit} more.` : ""}
@@ -5891,7 +5929,7 @@ export default function Home() {
                     actions until the draw is taken. */}
                 {canDraw && handMode === null ? (
                   <span className="handWarning drawWarning">
-                    ⚠ Take your start-of-turn draw first — you must draw (or discard under-limit cards and draw) before moving or using a card.
+                    You must draw (or discard under-limit cards and draw) before moving or using a card.
                   </span>
                 ) : null}
                 {canOpeningMulligan && handMode === null ? (
@@ -6037,6 +6075,7 @@ export default function Home() {
                   </div>
                 ) : null}
               </div>
+              ) : null}
               {pendingCostPlay ? (
                 <div className="handButtons costPicker" aria-label="Pay the card cost">
                   <span>

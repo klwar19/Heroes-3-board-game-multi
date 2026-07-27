@@ -2622,7 +2622,7 @@ export function HexMapBoard({
       return "Over the hand limit — discard down first (bottom of the screen)";
     }
     if (state.players[viewerPlayerId]?.canMulligan) {
-      return "Take your start-of-turn draw first (bottom of the screen)";
+      return "Take your start-of-turn draw first (the banner above your hand)";
     }
     // Parallel turns: a FOREIGN battle/choice leaves quiet moves open — say so
     // instead of claiming the whole map is locked.
