@@ -918,9 +918,21 @@ export default function Home() {
       return;
     }
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setLeftRailExpanded(false);
+      if (event.key !== "Escape") {
+        return;
       }
+      // A window stacked ABOVE the panel (Town, hero info, opponent dossier,
+      // VP standings, a pile, a card zoom, a fly-out board, a mod-system
+      // window) owns the Escape — the SetupHubWindow rule: closing both at
+      // once would throw the player back two levels.
+      if (
+        document.querySelector(
+          ".townWindowBackdrop, .heroInfoBackdrop, .opponentInfoBackdrop, .vpStandingsBackdrop, .pileModalBackdrop, .zoomBackdrop, .heroDropBackdrop, .heroSystemBackdrop, .commanderEquipmentBackdrop, .commanderLevelUpBackdrop"
+        )
+      ) {
+        return;
+      }
+      setLeftRailExpanded(false);
     };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);

@@ -22455,6 +22455,18 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   cursor: default;
 }
 
+/* BUG GUARD: the expanded-panel layout exists only in the ≥1101px desktop-HUD
+   block, so below 1101px the trigger must not exist either — clicking it there
+   dropped the full-viewport backdrop with NO panel behind it (the screen just
+   dimmed). `display: none` also keeps the button out of the tab order. Phone
+   mode already hides the toolbar at every width (rule below). */
+@media (max-width: 1100px) {
+  .leftRailToolbar,
+  .leftRailExpandedBackdrop {
+    display: none;
+  }
+}
+
 .leftRailDock {
   display: block;
   position: relative;
