@@ -249,3 +249,49 @@ describe("Defeated-hero retreat CHOICE — neutral loss", () => {
     expect(state.heroes.hero_p1.movementPoints).toBe(1);
   });
 });
+
+/**
+ * Falling back after a defeat is a RELOCATION, not an extra movement cost: the
+ * points the Hero had left after its normal approach/combat deductions survive
+ * (matching how a RETREAT from a neutral fight has always behaved — it steps the
+ * Hero back without zeroing its movement). The observable consequence is that the
+ * beaten Hero can still march this turn; the control is the same beaten Hero with
+ * its movement genuinely spent, which is offered nothing.
+ */
+describe("Defeated-hero fall-back keeps the movement left over", () => {
+  function beatenAttackerMoveOffers(state: GameState, movementLeft: number): string[] {
+    const { loserHeroId } = stagePvp(state, true);
+    state.heroes[loserHeroId].movementPoints = movementLeft;
+
+    finalizeAdventureCombat(state);
+    pumpAdventureQueues(state);
+    // Only ONE retreat field (the Town) — the Hero auto-homes, no open choice.
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(state.heroes[loserHeroId].spaceId).toBe(state.towns.town_p1.fieldId);
+    expect(state.heroes[loserHeroId].movementPoints).toBe(movementLeft);
+
+    // Clear the two gates that stand between the finished fight and map play:
+    // the combat notice, then the mandatory start-of-turn hand step (which the
+    // harness still owes — in real play the walk into the fight came after it).
+    for (const type of ["ACKNOWLEDGE_COMBAT_END", "REFRESH_HAND"] as const) {
+      const gate = getLegalActions(state, "p1").find((entry) => entry.action.type === type);
+      if (gate) {
+        const result = applyAction(state, gate.action);
+        expect(result.errors).toEqual([]);
+        state = result.state;
+      }
+    }
+    expect(state.heroes[loserHeroId].movementPoints).toBe(movementLeft);
+    return getLegalActions(state, "p1")
+      .filter((entry) => entry.action.type === "MOVE_HERO")
+      .map((entry) => entry.label);
+  }
+
+  it("the beaten Hero can still march out of the Town it fell back to", () => {
+    expect(beatenAttackerMoveOffers(makeGame(), 2).length).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: a beaten Hero whose movement was genuinely spent is offered no move", () => {
+    expect(beatenAttackerMoveOffers(makeGame(), 0)).toEqual([]);
+  });
+});

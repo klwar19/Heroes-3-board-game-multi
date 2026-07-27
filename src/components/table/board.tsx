@@ -2500,6 +2500,7 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
     };
     return reversed.filter((event) => groups[filter].has(event.type));
   }, [filter, logState.eventLog, singlePlayer]);
+  const latest = logState.eventLog.at(-1);
   const truncated = singlePlayer && logState.eventLog.length > SINGLE_PLAYER_HISTORY_LIMIT;
 
   return (
@@ -2513,7 +2514,11 @@ export function LogDrawer({ state, viewerPlayerId }: { state: GameState; viewerP
         type="button"
       >
         <ScrollText aria-hidden="true" size={14} />
-        <span>Event log</span>
+        <span className="logToggleLabel">Event log</span>
+        {/* The collapsed bar doubles as a one-line live ticker on every surface
+            that has room for it (phone, combat, setup). The desktop map HUD
+            renders this drawer as a narrow pill and hides the ticker there. */}
+        {latest ? <span className="logToggleLatest">{formatEvent(latest, logState)}</span> : null}
         {open ? <ChevronDown aria-hidden="true" size={14} /> : <ChevronUp aria-hidden="true" size={14} />}
       </button>
       {open ? (
