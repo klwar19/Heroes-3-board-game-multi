@@ -9861,6 +9861,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     }
   }
 
+  // A player may field ONE Secondary Hero beside the Main one, and the hero
+  // actions dock renders the REVISIT_FIELD labels below verbatim as a flat list
+  // of buttons. With both heroes on the map two of them can be offered at once —
+  // on two Monoliths they would read identically — so name the acting hero
+  // whenever there is more than one. A single hero keeps the classic label.
+  const mapHeroCount = Object.values(state.heroes).filter(
+    (candidate) => candidate.controllerId === playerId && candidate.spaceId
+  ).length;
+  const whichHero = (kind: "main" | "secondary"): string =>
+    mapHeroCount > 1 ? ` — ${kind === "secondary" ? "2nd Hero" : "Main Hero"}` : "";
+
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId !== playerId || !hero.spaceId) {
       continue;
@@ -9897,9 +9908,9 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       if (hero.movementPoints >= cost) {
         actions.push({
           label:
-            cost === 0
+            (cost === 0
               ? "Dig the Grail (free)"
-              : `Dig the Grail (${cost} movement point${cost === 1 ? "" : "s"})`,
+              : `Dig the Grail (${cost} movement point${cost === 1 ? "" : "s"})`) + whichHero(hero.kind),
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });
       }
@@ -9954,9 +9965,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       ) {
         actions.push({
           label:
-            field.location === "obelisk"
+            (field.location === "obelisk"
               ? "Revisit the Obelisk (Monolith travel)"
-              : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`,
+              : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`) +
+            whichHero(hero.kind),
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });
       }

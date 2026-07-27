@@ -491,13 +491,20 @@ export type PvpTroopLoss = "normal" | "none";
 
 /**
  * How the Dragon Utopia (the Dragon Hunt / Dragon Conqueror win-condition
- * objective) is guarded. The base party is always the four dragons
- * (Azure + Rust + Crystal + Faerie), with the featured lead slot randomised
- * per game to Azure or Rust so the encounter always has one of those two.
- *  - "four": the full four-dragon party stands, whatever the difficulty.
- *  - "by-difficulty": the guard COUNT follows the game difficulty — exactly the
- *    number of Neutral units its Field Difficulty would draw (Easy 1 / Normal 2 /
- *    Hard 3 / Impossible 4). The lead Azure/Rust slot is always kept.
+ * objective) is guarded.
+ *  - "by-difficulty" (the DEFAULT): the Utopia is guarded like any other Field
+ *    Difficulty Ⅶ field — the COMPLETE table row for the game difficulty, tiers
+ *    included (Easy 1 azure / Normal 2 azure / Hard 1 gold + 2 azure /
+ *    Impossible 2 gold + 2 azure), DRAWN from the Neutral tier decks and
+ *    recycled to their discards at combat end like any guard army. So the
+ *    guards are NOT necessarily the four dragons, and (being ordinary deck
+ *    draws) they can be swapped by the pre-battle Judge Dread / Groovy Satyr /
+ *    Visions windows.
+ *  - "four": the explicit scenario party — the four dragons (Azure + Rust +
+ *    Crystal + Faerie), MINTED for the fight so the azure deck is never
+ *    touched, with the featured lead slot randomised per game to Azure or Rust
+ *    so the encounter always leads with one of those two. Whatever the
+ *    difficulty, all four stand.
  * Absent on older snapshots; treated as "by-difficulty".
  */
 export type DragonUtopiaGuards = "four" | "by-difficulty";

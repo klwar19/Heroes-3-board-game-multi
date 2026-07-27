@@ -2425,6 +2425,59 @@ one boolean read at ONE seam, with the old behaviour pinned as the CONTROL.
   `ignoreKeyCards` Mage-Guild strictness only means anything while the house rule
   is ON.
 
+## Diplomacy's skip costs a crown · Dragon Utopia guards use the table (2026-07-27)
+
+Two shipped readings replaced by the printed card / the Field Difficulty table.
+Neither is a toggle — the previous behaviour was wrong.
+
+- **Diplomacy's matching-level skip is its EXPERT side, so it needs a crown.**
+  The card prints "Expert: skip Combat with Neutral Units on a field whose
+  Difficulty equals your Hero's level… Empowered: use either side without
+  spending a crown", but the engine used to offer the skip for FREE to anyone
+  holding the card. `canUseDiplomacySkip` (adventure-reducer.ts) now gates the
+  offer — at the plain encounter AND after a Polish-Quick-Combat "Fight" — on an
+  unspent Expert use, and `resolveDiplomacySkipChoice` spends one
+  (`expertUsesSpentThisRound`, the SHARED per-game-round crown budget) unless
+  the ability is Empowered. The pop-up says which it is. CONSEQUENCE, stated
+  because it is a real loss: **crowns start at hero level 2**
+  (`EXPERT_USES_BY_LEVEL[1] === 0`), so a level-1 hero can no longer skip a
+  difficulty-1 guard at all, and a spent crown closes the skip for the rest of
+  the round. Pinned in `tactics-diplomacy.test.ts` (the offer gate with a
+  no-crown CONTROL, the spend, the Empowered crown-free path, and "spends from
+  the SHARED Expert budget" — a second matching-level fight that same round gets
+  no offer, with a crown-to-spare CONTROL).
+- **The Dragon Utopia's default guards are the whole difficulty row, not four
+  dragons.** `dragonUtopiaGuards` "by-difficulty" (the DEFAULT) now draws the
+  COMPLETE Field Difficulty Ⅶ table row from the Neutral decks, tiers included
+  (Easy 1 azure / Normal 2 azure / Hard 1 gold + 2 azure / Impossible 2 gold +
+  2 azure) — `drawDragonUtopiaArmy` → `drawNeutralArmy`; it no longer trims a
+  minted dragon party to a count. LEAD WITH THE CONSEQUENCES: the guards are
+  therefore **not necessarily dragons** (the gold bodies never are, and 3 of the
+  8 azure cards are not), they are real DECK draws — so they leave their tier
+  deck for the fight and recycle to its discard at combat end, and (carrying no
+  `bankGuard` flag) they CAN be swapped by the pre-battle Judge Dread / Groovy
+  Satyr / Visions windows, which the minted party never offered. The themed
+  encounter is still available: the lobby "4 dragons" / designer
+  `objectives.utopiaGuards: "four"` mode keeps the fixed four-dragon party
+  (Azure + Rust + Crystal + Faerie, featured lead randomised per game to Azure
+  or Rust), minted with `bankGuard` so the azure deck is never touched. Round
+  limit, XP and every reward are unchanged (the Ⅶ exemption keys off the FIELD,
+  and the level-7 jump off `difficulty >= 7`). Pinned in
+  `creature-bank-guards.test.ts` (per-difficulty counts + tiers, the four-dragon
+  CONTROL, and "conserves the Neutral decks" — the table draw shrinks the piles
+  by exactly its count while the minted party leaves them untouched and stays
+  flagged, so neither mode can consume or CREATE a card).
+- **Also in this batch:** `REVISIT_FIELD` finally has a human button (the
+  `HeroActionsDock`), so a hero that starts its turn standing on a Monolith can
+  travel without walking off and back — the hex tooltip promised "step on (or
+  Revisit for 1 MP)" with no surface to do it. Because a player may field a
+  Secondary Hero, two Revisit offers can arrive at once; the engine label names
+  the acting hero (`whichHero` in legal-actions.ts) whenever more than one hero
+  is on the map, and only then, so the single-hero label is unchanged. Pinned in
+  `secondary-heroes.test.ts` ("Revisit offers name WHICH hero acts", with a
+  lone-hero CONTROL) and `hero-actions-dock.test.tsx` (both buttons render under
+  distinct keys and each dispatches its OWN hero).
+
 ## First-round hand discards, Angel Wings, morale −2, Search top-of-discard (2026-07-25)
 
 Four fixes to shipped behaviour (not toggles — the previous behaviour was wrong):

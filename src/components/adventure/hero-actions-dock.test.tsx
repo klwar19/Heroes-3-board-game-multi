@@ -118,6 +118,40 @@ describe("HeroActionsDock", () => {
     expect(onAction).toHaveBeenCalledWith(revisit!.action);
   });
 
+  it("renders BOTH heroes' Revisit offers and dispatches each hero's own payload", () => {
+    // A Main + a Secondary Hero can each be parked on a revisitable Field, so the
+    // dock must render two Revisit buttons (not collapse them onto one shared
+    // key) and each must move ITS OWN hero. The engine labels name the hero
+    // (legal-actions.ts `whichHero`), which is what keeps the buttons tellable
+    // apart — see secondary-heroes.test.ts.
+    const mainAction: GameAction = { type: "REVISIT_FIELD", playerId: "p1", heroId: "hero_p1" };
+    const secondAction: GameAction = { type: "REVISIT_FIELD", playerId: "p1", heroId: "hero2_p1" };
+    const onAction = vi.fn();
+    // React RENDERS both siblings even when their keys collide (it only warns),
+    // so the button count alone cannot catch a per-key regression — assert the
+    // duplicate-key warning is absent too.
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <HeroActionsDock
+        legalActions={[
+          { action: mainAction, label: "Revisit Two-Way Monolith — Main Hero" },
+          { action: secondAction, label: "Revisit Two-Way Monolith — 2nd Hero" }
+        ]}
+        onAction={onAction}
+      />
+    );
+    expect(consoleError.mock.calls.flat().join(" ")).not.toMatch(/same key/i);
+    consoleError.mockRestore();
+
+    expect(screen.getAllByRole("button", { name: /Revisit Two-Way Monolith/ })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: /2nd Hero/ }));
+    expect(onAction).toHaveBeenLastCalledWith(secondAction);
+
+    fireEvent.click(screen.getByRole("button", { name: /Main Hero/ }));
+    expect(onAction).toHaveBeenLastCalledWith(mainAction);
+  });
+
   it("ignores a non-Forced-March USE_HERO_SKILL (e.g. combat War Cry)", () => {
     // Only the map-active Forced March node surfaces here; the combat War Cry /
     // reactions (other nodeIds, carrying a unitId) must not render a map button.

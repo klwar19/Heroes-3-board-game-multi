@@ -7,7 +7,8 @@ import {
   dragonUtopiaDifficultyGuardCount,
   drawGuardArmy,
   getMainHero,
-  makeCombatUnitFromNeutral
+  makeCombatUnitFromNeutral,
+  NEUTRAL_DECK_IDS
 } from "./adventure";
 import type { GameDifficulty } from "./state";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -66,6 +67,35 @@ describe("Dragon Utopia guards", () => {
       expect(draws, `${difficulty} guard count`).toHaveLength(COUNT_BY_DIFFICULTY[difficulty]);
       expect(draws.map((draw) => draw.tier).sort()).toEqual(TIERS_BY_DIFFICULTY[difficulty]!.slice().sort());
     }
+  });
+
+  it("conserves the Neutral decks: the table draw LEAVES them, the minted party never enters them", () => {
+    // The two modes MUST disagree about `bankGuard`, because that flag is what
+    // the combat-end recycle reads (finalizeAdventureCombat). Getting it wrong
+    // either way corrupts the decks: a drawn guard flagged bankGuard would be
+    // consumed forever, and a MINTED dragon left unflagged would be pushed into
+    // the azure discard at combat end — creating a card that never existed.
+
+    // "by-difficulty" draws real cards: hard Ⅶ takes 2 azure + 1 gold OUT of
+    // the piles, and nothing is flagged, so the recycle hands them back.
+    const drawn = createAdventureGameState({ seed: "utopia-conserve", difficulty: "hard", rollFirstPlayer: false });
+    const azureBefore = drawn.decks[NEUTRAL_DECK_IDS.azure]!.drawPile.length;
+    const goldBefore = drawn.decks[NEUTRAL_DECK_IDS.gold]!.drawPile.length;
+    const draws = drawGuardArmy(drawn, fieldWith("dragon_utopia"), 7);
+    expect(azureBefore - drawn.decks[NEUTRAL_DECK_IDS.azure]!.drawPile.length).toBe(2);
+    expect(goldBefore - drawn.decks[NEUTRAL_DECK_IDS.gold]!.drawPile.length).toBe(1);
+    expect(draws.every((draw) => !draw.bankGuard)).toBe(true);
+
+    // "four" MINTS its dragons: the azure pile is untouched (nothing drawn, so
+    // nothing to give back) and every guard is flagged so the recycle skips it.
+    const minted = createAdventureGameState({ seed: "utopia-conserve", difficulty: "hard", rollFirstPlayer: false });
+    minted.adventure!.dragonUtopiaGuards = "four";
+    const mintedAzureBefore = minted.decks[NEUTRAL_DECK_IDS.azure]!.drawPile.length;
+    const party = drawGuardArmy(minted, fieldWith("dragon_utopia"), 7);
+    expect(minted.decks[NEUTRAL_DECK_IDS.azure]!.drawPile.length).toBe(mintedAzureBefore);
+    expect(minted.decks[NEUTRAL_DECK_IDS.azure]!.discardPile).toHaveLength(0);
+    expect(party).toHaveLength(4);
+    expect(party.every((draw) => draw.bankGuard === true)).toBe(true);
   });
 
   it("CONTROL: with guards set to `four`, the full FOUR-dragon party stands whatever the difficulty", () => {

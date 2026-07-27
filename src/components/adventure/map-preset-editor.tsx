@@ -1224,10 +1224,10 @@ export function MapPresetEditor({
                 aria-pressed={objectives.utopiaGuards === "by-difficulty"}
                 className={`mapPresetChip${objectives.utopiaGuards === "by-difficulty" ? " active" : ""}`}
                 onClick={() => setUtopiaGuards("by-difficulty")}
-                title="Trim the dragon party to the difficulty-scaled count (Easy 1 … Impossible 4)."
+                title="Draw the complete Field Difficulty Ⅶ row, tiers included (Hard: 1 golden + 2 azure) — not necessarily dragons."
                 type="button"
               >
-                Scale by difficulty
+                Difficulty table
               </button>
               <button
                 aria-pressed={objectives.utopiaGuards === "four"}

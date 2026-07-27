@@ -336,10 +336,13 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     id: "dragon_utopia",
     name: "Dragon Utopia",
     category: "visitable",
-    // A Lvl-VII creature bank guarded by four dragons (azure, rust, crystal,
-    // faerie). The post-fight behavior is win-condition specific and handled
-    // in the engine (handleDragonUtopiaVisit): a Grail Hunt win, a Dragon
-    // Conqueror capture, or — in Conquest — 10 gold and a Relic artifact.
+    // A Lvl-VII creature bank. Its guards follow the lobby/designer
+    // `dragonUtopiaGuards` mode (engine: drawDragonUtopiaArmy) — by default the
+    // COMPLETE Field Difficulty Ⅶ table row drawn from the Neutral decks, and
+    // only in the explicit "four" mode the minted four-dragon party (azure,
+    // rust, crystal, faerie). The post-fight behavior is win-condition specific
+    // and handled in the engine (handleDragonUtopiaVisit): a Grail Hunt win, a
+    // Dragon Conqueror capture, or — in Conquest — 10 gold and a Relic artifact.
     interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: source("dragon_utopia")

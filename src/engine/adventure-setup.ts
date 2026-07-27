@@ -4039,7 +4039,9 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     }
     lobby.options.dragonUtopiaGuards = next.dragonUtopiaGuards;
     changes.push(
-      `Dragon Utopia guards ${next.dragonUtopiaGuards === "four" ? "four dragons" : "scale by difficulty"}`
+      `Dragon Utopia guards ${
+        next.dragonUtopiaGuards === "four" ? "four dragons" : "the Field Difficulty table"
+      }`
     );
   }
 
