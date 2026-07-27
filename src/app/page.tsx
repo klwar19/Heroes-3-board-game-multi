@@ -1,6 +1,6 @@
 "use client";
 
-import { Castle, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Menu as MenuIcon, StepForward, Swords } from "lucide-react";
+import { Castle, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -911,6 +911,20 @@ export default function Home() {
   /* eslint-enable react-hooks/set-state-in-effect */
   /** The Town window popup (board / buildings views) over the adventure map. */
   const [townOpen, setTownOpen] = useState(false);
+  /** Desktop map: expand the crowded left command rail into a large window. */
+  const [leftRailExpanded, setLeftRailExpanded] = useState(false);
+  useEffect(() => {
+    if (!leftRailExpanded) {
+      return;
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setLeftRailExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [leftRailExpanded]);
   const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);
   const [dice, setDice] = useState<{ current: DiceCue | null; queue: DiceCue[] }>({
     current: null,
@@ -5598,7 +5612,34 @@ export default function Home() {
           ) : null}
 
           <div className="adventureMidRow">
-            <div className="leftRail">
+            {leftRailExpanded ? (
+              <button
+                aria-label="Close expanded command panel"
+                className="leftRailExpandedBackdrop"
+                onClick={() => setLeftRailExpanded(false)}
+                type="button"
+              />
+            ) : null}
+            <div
+              aria-label={leftRailExpanded ? "Full command panel" : undefined}
+              aria-modal={leftRailExpanded || undefined}
+              className={`leftRail${leftRailExpanded ? " leftRailExpanded" : ""}`}
+              role={leftRailExpanded ? "dialog" : undefined}
+            >
+              <div className="leftRailToolbar">
+                <strong>Command panel</strong>
+                <button
+                  aria-expanded={leftRailExpanded}
+                  aria-label={leftRailExpanded ? "Return command panel to sidebar" : "View full command panel"}
+                  className="leftRailExpandButton"
+                  onClick={() => setLeftRailExpanded((expanded) => !expanded)}
+                  title={leftRailExpanded ? "Return to the compact sidebar" : "Open every left-panel control in a large view"}
+                  type="button"
+                >
+                  {leftRailExpanded ? <Minimize2 aria-hidden="true" size={14} /> : <Maximize2 aria-hidden="true" size={14} />}
+                  <span>{leftRailExpanded ? "Back to sidebar" : "View all"}</span>
+                </button>
+              </div>
               {/* Town · Hero · Unit deck now anchor a vertical command column on
                   the left (Warcraft-style sidebar), freeing the whole center for
                   the map. Their fly-out boards open to the right, over the map. */}
