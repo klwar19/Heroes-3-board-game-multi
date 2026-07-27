@@ -168,6 +168,25 @@ Leading with what does NOT work / deliberate limits:
 - **z-index band stays under the overlays**: top row 55, controls panel 88, room
   manager 90, hand 48, library 42, left rail 36 — all below the documented
   chat dock 200 / hub backdrop 210 / hero info 220 / mod windows 230.
+  EXCEPTIONS (2026-07-27 fly-out fix): while a town/hero/unit-deck/commander
+  fly-out board is open, `.leftRail:has(.heroDropBackdrop)` lifts the rail to
+  205 (above the chat 200 — an open board is a modal interaction with a dimming
+  backdrop); the opponent-info backdrop is 205 for the same reason; the card
+  ZOOM overlay is 300 (a card can be zoomed from inside any window and the zoom
+  is a transient click-to-close reader); the helper coach strip stays 900.
+- **The fly-out boards are `position: fixed` on the desktop HUD** (2026-07-27):
+  the fixed rail scrolls (`overflow-y: auto` — which clips BOTH axes), and the
+  `.heroDrop` board opens at `left: calc(100% + 12px)`, i.e. entirely inside the
+  clipped overflow — the "hero / unit deck open and show NOTHING" bug. The
+  ≥1101px block re-anchors the board `position: fixed` beside the rail (fixed
+  escapes an ancestor's overflow clip; no transformed ancestor exists on that
+  chain). Below 1101px the board keeps the classic absolute fly-out. The
+  OpponentInfoModal instead PORTALS to `<body>` (opponent-info.tsx) — rendered
+  inline it was trapped in the rail's stacking context (z 36) and the fixed hand
+  tray covered its Hero section (the HeroInfoModal precedent).
+- **The rail's grid track is pinned** (`grid-template-columns: minmax(0, 1fr)`):
+  the lone auto track used to be sized by the tiles' min-content (portrait +
+  label ≈ 228px), grew past the 218px rail, and clipped every tile's right edge.
 - Below 1101px NOTHING of this applies and the trigger is hidden, so the classic
   expanded table menu is the only surface there.
 

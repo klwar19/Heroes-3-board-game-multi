@@ -7294,7 +7294,10 @@ button.hbSlot:disabled { cursor: default; }
 .zoomBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  /* Above the whole window band (opponent dossier 205, hub 210, hero info 220,
+     mod windows 230, hero-system windows 240): a card can be zoomed from
+     INSIDE any of them, and the zoom is a transient click-to-close reader. */
+  z-index: 300;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11744,7 +11747,10 @@ button.setupHubNavItem:hover {
 }
 
 .opponentInfoBackdrop {
-  z-index: 120;
+  /* Portaled to <body>. 205 sits ABOVE the docked table chat (200) — a modal
+     dossier must not be half-covered by an open chat panel — and below the
+     hub backdrop 210 / hero info 220 / mod windows 230 documented band. */
+  z-index: 205;
   padding: 16px;
 }
 
@@ -12046,35 +12052,51 @@ button.setupHubNavItem:hover {
 
 .opponentInfoModal {
   position: relative;
-  width: min(560px, 96vw);
-  max-height: 90vh;
+  width: min(620px, 96vw);
+  max-height: 92vh;
   overflow-y: auto;
   display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 2px solid var(--gold);
+  gap: 10px;
+  padding: 0 14px 14px;
+  border: 1px solid rgb(214 178 94 / 85%);
   border-radius: 14px;
-  background: rgb(24 21 15 / 98%);
-  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+  background:
+    repeating-linear-gradient(-38deg, rgb(255 220 150 / 2%) 0 3px, transparent 3px 8px),
+    linear-gradient(180deg, #241a10, #171009);
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 65%),
+    inset 0 0 34px rgb(0 0 0 / 45%),
+    0 24px 60px rgb(0 0 0 / 65%);
+  scrollbar-width: thin;
 }
 
+/* Faction-colored banner header — stays pinned while the dossier scrolls. */
 .opponentInfoHead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding-right: 34px;
+  margin: 0 -14px 2px;
+  padding: 12px 46px 10px 14px;
+  border-bottom: 1px solid rgb(214 178 94 / 50%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--opp-faction, #b08d2f) 30%, #221a10), rgb(28 20 12 / 99%));
+  box-shadow: 0 6px 14px rgb(0 0 0 / 45%);
 }
 
 .opponentInfoLevel {
   flex: none;
-  padding: 3px 8px;
-  border: 1px solid rgba(170, 130, 70, 0.5);
-  border-radius: 8px;
-  background: rgba(38, 30, 18, 0.8);
+  padding: 3px 9px;
+  border: 1px solid rgb(214 178 94 / 60%);
+  border-radius: 999px;
+  background: rgb(16 11 7 / 80%);
   color: #ffe9bd;
   font-size: 12px;
   font-weight: 700;
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
 }
 
 .opponentInfoSection {
@@ -12084,15 +12106,35 @@ button.setupHubNavItem:hover {
   border: 1px solid rgba(120, 92, 48, 0.35);
   border-radius: 10px;
   background: rgba(16, 13, 8, 0.55);
+  box-shadow: inset 0 1px 0 rgb(255 235 190 / 5%);
+}
+
+/* The enemy hero dossier — the headline section, spined in the faction color. */
+.opponentInfoSection.opponentHeroSection {
+  border-color: color-mix(in srgb, var(--opp-faction, #b08d2f) 45%, rgb(120 92 48));
+  box-shadow:
+    inset 0 1px 0 rgb(255 235 190 / 6%),
+    inset 3px 0 0 color-mix(in srgb, var(--opp-faction, #b08d2f) 70%, transparent);
 }
 
 .opponentInfoSection h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
   color: #d9c79b;
   text-transform: uppercase;
+}
+
+/* Gold rule trailing each section title — the HoMM parchment divider. */
+.opponentInfoSection h4::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgb(214 178 94 / 50%), transparent);
 }
 
 .opponentResources {
@@ -19429,25 +19471,25 @@ img.cardBack {
 .dockUnitStack {
   position: relative;
   flex: 0 0 auto;
-  width: 82px;
-  height: 82px;
+  width: 64px;
+  height: 64px;
   display: grid;
   place-items: center;
 }
 
 .dockUnitThumb {
   position: absolute;
-  width: 50px;
-  height: 68px;
+  width: 40px;
+  height: 54px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 5px;
   border: 1px solid rgba(20, 14, 8, 0.9);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
 /* Fan the three thumbnails out a little so it reads as a deck. */
 .dockUnitStack .dockUnitThumb:nth-child(1) {
-  transform: translateX(-16px) rotate(-8deg);
+  transform: translateX(-13px) rotate(-8deg);
 }
 
 .dockUnitStack .dockUnitThumb:nth-child(2) {
@@ -19455,7 +19497,7 @@ img.cardBack {
 }
 
 .dockUnitStack .dockUnitThumb:nth-child(3) {
-  transform: translateX(16px) rotate(8deg);
+  transform: translateX(13px) rotate(8deg);
 }
 
 .dockUnitThumb.fallback {
@@ -19473,15 +19515,24 @@ img.cardBack {
   background: linear-gradient(160deg, #7a5f28, #3a2c10);
 }
 
-/* The unit-deck dropdown reuses the hero-board drop, just wider room for the list. */
+/* The unit-deck dropdown reuses the hero-board drop, just wider room for the
+   list — dressed as a proper game window: tooled-leather ground, gold frame,
+   inner candle bevel. */
 .heroDrop.unitDrop {
   width: min(420px, 92vw);
   max-height: min(70vh, 640px);
   overflow-y: auto;
-  background: linear-gradient(180deg, rgba(38, 28, 16, 0.98), rgba(24, 17, 10, 0.99));
-  border: 1px solid rgba(170, 130, 70, 0.5);
+  background:
+    repeating-linear-gradient(-38deg, rgb(255 220 150 / 2%) 0 3px, transparent 3px 8px),
+    linear-gradient(180deg, rgba(38, 28, 16, 0.99), rgba(22, 15, 9, 0.99));
+  border: 1px solid rgb(214 178 94 / 75%);
   border-radius: 12px;
   padding: 6px 10px 12px;
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 60%),
+    inset 0 1px 0 rgb(255 235 190 / 8%),
+    inset 0 0 28px rgb(0 0 0 / 40%);
+  scrollbar-width: thin;
 }
 
 .heroDrop.unitDrop .armyPanel {
@@ -22240,6 +22291,90 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   top: 0;
   max-height: min(84vh, 760px);
   overflow-y: auto;
+}
+
+/* ---------- Left command rail chrome (HoMM3 sidebar look) ---------- */
+/* One carved panel holds the whole command column: dark tooled leather with a
+   gold hairline and an inner candle-light bevel, so the rail reads as a piece
+   of the game table instead of loose floating tiles. Desktop only — phone
+   mode's full-screen Army tab keeps its flat panels. */
+.adventureRoot:not(.phoneMode) .leftRailDock {
+  padding: 9px 8px 12px;
+  border: 1px solid rgb(146 110 56 / 55%);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgb(64 46 25 / 42%), rgb(26 18 11 / 30%) 46px, rgb(16 11 7 / 25%)),
+    repeating-linear-gradient(-38deg, rgb(255 220 150 / 2.5%) 0 3px, transparent 3px 8px),
+    linear-gradient(180deg, #201710, #150e08);
+  box-shadow:
+    inset 0 1px 0 rgb(255 235 190 / 9%),
+    inset 0 0 0 1px rgb(0 0 0 / 55%),
+    inset 0 -18px 26px rgb(0 0 0 / 38%),
+    0 10px 26px rgb(0 0 0 / 45%);
+}
+
+/* Gold double filet across the panel's top edge — the classic HoMM window trim. */
+.adventureRoot:not(.phoneMode) .leftRailDock::before {
+  content: "";
+  display: block;
+  height: 3px;
+  margin: -2px 2px 8px;
+  border-top: 1px solid rgb(214 178 94 / 65%);
+  border-bottom: 1px solid rgb(214 178 94 / 28%);
+}
+
+/* Command tiles: beveled bronze frames with the faction-colored spine kept,
+   a low inner shadow so the portrait sits IN the tile, and an ember glow on
+   hover instead of the generic lift. */
+.adventureRoot:not(.phoneMode) .leftRailDock .dockTile {
+  border-color: rgb(150 112 58 / 60%);
+  border-radius: 11px;
+  background: linear-gradient(180deg, rgb(58 42 24 / 96%), rgb(31 22 13 / 97%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 235 190 / 10%),
+    inset 0 -8px 14px rgb(0 0 0 / 32%),
+    0 3px 10px rgb(0 0 0 / 40%);
+}
+
+.adventureRoot:not(.phoneMode) .leftRailDock .dockTile:hover,
+.adventureRoot:not(.phoneMode) .leftRailDock .dockTile:focus-visible,
+.adventureRoot:not(.phoneMode) .leftRailDock .dockTile.open {
+  border-color: rgb(240 196 106 / 90%);
+  background: linear-gradient(180deg, rgb(76 55 29 / 97%), rgb(42 29 15 / 98%));
+  transform: none;
+  box-shadow:
+    inset 0 1px 0 rgb(255 235 190 / 14%),
+    inset 0 -8px 14px rgb(0 0 0 / 30%),
+    0 0 14px rgb(240 196 106 / 22%),
+    0 4px 12px rgb(0 0 0 / 45%);
+}
+
+/* The round hero portrait gets a coin-like double ring; the unit-deck card fan
+   and town sprite get a soft ground shadow so they sit on the tile. */
+.adventureRoot:not(.phoneMode) .leftRailDock .heroDockTile > img {
+  box-shadow:
+    0 0 0 2px rgb(18 12 7),
+    0 0 0 3px rgb(214 178 94 / 78%),
+    0 0 10px rgb(0 0 0 / 55%);
+}
+
+.adventureRoot:not(.phoneMode) .leftRailDock .dockOpenHint {
+  border-color: rgb(214 178 94 / 40%);
+  background: rgb(14 10 6 / 65%);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 55%);
+}
+
+/* Opponents pill matches the rail chrome (it sits inside the same panel). */
+.adventureRoot:not(.phoneMode) .leftRailDock .opponentInfoDock {
+  border-color: rgb(150 112 58 / 55%);
+  background: linear-gradient(180deg, rgb(44 32 18 / 88%), rgb(24 17 10 / 92%));
+  box-shadow: inset 0 1px 0 rgb(255 235 190 / 8%);
+}
+
+.adventureRoot:not(.phoneMode) .leftRailDock .opponentInfoBtn {
+  width: 100%;
+  justify-content: flex-start;
+  box-shadow: inset 0 1px 0 rgb(255 235 190 / 7%), 0 2px 6px rgb(0 0 0 / 35%);
 }
 
 .moraleCardsDock {
@@ -29403,20 +29538,47 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     z-index: 36;
     width: 218px;
     max-height: none;
+    /* FIT: the rail is a grid whose lone auto track used to be sized by the
+       tiles' min-content (portrait + label ≈ 228px) — the track grew PAST the
+       218px rail and every tile's right edge was clipped by the scroll box.
+       Pin the track to the rail's own width and let tile text shrink. */
+    grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;
     padding-right: 4px;
     scrollbar-width: thin;
     overscroll-behavior: contain;
   }
 
+  .adventureRoot:not(.phoneMode) .leftRail > * {
+    min-width: 0;
+  }
+
+  /* The docked chat used to park bottom-left — directly ON the fixed rail's
+     lower tiles and the hand tray. Anchor it beside the rail, above the hand
+     tray (the MMO chat spot over the map's lower-left), so the command column
+     is never covered. Combat screens (no rail) keep the classic corner. */
+  .adventureRoot:not(.phoneMode) .chatDock {
+    left: calc(var(--desktop-edge) + 226px);
+    bottom: calc(var(--desktop-hand-height) + 24px);
+  }
+
+  /* While a fly-out board (hero / unit deck / commander) is open, lift the
+     rail above the other fixed chrome (hand tray 48, library 42, top row 55,
+     room manager 90) AND the docked chat (200): an open board is a modal
+     interaction with a dimming backdrop, like the opponent dossier (205).
+     The rail's resting 36 stays under everything as documented. */
+  .adventureRoot:not(.phoneMode) .leftRail:has(.heroDropBackdrop) {
+    z-index: 205;
+  }
+
   .adventureRoot:not(.phoneMode) .leftRailDock .townHeroDock {
-    gap: 6px;
+    gap: 8px;
   }
 
   .adventureRoot:not(.phoneMode) .leftRailDock .dockTile {
     min-height: 64px;
-    gap: 8px;
-    padding: 6px 8px;
+    gap: 10px;
+    padding: 8px 9px;
   }
 
   .adventureRoot:not(.phoneMode) .leftRailDock .dockTileText strong {
@@ -29427,8 +29589,17 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     font-size: 9.5px;
   }
 
+  /* THE "shows nothing" FIX: the fly-out board opens OUTSIDE the rail box
+     (left: 100% + 12px), and a scroll container clips BOTH axes — rendered
+     position:absolute inside the fixed scrolling rail, the whole board sat
+     invisible in clipped overflow. position:fixed escapes an ancestor's
+     overflow clip (no transformed/filtered ancestor exists on this chain),
+     re-anchored to the same spot beside the rail. */
   .adventureRoot:not(.phoneMode) .leftRailDock .heroDrop {
-    max-height: calc(100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 30px);
+    position: fixed;
+    left: calc(var(--desktop-edge) + 218px + 14px);
+    top: calc(var(--desktop-hud-height) + 18px);
+    max-height: calc(100vh - var(--desktop-hud-height) - var(--desktop-hand-height) - 36px);
   }
 
   /* Shared Spells / Abilities / Artifacts / Events / Neutral units are a
