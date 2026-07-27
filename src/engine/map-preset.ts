@@ -2231,9 +2231,14 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
   }
 }
 
-/** Plain-words label for a Dragon Utopia guard mode. */
+/**
+ * Plain-words label for a Dragon Utopia guard mode. "by-difficulty" draws the
+ * COMPLETE Field Difficulty Ⅶ row (tiers included), so it is not a scaled
+ * dragon party — say so, or the banner promises dragons the fight will not
+ * field.
+ */
 export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
-  return guards === "four" ? "always four dragons" : "scale by difficulty";
+  return guards === "four" ? "always four dragons" : "the Field Difficulty table";
 }
 
 /**

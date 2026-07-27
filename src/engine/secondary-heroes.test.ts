@@ -15,7 +15,7 @@ import {
 } from "./adventure";
 import { finalizeAdventureCombat, hireSecondaryHero, resolveVisitStep, startNeutralEncounter } from "./adventure-reducer";
 import { getLegalActions, isHandLockedInCombat } from "./legal-actions";
-import { createAdventureGameState } from "./index";
+import { applyAction, createAdventureGameState } from "./index";
 import { ATTACK_DIE_FACES } from "./battlefield";
 
 type Mode = "conquest" | "grail" | "dragon-conqueror";
@@ -470,5 +470,42 @@ describe("Secondary Hero cards in combat", () => {
     state.combat.defenderPlayerId = "p1";
     expect(isHandLockedInCombat(state, "p1")).toBe(true);
     expect(isHandLockedInCombat(state, "p2")).toBe(false);
+  });
+});
+
+describe("Revisit offers name WHICH hero acts", () => {
+  // The hero-actions dock renders these labels verbatim as a flat list of
+  // buttons. A player fields at most one Secondary Hero, so with BOTH heroes
+  // parked on revisitable Fields two REVISIT_FIELD offers arrive at once — on
+  // two Monoliths they would read identically and clicking one would spend the
+  // wrong hero's movement.
+  it("distinguishes two simultaneous Revisit offers, and a lone hero keeps the plain label", () => {
+    let state = makeGame();
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+
+    const mainField = injectField(state, "monolith", "80,80");
+    const secondField = injectField(state, "monolith", "81,81");
+    const main = getMainHero(state, "p1")!;
+    main.spaceId = mainField.spaceId;
+    main.movementPoints = 3;
+    const second = createSecondaryHero(state, "p1", secondField.spaceId);
+
+    const revisits = getLegalActions(state, "p1").filter((a) => a.action.type === "REVISIT_FIELD");
+    expect(revisits).toHaveLength(2);
+    // Two DISTINCT labels, each naming the hero it will move.
+    expect(new Set(revisits.map((a) => a.label)).size).toBe(2);
+    const labelFor = (heroId: string) =>
+      revisits.find((a) => (a.action as Extract<GameAction, { type: "REVISIT_FIELD" }>).heroId === heroId)?.label;
+    expect(labelFor(main.id)).toBe("Revisit Two-Way Monolith — Main Hero");
+    expect(labelFor(second.id)).toBe("Revisit Two-Way Monolith — 2nd Hero");
+
+    // CONTROL: with the Secondary Hero off the map there is nothing to confuse,
+    // so the single offer keeps the classic label.
+    second.spaceId = null;
+    const alone = getLegalActions(state, "p1").filter((a) => a.action.type === "REVISIT_FIELD");
+    expect(alone).toHaveLength(1);
+    expect(alone[0]!.label).toBe("Revisit Two-Way Monolith");
   });
 });

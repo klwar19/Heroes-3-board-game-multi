@@ -4928,8 +4928,9 @@ function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId):
 }
 
 /**
- * Dragon Utopia visit (after its dragons are defeated — the four-dragon party,
- * trimmed to the difficulty-scaled count when guards scale by difficulty):
+ * Dragon Utopia visit (after its guards are defeated — the full Field
+ * Difficulty Ⅶ table row by default, the fixed four-dragon party in the
+ * explicit "four" mode; see {@link DragonUtopiaGuards}):
  *  - Dragon Hunt: defeating the Utopia wins outright (no need to hold it).
  *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
  *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank rewarding gold and a
@@ -12749,7 +12750,9 @@ export function drawPveThemedArmy(
 
 /**
  * Builds the guard army for a field, applying the creature-bank overrides:
- *  - Dragon Utopia: a fixed party of the four dragons (not from the deck).
+ *  - Dragon Utopia: the complete Field Difficulty table row (the default
+ *    "by-difficulty" mode, drawn from the decks) or the fixed, minted
+ *    four-dragon party in "four" mode — see {@link drawDragonUtopiaArmy}.
  *  - Random Town: the rolled faction's packs (1 bronze, 2 silver, 2 gold).
  *  - Cyclops Stockpile: the normal draw plus 2 golden Cyclopes added to the
  *    Neutral Army (the rulebook override).

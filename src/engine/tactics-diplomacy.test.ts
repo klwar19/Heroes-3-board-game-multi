@@ -569,7 +569,7 @@ describe("Diplomacy — Map recruit", () => {
   });
 
   it("offers Diplomacy when a Dwelling stands only on a second town (not just the first)", () => {
-    let state = refreshP1(makeGame());
+    const state = refreshP1(makeGame());
     state.players.p1.hand = ["ability.diplomacy"];
     state.players.p1.resources.gold = 50;
     // Town #1 (first in Object.values order can vary) — strip dwellings from
@@ -654,6 +654,54 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
     state = moveOntoGuardedMine(state);
     expect(state.pendingChoice).toBeNull();
     expect(state.combat).not.toBeNull();
+  });
+
+  it("spends from the SHARED Expert budget: a second matching-level fight this round gets no skip", () => {
+    // The observable consequence of the crown cost — not just the counter. With
+    // ONE crown for the round, using Diplomacy's Expert skip leaves the budget
+    // empty, so the NEXT matching-level encounter must be fought. The CONTROL
+    // runs the identical flow with two crowns, where the skip is still offered:
+    // the exhausted budget is what closes it.
+    const afterSkip = (crowns: number): GameState => {
+      let state = refreshP1(makeGame());
+      state.players.p1.hand = ["ability.diplomacy"];
+      state.players.p1.limits.expertUses = crowns;
+      state = moveOntoGuardedMine(state);
+      const choiceId = (state.pendingChoice as { id: string }).id;
+      state = apply(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: 0 });
+      expect(state.eventLog.some((event) => event.type === "DIPLOMACY_COMBAT_SKIPPED")).toBe(true);
+      return state;
+    };
+    /** Meets fresh level-1 guards holding a second Diplomacy, same round. */
+    const secondEncounter = (state: GameState): GameState => {
+      state.players.p1.hand = ["ability.diplomacy"];
+      state.adventure!.fields["second-guard"] = {
+        spaceId: "second-guard",
+        tileInstanceId: "t",
+        slot: 0,
+        location: "mine",
+        difficulty: 1,
+        blackCube: false,
+        flagOwnerId: null,
+        everFlagged: false,
+        settlementResource: null
+      };
+      const hero = getMainHero(state, "p1")!;
+      hero.spaceId = "second-guard";
+      startNeutralEncounter(state, hero, state.adventure!.fields["second-guard"]);
+      return state;
+    };
+
+    const spent = secondEncounter(afterSkip(1));
+    expect(spent.pendingChoice, "the round's only crown went to the first skip").toBeNull();
+    expect(spent.combat).not.toBeNull();
+
+    const spare = secondEncounter(afterSkip(2));
+    expect(
+      spare.pendingChoice?.type === "OPTION_CHOICE" && spare.pendingChoice.context,
+      "CONTROL: with a crown to spare the second skip is offered"
+    ).toBe("diplomacy-skip");
+    expect(spare.combat).toBeNull();
   });
 
   it("does not pop up (normal combat starts) without the Diplomacy card in hand", () => {
