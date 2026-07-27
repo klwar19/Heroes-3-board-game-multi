@@ -22394,6 +22394,67 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 /* z-index sits ABOVE the map's floating Far-tile tray (.farTileTray, z-index 6)
    so a hero/town/unit fly-out board — and its dimming backdrop — render on top
    of the tray instead of being blocked by it. */
+.leftRailToolbar {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.leftRailToolbar > strong {
+  display: none;
+}
+
+.leftRailExpandButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 24px;
+  min-height: 23px;
+  padding: 3px;
+  border: 1px solid rgb(203 158 78 / 34%);
+  border-radius: 6px;
+  color: #d8bb7c;
+  background: rgb(30 20 12 / 72%);
+  box-shadow: inset 0 1px 0 rgb(255 236 190 / 7%);
+  font: inherit;
+  font-size: 0;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  opacity: 0.66;
+  cursor: pointer;
+}
+
+.leftRailExpandButton:hover,
+.leftRailExpandButton:focus-visible {
+  border-color: rgb(242 201 111 / 88%);
+  color: #fff0c5;
+  background: linear-gradient(180deg, rgb(84 59 29 / 98%), rgb(42 28 14 / 99%));
+  opacity: 1;
+}
+
+.leftRailExpandButton span {
+  display: none;
+}
+
+.leftRailExpandedBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 214;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: rgb(5 4 3 / 76%);
+  backdrop-filter: blur(3px);
+  cursor: default;
+}
+
 .leftRailDock {
   display: block;
   position: relative;
@@ -26731,17 +26792,17 @@ body {
 
 /*
  * Painted geometry (claw 820×520): bar top edge at ~67.4% of art height.
- * Displayed 300px wide → that line is 128px from the art top.
- * top: -128px lands the knuckles on the real bar rim.
+ * Displayed 225px wide → that line is 96px from the art top.
+ * top: -96px lands the knuckles on the real bar rim.
  * Anchored LEFT over the deck / Spell Book cluster (ownDeckColumn sits under
  * the grip with margin-top so the talons clear the faces).
  */
 .azureClawChrome {
   position: absolute;
-  top: -128px;
-  left: 12px;
-  width: 300px;
-  height: 190px;
+  top: -96px;
+  left: -8px;
+  width: 225px;
+  height: 143px;
   z-index: 0;
   pointer-events: none;
   overflow: visible;
@@ -26754,8 +26815,8 @@ body {
 .azureClawFrostRim {
   position: absolute;
   left: 20%;
-  /* Slightly below the bar rim (~128px) so frost sits under the talons. */
-  top: 126px;
+  /* Slightly below the bar rim (~96px) so frost sits under the talons. */
+  top: 94px;
   width: 60%;
   height: auto;
   display: block;
@@ -26801,7 +26862,7 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 300px;
+  width: 225px;
   height: auto;
   display: block;
   object-fit: contain;
@@ -32746,6 +32807,117 @@ button.armyExperienceBoard > small { color: #9b917d; font-size: 8px; text-transf
   display: block;
   margin: 4px 0 8px;
   color: var(--muted);
+}
+
+/* Desktop command-rail overflow escape hatch. The compact rail remains the
+   default; "View all" promotes that same live content into a roomy modal. */
+@media (min-width: 1101px) {
+  .adventureRoot:not(.phoneMode) .leftRail.leftRailExpanded {
+    top: max(24px, env(safe-area-inset-top, 0px));
+    right: auto;
+    bottom: max(24px, env(safe-area-inset-bottom, 0px));
+    left: max(24px, calc((100vw - 1080px) / 2));
+    z-index: 215;
+    display: block;
+    box-sizing: border-box;
+    width: min(1080px, calc(100vw - 48px));
+    padding: 16px;
+    overflow: auto;
+    border: 2px solid rgb(203 158 78 / 76%);
+    border-radius: 16px;
+    background:
+      linear-gradient(180deg, rgb(48 34 19 / 98%), rgb(18 12 8 / 99%) 94px),
+      var(--cmp-leather) center / 320px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(255 230 165 / 12%),
+      inset 0 0 44px rgb(0 0 0 / 48%),
+      0 28px 80px rgb(0 0 0 / 76%);
+    scrollbar-width: thin;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailToolbar {
+    position: sticky;
+    top: -16px;
+    left: auto;
+    justify-content: space-between;
+    margin: -16px -16px 14px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgb(203 158 78 / 42%);
+    background: linear-gradient(180deg, rgb(55 39 21 / 99%), rgb(30 20 12 / 99%));
+    box-shadow: 0 8px 18px rgb(0 0 0 / 28%);
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailToolbar > strong {
+    display: block;
+    color: #f2d79c;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    letter-spacing: 0.045em;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailExpandButton {
+    width: auto;
+    min-height: 27px;
+    padding: 4px 8px;
+    font-size: 10px;
+    opacity: 1;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailExpandButton span {
+    display: inline;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailDock {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailDock::before {
+    grid-column: 1 / -1;
+    margin-bottom: -2px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailDock .townHeroDock {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 12px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailDock .dockTile {
+    min-height: 82px;
+  }
+
+  .adventureRoot:not(.phoneMode) .leftRailExpanded .leftRailDock .heroDrop {
+    left: max(24px, calc((100vw - min(1080px, calc(100vw - 48px))) / 2 + 24px));
+    top: 74px;
+    width: min(900px, calc(100vw - 96px));
+    max-height: calc(100dvh - 122px);
+  }
+}
+
+.phoneMode .leftRailToolbar {
+  display: none;
+}
+
+/* Detail windows launched from the expanded command panel must paint above the
+   panel itself. Their normal map z-index is intentionally lower than the full
+   command window, which otherwise makes Town/Opponent/VP dialogs look as if
+   their buttons did nothing. Commander and mod-system windows are included so
+   every conditional rail tool follows the same rule. */
+body:has(.leftRailExpanded) .townWindowBackdrop,
+body:has(.leftRailExpanded) .opponentInfoBackdrop,
+body:has(.leftRailExpanded) .vpStandingsBackdrop,
+body:has(.leftRailExpanded) .commanderLevelUpBackdrop,
+body:has(.leftRailExpanded) .heroSystemBackdrop,
+body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
+  z-index: 230;
+}
+
+body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
+  z-index: 235;
 }
 
 @media (max-width: 620px) {
