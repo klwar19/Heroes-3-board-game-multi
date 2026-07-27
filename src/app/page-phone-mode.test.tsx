@@ -543,3 +543,95 @@ describe("hand-step directives banner — the mandatory start-of-turn draw", () 
     expect(mainEl().querySelector(".handDirectives")).toBeNull();
   });
 });
+
+describe("left command rail — the full-panel overflow escape hatch", () => {
+  // The 218px desktop rail scrolls, so its lower stations (morale, VP,
+  // opponents) can sit below the fold. "View all" promotes the SAME live rail
+  // content into a centred panel. jsdom cannot compute CSS, so this pins the
+  // WIRING the CSS keys on: the header lives directly inside `.leftRail` (the
+  // sticky rule uses a child selector), the class + aria state flip, the
+  // click-to-close backdrop mounts only while expanded, and Escape defers to a
+  // stacked window instead of closing two levels at once. The paint (fixed
+  // panel, sticky header, the ≥1101px gating that hides the trigger) is a
+  // real-browser concern.
+  const header = () => mainEl().querySelector(".leftRail > .leftRailToolbar");
+  const trigger = () => mainEl().querySelector<HTMLButtonElement>(".leftRailExpandButton");
+  const rail = () => mainEl().querySelector(".leftRail");
+  const backdrop = () => mainEl().querySelector(".leftRailExpandedBackdrop");
+
+  it("the trigger flips `.leftRailExpanded` + aria-expanded and mounts the backdrop", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureGameState({ seed: "rail-expand", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    // Direct child of the rail — the sticky-header rule is `> .leftRailToolbar`.
+    expect(header(), "the rail header inside .leftRail").toBeTruthy();
+    expect(trigger(), "the View all trigger").toBeTruthy();
+    expect(trigger()?.getAttribute("aria-expanded")).toBe("false");
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(false);
+    expect(backdrop(), "no backdrop while compact").toBeNull();
+
+    fireEvent.click(trigger()!);
+    await settle();
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(true);
+    expect(trigger()?.getAttribute("aria-expanded")).toBe("true");
+    expect(rail()?.getAttribute("role")).toBe("dialog");
+    expect(backdrop(), "the click-to-close backdrop").toBeTruthy();
+
+    // Clicking the backdrop closes it (the same state the trigger toggles).
+    fireEvent.click(backdrop()!);
+    await settle();
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(false);
+    expect(backdrop()).toBeNull();
+  });
+
+  it("Escape closes the panel — but DEFERS while a window is stacked above it", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createAdventureGameState({ seed: "rail-expand-escape", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    fireEvent.click(trigger()!);
+    await settle();
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(true);
+
+    // A window opened FROM the panel owns the Escape (the SetupHubWindow rule):
+    // closing both at once would throw the player back two levels.
+    const stacked = document.createElement("div");
+    stacked.className = "modalBackdrop townWindowBackdrop";
+    document.body.appendChild(stacked);
+    fireEvent.keyDown(window, { key: "Escape" });
+    await settle();
+    expect(rail()?.classList.contains("leftRailExpanded"), "still open behind the window").toBe(true);
+
+    stacked.remove();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await settle();
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(false);
+  });
+
+  it("CONTROL — phone mode renders the rail with no header and no trigger surface", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
+    serveRoom(createAdventureGameState({ seed: "rail-expand-phone", rollFirstPlayer: false }));
+    render(<Home />);
+    await settle();
+
+    expect(mainEl().classList.contains("phoneMode"), "the phone shell").toBe(true);
+    // The rail itself still exists (the Army tab shows it); only the desktop
+    // escape hatch is inert — CSS hides the header, so nothing can expand.
+    expect(rail(), "the rail is still in the DOM").toBeTruthy();
+    expect(rail()?.classList.contains("leftRailExpanded")).toBe(false);
+    expect(backdrop()).toBeNull();
+  });
+
+  it("CONTROL — the combat table has no command rail at all", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    serveRoom(createInitialGameState("rail-expand-combat"));
+    render(<Home />);
+    await settle();
+
+    expect(mainEl().querySelector(".leftRail")).toBeNull();
+    expect(mainEl().querySelector(".leftRailExpandButton")).toBeNull();
+  });
+});
