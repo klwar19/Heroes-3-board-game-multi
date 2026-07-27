@@ -11249,11 +11249,12 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState, interactive = f
   const destinations = defeatedHeroRetreatDestinations(state, hero);
 
   if (interactive && hero.kind === "main" && destinations.length >= 2) {
-    // Leave the beaten Hero on the fight field (movement spent) and let its
-    // owner pick which friendly Town or Settlement to fall back to. The choice
-    // is pumped into a pendingVisit right after this action resolves, so the
-    // Hero is never left stranded between actions.
-    hero.movementPoints = 0;
+    // Leave the beaten Hero on the fight field and let its owner pick which
+    // friendly Town or Settlement to fall back to. Movement already spent on
+    // the approach / combat remains spent, but defeat itself carries no extra
+    // "lose every remaining MP" penalty. The choice is pumped into a
+    // pendingVisit right after this action resolves, so the Hero is never left
+    // stranded between actions.
     adventure.rewardQueue.unshift({
       playerId: hero.controllerId,
       kind: "visit-steps",
@@ -11272,7 +11273,8 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState, interactive = f
   }
 
   hero.spaceId = destinations[0]?.spaceId ?? null;
-  hero.movementPoints = 0;
+  // Relocation after a defeat is not an additional movement cost. Preserve the
+  // points left after the hero's normal map/combat deductions.
 }
 
 /**

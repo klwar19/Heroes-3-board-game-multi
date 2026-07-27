@@ -5551,6 +5551,11 @@ export default function Home() {
           {presentationSkipControl}
           <div className="tableTopRow">
             <AdventureHud
+              eventLogControl={
+                !phoneUi ? (
+                  <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
+                ) : undefined
+              }
               legalActions={legalActions}
               onAction={submitAction}
               state={state}
@@ -6564,7 +6569,9 @@ export default function Home() {
             viewerPlayerId={viewerPlayerId}
           />
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
-          <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
+          {phoneUi ? (
+            <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
+          ) : null}
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
               canRedraw={handCards.length > 0}

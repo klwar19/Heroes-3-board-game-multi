@@ -209,10 +209,12 @@ describe("PreBattlePanel — PvP pre-battle preparation (on the map)", () => {
 
   it("offers the preparing defender an Accept button (fires ACCEPT_COMBAT)", () => {
     const onAction = vi.fn<(action: GameAction) => void>();
-    const { getByText } = render(
+    const { getByRole, getByText } = render(
       <PreBattlePanel legalActions={DEFENDER_ACTIONS} onAction={onAction} state={prepState()} viewerPlayerId="p2" />
     );
 
+    const notice = getByRole("dialog", { name: "Prepare for battle" });
+    expect(notice.getAttribute("aria-modal")).toBe("false");
     expect(getByText("Retreat (lose the combat)")).toBeTruthy();
     fireEvent.click(getByText("Accept the battle"));
     expect(onAction).toHaveBeenCalledWith({ type: "ACCEPT_COMBAT", playerId: "p2" });

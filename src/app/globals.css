@@ -7186,24 +7186,42 @@ button.hbSlot:disabled { cursor: default; }
   font-size: 12px;
 }
 
-/* Pre-battle preparation banner — shown on the adventure map while both sides
-   ready up before deployment. Stands out as the key call to action. */
+/* PvP preparation is a non-modal event notice over the map. It stays available
+   until answered, but does not consume a row or push the map and hand down. */
 .preBattlePanel {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  position: fixed;
+  top: clamp(62px, 7vh, 84px);
+  left: 50%;
+  z-index: 94;
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 112px);
+  overflow: auto;
   padding: 10px 14px;
-  background: linear-gradient(160deg, rgba(82, 30, 24, 0.92) 0%, rgba(48, 20, 16, 0.92) 100%);
-  border: 1px solid rgba(230, 150, 90, 0.55);
-  border-radius: 10px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgb(255 222 150 / 14%), transparent 60%),
+    linear-gradient(165deg, rgb(55 31 22 / 97%), rgb(24 16 10 / 97%));
+  border: 1px solid rgb(214 168 96 / 68%);
+  border-radius: 14px;
   color: #f6e3cc;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  /* The card bar sits directly below this panel and the decorative Azure claw
-     overflows UPWARD out of it into this panel's area. Give the panel its own
-     stacking layer (no layout move — position:relative with no offsets) so the
-     "Accept the battle" box always paints ABOVE the claw and stays readable. */
-  position: relative;
-  z-index: 4;
+  box-shadow: 0 18px 50px rgb(0 0 0 / 62%);
+  transform: translateX(-50%);
+  animation: preBattleNoticePop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes preBattleNoticePop {
+  from {
+    transform: translateX(-50%) scale(0.9);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
 }
 
 .preBattleHeader {
@@ -22407,10 +22425,13 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 .adventureRoot:not(.phoneMode) .leftRailDock::before {
   content: "";
   display: block;
-  height: 3px;
-  margin: -2px 2px 8px;
-  border-top: 1px solid rgb(214 178 94 / 65%);
-  border-bottom: 1px solid rgb(214 178 94 / 28%);
+  width: min(132px, 72%);
+  height: 7px;
+  margin: -2px auto 8px;
+  border: 0;
+  background: var(--orn-tray-rail) center / auto 7px no-repeat;
+  opacity: 0.72;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 70%));
 }
 
 /* Command tiles: beveled bronze frames with the faction-colored spine kept,
@@ -28507,6 +28528,11 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   --orn-frame: url("/assets/ui/ornate/frame-ornate.webp");
   --orn-rail: url("/assets/ui/ornate/rail-divider.webp");
   --orn-plaque: url("/assets/ui/ornate/plaque-title.webp");
+  --orn-tray-rail: url("/assets/ui/ornate/rail-divider-slim-v2.webp");
+  --orn-hand-divider-left: url("/assets/ui/ornate/hand-divider-v4-left.webp");
+  --orn-hand-divider-right: url("/assets/ui/ornate/hand-divider-v4-right.webp");
+  --orn-hand-divider-center: url("/assets/ui/ornate/hand-divider-v4-center.webp");
+  --orn-tray-plaque: url("/assets/ui/ornate/title-plate-slim-v2.webp");
 }
 
 /* ---- 1. Top HUD status ribbon → carved gold-banded leather bar --------- */
@@ -28538,20 +28564,47 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .playerCardBar .trayBoxHeader,
 .playerCardBar .handTopBar {
   position: relative;
-  padding-bottom: 9px;
+  padding-bottom: 7px;
+}
+
+.playerCardBar .trayBoxHeader::before,
+.playerCardBar .handTopBar::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: -2px;
+  height: 12px;
+  background:
+    var(--orn-hand-divider-left) left center / auto 10px no-repeat,
+    var(--orn-hand-divider-right) right center / auto 10px no-repeat,
+    linear-gradient(
+      to bottom,
+      transparent 5px,
+      rgb(224 188 103 / 68%) 5px 6px,
+      rgb(43 27 13 / 92%) 6px 7px,
+      transparent 7px
+    ) center / calc(100% - 16px) 12px no-repeat;
+  opacity: 0.9;
+  filter:
+    drop-shadow(0 1px 1px rgb(0 0 0 / 78%))
+    drop-shadow(0 0 1px rgb(67 132 205 / 12%));
+  pointer-events: none;
 }
 
 .playerCardBar .trayBoxHeader::after,
 .playerCardBar .handTopBar::after {
   content: "";
   position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 0;
-  height: 12px;
-  background: var(--orn-rail) center bottom / 100% 12px no-repeat;
-  opacity: 0.8;
-  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+  left: 50%;
+  bottom: -2px;
+  width: 40px;
+  height: 11px;
+  background: var(--orn-hand-divider-center) center / contain no-repeat;
+  filter:
+    drop-shadow(0 1px 1px rgb(0 0 0 / 82%))
+    drop-shadow(0 0 2px rgb(91 160 226 / 18%));
+  transform: translateX(-50%);
   pointer-events: none;
 }
 
@@ -28562,8 +28615,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .playerCardBar .permanentEffectsPanel .trayBoxHeader strong,
 .playerCardBar .handArea .handTopBar > small:first-child {
   position: relative;
-  padding: 5px 30px 6px;
-  color: var(--cmp-gold-bright);
+  padding: 4px 25px 5px;
+  color: #f0d894;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -28574,10 +28627,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .playerCardBar .handArea .handTopBar > small:first-child::before {
   content: "";
   position: absolute;
-  inset: -3px -2px -2px;
+  inset: -2px -3px -1px;
   z-index: -1;
-  background: var(--orn-plaque) center / 100% 100% no-repeat;
-  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 55%));
+  background: var(--orn-tray-plaque) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 62%));
   pointer-events: none;
 }
 
@@ -29342,7 +29395,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .adventureRoot:not(.phoneMode) {
     --desktop-hud-height: 62px;
     --desktop-hand-height: 198px;
-    --desktop-library-width: 210px;
+    --desktop-library-width: clamp(104px, 6.2vw, 116px);
     --desktop-edge: max(14px, calc((100vw - 1680px) / 2 + 14px));
     padding-bottom: calc(var(--desktop-hand-height) + 18px);
   }
@@ -29358,6 +29411,74 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 6px;
     align-items: start;
+  }
+
+  /* History lives in the top command band as one compact scroll button.
+     Opening it produces a floating chronicle below that button instead of
+     inserting the full event feed into the map layout. */
+  .adventureRoot:not(.phoneMode) .advHudButtons {
+    position: relative;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer {
+    position: relative;
+    flex: 0 0 96px;
+    width: 96px;
+    min-width: 96px;
+    margin: 0;
+    overflow: visible;
+    border: 1px solid var(--cmp-gold-deep);
+    border-radius: 9px;
+    background:
+      linear-gradient(180deg, rgb(34 25 14 / 96%), rgb(18 13 8 / 98%)),
+      var(--cmp-leather) center / 180px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 28%),
+      inset 0 1px 0 rgb(246 226 168 / 12%),
+      0 6px 18px rgb(0 0 0 / 46%);
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logToggle {
+    justify-content: center;
+    gap: 5px;
+    width: 94px;
+    min-height: 36px;
+    padding: 0 8px;
+    color: var(--cmp-gold-bright);
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logToggle svg:last-child {
+    display: none;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logToggle span {
+    flex: 0 1 auto;
+    color: #f0dcb8;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logPopover {
+    position: fixed;
+    top: calc(6px + var(--desktop-hud-height) + 6px);
+    right: calc(var(--desktop-edge) + 84px);
+    z-index: 92;
+    width: min(560px, calc(100vw - 112px));
+    max-height: calc(100vh - 18px);
+    overflow: hidden;
+    border: 1px solid var(--cmp-gold-deep);
+    border-radius: 9px;
+    background:
+      linear-gradient(180deg, rgb(26 19 11 / 99%), rgb(13 10 7 / 99%)),
+      var(--cmp-leather) center / 280px repeat;
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 25%),
+      0 18px 48px rgb(0 0 0 / 72%);
+  }
+
+  .adventureRoot:not(.phoneMode) .advHudButtons > .logDrawer .logPopover ol {
+    max-height: calc(100vh - 118px);
   }
 
   .adventureRoot:not(.phoneMode) > .tableTopRow > .advHud {
@@ -29634,14 +29755,13 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
   /* The left rail and the shared library are FIXED, so they float over the
      whole viewport band — not just over the mid row. Every other full-width row
-     that stays in the flow (the event feed, the rules-error banner, the
-     pre-battle panel) therefore has to keep out of those two columns, or its
-     first 218px and last 218px sit UNDER a rail: the feed's lines begin under
+     that stays in the flow (the event feed and the rules-error banner) has to
+     keep out of those two columns, or its first 218px and last 218px sit UNDER
+     a rail: the feed's lines begin under
      the town/hero dock and end under the library. Inset them to exactly the map
      column's gutters so the whole page reads as one column of content. */
   .adventureRoot:not(.phoneMode) > .logDrawer,
-  .adventureRoot:not(.phoneMode) > .errorBanner,
-  .adventureRoot:not(.phoneMode) > .preBattlePanel {
+  .adventureRoot:not(.phoneMode) > .errorBanner {
     margin-right: calc(var(--desktop-library-width) + 8px);
     margin-left: 226px;
   }
@@ -29746,8 +29866,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     flex-wrap: nowrap;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 5px;
-    padding: 25px 7px 8px;
+    gap: 4px;
+    padding: 24px 5px 7px;
     overflow-y: auto;
     scrollbar-width: thin;
     overscroll-behavior: contain;
@@ -29767,10 +29887,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeckRow {
     flex: 0 0 auto;
-    min-height: 58px;
+    min-height: 52px;
     justify-content: center;
-    gap: 5px;
-    padding: 4px 3px;
+    gap: 4px;
+    padding: 3px 2px;
     border: 0;
     border-bottom: 1px solid rgb(217 178 90 / 14%);
   }
@@ -29781,35 +29901,48 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .cardBack.small,
   .adventureRoot:not(.phoneMode) > .advDecksBottom .advDiscard {
-    width: 38px;
-    height: 53px;
+    width: 34px;
+    height: 47px;
   }
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeck small,
   .adventureRoot:not(.phoneMode) > .advDecksBottom .advDiscard small {
-    max-width: 66px;
+    max-width: 56px;
     white-space: normal;
     line-height: 1.05;
     text-align: center;
-    font-size: 8px;
+    font-size: 7px;
   }
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .advDeckRow.neutral {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, 32px);
+    justify-content: center;
     width: 100%;
-    gap: 3px;
+    min-height: 68px;
+    gap: 2px;
+    padding: 2px 0;
+  }
+
+  .adventureRoot:not(.phoneMode) > .advDecksBottom .neutralDeckCell {
+    min-width: 0;
+    width: 100%;
   }
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .neutralDeck {
-    width: 100%;
-    min-height: 48px;
-    padding: 2px 1px;
+    width: 32px;
+    height: 32px;
+    min-width: 0;
+    min-height: 0;
+    aspect-ratio: 1;
+    justify-content: center;
+    margin-inline: auto;
+    padding: 1px;
     background-size: cover;
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .adventureRoot:not(.phoneMode) > .advDecksBottom .neutralDeck small {
-    font-size: 7px;
+    font-size: 6.5px;
   }
 
   /* The player's hand is the bottom command surface, not a large row between

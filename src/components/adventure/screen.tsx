@@ -3293,12 +3293,14 @@ export function AdventureHud({
   state,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  eventLogControl
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  eventLogControl?: ReactNode;
 }) {
   const { zoomContent } = useCardZoom();
   const [confirmGiveUp, setConfirmGiveUp] = useState(false);
@@ -3528,6 +3530,7 @@ export function AdventureHud({
             ↩ Undo
           </button>
         ) : null}
+        {eventLogControl}
         {endTurn ? (
           <button className="commandButton" onClick={() => onAction(endTurn.action)} type="button">
             End turn
@@ -6780,17 +6783,18 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
 }
 
 // ---------------------------------------------------------------------------
-// Pre-battle preparation panel (shown on the adventure MAP, not the battlefield)
+// Pre-battle preparation notice (shown over the adventure MAP)
 // ---------------------------------------------------------------------------
 
 /**
- * The player-vs-player pre-battle preparation panel. When an enemy hero attacks,
+ * The player-vs-player pre-battle preparation notice. When an enemy hero attacks,
  * BOTH sides prepare here — on the map, with their town, resources and army in
  * full view — spending any remaining town actions (build / recruit / buy spells
  * at the town panel to the right) before pressing "Accept the battle". Deployment
  * begins only once both the attacker and the defender have accepted; either side
  * may instead Retreat / Surrender out of the fight. Renders nothing outside an
- * open PvP prep window.
+ * open PvP prep window. It is styled as a fixed non-modal notice, so it does not
+ * consume map layout space or block the surrounding controls.
  */
 export function PreBattlePanel({
   state,
@@ -6849,7 +6853,7 @@ export function PreBattlePanel({
   );
 
   return (
-    <div className="preBattlePanel" aria-label="Prepare for battle">
+    <div aria-label="Prepare for battle" aria-modal="false" className="preBattlePanel" role="dialog">
       <div className="preBattleHeader">
         <Swords aria-hidden="true" size={16} />
         <strong>
