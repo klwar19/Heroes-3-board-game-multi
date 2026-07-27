@@ -3,11 +3,13 @@
 import type { GameAction, LegalAction } from "@/engine";
 
 // ---------------------------------------------------------------------------
-// Hero actions dock — the human click surface for the anime hero MAP actions
-// that were engine-complete + AI-played but had no button:
+// Hero actions dock — the human click surface for MAP actions that have no
+// destination hex to click:
 //   - HERO_TRAIN (Anime Hero Grades §3.11): spend 2 movement → +1 Merit.
 //   - Forced March (the USE_HERO_SKILL map-active grade skill): +1 movement.
 //   - HEAVEN_TRIBULATION (Anime Cultivation §5.6): brave the tribulation dice.
+//   - REVISIT_FIELD: activate the location under a stationary Hero, including a
+//     Monolith at the beginning of the turn.
 //
 // Availability is READ from the legal-action list (never re-derived here), so a
 // button appears IFF `getLegalActions` currently offers that action to the
@@ -15,7 +17,7 @@ import type { GameAction, LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "forced-march" | "tribulation";
+type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit";
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -33,6 +35,11 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "Heavenly Tribulation",
     vi: "Độ kiếp",
     title: "Brave the tribulation dice to break through to Core Formation — realm 3 (never forced)"
+  },
+  revisit: {
+    en: "Revisit field",
+    vi: "",
+    title: "Activate the field under this Hero"
   }
 };
 
@@ -43,6 +50,9 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   }
   if (action.type === "HEAVEN_TRIBULATION") {
     return "tribulation";
+  }
+  if (action.type === "REVISIT_FIELD") {
+    return "revisit";
   }
   // Forced March is the only map-active grade skill: it uses USE_HERO_SKILL with
   // no unitId (the combat War Cry / reactions carry a unitId).
@@ -59,11 +69,11 @@ export function HeroActionsDock({
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
-  const offers: { key: HeroMapActionKey; action: GameAction }[] = [];
+  const offers: { key: HeroMapActionKey; action: GameAction; legalLabel: string }[] = [];
   for (const legal of legalActions) {
     const key = heroMapActionKey(legal.action);
     if (key) {
-      offers.push({ key, action: legal.action });
+      offers.push({ key, action: legal.action, legalLabel: legal.label });
     }
   }
 
@@ -76,16 +86,22 @@ export function HeroActionsDock({
       <header>Hero actions</header>
       {offers.map((offer) => {
         const label = HERO_MAP_ACTION_LABELS[offer.key];
+        const reactKey =
+          offer.action.type === "REVISIT_FIELD"
+            ? `${offer.key}:${offer.action.heroId}`
+            : offer.key;
         return (
           <button
             className="heroActionButton"
-            key={offer.key}
+            key={reactKey}
             onClick={() => onAction(offer.action)}
             title={label.title}
             type="button"
           >
-            <span className="heroActionLabelEn">{label.en}</span>
-            <small className="heroActionLabelVi">{label.vi}</small>
+            <span className="heroActionLabelEn">
+              {offer.key === "revisit" ? offer.legalLabel : label.en}
+            </span>
+            {label.vi ? <small className="heroActionLabelVi">{label.vi}</small> : null}
           </button>
         );
       })}

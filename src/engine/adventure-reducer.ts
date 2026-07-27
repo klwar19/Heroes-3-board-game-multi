@@ -4829,11 +4829,10 @@ export function startNeutralEncounter(
     return;
   }
 
-  // Cyra's Diplomacy (Instant): a hero meeting Neutral Units whose Field
-  // Difficulty equals their level may skip the fight, claim the field and gain
-  // no Experience. Offer the choice while the player holds the card; declining
-  // falls through to the normal Combat Setup.
-  if (level === difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+  // Diplomacy's skip is the REGULAR card's Expert side, so it needs an unused
+  // Expert-effect crown. Empowered Diplomacy prints the same Instant as a basic
+  // alternative and therefore needs no crown.
+  if (level === difficulty && canUseDiplomacySkip(state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, difficulty);
     return;
   }
@@ -4935,7 +4934,7 @@ export function resolvePolishQuickCombatChoice(state: GameState, playerId: Playe
   // shortcut — Cyra's Diplomacy still gets its matching-level skip offer, then
   // the normal guard Combat Setup.
   const level = neutralBattleLevel(state, hero);
-  if (level === decision.difficulty && state.players[playerId]?.hand.includes("ability.diplomacy")) {
+  if (level === decision.difficulty && canUseDiplomacySkip(state.players[playerId])) {
     openDiplomacySkipChoice(state, hero, field, decision.difficulty);
     return;
   }
@@ -5072,6 +5071,14 @@ function beginNeutralCombatPlacement(
   }
 }
 
+/** Whether a matching-level encounter may currently use Diplomacy's Instant side. */
+function canUseDiplomacySkip(player: PlayerState | undefined): boolean {
+  return Boolean(
+    player?.hand.includes("ability.diplomacy") &&
+      (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.diplomacy"))
+  );
+}
+
 /** Opens the Diplomacy skip-or-fight pop-up at a matching-level Neutral field. */
 function openDiplomacySkipChoice(
   state: GameState,
@@ -5079,14 +5086,25 @@ function openDiplomacySkipChoice(
   field: MapFieldState,
   difficulty: number
 ): void {
+  const player = state.players[hero.controllerId];
+  const crownFree = Boolean(player && abilityExpertIsCrownFree(player, "ability.diplomacy"));
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId: hero.controllerId,
-    prompt: `Diplomacy: skip the level ${difficulty} Neutral Units and claim this field for no Experience?`,
-    options: [{ label: "Use Diplomacy: skip the fight, claim the field (no XP)" }, { label: "Fight the Neutral Units" }],
+    prompt: crownFree
+      ? `Empowered Diplomacy: skip the level ${difficulty} Neutral Units and claim this field for no Experience?`
+      : `Diplomacy (Expert): spend 1 Expert-effect crown to skip the level ${difficulty} Neutral Units?`,
+    options: [
+      {
+        label: crownFree
+          ? "Use Empowered Diplomacy: skip the fight, claim the field (no XP)"
+          : "Use Diplomacy (Expert): spend 1 crown, skip the fight (no XP)"
+      },
+      { label: "Fight the Neutral Units" }
+    ],
     context: "diplomacy-skip",
-    diplomacySkip: { heroId: hero.id, fieldId: field.spaceId, difficulty },
+    diplomacySkip: { heroId: hero.id, fieldId: field.spaceId, difficulty, crownFree },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -5124,16 +5142,27 @@ export function resolveDiplomacySkipChoice(state: GameState, playerId: PlayerId,
     return;
   }
 
-  // Option 0 ("Use Diplomacy"): spend the card, claim the field as a Quick
-  // Combat would (visit it), and award no Experience.
+  // Option 0 ("Use Diplomacy"): the regular card must still have a crown at
+  // resolution time. Empowered Diplomacy's alternative Instant is crown-free.
   const player = state.players[playerId];
-  if (player) {
-    const index = player.hand.indexOf("ability.diplomacy");
-    if (index !== -1) {
-      player.hand.splice(index, 1);
-      player.discard.push("ability.diplomacy");
-    }
+  const empowered = Boolean(player && abilityExpertIsCrownFree(player, "ability.diplomacy"));
+  // Older saved choices predate the explicit flag; the permanent Empowered
+  // marker is enough to recover the correct crown-free behavior.
+  const crownFree = skip.crownFree === undefined ? empowered : skip.crownFree && empowered;
+  const handIndex = player?.hand.indexOf("ability.diplomacy") ?? -1;
+  if (!player || handIndex < 0 || (!crownFree && expertUsesAvailable(player) <= 0)) {
+    beginNeutralCombatPlacement(state, hero, field, skip.difficulty);
+    return;
   }
+
+  if (!crownFree) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  // Spend the card, claim the field as a Quick Combat would (visit it), and
+  // award no Experience.
+  player.hand.splice(handIndex, 1);
+  player.discard.push("ability.diplomacy");
 
   appendEvent(state, {
     type: "DIPLOMACY_COMBAT_SKIPPED",

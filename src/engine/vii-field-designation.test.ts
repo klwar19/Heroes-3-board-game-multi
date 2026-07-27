@@ -135,11 +135,11 @@ describe("Ⅶ designation — face-up center tile", () => {
     expect(field?.location).toBe("dragon_utopia");
     expect(field?.difficulty).toBe(7);
 
-    // Fightable exactly like a printed Utopia: the guard draw is the minted azure
-    // dragon party (reusing the Utopia guard-draw path).
+    // Fightable exactly like a printed Utopia: the default mode uses the full
+    // Field Difficulty row. Normal VII is 2 azure units drawn from the deck.
     const draws = drawGuardArmy(state, field!, 7);
-    expect(draws.length).toBeGreaterThanOrEqual(1);
-    expect(draws.every((draw) => draw.tier === "azure" && draw.bankGuard === true)).toBe(true);
+    expect(draws.map((draw) => draw.tier)).toEqual(["azure", "azure"]);
+    expect(draws.every((draw) => !draw.bankGuard)).toBe(true);
   });
 
   it("CONTROL: no viiField keeps C4's printed Grail field", () => {

@@ -7,8 +7,7 @@ import {
   dragonUtopiaDifficultyGuardCount,
   drawGuardArmy,
   getMainHero,
-  makeCombatUnitFromNeutral,
-  NEUTRAL_DECK_IDS
+  makeCombatUnitFromNeutral
 } from "./adventure";
 import type { GameDifficulty } from "./state";
 import { coreUnitDefinitions } from "@/data/factions/units";
@@ -37,36 +36,27 @@ describe("Dragon Utopia guards", () => {
     hard: 3,
     impossible: 4
   };
+  const TIERS_BY_DIFFICULTY: Record<GameDifficulty, string[]> = {
+    easy: ["azure"],
+    normal: ["azure", "azure"],
+    hard: ["azure", "azure", "gold"],
+    impossible: ["azure", "azure", "gold", "gold"]
+  };
 
   function utopiaDraws(seed: string, difficulty: GameDifficulty, mutate?: (state: ReturnType<typeof createAdventureGameState>) => void) {
     const state = createAdventureGameState({ seed, difficulty, rollFirstPlayer: false });
     mutate?.(state);
-    const azureBefore = state.decks[NEUTRAL_DECK_IDS.azure].drawPile.length;
     const draws = drawGuardArmy(state, fieldWith("dragon_utopia"), 7);
-    return { state, draws, azureBefore };
+    return { state, draws };
   }
 
-  it("ALWAYS leads with the featured azure slot (Azure/Rust), minted, never touching the azure deck", () => {
-    const { state, draws, azureBefore } = utopiaDraws("utopia", "normal");
-
-    // The lead guard is the featured slot — an Azure or Rust Dragon, never fixed
-    // to Azure alone. (The other dragons are also azure-TIER, so this is about
-    // the featured lead, not tier uniqueness.)
-    expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(draws[0]!.unitDefId);
-    // No duplicate dragons in the party (the azure-slot swap stays distinct).
-    expect(new Set(draws.map((d) => d.unitDefId)).size).toBe(draws.length);
-
-    expect(draws.every((draw) => draw.bankGuard === true)).toBe(true);
-    expect(draws.every((draw) => draw.tier === "azure")).toBe(true);
-    // Bank guards are minted, never drawn — the azure deck is untouched.
-    expect(state.decks[NEUTRAL_DECK_IDS.azure].drawPile.length).toBe(azureBefore);
-    expect(state.decks[NEUTRAL_DECK_IDS.azure].discardPile.length).toBe(0);
-
-    const unit = makeCombatUnitFromNeutral(draws[0]!, "u1", 0);
-    expect(unit?.bankGuard).toBe(true);
+  it("uses the full difficulty-table tier composition in the default mode", () => {
+    const { draws } = utopiaDraws("utopia-hard-table", "hard");
+    expect(draws.map((draw) => draw.tier).sort()).toEqual(["azure", "azure", "gold"]);
+    expect(draws.every((draw) => !draw.bankGuard)).toBe(true);
   });
 
-  it("scales the guard COUNT with the game difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible 4)", () => {
+  it("uses every difficulty row's count and tiers", () => {
     for (const difficulty of ["easy", "normal", "hard", "impossible"] as const) {
       const { draws } = utopiaDraws(`utopia-${difficulty}`, difficulty);
       expect(dragonUtopiaDifficultyGuardCount(
@@ -74,8 +64,7 @@ describe("Dragon Utopia guards", () => {
         7
       )).toBe(COUNT_BY_DIFFICULTY[difficulty]);
       expect(draws, `${difficulty} guard count`).toHaveLength(COUNT_BY_DIFFICULTY[difficulty]);
-      // The azure slot is always present, even at Easy (a lone dragon).
-      expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(draws[0]!.unitDefId);
+      expect(draws.map((draw) => draw.tier).sort()).toEqual(TIERS_BY_DIFFICULTY[difficulty]!.slice().sort());
     }
   });
 
@@ -93,10 +82,12 @@ describe("Dragon Utopia guards", () => {
     expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(draws[0]!.unitDefId);
   });
 
-  it("randomises the azure slot per game — it is NOT hardcoded to the Azure Dragon", () => {
+  it("randomises the azure slot in the explicit four-dragon mode", () => {
     const leads = new Set<string>();
     for (let i = 0; i < 16; i += 1) {
-      const { draws } = utopiaDraws(`utopia-seed-${i}`, "impossible");
+      const { draws } = utopiaDraws(`utopia-seed-${i}`, "impossible", (state) => {
+        state.adventure!.dragonUtopiaGuards = "four";
+      });
       const lead = draws[0]!.unitDefId;
       expect([...DRAGON_UTOPIA_AZURE_SLOT_IDS]).toContain(lead);
       leads.add(lead);

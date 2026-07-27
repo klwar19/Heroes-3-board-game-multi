@@ -95,6 +95,29 @@ describe("HeroActionsDock", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "HERO_TRAIN", playerId: "p1" });
   });
 
+  it("surfaces Revisit when a Hero begins the turn on a Monolith", () => {
+    const state = heroTrainTurn();
+    state.adventure!.fields.start = {
+      spaceId: "start",
+      tileInstanceId: "test",
+      slot: 0,
+      location: "monolith",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    const legalActions = getLegalActions(state, "p1");
+    const revisit = legalActions.find((entry) => entry.action.type === "REVISIT_FIELD");
+    expect(revisit).toBeTruthy();
+
+    const onAction = vi.fn();
+    render(<HeroActionsDock legalActions={legalActions} onAction={onAction} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Revisit.*Monolith/i }));
+    expect(onAction).toHaveBeenCalledWith(revisit!.action);
+  });
+
   it("ignores a non-Forced-March USE_HERO_SKILL (e.g. combat War Cry)", () => {
     // Only the map-active Forced March node surfaces here; the combat War Cry /
     // reactions (other nodeIds, carrying a unitId) must not render a map button.
