@@ -133,7 +133,9 @@ Nothing here changes an engine rule; the only JSX is a collapse trigger.
 
 What runs: the top row (HUD + resources) is `position: sticky` and one row tall
 on the MAP screen; the town/hero/army `.leftRail` (218px) and the shared-deck
-`.advDecksBottom` library (210px) become fixed side rails; the hand
+`.advDecksBottom` library (`--desktop-library-width`, a narrow
+`clamp(104px, 6.2vw, 116px)` strip of stacked deck/discard pairs with the four
+Neutral tiers on a 2×32px grid) become fixed side rails; the hand
 `.playerCardBar` becomes a fixed 198px bottom tray, with the prompt/reaction
 trays, chat dock, helper chip and reaction bar all lifted above it; the site
 masthead/footer collapse for a live table (`.appShell:has(.tableMenuInline)`).
@@ -170,12 +172,40 @@ Leading with what does NOT work / deliberate limits:
   concern; there is NO e2e spec for this layout yet.
 - **The fixed rails float over the WHOLE viewport band**, not just the mid row.
   Any full-width row that stays in the flow must be inset to the map column's
-  gutters or its first/last ~218px sit under a rail — `.logDrawer` (the event
-  feed), `.errorBanner` and `.preBattlePanel` are inset for exactly that reason.
-  A NEW full-width child of `.adventureRoot` needs the same inset. The event
-  log deliberately sits a step FURTHER right (`margin-left: 278px` vs the
-  others' 226px — user request) and its entries wear gold `evt` chips on
-  leather rows (ornate-kit §5).
+  gutters or its first/last ~218px sit under a rail — today only `.errorBanner`
+  is still such a row (`margin: 0 (library+8px) 0 226px`), and a NEW full-width
+  child of `.adventureRoot` needs the same inset. The two former members of that
+  list are no longer in the flow (2026-07-27, below): the event log rides the
+  command band as a popover and the PvP notice is `fixed`.
+- **The EVENT LOG is a command-band popover on a non-phone table** (2026-07-27):
+  `page.tsx` passes `<LogDrawer>` into `AdventureHud`'s `eventLogControl` slot
+  (a `.advHudButtons` child) instead of rendering it as a full-width row, and
+  renders the classic bottom strip only in phone mode. Open, it paints a
+  `.logPopover` — `position: fixed` in the ≥1101px block because the desktop
+  command band scrolls horizontally (`overflow-x: auto` clips BOTH axes, the
+  left-rail fly-out bug), `position: absolute` under the band below 1101px where
+  nothing clips. `max-height` is clamped off `--desktop-hand-height` so the
+  chronicle can never run under the fixed hand tray. Two consequences to keep:
+  the ornate chronicle skin (gold `evt` chips on leather rows, ornate-kit §5)
+  is keyed on `.adventureRoot .logDrawer` — a DESCENDANT selector, since the
+  drawer is no longer a direct child on desktop; and the collapsed bar keeps its
+  one-line live ticker (`.logToggleLatest`) everywhere EXCEPT the desktop 96px
+  pill, which shows only the `EVENT LOG` tag. The drawer now starts CLOSED on
+  every surface (it used to auto-open in single player).
+- **The PvP pre-battle notice is `fixed` on the desktop HUD only** (2026-07-27):
+  `.preBattlePanel` keeps its in-flow row (and its `position: relative; z-index:
+  4` claw guard) below 1101px and in phone mode, because the command band there
+  wraps to an unknown height and a fixed notice would cover the player's own
+  resources — which this window exists to keep in view. The ≥1101px block lifts
+  it to a centered top notice (z 94) so readying up no longer shoves the map and
+  hand down a row. It is `role="dialog" aria-modal="false"` — deliberately NOT
+  modal: the point is to keep building/recruiting while it is open. KNOWN
+  OVERLAP: the notice shares the top-center band with the prompt tray (z 60) and
+  paints over it — acceptable because the prep window is the exclusive
+  interaction for both sides, but a tray that does open behind it is hidden.
+  Verified in a real browser at 1600×900 (fixed, clear of both the 62px band and
+  the hand tray, `elementFromPoint` hits the Accept button) and at 1000×800
+  (still `position: relative; z-index: 4` in the flow).
 - **The open controls panel is `position: absolute` against the top row.** The
   MAP top row is sticky (positioned) so it anchors naturally; the COMBAT top row
   is a plain static grid and needs the explicit
@@ -188,7 +218,11 @@ Leading with what does NOT work / deliberate limits:
   table must be able to type the password without first finding a menu button.
 - **z-index band stays under the overlays**: top row 55, controls panel 88, room
   manager 90, hand 48, library 42, left rail 36 — all below the documented
-  chat dock 200 / hub backdrop 210 / hero info 220 / mod windows 230.
+  chat dock 200 / hub backdrop 210 / hero info 220 / mod windows 230. The two
+  2026-07-27 command-band overlays join the same band: the event-log popover 92
+  and the PvP pre-battle notice 94 — the notice sits ABOVE the collapsed
+  controls panel (88) and the room manager (90) on purpose, since it must be
+  answered before the fight can start, and stays under the chat dock.
   EXCEPTIONS (2026-07-27 fly-out fix): while a town/hero/unit-deck/commander
   fly-out board is open, `.leftRail:has(.heroDropBackdrop)` lifts the rail to
   205 (above the chat 200 — an open board is a modal interaction with a dimming
@@ -2435,6 +2469,37 @@ Four fixes to shipped behaviour (not toggles — the previous behaviour was wron
   `player-view.ts`. NOTE: taking FROM a discard pile is still the face-up TOP only
   — the reverted "take any discarded spell" feature is NOT back.
   `spell-discard-pick.test.ts`.
+
+## Falling back after a defeat costs no extra movement (2026-07-27)
+
+Losing a fight relocates the beaten Hero to a friendly Town/Settlement; that
+relocation is NOT an additional movement cost. `moveDefeatedHeroHome`
+(adventure-reducer.ts) no longer zeroes `hero.movementPoints` on EITHER arm — the
+auto-home arm or the two-or-more-destinations retreat CHOICE — so the points left
+after the Hero's normal approach/combat deductions survive, and a beaten Hero may
+keep marching that turn. This makes defeat consistent with the behaviour RETREAT
+has always had: the `COMBAT_RETREATED` branch steps the Hero back to
+`lastVisitedField` without touching its movement. Pinned in
+`defeated-hero-retreat-choice.test.ts` (every arm asserts the surviving points,
+plus "the beaten Hero can still march out of the Town it fell back to" with a
+movement-genuinely-spent CONTROL that is offered no move) and
+`surrender-retreat.test.ts`; mutation-checked (re-adding either `= 0` fails four
+tests).
+
+Leading with what this deliberately changes / does NOT change:
+- **The same waiver applies to SURRENDER** (a paid escape that also calls
+  `moveDefeatedHeroHome`), so surrendering is now "pay the toll → fall back home
+  with your army AND your remaining movement". Considered and accepted: reaching
+  a surrender needs an actual PvP engagement, so it is not a cheap Town Portal.
+- **Nothing else about a defeat changes** — the gold toll, the −1 morale, the
+  VP/hero-defeat credit, the empty-army restock and the winner's experience are
+  all untouched.
+- **The retreat CHOICE still cannot be dodged**: the beaten Hero waits on the
+  fight field with its movement intact, but an open `pendingVisit` returns early
+  in `legal-actions.ts`, so no move is offered until the destination is picked.
+- **A Hero with no retreat field leaves the map** (`spaceId = null`) still
+  holding movement. Safe: every map-action loop skips a hero without a
+  `spaceId`.
 
 ## "The deck ran out" never ends a draw (2026-07-26) — one seam per deck kind
 

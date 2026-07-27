@@ -11274,7 +11274,9 @@ function moveDefeatedHeroHome(state: GameState, hero: HeroState, interactive = f
 
   hero.spaceId = destinations[0]?.spaceId ?? null;
   // Relocation after a defeat is not an additional movement cost. Preserve the
-  // points left after the hero's normal map/combat deductions.
+  // points left after the hero's normal map/combat deductions — mirroring how a
+  // RETREAT from a neutral fight has always stepped the Hero back without
+  // zeroing its movement (`COMBAT_RETREATED` above).
 }
 
 /**
