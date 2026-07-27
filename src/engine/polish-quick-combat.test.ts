@@ -270,6 +270,7 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
     const state = makeGame("pqc-diplomacy");
     state.heroes.hero_p1.level = 1;
     state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 1;
     setArmy(state, [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]); // 12 ≥ 4
     encounter(state, guardField(state, 1)); // level == difficulty → +1 XP possible
     expect(choiceContext(state)).toBe("polish-quick-combat");

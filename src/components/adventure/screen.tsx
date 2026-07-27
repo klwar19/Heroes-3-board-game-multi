@@ -9456,12 +9456,8 @@ function GameOptionsPanel({
       })()}
 
       {(() => {
-        // The Dragon Utopia guards — the single win-condition tuning knob for the
-        // two modes where the Utopia IS the objective. The base party is always
-        // the four dragons (Azure, Rust, Crystal, Faerie); the only choice is
-        // whether the full party stands or the guard COUNT scales with difficulty
-        // (Easy 1 / Normal 2 / Hard 3 / Impossible 4). The featured lead is always
-        // an Azure or Rust Dragon. Stored on `options.dragonUtopiaGuards`.
+        // The Dragon Utopia guards: either the explicit four-dragon scenario
+        // party or the complete Field Difficulty table composition.
         const victoryMode = options.victoryMode ?? "conquest";
         if (victoryMode !== "dragon-hunt" && victoryMode !== "dragon-conqueror") {
           return null;
@@ -9484,16 +9480,16 @@ function GameOptionsPanel({
                 aria-pressed={guards === "by-difficulty"}
                 className={guards === "by-difficulty" ? "selected" : ""}
                 onClick={() => send({ dragonUtopiaGuards: "by-difficulty" })}
-                title="As many dragons as the difficulty would draw (Easy 1 / Normal 2 / Hard 3 / Impossible 4)"
+                title="Use the full Field Difficulty table composition (Hard VII: 1 golden + 2 azure)"
                 type="button"
               >
-                Scale by difficulty
+                Difficulty table
               </button>
             </div>
             <small className="optionHint">
               {guards === "four"
                 ? "Four dragons guard the Utopia — Azure, Rust, Crystal and Faerie. The featured lead is a random Azure or Rust Dragon."
-                : "The guard count follows the difficulty (Easy 1 · Normal 2 · Hard 3 · Impossible 4). The featured lead is always an Azure or Rust Dragon."}
+                : "The complete difficulty row is used, including tiers (Hard VII: 1 golden + 2 azure)."}
             </small>
           </div>
         );

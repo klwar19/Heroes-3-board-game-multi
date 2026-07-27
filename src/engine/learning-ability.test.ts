@@ -302,6 +302,24 @@ describe("Learning offer surfaces from real map-object visits", () => {
     }
   });
 
+  it("offers Learning when a level-1 Hero uses a Tree of Knowledge", () => {
+    let state = readyHeroWithLearning(makeGame(), 0);
+    state.players.p1.resources.gold = 10;
+    state.adventure!.fields["h:7:2"].location = "tree_of_knowledge";
+    const heroId = getMainHero(state, "p1")!.id;
+
+    state = apply(state, { type: "MOVE_HERO", playerId: "p1", heroId, to: "h:7:2" });
+    // Pay the Tree's 10-gold option. Its +2 XP reaches level 2 and must surface
+    // Learning before the level-2 Ability search.
+    state = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 1 });
+
+    expect(getMainHero(state, "p1")!.level).toBe(2);
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      expect(state.pendingChoice.context).toBe("learning-level-up");
+    }
+  });
+
   // Same regression as the Learning Stone, via the OTHER experience Field. Tree
   // of Knowledge grants +2 XP through the shared gainExperience path, so it had —
   // and is fixed by — the same ordering. exp 7 (lvl 4) -> 9 (lvl 5) crosses into an

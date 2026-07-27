@@ -601,6 +601,7 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
   it("offers a skip-or-fight pop-up when the field difficulty equals the hero's level", () => {
     let state = refreshP1(makeGame());
     state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 1;
     expect(getMainHero(state, "p1")!.level).toBe(1); // h:9:1 mine is difficulty 1
 
     state = moveOntoGuardedMine(state);
@@ -612,6 +613,7 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
   it("skipping claims the field, spends the card and grants no experience", () => {
     let state = refreshP1(makeGame());
     state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 1;
     const hero = getMainHero(state, "p1")!;
     const xpBefore = hero.experience;
 
@@ -623,6 +625,7 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
     expect(state.combat).toBeNull();
     expect(state.players.p1.hand).not.toContain("ability.diplomacy");
     expect(state.players.p1.discard).toContain("ability.diplomacy");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(state.adventure?.fields["h:9:1"].flagOwnerId).toBe("p1");
     expect(getMainHero(state, "p1")!.experience).toBe(xpBefore);
     expect(state.eventLog.some((event) => event.type === "DIPLOMACY_COMBAT_SKIPPED")).toBe(true);
@@ -631,6 +634,7 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
   it("choosing to fight proceeds to normal Combat Setup and keeps the card", () => {
     let state = refreshP1(makeGame());
     state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 1;
 
     state = moveOntoGuardedMine(state);
     const choiceId = (state.pendingChoice as { id: string }).id;
@@ -639,6 +643,17 @@ describe("Diplomacy — Instant skip a matching-level Neutral fight", () => {
     expect(state.combat).not.toBeNull();
     expect(state.phase).toBe("combat-setup");
     expect(state.players.p1.hand).toContain("ability.diplomacy");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("does not offer the regular skip without an available Expert-effect crown", () => {
+    let state = refreshP1(makeGame());
+    state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 0;
+
+    state = moveOntoGuardedMine(state);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.combat).not.toBeNull();
   });
 
   it("does not pop up (normal combat starts) without the Diplomacy card in hand", () => {
@@ -672,6 +687,7 @@ describe("Diplomacy skip is gated on matching level", () => {
     hero.level = 2;
     hero.spaceId = "test-field";
     state.players.p1.hand = ["ability.diplomacy"];
+    state.players.p1.limits.expertUses = 1;
     state.adventure!.fields["test-field"] = {
       spaceId: "test-field",
       tileInstanceId: "t",
@@ -718,8 +734,10 @@ describe("Diplomacy skip is gated on matching level", () => {
     hero.level = 2;
     hero.spaceId = "test-field";
     state.players.p1.hand = ["ability.diplomacy"];
-    // A crown is available — the Empowered skip (expert effect) must not spend it.
-    state.players.p1.limits.expertUses = 1;
+    state.players.p1.empoweredAbilities = ["ability.diplomacy"];
+    // No crown is available — Empowered Diplomacy's alternative Instant side
+    // must still be offered and must spend none.
+    state.players.p1.limits.expertUses = 0;
     state.players.p1.combatStats.expertUsesSpentThisRound = 0;
     const xpBefore = hero.experience;
     state.adventure!.fields["test-field"] = {
@@ -750,7 +768,7 @@ describe("Diplomacy skip is gated on matching level", () => {
     expect(state.combat).toBeNull();
     // ...and the Empowered mechanic spends NO expert use (crown).
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
-    expect(state.players.p1.limits.expertUses).toBe(1);
+    expect(state.players.p1.limits.expertUses).toBe(0);
     // The card is spent for that one use (either side).
     expect(state.players.p1.discard).toContain("ability.diplomacy");
   });

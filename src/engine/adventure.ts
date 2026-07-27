@@ -11968,9 +11968,8 @@ export type NeutralDraw = {
 /**
  * Dragon Utopia guards — the party of FOUR dragons, in descending strength
  * (Azure, Rust, Crystal, Faerie). They are minted for the fight rather than
- * drawn, so the Neutral azure deck is never touched. The featured lead is then
- * randomised (Azure/Rust) and, when guards scale by difficulty, the party is
- * trimmed — see `dragonUtopiaGuardIds`.
+ * drawn, so the Neutral azure deck is never touched. Used only by the explicit
+ * four-dragon scenario mode; the default mode uses the normal difficulty table.
  */
 export const DRAGON_UTOPIA_GUARD_IDS = [
   "neutral.azure_dragons",
@@ -11980,11 +11979,8 @@ export const DRAGON_UTOPIA_GUARD_IDS = [
 ] as const;
 
 /**
- * The Dragon Utopia's one always-present featured ("azure") slot is randomised
- * (per game) to Azure or Rust — the marquee dragon the encounter is built
- * around. This is the "the difficulty-scaled party always includes either an
- * Azure or a Rust Dragon" invariant, so even the Easy lone-dragon fight leads
- * with one of the two.
+ * The explicit four-dragon party's featured slot is randomised per game to
+ * Azure or Rust.
  */
 export const DRAGON_UTOPIA_AZURE_SLOT_IDS = [
   "neutral.azure_dragons",
@@ -11992,12 +11988,8 @@ export const DRAGON_UTOPIA_AZURE_SLOT_IDS = [
 ] as const;
 
 /**
- * How many dragons guard the Utopia when the guards scale by difficulty:
- * exactly the number of Neutral units its Field Difficulty would draw at the
- * game difficulty (Easy 1 / Normal 2 / Hard 3 / Impossible 4 at difficulty 7),
- * so the encounter "bases on the number of neutrals". Never below 1 — the azure
- * slot is always present. Honours the Astrologers "Rulebook" difficulty-lower
- * card via `neutralArmyDifficulty`, exactly like a drawn Neutral army.
+ * Total bodies in a difficulty-table Utopia fight. This is a preview helper;
+ * combat uses the row's full tier composition.
  */
 export function dragonUtopiaDifficultyGuardCount(state: GameState, difficulty: number): number {
   const counts = NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)][difficulty];
@@ -12006,16 +11998,17 @@ export function dragonUtopiaDifficultyGuardCount(state: GameState, difficulty: n
 }
 
 /**
- * The Dragon Utopia guard list for this game. The base party is always the four
- * dragons (`DRAGON_UTOPIA_GUARD_IDS` — Azure, Rust, Crystal, Faerie). Two
+ * Builds the themed dragon list used by the explicit four-dragon variant (and
+ * retained as a public preview helper for older callers). The base party is the
+ * four dragons (`DRAGON_UTOPIA_GUARD_IDS` — Azure, Rust, Crystal, Faerie). Two
  * adjustments then apply:
  *  1. The featured ("azure") lead slot is randomised per game to Azure or Rust
  *     (`DRAGON_UTOPIA_AZURE_SLOT_IDS`). Since both already stand in the party the
  *     duplicate is given the vacated Azure Dragon, keeping the party distinct and
  *     the same size — the net effect is which of the two leads.
- *  2. When `adventureDragonUtopiaGuards` is "by-difficulty" the party is trimmed
- *     to the difficulty-scaled count (keeping the lead slot at index 0). When
- *     "four" the full four-dragon party stands.
+ *  2. Older preview callers in "by-difficulty" mode receive a list trimmed to
+ *     the table's body count. Actual combat uses `drawDragonUtopiaArmy`, which
+ *     preserves the table's tiers.
  * The Utopia is the Dragon Hunt / Dragon Conqueror win-condition objective, so
  * this is a win-condition tuning knob.
  */
@@ -12042,6 +12035,24 @@ export function dragonUtopiaGuardIds(state: GameState, difficulty: number): stri
   }
   const count = Math.min(party.length, dragonUtopiaDifficultyGuardCount(state, difficulty));
   return party.slice(0, count);
+}
+
+/**
+ * Draws the scenario Dragon Utopia guard army.
+ *
+ * "by-difficulty" uses the complete Field Difficulty Level Table row, including
+ * its tiers (Hard VII = 1 golden + 2 azure). "four" is the explicit scenario
+ * variant and retains the fixed four-dragon party.
+ */
+function drawDragonUtopiaArmy(state: GameState, difficulty: number): NeutralDraw[] {
+  if (adventureDragonUtopiaGuards(state) === "by-difficulty") {
+    return drawNeutralArmy(state, difficulty);
+  }
+  return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
+    unitDefId,
+    tier: "azure" as const,
+    bankGuard: true
+  }));
 }
 
 /** Draws the top card of one neutral tier deck, reshuffling its discard if needed. */
@@ -12867,19 +12878,11 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     field?.location === "grail" &&
     grailAsUtopiaMode(state) === "always"
   ) {
-    return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
-      unitDefId,
-      tier: "azure" as const,
-      bankGuard: true
-    }));
+    return drawDragonUtopiaArmy(state, difficulty);
   }
 
   if (field?.location === "dragon_utopia") {
-    return dragonUtopiaGuardIds(state, difficulty).map((unitDefId) => ({
-      unitDefId,
-      tier: "azure" as const,
-      bankGuard: true
-    }));
+    return drawDragonUtopiaArmy(state, difficulty);
   }
 
   if (field?.location === "random_town") {

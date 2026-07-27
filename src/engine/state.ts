@@ -13264,8 +13264,10 @@ export type PendingChoice =
       /**
        * diplomacy-skip: the neutral fight Cyra's Diplomacy may skip. Option 0
        * uses the card (claim the field, no XP); option 1 fights normally.
+       * `crownFree` is true only for Empowered Diplomacy, whose alternative
+       * Instant side does not consume an Expert-effect use.
        */
-      diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number };
+      diplomacySkip?: { heroId: HeroId; fieldId: MapSpaceId; difficulty: number; crownFree?: boolean };
       /**
        * polish-quick-combat: a covered neutral fight the Polish strength-based
        * Quick Combat rule lets the player resolve unfought. Option 0 resolves
