@@ -3702,7 +3702,7 @@ export function TownHeroDock({
           title="Open your town — build structures, recruit units and buy spells"
           type="button"
         >
-          <TownIcon factionId={faction.id} size={82} />
+          <TownIcon factionId={faction.id} size={64} />
           <span className="dockTileText">
             <strong>{faction.name} town</strong>
             <small>Build · Recruit · Spells</small>
@@ -3752,7 +3752,7 @@ export function TownHeroDock({
             title={`${heroDef.name} — open the hero board`}
             type="button"
           >
-            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={82} />
+            <HeroPortrait name={heroDef.name} portrait={heroDef.portrait} size={64} />
             <span className="dockTileText">
               <strong>{heroDef.name}</strong>
               <small>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { Crown, Footprints, Hand, Layers, Trash2, Users, X } from "lucide-react";
 import type { GameState, PlayerId } from "@/engine/state";
 import { getSeatIdentity } from "@/engine/player-identity";
@@ -49,6 +50,7 @@ function OpponentInfoModal({
   }, [onClose]);
 
   const player = state.players[playerId];
+  const identity = getSeatIdentity(state, playerId);
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
   );
@@ -65,9 +67,21 @@ function OpponentInfoModal({
   const crownsTotal = (player?.limits.expertUses ?? 0) + (player?.combatStats.expertUseBonusThisRound ?? 0);
   const crownsLeft = Math.max(0, crownsTotal - (player?.combatStats.expertUsesSpentThisRound ?? 0));
 
-  return (
+  // PORTAL to <body>: the dock lives inside the fixed, scrollable left rail
+  // (z-index 36). Rendered inline, this fixed backdrop is trapped in that
+  // stacking context, so the fixed hand tray / top HUD / library rails paint
+  // OVER the panel — the enemy hero section was invisible under the hand tray.
+  // Same fix HeroInfoModal needed in the setup lobby.
+  if (typeof document === "undefined") {
+    return null;
+  }
+  return createPortal(
     <div className="modalBackdrop opponentInfoBackdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="opponentInfoModal" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="opponentInfoModal"
+        onClick={(event) => event.stopPropagation()}
+        style={{ "--opp-faction": identity.factionColor ?? "#b08d2f" } as CSSProperties}
+      >
         <button className="heroInfoClose" onClick={onClose} title="Close" type="button">
           <X size={16} />
         </button>
@@ -127,6 +141,38 @@ function OpponentInfoModal({
           </section>
         ) : null}
 
+        {/* The enemy HERO is the panel's headline — it sits right under the
+            counts, never below the fold behind the long discard list. */}
+        <section className="opponentInfoSection opponentHeroSection" aria-label="Hero">
+          <h4>Hero</h4>
+          {hero ? <HeroBoard playerId={playerId} state={state} /> : <p className="opponentInfoEmpty">No hero.</p>}
+        </section>
+
+        <section className="opponentInfoSection" aria-label="Current units">
+          <h4>Current units</h4>
+          <ArmyPanel playerId={playerId} state={state} />
+        </section>
+
+        <section className="opponentInfoSection" aria-label="Buildings">
+          <h4>Buildings ({buildings.length})</h4>
+          {buildings.length > 0 ? (
+            <ul className="opponentBuildingList">
+              {buildings.map((buildingId) => {
+                const building = coreBuildingDefinitions[buildingId];
+                const timing = building ? buildingTimingLabel(building) : null;
+                return (
+                  <li key={buildingId} title={building ? describeBuildingEffect(building) : buildingId}>
+                    <span className="opponentBuildingName">{building?.name ?? buildingId}</span>
+                    {timing ? <small>{timing}</small> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="opponentInfoEmpty">No buildings constructed yet.</p>
+          )}
+        </section>
+
         {player ? (
           <section className="opponentInfoSection" aria-label="Discard pile">
             <h4>Discard pile ({player.discard.length})</h4>
@@ -149,38 +195,9 @@ function OpponentInfoModal({
             )}
           </section>
         ) : null}
-
-        <section className="opponentInfoSection" aria-label="Buildings">
-          <h4>Buildings ({buildings.length})</h4>
-          {buildings.length > 0 ? (
-            <ul className="opponentBuildingList">
-              {buildings.map((buildingId) => {
-                const building = coreBuildingDefinitions[buildingId];
-                const timing = building ? buildingTimingLabel(building) : null;
-                return (
-                  <li key={buildingId} title={building ? describeBuildingEffect(building) : buildingId}>
-                    <span className="opponentBuildingName">{building?.name ?? buildingId}</span>
-                    {timing ? <small>{timing}</small> : null}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="opponentInfoEmpty">No buildings constructed yet.</p>
-          )}
-        </section>
-
-        <section className="opponentInfoSection" aria-label="Current units">
-          <h4>Current units</h4>
-          <ArmyPanel playerId={playerId} state={state} />
-        </section>
-
-        <section className="opponentInfoSection" aria-label="Hero">
-          <h4>Hero</h4>
-          {hero ? <HeroBoard playerId={playerId} state={state} /> : <p className="opponentInfoEmpty">No hero.</p>}
-        </section>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
