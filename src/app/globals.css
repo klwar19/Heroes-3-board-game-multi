@@ -3196,6 +3196,13 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   gap: 4px;
 }
 
+/* The tray has no tier ladder any more, so the live meter carries the NEXT
+   breakpoint — otherwise "add +1 Power" is a blind choice. */
+.mapSpellNextTier {
+  color: var(--gold);
+  opacity: 0.85;
+}
+
 .spellBoostChip {
   display: inline-flex;
   align-items: center;

@@ -96,7 +96,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "immediate-reinforcement-prompts",
     label: "Old Legion / reinforcement behavior",
     description:
-      "On: old behavior — Legion pieces use only the largest piece, half-cost reinforcement competes with flat discounts, Necromancy/Hill Fort force an immediate choice, and unused Legion discounts expire next turn. Off (new default): distinct Legion pieces stack, the initiating discount applies first, and adjustable banks expire only when a hero moves.",
+      "On: the old readings — only the LARGEST Legion piece counts on a unit, a half-cost reinforcement COMPETES with the flat discounts (bigger wins) instead of applying first, Necromancy and the Hill Fort open their blocking pick-and-pay prompt at once (Necromancy is kept unless it really upgrades a unit), and unused Legion vouchers expire at the start of your next turn rather than when a hero moves. Off (new default): distinct Legion pieces stack, the initiating discount applies first, Necromancy/Hill Fort bank an adjustable offer you redeem from the army panel, and those banks expire only when one of your heroes moves a step. TWO things do NOT revert with this toggle: the Hill Fort now prices through the shared discount path (so a Legion voucher reserved for that unit applies there too), and a half-ALL source still halves the non-gold resources even when a flat discount wins the gold. The map Spell-Power bank is not covered by this toggle at all — it always clears on movement only.",
     category: "abilities",
     default: false,
     legacyDefault: false

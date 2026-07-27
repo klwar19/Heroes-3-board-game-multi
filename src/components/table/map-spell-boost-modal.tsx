@@ -128,6 +128,12 @@ export function MapSpellBoostModal({
   // discard is still owed the engine withholds it, and so do we.
   const resolveAction = choice.options.length > boost.offers.length ? actionFor(boost.offers.length) : undefined;
 
+  // The tray deliberately has no tier PICKER, but the player still has to
+  // decide HOW MUCH Power to add — so the next unreached breakpoint (and what it
+  // buys) is spelled out beside the live Power. Without it the readout says only
+  // what the cast does now, and "add +1 Power" is a blind choice.
+  const nextTier = (tiers?.tiers ?? []).find((tier) => tier.minPower > power) ?? null;
+
   const entries = boost.offers.map((offer, index) => ({ offer, index, visual: offerVisual(offer) }));
   const costSourceName = boost.costDiscards ? cardName(boost.costDiscards.sourceCardId) : null;
   const sourceLabel = (entry: (typeof entries)[number]) =>
@@ -197,6 +203,11 @@ export function MapSpellBoostModal({
           <Zap aria-hidden="true" size={13} />
           <strong>Power {power}</strong>
           <small>{best ? `Current effect: ${best.label}` : "Cast in progress"}</small>
+          <small className="mapSpellNextTier" data-testid="spell-boost-next-tier">
+            {nextTier
+              ? `Next at Power ${nextTier.minPower}: ${nextTier.label}`
+              : "Highest effect reached"}
+          </small>
         </span>
       </header>
       <div className="trayTiles">

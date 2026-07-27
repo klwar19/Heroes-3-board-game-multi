@@ -4,6 +4,7 @@ import {
   getOrthogonalNeighbors,
 } from "../battlefield";
 import { getSpellDamageAmount, getSpellDiceRollCount } from "../effects";
+import { houseRuleEnabled } from "../house-rules";
 import type {
   CardDefinition,
   CardPlayMode,
@@ -600,9 +601,14 @@ function scoreMapEconomy(
     if (phase === "establish-core") return 930 + effect.amount;
     // Legion vouchers are banked recruit gold in EVERY phase — silver/gold
     // bodies and reinforces keep coming all game, so a voucher rotting in
-    // hand is pure waste. Non-stacking: while one voucher is still
-    // outstanding, hold the next (playing it would forfeit the first).
+    // hand is pure waste.
+    // The hold below is OLD-RULE ONLY: under `immediate-reinforcement-prompts`
+    // Legion does not stack, so banking a second voucher on a unit forfeits the
+    // first and the piece is worth keeping. Under the DEFAULT reading distinct
+    // pieces ADD, and the engine already hides a piece that has banked its own
+    // voucher — so holding it only wastes gold. Pinned in legion-learning.test.ts.
     const outstanding =
+      houseRuleEnabled(state, "immediate-reinforcement-prompts") &&
       (state.players[observation.playerId]?.recruitDiscounts?.length ?? 0) > 0;
     return outstanding ? base + 35 : 800 + effect.amount;
   }

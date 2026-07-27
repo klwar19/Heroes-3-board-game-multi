@@ -517,6 +517,100 @@ describe("Same-piece guard, the no-target gate, and movement expiry", () => {
     startPlayerTurn(state, "p1");
     expect(state.players.p1.recruitDiscounts).toEqual([]);
   });
+
+  // AUDIT FIX. Movement is the NEW default's expiry seam. The old-rule toggle
+  // promises the pre-change behaviour ("unused Legion discounts expire next
+  // turn"), where a hero could bank a voucher and then WALK to the town it was
+  // banked for. performHeroStep was wiping the vouchers unconditionally, so the
+  // "old behavior" toggle was strictly harsher than the behaviour it restores.
+  it("old-rule toggle: a hero STEP keeps the voucher (only the new default expires it on move)", () => {
+    function bankedThenMoved(oldRule: boolean): GameState {
+      const state = setupRecruitTown();
+      if (oldRule) {
+        state.adventure!.houseRules = {
+          ...(state.adventure!.houseRules ?? {}),
+          "immediate-reinforcement-prompts": true
+        };
+      }
+      bankVoucher(state, "p1", "artifact.torso_of_legion", 6, {
+        kind: "recruit",
+        unitDefId: "castle.marksmen"
+      });
+      const move = getLegalActions(state, "p1").find((entry) => entry.action.type === "MOVE_HERO");
+      expect(move, "the hero should have a legal step").toBeTruthy();
+      return apply(state, move!.action);
+    }
+
+    const oldRule = bankedThenMoved(true);
+    expect(oldRule.players.p1.recruitDiscounts, "old rule: the voucher survives the walk").toHaveLength(1);
+    expect(
+      totalRecruitGoldDiscount(oldRule, "p1", { kind: "recruit", unitDefId: "castle.marksmen" }),
+      "and it still discounts the recruit it was banked for"
+    ).toBe(6);
+
+    // CONTROL: the new default really does use movement as the expiry seam.
+    const newDefault = bankedThenMoved(false);
+    expect(newDefault.players.p1.recruitDiscounts).toEqual([]);
+    expect(
+      totalRecruitGoldDiscount(newDefault, "p1", { kind: "recruit", unitDefId: "castle.marksmen" })
+    ).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUDIT FIX. REDEEM_REINFORCEMENT_DISCOUNT is HANDLER-validated: applyAction
+// skips the getLegalActions membership check for it, so the handler itself is
+// the only turn gate. Without one, a player could cash a banked Necromancy /
+// Hill Fort upgrade in the MIDDLE of an opponent's turn — e.g. flipping a Few to
+// a Pack as an enemy hero walks in, just before the defense prompt opens.
+// ---------------------------------------------------------------------------
+describe("A banked reinforcement can only be redeemed on your OWN turn", () => {
+  function bankedHillFort(): GameState {
+    const state = withCitadel(setupRecruitTown());
+    const player = state.players.p1;
+    player.resources = { gold: 50, buildingMaterials: 5, valuables: 5 };
+    player.army = [{ id: "u_halb", unitDefId: "castle.halberdiers", side: "few" }];
+    player.reinforcementDiscounts = [
+      {
+        id: "bank_hill_fort",
+        source: "hill-fort",
+        sourceName: "Hill Fort",
+        allowedTiers: ["bronze", "silver"],
+        flatGoldDiscount: 3
+      }
+    ];
+    return state;
+  }
+
+  const redeem: Extract<GameAction, { type: "REDEEM_REINFORCEMENT_DISCOUNT" }> = {
+    type: "REDEEM_REINFORCEMENT_DISCOUNT",
+    playerId: "p1",
+    discountId: "bank_hill_fort",
+    armyUnitId: "u_halb",
+    kind: "reinforce"
+  };
+
+  it("rejects a FORGED redeem while another player is active, leaving the unit and bank untouched", () => {
+    const state = bankedHillFort();
+    state.activePlayerId = "p2";
+
+    const result = applyAction(state, redeem);
+    expect(result.errors.map((error) => error.message).join("; ")).toMatch(/your own turn/i);
+    expect(result.state.players.p1.army[0]?.side, "the Few never flipped").toBe("few");
+    expect(result.state.players.p1.reinforcementDiscounts, "the bank is still owed").toHaveLength(1);
+  });
+
+  it("CONTROL: the same redeem resolves on the owner's own turn", () => {
+    const state = bankedHillFort();
+    expect(state.activePlayerId).toBe("p1");
+
+    const gold = state.players.p1.resources.gold;
+    const next = apply(state, redeem);
+    expect(next.players.p1.army[0]?.side).toBe("pack");
+    // Halberdiers Pack costs 3 gold; the Hill Fort's −3 floors it at zero.
+    expect(next.players.p1.resources.gold).toBe(gold);
+    expect(next.players.p1.reinforcementDiscounts).toEqual([]);
+  });
 });
 
 describe("The banked voucher affects what is offered", () => {
