@@ -9275,6 +9275,96 @@ button.hbSlot:disabled { cursor: default; }
   font-size: 12.5px;
 }
 
+/* Hand-step directives: the mandatory start-of-turn draw / over-limit discard
+   / opening Mulligan dialog, plus optional morale plays. In flow it sits
+   between the hand header and the cards; the DESKTOP COMMAND HUD re-anchors
+   it as a fixed scroll banner ABOVE the hand tray — in the fixed one-card
+   tray the cards used to paint OVER these buttons, leaving the mandatory
+   "Draw new" unclickable. */
+.handDirectives {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px 11px;
+  border: 1px solid rgba(220, 175, 95, 0.42);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(48 36 21 / 96%), rgb(30 22 12 / 97%));
+  text-align: center;
+}
+
+.handDirectives .handButtons {
+  justify-content: center;
+}
+
+.handDirectivesTitle {
+  color: #ffd766;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
+}
+
+/* HoMM3 button plates inside the directives banner: dark plate for normal
+   actions, gold plate for the primary one. The gradient underlay keeps a
+   readable button even if an art file ever fails to load. The :not() chain
+   deliberately outranks the app-wide flat-gold .commandButton skin so the
+   banner reads plate-dark vs plate-gold, not gold-on-gold. */
+.handDirectives .commandButton:not(.ghost):not(.healCommandButton) {
+  min-height: 36px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  color: #f2ddae;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+  background:
+    url("/assets/ui/ornate/button-plate.webp") center / 100% 100% no-repeat,
+    linear-gradient(180deg, #3b2c18 0%, #201509 100%);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 45%);
+}
+
+/* The mandatory action wears the GOLD plate. Specificity deliberately beats
+   the app-wide gilded-button skin (.commandButton.primary:not(.ghost):not(
+   .healCommandButton), which paints every primary with the dark plate) so
+   the banner's one required action visibly outranks its alternatives. */
+.handDirectives .commandButton.primary:not(.ghost):not(.healCommandButton) {
+  color: #2b1a08;
+  text-shadow: 0 1px 0 rgb(255 240 200 / 60%);
+  background:
+    url("/assets/ui/ornate/button-plate-gold.webp") center / 100% 100% no-repeat,
+    linear-gradient(180deg, #fbeec0 0%, #d9b25a 55%, #a67c33 100%);
+}
+
+.handDirectives .commandButton:hover:not(:disabled) {
+  filter: brightness(1.14);
+}
+
+.handDirectives .commandButton:disabled {
+  filter: grayscale(0.55) brightness(0.75);
+  cursor: default;
+}
+
+.handDirectives .commandButton.ghost {
+  background:
+    linear-gradient(180deg, rgb(48 38 24 / 92%), rgb(28 20 11 / 94%));
+  box-shadow: inset 0 0 0 1px rgb(217 178 90 / 35%);
+}
+
+/* Soft breathing gold glow for the fixed desktop banner (mandatory step). */
+@keyframes handDirectivesGlow {
+  0%,
+  100% {
+    filter: drop-shadow(0 10px 26px rgb(0 0 0 / 60%));
+  }
+
+  50% {
+    filter: drop-shadow(0 10px 26px rgb(0 0 0 / 60%)) drop-shadow(0 0 20px rgb(255 200 100 / 38%));
+  }
+}
+
 .emptyHand {
   color: #8d7a5c;
   padding: 12px;
@@ -28569,11 +28659,39 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 
 .adventureRoot > .logDrawer .logToggle {
   border-bottom: 1px solid rgb(217 178 90 / 26%);
+  padding: 8px 16px;
   color: #cdb488;
 }
 
 .adventureRoot > .logDrawer .logToggle span {
   color: #f0dcb8;
+}
+
+/* Chronicle entries: parchment text on quiet leather rows, the event tag as
+   a small engraved gold chip. Extra left padding indents the text clear of
+   the drawer edge (user request: the log text sits further right). */
+.adventureRoot > .logDrawer ol {
+  padding: 10px 16px 14px 20px;
+}
+
+.adventureRoot > .logDrawer li {
+  gap: 12px;
+  padding: 6px 10px 6px 12px;
+  border-color: rgb(217 178 90 / 15%);
+  background: rgb(19 13 8 / 55%);
+  color: #eadcbc;
+}
+
+.adventureRoot > .logDrawer li .logEventMeta {
+  align-self: center;
+  padding: 1px 6px;
+  border: 1px solid rgb(217 178 90 / 30%);
+  border-radius: 5px;
+  background: rgb(38 28 16 / 80%);
+  color: #c9a25a;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: center;
 }
 
 /* ======================================================================== */
@@ -29528,6 +29646,13 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     margin-left: 226px;
   }
 
+  /* The event log sits a step further right than the other full-width rows:
+     clear of the fixed left rail's shadow so its text never reads as running
+     underneath the rail (user request: move the log text to the right). */
+  .adventureRoot:not(.phoneMode) > .logDrawer {
+    margin-left: 278px;
+  }
+
   /* Town / Hero / Army stay in view. Less-used morale/VP panels remain in the
      same scrollable rail rather than lengthening the entire page. */
   .adventureRoot:not(.phoneMode) .leftRail {
@@ -29791,6 +29916,128 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .adventureRoot:not(.phoneMode) .promptTray,
   .adventureRoot:not(.phoneMode) .reactionTray {
     bottom: calc(var(--desktop-hand-height) + 20px);
+  }
+
+  /* ---- Hand-step banner (mandatory draw / discard / Mulligan) ----------- */
+  /* Re-anchored as a fixed HoMM3 scroll banner centered ABOVE the hand tray:
+     in the fixed one-card-tall tray the in-flow directives were compressed
+     and the hand cards painted OVER the mandatory "Draw new" button (it was
+     unclickable — elementFromPoint hit a card image). Out-of-flow, nothing
+     can cover it and the tray keeps its single-row height. */
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--desktop-hand-height) + 16px);
+    transform: translateX(-50%);
+    z-index: 60; /* prompt-tray band: above rails/hand, under chat 200+ */
+    min-width: 480px;
+    max-width: min(760px, calc(100vw - 480px));
+    gap: 7px;
+    padding: 18px 52px 20px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* The banner plate itself is generated art (banner-command.webp); the
+     leather gradient beneath keeps the dialog readable if the art fails. */
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 12px;
+    background:
+      url("/assets/ui/ornate/banner-command.webp") center / 100% 100% no-repeat,
+      linear-gradient(180deg, rgb(44 32 18 / 97%), rgb(24 17 9 / 98%));
+    filter: drop-shadow(0 10px 26px rgb(0 0 0 / 60%));
+    pointer-events: none;
+  }
+
+  /* A mandatory step breathes a soft gold glow so the eye finds it without
+     a modal interruption. */
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives.mandatory::before {
+    animation: handDirectivesGlow 2.8s ease-in-out infinite;
+  }
+
+  /* An OPEN chat dock parks in the same bottom-left band (z 200, above the
+     banner's 60): slide the banner toward the map's right half so neither
+     covers the other. Graceful no-op on browsers without :has (the chat then
+     overlaps the banner's left edge exactly as it already overlaps prompt
+     trays). */
+  .adventureRoot:not(.phoneMode):has(.chatDock.open) .playerCardBar .handDirectives,
+  .adventureRoot:not(.phoneMode):has(.chatDock.open) .playerCardBar .handArea > .handButtons.costPicker,
+  .adventureRoot:not(.phoneMode):has(.chatDock.open) .playerCardBar .handArea > .handButtons.playConfirm {
+    left: auto;
+    right: calc(var(--desktop-library-width) + 40px);
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives.mandatory::before {
+      animation: none;
+    }
+  }
+
+  /* Optional plays only (morale spends): a quiet slim leather chip strip,
+     not the full banner. */
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives:not(.mandatory) {
+    min-width: 0;
+    padding: 9px 20px 11px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives:not(.mandatory)::before {
+    background:
+      linear-gradient(180deg, rgb(38 28 16 / 96%), rgb(22 16 9 / 97%));
+    box-shadow: inset 0 0 0 1px rgb(217 178 90 / 40%);
+    filter: drop-shadow(0 6px 16px rgb(0 0 0 / 50%));
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives .handDirectivesTitle {
+    position: relative;
+    padding: 0 26px 10px;
+    font-size: 14px;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives .handDirectivesTitle::after {
+    content: "";
+    position: absolute;
+    left: -14px;
+    right: -14px;
+    bottom: 0;
+    height: 10px;
+    background: var(--orn-rail) center bottom / 100% 10px no-repeat;
+    opacity: 0.85;
+    filter: drop-shadow(0 1px 2px rgb(0 0 0 / 55%));
+    pointer-events: none;
+  }
+
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives .handWarning,
+  .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives .handHint {
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+
+  /* The cost-picker ("pick cards to discard") and play-confirm rows are the
+     same class of victim: in-flow rows in the fixed-height tray push the
+     cards out of the box. Float them in the same banner spot — the hand
+     cards below stay visible and clickable for the pick. */
+  .adventureRoot:not(.phoneMode) .playerCardBar .handArea > .handButtons.costPicker,
+  .adventureRoot:not(.phoneMode) .playerCardBar .handArea > .handButtons.playConfirm {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--desktop-hand-height) + 16px);
+    transform: translateX(-50%);
+    z-index: 60;
+    justify-content: center;
+    max-width: min(780px, calc(100vw - 480px));
+    padding: 12px 26px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgb(38 28 16 / 96%), rgb(22 16 9 / 97%));
+    box-shadow:
+      inset 0 0 0 1px rgb(217 178 90 / 40%),
+      0 8px 20px rgb(0 0 0 / 55%);
   }
 
   .adventureRoot:not(.phoneMode) .chatDock,

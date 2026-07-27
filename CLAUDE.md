@@ -146,6 +146,24 @@ panel is the in-game way to share a table). Wiring is pinned in
 trigger": trigger present in-game on BOTH screens, aria-expanded + class flip,
 lobby CONTROL with no trigger and the join row kept).
 
+The map hand tray's HAND-STEP DIRECTIVES (2026-07-27): the mandatory
+start-of-turn draw / over-limit discard / opening-Mulligan / discard-pick
+controls and warnings live in `.handDirectives` (page.tsx), a SIBLING of the
+one-line `.handTopBar` — NOT inside it. On the desktop HUD it re-anchors as a
+fixed HoMM3 scroll banner centered ABOVE the hand tray (z 60, the prompt-tray
+band; art `/assets/ui/ornate/banner-command.webp`, buttons on
+`button-plate[-gold].webp` — gold plate = the primary action), because inside
+the fixed one-card tray the hand cards PAINTED OVER the mandatory "Draw new"
+button (elementFromPoint hit a card image — the button was unclickable). The
+cost-picker and play-confirm rows float in the same spot for the same reason.
+An OPEN `.chatDock.open` shares that band at z 200, so a `:has()` rule slides
+the banner to the map's right half while chat is open (no-:has browsers just
+get the old overlap). Below 1101px and in phone mode the SAME element renders
+in flow above the hand cards. DOM contract pinned in
+`src/app/page-phone-mode.test.tsx` ("hand-step directives banner": container
+outside the header + `.mandatory` while the draw is owed, with a draw-taken
+CONTROL); the visible half is a real-browser concern.
+
 Leading with what does NOT work / deliberate limits:
 - **jsdom cannot compute CSS**, so only the wiring above is unit-pinned. Every
   visible claim (sticky, fixed rails, the panel's anchor) is a real-browser
@@ -154,7 +172,10 @@ Leading with what does NOT work / deliberate limits:
   Any full-width row that stays in the flow must be inset to the map column's
   gutters or its first/last ~218px sit under a rail — `.logDrawer` (the event
   feed), `.errorBanner` and `.preBattlePanel` are inset for exactly that reason.
-  A NEW full-width child of `.adventureRoot` needs the same inset.
+  A NEW full-width child of `.adventureRoot` needs the same inset. The event
+  log deliberately sits a step FURTHER right (`margin-left: 278px` vs the
+  others' 226px — user request) and its entries wear gold `evt` chips on
+  leather rows (ornate-kit §5).
 - **The open controls panel is `position: absolute` against the top row.** The
   MAP top row is sticky (positioned) so it anchors naturally; the COMBAT top row
   is a plain static grid and needs the explicit
