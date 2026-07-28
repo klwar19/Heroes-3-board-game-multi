@@ -5152,8 +5152,8 @@ export function PromptTray({
   // pendingChoice/pendingVisit — exactly like the First Aid window above. Because
   // combat is already cleared (state.combat === null) by the time the window opens,
   // the battlefield command dock is gone, and no surface here claimed it — so the
-  // the closing action never rendered on the map and the winner was forced to
-  // play the reinforce card. This branch owns the full multi-bonus transaction.
+  // closing action never rendered on the map and the winner was forced to play
+  // the reinforce card. This branch owns the full multi-bonus transaction.
   const necromancyActions = legalActions.filter(
     (legal) =>
       legal.action.type === "SKIP_NECROMANCY" ||

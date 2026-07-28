@@ -278,7 +278,11 @@ export function PermanentSlot({
               className="permanentCardButton"
               onClick={() => setOpenCardActions(actionsOpen ? null : popupKey)}
               title={`${card?.name ?? held.cardId} stays in play until its effect ends, then goes to the ${
-                held.returnTo === "hand" ? "hand (recalled)" : "discard pile"
+                held.returnTo === "hand"
+                  ? "hand (recalled)"
+                  : held.returnTo === "spellBook"
+                    ? "Spell Book (recalled)"
+                    : "discard pile"
               }.`}
               type="button"
             >

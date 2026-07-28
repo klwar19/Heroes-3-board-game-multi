@@ -227,4 +227,58 @@ describe("Necromancy window — playing the card outranks skipping", () => {
     const decision = chooseComputerAction(observe(state, legal));
     expect(decision?.action.type).toBe("PLAY_CARD");
   });
+
+  // The atomic window's exit (SKIP_NECROMANCY, "Resolve bonuses and continue")
+  // EXPIRES every reinforcement offer the window banked. At the ordinary
+  // 820/760 redeem score the AI played its Necromancy card and then scored the
+  // Resolve above the redeem — spending the card for nothing after every win.
+  const redeemBank: GameAction = {
+    type: "REDEEM_REINFORCEMENT_DISCOUNT",
+    playerId: "p2",
+    discountId: "bank_1",
+    armyUnitId: "army_1",
+    kind: "reinforce",
+  } as GameAction;
+
+  it("redeems the banked offer BEFORE resolving the window (the bank expires on Resolve)", () => {
+    const state = makeState(
+      { p2: { factionId: "necropolis", hand: [] }, p1: {} },
+      { pendingNecromancyFor: "p2" },
+    );
+    const legal: LegalAction[] = [
+      { label: "resolve", action: { type: "SKIP_NECROMANCY", playerId: "p2" } as GameAction },
+      { label: "redeem", action: redeemBank },
+    ];
+    const decision = chooseComputerAction(observe(state, legal));
+    expect(
+      decision?.action.type,
+      "resolving first throws the just-played Necromancy card away",
+    ).toBe("REDEEM_REINFORCEMENT_DISCOUNT");
+  });
+
+  it("CONTROL: outside the window the redeem keeps its ordinary map score, below the Resolve", () => {
+    const state = makeState({
+      p2: { factionId: "necropolis", hand: [] },
+      p1: {},
+    });
+    const legal: LegalAction[] = [
+      { label: "resolve", action: { type: "SKIP_NECROMANCY", playerId: "p2" } as GameAction },
+      { label: "redeem", action: redeemBank },
+    ];
+    const decision = chooseComputerAction(observe(state, legal));
+    expect(decision?.action.type).toBe("SKIP_NECROMANCY");
+  });
+
+  it("still plays every held Necromancy card BEFORE redeeming a bank", () => {
+    const state = makeState(
+      { p2: { factionId: "necropolis", hand: ["ability.necromancy"] }, p1: {} },
+      { pendingNecromancyFor: "p2" },
+    );
+    const legal: LegalAction[] = [
+      { label: "redeem", action: redeemBank },
+      { label: "play", action: playNecromancy },
+    ];
+    const decision = chooseComputerAction(observe(state, legal));
+    expect(decision?.action.type).toBe("PLAY_CARD");
+  });
 });

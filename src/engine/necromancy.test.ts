@@ -401,6 +401,39 @@ describe("Necromancy — adjustable reinforcement bank (new default)", () => {
     ).toBe(true);
   });
 
+  // Resolving the window expires the offers it banked (otherwise the exploit is
+  // back: collect the field reward, THEN reinforce with it). The sweep is scoped
+  // by `pendingNecromancy.discountIds` — the ids stamped as each card is played.
+  // Without that read the field is dead state and the sweep is source-wide,
+  // destroying any Necromancy bank the player still holds from elsewhere.
+  it("Resolve expires the offers THIS window banked, and only those", () => {
+    let state = startAdjustableGame();
+    const necromancy = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    state = apply(state, necromancy!.action);
+
+    const banked = state.players.p1.reinforcementDiscounts ?? [];
+    expect(banked).toHaveLength(1);
+    expect(
+      state.adventure?.pendingNecromancy?.discountIds,
+      "the window must record the offer it created"
+    ).toEqual([banked[0]!.id]);
+
+    // Stands in for a bank this window did NOT create (it is not in discountIds).
+    state.players.p1.reinforcementDiscounts = [
+      ...banked,
+      { ...banked[0]!, id: "bank_from_elsewhere" }
+    ];
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(
+      (state.players.p1.reinforcementDiscounts ?? []).map((discount) => discount.id),
+      "the window's own unredeemed offer expires; a foreign one survives"
+    ).toEqual(["bank_from_elsewhere"]);
+  });
+
   it("banks Necromancy without forcing a target, lets Legion stack, then redeems source-first", () => {
     let state = startAdjustableGame();
     const necromancy = getLegalActions(state, "p1").find(

@@ -9989,9 +9989,16 @@ export function skipNecromancy(state: GameState, action: Extract<GameAction, { t
     player.necromancyWindow = false;
     // Unused Necromancy opportunities expire here. Leaving one banked would
     // reintroduce the exploit: collect the field reward, then reinforce.
+    // Scoped to the offers THIS window created (`discountIds`, stamped when the
+    // card is played): a wider `source === "necromancy"` sweep also destroys a
+    // bank the player is still entitled to from an earlier window. Snapshots
+    // written before `discountIds` existed keep the source-wide sweep.
+    const bankedHere = pending.discountIds;
     player.reinforcementDiscounts = (
       player.reinforcementDiscounts ?? []
-    ).filter((discount) => discount.source !== "necromancy");
+    ).filter((discount) =>
+      bankedHere ? !bankedHere.includes(discount.id) : discount.source !== "necromancy"
+    );
   }
 
   const reward = pending.deferredReward;

@@ -1831,6 +1831,19 @@ export function scoreMapAction(
         policy: "map.recruit-army",
       };
     case "REDEEM_REINFORCEMENT_DISCOUNT":
+      // Inside the atomic after-combat Necromancy window the bank is USE-IT-OR-
+      // LOSE-IT: SKIP_NECROMANCY ("Resolve bonuses and continue", 1_120) expires
+      // every offer this window created. At the ordinary 820/760 the AI played
+      // its Necromancy card (1_140), banked the half-gold offer and then scored
+      // the Resolve above the redeem — throwing the card away every single win.
+      // Priced between the two: play every held card first, then redeem, then
+      // resolve.
+      if (state.adventure?.pendingNecromancy?.playerId === observation.playerId) {
+        return {
+          score: action.kind === "reinforce" ? 1_135 : 1_130,
+          policy: "map.redeem-reinforcement-discount",
+        };
+      }
       return {
         score: action.kind === "reinforce" ? 820 : 760,
         policy: "map.redeem-reinforcement-discount",

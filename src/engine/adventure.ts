@@ -14317,7 +14317,10 @@ export function startAdventureRound(state: GameState): void {
     }
   }
 
-  // Torosar's Ballista IV grant ("until the end of the round") ends here.
+  // Round-scoped effects ("until the end of the round") end here: Luck / Expert
+  // Luck and Torosar's Ballista IV grant. The card a round-scoped ONGOING effect
+  // came from leaves the Ongoing tray in the shared releaseEndedOngoingCards
+  // pass that runs after every action.
   for (const expired of expireEffectsForGameRoundEnd(state)) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: expired.id, reason: "game-round-ended" });
   }

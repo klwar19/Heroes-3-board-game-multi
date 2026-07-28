@@ -284,6 +284,93 @@ describe("Luck on the adventure map — lasts through the game round", () => {
     }
   });
 
+  // The case above drives the two expiry helpers directly, which cannot prove
+  // production reaches them. This one plays the REAL card through the reducer and
+  // wraps the game round through the REAL `END_TURN` path.
+  //
+  // It deliberately gives Luck to the LAST seat, because that is the only shape
+  // that tells the round rule from the OLD turn rule. A first-seat holder is
+  // indistinguishable: the wrap runs `startAdventureRound` (round expiry) AND
+  // `startPlayerTurn(seat 1)` (turn expiry) in the same action, so Luck vanishes
+  // either way. The last seat's turn does NOT start at the wrap — so under the
+  // round rule its Luck is already gone, while the turn rule would keep it live
+  // into the new round until that seat acts again. Reverting the card to
+  // `current-turn` fails this test.
+  //
+  // Also pins the physical card: Luck is an ongoing card, so an expired effect
+  // whose card is never released leaves a dead card on the table forever.
+  // Verified by throwaway probe (not shipped) to behave the same in
+  // single-player, under parallel turns, and when Luck is played mid-combat.
+  it("a LAST-seat holder's Luck is gone the moment the ROUND wraps, not when that seat next acts", () => {
+    for (const mode of ["basic", "expert"] as const) {
+      const effectName = mode === "expert" ? "Expert Luck" : "Luck";
+      const luckLive = (current: GameState) => current.activeEffects.some((effect) => effect.name === effectName);
+      let state = createAdventureGameState({
+        seed: `luck-${mode}-last-seat`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        players: [
+          { id: "p1", name: "First", factionId: "castle", heroDefId: "catherine" },
+          { id: "p2", name: "Second", factionId: "tower", heroDefId: "solmyr" },
+          { id: "p3", name: "Last", factionId: "rampart", heroDefId: "gelu" }
+        ]
+      });
+      for (const player of Object.values(state.players)) {
+        player.canMulligan = false;
+        player.needsHandRefresh = false;
+        player.morale = 0;
+      }
+
+      // Walk to the LAST seat's turn without wrapping the round.
+      const startRound = state.round;
+      for (let guard = 0; guard < 20 && state.activePlayerId !== "p3"; guard += 1) {
+        const active = state.activePlayerId!;
+        const legal = getLegalActions(state, active);
+        const step = legal.find((option) => option.action.type === "END_TURN") ?? legal[0];
+        expect(step, `no action available for ${active}`).toBeTruthy();
+        state = applyOk(state, step!.action);
+      }
+      expect(state.activePlayerId, "expected to reach the last seat's turn").toBe("p3");
+      expect(state.round).toBe(startRound);
+
+      // The last seat's own turn opened with the mandatory hand step: take it,
+      // or no card play is legal.
+      if (state.players.p3.needsHandRefresh || state.players.p3.canMulligan) {
+        state = applyOk(state, { type: "REFRESH_HAND", playerId: "p3", discardCardIds: [] });
+      }
+      state.players.p3.hand = ["ability.luck"];
+      if (mode === "expert") {
+        state.players.p3.limits.expertUses = 1;
+      }
+      const play = getLegalActions(state, "p3").find(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "ability.luck" &&
+          legal.action.mode === mode
+      );
+      expect(play, `${mode} Luck must be playable on the map`).toBeTruthy();
+      state = applyOk(state, play!.action);
+      expect(luckLive(state)).toBe(true);
+      // Held in play, NOT in the discard, while the effect lives.
+      expect(state.players.p3.ongoingCards?.map((held) => held.cardId)).toContain("ability.luck");
+      expect(state.players.p3.discard).not.toContain("ability.luck");
+
+      // The last seat ends its turn → the round wraps and seat 1 acts next.
+      for (let guard = 0; guard < 20 && state.round === startRound; guard += 1) {
+        const active = state.activePlayerId!;
+        const legal = getLegalActions(state, active);
+        const step = legal.find((option) => option.action.type === "END_TURN") ?? legal[0];
+        expect(step, `no action available for ${active}`).toBeTruthy();
+        state = applyOk(state, step!.action);
+      }
+      expect(state.round, "the round must actually have wrapped").toBe(startRound + 1);
+      expect(state.activePlayerId, "the holder's own turn must NOT have started yet").not.toBe("p3");
+      expect(luckLive(state), "round-scoped Luck must be gone at the wrap").toBe(false);
+      expect(state.players.p3.ongoingCards ?? []).toEqual([]);
+      expect(state.players.p3.discard).toContain("ability.luck");
+    }
+  });
+
   it("basic Luck rerolls a map die and is NOT spent — it stays for the rest of the round", () => {
     const state = visitWith("basic", "resource_symbol", "luck-basic-resource");
     expect(visitChoice(state).options.some((option) => /^Luck: reroll the Resource/i.test(option.label))).toBe(true);
