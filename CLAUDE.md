@@ -2574,18 +2574,32 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
 Two commits' worth of rules work plus its audit. Leading with what does NOT work
 / the deliberate limits:
 
-- **A Field Override can never hide a printed border today — that guard is a
-  NO-OP.** `getTileBorderSegments`' new `borderlessSlots` option (fed by
-  `screen.tsx` for every carved override hex) hides the slot's printed ring/arc,
-  but both override legality reads (`fieldOverrideMayCoverFieldDef` /
-  `fieldOverrideMayCoverField`) refuse a `blocked` location, and on EVERY
-  non-starting tile every `outerImpassable` arc sits on a `blocked_field` (81 of
-  81 — probed). Starting tiles do print arcs on ordinary fields (S4 slot 6), but
-  no override kind lists the `starting` group. So nothing reachable is hidden:
-  the option is a forward guard, and its test
-  (`anime-starting-tiles.test.ts`, "a Field Override removes its printed ring")
-  drives `getTileBorderSegments` directly, NOT a real board. Do not describe it
-  as a shipped map fix.
+- **The `borderlessSlots` guard does nothing for a REGISTRY Field Override** —
+  its real customer is the PvE Gates below. Both override legality reads
+  (`fieldOverrideMayCoverFieldDef` / `fieldOverrideMayCoverField`) refuse a
+  `blocked` location, and on EVERY non-starting tile all 81 `outerImpassable`
+  arcs sit on a `blocked_field` (probed). Starting tiles do print arcs on
+  ordinary fields (S4 slot 6) but no override kind lists the `starting` group.
+  So a WOG/anime override hex has no printed border to hide, and
+  `anime-starting-tiles.test.ts`'s "a Field Override removes its printed ring"
+  drives `getTileBorderSegments` directly, not a board.
+- **A hero STANDING on a Blocked-Field carve still cannot open/place a NEW tile
+  from there** (`canHeroReachPlacementCenter`, adventure.ts — two
+  `isOuterEdgeSealed(adventure, heroField)` reads). That is the Creature Bank's
+  long-standing scope, deliberately unchanged: the carve exception covers
+  CROSSING and DISCOVERY only, so `isOuterEdgeSealed` keeps its slot-primitive
+  invariant. The second read is additionally behind the non-default
+  `discovery-border-gate` house rule.
+- **A SUBTERRANEAN GATE carved onto a Blocked Field keeps the same wart, on
+  purpose.** `gateMayCoverField` (adventure.ts) does not exclude `blocked_field`,
+  so when the ring hex nearest the partner tile happens to be the blocked one the
+  gate lands there and is drawn ringed + sealed against its own layer's
+  neighbouring tile (it stays reachable from INSIDE its tile and across the
+  linked pair, which is what the module needs). It is NOT in
+  `BLOCKED_FIELD_CARVE_LOCATIONS`: dropping only its ring would advertise an edge
+  movement still refuses, and opening the edge is a movement change to a
+  heavily-tested subsystem nobody reported. Fix it as its own task (prefer a
+  non-blocked candidate hex, or take the full carve exception) — not silently.
 - **`free-neutral-combat-extend` removes the ONLY bound on a fought neutral
   combat's length** (movement was that bound). A computer fighter in a
   mutual-zero-damage stalemate keeps continuing until the runner's 256-step cap
@@ -2644,6 +2658,23 @@ What runs (each engine claim has a failing-if-removed test):
   art is atmosphere-only (verified: no baked icons, unlike A-S1/W-S1/L-S1/P-S1),
   so its starting resource / treasure / mine symbols and guard numerals were
   invisible (`anime-starting-tiles.test.ts`, `field-symbol-modules.test.ts`).
+- **The Calamity Gate / Dungeon Gate are finally REACHABLE** (reported bug: "the
+  Dungeon one has borders all around it, can't access"). Both are carved ONTO a
+  printed Blocked Field, and every sealed outer arc sits on exactly such a slot —
+  so although `placeCalamityGate` / `placeDungeonSite` already cleared the
+  FIELD-level blockers (water terrain, designer `borderEdges`), the tile
+  DEFINITION's ring + arc still walled the hex: `canCrossEdge` refused entry from
+  the neighbouring Tile and the board drew a full ring. Only `creature_bank` was
+  exempt. The three carves now share ONE list —
+  `BLOCKED_FIELD_CARVE_LOCATIONS` / `isBlockedFieldCarve` (adventure.ts) — read
+  by `canCrossEdge`, `heroFieldSealedForDiscovery` AND the board's
+  `borderlessSlots` set, so a future carve cannot fix one surface and forget the
+  others. The bank keeps its own `showBankBorders` toggle path (the Gates have no
+  toggle — they are always border-free). Pinned in
+  `module-gate-reachability.test.ts` (walk in / walk out / discover, per
+  location, with a plain-Blocked-Field CONTROL that still walls off, and
+  `isOuterEdgeSealed` asserted UNCHANGED) and `module-gate-board.test.tsx` (the
+  hex really loses its 6 drawn lines on a real board, blocked-field CONTROL).
 - **Audit fixes on top** (each mutation-checked): the PvP pre-battle prep window
   no longer OFFERS the "during your turn" building uses or the Secondary-Hero
   hire — `activateTownBuilding` / `hireSecondaryHero` both throw "Town actions
