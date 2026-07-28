@@ -42,8 +42,13 @@ const SEA_TILE_LAND_SLOTS: Record<string, number[]> = {
   "#N11": [3, 6] // learning stone (SE), resource campfire on shore (NW)
 };
 
-function makeState(): GameState {
-  return createAdventureGameState({ seed: "sea-tile-terrain", difficulty: "normal", rollFirstPlayer: false });
+function makeState(ruleset: "legacy" | "binh" = "legacy"): GameState {
+  return createAdventureGameState({
+    seed: "sea-tile-terrain",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    ruleset
+  });
 }
 
 /** Materialise one sea tile far from the scenario tiles and return its slot ids. */
@@ -116,18 +121,18 @@ describe("sea tiles mix land islands with open ocean (per-hex terrain)", () => {
   });
 });
 
-describe("crossing a sea tile's own coastline halts the hero (per-hex)", () => {
-  it("stepping from an open-sea hex onto an island hex of the SAME tile is a coastline step", () => {
-    const state = makeState();
+describe("crossing a sea tile's own coastline follows the selected ruleset (per-hex)", () => {
+  it("Legacy permits disembarking to continue but still halts on embark", () => {
+    const state = makeState("legacy");
     const ids = placeSeaTile(state, "W2", 400); // land: mystical_garden(1), mine(2)
     const landSlot = 1;
     const land = ids[landSlot];
     const neighbours = getAdjacentSpaceIds(land);
 
-    // A sea hex of the same tile adjacent to the island: water -> land halts.
+    // A sea hex of the same tile adjacent to the island.
     const seaNeighbour = neighbours.find((nb) => state.adventure!.fields[nb] && isSeaField(state, nb));
     expect(seaNeighbour, "the island must touch open sea on its own tile").toBeDefined();
-    expect(seaStepHalts(state, seaNeighbour!, land)).toBe(true); // disembark halts
+    expect(seaStepHalts(state, seaNeighbour!, land)).toBe(false); // disembark continues
     expect(seaStepHalts(state, land, seaNeighbour!)).toBe(true); // embark halts
 
     // CONTROL: sea -> sea on the same tile never halts.
@@ -138,6 +143,18 @@ describe("crossing a sea tile's own coastline halts the hero (per-hex)", () => {
     expect(adjacentSeaPair).toBeDefined();
     const seaMate = getAdjacentSpaceIds(adjacentSeaPair!).find((b) => twoSea.includes(b))!;
     expect(seaStepHalts(state, adjacentSeaPair!, seaMate)).toBe(false);
+  });
+
+  it("BINH preserves the old rule: embark and disembark both halt", () => {
+    const state = makeState("binh");
+    const ids = placeSeaTile(state, "W2", 410);
+    const land = ids[1];
+    const sea = getAdjacentSpaceIds(land).find(
+      (neighbor) => state.adventure!.fields[neighbor] && isSeaField(state, neighbor)
+    );
+    expect(sea).toBeDefined();
+    expect(seaStepHalts(state, sea!, land)).toBe(true);
+    expect(seaStepHalts(state, land, sea!)).toBe(true);
   });
 });
 

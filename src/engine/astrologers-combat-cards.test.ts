@@ -210,8 +210,12 @@ describe("Astrologers — Judge Dread (redraw the whole guard army)", () => {
 // ===========================================================================
 
 describe("Astrologers — Wind (continue after embarking)", () => {
-  function seaFixture(seed: string, activeCardId: string): { state: GameState; land: string; sea: string; sea2: string } {
-    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+  function seaFixture(
+    seed: string,
+    activeCardId: string,
+    ruleset: "legacy" | "binh" = "legacy"
+  ): { state: GameState; land: string; sea: string; sea2: string } {
+    const state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, ruleset });
     setActive(state, activeCardId);
     const ids = Object.keys(state.adventure!.fields);
     const [land, sea, sea2] = [ids[0], ids[1], ids[2]];
@@ -221,12 +225,12 @@ describe("Astrologers — Wind (continue after embarking)", () => {
     return { state, land, sea, sea2 };
   }
 
-  it("embarking (land→sea) no longer halts under Wind; disembarking (sea→land) still halts", () => {
+  it("Wind prevents the embark halt; Legacy also permits disembarking to continue", () => {
     const { state, land, sea } = seaFixture("wind-on", "astrologers.wind");
     expect(isSeaField(state, sea)).toBe(true);
     expect(isSeaField(state, land)).toBe(false);
     expect(seaStepHalts(state, land, sea)).toBe(false); // embark: keeps moving
-    expect(seaStepHalts(state, sea, land)).toBe(true); // disembark: still halts
+    expect(seaStepHalts(state, sea, land)).toBe(false); // Legacy disembark
   });
 
   it("sea→sea within the water never halts (with or without Wind)", () => {
@@ -234,10 +238,20 @@ describe("Astrologers — Wind (continue after embarking)", () => {
     expect(seaStepHalts(state, sea, sea2)).toBe(false);
   });
 
-  it("CONTROL: without Wind, embarking halts", () => {
+  it("CONTROL: without Wind, Legacy embark halts but disembark continues", () => {
     const { state, land, sea } = seaFixture("wind-off", "astrologers.dead_silence");
     expect(seaStepHalts(state, land, sea)).toBe(true);
-    expect(seaStepHalts(state, sea, land)).toBe(true);
+    expect(seaStepHalts(state, sea, land)).toBe(false);
+  });
+
+  it("BINH keeps the old disembark halt, with or without Wind", () => {
+    const withWind = seaFixture("wind-binh-on", "astrologers.wind", "binh");
+    expect(seaStepHalts(withWind.state, withWind.land, withWind.sea)).toBe(false);
+    expect(seaStepHalts(withWind.state, withWind.sea, withWind.land)).toBe(true);
+
+    const withoutWind = seaFixture("wind-binh-off", "astrologers.dead_silence", "binh");
+    expect(seaStepHalts(withoutWind.state, withoutWind.land, withoutWind.sea)).toBe(true);
+    expect(seaStepHalts(withoutWind.state, withoutWind.sea, withoutWind.land)).toBe(true);
   });
 });
 

@@ -23,23 +23,35 @@ export type TileBorderSegment = {
  *   (none exist in the core box; expansion tiles may declare them).
  *
  * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
- * is the one exception. A bank can be walked INTO from within its own Tile and
+ * is one exception. A bank can be walked INTO from within its own Tile and
  * only seals OUTWARD (you cannot cross a Tile edge to it — enforced in
  * canCrossEdge). By DEFAULT a bank field now draws NO printed borders at all —
  * the field reads as fully open, which is what most players want once a bank is
  * placed. Passing `showBankBorders: true` restores the classic bank outline:
  * just its OUTER arc, never the inner walls shared with the centre/ring
- * neighbours (so it never looks sealed off from within its own Tile).
+ * neighbours (so it never looks sealed off from within its own Tile). Field
+ * Overrides passed as `borderlessSlots` permanently hide the replaced field's
+ * printed ring/arc in the same way, while preserving designer-added borders.
  */
-const NO_BANK_SLOTS: ReadonlySet<number> = new Set();
+const NO_BORDER_SLOTS: ReadonlySet<number> = new Set();
 
 export function getTileBorderSegments(
   def: TileDefinition,
-  bankSlots: ReadonlySet<number> = NO_BANK_SLOTS,
+  bankSlots: ReadonlySet<number> = NO_BORDER_SLOTS,
   showBankBorders = false,
-  options: { extraBorders?: readonly number[]; borderEdges?: readonly number[]; rotation?: number } = {}
+  options: {
+    extraBorders?: readonly number[];
+    borderEdges?: readonly number[];
+    rotation?: number;
+    /**
+     * Runtime objects that replace a printed field (Field Overrides) hide that
+     * field's printed arc/ring permanently. Designer-added borders remain.
+     */
+    borderlessSlots?: ReadonlySet<number>;
+  } = {}
 ): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
+  const borderlessSlots = options.borderlessSlots ?? NO_BORDER_SLOTS;
   const add = (slot: number, edge: number) => {
     const normalized = ((edge % 6) + 6) % 6;
     segments.set(`${slot}:${normalized}`, { slot, edge: normalized });
@@ -53,7 +65,7 @@ export function getTileBorderSegments(
     const slot = direction + 1;
     // A border-free bank field draws none of its edges — including the tile's
     // own outer arc, which would otherwise still seal it visually.
-    if (bankSlots.has(slot) && !showBankBorders) {
+    if (borderlessSlots.has(slot) || (bankSlots.has(slot) && !showBankBorders)) {
       return;
     }
     add(slot, direction - 1);
@@ -66,6 +78,9 @@ export function getTileBorderSegments(
   // inward).
   def.fields.forEach((field, slot) => {
     if (field.location !== "blocked_field") {
+      return;
+    }
+    if (borderlessSlots.has(slot)) {
       return;
     }
     const isBank = bankSlots.has(slot);
