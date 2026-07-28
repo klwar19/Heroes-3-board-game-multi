@@ -291,6 +291,8 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
   it("grants the opponent experience and a Necromancy window", () => {
     const state = makeGame();
     const { winnerId } = stageFinishedPvpFight(state, "retreat");
+    state.players[winnerId].factionId = "necropolis";
+    state.players[winnerId].hand = ["ability.necromancy"];
     state.players[winnerId].necromancyWindow = false;
     const winnerXpBefore = getMainHero(state, winnerId)!.experience;
 
@@ -298,6 +300,7 @@ describe("Retreat / fought-out loss (house rule): a real defeat", () => {
 
     expect(getMainHero(state, winnerId)!.experience).toBeGreaterThan(winnerXpBefore);
     expect(state.players[winnerId].necromancyWindow).toBe(true);
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe(winnerId);
   });
 });
 

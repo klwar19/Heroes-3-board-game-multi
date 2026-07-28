@@ -298,7 +298,7 @@ describe("The Dungeon — delving floors", () => {
     if (menu?.type !== "CHOOSE_ONE") {
       throw new Error("expected a continuation door menu");
     }
-    expect(menu.options[0]?.label).toMatch(/Descend \(1 movement\)/);
+    expect(menu.options[0]?.label).toMatch(/Continue \(1 movement\)/);
     const optionIndex = 0;
     expect(menu.options[optionIndex]?.steps[0]).toMatchObject({
       type: "SPEND_HERO_MOVEMENT",
@@ -337,7 +337,7 @@ describe("The Dungeon — delving floors", () => {
       expect(menu?.type).toBe("CHOOSE_ONE");
       if (menu?.type !== "CHOOSE_ONE") throw new Error("expected continuation");
       expect(menu.options[0]?.label).toMatch(
-        cost === 0 ? /Descend \(free descent\)/ : /Descend \(2 movement\)/
+        cost === 0 ? /Continue \(free descent\)/ : /Continue \(2 movement\)/
       );
       const spend = menu.options[0]!.steps.find((step) => step.type === "SPEND_HERO_MOVEMENT");
       if (cost === 0) {

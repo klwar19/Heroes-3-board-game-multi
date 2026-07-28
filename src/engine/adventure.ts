@@ -891,6 +891,9 @@ export function materializeTileFields(
     if (fieldDef.difficulty) {
       field.difficulty = fieldDef.difficulty;
     }
+    if (fieldDef.treasureDice) {
+      field.treasureDice = fieldDef.treasureDice;
+    }
     if (fieldDef.resource) {
       field.resource = fieldDef.resource;
     }
@@ -6225,10 +6228,21 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
+  const locationDiceBonus = locationDiceBonusFor(state, playerId);
   const steps =
     location.implementationStatus === "implemented"
-      ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
+      ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
+
+  // Treasure Symbols roll the number printed on that specific field. Most
+  // chests roll one die; only artwork explicitly marked "2 → 1" carries
+  // `treasureDice: 2`. Tile group and guard level do not define this rule.
+  if (location.id === "treasure_symbol" && steps.length === 1 && steps[0]?.type === "ROLL_TREASURE_DICE") {
+    steps[0] = {
+      ...steps[0],
+      count: (field.treasureDice ?? 1) + locationDiceBonus
+    };
+  }
 
   // Tournament rule (Observatory re-rotate): the Redwood Observatory may ALSO
   // re-rotate one nearby placed tile. Prepended so it resolves BEFORE the
@@ -11446,7 +11460,7 @@ export function unreachableUndergroundCenters(tiles: ReadonlyArray<TilePlacement
 
 /**
  * Finds an unused Luck reroll for the given adventure die. Basic Luck offers
- * one Treasure and one Resource reroll per turn; Expert Luck offers a single
+ * one Treasure and one Resource reroll per game round; Expert Luck offers a single
  * reroll of any die.
  */
 function getLuckRerollEffect(
@@ -11506,12 +11520,12 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     return;
   }
 
-  // Luck (basic AND expert) lasts the WHOLE player turn: it is never deleted on
-  // use here. Each map-die kind may be rerolled once per turn, tracked
+  // Luck (basic AND expert) lasts through the current game round: it is never
+  // deleted on use here. Each map-die kind may be rerolled once per round, tracked
   // separately. Expert Luck ("any die") additionally keeps rerolling Attack
-  // dice across every fight this turn — handled on the combat side, where its
+  // dice across every fight this round — handled on the combat side, where its
   // reroll source is not consumed (consumeEffectOnUse: false). The effect only
-  // leaves play when the turn ends (expiresAtTurnEndPlayerId).
+  // leaves play when the game round ends (expiresAtGameRound).
   effect.usedChoiceIds.push(`luck:${dice}`);
 }
 
@@ -14122,7 +14136,7 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
   appendEvent(state, {
     type: "DUNGEON_PLACED",
     fieldId: spaceId,
-    message: `The Dungeon's gate stands open — a shared, repeatable delve (floors 1–${floorCap}). Victors may descend immediately or resume later. Layered wardens guard the campaign's boss floors.`
+    message: `Dungeon Gate opened (floors 1–${floorCap}). Each player keeps separate progress. Clear a floor to claim its reward and continue now or return later.`
   });
   return field;
 }
@@ -14173,17 +14187,17 @@ function handleDungeonGateVisit(
       steps: [
         {
           type: "CHOOSE_ONE",
-          prompt: `Floor ${floor}: ${boss?.name ?? "the floor warden"} bars the way (${
+          prompt: `Dungeon floor ${floor}: ${boss?.name ?? "the floor warden"} guards the way (${
             boss?.layers ?? 2
-          } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
+          } health bars plus retinue).${repeat ? " A repeat clear pays 1 Treasure die and 3 gold." : ""}`,
           options: [
             {
-              label: `${continuing ? `Descend (${descentLabel}) and ` : ""}Face ${
+              label: `${continuing ? `Continue (${descentLabel}) and ` : ""}Fight ${
                 boss?.name ?? "the floor boss"
               }`,
               steps: [...movementCost, fightStep]
             },
-            { label: "Withdraw", steps: [] }
+            { label: "Leave the Dungeon", steps: [] }
           ]
         }
       ]
@@ -14202,16 +14216,16 @@ function handleDungeonGateVisit(
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: `Floor ${floor} of the Dungeon — two doors stand ajar. Behind either, the floor's den (a level-${dungeonFloorDifficulty(
+        prompt: `Dungeon floor ${floor}: choose a room, resolve its effect, then fight the level-${dungeonFloorDifficulty(
           floor
-        )} war party) waits. Which way?`,
+        )} floor guard.`,
         options: [
           {
-            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Left door: ${left.label}`,
+            label: `${continuing ? `Continue (${descentLabel}) — ` : ""}Left room: ${left.label}`,
             steps: [...movementCost, ...left.steps, fightStep]
           },
           {
-            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Right door: ${right.label}`,
+            label: `${continuing ? `Continue (${descentLabel}) — ` : ""}Right room: ${right.label}`,
             steps: [...movementCost, ...right.steps, fightStep]
           },
           { label: "Leave the Dungeon", steps: [] }
@@ -15238,8 +15252,8 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     return;
   }
 
-  // Ongoing cards (Luck, Logistics, Scouting…) last until their owner's next
-  // turn starts: expire them now, not when the playing turn ended.
+  // Turn-scoped ongoing cards (Logistics, Scouting…) last until their owner's
+  // next turn starts. Round-scoped cards such as Luck are handled at round end.
   const expired = expireEffectsForTurnEnd(state, playerId);
   for (const effect of expired) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
@@ -16642,20 +16656,30 @@ export function queueLegionDiscountChoice(state: GameState, playerId: PlayerId, 
   if (!adventure || targets.length === 0) {
     return;
   }
-  adventure.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${amount} gold`,
-        options: targets.map((target) => ({
-          label: legionTargetLabel(target, amount),
-          steps: [{ type: "BANK_RECRUIT_DISCOUNT", cardId, amount, target: voucherTargetOf(target.purchase) }]
-        }))
-      }
-    ]
-  });
+  const steps: VisitStep[] = [
+    {
+      type: "CHOOSE_ONE",
+      prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${amount} gold`,
+      options: targets.map((target) => ({
+        label: legionTargetLabel(target, amount),
+        steps: [{ type: "BANK_RECRUIT_DISCOUNT", cardId, amount, target: voucherTargetOf(target.purchase) }]
+      }))
+    }
+  ];
+  const necromancy = adventure.pendingNecromancy;
+  if (necromancy?.playerId === playerId && !adventure.pendingVisit) {
+    // Resolve a selected Legion target inside the atomic Necromancy window.
+    // Combat and field rewards remain parked until the explicit Resolve.
+    const hero = getMainHero(state, playerId);
+    adventure.pendingVisit = {
+      playerId,
+      heroId: necromancy.heroId ?? hero?.id ?? "",
+      fieldId: necromancy.fieldId ?? hero?.spaceId ?? "",
+      steps
+    };
+    return;
+  }
+  adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps });
 }
 
 /** The voucher `target` shape (recruit→unitDefId, reinforce/stack→armyUnitId) for a purchase. */
@@ -17142,6 +17166,20 @@ export function queueNecromancyReinforce(
   if (!player || !adventure) {
     return;
   }
+  const queueChoice = (steps: VisitStep[]): void => {
+    const pending = adventure.pendingNecromancy;
+    if (pending?.playerId === playerId && !adventure.pendingVisit) {
+      const hero = getMainHero(state, playerId);
+      adventure.pendingVisit = {
+        playerId,
+        heroId: pending.heroId ?? hero?.id ?? "",
+        fieldId: pending.fieldId ?? hero?.spaceId ?? "",
+        steps
+      };
+      return;
+    }
+    adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps });
+  };
 
   const allowedTiers = mode === "expert" ? ["bronze", "silver", "gold"] : ["bronze", "silver"];
   const options: { label: string; steps: VisitStep[] }[] = [];
@@ -17194,33 +17232,25 @@ export function queueNecromancyReinforce(
   if (options.length === 0) {
     // No eligible target: the card is kept (its option carries no consumeCardId),
     // so a player who plays Necromancy with nothing to reinforce loses nothing.
-    adventure.rewardQueue.push({
-      playerId,
-      kind: "visit-steps",
-      steps: [
-        {
-          type: "CHOOSE_ONE",
-          prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
-          options: [{ label: "OK", steps: [] }]
-        }
-      ]
-    });
+    queueChoice([
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
+        options: [{ label: "OK", steps: [] }]
+      }
+    ]);
     return;
   }
 
   // "Skip" keeps the card too — only an actual reinforce above consumes it.
   options.push({ label: "Skip (keep the card)", steps: [] });
-  adventure.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
-        options
-      }
-    ]
-  });
+  queueChoice([
+    {
+      type: "CHOOSE_ONE",
+      prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
+      options
+    }
+  ]);
 }
 
 /**

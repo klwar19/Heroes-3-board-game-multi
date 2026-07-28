@@ -4338,6 +4338,13 @@ export function ArmyPanel({
           // what recruiting / reinforcing would cost.
           if (entry.kind === "unowned") {
             const rosterDef = coreUnitDefinitions[entry.unitDefId];
+            const recruitAction = legalActions.find(
+              (legal) =>
+                legal.action.type === "POPULATION_ACTION" &&
+                legal.action.purchases.some(
+                  (purchase) => purchase.kind === "recruit" && purchase.unitDefId === entry.unitDefId
+                )
+            );
             return (
               <li className="armyRosterUnowned" key={`roster-${entry.unitDefId}`}>
                 {rosterDef?.few || rosterDef?.pack ? (
@@ -4353,6 +4360,17 @@ export function ArmyPanel({
                   <strong>{rosterDef?.name ?? entry.unitDefId}</strong>
                   <small className="armyRosterState">not recruited</small>
                 </span>
+                {onAction && recruitAction ? (
+                  <div className="armyUnitActions" aria-label={`${rosterDef?.name ?? entry.unitDefId} actions`}>
+                    <button
+                      aria-label={`Recruit Few ${rosterDef?.name ?? entry.unitDefId}`}
+                      onClick={() => onAction(recruitAction.action)}
+                      type="button"
+                    >
+                      <Plus size={13} /> Recruit Few
+                    </button>
+                  </div>
+                ) : null}
               </li>
             );
           }
@@ -5134,14 +5152,13 @@ export function PromptTray({
   // pendingChoice/pendingVisit — exactly like the First Aid window above. Because
   // combat is already cleared (state.combat === null) by the time the window opens,
   // the battlefield command dock is gone, and no surface here claimed it — so the
-  // "Skip Necromancy" button never rendered on the map and the winner was forced to
-  // play the reinforce card ("after combat, no choice but to use it"). This branch
-  // renders the window's own actions: play the Necromancy reinforce, or skip it.
+  // the closing action never rendered on the map and the winner was forced to
+  // play the reinforce card. This branch owns the full multi-bonus transaction.
   const necromancyActions = legalActions.filter(
     (legal) =>
       legal.action.type === "SKIP_NECROMANCY" ||
-      (legal.action.type === "PLAY_CARD" &&
-        cardLibrary[legal.action.cardId]?.effect.type === "NECROMANCY_REINFORCE")
+      legal.action.type === "PLAY_CARD" ||
+      legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT"
   );
   const necromancyOpen = state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
@@ -5427,10 +5444,10 @@ export function PromptTray({
     title = "First Aid Master — restore one fallen unit";
     body = firstAidActions;
   } else if (necromancyOpen && necromancyActions.length > 0) {
-    // Necropolis Necromancy window: reinforce a unit for half the gold cost, or
-    // skip. Skipping is a real choice — the winner is not forced to reinforce (the
-    // field reward stays withheld only until they decide, engine-gated).
-    title = "Necromancy — reinforce a unit for half the gold cost, or skip";
+    // Atomic post-combat purchase: layer Necromancy, Legion, and gold bonuses,
+    // redeem any reinforcement offers, then explicitly release the field reward.
+    const remaining = state.adventure?.pendingNecromancy?.remaining ?? 1;
+    title = `Necromancy — ${remaining} card${remaining === 1 ? "" : "s"} available; add bonuses, reinforce, then Resolve`;
     body = necromancyActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
@@ -8460,7 +8477,7 @@ function GameModeSection({
                 ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
                 ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
+                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -8563,8 +8580,8 @@ function GameModeSection({
                       </button>
                     ))}
                   </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
-                    <strong>Immediate descent</strong>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
+                    <strong>Continue after a win</strong>
                     {([0, 1, 2] as const).map((cost) => (
                       <button
                         aria-pressed={(wog.dungeonDescentCost ?? 1) === cost}
@@ -8666,7 +8683,7 @@ function GameModeSection({
                 ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
                 ["monsterWaves", "Calamity Waves", "Every Nth round, EVERY live player fights a themed Gate invasion at round start. Visit the Far-tile Calamity Gate beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon (Meikyū)", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
+                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8775,8 +8792,8 @@ function GameModeSection({
                       </button>
                     ))}
                   </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
-                    <strong>Immediate descent</strong>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
+                    <strong>Continue after a win</strong>
                     {([0, 1, 2] as const).map((cost) => (
                       <button
                         aria-pressed={(anime.dungeonDescentCost ?? 1) === cost}

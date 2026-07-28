@@ -9,10 +9,10 @@ import {
   CAST_A_SPELL_CARD_ID,
   createAdventureGameState,
   createInitialGameState,
-  describePermanentEffect,
   getLegalActions,
   getPlayerView,
-  type GameState
+  type GameState,
+  type LegalAction
 } from "@/engine";
 
 afterEach(cleanup);
@@ -409,13 +409,22 @@ describe("RuneTrack — Bulwark combat HUD", () => {
   });
 });
 
-describe("PermanentSlot — the permanent effect is shown clearly (map card tray)", () => {
-  it("renders the permanent's name AND its full effect text (not just the card image)", () => {
+describe("PermanentSlot — compact card-only tray", () => {
+  it("shows only card art until a permanent is clicked, then offers view/discard actions", () => {
     const state = createInitialGameState("permanent-effect-shown");
-    // A permanent income artifact in play (Eversmoking Ring of Sulfur).
     state.players.p1.permanents = ["artifact.eversmoking_ring_of_sulfur"];
     const card = cardLibrary["artifact.eversmoking_ring_of_sulfur"]!;
-    const effectText = describePermanentEffect(card);
+    const onAction = vi.fn();
+    const legalActions: LegalAction[] = [
+      {
+        label: `Discard ${card.name} from play`,
+        action: {
+          type: "DISCARD_PERMANENT",
+          playerId: "p1",
+          cardId: card.id
+        }
+      }
+    ];
 
     const { container } = render(
       <CardZoomProvider>
@@ -423,18 +432,57 @@ describe("PermanentSlot — the permanent effect is shown clearly (map card tray
           state={state}
           playerId="p1"
           viewerPlayerId="p1"
-          legalActions={getLegalActions(state, "p1")}
-          onAction={() => {}}
+          legalActions={legalActions}
+          onAction={onAction}
         />
       </CardZoomProvider>
     );
 
-    // The name is shown…
-    expect(screen.getByText(card.name)).toBeTruthy();
-    // …and so is the spelled-out effect (this is the "shown clearly" guarantee:
-    // remove the <small>{describePermanentEffect}</small> line and this fails).
-    expect(effectText.length).toBeGreaterThan(0);
-    expect(container.textContent).toContain(effectText);
+    expect(container.querySelectorAll(".permanentSlot.cardOnly")).toHaveLength(1);
+    expect(container.textContent).not.toContain(card.name);
+
+    fireEvent.click(screen.getByRole("button", { name: `${card.name} actions` }));
+    expect(screen.getByRole("menuitem", { name: /View card/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Discard from play/i }));
+    expect(onAction).toHaveBeenCalledWith(legalActions[0].action);
+  });
+
+  it("keeps ongoing-card text hidden and opens the readable card view on click", () => {
+    const state = createInitialGameState("ongoing-card-compact");
+    state.players.p1.permanents = [];
+    state.players.p1.permanent = undefined;
+    state.players.p1.ongoingCards = [
+      { cardId: "ability.luck", effectIds: ["luck_effect"], returnTo: "discard" }
+    ];
+    const onAction = vi.fn();
+    const legalActions: LegalAction[] = [
+      {
+        label: "Discard Luck from play",
+        action: {
+          type: "DISCARD_ONGOING_CARD",
+          playerId: "p1",
+          cardId: "ability.luck"
+        }
+      }
+    ];
+
+    const { container } = render(
+      <CardZoomProvider>
+        <PermanentSlot
+          state={state}
+          playerId="p1"
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          onAction={onAction}
+        />
+      </CardZoomProvider>
+    );
+
+    expect(container.textContent).not.toContain("Luck");
+    fireEvent.click(screen.getByRole("button", { name: "Luck actions" }));
+    expect(screen.getByRole("menuitem", { name: /Discard from play/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: /View card/i }));
+    expect(screen.getByRole("dialog", { name: /Luck enlarged/i })).toBeTruthy();
   });
 
   it("renders nothing when the player has no permanent in play", () => {

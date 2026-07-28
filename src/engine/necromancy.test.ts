@@ -16,8 +16,11 @@ import {
   type GameState,
   type UnitTransformState
 } from "./index";
-import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
-import { startPlayerTurn } from "./adventure";
+import {
+  finalizeAdventureCombat,
+  pumpAdventureQueues,
+  startNeutralEncounter
+} from "./adventure-reducer";
 import type { CombatState, MapFieldState } from "./state";
 import { cardLibrary } from "@/data/cards/library";
 
@@ -210,7 +213,7 @@ describe("Necromancy ability — after-combat window", () => {
     expect(plays).toHaveLength(0);
   });
 
-  it("playing Necromancy queues a half-gold (rounded down) reinforce choice and closes the window — but does NOT discard the card yet", () => {
+  it("playing Necromancy queues the half-gold choice and keeps the window open for more bonuses", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.necromancyWindow = true;
@@ -228,8 +231,8 @@ describe("Necromancy ability — after-combat window", () => {
     expect(play).toBeDefined();
 
     const next = apply(state, play!.action);
-    expect(next.players.p1.necromancyWindow).toBe(false);
-    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(next.players.p1.necromancyWindow).toBe(true);
+    expect(next.adventure?.pendingNecromancy?.playerId).toBe("p1");
     // The card is consumed ONLY on a successful upgrade — until the reinforce is
     // resolved it stays in hand, never the discard.
     expect(next.players.p1.discard).not.toContain("ability.necromancy");
@@ -367,6 +370,37 @@ describe("Necromancy — adjustable reinforcement bank (new default)", () => {
     return state;
   }
 
+  it("allows the ability and a Necromancy specialty after the same combat", () => {
+    const state = startAdjustableGame();
+    state.players.p1.hand = ["ability.necromancy", "specialty.vidomina.1"];
+    state.adventure!.pendingNecromancy = { playerId: "p1", remaining: 2 };
+
+    const first = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    expect(first).toBeTruthy();
+    let next = apply(state, first!.action);
+    expect(next.adventure?.pendingNecromancy?.remaining).toBe(1);
+    expect(
+      getLegalActions(next, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.1"
+      )
+    ).toBe(true);
+
+    const second = getLegalActions(next, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.1"
+    );
+    expect(second).toBeTruthy();
+    next = apply(next, second!.action);
+    expect(next.adventure?.pendingNecromancy?.remaining).toBe(0);
+    expect(next.players.p1.reinforcementDiscounts).toHaveLength(2);
+    expect(
+      getLegalActions(next, "p1").some(
+        (legal) => legal.action.type === "SKIP_NECROMANCY"
+      )
+    ).toBe(true);
+  });
+
   it("banks Necromancy without forcing a target, lets Legion stack, then redeems source-first", () => {
     let state = startAdjustableGame();
     const necromancy = getLegalActions(state, "p1").find(
@@ -408,7 +442,111 @@ describe("Necromancy — adjustable reinforcement bank (new default)", () => {
     expect(state.players.p1.recruitDiscounts).toEqual([]);
   });
 
-  it("keeps an unused bank across turn start but clears it on the next hero step", () => {
+  it("allows Estates to fund the same atomic purchase before Resolve", () => {
+    let state = startAdjustableGame();
+    state.players.p1.army = [
+      {
+        id: "army_skel",
+        unitDefId: "necropolis.skeletons",
+        side: "few"
+      }
+    ];
+    state.players.p1.resources.gold = 0;
+    state.players.p1.hand = ["ability.necromancy", "ability.estates"];
+
+    const necromancy = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.necromancy"
+    );
+    state = apply(state, necromancy!.action);
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) =>
+          legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT"
+      )
+    ).toBe(false);
+
+    const estates = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.estates" &&
+        (legal.action.mode ?? "basic") === "basic"
+    );
+    expect(estates, "Estates must be offered inside the window").toBeTruthy();
+    state = apply(state, estates!.action);
+    expect(state.players.p1.resources.gold).toBe(2);
+
+    const redeem = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        legal.action.armyUnitId === "army_skel"
+    );
+    expect(redeem).toBeTruthy();
+    state = apply(state, redeem!.action);
+    expect(state.players.p1.army[0]?.side).toBe("pack");
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
+  });
+
+  it("does not release a deferred field after redeeming; only the explicit Resolve pays it", () => {
+    let state = startAdjustableGame();
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "atomic-water-wheel";
+    hero.spaceId = fieldId;
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "atomic-tile",
+      slot: 0,
+      location: "water_wheel",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    state.adventure!.pendingNecromancy = {
+      playerId: "p1",
+      remaining: 1,
+      heroId: hero.id,
+      fieldId,
+      deferredReward: { kind: "field-visit", heroId: hero.id, fieldId }
+    };
+    state.players.p1.army = [
+      {
+        id: "army_skel",
+        unitDefId: "necropolis.skeletons",
+        side: "few"
+      }
+    ];
+    state.players.p1.hand = ["ability.necromancy"];
+    state.players.p1.resources.gold = 5;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.necromancy"
+    );
+    state = apply(state, play!.action);
+    const redeem = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        legal.action.armyUnitId === "army_skel"
+    );
+    state = apply(state, redeem!.action);
+
+    expect(state.players.p1.resources.gold).toBe(4);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(state.players.p1.resources.gold).toBe(7);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+  });
+
+  it("blocks movement and expires an unused Necromancy bank on explicit Resolve", () => {
     let state = startAdjustableGame();
     const necromancy = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
@@ -416,18 +554,13 @@ describe("Necromancy — adjustable reinforcement bank (new default)", () => {
     state = apply(state, necromancy!.action);
     expect(state.players.p1.reinforcementDiscounts).toHaveLength(1);
 
-    startPlayerTurn(state, "p1");
-    expect(state.players.p1.reinforcementDiscounts).toHaveLength(1);
-
-    // Use a fresh unblocked map state for the movement seam.
-    state = startAdjustableGame();
-    const play = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
-    );
-    state = apply(state, play!.action);
-    const move = getLegalActions(state, "p1").find((legal) => legal.action.type === "MOVE_HERO");
-    expect(move).toBeTruthy();
-    state = apply(state, move!.action);
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "MOVE_HERO"
+      )
+    ).toBe(false);
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
     expect(state.players.p1.reinforcementDiscounts).toEqual([]);
   });
 });
@@ -523,7 +656,7 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
     expect(legal.some((l) => l.action.type === "MOVE_HERO" || l.action.type === "END_TURN")).toBe(false);
   });
 
-  it("skipping releases the withheld field reward and closes the window for good", () => {
+  it("Resolve releases the withheld field reward and closes the window for good", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
@@ -587,41 +720,286 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
     expect(reinforce, "the 1-gold Skeleton reinforce should be affordable on the 2 gold held").toBeTruthy();
     next = apply(next, reinforce!.action);
 
-    // Paid 1 for the reinforce (2 -> 1), THEN the withheld Water Wheel added 3.
-    expect(next.players.p1.resources.gold).toBe(4);
+    // The first card paid 1 for the reinforce (2 -> 1). The second-card window
+    // stays open until the player skips it, then the withheld Water Wheel adds 3.
+    expect(next.players.p1.resources.gold).toBe(1);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.adventure?.pendingNecromancy?.remaining).toBe(0);
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(next.players.p1.resources.gold).toBe(4);
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 
-  it("resolves a free Skeleton reinforce first, yet still withholds the field reward behind the window", () => {
+  it("keeps a free Skeleton reinforce and the field reward behind the window", () => {
     const state = startSandroGame();
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
     state.players.p1.resources.gold = 0;
     const { fieldId } = stageNeutralWinOnGoldField(state);
-    // The last guard killed was a Skeleton — a Necropolis hero earns a free bronze
-    // reinforce. It must resolve independently of the now-or-never Necromancy
-    // window, and neither may let the field gold land early.
+    // The last guard killed was a Skeleton — a Necropolis hero earns a free
+    // bronze reinforce. Both that combat reward and the field gold wait.
     state.combat!.skeletonGuardDefeated = true;
 
     finalizeAdventureCombat(state);
     pumpAdventureQueues(state);
 
-    // The free Skeleton reinforce prompt is up and resolvable right now...
-    expect(state.adventure?.pendingVisit).toBeTruthy();
-    expect(getLegalActions(state, "p1").some((l) => /Skeleton/i.test(l.label))).toBe(true);
-    // ...while the Necromancy window stays pending and the field reward withheld.
+    // Every queued combat reward stays behind the atomic window.
+    expect(state.adventure?.pendingVisit ?? null).toBeNull();
+    expect(getLegalActions(state, "p1").some((l) => /Skeleton/i.test(l.label))).toBe(false);
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
     expect(state.players.p1.resources.gold).toBe(0);
     expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
+
+    // Once Resolve is pressed, the field may pay and the queued Skeleton reward
+    // can surface; neither was usable to fund Necromancy.
+    const next = apply(state, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(next.players.p1.resources.gold).toBe(3);
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 });
 
 // ---------------------------------------------------------------------------
-// Old Binh-toggle Legion voucher × Necromancy reinforcement, through the full
-// applyAction/getLegalActions flow. This preserves the former competing-
-// discount behavior as an explicit opt-in regression control.
+// Cross-combat coverage: fought PvP wins open for an off-turn winner, while
+// Quick Combat remains the one combat-win path that never opens Necromancy.
 // ---------------------------------------------------------------------------
+describe("Necromancy prompt coverage across combat kinds", () => {
+  function coverageGame(seed: string): GameState {
+    const state = createAdventureGameState({
+      seed,
+      ruleset: "binh",
+      difficulty: "normal",
+      players: [
+        {
+          id: "p1",
+          name: "Catherine",
+          factionId: "castle",
+          heroDefId: "catherine"
+        },
+        {
+          id: "p2",
+          name: "Sandro",
+          factionId: "necropolis",
+          heroDefId: "sandro"
+        }
+      ],
+      rollFirstPlayer: false
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    return state;
+  }
+
+  function stageSpecialNeutralWin(
+    state: GameState,
+    context: {
+      waveAssault?: { wave: number };
+      raidBossId?: string;
+      dungeonFloor?: number;
+    }
+  ): string {
+    const hero = getMainHero(state, "p2")!;
+    const fieldId = `special-necro-${context.waveAssault ? "wave" : context.raidBossId ? "raid" : "dungeon"}`;
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "special-necro-tile",
+      slot: 0,
+      location: "empty_field",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    hero.spaceId = fieldId;
+    state.players.p2.hand = ["ability.necromancy"];
+    state.combat = {
+      context: {
+        kind: "neutral",
+        heroId: hero.id,
+        fieldId,
+        difficulty: 0,
+        hasAzure: false,
+        ...context
+      },
+      attackerPlayerId: "p2",
+      defenderPlayerId: "neutral",
+      outcome: {
+        winnerPlayerId: "p2",
+        defeatedPlayerId: "neutral",
+        reason: "all-enemy-units-defeated"
+      },
+      units: {}
+    } as unknown as CombatState;
+    return fieldId;
+  }
+
+  it("opens for an off-turn PvP defender and allows hand bonuses there", () => {
+    const state = coverageGame("necro-pvp-defender");
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    const fieldId = "pvp-necro-field";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "pvp-tile",
+      slot: 0,
+      location: "water_wheel",
+      difficulty: 0,
+      blackCube: true,
+      flagOwnerId: "p2",
+      everFlagged: true,
+      settlementResource: null
+    };
+    attacker.spaceId = fieldId;
+    defender.spaceId = fieldId;
+    state.activePlayerId = "p1";
+    state.players.p2.hand = ["ability.necromancy", "ability.estates"];
+    state.players.p2.army = [
+      {
+        id: "p2-skeletons",
+        unitDefId: "necropolis.skeletons",
+        side: "few"
+      }
+    ];
+    state.combat = {
+      context: {
+        kind: "player",
+        attackerHeroId: attacker.id,
+        defenderHeroId: defender.id,
+        fieldId
+      },
+      attackerPlayerId: "p1",
+      defenderPlayerId: "p2",
+      outcome: {
+        winnerPlayerId: "p2",
+        defeatedPlayerId: "p1",
+        reason: "all-enemy-units-defeated"
+      },
+      units: {}
+    } as unknown as CombatState;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.activePlayerId).toBe("p1");
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p2");
+    const legal = getLegalActions(state, "p2");
+    expect(
+      legal.some(
+        (entry) =>
+          entry.action.type === "PLAY_CARD" &&
+          entry.action.cardId === "ability.necromancy"
+      )
+    ).toBe(true);
+    expect(
+      legal.some(
+        (entry) =>
+          entry.action.type === "PLAY_CARD" &&
+          entry.action.cardId === "ability.estates"
+      )
+    ).toBe(true);
+    expect(
+      legal.some((entry) => entry.action.type === "SKIP_NECROMANCY")
+    ).toBe(true);
+  });
+
+  it("defers a Calamity Wave payout behind the same window", () => {
+    let state = coverageGame("necro-wave");
+    const goldBefore = state.players.p2.resources.gold;
+    stageSpecialNeutralWin(state, { waveAssault: { wave: 1 } });
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.pendingNecromancy?.deferredReward).toEqual({
+      kind: "wave",
+      wave: 1
+    });
+    expect(state.players.p2.resources.gold).toBe(goldBefore);
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p2" });
+    expect(state.players.p2.resources.gold).toBeGreaterThan(goldBefore);
+  });
+
+  it("defers a Raid Boss kill payout and lair clear behind the same window", () => {
+    let state = coverageGame("necro-raid");
+    const fieldId = stageSpecialNeutralWin(state, { raidBossId: "boss-1" });
+    state.adventure!.fields[fieldId].location = "rift_lair";
+    state.adventure!.fields[fieldId].riftLair = "boss-1";
+    state.adventure!.raidBosses = {
+      "boss-1": {
+        defId: "goblin_king",
+        fieldId,
+        layersLeft: 1,
+        layerBreaks: {},
+        spawnedRound: state.round
+      }
+    };
+    const goldBefore = state.players.p2.resources.gold;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.pendingNecromancy?.deferredReward).toEqual({
+      kind: "raid-boss",
+      bossInstanceId: "boss-1"
+    });
+    expect(state.adventure?.raidBosses?.["boss-1"].slainBy).toBeUndefined();
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
+    expect(state.players.p2.resources.gold).toBe(goldBefore);
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p2" });
+    expect(state.adventure?.raidBosses?.["boss-1"].slainBy).toBe("p2");
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+    expect(state.players.p2.resources.gold).toBeGreaterThan(goldBefore);
+  });
+
+  it("defers Dungeon floor advancement and rewards behind the same window", () => {
+    let state = coverageGame("necro-dungeon");
+    state.players.p2.dungeonFloor = 1;
+    stageSpecialNeutralWin(state, { dungeonFloor: 1 });
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.pendingNecromancy?.deferredReward).toEqual({
+      kind: "dungeon-floor",
+      floor: 1
+    });
+    expect(state.players.p2.dungeonFloor).toBe(1);
+
+    state = apply(state, { type: "SKIP_NECROMANCY", playerId: "p2" });
+    expect(state.players.p2.dungeonFloor).toBe(2);
+  });
+
+  it("never opens after Quick Combat", () => {
+    const state = coverageGame("necro-quick-control");
+    const hero = getMainHero(state, "p2")!;
+    const fieldId = "quick-necro-field";
+    hero.level = 7;
+    hero.spaceId = fieldId;
+    state.activePlayerId = "p2";
+    state.players.p2.hand = ["ability.necromancy"];
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "quick-tile",
+      slot: 0,
+      location: "mine",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+
+    startNeutralEncounter(state, hero, state.adventure!.fields[fieldId]);
+
+    expect(state.combat ?? null).toBeNull();
+    expect(state.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(
+      getLegalActions(state, "p2").some(
+        (entry) => entry.action.type === "SKIP_NECROMANCY"
+      )
+    ).toBe(false);
+  });
+});
+
 describe("Old-rule Legion voucher × Necromancy reinforce (real end-to-end)", () => {
   function startSandroGame(): GameState {
     {
@@ -768,9 +1146,9 @@ describe("Old-rule Legion voucher × Necromancy reinforce (real end-to-end)", ()
 // holding Necromancy must still get the now-or-never after-combat window — but
 // the bank branch of finalizeAdventureCombat only granted the (immediate) bank
 // reward and never opened `pendingNecromancy`, so the prompt never appeared.
-// Banks sit OUTSIDE the field-reward deferral (their reward lands at once), so
-// the window here withholds nothing — it just lets the player play or skip
-// Necromancy. Each assertion below fails if the bank-window wiring is removed.
+// Bank rewards are part of the atomic deferral: the window must appear first,
+// then its gold/search/choice may begin only after explicit Resolve.
+// Each assertion below fails if the bank-window wiring is removed.
 // ---------------------------------------------------------------------------
 describe("Necromancy ability — after a Creature Bank win (reported bug)", () => {
   function startGame(seed: string): GameState {
@@ -829,7 +1207,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     return { fieldId, heroId: hero.id };
   }
 
-  it("opens the Necromancy window after a bank win (the reward still lands immediately)", () => {
+  it("opens Necromancy after a Bank win and withholds the Bank reward until Resolve", () => {
     const state = startGame("bank-necro-open");
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
@@ -838,10 +1216,9 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
 
     finalizeAdventureCombat(state);
 
-    // The bank reward is NOT withheld — Crypt's 6 gold lands at once and the
-    // field is cubed (banks sit outside the field-reward deferral).
-    expect(state.players.p1.resources.gold).toBe(6);
-    expect(state.adventure?.fields[fieldId].blackCube).toBe(true);
+    // Crypt's gold and field cube are withheld until explicit Resolve.
+    expect(state.players.p1.resources.gold).toBe(0);
+    expect(state.adventure?.fields[fieldId].blackCube).toBe(false);
 
     // ...and the now-or-never Necromancy window is open for the bank winner.
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
@@ -852,6 +1229,13 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(legal.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
     // Nothing else is legal until the window is resolved (now-or-never).
     expect(legal.some((l) => l.action.type === "MOVE_HERO" || l.action.type === "END_TURN")).toBe(false);
+
+    const resolved = apply(state, {
+      type: "SKIP_NECROMANCY",
+      playerId: "p1"
+    });
+    expect(resolved.players.p1.resources.gold).toBe(6);
+    expect(resolved.adventure?.fields[fieldId].blackCube).toBe(true);
   });
 
   it("opens the window for a Necropolis winner whose Necromancy copy was drawn from the shared Ability deck (the repeated-report bug)", () => {
@@ -907,6 +1291,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
     expect(next.players.p1.discard).toContain("ability.necromancy");
     expect(next.players.p1.hand).not.toContain("ability.necromancy");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 
@@ -958,10 +1343,9 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
 
   /**
    * Stages a just-won Medusa Stores fight with ONE Stacked defender: its reward
-   * is a SEQUENCE ending in a "+3 gold OR +1 valuables" CHOICE, so after finalize
-   * a reward `pendingVisit` is still open. This is the realistic bug shape — a
-   * bank whose reward PROMPTS — proving the Necromancy window survives BEHIND the
-   * reward choice and surfaces the instant it resolves.
+   * is a SEQUENCE ending in a "+3 gold OR +1 valuables" CHOICE. This is the
+   * realistic bug shape: the entire prompt-producing reward must stay behind
+   * Necromancy and surface only after explicit Resolve.
    */
   function stageMedusaStoresWin(state: GameState, playerId: "p1" | "p2"): { fieldId: string } {
     const hero = getMainHero(state, playerId)!;
@@ -996,7 +1380,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     return { fieldId };
   }
 
-  it("a bank whose reward PROMPTS (Medusa Stores) resolves the choice FIRST, then opens Necromancy", () => {
+  it("a prompt-producing Bank keeps its choice behind Necromancy until Resolve", () => {
     const state = startGame("bank-necro-choice");
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
@@ -1005,28 +1389,28 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
 
     finalizeAdventureCombat(state);
 
-    // Both are armed: the reward choice (pendingVisit) AND the Necromancy window.
-    expect(state.adventure?.pendingVisit?.playerId).toBe("p1");
+    // Only Necromancy surfaces; the Bank choice has not started.
+    expect(state.adventure?.pendingVisit ?? null).toBeNull();
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
 
-    // The reward CHOICE surfaces first; Necromancy is withheld behind it.
+    // The Bank choice is absent while Necromancy remains fully usable.
     const beforeChoice = getLegalActions(state, "p1");
     const rewardChoice = beforeChoice.find(
       (l) => l.action.type === "RESOLVE_VISIT_STEP" && /gold/i.test(l.label)
     );
-    expect(rewardChoice, "the Medusa Stores reward choice must be offered first").toBeTruthy();
+    expect(rewardChoice, "the Bank reward choice must still be withheld").toBeFalsy();
     expect(
       beforeChoice.some((l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy")
-    ).toBe(false);
+    ).toBe(true);
 
-    // Resolve the reward choice → the Necromancy window now surfaces.
-    let next = apply(state, rewardChoice!.action);
+    // Play and redeem Necromancy before the Bank choice is released.
+    let next = state;
     expect(next.adventure?.pendingVisit ?? null).toBeNull();
     expect(next.adventure?.pendingNecromancy?.playerId).toBe("p1");
     const play = getLegalActions(next, "p1").find(
       (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
     );
-    expect(play, "Necromancy must be playable once the reward choice is resolved").toBeTruthy();
+    expect(play, "Necromancy must be playable before the Bank choice").toBeTruthy();
 
     // ...and the reinforce actually upgrades the Skeletons (the real outcome).
     next = apply(next, play!.action);
@@ -1036,7 +1420,9 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
     next = apply(next, reinforce!.action);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(next.adventure?.pendingVisit?.playerId).toBe("p1");
   });
 
   /**
@@ -1046,9 +1432,8 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
    * above) but as a top-level `state.pendingChoice` (DECK_SEARCH) queued through
    * the reward QUEUE and opened by the real pump (`pumpAdventureQueues`). That is
    * the code path the Crypt (flat) and Medusa (pendingVisit) tests never exercise.
-   * This drives the REAL post-combat pump and proves the now-or-never Necromancy
-   * window still surfaces once the Search is answered — the reward lands first
-   * (banks sit outside the field-reward deferral), then Necromancy.
+   * This drives the REAL post-combat pump and proves the Search cannot hide or
+   * pre-empt Necromancy: the transaction resolves first, then the Search opens.
    */
   function stageDerelictShipWin(state: GameState, stackCount: number): { fieldId: string } {
     const hero = getMainHero(state, "p1")!;
@@ -1085,7 +1470,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     return { fieldId };
   }
 
-  it("a bank whose reward opens a Spell-deck SEARCH (Derelict Ship + Polish Bank Sizes) still opens Necromancy once the Search resolves", () => {
+  it("a Derelict Ship Spell Search stays frozen until Necromancy resolves", () => {
     const state = startGame("bank-necro-derelict-search");
     state.players.p1.hand = ["ability.necromancy"];
     state.players.p1.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
@@ -1097,31 +1482,22 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     // pump opens it as a top-level pendingChoice (NOT a pendingVisit).
     pumpAdventureQueues(state);
 
-    // Reward-first: the Search pendingChoice is open, and the Necromancy window is
-    // armed BEHIND it (banks land their reward immediately, then Necromancy).
-    expect(state.pendingChoice, "the Spell Search pendingChoice must be open").toBeTruthy();
+    // The Search is still frozen; Necromancy owns the interaction slot.
+    expect(state.pendingChoice ?? null).toBeNull();
     expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
 
-    // Answer the reward Search exactly as a human would — pick a deck, choose to
-    // search, keep a card — always taking the first offered pick, until it clears.
-    let cur = state;
-    for (let guard = 0; guard < 12 && cur.pendingChoice; guard += 1) {
-      const pick = getLegalActions(cur, "p1").find(
-        (l) => l.action.type === "CHOOSE_OPTION" || l.action.type === "RESOLVE_DECK_SEARCH"
-      );
-      if (!pick) break;
-      cur = apply(cur, pick.action);
-    }
+    // No reward Search can be answered yet.
+    const cur = state;
 
-    // Now — and ONLY now — the now-or-never Necromancy window surfaces (the exact
-    // "no proposal of using necromancy after a bank fight" the user reported).
+    // The window is already present before any Bank Search (the exact
+    // "no proposal of using necromancy after a bank fight" regression).
     expect(cur.pendingChoice ?? null).toBeNull();
     expect(cur.adventure?.pendingNecromancy?.playerId).toBe("p1");
     const legal = getLegalActions(cur, "p1");
     const play = legal.find(
       (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "ability.necromancy"
     );
-    expect(play, "Necromancy must be playable once the reward Search is resolved").toBeTruthy();
+    expect(play, "Necromancy must be playable before the reward Search opens").toBeTruthy();
     expect(legal.some((l) => l.action.type === "SKIP_NECROMANCY")).toBe(true);
 
     // ...and playing it opens the real reinforce choice and upgrades the unit.
@@ -1132,6 +1508,8 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
     next = apply(next, reinforce!.action);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(next.pendingChoice, "the Spell Search opens only after Resolve").toBeTruthy();
   });
 });

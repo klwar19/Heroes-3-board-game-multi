@@ -303,6 +303,7 @@ import {
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
+  discardOngoingCardVoluntarily,
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackerTypeDefenseBonus,
@@ -14350,12 +14351,28 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  // BINH house rule: while the after-combat Necromancy window is open, the ONLY
-  // legal card play is that Necromancy itself — the field reward is withheld
-  // until the player commits, so no other card may resolve and bank value first.
+  // BINH house rule: while the atomic after-combat window is open, only
+  // Necromancy and compatible cost/funding bonuses may be played. The combat
+  // and field rewards remain withheld until the explicit Resolve.
   const pendingNecro = state.adventure?.pendingNecromancy;
-  if (pendingNecro && (pendingNecro.playerId !== action.playerId || card.effect.type !== "NECROMANCY_REINFORCE")) {
-    throw new Error("Resolve the after-combat Necromancy window first (play it or skip it).");
+  const pendingNecroEffect = getEffectiveCardEffect(card, action.optionIndex);
+  const pendingNecroGain =
+    pendingNecroEffect?.type === "GAIN_RESOURCES"
+      ? action.mode === "expert" && pendingNecroEffect.expertGain
+        ? pendingNecroEffect.expertGain
+        : pendingNecroEffect.gain
+      : null;
+  const allowedDuringNecromancy =
+    pendingNecroEffect?.type === "NECROMANCY_REINFORCE" ||
+    pendingNecroEffect?.type === "GAIN_RECRUIT_DISCOUNT" ||
+    (pendingNecroEffect?.type === "GAIN_RESOURCES" &&
+      (pendingNecroGain?.gold ?? 0) > 0);
+  if (
+    pendingNecro &&
+    (pendingNecro.playerId !== action.playerId ||
+      !allowedDuringNecromancy)
+  ) {
+    throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
   }
 
   // Dessa's Logistics: playable only during the continue-or-retreat decision
@@ -15260,14 +15277,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // toggle immediately opens the blocking pick-and-pay prompt. The new default
     // banks the half-gold opportunity instead, releases the map, and lets the
     // player add distinct Legion pieces before redeeming it.
-    state.players[action.playerId].necromancyWindow = false;
     const reinforcementMode = effect.forceMode ?? mode;
     if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
       // Old rule: pass the held card so only a successful immediate upgrade
       // consumes it.
       queueNecromancyReinforce(state, action.playerId, reinforcementMode, action.cardId);
     } else {
-      bankReinforcementDiscount(state, action.playerId, "necromancy", {
+      const bank = bankReinforcementDiscount(state, action.playerId, "necromancy", {
         sourceName: card.name,
         allowedTiers:
           reinforcementMode === "expert"
@@ -15277,18 +15293,22 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         halfGoldOnly: true,
         roundDown: true
       });
+      const pending = state.adventure?.pendingNecromancy;
+      if (bank && pending?.playerId === action.playerId) {
+        pending.discountIds ??= [];
+        pending.discountIds.push(bank.id);
+      }
     }
     const pending = state.adventure?.pendingNecromancy;
     if (pending && pending.playerId === action.playerId) {
-      if (pending.heroId && pending.fieldId) {
-        state.adventure!.rewardQueue.push({
-          playerId: action.playerId,
-          kind: "field-visit",
-          heroId: pending.heroId,
-          fieldId: pending.fieldId
-        });
-      }
-      state.adventure!.pendingNecromancy = null;
+      const remaining = Math.max(0, (pending.remaining ?? 1) - 1);
+      pending.remaining = remaining;
+      // Playing a card never auto-closes the transaction. The player may add
+      // more Necromancy/Legion/Estates bonuses, redeem one or more offers, and
+      // then press Resolve. This explicit final step is the reward-order gate.
+      state.players[action.playerId].necromancyWindow = true;
+    } else {
+      state.players[action.playerId].necromancyWindow = false;
     }
   }
 
@@ -20987,6 +21007,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
+        break;
+      case "DISCARD_ONGOING_CARD":
+        discardOngoingCardVoluntarily(nextState, action.playerId, action.cardId);
         break;
       case "CRACK_PERMANENT":
         crackPermanentForInstant(nextState, action);
