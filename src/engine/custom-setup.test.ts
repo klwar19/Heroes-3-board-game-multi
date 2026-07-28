@@ -10,6 +10,7 @@ import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
 import { applyAction, createAdventureLobbyState } from "./index";
+import { getLegalActions } from "./legal-actions";
 import { getPlayerView } from "./player-view";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { STORY_SCENE_IDS } from "@/data/story/scenes";
@@ -1240,6 +1241,71 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(step.options).toHaveLength(3);
     resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: choiceOwner, optionIndex: 1 });
     expect(state.players[choiceOwner].resources.buildingMaterials).toBe(materialsBefore + 2);
+  });
+
+  // A timed event that queues per-player resolution raises the round-start EVENT
+  // BARRIER (the Astrologers/Fortress-Event machinery), so the whole table waits
+  // while each seat answers — and the trailing sentinel must still lift it. Round
+  // 1 is the harshest case: the barrier goes up inside setup, before any action.
+  it("a timed reward event freezes the whole table until every seat resolves it", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-choice-barrier",
+      rollFirstPlayer: false,
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          {
+            round: 1,
+            effect: {
+              kind: "choice",
+              prompt: "Choose your boon",
+              options: [
+                { kind: "resources", gold: 3, buildingMaterials: 0, valuables: 0 },
+                { kind: "morale", amount: 1 }
+              ]
+            }
+          }
+        ]
+      }
+    });
+    const goldBefore = { p1: state.players.p1.resources.gold, p2: state.players.p2.resources.gold };
+
+    // Setup already pumped the queue: the barrier is up on p1's choice and p2 —
+    // whose own choice is still queued — cannot act at all.
+    expect(state.adventure!.eventResolution).toEqual({ round: 1 });
+    expect(state.adventure!.pendingVisit?.playerId).toBe("p1");
+    expect(getLegalActions(state, "p2"), "a frozen seat has NO legal actions").toEqual([]);
+    expect(
+      applyAction(state, { type: "END_TURN", playerId: "p2" }).errors.map((error) => error.message)
+    ).toEqual([expect.stringMatching(/Event is still being resolved/i)]);
+
+    // p1 answers → p2's copy opens and the roles swap.
+    let next = applyAction(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(next.errors).toEqual([]);
+    expect(next.state.adventure!.pendingVisit?.playerId).toBe("p2");
+    expect(next.state.adventure!.eventResolution).toEqual({ round: 1 });
+    expect(getLegalActions(next.state, "p1")).toEqual([]);
+
+    // p2 answers → the sentinel lifts the barrier and normal play resumes.
+    next = applyAction(next.state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 });
+    expect(next.errors).toEqual([]);
+    expect(next.state.adventure!.eventResolution).toBeNull();
+    expect(next.state.players.p1.resources.gold).toBe(goldBefore.p1 + 3);
+    expect(next.state.players.p2.resources.gold).toBe(goldBefore.p2 + 3);
+    expect(getLegalActions(next.state, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: a timed event that queues nothing raises no barrier", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-note-no-barrier",
+      rollFirstPlayer: false,
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [{ round: 1, effect: { kind: "note", text: "Something stirs" } }]
+      }
+    });
+    expect(state.adventure!.eventResolution ?? null).toBeNull();
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
   });
 
   it("timed events skip eliminated seats and their heroes", () => {
