@@ -2569,6 +2569,95 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   not see it); and the combat board/inspector print live Attack/Defense/
   Initiative totals that fold combat tokens in beside lasting buffs.
 
+## Settlement capture choices · two Necromancy copies · timed reward choices (2026-07-28)
+
+Two commits' worth of rules work plus its audit. Leading with what does NOT work
+/ the deliberate limits:
+
+- **A Field Override can never hide a printed border today — that guard is a
+  NO-OP.** `getTileBorderSegments`' new `borderlessSlots` option (fed by
+  `screen.tsx` for every carved override hex) hides the slot's printed ring/arc,
+  but both override legality reads (`fieldOverrideMayCoverFieldDef` /
+  `fieldOverrideMayCoverField`) refuse a `blocked` location, and on EVERY
+  non-starting tile every `outerImpassable` arc sits on a `blocked_field` (81 of
+  81 — probed). Starting tiles do print arcs on ordinary fields (S4 slot 6), but
+  no override kind lists the `starting` group. So nothing reachable is hidden:
+  the option is a forward guard, and its test
+  (`anime-starting-tiles.test.ts`, "a Field Override removes its printed ring")
+  drives `getTileBorderSegments` directly, NOT a real board. Do not describe it
+  as a shipped map fix.
+- **`free-neutral-combat-extend` removes the ONLY bound on a fought neutral
+  combat's length** (movement was that bound). A computer fighter in a
+  mutual-zero-damage stalemate keeps continuing until the runner's 256-step cap
+  logs a stall. Opt-in, default OFF, so no default table can reach it.
+- **A settlement conqueror who picks "reinforce" (or a Stack) DESTROYS the
+  resource token**: `removeSettlementProduction` strips the old owner's level and
+  clears `field.settlementResource`, and the reinforce arm never sets a new one —
+  so that settlement pays income to nobody until it changes hands again (its own
+  owner cannot re-open the choice; `beginFieldVisit` guards a re-visit).
+- **The two-copy Necromancy rule is the AMPLIFIER ONLY.** A plain Ability-deck
+  Search still refuses a duplicate (`canAcquireSharedDeckCard` is unchanged), so
+  a Necropolis hero holding one copy can take the second from the building and
+  from nowhere else. The resolution-level cap check returns SILENTLY (no feed
+  line) — reachable only if a copy arrives between the prompt and the answer.
+- **The Cover of Darkness hand-rail button is client wiring with no unit test**
+  (page.tsx precedent): the engine action, its once-per-round gate and the 1–2
+  card cycle are pinned in `cover-of-darkness.test.ts`; the button, its 2-card
+  selection cap and its confirm path are not.
+
+What runs (each engine claim has a failing-if-removed test):
+- **Two new "Global" house rules**, default OFF in BOTH binh and legacy
+  (`house-rules.ts`, lobby rows pinned in `game-options-tabs.test.tsx`):
+  `no-secondary-heroes` (Prison pays its printed 3-gold fallback, the Tavern
+  offers only Decline, the 10-gold town hire is withheld, and every creation
+  seam — `CREATE_SECONDARY_HERO` + `hireSecondaryHero` — refuses;
+  `secondary-heroes.test.ts`) and `free-neutral-combat-extend` (the
+  continue-or-retreat window costs no movement point;
+  `neutral-combat-movement-extend.test.ts`). A designed map may SEED both from
+  `CustomMapPreset.houseRules` — soft defaults, apply-once, host-editable, with
+  the usual revert symmetry (`custom-setup.test.ts`, `map-preset-editor.test.tsx`).
+- **Capturing a founded settlement now opens the full SETTLEMENT_CHOICE** instead
+  of auto-inheriting the founder's resource: the captor may pick ANY resource
+  (the old owner's level is stripped first), reinforce a bronze/silver Few at half
+  cost, or — with `polish-unit-stacks` on — buy ONE Stack layer at half the
+  printed gold (rounded up, gold-only, the `BUY_UNIT_STACK` sibling's
+  `spendRecruitResources` path, so the Freelancer's Guild substitutes; no Legion
+  voucher folds, matching every other special offer). The first-ever flag is still
+  the only free one (`everFlagged`). `settlement-income.test.ts`.
+- **A Necropolis hero may own TWO Necromancy cards** (the deck holds exactly two)
+  via the Necromancy Amplifier's turn-start fetch; the offer and the resolver both
+  cap at two and both refuse a non-Necropolis faction (`siege-tokens.test.ts`).
+- **A designer timed event may be a `choice`**: every live seat picks one reward
+  from 2–4 entries of the Obelisk-bonus vocabulary (`applyCustomMapTimedEvents` →
+  a `visit-steps` CHOOSE_ONE per seat). Any timed event that QUEUES per-player
+  work now raises the round-start EVENT BARRIER, so the table waits while each
+  seat answers, and one shared sentinel (de-duped in
+  `beginRoundStartEventBarrier`) lifts it behind whatever Astrologers / Events /
+  waves queued first. Pinned end-to-end in `custom-setup.test.ts` (frozen seat
+  has zero legal actions, both seats paid, barrier lifts, plus a
+  queues-nothing CONTROL).
+- **Legacy: disembarking (sea→land) no longer ends movement**; embarking still
+  does. BINH deliberately keeps BOTH coastline halts, so the default table is
+  unchanged (`seaStepHalts`, `sea-tile-terrain.test.ts`,
+  `astrologers-combat-cards.test.ts`; both RULESET_DESCRIPTIONS updated).
+- **D-S1 (Heavenly Demon seat) attaches the shared field-symbol modules** — its
+  art is atmosphere-only (verified: no baked icons, unlike A-S1/W-S1/L-S1/P-S1),
+  so its starting resource / treasure / mine symbols and guard numerals were
+  invisible (`anime-starting-tiles.test.ts`, `field-symbol-modules.test.ts`).
+- **Audit fixes on top** (each mutation-checked): the PvP pre-battle prep window
+  no longer OFFERS the "during your turn" building uses or the Secondary-Hero
+  hire — `activateTownBuilding` / `hireSecondaryHero` both throw "Town actions
+  cannot interrupt a combat.", so those were 8 dead buttons (and the new Cover of
+  Darkness hand-rail button was one of them); the invariant is pinned in
+  `pvp-prep-town-actions.test.ts` ("offers nothing it cannot execute" — every
+  offered action is applied and must not error — with a no-combat CONTROL that
+  the same three offers exist AND work. `RESOLVE_VISIT_STEP` is
+  handler-validated, so `resolveSettlementChoice` now rejects an out-of-range
+  resource index (a forged `-1` flagged the settlement for free and wrote
+  `production["undefined"] = NaN`); and the hand rail's cover-of-darkness confirm
+  always returns instead of falling through to `REFRESH_HAND` when its offer
+  vanished mid-pick (a parallel-turn attack withdraws every town action).
+
 ## First-round hand discards, Angel Wings, morale −2, Search top-of-discard (2026-07-25)
 
 Four fixes to shipped behaviour (not toggles — the previous behaviour was wrong):
