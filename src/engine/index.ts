@@ -629,6 +629,8 @@ export {
   mapFieldLayer,
   DESIGNER_BORDER_SEALING_ENABLED,
   isDesignedEdgeSealedBetween,
+  BLOCKED_FIELD_CARVE_LOCATIONS,
+  isBlockedFieldCarve,
   isOuterEdgeSealed,
   isTileSlotDesignedSealed,
   isTileSlotOuterSealed,
