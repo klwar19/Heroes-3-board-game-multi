@@ -3470,7 +3470,7 @@ function addTurnCardActions(
   // the player is a participant still in prep; the live combat / active-player
   // gates below are relaxed for it, and map-MOVEMENT Spells (Town Portal) are
   // dropped since teleporting the hero out would break the pending battle.
-  context: "map" | "combat-prep" = "map"
+  context: "map" | "combat-prep" | "post-combat" = "map"
 ): void {
   const player = state.players[playerId];
   if (!player || state.pendingChoice || state.reactionWindow) {
@@ -3491,7 +3491,7 @@ function addTurnCardActions(
   // below drop anything that is not a Map-playable Spell.
   const turnCardSources: { cardId: CardId; fromSpellBook?: true }[] = [
     ...[...new Set(player.hand)].map((cardId) => ({ cardId })),
-    ...(bookCastSourcesEnabled(state)
+    ...(context !== "post-combat" && bookCastSourcesEnabled(state)
       ? [...new Set(player.spellBook ?? [])].map((cardId) => ({ cardId, fromSpellBook: true as const }))
       : [])
   ];
@@ -3669,7 +3669,13 @@ function addBankedReinforcementActions(
   playerId: PlayerId
 ): void {
   const player = state.players[playerId];
-  if (!player || state.combat || !hasOpenAdventureTurn(state, playerId)) {
+  const resolvingNecromancy =
+    state.adventure?.pendingNecromancy?.playerId === playerId;
+  if (
+    !player ||
+    state.combat ||
+    (!resolvingNecromancy && !hasOpenAdventureTurn(state, playerId))
+  ) {
     return;
   }
 
@@ -3834,6 +3840,35 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
       }
     }
   }
+}
+
+/**
+ * Cards that may be layered into the atomic post-combat Necromancy purchase.
+ * Gold effects improve affordability (Estates and equivalent hand cards);
+ * Legion pieces reduce the selected unit's price. Everything else remains
+ * blocked until the player explicitly resolves the window.
+ */
+function isNecromancySupportPlay(legal: LegalAction, cards: CardLibrary): boolean {
+  const action = legal.action;
+  if (action.type !== "PLAY_CARD") {
+    return false;
+  }
+  const card = cards[action.cardId];
+  const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
+  if (!effect) {
+    return false;
+  }
+  if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
+    return true;
+  }
+  if (effect.type !== "GAIN_RESOURCES") {
+    return false;
+  }
+  const gain =
+    action.mode === "expert" && effect.expertGain
+      ? effect.expertGain
+      : effect.gain;
+  return (gain.gold ?? 0) > 0;
 }
 
 function isSimultaneousTurnAvailable(state: GameState, playerId: PlayerId): boolean {
@@ -9666,10 +9701,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // Pending field visit choices. Any free combat-driven reinforce (the Skeleton
-  // fallback) or level-up choice queued during finalization resolves here FIRST,
-  // before the Necromancy gate below — none of these is the withheld field
-  // reward, so the now-or-never rule is not weakened by letting them through.
+  // A direct sub-prompt selected inside the transaction (Legion targeting or
+  // the legacy immediate Necromancy target) resolves before returning to the
+  // transaction tray. Queued combat/field rewards are not materialized here
+  // until after explicit Resolve.
   if (adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
     return actions;
@@ -9696,14 +9731,30 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
-  // BINH house rule: the after-combat Necromancy window is now-or-never. Until
-  // the winner plays Necromancy or skips it, NOTHING else on the map is legal
-  // and the field reward of the fight they just won stays withheld — so "collect
-  // the field gold, then reinforce with it" is impossible.
+  // BINH house rule: the after-combat Necromancy transaction is now-or-never.
+  // Only Necromancy, compatible hand bonuses, their reinforcement redemptions,
+  // and the final Resolve are legal. The just-won reward stays withheld.
   if (adventure.pendingNecromancy) {
     if (adventure.pendingNecromancy.playerId === playerId) {
       addNecromancyPlays(actions, state, playerId, cards);
-      actions.push({ label: "Skip Necromancy", action: { type: "SKIP_NECROMANCY", playerId } });
+      const supportActions: LegalAction[] = [];
+      addTurnCardActions(
+        supportActions,
+        state,
+        playerId,
+        cards,
+        "post-combat"
+      );
+      actions.push(
+        ...supportActions.filter((legal) =>
+          isNecromancySupportPlay(legal, cards)
+        )
+      );
+      addBankedReinforcementActions(actions, state, playerId);
+      actions.push({
+        label: "Resolve bonuses and continue",
+        action: { type: "SKIP_NECROMANCY", playerId }
+      });
     }
     return actions;
   }

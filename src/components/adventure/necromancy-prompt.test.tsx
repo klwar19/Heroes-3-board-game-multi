@@ -104,17 +104,16 @@ describe("Necropolis — post-combat Necromancy window renders on the map", () =
     expect(legal.some((a) => a.action.type === "END_TURN")).toBe(false);
   });
 
-  it("PromptTray renders the Skip Necromancy button and dispatches it (the bug: it was forced)", () => {
+  it("PromptTray renders the explicit Resolve button and dispatches it", () => {
     const state = necromancyWindowState("necro-render");
     const onAction = vi.fn();
     render(
       <PromptTray legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />
     );
 
-    // Without the fix the tray returns null (no surface claimed the Necromancy
-    // window) so the winner was forced to play the reinforce card — there was no
-    // way to skip. The Skip button must be present AND functional.
-    const skip = screen.getByRole("button", { name: /skip necromancy/i });
+    // Without the prompt surface the winner was frozen after combat. The
+    // explicit Resolve control must be present and functional.
+    const skip = screen.getByRole("button", { name: /resolve bonuses and continue/i });
     expect(skip).toBeTruthy();
     // The reinforce play is offered alongside it, so the choice is real.
     expect(screen.getByRole("button", { name: /play necromancy/i })).toBeTruthy();
@@ -126,12 +125,9 @@ describe("Necropolis — post-combat Necromancy window renders on the map", () =
 
   /**
    * The USER-REPORTED shape: after a Creature Bank fight (Derelict Ship under
-   * Polish Bank Sizes) whose reward opens a Spell-deck Search (a top-level
-   * `pendingChoice`), the map screen must still render the Necromancy window once
-   * that Search is answered. Combat is already cleared (state.combat === null), so
-   * this is the SAME map surface (PromptTray) the guard-win test above exercises —
-   * this pins that a bank whose reward PROMPTS (the case the engine bank tests
-   * cover only for the pendingVisit shape) reaches the same rendered window.
+   * Polish Bank Sizes) whose reward will open a Spell-deck Search, the map
+   * screen must render Necromancy before that Search can start. Combat is
+   * already cleared, so PromptTray must own this interaction.
    */
   function derelictBankNecromancyState(seed: string): GameState {
     const state = createAdventureGameState({
@@ -186,19 +182,10 @@ describe("Necropolis — post-combat Necromancy window renders on the map", () =
 
     finalizeAdventureCombat(state);
     pumpAdventureQueues(state);
-    // Answer the bank reward's Spell Search the way a human would.
-    let cur = state;
-    for (let guard = 0; guard < 12 && cur.pendingChoice; guard += 1) {
-      const pick = getLegalActions(cur, "p1").find(
-        (l) => l.action.type === "CHOOSE_OPTION" || l.action.type === "RESOLVE_DECK_SEARCH"
-      );
-      if (!pick) break;
-      cur = apply(cur, pick.action);
-    }
-    return cur;
+    return state;
   }
 
-  it("renders the Necromancy window on the map after a bank fight whose reward opened a Spell Search", () => {
+  it("renders Necromancy before a Bank reward may open its Spell Search", () => {
     const state = derelictBankNecromancyState("bank-search-render");
     // The engine reached the now-or-never window with combat cleared (map surface).
     expect(state.combat ?? null).toBeNull();
@@ -208,7 +195,11 @@ describe("Necropolis — post-combat Necromancy window renders on the map", () =
     render(
       <PromptTray legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
     );
-    expect(screen.getByRole("button", { name: /skip necromancy/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: /resolve bonuses and continue/i,
+      }),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: /play necromancy/i })).toBeTruthy();
   });
 });

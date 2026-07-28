@@ -191,11 +191,14 @@ describe("Give up: a defeat with the Retreat consequences", () => {
   it("grants the opponent a Necromancy window (unlike a Surrender)", () => {
     const state = makeGame();
     const { winnerId } = stageGiveUpPvp(state);
+    state.players[winnerId].factionId = "necropolis";
+    state.players[winnerId].hand = ["ability.necromancy"];
     state.players[winnerId].necromancyWindow = false;
 
     finalizeAdventureCombat(state);
 
     expect(state.players[winnerId].necromancyWindow).toBe(true);
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe(winnerId);
   });
 });
 

@@ -16653,20 +16653,30 @@ export function queueLegionDiscountChoice(state: GameState, playerId: PlayerId, 
   if (!adventure || targets.length === 0) {
     return;
   }
-  adventure.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${amount} gold`,
-        options: targets.map((target) => ({
-          label: legionTargetLabel(target, amount),
-          steps: [{ type: "BANK_RECRUIT_DISCOUNT", cardId, amount, target: voucherTargetOf(target.purchase) }]
-        }))
-      }
-    ]
-  });
+  const steps: VisitStep[] = [
+    {
+      type: "CHOOSE_ONE",
+      prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${amount} gold`,
+      options: targets.map((target) => ({
+        label: legionTargetLabel(target, amount),
+        steps: [{ type: "BANK_RECRUIT_DISCOUNT", cardId, amount, target: voucherTargetOf(target.purchase) }]
+      }))
+    }
+  ];
+  const necromancy = adventure.pendingNecromancy;
+  if (necromancy?.playerId === playerId && !adventure.pendingVisit) {
+    // Resolve a selected Legion target inside the atomic Necromancy window.
+    // Combat and field rewards remain parked until the explicit Resolve.
+    const hero = getMainHero(state, playerId);
+    adventure.pendingVisit = {
+      playerId,
+      heroId: necromancy.heroId ?? hero?.id ?? "",
+      fieldId: necromancy.fieldId ?? hero?.spaceId ?? "",
+      steps
+    };
+    return;
+  }
+  adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps });
 }
 
 /** The voucher `target` shape (recruit→unitDefId, reinforce/stack→armyUnitId) for a purchase. */
@@ -17153,6 +17163,20 @@ export function queueNecromancyReinforce(
   if (!player || !adventure) {
     return;
   }
+  const queueChoice = (steps: VisitStep[]): void => {
+    const pending = adventure.pendingNecromancy;
+    if (pending?.playerId === playerId && !adventure.pendingVisit) {
+      const hero = getMainHero(state, playerId);
+      adventure.pendingVisit = {
+        playerId,
+        heroId: pending.heroId ?? hero?.id ?? "",
+        fieldId: pending.fieldId ?? hero?.spaceId ?? "",
+        steps
+      };
+      return;
+    }
+    adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps });
+  };
 
   const allowedTiers = mode === "expert" ? ["bronze", "silver", "gold"] : ["bronze", "silver"];
   const options: { label: string; steps: VisitStep[] }[] = [];
@@ -17205,33 +17229,25 @@ export function queueNecromancyReinforce(
   if (options.length === 0) {
     // No eligible target: the card is kept (its option carries no consumeCardId),
     // so a player who plays Necromancy with nothing to reinforce loses nothing.
-    adventure.rewardQueue.push({
-      playerId,
-      kind: "visit-steps",
-      steps: [
-        {
-          type: "CHOOSE_ONE",
-          prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
-          options: [{ label: "OK", steps: [] }]
-        }
-      ]
-    });
+    queueChoice([
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
+        options: [{ label: "OK", steps: [] }]
+      }
+    ]);
     return;
   }
 
   // "Skip" keeps the card too — only an actual reinforce above consumes it.
   options.push({ label: "Skip (keep the card)", steps: [] });
-  adventure.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
-        options
-      }
-    ]
-  });
+  queueChoice([
+    {
+      type: "CHOOSE_ONE",
+      prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
+      options
+    }
+  ]);
 }
 
 /**
