@@ -151,6 +151,7 @@ import {
   placeNeutralUnits,
   playerDwellingTiers,
   processPendingVisit,
+  removeSettlementProduction,
   pvpAttacksBanned,
   queueExplorersEmpower,
   queueFreeBronzeReinforce,
@@ -832,7 +833,6 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   if (!player) {
     throw new Error("Unknown player.");
   }
-
   assertActiveTurn(state, action.playerId);
 
   if (!player.needsHandRefresh && !player.canMulligan) {
@@ -4020,6 +4020,9 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       if (!player) {
         throw new Error("Unknown player at the Tavern.");
       }
+      if (houseRuleEnabled(state, "no-secondary-heroes")) {
+        throw new Error("Secondary Heroes are disabled for this scenario.");
+      }
       if (getSecondaryHero(state, action.playerId)) {
         throw new Error("You already field a Secondary Hero.");
       }
@@ -4091,12 +4094,9 @@ function resolveSettlementChoice(
   const resourceByIndex: ("gold" | "buildingMaterials" | "valuables")[] = ["gold", "buildingMaterials", "valuables"];
 
   if (action.optionIndex !== undefined && action.optionIndex <= 2) {
-    // Choose a resource income. This path is only reached for the very first
-    // flag of the settlement (a settlement that already carries a token is
-    // transferred automatically in beginFieldVisit, without a choice).
-    // applySettlementResource records the token, raises this player's
-    // production by one resource-gain level, and pays the one-time stockpile
-    // bonus on the first flag.
+    // Choose or replace the resource income. applySettlementResource removes
+    // the former owner's old level, records the new token, and pays the stockpile
+    // bonus only on the settlement's first-ever flag.
     applySettlementResource(state, action.playerId, field, resourceByIndex[action.optionIndex]);
     return;
   }
@@ -4112,8 +4112,50 @@ function resolveSettlementChoice(
     return tier === "bronze" || tier === "silver";
   });
   const target = fewUnits[armyIndex];
+  const free = !field.everFlagged;
   if (!target) {
-    throw new Error("Choose a few unit to reinforce or a resource income.");
+    const stackIndex = armyIndex - fewUnits.length;
+    const stackTargets = armyUnitStacksActive(state)
+      ? player.army.filter((unit) => {
+          const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+          return (
+            (tier === "bronze" || tier === "silver") &&
+            polishArmyUnitCanBuyStack(unit) &&
+            Boolean(polishArmyUnitStackCost(unit))
+          );
+        })
+      : [];
+    const stackTarget = stackTargets[stackIndex];
+    const baseCost = stackTarget ? polishArmyUnitStackCost(stackTarget) : null;
+    if (!stackTarget || !baseCost) {
+      throw new Error("Choose a unit to upgrade or a resource income.");
+    }
+    const cost: ResourceCost = free ? {} : { gold: Math.ceil((baseCost.gold ?? 0) / 2) };
+    if (!free && !hasRecruitResources(state, action.playerId, cost)) {
+      throw new Error("Not enough resources to add a Stack at half cost.");
+    }
+    if (!free) {
+      spendRecruitResources(state, action.playerId, cost, "settlement Stack upgrade");
+    }
+    const previousOwnerId = field.flagOwnerId;
+    removeSettlementProduction(state, action.playerId, field);
+    stackTarget.stacks = (stackTarget.stacks ?? 0) + 1;
+    diluteUnitExperienceForUpgrade(state, action.playerId, stackTarget, "stack");
+    field.everFlagged = true;
+    flagField(state, action.playerId, field);
+    refreshEliminationClock(state, action.playerId);
+    if (previousOwnerId && previousOwnerId !== action.playerId) {
+      refreshEliminationClock(state, previousOwnerId);
+    }
+    appendEvent(state, {
+      type: "ARMY_STACK_PURCHASED",
+      playerId: action.playerId,
+      armyUnitId: stackTarget.id,
+      unitDefId: stackTarget.unitDefId,
+      stacks: stackTarget.stacks,
+      cost
+    });
+    return;
   }
 
   const packSide = getUnitSide(target.unitDefId, "pack");
@@ -4121,7 +4163,6 @@ function resolveSettlementChoice(
     throw new Error("That unit has no pack side.");
   }
 
-  const free = !field.everFlagged;
   // Half cost (all resources, rounded up) — but a Legion voucher reserved for
   // this unit may make it cheaper still (non-stacking; see reinforceCostFor), so
   // charge the actual best cost. A free first flag charges nothing.
@@ -4147,6 +4188,7 @@ function resolveSettlementChoice(
   // it a spawn point and an elimination shield). Flag it and refresh both
   // players' elimination clocks.
   const previousOwnerId = field.flagOwnerId;
+  removeSettlementProduction(state, action.playerId, field);
   field.everFlagged = true;
   flagField(state, action.playerId, field);
   refreshEliminationClock(state, action.playerId);
@@ -9672,11 +9714,14 @@ export function continueNeutralCombat(
     throw new Error("Only the attacking hero may continue the combat.");
   }
 
-  if (hero.movementPoints <= 0) {
+  const freeExtend = houseRuleEnabled(state, "free-neutral-combat-extend");
+  if (hero.movementPoints <= 0 && !freeExtend) {
     throw new Error("Continuing a neutral combat costs 1 movement point.");
   }
 
-  hero.movementPoints -= 1;
+  if (!freeExtend) {
+    hero.movementPoints -= 1;
+  }
   combat.awaitingContinue = false;
 
   appendEvent(state, {
@@ -11576,6 +11621,9 @@ export function hireSecondaryHero(
   const player = state.players[action.playerId];
   if (!player) {
     throw new Error("Unknown player.");
+  }
+  if (houseRuleEnabled(state, "no-secondary-heroes")) {
+    throw new Error("Secondary Heroes are disabled for this scenario.");
   }
   if (state.combat) {
     throw new Error("Town actions cannot interrupt a combat.");

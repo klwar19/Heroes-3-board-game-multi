@@ -2442,7 +2442,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
       ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
       ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),
-      ...(options.startingUnits !== undefined ? (["startingUnits"] as const) : [])
+      ...(options.startingUnits !== undefined ? (["startingUnits"] as const) : []),
+      ...(options.houseRules?.["no-secondary-heroes"] !== undefined
+        ? (["noSecondaryHeroes"] as const)
+        : []),
+      ...(options.houseRules?.["free-neutral-combat-extend"] !== undefined
+        ? (["freeNeutralCombatExtend"] as const)
+        : [])
     ]);
     applyCustomMapPresetToOptions(
       setupOptions,

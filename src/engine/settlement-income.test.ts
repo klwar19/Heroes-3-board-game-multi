@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { GameState, MapFieldState, VisitStep } from "./state";
+import type { GameAction, GameState, MapFieldState, VisitStep } from "./state";
 import { beginFieldVisit, getMainHero } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
+import { getLegalActions } from "./legal-actions";
 
 // A settlement raises one production track by a full resource-gain level —
 // +5 gold, +2 building materials, or +1 valuables (the same levels as the
@@ -162,7 +163,7 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     expect(state.players.p1.production.gold).toBe(productionAfterFirstFlag);
   });
 
-  it("auto-transfers a founded settlement to the captor: inherits the resource, no choice, no first-flag bonus", () => {
+  it("lets the captor replace a founded settlement's resource without another first-flag bonus", () => {
     const state = makeGame();
     const field = foundGoldSettlement(state, "p1");
 
@@ -174,15 +175,15 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     // p2 captures the settlement.
     visit(state, "p2", field);
 
-    // Capture is automatic — no SETTLEMENT_CHOICE is offered.
-    expect(state.adventure!.pendingVisit).toBeNull();
+    // Capture opens the same choice, so p2 may replace gold with valuables.
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("SETTLEMENT_CHOICE");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 2 });
     expect(field.flagOwnerId).toBe("p2");
 
-    // p2 inherits exactly the founder's resource (gold), NOT a resource of
-    // p2's choosing — valuables production is untouched.
-    expect(field.settlementResource).toBe("gold");
-    expect(state.players.p2.production.gold).toBe(p2ProductionBefore + 5);
-    expect(state.players.p2.production.valuables).toBe(p2ValuablesBefore);
+    // The founder's gold income is removed and p2 gains the chosen valuables level.
+    expect(field.settlementResource).toBe("valuables");
+    expect(state.players.p2.production.gold).toBe(p2ProductionBefore);
+    expect(state.players.p2.production.valuables).toBe(p2ValuablesBefore + 1);
 
     // p2 does NOT get the one-time first-flag stockpile bonus.
     expect(state.players.p2.resources.gold).toBe(p2StockpileBefore);
@@ -197,14 +198,50 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     const baselineP1 = state.players.p1.production.gold - 5; // p1 without the settlement
     const baselineP2 = state.players.p2.production.gold; // p2 without the settlement
 
-    visit(state, "p2", field); // p2 takes it: p1 -5, p2 +5
+    visit(state, "p2", field);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 });
     expect(state.players.p1.production.gold).toBe(baselineP1);
     expect(state.players.p2.production.gold).toBe(baselineP2 + 5);
 
-    visit(state, "p1", field); // p1 takes it back
+    visit(state, "p1", field);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(field.flagOwnerId).toBe("p1");
     expect(state.players.p1.production.gold).toBe(baselineP1 + 5);
     expect(state.players.p2.production.gold).toBe(baselineP2); // p2 back to baseline, not below
+  });
+
+  it("a captor may add a bronze Stack for half cost, rounded up, and removes the old income", () => {
+    const state = createAdventureGameState({
+      seed: "settlement-stack-capture",
+      rollFirstPlayer: false,
+      houseRules: { "polish-unit-stacks": true }
+    });
+    const field = injectSettlement(state, "p1", true);
+    field.settlementResource = "gold";
+    state.players.p1.production.gold = 7;
+    state.players.p2.army = [
+      { id: "skeleton-pack", unitDefId: "necropolis.skeletons", side: "pack" }
+    ];
+    state.players.p2.resources.gold = 10;
+
+    visit(state, "p2", field);
+    const stack = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "RESOLVE_VISIT_STEP" &&
+        legal.label.includes("Stack") &&
+        legal.label.includes("Skeletons")
+    );
+    expect(stack?.label).toContain("2 gold");
+    resolveVisitStep(
+      state,
+      stack!.action as Extract<GameAction, { type: "RESOLVE_VISIT_STEP" }>
+    );
+
+    expect(state.players.p2.resources.gold).toBe(8);
+    expect(state.players.p2.army[0].stacks).toBe(1);
+    expect(field.flagOwnerId).toBe("p2");
+    expect(field.settlementResource).toBeNull();
+    expect(state.players.p1.production.gold).toBe(2);
   });
 
   it("still offers the full choice on the very first flag", () => {

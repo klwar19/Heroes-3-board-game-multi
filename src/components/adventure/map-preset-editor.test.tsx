@@ -264,6 +264,61 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(last.timedEvents!.length).toBe(2);
   });
 
+  it("timed events expose editable multi-reward choices", () => {
+    const onChange = vi.fn();
+    const base: CustomMapPreset = {
+      timedEvents: [{ round: 4, effect: { kind: "note", text: "Choose" } }]
+    };
+    const { rerender } = render(<MapPresetEditor preset={base} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("Timed event 1 effect type"), {
+      target: { value: "choice" }
+    });
+    const changed = onChange.mock.calls.at(-1)?.[0] as CustomMapPreset;
+    expect(changed.timedEvents?.[0].effect).toEqual({
+      kind: "choice",
+      prompt: "Choose one reward",
+      options: [
+        { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 1 },
+        { kind: "resources", gold: 0, buildingMaterials: 2, valuables: 0 }
+      ]
+    });
+
+    rerender(<MapPresetEditor preset={changed} onChange={onChange} />);
+    fireEvent.change(screen.getByLabelText("Timed event 1 choice prompt"), {
+      target: { value: "Astrologers offer a boon" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        timedEvents: [
+          expect.objectContaining({
+            effect: expect.objectContaining({
+              kind: "choice",
+              prompt: "Astrologers offer a boon"
+            })
+          })
+        ]
+      })
+    );
+    expect(screen.getByLabelText("Timed event 1 reward 1 kind")).toBeTruthy();
+    expect(screen.getByLabelText("Timed event 1 reward 2 kind")).toBeTruthy();
+  });
+
+  it("writes the two scenario-wide house-rule defaults", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Disabled" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      houseRules: { "no-secondary-heroes": true }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Free" }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      houseRules: { "free-neutral-combat-extend": true }
+    });
+  });
+
   it("round field is clearable to blank and accepts a single-digit value (regression: sticky leading '1')", () => {
     const onChange = vi.fn();
     const base: CustomMapPreset = {

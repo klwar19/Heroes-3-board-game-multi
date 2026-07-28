@@ -311,6 +311,12 @@ export function MapPresetEditor({
       // Toggling Victory Points off removes the block entirely.
       delete next.victoryPoints;
     }
+    if (
+      "houseRules" in partial &&
+      (!partial.houseRules || Object.keys(partial.houseRules).length === 0)
+    ) {
+      delete next.houseRules;
+    }
     // Collapse to undefined when nothing is set.
     const keys = Object.keys(next).filter((key) => {
       const v = next[key as keyof CustomMapPreset];
@@ -331,6 +337,18 @@ export function MapPresetEditor({
   const units = value.startingUnits ?? null;
   const bonuses = value.startingBonuses ?? [];
   const timed = value.timedEvents ?? [];
+  const setMapHouseRule = (
+    id: "no-secondary-heroes" | "free-neutral-combat-extend",
+    setting: boolean | undefined
+  ) => {
+    const next = { ...(value.houseRules ?? {}) };
+    if (setting === undefined) {
+      delete next[id];
+    } else {
+      next[id] = setting;
+    }
+    patch({ houseRules: Object.keys(next).length > 0 ? next : undefined });
+  };
   const obeliskConfig = value.obelisks;
   const obeliskRole: CustomMapObeliskConfig["role"] | "classic" = obeliskConfig?.role ?? "classic";
   const obeliskGuard = obeliskConfig?.guard;
@@ -549,7 +567,8 @@ export function MapPresetEditor({
   const groupCounts = {
     matchSetup:
       (value.difficulty ? 1 : 0) +
-      (value.farTileOpening !== undefined || value.farTilesPerPlayer !== undefined ? 1 : 0),
+      (value.farTileOpening !== undefined || value.farTilesPerPlayer !== undefined ? 1 : 0) +
+      Object.keys(value.houseRules ?? {}).length,
     startingPosition:
       (value.startingResources ? 1 : 0) +
       (value.startingProduction ? 1 : 0) +
@@ -649,6 +668,62 @@ export function MapPresetEditor({
         <small className="mapPresetHint">
           Neutral guard strength (Field Difficulty Level Table) + the printed starting bonus. Seeds the lobby on
           pick; the host can still change it there (their choice wins), and switching maps restores the scenario default.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Global house rules (preset)</div>
+        {(
+          [
+            {
+              id: "no-secondary-heroes",
+              label: "Secondary Heroes",
+              on: "Disabled",
+              off: "Allowed"
+            },
+            {
+              id: "free-neutral-combat-extend",
+              label: "Neutral battle extension",
+              on: "Free",
+              off: "Costs 1 movement"
+            }
+          ] as const
+        ).map((rule) => {
+          const current = value.houseRules?.[rule.id];
+          return (
+            <div className="mapPresetObjectiveRow" key={rule.id}>
+              <span className="mapPresetObjectiveLabel">{rule.label}</span>
+              <div className="mapPresetChipRow" role="group" aria-label={`${rule.label} map preset`}>
+                <button
+                  aria-pressed={current === undefined}
+                  className={`mapPresetChip${current === undefined ? " active" : ""}`}
+                  onClick={() => setMapHouseRule(rule.id, undefined)}
+                  type="button"
+                >
+                  Lobby default
+                </button>
+                <button
+                  aria-pressed={current === false}
+                  className={`mapPresetChip${current === false ? " active" : ""}`}
+                  onClick={() => setMapHouseRule(rule.id, false)}
+                  type="button"
+                >
+                  {rule.off}
+                </button>
+                <button
+                  aria-pressed={current === true}
+                  className={`mapPresetChip${current === true ? " active" : ""}`}
+                  onClick={() => setMapHouseRule(rule.id, true)}
+                  type="button"
+                >
+                  {rule.on}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        <small className="mapPresetHint">
+          Seeds these rules when the map is picked; the host can still change them in Match settings.
         </small>
       </section>
 
@@ -2851,6 +2926,89 @@ function TimedEffectFields({
       </div>
     );
   }
+  if (effect.kind === "choice") {
+    const updateOption = (optionIndex: number, option: CustomMapObeliskBonus) =>
+      onChange({
+        ...effect,
+        options: effect.options.map((entry, i) => (i === optionIndex ? option : entry))
+      });
+    return (
+      <>
+        <label className="mapPresetResourceField">
+          <span>Prompt</span>
+          <input
+            aria-label={`Timed event ${index + 1} choice prompt`}
+            maxLength={120}
+            onChange={(e) => onChange({ ...effect, prompt: e.target.value })}
+            type="text"
+            value={effect.prompt}
+          />
+        </label>
+        {effect.options.map((option, optionIndex) => (
+          <div className="mapPresetObeliskBonus" key={optionIndex}>
+            <RewardGlyph
+              src={obeliskBonusGlyph(option.kind)}
+              title={`Timed event ${index + 1} reward ${optionIndex + 1}`}
+            />
+            <label className="mapPresetTimedKind">
+              Reward {optionIndex + 1}
+              <select
+                aria-label={`Timed event ${index + 1} reward ${optionIndex + 1} kind`}
+                onChange={(e) =>
+                  updateOption(
+                    optionIndex,
+                    defaultObeliskBonusForKind(
+                      e.target.value as CustomMapObeliskBonus["kind"]
+                    )
+                  )
+                }
+                value={option.kind}
+              >
+                {MAP_PRESET_OBELISK_BONUS_KINDS.map((kind) => (
+                  <option key={kind.id} value={kind.id}>
+                    {kind.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ObeliskBonusFields
+              bonus={option}
+              onChange={(next) => updateOption(optionIndex, next)}
+            />
+            {effect.options.length > 2 ? (
+              <button
+                aria-label={`Remove timed event ${index + 1} reward ${optionIndex + 1}`}
+                className="mapPresetTimedIconButton danger"
+                onClick={() =>
+                  onChange({
+                    ...effect,
+                    options: effect.options.filter((_, i) => i !== optionIndex)
+                  })
+                }
+                type="button"
+              >
+                <Trash2 aria-hidden="true" size={13} />
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {effect.options.length < MAX_OBELISK_BONUSES ? (
+          <button
+            className="mapPresetTimedAdd"
+            onClick={() =>
+              onChange({
+                ...effect,
+                options: [...effect.options, defaultObeliskBonusForKind("morale")]
+              })
+            }
+            type="button"
+          >
+            <Plus aria-hidden="true" size={13} /> Add reward
+          </button>
+        ) : null}
+      </>
+    );
+  }
   if (effect.kind === "story") {
     return (
       <div className="mapPresetResourceRow">
@@ -3225,6 +3383,8 @@ function cloneTimedEvent(event: CustomMapTimedEvent): CustomMapTimedEvent {
     effect:
       event.effect.kind === "clear_visitable_cubes"
         ? { ...event.effect, locations: [...event.effect.locations] }
+        : event.effect.kind === "choice"
+          ? { ...event.effect, options: event.effect.options.map((option) => ({ ...option })) }
         : { ...event.effect }
   };
   if (event.repeatEveryRounds) {

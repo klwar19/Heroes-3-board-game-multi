@@ -6,7 +6,7 @@ import {
   processPendingVisit,
   startAdventureRound
 } from "./adventure";
-import { pumpAdventureQueues } from "./adventure-reducer";
+import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState, validateCustomMapPlan } from "./adventure-setup";
 import { getScenario } from "./adventure-setup";
 import { applyAction, createAdventureLobbyState } from "./index";
@@ -809,6 +809,34 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(implicit.adventure?.difficulty).toBe("hard");
   });
 
+  it("map presets seed the two global house rules while explicit setup choices win", () => {
+    const preset = {
+      houseRules: {
+        "no-secondary-heroes": true,
+        "free-neutral-combat-extend": true
+      }
+    } as const;
+    const seeded = createAdventureGameState({
+      seed: "preset-global-rules",
+      customMap: NEAR_SLOT,
+      customMapPreset: preset
+    });
+    expect(seeded.adventure?.houseRules?.["no-secondary-heroes"]).toBe(true);
+    expect(seeded.adventure?.houseRules?.["free-neutral-combat-extend"]).toBe(true);
+
+    const explicit = createAdventureGameState({
+      seed: "preset-global-rules-explicit",
+      customMap: NEAR_SLOT,
+      customMapPreset: preset,
+      houseRules: {
+        "no-secondary-heroes": false,
+        "free-neutral-combat-extend": false
+      }
+    });
+    expect(explicit.adventure?.houseRules?.["no-secondary-heroes"]).toBe(false);
+    expect(explicit.adventure?.houseRules?.["free-neutral-combat-extend"]).toBe(false);
+  });
+
   it("switching away from a map-settings preset restores the scenario difficulty + far-tile defaults", () => {
     let state = createAdventureLobbyState({ seed: "preset-settings-revert", scenarioId: "skirmish" });
     const lobby = () => state.setupLobby!;
@@ -1165,6 +1193,55 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     }
   });
 
+  it("timed choice events queue one real reward choice per live player", () => {
+    const state = createAdventureGameState({
+      seed: "preset-timed-choice",
+      customMap: NEAR_SLOT,
+      customMapPreset: {
+        timedEvents: [
+          {
+            round: 3,
+            effect: {
+              kind: "choice",
+              prompt: "The stars align: choose your boon",
+              options: [
+                { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 1 },
+                { kind: "resources", gold: 0, buildingMaterials: 2, valuables: 0 },
+                { kind: "experience", amount: 2 }
+              ]
+            }
+          }
+        ]
+      }
+    });
+    state.round = 3;
+
+    applyCustomMapTimedEvents(state);
+
+    const queuedChoices = state.adventure!.rewardQueue.filter(
+      (reward) =>
+        reward.kind === "visit-steps" &&
+        reward.steps[0]?.type === "CHOOSE_ONE" &&
+        reward.steps[0].prompt === "The stars align: choose your boon"
+    );
+    const liveOrder = state.turnOrder.filter((playerId) => playerId === "p1" || playerId === "p2");
+    expect(queuedChoices.map((reward) => reward.playerId)).toEqual(liveOrder);
+    expect(state.adventure!.rewardQueue.at(-1)?.kind).toBe("round-start-events-resolved");
+
+    state.adventure!.pendingTileChoice = null;
+    pumpAdventureQueues(state);
+    const choiceOwner = liveOrder[0];
+    const materialsBefore = state.players[choiceOwner].resources.buildingMaterials;
+    const step = state.adventure!.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") {
+      throw new Error("Timed choice did not open.");
+    }
+    expect(step.options).toHaveLength(3);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: choiceOwner, optionIndex: 1 });
+    expect(state.players[choiceOwner].resources.buildingMaterials).toBe(materialsBefore + 2);
+  });
+
   it("timed events skip eliminated seats and their heroes", () => {
     const state = createAdventureGameState({
       seed: "preset-timed-live-seats",
@@ -1341,6 +1418,18 @@ describe("map preset conditions — effects and apply-once semantics", () => {
         { round: "nope", effect: { kind: "morale", amount: 1 } }, // non-number round dropped
         { round: 5, effect: { kind: "treasure_roll", count: 0 } }, // count clamps to 1
         { round: 5, effect: { kind: "resource_roll", count: 2 } },
+        {
+          round: 6,
+          effect: {
+            kind: "choice",
+            prompt: "  Pick a reward  ",
+            options: [
+              { kind: "resources", gold: 0, buildingMaterials: 2, valuables: 0 },
+              { kind: "morale", amount: 1 },
+              { kind: "bogus" }
+            ]
+          }
+        },
         { round: 7, effect: { kind: "note", text: "  Boss wave  " } },
         { round: 8, effect: { kind: "bogus" } } // unknown kind dropped
       ]
@@ -1348,6 +1437,17 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     expect(cleaned?.timedEvents).toEqual([
       { round: 5, effect: { kind: "treasure_roll", count: 1 } },
       { round: 5, effect: { kind: "resource_roll", count: 2 } },
+      {
+        round: 6,
+        effect: {
+          kind: "choice",
+          prompt: "Pick a reward",
+          options: [
+            { kind: "resources", gold: 0, buildingMaterials: 2, valuables: 0 },
+            { kind: "morale", amount: 1 }
+          ]
+        }
+      },
       { round: 7, effect: { kind: "note", text: "Boss wave" } },
       { round: 30, effect: { kind: "movement", amount: 5 } }
     ]);

@@ -628,7 +628,7 @@ describe("turn-start town buildings", () => {
     }
   });
 
-  it("does NOT offer a duplicate Necromancy fetch once the hero already owns Necromancy", () => {
+  it("offers one additional Necromancy copy when the hero already owns one", () => {
     let state = createAdventureGameState({ seed: "necromancy-dup", rollFirstPlayer: false });
     for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     state.towns.town_p2.buildings.push("necropolis.necromancy_amplifier");
@@ -645,33 +645,34 @@ describe("turn-start town buildings", () => {
     expect(step?.type).toBe("CHOOSE_ONE");
     if (step?.type === "CHOOSE_ONE") {
       const labels = step.options.map((option) => option.label);
-      // The duplicate-fetch option is gone; only the Specialty recall (+ Skip) remain.
-      expect(labels.some((label) => label.includes("Search the Ability deck"))).toBe(false);
+      // One existing copy does not hide either printed Amplifier option.
+      expect(labels.some((label) => label.includes("Search the Ability deck"))).toBe(true);
       expect(labels.some((label) => label.includes("Specialty"))).toBe(true);
 
       // Resolve the (now first) option — the Specialty recall — and prove no second
-      // Necromancy was acquired: exactly one copy across every zone.
+      // The fetch awards exactly one additional copy, for two total.
+      state.decks.abilities.drawPile.push("ability.necromancy");
       state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 });
       const p2 = state.players.p2;
       const necromancyCopies = [...p2.hand, ...p2.deck, ...p2.discard, ...p2.removed].filter(
         (id) => id === "ability.necromancy"
       ).length;
-      expect(necromancyCopies).toBe(1);
+      expect(necromancyCopies).toBe(2);
+      expect(p2.hand).toContain("ability.necromancy");
     }
   });
 
-  it("resolution-level guard: a forced NECROMANCY_FETCH never hands a second copy to an owner", () => {
-    // Defense in depth: even if the fetch STEP runs while the hero already owns
-    // Necromancy (e.g. acquired between the turn-start offer and resolution), the
-    // resolver must redraw past it — no duplicate Ability, ever.
+  it("resolution-level guard: a forced NECROMANCY_FETCH never hands out a third copy", () => {
+    // Defense in depth: if the hero reaches the two-copy cap after the prompt
+    // opens, the resolver must leave any further shared copy untouched.
     const state = createAdventureGameState({ seed: "necromancy-resolve", rollFirstPlayer: false });
     for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     const heroId = Object.values(state.heroes).find((hero) => hero.controllerId === "p2")!.id;
     const fieldId = state.heroes[heroId].spaceId ?? "";
     state.players.p2.hand = [];
-    state.players.p2.deck = ["ability.necromancy"]; // already owns it
-    state.players.p2.discard = [];
-    // The shared deck holds the OTHER copy on top — the resolver must NOT take it.
+    state.players.p2.deck = ["ability.necromancy"];
+    state.players.p2.discard = ["ability.necromancy"];
+    // The shared deck holds a third copy on top; the resolver must not take it.
     state.decks.abilities.drawPile.push("ability.necromancy");
 
     state.adventure!.pendingVisit = { heroId, playerId: "p2", fieldId, steps: [{ type: "NECROMANCY_FETCH" }] };
@@ -679,9 +680,9 @@ describe("turn-start town buildings", () => {
 
     const p2 = state.players.p2;
     const copies = [...p2.hand, ...p2.deck, ...p2.discard].filter((id) => id === "ability.necromancy").length;
-    expect(copies).toBe(1);
+    expect(copies).toBe(2);
     expect(p2.hand).not.toContain("ability.necromancy");
-    // The untouched second copy was reshuffled back into the deck, not consumed.
+    // The untouched third copy remains in the shared deck.
     expect(state.decks.abilities.drawPile).toContain("ability.necromancy");
   });
 

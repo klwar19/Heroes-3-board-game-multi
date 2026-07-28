@@ -623,6 +623,7 @@ export const TIMED_EFFECT_KINDS = [
   "movement",
   "treasure_roll",
   "resource_roll",
+  "choice",
   "note",
   "story"
 ] as const;
@@ -639,6 +640,7 @@ export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   movement: "All heroes gain movement",
   treasure_roll: "All players roll Treasure die",
   resource_roll: "All players roll Resource die",
+  choice: "Each player chooses one reward",
   note: "Announcement (feed note only)",
   story: "Story scene (visual novel)"
 };
@@ -667,6 +669,15 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
       return { kind: "treasure_roll", count: 1 };
     case "resource_roll":
       return { kind: "resource_roll", count: 1 };
+    case "choice":
+      return {
+        kind: "choice",
+        prompt: "Choose one reward",
+        options: [
+          { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 1 },
+          { kind: "resources", gold: 0, buildingMaterials: 2, valuables: 0 }
+        ]
+      };
     case "note":
       return { kind: "note", text: "Something stirs across the land…" };
     case "story":
@@ -1717,6 +1728,20 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   if (raw.kind === "resource_roll") {
     return { kind: "resource_roll", count: clampInt(raw.count, 1, 3, 1) };
   }
+  if (raw.kind === "choice" && Array.isArray(raw.options)) {
+    const options = raw.options
+      .map(sanitizeObeliskBonus)
+      .filter((option): option is CustomMapObeliskBonus => option !== null)
+      .slice(0, MAX_OBELISK_BONUSES);
+    if (options.length < 2) {
+      return null;
+    }
+    const prompt =
+      typeof raw.prompt === "string"
+        ? raw.prompt.trim().slice(0, 120) || "Choose one reward"
+        : "Choose one reward";
+    return { kind: "choice", prompt, options };
+  }
   if (raw.kind === "note" && typeof raw.text === "string") {
     const text = raw.text.trim().slice(0, 200);
     return text.length > 0 ? { kind: "note", text } : null;
@@ -1925,6 +1950,17 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(raw.farTilesPerPlayer))
     );
   }
+  if (raw.houseRules && typeof raw.houseRules === "object") {
+    const houseRules: NonNullable<CustomMapPreset["houseRules"]> = {};
+    for (const id of ["no-secondary-heroes", "free-neutral-combat-extend"] as const) {
+      if (typeof raw.houseRules[id] === "boolean") {
+        houseRules[id] = raw.houseRules[id];
+      }
+    }
+    if (Object.keys(houseRules).length > 0) {
+      preset.houseRules = houseRules;
+    }
+  }
   const resources = sanitizeResources(raw.startingResources);
   if (resources) {
     preset.startingResources = resources;
@@ -2078,6 +2114,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.difficulty ||
       preset.farTileOpening !== undefined ||
       preset.farTilesPerPlayer !== undefined ||
+      Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
       preset.startingProduction ||
       (preset.startingBuildings && preset.startingBuildings.length > 0) ||
@@ -2464,6 +2501,9 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
       ? "all players roll a Resource die"
       : `all players roll ${effect.count} Resource dice`;
   }
+  if (effect.kind === "choice") {
+    return `each player chooses: ${effect.options.map(describeObeliskBonus).join(" OR ")}`;
+  }
   if (effect.kind === "story") {
     const scene = getStoryScene(effect.sceneId);
     return `play story scene "${scene?.id ?? effect.sceneId}"`;
@@ -2501,6 +2541,20 @@ export function describeCustomMapPresetEntries(
         : count !== undefined
           ? `Additional Ⅱ–Ⅲ tiles: ${count} per player`
           : "Additional Ⅱ–Ⅲ tiles: on"
+    });
+  }
+  if (preset.houseRules?.["no-secondary-heroes"] !== undefined) {
+    entries.push({
+      icon: "⚙️",
+      text: `Secondary Heroes: ${preset.houseRules["no-secondary-heroes"] ? "disabled" : "allowed"}`
+    });
+  }
+  if (preset.houseRules?.["free-neutral-combat-extend"] !== undefined) {
+    entries.push({
+      icon: "⚙️",
+      text: `Neutral battle extension: ${
+        preset.houseRules["free-neutral-combat-extend"] ? "free" : "costs 1 movement"
+      }`
     });
   }
   if (preset.startingResources) {
@@ -2666,7 +2720,9 @@ export type PresetForcedOptionKey =
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
-  | "startingUnits";
+  | "startingUnits"
+  | "noSecondaryHeroes"
+  | "freeNeutralCombatExtend";
 
 /** Which lobby option fields THIS preset forces (for apply / restore symmetry). */
 export function presetForcedOptionKeys(
@@ -2699,6 +2755,12 @@ export function presetForcedOptionKeys(
   }
   if (preset.startingUnits) {
     keys.push("startingUnits");
+  }
+  if (preset.houseRules?.["no-secondary-heroes"] !== undefined) {
+    keys.push("noSecondaryHeroes");
+  }
+  if (preset.houseRules?.["free-neutral-combat-extend"] !== undefined) {
+    keys.push("freeNeutralCombatExtend");
   }
   return keys;
 }
@@ -2754,6 +2816,32 @@ export function applyCustomMapPresetToOptions(
         : `army ${preset.startingUnits.map((u) => `lv${u.level} ${u.side}`).join(", ")}`
     );
   }
+  if (
+    preset.houseRules?.["no-secondary-heroes"] !== undefined &&
+    !skip?.has("noSecondaryHeroes")
+  ) {
+    options.houseRules = {
+      ...(options.houseRules ?? {}),
+      "no-secondary-heroes": preset.houseRules["no-secondary-heroes"]
+    };
+    changes.push(
+      `Secondary Heroes ${preset.houseRules["no-secondary-heroes"] ? "disabled" : "allowed"}`
+    );
+  }
+  if (
+    preset.houseRules?.["free-neutral-combat-extend"] !== undefined &&
+    !skip?.has("freeNeutralCombatExtend")
+  ) {
+    options.houseRules = {
+      ...(options.houseRules ?? {}),
+      "free-neutral-combat-extend": preset.houseRules["free-neutral-combat-extend"]
+    };
+    changes.push(
+      `neutral battle extension ${
+        preset.houseRules["free-neutral-combat-extend"] ? "free" : "costs 1 movement"
+      }`
+    );
+  }
   return changes;
 }
 
@@ -2807,6 +2895,26 @@ export function revertCustomMapPresetOptions(
       case "startingUnits":
         options.startingUnits = defaults.startingUnits?.map((u) => ({ ...u })) ?? null;
         changes.push("army back to the scenario default");
+        break;
+      case "noSecondaryHeroes":
+        options.houseRules = { ...(options.houseRules ?? {}) };
+        if (defaults.houseRules?.["no-secondary-heroes"] === undefined) {
+          delete options.houseRules["no-secondary-heroes"];
+        } else {
+          options.houseRules["no-secondary-heroes"] =
+            defaults.houseRules["no-secondary-heroes"];
+        }
+        changes.push("Secondary Heroes back to the scenario default");
+        break;
+      case "freeNeutralCombatExtend":
+        options.houseRules = { ...(options.houseRules ?? {}) };
+        if (defaults.houseRules?.["free-neutral-combat-extend"] === undefined) {
+          delete options.houseRules["free-neutral-combat-extend"];
+        } else {
+          options.houseRules["free-neutral-combat-extend"] =
+            defaults.houseRules["free-neutral-combat-extend"];
+        }
+        changes.push("neutral battle extension back to the scenario default");
         break;
     }
   }
