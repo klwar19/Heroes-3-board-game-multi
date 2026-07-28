@@ -2522,6 +2522,45 @@ describe("ongoing cards stay in play until their effect ends", () => {
     expect(discarded.players.p1.discard).toContain("ability.luck");
   });
 
+  // A held ongoing card carries the zone IT must return to: an ongoing Spell
+  // recalled by Knowledge/Mysticism is marked "hand", and one cast from the
+  // Spell Book "spellBook". Ending it EARLY must respect that — pushing it to
+  // the discard leaked a Book Spell out of the Book into the deck cycle.
+  it("returns a voluntarily ended Ongoing card to its OWN zone, not always the discard", () => {
+    for (const returnTo of ["spellBook", "hand"] as const) {
+      const state = createInitialGameState();
+      const effect = makeActiveEffect(
+        state,
+        {
+          name: `Recalled ongoing probe (${returnTo})`,
+          scope: "player",
+          duration: { type: "current-game-round" },
+          polarity: "positive",
+          removable: false,
+          modifiers: []
+        },
+        { type: "card", cardId: "spell.fly", controllerId: "p1" },
+        "p1"
+      );
+      state.activeEffects.push(effect);
+      state.players.p1.ongoingCards = [{ cardId: "spell.fly", effectIds: [effect.id], returnTo }];
+      state.players.p1.spellBook = [];
+      state.players.p1.hand = [];
+      state.players.p1.discard = [];
+
+      const ended = applyOk(state, {
+        type: "DISCARD_ONGOING_CARD",
+        playerId: "p1",
+        cardId: "spell.fly"
+      });
+
+      expect(ended.activeEffects.some((active) => active.id === effect.id)).toBe(false);
+      expect(ended.players.p1.ongoingCards ?? []).toEqual([]);
+      expect(ended.players.p1.discard, `${returnTo} must never reach the discard`).not.toContain("spell.fly");
+      expect(returnTo === "spellBook" ? ended.players.p1.spellBook : ended.players.p1.hand).toContain("spell.fly");
+    }
+  });
+
   it("holds an ongoing spell out of the discard pile and discards it once the effect is consumed", () => {
     const state = createInitialGameState();
     if (!state.combat) {

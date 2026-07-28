@@ -1902,7 +1902,7 @@ Leading with what does NOT run / deliberate limits (ALL three):
   objective-field entries): computer seats fight their waves through the normal
   runner, and answer lair/gate menus when they stand there (visit scoring:
   challenge only with `playerArmyStrength ≥ 8`, delve at ≥ 4 — `map-policy.ts`,
-  scored by STEP TYPE not label, so the "Descend (1 movement)" prefixes are
+  scored by STEP TYPE not label, so the "Continue (1 movement)" prefixes are
   invisible to it); no bespoke route-planning toward the sites in V1.
 - **All three module hexes are Location-Token protected** (`TOKEN_FORBIDDEN_LOCATIONS`
   now lists `calamity_gate` / `dungeon_gate` / `rift_lair` beside `creature_bank`):
@@ -2059,7 +2059,7 @@ the limiter. Entering the field pays the walk, a later delve is the ordinary
 1-MP Revisit, and after a WIN a `DUNGEON_CONTINUE` reward step re-opens the menu
 for the NEXT floor immediately, whose door options each carry a
 `SPEND_HERO_MOVEMENT` step for the frozen DESCENT COST — so a hero can chain
-floors while movement lasts ("Descend (1 movement) — …" labels). With less than
+floors while movement lasts ("Continue (1 movement) — …" labels). With less than
 the descent cost left the continuation is refused with a note and the new floor
 is simply saved for a later turn; "Leave the Dungeon" is always free.
 **Campaign direction (`adventure.dungeonSite`, frozen at setup; absent fields =
@@ -2111,7 +2111,7 @@ gold). Loss/retreat: nothing lost, the hero stays at the gate and may retry
 the door menu via registered hooks — the hex-event-hook pattern) and
 `PLAY_STORY_SCENE` (auto, fires STORY_SCENE_TRIGGERED); none pause for input, so
 AFK defaults and AI seats resolve every dungeon/lair menu through the normal
-CHOOSE_ONE machinery (the AI scores by step TYPE, so the "Descend (free
+CHOOSE_ONE machinery (the AI scores by step TYPE, so the "Continue (free
 descent)" / "(2 movement)" prefixes are invisible to it; the MP cost bounds the
 chain unless the map set descent FREE, where only losing/army strength does).
 
@@ -2478,6 +2478,97 @@ Neither is a toggle — the previous behaviour was wrong.
   lone-hero CONTROL) and `hero-actions-dock.test.tsx` (both buttons render under
   distinct keys and each dispatches its OWN hero).
 
+## Atomic Necromancy window · Luck lasts the round · printed Treasure dice (2026-07-28)
+
+Reported-bug batch. Leading with what does NOT work / the deliberate limits:
+
+- **The after-combat Necromancy window is now an ATOMIC TRANSACTION, not a
+  one-card decision, and NOTHING it withholds lands until the explicit Resolve**
+  ("Resolve bonuses and continue" — still the `SKIP_NECROMANCY` action id, kept
+  for protocol compatibility). Every fought-combat prompt is built by ONE
+  `openNecromancyWindow` (adventure-reducer.ts), and the reward it defers is
+  stored as a typed `pendingNecromancy.deferredReward` — `field-visit`,
+  `creature-bank`, `wave`, `raid-boss` or `dungeon-floor`. So the Creature-Bank
+  reward, a Calamity-Wave payout, a Raid-Boss kill + lair clear and a Dungeon
+  floor's advancement are ALL frozen behind the window now (the bank's reward
+  used to be paid before the prompt), together with the Freelancer's Guild
+  bounty, Soul Reformer, Bounty Hunter's Eye and the Equipment win gold, which
+  are queued as `visit-steps` instead of granted inline. `pumpAdventureQueues`
+  returns early while the window is open — the queue is genuinely parked, so a
+  round-start wave queue stops until the winner resolves. `remaining` is
+  `min(2, cards held)`, so a Necropolis hero may play BOTH held Necromancy
+  copies (ability + a Vidomina specialty) into the same window, and may layer
+  Legion pieces / gold cards (`isNecromancySupportPlay`) and redeem the resulting
+  offers before resolving.
+  - **Unredeemed offers this window banked EXPIRE on Resolve** — otherwise the
+    exploit is back (collect the field reward, then reinforce). The sweep reads
+    `pendingNecromancy.discountIds` (stamped as each card is played), so a bank
+    the window did NOT create survives; snapshots written before that field
+    existed keep the old source-wide sweep. Pinned in `necromancy.test.ts`
+    ("Resolve expires the offers THIS window banked, and only those").
+  - **The AI had to be repriced or it threw the card away every win**: the exit
+    scores 1_120, so at the ordinary 820/760 redeem score a computer seat played
+    Necromancy (1_140), banked the half-gold offer and then scored the Resolve
+    above the redeem. `REDEEM_REINFORCEMENT_DISCOUNT` now scores 1_135/1_130
+    while the window is open — between the card play and the exit, so it plays
+    every card, then redeems, then resolves (`mulligan-necromancy.test.ts`, with
+    an outside-the-window CONTROL).
+  - LIMIT: a PvP DEFENDER who wins now opens the window during the ATTACKER's
+    turn, which freezes the attacker until the defender resolves. That is the
+    intended atomicity, and the defender can act (the window's branch in
+    `getAdventureLegalActions` is reached whoever is active), but it is a real
+    turn-order interruption.
+- **Luck (basic AND expert) lasts until the END OF THE GAME ROUND**, not the
+  player's turn (`duration: { type: "current-game-round" }` on both sides of
+  `ability.luck`). It therefore survives combat end AND the holder's own turn
+  end, and the round wrap's `startAdventureRound` →
+  `expireEffectsForGameRoundEnd` pass is what ends it — after which the shared
+  `releaseEndedOngoingCards` pass moves the physical card out of the Ongoing tray
+  to its owner's discard. Both halves are pinned END-TO-END through the REAL
+  `END_TURN` round wrap in `prophecy-diplomacy-artifacts.test.ts` ("a LAST-seat
+  holder's Luck is gone the moment the ROUND wraps"). That test gives Luck to the
+  LAST seat on purpose — it is the only shape that tells this rule from the old
+  turn-scoped one, because the wrap runs `startAdventureRound` (round expiry) AND
+  `startPlayerTurn(seat 1)` (turn expiry) in the SAME action, so a first-seat
+  holder's Luck vanishes under either rule. **What the old rule actually got
+  wrong, and what this fixes:** a NON-first seat's Luck survived the round wrap
+  and stayed live into the new round until that seat next acted. The map-die
+  rerolls are therefore one Treasure + one Resource
+  per ROUND. Verified by throwaway probe (not shipped) to behave identically when
+  played on the map in rounds 1 and 2, with 2 and 3 seats, in single-player
+  against a computer, under parallel turns, and when played mid-combat.
+  **KNOWN LIMIT — the Battle Test combat SANDBOX never expires it**: a
+  sandbox state has no `adventure`, so no game round ever wraps and
+  `expireEffectsForGameRoundEnd` is never reached (`expireEffectsForCombatEnd`
+  deliberately does not list `current-game-round`, because Luck MUST survive an
+  adventure combat). The sandbox's rounds are COMBAT rounds, so there is no
+  "round end" there to hang it on. This is unchanged from the old turn-scoped
+  rule, whose expiry pass (`startPlayerTurn`) is likewise adventure-only — but it
+  does mean a tester using Battle Test sees Luck stay on the table for good.
+- **An Ongoing card can be ended early** (`DISCARD_ONGOING_CARD` →
+  `discardOngoingCardVoluntarily`, offered per held card beside the permanent
+  discards). It kills the card's live effects and then hands the card to the
+  SHARED `releaseEndedOngoingCards` router, so it returns to the zone that card
+  belongs to — a Knowledge/Mysticism-recalled ongoing Spell goes back to the hand
+  or the SPELL BOOK, never the discard (pushing it straight to the discard leaked
+  a Book Spell into the deck cycle). Pinned in `reducer.test.ts`.
+- **A Treasure chest rolls the number of dice PRINTED ON ITS FIELD**, not one
+  derived from its tile: `TileFieldDefinition.treasureDice` (1 | 2) is copied to
+  `MapFieldState.treasureDice` by `materializeTileFields` and read in
+  `beginFieldVisit`. Every GUARDED chest outside a starting tile prints 2 (Ⅱ/Ⅳ
+  guards); starting-tile chests (guard Ⅰ) and every UNGUARDED chest print 1. A
+  designer field reusing the symbol carries no count, so it rolls 1. Pinned in
+  `reported-bugs-regression.test.ts`; the printed "2" is NOT drawn on the hex.
+- **Also in this batch:** `&N1`'s "?" cabin is a Trading Post, not a Treasure
+  chest; `#N1`'s Tree of Knowledge is a level-Ⅳ guarded field; Neutral Minotaurs
+  drop to Initiative 6 (matching the Few side); a Calamity-Wave assault no longer
+  overwrites `activePlayerId` when it finalizes (waves interrupt round start —
+  they are not turns); `computerDecisionOwner` drives a COMPUTER PvP-Neutral-
+  Control seat's guard placement and guard activations (their units stay
+  `controllerId = NEUTRAL_PLAYER_ID`, so the ordinary active-unit lookup could
+  not see it); and the combat board/inspector print live Attack/Defense/
+  Initiative totals that fold combat tokens in beside lasting buffs.
+
 ## First-round hand discards, Angel Wings, morale −2, Search top-of-discard (2026-07-25)
 
 Four fixes to shipped behaviour (not toggles — the previous behaviour was wrong):
@@ -2726,8 +2817,11 @@ is NOT done:
   Heroes never gain XP) → MANDATORY auto-resolved Quick Combat (same
   QUICK_COMBAT_WON path — Freelancer's Guild bounty, field visit, no XP, no
   Necromancy). Covered + Experience possible → a `polish-quick-combat`
-  pendingChoice (fight or quick; "Fight" still offers Cyra's Diplomacy at a
-  matching level). NOT covered → the fight is mandatory even for a hero whose
+  pendingChoice (fight or quick) — EXCEPT at the EXACT field level, where
+  2026-07-28's `level !== difficulty` gate takes the whole strength shortcut off
+  the table so a level-2 hero on a level-Ⅱ tile keeps the fight (and its XP): it
+  drops straight to the matching-level Cyra's Diplomacy choice, whose "Fight"
+  opens combat. NOT covered → the fight is mandatory even for a hero whose
   level beats the field (the classic level auto-win is replaced). Deliberate
   limits: Banks, bank-style outpost/teleport guards and designer EXACT armies
   keep their own no-Quick-Combat rules; the threshold reads the PLAIN scenario
@@ -5086,9 +5180,13 @@ Leading with what does NOT work / the deliberate limits:
   when played, even if the bank is never affordable; the old "kept unless it
   actually upgrades a unit" rule is only in the toggle. Same for Vidomina's
   I/VI specialty cards (`extra-heroes-batch2-specialties.test.ts`).
-- **The now-or-never window is gone.** The old Necromancy prompt priced off the
-  gold held BEFORE the withheld field reward landed; the bank is redeemable
-  after it lands, and on later turns, until a hero moves.
+- **The now-or-never PROMPT is gone; the window is not.** The old Necromancy
+  prompt forced the pick-and-pay on the spot. The bank replaces it — but since
+  2026-07-28 the after-combat window is an ATOMIC transaction (see that
+  section): the withheld reward lands only on the explicit Resolve, and a bank
+  this window created and did NOT redeem EXPIRES there. So a Necromancy bank is
+  still effectively use-it-now; only a Hill Fort bank survives to later turns
+  (until a hero moves).
 - **Two things the old-behaviour toggle does NOT restore** (stated in the rule's
   own lobby description): the Hill Fort prices through the shared
   `reinforceCostFor(…, flatGoldDiscount = 3)` seam in BOTH readings, so a Legion
@@ -5097,7 +5195,11 @@ Leading with what does NOT work / the deliberate limits:
   wired to nothing); and a half-ALL source (Isra) still halves the non-gold
   resources even when the flat discount wins the gold.
 - **The AI has no bank strategy** — see the single-player section: it redeems
-  when it can afford to, and may simply walk and lose an unredeemed bank.
+  when it can afford to, and may simply walk and lose an unredeemed HILL FORT
+  bank. The one place it is deliberately ordered is the atomic Necromancy
+  window, where the redeem is scored between the card play and the Resolve
+  (1_135/1_130 vs 1_140/1_120) because resolving expires the offer — without
+  that repricing the AI threw its Necromancy card away after every win.
 
 What runs (each mutation-checked):
 - **Distinct Legion pieces STACK by addition** with each other and with the

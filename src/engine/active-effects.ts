@@ -930,8 +930,12 @@ export function discardOngoingCardVoluntarily(
     throw new Error("That Ongoing card is not in play.");
   }
 
-  const [held] = player.ongoingCards.splice(heldIndex, 1);
-  const effectIds = new Set(held.effectIds);
+  // End the card's live effects, then let the SHARED release pass above move the
+  // card to the zone IT belongs to. Splicing it out and pushing it straight to
+  // the discard sent a Knowledge/Mysticism-recalled ongoing Spell (returnTo
+  // "hand" / "spellBook") to the discard pile instead — a Book-cast Fly / Water
+  // Walk recalled by Mysticism leaked OUT of the Spell Book into the deck cycle.
+  const effectIds = new Set(player.ongoingCards[heldIndex].effectIds);
   state.activeEffects = state.activeEffects.filter((effect) => !effectIds.has(effect.id));
-  player.discard.push(held.cardId);
+  releaseEndedOngoingCards(state);
 }
