@@ -2,8 +2,54 @@ import { describe, expect, it } from "vitest";
 import { applyAction } from "../reducer";
 import { createAdventureLobbyState } from "../adventure-setup";
 import { computerDecisionOwner } from "./window";
+import { NEUTRAL_PLAYER_ID } from "../state";
 
 describe("computer decision ownership", () => {
+  function neutralControlCombat(pendingNeutralPlacement: string | null, activeUnitId?: string) {
+    const state = createAdventureLobbyState({
+      seed: "window-neutral-control",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat";
+    state.turnOrder = ["p1", "p2"];
+    state.adventure = {
+      ...(state.adventure as object),
+      pvpNeutralControl: true,
+    } as typeof state.adventure;
+    state.combat = {
+      id: "neutral-control-combat",
+      context: { kind: "neutral" },
+      attackerPlayerId: "p1",
+      defenderPlayerId: NEUTRAL_PLAYER_ID,
+      pendingNeutralPlacement,
+      activeUnitId,
+      units: activeUnitId
+        ? {
+            [activeUnitId]: {
+              id: activeUnitId,
+              controllerId: NEUTRAL_PLAYER_ID,
+              position: 9,
+            },
+          }
+        : {},
+      setup: { pendingPlayerIds: [], placedUnitIds: [] },
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+    return state;
+  }
+
+  it("routes PvP Neutral Control placement to the assigned computer seat", () => {
+    const state = neutralControlCombat("p2");
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
+  it("routes a neutral guard activation to the assigned computer seat", () => {
+    const state = neutralControlCombat(null, "neutral_guard");
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
   it("finds an incomplete computer setup seat only after the human picked, and never claims the human seat", () => {
     const state = createAdventureLobbyState({
       seed: "window-setup",

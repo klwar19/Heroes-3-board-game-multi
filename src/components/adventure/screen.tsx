@@ -4338,6 +4338,13 @@ export function ArmyPanel({
           // what recruiting / reinforcing would cost.
           if (entry.kind === "unowned") {
             const rosterDef = coreUnitDefinitions[entry.unitDefId];
+            const recruitAction = legalActions.find(
+              (legal) =>
+                legal.action.type === "POPULATION_ACTION" &&
+                legal.action.purchases.some(
+                  (purchase) => purchase.kind === "recruit" && purchase.unitDefId === entry.unitDefId
+                )
+            );
             return (
               <li className="armyRosterUnowned" key={`roster-${entry.unitDefId}`}>
                 {rosterDef?.few || rosterDef?.pack ? (
@@ -4353,6 +4360,17 @@ export function ArmyPanel({
                   <strong>{rosterDef?.name ?? entry.unitDefId}</strong>
                   <small className="armyRosterState">not recruited</small>
                 </span>
+                {onAction && recruitAction ? (
+                  <div className="armyUnitActions" aria-label={`${rosterDef?.name ?? entry.unitDefId} actions`}>
+                    <button
+                      aria-label={`Recruit Few ${rosterDef?.name ?? entry.unitDefId}`}
+                      onClick={() => onAction(recruitAction.action)}
+                      type="button"
+                    >
+                      <Plus size={13} /> Recruit Few
+                    </button>
+                  </div>
+                ) : null}
               </li>
             );
           }
@@ -5430,7 +5448,8 @@ export function PromptTray({
     // Necropolis Necromancy window: reinforce a unit for half the gold cost, or
     // skip. Skipping is a real choice — the winner is not forced to reinforce (the
     // field reward stays withheld only until they decide, engine-gated).
-    title = "Necromancy — reinforce a unit for half the gold cost, or skip";
+    const remaining = state.adventure?.pendingNecromancy?.remaining ?? 1;
+    title = `Necromancy — ${remaining} card${remaining === 1 ? "" : "s"} remaining; reinforce for half gold, or skip`;
     body = necromancyActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];

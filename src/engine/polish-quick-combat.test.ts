@@ -227,6 +227,8 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
   it("opens the choice; resolving Quick Combat wins unfought with no Experience", () => {
     let state = openChoice("pqc-choice-quick");
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    // Exact-level encounters are not eligible for the strength shortcut: the
+    // player must receive the normal fight (or Diplomacy) choice first.
     expect(choiceContext(state)).toBe("polish-quick-combat");
     expect(state.phase).toBe("choice");
     const xpBefore = state.heroes.hero_p1.experience;
@@ -273,7 +275,9 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
     state.players.p1.limits.expertUses = 1;
     setArmy(state, [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]); // 12 ≥ 4
     encounter(state, guardField(state, 1)); // level == difficulty → +1 XP possible
-    expect(choiceContext(state)).toBe("polish-quick-combat");
+    // Exact-level encounters are not eligible for the strength shortcut: the
+    // player must receive the normal fight (or Diplomacy) choice first.
+    expect(choiceContext(state)).toBe("diplomacy-skip");
 
     const next = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -281,7 +285,7 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
       choiceId: state.pendingChoice!.id,
       optionIndex: 1
     });
-    expect(choiceContext(next), "Diplomacy keeps its matching-level offer").toBe("diplomacy-skip");
+    expect(next.phase, "choosing Fight from the matching-level Diplomacy choice opens combat").toBe("combat-setup");
   });
 });
 

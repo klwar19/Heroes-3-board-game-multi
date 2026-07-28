@@ -3804,6 +3804,10 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
   if (!player || player.factionId !== "necropolis") {
     return;
   }
+  const remaining = state.adventure?.pendingNecromancy?.remaining ?? 1;
+  if (remaining <= 0) {
+    return;
+  }
 
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];

@@ -6,7 +6,7 @@ import { CardZoomProvider } from "@/components/table/zoom";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { CREATURE_BANK_UNIT_SIDES } from "@/data/map/creature-banks";
-import { createAdventureGameState, type GameState } from "@/engine";
+import { createAdventureGameState, type GameAction, type GameState } from "@/engine";
 
 afterEach(cleanup);
 
@@ -168,6 +168,31 @@ describe("ArmyPanel — full faction roster (owned + unowned) with costs", () =>
     expect(halb?.querySelector(".unitSideCard.few.owned .unitOwnedBadge")).toBeTruthy();
     expect(halb?.querySelector(".unitCost"), "owned unit shows a cost line").toBeTruthy();
     expect(document.querySelector('[aria-label^="Few recruit cost for Halberdiers"]')).toBeTruthy();
+  });
+
+  it("shows a legal Recruit action for an unowned unit in the Unit deck", () => {
+    const state = makeState(false, "roster-recruit-action");
+    const dispatched: GameAction[] = [];
+    const recruit: GameAction = {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "recruit", unitDefId: "castle.champions" }]
+    };
+    render(
+      <CardZoomProvider>
+        <ArmyPanel
+          state={state}
+          playerId="p1"
+          legalActions={[{ label: "Recruit Few Champions", action: recruit }]}
+          onAction={(action) => dispatched.push(action)}
+        />
+      </CardZoomProvider>
+    );
+
+    const button = document.querySelector('button[aria-label="Recruit Few Champions"]') as HTMLButtonElement;
+    expect(button).toBeTruthy();
+    fireEvent.click(button);
+    expect(dispatched).toEqual([recruit]);
   });
 
   it("an empty army still lists the full unowned roster + the starting-units note", () => {

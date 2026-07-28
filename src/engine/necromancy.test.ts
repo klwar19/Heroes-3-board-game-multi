@@ -367,6 +367,32 @@ describe("Necromancy — adjustable reinforcement bank (new default)", () => {
     return state;
   }
 
+  it("allows the ability and a Necromancy specialty after the same combat", () => {
+    const state = startAdjustableGame();
+    state.players.p1.hand = ["ability.necromancy", "specialty.vidomina.1"];
+    state.adventure!.pendingNecromancy = { playerId: "p1", remaining: 2 };
+
+    const first = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+    );
+    expect(first).toBeTruthy();
+    let next = apply(state, first!.action);
+    expect(next.adventure?.pendingNecromancy?.remaining).toBe(1);
+    expect(
+      getLegalActions(next, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.1"
+      )
+    ).toBe(true);
+
+    const second = getLegalActions(next, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.vidomina.1"
+    );
+    expect(second).toBeTruthy();
+    next = apply(next, second!.action);
+    expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
+    expect(next.players.p1.reinforcementDiscounts).toHaveLength(2);
+  });
+
   it("banks Necromancy without forcing a target, lets Legion stack, then redeems source-first", () => {
     let state = startAdjustableGame();
     const necromancy = getLegalActions(state, "p1").find(
@@ -587,9 +613,13 @@ describe("Necromancy ability — now-or-never timing (BINH house rule)", () => {
     expect(reinforce, "the 1-gold Skeleton reinforce should be affordable on the 2 gold held").toBeTruthy();
     next = apply(next, reinforce!.action);
 
-    // Paid 1 for the reinforce (2 -> 1), THEN the withheld Water Wheel added 3.
-    expect(next.players.p1.resources.gold).toBe(4);
+    // The first card paid 1 for the reinforce (2 -> 1). The second-card window
+    // stays open until the player skips it, then the withheld Water Wheel adds 3.
+    expect(next.players.p1.resources.gold).toBe(1);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    expect(next.adventure?.pendingNecromancy?.remaining).toBe(1);
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
+    expect(next.players.p1.resources.gold).toBe(4);
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 
@@ -907,6 +937,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
     expect(next.players.p1.discard).toContain("ability.necromancy");
     expect(next.players.p1.hand).not.toContain("ability.necromancy");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 
@@ -1036,6 +1067,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
     next = apply(next, reinforce!.action);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 
@@ -1132,6 +1164,7 @@ describe("Necromancy ability — after a Creature Bank win (reported bug)", () =
     expect(reinforce, "the bank window must offer a real Skeleton reinforce").toBeTruthy();
     next = apply(next, reinforce!.action);
     expect(next.players.p1.army.find((u) => u.id === "army_skel")?.side).toBe("pack");
+    next = apply(next, { type: "SKIP_NECROMANCY", playerId: "p1" });
     expect(next.adventure?.pendingNecromancy ?? null).toBeNull();
   });
 });
