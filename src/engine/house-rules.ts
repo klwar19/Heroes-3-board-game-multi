@@ -338,6 +338,24 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     // not exist before — must not change any legacy/binh game unless picked).
     default: false,
     legacyDefault: false
+  },
+  {
+    id: "no-secondary-heroes",
+    label: "No Secondary Heroes",
+    description:
+      "Global map rule: Secondary Heroes cannot be hired or gained. A Prison grants its printed 3-gold fallback instead, so the location still resolves. Off: Secondary Heroes work normally.",
+    category: "global",
+    default: false,
+    legacyDefault: false
+  },
+  {
+    id: "free-neutral-combat-extend",
+    label: "Neutral battles extend for free",
+    description:
+      "Global map rule: continuing a fought Neutral combat into another round costs no Hero movement point. Off: each extra combat round costs 1 movement point.",
+    category: "global",
+    default: false,
+    legacyDefault: false
   }
 ];
 

@@ -179,6 +179,12 @@ export type HouseRuleId =
   // a View Earth remote capture is NOT intercepted. See `garrisonDefenderFor` /
   // `garrisonDefenseKeepsCards` (adventure-reducer.ts).
   | "mine-army-defense"
+  // Global map rule (default OFF): Secondary Heroes cannot be hired or gained.
+  // Prison visits grant their printed 3-gold fallback instead.
+  | "no-secondary-heroes"
+  // Global map rule (default OFF): fought neutral combats may continue past the
+  // first round without spending a Hero movement point.
+  | "free-neutral-combat-extend"
   // Old BINH reinforcement timing: playing Necromancy or visiting a Hill Fort
   // immediately opens a blocking pick-and-pay upgrade prompt. Off (new default):
   // the effect banks its reinforcement discount; the player may add Legion
@@ -11467,6 +11473,11 @@ export type CustomMapPreset = {
       | { kind: "movement"; amount: number }
       | { kind: "treasure_roll"; count: number }
       | { kind: "resource_roll"; count: number }
+      /**
+       * Each live player chooses exactly one reward at round start. Rewards use
+       * the same implemented vocabulary as a designer Obelisk bonus.
+       */
+      | { kind: "choice"; prompt: string; options: CustomMapObeliskBonus[] }
       | { kind: "note"; text: string }
       /**
        * Anime mod §11 — pop a bilingual visual-novel STORY scene for the whole
@@ -11477,6 +11488,13 @@ export type CustomMapPreset = {
        */
       | { kind: "story"; sceneId: string };
   }>;
+  /**
+   * Map-authored defaults for scenario-wide global rules. Picking the map seeds
+   * these into the lobby; the host may still override them before starting.
+   */
+  houseRules?: Partial<
+    Record<"no-secondary-heroes" | "free-neutral-combat-extend", boolean>
+  >;
   roundLimit?: number;
   notes?: string;
   /**

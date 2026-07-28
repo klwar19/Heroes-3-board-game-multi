@@ -692,7 +692,7 @@ function makeSpellDiceCue(
 }
 
 /** How the hand rail is currently being used. */
-type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw";
+type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw" | "cover-of-darkness";
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
@@ -5336,6 +5336,11 @@ export default function Home() {
         legal.action.type === "SPEND_MORALE" &&
         (legal.action.benefit === "combat-bonus" || legal.action.benefit === "remove-token")
     );
+    const coverOfDarknessAction = legalActions.find(
+      (legal) =>
+        legal.action.type === "USE_TOWN_BUILDING" &&
+        legal.action.buildingId === "necropolis.cover_of_darkness"
+    );
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
     const selecting = handMode !== null || forcedDiscard || (canOpeningMulligan && handMode === "opening-mulligan");
@@ -5349,7 +5354,10 @@ export default function Home() {
     const handOptionalPlays =
       handMode === null &&
       !forcedDiscard &&
-      (hasMorale || moraleRedrawCardAvailable || moraleCombatPlays.length > 0);
+      (hasMorale ||
+        moraleRedrawCardAvailable ||
+        moraleCombatPlays.length > 0 ||
+        Boolean(coverOfDarknessAction));
     // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
@@ -5378,6 +5386,10 @@ export default function Home() {
       setOpenHandIndex(null);
       if (mode === "morale-redraw") {
         void submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "redraw", discardCardIds });
+        return;
+      }
+      if (mode === "cover-of-darkness" && coverOfDarknessAction?.action.type === "USE_TOWN_BUILDING") {
+        void submitAction({ ...coverOfDarknessAction.action, cardIds: discardCardIds });
         return;
       }
       if (mode === "opening-mulligan") {
@@ -5971,7 +5983,9 @@ export default function Home() {
                           ? "Discard & draw"
                           : handMode === "morale-redraw"
                             ? "Morale redraw"
-                            : canDraw
+                            : handMode === "cover-of-darkness"
+                              ? "Cover of Darkness"
+                              : canDraw
                               ? "Start of turn — draw your hand"
                               : "Opening Mulligan"}
                   </strong>
@@ -6089,6 +6103,18 @@ export default function Home() {
                         {legal.label}
                       </button>
                     ))}
+                    {coverOfDarknessAction ? (
+                      <button
+                        className="commandButton"
+                        onClick={() => {
+                          setHandDiscards([]);
+                          setHandMode("cover-of-darkness");
+                        }}
+                        type="button"
+                      >
+                        Cover of Darkness
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {selecting ? (
@@ -6096,7 +6122,9 @@ export default function Home() {
                     <span>
                       {handMode === "morale-redraw"
                         ? `Spend morale: discard ${handDiscards.length || "some"} and draw that many.`
-                        : handMode === "opening-mulligan"
+                        : handMode === "cover-of-darkness"
+                          ? `Cover of Darkness: discard ${handDiscards.length || "1 or 2"} and draw that many.`
+                          : handMode === "opening-mulligan"
                           ? `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"} to your deck and draw that many.`
                           : forcedDiscard
                             ? `Discard at least ${Math.max(0, handCards.length - handLimit)}, then draw up to ${handLimit}.`
@@ -6105,14 +6133,20 @@ export default function Home() {
                     <button
                       className="commandButton primary"
                       disabled={
-                        handMode === "morale-redraw" ? handDiscards.length === 0 : forcedDiscard ? overLimit > 0 : false
+                        handMode === "morale-redraw" || handMode === "cover-of-darkness"
+                          ? handDiscards.length === 0
+                          : forcedDiscard
+                            ? overLimit > 0
+                            : false
                       }
                       onClick={confirmHandAction}
                       type="button"
                     >
                       {handMode === "morale-redraw"
                         ? `Redraw ${handDiscards.length}`
-                        : handMode === "opening-mulligan"
+                        : handMode === "cover-of-darkness"
+                          ? `Discard ${handDiscards.length} & draw`
+                          : handMode === "opening-mulligan"
                           ? handDiscards.length === 0
                             ? "Keep hand"
                             : `Discard ${handDiscards.length} & redraw`
@@ -6386,7 +6420,9 @@ export default function Home() {
                             setHandDiscards((current) =>
                               current.includes(index)
                                 ? current.filter((value) => value !== index)
-                                : [...current, index]
+                                : handMode === "cover-of-darkness" && current.length >= 2
+                                  ? current
+                                  : [...current, index]
                             );
                             return;
                           }

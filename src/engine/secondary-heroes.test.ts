@@ -72,6 +72,24 @@ function injectSettlement(state: GameState, playerId: string, spaceId: string): 
 }
 
 describe("Prison", () => {
+  it("no-secondary-heroes pays the 3-gold fallback and never creates a hero", () => {
+    const state = createAdventureGameState({
+      seed: "sec-disabled-prison",
+      rollFirstPlayer: false,
+      houseRules: { "no-secondary-heroes": true }
+    });
+    const prison = injectField(state, "prison", "69,69");
+    const main = getMainHero(state, "p1")!;
+    const goldBefore = state.players.p1.resources.gold;
+    main.spaceId = prison.spaceId;
+
+    beginFieldVisit(state, main.id, prison.spaceId, false);
+
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+    expect(getSecondaryHero(state, "p1")).toBeNull();
+    expect(placementOptionLabels(state)).toHaveLength(0);
+  });
+
   it("offers a placement choice (Field or Town), then places the hero where chosen", () => {
     const state = makeGame();
     const goldStart = state.players.p1.resources.gold;
@@ -146,6 +164,26 @@ describe("Prison", () => {
 });
 
 describe("Tavern", () => {
+  it("no-secondary-heroes leaves only the decline option", () => {
+    const state = createAdventureGameState({
+      seed: "sec-disabled-tavern",
+      rollFirstPlayer: false,
+      houseRules: { "no-secondary-heroes": true }
+    });
+    state.players.p1.resources.gold = 50;
+    const field = injectField(state, "tavern", "68,68");
+    const main = getMainHero(state, "p1")!;
+    main.spaceId = field.spaceId;
+
+    beginFieldVisit(state, main.id, field.spaceId, false);
+    const actions = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP"
+    );
+
+    expect(actions.map((legal) => legal.label)).toEqual(["Decline"]);
+    expect(getSecondaryHero(state, "p1")).toBeNull();
+  });
+
   it("pays 7 gold for a Secondary Hero and makes a chosen enemy discard a card", () => {
     const state = makeGame();
     state.players.p1.resources.gold = 10;
@@ -212,6 +250,25 @@ describe("Hiring a Secondary Hero (10 gold)", () => {
     const legal = getLegalActions(state, "p1").find((a) => a.action.type === "HIRE_SECONDARY_HERO");
     return legal?.action as Extract<GameAction, { type: "HIRE_SECONDARY_HERO" }> | undefined;
   }
+
+  it("no-secondary-heroes removes the offer and rejects a forged hire", () => {
+    const state = createAdventureGameState({
+      seed: "sec-disabled-hire",
+      rollFirstPlayer: false,
+      houseRules: { "no-secondary-heroes": true }
+    });
+    state.players.p1.resources.gold = 50;
+
+    expect(offeredHire(state)).toBeUndefined();
+    expect(() =>
+      hireSecondaryHero(state, {
+        type: "HIRE_SECONDARY_HERO",
+        playerId: "p1",
+        heroDefId: "orrin"
+      })
+    ).toThrow(/disabled/i);
+    expect(getSecondaryHero(state, "p1")).toBeNull();
+  });
 
   it("spawns at the main town for 10 gold wearing another hero's portrait", () => {
     const state = makeGame();

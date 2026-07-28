@@ -8066,6 +8066,33 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
         action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 3 + index }
       });
     });
+    if (armyUnitStacksActive(state)) {
+      const stackTargets = player.army.filter((unit) => {
+        const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+        return (
+          (tier === "bronze" || tier === "silver") &&
+          polishArmyUnitCanBuyStack(unit) &&
+          Boolean(polishArmyUnitStackCost(unit))
+        );
+      });
+      stackTargets.forEach((unit, index) => {
+        const baseCost = polishArmyUnitStackCost(unit);
+        const cost: ResourceCost = free ? {} : { gold: Math.ceil((baseCost?.gold ?? 0) / 2) };
+        if (!free && !hasRecruitResources(state, playerId, cost)) {
+          return;
+        }
+        actions.push({
+          label: free
+            ? `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} for free`
+            : `Add a Stack to ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${cost.gold ?? 0} gold)`,
+          action: {
+            type: "RESOLVE_VISIT_STEP",
+            playerId,
+            optionIndex: 3 + fewUnits.length + index
+          }
+        });
+      });
+    }
     return;
   }
 
@@ -8250,7 +8277,10 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
   if (step.type === "TAVERN") {
     // Pay 7 gold to gain a Secondary Hero (one per player), then pick an enemy
     // to discard a card. optionIndex selects the enemy in turn order.
-    const canGain = !getSecondaryHero(state, playerId) && playerHasResources(player, { gold: 7 });
+    const canGain =
+      !houseRuleEnabled(state, "no-secondary-heroes") &&
+      !getSecondaryHero(state, playerId) &&
+      playerHasResources(player, { gold: 7 });
     if (canGain) {
       const enemies = humanPlayerIds(state).filter((id) => id !== playerId);
       if (enemies.length === 0) {
@@ -8817,7 +8847,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   // the Population Token (the same token that recruits/reinforces units), so it is
   // only offered while that token is still available this round — and taking it
   // hides the recruit/reinforce offers (which are likewise gated on the token).
-  if (!getSecondaryHero(state, playerId) && player.townTokens.population && playerHasResources(player, { gold: 10 })) {
+  if (
+    !houseRuleEnabled(state, "no-secondary-heroes") &&
+    !getSecondaryHero(state, playerId) &&
+    player.townTokens.population &&
+    playerHasResources(player, { gold: 10 })
+  ) {
     const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
     const mainHeroDefId = Object.values(state.heroes).find(
       (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
@@ -9520,9 +9555,11 @@ function getCombatInteractionActions(
     if (context.kind === "neutral") {
       const hero = state.heroes[context.heroId];
       if (hero?.controllerId === playerId) {
-        if (hero.movementPoints > 0) {
+        if (hero.movementPoints > 0 || houseRuleEnabled(state, "free-neutral-combat-extend")) {
           actions.push({
-            label: "Spend 1 movement point: fight another combat round",
+            label: houseRuleEnabled(state, "free-neutral-combat-extend")
+              ? "Fight another combat round (no movement cost)"
+              : "Spend 1 movement point: fight another combat round",
             action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
           });
         }

@@ -3325,39 +3325,44 @@ export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFi
  *   - the one-time stockpile bonus is paid ONLY on the very first flag.
  *
  * Re-entering a settlement you already own is guarded out in `beginFieldVisit`,
- * so this never re-stacks income for the same owner. When another player takes
- * an already-founded settlement the caller passes `field.settlementResource`,
- * so the new owner inherits exactly the resource the founder chose (they do not
- * pick a new one) and — because `everFlagged` is already set — receives no
- * repeat of the first-flag bonus.
+ * so this never re-stacks income for the same owner. A conqueror may replace the
+ * old token by choosing any resource; the old owner's level is removed first.
  */
+export function removeSettlementProduction(
+  state: GameState,
+  nextOwnerId: PlayerId,
+  field: MapFieldState
+): void {
+  const previousOwnerId = field.flagOwnerId;
+  const previousResource = field.settlementResource;
+  if (previousOwnerId && previousOwnerId !== nextOwnerId && previousResource) {
+    const previous = state.players[previousOwnerId];
+    if (previous) {
+      const lost = RESOURCE_GAIN_LEVEL_AMOUNTS[previousResource];
+      previous.production[previousResource] = Math.max(
+        0,
+        previous.production[previousResource] - lost
+      );
+      appendEvent(state, {
+        type: "PRODUCTION_CHANGED",
+        playerId: previousOwnerId,
+        resource: previousResource,
+        amount: -lost
+      });
+    }
+  }
+  field.settlementResource = null;
+}
+
 export function applySettlementResource(
   state: GameState,
   playerId: PlayerId,
   field: MapFieldState,
   resource: ResourceKind
 ): void {
-  const previousOwnerId = field.flagOwnerId;
   const firstFlag = !field.everFlagged;
-
-  // Strip the whole resource-gain level the former owner earned from this
-  // settlement's existing token (never below zero) before it changes hands.
-  if (previousOwnerId && previousOwnerId !== playerId && field.settlementResource) {
-    const previous = state.players[previousOwnerId];
-    if (previous) {
-      const lost = RESOURCE_GAIN_LEVEL_AMOUNTS[field.settlementResource];
-      previous.production[field.settlementResource] = Math.max(
-        0,
-        previous.production[field.settlementResource] - lost
-      );
-      appendEvent(state, {
-        type: "PRODUCTION_CHANGED",
-        playerId: previousOwnerId,
-        resource: field.settlementResource,
-        amount: -lost
-      });
-    }
-  }
+  const previousOwnerId = field.flagOwnerId;
+  removeSettlementProduction(state, playerId, field);
 
   flagField(state, playerId, field);
   field.settlementResource = resource;
@@ -6191,20 +6196,9 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     if (field.flagOwnerId === playerId) {
       return;
     }
-    // A settlement that already carries a resource token is "founded": its
-    // income is locked to the resource the first owner chose. Taking it from
-    // another player automatically transfers THAT same income — the new owner
-    // does not choose a resource and gets no repeat of the first-flag bonus,
-    // while the former owner loses the income (all inside applySettlementResource).
-    if (field.settlementResource) {
-      applySettlementResource(state, playerId, field, field.settlementResource);
-      return;
-    }
-    // Otherwise this is the very first flag (no owner yet), or a settlement that
-    // was previously flagged only for a unit reinforcement (owned, but no
-    // resource token was ever placed). Either way the visitor chooses a resource
-    // income or a unit reinforcement; the one-time free reinforcement / stockpile
-    // bonus is gated on `everFlagged` inside the resolver.
+    // First flag or enemy capture: choose a new resource token, or reinforce a
+    // bronze/silver unit (including a Polish Stack layer) at the settlement rate.
+    // `everFlagged` keeps the first-flag stockpile/free-upgrade bonus one-time.
     adventure.pendingVisit = { heroId, playerId, fieldId, steps: [{ type: "SETTLEMENT_CHOICE" }] };
     processPendingVisit(state);
     return;
@@ -6402,7 +6396,10 @@ export function processPendingVisit(state: GameState): void {
         // player may instead place the new hero at their Town or a controlled
         // Settlement — offered as a placement CHOOSE_ONE when more than one Field
         // is legal (otherwise it lands on the Prison Field, as before).
-        if (getSecondaryHero(state, visit.playerId)) {
+        if (
+          houseRuleEnabled(state, "no-secondary-heroes") ||
+          getSecondaryHero(state, visit.playerId)
+        ) {
           gainResources(state, visit.playerId, { gold: 3 }, `visited ${fieldName(state, visit.fieldId)}`);
         } else {
           visit.steps.unshift(secondaryHeroPlacementStep(state, visit.playerId, visit.fieldId));
@@ -7461,7 +7458,12 @@ export function processPendingVisit(state: GameState): void {
         // The placement choice resolved: drop the Secondary Hero on the chosen
         // Field. Guard against a duplicate (one already arrived since the offer
         // opened); the gold/visit cost was paid before the choice.
-        if (step.fieldId && adventure.fields[step.fieldId] && !getSecondaryHero(state, visit.playerId)) {
+        if (
+          step.fieldId &&
+          adventure.fields[step.fieldId] &&
+          !houseRuleEnabled(state, "no-secondary-heroes") &&
+          !getSecondaryHero(state, visit.playerId)
+        ) {
           createSecondaryHero(state, visit.playerId, step.fieldId, step.heroDefId);
         }
         break;
@@ -13694,6 +13696,12 @@ function beginRoundStartEventBarrier(state: GameState): void {
     return;
   }
   adventure.eventResolution = { round: state.round };
+  // Several round-start systems may append work in sequence (Astrologers,
+  // waves, then designer events). Keep one sentinel and move it behind the
+  // newest work so the barrier cannot lift between those systems.
+  adventure.rewardQueue = adventure.rewardQueue.filter(
+    (reward) => reward.kind !== "round-start-events-resolved"
+  );
   const sentinelPlayerId = state.turnOrder.find((playerId) => playerId !== NEUTRAL_PLAYER_ID) ?? state.turnOrder[0] ?? "";
   adventure.rewardQueue.push({ playerId: sentinelPlayerId, kind: "round-start-events-resolved" });
 }
@@ -14665,6 +14673,7 @@ export function applyCustomMapTimedEvents(state: GameState): void {
       !state.players[playerId]?.eliminated
   );
   const livePlayers = new Set(players);
+  const queueLengthBefore = adventure.rewardQueue.length;
 
   for (const event of due) {
     const effect = event.effect;
@@ -14941,7 +14950,34 @@ export function applyCustomMapTimedEvents(state: GameState): void {
           effect.count === 1 ? "a Resource die" : `${effect.count} Resource dice`
         }.`
       });
+      continue;
     }
+    if (effect.kind === "choice") {
+      for (const playerId of players) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [
+            {
+              type: "CHOOSE_ONE",
+              prompt: effect.prompt,
+              options: effect.options.map((bonus) => ({
+                label: obeliskBonusLabel(bonus),
+                steps: obeliskBonusVisitSteps(bonus)
+              }))
+            }
+          ]
+        });
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player chooses one reward.`
+      });
+    }
+  }
+  if (adventure.rewardQueue.length > queueLengthBefore) {
+    beginRoundStartEventBarrier(state);
   }
 }
 
@@ -15442,13 +15478,11 @@ export function queueTurnStartBuildingChoices(state: GameState, playerId: Player
         const hasSpecialtyInDiscard = player.discard.some(
           (cardId) => cardLibrary[cardId]?.kind === "hero-specialty"
         );
-        // A hero never keeps a duplicate Ability: once this player already owns
-        // the Necromancy card (hand/deck/discard/ongoing), the "Search the Ability
-        // deck for a Necromancy card" option must NOT be offered — they may only
-        // take a Specialty back (or Skip). canAcquireSharedDeckCard returns false
-        // when the card is already held (and for a non-Necropolis hero, who can
-        // never take it at all).
-        const canFetchNecromancy = canAcquireSharedDeckCard(state, playerId, "abilities", NECROMANCY_ABILITY_ID);
+        // Necromancy Amplifier is the one explicit exception to the normal
+        // no-duplicate Ability rule: a Necropolis hero may own up to two copies.
+        const canFetchNecromancy =
+          player.factionId === NECROPOLIS_FACTION_ID &&
+          ownedNecromancyCopies(player) < 2;
         const options: { label: string; steps: VisitStep[] }[] = [];
         if (canFetchNecromancy) {
           options.push({ label: "Search the Ability deck for a Necromancy card", steps: [{ type: "NECROMANCY_FETCH" }] });
@@ -17258,12 +17292,27 @@ export function queueNecromancyReinforce(
 
 /**
  * Necromancy Amplifier: dig the Ability deck for its first Necromancy card,
- * take it to hand, and reshuffle the searched cards back in.
+ * take it to hand (up to two owned copies), and reshuffle the searched cards.
  */
+function ownedNecromancyCopies(player: PlayerState): number {
+  return [
+    ...player.hand,
+    ...player.deck,
+    ...player.discard,
+    ...(player.ongoingCards ?? []).map((ongoing) => ongoing.cardId)
+  ].filter((cardId) => cardId === NECROMANCY_ABILITY_ID).length;
+}
+
 function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   const deck = state.decks.abilities;
   if (!player || !deck) {
+    return;
+  }
+  if (
+    player.factionId !== NECROPOLIS_FACTION_ID ||
+    ownedNecromancyCopies(player) >= 2
+  ) {
     return;
   }
 
@@ -17279,12 +17328,9 @@ function resolveNecromancyFetch(state: GameState, playerId: PlayerId): void {
       }
     }
     const cardId = deck.drawPile.pop() as string;
-    // House rule: a hero never keeps two copies of the same Ability. The
-    // turn-start option is already withheld once the hero owns Necromancy, but
-    // re-validate here so a card acquired between offer and resolution (another
-    // player taking the other copy is harmless; the hero gaining it themselves
-    // is not) can never become a duplicate — skip it just like a deck Search.
-    if (cardLibrary[cardId]?.name === "Necromancy" && canAcquireSharedDeckCard(state, playerId, "abilities", cardId)) {
+    // Re-check the two-copy cap at resolution so a card gained after the prompt
+    // opened can never produce a third copy.
+    if (cardId === NECROMANCY_ABILITY_ID) {
       found = cardId;
       break;
     }

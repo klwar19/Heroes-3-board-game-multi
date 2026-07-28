@@ -34,8 +34,13 @@ function apply(state: GameState, action: GameAction): GameState {
  * can deal damage (every attack rolls "-1" and every unit's Attack is zeroed),
  * so the round runs out with all units alive.
  */
-function driveToAwaitingContinue(seed: string): GameState {
-  let state = createAdventureGameState({ seed, difficulty: "easy", rollFirstPlayer: false });
+function driveToAwaitingContinue(seed: string, freeExtend = false): GameState {
+  let state = createAdventureGameState({
+    seed,
+    difficulty: "easy",
+    rollFirstPlayer: false,
+    houseRules: { "free-neutral-combat-extend": freeExtend }
+  });
   state =
     state.players.p1.needsHandRefresh || state.players.p1.canMulligan
       ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
@@ -83,6 +88,21 @@ function driveToAwaitingContinue(seed: string): GameState {
 }
 
 describe("neutral combat: a +Movement card extends the fight when out of movement", () => {
+  it("free-neutral-combat-extend offers and resolves another round at 0 movement", () => {
+    let state = driveToAwaitingContinue("move-extend-free", true);
+    const hero = getMainHero(state, "p1")!;
+    hero.movementPoints = 0;
+
+    const cont = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT"
+    );
+    expect(cont?.label).toContain("no movement cost");
+    state = apply(state, cont!.action);
+
+    expect(hero.movementPoints).toBe(0);
+    expect(state.combat?.awaitingContinue ?? false).toBe(false);
+  });
+
   it("an out-of-move hero plays Boots of Speed to gain movement and buy another round", () => {
     let state = driveToAwaitingContinue("move-extend-boots");
     expect(state.combat?.awaitingContinue).toBe(true);
