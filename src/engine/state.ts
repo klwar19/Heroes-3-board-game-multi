@@ -608,7 +608,7 @@ export type EffectDurationDefinition =
   | { type: "next-combat-round" }
   | { type: "combat-rounds"; rounds: number }
   | { type: "current-turn" }
-  /** Torosar's Ballista IV: "until the end of the round" (this game round). */
+  /** Luck / Torosar's Ballista IV: until the end of this game round. */
   | { type: "current-game-round" }
   /**
    * Mirth (Power 0): "during this Activation". Lasts until the end of the
@@ -3721,6 +3721,12 @@ export type GameAction =
       cardId: CardId;
     }
   | {
+      /** Voluntarily end an Ongoing card, remove its live effects, and discard it. */
+      type: "DISCARD_ONGOING_CARD";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
       /**
        * Income permanents (Eversmoking Ring of Sulfur, Inexhaustible Cart of
        * Ore): "crack open" the in-play card for its one-off instant gain (the
@@ -3852,9 +3858,10 @@ export type GameAction =
     }
   | {
       /**
-       * Decline the after-combat Necromancy window (BINH house rule). Closes the
-       * now-or-never window for good — it never reopens until the next non-Quick
-       * Combat win — and releases the field reward withheld behind the decision.
+       * Resolve the atomic after-combat Necromancy window. Any selected
+       * Necromancy/Legion/gold bonuses and reinforcements are final; unused
+       * Necromancy banks expire, then the withheld combat/field reward releases.
+       * The legacy action name is kept for protocol compatibility.
        */
       type: "SKIP_NECROMANCY";
       playerId: PlayerId;
@@ -8591,6 +8598,8 @@ export type MapFieldState = {
   slot: number;
   location: string;
   difficulty?: number;
+  /** Printed Treasure-die count; omitted means one die. */
+  treasureDice?: 1 | 2;
   /**
    * Creature Bank id (Naval Battles optional rule) when `location` is
    * "creature_bank". A CreatureBankId, typed loosely because state.ts has no
@@ -10740,20 +10749,39 @@ export type AdventureState = {
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /**
-   * After-combat Necromancy decision (BINH house rule). Set when a player wins a
-   * non-Quick Combat AND can play a Necromancy ability at that very instant.
-   * While it is set the winner may ONLY play Necromancy or skip it — nothing else
-   * on the map is legal and the field reward of the fight they just won is
-   * withheld (its visit is stored here) until the decision is made. This is what
-   * stops "collect the field gold, THEN reinforce with it": the reinforce is
-   * priced on the gold held before the reward lands. Cleared the instant the
-   * decision is made and never reopens until the next non-Quick Combat win.
+   * Atomic after-combat Necromancy transaction (BINH house rule). Set when a
+   * player wins a non-Quick Combat AND can play a Necromancy card at that
+   * instant. The winner may play multiple Necromancy cards plus compatible
+   * hand bonuses (Legion discounts / gold effects), redeem the resulting
+   * reinforcement offers, and then explicitly resolve the window. Every combat
+   * and field reward is withheld until that final resolve, preventing the
+   * winner from collecting map gold before paying for the reinforcement.
    */
   pendingNecromancy?: {
     playerId: PlayerId;
-    /** The post-combat field visit deferred behind the decision (if any). */
+    /** Two Necromancy cards may be played after the same combat. Missing on old snapshots means one. */
+    remaining?: number;
+    /** Legacy snapshot fields; new states store the work in deferredReward. */
     heroId?: HeroId;
     fieldId?: MapSpaceId;
+    /** The exact post-combat reward that must not resolve before Necromancy. */
+    deferredReward?:
+      | {
+          kind: "field-visit";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+        }
+      | {
+          kind: "creature-bank";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+          stackCount: number;
+        }
+      | { kind: "wave"; wave: number }
+      | { kind: "raid-boss"; bossInstanceId: string }
+      | { kind: "dungeon-floor"; floor: number };
+    /** Necromancy banks created in this window; unused ones expire on Resolve. */
+    discountIds?: string[];
   } | null;
   /**
    * Hierophant commander (First Aid Master): after a combat in which the

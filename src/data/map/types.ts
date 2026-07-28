@@ -19,6 +19,11 @@ export type TileFieldDefinition = {
   location: string;
   /** Roman numeral guard level printed on the field (I-VII). */
   difficulty?: number;
+  /**
+   * Number printed beside a Treasure chest. Omitted means the ordinary
+   * one-die chest; only fields whose artwork explicitly says "2 → 1" set 2.
+   */
+  treasureDice?: 1 | 2;
   /** Resource shown on the field (mines, windmills, ...). */
   resource?: ResourceKind;
   /** Immediate gain or income amount tied to `resource`. */

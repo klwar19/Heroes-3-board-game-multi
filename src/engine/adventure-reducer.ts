@@ -357,6 +357,7 @@ import {
   type HexCoord
 } from "./hex";
 import type {
+  AdventureState,
   ArmyUnitState,
   BankSize,
   CardDefinition,
@@ -775,7 +776,7 @@ function assertNoPendingInput(state: GameState): void {
   }
 
   if (state.adventure?.pendingNecromancy) {
-    throw new Error("Resolve the after-combat Necromancy window first (play it or skip it).");
+    throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
   }
 
   if (state.adventure?.pendingTileChoice) {
@@ -4339,7 +4340,9 @@ export function redeemReinforcementDiscountAction(
   // the offer's (`addBankedReinforcementActions`). Without it a forged action
   // could upgrade Few→Pack in the middle of an opponent's turn (e.g. right
   // before an incoming garrison/mine defense). Pinned in legion-artifacts.test.ts.
-  if (!hasOpenAdventureTurn(state, action.playerId)) {
+  const resolvingNecromancy =
+    state.adventure?.pendingNecromancy?.playerId === action.playerId;
+  if (!resolvingNecromancy && !hasOpenAdventureTurn(state, action.playerId)) {
     throw new Error("Banked reinforcement discounts can only be redeemed on your own turn.");
   }
   redeemReinforcementDiscount(
@@ -4815,7 +4818,13 @@ export function startNeutralEncounter(
   // Quick Combat; not covered → the fight is mandatory, so the classic
   // level > difficulty auto-win below deliberately does NOT apply.
   if (polishQuickCombatEnabled(state)) {
-    if (polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)) {
+    // A hero at the exact field level still needs the normal fight for its XP.
+    // The strength shortcut remains available above or below the field level,
+    // but must not turn a level-2 fight into a Quick Combat on a level-2 tile.
+    if (
+      level !== difficulty &&
+      polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)
+    ) {
       if (!polishQuickCombatXpPossible(hero, difficulty)) {
         resolveQuickCombatWin(state, hero, field, difficulty);
         return;
@@ -9917,8 +9926,50 @@ function noteWithheldNecromancyWindow(state: GameState, playerId: PlayerId): voi
   });
 }
 
+type DeferredNecromancyReward = NonNullable<
+  AdventureState["pendingNecromancy"]
+>["deferredReward"];
+
 /**
- * Decline the after-combat Necromancy window (BINH house rule). The window is
+ * Single entry point for every fought-combat Necromancy prompt. Keeping the
+ * window construction here prevents neutral, PvP, Bank, Wave, Raid Boss, and
+ * Dungeon branches from drifting apart again.
+ */
+function openNecromancyWindow(
+  state: GameState,
+  playerId: PlayerId,
+  heroId?: HeroId,
+  deferredReward?: DeferredNecromancyReward
+): boolean {
+  const adventure = state.adventure;
+  const player = state.players[playerId];
+  if (!adventure || !playerCanPlayNecromancy(state, playerId) || !player) {
+    if (player) {
+      player.necromancyWindow = false;
+    }
+    noteWithheldNecromancyWindow(state, playerId);
+    return false;
+  }
+  const held = player.hand.filter(
+    (cardId) =>
+      cardLibrary[cardId]?.effect.type === "NECROMANCY_REINFORCE"
+  ).length;
+  adventure.pendingNecromancy = {
+    playerId,
+    remaining: Math.min(2, Math.max(1, held)),
+    ...(heroId ? { heroId } : {}),
+    ...(deferredReward?.kind === "field-visit"
+      ? { fieldId: deferredReward.fieldId }
+      : {}),
+    ...(deferredReward ? { deferredReward } : {}),
+    discountIds: []
+  };
+  player.necromancyWindow = true;
+  return true;
+}
+
+/**
+ * Resolve the atomic after-combat Necromancy transaction. The window is
  * gone for good — it never reopens until the next non-Quick Combat win — and the
  * field reward withheld behind the decision is released now.
  */
@@ -9926,20 +9977,41 @@ export function skipNecromancy(state: GameState, action: Extract<GameAction, { t
   const adventure = state.adventure;
   const pending = adventure?.pendingNecromancy;
   if (!adventure || !pending) {
-    throw new Error("There is no Necromancy window to skip.");
+    throw new Error("There is no Necromancy window to resolve.");
   }
   if (pending.playerId !== action.playerId) {
-    throw new Error("Only the player who won the combat may skip Necromancy.");
+    throw new Error("Only the combat winner may resolve Necromancy.");
   }
 
   adventure.pendingNecromancy = null;
   const player = state.players[action.playerId];
   if (player) {
     player.necromancyWindow = false;
+    // Unused Necromancy opportunities expire here. Leaving one banked would
+    // reintroduce the exploit: collect the field reward, then reinforce.
+    player.reinforcementDiscounts = (
+      player.reinforcementDiscounts ?? []
+    ).filter((discount) => discount.source !== "necromancy");
   }
 
-  // Release the field reward that was held back behind the decision.
-  if (pending.heroId && pending.fieldId) {
+  const reward = pending.deferredReward;
+  if (reward?.kind === "field-visit") {
+    beginFieldVisit(state, reward.heroId, reward.fieldId, false);
+  } else if (reward?.kind === "creature-bank") {
+    grantCreatureBankReward(
+      state,
+      reward.heroId,
+      reward.fieldId,
+      reward.stackCount
+    );
+  } else if (reward?.kind === "wave") {
+    grantWaveVictoryRewards(state, action.playerId, reward.wave);
+  } else if (reward?.kind === "raid-boss") {
+    resolveRaidBossVictory(state, action.playerId, reward.bossInstanceId);
+  } else if (reward?.kind === "dungeon-floor") {
+    resolveDungeonFloorVictory(state, action.playerId, reward.floor);
+  } else if (pending.heroId && pending.fieldId) {
+    // Compatibility with snapshots written before deferredReward existed.
     beginFieldVisit(state, pending.heroId, pending.fieldId, false);
   }
 }
@@ -10241,7 +10313,15 @@ export function finalizeAdventureCombat(state: GameState): void {
     commanderSurvivors.has(outcome.winnerPlayerId) &&
     playerHasLivingCommander(state, outcome.winnerPlayerId, "brute")
   ) {
-    gainResources(state, outcome.winnerPlayerId, { gold: 2 }, "Soul Reformer");
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", gold: 2 }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { gold: 2 }, "Soul Reformer");
+    }
     appendEvent(state, {
       type: "COMMANDER_SPECIALTY_TRIGGERED",
       playerId: outcome.winnerPlayerId,
@@ -10254,16 +10334,38 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Anime Hero Grades Bounty Hunter's Eye (tier 1, §3.11): +1 gold after each
   // combat the player wins. Gated on the node; no-op when the module is off /
   // unpicked, and never for a NEUTRAL "winner".
-  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && heroGradeWinGold(state, outcome.winnerPlayerId) > 0) {
-    gainResources(state, outcome.winnerPlayerId, { gold: heroGradeWinGold(state, outcome.winnerPlayerId) }, "Bounty Hunter's Eye");
+  const gradeWinGold = outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID
+    ? heroGradeWinGold(state, outcome.winnerPlayerId)
+    : 0;
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && gradeWinGold > 0) {
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", gold: gradeWinGold }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { gold: gradeWinGold }, "Bounty Hunter's Eye");
+    }
   }
 
   // Anime Equipment (§3.13): +1 gold after each combat the player wins per
   // win-gold item worn — Adventurer's Blade and Alchemist's Satchel each add 1
   // (stacking to +2 with both), a SEPARATE grant from Bounty Hunter's Eye. Gated
   // on the item(s); never for a NEUTRAL "winner".
-  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && equipmentWinGold(state, outcome.winnerPlayerId) > 0) {
-    gainResources(state, outcome.winnerPlayerId, { gold: equipmentWinGold(state, outcome.winnerPlayerId) }, "Equipment win reward");
+  const equippedWinGold = outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID
+    ? equipmentWinGold(state, outcome.winnerPlayerId)
+    : 0;
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && equippedWinGold > 0) {
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", gold: equippedWinGold }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { gold: equippedWinGold }, "Anime Equipment");
+    }
   }
 
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to
@@ -10318,7 +10420,15 @@ export function finalizeAdventureCombat(state: GameState): void {
         const guildId = findTownBuildingWithEffect(state, playerId, "FREELANCERS_GUILD");
         const guild = guildId ? coreBuildingDefinitions[guildId] : null;
         if (guild?.effect?.type === "FREELANCERS_GUILD") {
-          gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+          if (playerCanPlayNecromancy(state, playerId)) {
+            adventure.rewardQueue.push({
+              playerId,
+              kind: "visit-steps",
+              steps: [{ type: "GAIN_RESOURCES", gold: guild.effect.winGold }]
+            });
+          } else {
+            gainResources(state, playerId, { gold: guild.effect.winGold }, "Freelancer's Guild bounty");
+          }
         }
 
         // Necromancy window: "Play after winning Combat other than Quick
@@ -10326,7 +10436,6 @@ export function finalizeAdventureCombat(state: GameState): void {
         // startNeutralEncounter) never does.
         const winner = state.players[playerId];
         if (winner) {
-          winner.necromancyWindow = true;
           // Defeated neutral cards may owe the winner extra Resource dice (WOG
           // Santa Gremlin). Driven by the printed EXTRA_RESOURCE_DIE_ON_NEUTRAL_DEFEAT
           // ability, not a unit id, and scaled by the number defeated.
@@ -10424,7 +10533,11 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
 
     state.combat = null;
-    state.activePlayerId = playerId ?? state.activePlayerId;
+    // Wave fights interrupt round start; they are not player turns. Preserve
+    // the real first player even when the final queued assault belongs to p2+.
+    if (!context.waveAssault) {
+      state.activePlayerId = playerId ?? state.activePlayerId;
+    }
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {
@@ -10438,21 +10551,26 @@ export function finalizeAdventureCombat(state: GameState): void {
 
       // Calamity Wave / Raid Boss / Dungeon floor wins pay their OWN printed
       // reward and never the field visit (the hero merely stands there / the
-      // lair clears / the gate stays). The fought neutral win still opens the
-      // Necromancy window — with no deferred fieldId, nothing is withheld
-      // behind it (the bank precedent).
+      // lair clears / the gate stays). Their exact reward is still deferred
+      // behind the same atomic Necromancy window.
       if (context.waveAssault || context.raidBossId || context.dungeonFloor !== undefined) {
-        if (context.waveAssault) {
+        const deferredReward: DeferredNecromancyReward = context.waveAssault
+          ? { kind: "wave", wave: context.waveAssault.wave }
+          : context.raidBossId
+            ? { kind: "raid-boss", bossInstanceId: context.raidBossId }
+            : { kind: "dungeon-floor", floor: context.dungeonFloor! };
+        const deferred = openNecromancyWindow(
+          state,
+          playerId,
+          hero.id,
+          deferredReward
+        );
+        if (!deferred && context.waveAssault) {
           grantWaveVictoryRewards(state, playerId, context.waveAssault.wave);
-        } else if (context.raidBossId) {
+        } else if (!deferred && context.raidBossId) {
           resolveRaidBossVictory(state, playerId, context.raidBossId);
-        } else if (context.dungeonFloor !== undefined) {
+        } else if (!deferred && context.dungeonFloor !== undefined) {
           resolveDungeonFloorVictory(state, playerId, context.dungeonFloor);
-        }
-        if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
-        } else {
-          noteWithheldNecromancyWindow(state, playerId);
         }
         state.phase = "player-turn";
         return;
@@ -10466,11 +10584,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       // precedent). A retreat/defeat left this branch (winnerPlayerId !== playerId).
       if (context.teleportArrival) {
         clearCustomGuard(field);
-        if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
-        } else {
-          noteWithheldNecromancyWindow(state, playerId);
-        }
+        openNecromancyWindow(state, playerId, hero.id);
         state.phase = "player-turn";
         return;
       }
@@ -10489,33 +10603,33 @@ export function finalizeAdventureCombat(state: GameState): void {
       }
 
       if (context.bankId) {
-        // Creature Bank win: claim the bank reward, scaled by X = the number of
-        // Stacked defenders (rulebook p.66-67). Banks sit outside the BINH
-        // Necromancy-timing deferral — their reward is granted immediately
-        // (there is no held-back field reward to price the reinforce against).
-        grantCreatureBankReward(state, hero.id, context.fieldId, context.bankStackCount ?? 0);
-        // ...but a bank fight is still a non-Quick Combat win, so a Necropolis
-        // hero who holds Necromancy still gets the now-or-never after-combat
-        // window (the bug: there was no upgrade prompt at all after a bank). No
-        // fieldId is deferred here — the bank reward already resolved above, so
-        // the window carries nothing to withhold; it just lets the player play
-        // or skip Necromancy before doing anything else. Any reward prompt the
-        // bank queued (`pendingVisit`) resolves first; the Necromancy gate in
-        // legal-actions sits behind it.
-        if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
-        } else {
-          noteWithheldNecromancyWindow(state, playerId);
+        // A Bank is a fought combat too. Its gold/search reward is part of the
+        // atomic deferral, fixing the long-standing "Bank paid before prompt"
+        // exploit and keeping prompt-producing Banks from hiding Necromancy.
+        if (
+          !openNecromancyWindow(state, playerId, hero.id, {
+            kind: "creature-bank",
+            heroId: hero.id,
+            fieldId: context.fieldId,
+            stackCount: context.bankStackCount ?? 0
+          })
+        ) {
+          grantCreatureBankReward(
+            state,
+            hero.id,
+            context.fieldId,
+            context.bankStackCount ?? 0
+          );
         }
-      } else if (playerCanPlayNecromancy(state, playerId)) {
-        // BINH house rule: Necromancy is a now-or-never decision made BEFORE the
-        // field reward. If the winner can play it this instant, defer the field
-        // visit behind the decision (its reward is withheld until they play or
-        // skip); otherwise visit the field immediately as usual.
-        adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId };
       } else {
-        beginFieldVisit(state, hero.id, context.fieldId, false);
-        noteWithheldNecromancyWindow(state, playerId);
+        const deferred = openNecromancyWindow(state, playerId, hero.id, {
+          kind: "field-visit",
+          heroId: hero.id,
+          fieldId: context.fieldId
+        });
+        if (!deferred) {
+          beginFieldVisit(state, hero.id, context.fieldId, false);
+        }
       }
     }
 
@@ -10653,13 +10767,6 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
-  // Necromancy window opens for the winner of a fought (or retreat) PvP combat —
-  // but never on a Surrender (main or Secondary-Hero), which is not a combat
-  // victory for the opponent.
-  if (!escapedWithoutDefeat && winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
-    state.players[winnerId].necromancyWindow = true;
-  }
-
   state.combat = null;
 
   // Siege defeat (house rule): a player whose MAIN Hero is defeated defending
@@ -10711,20 +10818,38 @@ export function finalizeAdventureCombat(state: GameState): void {
   state.activePlayerId = attackerHero?.controllerId ?? state.activePlayerId;
   state.priorityPlayerId = null;
 
-  if (winnerHero && winnerHero.id === context.attackerHeroId) {
+  if (
+    !escapedWithoutDefeat &&
+    winnerId !== NEUTRAL_PLAYER_ID &&
+    state.players[winnerId]
+  ) {
+    const attackerWon =
+      winnerHero?.id === context.attackerHeroId && Boolean(winnerHero);
+    const deferredReward =
+      attackerWon && winnerHero
+        ? ({
+            kind: "field-visit",
+            heroId: winnerHero.id,
+            fieldId: context.fieldId
+          } as const)
+        : undefined;
+    const opened = openNecromancyWindow(
+      state,
+      winnerId,
+      winnerHero?.id ?? getMainHero(state, winnerId)?.id,
+      deferredReward
+    );
+    if (attackerWon && winnerHero && !opened) {
+      beginFieldVisit(state, winnerHero.id, context.fieldId, false);
+    }
+  } else if (winnerHero && winnerHero.id === context.attackerHeroId) {
     // The attacker took the contested field by winning. House rule (BINH):
     // winning at sea does NOT halt the hero (see neutral case) — a hero already
     // sailing (sea→sea) keeps its remaining movement, while one that WADED in
     // stays halted by that step itself. So no extra sea-combat halt here.
     // Same now-or-never Necromancy gate as a neutral win (see above): defer the
     // attacker's field visit behind the decision when they can play it now.
-    const winnerPid = winnerHero.controllerId;
-    if (playerCanPlayNecromancy(state, winnerPid)) {
-      adventure.pendingNecromancy = { playerId: winnerPid, heroId: winnerHero.id, fieldId: context.fieldId };
-    } else {
-      beginFieldVisit(state, winnerHero.id, context.fieldId, false);
-      noteWithheldNecromancyWindow(state, winnerPid);
-    }
+    beginFieldVisit(state, winnerHero.id, context.fieldId, false);
   }
 }
 
@@ -15438,6 +15563,13 @@ export function pumpAdventureQueues(state: GameState): void {
         return;
       }
     }
+  }
+
+  // Combat/field rewards are frozen behind the atomic Necromancy transaction.
+  // A pendingVisit above is allowed only for a hand bonus selected inside that
+  // transaction (Legion target / legacy immediate prompt).
+  if (adventure.pendingNecromancy) {
+    return;
   }
 
   while (!state.pendingChoice && adventure.rewardQueue.length > 0) {

@@ -224,7 +224,9 @@ export function parallelSlotSignature(state: GameState): string {
     state.stack.length,
     adventure?.pendingVisit ? [adventure.pendingVisit.playerId, adventure.pendingVisit.fieldId] : null,
     adventure?.pendingTileChoice ? [adventure.pendingTileChoice.playerId, adventure.pendingTileChoice.tileInstanceId] : null,
-    adventure?.pendingNecromancy?.playerId ?? null,
+    adventure?.pendingNecromancy
+      ? [adventure.pendingNecromancy.playerId, adventure.pendingNecromancy.remaining ?? 1]
+      : null,
     adventure?.pendingFarTileFlip ? adventure.pendingFarTileFlip.playerId : null,
     adventure?.pendingGarrison ? adventure.pendingGarrison.defenderPlayerId : null
   ]);

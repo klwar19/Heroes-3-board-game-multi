@@ -10,7 +10,12 @@ import {
   getUnitMoveRange,
   sampleCards
 } from "./index";
-import { expireEffectsForCombatEnd, expireEffectsForTurnEnd, makeActiveEffect } from "./active-effects";
+import {
+  expireEffectsForCombatEnd,
+  expireEffectsForGameRoundEnd,
+  expireEffectsForTurnEnd,
+  makeActiveEffect
+} from "./active-effects";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 const castMagicArrow = {
@@ -983,7 +988,7 @@ describe("rules engine prototype", () => {
     });
   });
 
-  it("plays expert Luck for an Attack-die reroll that LASTS the whole turn — across multiple fights/attacks", () => {
+  it("plays expert Luck for an Attack-die reroll that lasts the whole game round", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
@@ -991,7 +996,7 @@ describe("rules engine prototype", () => {
     state.players.p1.hand = ["ability.luck"];
     state.players.p2.hand = [];
     // Attack 1: roll -1, reroll to +1. Attack 2 (a SECOND, separate attack in
-    // the same turn): roll -1 — Expert Luck must STILL offer a reroll.
+    // the same round): roll -1 — Expert Luck must STILL offer a reroll.
     scriptDice(state, [-1, 1, -1, 1]);
 
     // Ongoing timing: legal during the controller's own activation.
@@ -1035,15 +1040,15 @@ describe("rules engine prototype", () => {
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
 
     // The fix: Expert Luck is NOT consumed by the reroll — it stays on the table
-    // for the rest of the player's turn (current-turn duration). Were it
+    // for the rest of the game round. Were it
     // consumed on use (the old bug, consumeEffectOnUse: true), it would be gone
-    // here and every later attack this turn would lose the reroll. The non-
+    // here and every later attack this round would lose the reroll. The non-
     // consumed effect is proven reusable per attack by the Crusader+Luck test
     // below. (A test fails if the consume-on-use logic is restored.)
     expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Expert Luck");
   });
 
-  it("keeps Expert Luck through combat end so a LATER fight in the same turn still has it", () => {
+  it("keeps Expert Luck through combat and player-turn end, then expires it at game-round end", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
@@ -1057,15 +1062,18 @@ describe("rules engine prototype", () => {
     const played = applyOk(state, luckPlay!.action);
     expect(played.activeEffects.map((effect) => effect.name)).toContain("Expert Luck");
 
-    // A combat ending must NOT remove Luck — its duration is the whole turn, so
-    // a second fight this turn still gets the reroll. Only the controller's
-    // turn ending clears it.
+    // Neither combat end nor one player's turn end removes round-scoped Luck.
     const afterCombat = expireEffectsForCombatEnd(played);
     expect(afterCombat.map((effect) => effect.name)).not.toContain("Expert Luck");
     expect(played.activeEffects.map((effect) => effect.name)).toContain("Expert Luck");
 
     const afterTurn = expireEffectsForTurnEnd(played, "p1");
-    expect(afterTurn.map((effect) => effect.name)).toContain("Expert Luck");
+    expect(afterTurn.map((effect) => effect.name)).not.toContain("Expert Luck");
+    expect(played.activeEffects.map((effect) => effect.name)).toContain("Expert Luck");
+
+    played.round += 1;
+    const afterRound = expireEffectsForGameRoundEnd(played);
+    expect(afterRound.map((effect) => effect.name)).toContain("Expert Luck");
     expect(played.activeEffects.map((effect) => effect.name)).not.toContain("Expert Luck");
   });
 
@@ -1272,7 +1280,7 @@ describe("rules engine prototype", () => {
       candidateIndex: 2
     });
     expect(resolved.pendingChoice).toBeNull();
-    // Luck is not consumed on use; it stays active for later attacks this turn.
+    // Luck is not consumed on use; it stays active for later attacks this round.
     expect(resolved.activeEffects.map((effect) => effect.name)).toContain("Luck");
     // The reroll replaced the result: the final -1 stands, the earlier +1 is gone.
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: -1 });
@@ -2477,6 +2485,43 @@ describe("rules engine prototype", () => {
 });
 
 describe("ongoing cards stay in play until their effect ends", () => {
+  it("lets the owner discard an Ongoing card and ends its live effect immediately", () => {
+    const state = createInitialGameState();
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: "Voluntary Ongoing discard probe",
+        scope: "player",
+        duration: { type: "current-game-round" },
+        polarity: "positive",
+        removable: false,
+        modifiers: []
+      },
+      { type: "card", cardId: "ability.luck", controllerId: "p1" },
+      "p1"
+    );
+    state.activeEffects.push(effect);
+    state.players.p1.ongoingCards = [
+      { cardId: "ability.luck", effectIds: [effect.id], returnTo: "discard" }
+    ];
+
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCARD_ONGOING_CARD" && legal.action.cardId === "ability.luck"
+      )
+    ).toBe(true);
+
+    const discarded = applyOk(state, {
+      type: "DISCARD_ONGOING_CARD",
+      playerId: "p1",
+      cardId: "ability.luck"
+    });
+
+    expect(discarded.activeEffects.some((active) => active.id === effect.id)).toBe(false);
+    expect(discarded.players.p1.ongoingCards).toEqual([]);
+    expect(discarded.players.p1.discard).toContain("ability.luck");
+  });
+
   it("holds an ongoing spell out of the discard pile and discards it once the effect is consumed", () => {
     const state = createInitialGameState();
     if (!state.combat) {

@@ -676,7 +676,7 @@ describe("Game options — tabbed layout", () => {
     const rows: Array<[RegExp, string]> = [
       [/Calamity Waves: every Nth round/i, "monsterWaves"],
       [/persistent multi-layer world boss/i, "raidBosses"],
-      [/One shared, repeatable delve site per map/i, "dungeon"]
+      [/Each player tracks their own floor/i, "dungeon"]
     ];
     for (const [labelPattern, flag] of rows) {
       cleanup();
@@ -803,7 +803,7 @@ describe("Game options — tabbed layout", () => {
       })
     );
 
-    const descent = within(dialog).getByRole("group", { name: /Dungeon descent cost/i });
+    const descent = within(dialog).getByRole("group", { name: /Continue after a Dungeon win/i });
     fireEvent.click(within(descent).getByRole("button", { name: /2 movement/i }));
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
