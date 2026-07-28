@@ -3851,9 +3851,10 @@ export type GameAction =
     }
   | {
       /**
-       * Decline the after-combat Necromancy window (BINH house rule). Closes the
-       * now-or-never window for good — it never reopens until the next non-Quick
-       * Combat win — and releases the field reward withheld behind the decision.
+       * Resolve the atomic after-combat Necromancy window. Any selected
+       * Necromancy/Legion/gold bonuses and reinforcements are final; unused
+       * Necromancy banks expire, then the withheld combat/field reward releases.
+       * The legacy action name is kept for protocol compatibility.
        */
       type: "SKIP_NECROMANCY";
       playerId: PlayerId;
@@ -10741,22 +10742,39 @@ export type AdventureState = {
   /** Field visit currently being resolved (choices pending). */
   pendingVisit: PendingVisit | null;
   /**
-   * After-combat Necromancy decision (BINH house rule). Set when a player wins a
-   * non-Quick Combat AND can play a Necromancy ability at that very instant.
-   * While it is set the winner may ONLY play Necromancy or skip it — nothing else
-   * on the map is legal and the field reward of the fight they just won is
-   * withheld (its visit is stored here) until the decision is made. This is what
-   * stops "collect the field gold, THEN reinforce with it": the reinforce is
-   * priced on the gold held before the reward lands. Cleared the instant the
-   * decision is made and never reopens until the next non-Quick Combat win.
+   * Atomic after-combat Necromancy transaction (BINH house rule). Set when a
+   * player wins a non-Quick Combat AND can play a Necromancy card at that
+   * instant. The winner may play multiple Necromancy cards plus compatible
+   * hand bonuses (Legion discounts / gold effects), redeem the resulting
+   * reinforcement offers, and then explicitly resolve the window. Every combat
+   * and field reward is withheld until that final resolve, preventing the
+   * winner from collecting map gold before paying for the reinforcement.
    */
   pendingNecromancy?: {
     playerId: PlayerId;
     /** Two Necromancy cards may be played after the same combat. Missing on old snapshots means one. */
     remaining?: number;
-    /** The post-combat field visit deferred behind the decision (if any). */
+    /** Legacy snapshot fields; new states store the work in deferredReward. */
     heroId?: HeroId;
     fieldId?: MapSpaceId;
+    /** The exact post-combat reward that must not resolve before Necromancy. */
+    deferredReward?:
+      | {
+          kind: "field-visit";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+        }
+      | {
+          kind: "creature-bank";
+          heroId: HeroId;
+          fieldId: MapSpaceId;
+          stackCount: number;
+        }
+      | { kind: "wave"; wave: number }
+      | { kind: "raid-boss"; bossInstanceId: string }
+      | { kind: "dungeon-floor"; floor: number };
+    /** Necromancy banks created in this window; unused ones expire on Resolve. */
+    discountIds?: string[];
   } | null;
   /**
    * Hierophant commander (First Aid Master): after a combat in which the

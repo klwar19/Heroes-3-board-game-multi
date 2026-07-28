@@ -707,7 +707,7 @@ describe("Vidomina's Necromancy specialty", () => {
     );
     expect(play, `Vidomina ${level} should be offered in the after-combat window`).toBeTruthy();
     const after = applyOk(state, play!.action);
-    expect(after.players.p1.necromancyWindow).toBe(false); // window consumed
+    expect(after.players.p1.necromancyWindow).toBe(true); // stays atomic until Resolve
     return after;
   }
 
@@ -734,8 +734,8 @@ describe("Vidomina's Necromancy specialty", () => {
   });
 
   // Sibling cross-check: the specialty shares Necromancy's adjustable bank
-  // path, including normal discard timing and later army-panel redemption.
-  it("I spends the specialty into a persistent bank, then redeems that bank later", () => {
+  // path, but the bank must be spent inside the atomic after-combat window.
+  it("I spends the specialty into a bank, then redeems it before Resolve", () => {
     const upgrading = playReinforce(1);
     expect(upgrading.players.p1.hand).not.toContain("specialty.vidomina.1");
     expect(upgrading.players.p1.discard).toContain("specialty.vidomina.1");
@@ -750,5 +750,12 @@ describe("Vidomina's Necromancy specialty", () => {
     expect(afterReinforce.players.p1.army.find((u) => u.id === "a_skel")?.side).toBe("pack");
     expect(afterReinforce.players.p1.discard).toContain("specialty.vidomina.1");
     expect(afterReinforce.players.p1.reinforcementDiscounts).toEqual([]);
+    expect(afterReinforce.players.p1.necromancyWindow).toBe(true);
+    const resolve = getLegalActions(afterReinforce, "p1").find(
+      (legal) => legal.action.type === "SKIP_NECROMANCY"
+    );
+    expect(resolve, "Resolve should close the atomic after-combat window").toBeTruthy();
+    const resolved = applyOk(afterReinforce, resolve!.action);
+    expect(resolved.players.p1.necromancyWindow).toBe(false);
   });
 });

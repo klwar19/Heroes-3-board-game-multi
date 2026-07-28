@@ -5152,14 +5152,13 @@ export function PromptTray({
   // pendingChoice/pendingVisit — exactly like the First Aid window above. Because
   // combat is already cleared (state.combat === null) by the time the window opens,
   // the battlefield command dock is gone, and no surface here claimed it — so the
-  // "Skip Necromancy" button never rendered on the map and the winner was forced to
-  // play the reinforce card ("after combat, no choice but to use it"). This branch
-  // renders the window's own actions: play the Necromancy reinforce, or skip it.
+  // the closing action never rendered on the map and the winner was forced to
+  // play the reinforce card. This branch owns the full multi-bonus transaction.
   const necromancyActions = legalActions.filter(
     (legal) =>
       legal.action.type === "SKIP_NECROMANCY" ||
-      (legal.action.type === "PLAY_CARD" &&
-        cardLibrary[legal.action.cardId]?.effect.type === "NECROMANCY_REINFORCE")
+      legal.action.type === "PLAY_CARD" ||
+      legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT"
   );
   const necromancyOpen = state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
@@ -5445,11 +5444,10 @@ export function PromptTray({
     title = "First Aid Master — restore one fallen unit";
     body = firstAidActions;
   } else if (necromancyOpen && necromancyActions.length > 0) {
-    // Necropolis Necromancy window: reinforce a unit for half the gold cost, or
-    // skip. Skipping is a real choice — the winner is not forced to reinforce (the
-    // field reward stays withheld only until they decide, engine-gated).
+    // Atomic post-combat purchase: layer Necromancy, Legion, and gold bonuses,
+    // redeem any reinforcement offers, then explicitly release the field reward.
     const remaining = state.adventure?.pendingNecromancy?.remaining ?? 1;
-    title = `Necromancy — ${remaining} card${remaining === 1 ? "" : "s"} remaining; reinforce for half gold, or skip`;
+    title = `Necromancy — ${remaining} card${remaining === 1 ? "" : "s"} available; add bonuses, reinforce, then Resolve`;
     body = necromancyActions;
   } else if (visit && visit.playerId === viewerPlayerId && visitActions.length > 0) {
     const step = visit.steps[0];
