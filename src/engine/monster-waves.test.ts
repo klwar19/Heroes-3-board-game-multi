@@ -417,6 +417,25 @@ describe("Calamity Waves — the wave round", () => {
     settleWaveCombat(state, { winner: "p2", loser: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" });
     expect(state.combat).toBeNull();
     expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.activePlayerId).toBe("p1");
+  });
+
+  it("Anime Monster Waves return control to player 1 after every queued assault", () => {
+    const state = wavesGame("anime-waves-preserve-first-player", {
+      wog: { enabled: false },
+      anime: { enabled: true, monsterWaves: true, waveCadence: 3 }
+    });
+    state.activePlayerId = "p1";
+    startRound(state, 3);
+
+    expect(state.combat?.attackerPlayerId).toBe("p1");
+    settleWaveCombat(state, { winner: "p1", loser: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" });
+    expect(state.combat?.attackerPlayerId).toBe("p2");
+    settleWaveCombat(state, { winner: "p2", loser: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" });
+
+    expect(state.combat).toBeNull();
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.activePlayerId).toBe("p1");
   });
 
   it("an eliminated seat's queued assault is dropped, not opened", () => {

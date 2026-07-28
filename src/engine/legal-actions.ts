@@ -3878,6 +3878,14 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
       });
     }
   }
+
+  for (const held of state.players[playerId]?.ongoingCards ?? []) {
+    const name = cardLibrary[held.cardId]?.name ?? held.cardId;
+    actions.push({
+      label: `Discard ${name} from play`,
+      action: { type: "DISCARD_ONGOING_CARD", playerId, cardId: held.cardId }
+    });
+  }
 }
 
 function addActiveEffectActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {

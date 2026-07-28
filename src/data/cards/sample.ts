@@ -630,19 +630,14 @@ export const sampleCards: CardLibrary = {
     id: "ability.luck",
     name: "Luck",
     kind: "ability",
-    // Wiki card text (Ongoing): basic "You can reroll a Treasure die and a
-    // Resource die once during this turn"; expert "You can reroll any die
-    // once during this turn". Ongoing cards are played during your own turn
-    // on the map or while activating one of your units in combat.
+    // Ongoing: basic rerolls one Treasure die and one Resource die; expert
+    // rerolls any die once per roll. Both versions remain in play until the
+    // end of the current game round.
     //
-    // engine: BOTH sides last the WHOLE player turn (duration current-turn),
-    // NOT a single combat round. Basic offers one Treasure + one Resource map-
-    // die reroll for the turn (no attack-die reroll). Expert ALSO rerolls any
-    // Attack die — once per attack roll — across EVERY fight and combat round
-    // in that turn, so the reroll source is NOT consumed on first use
-    // (consumeEffectOnUse: false); it persists until the turn ends. See the
-    // wiki note: "rerolling any die … including attack dice in all fights that
-    // occur during that turn".
+    // Basic offers one Treasure + one Resource map-die reroll for the round
+    // (no attack-die reroll). Expert also rerolls an Attack die once per attack
+    // roll across every fight in that round, so the effect is not consumed on
+    // first use (consumeEffectOnUse: false).
     timing: "ongoing",
     abilityClass: "adventure",
     tags: ["ability", "ongoing", "reroll", "wiki-reference"],
@@ -652,7 +647,7 @@ export const sampleCards: CardLibrary = {
       effect: {
         name: "Luck",
         scope: "player",
-        duration: { type: "current-turn" },
+        duration: { type: "current-game-round" },
         polarity: "positive",
         removable: false,
         modifiers: [{ type: "ADVENTURE_DIE_REROLL", dice: "treasure" }, { type: "ADVENTURE_DIE_REROLL", dice: "resource" }]
@@ -660,7 +655,7 @@ export const sampleCards: CardLibrary = {
       expertEffect: {
         name: "Expert Luck",
         scope: "player",
-        duration: { type: "current-turn" },
+        duration: { type: "current-game-round" },
         polarity: "positive",
         removable: false,
         modifiers: [

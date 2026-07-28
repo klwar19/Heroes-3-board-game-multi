@@ -601,7 +601,7 @@ export type EffectDurationDefinition =
   | { type: "next-combat-round" }
   | { type: "combat-rounds"; rounds: number }
   | { type: "current-turn" }
-  /** Torosar's Ballista IV: "until the end of the round" (this game round). */
+  /** Luck / Torosar's Ballista IV: until the end of this game round. */
   | { type: "current-game-round" }
   /**
    * Mirth (Power 0): "during this Activation". Lasts until the end of the
@@ -3710,6 +3710,12 @@ export type GameAction =
        * discard pile. This stops the card effect immediately.").
        */
       type: "DISCARD_PERMANENT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /** Voluntarily end an Ongoing card, remove its live effects, and discard it. */
+      type: "DISCARD_ONGOING_CARD";
       playerId: PlayerId;
       cardId: CardId;
     }
@@ -8584,6 +8590,8 @@ export type MapFieldState = {
   slot: number;
   location: string;
   difficulty?: number;
+  /** Printed Treasure-die count; omitted means one die. */
+  treasureDice?: 1 | 2;
   /**
    * Creature Bank id (Naval Battles optional rule) when `location` is
    * "creature_bank". A CreatureBankId, typed loosely because state.ts has no

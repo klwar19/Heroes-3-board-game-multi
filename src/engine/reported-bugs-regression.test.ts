@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { expansionTileDefinitions } from "@/data/map/expansion-tiles";
+import { coreTileDefinitions } from "@/data/map/tile-defs";
 import { beginFieldVisit, classifyHeroStep, getMainHero, isFieldGuarded } from "./adventure";
 import { createAdventureGameState } from "./index";
 import type { GameState, MapFieldState, MapTileState } from "./state";
@@ -38,9 +39,14 @@ function addTile(state: GameState, group: MapTileState["group"]): void {
   };
 }
 
-function treasureRollCount(state: GameState, group: MapTileState["group"]): number | undefined {
+function treasureRollCount(
+  state: GameState,
+  group: MapTileState["group"],
+  treasureDice?: 1 | 2
+): number | undefined {
   addTile(state, group);
   const field = addField(state, "treasure_symbol");
+  field.treasureDice = treasureDice;
   beginFieldVisit(state, getMainHero(state, "p1")!.id, field.spaceId, false);
   const roll = [...state.eventLog].reverse().find(
     (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure"
@@ -65,12 +71,20 @@ describe("reported map and unit-data regressions", () => {
     expect(grave?.difficulty).toBe(2);
   });
 
-  it("rolls two dice for non-starting treasure chests and one for starting chests", () => {
-    const farState = makeGame();
-    expect(treasureRollCount(farState, "far")).toBe(2);
+  it("uses the dice count printed on each Treasure field, never its tile group", () => {
+    expect(treasureRollCount(makeGame(), "far", 2)).toBe(2);
+    expect(treasureRollCount(makeGame(), "far")).toBe(1);
+    expect(treasureRollCount(makeGame(), "starting")).toBe(1);
 
-    const startingState = makeGame();
-    expect(treasureRollCount(startingState, "starting")).toBe(1);
+    const f7Chest = coreTileDefinitions.F7.fields.find((field) => field.location === "treasure_symbol");
+    const f14Chest = coreTileDefinitions.F14.fields.find((field) => field.location === "treasure_symbol");
+    expect(f7Chest?.treasureDice).toBe(2);
+    expect(f14Chest?.treasureDice).toBeUndefined();
+  });
+
+  it("maps &N1's question-mark cabin to a Trading Post, not a Treasure chest", () => {
+    expect(expansionTileDefinitions["&N1"].fields[4]?.location).toBe("trading_post");
+    expect(expansionTileDefinitions["&N1"].fields.some((field) => field.location === "treasure_symbol")).toBe(false);
   });
 
   it("uses initiative 6 for both Few and Neutral Minotaurs", () => {

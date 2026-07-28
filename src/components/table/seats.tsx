@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Anchor, Crown, Hourglass, Layers, Search, Sparkles } from "lucide-react";
+import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookOpen } from "@/lib/sound";
 import { useState, type ReactNode } from "react";
@@ -10,7 +10,6 @@ import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
-  describePermanentEffect,
   getPermanentCardIds,
   getRuneTrack,
   getSeatIdentity,
@@ -144,6 +143,7 @@ export function PermanentSlot({
   compact?: boolean;
 }) {
   const { zoomCard } = useCardZoom();
+  const [openCardActions, setOpenCardActions] = useState<string | null>(null);
   const cardIds = getPermanentCardIds(state, playerId);
   // Ongoing cards held in play: they reach the discard pile (or a recalled
   // spell the hand) only after their effect ends.
@@ -159,6 +159,12 @@ export function PermanentSlot({
     ownView
       ? legalActions?.find(
           (legal) => legal.action.type === "DISCARD_PERMANENT" && legal.action.cardId === cardId
+        )
+      : undefined;
+  const discardOngoingActionFor = (cardId: string) =>
+    ownView
+      ? legalActions?.find(
+          (legal) => legal.action.type === "DISCARD_ONGOING_CARD" && legal.action.cardId === cardId
         )
       : undefined;
   // Income permanents (Eversmoking Ring, Inexhaustible Cart) can be cracked open
@@ -199,54 +205,78 @@ export function PermanentSlot({
         const card = cardLibrary[cardId];
         const discard = discardActionFor(cardId);
         const crack = crackActionFor(cardId);
+        const popupKey = `permanent-${cardId}-${index}`;
+        const actionsOpen = openCardActions === popupKey;
 
         return (
-          <div className={`permanentSlot ${compact ? "compact" : ""}`} key={`${cardId}-${index}`}>
+          <div className={`permanentSlot cardOnly ${compact ? "compact" : ""}`} key={`${cardId}-${index}`}>
             <button
+              aria-expanded={actionsOpen}
+              aria-haspopup="menu"
+              aria-label={`${card?.name ?? cardId} actions`}
               className="permanentCardButton"
-              onClick={() => zoomCard(cardId)}
-              title={card ? `${card.name} — ${describePermanentEffect(card)}` : cardId}
+              onClick={() => setOpenCardActions(actionsOpen ? null : popupKey)}
+              title={`${card?.name ?? cardId} — click for actions`}
               type="button"
             >
               <CardFrame cardId={cardId} className="permanentCardImage" />
             </button>
-            <div className="permanentMeta">
-              <span className="permanentBadge">
-                <Anchor aria-hidden="true" size={11} /> permanent
-              </span>
-              {!compact ? <strong>{card?.name ?? cardId}</strong> : null}
-              {!compact && card ? <small>{describePermanentEffect(card)}</small> : null}
-              {crack ? (
+            {actionsOpen ? (
+              <div aria-label={`${card?.name ?? cardId} card actions`} className="permanentCardMenu" role="menu">
                 <button
-                  className="commandButton"
-                  onClick={() => onAction?.(crack.action)}
-                  title="Crack this card open: remove it from the game for its one-off instant gain"
+                  onClick={() => {
+                    zoomCard(cardId);
+                    setOpenCardActions(null);
+                  }}
+                  role="menuitem"
                   type="button"
                 >
-                  {crack.label.replace(/^Crack .*? open: /, "Crack open: ")}
+                  View card
                 </button>
-              ) : null}
-              {discard ? (
-                <button
-                  className="commandButton ghost"
-                  onClick={() => onAction?.(discard.action)}
-                  title="Voluntarily put this permanent into your discard pile (its effect stops immediately)"
-                  type="button"
-                >
-                  Discard from play
-                </button>
-              ) : null}
-            </div>
+                {crack ? (
+                  <button
+                    onClick={() => {
+                      onAction?.(crack.action);
+                      setOpenCardActions(null);
+                    }}
+                    role="menuitem"
+                    title="Crack this card open: remove it from the game for its one-off instant gain"
+                    type="button"
+                  >
+                    {crack.label.replace(/^Crack .*? open: /, "Crack open: ")}
+                  </button>
+                ) : null}
+                {discard ? (
+                  <button
+                    onClick={() => {
+                      onAction?.(discard.action);
+                      setOpenCardActions(null);
+                    }}
+                    role="menuitem"
+                    title="Voluntarily put this permanent into your discard pile (its effect stops immediately)"
+                    type="button"
+                  >
+                    Discard from play
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         );
       })}
       {ongoingCards.map((held, index) => {
         const card = cardLibrary[held.cardId];
+        const discard = discardOngoingActionFor(held.cardId);
+        const popupKey = `ongoing-${held.cardId}-${index}`;
+        const actionsOpen = openCardActions === popupKey;
         return (
-          <div className={`permanentSlot ongoing ${compact ? "compact" : ""}`} key={`ongoing-${held.cardId}-${index}`}>
+          <div className={`permanentSlot cardOnly ongoing ${compact ? "compact" : ""}`} key={`ongoing-${held.cardId}-${index}`}>
             <button
+              aria-expanded={actionsOpen}
+              aria-haspopup="menu"
+              aria-label={`${card?.name ?? held.cardId} actions`}
               className="permanentCardButton"
-              onClick={() => zoomCard(held.cardId)}
+              onClick={() => setOpenCardActions(actionsOpen ? null : popupKey)}
               title={`${card?.name ?? held.cardId} stays in play until its effect ends, then goes to the ${
                 held.returnTo === "hand" ? "hand (recalled)" : "discard pile"
               }.`}
@@ -254,24 +284,39 @@ export function PermanentSlot({
             >
               <CardFrame cardId={held.cardId} className="permanentCardImage" />
             </button>
-            <div className="permanentMeta">
-              <span className="permanentBadge ongoingBadge">
-                <Hourglass aria-hidden="true" size={11} /> ongoing
-              </span>
-              {!compact ? <strong>{card?.name ?? held.cardId}</strong> : null}
-              {!compact ? (
-                <small>
-                  Until the effect ends, then → {held.returnTo === "hand" ? "hand (recalled)" : "discard"}
-                </small>
-              ) : null}
-            </div>
+            {actionsOpen ? (
+              <div aria-label={`${card?.name ?? held.cardId} card actions`} className="permanentCardMenu" role="menu">
+                <button
+                  onClick={() => {
+                    zoomCard(held.cardId);
+                    setOpenCardActions(null);
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  View card
+                </button>
+                {discard ? (
+                  <button
+                    onClick={() => {
+                      onAction?.(discard.action);
+                      setOpenCardActions(null);
+                    }}
+                    role="menuitem"
+                    title="End this Ongoing effect and put its card into your discard pile"
+                    type="button"
+                  >
+                    Discard from play
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         );
       })}
       {scrolls.map((scroll) => {
         const spellIds = scroll.spellCardIds.filter((id) => id && id !== "hidden");
         const faceId = spellIds[0];
-        const faceCard = faceId ? cardLibrary[faceId] : undefined;
         const spellNames = spellIds.map((id) => cardLibrary[id]?.name ?? id);
         const title =
           spellNames.length > 0

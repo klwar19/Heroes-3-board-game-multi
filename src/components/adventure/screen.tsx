@@ -8479,7 +8479,7 @@ function GameModeSection({
                 ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
                 ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
+                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
               ] as const).map(([key, label, description]) => {
                 const active = wog[key];
                 return (
@@ -8582,8 +8582,8 @@ function GameModeSection({
                       </button>
                     ))}
                   </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
-                    <strong>Immediate descent</strong>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
+                    <strong>Continue after a win</strong>
                     {([0, 1, 2] as const).map((cost) => (
                       <button
                         aria-pressed={(wog.dungeonDescentCost ?? 1) === cost}
@@ -8685,7 +8685,7 @@ function GameModeSection({
                 ["unitExperience", "Unit Experience", "Army unit cards that survive a won combat gain XP, ranking up (Seasoned → Veteran → Elite) for stat bonuses, signature abilities, reinforcements, Stack layers, and Town Drill training."],
                 ["monsterWaves", "Calamity Waves", "Every Nth round, EVERY live player fights a themed Gate invasion at round start. Visit the Far-tile Calamity Gate beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid Bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead — \"the sky cracks\"). Wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
-                ["dungeon", "The Dungeon (Meikyū)", "One shared, repeatable delve site per map, independent of Creature Banks. Every player has their own floor progress but sees the same seeded rooms. Entering or descending costs 1 movement per floor; after a win you may descend immediately while movement remains, or resume from that floor on a later turn. Theme-specific rooms and layered bosses wait on floors 5 and 10."]
+                ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
               ] as const).map(([key, label, description]) => {
                 const active = anime[key];
                 return (
@@ -8794,8 +8794,8 @@ function GameModeSection({
                       </button>
                     ))}
                   </div>
-                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Dungeon descent cost">
-                    <strong>Immediate descent</strong>
+                  <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Continue after a Dungeon win">
+                    <strong>Continue after a win</strong>
                     {([0, 1, 2] as const).map((cost) => (
                       <button
                         aria-pressed={(anime.dungeonDescentCost ?? 1) === cost}
