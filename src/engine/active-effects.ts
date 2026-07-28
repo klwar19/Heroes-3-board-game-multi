@@ -836,8 +836,8 @@ export function expireEffectsForTurnEnd(state: GameState, playerId: PlayerId): A
 }
 
 /**
- * Expires "current-game-round" effects (Torosar's Ballista IV grant) once a
- * later game round has begun — run at the start of every game round.
+ * Expires "current-game-round" effects (Luck, Torosar's Ballista IV grant)
+ * once a later game round has begun — run at the start of every game round.
  */
 export function expireEffectsForGameRoundEnd(state: GameState): ActiveEffectState[] {
   const expired = state.activeEffects.filter(
@@ -916,4 +916,22 @@ export function releaseEndedOngoingCards(state: GameState): void {
 
     player.ongoingCards = stillHeld;
   }
+}
+
+/** Player-requested early end for a card held in the Ongoing tray. */
+export function discardOngoingCardVoluntarily(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string
+): void {
+  const player = state.players[playerId];
+  const heldIndex = player?.ongoingCards?.findIndex((held) => held.cardId === cardId) ?? -1;
+  if (!player || !player.ongoingCards || heldIndex < 0) {
+    throw new Error("That Ongoing card is not in play.");
+  }
+
+  const [held] = player.ongoingCards.splice(heldIndex, 1);
+  const effectIds = new Set(held.effectIds);
+  state.activeEffects = state.activeEffects.filter((effect) => !effectIds.has(effect.id));
+  player.discard.push(held.cardId);
 }

@@ -303,6 +303,7 @@ import {
   expireEffectsForActivationEnd,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
+  discardOngoingCardVoluntarily,
   getActiveAttackBonus,
   getActiveDefenseBonus,
   getAttackerTypeDefenseBonus,
@@ -20995,6 +20996,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
+        break;
+      case "DISCARD_ONGOING_CARD":
+        discardOngoingCardVoluntarily(nextState, action.playerId, action.cardId);
         break;
       case "CRACK_PERMANENT":
         crackPermanentForInstant(nextState, action);

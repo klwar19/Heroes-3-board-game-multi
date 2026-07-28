@@ -10430,7 +10430,11 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
 
     state.combat = null;
-    state.activePlayerId = playerId ?? state.activePlayerId;
+    // Wave fights interrupt round start; they are not player turns. Preserve
+    // the real first player even when the final queued assault belongs to p2+.
+    if (!context.waveAssault) {
+      state.activePlayerId = playerId ?? state.activePlayerId;
+    }
     state.priorityPlayerId = null;
 
     if (hero && playerId && outcome.winnerPlayerId === playerId && field) {

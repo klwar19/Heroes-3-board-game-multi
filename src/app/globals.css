@@ -6302,6 +6302,12 @@ button.hbSlot:disabled { cursor: default; }
   min-width: 140px;
 }
 
+.playerCardBar .permanentEffectsPanel .permanentSlot.cardOnly {
+  flex: 0 0 auto;
+  max-width: none;
+  min-width: 0;
+}
+
 .playerCardBar .permanentEffectsPanel .permanentCardImage {
   width: 52px;
 }
@@ -6344,6 +6350,10 @@ button.hbSlot:disabled { cursor: default; }
   .playerCardBar .permanentEffectsPanel .permanentSlot {
     flex: 1 1 100%;
     max-width: none;
+  }
+
+  .playerCardBar .permanentEffectsPanel .permanentSlot.cardOnly {
+    flex: 0 0 auto;
   }
 }
 
@@ -13870,11 +13880,21 @@ button.setupHubNavItem:hover {
   gap: 6px;
 }
 
+.permanentSlot.cardOnly {
+  position: relative;
+  display: block;
+  padding: 3px;
+}
+
 .permanentCardButton {
   border: none;
   background: none;
   padding: 0;
   cursor: zoom-in;
+}
+
+.permanentSlot.cardOnly .permanentCardButton {
+  cursor: pointer;
 }
 
 .permanentCardImage {
@@ -13885,6 +13905,42 @@ button.setupHubNavItem:hover {
 
 .permanentSlot.compact .permanentCardImage {
   width: 44px;
+}
+
+.permanentCardMenu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 5px);
+  left: 0;
+  display: flex;
+  min-width: 132px;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid rgba(227, 186, 104, 0.65);
+  border-radius: 8px;
+  background: rgba(22, 17, 12, 0.98);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.48);
+}
+
+.permanentCardMenu button {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgba(227, 186, 104, 0.28);
+  border-radius: 5px;
+  background: rgba(227, 186, 104, 0.1);
+  color: #f5dfb5;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.permanentCardMenu button:hover,
+.permanentCardMenu button:focus-visible {
+  border-color: rgba(227, 186, 104, 0.75);
+  background: rgba(227, 186, 104, 0.2);
+  outline: none;
 }
 
 .permanentMeta {

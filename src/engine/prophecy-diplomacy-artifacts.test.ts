@@ -4,7 +4,11 @@ import { beginFieldVisit, getMainHero, getTownOfPlayer } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { artifactDeckBinhMajor, artifactDeckLegacy, REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { cardLibrary } from "@/data/cards/library";
-import { makeActiveEffect } from "./active-effects";
+import {
+  expireEffectsForGameRoundEnd,
+  expireEffectsForTurnEnd,
+  makeActiveEffect
+} from "./active-effects";
 import type { GameAction, GameState, VisitStep } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -232,12 +236,12 @@ describe("Reroll-any-die option (map adventure die)", () => {
 });
 
 // ===========================================================================
-// Luck (basic & expert) — map-die rerolls last the WHOLE player turn
+// Luck (basic & expert) — map-die rerolls last through the game round
 // ===========================================================================
 
-describe("Luck on the adventure map — lasts the whole turn", () => {
+describe("Luck on the adventure map — lasts through the game round", () => {
   // Build the real Luck effect (basic or expert) from the card library so the
-  // test tracks the shipped card data, then drop it on p1 for the turn.
+  // test tracks the shipped card data, then drop it on p1 for the round.
   function addLuck(state: GameState, mode: "basic" | "expert"): void {
     const card = cardLibrary["ability.luck"];
     if (card.effect.type !== "CREATE_ACTIVE_EFFECT") {
@@ -265,7 +269,22 @@ describe("Luck on the adventure map — lasts the whole turn", () => {
     return state.activeEffects.find((effect) => effect.name === "Luck" || effect.name === "Expert Luck");
   }
 
-  it("basic Luck rerolls a map die and is NOT spent — it stays for the rest of the turn", () => {
+  it("basic and Expert Luck survive player-turn end and expire at game-round end", () => {
+    for (const mode of ["basic", "expert"] as const) {
+      const state = mapState(`luck-${mode}-duration`);
+      addLuck(state, mode);
+      const effectName = mode === "expert" ? "Expert Luck" : "Luck";
+
+      expect(expireEffectsForTurnEnd(state, "p1")).toEqual([]);
+      expect(state.activeEffects.map((effect) => effect.name)).toContain(effectName);
+
+      state.round += 1;
+      expect(expireEffectsForGameRoundEnd(state).map((effect) => effect.name)).toContain(effectName);
+      expect(state.activeEffects.map((effect) => effect.name)).not.toContain(effectName);
+    }
+  });
+
+  it("basic Luck rerolls a map die and is NOT spent — it stays for the rest of the round", () => {
     const state = visitWith("basic", "resource_symbol", "luck-basic-resource");
     expect(visitChoice(state).options.some((option) => /^Luck: reroll the Resource/i.test(option.label))).toBe(true);
 
@@ -273,19 +292,19 @@ describe("Luck on the adventure map — lasts the whole turn", () => {
     resolveByLabel(state, (label) => /^Luck: reroll the Resource/i.test(label));
     // The reroll happened …
     expect(countRolls(state, "resource")).toBe(before + 1);
-    // … and the Luck card is still on the table (whole-turn duration), with only
-    // the Resource reroll spent — the Treasure reroll remains for this turn.
+    // … and the Luck card is still on the table (round duration), with only
+    // the Resource reroll spent — the Treasure reroll remains for this round.
     const effect = luckEffect(state);
     expect(effect, "basic Luck must persist after a map reroll").toBeDefined();
     expect(effect!.usedChoiceIds).toContain("luck:resource");
     expect(effect!.usedChoiceIds).not.toContain("luck:treasure");
   });
 
-  it("basic Luck offers the Resource reroll only ONCE per turn", () => {
+  it("basic Luck offers the Resource reroll only once per round", () => {
     const state = visitWith("basic", "resource_symbol", "luck-basic-once");
     resolveByLabel(state, (label) => /^Luck: reroll the Resource/i.test(label));
 
-    // A second Resource field this same turn: the one-per-turn Resource reroll
+    // A second Resource field this same round: the one-per-round Resource reroll
     // is gone, so no Luck option is offered (and the single die auto-resolves).
     injectField(state, "resource_symbol");
     beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
@@ -297,7 +316,7 @@ describe("Luck on the adventure map — lasts the whole turn", () => {
     }
   });
 
-  it("Expert Luck is NOT consumed by a map reroll — it survives for later fights/dice this turn", () => {
+  it("Expert Luck is NOT consumed by a map reroll — it survives for later fights/dice this round", () => {
     const state = visitWith("expert", "resource_symbol", "luck-expert-resource");
     // "any die": the Expert Luck card offers the Resource reroll on the map too.
     expect(visitChoice(state).options.some((option) => /^Expert Luck: reroll the Resource/i.test(option.label))).toBe(
@@ -310,14 +329,14 @@ describe("Luck on the adventure map — lasts the whole turn", () => {
 
     // The fix: the WHOLE Expert Luck card is no longer deleted on a single map
     // reroll (the old bug). It persists — keeping its Attack-die reroll alive for
-    // every fight later this turn — with only the Resource map reroll marked
+    // every fight later this round — with only the Resource map reroll marked
     // used. A test fails if the delete-the-whole-card behaviour is restored.
     const effect = luckEffect(state);
     expect(effect, "Expert Luck must persist after a map reroll").toBeDefined();
     expect(effect!.usedChoiceIds).toContain("luck:resource");
     expect(
       effect!.modifiers.some((modifier) => modifier.type === "ATTACK_DIE_REROLL"),
-      "Expert Luck keeps its Attack-die reroll for combats this turn"
+      "Expert Luck keeps its Attack-die reroll for combats this round"
     ).toBe(true);
   });
 
@@ -325,7 +344,7 @@ describe("Luck on the adventure map — lasts the whole turn", () => {
     const state = visitWith("expert", "resource_symbol", "luck-expert-both");
     resolveByLabel(state, (label) => /^Expert Luck: reroll the Resource/i.test(label));
 
-    // Same turn, a Treasure field: Expert Luck ("any die") still offers a reroll
+    // Same round, a Treasure field: Expert Luck ("any die") still offers a reroll
     // because only the Resource kind was spent and the card was not deleted.
     injectField(state, "treasure_symbol");
     beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);

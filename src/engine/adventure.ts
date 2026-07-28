@@ -891,6 +891,9 @@ export function materializeTileFields(
     if (fieldDef.difficulty) {
       field.difficulty = fieldDef.difficulty;
     }
+    if (fieldDef.treasureDice) {
+      field.treasureDice = fieldDef.treasureDice;
+    }
     if (fieldDef.resource) {
       field.resource = fieldDef.resource;
     }
@@ -6230,14 +6233,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
 
-  // The printed Treasure chests on non-starting tiles are Treasure II: roll two
-  // Treasure dice and keep one. Starting-tile chests are the only Treasure I
-  // exception. Keep the generic location definition at one die because custom
-  // fields can reuse the symbol without a tile-group context.
+  // Treasure Symbols roll the number printed on that specific field. Most
+  // chests roll one die; only artwork explicitly marked "2 → 1" carries
+  // `treasureDice: 2`. Tile group and guard level do not define this rule.
   if (location.id === "treasure_symbol" && steps.length === 1 && steps[0]?.type === "ROLL_TREASURE_DICE") {
     steps[0] = {
       ...steps[0],
-      count: (adventure.tiles[field.tileInstanceId]?.group === "starting" ? 1 : 2) + locationDiceBonus
+      count: (field.treasureDice ?? 1) + locationDiceBonus
     };
   }
 
@@ -11457,7 +11459,7 @@ export function unreachableUndergroundCenters(tiles: ReadonlyArray<TilePlacement
 
 /**
  * Finds an unused Luck reroll for the given adventure die. Basic Luck offers
- * one Treasure and one Resource reroll per turn; Expert Luck offers a single
+ * one Treasure and one Resource reroll per game round; Expert Luck offers a single
  * reroll of any die.
  */
 function getLuckRerollEffect(
@@ -11517,12 +11519,12 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
     return;
   }
 
-  // Luck (basic AND expert) lasts the WHOLE player turn: it is never deleted on
-  // use here. Each map-die kind may be rerolled once per turn, tracked
+  // Luck (basic AND expert) lasts through the current game round: it is never
+  // deleted on use here. Each map-die kind may be rerolled once per round, tracked
   // separately. Expert Luck ("any die") additionally keeps rerolling Attack
-  // dice across every fight this turn — handled on the combat side, where its
+  // dice across every fight this round — handled on the combat side, where its
   // reroll source is not consumed (consumeEffectOnUse: false). The effect only
-  // leaves play when the turn ends (expiresAtTurnEndPlayerId).
+  // leaves play when the game round ends (expiresAtGameRound).
   effect.usedChoiceIds.push(`luck:${dice}`);
 }
 
@@ -14131,7 +14133,7 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
   appendEvent(state, {
     type: "DUNGEON_PLACED",
     fieldId: spaceId,
-    message: `The Dungeon's gate stands open — a shared, repeatable delve (floors 1–${floorCap}). Victors may descend immediately or resume later. Layered wardens guard the campaign's boss floors.`
+    message: `Dungeon Gate opened (floors 1–${floorCap}). Each player keeps separate progress. Clear a floor to claim its reward and continue now or return later.`
   });
   return field;
 }
@@ -14182,17 +14184,17 @@ function handleDungeonGateVisit(
       steps: [
         {
           type: "CHOOSE_ONE",
-          prompt: `Floor ${floor}: ${boss?.name ?? "the floor warden"} bars the way (${
+          prompt: `Dungeon floor ${floor}: ${boss?.name ?? "the floor warden"} guards the way (${
             boss?.layers ?? 2
-          } health bars, with its retinue). Face it?${repeat ? " (Already conquered — the repeat pays a Treasure die + 3 gold.)" : ""}`,
+          } health bars plus retinue).${repeat ? " A repeat clear pays 1 Treasure die and 3 gold." : ""}`,
           options: [
             {
-              label: `${continuing ? `Descend (${descentLabel}) and ` : ""}Face ${
+              label: `${continuing ? `Continue (${descentLabel}) and ` : ""}Fight ${
                 boss?.name ?? "the floor boss"
               }`,
               steps: [...movementCost, fightStep]
             },
-            { label: "Withdraw", steps: [] }
+            { label: "Leave the Dungeon", steps: [] }
           ]
         }
       ]
@@ -14211,16 +14213,16 @@ function handleDungeonGateVisit(
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: `Floor ${floor} of the Dungeon — two doors stand ajar. Behind either, the floor's den (a level-${dungeonFloorDifficulty(
+        prompt: `Dungeon floor ${floor}: choose a room, resolve its effect, then fight the level-${dungeonFloorDifficulty(
           floor
-        )} war party) waits. Which way?`,
+        )} floor guard.`,
         options: [
           {
-            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Left door: ${left.label}`,
+            label: `${continuing ? `Continue (${descentLabel}) — ` : ""}Left room: ${left.label}`,
             steps: [...movementCost, ...left.steps, fightStep]
           },
           {
-            label: `${continuing ? `Descend (${descentLabel}) — ` : ""}Right door: ${right.label}`,
+            label: `${continuing ? `Continue (${descentLabel}) — ` : ""}Right room: ${right.label}`,
             steps: [...movementCost, ...right.steps, fightStep]
           },
           { label: "Leave the Dungeon", steps: [] }
@@ -15247,8 +15249,8 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
     return;
   }
 
-  // Ongoing cards (Luck, Logistics, Scouting…) last until their owner's next
-  // turn starts: expire them now, not when the playing turn ended.
+  // Turn-scoped ongoing cards (Logistics, Scouting…) last until their owner's
+  // next turn starts. Round-scoped cards such as Luck are handled at round end.
   const expired = expireEffectsForTurnEnd(state, playerId);
   for (const effect of expired) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });

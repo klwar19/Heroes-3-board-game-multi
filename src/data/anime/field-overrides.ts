@@ -240,7 +240,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
    * decides the loot on the WIN (a rolled-guard-then-reward flow cannot be
    * expressed in one visit — the combat resolves OUTSIDE the visit — so the
    * board-adaptation fixes the guard at Ⅰ and lets the die pick the reward tier:
-   * +1 → a Treasure die, 0 → +2 gold, −1 → +1 morale). Visitable (one delve, then
+   * +1 → a Treasure die, 0 → +2 gold, −1 → Positive Morale). Visitable (one delve, then
    * a Black Cube). Static ATTACK_DIE_TABLE interaction.
    */
   dungeon_gate: {
@@ -253,7 +253,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     guard: 1,
     implementationStatus: "implemented",
     summary:
-      "Guarded (Ⅰ). On the win, gamble the Attack die for loot: +1 → a Treasure die, 0 → +2 gold, −1 → +1 morale.",
+      "Defeat the level-I guard, then roll 1 Attack die for the reward: +1 — roll 1 Treasure die; 0 — gain 2 gold; −1 — gain Positive Morale.",
     image: art("dungeon_gate")
   },
   /**

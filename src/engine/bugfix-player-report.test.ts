@@ -44,7 +44,7 @@ function passAllReactions(state: GameState): GameState {
 }
 
 // ---------------------------------------------------------------------------
-// Luck — Expert Attack-die reroll survives every attack this turn
+// Luck — Expert Attack-die reroll survives every attack this game round
 // ---------------------------------------------------------------------------
 
 describe("Expert Luck — multi-attack (stack id uniqueness)", () => {
@@ -138,7 +138,7 @@ describe("Expert Luck — multi-attack (stack id uniqueness)", () => {
     expect(
       state.pendingChoice?.type === "ATTACK_DIE_REROLL" &&
         state.pendingChoice.rerollSources.some((s) => s.name === "Expert Luck"),
-      "Expert Luck must remain available on every attack this turn"
+      "Expert Luck must remain available on every attack this round"
     ).toBe(true);
   });
 });
