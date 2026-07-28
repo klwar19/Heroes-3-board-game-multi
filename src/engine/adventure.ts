@@ -1463,11 +1463,11 @@ export function gateFieldsLinked(a: MapFieldState | undefined, b: MapFieldState 
 
 /**
  * Whether taking a single step from `from` to `to` ends the hero's movement for
- * the turn. Without Water Walk, only a step that crosses the coastline — land to
- * sea (embarking) or sea to land (disembarking) — halts the hero: they keep
- * their remaining movement points (a neutral combat may still spend them) but
- * cannot take another step. Moving within the sea (sea→sea) or on land
- * (land→land) is normal, and Water Walk removes the coastline halt entirely.
+ * the turn. Without Water Walk, embarking (land→sea) halts the hero. Legacy now
+ * lets a hero continue after disembarking (sea→land), while BINH preserves the
+ * older rule where both coastline directions halt. A halted hero keeps their
+ * remaining movement points but cannot take another step. Moving within one
+ * terrain is normal, and Water Walk removes coastline halts entirely.
  */
 export function seaStepHalts(
   state: GameState,
@@ -1483,8 +1483,13 @@ export function seaStepHalts(
   if (fromSea === toSea) {
     return false; // within the sea or on land: never halts
   }
+  // Legacy now lets a hero continue after disembarking; BINH deliberately
+  // preserves the previous symmetric coastline rule.
+  if (fromSea && !toSea) {
+    return getRuleset(state) === "binh";
+  }
   // Wind (Astrologers): entering the sea FROM a land field (embarking) no longer
-  // halts the hero — it keeps moving. Disembarking (sea→land) still halts. With
+  // halts the hero — it keeps moving. Disembarking follows the ruleset above. With
   // no sea tiles this branch is never reached, so "ignore with no sea" holds.
   if (!fromSea && toSea && getActiveAstrologersCard(state)?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
     return false;

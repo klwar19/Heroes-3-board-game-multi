@@ -128,6 +128,83 @@ describe("Blood Siphon — registration", () => {
   });
 });
 
+describe("Bone Reavers — damage never removes a surviving neutral", () => {
+  it("3 Attack + Xuanming's doubled +2 − a −1 die deals 4 to 5-Health Neutral Cerberi", () => {
+    let state = freshCombat("bone-reavers-v-neutral-cerberi");
+    state.combat!.dice.scriptedRolls = Array.from({ length: 40 }, () => -1);
+    state.players.p1.hand = ["specialty.xuanming.1"];
+
+    const attacker = place(state, "unit_p1_marksmen", {
+      position: 9,
+      controllerId: "p1",
+      abilities: [],
+      attack: 3,
+      defense: 0,
+      maxHealth: 20,
+      damage: 0,
+      type: "ground",
+      variant: "few"
+    });
+    attacker.name = "Bone Reavers";
+    attacker.cardName = "Few of Bone Reavers";
+
+    place(state, "unit_p2_skeletons", {
+      position: 10,
+      controllerId: "p2",
+      abilities: [],
+      attack: 0,
+      defense: 0,
+      maxHealth: 5,
+      damage: 0,
+      type: "ground",
+      variant: "neutral"
+    });
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.name = "Cerberi";
+    defender.cardName = "Neutral Cerberi";
+    defender.unitDefId = "neutral.cerberi";
+
+    parkBystanders(state, [
+      "unit_p1_griffins",
+      "unit_p1_crusaders",
+      "unit_p2_vampires",
+      "unit_p2_dread_knights"
+    ]);
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = attacker.id;
+
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: attacker.id,
+      defenderId: defender.id
+    });
+    state = settle(
+      applyOk(state, {
+        type: "PLAY_REACTIONS",
+        playerId: "p1",
+        plays: [{ cardId: "specialty.xuanming.1", optionIndex: 0 }]
+      })
+    );
+
+    const roll = state.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+        event.type === "ATTACK_ROLLED" &&
+        event.attackerId === attacker.id &&
+        event.defenderId === defender.id
+    );
+    expect(roll).toMatchObject({
+      roll: -1,
+      attackBonus: 2,
+      attackValue: 4,
+      defenseValue: 0,
+      damage: 4
+    });
+    expect(unitAt(state, defender.id)).toMatchObject({ damage: 4, maxHealth: 5 });
+    expect(wasRemoved(state, defender.id)).toBe(false);
+  });
+});
+
 describe("Blood Siphon — heals 1 ONLY when the attack deals damage", () => {
   /** Attacker (attack 5) starts with 3 damage; defender survives so we read the heal. */
   function attackerDamageAfter(attackerAbilities: string[], defenderDefense: number, seed: string): number {

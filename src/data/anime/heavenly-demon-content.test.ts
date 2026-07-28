@@ -287,6 +287,16 @@ describe("Heavenly Demon Palace — starting tile, town board & voices", () => {
     expect(tile).toBeDefined();
     expect(tile.fields[0]).toMatchObject({ location: "town", faction: FACTION });
     expect(fileExists(tile.assets!.tileImage!, 10_000)).toBe(true);
+    expect(tile.assets?.attachFieldSymbols).toBe(true);
+    expect(tile.fields.map((field) => field.location)).toEqual([
+      "town",
+      "resource_symbol",
+      "blocked_field",
+      "empty_field",
+      "treasure_symbol",
+      "mine",
+      "empty_field"
+    ]);
   });
 
   it("ships a 7-bar board spec whose panorama == townImage, one shared bar, bar art on disk", () => {

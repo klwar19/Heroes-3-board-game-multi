@@ -146,7 +146,9 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       credit:
         "Heavenly Demon Palace starting tile. Hex roles and yellow outer borders copy Rampart S4; art is the board image."
     },
-    assets: { tileImage: "/assets/anime/tiles/d-s1.webp" }
+    // This image is atmosphere-only, unlike the other anime seats. Attach the
+    // shared symbol modules so its starting resources and rewards remain visible.
+    assets: { tileImage: "/assets/anime/tiles/d-s1.webp", attachFieldSymbols: true }
   },
   S7: {
     id: "S7",

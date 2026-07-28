@@ -1596,16 +1596,22 @@ export function HexMapBoard({
     // from within the Tile) — tell the border builder so it draws only the
     // bank's outer arc, not a full ring that would look impassable.
     const bankSlots = new Set<number>();
+    const borderlessOverrideSlots = new Set<number>();
     footprint.forEach((coord, slot) => {
-      if (adventure.fields[`h:${coord.row}:${coord.col}`]?.location === "creature_bank") {
+      const location = adventure.fields[`h:${coord.row}:${coord.col}`]?.location;
+      if (location === "creature_bank") {
         bankSlots.add(slot);
+      }
+      if (location && fieldOverridePresentation(location)) {
+        borderlessOverrideSlots.add(slot);
       }
     });
     const borderSegments = tileDef
       ? getTileBorderSegments(tileDef, bankSlots, showBankBorders, {
           extraBorders: tile.extraBorders,
           borderEdges: tile.borderEdges,
-          rotation: tile.rotation
+          rotation: tile.rotation,
+          borderlessSlots: borderlessOverrideSlots
         })
       : [];
     for (const [slot, coord] of footprint.entries()) {
@@ -2007,7 +2013,7 @@ export function HexMapBoard({
         );
       }
       // Modular field icons for atmosphere tiles that ship no baked bonuses
-      // (anime A-S1 / W-S1). Attached one module per field — never a full-tile
+      // (for example anime D-S1). Attached one module per field — never a full-tile
       // image regen. Classic printed tiles leave attachFieldSymbols off.
       if (artShown && attachFieldSymbols && !tokenImage) {
         const symbol = fieldSymbolOverlayFor(field);

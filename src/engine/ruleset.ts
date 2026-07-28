@@ -35,11 +35,12 @@ export const RULESET_LABELS: Record<GameRuleset, string> = {
 
 export const RULESET_DESCRIPTIONS: Record<GameRuleset, string> = {
   legacy:
-    "The community rulebook as printed: one shared Spell deck, one Artifact deck, printed card values.",
+    "The community rulebook baseline: one shared Spell deck, one Artifact deck, printed card values; " +
+    "embarking ends movement, but disembarking does not.",
   binh:
     "BINH house rules: Basic/Expert Spell decks and Minor/Major/Relic Artifact decks with level and map gating, " +
     "Wisdom expert −3 gold, Estates 2/4 gold, Few Griffins 3 attack, Pack Griffins 1 defense, Pack Marksmen 3 HP, " +
-    "and Sandro's Horde/Legion of Skeletons fight with 3 HP."
+    "Sandro's Horde/Legion of Skeletons fight with 3 HP, and both embarking and disembarking end movement."
 };
 
 export const VICTORY_MODE_LABELS: Record<VictoryMode, string> = {
