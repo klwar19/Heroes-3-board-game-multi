@@ -1840,7 +1840,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "silver",
     type: "ground",
-    neutral: { attack: 3, defense: 2, health: 4, initiative: 7, cost: { gold: 11 }, abilities: ["minotaur-reroll"], abilityText: "[unit_attack] Reroll this unit's \"-1\" outcome on the Attack die .", cardImage: "/assets/units-neutral-silver-minotaurs.webp" },
+    neutral: { attack: 3, defense: 2, health: 4, initiative: 6, cost: { gold: 11 }, abilities: ["minotaur-reroll"], abilityText: "[unit_attack] Reroll this unit's \"-1\" outcome on the Attack die .", cardImage: "/assets/units-neutral-silver-minotaurs.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/minotaurs/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",

@@ -1,4 +1,5 @@
 import { getDraftPhase } from "../adventure-setup";
+import { neutralCombatControllerId } from "../neutral-control";
 import {
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
@@ -131,6 +132,15 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
       const result = computer(state, owner);
       if (result) return result;
     }
+    // Neutral Control may assign the guards to a COMPUTER seat. Their units
+    // remain controllerId=NEUTRAL_PLAYER_ID for combat rules, so the ordinary
+    // active-unit owner lookup below cannot see that the computer owns the
+    // placement window. Drive the sort directly from the assigned controller.
+    const neutralPlacementOwner = computer(state, combat.pendingNeutralPlacement);
+    if (neutralPlacementOwner) return neutralPlacementOwner;
+    if (combat.pendingNeutralPlacement) {
+      return null;
+    }
     const placementOwner = computer(state, combat.setup?.pendingPlayerIds[0]);
     if (placementOwner) return placementOwner;
 
@@ -142,6 +152,10 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
       : null;
     const activeOwner = computer(state, activeController);
     if (activeOwner) return activeOwner;
+    if (activeController === NEUTRAL_PLAYER_ID) {
+      const neutralOwner = computer(state, neutralCombatControllerId(state, combat));
+      if (neutralOwner) return neutralOwner;
+    }
 
     // The neutral-combat continue-or-retreat window belongs to the attacking
     // fighter (a neutral fight's attacker is always the player seat).

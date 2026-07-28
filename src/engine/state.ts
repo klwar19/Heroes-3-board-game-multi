@@ -10744,6 +10744,8 @@ export type AdventureState = {
    */
   pendingNecromancy?: {
     playerId: PlayerId;
+    /** Two Necromancy cards may be played after the same combat. Missing on old snapshots means one. */
+    remaining?: number;
     /** The post-combat field visit deferred behind the decision (if any). */
     heroId?: HeroId;
     fieldId?: MapSpaceId;

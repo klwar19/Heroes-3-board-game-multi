@@ -28,6 +28,7 @@ import {
 } from "@/engine";
 import { CREATURE_BANK_IDS } from "@/data/map/creature-banks";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { placeCombatToken } from "@/engine/tokens";
 import type { CardBoardAction } from "./utils";
 
 afterEach(cleanup);
@@ -1219,6 +1220,52 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     expect(stats.textContent).not.toMatch(/base/);
   });
 });
+
+  it("labels the live Attack/Defense/Initiative totals on both the inspector and unit card", () => {
+    const state = createInitialGameState("inspect-live-totals");
+    const unit = state.combat!.units.unit_p1_crusaders;
+    const attackBase = unit.attack;
+    const defenseBase = unit.defense;
+    placeCombatToken(state, unit, "attack", 2, "Bloodlust token");
+    placeCombatToken(state, unit, "corrosion", 1, "Acid token");
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Test attack buff",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
+        },
+        { type: "system" },
+        unit.controllerId,
+        { type: "unit", unitId: unit.id }
+      )
+    );
+
+    const { container } = render(
+      <CardZoomProvider>
+        <InspectPanel state={state} unitId={unit.id} />
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const stats = container.querySelector(".inspectStats")!;
+    expect(stats.textContent).toContain(`${attackBase + 3} (base ${attackBase})`);
+    expect(stats.textContent).toContain(`${Math.max(0, defenseBase - 1)} (base ${defenseBase})`);
+    expect(container.querySelector(".inspectTotalLegend")?.textContent).toContain("LIVE TOTALS");
+    const cardStats = [...container.querySelectorAll(".boardCardStats")].map((element) => element.textContent ?? "");
+    expect(cardStats.some((text) => text.includes(`A ${attackBase + 3}`))).toBe(true);
+    expect(cardStats.some((text) => text.includes(`D ${Math.max(0, defenseBase - 1)}`))).toBe(true);
+  });
 
 describe("BattlefieldBoard — siege fortification art", () => {
   function siegeState(seed = "board-siege-art"): GameState {

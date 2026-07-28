@@ -35,6 +35,8 @@ import {
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
   commanderUnitId,
+  tokenAttackBonus,
+  tokenDefenseDelta,
   neutralFormationCellsForGuard,
   playerSpellCastsIgnoreLimit,
   unitHasUnlimitedRetaliationEffect,
@@ -1237,6 +1239,9 @@ export function BattlefieldBoard({
           // `data-fx-cell` lookups and tests are unaffected.
           const cellStyle = battlefieldCellPlacement(index, flipped);
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
+          const attackTotal = unit ? unit.attack + getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit) : 0;
+          const defenseTotal = unit ? unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit) : 0;
+          const initiativeTotal = unit ? effectiveInitiative(unit, state.activeEffects) : 0;
           // Hovering a candidate cell drives the ghost + arrow toward it.
           const repositionHoverProps = isRepositionCandidate
             ? {
@@ -1357,6 +1362,13 @@ export function BattlefieldBoard({
                 <span>
                   {health}/{unit.maxHealth} HP
                   {unit.defenseToken ? " DEF" : ""}
+                </span>
+                <span
+                  aria-label={`${unit.cardName} live stats: Attack ${attackTotal}, Defense ${defenseTotal}, Initiative ${initiativeTotal}`}
+                  className="boardCardStats"
+                  title="Live totals include lasting buffs, combat tokens, and Haste/Slow. Target-specific attack or defense bonuses appear when an attack is declared."
+                >
+                  A {attackTotal} · D {defenseTotal} · I {initiativeTotal}
                 </span>
               </div>
               <TokenChips unit={unit} />
@@ -1864,9 +1876,9 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   // Effective Attack/Defense fold in the army-wide Bulwark Rune buffs (and Bless /
   // Bloodlust / Offense and the like) the same way, so a unit visibly reflects a
   // buff the instant it turns on instead of reading its printed base.
-  const attackBonus = getDisplayAttackBonus(state, unit);
+  const attackBonus = getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit);
   const attack = unit.attack + attackBonus;
-  const defenseBonus = getActiveDefenseBonus(state, unit);
+  const defenseBonus = getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit);
   const defense = unit.defense + defenseBonus;
   // Whether this unit will counter-attack a melee blow right now (the same
   // reading the engine's shouldRetaliate uses), surfaced as a plain status line.
@@ -1918,6 +1930,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
           <span className={initDelta > 0 ? "initUp" : initDelta < 0 ? "initDown" : undefined}>{init}</span>
           {initDelta !== 0 ? ` (base ${unit.initiative})` : ""}
         </span>
+        <small className="inspectTotalLegend">LIVE TOTALS · base card + buffs + combat tokens</small>
         <div className="inspectStats">
           <span title={attackBonus !== 0 ? `Attack ${attack} (base ${unit.attack}, ${attackBonus > 0 ? "+" : ""}${attackBonus} from effects)` : "Attack"}>
             ⚔ <span className={attackBonus > 0 ? "statUp" : attackBonus < 0 ? "statDown" : undefined}>{attack}</span>

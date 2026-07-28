@@ -4815,7 +4815,13 @@ export function startNeutralEncounter(
   // Quick Combat; not covered → the fight is mandatory, so the classic
   // level > difficulty auto-win below deliberately does NOT apply.
   if (polishQuickCombatEnabled(state)) {
-    if (polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)) {
+    // A hero at the exact field level still needs the normal fight for its XP.
+    // The strength shortcut remains available above or below the field level,
+    // but must not turn a level-2 fight into a Quick Combat on a level-2 tile.
+    if (
+      level !== difficulty &&
+      polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)
+    ) {
       if (!polishQuickCombatXpPossible(hero, difficulty)) {
         resolveQuickCombatWin(state, hero, field, difficulty);
         return;
@@ -10450,7 +10456,7 @@ export function finalizeAdventureCombat(state: GameState): void {
           resolveDungeonFloorVictory(state, playerId, context.dungeonFloor);
         }
         if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+          adventure.pendingNecromancy = { playerId, heroId: hero.id, remaining: 2 };
         } else {
           noteWithheldNecromancyWindow(state, playerId);
         }
@@ -10467,7 +10473,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       if (context.teleportArrival) {
         clearCustomGuard(field);
         if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+          adventure.pendingNecromancy = { playerId, heroId: hero.id, remaining: 2 };
         } else {
           noteWithheldNecromancyWindow(state, playerId);
         }
@@ -10503,7 +10509,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         // bank queued (`pendingVisit`) resolves first; the Necromancy gate in
         // legal-actions sits behind it.
         if (playerCanPlayNecromancy(state, playerId)) {
-          adventure.pendingNecromancy = { playerId, heroId: hero.id };
+          adventure.pendingNecromancy = { playerId, heroId: hero.id, remaining: 2 };
         } else {
           noteWithheldNecromancyWindow(state, playerId);
         }
@@ -10512,7 +10518,7 @@ export function finalizeAdventureCombat(state: GameState): void {
         // field reward. If the winner can play it this instant, defer the field
         // visit behind the decision (its reward is withheld until they play or
         // skip); otherwise visit the field immediately as usual.
-        adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId };
+        adventure.pendingNecromancy = { playerId, heroId: hero.id, fieldId: context.fieldId, remaining: 2 };
       } else {
         beginFieldVisit(state, hero.id, context.fieldId, false);
         noteWithheldNecromancyWindow(state, playerId);
@@ -10720,7 +10726,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     // attacker's field visit behind the decision when they can play it now.
     const winnerPid = winnerHero.controllerId;
     if (playerCanPlayNecromancy(state, winnerPid)) {
-      adventure.pendingNecromancy = { playerId: winnerPid, heroId: winnerHero.id, fieldId: context.fieldId };
+      adventure.pendingNecromancy = { playerId: winnerPid, heroId: winnerHero.id, fieldId: context.fieldId, remaining: 2 };
     } else {
       beginFieldVisit(state, winnerHero.id, context.fieldId, false);
       noteWithheldNecromancyWindow(state, winnerPid);

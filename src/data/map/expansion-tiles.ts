@@ -1283,7 +1283,7 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
       { location: "windmill", resource: "valuables", amount: 1 },
       { location: "temple" },
       { location: "mine", difficulty: 5, resource: "gold", amount: 5 },
-      { location: "tree_of_knowledge" },
+      { location: "tree_of_knowledge", difficulty: 4 },
     ],
     outerImpassable: [false, true, false, false, false, false],
     source: {

@@ -1670,6 +1670,13 @@ button.battleCell {
   color: var(--muted);
 }
 
+.boardCardHud .boardCardStats {
+  color: #f4d774;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
 /* ---------- right rail ---------- */
 
 /* The unit card definition: the card scan reads large at the top, its stats and
@@ -1717,6 +1724,13 @@ button.battleCell {
   color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.inspectTotalLegend {
+  color: #f4d774;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
 }
 
 /* Initiative shifted by Haste/Slow etc. reads green (up) or red (down). */

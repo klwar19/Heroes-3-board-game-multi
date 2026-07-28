@@ -6224,10 +6224,22 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
+  const locationDiceBonus = locationDiceBonusFor(state, playerId);
   const steps =
     location.implementationStatus === "implemented"
-      ? interactionToSteps(location.interaction, locationDiceBonusFor(state, playerId))
+      ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
+
+  // The printed Treasure chests on non-starting tiles are Treasure II: roll two
+  // Treasure dice and keep one. Starting-tile chests are the only Treasure I
+  // exception. Keep the generic location definition at one die because custom
+  // fields can reuse the symbol without a tile-group context.
+  if (location.id === "treasure_symbol" && steps.length === 1 && steps[0]?.type === "ROLL_TREASURE_DICE") {
+    steps[0] = {
+      ...steps[0],
+      count: (adventure.tiles[field.tileInstanceId]?.group === "starting" ? 1 : 2) + locationDiceBonus
+    };
+  }
 
   // Tournament rule (Observatory re-rotate): the Redwood Observatory may ALSO
   // re-rotate one nearby placed tile. Prepended so it resolves BEFORE the

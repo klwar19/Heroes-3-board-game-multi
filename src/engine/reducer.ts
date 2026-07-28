@@ -15260,7 +15260,6 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // toggle immediately opens the blocking pick-and-pay prompt. The new default
     // banks the half-gold opportunity instead, releases the map, and lets the
     // player add distinct Legion pieces before redeeming it.
-    state.players[action.playerId].necromancyWindow = false;
     const reinforcementMode = effect.forceMode ?? mode;
     if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
       // Old rule: pass the held card so only a successful immediate upgrade
@@ -15280,15 +15279,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     const pending = state.adventure?.pendingNecromancy;
     if (pending && pending.playerId === action.playerId) {
-      if (pending.heroId && pending.fieldId) {
-        state.adventure!.rewardQueue.push({
-          playerId: action.playerId,
-          kind: "field-visit",
-          heroId: pending.heroId,
-          fieldId: pending.fieldId
-        });
+      const remaining = Math.max(0, (pending.remaining ?? 1) - 1);
+      pending.remaining = remaining;
+      if (remaining <= 0) {
+        state.players[action.playerId].necromancyWindow = false;
+        if (pending.heroId && pending.fieldId) {
+          state.adventure!.rewardQueue.push({
+            playerId: action.playerId,
+            kind: "field-visit",
+            heroId: pending.heroId,
+            fieldId: pending.fieldId
+          });
+        }
+        state.adventure!.pendingNecromancy = null;
+      } else {
+        state.players[action.playerId].necromancyWindow = true;
       }
-      state.adventure!.pendingNecromancy = null;
+    } else {
+      state.players[action.playerId].necromancyWindow = false;
     }
   }
 
