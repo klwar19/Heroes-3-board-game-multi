@@ -68,6 +68,14 @@ describe("moveIntoBattleWithTroopsToBuy — when the pre-battle troop confirm po
     expect(moveIntoBattleWithTroopsToBuy(state, "p1", move, [])).toBe(false);
   });
 
+  it("does NOT fire when the guarded field resolves as Quick Combat", () => {
+    const state = mapTurn();
+    const to = guardedNeighbor(state);
+    state.heroes.hero_p1.level = 3; // level 3 > field 2: automatic Quick Combat
+    const move: GameAction = { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to };
+    expect(moveIntoBattleWithTroopsToBuy(state, "p1", move, recruitLegal)).toBe(false);
+  });
+
   it("does NOT fire for a move into open ground (no battle starts there)", () => {
     const state = mapTurn();
     const here = state.heroes.hero_p1.spaceId as MapSpaceId;

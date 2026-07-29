@@ -844,6 +844,7 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     const baseDifficulty = lobby().options.difficulty;
     const baseFarOpening = lobby().options.farTileOpening;
     const baseFarCount = lobby().options.farTilesPerPlayer;
+    const baseSettlementReroll = lobby().options.farTileSettlementReroll;
     const apply = (options: Record<string, unknown>) => {
       const result = applyAction(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options });
       expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
@@ -853,17 +854,24 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     apply({
       customMap: NEAR_SLOT,
       customMapName: "Settings",
-      customMapPreset: { difficulty: "easy", farTileOpening: false, farTilesPerPlayer: 0 }
+      customMapPreset: {
+        difficulty: "easy",
+        farTileOpening: false,
+        farTilesPerPlayer: 0,
+        farTileSettlementReroll: false
+      }
     });
     expect(lobby().options.difficulty).toBe("easy");
     expect(lobby().options.farTileOpening).toBe(false);
     expect(lobby().options.farTilesPerPlayer).toBe(0);
+    expect(lobby().options.farTileSettlementReroll).toBe(false);
 
     // Switch to a preset-less map: the map-settings revert to the scenario defaults.
     apply({ customMap: NEAR_SLOT, customMapName: "Plain", customMapPreset: null });
     expect(lobby().options.difficulty).toBe(baseDifficulty);
     expect(lobby().options.farTileOpening).toBe(baseFarOpening);
     expect(lobby().options.farTilesPerPlayer).toBe(baseFarCount);
+    expect(lobby().options.farTileSettlementReroll).toBe(baseSettlementReroll);
   });
 
   it("sanitizeCustomMapPreset validates the map-settings defaults (difficulty / far tiles); legacy untouched", async () => {
@@ -872,11 +880,13 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     const cleaned = sanitizeCustomMapPreset({
       difficulty: "nightmare",
       farTileOpening: false,
-      farTilesPerPlayer: 99
+      farTilesPerPlayer: 99,
+      farTileSettlementReroll: false
     });
     expect(cleaned?.difficulty).toBeUndefined();
     expect(cleaned?.farTileOpening).toBe(false);
     expect(cleaned?.farTilesPerPlayer).toBe(6);
+    expect(cleaned?.farTileSettlementReroll).toBe(false);
 
     // A valid difficulty is kept; a negative count floors to 0; a non-number count is dropped.
     const kept = sanitizeCustomMapPreset({ difficulty: "hard", farTilesPerPlayer: -1 });
@@ -889,6 +899,8 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     // A non-boolean farTileOpening is dropped (only a real boolean is kept).
     const noOpen = sanitizeCustomMapPreset({ difficulty: "easy", farTileOpening: "yes" });
     expect(noOpen?.farTileOpening).toBeUndefined();
+    const invalidReroll = sanitizeCustomMapPreset({ victoryMode: "grail", farTileSettlementReroll: "no" });
+    expect(invalidReroll?.farTileSettlementReroll).toBeUndefined();
 
     // LEGACY CONTROL: a preset without the new fields is byte-identical after sanitize.
     expect(sanitizeCustomMapPreset({ victoryMode: "grail" })).toEqual({ victoryMode: "grail" });
@@ -902,6 +914,8 @@ describe("map preset conditions — effects and apply-once semantics", () => {
 
     const perPlayer = describeCustomMapPresetEntries({ farTilesPerPlayer: 3 }).map((e) => e.text);
     expect(perPlayer.some((t) => t.includes("Additional") && t.includes("3 per player"))).toBe(true);
+    const exactTiles = describeCustomMapPresetEntries({ farTileSettlementReroll: false }).map((e) => e.text);
+    expect(exactTiles.some((t) => t.includes("Settlement reroll") && t.includes("off"))).toBe(true);
 
     // CONTROL: a legacy preset without the map-settings fields shows neither line.
     const legacy = describeCustomMapPresetEntries({ victoryMode: "grail" }).map((e) => e.text);
