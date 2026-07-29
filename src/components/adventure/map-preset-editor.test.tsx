@@ -912,9 +912,25 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       expect.objectContaining({ farTileOpening: true, farTilesPerPlayer: 3 })
     );
 
+    // The map may disable Settlement fishing to preserve exact tile identities.
+    rerender(<MapPresetEditor preset={{ farTileOpening: true, farTilesPerPlayer: 3 }} onChange={onChange} />);
+    fireEvent.click(
+      within(section("Ⅱ–Ⅲ Settlement reroll map preset")).getByRole("button", { name: "Off" })
+    );
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        farTileOpening: true,
+        farTilesPerPlayer: 3,
+        farTileSettlementReroll: false
+      })
+    );
+
     // CONTROL: with opening OFF the per-player row is hidden entirely.
     rerender(<MapPresetEditor preset={{ farTileOpening: false }} onChange={onChange} />);
     expect(screen.queryByRole("group", { name: "Ⅱ–Ⅲ tiles per player" })).toBeNull();
+    // Designed face-down Ⅱ–Ⅲ tiles can still be revealed, so this independent
+    // rule remains available even when no additional supply tiles may be placed.
+    expect(screen.getByRole("group", { name: "Ⅱ–Ⅲ Settlement reroll map preset" })).toBeTruthy();
   });
 
   // The collapsible section GROUPS (re-parented ordering layer over the leaf

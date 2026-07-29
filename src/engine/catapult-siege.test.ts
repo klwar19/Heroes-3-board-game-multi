@@ -194,3 +194,39 @@ describe("Catapult — no siege: only units are aimed at (no regression)", () =>
     expect(candidates).toContain("unit_p2_skeletons");
   });
 });
+
+describe("Cannon — siege fortifications", () => {
+  it("offers and destroys an enemy Wall", () => {
+    const { state } = catapultSiege("cannon-wall");
+    state.players.p1.permanents = ["war_machine.cannon"];
+    state.players.p1.limits.expertUses = 1;
+
+    const offered = endRound(state, "p1");
+    const fire = getLegalActions(offered, "p1").find((legal) => legal.label.includes("Fire the Cannon"));
+    expect(fire).toBeTruthy();
+    const aiming = applyOk(offered, fire!.action);
+    const wall = fortificationTargetId("wall", 9);
+    const candidates =
+      aiming.pendingChoice?.type === "ABILITY_TARGET_CHOICE" ? aiming.pendingChoice.candidateUnitIds : [];
+    expect(candidates).toContain(wall);
+
+    const resolved = chooseTarget(aiming, wall);
+    expect(resolved.combat!.siege!.walls).not.toContain(9);
+    expect(resolved.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("does not let the town defender target their own Walls", () => {
+    const { state } = catapultSiege("cannon-own-wall");
+    state.players.p1.permanents = [];
+    state.players.p2.permanents = ["war_machine.cannon"];
+    state.players.p2.limits.expertUses = 1;
+
+    const offered = endRound(state, "p1");
+    const fire = getLegalActions(offered, "p2").find((legal) => legal.label.includes("Fire the Cannon"));
+    expect(fire).toBeTruthy();
+    const aiming = applyOk(offered, fire!.action);
+    const candidates =
+      aiming.pendingChoice?.type === "ABILITY_TARGET_CHOICE" ? aiming.pendingChoice.candidateUnitIds : [];
+    expect(candidates.some((id) => id.startsWith("siege-fortification:"))).toBe(false);
+  });
+});

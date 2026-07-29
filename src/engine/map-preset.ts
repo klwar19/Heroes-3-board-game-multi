@@ -1937,12 +1937,15 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   }
   // Map-settings defaults (difficulty / far-tile supply). Garbage difficulty is
   // dropped; farTilesPerPlayer clamps to 0..MAX (a non-number is dropped, never
-  // coerced to a silent 0). farTileOpening is kept only as a real boolean.
+  // coerced to a silent 0). Boolean tile-rule overrides are kept only when real.
   if (typeof raw.difficulty === "string" && DIFFICULTY_VALUES.has(raw.difficulty as GameDifficulty)) {
     preset.difficulty = raw.difficulty as GameDifficulty;
   }
   if (typeof raw.farTileOpening === "boolean") {
     preset.farTileOpening = raw.farTileOpening;
+  }
+  if (typeof raw.farTileSettlementReroll === "boolean") {
+    preset.farTileSettlementReroll = raw.farTileSettlementReroll;
   }
   if (typeof raw.farTilesPerPlayer === "number" && Number.isFinite(raw.farTilesPerPlayer)) {
     preset.farTilesPerPlayer = Math.max(
@@ -2114,6 +2117,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.difficulty ||
       preset.farTileOpening !== undefined ||
       preset.farTilesPerPlayer !== undefined ||
+      preset.farTileSettlementReroll !== undefined ||
       Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
       preset.startingProduction ||
@@ -2549,6 +2553,12 @@ export function describeCustomMapPresetEntries(
       text: `Secondary Heroes: ${preset.houseRules["no-secondary-heroes"] ? "disabled" : "allowed"}`
     });
   }
+  if (preset.farTileSettlementReroll !== undefined) {
+    entries.push({
+      icon: "🎲",
+      text: `Ⅱ–Ⅲ Settlement reroll: ${preset.farTileSettlementReroll ? "on" : "off"}`
+    });
+  }
   if (preset.houseRules?.["free-neutral-combat-extend"] !== undefined) {
     entries.push({
       icon: "⚙️",
@@ -2717,6 +2727,7 @@ export type PresetForcedOptionKey =
   | "difficulty"
   | "farTileOpening"
   | "farTilesPerPlayer"
+  | "farTileSettlementReroll"
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
@@ -2743,6 +2754,9 @@ export function presetForcedOptionKeys(
   }
   if (preset.farTilesPerPlayer !== undefined) {
     keys.push("farTilesPerPlayer");
+  }
+  if (preset.farTileSettlementReroll !== undefined) {
+    keys.push("farTileSettlementReroll");
   }
   if (preset.startingResources) {
     keys.push("startingResources");
@@ -2795,6 +2809,13 @@ export function applyCustomMapPresetToOptions(
   if (preset.farTilesPerPlayer !== undefined && !skip?.has("farTilesPerPlayer")) {
     options.farTilesPerPlayer = preset.farTilesPerPlayer;
     changes.push(`Ⅱ–Ⅲ tiles per player ${preset.farTilesPerPlayer}`);
+  }
+  if (
+    preset.farTileSettlementReroll !== undefined &&
+    !skip?.has("farTileSettlementReroll")
+  ) {
+    options.farTileSettlementReroll = preset.farTileSettlementReroll;
+    changes.push(`Ⅱ–Ⅲ Settlement reroll ${preset.farTileSettlementReroll ? "on" : "off"}`);
   }
   if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
@@ -2879,6 +2900,10 @@ export function revertCustomMapPresetOptions(
       case "farTilesPerPlayer":
         options.farTilesPerPlayer = defaults.farTilesPerPlayer;
         changes.push("Ⅱ–Ⅲ tiles per player back to the scenario default");
+        break;
+      case "farTileSettlementReroll":
+        options.farTileSettlementReroll = defaults.farTileSettlementReroll;
+        changes.push("Ⅱ–Ⅲ Settlement reroll back to the scenario default");
         break;
       case "startingResources":
         options.startingResources = { ...defaults.startingResources };

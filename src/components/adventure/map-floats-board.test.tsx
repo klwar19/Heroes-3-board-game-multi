@@ -113,6 +113,31 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     );
   });
 
+  it("clicking the occupied hex dispatches a freshly reopened one-use field", () => {
+    const { state } = movableState();
+    const hero = state.heroes.hero_p1!;
+    const field = state.adventure!.fields[hero.spaceId!];
+    field.location = "water_wheel";
+    field.blackCube = false; // cleared by a timed/round event while the hero stands here
+    hero.movementPoints = 3;
+
+    const legalActions = getLegalActions(state, "p1");
+    const resolve = legalActions.find(
+      (entry) => entry.action.type === "REVISIT_FIELD" && entry.action.heroId === hero.id
+    );
+    expect(resolve?.label).toMatch(/Resolve Water Wheel/i);
+
+    const { container, onAction } = renderBoard(state, "p1", legalActions);
+    const occupied = container.querySelector(`.hexCell[data-space-id="${hero.spaceId}"]`);
+    expect(occupied, "the hero's newly reopened field should be clickable").toBeTruthy();
+    fireEvent.click(occupied!);
+    expect(onAction).toHaveBeenCalledWith(resolve!.action);
+
+    const resolved = applyOk(state, resolve!.action);
+    expect(resolved.adventure!.fields[hero.spaceId!].blackCube).toBe(true);
+    expect(resolved.heroes.hero_p1!.movementPoints).toBe(2);
+  });
+
   it("the rotate card renders for the rotating viewer with working CW/CCW + Confirm (dispatches SET_TILE_ROTATION)", () => {
     const state = createAdventureGameState({ seed: "map-floats-rotate", rollFirstPlayer: false });
     const tileId = Object.keys(state.adventure!.tiles)[0]!;

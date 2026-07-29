@@ -126,6 +126,12 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(state.setupLobby!.options.farTilesPerPlayer).toBe(MAX_FAR_TILES_PER_PLAYER);
       state = apply(state, { type: "SET_GAME_OPTIONS", playerId: "p1", options: { farTilesPerPlayer: 1 } });
       expect(state.setupLobby!.options.farTilesPerPlayer).toBe(1);
+      state = apply(state, {
+        type: "SET_GAME_OPTIONS",
+        playerId: "p1",
+        options: { farTileSettlementReroll: false }
+      });
+      expect(state.setupLobby!.options.farTileSettlementReroll).toBe(false);
 
       state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
       state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "inferno", heroDefId: "xyron" });
@@ -134,6 +140,7 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(state.adventure!.playerFarTiles.p1).toHaveLength(1);
       expect(state.adventure!.playerFarTiles.p2).toHaveLength(1);
       expect(state.adventure!.playerFarTiles.p1.every((m) => m === "?")).toBe(true);
+      expect(state.adventure!.farTileSettlementReroll).toBe(false);
     });
   });
 
@@ -186,6 +193,17 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(flip.candidate).toBe(MINE_NO_SETTLEMENT);
       expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
       expect(state.pendingChoice && "options" in state.pendingChoice ? state.pendingChoice.options.length : 0).toBe(2);
+    });
+
+    it("places the exact 2nd tile without a Settlement offer when the reroll option is OFF", () => {
+      const initial = secondOpening([MINE_NO_SETTLEMENT]);
+      initial.adventure!.farTileSettlementReroll = false;
+      const placed = apply(initial, PLACE);
+      expect(placed.adventure!.pendingFarTileFlip).toBeNull();
+      expect(placed.pendingChoice).toBeNull();
+      expect(placed.adventure!.tiles[placed.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        MINE_NO_SETTLEMENT
+      );
     });
 
     it("KEEP lands the non-Settlement tile (control: no Settlement on the board)", () => {

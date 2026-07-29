@@ -115,6 +115,21 @@ describe("Game options — tabbed layout", () => {
     );
   });
 
+  it("exposes the BINH-only 80% Creature-bank Stack chance, default OFF", () => {
+    const onAction = openOptions();
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Creature-bank Stack chance: 80%/i });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        houseRules: expect.objectContaining({ "bank-stack-chance-80": true })
+      }
+    });
+  });
+
   it("the WOG mod window lists an Artifacts module row and toggling it dispatches wog.artifacts", () => {
     const onAction = openOptionsWith((state) => {
       // WOG must be ON for the mod-options window (and its module rows) to render.
@@ -526,6 +541,29 @@ describe("Game options — tabbed layout", () => {
     });
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
     expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
+  });
+
+  it("Map & Setup exposes the Ⅱ–Ⅲ Settlement reroll toggle, default ON", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const row = screen.getByText("Ⅱ–Ⅲ Settlement reroll").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Off" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileSettlementReroll: false }
+    });
+
+    cleanup();
+    openOptionsWith((state) => {
+      state.setupLobby!.options.farTileOpening = false;
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    expect(screen.getByText("Ⅱ–Ⅲ Settlement reroll")).toBeTruthy();
   });
 
   it("Map & Setup wires the Creature Banks toggle, default On, and reflects a stored Off", () => {
