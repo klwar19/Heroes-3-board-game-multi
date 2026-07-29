@@ -6795,6 +6795,27 @@ export default function Home() {
               ) : null}
             </div>
           ) : null}
+          {!isSeated && adventureMode && state.combat ? (
+            /* An unseated observer has no phone tab bar / seated strip on the
+               desktop combat screen — keep the context line and its "Map"
+               switch (the old full-width banner was every observer's only way
+               back to the adventure map). */
+            <div className="combatOpponentRow">
+              <div className="combatContextBanner compact">
+                <Swords aria-hidden="true" size={12} />
+                <span>
+                  {state.combat.context.kind === "neutral"
+                    ? `${state.players[state.combat.attackerPlayerId]?.name} vs L${state.combat.context.difficulty} guards`
+                    : state.combat.context.kind === "player"
+                      ? `${state.players[state.combat.attackerPlayerId]?.name} vs ${state.players[state.combat.defenderPlayerId]?.name}`
+                      : "Battle"}
+                </span>
+                <button className="commandButton" onClick={() => setCombatTab("map")} type="button">
+                  <MapIcon aria-hidden="true" size={11} /> Map
+                </button>
+              </div>
+            </div>
+          ) : null}
           {isSeated ? (
             <div className="tableSeatRow">
               <PlayerDock

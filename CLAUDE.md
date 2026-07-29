@@ -2561,13 +2561,17 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   `reported-bugs-regression.test.ts`; the printed "2" is NOT drawn on the hex.
 - **Also in this batch:** `&N1`'s "?" cabin is a Trading Post, not a Treasure
   chest; `#N1`'s Tree of Knowledge is a level-Ⅳ guarded field; Neutral Minotaurs
-  drop to Initiative 6 (matching the Few side); a Calamity-Wave assault no longer
+  briefly dropped to Initiative 6 here, but the printed wiki card is 7 —
+  corrected back 2026-07-29 (Few 6 / Neutral 7,
+  `reported-bugs-regression.test.ts`); a Calamity-Wave assault no longer
   overwrites `activePlayerId` when it finalizes (waves interrupt round start —
   they are not turns); `computerDecisionOwner` drives a COMPUTER PvP-Neutral-
   Control seat's guard placement and guard activations (their units stay
   `controllerId = NEUTRAL_PLAYER_ID`, so the ordinary active-unit lookup could
-  not see it); and the combat board/inspector print live Attack/Defense/
-  Initiative totals that fold combat tokens in beside lasting buffs.
+  not see it); and the combat board/inspector printed live Attack/Defense/
+  Initiative totals (2026-07-29: the board CARD now shows compact up/down
+  arrows per changed stat — the INSPECTOR keeps the numeric live totals,
+  `board.test.tsx`).
 
 ## Settlement capture choices · two Necromancy copies · timed reward choices (2026-07-28)
 

@@ -1711,6 +1711,11 @@ button.battleCell {
   display: flex;
   align-items: center;
   gap: 3px;
+  /* The pill's content is bounded (HP + up to four chevrons — the unbounded
+     card NAME left this plate), but keep the hard cap so it can never reach
+     the printed stat rail on the card's left edge. */
+  max-width: 76%;
+  overflow: hidden;
   padding: 2px 3px;
   border: 1px solid rgb(255 234 169 / 55%);
   border-radius: 999px;
@@ -11392,7 +11397,7 @@ span.recruitThumb {
   z-index: 0;
   inset: 0;
   display: block;
-  background: url("/assets/ui/setup/setup-scene-attached-final.png") center center / cover no-repeat;
+  background: url("/assets/ui/setup/setup-scene-attached-final.webp") center center / cover no-repeat;
   filter: saturate(1.02) contrast(1.03) brightness(0.86);
   transform-origin: 50% 62%;
   animation: none;
@@ -34410,14 +34415,19 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   }
 }
 
-/* Keep the open chat usable without letting it cover the painted heroes. */
-.setupPhase .chatDock {
+/* Keep the open chat usable without letting it cover the painted heroes.
+   NON-PHONE only: the final low-left placement below overrides this for the
+   desktop scene, so its ONLY live effect used to be on PHONE MODE — where it
+   dragged the collapsed chat fab down onto the fixed Start button (the fab
+   intercepted every tap; the phone block's own `bottom: 76px + safe-area`
+   placement is the one that keeps the bottom band clear). */
+.setupPhase.adventureRoot:not(.phoneMode) .chatDock {
   left: auto;
   right: 10px;
   bottom: 8px;
 }
 
-.setupPhase .chatPanel {
+.setupPhase.adventureRoot:not(.phoneMode) .chatPanel {
   width: min(270px, calc(100vw - 20px));
   max-height: min(35vh, 270px);
   border-radius: 9px;
@@ -34907,7 +34917,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   border-radius: 0 !important;
   clip-path: none !important;
   background:
-    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.png")
+    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.webp")
     center / 100% 100% no-repeat !important;
   box-shadow: none !important;
   filter: drop-shadow(0 5px 5px rgb(0 0 0 / 66%));
@@ -34936,7 +34946,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .setupPhase .setupHubBox:hover .setupHubBoxPlate,
 .setupPhase .setupHubBox:focus-visible .setupHubBoxPlate {
   background:
-    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.png")
+    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.webp")
     center / 100% 100% no-repeat !important;
   filter:
     brightness(1.16)
@@ -34949,7 +34959,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .setupPhase .setupSceneIllustration {
   background:
     #050403
-    url("/assets/ui/setup/setup-scene-attached-final.png")
+    url("/assets/ui/setup/setup-scene-attached-final.webp")
     center / 100% 100% no-repeat !important;
 }
 
@@ -35135,6 +35145,16 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   max-height: min(35vh, 270px) !important;
 }
 
+/* On a narrow window the fixed Start button (left 44.5%) walks into the
+   low-left chat column — the open chat's input row then swallows every click
+   on Start ("chatInput intercepts pointer events"). Lift the dock just above
+   the Start band there; wide screens keep the exact low-left placement. */
+@media (max-width: 940px) {
+  .setupPhase.adventureRoot:not(.phoneMode) .chatDock {
+    bottom: 68px !important;
+  }
+}
+
 .setupPhase > .logDrawer {
   position: fixed !important;
   z-index: 12 !important;
@@ -35247,7 +35267,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   .setupPhase .setupSceneIllustration {
     background:
       #050403
-      url("/assets/ui/setup/setup-scene-attached-final.png")
+      url("/assets/ui/setup/setup-scene-attached-final.webp")
       43% center / cover no-repeat !important;
     box-shadow:
       inset 0 0 0 2px rgb(211 163 78 / 88%),

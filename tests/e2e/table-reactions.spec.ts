@@ -17,11 +17,11 @@ test("a reaction from one client shows as a bubble on the other", async ({ brows
 
   try {
     await pageA.goto(`/?room=${roomId}`);
-    await expect(pageA.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
+    await expect(pageA.locator(".setupHubBox--mode")).toBeVisible({ timeout: 20000 });
 
     // Second client joins the same room — now the table is multiplayer.
     await pageB.goto(`/?room=${roomId}`);
-    await expect(pageB.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
+    await expect(pageB.locator(".setupHubBox--mode")).toBeVisible({ timeout: 20000 });
 
     // The reaction bar surfaces on both clients once two members are present.
     const toggleA = pageA.getByRole("button", { name: /send a table reaction/i });

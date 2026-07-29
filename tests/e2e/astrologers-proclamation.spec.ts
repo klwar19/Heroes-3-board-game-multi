@@ -27,17 +27,17 @@ test("the active Astrologers proclamation pops up on the round-2 turn", async ({
   await page.goto(`/?room=${roomId}`);
 
   // --- Lobby: seat two players and start ----------------------------------
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 20000 });
 
   await openHeroesWindow(page);
   await page.getByRole("button", { name: /Catherine/ }).click();
-  await expect(page.locator(".lobbySeat").filter({ hasText: "Castle — Catherine" })).toBeVisible();
+  await expect(page.locator(".setupHubBox--heroes")).toContainText("Castle — Catherine");
 
   await closeHeroesWindow(page);
   await page.getByTitle("Sit as Player 2").click();
   await openHeroesWindow(page);
   await page.getByRole("button", { name: /Sandro/ }).click();
-  await expect(page.locator(".lobbySeat").filter({ hasText: "Necropolis — Sandro" })).toBeVisible();
+  await expect(page.locator(".setupHubBox--heroes")).toContainText("Necropolis — Sandro");
   await closeHeroesWindow(page);
 
   await page.getByRole("button", { name: "New Game" }).click();

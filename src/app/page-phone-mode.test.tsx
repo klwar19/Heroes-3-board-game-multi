@@ -20,6 +20,7 @@ import {
   createAdventureGameState,
   createAdventureLobbyState,
   createInitialGameState,
+  type GameAction,
   type GameState
 } from "@/engine";
 import type { GameRoomSnapshot, RoomConnectionHandlers } from "@/lib/realtime";
@@ -160,9 +161,11 @@ describe("phone UI mode — adventure map surface", () => {
     expect(main.className).toContain("adventureRoot");
     expect(main.getAttribute("data-phone-tab")).toBe("map");
 
-    // The full adventure tab set for a seated player (no open combat → no Battle tab).
+    // The full adventure tab set for a seated player (no open combat → no
+    // Battle tab). "End turn" appears because END_TURN is legal for the viewer
+    // on their open turn.
     const tabLabels = Array.from(tablist.querySelectorAll(".phoneTabLabel")).map((el) => el.textContent);
-    expect(tabLabels).toEqual(["Map", "Hand", "Army", "Decks", "Menu"]);
+    expect(tabLabels).toEqual(["Map", "Hand", "Army", "Decks", "End turn", "Menu"]);
 
     fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
     expect(main.getAttribute("data-phone-tab")).toBe("hand");
@@ -173,6 +176,15 @@ describe("phone UI mode — adventure map surface", () => {
     expect(screen.getByRole("button", { name: /phone ui/i })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: /map/i }));
     expect(main.getAttribute("data-phone-tab")).toBe("map");
+
+    // "End turn" is a direct thumb ACTION, not a panel: tapping it submits the
+    // viewer's END_TURN and the active panel stays where it was.
+    fireEvent.click(screen.getByRole("tab", { name: /end turn/i }));
+    expect(main.getAttribute("data-phone-tab")).toBe("map");
+    const submitAction = connectRoomMock.mock.results[0]?.value.submitAction as ReturnType<typeof vi.fn>;
+    expect(
+      submitAction.mock.calls.some((call) => (call[0] as GameAction | undefined)?.type === "END_TURN")
+    ).toBe(true);
   });
 
   it("auto-switches to the Map tab when the viewer owes a tile rotation (and not for another seat)", async () => {
