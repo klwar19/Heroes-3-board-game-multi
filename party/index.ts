@@ -132,6 +132,12 @@ function matchReportConfigOf(room: Party.Room): { appUrl: string; key: string } 
 
 type ServerMessage =
   | { type: "snapshot"; snapshot: RoomSnapshot }
+  /**
+   * Immediate transport receipt for a submitted action. Large late-game hosted
+   * rooms redact and serialize one full snapshot per connected seat before the
+   * final action-result can be sent.
+   */
+  | { type: "action-received"; requestId: string }
   | {
       type: "action-result";
       requestId?: string;
@@ -1205,6 +1211,16 @@ export default class GameRoomServer implements Party.Server {
     }
 
     if (message.type === "action") {
+      // This is deliberately not an acceptance/result: the browser keeps the
+      // action pending, but no longer mistakes late-game processing for a dead
+      // room. Send before identity resolution and the mutation queue because
+      // both can await external or earlier work while this socket is healthy.
+      if (message.requestId) {
+        sender.send(JSON.stringify({
+          type: "action-received",
+          requestId: message.requestId
+        } satisfies ServerMessage));
+      }
       // Resolve the sender's VERIFIED account id from the token on its socket
       // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
       // can no longer act for a signed-in player's seat. Undefined for guests.

@@ -109,6 +109,11 @@ describe("PartyKit edge server — concurrent action serialization", () => {
       )
     ]);
 
+    // Each sender gets an immediate transport receipt before identity
+    // verification, mutation queueing, persistence, and full-state fan-out.
+    expect(JSON.parse(alice.received[0])).toEqual({ type: "action-received", requestId: "req-a" });
+    expect(JSON.parse(bob.received[0])).toEqual({ type: "action-received", requestId: "req-b" });
+
     // Both actions landed: two version bumps, and BOTH members exist in the
     // final snapshot. Before the fix the later write overwrote the earlier one:
     // version 8 with a single member.

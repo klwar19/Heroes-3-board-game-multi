@@ -5177,9 +5177,7 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .dungeonFloorSvgBadge text {
   fill: #fff1bf;
   font-family: Georgia, serif;
-  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.7px;
 }
 
 /* Field Override (WOG / anime) hex: a small unobtrusive corner glyph badge so a

@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ACTION_PROCESSING_TIMEOUT_MS,
+  ACTION_RECEIPT_TIMEOUT_MS,
   connectRoom,
   requestCloseRoom,
   SEAT_REHEAL_COOLDOWN_MS,
@@ -338,6 +340,60 @@ describe("connectRoom - PartyKit acknowledgement and health protocol", () => {
     });
     await expect(resultPromise).resolves.toMatchObject({ version: 2, errors: [], notices: ["ok"] });
     expect(onSnapshot).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
+
+  it("keeps a received late-game action pending beyond the short no-response deadline", async () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    let settled = false;
+    void resultPromise.finally(() => {
+      settled = true;
+    });
+
+    vi.advanceTimersByTime(ACTION_RECEIPT_TIMEOUT_MS - 1);
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-received", requestId: actionFrame.requestId })
+    });
+    vi.advanceTimersByTime(ACTION_RECEIPT_TIMEOUT_MS + 1);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "action-result",
+        requestId: actionFrame.requestId,
+        version: 2,
+        errors: []
+      })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 2, errors: [] });
+    connection.close();
+  });
+
+  it("still fails a received action if processing itself exceeds the extended deadline", async () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-received", requestId: actionFrame.requestId })
+    });
+    const rejection = expect(resultPromise).rejects.toThrow(/received the action but could not finish/i);
+    // Keep the independent socket-health watchdog satisfied so this assertion
+    // isolates the action-processing deadline.
+    await vi.advanceTimersByTimeAsync(35_000);
+    socket.emit("message", { data: JSON.stringify({ type: "pong", version: 0 }) });
+    await vi.advanceTimersByTimeAsync(ACTION_PROCESSING_TIMEOUT_MS - 35_000);
+    await rejection;
     connection.close();
   });
 

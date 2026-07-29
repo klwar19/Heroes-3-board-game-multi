@@ -181,6 +181,14 @@ export type SocketTokenProvider = () => Promise<string | undefined>;
  */
 export const SEAT_REHEAL_COOLDOWN_MS = 30_000;
 
+/** No server frame at all after a submit means the room/socket is unavailable. */
+export const ACTION_RECEIPT_TIMEOUT_MS = 15_000;
+/**
+ * Once the room confirms receipt, allow a large late-game state to apply,
+ * persist, redact, and fan out before its final action-result arrives.
+ */
+export const ACTION_PROCESSING_TIMEOUT_MS = 60_000;
+
 /**
  * Whether an action-result's errors warrant a self-healing socket reconnect.
  *
@@ -231,6 +239,7 @@ export function connectRoom(
 
 type PartyServerMessage =
   | { type: "snapshot"; snapshot: GameRoomSnapshot }
+  | { type: "action-received"; requestId: string }
   | {
       type: "action-result";
       requestId?: string;
@@ -349,10 +358,11 @@ function connectPartyRoom(
     room: roomId,
     query: buildQuery
   });
-  const pending = new Map<
-    string,
-    (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void
-  >();
+  const pending = new Map<string, {
+    settle: (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void;
+    markReceived: () => void;
+    cancel: () => void;
+  }>();
   let requestCounter = 0;
   let lastMessageAt = Date.now();
   let opened = false;
@@ -506,11 +516,15 @@ function connectPartyRoom(
       return;
     }
 
-    if (message.type === "action-result") {
-      if (message.requestId) {
-        pending.get(message.requestId)?.(message);
-        pending.delete(message.requestId);
-      }
+    if (message.type === "action-received") {
+      pending.get(message.requestId)?.markReceived();
+      return;
+    }
+
+    if (message.type === "action-result" && message.requestId) {
+      const request = pending.get(message.requestId);
+      request?.settle(message);
+      pending.delete(message.requestId);
     }
   });
 
@@ -568,6 +582,9 @@ function connectPartyRoom(
   return {
     close: () => {
       socket.close();
+      for (const request of pending.values()) {
+        request.cancel();
+      }
       pending.clear();
       if (healthId !== null) window.clearInterval(healthId);
       if (canObserveWake) {
@@ -581,45 +598,62 @@ function connectPartyRoom(
         const requestId = `req_${requestCounter}_${Date.now().toString(36)}`;
         const sentAt = metricNow();
         const sentAtWall = Date.now();
-        const timeout = window.setTimeout(() => {
-          pending.delete(requestId);
-          reject(new Error("The room did not answer in time."));
-        }, 15000);
-
-        pending.set(requestId, (reply) => {
+        let timeout = 0;
+        const armTimeout = (delayMs: number, message: string) => {
           window.clearTimeout(timeout);
-          recordPerformanceMetric({
-            name: "room.action.acknowledged",
-            at: sentAt,
-            durationMs: metricNow() - sentAt,
-            fields: { requestId, actionType: action.type, version: reply.version }
-          });
-          // The ack round-trip is the "felt" latency of active play — feed the
-          // quality surface from it (pongs alone are too rare while playing).
-          // Wall-clock, like the pong sample.
-          handlers.onQuality?.({ rttMs: Date.now() - sentAtWall, at: Date.now() });
-          const errors = reply.errors.map((error) => ({
-            code: error.code as EngineResult["errors"][number]["code"],
-            message: error.message
-          }));
-          // Self-heal a lapsed verified identity: a seat-identity rejection on a
-          // client that CAN mint a ticket (getSocketToken) means the edge lost
-          // our verified identity — reconnect to re-run the async query (fresh
-          // ticket) and refetch the seat snapshot, instead of forcing a page
-          // refresh. Bounded to once per SEAT_REHEAL_COOLDOWN_MS so a genuine,
-          // persistent refusal can never spin the socket. A pure guest gains
-          // nothing from a reconnect, so it is skipped for them.
-          if (getSocketToken && shouldReconnectForSeatRejection(errors, lastSeatHealAt, Date.now())) {
-            lastSeatHealAt = Date.now();
-            handlers.onStatus("re-authenticating (edge)");
-            void refetchSeatSnapshot();
-            socket.reconnect(4000, "seat re-auth");
+          timeout = window.setTimeout(() => {
+            pending.delete(requestId);
+            reject(new Error(message));
+          }, delayMs);
+        };
+        armTimeout(ACTION_RECEIPT_TIMEOUT_MS, "The room did not answer in time.");
+
+        pending.set(requestId, {
+          markReceived: () => {
+            armTimeout(
+              ACTION_PROCESSING_TIMEOUT_MS,
+              "The room received the action but could not finish it in time."
+            );
+          },
+          cancel: () => {
+            window.clearTimeout(timeout);
+            reject(new Error("The room connection closed."));
+          },
+          settle: (reply) => {
+            window.clearTimeout(timeout);
+            recordPerformanceMetric({
+              name: "room.action.acknowledged",
+              at: sentAt,
+              durationMs: metricNow() - sentAt,
+              fields: { requestId, actionType: action.type, version: reply.version }
+            });
+            // The ack round-trip is the "felt" latency of active play — feed the
+            // quality surface from it (pongs alone are too rare while playing).
+            // Wall-clock, like the pong sample.
+            handlers.onQuality?.({ rttMs: Date.now() - sentAtWall, at: Date.now() });
+            const errors = reply.errors.map((error) => ({
+              code: error.code as EngineResult["errors"][number]["code"],
+              message: error.message
+            }));
+            // Self-heal a lapsed verified identity: a seat-identity rejection on a
+            // client that CAN mint a ticket (getSocketToken) means the edge lost
+            // our verified identity — reconnect to re-run the async query (fresh
+            // ticket) and refetch the seat snapshot, instead of forcing a page
+            // refresh. Bounded to once per SEAT_REHEAL_COOLDOWN_MS so a genuine,
+            // persistent refusal can never spin the socket. A pure guest gains
+            // nothing from a reconnect, so it is skipped for them.
+            if (getSocketToken && shouldReconnectForSeatRejection(errors, lastSeatHealAt, Date.now())) {
+              lastSeatHealAt = Date.now();
+              handlers.onStatus("re-authenticating (edge)");
+              void refetchSeatSnapshot();
+              socket.reconnect(4000, "seat re-auth");
+            }
+            resolve({
+              version: reply.version,
+              notices: reply.notices ?? [],
+              errors
+            });
           }
-          resolve({
-            version: reply.version,
-            notices: reply.notices ?? [],
-            errors
-          });
         });
 
         const frame = JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) });

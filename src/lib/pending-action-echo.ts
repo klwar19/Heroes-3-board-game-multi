@@ -36,8 +36,11 @@ export type PendingEchoState = {
   entries: readonly PendingActionEcho[];
 };
 
-/** Matches the transport's 15 s submit timeout — never outlive it by much. */
-export const PENDING_ECHO_TTL_MS = 15_000;
+/**
+ * Covers the 15 s receipt deadline plus the 60 s post-receipt processing
+ * deadline, so a truly slow action cannot be submitted twice while in flight.
+ */
+export const PENDING_ECHO_TTL_MS = 75_000;
 /**
  * After this long without an ack the echo styles as "slow network" (the
  * user-visible symptom of N3's RTT chip). Applied purely in CSS via an
