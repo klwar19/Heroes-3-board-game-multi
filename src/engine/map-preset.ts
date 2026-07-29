@@ -2547,16 +2547,16 @@ export function describeCustomMapPresetEntries(
           : "Additional Ⅱ–Ⅲ tiles: on"
     });
   }
-  if (preset.houseRules?.["no-secondary-heroes"] !== undefined) {
-    entries.push({
-      icon: "⚙️",
-      text: `Secondary Heroes: ${preset.houseRules["no-secondary-heroes"] ? "disabled" : "allowed"}`
-    });
-  }
   if (preset.farTileSettlementReroll !== undefined) {
     entries.push({
       icon: "🎲",
       text: `Ⅱ–Ⅲ Settlement reroll: ${preset.farTileSettlementReroll ? "on" : "off"}`
+    });
+  }
+  if (preset.houseRules?.["no-secondary-heroes"] !== undefined) {
+    entries.push({
+      icon: "⚙️",
+      text: `Secondary Heroes: ${preset.houseRules["no-secondary-heroes"] ? "disabled" : "allowed"}`
     });
   }
   if (preset.houseRules?.["free-neutral-combat-extend"] !== undefined) {

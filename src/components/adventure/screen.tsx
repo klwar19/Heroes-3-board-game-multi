@@ -1000,6 +1000,26 @@ export function HexMapBoard({
     return rotations;
   }, [legalActions]);
 
+  // A timed event can clear the Black Cube from beneath a stationary Hero.
+  // Index the engine's exact REVISIT_FIELD offers by the occupied hex so the
+  // newly reopened field itself becomes the natural click target.
+  const revisitActionBySpace = useMemo(() => {
+    const actions = new Map<MapSpaceId, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type !== "REVISIT_FIELD") {
+        continue;
+      }
+      const hero = state.heroes[legal.action.heroId];
+      if (!hero?.spaceId) {
+        continue;
+      }
+      if (!actions.has(hero.spaceId) || hero.id === myHero?.id) {
+        actions.set(hero.spaceId, legal.action);
+      }
+    }
+    return actions;
+  }, [legalActions, state.heroes, myHero?.id]);
+
   // Rotation preview, reset whenever a different tile starts rotating
   // (state-adjustment-during-render pattern, no effect needed).
   const [rotationPreview, setRotationPreview] = useState<{ tileId: string | null; rotation: number }>({
@@ -1512,7 +1532,11 @@ export function HexMapBoard({
         if (fieldDef && artShown && tileDef?.assets?.attachFieldSymbols) {
           const symbol = fieldSymbolOverlayFor(fieldDef);
           if (symbol) {
-            const iconSize = HEX_SIZE * 0.85;
+            const iconScale =
+              symbol.kind === "resource" ? 0.62 :
+              symbol.kind === "treasure" ? 0.6 :
+              0.56;
+            const iconSize = HEX_SIZE * iconScale;
             overlays.push(
               <image
                 className="fieldSymbolModule"
@@ -1639,6 +1663,7 @@ export function HexMapBoard({
       const remindMove = drawReminderTargets.get(spaceId);
       const endTurnMove = endTurnMoveTargets.get(spaceId);
       const mapChoice = pendingMapChoiceTargets.get(spaceId);
+      const revisitAction = revisitActionBySpace.get(spaceId);
       const teleportTarget = teleportChoice?.targets.get(spaceId);
       const gateCandidateIndex =
         gatePlacementOpen?.candidates.findIndex((candidate) => candidate.hex === spaceId) ?? -1;
@@ -1694,7 +1719,7 @@ export function HexMapBoard({
             remindMove ? "moveTargetLocked" : "",
             teleportTarget ? "teleportTarget" : "",
             endTurnMove ? "endTurnMoveTarget" : "",
-            mapChoice || isGateSelected ? "mapChoiceTarget" : "",
+            mapChoice || revisitAction || isGateSelected ? "mapChoiceTarget" : "",
             isGateCandidate && !isGateSelected ? "gateExitCandidate" : "",
             isSelected ? "selectedTarget" : "",
             alteredGuardPreview ? "alteredGuard" : "",
@@ -1752,6 +1777,12 @@ export function HexMapBoard({
                     }
                     onAction(endTurnMove);
                   }
+                : revisitAction
+                  ? () => {
+                      if (!suppressClickRef.current) {
+                        onAction(revisitAction);
+                      }
+                    }
                 : target
                   ? () => {
                       if (suppressClickRef.current) {
@@ -1809,6 +1840,8 @@ export function HexMapBoard({
                 ? " — click to teleport your hero here"
                 : mapChoice
                 ? " — click to choose this location"
+                : revisitAction
+                  ? " — click to resolve this field (1 movement point)"
                 : endTurnMove
                   ? " — click to move your hero here"
                   : ""
@@ -1994,10 +2027,10 @@ export function HexMapBoard({
             aria-label={`Your dungeon progress: floor ${floor}`}
             className="dungeonFloorSvgBadge"
             key={`${spaceId}-dungeon-floor`}
-            transform={`translate(${x} ${y + HEX_SIZE * 0.62})`}
+            transform={`translate(${x} ${y + HEX_SIZE * 0.66})`}
           >
-            <rect height="20" rx="8" width="70" x="-35" y="-13" />
-            <text textAnchor="middle" y="1">FLOOR {floor}</text>
+            <rect height="13" rx="5" width="42" x="-21" y="-9" />
+            <text fontSize="6" letterSpacing="0.35" textAnchor="middle" y="0">FLOOR {floor}</text>
           </g>
         );
       }
@@ -2028,7 +2061,14 @@ export function HexMapBoard({
       if (artShown && attachFieldSymbols && !tokenImage) {
         const symbol = fieldSymbolOverlayFor(field);
         if (symbol) {
-          const iconSize = HEX_SIZE * (symbol.kind === "resource" ? 0.95 : 0.85);
+          // These overlay the atmosphere art rather than replacing it. Leave
+          // enough breathing room to read the Heavenly Demon Palace tile
+          // beneath them; the old scale nearly filled the entire hex.
+          const iconScale =
+            symbol.kind === "resource" ? 0.62 :
+            symbol.kind === "treasure" ? 0.6 :
+            0.56;
+          const iconSize = HEX_SIZE * iconScale;
           overlays.push(
             <image
               className="fieldSymbolModule"
@@ -2284,6 +2324,7 @@ export function HexMapBoard({
     const remindMove = drawReminderTargets.get(spaceId);
     const endTurnMove = endTurnMoveTargets.get(spaceId);
     const mapChoice = pendingMapChoiceTargets.get(spaceId);
+    const revisitAction = revisitActionBySpace.get(spaceId);
     const teleportTarget = teleportChoice?.targets.get(spaceId);
     const guarded = Boolean(field.difficulty) && !field.blackCube && !field.everFlagged;
     const isSelected = selectedTarget?.spaceId === spaceId;
@@ -2296,7 +2337,7 @@ export function HexMapBoard({
           remindMove ? "moveTargetLocked" : "",
           teleportTarget ? "teleportTarget" : "",
           endTurnMove ? "endTurnMoveTarget" : "",
-          mapChoice ? "mapChoiceTarget" : "",
+          mapChoice || revisitAction ? "mapChoiceTarget" : "",
           isSelected ? "selectedTarget" : ""
         ].join(" ")}
         data-space-id={spaceId}
@@ -2323,6 +2364,12 @@ export function HexMapBoard({
                       onAction(endTurnMove);
                     }
                   }
+                : revisitAction
+                  ? () => {
+                      if (!suppressClickRef.current) {
+                        onAction(revisitAction);
+                      }
+                    }
                 : target
                   ? () => {
                       if (!suppressClickRef.current) {
@@ -2344,7 +2391,7 @@ export function HexMapBoard({
             field.location === "gate" ? `Gate (pair ${field.gatePair})` : locationDefinitions[field.location]?.name ?? field.location
           }${guarded && field.difficulty ? ` (guard ${ROMAN[field.difficulty]})` : ""} — a standalone object hex${
             target ? ` — ${target.cost} movement point${target.cost === 1 ? "" : "s"}` : ""
-          }`}
+          }${revisitAction ? " — click to resolve this field (1 movement point)" : ""}`}
         </title>
       </polygon>
     );
@@ -9942,8 +9989,37 @@ function GameOptionsPanel({
             </div>
             <small className="optionHint">
               Each player may add this many new Ⅱ–Ⅲ tiles (default {scenarioDefault}). Set 0 when a designed map already
-              places its own Ⅱ–Ⅲ tiles. The 2nd tile a player opens is guaranteed a Settlement (keep / reroll until one
-              appears, then pick); any tile showing a resource Mine may be rerolled once.
+              places its own Ⅱ–Ⅲ tiles. Any tile showing a resource Mine may be rerolled once.
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        const settlementRerollOn = options.farTileSettlementReroll ?? true;
+        return (
+          <div className="optionRow">
+            <small title="Whether a player's second Ⅱ–Ⅲ tile may be rerolled until a Settlement appears">
+              Ⅱ–Ⅲ Settlement reroll
+            </small>
+            <div className="optionButtons">
+              {([true, false] as const).map((on) => (
+                <button
+                  aria-pressed={settlementRerollOn === on}
+                  className={settlementRerollOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ farTileSettlementReroll: on })}
+                  title={on ? "Offer the second-tile Settlement reroll" : "Keep exact Ⅱ–Ⅲ tile identities"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {settlementRerollOn
+                ? "On — if a player has not found a Settlement, their 2nd Ⅱ–Ⅲ tile may be kept or rerolled until one appears."
+                : "Off — every Ⅱ–Ⅲ tile stays exactly as drawn or designed; no Settlement reroll is offered."}
             </small>
           </div>
         );
