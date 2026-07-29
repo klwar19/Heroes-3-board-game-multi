@@ -10,7 +10,7 @@ import { expect, type Page, test } from "@playwright/test";
 
 async function openSetup(page: Page, roomId: string): Promise<void> {
   await page.goto(`/?room=${roomId}`);
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 30000 });
 }
 
 /** The local "Sit as …" seat switcher buttons, addressed by index (0 = p1). */
@@ -68,8 +68,10 @@ test("hero info opens a closeable popup without choosing the hero", async ({ pag
   await expect(modal).toContainText("Catherine");
   await expect(modal).toContainText("Crusaders"); // a Catherine specialty card
 
-  // Inspecting must not have committed the seat (still "choosing").
-  await expect(page.locator(".lobbySeat.mine")).toContainText(/choosing/i);
+  // Inspecting must not have committed the seat: the Heroes box summary (the
+  // classic .lobbySeat rows are hidden under the painted setup scene) still
+  // shows no Castle — Catherine pick.
+  await expect(page.locator(".setupHubBox--heroes")).not.toContainText("Castle — Catherine");
 
   await page.getByRole("button", { name: "Close hero details" }).click();
   await expect(modal).toBeHidden();

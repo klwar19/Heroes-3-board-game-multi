@@ -57,18 +57,18 @@ async function dismissCoachPrompt(page: Page): Promise<void> {
 
 async function startTwoPlayerAdventure(page: Page, roomId: string): Promise<void> {
   await page.goto(`/?room=${roomId}`);
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 20000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 20000 });
   await chooseUiMode(page, "phone");
   await dismissCoachPrompt(page);
 
   await openHeroesWindow(page);
   await page.getByRole("button", { name: /Catherine/ }).click();
-  await expect(page.locator(".lobbySeat").filter({ hasText: "Castle — Catherine" })).toBeVisible();
+  await expect(page.locator(".setupHubBox--heroes")).toContainText("Castle — Catherine");
   await closeHeroesWindow(page);
   await page.getByTitle("Sit as Player 2").click();
   await openHeroesWindow(page);
   await page.getByRole("button", { name: /Sandro/ }).click();
-  await expect(page.locator(".lobbySeat").filter({ hasText: "Necropolis — Sandro" })).toBeVisible();
+  await expect(page.locator(".setupHubBox--heroes")).toContainText("Necropolis — Sandro");
   await closeHeroesWindow(page);
 
   await page.getByRole("button", { name: "New Game" }).click();

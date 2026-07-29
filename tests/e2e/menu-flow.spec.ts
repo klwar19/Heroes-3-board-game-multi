@@ -37,7 +37,7 @@ test("guest flow: login name → menu → play (Erathia) → create room → set
   await page.getByLabel("New room name").fill(roomName);
   await page.getByRole("button", { name: /Create room/i }).click();
   await expect(page).toHaveURL(/\?room=/, { timeout: 15000 });
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 30000 });
 
   // Leaving via Browse rooms returns to the /play room browser, where the
   // created room is listed UNDER ITS CHOSEN NAME (the name round-tripped
@@ -51,7 +51,7 @@ test("guest flow: login name → menu → play (Erathia) → create room → set
 test("?room= deep link bypasses the menu and opens the room directly", async ({ page }) => {
   const roomId = `e2e-menu-deeplink-${Date.now().toString(36)}`;
   await page.goto(`/?room=${roomId}`);
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 30000 });
   // Still on the room URL — the landing redirect must not have fired.
   await expect(page).toHaveURL(new RegExp(`\\?room=${roomId}`));
 });

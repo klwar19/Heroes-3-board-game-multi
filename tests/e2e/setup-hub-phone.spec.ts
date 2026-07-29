@@ -15,7 +15,7 @@ const roomId = (tag: string) => `e2e-hub-${tag}-${Date.now().toString(36)}`;
 
 async function openLobby(page: Page, tag: string): Promise<void> {
   await page.goto(`/?room=${roomId(tag)}`);
-  await expect(page.getByRole("heading", { name: /Map setup/i })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".setupHubBox--mode")).toBeVisible({ timeout: 30000 });
 }
 
 /** Answer the pre-game layout prompt (it blocks the lobby until answered). */
@@ -53,14 +53,23 @@ async function boxRows(page: Page): Promise<number[]> {
 }
 
 test.describe("desktop", () => {
-  test("the boxes sit in a 2×2 grid and a hub window is a centered panel", async ({ page }) => {
+  test("the four hanging-plaque boxes are real hit areas and a hub window is a centered panel", async ({ page }) => {
     await openLobby(page, "desktop");
-    // Two rows of two — the boxes are a block in the middle, not a top-edge strip.
-    expect(await boxRows(page)).toEqual([2, 2]);
-
+    // The desktop lobby is the painted setup scene (2026-07-29): the four
+    // boxes hang as plaques from the tree at their own heights — no 2×2 grid
+    // here any more (the PHONE lobby keeps the 2×2 grid, pinned below). Each
+    // must still be a real, visible hit area inside the scene, below the
+    // fixed top controls band.
     const viewport = page.viewportSize()!;
-    const firstBox = (await page.locator(".setupHubBox").first().boundingBox())!;
-    expect(firstBox.y).toBeGreaterThan(80);
+    const boxes = page.locator(".setupHubBox");
+    await expect(boxes).toHaveCount(4);
+    for (let index = 0; index < 4; index += 1) {
+      const box = (await boxes.nth(index).boundingBox())!;
+      expect(box.width).toBeGreaterThan(40);
+      expect(box.height).toBeGreaterThan(24);
+      expect(box.y).toBeGreaterThan(80);
+      expect(box.y + box.height).toBeLessThan(viewport.height - 60);
+    }
 
     await page.getByRole("button", { name: /^Map/ }).click();
     const window = page.locator(".setupHubWindow");
