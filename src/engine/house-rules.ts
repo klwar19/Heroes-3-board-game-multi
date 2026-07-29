@@ -165,6 +165,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "bank-stack-chance-80",
+    label: "Creature-bank Stack chance: 80%",
+    description:
+      "On (BINH house rule): each Stack Token allowed by difficulty has an 80% chance to be placed. Off (official, default): every Stack Token is placed, so Creature Banks always have exactly Easy 1 / Normal 2 / Hard 3 / Impossible 4 Stacked defenders.",
+    category: "combat",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "defeat-gold-debt",
     label: "Defeat can push gold into debt",
     description:

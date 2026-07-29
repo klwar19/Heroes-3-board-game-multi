@@ -9375,6 +9375,15 @@ function getParallelBystanderActions(state: GameState, playerId: PlayerId): Lega
     ];
   }
 
+  if (player.explorersDiscardPending) {
+    return [
+      {
+        label: "Explorers: discard any number of cards (or discard none)",
+        action: { type: "RESOLVE_EXPLORERS_DISCARD", playerId, discardCardIds: [] }
+      }
+    ];
+  }
+
   // Town and morale actions stay open between battles (they only queue/park);
   // an open combat blocks them for everyone, exactly like ordered play.
   if (!state.combat) {
@@ -9811,6 +9820,18 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return actions;
   }
 
+  // Explorers is the mandatory second half of the start-of-turn hand step:
+  // draw first, then explicitly choose any number of discards. Nothing else
+  // opens until that choice (including zero) is submitted.
+  if (player.explorersDiscardPending) {
+    return [
+      {
+        label: "Explorers: discard any number of cards (or discard none)",
+        action: { type: "RESOLVE_EXPLORERS_DISCARD", playerId, discardCardIds: [] }
+      }
+    ];
+  }
+
   // Town and morale actions may happen during any player's turn. The morale
   // token's draw / discard-redraw is spendable anywhere, not only at a Town.
   // Ability Empower tokens are spendable the same way (hand Ability only).
@@ -9869,22 +9890,26 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // actions that skip this legal-action check.)
   // Round 1: only under-limit cards may be discarded here (bonus artifact);
   // a full hand is draw-only, then OPENING_HAND_MULLIGAN when the option is ON.
-  // "End turn" stays offered while the draw is owed — ending a turn is a
-  // deliberate pass, never a forgotten draw (pinned in
+  // "End turn" ordinarily stays offered while the draw is owed — ending a turn
+  // is a deliberate pass, never a forgotten draw (pinned in
   // mandatory-draw-six-rounds.test.ts). CONSEQUENCE: the "beginning of your
   // turn" town buildings are queued by REFRESH_HAND (they read the settled
   // post-draw hand), so a seat that passes without drawing forfeits them for
-  // that turn — the rulebook resolves them "after drawing". Pinned in
-  // siege-tokens.test.ts.
+  // that turn — the rulebook resolves them "after drawing". Explorers is the
+  // exception: its printed draw-then-discard sequence is mandatory, so it
+  // cannot be bypassed with End turn. Pinned in siege-tokens.test.ts and
+  // astrologers-recruit-explorers.test.ts.
   if (player.canMulligan) {
     actions.push({
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
       action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
     });
-    actions.push({
-      label: "End turn",
-      action: { type: "END_TURN", playerId }
-    });
+    if (getActiveAstrologersCard(state)?.effect.type !== "EMPOWER_PER_DISCARD") {
+      actions.push({
+        label: "End turn",
+        action: { type: "END_TURN", playerId }
+      });
+    }
     return actions;
   }
 
@@ -10072,6 +10097,10 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         field &&
         !field.grailDiggable &&
         (locationDefinitions[field.location]?.category === "revisitable" ||
+          // A round/timed event may remove the Black Cube while a Hero is
+          // already standing on this one-use field. Treat it as a fresh visit
+          // so the player can click/resolve the newly reopened location.
+          (locationDefinitions[field.location]?.category === "visitable" && !field.blackCube) ||
           // Obelisk role "monolith": Revisit (1 MP) travels the network again,
           // like a Monolith token (which is category "revisitable").
           (field.location === "obelisk" && obeliskRoleIsMonolith(state))) &&
@@ -10080,9 +10109,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       ) {
         actions.push({
           label:
-            (field.location === "obelisk"
-              ? "Revisit the Obelisk (Monolith travel)"
-              : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`) +
+            (locationDefinitions[field.location]?.category === "visitable" && !field.blackCube
+              ? `Resolve ${locationDefinitions[field.location]?.name ?? field.location}`
+              : field.location === "obelisk"
+                ? "Revisit the Obelisk (Monolith travel)"
+                : `Revisit ${locationDefinitions[field.location]?.name ?? field.location}`) +
             whichHero(hero.kind),
           action: { type: "REVISIT_FIELD", playerId, heroId: hero.id }
         });

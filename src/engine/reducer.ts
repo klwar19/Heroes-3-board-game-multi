@@ -91,6 +91,7 @@ import {
   openDiscardPickChoice,
   giveUpCombat,
   refreshHand,
+  resolveExplorersDiscard,
   mulliganCard,
   openingHandMulligan,
   resolveVisitStep,
@@ -1070,6 +1071,9 @@ function assertStartOfTurnDrawTaken(state: GameState, playerId: PlayerId): void 
   const player = state.players[playerId];
   if (player?.canMulligan) {
     throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
+  }
+  if (player?.explorersDiscardPending) {
+    throw new Error("Resolve Explorers: choose how many cards to discard first.");
   }
 }
 
@@ -20474,6 +20478,7 @@ function asNeutralSeatCommand<
 /** Adventure actions are validated inside their handlers, not by enumeration. */
 const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REFRESH_HAND",
+  "RESOLVE_EXPLORERS_DISCARD",
   "MULLIGAN_CARD",
   "OPENING_HAND_MULLIGAN",
   "ASTROLOGERS_HERO_EMPOWER",
@@ -20882,6 +20887,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "REFRESH_HAND":
         refreshHand(nextState, action);
+        break;
+      case "RESOLVE_EXPLORERS_DISCARD":
+        resolveExplorersDiscard(nextState, action);
         break;
       case "MULLIGAN_CARD":
         mulliganCard(nextState, action);

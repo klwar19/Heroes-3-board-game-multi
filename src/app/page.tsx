@@ -9,6 +9,7 @@ import {
   effectHasExpertMode,
   ENGINE_SIGNATURE,
   getEffectiveCardEffect,
+  getActiveAstrologersCard,
   getLegalActions,
   getPermanentCardIds,
   getPlayerView,
@@ -5261,6 +5262,11 @@ export default function Home() {
     const legacySpellBookOn = isSeated && (state.adventure?.spellBook ?? true);
     const spellBookOn = legacySpellBookOn || (isSeated && polishBook);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
+    const activeAstrologersEffect = getActiveAstrologersCard(state)?.effect;
+    const explorersActive =
+      activeAstrologersEffect?.type === "EMPOWER_PER_DISCARD" && activeAstrologersEffect.per > 0;
+    const explorersDiscardPending =
+      Boolean(viewer?.explorersDiscardPending) && hasOpenAdventureTurn(state, viewerPlayerId);
     // Over the hand limit at the start of the turn (only via card effects):
     // the player MUST discard down to the limit before acting. Parallel turns:
     // every open parallel turn counts as "my turn" here.
@@ -5306,17 +5312,22 @@ export default function Home() {
     );
     const moraleOverflow = viewer?.moraleOverflow ?? 0;
     const overLimit = viewer ? handCards.length - handDiscards.length - handLimit : 0;
-    const selecting = handMode !== null || forcedDiscard || (canOpeningMulligan && handMode === "opening-mulligan");
+    const selecting =
+      handMode !== null ||
+      forcedDiscard ||
+      explorersDiscardPending ||
+      (canOpeningMulligan && handMode === "opening-mulligan");
     // Hand-step directives banner: a MANDATORY step (start-of-turn draw,
     // over-limit discard, opening Mulligan, or an open discard pick) gets the
     // prominent scroll banner; optional morale plays share the container in
     // its quiet form. Rendered OUTSIDE the one-line hand header so the fixed
     // desktop tray can anchor it above the cards — the cards used to paint
     // over the mandatory "Draw new" button there, making it unclickable.
-    const handStepMandatory = canDraw || canOpeningMulligan || selecting;
+    const handStepMandatory = canDraw || canOpeningMulligan || explorersDiscardPending || selecting;
     const handOptionalPlays =
       handMode === null &&
       !forcedDiscard &&
+      !explorersDiscardPending &&
       (hasMorale ||
         moraleRedrawCardAvailable ||
         moraleCombatPlays.length > 0 ||
@@ -5363,6 +5374,10 @@ export default function Home() {
       }
       if (mode === "opening-mulligan") {
         void submitAction({ type: "OPENING_HAND_MULLIGAN", playerId: viewerPlayerId, discardCardIds });
+        return;
+      }
+      if (explorersDiscardPending) {
+        void submitAction({ type: "RESOLVE_EXPLORERS_DISCARD", playerId: viewerPlayerId, discardCardIds });
         return;
       }
       void submitAction({ type: "REFRESH_HAND", playerId: viewerPlayerId, discardCardIds });
@@ -5949,6 +5964,8 @@ export default function Home() {
                   <strong className="handDirectivesTitle">
                     {forcedDiscard
                       ? "Over the hand limit"
+                      : explorersDiscardPending
+                        ? "Explorers — choose discards"
                       : handMode === "opening-mulligan"
                         ? "Opening Mulligan"
                         : handMode === "mulligan"
@@ -5973,7 +5990,15 @@ export default function Home() {
                     actions until the draw is taken. */}
                 {canDraw && handMode === null ? (
                   <span className="handWarning drawWarning">
-                    You must draw (or discard under-limit cards and draw) before moving or using a card.
+                    {explorersActive
+                      ? "Explorers: first draw up to your hand limit. You will then choose any number of cards to discard."
+                      : "You must draw (or discard under-limit cards and draw) before moving or using a card."}
+                  </span>
+                ) : null}
+                {explorersDiscardPending ? (
+                  <span className="handWarning drawWarning">
+                    Explorers: select any number of cards to discard, then confirm. Every 3 discarded cards lets you
+                    replace one Statistic with its Empowered version.
                   </span>
                 ) : null}
                 {canOpeningMulligan && handMode === null ? (
@@ -6011,7 +6036,7 @@ export default function Home() {
                         >
                           Draw new (up to {handLimit})
                         </button>
-                        {handCards.length > 0 && (state.round !== 1 || r1UnderLimitFill) ? (
+                        {!explorersActive && handCards.length > 0 && (state.round !== 1 || r1UnderLimitFill) ? (
                           <button className="commandButton" onClick={() => setHandMode("mulligan")} type="button">
                             {state.round === 1
                               ? "Discard bonus card(s) & draw up"
@@ -6096,6 +6121,8 @@ export default function Home() {
                         ? `Spend morale: discard ${handDiscards.length || "some"} and draw that many.`
                         : handMode === "cover-of-darkness"
                           ? `Cover of Darkness: discard ${handDiscards.length || "1 or 2"} and draw that many.`
+                        : explorersDiscardPending
+                          ? `Explorers: discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"} (you may choose 0).`
                           : handMode === "opening-mulligan"
                           ? `Discard ${handDiscards.length} card${handDiscards.length === 1 ? "" : "s"} to your deck and draw that many.`
                           : forcedDiscard
@@ -6118,13 +6145,17 @@ export default function Home() {
                         ? `Redraw ${handDiscards.length}`
                         : handMode === "cover-of-darkness"
                           ? `Discard ${handDiscards.length} & draw`
+                        : explorersDiscardPending
+                          ? handDiscards.length === 0
+                            ? "Discard none"
+                            : `Discard ${handDiscards.length}`
                           : handMode === "opening-mulligan"
                           ? handDiscards.length === 0
                             ? "Keep hand"
                             : `Discard ${handDiscards.length} & redraw`
                           : `Discard ${handDiscards.length} & draw`}
                     </button>
-                    {!forcedDiscard ? (
+                    {!forcedDiscard && !explorersDiscardPending ? (
                       <button
                         className="commandButton ghost"
                         onClick={() => {
@@ -6815,6 +6846,16 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          ) : null}
+          {isSeated && adventureMode && state.combat && state.adventure?.undoMoves ? (
+            <button
+              className="commandButton undoMove combatUndoMove"
+              onClick={() => submitAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
+              title="Testing aid: roll the game back to before your most recent action."
+              type="button"
+            >
+              ↩ Undo
+            </button>
           ) : null}
           {isSeated ? (
             <div className="tableSeatRow">

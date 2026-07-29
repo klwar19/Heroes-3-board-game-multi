@@ -313,9 +313,9 @@ describe("PvP defeat — companion Secondary leaves the contested field", () => 
 
     finalizeAdventureCombat(state);
 
-    // Secondary must no longer occupy the contested field.
+    // The companion Secondary did not fight; it leaves the captured field but remains.
     const afterSecondary = getSecondaryHero(state, "p2");
-    expect(afterSecondary, "secondary still exists (home, not removed)").toBeTruthy();
+    expect(afterSecondary, "companion secondary still exists").toBeTruthy();
     expect(afterSecondary!.spaceId, "secondary left the contested field").not.toBe(fieldId);
   });
 });

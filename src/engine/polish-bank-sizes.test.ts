@@ -270,9 +270,9 @@ describe("Polish bank size combat and AI", () => {
     });
 
     // Every (bank, size) pair: EXACTLY `size` of the defenders carry a standard
-    // Stack Token, guaranteed — no ~77% roll, no bespoke coin layer. Across all
+    // Stack Token, guaranteed — no BINH 80% roll, no bespoke coin layer. Across all
     // 12 banks × 4 sizes that is ~120 placements; if the guarantee were reverted
-    // to the difficulty 77% roll at least one would drop and the exact-count
+    // to the BINH 80% roll at least one would drop and the exact-count
     // assertion would fail (mutation control for the guaranteed placement).
     for (const bankId of Object.keys(CREATURE_BANKS) as CreatureBankId[]) {
       for (const size of [1, 2, 3, 4] as const) {
@@ -360,23 +360,19 @@ describe("Polish bank size combat and AI", () => {
     ).toBe(true);
   });
 
-  it("CONTROL: rule off rolls the count off Scenario Difficulty at ~77% (not the size)", () => {
+  it("CONTROL: Polish sizing off uses the official fixed Scenario Difficulty count", () => {
     const state = createAdventureGameState({
       seed: "bank-size-standard-control",
       difficulty: "impossible",
       rollFirstPlayer: false,
       houseRules: { "polish-bank-sizes": false },
     });
-    // Rule OFF: the count comes from the difficulty (impossible = up to 4 rolls)
-    // and each candidate lands only ~77% of the time, so across all banks at
-    // least one comes up with FEWER than 4 Stacked. If the guaranteed placement
-    // were (wrongly) applied with the rule off, every bank would show 4 and this
-    // control would fail.
+    // Rule OFF: the count comes from Scenario Difficulty, not a Polish size.
+    // Impossible officially places all 4 Stack Tokens.
     const counts = (Object.keys(CREATURE_BANKS) as CreatureBankId[]).map(
       (bankId) => buildCreatureBankCombatUnits(state, bankId).stackedCount,
     );
-    expect(counts.every((count) => count >= 0 && count <= 4)).toBe(true);
-    expect(counts.some((count) => count < 4)).toBe(true);
+    expect(counts.every((count) => count === 4)).toBe(true);
   });
 
   it("AI prefers the larger beatable candidate and the easier one when both are dangerous", () => {

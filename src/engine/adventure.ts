@@ -18,8 +18,8 @@ import { hasInternalBorder } from "@/data/map/borders";
 import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
+  BINH_STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKEN_STATS,
-  STACK_TOKEN_PLACEMENT_PERCENT,
   STACK_TOKENS_BY_DIFFICULTY,
   rollStackTokenStat,
   stackTokenDelta,
@@ -113,6 +113,11 @@ import {
   polishStackTier,
   polishUnitStackCap
 } from "./polish-unit-stacks";
+import {
+  polishQuickCombatArmyStrength,
+  polishQuickCombatEnabled,
+  polishQuickCombatFieldStrength
+} from "./polish-quick-combat";
 import {
   CAST_A_SPELL_CARD_ID,
   eventZoneMatches,
@@ -2114,11 +2119,44 @@ export function heroMoveStartsBattle(state: GameState, heroId: HeroId, to: MapSp
     }
   }
 
-  if (field && isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+  if (
+    field &&
+    isFieldGuarded(field) &&
+    field.flagOwnerId !== hero.controllerId &&
+    !heroMoveResolvesAsQuickCombat(state, hero, field)
+  ) {
     return true;
   }
 
   return false;
+}
+
+/**
+ * Whether an ordinary guarded-field arrival is eligible for Quick Combat
+ * before a battlefield opens. The pre-battle troop warning uses this distinction:
+ * an automatic/available Quick Combat is not the full fight that warning describes.
+ */
+function heroMoveResolvesAsQuickCombat(state: GameState, hero: HeroState, field: MapFieldState): boolean {
+  const difficulty = field.difficulty ?? 1;
+  if (
+    fieldCreatureBankId(field) ||
+    isBankStyleGuardLocation(field.location) ||
+    isTeleportObjectGuardLocation(field.location) ||
+    Boolean(field.customGuardUnits?.length) ||
+    Boolean(field.unlimitedCombatRounds)
+  ) {
+    return false;
+  }
+
+  const level = neutralBattleLevel(state, hero);
+  if (polishQuickCombatEnabled(state)) {
+    return (
+      level !== difficulty &&
+      polishQuickCombatArmyStrength(state, hero.controllerId) >=
+        polishQuickCombatFieldStrength(state, difficulty)
+    );
+  }
+  return level > difficulty;
 }
 
 export type HeroPathTarget = { spaceId: MapSpaceId; path: MapSpaceId[]; cost: number };
@@ -13059,10 +13097,10 @@ export function polishBankSizeForAttackRolls(rolls: readonly number[]): BankSize
  * random stat bonus (+1 Attack/Defense/Health or +2 Initiative) and absorbs one
  * lethal blow by discarding the token.
  *
- * The NUMBER of Stacked defenders is normally rolled from the Scenario
- * Difficulty (easy 1 / normal 2 / hard 3 / impossible 4), each candidate landing
- * a token only STACK_TOKEN_PLACEMENT_PERCENT% of the time, so the count varies
- * run to run. The Polish Bank Sizes house rule instead makes that count
+ * The NUMBER of Stacked defenders is fixed by Scenario Difficulty (easy 1 /
+ * normal 2 / hard 3 / impossible 4), matching the official rule. The optional
+ * BINH `bank-stack-chance-80` house rule makes each candidate land only 80% of
+ * the time. The Polish Bank Sizes house rule instead makes that count
  * DETERMINISTIC: the rolled size IS the number of Stacked defenders (size N = N
  * of the bank's cards each carry a Stack Token, guaranteed). Everything else —
  * the token stat, the lethal-blow absorb, the win reward scaled by X = the
@@ -13082,9 +13120,10 @@ export function buildCreatureBankCombatUnits(
   });
 
   // Polish Bank Sizes: the rolled size (a stored `field.bankSize`) is the
-  // GUARANTEED number of Stacked defenders. Otherwise the Scenario Difficulty
-  // rolls the count and each candidate lands its token only ~77% of the time.
+  // GUARANTEED number of Stacked defenders. Otherwise Scenario Difficulty gives
+  // the official guaranteed count unless the BINH 80%-chance toggle is on.
   const polishSized = houseRuleEnabled(state, "polish-bank-sizes") && bankSize !== undefined;
+  const binhPlacementChance = !polishSized && houseRuleEnabled(state, "bank-stack-chance-80");
   const difficulty = state.adventure?.difficulty ?? "normal";
   // The count caps how many DISTINCT defenders are candidates for a token.
   const tokenRolls = Math.min(bankSize ?? STACK_TOKENS_BY_DIFFICULTY[difficulty], units.length, 4);
@@ -13098,10 +13137,9 @@ export function buildCreatureBankCombatUnits(
   }
   let stackedCount = 0;
   for (let i = 0; i < tokenRolls; i += 1) {
-    // Standard rule: the token lands only STACK_TOKEN_PLACEMENT_PERCENT% of the
-    // time. Polish Bank Sizes places EVERY one of `size` tokens (size = the
-    // Stacked count) — no 77% roll — so the coin is deterministic.
-    if (!polishSized && random.nextInt(1, 100) > STACK_TOKEN_PLACEMENT_PERCENT) {
+    // Official and Polish-sized paths place every token. Only the explicit
+    // BINH house rule rolls the 80% placement chance.
+    if (binhPlacementChance && random.nextInt(1, 100) > BINH_STACK_TOKEN_PLACEMENT_PERCENT) {
       continue;
     }
     const unit = units[order[i]];
@@ -15410,6 +15448,7 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   player.canMulligan = false;
   player.needsHandRefresh = false;
   player.canOpeningMulligan = false;
+  player.explorersDiscardPending = false;
   // Army map abilities reset for the new turn (Nomads' step, Rogues' scout, Satyrs' roll).
   player.nomadStepDoneThisTurn = false;
   player.rogueScoutUsedThisTurn = false;
@@ -15525,6 +15564,7 @@ export function finalizeStartOfTurnHand(state: GameState, playerId: PlayerId): v
   }
   player.canMulligan = true;
   player.needsHandRefresh = player.hand.length > effectiveHandLimit(state, playerId);
+  player.explorersDiscardPending = false;
   // Opening Mulligan arms only AFTER fill-to-limit (refreshHand). Never here.
   player.canOpeningMulligan = false;
   // Legacy one-at-a-time MULLIGAN_CARD budget stays 0 (OPENING_HAND_MULLIGAN

@@ -425,10 +425,9 @@ export const astrologersCardDefinitions: Record<string, AstrologersCardDefinitio
   "astrologers.explorers": {
     id: "astrologers.explorers",
     name: "Explorers",
-    // engine: "do not draw at start of turn; instead draw up to your hand limit,
-    // then discard any number" is already the standard start-of-turn hand refresh
-    // (the engine never auto-draws). The wired effect is the per-3-discarded
-    // empower, resolved in refreshHand.
+    // engine: REFRESH_HAND draws to the limit first, then arms the mandatory
+    // RESOLVE_EXPLORERS_DISCARD picker. That second action discards without
+    // replacement draws and queues one empower per 3 cards.
     text: "During this round, players do not draw cards at the start of their turn; instead each player draws up to their hand limit, then may discard any number of cards. For every 3 cards discarded this way, they may Remove a Statistic card and replace it with an Empowered Statistic card of the same type.",
     ongoing: true,
     effect: { type: "EMPOWER_PER_DISCARD", per: 3 },

@@ -114,6 +114,7 @@ function foundationScore(action: GameAction): {
     case "END_COMBAT_ROUND":
       return { score: 890, policy: "mandatory.finish-combat-round" };
     case "REFRESH_HAND":
+    case "RESOLVE_EXPLORERS_DISCARD":
       return { score: 850, policy: "mandatory.start-turn" };
     case "ATTACK_UNIT":
     case "MOVE_AND_ATTACK_UNIT":

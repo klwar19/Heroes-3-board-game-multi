@@ -110,7 +110,8 @@ export function bankUnitStrength(unitDefId: string): number {
  * Estimated defender strength for a known bank token. Stack Tokens inflate the
  * base conservatively so Easy is easier than Impossible. A numeric Polish size
  * is the GUARANTEED number of Stacked defenders (size N → N tokens); a
- * difficulty is the random ~77%-per-roll count. Either way a Stack Token is a
+ * difficulty is the official guaranteed count. The optional BINH 80% rule is
+ * conservatively evaluated at that same maximum. Either way a Stack Token is a
  * mild bulk/soak bonus, not a full extra unit — calibrated so a full starting
  * army (~45) clears Imp Cache on Normal but refuses Dragon Utopia and refuses
  * when gutted to one card.
@@ -128,7 +129,7 @@ export function creatureBankStrength(
   const expectedStacks =
     typeof difficultyOrSize === "number"
       ? difficultyOrSize
-      : (STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2) * 0.77;
+      : (STACK_TOKENS_BY_DIFFICULTY[difficultyOrSize] ?? 2);
   return Math.round(base * (1 + expectedStacks * 0.1));
 }
 

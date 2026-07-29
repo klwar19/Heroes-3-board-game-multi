@@ -72,6 +72,10 @@ export type HouseRuleId =
   // point-to-extend rule, like an ordinary neutral fight. Off: a bank has no
   // Round limit (rulebook) and rolls straight into the next round.
   | "bank-move-points"
+  // BINH house rule: each of the difficulty's Creature-Bank Stack Tokens lands
+  // only 80% of the time. Off (official): every token is placed, so the fixed
+  // count is Easy 1 / Normal 2 / Hard 3 / Impossible 4.
+  | "bank-stack-chance-80"
   // The 5-gold penalty for losing a hero combat is paid in full even into debt
   // (gold may go below zero). Off: the loss is capped so gold never goes negative
   // (the normal rule).
@@ -2835,7 +2839,7 @@ export type WarMachineRoundStartDefinition =
       amount: number;
     }
   | {
-      /** Cannon: optionally spend 1 expert use to damage one enemy unit. */
+      /** Cannon: spend 1 expert use to hit an enemy unit or enemy fortification. */
       kind: "expert-shot";
       amount: number;
     };
@@ -3575,6 +3579,17 @@ export type GameAction =
        * discard the listed cards, then draw that many back up to the limit.
        */
       type: "REFRESH_HAND";
+      playerId: PlayerId;
+      discardCardIds: CardId[];
+    }
+  | {
+      /**
+       * Explorers (Astrologers Proclaim): resolve the distinct post-draw
+       * "discard any number" step. Unlike REFRESH_HAND this never draws
+       * replacement cards; every three discarded cards grant one optional
+       * Statistic-to-Empowered-Statistic exchange.
+       */
+      type: "RESOLVE_EXPLORERS_DISCARD";
       playerId: PlayerId;
       discardCardIds: CardId[];
     }
@@ -7273,6 +7288,12 @@ export type PlayerState = {
    */
   canMulligan?: boolean;
   /**
+   * Explorers (Astrologers Proclaim): after drawing up to the hand limit, this
+   * player must explicitly choose any number of cards to discard (including
+   * zero). Every three chosen cards queue one optional Statistic empower.
+   */
+  explorersDiscardPending?: boolean;
+  /**
    * First-round opening-hand Mulligan (OPTIONAL, `GameSetupOptions
    * .startingHandMulligan`, default ON): after the mandatory start-of-turn
    * fill-to-limit, the player may discard 0–N cards to the deck bottom and draw
@@ -10678,6 +10699,11 @@ export type AdventureState = {
    */
   farTileBlindChoice?: boolean;
   /**
+   * Settlement rerolls for Ⅱ–Ⅲ tiles (default ON). When false, the second Far
+   * tile is accepted as drawn even if the player has not opened a Settlement.
+   */
+  farTileSettlementReroll?: boolean;
+  /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
    */
@@ -11303,6 +11329,11 @@ export type GameSetupOptions = {
    * `adventure.farTileBlindChoice` at setup.
    */
   farTileBlindChoice?: boolean;
+  /**
+   * Whether the second Ⅱ–Ⅲ tile may be rerolled to secure a Settlement.
+   * Defaults ON; maps that require exact tile identities may turn it OFF.
+   */
+  farTileSettlementReroll?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -11395,6 +11426,8 @@ export type CustomMapPreset = {
   difficulty?: GameDifficulty;
   farTileOpening?: boolean;
   farTilesPerPlayer?: number;
+  /** Map-authored default for the second-tile Settlement reroll rule. */
+  farTileSettlementReroll?: boolean;
   /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
    * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER

@@ -3062,9 +3062,11 @@ is NOT done:
   defenders — otherwise the bank is a NORMAL Creature Bank. The **size is the
   GUARANTEED count of Stacked defenders**: size N places a standard random-stat
   Stack Token (+1 Attack/Defense/Health or +2 Initiative, absorbing one lethal
-  blow — rulebook p.67) on exactly N of the bank's four guards, where the normal
-  rule instead rolls the count off Scenario Difficulty and lands each candidate
-  only ~77% of the time. There is NO size clamp (every bank can roll Ⅳ = all
+  blow — rulebook p.67) on exactly N of the bank's four guards. The normal
+  official rule instead guarantees the Scenario Difficulty count (Easy 1 /
+  Normal 2 / Hard 3 / Impossible 4); the optional BINH
+  `bank-stack-chance-80` toggle rolls each candidate at 80%. There is NO size
+  clamp (every bank can roll Ⅳ = all
   four Stacked) and NO bespoke coin-layer system. **Win rewards are the NORMAL
   bank reward** (`bank.buildReward(X)` with X = the Stacked count = size): the
   same per-bank payout the rulebook scales by X — size Ⅳ simply means all four
@@ -3078,8 +3080,8 @@ is NOT done:
   both rules on. The size marker's coin is coloured
   by size (Ⅰ black / Ⅱ brown / Ⅲ silver / Ⅳ gold, the v1.2 sheet colours) and
   shows the size number; each Stacked defender shows the normal stat Stack Token
-  badge. Covered by `polish-bank-sizes.test.ts` (guaranteed-count with a rule-off
-  ~77% CONTROL, no-clamp, normal-token absorb, and normal-reward routing, each
+  badge. Covered by `polish-bank-sizes.test.ts` (guaranteed-count with an
+  official difficulty-count CONTROL, no-clamp, normal-token absorb, and normal-reward routing, each
   mutation-checked), the bank combat/ability controls, and the bank DOM cases in
   `creature-bank-board.test.tsx` / `board.test.tsx`.
 - The 12 banks' defenders, bank-card stats (their OWN stats, no tier — distinct
@@ -3199,16 +3201,15 @@ is NOT done:
   a graded CONTROL), `creature-bank-combat.test.ts` ("a win gains the unit AND
   an Ability Empower token") and `designer-field-rewards.test.ts` (the designer
   grant with a bank-rule-OFF CONTROL).
-- Stack Tokens: the Scenario Difficulty (Easy 1 / Normal 2 / Hard 3 /
-  Impossible 4) sets the number of token ROLLS, NOT a guaranteed count. Each roll
-  targets a distinct candidate card and lands only `STACK_TOKEN_PLACEMENT_PERCENT`
-  (77)% of the time, so the Stacked count varies run-to-run — even Impossible can
-  come up anywhere from 0 to 4 Stacked defenders (HOUSE RULE; the rulebook places
-  a fixed count). A landed token gives +1 attack/defense/health or +2 initiative;
+- Stack Tokens: the official rule guarantees the Scenario Difficulty count
+  (Easy 1 / Normal 2 / Hard 3 / Impossible 4), each on a distinct defender.
+  `bank-stack-chance-80` is an optional BINH combat house rule (default OFF in
+  BINH and Legacy): with it ON, each of those tokens lands at 80%, so the count
+  may be lower. A landed token gives +1 attack/defense/health or +2 initiative;
   a Stacked defender absorbs one lethal blow by discarding its token and carrying
   the leftover damage (`markUnitRemovedIfNeeded`). The board shows a gold badge
-  naming each token's stat. Tested in `creature-bank-combat.test.ts` ("never
-  Stacks more than the difficulty allows" and "rolls each token at ~77%").
+  naming each token's stat. Tested in `creature-bank-combat.test.ts` (official
+  exact count plus the opt-in 80% distribution CONTROL).
 - Bank combat: no Quick Combat, no experience; win marks a Black Cube and grants
   the reward. HOUSE RULE (overrides the rulebook): a bank DOES obey the one-Round
   time limit and the spend-1-MP-to-extend rule, exactly like a normal neutral

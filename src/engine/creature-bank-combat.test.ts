@@ -454,34 +454,37 @@ describe("Creature Bank defenders", () => {
     }
   });
 
-  it("never Stacks more defenders than the difficulty allows, each on a different card", () => {
-    // The difficulty count is the number of token ROLLS (the cap), not a fixed
-    // number of Stacked defenders — each roll only lands 77% of the time.
+  it("official rule always Stacks exactly the difficulty count, each on a different card", () => {
+    // The official difficulty count is fixed and every token lands.
     for (const difficulty of ["easy", "normal", "hard", "impossible"] as GameDifficulty[]) {
-      const cap = STACK_TOKENS_BY_DIFFICULTY[difficulty];
+      const expected = STACK_TOKENS_BY_DIFFICULTY[difficulty];
       for (let trial = 0; trial < 50; trial += 1) {
         const state = createAdventureGameState({ seed: `bank-${difficulty}-${trial}`, difficulty, rollFirstPlayer: false });
         const { units, stackedCount } = buildCreatureBankCombatUnits(state, "crypt");
-        expect(stackedCount).toBeGreaterThanOrEqual(0);
-        expect(stackedCount).toBeLessThanOrEqual(cap);
+        expect(stackedCount).toBe(expected);
 
         const stacked = units.filter((unit) => unit.stackToken);
-        expect(stacked).toHaveLength(stackedCount);
+        expect(stacked).toHaveLength(expected);
         // Whatever lands, the tokens always sit on distinct cards.
-        expect(new Set(stacked.map((unit) => unit.id)).size).toBe(stackedCount);
+        expect(new Set(stacked.map((unit) => unit.id)).size).toBe(expected);
       }
     }
   });
 
-  it("rolls each token at ~77%, so even Impossible can Stack anywhere from 0 to 4 defenders", () => {
+  it("BINH house rule rolls each token at ~80%, so Impossible can have fewer than four", () => {
     // Run a wide sample at Impossible (4 rolls). A fixed-count implementation
     // would always return 4; the probabilistic one spreads across 0..4 and
-    // averages near 4 * 0.77 = 3.08.
+    // averages near 4 * 0.80 = 3.2.
     const TRIALS = 600;
     const counts = [0, 0, 0, 0, 0];
     let total = 0;
     for (let trial = 0; trial < TRIALS; trial += 1) {
-      const state = createAdventureGameState({ seed: `bank-spread-${trial}`, difficulty: "impossible", rollFirstPlayer: false });
+      const state = createAdventureGameState({
+        seed: `bank-spread-${trial}`,
+        difficulty: "impossible",
+        rollFirstPlayer: false,
+        houseRules: { "bank-stack-chance-80": true }
+      });
       const { stackedCount } = buildCreatureBankCombatUnits(state, "crypt");
       counts[stackedCount] += 1;
       total += stackedCount;
@@ -492,10 +495,10 @@ describe("Creature Bank defenders", () => {
     expect(counts[0]).toBeGreaterThan(0);
     // And it is NOT pinned to the maximum: plenty of partial outcomes appear.
     expect(counts[4]).toBeLessThan(TRIALS);
-    // Empirical landing rate clusters around 77% per roll (4 rolls → ~3.08 mean).
+    // Empirical landing rate clusters around 80% per roll.
     const meanPerRoll = total / TRIALS / 4;
-    expect(meanPerRoll).toBeGreaterThan(0.70);
-    expect(meanPerRoll).toBeLessThan(0.84);
+    expect(meanPerRoll).toBeGreaterThan(0.74);
+    expect(meanPerRoll).toBeLessThan(0.86);
   });
 
   it("bakes the Stack Token bonus into the right statistic (+1 stat, +2 initiative)", () => {
@@ -786,13 +789,13 @@ describe("Creature Bank combat lifecycle", () => {
     expect(place, "a unit must be placeable").toBeTruthy();
     state = apply(state, place!.action);
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
-    expect(state.phase).toBe("combat");
+    // The guaranteed Stack token changes the deterministic opening and may
+    // immediately open a neutral target/ability choice; either is a live fight.
+    expect(["combat", "choice"]).toContain(state.phase);
 
-    // X (the reward multiplier) is the number of Stacked defenders, now rolled
-    // per candidate, so it lands in 0..2 on Normal (2 token rolls).
+    // X (the reward multiplier) is the official fixed Normal count: 2.
     const stacked = state.combat?.context.kind === "neutral" ? (state.combat.context.bankStackCount ?? 0) : 0;
-    expect(stacked).toBeGreaterThanOrEqual(0);
-    expect(stacked).toBeLessThanOrEqual(STACK_TOKENS_BY_DIFFICULTY.normal);
+    expect(stacked).toBe(STACK_TOKENS_BY_DIFFICULTY.normal);
 
     const goldBefore = state.players.p1.resources.gold;
 
@@ -879,7 +882,9 @@ describe("Creature Bank combat lifecycle", () => {
     const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
     state = apply(state, place!.action);
     state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
-    expect(state.phase).toBe("combat");
+    // Guaranteed Stack placement changes the deterministic opening and can
+    // immediately open a neutral target/ability choice; either is a live fight.
+    expect(["combat", "choice"]).toContain(state.phase);
 
     // Nobody can deal damage, so no side is ever destroyed.
     state.combat!.dice.scriptedRolls = Array(120).fill(-1);
