@@ -253,4 +253,33 @@ describe("settlement re-visit and capture (real visit flow)", () => {
     const step = state.adventure!.pendingVisit?.steps[0] as Extract<VisitStep, { type: "SETTLEMENT_CHOICE" }> | undefined;
     expect(step?.type).toBe("SETTLEMENT_CHOICE");
   });
+
+  // RESOLVE_VISIT_STEP is handler-validated, so a forged optionIndex reaches the
+  // resolver unchecked. A negative one used to slip through the `<= 2` resource
+  // branch: it flagged the settlement for free and wrote a NaN entry into the
+  // production record (`production["undefined"]`).
+  it("rejects a forged out-of-range resource index instead of flagging for free", () => {
+    const state = makeGame();
+    const field = injectSettlement(state, null, false);
+    openSettlementChoice(state, "p1", field);
+    const productionBefore = { ...state.players.p1.production };
+
+    expect(() =>
+      resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: -1 })
+    ).toThrow(/production track/i);
+
+    expect(field.flagOwnerId, "the settlement is NOT flagged").toBeNull();
+    expect(field.settlementResource).toBeNull();
+    expect(state.players.p1.production).toEqual(productionBefore);
+    expect(
+      Object.values(state.players.p1.production).some((amount) => Number.isNaN(amount)),
+      "no NaN leaked into the production record"
+    ).toBe(false);
+    expect(Object.keys(state.players.p1.production)).toEqual(Object.keys(productionBefore));
+
+    // CONTROL: the real offer (index 0) still resolves and pays the gold level.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(field.flagOwnerId).toBe("p1");
+    expect(state.players.p1.production.gold).toBe(productionBefore.gold + 5);
+  });
 });

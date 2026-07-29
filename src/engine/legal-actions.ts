@@ -8764,8 +8764,17 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   // "During your turn" buildings, each once per round. Their uses open choices
-  // of their own, so parallel turns take them one at a time.
-  if (hasOpenAdventureTurn(state, playerId) && !parallelInteractionBlocker(state, playerId)) {
+  // of their own, so parallel turns take them one at a time. `activateTownBuilding`
+  // refuses EVERY one of them while a combat is open ("Town actions cannot
+  // interrupt a combat.") — including the PvP prep window addTownActions runs in
+  // — so the whole block is gated on `!state.combat` like the Thieves' Guild
+  // below. Without it the prep window offered Cover of Darkness / Castle Gate
+  // buttons the reducer then rejected (dead offers).
+  if (
+    !state.combat &&
+    hasOpenAdventureTurn(state, playerId) &&
+    !parallelInteractionBlocker(state, playerId)
+  ) {
     for (const buildingId of town.buildings) {
       const building = coreBuildingDefinitions[buildingId];
       if (!building || (player.buildingUsedRound?.[buildingId] ?? 0) === state.round) {
@@ -8849,7 +8858,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   // the Population Token (the same token that recruits/reinforces units), so it is
   // only offered while that token is still available this round — and taking it
   // hides the recruit/reinforce offers (which are likewise gated on the token).
+  // `hireSecondaryHero` also throws "Town actions cannot interrupt a combat.",
+  // so the offer is withheld while one is open (the PvP prep window included)
+  // instead of listing six hires the reducer would reject.
   if (
+    !state.combat &&
     !houseRuleEnabled(state, "no-secondary-heroes") &&
     !getSecondaryHero(state, playerId) &&
     player.townTokens.population &&

@@ -4102,7 +4102,15 @@ function resolveSettlementChoice(
     // Choose or replace the resource income. applySettlementResource removes
     // the former owner's old level, records the new token, and pays the stockpile
     // bonus only on the settlement's first-ever flag.
-    applySettlementResource(state, action.playerId, field, resourceByIndex[action.optionIndex]);
+    // RESOLVE_VISIT_STEP is handler-validated, so the index is not pre-checked
+    // against the offer list: reject anything outside 0-2 (the sibling
+    // resolveResourceGainLevel does the same). Without this a forged negative
+    // index flagged the settlement for free and wrote a NaN production entry.
+    const resource = resourceByIndex[action.optionIndex];
+    if (!resource) {
+      throw new Error("Choose which production track this settlement raises.");
+    }
+    applySettlementResource(state, action.playerId, field, resource);
     return;
   }
 

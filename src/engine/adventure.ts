@@ -1583,13 +1583,13 @@ export function canCrossEdge(
     return true;
   }
 
-  // Creature Banks draw no borders (same open-edge reading as discovery): a hero
-  // may walk ONTO a bank from an adjacent Tile and walk OFF it afterward. A
-  // guarded bank still forces a stop via classifyHeroStep, so it is never a
-  // free pass-through bridge across a Tile edge mid-path.
+  // A map object CARVED OVER a Blocked Field draws no borders (same open-edge
+  // reading as discovery): a hero may walk ONTO it from an adjacent Tile and walk
+  // OFF it afterward. A guarded one still forces a stop via classifyHeroStep, so
+  // it is never a free pass-through bridge across a Tile edge mid-path.
   const fromSealed =
-    fromField.location !== "creature_bank" && isOuterEdgeSealed(adventure, fromField);
-  const toSealed = toField.location !== "creature_bank" && isOuterEdgeSealed(adventure, toField);
+    !isBlockedFieldCarve(fromField) && isOuterEdgeSealed(adventure, fromField);
+  const toSealed = !isBlockedFieldCarve(toField) && isOuterEdgeSealed(adventure, toField);
   return !fromSealed && !toSealed;
 }
 
@@ -1804,21 +1804,46 @@ export function isOuterEdgeSealed(adventure: AdventureState, field: MapFieldStat
 }
 
 /**
+ * Map-object locations CARVED OVER a printed Blocked Field. Each carve already
+ * clears the FIELD-level blockers (water terrain, designer `borderEdges`) so the
+ * hex is really walkable — but the printed ring and the slot's `outerImpassable`
+ * arc live on the TILE DEFINITION, and on every non-starting tile all 81 sealed
+ * arcs sit exactly on a blocked slot. So each of these MUST share the Creature
+ * Bank's open-edge reading or it is sealed off from the neighbouring Tile and
+ * drawn fully ringed (the "the Dungeon Gate has borders all around it, can't
+ * access" report). ONE list, read by `canCrossEdge`,
+ * {@link heroFieldSealedForDiscovery} and the board's border builder, so a
+ * future carve cannot fix one surface and forget the others.
+ */
+export const BLOCKED_FIELD_CARVE_LOCATIONS: readonly string[] = [
+  "creature_bank",
+  // Monster Waves §6.6 — placeCalamityGate takes the first Far Blocked Field.
+  "calamity_gate",
+  // The Dungeon §6.7.3 — placeDungeonSite takes the first Near Blocked Field.
+  "dungeon_gate"
+];
+
+/** Whether this field's location replaced a printed Blocked Field (see the list). */
+export function isBlockedFieldCarve(field: Pick<MapFieldState, "location">): boolean {
+  return BLOCKED_FIELD_CARVE_LOCATIONS.includes(field.location);
+}
+
+/**
  * Whether a hero STANDING on `field` is walled off by a printed yellow border
  * from ordinarily DISCOVERING a Tile across its outer edge.
  *
- * This is {@link isOuterEdgeSealed} with one exception: a Creature Bank draws NO
- * border (it "reads as fully open" — see `getTileBorderSegments`), so a hero
- * standing on a bank faces OPEN outer edges and may flip an adjacent face-down
- * Tile — even though the Blocked Field the bank replaced kept its slot's sealed
- * arc in the tile definition. Discovery only reveals the Tile; moving OUT of a
- * bank across a Tile edge is a separate question still governed by the bank's own
- * rule in {@link canCrossEdge}. Keeping `isOuterEdgeSealed` untouched preserves
- * its slot-primitive invariant; only the hero-vantage discovery gate takes this
- * bank exception.
+ * This is {@link isOuterEdgeSealed} with one exception: a field carved over a
+ * Blocked Field draws NO border (it "reads as fully open" — see
+ * `getTileBorderSegments`), so a hero standing on a Creature Bank / Calamity Gate
+ * / Dungeon Gate faces OPEN outer edges and may flip an adjacent face-down Tile —
+ * even though the Blocked Field it replaced kept its slot's sealed arc in the tile
+ * definition. Discovery only reveals the Tile; moving OUT across a Tile edge is a
+ * separate question governed by the same exception in {@link canCrossEdge}.
+ * Keeping `isOuterEdgeSealed` untouched preserves its slot-primitive invariant;
+ * only the hero-vantage reads take the exception.
  */
 export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
-  return field.location !== "creature_bank" && isOuterEdgeSealed(adventure, field);
+  return !isBlockedFieldCarve(field) && isOuterEdgeSealed(adventure, field);
 }
 
 /**

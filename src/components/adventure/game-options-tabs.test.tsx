@@ -268,6 +268,32 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("wires the opt-in No-Secondary-Heroes global rule (OFF by default) through the Global panel", () => {
+    const onAction = openOptions();
+    expandGlobalMapRules();
+    const toggle = screen.getByRole("button", { name: /No Secondary Heroes/i });
+    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "no-secondary-heroes": true } }
+    });
+  });
+
+  it("wires the opt-in free Neutral-battle-extension global rule (OFF by default) through the Global panel", () => {
+    const onAction = openOptions();
+    expandGlobalMapRules();
+    const toggle = screen.getByRole("button", { name: /Neutral battles extend for free/i });
+    expect(toggle.getAttribute("aria-pressed"), "an opt-in rule is OFF by default").toBe("false");
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "free-neutral-combat-extend": true } }
+    });
+  });
+
   it("wires the opt-in Mine-army-defense global rule (OFF by default) through the Global panel", () => {
     const onAction = openOptions();
     expandGlobalMapRules();

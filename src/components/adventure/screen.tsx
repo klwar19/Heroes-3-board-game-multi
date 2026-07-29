@@ -67,6 +67,7 @@ import {
   gatePairColor,
   describeFieldReward,
   designedGuardPreview,
+  isBlockedFieldCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
   hexDistance,
@@ -1602,6 +1603,14 @@ export function HexMapBoard({
       const location = adventure.fields[`h:${coord.row}:${coord.col}`]?.location;
       if (location === "creature_bank") {
         bankSlots.add(slot);
+      }
+      // The other Blocked-Field carves (Calamity Gate, Dungeon Gate) have no
+      // border toggle of their own: they are ALWAYS border-free, matching the
+      // open-edge movement/discovery exception they share with the bank
+      // (BLOCKED_FIELD_CARVE_LOCATIONS). Without this the printed ring stayed on
+      // the hex and the Gate read as impassable.
+      if (location && location !== "creature_bank" && isBlockedFieldCarve({ location })) {
+        borderlessOverrideSlots.add(slot);
       }
       if (location && fieldOverridePresentation(location)) {
         borderlessOverrideSlots.add(slot);

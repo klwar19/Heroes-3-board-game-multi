@@ -2569,6 +2569,126 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   not see it); and the combat board/inspector print live Attack/Defense/
   Initiative totals that fold combat tokens in beside lasting buffs.
 
+## Settlement capture choices · two Necromancy copies · timed reward choices (2026-07-28)
+
+Two commits' worth of rules work plus its audit. Leading with what does NOT work
+/ the deliberate limits:
+
+- **The `borderlessSlots` guard does nothing for a REGISTRY Field Override** —
+  its real customer is the PvE Gates below. Both override legality reads
+  (`fieldOverrideMayCoverFieldDef` / `fieldOverrideMayCoverField`) refuse a
+  `blocked` location, and on EVERY non-starting tile all 81 `outerImpassable`
+  arcs sit on a `blocked_field` (probed). Starting tiles do print arcs on
+  ordinary fields (S4 slot 6) but no override kind lists the `starting` group.
+  So a WOG/anime override hex has no printed border to hide, and
+  `anime-starting-tiles.test.ts`'s "a Field Override removes its printed ring"
+  drives `getTileBorderSegments` directly, not a board.
+- **A hero STANDING on a Blocked-Field carve still cannot open/place a NEW tile
+  from there** (`canHeroReachPlacementCenter`, adventure.ts — two
+  `isOuterEdgeSealed(adventure, heroField)` reads). That is the Creature Bank's
+  long-standing scope, deliberately unchanged: the carve exception covers
+  CROSSING and DISCOVERY only, so `isOuterEdgeSealed` keeps its slot-primitive
+  invariant. The second read is additionally behind the non-default
+  `discovery-border-gate` house rule.
+- **A SUBTERRANEAN GATE carved onto a Blocked Field keeps the same wart, on
+  purpose.** `gateMayCoverField` (adventure.ts) does not exclude `blocked_field`,
+  so when the ring hex nearest the partner tile happens to be the blocked one the
+  gate lands there and is drawn ringed + sealed against its own layer's
+  neighbouring tile (it stays reachable from INSIDE its tile and across the
+  linked pair, which is what the module needs). It is NOT in
+  `BLOCKED_FIELD_CARVE_LOCATIONS`: dropping only its ring would advertise an edge
+  movement still refuses, and opening the edge is a movement change to a
+  heavily-tested subsystem nobody reported. Fix it as its own task (prefer a
+  non-blocked candidate hex, or take the full carve exception) — not silently.
+- **`free-neutral-combat-extend` removes the ONLY bound on a fought neutral
+  combat's length** (movement was that bound). A computer fighter in a
+  mutual-zero-damage stalemate keeps continuing until the runner's 256-step cap
+  logs a stall. Opt-in, default OFF, so no default table can reach it.
+- **A settlement conqueror who picks "reinforce" (or a Stack) DESTROYS the
+  resource token**: `removeSettlementProduction` strips the old owner's level and
+  clears `field.settlementResource`, and the reinforce arm never sets a new one —
+  so that settlement pays income to nobody until it changes hands again (its own
+  owner cannot re-open the choice; `beginFieldVisit` guards a re-visit).
+- **The two-copy Necromancy rule is the AMPLIFIER ONLY.** A plain Ability-deck
+  Search still refuses a duplicate (`canAcquireSharedDeckCard` is unchanged), so
+  a Necropolis hero holding one copy can take the second from the building and
+  from nowhere else. The resolution-level cap check returns SILENTLY (no feed
+  line) — reachable only if a copy arrives between the prompt and the answer.
+- **The Cover of Darkness hand-rail button is client wiring with no unit test**
+  (page.tsx precedent): the engine action, its once-per-round gate and the 1–2
+  card cycle are pinned in `cover-of-darkness.test.ts`; the button, its 2-card
+  selection cap and its confirm path are not.
+
+What runs (each engine claim has a failing-if-removed test):
+- **Two new "Global" house rules**, default OFF in BOTH binh and legacy
+  (`house-rules.ts`, lobby rows pinned in `game-options-tabs.test.tsx`):
+  `no-secondary-heroes` (Prison pays its printed 3-gold fallback, the Tavern
+  offers only Decline, the 10-gold town hire is withheld, and every creation
+  seam — `CREATE_SECONDARY_HERO` + `hireSecondaryHero` — refuses;
+  `secondary-heroes.test.ts`) and `free-neutral-combat-extend` (the
+  continue-or-retreat window costs no movement point;
+  `neutral-combat-movement-extend.test.ts`). A designed map may SEED both from
+  `CustomMapPreset.houseRules` — soft defaults, apply-once, host-editable, with
+  the usual revert symmetry (`custom-setup.test.ts`, `map-preset-editor.test.tsx`).
+- **Capturing a founded settlement now opens the full SETTLEMENT_CHOICE** instead
+  of auto-inheriting the founder's resource: the captor may pick ANY resource
+  (the old owner's level is stripped first), reinforce a bronze/silver Few at half
+  cost, or — with `polish-unit-stacks` on — buy ONE Stack layer at half the
+  printed gold (rounded up, gold-only, the `BUY_UNIT_STACK` sibling's
+  `spendRecruitResources` path, so the Freelancer's Guild substitutes; no Legion
+  voucher folds, matching every other special offer). The first-ever flag is still
+  the only free one (`everFlagged`). `settlement-income.test.ts`.
+- **A Necropolis hero may own TWO Necromancy cards** (the deck holds exactly two)
+  via the Necromancy Amplifier's turn-start fetch; the offer and the resolver both
+  cap at two and both refuse a non-Necropolis faction (`siege-tokens.test.ts`).
+- **A designer timed event may be a `choice`**: every live seat picks one reward
+  from 2–4 entries of the Obelisk-bonus vocabulary (`applyCustomMapTimedEvents` →
+  a `visit-steps` CHOOSE_ONE per seat). Any timed event that QUEUES per-player
+  work now raises the round-start EVENT BARRIER, so the table waits while each
+  seat answers, and one shared sentinel (de-duped in
+  `beginRoundStartEventBarrier`) lifts it behind whatever Astrologers / Events /
+  waves queued first. Pinned end-to-end in `custom-setup.test.ts` (frozen seat
+  has zero legal actions, both seats paid, barrier lifts, plus a
+  queues-nothing CONTROL).
+- **Legacy: disembarking (sea→land) no longer ends movement**; embarking still
+  does. BINH deliberately keeps BOTH coastline halts, so the default table is
+  unchanged (`seaStepHalts`, `sea-tile-terrain.test.ts`,
+  `astrologers-combat-cards.test.ts`; both RULESET_DESCRIPTIONS updated).
+- **D-S1 (Heavenly Demon seat) attaches the shared field-symbol modules** — its
+  art is atmosphere-only (verified: no baked icons, unlike A-S1/W-S1/L-S1/P-S1),
+  so its starting resource / treasure / mine symbols and guard numerals were
+  invisible (`anime-starting-tiles.test.ts`, `field-symbol-modules.test.ts`).
+- **The Calamity Gate / Dungeon Gate are finally REACHABLE** (reported bug: "the
+  Dungeon one has borders all around it, can't access"). Both are carved ONTO a
+  printed Blocked Field, and every sealed outer arc sits on exactly such a slot —
+  so although `placeCalamityGate` / `placeDungeonSite` already cleared the
+  FIELD-level blockers (water terrain, designer `borderEdges`), the tile
+  DEFINITION's ring + arc still walled the hex: `canCrossEdge` refused entry from
+  the neighbouring Tile and the board drew a full ring. Only `creature_bank` was
+  exempt. The three carves now share ONE list —
+  `BLOCKED_FIELD_CARVE_LOCATIONS` / `isBlockedFieldCarve` (adventure.ts) — read
+  by `canCrossEdge`, `heroFieldSealedForDiscovery` AND the board's
+  `borderlessSlots` set, so a future carve cannot fix one surface and forget the
+  others. The bank keeps its own `showBankBorders` toggle path (the Gates have no
+  toggle — they are always border-free). Pinned in
+  `module-gate-reachability.test.ts` (walk in / walk out / discover, per
+  location, with a plain-Blocked-Field CONTROL that still walls off, and
+  `isOuterEdgeSealed` asserted UNCHANGED) and `module-gate-board.test.tsx` (the
+  hex really loses its 6 drawn lines on a real board, blocked-field CONTROL).
+- **Audit fixes on top** (each mutation-checked): the PvP pre-battle prep window
+  no longer OFFERS the "during your turn" building uses or the Secondary-Hero
+  hire — `activateTownBuilding` / `hireSecondaryHero` both throw "Town actions
+  cannot interrupt a combat.", so those were 8 dead buttons (and the new Cover of
+  Darkness hand-rail button was one of them); the invariant is pinned in
+  `pvp-prep-town-actions.test.ts` ("offers nothing it cannot execute" — every
+  offered action is applied and must not error — with a no-combat CONTROL that
+  the same three offers exist AND work. `RESOLVE_VISIT_STEP` is
+  handler-validated, so `resolveSettlementChoice` now rejects an out-of-range
+  resource index (a forged `-1` flagged the settlement for free and wrote
+  `production["undefined"] = NaN`); and the hand rail's cover-of-darkness confirm
+  always returns instead of falling through to `REFRESH_HAND` when its offer
+  vanished mid-pick (a parallel-turn attack withdraws every town action).
+
 ## First-round hand discards, Angel Wings, morale −2, Search top-of-discard (2026-07-25)
 
 Four fixes to shipped behaviour (not toggles — the previous behaviour was wrong):

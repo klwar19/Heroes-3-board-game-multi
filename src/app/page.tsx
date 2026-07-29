@@ -5351,8 +5351,14 @@ export default function Home() {
         void submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "redraw", discardCardIds });
         return;
       }
-      if (mode === "cover-of-darkness" && coverOfDarknessAction?.action.type === "USE_TOWN_BUILDING") {
-        void submitAction({ ...coverOfDarknessAction.action, cardIds: discardCardIds });
+      // Cover of Darkness always RETURNS here, even when its offer vanished
+      // between opening the picker and confirming (a parallel-turn enemy attack
+      // opens a combat, which withdraws every town action). Falling through
+      // would fire REFRESH_HAND and discard the picked cards as a hand refresh.
+      if (mode === "cover-of-darkness") {
+        if (coverOfDarknessAction?.action.type === "USE_TOWN_BUILDING") {
+          void submitAction({ ...coverOfDarknessAction.action, cardIds: discardCardIds });
+        }
         return;
       }
       if (mode === "opening-mulligan") {
