@@ -7822,10 +7822,12 @@ export function isEffectLegalForTrigger(
       attacker.controllerId === playerId && state.stack.at(-1)?.modifiers.negateAttackBuffs
     );
 
-    // Bless: "the selected ground or flying unit" ignores the die — only the
-    // attacker's controller plays it, and never on a ranged shot.
+    // Bless targets the attacking ground/flying unit and never a ranged unit.
     if (effect.type === "IGNORE_ATTACK_DIE") {
-      return !attackBuffsNegated && attacker.controllerId === playerId && attacker.type !== "ranged";
+      // Bless may target the attacking ground/flying unit regardless of who
+      // controls it. This lets the defender suppress an enemy Attack die and
+      // its die-face-triggered abilities as a reaction.
+      return !attackBuffsNegated && attacker.type !== "ranged";
     }
 
     // Ivor's Elves I / VI: force this attack's die to a fixed face. The card's

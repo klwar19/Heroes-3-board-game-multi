@@ -13016,6 +13016,10 @@ function applyReactionPlayCore(
       return { windowEnded: false };
     }
     stackItem.modifiers.ignoreAttackDie = true;
+    // Ignoring the roll means no face was resolved. Reuse the same shared gate
+    // as Shield of the Dwarven Lords so Death Blow, Resilience, Minotaur
+    // draw/reroll, paralysis, corrosion, and all other die riders stay silent.
+    stackItem.modifiers.attackDieCancelled = true;
     if (effect.attackBonusByPower) {
       const blessBonus = getAmountByPower(
         effect.attackBonusByPower,

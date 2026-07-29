@@ -1221,11 +1221,12 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
   });
 });
 
-  it("labels the live Attack/Defense/Initiative totals on both the inspector and unit card", () => {
+  it("keeps numeric live totals in the inspector and uses coloured direction arrows on the unit card", () => {
     const state = createInitialGameState("inspect-live-totals");
     const unit = state.combat!.units.unit_p1_crusaders;
     const attackBase = unit.attack;
     const defenseBase = unit.defense;
+    unit.damage = 1;
     placeCombatToken(state, unit, "attack", 2, "Bloodlust token");
     placeCombatToken(state, unit, "corrosion", 1, "Acid token");
     state.activeEffects.push(
@@ -1236,7 +1237,10 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
           scope: "unit",
           duration: { type: "combat" },
           polarity: "positive",
-          modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
+          modifiers: [
+            { type: "ATTACK_BONUS", amount: 1 },
+            { type: "INITIATIVE_BONUS", amount: 2 }
+          ]
         },
         { type: "system" },
         unit.controllerId,
@@ -1262,9 +1266,13 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     expect(stats.textContent).toContain(`${attackBase + 3} (base ${attackBase})`);
     expect(stats.textContent).toContain(`${Math.max(0, defenseBase - 1)} (base ${defenseBase})`);
     expect(container.querySelector(".inspectTotalLegend")?.textContent).toContain("LIVE TOTALS");
-    const cardStats = [...container.querySelectorAll(".boardCardStats")].map((element) => element.textContent ?? "");
-    expect(cardStats.some((text) => text.includes(`A ${attackBase + 3}`))).toBe(true);
-    expect(cardStats.some((text) => text.includes(`D ${Math.max(0, defenseBase - 1)}`))).toBe(true);
+    const cardChanges = [...container.querySelectorAll(".boardCardStatChanges")];
+    expect(cardChanges.some((changes) => changes.querySelector(".boardStatChange.attack.up"))).toBe(true);
+    expect(cardChanges.some((changes) => changes.querySelector(".boardStatChange.defense.down"))).toBe(true);
+    expect(cardChanges.some((changes) => changes.querySelector(".boardStatChange.health.down"))).toBe(true);
+    expect(cardChanges.some((changes) => changes.querySelector(".boardStatChange.speed.up"))).toBe(true);
+    expect(container.querySelector(".boardCardHud strong")).toBeNull();
+    expect(container.querySelector(".boardCardHp")?.textContent).toMatch(/\d+\/\d+ HP/);
   });
 
 describe("BattlefieldBoard — siege fortification art", () => {
@@ -1700,7 +1708,7 @@ describe("BattlefieldBoard — a berserked unit cannot move freely", () => {
   });
 })
 
-describe("BattlefieldBoard — Polish Wait hourglass badge", () => {
+describe("BattlefieldBoard — activation status badge", () => {
   function renderBoard(state: GameState) {
     render(
       <CardZoomProvider>
@@ -1716,19 +1724,21 @@ describe("BattlefieldBoard — Polish Wait hourglass badge", () => {
     );
   }
 
-  it("marks a Waited unit with an hourglass badge; CONTROL: none on a fresh board", () => {
+  it("marks units Ready/Acted at a glance and a Waited unit as still waiting", () => {
     const fresh = createInitialGameState("wait-badge-none");
     renderBoard(fresh);
-    expect(document.querySelectorAll(".waitBadge")).toHaveLength(0);
+    expect(document.querySelectorAll(".unitActivationBadge.ready").length).toBeGreaterThan(0);
     cleanup();
 
     const waited = createInitialGameState("wait-badge");
     waited.combat!.units.unit_p1_marksmen.waitPending = true;
     waited.combat!.units.unit_p1_marksmen.waitToken = 1;
+    waited.combat!.units.unit_p1_crusaders.activatedThisRound = true;
     renderBoard(waited);
-    const badges = document.querySelectorAll(".waitBadge");
+    const badges = document.querySelectorAll(".unitActivationBadge.waited");
     expect(badges).toHaveLength(1);
-    expect(badges[0].textContent).toContain("Wait");
+    expect(badges[0].textContent).toContain("Waiting");
+    expect(document.querySelectorAll(".unitActivationBadge.acted").length).toBeGreaterThan(0);
   });
 })
 

@@ -12712,6 +12712,40 @@ export function neutralArmyDifficulty(state: GameState): GameDifficulty {
   return GAME_DIFFICULTY_ORDER[Math.max(0, index - effect.levels)];
 }
 
+/** Signature golden guards used by the optional Field-Difficulty V rule. */
+export const LEVEL_V_SIGNATURE_NEUTRAL_IDS = [
+  "neutral.archangels",
+  "neutral.ghost_dragons",
+  "neutral.black_dragons"
+] as const;
+
+/**
+ * Pull the nearest-to-top available signature guard from the real golden
+ * Neutral deck. The discard pile is eligible too: this is a guarantee, not a
+ * "hope the next shuffled card matches" redraw. If all three unique cards are
+ * currently recruited or otherwise outside the deck, mint one temporary guard
+ * for this fight so "always at least one" remains literally true; bankGuard
+ * keeps that temporary duplicate out of the shared discard at combat end.
+ */
+function drawLevelVSignatureNeutral(state: GameState): NeutralDraw {
+  const deck = state.decks[NEUTRAL_DECK_IDS.gold];
+  if (deck) {
+    for (const pile of [deck.drawPile, deck.discardPile]) {
+      for (let index = pile.length - 1; index >= 0; index -= 1) {
+        const unitDefId = pile[index];
+        if ((LEVEL_V_SIGNATURE_NEUTRAL_IDS as readonly string[]).includes(unitDefId)) {
+          pile.splice(index, 1);
+          return { unitDefId, tier: "gold" };
+        }
+      }
+    }
+  }
+
+  const random = adventureRandom(state, "level-v-signature-neutral");
+  const unitDefId = LEVEL_V_SIGNATURE_NEUTRAL_IDS[random.nextInt(0, LEVEL_V_SIGNATURE_NEUTRAL_IDS.length - 1)]!;
+  return { unitDefId, tier: "gold", bankGuard: true };
+}
+
 /** Draws the neutral army for a guarded field from the four tier decks. */
 export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDraw[] {
   const adventure = state.adventure;
@@ -12726,7 +12760,17 @@ export function drawNeutralArmy(state: GameState, difficulty: number): NeutralDr
 
   const draws: NeutralDraw[] = [];
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
-    for (let index = 0; index < counts[tier]; index += 1) {
+    let firstOrdinaryDraw = 0;
+    if (
+      tier === "gold" &&
+      difficulty === 5 &&
+      counts.gold > 0 &&
+      houseRuleEnabled(state, "level-v-signature-neutral")
+    ) {
+      draws.push(drawLevelVSignatureNeutral(state));
+      firstOrdinaryDraw = 1;
+    }
+    for (let index = firstOrdinaryDraw; index < counts[tier]; index += 1) {
       const unitDefId = drawFromNeutralDeck(state, tier);
       if (unitDefId) {
         draws.push({ unitDefId, tier });
@@ -15670,6 +15714,19 @@ function expireActiveAstrologersCard(state: GameState): void {
 function proclamationRequiresRedraw(state: GameState, cardId: string): boolean {
   if (astrologersCardDefinitions[cardId]?.effect.type === "ROTATE_TILE_EACH") {
     return disruptionEligibleTiles(state).length === 0;
+  }
+  if (astrologersCardDefinitions[cardId]?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
+    const adventure = state.adventure;
+    if (!adventure) {
+      return true;
+    }
+    // Printed sea tiles carry `group: "sea"`. The water-field fallback also
+    // covers custom/designer maps that paint open water without using a printed
+    // sea-group tile.
+    const hasSeaTile =
+      Object.values(adventure.tiles).some((tile) => tile.group === "sea") ||
+      Object.values(adventure.fields).some((field) => field.terrain === "water");
+    return !hasSeaTile;
   }
   return false;
 }

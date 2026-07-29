@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, getMainHero, NEUTRAL_PLAYER_ID } from "./index";
-import { startNeutralEncounter } from "./adventure-reducer";
+import { maybeOpenWayfarerParalysisDecision, startNeutralEncounter } from "./adventure-reducer";
 import type { GameAction, GameState } from "./state";
 
 /**
@@ -88,5 +88,37 @@ describe("Ring of the Wayfarer — paralyse a Neutral unit AT START of combat", 
     // Combat began (guards revealed, units in play) — the Ring never gated it.
     expect(Object.keys(state.combat?.units ?? {}).length).toBeGreaterThan(0);
     expect(state.combat?.outcome ?? null).toBeNull();
+  });
+
+  it("offers a tierless Creature-Bank monster because it is not an Azure unit", () => {
+    const state = neutralGuardFightAfterPlacement("wayfarer-bank-target", []);
+    const bankMonster = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    )!;
+    bankMonster.bankUnit = true;
+    const heroId =
+      state.combat!.context.kind === "neutral"
+        ? state.combat!.context.heroId
+        : getMainHero(state, "p1")!.id;
+    state.combat!.context = {
+      kind: "neutral",
+      heroId,
+      fieldId: "guard-field",
+      difficulty: 0,
+      hasAzure: false,
+      bankId: "crypt"
+    };
+    state.combat!.wayfarerParalysisOffered = false;
+    state.combat!.activeUnitId = null;
+    state.pendingChoice = null;
+    state.players.p1.hand = ["artifact.ring_of_the_wayfarer"];
+
+    expect(maybeOpenWayfarerParalysisDecision(state)).toBe(true);
+    const openedChoice = state.pendingChoice as unknown as NonNullable<GameState["pendingChoice"]>;
+    expect(
+      openedChoice.type === "OPTION_CHOICE"
+        ? openedChoice.wayfarerParalysis?.unitIds
+        : []
+    ).toContain(bankMonster.id);
   });
 });

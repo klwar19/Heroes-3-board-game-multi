@@ -1,6 +1,6 @@
 "use client";
 
-import { Castle, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
+import { Castle, CheckCircle2, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -44,7 +44,7 @@ import {
   InspectPanel,
   LogDrawer
 } from "@/components/table/board";
-import { CardFrame, CombatOwnPiles, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { assetUrl } from "@/lib/asset-url";
 import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
 import { HeroBoard } from "@/components/hero-board";
@@ -1902,45 +1902,8 @@ export default function Home() {
         setNewDay((current) => (current.current ? { current: current.current, queue: [cue] } : { current: cue, queue: [] }));
       }
 
-      // Astrologers proclamation: once the sunrise has played, pop the round's
-      // active card into the player's face — once per round per client, so it
-      // resurfaces every round it stays face up without nagging every action.
-      if (freshTurns.length > 0 && !isGameStart) {
-        const round = freshTurns[freshTurns.length - 1].round;
-        const activeCardId = nextState.adventure?.astrologers?.activeCardId ?? null;
-        const card = activeCardId ? astrologersCardDefinitions[activeCardId] : undefined;
-        if (activeCardId && card && seenAstrologerRoundRef.current !== round) {
-          seenAstrologerRoundRef.current = round;
-          // Big Cleanup / Annoying Lizard force a hand change BETWEEN turns: surface
-          // the viewer's own result on the card so the mandatory discard reads as
-          // done-and-unskippable, not as the optional start-of-turn draw. The most
-          // recent matching event is this round's resolution.
-          let reshuffle: { discarded: number; drawn: number } | undefined;
-          for (let i = nextState.eventLog.length - 1; i >= 0; i -= 1) {
-            const logEvent = nextState.eventLog[i];
-            if (
-              logEvent.type === "ASTROLOGERS_HAND_RESHUFFLED" &&
-              logEvent.round === round &&
-              logEvent.cardId === activeCardId &&
-              logEvent.playerId === viewerRef.current
-            ) {
-              reshuffle = { discarded: logEvent.discarded, drawn: logEvent.drawn };
-              break;
-            }
-          }
-          setAstrologerCue({
-            id: `astro-${round}-${activeCardId}`,
-            cardId: activeCardId,
-            name: card.name,
-            text: card.text,
-            image: card.image,
-            expansion: card.expansion,
-            ongoing: card.ongoing,
-            round,
-            ...(reshuffle ? { reshuffle } : {})
-          });
-        }
-      }
+      // The full-screen proclamation is shown only for the fresh draw above.
+      // The compact HUD card remains available for later reference.
 
       // Event draw (Fortress deck): pop the freshly-drawn Event card into every
       // player's face, once per draw, so a new Event is impossible to miss. The
@@ -5087,7 +5050,7 @@ export default function Home() {
         onRename={onRename}
         roomId={roomId}
         state={state}
-        compact={inGameTable}
+        compact={inGameTable || (adventureMode && inLobby)}
       />
       {!inGameTable ? (
         <div className="menuRow roomRow">
@@ -5576,6 +5539,9 @@ export default function Home() {
         : []),
       { id: "army", label: "Army", icon: <Castle size={17} /> },
       { id: "decks", label: "Decks", icon: <Layers size={17} /> },
+      ...(legalActions.some((legal) => legal.action.type === "END_TURN")
+        ? [{ id: "end-turn", label: "End turn", icon: <CheckCircle2 size={19} />, action: true }]
+        : []),
       { id: "menu", label: "Menu", icon: <MenuIcon size={17} /> }
     ];
 
@@ -6743,6 +6709,13 @@ export default function Home() {
                   setCombatTab("battle");
                   return;
                 }
+                if (id === "end-turn") {
+                  const endTurn = legalActions.find((legal) => legal.action.type === "END_TURN");
+                  if (endTurn) {
+                    void submitAction(endTurn.action);
+                  }
+                  return;
+                }
                 setPhoneMapTab(id as PhoneMapTab);
               }}
               tabs={phoneMapTabs}
@@ -6796,9 +6769,26 @@ export default function Home() {
       <div className="tableTopRow">
         <div className="combatCardStrip">
           {isSeated ? (
-            <OpponentInfoDock seatIds={seatIds} state={state} variant="combat" viewerPlayerId={viewerPlayerId} />
+            <div className="combatOpponentRow">
+              <OpponentInfoDock seatIds={seatIds} state={state} variant="combat" viewerPlayerId={viewerPlayerId} />
+              <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
+              {adventureMode && state.combat ? (
+                <div className="combatContextBanner compact">
+                  <Swords aria-hidden="true" size={12} />
+                  <span>
+                    {state.combat.context.kind === "neutral"
+                      ? `${state.players[state.combat.attackerPlayerId]?.name} vs L${state.combat.context.difficulty} guards`
+                      : state.combat.context.kind === "player"
+                        ? `${state.players[state.combat.attackerPlayerId]?.name} vs ${state.players[state.combat.defenderPlayerId]?.name}`
+                        : "Battle"}
+                  </span>
+                  <button className="commandButton" onClick={() => setCombatTab("map")} type="button">
+                    <MapIcon aria-hidden="true" size={11} /> Map
+                  </button>
+                </div>
+              ) : null}
+            </div>
           ) : null}
-          {isSeated ? <OpponentBar state={state} view={playerView} viewerPlayerId={viewerPlayerId} /> : null}
           {isSeated ? (
             <div className="tableSeatRow">
               <PlayerDock
@@ -6808,9 +6798,11 @@ export default function Home() {
                 viewerPlayerId={viewerPlayerId}
               />
               <PermanentSlot
+                compact
                 legalActions={legalActions}
                 onAction={submitAction}
                 playerId={viewerPlayerId}
+                showEmpty
                 state={state}
                 viewerPlayerId={viewerPlayerId}
               />
@@ -6818,7 +6810,7 @@ export default function Home() {
                 {/* The combat "View hand" pile-browser button was removed to
                     declutter the top strip: the HandFan below already shows every
                     hand card, and each card is click/hover-zoomable for a full-size
-                    read. Discard is browsable from PlayerDock and the bottom bar. */}
+                    read. Deck and discard stay available in the compact top dock. */}
                 <HandFan
                   hiddenTailCount={hiddenHandTail}
                   inFlightCardIds={inFlightCardIds}
@@ -6874,22 +6866,6 @@ export default function Home() {
             setHandMode("morale-redraw");
           }}
         />
-      ) : null}
-
-      {adventureMode && state.combat ? (
-        <div className="combatContextBanner">
-          <Swords aria-hidden="true" size={14} />
-          <span>
-            {state.combat.context.kind === "neutral"
-              ? `${state.players[state.combat.attackerPlayerId]?.name} fights neutral guards (level ${state.combat.context.kind === "neutral" ? state.combat.context.difficulty : ""}) — anyone may watch`
-              : state.combat.context.kind === "player"
-                ? `${state.players[state.combat.attackerPlayerId]?.name} attacks ${state.players[state.combat.defenderPlayerId]?.name} — anyone may watch`
-                : "Combat sandbox"}
-          </span>
-          <button className="commandButton" onClick={() => setCombatTab("map")} type="button">
-            <MapIcon aria-hidden="true" size={12} /> View the adventure map
-          </button>
-        </div>
       ) : null}
 
       {selectedCardAction ? (
@@ -6991,16 +6967,6 @@ export default function Home() {
       </div>
 
       {/* Bottom combat deck/discard rail — map-mode parity: full discard browse. */}
-      {isSeated ? (
-        <div className="combatDecksBottom">
-          <CombatOwnPiles
-            onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
-            view={playerView}
-            viewerPlayerId={viewerPlayerId}
-          />
-        </div>
-      ) : null}
-
       <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
 
       <AdventureEventFeed

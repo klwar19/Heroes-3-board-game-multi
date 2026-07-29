@@ -238,6 +238,7 @@ export function OpponentInfoDock({
     const name = identity.personName ?? identity.seatName;
     return (
       <button
+        aria-label={`Show ${name} details`}
         className="opponentInfoBtn"
         key={id}
         onClick={() => setOpenSeat(id)}

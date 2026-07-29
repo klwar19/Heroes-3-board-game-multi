@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, type GameAction, type GameState } from "./index";
 import {
+  drawAstrologersCard,
   drawNeutralArmy,
   getMainHero,
   getTownOfPlayer,
@@ -39,6 +40,50 @@ function setActive(state: GameState, activeCardId: string): void {
     swiftWeaselUsedBy: []
   };
 }
+
+describe("Astrologers — Wind draw eligibility", () => {
+  it("discards Wind and draws the next proclamation when the game has no sea tile", () => {
+    const state = createAdventureGameState({ seed: "wind-no-sea", rollFirstPlayer: false });
+    state.round = 4;
+    state.adventure!.tiles = {};
+    state.adventure!.fields = {};
+    const deck = state.decks.astrologers!;
+    deck.drawPile = ["astrologers.dead_silence", "astrologers.wind"];
+    deck.discardPile = [];
+
+    drawAstrologersCard(state);
+
+    expect(state.adventure!.astrologers?.activeCardId).toBe("astrologers.dead_silence");
+    expect(deck.discardPile).toContain("astrologers.wind");
+    expect(
+      state.eventLog.filter((event) => event.type === "ASTROLOGERS_DRAWN").map((event) => event.cardId)
+    ).toEqual(["astrologers.dead_silence"]);
+  });
+
+  it("CONTROL: Wind remains drawable when a sea tile is in the game", () => {
+    const state = createAdventureGameState({ seed: "wind-with-sea", rollFirstPlayer: false });
+    state.round = 4;
+    state.adventure!.tiles = {
+      "sea-test": {
+        id: "sea-test",
+        tileDefId: "W1",
+        centerRow: 0,
+        centerCol: 0,
+        rotation: 0,
+        faceDown: false,
+        group: "sea"
+      }
+    };
+    const deck = state.decks.astrologers!;
+    deck.drawPile = ["astrologers.dead_silence", "astrologers.wind"];
+    deck.discardPile = [];
+
+    drawAstrologersCard(state);
+
+    expect(state.adventure!.astrologers?.activeCardId).toBe("astrologers.wind");
+    expect(deck.discardPile).not.toContain("astrologers.wind");
+  });
+});
 
 // ===========================================================================
 // Rulebook — neutral guards drawn one game-difficulty level lower

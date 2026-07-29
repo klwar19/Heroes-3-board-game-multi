@@ -348,11 +348,11 @@ describe("parallel turns — one interaction at a time (quiet moves while busy)"
     const keepP1 = getLegalActions(state, "p1").find((legal) => legal.action.type === "RESOLVE_DECK_SEARCH");
     state = apply(state, keepP1!.action);
 
-    // Conservation: exactly 4 cards left the draw pile — one kept per player,
-    // the rest to the deck's discard — nothing duplicated, nothing lost.
+    // Conservation: the initially empty discard is seeded once, then exactly
+    // four cards are revealed — one kept per player and two discarded.
     const deck = state.decks[deckId];
-    expect(deck.drawPile.length).toBe(before - 4);
-    expect(deck.discardPile.length).toBe(2);
+    expect(deck.drawPile.length).toBe(before - 5);
+    expect(deck.discardPile.length).toBe(3);
     expect(state.players.p1.hand.length).toBe(p1HandBefore + 1);
     expect(state.players.p2.hand.length).toBe(p2HandBefore + 1);
   });

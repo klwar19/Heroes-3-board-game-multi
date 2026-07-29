@@ -45,7 +45,7 @@ export function usePacedComputerAdvance({
     const versionKey = `${roomKey}:${version}`;
     if (submittedVersionRef.current === versionKey) return;
 
-    const timer = window.setTimeout(() => {
+    const submitAdvance = () => {
       if (submittedVersionRef.current === versionKey) return;
       submittedVersionRef.current = versionKey;
       void submitRef.current(advance.action).then((accepted) => {
@@ -57,7 +57,23 @@ export function usePacedComputerAdvance({
           setRetry((value) => value + 1);
         }
       });
-    }, delayMs);
-    return () => window.clearTimeout(timer);
+    };
+
+    const timer = window.setTimeout(submitAdvance, delayMs);
+    // Background tabs and sleeping laptops may suspend this timer for minutes.
+    // Run the already-legal step as soon as play becomes visible again.
+    const onWake = () => {
+      if (document.visibilityState !== "hidden") {
+        window.clearTimeout(timer);
+        submitAdvance();
+      }
+    };
+    window.addEventListener("focus", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", onWake);
+      document.removeEventListener("visibilitychange", onWake);
+    };
   }, [blocked, delayMs, enabled, legalActions, retry, roomKey, version]);
 }

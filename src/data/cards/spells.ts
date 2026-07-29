@@ -209,7 +209,7 @@ export const spellCards: CardLibrary = {
     power: 0,
     trigger: {
       event: "UNIT_ATTACK_DECLARED",
-      controller: "self"
+      controller: "any"
     },
     effect: {
       type: "IGNORE_ATTACK_DIE",

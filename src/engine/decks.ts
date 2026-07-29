@@ -33,12 +33,15 @@ export function isSharedDeckId(deckId: string): deckId is SharedDeckId {
  * discard pile, so nothing is created or lost and every downstream tier /
  * uniqueness gate still applies to the flipped card.
  *
- * Three deliberate limits:
- *  - `before` gates it on the pile having HELD a card when the action started.
- *    A pile that was already empty is left alone — the rule is "when the last
- *    card is taken, flip a new one", not "conjure a face-up card onto an empty
- *    pile" (which would also quietly steal a card another effect had just put
- *    on the deck top).
+ * The helper also repairs a pile that is already empty. Search calls it before
+ * revealing cards, so the current top card becomes the mandatory face-up
+ * discard and the requested Search count comes from the cards beneath it.
+ *
+ * Three deliberate limits for the transaction-tail refill:
+ *  - `before` gates it on the pile having held a card when the action started.
+ *    Search itself repairs an already-empty pile immediately before revealing
+ *    cards, while unrelated actions leave deliberately constructed/imported
+ *    empty piles alone until a Search actually needs them.
  *  - never while a pendingChoice is open: an open decision can be HOLDING cards
  *    lifted out of a deck (a Search's revealed cards, a Pandora scry, the
  *    discard face-up pick) that are about to land back on that pile, so flipping
@@ -50,19 +53,27 @@ export function isSharedDeckId(deckId: string): deckId is SharedDeckId {
  * Deliberately silent (no feed event): the discard top is rendered on the table,
  * so a line per flip would be noise, and the state is public either way.
  */
-export function refillSharedDeckDiscards(state: GameState, before: GameState): void {
+export function ensureSharedDeckDiscard(state: GameState, deckId: string): boolean {
+  if (!isSharedDeckId(deckId)) {
+    return false;
+  }
+  const deck = state.decks[deckId];
+  if (!deck || deck.discardPile.length > 0 || deck.drawPile.length === 0) {
+    return false;
+  }
+  deck.discardPile.push(deck.drawPile.pop() as CardId);
+  return true;
+}
+
+export function refillSharedDeckDiscards(state: GameState, _before: GameState): void {
   if (state.pendingChoice) {
     return;
   }
   for (const deckId of SHARED_DECK_IDS) {
-    const deck = state.decks[deckId];
-    if (!deck || deck.discardPile.length > 0 || deck.drawPile.length === 0) {
+    if ((_before.decks[deckId]?.discardPile.length ?? 0) === 0) {
       continue;
     }
-    if ((before.decks[deckId]?.discardPile.length ?? 0) === 0) {
-      continue;
-    }
-    deck.discardPile.push(deck.drawPile.pop() as CardId);
+    ensureSharedDeckDiscard(state, deckId);
   }
 }
 
