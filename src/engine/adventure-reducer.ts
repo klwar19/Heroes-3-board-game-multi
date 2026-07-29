@@ -229,7 +229,12 @@ import {
   makeArrowTowerUnit,
   SIEGE_ROW_POSITIONS
 } from "./siege";
-import { drawCardsForPlayer, reshuffleSharedDeckIfEmpty, shuffleCards } from "./decks";
+import {
+  drawCardsForPlayer,
+  ensureSharedDeckDiscard,
+  reshuffleSharedDeckIfEmpty,
+  shuffleCards
+} from "./decks";
 import { maybeReturnFirstSpellToHand } from "./spell-lifecycle";
 import { getCombatStartDraws, getCombatStartMark, moraleLockedForPlayer } from "./unit-abilities";
 import {
@@ -9007,7 +9012,14 @@ export function maybeOpenWayfarerParalysisDecision(state: GameState): boolean {
   combat.wayfarerParalysisOffered = true;
 
   const unitRank = (unit: CombatUnitState): number =>
-    unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : wayfarerGradeRank(unit.grade);
+    unit.commanderSlug
+      ? Number.POSITIVE_INFINITY
+      : unit.bankUnit
+        // Creature-Bank monsters are tierless, not Azure. "Any unit except
+        // Azure" therefore includes them; gold is the option's highest allowed
+        // rank and keeps the existing grade comparison simple.
+        ? wayfarerGradeRank("gold")
+        : wayfarerGradeRank(unit.grade);
   const targets = Object.values(combat.units).filter(
     (unit) => unit.damage < unit.maxHealth && unitRank(unit) <= ring.ceilingRank
   );
@@ -13376,7 +13388,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       prompt.baseCount,
       true,
       Boolean(prompt.allowRemove),
-      Boolean(prompt.modeResolved)
+      Boolean(prompt.modeResolved),
+      Boolean(prompt.ignoreDiscardTopOnce)
     );
     return;
   }
@@ -14769,12 +14782,19 @@ export function openSharedDeckSearch(
   // spells deck-pick): go straight to the reveal — never re-open the mode
   // choice AFTER the player committed to searching (the user-reported bug:
   // "choose search spell, then the draw school of magic appears with that").
-  modeResolved = false
+  modeResolved = false,
+  ignoreDiscardTopOnce = false
 ): void {
   const deck = state.decks[deckId];
   if (!deck) {
     return;
   }
+  const discardWasEmpty = deck.discardPile.length === 0;
+  // Every Search begins with a face-up discard. If an imported/older state (or
+  // another effect) left this pile empty, flip the current draw-pile top first;
+  // Search(X) then reveals the next X cards, never the newly seeded discard.
+  ensureSharedDeckDiscard(state, deckId);
+  ignoreDiscardTopOnce ||= discardWasEmpty;
 
   // Polish Random Artifacts chokepoint: every Artifact Search rolls here if no
   // access override is already live (family pick rolls in resolveSearchDeckCandidates
@@ -14809,7 +14829,16 @@ export function openSharedDeckSearch(
   if (!scoutingResolved) {
     const offer = scoutingPromptFor(state, playerId, baseCount);
     if (offer) {
-      openScoutingPrompt(state, playerId, deckId, baseCount, offer, allowRemove, modeResolved);
+      openScoutingPrompt(
+        state,
+        playerId,
+        deckId,
+        baseCount,
+        offer,
+        allowRemove,
+        modeResolved,
+        ignoreDiscardTopOnce
+      );
       return;
     }
   }
@@ -14832,7 +14861,9 @@ export function openSharedDeckSearch(
   // EVERY deck (Spell decks included) offers only the face-up TOP discard — the
   // classic rulebook single top-only take.
   const discardTop =
-    deck.discardPile.length > 0 ? deck.discardPile[deck.discardPile.length - 1] : null;
+    !ignoreDiscardTopOnce && deck.discardPile.length > 0
+      ? deck.discardPile[deck.discardPile.length - 1]
+      : null;
   const discardTopId =
     discardTop && canAcquireSharedDeckCard(state, playerId, deckId, discardTop) ? discardTop : null;
   const hasDiscardTake = Boolean(discardTopId);
@@ -15045,7 +15076,8 @@ function openScoutingPrompt(
   baseCount: number,
   offer: { offerBasic: boolean; offerExpert: boolean },
   allowRemove = false,
-  modeResolved = false
+  modeResolved = false,
+  ignoreDiscardTopOnce = false
 ): void {
   const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
   if (offer.offerBasic) {
@@ -15067,7 +15099,8 @@ function openScoutingPrompt(
       offerBasic: offer.offerBasic,
       offerExpert: offer.offerExpert,
       ...(allowRemove ? { allowRemove: true } : {}),
-      ...(modeResolved ? { modeResolved: true } : {})
+      ...(modeResolved ? { modeResolved: true } : {}),
+      ...(ignoreDiscardTopOnce ? { ignoreDiscardTopOnce: true } : {})
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };

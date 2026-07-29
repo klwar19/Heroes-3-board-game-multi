@@ -224,7 +224,11 @@ describe("Search — the searcher orders the cards that go back on the discard p
       pick: { kind: "revealed", index: 0 }
     });
     expect(resolved.pendingChoice).toBeNull();
-    expect(resolved.decks.abilities.discardPile).toEqual([revealed[1]]);
+    // The auto-seeded face-up card remains under the one unkept Search card.
+    expect(resolved.decks.abilities.discardPile).toEqual([
+      "ability.archery",
+      revealed[1]
+    ]);
   });
 
   it("other viewers never see which cards are being ordered", () => {

@@ -87,8 +87,8 @@ describe("reported map and unit-data regressions", () => {
     expect(expansionTileDefinitions["&N1"].fields.some((field) => field.location === "treasure_symbol")).toBe(false);
   });
 
-  it("uses initiative 6 for both Few and Neutral Minotaurs", () => {
+  it("uses initiative 6 for Few Minotaurs and 7 for Neutral Minotaurs", () => {
     expect(coreUnitDefinitions["dungeon.minotaurs"].few?.initiative).toBe(6);
-    expect(coreUnitDefinitions["neutral.minotaurs"].neutral?.initiative).toBe(6);
+    expect(coreUnitDefinitions["neutral.minotaurs"].neutral?.initiative).toBe(7);
   });
 });

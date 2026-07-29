@@ -2323,7 +2323,9 @@ describe("rules engine prototype", () => {
     });
     expect(searching.phase).toBe("choice");
     expect(searching.pendingChoice).toMatchObject({ type: "DECK_SEARCH", playerId: "p1" });
-    expect(searching.decks.spells.drawPile.length).toBe(spellsBefore.length - 2);
+    // An empty shared discard is seeded first, then Search (2) reveals the next
+    // two cards.
+    expect(searching.decks.spells.drawPile.length).toBe(spellsBefore.length - 3);
 
     // Opponents never see which cards were lifted off the deck.
     const p2View = getPlayerView(searching, "p2");
@@ -2347,7 +2349,10 @@ describe("rules engine prototype", () => {
     expect(resolved.phase).toBe("combat");
     expect(resolved.players.p1.hand.length).toBe(handBefore + 1);
     expect(resolved.players.p1.hand).toContain(choice.revealedCardIds[0]);
-    expect(resolved.decks.spells.discardPile).toEqual([choice.revealedCardIds[1]]);
+    expect(resolved.decks.spells.discardPile).toEqual([
+      spellsBefore.at(-1),
+      choice.revealedCardIds[1]
+    ]);
 
     // A later search, with the discard now non-empty, first raises the
     // Search-or-take-discard choice — the player must commit to one before any
@@ -2373,13 +2378,12 @@ describe("rules engine prototype", () => {
       optionIndex: 1
     });
     expect(tookDiscard.players.p1.hand).toContain(choice.revealedCardIds[1]);
-    // A shared discard pile is never left empty: taking its last card flips the
-    // deck's next card face-up in its place (refillSharedDeckDiscards, run at
-    // the tail of every action) — so the pile shows a NEW card, not the taken
-    // one, and the draw pile is one shorter.
+    // A shared discard pile is never left empty: taking its last card exposes
+    // the card that Search auto-seeded before revealing its two candidates.
+    // No additional draw card is consumed at this point.
     expect(tookDiscard.decks.spells.discardPile).toHaveLength(1);
-    expect(tookDiscard.decks.spells.discardPile[0]).not.toBe(choice.revealedCardIds[1]);
-    expect(tookDiscard.decks.spells.drawPile.length).toBe(drawBefore - 1);
+    expect(tookDiscard.decks.spells.discardPile[0]).toBe(spellsBefore.at(-1));
+    expect(tookDiscard.decks.spells.drawPile.length).toBe(drawBefore);
     expect(tookDiscard.pendingChoice).toBeNull();
   });
 

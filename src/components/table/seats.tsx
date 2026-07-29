@@ -5,7 +5,8 @@
 import { Crown, Layers, Search, Sparkles } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { playSpellBookOpen } from "@/lib/sound";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
 import { getDeckBack } from "@/data/decks";
 import {
@@ -133,7 +134,8 @@ export function PermanentSlot({
   viewerPlayerId,
   legalActions,
   onAction,
-  compact = false
+  compact = false,
+  showEmpty = false
 }: {
   state: GameState;
   playerId: PlayerId;
@@ -141,6 +143,8 @@ export function PermanentSlot({
   legalActions?: LegalAction[];
   onAction?: (action: GameAction) => void;
   compact?: boolean;
+  /** Keep a labelled slot visible even before a Permanent/Ongoing card enters play. */
+  showEmpty?: boolean;
 }) {
   const { zoomCard } = useCardZoom();
   const [openCardActions, setOpenCardActions] = useState<string | null>(null);
@@ -150,7 +154,8 @@ export function PermanentSlot({
   const ongoingCards = state.players[playerId]?.ongoingCards ?? [];
   // Spell Scrolls: map-side permanent tray (not hand). Public; opponents see them.
   const scrolls = state.players[playerId]?.scrolls ?? [];
-  if (cardIds.length === 0 && ongoingCards.length === 0 && scrolls.length === 0) {
+  const empty = cardIds.length === 0 && ongoingCards.length === 0 && scrolls.length === 0;
+  if (empty && !showEmpty) {
     return null;
   }
 
@@ -198,9 +203,19 @@ export function PermanentSlot({
 
   return (
     <div
-      className={`permanentRow ${compact ? "compact" : ""}`}
+      className={`permanentRow${compact ? " compact" : ""}${empty ? " empty" : ""}${showEmpty ? " persistentTray" : ""}`}
       aria-label={`${state.players[playerId]?.name} permanents in play`}
     >
+      {empty ? (
+        <div className="permanentEmptySlot" aria-label="Ongoing and Permanent cards: empty">
+          <Layers aria-hidden="true" size={15} />
+          <span>
+            <strong>Ongoing</strong>
+            <small>Permanent</small>
+          </span>
+          <em>Empty</em>
+        </div>
+      ) : null}
       {cardIds.map((cardId, index) => {
         const card = cardLibrary[cardId];
         const discard = discardActionFor(cardId);
@@ -563,6 +578,10 @@ export function HandFan({
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [shelfOpen, setShelfOpen] = useState<"book" | "scroll" | null>(null);
+  const [shelfHost, setShelfHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setShelfHost(document.getElementById(`combat-spell-shelf-${viewerPlayerId}`));
+  }, [viewerPlayerId]);
   // Polish Spell Book: a Cast a Spell card's popover can expand an inline
   // shortcut list of the currently castable Book Spells (the "List the spells"
   // option). Tracks which hand slot has that list open.
@@ -659,7 +678,8 @@ export function HandFan({
 
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
-      {showSpellBook || scrolls.length > 0 ? (
+      {showSpellBook || scrolls.length > 0 ? (() => {
+        const shelf = (
         <div className="spellShelf" aria-label="Spell Book and Spell Scrolls">
           {showSpellBook ? (
             <div className="shelfItem">
@@ -753,7 +773,9 @@ export function HandFan({
             </div>
           ) : null}
         </div>
-      ) : null}
+        );
+        return shelfHost ? createPortal(shelf, shelfHost) : shelf;
+      })() : null}
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
       {entries.map((entry, entryIndex) => {
         const card = cardLibrary[entry.cardId];
@@ -1157,33 +1179,16 @@ export function OpponentBar({
               </span>
               <RuneTrack state={state} playerId={playerId} compact />
             </div>
-            <div
-              className="opponentHand"
-              aria-label={`${player.name} hand: ${player.handCount} hidden cards`}
-              data-fx-anchor={`hand:${playerId}`}
-            >
-              {Array.from({ length: Math.min(player.handCount, 12) }, (_, index) => (
-                <CardBack className="opponentCardBack" key={index} />
-              ))}
-              <span className="handCount">{player.handCount}</span>
-            </div>
-            <div className="seatPiles">
-              <div className="pileSpot" title={`${player.name} draw deck`} data-fx-anchor={`deck:${playerId}`}>
-                <CardBack className="pileCard" />
-                <span>{player.deckCount}</span>
-              </div>
-              <div className="pileSpot" title={`${player.name} discard pile`} data-fx-anchor={`discard:${playerId}`}>
-                {player.discard.length > 0 ? (
-                  <CardFrame
-                    cardId={player.discard.at(-1)}
-                    className="pileCard faceUp"
-                    empowered={cardIsEmpoweredFor(player.discard.at(-1), player.empoweredAbilities)}
-                  />
-                ) : (
-                  <div className="pileCard emptyPile" />
-                )}
-                <span>{player.discard.length}</span>
-              </div>
+            <div className="opponentCardStats" aria-label={`${player.name} card counts`}>
+              <span title={`${player.handCount} hidden cards in hand`} data-fx-anchor={`hand:${playerId}`}>
+                <Layers aria-hidden="true" size={12} /> Hand <strong>{player.handCount}</strong>
+              </span>
+              <span title={`${player.deckCount} cards in draw deck`} data-fx-anchor={`deck:${playerId}`}>
+                Deck <strong>{player.deckCount}</strong>
+              </span>
+              <span title={`${player.discard.length} cards in discard`} data-fx-anchor={`discard:${playerId}`}>
+                Discard <strong>{player.discard.length}</strong>
+              </span>
             </div>
             <PermanentSlot compact playerId={playerId} state={state} />
           </section>
@@ -1219,17 +1224,18 @@ export function PlayerDock({
 
   return (
     <div className="playerDock" aria-label="Your decks and resources">
+      <div className="playerPileTools">
+        <div className="playerPileRow">
       <div
-        className="pileSpot tall"
+        className="pileSpot"
         title="Your draw deck (order hidden, reshuffles from discard)"
         data-fx-anchor={`deck:${viewerPlayerId}`}
       >
         <CardBack className="pileCard" />
         <span>{player.deckCount}</span>
-        <small>deck</small>
       </div>
       <button
-        className={`pileSpot tall combatDiscardSpot${topDiscardId ? " hasCard" : ""}`}
+        className={`pileSpot combatDiscardSpot${topDiscardId ? " hasCard" : ""}`}
         data-fx-anchor={`discard:${viewerPlayerId}`}
         disabled={!onShowPile}
         onClick={openDiscard}
@@ -1250,15 +1256,16 @@ export function PlayerDock({
           <div className="pileCard emptyPile" />
         )}
         <span>{player.discard.length}</span>
-        <small>discard</small>
       </button>
+        </div>
+        <div className="combatSpellShelfHost" id={`combat-spell-shelf-${viewerPlayerId}`} />
+      </div>
       <div className="dockMetrics">
-        <SeatNameplate state={state} playerId={viewerPlayerId} />
         <span title="Crowns left this combat round">
-          <Crown aria-hidden="true" size={13} /> {crownsLeft} crown{crownsLeft === 1 ? "" : "s"}
+          <Crown aria-hidden="true" size={12} /> {crownsLeft}
         </span>
         <span title="Spells cast this combat round">
-          <Sparkles aria-hidden="true" size={13} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel} spells
+          <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel}
         </span>
         <span title="Gold / materials / valuables">
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v

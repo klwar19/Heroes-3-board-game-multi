@@ -409,6 +409,10 @@ describe("Dragon spell & specialty immunity", () => {
       state.players.p2.hand = p2Hand;
       state.combat!.units.unit_p1_griffins.position = 9;
       state.combat!.units.unit_p2_skeletons.position = 13;
+      // Keep this helper on the declared Griffins attack. If that window has no
+      // legal spells it must not auto-advance into a retaliation window, where
+      // Bless is now correctly usable against the enemy Skeleton attacker.
+      state.combat!.units.unit_p2_skeletons.retaliatedThisRound = true;
       if (immuneSide === "attacker") {
         state.combat!.units.unit_p1_griffins.abilities = ["immune-all-spells"];
       } else {

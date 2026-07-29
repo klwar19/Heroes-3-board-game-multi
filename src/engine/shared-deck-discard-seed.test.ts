@@ -146,7 +146,7 @@ describe("shared decks — the discard pile is refilled when its last card is ta
     }
   });
 
-  it("is idempotent, leaves an ALREADY-empty pile alone, and never empties a deck it cannot refill", () => {
+  it("is idempotent, leaves an already-empty imported pile for Search to repair, and handles an exhausted deck", () => {
     const { state, before } = gameWithEmptyDiscards("discard-refill-idempotent");
     refillSharedDeckDiscards(state, before);
     const snapshot = JSON.stringify(state.decks);
@@ -160,16 +160,42 @@ describe("shared decks — the discard pile is refilled when its last card is ta
     // never steal a card another effect just placed on the deck top).
     const abilities = state.decks.abilities!;
     const drawTop = abilities.drawPile[abilities.drawPile.length - 1];
+    const drawLength = abilities.drawPile.length;
     abilities.discardPile = [];
     const alreadyEmpty = JSON.parse(JSON.stringify(state)) as GameState;
     refillSharedDeckDiscards(state, alreadyEmpty);
     expect(abilities.discardPile).toEqual([]);
-    expect(abilities.drawPile[abilities.drawPile.length - 1]).toBe(drawTop);
+    expect(abilities.drawPile.at(-1)).toBe(drawTop);
+    expect(abilities.drawPile).toHaveLength(drawLength);
 
     // A deck with nothing left at all is left alone (no crash, no phantom card).
+    abilities.discardPile = [];
     abilities.drawPile = [];
     refillSharedDeckDiscards(state, before);
     expect(abilities.discardPile).toEqual([]);
+  });
+
+  it("seeds an empty discard BEFORE Search (2), then reveals only the next two draw-pile cards", () => {
+    const state = createInitialGameState("discard-seed-before-search");
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    const spells = state.decks.spells!;
+    spells.discardPile = [];
+    const originalTop = spells.drawPile.at(-1)!;
+    const expectedRevealed = [spells.drawPile.at(-2)!, spells.drawPile.at(-3)!];
+
+    const opened = applyAction(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
+    expect(opened.errors.map((error) => error.message)).toEqual([]);
+    const choice = opened.state.pendingChoice;
+    expect(choice?.type).toBe("DECK_SEARCH");
+    expect(opened.state.decks.spells!.discardPile).toEqual([originalTop]);
+
+    if (choice?.type === "DECK_SEARCH") {
+      expect(choice.revealedCardIds).toEqual(expectedRevealed);
+      expect(choice.revealedCardIds).not.toContain(originalTop);
+    }
+    expect(opened.state.decks.spells!.discardPile).toEqual([originalTop]);
   });
 
   it("runs at the tail of a REAL action: taking the search's discard top leaves a NEW face-up card", () => {

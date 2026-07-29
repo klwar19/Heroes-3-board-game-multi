@@ -16,6 +16,8 @@ export type PhoneTab = {
   id: string;
   label: string;
   icon?: ReactNode;
+  /** A direct thumb action rather than a panel selector (for example End turn). */
+  action?: boolean;
   /** Small count bubble (hand size, morale cards…). Hidden when undefined. */
   badge?: number | string;
   /** Pulse this tab — something in its panel needs the player. */
@@ -42,7 +44,7 @@ export function PhoneTabBar({
         return (
           <button
             aria-selected={selected}
-            className={`phoneTab ${selected ? "active" : ""} ${tab.attention ? "attention" : ""}`}
+            className={`phoneTab ${selected ? "active" : ""} ${tab.attention ? "attention" : ""} ${tab.action ? "action" : ""}`}
             key={tab.id}
             onClick={() => onSelect(tab.id)}
             role="tab"

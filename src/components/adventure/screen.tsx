@@ -186,6 +186,7 @@ import {
 import { MapPickModal } from "@/components/adventure/map-pick-modal";
 import { SetupHubNav } from "@/components/adventure/setup-hub-nav";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
+import { SetupSceneArt } from "@/components/adventure/setup-scene";
 import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ART } from "@/data/assets/homm-assets";
 
 const HEX_SIZE = 34;
@@ -11112,6 +11113,7 @@ function SetupHub({
   return (
     <div className="setupHubGrid" role="group" aria-label="Setup sections">
       <button
+        aria-label="Game mode"
         aria-haspopup="dialog"
         className="setupHubBox setupHubBox--mode"
         onClick={() => onOpen("mode")}
@@ -11134,6 +11136,7 @@ function SetupHub({
       </button>
 
       <button
+        aria-label="Heroes & Draft"
         aria-haspopup="dialog"
         className="setupHubBox setupHubBox--heroes"
         onClick={() => onOpen("heroes")}
@@ -11158,6 +11161,7 @@ function SetupHub({
       </button>
 
       <button
+        aria-label="Map"
         aria-haspopup="dialog"
         className="setupHubBox setupHubBox--map"
         onClick={() => onOpen("map")}
@@ -11189,6 +11193,7 @@ function SetupHub({
       </button>
 
       <button
+        aria-label="Advanced settings"
         aria-haspopup="dialog"
         className="setupHubBox setupHubBox--advanced"
         onClick={() => onOpen("advanced")}
@@ -11505,7 +11510,8 @@ export function SetupLobbyScreen({
   const singlePlayer = state.sessionMode === "single-player";
 
   return (
-    <section className="setupLobby" aria-label="Map setup">
+    <section className={`setupLobby${allChosen ? " setupLobby--ready" : ""}`} aria-label="Map setup">
+      <SetupSceneArt />
       {/* First-visit opt-in: next-step coach + card reasons (local browser pref). */}
       <HelperCoachLobbyPrompt force={forceHelperPrompt} onClose={() => setForceHelperPrompt(false)} />
       <header>
@@ -11628,7 +11634,8 @@ export function SetupLobbyScreen({
 
       {mySeat ? (
         <button
-          className="newGameMenuButton"
+          aria-label={allChosen ? "New Game — Start game" : "Waiting for every seat to pick"}
+          className="newGameMenuButton setupSceneStartButton"
           disabled={!allChosen || Boolean(lobby.startCheck)}
           onClick={() => onAction({ type: "START_ADVENTURE", playerId: viewerPlayerId })}
           title={allChosen ? "Start the adventure" : "Every seat must pick a faction and hero first"}
@@ -11642,7 +11649,7 @@ export function SetupLobbyScreen({
             src={assetUrl("/assets/skills/slayer.webp")}
           />
           <span className={`newGameMenuLabel${allChosen ? "" : " waiting"}`}>
-            {allChosen ? "New Game" : "Waiting for every seat to pick…"}
+            {allChosen ? "Start game" : "Waiting for everyone…"}
           </span>
         </button>
       ) : null}

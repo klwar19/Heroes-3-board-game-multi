@@ -81,4 +81,31 @@ describe("usePacedComputerAdvance", () => {
     });
     expect(submit).toHaveBeenCalledTimes(1);
   });
+
+  it("immediately resumes the pending step when a suspended tab wakes", async () => {
+    vi.useFakeTimers();
+    const submit = vi.fn(async () => true);
+    renderHook(() =>
+      usePacedComputerAdvance({
+        enabled: true,
+        roomKey: "room:match-seed",
+        version: 8,
+        blocked: false,
+        legalActions: [advance],
+        submit,
+        delayMs: 10_000,
+      }),
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+      await Promise.resolve();
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
 });

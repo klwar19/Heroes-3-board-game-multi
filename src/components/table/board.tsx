@@ -1242,6 +1242,10 @@ export function BattlefieldBoard({
           const attackTotal = unit ? unit.attack + getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit) : 0;
           const defenseTotal = unit ? unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit) : 0;
           const initiativeTotal = unit ? effectiveInitiative(unit, state.activeEffects) : 0;
+          const attackDelta = unit ? attackTotal - unit.attack : 0;
+          const defenseDelta = unit ? defenseTotal - unit.defense : 0;
+          const healthDelta = unit ? health - unit.maxHealth : 0;
+          const initiativeDelta = unit ? initiativeTotal - unit.initiative : 0;
           // Hovering a candidate cell drives the ghost + arrow toward it.
           const repositionHoverProps = isRepositionCandidate
             ? {
@@ -1358,19 +1362,67 @@ export function BattlefieldBoard({
                 <div className="boardCardImage cardFaceFallback">{unit.name}</div>
               )}
               <div className="boardCardHud">
-                <strong>{unit.cardName}</strong>
-                <span>
-                  {health}/{unit.maxHealth} HP
-                  {unit.defenseToken ? " DEF" : ""}
-                </span>
-                <span
-                  aria-label={`${unit.cardName} live stats: Attack ${attackTotal}, Defense ${defenseTotal}, Initiative ${initiativeTotal}`}
-                  className="boardCardStats"
-                  title="Live totals include lasting buffs, combat tokens, and Haste/Slow. Target-specific attack or defense bonuses appear when an attack is declared."
-                >
-                  A {attackTotal} · D {defenseTotal} · I {initiativeTotal}
-                </span>
+                <span className="boardCardHp">{health}/{unit.maxHealth} HP</span>
+                {attackDelta || defenseDelta || healthDelta || initiativeDelta ? (
+                  <span aria-label={`${unit.cardName} stat changes`} className="boardCardStatChanges">
+                    {attackDelta ? (
+                      <span
+                        className={`boardStatChange attack ${attackDelta > 0 ? "up" : "down"}`}
+                        title={`Attack ${attackDelta > 0 ? "increased" : "decreased"} (${attackTotal})`}
+                      >
+                        {attackDelta > 0 ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      </span>
+                    ) : null}
+                    {defenseDelta ? (
+                      <span
+                        className={`boardStatChange defense ${defenseDelta > 0 ? "up" : "down"}`}
+                        title={`Defense ${defenseDelta > 0 ? "increased" : "decreased"} (${defenseTotal})`}
+                      >
+                        {defenseDelta > 0 ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      </span>
+                    ) : null}
+                    {healthDelta ? (
+                      <span
+                        className={`boardStatChange health ${healthDelta > 0 ? "up" : "down"}`}
+                        title={`Health ${healthDelta > 0 ? "increased" : "decreased"} (${health}/${unit.maxHealth})`}
+                      >
+                        {healthDelta > 0 ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      </span>
+                    ) : null}
+                    {initiativeDelta ? (
+                      <span
+                        className={`boardStatChange speed ${initiativeDelta > 0 ? "up" : "down"}`}
+                        title={`Speed ${initiativeDelta > 0 ? "increased" : "decreased"} (${initiativeTotal})`}
+                      >
+                        {initiativeDelta > 0 ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
               </div>
+              <span
+                className={`unitActivationBadge ${
+                  isActive
+                    ? "active"
+                    : unit.waitPending
+                      ? "waited"
+                      : unit.activatedThisRound
+                        ? "acted"
+                        : "ready"
+                }`}
+                title={
+                  isActive
+                    ? `${unit.cardName} is acting now`
+                    : unit.waitPending
+                      ? `${unit.cardName} waited and will act again`
+                      : unit.activatedThisRound
+                        ? `${unit.cardName} has acted this round`
+                        : `${unit.cardName} is ready to act`
+                }
+              >
+                <i aria-hidden="true" />
+                {isActive ? "Acting" : unit.waitPending ? "Waiting" : unit.activatedThisRound ? "Acted" : "Ready"}
+              </span>
               <TokenChips unit={unit} />
               {tokenMark}
               {isActive ? (
@@ -1445,18 +1497,6 @@ export function BattlefieldBoard({
                   title="Retaliation spent — this unit already used its once-per-round counter-attack, so a melee hit now will NOT draw a retaliation."
                 >
                   <Swords aria-hidden="true" size={9} /> no counter
-                </span>
-              ) : null}
-              {/* Polish Wait: an hourglass marks a unit that has Waited this
-                  round — it re-activates after all others, highest token first. */}
-              {unit?.waitPending ? (
-                <span
-                  className="waitBadge"
-                  title={`Waited — re-activates after the other units this round${
-                    unit.waitToken ? ` (wait token ${unit.waitToken})` : ""
-                  }.`}
-                >
-                  <Hourglass aria-hidden="true" size={9} /> Wait
                 </span>
               ) : null}
             </article>

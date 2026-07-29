@@ -356,6 +356,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     category: "global",
     default: false,
     legacyDefault: false
+  },
+  {
+    id: "level-v-signature-neutral",
+    label: "Level V signature Neutral",
+    description:
+      "Global map rule: every ordinary Field-Difficulty V Neutral army contains at least one Archangels, Ghost Dragons, or Black Dragons card. It replaces one existing golden draw, so army size, difficulty, rewards, and XP stay unchanged. If all three cards are already outside their deck, a temporary guard copy is used for that fight.",
+    category: "global",
+    default: false,
+    legacyDefault: false
   }
 ];
 

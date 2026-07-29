@@ -168,7 +168,9 @@ describe("A Resurrection Spell in the Spell Book can save a unit", () => {
   it("a silver Book Resurrection is offered and pays its 2-power-source cost from hand", () => {
     const declared = lethalSetup({
       grade: "silver",
-      hand: ["spell.magic_arrow", "spell.bless"], // two hand power sources
+      // Bless is now a legal enemy-attack reaction, so use a non-attack-window
+      // Spell as the second power source to reach the lethal-save window.
+      hand: ["spell.magic_arrow", "spell.slow"],
       spellBook: ["spell.resurrection"]
     });
     const save = saveActions(declared).find(
@@ -181,13 +183,13 @@ describe("A Resurrection Spell in the Spell Book can save a unit", () => {
     expect(save, "a Book Resurrection silver save should be offered when the hand can pay").toBeTruthy();
 
     const action = save!.action as Extract<GameAction, { type: "PLAY_REACTION" }>;
-    const saved = applyOk(declared, { ...action, costCardIds: ["spell.magic_arrow", "spell.bless"] });
+    const saved = applyOk(declared, { ...action, costCardIds: ["spell.magic_arrow", "spell.slow"] });
     expect(hasResurrection(saved)).toBe(true);
     expect(saved.combat!.units[GRIFFINS].damage).toBe(saved.combat!.units[GRIFFINS].maxHealth - 1); // fully saved
     expect(saved.players.p1.spellBook).not.toContain("spell.resurrection"); // cast left the Book
     expect(saved.players.p1.discard).toContain("spell.resurrection");
     expect(saved.players.p1.discard).toContain("spell.magic_arrow");
-    expect(saved.players.p1.discard).toContain("spell.bless");
+    expect(saved.players.p1.discard).toContain("spell.slow");
   });
 
   it("CONTROL: with nothing in hand or Book, no save is offered", () => {

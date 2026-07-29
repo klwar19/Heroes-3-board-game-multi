@@ -185,6 +185,11 @@ export type HouseRuleId =
   // Global map rule (default OFF): fought neutral combats may continue past the
   // first round without spending a Hero movement point.
   | "free-neutral-combat-extend"
+  // Global map rule (default OFF): every ordinary Field-Difficulty V Neutral
+  // army contains at least one of Archangels, Ghost Dragons, or Black Dragons.
+  // The guaranteed body occupies one of the row's existing gold slots, so the
+  // guard count, difficulty, rewards, and XP do not change.
+  | "level-v-signature-neutral"
   // Old BINH reinforcement timing: playing Necromancy or visiting a Hill Fort
   // immediately opens a blocking pick-and-pay upgrade prompt. Off (new default):
   // the effect banks its reinforcement discount; the player may add Legion
@@ -13216,6 +13221,12 @@ export type PendingChoice =
          * straight to the reveal instead of re-opening the mode choice.
          */
         modeResolved?: boolean;
+        /**
+         * This Search began with an empty discard, so the engine auto-flipped a
+         * face-up card. That newly seeded card is not a take alternative for
+         * this same Search; the Search proceeds from the next top cards.
+         */
+        ignoreDiscardTopOnce?: boolean;
       };
       /** own-deck-pick: revealed cards of the player's own deck (Mana Vortex). */
       ownDeckPick?: {

@@ -40,6 +40,52 @@ function declareMeleeAttack(p1Hand: string[], p2Hand: string[]): GameState {
   });
 }
 
+describe("Bless can suppress an enemy attack", () => {
+  it("lets the defender Bless the enemy ground/flying attacker and suppresses its die-triggered ability", () => {
+    let state = declareMeleeAttack([], ["spell.bless"]);
+    const attacker = state.combat!.units.unit_p1_griffins;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    attacker.attack = 5;
+    attacker.abilities = ["dread-knight-death-blow"];
+    defender.defense = 0;
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    defender.retaliatedThisRound = true;
+    state.combat!.dice.scriptedRolls = [1];
+    state.combat!.dice.rollCount = 0;
+
+    const offered = state.reactionWindow?.legalReactions.p2 ?? [];
+    expect(
+      offered.some(
+        (entry) =>
+          entry.action.type === "PLAY_REACTION" &&
+          entry.action.cardId === "spell.bless" &&
+          !entry.action.asPowerBoost
+      )
+    ).toBe(true);
+
+    state = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p2",
+      cardId: "spell.bless",
+      mode: "basic"
+    });
+    state = passAll(state);
+
+    // No Attack die was consumed, its synthetic zero did not trigger Death
+    // Blow, and the hit is exactly printed Attack 5 against Defense 0.
+    expect(state.combat!.dice.rollCount).toBe(0);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(5);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "dread-knight-death-blow"
+      )
+    ).toBe(false);
+    const attack = [...state.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
+    expect(attack?.type === "ATTACK_ROLLED" ? attack.noDie : false).toBe(true);
+  });
+});
+
 describe("attack-window power pairing", () => {
   it("offers Power plays in an attack window only while an instant spell can pair with them", () => {
     // p1 holds Bloodlust (attack-trigger instant spell) + Power: both offered.

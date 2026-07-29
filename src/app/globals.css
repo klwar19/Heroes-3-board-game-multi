@@ -165,10 +165,10 @@ button {
 
 .tableSeatRow {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: end;
-  min-height: 196px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 0;
 }
 
 /* ---------- shared chrome ---------- */
@@ -248,10 +248,10 @@ button {
 
 .opponentSeat {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 5px 8px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background:
@@ -260,12 +260,14 @@ button {
 }
 
 .seatBadge {
-  display: grid;
-  gap: 5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .seatBadge strong {
-  font-size: 15px;
+  font-size: 13px;
 }
 
 /* Person-first seat nameplate (opponent bar + own dock): faction dot, person
@@ -307,7 +309,7 @@ button {
 
 .seatPick {
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.01em;
   overflow: hidden;
@@ -317,9 +319,9 @@ button {
 
 .seatMetrics {
   display: flex;
-  gap: 10px;
+  gap: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .seatMetrics span {
@@ -365,6 +367,32 @@ button {
 .seatPiles {
   display: flex;
   gap: 10px;
+}
+
+.opponentCardStats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.opponentCardStats > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 2px 6px;
+  border: 1px solid rgb(213 168 79 / 22%);
+  border-radius: 99px;
+  color: var(--muted);
+  background: rgb(10 9 7 / 38%);
+  white-space: nowrap;
+}
+
+.opponentCardStats strong {
+  color: var(--text);
+  font-size: 10px;
 }
 
 /* ---------- piles ---------- */
@@ -937,6 +965,43 @@ button {
   gap: 10px;
   align-content: start;
   min-width: 0;
+}
+
+.combatOpponentRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.combatOpponentRow .opponentInfoDock.combat {
+  align-content: center;
+  justify-content: center;
+  padding: 4px 6px;
+}
+
+.combatOpponentRow .opponentInfoDockLabel {
+  font-size: 0;
+}
+
+.combatOpponentRow .opponentInfoDockLabel svg {
+  width: 15px;
+  height: 15px;
+}
+
+.combatOpponentRow .opponentInfoBtn {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.combatOpponentRow .opponentInfoBtn .seatFactionDot {
+  width: 8px;
+  height: 8px;
 }
 
 /* ---------- deck wells (left rail) ---------- */
@@ -1635,46 +1700,109 @@ button.battleCell {
   background: #090a0a;
 }
 
-/* Name + HP readout, bottom-RIGHT of a board unit card. `max-width` deliberately
-   leaves the card's left quarter clear: every printed card face carries its stat
-   rail down the left edge, and the BOTTOM entry of that rail is Initiative — a
-   full-width plate covered it, so a long name ("Neutral Iron Golems") made the
-   card's initiative unreadable. The name ellipsizes instead; the full card
-   (initiative included) is one hover/click away in the inspector. */
+/* Compact live HP at the card's top-right, above the printed skill copy. The
+   name and duplicated numeric stat line stay on the scanned card/inspector;
+   only coloured direction arrows call out live changes. */
 .boardCardHud {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  min-width: 58px;
-  max-width: 76%;
-  display: grid;
-  gap: 1px;
-  padding: 4px 5px;
+  top: 4px;
+  right: 4px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 3px;
   border: 1px solid rgb(255 234 169 / 55%);
-  border-radius: 5px;
-  background: rgb(14 13 11 / 88%);
-  box-shadow: 0 5px 9px rgb(0 0 0 / 32%);
-}
-
-.boardCardHud strong,
-.boardCardHud span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  overflow-wrap: anywhere;
-  font-size: 10px;
-  line-height: 1.05;
+  border-radius: 999px;
+  background: rgb(14 13 11 / 92%);
+  box-shadow: 0 3px 7px rgb(0 0 0 / 42%);
 }
 
 .boardCardHud span {
-  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
 }
 
-.boardCardHud .boardCardStats {
-  color: #f4d774;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+.boardCardHp {
+  color: #f5ead2;
+  font-weight: 900;
   white-space: nowrap;
+}
+
+.boardCardStatChanges {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.boardStatChange {
+  display: inline-grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 45%);
+}
+
+.boardStatChange svg {
+  width: 9px;
+  height: 9px;
+  stroke-width: 3.2;
+}
+
+.boardStatChange.attack { color: #ff695c; }
+.boardStatChange.defense { color: #6ba7ff; }
+.boardStatChange.health { color: #ffd65c; }
+.boardStatChange.speed { color: #65d487; }
+
+.unitActivationBadge {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px;
+  border: 1px solid rgb(205 217 224 / 48%);
+  border-radius: 999px;
+  background: rgb(18 22 24 / 88%);
+  color: #dce5e9;
+  font-size: 6px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 45%);
+}
+
+.unitActivationBadge i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 5px currentColor;
+}
+
+.unitActivationBadge.ready {
+  border-color: rgb(100 212 135 / 64%);
+  color: #77df99;
+}
+
+.unitActivationBadge.active {
+  border-color: rgb(255 216 92 / 76%);
+  color: #ffe077;
+  animation: activeRingPulse 1.4s ease-in-out infinite;
+}
+
+.unitActivationBadge.waited {
+  border-color: rgb(233 196 96 / 72%);
+  color: #f1cf77;
+}
+
+.unitActivationBadge.acted {
+  opacity: 0.72;
+  color: #a9b2b8;
 }
 
 /* ---------- right rail ---------- */
@@ -1955,12 +2083,61 @@ button.battleCell {
 
 .playerDock {
   display: flex;
-  align-items: end;
-  gap: 12px;
-  padding: 10px 12px;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 5px 6px;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: linear-gradient(180deg, rgb(34 28 20 / 92%), rgb(20 18 14 / 94%));
+}
+
+.playerDock .pileSpot .pileCard {
+  width: 36px;
+}
+
+.playerDock .pileSpot > span {
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  padding: 0 4px;
+  font-size: 9px;
+}
+
+.playerPileTools {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.playerPileRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.combatSpellShelfHost {
+  display: flex;
+  justify-content: center;
+  min-height: 34px;
+  width: 100%;
+}
+
+.combatSpellShelfHost .spellShelf {
+  align-self: auto;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.combatSpellShelfHost .shelfIcon {
+  padding: 3px;
+}
+
+.combatSpellShelfHost .shelfGlyph {
+  width: 34px;
+  height: 25px;
 }
 
 /* Clickable discard in the combat player dock (opens the full pile browser). */
@@ -2053,10 +2230,12 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .dockMetrics {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .dockMetrics strong {
@@ -2067,7 +2246,13 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .dockMetrics span {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
+  min-height: 20px;
+  padding: 2px 5px;
+  border: 1px solid rgb(213 168 79 / 18%);
+  border-radius: 99px;
+  background: rgb(10 9 7 / 30%);
+  white-space: nowrap;
 }
 
 /* Bulwark "Runes" combat track (frosty palette to match the faction colour). */
@@ -2208,8 +2393,8 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .handFan {
   display: flex;
   align-items: end;
-  padding: 12px 30px 6px;
-  min-height: 178px;
+  padding: 6px 20px 3px 6px;
+  min-height: 110px;
   /* Must stay visible on BOTH axes: `overflow-x: auto` promotes overflow-y
      to auto too (CSS spec), which clipped the card popover and its
      play/cast buttons — making every hand card unplayable in combat. */
@@ -2289,12 +2474,11 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 /* ---------- Spell Book / Spell Scroll shelf (house rule) ---------- */
 .spellShelf {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-self: stretch;
-  justify-content: center;
-  padding-right: 12px;
-  margin-right: 6px;
+  flex-direction: row;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 0 7px 3px 0;
+  margin-right: 4px;
   border-right: 1px dashed rgba(210, 180, 120, 0.4);
 }
 
@@ -2309,7 +2493,7 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px;
+  padding: 4px;
   border: 1.5px solid rgba(213, 168, 79, 0.7);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(94, 70, 32, 0.6), rgba(60, 44, 20, 0.6));
@@ -2355,8 +2539,8 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .shelfGlyph {
-  width: 52px;
-  height: 40px;
+  width: 36px;
+  height: 28px;
   object-fit: contain;
   image-rendering: pixelated;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
@@ -2520,8 +2704,8 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .fanCard {
   position: relative;
   display: block;
-  width: 104px;
-  margin-right: -34px;
+  width: 88px;
+  margin-right: -28px;
   padding: 0;
   border: 0;
   border-radius: 7px;
@@ -4032,8 +4216,7 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 @media (max-width: 1020px) {
   .tableTopRow,
   .tableMidRow,
-  .tableMidRow.withPlacement,
-  .tableSeatRow {
+  .tableMidRow.withPlacement {
     grid-template-columns: 1fr;
   }
 
@@ -4042,8 +4225,16 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   }
 
   .opponentSeat {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: minmax(140px, 190px) minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .tableSeatRow {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tableSeatRow > .handColumn {
+    grid-column: 1 / -1;
   }
 }
 
@@ -8581,13 +8772,12 @@ button.hbSlot:disabled { cursor: default; }
   color: #fff1aa;
 }
 
-/* On the combat card sit the coin at the TOP-RIGHT corner: the bottom-centre
-   would overlap the bottom-right HP readout (.boardCardHud), and top-left /
-   top-centre are taken by the token chips / retaliation and Berserk/Clone
-   badges. Top-right is the one clear corner, keeping the HP always visible. */
+/* Keep the stack coin at the lower-right; the compact HP/status system owns
+   the top-right and lower-left corners. */
 .armyStackBadge.combat {
   position: absolute;
-  top: 6px;
+  top: auto;
+  bottom: 6px;
   right: 6px;
   z-index: 6;
 }
@@ -9711,6 +9901,19 @@ span.recruitThumb {
   filter: brightness(0.5) saturate(1.04) contrast(1.02);
   /* Slight scale so the image never shows a blank edge. */
   transform: scale(1.04);
+  animation: none;
+}
+
+@keyframes setupDragonBackdropBreath {
+  0%,
+  100% {
+    filter: brightness(0.49) saturate(1.02) contrast(1.02);
+    transform: scale(1.04);
+  }
+  50% {
+    filter: brightness(0.56) saturate(1.08) contrast(1.04);
+    transform: scale(1.055);
+  }
 }
 
 .setupPhase::after {
@@ -10531,6 +10734,864 @@ span.recruitThumb {
   height: 14px;
   vertical-align: -2px;
 }
+
+/* ------------------------------------------------------------------------ */
+/* Living setup scene: the existing hub controls sit over a compact camp     */
+/* instead of replacing the working setup windows with a separate dashboard. */
+
+.setupLobby {
+  position: relative;
+  isolation: isolate;
+  min-height: min(720px, calc(100vh - 96px));
+}
+
+.setupSceneArt {
+  position: absolute;
+  z-index: 0;
+  inset: 72px -10px 10px;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: 18px;
+  opacity: 0.98;
+  filter: saturate(0.95);
+}
+
+.setupSceneArt::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(5, 7, 6, 0.05) 0%, rgba(6, 5, 3, 0.08) 44%, rgba(5, 4, 2, 0.64) 100%),
+    radial-gradient(ellipse at 48% 80%, rgba(255, 156, 64, 0.14), transparent 24%);
+  z-index: 5;
+}
+
+.setupSceneTree {
+  position: absolute;
+  inset: 0 0 26% 0;
+  overflow: hidden;
+}
+
+.setupSceneTree::before {
+  content: "";
+  position: absolute;
+  left: 9%;
+  top: -12%;
+  width: 24%;
+  height: 128%;
+  border-radius: 46% 54% 18% 22%;
+  background:
+    linear-gradient(90deg, rgba(15, 8, 4, 0.98), rgba(91, 50, 21, 0.96) 28%, rgba(43, 22, 10, 0.98) 60%, rgba(11, 7, 4, 0.96)),
+    repeating-linear-gradient(80deg, transparent 0 18px, rgba(221, 145, 59, 0.17) 19px 24px, transparent 25px 42px);
+  box-shadow: 20px 0 40px rgba(0, 0, 0, 0.34), inset -16px 0 24px rgba(0, 0, 0, 0.42);
+  transform: rotate(5deg);
+}
+
+.setupSceneTree::after {
+  content: "";
+  position: absolute;
+  left: -6%;
+  top: -11%;
+  width: 78%;
+  height: 46%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 24% 58%, rgba(74, 109, 54, 0.82) 0 16%, transparent 17%),
+    radial-gradient(ellipse at 44% 35%, rgba(36, 74, 37, 0.94) 0 24%, transparent 25%),
+    radial-gradient(ellipse at 70% 56%, rgba(68, 102, 47, 0.76) 0 19%, transparent 20%),
+    radial-gradient(ellipse at 55% 15%, rgba(17, 44, 26, 0.95) 0 34%, transparent 35%);
+  filter: blur(1px);
+}
+
+.setupSceneBranch {
+  position: absolute;
+  display: block;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #6d3e1f, #251308 68%, #0d0804);
+  box-shadow: inset 0 7px 9px rgba(222, 147, 61, 0.16), 0 8px 16px rgba(0, 0, 0, 0.34);
+  transform-origin: left center;
+}
+
+.setupSceneBranch--left { left: 11%; top: 28%; width: 39%; transform: rotate(-19deg); }
+.setupSceneBranch--center { left: 20%; top: 18%; width: 50%; transform: rotate(2deg); }
+.setupSceneBranch--right { left: 20%; top: 34%; width: 58%; transform: rotate(20deg); }
+
+.setupSceneCanopy {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 42% 34%, rgba(108, 138, 62, 0.75), rgba(25, 64, 34, 0.9) 60%, rgba(7, 17, 13, 0.9) 100%);
+  box-shadow: 0 18px 28px rgba(0, 0, 0, 0.24);
+}
+
+.setupSceneCanopy--one { left: -3%; top: -10%; width: 43%; height: 28%; }
+.setupSceneCanopy--two { left: 24%; top: -8%; width: 40%; height: 27%; }
+.setupSceneCanopy--three { left: 55%; top: -11%; width: 42%; height: 29%; }
+.setupSceneCanopy--four { left: 65%; top: 13%; width: 32%; height: 21%; opacity: 0.72; }
+
+.setupSceneFruit {
+  position: absolute;
+  display: block;
+  width: 28px;
+  height: 35px;
+  transform-origin: 50% -24px;
+  animation: setupFruitSway 4.6s ease-in-out infinite;
+}
+
+.setupSceneFruit--mode { left: 23%; top: 20%; animation-delay: -0.6s; }
+.setupSceneFruit--heroes { left: 40%; top: 12%; animation-delay: -2.3s; }
+.setupSceneFruit--map { left: 57%; top: 21%; animation-delay: -1.4s; }
+.setupSceneFruit--advanced { left: 72%; top: 11%; animation-delay: -3.2s; }
+
+.setupSceneFruitStem {
+  position: absolute;
+  left: 13px;
+  top: -27px;
+  width: 2px;
+  height: 28px;
+  background: #b98a41;
+  box-shadow: 0 0 4px rgba(245, 208, 117, 0.55);
+}
+
+.setupSceneFruitBody {
+  position: absolute;
+  inset: 2px 2px 0;
+  border-radius: 48% 48% 55% 55%;
+  background: radial-gradient(circle at 34% 24%, #fff7bb 0 9%, #f4c654 22%, #bb6d20 64%, #5c2812 100%);
+  box-shadow: 0 0 11px 4px rgba(255, 202, 75, 0.45), inset -4px -6px 8px rgba(87, 34, 7, 0.36);
+}
+
+.setupSceneFruitLeaf {
+  position: absolute;
+  left: 16px;
+  top: -1px;
+  width: 13px;
+  height: 7px;
+  border-radius: 100% 0 100% 0;
+  background: #698c3c;
+  transform: rotate(-20deg);
+}
+
+.setupSceneFruitGlow,
+.setupSceneFruitIndex {
+  display: none;
+}
+
+@keyframes setupFruitSway {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(4deg) translateY(2px); }
+}
+
+.setupSceneParty {
+  position: absolute;
+  z-index: 3;
+  left: 12%;
+  right: 10%;
+  bottom: 11%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(5px, 1.2vw, 18px);
+}
+
+.setupSceneHero {
+  position: relative;
+  width: clamp(58px, 7.2vw, 102px);
+  aspect-ratio: 0.78;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  animation: setupHeroRest 5.8s ease-in-out infinite;
+  filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.65));
+}
+
+.setupSceneHero:nth-child(2) { animation-delay: -1.1s; }
+.setupSceneHero:nth-child(3) { animation-delay: -2.2s; }
+.setupSceneHero:nth-child(4) { animation-delay: -3.3s; }
+.setupSceneHero:nth-child(5) { animation-delay: -4.4s; }
+.setupSceneHero:nth-child(6) { animation-delay: -5.1s; }
+.setupSceneHero--branch { margin-bottom: clamp(32px, 4vh, 68px); }
+
+.setupSceneHeroArt {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 2px solid rgba(219, 174, 87, 0.42);
+  border-radius: 48% 48% 42% 42%;
+  box-shadow: 0 0 0 1px rgba(27, 14, 5, 0.88), inset 0 -18px 20px rgba(9, 5, 2, 0.45);
+}
+
+/* Character-specific identity layers. These stay attached to each hero      */
+/* wrapper, so the future sprite/mesh swap does not change the animation API. */
+.setupSceneHero--gem .setupSceneHeroArt {
+  filter: saturate(0.78) brightness(1.02) hue-rotate(-8deg);
+}
+
+.setupSceneGemRobe {
+  position: absolute;
+  z-index: 2;
+  left: 5%;
+  right: 5%;
+  bottom: -3%;
+  height: 32%;
+  border: 1px solid rgba(224, 190, 111, 0.52);
+  border-radius: 48% 48% 22% 22%;
+  background:
+    linear-gradient(92deg, rgba(17, 48, 31, 0.94), rgba(73, 112, 61, 0.82) 48%, rgba(19, 47, 28, 0.96)),
+    radial-gradient(ellipse at 50% 0%, rgba(232, 223, 157, 0.55), transparent 42%);
+  box-shadow: inset 0 7px 9px rgba(221, 210, 145, 0.17), 0 7px 10px rgba(0, 0, 0, 0.38);
+  clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+  opacity: 0.9;
+  animation: setupGemRobeBreath 5.8s ease-in-out infinite;
+}
+
+@keyframes setupGemRobeBreath {
+  0%, 100% { transform: scaleX(0.98); }
+  50% { transform: scaleX(1.02); }
+}
+
+.setupSceneWeapon {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  filter: drop-shadow(0 0 4px rgba(255, 190, 80, 0.36));
+}
+
+/* Gelu's signature weapon: a curved wooden bow, with its string kept visible */
+/* against the dark tree and cloak. */
+.setupSceneWeapon--bow {
+  right: -15%;
+  bottom: 7%;
+  width: 54%;
+  height: 82%;
+  border: 3px solid #bc7a36;
+  border-left-color: transparent;
+  border-radius: 52% 44% 50% 46%;
+  transform: rotate(-19deg);
+}
+
+.setupSceneWeapon--bow::after {
+  content: "";
+  position: absolute;
+  left: 49%;
+  top: 4%;
+  width: 1px;
+  height: 92%;
+  background: rgba(255, 227, 164, 0.8);
+  transform: rotate(20deg);
+}
+
+/* Mutare gets one clean curved scimitar and no backpack/pack silhouette. */
+.setupSceneWeapon--scimitar {
+  right: -28%;
+  bottom: 1%;
+  width: 28%;
+  height: 80%;
+  border: 4px solid #dbc889;
+  border-left-color: transparent;
+  border-bottom-color: #a77635;
+  border-radius: 44% 66% 54% 34%;
+  transform: rotate(25deg);
+  box-shadow: inset -3px 0 2px rgba(102, 52, 19, 0.55);
+}
+
+.setupSceneWeapon--scimitar::after {
+  content: "";
+  position: absolute;
+  left: -10px;
+  bottom: -7px;
+  width: 13px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6a321d;
+  transform: rotate(-18deg);
+}
+
+.setupSceneSpell--fire {
+  position: absolute;
+  z-index: 4;
+  left: -15%;
+  top: 22%;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 245, 158, 0.9) 0 12%, rgba(255, 135, 35, 0.72) 34%, rgba(210, 53, 20, 0.22) 58%, transparent 72%);
+  filter: drop-shadow(0 0 10px rgba(255, 107, 21, 0.72));
+  animation: setupAdrienneFirePulse 1.15s ease-in-out infinite alternate;
+}
+
+.setupSceneSpellCore {
+  position: absolute;
+  inset: 29%;
+  border-radius: 48% 52% 40% 60%;
+  background: linear-gradient(135deg, #fffbd0, #ffad32 48%, #e84918);
+  transform: rotate(22deg);
+}
+
+.setupSceneSpellRing {
+  position: absolute;
+  inset: -22%;
+  border: 1px solid rgba(255, 225, 122, 0.74);
+  border-radius: 50%;
+  animation: setupAdrienneFireRing 2.1s ease-out infinite;
+}
+
+@keyframes setupAdrienneFirePulse {
+  from { transform: translateY(2px) scale(0.88); opacity: 0.7; }
+  to { transform: translateY(-4px) scale(1.08); opacity: 1; }
+}
+
+@keyframes setupAdrienneFireRing {
+  from { transform: scale(0.56); opacity: 0.8; }
+  to { transform: scale(1.25); opacity: 0; }
+}
+
+/* Dracon's reference eyes are pale white and fully luminous, not dragon-red. */
+.setupSceneDraconEyes {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  pointer-events: none;
+  animation: setupDraconEyePulse 4.3s ease-in-out infinite;
+}
+
+.setupSceneDraconEye {
+  position: absolute;
+  top: 40%;
+  width: 17%;
+  height: 6%;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 5px 2px rgba(255, 255, 255, 0.95), 0 0 13px 4px rgba(176, 224, 255, 0.75);
+}
+
+.setupSceneDraconEye--left { left: 24%; transform: rotate(7deg); }
+.setupSceneDraconEye--right { right: 24%; transform: rotate(-7deg); }
+
+@keyframes setupDraconEyePulse {
+  0%, 100% { opacity: 0.74; filter: brightness(0.95); }
+  50% { opacity: 1; filter: brightness(1.36); }
+}
+
+.setupSceneHeroHalo {
+  position: absolute;
+  z-index: -1;
+  inset: -9px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 188, 71, 0.25), transparent 68%);
+  opacity: 0.55;
+}
+
+.setupSceneHeroName {
+  position: absolute;
+  bottom: -16px;
+  padding: 2px 7px;
+  border: 1px solid rgba(179, 133, 53, 0.48);
+  border-radius: 999px;
+  background: rgba(12, 8, 4, 0.76);
+  color: #e7d3a8;
+  font: 600 10px/1.1 Georgia, "Times New Roman", serif;
+  white-space: nowrap;
+}
+
+@keyframes setupHeroRest {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.012); }
+}
+
+.setupSceneFire {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 6%;
+  width: 70px;
+  height: 86px;
+  transform: translateX(-50%);
+}
+
+.setupSceneFireGlow {
+  position: absolute;
+  inset: 20px -48px -18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(255, 175, 54, 0.42), rgba(255, 106, 20, 0.1) 42%, transparent 72%);
+  filter: blur(5px);
+  animation: setupFireGlow 2.2s ease-in-out infinite;
+}
+
+.setupSceneFlame {
+  position: absolute;
+  left: 50%;
+  bottom: 19px;
+  width: 34px;
+  height: 54px;
+  border-radius: 58% 42% 58% 42%;
+  transform-origin: 50% 100%;
+  transform: translateX(-50%) rotate(4deg);
+  background: linear-gradient(180deg, #fff4ad 0%, #ffbc39 36%, #ec5c1d 72%, #7b2110 100%);
+  box-shadow: 0 0 20px 4px rgba(255, 136, 32, 0.52);
+  animation: setupFlameDance 0.72s ease-in-out infinite alternate;
+}
+
+.setupSceneFlame--inner {
+  width: 19px;
+  height: 34px;
+  bottom: 21px;
+  background: linear-gradient(180deg, #fffde1, #ffe05b 48%, #f16a20);
+  animation-duration: 0.53s;
+  animation-direction: alternate-reverse;
+}
+
+.setupSceneEmber {
+  position: absolute;
+  bottom: 45px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffe6a1;
+  box-shadow: 0 0 8px 3px rgba(255, 142, 45, 0.7);
+  animation: setupEmberRise 1.9s ease-out infinite;
+}
+
+.setupSceneEmber--one { left: 25px; animation-delay: -0.8s; }
+.setupSceneEmber--two { left: 42px; animation-delay: -1.3s; animation-duration: 1.5s; }
+.setupSceneEmber--three { left: 34px; animation-delay: -0.2s; animation-duration: 2.4s; }
+
+@keyframes setupFlameDance {
+  from { transform: translateX(-50%) rotate(-6deg) scale(0.9, 0.96); }
+  to { transform: translateX(-50%) rotate(8deg) scale(1.06, 1.08); }
+}
+
+@keyframes setupFireGlow {
+  0%, 100% { opacity: 0.62; transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+
+@keyframes setupEmberRise {
+  from { opacity: 0; transform: translate(0, 8px) scale(0.5); }
+  22% { opacity: 1; }
+  to { opacity: 0; transform: translate(12px, -54px) scale(0.18); }
+}
+
+.setupSceneDragonBreath {
+  position: absolute;
+  z-index: 2;
+  right: 15%;
+  top: 31%;
+  width: 28px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 234, 157, 0.82), rgba(221, 128, 55, 0.26) 52%, transparent 74%);
+  filter: blur(2px);
+  animation: setupDragonBreath 5.4s ease-in-out infinite;
+}
+
+@keyframes setupDragonBreath {
+  0%, 100% { opacity: 0.25; transform: translate(0, 0) scale(0.75); }
+  45% { opacity: 0.76; transform: translate(9px, -2px) scale(1.1); }
+  65% { opacity: 0.35; transform: translate(18px, -4px) scale(0.82); }
+}
+
+/* Existing hub buttons become the actual fruit plaques: same accessible      */
+/* names and popup wiring, much less visual weight than the old art tiles. */
+.setupHubGrid {
+  position: relative;
+  z-index: 6;
+  width: min(720px, 82%);
+  margin: clamp(90px, 15vh, 160px) auto auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(5px, 1vw, 14px);
+  padding: 0;
+}
+
+.setupHubBox {
+  min-width: 0;
+  aspect-ratio: auto;
+  min-height: 84px;
+  border: 1px solid rgba(206, 157, 72, 0.65);
+  border-radius: 10px;
+  overflow: visible;
+  background: linear-gradient(180deg, rgba(23, 15, 7, 0.72), rgba(11, 7, 4, 0.88));
+  box-shadow: 0 9px 22px rgba(0, 0, 0, 0.38), inset 0 0 16px rgba(255, 190, 84, 0.08);
+}
+
+.setupHubBoxArt { opacity: 0; pointer-events: none; }
+
+.setupHubBoxPlate {
+  min-height: 84px;
+  align-content: center;
+  padding: 9px 6px;
+  background: linear-gradient(180deg, rgba(20, 13, 6, 0.3), rgba(9, 6, 3, 0.72));
+  border-radius: inherit;
+}
+
+.setupHubBoxTitle { font-size: clamp(12px, 1.45vw, 17px); }
+.setupHubBoxSummary { font-size: 10px; }
+.setupHubBoxDim { font-size: 9px; }
+
+.setupHubBox::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -38px;
+  width: 18px;
+  height: 29px;
+  border-radius: 50% 50% 54% 54%;
+  background: radial-gradient(circle at 34% 24%, #fff4a8, #e2a339 34%, #783417 86%);
+  box-shadow: 0 0 12px 4px rgba(255, 197, 73, 0.36);
+  transform: translateX(-50%);
+  animation: setupHubFruitGlow 3.2s ease-in-out infinite;
+}
+
+.setupHubBox--heroes::before { animation-delay: -0.8s; }
+.setupHubBox--map::before { animation-delay: -1.7s; }
+.setupHubBox--advanced::before { animation-delay: -2.5s; }
+
+@keyframes setupHubFruitGlow {
+  0%, 100% { filter: brightness(0.9); box-shadow: 0 0 8px 2px rgba(255, 197, 73, 0.22); }
+  50% { filter: brightness(1.25); box-shadow: 0 0 18px 7px rgba(255, 197, 73, 0.52); }
+}
+
+.setupHubBox:hover::before,
+.setupHubBox:focus-visible::before,
+.setupLobby--ready .setupHubBox::before {
+  filter: brightness(1.4) saturate(1.16);
+  box-shadow: 0 0 22px 8px rgba(255, 220, 107, 0.7);
+}
+
+.setupSceneStartButton {
+  position: relative;
+  z-index: 7;
+  margin: 0 auto auto !important;
+  min-height: 58px;
+  width: min(220px, 62vw) !important;
+  background:
+    radial-gradient(ellipse at 50% 112%, rgba(255, 158, 41, 0.65), transparent 48%),
+    linear-gradient(180deg, rgba(91, 42, 12, 0.96), rgba(28, 13, 5, 0.98));
+  border-color: #e1ae57;
+  box-shadow: 0 0 18px rgba(238, 116, 26, 0.28), inset 0 0 18px rgba(255, 191, 68, 0.18);
+}
+
+.setupLobby--ready .setupSceneStartButton {
+  animation: setupReadyFirePulse 1.8s ease-in-out infinite;
+}
+
+.setupLobby--ready .setupSceneStartButton .newGameMenuIcon {
+  filter: sepia(0.4) saturate(1.8) drop-shadow(0 0 10px rgba(255, 183, 57, 0.75));
+}
+
+.setupSceneStartButton .newGameMenuLabel {
+  color: #ffe6a4;
+  text-shadow: 0 0 12px rgba(255, 168, 51, 0.55);
+}
+
+@keyframes setupReadyFirePulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(238, 116, 26, 0.3), inset 0 0 18px rgba(255, 191, 68, 0.14); }
+  50% { box-shadow: 0 0 28px rgba(255, 137, 35, 0.68), inset 0 0 24px rgba(255, 222, 110, 0.28); }
+}
+
+@media (max-width: 900px) {
+  .setupSceneArt { inset-inline: -3px; }
+  .setupSceneParty { left: 5%; right: 5%; gap: 3px; }
+  .setupSceneHero { width: clamp(48px, 9vw, 76px); }
+  .setupHubGrid { width: min(680px, 94%); }
+}
+
+@media (max-width: 620px) {
+  .setupLobby { min-height: 720px; }
+  .setupSceneArt { inset: 120px 0 0; }
+  .setupSceneParty { left: 3%; right: 3%; bottom: 14%; flex-wrap: wrap; }
+  .setupSceneHero { width: 62px; }
+  .setupSceneHero--branch { margin-bottom: 0; }
+  .setupHubGrid { margin-top: 120px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .setupHubBox::before { top: -28px; width: 15px; height: 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupSceneFruit,
+  .setupSceneHero,
+  .setupSceneFireGlow,
+  .setupSceneFlame,
+  .setupSceneEmber,
+  .setupSceneDragonBreath,
+  .setupSceneGemRobe,
+  .setupSceneSpell--fire,
+  .setupSceneSpellRing,
+  .setupSceneDraconEyes,
+  .setupPhase::before,
+  .setupHubBox::before,
+  .setupLobby--ready .setupSceneStartButton {
+    animation: none !important;
+  }
+}
+
+/* Live desktop override: the setup lobby starts below the top HUD, so the    */
+/* scene itself must occupy the viewport behind it rather than grow below the */
+/* fold with the lobby's scroll content. */
+.setupPhase {
+  background:
+    linear-gradient(180deg, rgba(7, 5, 3, 0.36), rgba(7, 5, 3, 0.58)),
+    url("/assets/ui/draft-gold-dragon.webp") center 20% / cover fixed no-repeat;
+}
+
+.setupPhase::before,
+.setupPhase::after {
+  z-index: 0;
+}
+
+.setupSceneArt {
+  position: fixed;
+  z-index: 0;
+  inset: 46px 0 0;
+  border-radius: 0;
+}
+
+.setupSceneArt::before {
+  background:
+    linear-gradient(180deg, rgba(5, 7, 6, 0.04) 0%, rgba(6, 5, 3, 0.05) 48%, rgba(5, 4, 2, 0.42) 100%),
+    radial-gradient(ellipse at 50% 74%, rgba(255, 156, 64, 0.18), transparent 25%);
+}
+
+.setupSceneParty {
+  bottom: 14%;
+}
+
+.setupSceneFire {
+  bottom: 8%;
+}
+
+.setupLobby {
+  min-height: 440px;
+}
+
+@media (max-height: 760px) and (min-width: 821px) {
+  .setupLobby {
+    min-height: 410px;
+  }
+
+  .setupSceneParty {
+    bottom: 11%;
+  }
+
+  .setupSceneHero {
+    width: clamp(58px, 6.6vw, 86px);
+  }
+
+  .setupSceneHeroName {
+    font-size: 9px;
+  }
+}
+
+/* The painted scene is the source of truth for the visible tree and heroes.  */
+/* The earlier CSS geometry remains only as an animation fallback; it must not */
+/* compete with the actual artwork in the live menu. */
+.setupSceneIllustration {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  background: url("/assets/ui/setup/setup-scene-attached-final.png") center center / cover no-repeat;
+  filter: saturate(1.02) contrast(1.03) brightness(0.86);
+  transform-origin: 50% 62%;
+  animation: none;
+}
+
+.setupSceneTree,
+.setupSceneParty {
+  display: none !important;
+}
+
+.setupSceneArt::before {
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(5, 7, 6, 0.04) 0%, rgba(6, 5, 3, 0.02) 48%, rgba(5, 4, 2, 0.35) 100%),
+    radial-gradient(ellipse at 50% 78%, rgba(255, 156, 64, 0.16), transparent 25%);
+}
+
+.setupScenePaintedFruit {
+  position: absolute;
+  z-index: 3;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 235, 124, 0.86), rgba(255, 174, 43, 0.25) 45%, transparent 74%);
+  filter: blur(3px);
+  animation: setupPaintedFruitPulse 3.6s ease-in-out infinite;
+}
+
+.setupSceneDragonBreath { display: none !important; }
+
+/* Local effects aligned to the fruit and fire already painted into the scene. */
+.setupScenePaintedFruit {
+  display: block !important;
+  width: 64px;
+  height: 64px;
+  background: radial-gradient(circle, rgb(255 249 190 / 72%) 0 7%, rgb(255 208 66 / 36%) 24%, rgb(255 150 24 / 18%) 47%, transparent 72%);
+  filter: blur(2px);
+  animation: setupPaintedFruitPulse 2.9s ease-in-out infinite;
+}
+
+.setupSceneFruit--map { left: 18%; top: 11%; animation-delay: -0.8s; }
+.setupSceneFruit--mode { left: 33.8%; top: 8.5%; animation-delay: -1.7s; }
+.setupSceneFruit--heroes { left: 47.8%; top: 1.8%; animation-delay: -2.4s; }
+.setupSceneFruit--advanced { left: 58.2%; top: 1.8%; animation-delay: -0.2s; }
+
+/* Map is the first fruit component being wired. Keep the painted fruit plates
+   in the source image visible, but add only one localized animated glow. */
+.setupSceneFruit--mode,
+.setupSceneFruit--heroes,
+.setupSceneFruit--advanced {
+  display: none !important;
+}
+
+.setupSceneFruit--map {
+  display: block !important;
+  mix-blend-mode: screen;
+  opacity: 0.76;
+  filter: blur(2px) brightness(1.08);
+}
+
+.setupLobby:has(.setupHubBox--map:hover) .setupSceneFruit--map,
+.setupLobby:has(.setupHubBox--map:focus-visible) .setupSceneFruit--map {
+  opacity: 1;
+  filter: blur(1px) brightness(1.26);
+  box-shadow: 0 0 24px 9px rgb(255 206 75 / 56%);
+}
+
+.setupSceneFire {
+  display: none !important;
+  left: 44.5%;
+  bottom: 4%;
+  width: 82px;
+  height: 104px;
+  z-index: 4;
+}
+
+.setupSceneFireGlow { animation: setupFireGlow 1.35s ease-in-out infinite; }
+.setupSceneFlame { display: none !important; }
+.setupSceneFlameArt {
+  position: absolute;
+  z-index: 2;
+  left: 17px;
+  bottom: 7px;
+  width: 48px;
+  height: 86px;
+  display: block;
+  object-fit: contain;
+  transform-origin: 50% 100%;
+  filter: drop-shadow(0 0 9px rgb(255 137 27 / 72%));
+  animation: setupCampfireFlame 0.68s ease-in-out infinite alternate;
+}
+
+@keyframes setupCampfireFlame {
+  from { transform: translate3d(-1px, 0, 0) rotate(-1.2deg) scale(0.96, 0.98); filter: drop-shadow(0 0 7px rgb(255 121 17 / 62%)); }
+  to { transform: translate3d(1px, -1px, 0) rotate(1.5deg) scale(1.02, 1.04); filter: drop-shadow(0 0 14px rgb(255 179 46 / 88%)); }
+}
+
+.setupSceneEmber { animation-duration: 1.25s; }
+
+.setupHubBox::before,
+.setupHubBox::after,
+.setupLobby--ready .setupSceneStartButton {
+  animation: none !important;
+}
+
+@keyframes setupPaintedSceneBreath {
+  0%, 100% { transform: scale(1.008) translate3d(0, 0, 0); }
+  50% { transform: scale(1.018) translate3d(0, -2px, 0); }
+}
+
+@keyframes setupPaintedFruitPulse {
+  0%, 100% { opacity: 0.24; transform: scale(0.82); }
+  50% { opacity: 0.86; transform: scale(1.18); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupSceneIllustration,
+  .setupScenePaintedFruit,
+  .setupSceneFlameArt {
+    animation: none !important;
+  }
+}
+
+/* The existing SetupHub buttons are the four real controls. They are placed
+   over the fruit plaques in the complete painted plate, while their popup and
+   summary logic remains unchanged. */
+.setupHubGrid {
+  position: fixed;
+  z-index: 8;
+  inset: 46px 0 0;
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.setupHubBox {
+  position: absolute;
+  display: block;
+  width: 13%;
+  height: 22%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: none;
+  color: transparent;
+  pointer-events: auto;
+}
+
+.setupHubBox--map { left: 14%; top: 0; }
+.setupHubBox--mode { left: 30%; top: 0; }
+.setupHubBox--heroes { left: 44%; top: 0; }
+.setupHubBox--advanced { left: 54%; top: 0; }
+
+.setupHubBox:hover,
+.setupHubBox:focus-visible {
+  border-color: rgb(255 222 113 / 78%);
+  outline: none;
+  background: radial-gradient(circle, rgb(255 211 81 / 12%), transparent 67%);
+  box-shadow: 0 0 22px rgb(255 196 73 / 32%);
+}
+
+.setupHubBoxArt,
+.setupHubBoxPlate,
+.setupHubBox::before,
+.setupHubBox::after {
+  display: none !important;
+}
+
+.setupSceneStartButton {
+  position: fixed;
+  z-index: 9;
+  left: 44.5%;
+  bottom: 1.5%;
+  width: min(180px, 18vw) !important;
+  min-height: 34px;
+  margin: 0 !important;
+  transform: translateX(-50%);
+  border: 1px solid rgb(237 182 82 / 72%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(94 45 13 / 92%), rgb(26 11 4 / 96%));
+  box-shadow: 0 0 18px rgb(255 137 35 / 34%), inset 0 0 16px rgb(255 191 68 / 18%);
+}
+
+.setupSceneStartButton .newGameMenuIcon { display: none; }
+.setupSceneStartButton .newGameMenuLabel { position: static; transform: none; font-size: 14px; }
+
+/* The room control stays available in the corner without covering the
+   Advanced fruit. Its full manager still opens from the compact toggle. */
+.setupPhase .roomPanel {
+  width: min(250px, 24vw);
+  flex: 0 0 min(250px, 24vw);
+}
+
+.setupPhase .roomPanel .roomToggle { width: 100%; }
 
 /* The hub popup shell sits ABOVE the docked table chat (z-index 200), which
    would otherwise cover the window's bottom-left corner. The two dialogs that
@@ -13266,7 +14327,9 @@ button.setupHubNavItem:hover {
 .fxStage {
   position: fixed;
   inset: 0;
-  z-index: 75;
+  /* Card/spell effects read above temporary morale/reaction controls
+     (z 80/85); full-screen card and dice presentations remain above. */
+  z-index: 89;
   pointer-events: none;
   overflow: hidden;
 }
@@ -14386,6 +15449,93 @@ button.setupHubNavItem:hover {
 
 .permanentRow.compact {
   gap: 6px;
+}
+
+.permanentRow.empty {
+  align-self: stretch;
+}
+
+.permanentRow.persistentTray {
+  position: relative;
+  align-content: center;
+  align-items: center;
+  min-width: 190px;
+  min-height: 52px;
+  padding: 18px 6px 5px;
+  border: 1px solid rgba(220, 175, 95, 0.38);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(44, 33, 20, 0.82), rgba(29, 22, 13, 0.88));
+}
+
+.permanentRow.persistentTray::before {
+  content: "Ongoing / Permanent";
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  color: #d7bf8d;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.persistentTray .permanentSlot.compact {
+  padding: 2px;
+}
+
+.persistentTray .permanentSlot.compact .permanentCardImage {
+  width: 30px;
+}
+
+.persistentTray .permanentEmptySlot {
+  flex: 1;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.persistentTray .permanentEmptySlot > svg,
+.persistentTray .permanentEmptySlot > span {
+  display: none;
+}
+
+.permanentEmptySlot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 112px;
+  min-height: 58px;
+  padding: 5px 7px;
+  border: 1px dashed rgba(220, 175, 95, 0.42);
+  border-radius: 9px;
+  color: #d7bf8d;
+  background: linear-gradient(180deg, rgba(44, 33, 20, 0.66), rgba(29, 22, 13, 0.72));
+}
+
+.permanentEmptySlot > span {
+  display: grid;
+  gap: 1px;
+}
+
+.permanentEmptySlot strong,
+.permanentEmptySlot small {
+  font-size: 9px;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.permanentEmptySlot small {
+  color: var(--muted);
+}
+
+.permanentEmptySlot em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
 }
 
 /* ------------------------------------------------------------------ */
@@ -28960,17 +30110,34 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 /* banding hugging the board just inside it: the same frame-ornate treatment */
 /* the map's room panel wears, sized for the larger board. */
 .battlefieldFrame {
+  isolation: isolate;
+  border: 0;
+  border-image: none;
+  border-radius: 5px;
+  box-shadow:
+    inset 0 0 34px rgb(0 0 0 / 38%),
+    0 24px 30px rgb(0 0 0 / 46%);
+}
+
+.battlefieldFrame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  box-sizing: border-box;
   border: 18px solid transparent;
   border-image-source: var(--orn-frame);
   border-image-slice: 185;
   border-image-width: 18px;
   border-image-repeat: round;
-  border-radius: 5px;
-  box-shadow:
-    inset 0 0 0 2px rgb(217 178 90 / 74%),
-    inset 0 0 0 3px rgb(33 64 111 / 55%),
-    inset 0 0 40px rgb(0 0 0 / 44%),
-    0 24px 30px rgb(0 0 0 / 46%);
+  pointer-events: none;
+}
+
+.tableRoot:not(.adventureRoot) .boardFelt {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 /* ---- B2. ORDER (initiative) rail → gold banding + bright-gold label ----- */
@@ -30612,6 +31779,21 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   color: #ffd76a;
 }
 
+.phoneTab.action {
+  flex: 1.25;
+  border: 1px solid rgba(255, 215, 106, 0.78);
+  background: linear-gradient(180deg, rgba(139, 91, 17, 0.96), rgba(88, 48, 10, 0.98));
+  color: #fff0b8;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 196, 0.28),
+    0 0 12px rgba(255, 190, 65, 0.2);
+}
+
+.phoneTab.action:active {
+  transform: translateY(1px);
+  filter: brightness(1.12);
+}
+
 .phoneTabIcon {
   display: inline-flex;
 }
@@ -31199,6 +32381,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   border: 2px solid var(--cmp-gold-deep);
   border-image: none;
   border-radius: 8px;
+}
+
+.phoneMode .battlefieldFrame::after {
+  display: none;
 }
 
 .phoneMode .placementPanel {
@@ -33006,5 +34192,1197 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   .singlePlayerSavePanel.compact {
     max-width: none;
     margin-left: 0;
+  }
+}
+
+/* -------------------------------------------------------------------------
+   Setup scene final composition
+
+   The painted plate is the menu. These rules remove the old in-flow lobby
+   furniture from the composition and leave only the real button hit areas,
+   compact status controls, the event-log pill, and the ready action.
+--------------------------------------------------------------------------- */
+
+.setupPhase > .tableTopRow {
+  position: fixed;
+  z-index: 12;
+  inset: 8px 10px auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.setupPhase > .tableTopRow > .advHud,
+.setupPhase > .tableTopRow > .tableMenu {
+  pointer-events: auto;
+}
+
+.setupPhase > .tableTopRow > .advHud {
+  flex: 0 0 auto;
+  min-height: 0;
+  width: auto;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: rgb(20 14 8 / 78%);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 38%);
+}
+
+.setupPhase > .tableTopRow > .advHud .advHudCell {
+  padding: 0;
+  border: 0;
+}
+
+.setupPhase > .tableTopRow > .advHud .advHudCell strong {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.setupPhase > .tableTopRow > .advHud .advHudCell small {
+  display: none;
+}
+
+.setupPhase > .tableTopRow > .tableMenu {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 4px;
+  width: auto;
+  min-width: 0;
+  max-width: min(360px, calc(100vw - 20px));
+  padding: 3px;
+  border-radius: 7px;
+  background: rgb(18 13 8 / 82%);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 40%);
+  backdrop-filter: blur(4px);
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .seatLocked,
+.setupPhase > .tableTopRow > .tableMenu > .statusRow,
+.setupPhase > .tableTopRow > .tableMenu > .gameControlsRow {
+  display: none;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .roomPanel {
+  position: relative;
+  display: block;
+  width: auto;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.setupPhase > .tableTopRow > .tableMenu .roomToggle {
+  min-height: 25px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: rgb(31 22 12 / 82%);
+  font-size: 10px;
+}
+
+.setupPhase > .tableTopRow > .tableMenu .roomToggleMeta {
+  font-size: 9px;
+}
+
+.setupPhase > .tableTopRow > .tableMenu .roomBody {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 20;
+  width: min(300px, calc(100vw - 20px));
+  max-height: min(48vh, 360px);
+  overflow: auto;
+  padding: 6px;
+  gap: 6px;
+  border-radius: 7px;
+  background: rgb(18 13 8 / 96%);
+}
+
+.setupPhase > .setupLobby {
+  position: fixed;
+  z-index: 1;
+  inset: 46px 0 0;
+  display: block;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.setupPhase > .setupLobby > :not(.setupSceneArt) {
+  pointer-events: auto;
+}
+
+.setupPhase > .setupLobby > header,
+.setupPhase > .setupLobby > .lobbySeats,
+.setupPhase > .setupLobby > .observerNote {
+  display: none;
+}
+
+.setupPhase > .logDrawer {
+  position: fixed;
+  z-index: 12;
+  left: 10px;
+  right: auto;
+  bottom: 8px;
+  width: min(220px, calc(100vw - 20px));
+  border-radius: 6px;
+  background: rgb(18 13 8 / 82%);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 40%);
+  pointer-events: auto;
+}
+
+.setupPhase > .logDrawer .logToggle {
+  min-height: 26px;
+  padding: 4px 7px;
+  gap: 5px;
+  font-size: 10px;
+}
+
+.setupPhase > .logDrawer .logToggleLatest {
+  display: none;
+}
+
+.setupPhase > .logDrawer .logPopover {
+  position: absolute;
+  right: auto;
+  bottom: calc(100% + 5px);
+  left: 0;
+  top: auto;
+  width: min(360px, calc(100vw - 20px));
+  max-height: min(46vh, 330px);
+  overflow: auto;
+}
+
+.setupSceneStartButton {
+  left: 44.5%;
+  bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  width: min(190px, 22vw) !important;
+  min-height: 31px;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+.combatContextBanner.compact {
+  justify-self: start;
+  gap: 5px;
+  min-height: 25px;
+  padding: 3px 5px 3px 7px;
+  border-radius: 7px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.combatContextBanner.compact > span {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.combatContextBanner.compact .commandButton {
+  min-height: 19px;
+  padding: 2px 6px;
+  gap: 3px;
+  font-size: 9px;
+}
+
+.setupLobby--ready .setupSceneStartButton {
+  border-color: rgb(255 225 119 / 96%);
+  animation: setupStartReadyPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes setupStartReadyPulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 14px rgb(255 139 35 / 44%),
+      0 0 0 1px rgb(255 219 94 / 20%),
+      inset 0 0 14px rgb(255 191 68 / 18%);
+  }
+  50% {
+    box-shadow:
+      0 0 26px 7px rgb(255 174 46 / 68%),
+      0 0 0 2px rgb(255 235 141 / 42%),
+      inset 0 0 20px rgb(255 222 116 / 30%);
+  }
+}
+
+/* Keep the open chat usable without letting it cover the painted heroes. */
+.setupPhase .chatDock {
+  left: auto;
+  right: 10px;
+  bottom: 8px;
+}
+
+.setupPhase .chatPanel {
+  width: min(270px, calc(100vw - 20px));
+  max-height: min(35vh, 270px);
+  border-radius: 9px;
+}
+
+.setupPhase .chatMessages {
+  min-height: 76px;
+  padding: 7px 9px;
+  gap: 5px;
+}
+
+/* Real DOM controls: the artwork no longer owns the menu labels. Keep the
+   hitboxes on the measured plaque positions, but render the names from the
+   actual buttons so clicks and accessibility stay tied to the setup logic. */
+.setupHubBox {
+  appearance: none;
+  width: 9%;
+  height: 118px;
+  top: 58px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #ffe8aa;
+  background: transparent !important;
+  text-shadow: 0 2px 5px rgb(0 0 0 / 90%);
+  box-shadow: none !important;
+}
+
+.setupHubBox--map { left: 15.8%; }
+.setupHubBox--mode { left: 31.3%; }
+.setupHubBox--heroes { left: 45.9%; }
+.setupHubBox--advanced { left: 55.3%; }
+
+.setupHubBoxPlate {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  display: grid !important;
+  gap: 2px;
+  width: max-content;
+  min-width: 0;
+  padding: 3px 8px 2px;
+  border: 1px solid rgb(203 158 78 / 32%);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgb(35 20 7 / 48%), rgb(18 9 3 / 58%));
+  box-shadow: 0 2px 7px rgb(0 0 0 / 28%);
+  transform: translateX(-50%);
+}
+
+.setupHubBoxTitle {
+  color: #ffe8aa;
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.setupHubBoxSummary {
+  display: none !important;
+}
+
+.setupHubBox:hover,
+.setupHubBox:focus-visible {
+  border: 0;
+  background: radial-gradient(ellipse at 50% 62%, rgb(255 206 75 / 14%), transparent 70%);
+  box-shadow: none;
+  outline: none;
+}
+
+.setupHubBox:disabled {
+  opacity: 1;
+}
+
+.setupHubBox:hover .setupHubBoxPlate,
+.setupHubBox:focus-visible .setupHubBoxPlate {
+  border-color: rgb(255 224 117 / 80%);
+  box-shadow:
+    0 0 12px rgb(255 199 74 / 42%),
+    inset 0 0 0 1px rgb(255 239 166 / 20%);
+}
+
+/* The first fruit glow belongs to the real Map control, not to a second
+   floating illustration. */
+.setupSceneFruit--map {
+  left: 18%;
+  top: 11%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupLobby--ready .setupSceneStartButton {
+    animation: none;
+  }
+}
+
+/* Keep the painted plate crisp. The fruit is already part of the HD scene
+   asset; interactive emphasis belongs to the real buttons, not a blur layer
+   laid over the artwork. */
+.setupPhase .setupSceneArt {
+  opacity: 1;
+  filter: none !important;
+}
+
+.setupPhase .setupSceneArt::before {
+  background: transparent !important;
+}
+
+.setupPhase .setupSceneIllustration {
+  filter: none !important;
+  image-rendering: auto;
+}
+
+.setupPhase .setupScenePaintedFruit {
+  filter: none !important;
+  background: radial-gradient(
+    circle,
+    rgb(255 249 190 / 46%) 0 6%,
+    rgb(255 208 66 / 22%) 20%,
+    transparent 56%
+  );
+}
+
+.setupPhase .setupSceneFruit--map {
+  filter: none !important;
+  opacity: 0.62;
+}
+
+.setupPhase .setupLobby:has(.setupHubBox--map:hover) .setupSceneFruit--map,
+.setupPhase .setupLobby:has(.setupHubBox--map:focus-visible) .setupSceneFruit--map {
+  filter: none !important;
+  opacity: 0.9;
+}
+
+/* The complete painted plate is the only setup backdrop. Disable the older
+   dragon/vignette backdrop underneath it so the HD scene is not dimmed or
+   visually softened a second time. */
+.setupPhase {
+  background: #050403 !important;
+}
+
+.setupPhase::before,
+.setupPhase::after {
+  background: none !important;
+  filter: none !important;
+  transform: none !important;
+  animation: none !important;
+}
+
+/* The hitboxes stay large enough to click, but the visible control is only a
+   small label over the painted fruit—not a second opaque card. */
+.setupPhase .setupHubBoxPlate {
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  display: grid !important;
+  width: max-content;
+  min-width: 108px;
+  min-height: 0 !important;
+  height: auto !important;
+  align-content: initial !important;
+  gap: 0;
+  padding: 4px 9px 3px !important;
+  border: 1px solid rgb(203 158 78 / 42%) !important;
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgb(35 20 7 / 54%), rgb(18 9 3 / 62%)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 230 165 / 10%),
+    0 2px 7px rgb(0 0 0 / 32%) !important;
+  transform: translateX(-50%);
+}
+
+.setupPhase .setupHubBox {
+  cursor: pointer;
+}
+
+/* The Heroes apple hangs on the higher branch in the source painting. Keep
+   that real button on the same anchor instead of flattening all four labels
+   into one row. */
+.setupPhase .setupHubBox--heroes {
+  top: 4px;
+}
+
+.setupPhase .setupHubBox--heroes .setupHubBoxPlate {
+  top: 36px;
+}
+
+.setupPhase .setupHubBox--advanced {
+  top: 4px;
+}
+
+.setupPhase .setupHubBox--advanced .setupHubBoxPlate {
+  top: 36px;
+}
+
+.setupPhase .setupHubBoxPlate::before,
+.setupPhase .setupHubBoxPlate::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border: 1px solid rgb(239 189 90 / 76%);
+  background: rgb(58 32 8 / 88%);
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.setupPhase .setupHubBoxPlate::before {
+  left: -3px;
+}
+
+.setupPhase .setupHubBoxPlate::after {
+  right: -3px;
+}
+
+.setupPhase .setupHubBoxTitle {
+  color: #ffe8aa;
+  font-size: 11px;
+  text-shadow: 0 2px 5px rgb(0 0 0 / 95%), 0 0 10px rgb(30 12 3 / 75%);
+}
+
+.setupPhase .setupHubBox:hover .setupHubBoxTitle,
+.setupPhase .setupHubBox:focus-visible .setupHubBoxTitle {
+  color: #fff3bd;
+  text-shadow: 0 2px 5px rgb(0 0 0 / 95%), 0 0 12px rgb(255 197 74 / 72%);
+}
+
+.setupPhase .setupHubBox:hover .setupHubBoxPlate,
+.setupPhase .setupHubBox:focus-visible .setupHubBoxPlate {
+  border-color: rgb(255 224 117 / 88%) !important;
+  background: linear-gradient(180deg, rgb(68 39 10 / 62%), rgb(28 13 4 / 68%)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 239 166 / 18%),
+    0 0 13px rgb(255 199 74 / 48%) !important;
+}
+
+/* Final setup plaque skin: compact, readable, and clearly separate from the
+   painted fruit. The button element remains the full hit area underneath. */
+.setupPhase .setupHubBoxPlate {
+  min-width: 118px;
+  min-height: 29px !important;
+  padding: 5px 15px 4px !important;
+  border: 1px solid #c9974d !important;
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, rgb(76 43 13 / 94%), rgb(27 14 5 / 96%)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 237 169 / 34%),
+    inset 0 -2px 0 rgb(8 4 1 / 55%),
+    0 3px 8px rgb(0 0 0 / 46%) !important;
+}
+
+.setupPhase .setupHubBoxTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffe9b0;
+  text-shadow: 0 2px 4px rgb(0 0 0 / 95%);
+}
+
+.setupPhase .setupHubBoxPlate::before,
+.setupPhase .setupHubBoxPlate::after {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #d6a75b;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 28%, #dff6ff 0 12%, #5b9cc1 30%, #17364e 72%);
+  box-shadow: 0 0 4px rgb(86 181 228 / 48%);
+}
+
+.setupPhase .setupHubBoxPlate::before { left: -4px; }
+.setupPhase .setupHubBoxPlate::after { right: -4px; }
+
+.setupPhase .setupHubBox:hover .setupHubBoxPlate,
+.setupPhase .setupHubBox:focus-visible .setupHubBoxPlate {
+  border-color: #f5d77e !important;
+  background:
+    linear-gradient(180deg, rgb(112 65 16 / 96%), rgb(42 19 5 / 98%)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 247 205 / 52%),
+    0 0 16px rgb(255 192 61 / 62%),
+    0 3px 9px rgb(0 0 0 / 52%) !important;
+}
+
+/* Setup room utility: keep only the small live Room toggle. The room-ID row
+   and the old ornamental table-menu frame are not part of this scene. */
+.setupPhase > .tableTopRow > .tableMenu {
+  padding: 0 !important;
+  border: 0 !important;
+  border-image: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .menuRow.roomRow {
+  display: none !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .roomPanel {
+  width: auto !important;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .roomPanel .roomToggle {
+  min-width: 88px;
+  border-color: rgb(203 158 78 / 48%);
+  background: linear-gradient(180deg, rgb(35 20 7 / 68%), rgb(18 9 3 / 78%));
+  box-shadow: 0 2px 8px rgb(0 0 0 / 34%);
+}
+
+/* Final setup-menu alignment: the status badge is redundant here because
+   the painted scene is the setup screen itself. Keep the live seat controls
+   as a small, close cluster in the upper-right corner. */
+.setupPhase > .tableTopRow > .advHud {
+  display: none !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu {
+  gap: 2px !important;
+  align-items: center !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .seatSwitch {
+  gap: 2px !important;
+  align-items: center !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .seatSwitch button {
+  min-width: 0 !important;
+  min-height: 24px !important;
+  padding: 3px 6px !important;
+  gap: 3px !important;
+  border-radius: 5px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .roomPanel .roomToggle {
+  min-width: 74px !important;
+  min-height: 24px !important;
+  padding: 3px 5px !important;
+  gap: 3px !important;
+  border-radius: 5px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .roomPanel .roomToggleMeta {
+  font-size: 8px !important;
+  line-height: 1 !important;
+}
+
+.setupPhase > .tableTopRow {
+  position: fixed !important;
+  top: 56px !important;
+  right: 14px !important;
+  bottom: auto !important;
+  left: 14px !important;
+  width: auto !important;
+  margin: 0 !important;
+}
+
+.setupPhase > .tableTopRow > .tableMenu {
+  margin-left: auto !important;
+}
+
+/* The four controls sit below their painted hanging chains. The button
+   remains a real DOM hit area; this only enlarges the visible plaque and
+   gives it a more substantial Heroes III-style brass treatment. */
+.setupPhase .setupHubBox {
+  width: 9.8% !important;
+}
+
+.setupPhase .setupHubBoxPlate {
+  width: 138px !important;
+  min-width: 138px !important;
+  max-width: 138px !important;
+  min-height: 46px !important;
+  padding: 10px 18px 9px !important;
+  border: 2px solid #d6a85a !important;
+  border-radius: 0 !important;
+  box-sizing: border-box;
+  clip-path: polygon(5% 0, 95% 0, 100% 50%, 95% 100%, 5% 100%, 0 50%);
+  background:
+    linear-gradient(180deg, rgb(126 76 22 / 98%), rgb(61 31 8 / 99%) 52%, rgb(24 11 3 / 99%)) !important;
+  box-shadow:
+    inset 0 2px 0 rgb(255 239 175 / 42%),
+    inset 0 -3px 0 rgb(8 3 1 / 68%),
+    0 5px 13px rgb(0 0 0 / 62%),
+    0 0 0 1px rgb(35 15 3 / 72%) !important;
+}
+
+.setupPhase .setupHubBoxTitle {
+  font-size: 12px !important;
+  letter-spacing: 0.025em !important;
+  white-space: nowrap;
+}
+
+.setupPhase .setupHubBox--advanced .setupHubBoxTitle {
+  font-size: 10px !important;
+}
+
+.setupPhase .setupHubBoxPlate::before,
+.setupPhase .setupHubBoxPlate::after {
+  width: 10px !important;
+  height: 10px !important;
+  border-width: 2px !important;
+  border-radius: 2px !important;
+  box-shadow: 0 0 7px rgb(86 181 228 / 62%) !important;
+}
+
+.setupPhase .setupHubBoxPlate::before { left: 8px !important; }
+.setupPhase .setupHubBoxPlate::after { right: 8px !important; }
+
+.setupPhase .setupHubBox--heroes { left: 45.3% !important; }
+.setupPhase .setupHubBox--advanced { left: 56.5% !important; }
+
+/* Match the painted fruit anchors rather than the old four-column spacing. */
+.setupPhase .setupHubBox--map {
+  left: 14.6% !important;
+}
+
+/* Map and mode use the lower pair of chains in the source painting; Heroes
+   and Advanced use the higher pair but still land below their fruit. */
+.setupPhase .setupHubBoxPlate {
+  top: 70px !important;
+}
+
+.setupPhase .setupHubBox--mode .setupHubBoxPlate {
+  top: 86px !important;
+}
+
+.setupPhase .setupHubBox--heroes .setupHubBoxPlate,
+.setupPhase .setupHubBox--advanced .setupHubBoxPlate {
+  top: 104px !important;
+}
+
+/* Generated production plaque: the visible raster artwork and the real
+   button hitbox now share the same rectangle. Each button is anchored
+   independently beneath its painted fruit/chain. */
+.setupPhase .setupHubBox {
+  width: 142px !important;
+  height: 56px !important;
+  padding: 0 !important;
+}
+
+.setupPhase .setupHubBox--map {
+  left: 13.8% !important;
+  top: 21% !important;
+}
+
+.setupPhase .setupHubBox--mode {
+  left: 30.4% !important;
+  top: 23.5% !important;
+}
+
+.setupPhase .setupHubBox--heroes {
+  left: 44.2% !important;
+  top: 18.5% !important;
+}
+
+.setupPhase .setupHubBox--advanced {
+  left: 55.1% !important;
+  top: 18.5% !important;
+}
+
+.setupPhase .setupHubBoxPlate,
+.setupPhase .setupHubBox--mode .setupHubBoxPlate,
+.setupPhase .setupHubBox--heroes .setupHubBoxPlate,
+.setupPhase .setupHubBox--map .setupHubBoxPlate,
+.setupPhase .setupHubBox--advanced .setupHubBoxPlate {
+  inset: 0 !important;
+  display: flex !important;
+  width: 142px !important;
+  min-width: 142px !important;
+  max-width: 142px !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 24px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  clip-path: none !important;
+  background:
+    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.png")
+    center / 100% 100% no-repeat !important;
+  box-shadow: none !important;
+  filter: drop-shadow(0 5px 5px rgb(0 0 0 / 66%));
+  transform: none !important;
+}
+
+.setupPhase .setupHubBoxPlate::before,
+.setupPhase .setupHubBoxPlate::after {
+  display: none !important;
+}
+
+.setupPhase .setupHubBoxTitle {
+  position: relative;
+  z-index: 1;
+  font-size: 12px !important;
+  color: #ffe8a9 !important;
+  text-shadow:
+    0 2px 2px rgb(0 0 0 / 100%),
+    0 0 5px rgb(0 0 0 / 90%) !important;
+}
+
+.setupPhase .setupHubBox--advanced .setupHubBoxTitle {
+  font-size: 10px !important;
+}
+
+.setupPhase .setupHubBox:hover .setupHubBoxPlate,
+.setupPhase .setupHubBox:focus-visible .setupHubBoxPlate {
+  background:
+    url("/assets/ui/setup/setup-hub-plaque-imagegen-cropped.png")
+    center / 100% 100% no-repeat !important;
+  filter:
+    brightness(1.16)
+    drop-shadow(0 0 9px rgb(255 196 64 / 64%))
+    drop-shadow(0 5px 5px rgb(0 0 0 / 70%));
+}
+
+/* Final scene-fit and interaction polish. Show the complete painted frame in
+   the available game window instead of cropping it with background-size:cover. */
+.setupPhase .setupSceneIllustration {
+  background:
+    #050403
+    url("/assets/ui/setup/setup-scene-attached-final.png")
+    center / 100% 100% no-repeat !important;
+}
+
+/* Remove the old Map-only radial overlay. Every generated plaque gets the
+   same restrained warm edge light, with a stronger but still natural hover. */
+.setupPhase .setupScenePaintedFruit {
+  display: none !important;
+}
+
+.setupPhase .setupHubBoxPlate {
+  filter:
+    brightness(1.02)
+    drop-shadow(0 0 4px rgb(255 190 72 / 24%))
+    drop-shadow(0 5px 5px rgb(0 0 0 / 66%)) !important;
+  transition: filter 150ms ease;
+}
+
+.setupPhase .setupHubBox:hover .setupHubBoxPlate,
+.setupPhase .setupHubBox:focus-visible .setupHubBoxPlate {
+  filter:
+    brightness(1.12)
+    drop-shadow(0 0 8px rgb(255 196 74 / 48%))
+    drop-shadow(0 5px 5px rgb(0 0 0 / 70%)) !important;
+}
+
+/* Requested horizontal tuning against the four painted chains. */
+.setupPhase .setupHubBox--map {
+  left: 12.8% !important;
+}
+
+.setupPhase .setupHubBox--mode {
+  left: 29.3% !important;
+}
+
+.setupPhase .setupHubBox--advanced {
+  left: 56.2% !important;
+}
+
+/* The start/waiting action belongs directly beneath the painted campfire.
+   Waiting receives only a low ember halo; readiness adds an animated flame
+   glow without moving the text or the whole button. */
+.setupPhase .setupSceneStartButton {
+  position: fixed !important;
+  z-index: 10 !important;
+  left: 44.6% !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: 11px !important;
+  width: 220px !important;
+  min-height: 34px !important;
+  height: 34px !important;
+  margin: 0 !important;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  transform: translateX(-50%) !important;
+  isolation: isolate;
+  line-height: 1 !important;
+}
+
+.setupPhase .setupSceneStartButton:disabled {
+  cursor: default;
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+.setupPhase .setupSceneStartButton::before,
+.setupPhase .setupSceneStartButton::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.setupPhase .setupSceneStartButton::before {
+  inset: -10px -24px -7px;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      ellipse at 50% 45%,
+      rgb(255 184 72 / 24%) 0 18%,
+      rgb(255 107 24 / 11%) 42%,
+      transparent 72%
+    );
+  filter: blur(5px);
+  opacity: 0.65;
+}
+
+.setupPhase .setupSceneStartButton::after {
+  right: 48px;
+  bottom: 7px;
+  left: 48px;
+  height: 50px;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgb(255 211 110 / 36%) 0 12%, transparent 47%),
+    radial-gradient(ellipse at 38% 88%, rgb(255 119 22 / 24%) 0 12%, transparent 45%),
+    radial-gradient(ellipse at 64% 90%, rgb(255 157 35 / 22%) 0 11%, transparent 44%);
+  filter: blur(3px);
+  opacity: 0.18;
+  transform-origin: 50% 100%;
+}
+
+.setupPhase .setupSceneStartButton .newGameMenuLabel {
+  position: relative !important;
+  z-index: 1;
+  left: auto !important;
+  top: auto !important;
+  display: inline-block;
+  color: #ffe7a4 !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+  transform: none !important;
+  filter: none !important;
+  text-shadow:
+    0 2px 3px rgb(0 0 0 / 100%),
+    0 0 7px rgb(255 133 30 / 42%) !important;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton {
+  animation: none !important;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton::before {
+  opacity: 1;
+  background:
+    radial-gradient(
+      ellipse at 50% 45%,
+      rgb(255 232 149 / 56%) 0 12%,
+      rgb(255 158 40 / 40%) 31%,
+      rgb(255 84 10 / 18%) 54%,
+      transparent 76%
+    );
+  animation: setupReadyTextGlow 1.1s ease-in-out infinite alternate;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton::after {
+  opacity: 0.88;
+  animation: setupReadyTextFlame 0.72s ease-in-out infinite alternate;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton .newGameMenuLabel {
+  color: #fff1b9 !important;
+  text-shadow:
+    0 2px 3px rgb(0 0 0 / 100%),
+    0 0 8px rgb(255 204 94 / 88%),
+    0 0 18px rgb(255 112 24 / 74%) !important;
+}
+
+@keyframes setupReadyTextGlow {
+  from { transform: scale(0.96); filter: blur(5px) brightness(0.94); }
+  to { transform: scale(1.06); filter: blur(6px) brightness(1.18); }
+}
+
+@keyframes setupReadyTextFlame {
+  from { transform: translateY(2px) scale(0.96, 0.9); filter: blur(3px) brightness(0.94); }
+  to { transform: translateY(-3px) scale(1.04, 1.12); filter: blur(3.4px) brightness(1.28); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupPhase .setupLobby--ready .setupSceneStartButton::before,
+  .setupPhase .setupLobby--ready .setupSceneStartButton::after {
+    animation: none !important;
+  }
+}
+
+/* Setup utilities belong at the scene edges: chat low-left, event log beside
+   the compact player controls in the upper-right. */
+.setupPhase.adventureRoot:not(.phoneMode) .chatDock {
+  position: fixed !important;
+  left: 10px !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: 10px !important;
+  width: auto !important;
+}
+
+.setupPhase.adventureRoot:not(.phoneMode) .chatPanel {
+  width: min(270px, calc(100vw - 20px)) !important;
+  max-height: min(35vh, 270px) !important;
+}
+
+.setupPhase > .logDrawer {
+  position: fixed !important;
+  z-index: 12 !important;
+  top: 56px !important;
+  right: 295px !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 140px !important;
+}
+
+.setupPhase > .logDrawer .logToggle {
+  width: 138px !important;
+  min-height: 24px !important;
+  padding: 3px 7px !important;
+}
+
+.setupPhase > .logDrawer .logPopover {
+  position: absolute !important;
+  top: calc(100% + 5px) !important;
+  right: 0 !important;
+  bottom: auto !important;
+  left: auto !important;
+}
+
+/* Readiness turns the quiet waiting caption into a large, unmistakable fire
+   action while the painted campfire remains visible immediately above it. */
+.setupPhase .setupLobby--ready .setupSceneStartButton {
+  bottom: 4px !important;
+  width: 260px !important;
+  height: 46px !important;
+  min-height: 46px !important;
+  border: 1px solid rgb(255 214 113 / 82%) !important;
+  background:
+    linear-gradient(180deg, rgb(117 54 11 / 84%), rgb(37 13 3 / 92%)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 239 178 / 42%),
+    inset 0 -2px 0 rgb(13 4 1 / 76%),
+    0 0 16px 4px rgb(255 134 25 / 56%),
+    0 0 34px 10px rgb(255 78 9 / 24%) !important;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton::before {
+  inset: -23px -42px -15px;
+  filter: blur(7px);
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton::after {
+  right: 34px;
+  bottom: 14px;
+  left: 34px;
+  height: 78px;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgb(255 243 176 / 72%) 0 9%, transparent 39%),
+    radial-gradient(ellipse at 38% 88%, rgb(255 132 23 / 58%) 0 12%, transparent 48%),
+    radial-gradient(ellipse at 64% 90%, rgb(255 176 46 / 54%) 0 11%, transparent 47%),
+    radial-gradient(ellipse at 52% 62%, rgb(255 72 7 / 32%) 0 10%, transparent 43%);
+  filter: blur(4px);
+  opacity: 1;
+}
+
+.setupPhase .setupLobby--ready .setupSceneStartButton .newGameMenuLabel {
+  font-size: 18px !important;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+}
+
+/* Restore the original floating WC3-wisp layer above the painted artwork but
+   below every real setup control. The layer already exists in the DOM; it was
+   hidden behind the newer full-scene stacking context. */
+.setupPhase > .setupLobby {
+  z-index: auto !important;
+}
+
+.setupPhase > .setupAmbient {
+  z-index: 2 !important;
+  inset: 46px 0 0 !important;
+  opacity: 0.88;
+  mix-blend-mode: screen;
+}
+
+.setupPhase > .setupAmbient .setupWisp {
+  filter:
+    drop-shadow(0 0 6px rgb(78 235 218 / 54%))
+    drop-shadow(0 0 13px rgb(40 166 210 / 28%));
+}
+
+/* A little more breathing room before Player 1. */
+.setupPhase > .logDrawer {
+  right: 410px !important;
+  overflow: visible !important;
+}
+
+.setupPhase > .logDrawer .logPopover {
+  z-index: 60 !important;
+  padding: 8px !important;
+  border: 1px solid rgb(214 164 74 / 76%) !important;
+  border-radius: 8px !important;
+  background:
+    linear-gradient(180deg, rgb(36 23 11 / 98%), rgb(15 9 5 / 99%)) !important;
+  box-shadow:
+    inset 0 1px 0 rgb(255 232 161 / 14%),
+    0 10px 28px rgb(0 0 0 / 72%) !important;
+  backdrop-filter: none !important;
+}
+
+/* Phone setup composition. The desktop scene is intentionally coordinate-
+   driven; on a portrait screen the landscape painting must crop rather than
+   stretch, and the four real controls become a clean 2x2 grid. */
+@media (max-width: 700px) {
+  .setupPhase .setupSceneIllustration {
+    background:
+      #050403
+      url("/assets/ui/setup/setup-scene-attached-final.png")
+      43% center / cover no-repeat !important;
+    box-shadow:
+      inset 0 0 0 2px rgb(211 163 78 / 88%),
+      inset 0 0 0 5px rgb(48 25 7 / 82%);
+  }
+
+  .setupPhase .setupHubGrid {
+    position: fixed !important;
+    z-index: 8 !important;
+    top: 118px !important;
+    right: 8px !important;
+    bottom: auto !important;
+    left: 8px !important;
+    display: grid !important;
+    width: auto !important;
+    height: auto !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 6px !important;
+    padding: 0 !important;
+    transform: none !important;
+  }
+
+  .setupPhase .setupHubBox {
+    position: relative !important;
+    inset: auto !important;
+    width: min(172px, 44vw) !important;
+    height: 58px !important;
+    justify-self: center;
+    transform: none !important;
+  }
+
+  .setupPhase .setupHubBox--map { order: 1; }
+  .setupPhase .setupHubBox--mode { order: 2; }
+  .setupPhase .setupHubBox--heroes { order: 3; }
+  .setupPhase .setupHubBox--advanced { order: 4; }
+
+  .setupPhase .setupHubBoxPlate,
+  .setupPhase .setupHubBox--mode .setupHubBoxPlate,
+  .setupPhase .setupHubBox--heroes .setupHubBoxPlate,
+  .setupPhase .setupHubBox--map .setupHubBoxPlate,
+  .setupPhase .setupHubBox--advanced .setupHubBoxPlate {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 58px !important;
+    min-height: 58px !important;
+    padding: 0 21px !important;
+  }
+
+  .setupPhase .setupHubBoxTitle {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px !important;
+    text-overflow: ellipsis;
+  }
+
+  .setupPhase .setupHubBox--advanced .setupHubBoxTitle {
+    font-size: 9px !important;
+  }
+
+  .setupPhase > .tableTopRow {
+    top: 56px !important;
+    right: 8px !important;
+    left: 8px !important;
+  }
+
+  .setupPhase > .tableTopRow > .tableMenu {
+    width: min-content !important;
+    max-width: calc(100vw - 16px) !important;
+    margin-left: auto !important;
+  }
+
+  .setupPhase > .tableTopRow > .tableMenu > .seatSwitch {
+    min-width: 0;
+  }
+
+  .setupPhase > .tableTopRow > .tableMenu > .seatSwitch button {
+    max-width: 78px;
+    padding-inline: 5px !important;
+  }
+
+  .setupPhase > .tableTopRow > .tableMenu > .seatSwitch button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .setupPhase > .tableTopRow > .tableMenu > .roomPanel .roomToggle {
+    min-width: 65px !important;
+    max-width: 72px;
+  }
+
+  .setupPhase > .logDrawer {
+    top: 87px !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: 9px !important;
+    width: 122px !important;
+  }
+
+  .setupPhase > .logDrawer .logToggle {
+    width: 120px !important;
+  }
+
+  .setupPhase > .logDrawer .logPopover {
+    top: calc(100% + 5px) !important;
+    right: auto !important;
+    left: 0 !important;
+    width: min(360px, calc(100vw - 18px)) !important;
+    max-height: min(42vh, 320px) !important;
+    overflow: auto !important;
+  }
+
+  .setupPhase .setupSceneStartButton {
+    left: 42% !important;
+    bottom: calc(7px + env(safe-area-inset-bottom, 0px)) !important;
+    width: 220px !important;
+  }
+
+  .setupPhase .setupLobby--ready .setupSceneStartButton {
+    width: 230px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+
+  .setupPhase .setupLobby--ready .setupSceneStartButton .newGameMenuLabel {
+    font-size: 16px !important;
+  }
+
+  .setupPhase > .setupAmbient {
+    inset: 46px 0 0 !important;
+    opacity: 0.72;
+  }
+
+  .setupPhase .setupWisp {
+    width: 40px;
+    height: 34px;
   }
 }

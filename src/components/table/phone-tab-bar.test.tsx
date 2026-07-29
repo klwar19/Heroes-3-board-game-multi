@@ -8,6 +8,7 @@ afterEach(cleanup);
 const TABS: PhoneTab[] = [
   { id: "map", label: "Map" },
   { id: "hand", label: "Hand", badge: 4, attention: true, attentionLabel: "Draw!" },
+  { id: "end-turn", label: "End turn", action: true },
   { id: "menu", label: "Menu" }
 ];
 
@@ -17,12 +18,13 @@ describe("PhoneTabBar", () => {
     render(<PhoneTabBar active="map" onSelect={onSelect} tabs={TABS} />);
 
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Map", "Hand4Draw!", "Menu"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Map", "Hand4Draw!", "End turn", "Menu"]);
     expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
     expect(tabs[1]!.getAttribute("aria-selected")).toBe("false");
 
     fireEvent.click(screen.getByRole("tab", { name: /hand/i }));
     expect(onSelect).toHaveBeenCalledWith("hand");
+    expect(screen.getByRole("tab", { name: /end turn/i }).className).toContain("action");
   });
 
   it("shows badge and attention chip only where provided", () => {
