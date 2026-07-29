@@ -805,6 +805,20 @@ function splashFirstTargets(state: GameState): SplashTarget[] {
   );
 }
 
+/**
+ * Cannon targets: enemy units plus the defender's standing fortifications when
+ * the Cannon owner is the besieger. A town defender can never shoot down their
+ * own Walls/Gate.
+ */
+function cannonTargetIds(state: GameState, playerId: PlayerId): UnitId[] {
+  const targets: UnitId[] = enemiesOf(state, playerId).map((unit) => unit.id);
+  const siege = state.combat?.siege;
+  if (siege && playerId !== siege.townPlayerId) {
+    targets.push(...fortificationTargets(siege).map((target) => target.id));
+  }
+  return targets;
+}
+
 /** Board position of a Catapult target id (a unit id, or a Wall/Gate pseudo-id). */
 function splashTargetPosition(state: GameState, targetId: UnitId): number | null {
   const fort = parseFortificationTargetId(targetId);
@@ -1246,7 +1260,7 @@ export function processWarMachineRound(state: GameState): void {
     }
 
     // expert-shot (Cannon)
-    if (!hasExpertUseLeft(state, playerId) || enemiesOf(state, playerId).length === 0) {
+    if (!hasExpertUseLeft(state, playerId) || cannonTargetIds(state, playerId).length === 0) {
       queue.pending.shift();
       continue;
     }
@@ -1254,7 +1268,7 @@ export function processWarMachineRound(state: GameState): void {
     openWarMachineOffer(
       state,
       playerId,
-      `${name}: spend 1 expert use to deal ${roundStart.amount} damage to one enemy unit?`,
+      `${name}: spend 1 expert use to hit one enemy unit, Wall or Gate?`,
       "Fire the Cannon"
     );
     return;
@@ -1356,8 +1370,8 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
   openWarMachineTargetChoice(
     state,
     playerId,
-    `${name}: choose the enemy unit that takes ${roundStart.amount} damage.`,
-    enemiesOf(state, playerId).map((unit) => unit.id),
+    `${name}: choose the enemy unit, Wall or Gate to hit.`,
+    cannonTargetIds(state, playerId),
     roundStart.amount
   );
 }

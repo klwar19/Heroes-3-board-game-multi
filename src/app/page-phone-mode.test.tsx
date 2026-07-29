@@ -76,15 +76,17 @@ function snapshotFor(state: GameState): GameRoomSnapshot {
 /** Wire the fake room transport to serve `state` to the page. */
 function serveRoom(state: GameState) {
   const snapshot = snapshotFor(state);
-  connectRoomMock.mockReset().mockImplementation((_roomId: string, _handlers: RoomConnectionHandlers) => ({
+  const submitAction = vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] }));
+  connectRoomMock.mockReset().mockImplementation(() => ({
     close: vi.fn(),
-    submitAction: vi.fn(async () => ({ version: snapshot.version, errors: [], notices: [] })),
+    submitAction,
     resetRoom: vi.fn(async () => snapshot),
     fetchSnapshot: vi.fn(async () => snapshot),
     restoreRoom: vi.fn(async () => snapshot),
     fetchSinglePlayerSave: vi.fn(async () => ({ state: snapshot.state, version: snapshot.version })),
     loadSinglePlayerSave: vi.fn(async () => snapshot)
   }));
+  return submitAction;
 }
 
 /**
@@ -302,6 +304,35 @@ describe("phone UI mode — the pre-game prompt on the setup lobby", () => {
 });
 
 describe("phone UI mode — combat surface", () => {
+  it("shows the Undo-mode button directly on an adventure battle", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const state = createAdventureGameState({
+      seed: "battle-undo",
+      rollFirstPlayer: false,
+      undoMoves: true
+    });
+    const sandbox = createInitialGameState("battle-undo-units");
+    state.combat = {
+      ...sandbox.combat!,
+      context: {
+        kind: "player",
+        attackerHeroId: "hero_p1",
+        defenderHeroId: "hero_p2",
+        fieldId: state.heroes.hero_p1.spaceId!
+      }
+    };
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    const submitAction = serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    const undo = screen.getByRole("button", { name: /Undo/ });
+    expect(undo.className).toContain("combatUndoMove");
+    fireEvent.click(undo);
+    expect(submitAction).toHaveBeenCalledWith({ type: "UNDO_MOVE", playerId: "p1" });
+  });
+
   it("phone preference: Board/Hand/Menu tabs on the combat root; taps flip the attribute", async () => {
     window.localStorage.setItem(UI_MODE_STORAGE_KEY, "phone");
     serveRoom(createInitialGameState("phone-combat"));
@@ -519,6 +550,35 @@ describe("hand-step directives banner — the mandatory start-of-turn draw", () 
   // cannot compute the fixed positioning — this pins the DOM contract the CSS
   // keys on (container outside the header + `.mandatory` while the draw is
   // owed), the visible half lives in the Playwright screenshots.
+  it("Explorers opens a post-draw discard-count picker and submits the chosen cards", async () => {
+    window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
+    const state = createAdventureGameState({ seed: "explorers-picker", rollFirstPlayer: false });
+    state.round = 2;
+    state.activePlayerId = "p1";
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.explorers",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.explorersDiscardPending = true;
+    state.players.p1.hand = ["stat.attack", "stat.defense"];
+    const submitAction = serveRoom(state);
+    render(<Home />);
+    await settle();
+
+    expect(screen.getByText("Explorers — choose discards")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Toggle discard Attack"));
+    fireEvent.click(screen.getByRole("button", { name: "Discard 1" }));
+    expect(submitAction).toHaveBeenCalledWith({
+      type: "RESOLVE_EXPLORERS_DISCARD",
+      playerId: "p1",
+      discardCardIds: ["stat.attack"]
+    });
+  });
+
   it("renders `.handDirectives.mandatory` outside the hand header with the Draw button inside", async () => {
     window.localStorage.setItem(UI_MODE_STORAGE_KEY, "computer");
     const state = createAdventureGameState({ seed: "banner-draw", rollFirstPlayer: false });

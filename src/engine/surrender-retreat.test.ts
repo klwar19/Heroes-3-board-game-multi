@@ -385,7 +385,7 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
     expect(state.players.p1.necromancyWindow).toBeFalsy();
   });
 
-  it("but FIGHTING and losing with the 2nd hero DOES count as a win (5 gold + credit, hero survives)", () => {
+  it("FIGHTING and losing with the 2nd hero removes it and counts as a win (5 gold + credit)", () => {
     const state = makeGame({ victoryMode: "grail" });
     const { secondaryId, homeFieldId } = stageSecondaryDefenderFight(state, "retreat");
     state.players.p2.resources.gold = 10;
@@ -394,15 +394,50 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
 
     finalizeAdventureCombat(state);
 
-    // 5-gold toll + -1 morale; the 2nd hero SURVIVES and falls back home (not removed).
+    // 5-gold toll + -1 morale; the defeated 2nd hero is removed.
     expect(state.players.p2.resources.gold).toBe(5);
     expect(state.players.p1.resources.gold).toBe(15);
     expect(state.players.p2.morale).toBe(-1);
-    expect(state.heroes[secondaryId]).toBeDefined();
-    expect(state.heroes[secondaryId].spaceId).toBe(homeFieldId);
+    expect(state.heroes[secondaryId]).toBeUndefined();
+    expect(homeFieldId).toBeTruthy();
     // Counts as 1 win against p2 (2-player grail: beating the one rival wins).
     expect(state.adventure?.heroDefeats?.["p1"] ?? []).toContain("p2");
     expect(state.adventure?.winnerPlayerId).toBe("p1");
+  });
+
+  it("does not resolve the Treasure field underneath an enemy Secondary after defeating it", () => {
+    const state = makeGame({ victoryMode: "conquest" });
+    const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
+    expect(state.combat?.context.kind).toBe("player");
+    if (state.combat?.context.kind !== "player") throw new Error("expected PvP context");
+    state.adventure!.fields[state.combat.context.fieldId].location = "treasure_symbol";
+    const treasureRollsBefore = state.eventLog.filter(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure"
+    ).length;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.heroes[secondaryId]).toBeUndefined();
+    expect(state.adventure?.winnerPlayerId ?? null).toBeNull();
+    expect(state.adventure?.pendingVisit).toBeNull();
+    expect(
+      state.eventLog.filter((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure")
+    ).toHaveLength(treasureRollsBefore);
+
+    // CONTROL: defeating a Main Hero on the same location keeps the ordinary
+    // post-PvP field visit. A one-die Treasure result can resolve immediately
+    // (leaving no pendingVisit), so the roll event is the stable observable.
+    const control = makeGame({ victoryMode: "conquest" });
+    stageFinishedPvpFight(control, "retreat");
+    if (control.combat?.context.kind !== "player") throw new Error("expected PvP context");
+    control.adventure!.fields[control.combat.context.fieldId].location = "treasure_symbol";
+    const controlRollsBefore = control.eventLog.filter(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure"
+    ).length;
+    finalizeAdventureCombat(control);
+    expect(
+      control.eventLog.filter((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure")
+    ).toHaveLength(controlRollsBefore + 1);
   });
 });
 

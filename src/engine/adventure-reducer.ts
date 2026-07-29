@@ -816,6 +816,9 @@ function assertHandRefreshed(state: GameState, playerId: PlayerId): void {
   if (player?.canMulligan) {
     throw new Error("Take your start-of-turn draw first (draw new, or discard and draw new).");
   }
+  if (player?.explorersDiscardPending) {
+    throw new Error("Resolve Explorers: choose how many cards to discard first.");
+  }
   // Opening Mulligan (canOpeningMulligan) is OPTIONAL — "you can discard 0–N".
   // It does not gate map play; the offer stays until used or the turn ends.
 }
@@ -858,6 +861,14 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   }
 
   const limit = effectiveHandLimit(state, action.playerId);
+  const explorers = getActiveAstrologersCard(state)?.effect;
+  const explorersActive = explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0;
+  // Explorers reverses the normal hand-step order: first draw up to the limit,
+  // THEN choose discards in its own explicit step. A forced over-limit hand may
+  // still discard down so it can reach the draw.
+  if (explorersActive && !player.needsHandRefresh && action.discardCardIds.length > 0) {
+    throw new Error("Explorers draws up to the hand limit first; choose discards in the next step.");
+  }
 
   // Round-1 start-of-turn fill (BOTH ON and OFF): only ditch cards that already
   // sit UNDER the hand limit — typically the difficulty starting-bonus
@@ -907,12 +918,14 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   player.needsHandRefresh = false;
   // The once-per-turn start-of-turn draw is now spent.
   player.canMulligan = false;
+  player.explorersDiscardPending = explorersActive && player.hand.length > 0;
 
   // Option ON + round 1: after the fill-to-limit, arm the second pass (discard
   // 0–N from the full hand, draw the same number). Humans only — computer seats
   // keep the filled hand so the AI never freezes on an optional window.
   if (
     state.round === 1 &&
+    !explorersActive &&
     state.adventure?.startingHandMulligan !== false &&
     state.controllers?.[action.playerId]?.kind !== "computer"
   ) {
@@ -929,17 +942,61 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
     discardedCardIds: [...action.discardCardIds]
   });
 
-  // Explorers (Astrologers): "for every 3 cards discarded this way, Remove a
-  // Statistic card and replace it with an Empowered Statistic of the same type."
-  // The discard-and-draw above is the standard start-of-turn refresh; this is the
-  // card's added effect, keyed off how many cards the player chose to discard.
-  const explorers = getActiveAstrologersCard(state)?.effect;
-  if (explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0) {
-    queueExplorersEmpower(state, action.playerId, Math.floor(action.discardCardIds.length / explorers.per));
-  }
   // Beginning-of-your-turn town effects inspect the settled post-refresh hand.
-  // Queue them only now so Mana Vortex and every draw/search sibling happen
-  // after, never before, the player's draw/discard phase.
+  // Under Explorers, wait until its post-draw discard choice is resolved.
+  if (!player.explorersDiscardPending) {
+    queueTurnStartBuildingChoices(state, action.playerId);
+  }
+}
+
+/** Resolve Explorers' distinct post-draw "discard any number" hand step. */
+export function resolveExplorersDiscard(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_EXPLORERS_DISCARD" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!player) {
+    throw new Error("Unknown player.");
+  }
+  assertActiveTurn(state, action.playerId);
+  if (!player.explorersDiscardPending) {
+    throw new Error("Explorers has no discard choice waiting.");
+  }
+  const explorers = getActiveAstrologersCard(state)?.effect;
+  if (explorers?.type !== "EMPOWER_PER_DISCARD" || explorers.per <= 0) {
+    throw new Error("Explorers is not active.");
+  }
+
+  const handCounts = new Map<string, number>();
+  for (const cardId of player.hand) {
+    handCounts.set(cardId, (handCounts.get(cardId) ?? 0) + 1);
+  }
+  for (const cardId of action.discardCardIds) {
+    const left = handCounts.get(cardId) ?? 0;
+    if (left <= 0) {
+      throw new Error("Cannot discard a card that is not in hand.");
+    }
+    handCounts.set(cardId, left - 1);
+  }
+
+  for (const cardId of action.discardCardIds) {
+    const index = player.hand.indexOf(cardId);
+    player.hand.splice(index, 1);
+    player.discard.push(cardId);
+  }
+  player.explorersDiscardPending = false;
+  appendEvent(state, {
+    type: "HAND_REFRESHED",
+    playerId: action.playerId,
+    discarded: action.discardCardIds.length,
+    drawn: 0,
+    discardedCardIds: [...action.discardCardIds]
+  });
+  queueExplorersEmpower(
+    state,
+    action.playerId,
+    Math.floor(action.discardCardIds.length / explorers.per)
+  );
   queueTurnStartBuildingChoices(state, action.playerId);
 }
 
@@ -1884,6 +1941,11 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   if (!hero.spaceId || !field) {
     throw new Error("That hero is not on a field.");
   }
+  const locationCategory = locationDefinitions[field.location]?.category;
+  // Timed/round events can remove a Black Cube underneath a stationary Hero.
+  // That makes the one-use field fresh again; resolving it from the current hex
+  // is a fresh visit, not a repeat of an already-consumed location.
+  const freshlyReopenedVisitable = locationCategory === "visitable" && !field.blackCube;
 
   // Grail dig cost is map-maker configurable (0 / 1 / 2 MP); classic revisit is 1.
   const digCost = field.grailDiggable ? grailDigMovementCost(state) : 1;
@@ -1901,11 +1963,12 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   // acting as a Monolith network member (role "monolith" — Revisit travels
   // again, mirroring a Monolith token).
   if (
-    locationDefinitions[field.location]?.category !== "revisitable" &&
+    locationCategory !== "revisitable" &&
+    !freshlyReopenedVisitable &&
     !field.grailDiggable &&
     !(field.location === "obelisk" && obeliskRoleIsMonolith(state))
   ) {
-    throw new Error("Only revisitable fields can be visited again.");
+    throw new Error("Only revisitable or newly reopened fields can be visited again.");
   }
 
   // Holy Grail: dig only after the digger has visited enough Obelisks (the
@@ -1920,7 +1983,7 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   }
 
   hero.movementPoints -= digCost;
-  beginFieldVisit(state, hero.id, hero.spaceId, true);
+  beginFieldVisit(state, hero.id, hero.spaceId, !freshlyReopenedVisitable);
 }
 
 /**
@@ -3168,6 +3231,7 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   // still offered/forced the reroll on their 2nd tile — the reported bug.
   const alreadyHasFarSettlement = Boolean(state.adventure?.farSettlementOpenedByPlayer?.[flip.playerId]);
   const settlementEligible =
+    state.adventure?.farTileSettlementReroll !== false &&
     flip.openingIndex === 2 &&
     !alreadyHasFarSettlement &&
     !tileDefHasSettlement(candidate) &&
@@ -10737,6 +10801,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   // hero's owner keeps their main hero, army, cards and gold.
   const surrenderedSecondary = outcome.reason === "surrender-secondary";
   const escapedWithoutDefeat = surrendered || surrenderedSecondary;
+  // A Secondary Hero is a one-use map piece: surrendering it OR losing a real
+  // fight removes it from the game. It never retreats to the starting field.
+  const secondaryHeroLoss = loserHero?.kind === "secondary";
 
   if (loserHero) {
     if (surrendered) {
@@ -10756,7 +10823,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     } else if (surrenderedSecondary) {
       // No gold, no morale hit, no victory credit — the 2nd hero itself is the
       // price. Remove it from the game (the player may hire another later).
-      removeSecondaryHeroFromGame(state, loserHero);
+      removeSecondaryHeroFromGame(state, loserHero, "surrendered to escape the battle");
       // Victory Points: a surrendered Secondary Hero is still a surrendered hero
       // (1 VP to the opponent).
       recordVpSurrender(state, winnerId);
@@ -10790,9 +10857,13 @@ export function finalizeAdventureCombat(state: GameState): void {
       spendResources(state, loserId, { gold: goldToll }, "defeated by an enemy hero");
       gainResources(state, winnerId, { gold: goldToll }, "spoils of victory");
       changeMorale(state, loserId, -1);
-      // A fought-out or retreat loss: the attacker (turn-owner) picks their
-      // retreat; a beaten defender auto-homes (no cross-turn prompt).
-      moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
+      // Main Heroes retreat. A defeated Secondary Hero is removed from the
+      // game entirely; it must never reappear on the starting field.
+      if (loserHero.kind === "secondary") {
+        removeSecondaryHeroFromGame(state, loserHero, "was defeated in battle");
+      } else {
+        moveDefeatedHeroHome(state, loserHero, loserHero === attackerHero);
+      }
       // Any OTHER heroes of the loser still standing on the contested field
       // (typically a Secondary Hero that shared the Town with the Main Hero)
       // also fall back home. Without this, the secondary stays on the captured
@@ -10898,7 +10969,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     const attackerWon =
       winnerHero?.id === context.attackerHeroId && Boolean(winnerHero);
     const deferredReward =
-      attackerWon && winnerHero
+      attackerWon && winnerHero && !secondaryHeroLoss
         ? ({
             kind: "field-visit",
             heroId: winnerHero.id,
@@ -10911,10 +10982,10 @@ export function finalizeAdventureCombat(state: GameState): void {
       winnerHero?.id ?? getMainHero(state, winnerId)?.id,
       deferredReward
     );
-    if (attackerWon && winnerHero && !opened) {
+    if (attackerWon && winnerHero && !secondaryHeroLoss && !opened) {
       beginFieldVisit(state, winnerHero.id, context.fieldId, false);
     }
-  } else if (winnerHero && winnerHero.id === context.attackerHeroId) {
+  } else if (winnerHero && winnerHero.id === context.attackerHeroId && !secondaryHeroLoss) {
     // The attacker took the contested field by winning. House rule (BINH):
     // winning at sea does NOT halt the hero (see neutral case) — a hero already
     // sailing (sea→sea) keeps its remaining movement, while one that WADED in
@@ -11460,7 +11531,9 @@ function defeatedHeroRetreatDestinations(
  * single retreat field it auto-homes there; with none the Hero leaves the map.
  *
  * A NON-active loser (a PvP DEFENDER beaten on the attacker's turn) and a
- * Secondary Hero always auto-home to the default (Town preferred). We never open
+ * companion Secondary Hero that did not fight auto-home to the default (Town
+ * preferred). A Secondary Hero that actually loses the fight is removed before
+ * this helper is called. We never open
  * a cross-turn prompt — mirroring how the winner's Necromancy window defers to
  * its owner's own turn — so a defender's loss can never stall the attacker's
  * turn, and the AFK/forced/computer resolver (which defaults a mandatory
@@ -11526,14 +11599,12 @@ function forceOtherHeroesHomeFromField(
 }
 
 /**
- * Secondary-Hero surrender (house rule): the sacrificed 2nd hero is removed from
- * the game entirely (unlike a defeated hero, which merely falls back home). The
- * player keeps their main hero, army, cards and gold, and may hire a new
- * Secondary Hero later. Heroes live only in `state.heroes` (keyed by id; players
- * hold no hero list and armies are per-player, not per-hero), so deleting the
- * entry is a complete removal — `getSecondaryHero` will then report none.
+ * Removes a lost Secondary Hero from the game, whether it surrendered or was
+ * defeated. The player keeps their Main Hero and may hire a new Secondary Hero
+ * later. Heroes live only in `state.heroes`, so deleting this entry is complete
+ * removal and `getSecondaryHero` reports none.
  */
-function removeSecondaryHeroFromGame(state: GameState, hero: HeroState): void {
+function removeSecondaryHeroFromGame(state: GameState, hero: HeroState, reason: string): void {
   hero.spaceId = null;
   hero.movementPoints = 0;
   delete state.heroes[hero.id];
@@ -11541,7 +11612,7 @@ function removeSecondaryHeroFromGame(state: GameState, hero: HeroState): void {
     type: "HERO_LOST",
     playerId: hero.controllerId,
     heroId: hero.id,
-    message: `${state.players[hero.controllerId]?.name ?? hero.controllerId} surrendered their Secondary Hero to escape the battle.`
+    message: `${state.players[hero.controllerId]?.name ?? hero.controllerId}'s Secondary Hero ${reason}.`
   });
 }
 
@@ -14146,6 +14217,14 @@ function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
 
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
+  const endingPlayer = state.players[action.playerId];
+  const activeAstrologersEffect = getActiveAstrologersCard(state)?.effect;
+  if (endingPlayer?.canMulligan && activeAstrologersEffect?.type === "EMPOWER_PER_DISCARD") {
+    throw new Error("Explorers requires drawing up to your hand limit before ending the turn.");
+  }
+  if (endingPlayer?.explorersDiscardPending) {
+    throw new Error("Resolve Explorers: choose how many cards to discard before ending the turn.");
+  }
   // Parallel turns: ending a turn may open end-of-turn prompts (Pandora upkeep,
   // Logistics/Nomads) and — on the last player — wraps the round, so it needs
   // the table's interaction slot free like any other interaction-starter.
@@ -14167,7 +14246,7 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
     return;
   }
 
-  const player = state.players[action.playerId];
+  const player = endingPlayer;
   if (player) {
     // The after-combat Necromancy window closes when the turn ends.
     player.necromancyWindow = false;

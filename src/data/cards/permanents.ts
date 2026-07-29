@@ -194,6 +194,7 @@ export const permanentCards: CardLibrary = {
     tags: ["war-machine", "permanent", "damage", "cove", "wiki-reference"],
     permanent: true,
     permanentEffect: {
+      // Spend 1 expert use to hit one enemy unit or, in a siege, a Wall/Gate.
       roundStart: { kind: "expert-shot", amount: 2 }
     },
     warMachineCosts: { factory: { gold: 10 }, tradingPost: { gold: 14 } },
@@ -202,7 +203,8 @@ export const permanentCards: CardLibrary = {
       // Original card face: the fan wiki has no Cannon scan, so the illustration
       // is generated and composited onto the First Aid Tent frame. The baked
       // rules text ("spend 1 expert use to deal 2 damage to 1 enemy unit") is the
-      // engine's expert-shot round-start effect above. See
+      // engine's expert-shot round-start effect above (units and siege
+      // fortifications are legal targets). See
       // scripts/build-war-machine-cards.mjs.
       cardImage: "/assets/war_machines-cannon.webp",
       imageAlt: "Cannon war machine card"

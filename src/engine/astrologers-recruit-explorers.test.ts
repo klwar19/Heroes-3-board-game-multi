@@ -90,8 +90,18 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
     const state = explorersGame();
     state.players.p1.hand = ["stat.attack", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
 
-    const refreshed = applyOk(state, {
+    const drawn = applyOk(state, {
       type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: []
+    });
+    expect(drawn.players.p1.explorersDiscardPending).toBe(true);
+    expect(getLegalActions(drawn, "p1").map((entry) => entry.action.type)).toEqual([
+      "RESOLVE_EXPLORERS_DISCARD"
+    ]);
+
+    const refreshed = applyOk(drawn, {
+      type: "RESOLVE_EXPLORERS_DISCARD",
       playerId: "p1",
       discardCardIds: ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"]
     });
@@ -109,6 +119,7 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
 
   it("scales: discarding 6 cards allows two empowers in the same refresh", () => {
     const state = explorersGame();
+    state.players.p1.limits.hand = 8;
     state.players.p1.hand = [
       "stat.attack",
       "stat.defense",
@@ -122,6 +133,11 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
 
     let s = applyOk(state, {
       type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: []
+    });
+    s = applyOk(s, {
+      type: "RESOLVE_EXPLORERS_DISCARD",
       playerId: "p1",
       discardCardIds: Array.from({ length: 6 }, () => "spell.magic_arrow")
     });
@@ -139,12 +155,53 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
     const state = explorersGame();
     state.players.p1.hand = ["stat.attack", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
 
-    const refreshed = applyOk(state, {
+    let refreshed = applyOk(state, {
       type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: []
+    });
+    refreshed = applyOk(refreshed, {
+      type: "RESOLVE_EXPLORERS_DISCARD",
       playerId: "p1",
       discardCardIds: ["spell.magic_arrow", "spell.magic_arrow"]
     });
     expect(refreshed.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("draws first, rejects early discards, then discards without replacements", () => {
+    const state = explorersGame();
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p1.deck = ["spell.magic_arrow", "stat.defense", "stat.power"];
+
+    const early = applyAction(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: ["stat.attack"]
+    });
+    expect(early.errors[0]?.message).toMatch(/draws up to the hand limit first/i);
+    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "END_TURN")).toBe(false);
+    expect(applyAction(state, { type: "END_TURN", playerId: "p1" }).errors[0]?.message).toMatch(
+      /Explorers requires drawing/i
+    );
+
+    const drawn = applyOk(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: []
+    });
+    expect(drawn.players.p1.hand).toHaveLength(drawn.players.p1.limits.hand);
+    expect(applyAction(drawn, { type: "END_TURN", playerId: "p1" }).errors[0]?.message).toMatch(
+      /choose how many cards/i
+    );
+    const deckAfterDraw = drawn.players.p1.deck.length;
+    const discarded = applyOk(drawn, {
+      type: "RESOLVE_EXPLORERS_DISCARD",
+      playerId: "p1",
+      discardCardIds: [drawn.players.p1.hand[0]]
+    });
+    expect(discarded.players.p1.hand).toHaveLength(drawn.players.p1.hand.length - 1);
+    expect(discarded.players.p1.deck).toHaveLength(deckAfterDraw);
+    expect(discarded.players.p1.explorersDiscardPending).toBe(false);
   });
 
   it("does nothing without Explorers face up, even discarding 3", () => {
