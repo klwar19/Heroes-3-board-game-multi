@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { httpTokenVerifier, memoizeVerifier, type VerifiedIdentity } from "./verified-actor";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { httpTokenVerifier, memoizeVerifier, VERIFY_TOKEN_TIMEOUT_MS, type VerifiedIdentity } from "./verified-actor";
 
 // ---------------------------------------------------------------------------
 // The verified-actor seam the PartyKit edge uses to bind a signed-in player to
@@ -82,6 +82,42 @@ describe("httpTokenVerifier", () => {
       throw new Error("network down");
     }).impl);
     expect(await thrown("tok")).toBeNull();
+  });
+
+  it("a HUNG verify callback degrades to guest at the deadline instead of stalling the action pipeline", async () => {
+    // The edge resolves identity before EVERY action; a cold-starting or hung
+    // app callback used to hold the whole action behind an unbounded fetch —
+    // the client-visible "The room did not answer in time". The deadline turns
+    // that into a bounded guest fallback (the storage recall still applies).
+    vi.useFakeTimers();
+    try {
+      const hung = httpTokenVerifier(
+        "https://app.example",
+        () => new Promise<never>(() => {})
+      );
+      const pending = hung("tok");
+      let settled: VerifiedIdentity | null | "unsettled" = "unsettled";
+      void pending.then((value) => {
+        settled = value;
+      });
+      // Still waiting just before the deadline…
+      await vi.advanceTimersByTimeAsync(VERIFY_TOKEN_TIMEOUT_MS - 1);
+      expect(settled).toBe("unsettled");
+      // …and a guest (null) at it — never a hang, never a throw.
+      await vi.advanceTimersByTimeAsync(2);
+      expect(settled).toBeNull();
+
+      // CONTROL: a callback answering within the deadline is untouched.
+      const fast = httpTokenVerifier(
+        "https://app.example",
+        fakeFetch({ ok: true, json: async () => ({ userId: "u1", nickname: "Gelu" }) }).impl
+      );
+      const fastResult = fast("tok");
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(fastResult).resolves.toEqual({ userId: "u1", nickname: "Gelu", isAdmin: false });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -36,12 +36,41 @@ type FetchLike = (input: string, init?: {
 }) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
 
 /**
+ * Upper bound on ONE identity-verification round-trip (fetch + body read). The
+ * edge resolves the sender's identity before EVERY action, and the app
+ * callback occasionally cold-starts or hangs — an unbounded verify used to
+ * stall the whole action behind it (client-visible as "The room did not answer
+ * in time"). On timeout the verification resolves null exactly like a network
+ * failure: the caller's storage-cache recall / guest fallback takes over, and
+ * the action proceeds.
+ */
+export const VERIFY_TOKEN_TIMEOUT_MS = 5_000;
+
+/** Run a verification attempt with a hard deadline; late/failed ⇒ null. */
+function withVerifyDeadline<T>(run: () => Promise<T | null>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    run().then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      }
+    );
+  });
+}
+
+/**
  * A verifier that POSTs the token to the app's `/api/auth/verify-token` route
  * and reads back the verified identity. `appUrl` is the app's public origin
  * (env on the party, e.g. HOMM3BG_APP_URL); `fetchImpl` is injectable so tests
  * can drive it without a network. Any failure (network, non-2xx, malformed
- * body, no token) resolves to null — a verification failure must degrade to
- * "guest", never throw and never grant a seat.
+ * body, no token, or a round-trip slower than VERIFY_TOKEN_TIMEOUT_MS)
+ * resolves to null — a verification failure must degrade to "guest", never
+ * throw, never grant a seat, and never stall the action pipeline.
  */
 export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVerifier {
   const base = appUrl.replace(/\/+$/, "");
@@ -49,7 +78,7 @@ export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVe
     if (!token) {
       return null;
     }
-    try {
+    return withVerifyDeadline(async () => {
       const response = await fetchImpl(`${base}/api/auth/verify-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,9 +96,7 @@ export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVe
         return { userId: data.userId, nickname: data.nickname, isAdmin: data.isAdmin === true };
       }
       return null;
-    } catch {
-      return null;
-    }
+    }, VERIFY_TOKEN_TIMEOUT_MS);
   };
 }
 

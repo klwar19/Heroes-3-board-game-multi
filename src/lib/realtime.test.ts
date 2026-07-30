@@ -2,8 +2,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ACTION_PROCESSING_TIMEOUT_MS,
+  ACTION_RECEIPT_PROBE_MS,
   ACTION_RECEIPT_TIMEOUT_MS,
   connectRoom,
+  MAX_ACTION_RESENDS,
   requestCloseRoom,
   SEAT_REHEAL_COOLDOWN_MS,
   shouldReconnectForSeatRejection
@@ -496,6 +498,153 @@ describe("connectRoom - PartyKit acknowledgement and health protocol", () => {
     socket.emit("open");
     await Promise.resolve();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
+});
+
+/**
+ * Action-level self-healing: "The room did not answer in time" used to be the
+ * END of a submit — one send, 15 s of passive waiting, then a user-visible
+ * error, even though the frame (or the socket under it) was simply lost. On a
+ * receipt-capable server (which proves the requestId dedupe ledger — the
+ * ledger shipped BEFORE the receipt), the transport now probes a silent
+ * submit, replaces the suspect socket, and re-sends the SAME frame; the server
+ * answers a repeat from the ledger, so a re-send can never double-apply. The
+ * 15 s receipt / 60 s processing deadlines are UNCHANGED — recovery only works
+ * inside them.
+ */
+describe("connectRoom — PartyKit action receipt probe & dedupe-safe re-send", () => {
+  beforeEach(() => {
+    partySocketMock.instances.length = 0;
+    process.env.NEXT_PUBLIC_PARTYKIT_HOST = "rooms.example.partykit.dev";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ roomId: "room-42", version: 5, updatedAt: "now", state: {} })))
+    );
+  });
+
+  afterEach(() => {
+    delete process.env.NEXT_PUBLIC_PARTYKIT_HOST;
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  type Socket = (typeof partySocketMock.instances)[number];
+
+  /** Prove the room server acks actions (submit → receipt → result). */
+  const primeReceiptLatch = async (connection: ReturnType<typeof connectRoom>, socket: Socket) => {
+    const first = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const frame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", { data: JSON.stringify({ type: "action-received", requestId: frame.requestId }) });
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 2, errors: [] })
+    });
+    await first;
+  };
+
+  const framesMatching = (socket: Socket, raw: string) =>
+    socket.send.mock.calls.filter((call) => String(call[0]) === raw);
+
+  it("probes a silent submit, replaces the socket, and re-sends the SAME frame on reopen", async () => {
+    vi.useFakeTimers();
+    const onDropped = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn(), onDropped }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const frame = JSON.parse(rawFrame) as { requestId: string };
+
+    // A few silent seconds: the probe treats the socket as suspect and runs
+    // the same recovery the pong-timeout watchdog does.
+    await vi.advanceTimersByTimeAsync(ACTION_RECEIPT_PROBE_MS);
+    expect(socket.reconnect).toHaveBeenCalledWith(4000, "action receipt timeout");
+    expect(onDropped).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+
+    // The replacement socket opens → the SAME frame (same requestId) goes out
+    // again, so the server's dedupe ledger governs the repeat.
+    socket.emit("open");
+    expect(framesMatching(socket, rawFrame)).toHaveLength(2);
+
+    // Receipt + result over the fresh socket settle the ORIGINAL promise.
+    socket.emit("message", { data: JSON.stringify({ type: "action-received", requestId: frame.requestId }) });
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 3, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 3, errors: [] });
+    connection.close();
+  });
+
+  it("CONTROL: an old room server (no receipt ever seen) keeps the plain single-send 15 s behaviour", async () => {
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const rejection = expect(resultPromise).rejects.toThrow(/did not answer in time/i);
+
+    await vi.advanceTimersByTimeAsync(ACTION_RECEIPT_TIMEOUT_MS - 1);
+    // No probe, no reconnect, no duplicate frame — an old server has no dedupe
+    // ledger, so a repeat could double-apply.
+    expect(socket.reconnect).not.toHaveBeenCalled();
+    expect(framesMatching(socket, rawFrame)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(2);
+    await rejection;
+    connection.close();
+  });
+
+  it("a socket flap re-sends the pending frame on reopen and the ledger's answer settles it", async () => {
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const frame = JSON.parse(rawFrame) as { requestId: string };
+
+    // The transport flaps: the frame handed to the dying socket is lost, and
+    // the reopened socket re-sends it without waiting for any timer.
+    socket.emit("close");
+    socket.emit("open");
+    expect(framesMatching(socket, rawFrame)).toHaveLength(2);
+
+    // The server (having already applied the first copy) answers the repeat
+    // from its ledger — the original promise settles with that outcome.
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 7, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 7, errors: [] });
+    connection.close();
+  });
+
+  it("caps re-sends per request, so a flapping socket cannot spam the same frame", async () => {
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const frame = JSON.parse(rawFrame) as { requestId: string };
+
+    for (let flap = 0; flap < MAX_ACTION_RESENDS + 2; flap += 1) {
+      socket.emit("close");
+      socket.emit("open");
+    }
+    expect(framesMatching(socket, rawFrame)).toHaveLength(1 + MAX_ACTION_RESENDS);
+
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 4, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 4 });
     connection.close();
   });
 });

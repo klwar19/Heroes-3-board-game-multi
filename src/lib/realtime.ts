@@ -188,6 +188,23 @@ export const ACTION_RECEIPT_TIMEOUT_MS = 15_000;
  * persist, redact, and fan out before its final action-result arrives.
  */
 export const ACTION_PROCESSING_TIMEOUT_MS = 60_000;
+/**
+ * How long a submitted action may go without its transport receipt before the
+ * socket is treated as suspect. The server sends `action-received`
+ * SYNCHRONOUSLY, before identity resolution and the mutation queue, so on a
+ * receipt-capable server even a few seconds of silence means the frame (or the
+ * socket under it) is gone — recover and re-send instead of idling toward the
+ * 15 s "The room did not answer in time." error. Well under
+ * ACTION_RECEIPT_TIMEOUT_MS so recovery fits inside the unchanged deadline.
+ */
+export const ACTION_RECEIPT_PROBE_MS = 5_000;
+/**
+ * How many times one request's frame may be re-sent over a recovered socket.
+ * The server's requestId dedupe ledger answers a repeat with the original
+ * outcome, so a re-send can never double-apply — this cap only stops a
+ * flapping socket from spamming the same frame forever.
+ */
+export const MAX_ACTION_RESENDS = 2;
 
 /**
  * Whether an action-result's errors warrant a self-healing socket reconnect.
@@ -358,11 +375,27 @@ function connectPartyRoom(
     room: roomId,
     query: buildQuery
   });
-  const pending = new Map<string, {
+  type PendingActionRequest = {
+    /** The exact frame sent, kept for dedupe-safe re-sends over a fresh socket. */
+    frame: string;
+    /** The server confirmed transport receipt (action-received). */
+    received: boolean;
+    /** How many times the frame was re-sent (see MAX_ACTION_RESENDS). */
+    resends: number;
     settle: (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void;
     markReceived: () => void;
     cancel: () => void;
-  }>();
+  };
+  const pending = new Map<string, PendingActionRequest>();
+  /**
+   * Latch: this room server sends transport receipts. That also proves it
+   * carries the requestId dedupe ledger (the ledger predates the receipt in
+   * every deploy), so re-sending a pending frame is safe — a repeat is
+   * answered with the recorded outcome, never applied twice. While false (an
+   * older room server), no probe fires and no frame is ever re-sent: exactly
+   * the old single-send behaviour.
+   */
+  let serverAcksActions = false;
   let requestCounter = 0;
   let lastMessageAt = Date.now();
   let opened = false;
@@ -430,6 +463,30 @@ function connectPartyRoom(
     dropped = true;
     handlers.onDropped?.();
   };
+  /**
+   * Re-send every unsettled action frame over a freshly-(re)opened socket. A
+   * frame handed to a dying socket is silently lost, and a result the server
+   * sent into that socket never arrives — either way the submit used to idle
+   * into "The room did not answer in time." with the action's fate unknown.
+   * The server answers a requestId it already applied from its dedupe ledger,
+   * so a repeat settles with the ORIGINAL outcome instead of double-applying;
+   * a frame that never arrived simply arrives now. Gated on the receipt latch
+   * (an old server without the ledger must never see a repeat) and capped per
+   * request so a flapping socket cannot spam.
+   */
+  const resendPendingActions = () => {
+    if (!serverAcksActions) return;
+    for (const [requestId, request] of pending) {
+      if (request.resends >= MAX_ACTION_RESENDS) continue;
+      request.resends += 1;
+      recordPerformanceMetric({
+        name: "room.action.resent",
+        at: metricNow(),
+        fields: { requestId, attempt: request.resends }
+      });
+      socket.send(request.frame);
+    }
+  };
   socket.addEventListener("open", () => {
     opened = true;
     lastMessageAt = Date.now();
@@ -439,6 +496,7 @@ function connectPartyRoom(
       if (!recoveryRequestedForDrop) void refetchSeatSnapshot();
       recoveryRequestedForDrop = false;
     }
+    resendPendingActions();
   });
   socket.addEventListener("close", () => {
     markDropped();
@@ -517,6 +575,7 @@ function connectPartyRoom(
     }
 
     if (message.type === "action-received") {
+      serverAcksActions = true;
       pending.get(message.requestId)?.markReceived();
       return;
     }
@@ -599,17 +658,58 @@ function connectPartyRoom(
         const sentAt = metricNow();
         const sentAtWall = Date.now();
         let timeout = 0;
+        let probeTimer = 0;
         const armTimeout = (delayMs: number, message: string) => {
           window.clearTimeout(timeout);
           timeout = window.setTimeout(() => {
+            window.clearTimeout(probeTimer);
             pending.delete(requestId);
             reject(new Error(message));
           }, delayMs);
         };
         armTimeout(ACTION_RECEIPT_TIMEOUT_MS, "The room did not answer in time.");
+        // Receipt probe: on a receipt-capable server (serverAcksActions), a few
+        // seconds without the transport receipt means the frame or the socket
+        // under it is gone — the receipt is sent synchronously, before any
+        // processing. Recover exactly like the pong-timeout watchdog (refetch
+        // the seat snapshot, replace the socket) and let the open handler
+        // re-send this frame (dedupe-safe; see resendPendingActions). The 15 s
+        // receipt / 60 s processing deadlines are unchanged — the probe only
+        // works INSIDE them, so a genuinely unreachable room still errors at
+        // the same moment it always did.
+        const armReceiptProbe = () => {
+          if (!serverAcksActions) return;
+          window.clearTimeout(probeTimer);
+          probeTimer = window.setTimeout(() => {
+            const request = pending.get(requestId);
+            if (!request || request.received || request.resends >= MAX_ACTION_RESENDS) return;
+            recordPerformanceMetric({
+              name: "room.action.receipt-probe",
+              at: metricNow(),
+              fields: { requestId, actionType: action.type }
+            });
+            // A replacement socket may already be on its way (another request's
+            // probe, the health watchdog, a real close) — then just keep
+            // probing; the open handler re-sends for every pending request.
+            if (!dropped) {
+              handlers.onStatus("edge socket unhealthy; recovering");
+              markDropped();
+              recoveryRequestedForDrop = true;
+              void refetchSeatSnapshot();
+              socket.reconnect(4000, "action receipt timeout");
+            }
+            armReceiptProbe();
+          }, ACTION_RECEIPT_PROBE_MS);
+        };
 
-        pending.set(requestId, {
+        const frame = JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) });
+        const request: PendingActionRequest = {
+          frame,
+          received: false,
+          resends: 0,
           markReceived: () => {
+            request.received = true;
+            window.clearTimeout(probeTimer);
             armTimeout(
               ACTION_PROCESSING_TIMEOUT_MS,
               "The room received the action but could not finish it in time."
@@ -617,10 +717,12 @@ function connectPartyRoom(
           },
           cancel: () => {
             window.clearTimeout(timeout);
+            window.clearTimeout(probeTimer);
             reject(new Error("The room connection closed."));
           },
           settle: (reply) => {
             window.clearTimeout(timeout);
+            window.clearTimeout(probeTimer);
             recordPerformanceMetric({
               name: "room.action.acknowledged",
               at: sentAt,
@@ -654,15 +756,16 @@ function connectPartyRoom(
               errors
             });
           }
-        });
+        };
+        pending.set(requestId, request);
 
-        const frame = JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) });
         recordPerformanceMetric({
           name: "room.action.sent",
           at: metricNow(),
           fields: { requestId, actionType: action.type, bytes: frameBytes(frame) }
         });
         socket.send(frame);
+        armReceiptProbe();
       }),
     resetRoom: (options) =>
       new Promise<GameRoomSnapshot>((resolve, reject) => {
