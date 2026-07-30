@@ -598,6 +598,7 @@ export {
   requiredHeroDefeats,
   gateFieldsLinked,
   getActiveAstrologersCard,
+  explorersHandStepActive,
   getActiveEventCard,
   getEventsState,
   getAdjacentSpaceIds,

@@ -349,6 +349,19 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(hasOreMine).toBe(true);
     });
 
+    it("is suppressed when the Ⅱ–Ⅲ Settlement reroll option is OFF (exact tile identities)", () => {
+      const state = setup();
+      state.adventure!.farTileSettlementReroll = false;
+      state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT];
+      const next = apply(state, PLACE);
+      // No ore-mine offer either: the OFF option promises the exact drawn tile.
+      expect(next.adventure!.pendingFarTileFlip).toBeNull();
+      expect(next.pendingChoice).toBeNull();
+      expect(next.adventure!.tiles[next.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        ORE_MINE_NO_SETTLEMENT
+      );
+    });
+
     it("does NOT reroll on a GOLD Mine (it places straight away, like a no-Mine tile)", () => {
       const state = setup();
       state.adventure!.farTileScriptedDraws = [GOLD_MINE_NO_SETTLEMENT];

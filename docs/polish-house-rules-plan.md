@@ -330,9 +330,10 @@ of Stacked defenders**, and everything else is a completely normal Creature Bank
 The **size is the GUARANTEED number of Stacked defenders**: size N places a
 standard random-stat Stack Token (+1 Attack/Defense/Health or +2 Initiative,
 absorbing one lethal blow — rulebook p.67) on exactly **N of the bank's four
-guards**. The only difference from a normal bank is the count: the normal rule
-rolls the count off Scenario Difficulty (easy 1 / normal 2 / hard 3 /
-impossible 4) and lands each candidate only ~77% of the time, whereas the size
+guards**. The only difference from a normal bank is the count: the normal
+official rule guarantees the Scenario Difficulty count (easy 1 / normal 2 /
+hard 3 / impossible 4; the optional BINH `bank-stack-chance-80` toggle rolls
+each candidate at 80%), whereas the size
 places all N guaranteed. There is **no size clamp** (every bank can roll Ⅳ = all
 four guards Stacked) and no coin-layer system.
 
@@ -364,8 +365,9 @@ machinery).
   `field.bankSize`. If a gate consumed the Blocked Field, no token was lost.
 - `buildCreatureBankCombatUnits` uses the NORMAL token-placement branch: under
   the rule (a stored `field.bankSize`) `tokenRolls = bankSize` and every
-  candidate is placed **guaranteed** (the `!polishSized` guard skips the ~77%
-  roll), so exactly `size` guards get a standard random-stat `stackToken`;
+  candidate is placed **guaranteed** (a Polish-sized bank never rolls the
+  opt-in `bank-stack-chance-80` placement chance), so exactly `size` guards
+  get a standard random-stat `stackToken`;
   `stackedCount = size` is the reward X multiplier. `bankStacks` and the coin
   layer branch were removed.
 - `markUnitRemovedIfNeeded` uses the normal `stackToken` absorb (one lethal blow
@@ -387,8 +389,8 @@ chosen, rotation preview shows only that bank. The size marker's coin is
 colours) and shows the size number; each Stacked guard shows the normal stat
 Stack Token badge. Tests (`polish-bank-sizes.test.ts`) cover one/two-dice
 mapping for both candidates, the mandatory pre-rotation choice, pile
-conservation, the **guaranteed** `size`-token placement (with a rule-off ~77%
-difficulty-count CONTROL), no size clamp, the normal token absorb, the normal
+conservation, the **guaranteed** `size`-token placement (with a rule-off
+official difficulty-count CONTROL), no size clamp, the normal token absorb, the normal
 X=size reward routing, AI choice, and the DOM coins.
 
 ## 6. Feature: Unit Stacks (`polish-unit-stacks`)

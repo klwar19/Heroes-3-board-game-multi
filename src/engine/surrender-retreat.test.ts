@@ -439,6 +439,41 @@ describe("Secondary-Hero surrender (house rule): sacrifice the 2nd hero, not 10 
       control.eventLog.filter((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "treasure")
     ).toHaveLength(controlRollsBefore + 1);
   });
+
+  it("defeating a defending Secondary still CAPTURES the contested field (a mine flag transfers)", () => {
+    // The visit-denial above is scoped to one-shot "visitable" prizes: a
+    // Secondary parked on a flagged mine/town must never be a capture-denial
+    // shield (the winner stands on the field and takes it, like any PvP win).
+    const state = makeGame({ victoryMode: "conquest" });
+    const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
+    if (state.combat?.context.kind !== "player") throw new Error("expected PvP context");
+    const fieldId = state.combat.context.fieldId;
+    const field = state.adventure!.fields[fieldId];
+    field.location = "mine";
+    field.resource = "gold";
+    delete field.difficulty;
+    field.flagOwnerId = "p2";
+    field.everFlagged = true;
+
+    finalizeAdventureCombat(state);
+
+    expect(state.heroes[secondaryId]).toBeUndefined();
+    expect(state.adventure!.fields[fieldId].flagOwnerId).toBe("p1");
+  });
+
+  it("a defeated Grail-carrying Secondary hands the Grail to the owner's Main Hero (never orphaned)", () => {
+    // The carrier hero is DELETED on defeat; without the hand-off the
+    // carrierHeroId dangles and the Grail victory goes dead for the whole table.
+    const state = makeGame({ victoryMode: "conquest" });
+    const { secondaryId } = stageSecondaryDefenderFight(state, "retreat");
+    state.adventure!.grail = { status: "carried", carrierHeroId: secondaryId };
+
+    finalizeAdventureCombat(state);
+
+    expect(state.heroes[secondaryId]).toBeUndefined();
+    expect(state.adventure!.grail?.status).toBe("carried");
+    expect(state.adventure!.grail?.carrierHeroId).toBe(getMainHero(state, "p2")!.id);
+  });
 });
 
 describe("Secondary-Hero surrender gating: a free sacrifice, no 10-gold toll", () => {
