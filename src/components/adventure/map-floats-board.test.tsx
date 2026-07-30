@@ -138,6 +138,26 @@ describe("map floating cards — rendered as HTML overlays, not SVG foreignObjec
     expect(resolved.heroes.hero_p1!.movementPoints).toBe(2);
   });
 
+  it("a reopened field whose GUARD was also re-armed offers no Resolve (the fight comes first)", () => {
+    // clear_tile_cubes re-seeds printed guards along with the cube: resolving
+    // from the occupied hex would hand out the reward without the fight.
+    const { state } = movableState();
+    const hero = state.heroes.hero_p1!;
+    const field = state.adventure!.fields[hero.spaceId!];
+    field.location = "water_wheel";
+    field.blackCube = false;
+    field.difficulty = 2; // the re-armed guard
+    field.everFlagged = false;
+    hero.movementPoints = 3;
+
+    const legalActions = getLegalActions(state, "p1");
+    expect(
+      legalActions.some((entry) => entry.action.type === "REVISIT_FIELD" && entry.action.heroId === hero.id)
+    ).toBe(false);
+    const forged = applyAction(state, { type: "REVISIT_FIELD", playerId: "p1", heroId: hero.id });
+    expect(forged.errors[0]?.message).toMatch(/revisitable or newly reopened/i);
+  });
+
   it("the rotate card renders for the rotating viewer with working CW/CCW + Confirm (dispatches SET_TILE_ROTATION)", () => {
     const state = createAdventureGameState({ seed: "map-floats-rotate", rollFirstPlayer: false });
     const tileId = Object.keys(state.adventure!.tiles)[0]!;

@@ -1,3 +1,4 @@
+import { explorersHandStepActive } from "./adventure";
 import { getLegalActions } from "./legal-actions";
 import { neutralCombatControllerId } from "./neutral-control";
 import { applyAction } from "./reducer";
@@ -226,6 +227,19 @@ export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): Gam
   // A battle between two OTHER players: wait for it, like any bystander.
   if (combat && !combat.outcome) {
     return null;
+  }
+
+  // Explorers (Astrologers): END_TURN refuses while the card's mandatory
+  // draw-then-discard sequence is still owed, so the force-shift must take
+  // those steps first — draw up to the limit, then discard nothing. Without
+  // this the terminal RESOLVE_TURN_TIMEOUT below throws forever and the
+  // expired turn can never be force-ended during an Explorers round.
+  const player = state.players[playerId];
+  if (player?.explorersDiscardPending) {
+    return { type: "RESOLVE_EXPLORERS_DISCARD", playerId, discardCardIds: [] };
+  }
+  if (player?.canMulligan && explorersHandStepActive(state)) {
+    return { type: "REFRESH_HAND", playerId, discardCardIds: [] };
   }
 
   // Clear of interactions: end their turn (or just clear a stale flag).

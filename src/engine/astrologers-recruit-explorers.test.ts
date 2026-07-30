@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { drawAstrologersCard, getTownOfPlayer, NEUTRAL_DECK_IDS, startAdventureRound } from "./adventure";
+import { drawAstrologersCard, eliminatePlayer, getTownOfPlayer, NEUTRAL_DECK_IDS, startAdventureRound } from "./adventure";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { neutralUnitIdsByFaction, neutralUnitIdsByTier } from "@/data/factions/core";
@@ -202,6 +202,47 @@ describe("Astrologers — Explorers (empower per 3 discarded)", () => {
     expect(discarded.players.p1.hand).toHaveLength(drawn.players.p1.hand.length - 1);
     expect(discarded.players.p1.deck).toHaveLength(deckAfterDraw);
     expect(discarded.players.p1.explorersDiscardPending).toBe(false);
+  });
+
+  it("'During this round': the mandatory sequence lifts on the following (odd) Resource round", () => {
+    // The card stays face up until the next Astrologers round, but like
+    // Sanctuary/Mages its printed "during this round" applies only on the even
+    // round it was drawn — round 3 gets the CLASSIC one-step refresh back.
+    const state = explorersGame();
+    state.round = 3;
+    state.players.p1.hand = ["stat.attack", "spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"];
+
+    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "END_TURN")).toBe(true);
+    const refreshed = applyOk(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: ["spell.magic_arrow", "spell.magic_arrow", "spell.magic_arrow"]
+    });
+    expect(refreshed.players.p1.explorersDiscardPending ?? false).toBe(false);
+    // No Explorers empower either: the effect is over with its round.
+    expect(refreshed.adventure?.pendingVisit).toBeNull();
+  });
+
+  it("elimination clears the pending discard, and the flag never hijacks a closed turn", () => {
+    const state = explorersGame();
+    state.players.p1.hand = ["stat.attack"];
+    const drawn = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(drawn.players.p1.explorersDiscardPending).toBe(true);
+
+    // A seat whose turn is NOT open keeps its normal off-turn actions even
+    // with a stale flag (a parallel stop / legacy snapshot could leave one).
+    drawn.players.p2.explorersDiscardPending = true;
+    expect(
+      getLegalActions(drawn, "p2").some((entry) => entry.action.type === "RESOLVE_EXPLORERS_DISCARD")
+    ).toBe(false);
+
+    // Elimination drops the dead seat's hand-step flags with everything else.
+    eliminatePlayer(drawn, "p1", "test elimination", true);
+    expect(drawn.players.p1.explorersDiscardPending ?? false).toBe(false);
+    expect(drawn.players.p1.canMulligan ?? false).toBe(false);
+    expect(
+      getLegalActions(drawn, "p1").some((entry) => entry.action.type === "RESOLVE_EXPLORERS_DISCARD")
+    ).toBe(false);
   });
 
   it("does nothing without Explorers face up, even discarding 3", () => {

@@ -27,6 +27,7 @@ import {
   reinforcementDiscountCostFor,
   reinforceCostFor,
   getActiveAstrologersCard,
+  explorersHandStepActive,
   getMainHero,
   getSecondaryHero,
   getTownOfPlayer,
@@ -34,6 +35,7 @@ import {
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  isFieldGuarded,
   isSeaField,
   NEUTRAL_DECK_IDS,
   obeliskRoleIsMonolith,
@@ -9822,8 +9824,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
 
   // Explorers is the mandatory second half of the start-of-turn hand step:
   // draw first, then explicitly choose any number of discards. Nothing else
-  // opens until that choice (including zero) is submitted.
-  if (player.explorersDiscardPending) {
+  // opens until that choice (including zero) is submitted. Scoped to an OPEN
+  // turn: a seat whose turn closed with the flag somehow still set (a parallel
+  // stop, a legacy snapshot) must keep its normal off-turn actions instead of
+  // one offer its own turn assertion always rejects.
+  if (player.explorersDiscardPending && hasOpenAdventureTurn(state, playerId)) {
     return [
       {
         label: "Explorers: discard any number of cards (or discard none)",
@@ -9904,7 +9909,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       label: "Draw new — or discard some and draw up to your hand limit (start of turn)",
       action: { type: "REFRESH_HAND", playerId, discardCardIds: [] }
     });
-    if (getActiveAstrologersCard(state)?.effect.type !== "EMPOWER_PER_DISCARD") {
+    if (!explorersHandStepActive(state)) {
       actions.push({
         label: "End turn",
         action: { type: "END_TURN", playerId }
@@ -10099,8 +10104,13 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
         (locationDefinitions[field.location]?.category === "revisitable" ||
           // A round/timed event may remove the Black Cube while a Hero is
           // already standing on this one-use field. Treat it as a fresh visit
-          // so the player can click/resolve the newly reopened location.
-          (locationDefinitions[field.location]?.category === "visitable" && !field.blackCube) ||
+          // so the player can click/resolve the newly reopened location. A
+          // re-opened field whose printed guard was ALSO re-armed (the
+          // clear_tile_cubes designer tool re-seeds guards) is NOT offered —
+          // resolving it would hand out the reward without the fight.
+          (locationDefinitions[field.location]?.category === "visitable" &&
+            !field.blackCube &&
+            !isFieldGuarded(field)) ||
           // Obelisk role "monolith": Revisit (1 MP) travels the network again,
           // like a Monolith token (which is category "revisitable").
           (field.location === "obelisk" && obeliskRoleIsMonolith(state))) &&

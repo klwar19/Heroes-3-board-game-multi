@@ -10019,7 +10019,7 @@ function GameOptionsPanel({
             <small className="optionHint">
               {settlementRerollOn
                 ? "On — if a player has not found a Settlement, their 2nd Ⅱ–Ⅲ tile may be kept or rerolled until one appears."
-                : "Off — every Ⅱ–Ⅲ tile stays exactly as drawn or designed; no Settlement reroll is offered."}
+                : "Off — every Ⅱ–Ⅲ tile stays exactly as drawn or designed; neither the Settlement reroll nor the one-time Ore-Mine reroll is offered."}
             </small>
           </div>
         );

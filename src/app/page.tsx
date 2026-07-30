@@ -9,7 +9,7 @@ import {
   effectHasExpertMode,
   ENGINE_SIGNATURE,
   getEffectiveCardEffect,
-  getActiveAstrologersCard,
+  explorersHandStepActive,
   getLegalActions,
   getPermanentCardIds,
   getPlayerView,
@@ -5221,9 +5221,10 @@ export default function Home() {
     const legacySpellBookOn = isSeated && (state.adventure?.spellBook ?? true);
     const spellBookOn = legacySpellBookOn || (isSeated && polishBook);
     const handLimit = viewer ? effectiveHandLimit(state, viewerPlayerId) : 0;
-    const activeAstrologersEffect = getActiveAstrologersCard(state)?.effect;
-    const explorersActive =
-      activeAstrologersEffect?.type === "EMPOWER_PER_DISCARD" && activeAstrologersEffect.per > 0;
+    // "During this round" (round-parity gated like Sanctuary/Mages) — the same
+    // read every engine gate uses, so the banner can never promise a sequence
+    // REFRESH_HAND will not run.
+    const explorersActive = explorersHandStepActive(state);
     const explorersDiscardPending =
       Boolean(viewer?.explorersDiscardPending) && hasOpenAdventureTurn(state, viewerPlayerId);
     // Over the hand limit at the start of the turn (only via card effects):

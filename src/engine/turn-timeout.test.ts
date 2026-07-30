@@ -223,6 +223,40 @@ describe("the force-shift — the turn ends, the player stays in the game", () =
     expect(current.afk?.turnOpenSince?.p1).toBe(LIMIT + 3_000);
   });
 
+  it("Explorers round: the force-shift takes the mandatory draw-then-discard steps, then ends the turn", () => {
+    // END_TURN throws while the Explorers draw/discard sequence is owed, so
+    // the driver must take those steps itself — otherwise the timed-out seat's
+    // turn can never be force-ended and the table hangs (the reported freeze).
+    const state = makeGame("turn-shift-explorers", { players: 3 });
+    state.round = 2;
+    state.adventure!.astrologers = {
+      activeCardId: "astrologers.explorers",
+      nextResourceModifiers: { gold: 0, valuables: 0 },
+      crazyWizardUsedBy: [],
+      swiftWeaselUsedBy: []
+    };
+    const p1 = state.players.p1;
+    p1.canMulligan = true; // the start-of-turn draw was never taken
+    p1.needsHandRefresh = false;
+    p1.hand = [];
+    p1.deck = Array.from({ length: 6 }, () => "spell.magic_arrow");
+    seedTurnClock(state, T0);
+
+    // Sanity (the reason the driver needs its own path): a plain END_TURN is refused.
+    expect(expectRejected(state, { type: "END_TURN", playerId: "p1" })).toContain("Explorers");
+
+    let current = applyOk(state, { type: "FORCE_TURN_TIMEOUT", playerId: "p2", targetPlayerId: "p1" }, LIMIT);
+    current = driveAfkDrop(current, () => ({ now: LIMIT + 1_000 }));
+
+    // The driver drew to the limit, discarded nothing, and the turn passed on.
+    expect(current.afk?.turnTimeoutPlayerId ?? null).toBeNull();
+    expect(current.players.p1.canMulligan ?? false).toBe(false);
+    expect(current.players.p1.explorersDiscardPending ?? false).toBe(false);
+    expect(current.players.p1.hand.length).toBeGreaterThan(0);
+    expect(current.activePlayerId).toBe("p2");
+    expect(current.players.p1.eliminated ?? false).toBe(false);
+  });
+
   it("default-resolves the seat's open pending CHOICE (skip arm) first, and the auto-answers do NOT refresh their AFK idle clock", () => {
     const state = makeGame("turn-shift-choice", { players: 3 });
     const moraleBefore = state.players.p1.morale;

@@ -625,6 +625,20 @@ export function freeSpellBookActive(state: GameState): boolean {
 }
 
 /**
+ * Explorers (Astrologers): whether the card's mandatory draw-up-then-discard
+ * hand sequence replaces the normal start-of-turn refresh right now. The card
+ * is "during this round", so — like Sanctuary and Mages — it applies only on
+ * the even Astrologers round it was drawn, even though the card stays face up
+ * until the next Astrologers round. Read at every gate the sequence owns:
+ * refreshHand / resolveExplorersDiscard, the endTurnAdventure refusals, the
+ * legal-actions End-turn withhold and the forced-resolution driver.
+ */
+export function explorersHandStepActive(state: GameState): boolean {
+  const effect = getActiveAstrologersCard(state)?.effect;
+  return effect?.type === "EMPOWER_PER_DISCARD" && effect.per > 0 && state.round % 2 === 0;
+}
+
+/**
  * Multilingual Bron (Astrologers): whether a player's unit special-ability roll
  * that came up against them is rerolled once. "Until the next Astrologers'
  * round" — active the whole time the card is face up (no round-parity gate).
@@ -4210,6 +4224,12 @@ export function eliminatePlayer(
   // `levelUpAbilityPicks` record stays (a completed public log, like
   // `deckDrawnAbilityCardIds`).
   player.pendingLevelUpAbilitySearch = undefined;
+  // The start-of-turn hand-step flags die with the seat too — a stale
+  // `explorersDiscardPending` would otherwise hijack the dead seat's legal
+  // actions with one Explorers offer its own turn assertion always rejects.
+  player.canMulligan = false;
+  player.needsHandRefresh = false;
+  player.explorersDiscardPending = false;
 
   for (const hero of Object.values(state.heroes)) {
     if (hero.controllerId === playerId) {

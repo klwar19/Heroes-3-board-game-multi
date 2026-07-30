@@ -114,6 +114,7 @@ import {
   gainResources,
   gainTownCube,
   getActiveAstrologersCard,
+  explorersHandStepActive,
   getAstrologersState,
   getAdjacentSpaceIds,
   type RecruitPurchaseRef,
@@ -861,8 +862,9 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   }
 
   const limit = effectiveHandLimit(state, action.playerId);
-  const explorers = getActiveAstrologersCard(state)?.effect;
-  const explorersActive = explorers?.type === "EMPOWER_PER_DISCARD" && explorers.per > 0;
+  // "During this round": the mandatory draw-then-discard sequence runs only on
+  // the even Astrologers round the card was drawn (the Sanctuary/Mages parity).
+  const explorersActive = explorersHandStepActive(state);
   // Explorers reverses the normal hand-step order: first draw up to the limit,
   // THEN choose discards in its own explicit step. A forced over-limit hand may
   // still discard down so it can reach the draw.
@@ -1944,8 +1946,11 @@ export function revisitField(state: GameState, action: Extract<GameAction, { typ
   const locationCategory = locationDefinitions[field.location]?.category;
   // Timed/round events can remove a Black Cube underneath a stationary Hero.
   // That makes the one-use field fresh again; resolving it from the current hex
-  // is a fresh visit, not a repeat of an already-consumed location.
-  const freshlyReopenedVisitable = locationCategory === "visitable" && !field.blackCube;
+  // is a fresh visit, not a repeat of an already-consumed location. A re-armed
+  // guard (clear_tile_cubes re-seeds printed guards) must be fought first, so a
+  // guarded re-opened field is NOT freshly resolvable from where the hero stands.
+  const freshlyReopenedVisitable =
+    locationCategory === "visitable" && !field.blackCube && !isFieldGuarded(field);
 
   // Grail dig cost is map-maker configurable (0 / 1 / 2 MP); classic revisit is 1.
   const digCost = field.grailDiggable ? grailDigMovementCost(state) : 1;
@@ -3237,7 +3242,14 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
     !tileDefHasSettlement(candidate) &&
     farTilePoolHasSettlement(state);
   // Only an ORE Mine triggers the reroll — never a gold or valuables Mine.
-  const mineEligible = !flip.mineRerollUsed && tileDefHasOreMine(candidate) && poolHasDraw;
+  // The Settlement-reroll OFF option promises exact tile identities ("every
+  // Ⅱ–Ⅲ tile stays exactly as drawn or designed"), so it suppresses this
+  // reroll too — otherwise an Ore-Mine tile could still be swapped away.
+  const mineEligible =
+    state.adventure?.farTileSettlementReroll !== false &&
+    !flip.mineRerollUsed &&
+    tileDefHasOreMine(candidate) &&
+    poolHasDraw;
 
   if (settlementEligible) {
     flip.offerMode = "settlement";
@@ -10804,6 +10816,16 @@ export function finalizeAdventureCombat(state: GameState): void {
   // A Secondary Hero is a one-use map piece: surrendering it OR losing a real
   // fight removes it from the game. It never retreats to the starting field.
   const secondaryHeroLoss = loserHero?.kind === "secondary";
+  // Its death is not a coupon for the field's one-shot prize, though: on a
+  // "visitable" location (Treasure Symbol & co.) the winner is denied the
+  // automatic post-win visit — the reward stays on the open field. Every OTHER
+  // category (mine, settlement, town, garrison, Dragon Utopia, a built-Grail
+  // site) still visits/flags normally, exactly as when a Main Hero falls — a
+  // 10-gold Secondary must never be a capture-denial shield.
+  const skipWinnerFieldVisit =
+    secondaryHeroLoss &&
+    locationDefinitions[state.adventure?.fields[context.fieldId]?.location ?? "none"]?.category ===
+      "visitable";
 
   if (loserHero) {
     if (surrendered) {
@@ -10969,7 +10991,7 @@ export function finalizeAdventureCombat(state: GameState): void {
     const attackerWon =
       winnerHero?.id === context.attackerHeroId && Boolean(winnerHero);
     const deferredReward =
-      attackerWon && winnerHero && !secondaryHeroLoss
+      attackerWon && winnerHero && !skipWinnerFieldVisit
         ? ({
             kind: "field-visit",
             heroId: winnerHero.id,
@@ -10982,10 +11004,10 @@ export function finalizeAdventureCombat(state: GameState): void {
       winnerHero?.id ?? getMainHero(state, winnerId)?.id,
       deferredReward
     );
-    if (attackerWon && winnerHero && !secondaryHeroLoss && !opened) {
+    if (attackerWon && winnerHero && !skipWinnerFieldVisit && !opened) {
       beginFieldVisit(state, winnerHero.id, context.fieldId, false);
     }
-  } else if (winnerHero && winnerHero.id === context.attackerHeroId && !secondaryHeroLoss) {
+  } else if (winnerHero && winnerHero.id === context.attackerHeroId && !skipWinnerFieldVisit) {
     // The attacker took the contested field by winning. House rule (BINH):
     // winning at sea does NOT halt the hero (see neutral case) — a hero already
     // sailing (sea→sea) keeps its remaining movement, while one that WADED in
@@ -11605,6 +11627,21 @@ function forceOtherHeroesHomeFromField(
  * removal and `getSecondaryHero` reports none.
  */
 function removeSecondaryHeroFromGame(state: GameState, hero: HeroState, reason: string): void {
+  // The Holy Grail never leaves play: a Secondary Hero CAN dig it, and deleting
+  // the carrier would strand `grail.carrierHeroId` on a hero id that no longer
+  // exists — no delivery, no possession VP, the Grail victory dead for the
+  // whole table (and an attacker could force it). The owner's Main Hero picks
+  // the relic up instead.
+  const grail = state.adventure?.grail;
+  if (grail?.carrierHeroId === hero.id) {
+    const main = getMainHero(state, hero.controllerId);
+    grail.carrierHeroId = main?.id;
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: hero.controllerId,
+      message: `${state.players[hero.controllerId]?.name ?? hero.controllerId}'s Main Hero recovers the Holy Grail from the lost Secondary Hero.`
+    });
+  }
   hero.spaceId = null;
   hero.movementPoints = 0;
   delete state.heroes[hero.id];
@@ -14218,8 +14255,7 @@ function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
   const endingPlayer = state.players[action.playerId];
-  const activeAstrologersEffect = getActiveAstrologersCard(state)?.effect;
-  if (endingPlayer?.canMulligan && activeAstrologersEffect?.type === "EMPOWER_PER_DISCARD") {
+  if (endingPlayer?.canMulligan && explorersHandStepActive(state)) {
     throw new Error("Explorers requires drawing up to your hand limit before ending the turn.");
   }
   if (endingPlayer?.explorersDiscardPending) {

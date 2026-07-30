@@ -2573,6 +2573,72 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## Explorers hand step · Settlement-reroll option · Cannon vs walls · Secondary-hero defeat · transport receipt (2026-07-30)
+
+Four codex commits landed with an audit (5 audit fixes on top, each mutation-
+checked). Leading with what does NOT run / deliberate limits:
+
+- **A computer seat never earns the Explorers empower** — it resolves the
+  mandatory discard step with zero discards (the safe default), and junk cards
+  it cycles inside REFRESH_HAND earn no credit (only `RESOLVE_EXPLORERS_DISCARD`
+  discards count). Documented limit, mirrors the round-1 mulligan AI stance.
+- **The `.cardPopover` fixed-centering is pinned by a static CSS test only**
+  (`battle-card-popover-layout.test.ts`) — jsdom cannot compute the layout, and
+  no real-browser spec covers it yet.
+- **`action-received` needs a PartyKit deploy** (`npm run deploy:partykit`) —
+  until then the deployed edge sends no receipt and clients simply keep the old
+  15 s behaviour (the protocol is backward compatible both ways).
+- **The reopened-field "Resolve" offer is withheld while the field's re-armed
+  guard stands** (audit fix: `clear_tile_cubes` re-seeds printed guards, and
+  resolving from the occupied hex would skip the fight) — the hero must step
+  off and re-enter to fight it.
+
+What runs (each with a failing-if-removed test):
+- **Explorers (Astrologers) is a real two-step hand sequence**: REFRESH_HAND
+  draws to the limit first, then the NEW mandatory `RESOLVE_EXPLORERS_DISCARD`
+  (0–N discards, one empower per 3) — End turn is withheld and refused while
+  either step is owed (`astrologers-recruit-explorers.test.ts`). AUDIT fixes:
+  the sequence is round-PARITY gated (`explorersHandStepActive`, the ONE shared
+  read — "during this round" like Sanctuary/Mages, so round 3 gets the classic
+  refresh back); the turn-timeout driver takes both steps itself before ending
+  the turn (`afk-drop.ts` — without this a timed-out seat could NEVER be
+  force-ended during an Explorers round and the table froze;
+  `turn-timeout.test.ts` "Explorers round", mutation-checked); `eliminatePlayer`
+  clears the hand-step flags, and the pending flag never hijacks a seat whose
+  turn is not open.
+- **`GameSetupOptions.farTileSettlementReroll`** (default ON; lobby Map & Setup
+  row + map-preset soft default): OFF preserves exact Ⅱ–Ⅲ tile identities — no
+  2nd-tile Settlement reroll AND (audit fix) no one-time Ore-Mine reroll either
+  (`far-tile-flip.test.ts`, `far-tile-reveal.test.ts`, `custom-setup.test.ts`).
+- **Stack-Token default flip**: the official guaranteed difficulty count is the
+  default; the old roll survives as the opt-in `bank-stack-chance-80` house rule
+  (80%, default OFF in BOTH modes) — see the Creature-Banks section.
+- **The Cannon may shoot a Wall/Gate in a siege** (besieger only, never the
+  town defender's own fortifications; `catapult-siege.test.ts` "Cannon").
+- **A DEFEATED Secondary Hero is removed from the game** (like the surrender
+  sacrifice — it never retreats home; `surrender-retreat.test.ts`). Its death is
+  not a coupon for a one-shot prize: on a "visitable" field the winner's
+  automatic post-win visit is withheld (the reward stays on the open field for
+  the 1-MP Resolve). AUDIT fixes: every OTHER category still transfers —
+  mine/town/settlement flags capture normally, so a 10-gold Secondary is never
+  a capture-denial shield — and a defeated Grail-CARRYING Secondary hands the
+  Grail to the owner's Main Hero instead of orphaning `carrierHeroId` (which
+  would have killed the Grail victory for the whole table).
+- **Freshly reopened one-use fields are resolvable in place**: a timed/round
+  event clearing the Black Cube under a stationary hero offers "Resolve <field>"
+  (1 MP, the REVISIT_FIELD path; clickable on the hex) — guarded-field exception
+  above (`map-floats-board.test.tsx`).
+- **Late-game transport receipt**: the edge answers every WS action with an
+  immediate `action-received`, and the client splits its deadline — 15 s for the
+  receipt, then 60 s for processing (`realtime.test.ts`); the pending-echo TTL
+  covers both (75 s).
+- **Morale-overflow prompt renders from the engine's legal actions** (hidden
+  while an exclusive choice owns the interaction, reappears after — the spend
+  is handler-validated and the overflow field persists, so nothing is lost;
+  `morale-overflow-prompt.test.tsx`).
+- **Map-overlay downsizing**: field-symbol modules ≤0.62·HEX_SIZE and a compact
+  dungeon-floor badge (`map-overlay-scale.test.tsx`).
+
 ## Settlement capture choices · two Necromancy copies · timed reward choices (2026-07-28)
 
 Two commits' worth of rules work plus its audit. Leading with what does NOT work
