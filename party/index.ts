@@ -152,6 +152,16 @@ type ServerMessage =
 const SNAPSHOT_KEY = "snapshot";
 
 /**
+ * Storage key of the answered-action ledger (see answeredActionRequests). The
+ * client RE-SENDS an unacknowledged frame over a recovered socket, and the
+ * repeat may land on a freshly-woken instance whose in-memory ledger is gone —
+ * without this persisted copy the retry would re-apply an already-applied
+ * action (a hero moving twice). Written in the same coalesced storage write as
+ * the snapshot, so ledger and state can never disagree.
+ */
+const ANSWERED_ACTIONS_KEY = "answered-actions";
+
+/**
  * One entry of the hibernation-surviving verified-identity cache (Fix A). Keyed
  * in Durable Object storage by a SHA-256 digest of the socket ticket (never the
  * raw token), so a WOKEN instance whose in-memory memoization was wiped — and
@@ -234,7 +244,10 @@ export default class GameRoomServer implements Party.Server {
    * Recently answered action requestIds (keyed by sender identity), so a
    * DUPLICATED frame — a client retry after a socket flap, a double-send — is
    * answered from this ledger with the original outcome instead of applying
-   * the same action twice. Bounded FIFO (Map keeps insertion order).
+   * the same action twice. Bounded FIFO (Map keeps insertion order). APPLIED
+   * outcomes also persist alongside the snapshot (ANSWERED_ACTIONS_KEY) so a
+   * retry that wakes a fresh instance still dedupes; rejections stay
+   * in-memory only — replaying a rejected action just re-rejects it.
    */
   private answeredActionRequests = new Map<
     string,
@@ -242,6 +255,8 @@ export default class GameRoomServer implements Party.Server {
   >();
 
   private static readonly ANSWERED_REQUEST_CAP = 256;
+  /** How many answered outcomes ride the persisted ledger (newest kept). */
+  private static readonly ANSWERED_PERSISTED_CAP = 64;
 
   private recordAnsweredRequest(
     key: string,
@@ -254,6 +269,31 @@ export default class GameRoomServer implements Party.Server {
       }
     }
     this.answeredActionRequests.set(key, outcome);
+  }
+
+  /**
+   * Ledger keys for one request: the outcome is recorded under BOTH the
+   * verified account id and the per-tab clientId (when present), so a RETRY
+   * whose identity verification degraded in either direction — a timed-out
+   * verify falling back to guest, or a guest-applied first send verifying on
+   * the repeat — still finds the recorded outcome instead of re-applying.
+   */
+  private dedupeKeysFor(requestId: string, userId: string | undefined, clientKey: string): string[] {
+    const keys: string[] = [];
+    if (userId) {
+      keys.push(`${userId}:${requestId}`);
+    }
+    keys.push(`${clientKey}:${requestId}`);
+    return keys;
+  }
+
+  /** The newest answered outcomes, as the JSON-serializable persisted ledger. */
+  private persistableAnsweredRequests(): Record<
+    string,
+    { errors: { code: string; message: string }[]; notices: string[]; version: number }
+  > {
+    const entries = [...this.answeredActionRequests.entries()];
+    return Object.fromEntries(entries.slice(-GameRoomServer.ANSWERED_PERSISTED_CAP));
   }
 
   constructor(readonly room: Party.Room) {
@@ -452,10 +492,25 @@ export default class GameRoomServer implements Party.Server {
     // in-process can reach one that never wakes.)
     if (stored && isPrivateSinglePlayer(stored.state) && this.isIdlePastStaleTtl(stored.updatedAt)) {
       await this.room.storage.delete(SNAPSHOT_KEY);
+      await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
       this.snapshot = null;
       return;
     }
     this.snapshot = stored;
+    // Rehydrate the answered-action ledger so a client retry that woke this
+    // instance is answered from the recorded outcome, never applied twice.
+    try {
+      const answered = await this.room.storage.get<
+        Record<string, { errors: { code: string; message: string }[]; notices: string[]; version: number }>
+      >(ANSWERED_ACTIONS_KEY);
+      if (answered) {
+        for (const [key, outcome] of Object.entries(answered)) {
+          this.answeredActionRequests.set(key, outcome);
+        }
+      }
+    } catch {
+      // A missing/corrupt ledger only costs dedupe depth — never block onStart.
+    }
   }
 
   /**
@@ -560,7 +615,14 @@ export default class GameRoomServer implements Party.Server {
 
   private async persist(): Promise<void> {
     if (this.snapshot) {
-      await this.room.storage.put(SNAPSHOT_KEY, this.snapshot);
+      // Both puts are issued in the same microtask, so the Durable Object
+      // runtime coalesces them into ONE atomic write — the persisted ledger
+      // can never claim "answered" for a snapshot version that was not
+      // persisted, nor the reverse (the double-apply / lost-answer windows).
+      await Promise.all([
+        this.room.storage.put(SNAPSHOT_KEY, this.snapshot),
+        this.room.storage.put(ANSWERED_ACTIONS_KEY, this.persistableAnsweredRequests())
+      ]);
     }
   }
 
@@ -1228,14 +1290,16 @@ export default class GameRoomServer implements Party.Server {
       // room must stay serialized-but-responsive while it does.
       const actorUserId = await this.verifiedUserId(sender);
       const senderClientId = message.actorClientId ?? this.clientIdOf(sender);
-      const dedupeKey = message.requestId
-        ? `${actorUserId ?? senderClientId ?? sender.id}:${message.requestId}`
-        : null;
+      const dedupeKeys = message.requestId
+        ? this.dedupeKeysFor(message.requestId, actorUserId, senderClientId ?? sender.id)
+        : [];
       const outcome = await this.serialized(async () => {
         const current = this.ensureSnapshot();
         // A requestId this room already answered is a duplicate frame (client
         // retry / double-send): reply with the recorded outcome, apply nothing.
-        const answered = dedupeKey ? this.answeredActionRequests.get(dedupeKey) : undefined;
+        const answered = dedupeKeys
+          .map((key) => this.answeredActionRequests.get(key))
+          .find((entry) => entry !== undefined);
         if (answered) {
           return { ...answered, applied: false, prev: null as GameState | null };
         }
@@ -1246,7 +1310,7 @@ export default class GameRoomServer implements Party.Server {
         // member, or there is nothing to undo. The history lives only in the
         // undo-history module (never in state, never broadcast, never in a view).
         if (message.action.type === "UNDO_MOVE") {
-          return await this.applyUndo(current, message.action.playerId, senderClientId, actorUserId, dedupeKey);
+          return await this.applyUndo(current, message.action.playerId, senderClientId, actorUserId, dedupeKeys);
         }
         // Record the PRE-action state on the undo stack when the mode is on
         // (no-op otherwise), so an undo rolls back exactly this action.
@@ -1273,7 +1337,7 @@ export default class GameRoomServer implements Party.Server {
           .map((event) => event.reason);
         if (result.errors.length > 0) {
           const rejected = { errors, notices, version: current.version };
-          if (dedupeKey) this.recordAnsweredRequest(dedupeKey, rejected);
+          for (const key of dedupeKeys) this.recordAnsweredRequest(key, rejected);
           return { ...rejected, applied: false, prev: null as GameState | null };
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
@@ -1294,12 +1358,15 @@ export default class GameRoomServer implements Party.Server {
           ...this.creationMeta(settled),
           state: settled
         };
+        // Record BEFORE persist so the applied outcome rides the SAME atomic
+        // storage write as the snapshot (see persist) — a retry can then never
+        // find the new state without its ledger entry.
+        const accepted = { errors, notices, version: this.snapshot.version };
+        for (const key of dedupeKeys) this.recordAnsweredRequest(key, accepted);
         const persistStartedAt = Date.now();
         await this.persist();
         this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
         await this.broadcastSnapshot();
-        const accepted = { errors, notices, version: this.snapshot.version };
-        if (dedupeKey) this.recordAnsweredRequest(dedupeKey, accepted);
         return {
           ...accepted,
           applied: true,
@@ -1353,7 +1420,7 @@ export default class GameRoomServer implements Party.Server {
     playerId: PlayerId,
     actorClientId: string | undefined,
     actorUserId: string | undefined,
-    dedupeKey: string | null
+    dedupeKeys: string[]
   ): Promise<{
     errors: { code: string; message: string }[];
     notices: string[];
@@ -1369,7 +1436,7 @@ export default class GameRoomServer implements Party.Server {
         notices: [] as string[],
         version: current.version
       };
-      if (dedupeKey) this.recordAnsweredRequest(dedupeKey, rejected);
+      for (const key of dedupeKeys) this.recordAnsweredRequest(key, rejected);
       return { ...rejected, applied: false, prev: null as GameState | null };
     };
     if (!undoModeEnabled(current.state)) {
@@ -1389,10 +1456,10 @@ export default class GameRoomServer implements Party.Server {
       ...this.creationMeta(outcome.state),
       state: outcome.state
     };
+    const accepted = { errors: [] as { code: string; message: string }[], notices: [] as string[], version: this.snapshot.version };
+    for (const key of dedupeKeys) this.recordAnsweredRequest(key, accepted);
     await this.persist();
     await this.broadcastSnapshot();
-    const accepted = { errors: [] as { code: string; message: string }[], notices: [] as string[], version: this.snapshot.version };
-    if (dedupeKey) this.recordAnsweredRequest(dedupeKey, accepted);
     return {
       ...accepted,
       applied: true,
@@ -1456,8 +1523,10 @@ export default class GameRoomServer implements Party.Server {
       }
       this.snapshot = null;
       clearUndoHistory(this.room.id);
+      this.answeredActionRequests.clear();
       try {
         await this.room.storage.delete(SNAPSHOT_KEY);
+        await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
         await this.room.storage.deleteAlarm();
       } catch (error) {
         console.error(`[room] ranked force-close storage wipe failed:`, error);
@@ -1519,7 +1588,9 @@ export default class GameRoomServer implements Party.Server {
         }
         this.snapshot = null;
         clearUndoHistory(this.room.id);
+        this.answeredActionRequests.clear();
         await this.room.storage.delete(SNAPSHOT_KEY);
+        await this.room.storage.delete(ANSWERED_ACTIONS_KEY);
       });
       // Drop it from the lobby directory too, so the room browser stops listing it.
       await this.deregisterFromLobby();

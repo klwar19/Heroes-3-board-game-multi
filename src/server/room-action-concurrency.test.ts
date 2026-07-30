@@ -168,6 +168,45 @@ describe("PartyKit edge server — concurrent action serialization (P0)", () => 
     );
     expect(latestSnapshot(alice).version).toBe(9);
   });
+
+  it("the ledger SURVIVES an instance restart — a retry that wakes a fresh instance never re-applies", async () => {
+    // The client re-sends an unacknowledged frame over a recovered socket, and
+    // that repeat can land on a freshly-woken Durable Object whose in-memory
+    // ledger is gone (hibernation, eviction, deploy). The persisted ledger —
+    // written in the same atomic storage batch as the snapshot — must answer
+    // it, or the action applies TWICE (a hero moving two steps for one click).
+    const { room, connections } = makeEdgeRoom("edge-dedupe-durable", createInitialGameState("edge-dedupe-durable"));
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const alice = makeConnection("conn-a", "client-a");
+    connections.add(alice);
+
+    const join = JSON.stringify({
+      type: "action",
+      requestId: "req-wake",
+      actorClientId: "client-a",
+      action: { type: "JOIN_ROOM", clientId: "client-a", name: "Alice" }
+    });
+    await server.onMessage(join, alice as unknown as EdgeConnection);
+    expect(latestSnapshot(alice).version).toBe(8);
+
+    // A FRESH instance wakes over the SAME storage (in-memory state is gone).
+    const woken = new GameRoomServer(room);
+    await woken.onStart();
+    const reconnected = makeConnection("conn-a2", "client-a");
+    connections.add(reconnected);
+    await woken.onMessage(join, reconnected as unknown as EdgeConnection);
+
+    // Answered from the persisted ledger with the ORIGINAL outcome…
+    const replies = frames(reconnected).filter(
+      (frame) => frame.type === "action-result" && frame.requestId === "req-wake"
+    );
+    expect(replies).toHaveLength(1);
+    expect(replies[0].errors).toEqual([]);
+    // …and the state did NOT advance: a re-apply would have bumped it to 9.
+    await woken.onMessage(JSON.stringify({ type: "sync" }), reconnected as unknown as EdgeConnection);
+    expect(latestSnapshot(reconnected).version).toBe(8);
+  });
 });
 
 describe("PartyKit edge server — reconnect seat frame (P1)", () => {

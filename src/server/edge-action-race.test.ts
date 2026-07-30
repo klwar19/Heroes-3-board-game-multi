@@ -122,4 +122,49 @@ describe("PartyKit edge server — concurrent action serialization", () => {
     const names = (final.snapshot.state.room?.members ?? []).map((member) => member.name).sort();
     expect(names).toEqual(["Alice", "Bob"]);
   });
+
+  it("a retry whose identity verification FLAPPED still dedupes (guest-applied, verified repeat)", async () => {
+    // First send: the app callback is down, the verify fails, and the action
+    // applies as a GUEST (recorded under the clientId ledger key). The client
+    // re-sends the same frame over a recovered socket; by then the app is back
+    // and the SAME token verifies — the lookup keyed only on the verified
+    // userId would miss the guest-keyed entry and re-apply the action.
+    let appUp = false;
+    globalThis.fetch = (async () => {
+      if (!appUp) {
+        return { ok: false, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({ userId: "user-a", nickname: "Alice", isAdmin: false }) };
+    }) as unknown as typeof fetch;
+
+    const { room, connections } = makeEdgeRoom("edge-identity-flap");
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const alice = makeConnection("conn-a", "client-a", "tok-a");
+    connections.add(alice);
+
+    const join = JSON.stringify({
+      type: "action",
+      requestId: "req-flap",
+      actorClientId: "client-a",
+      action: { type: "JOIN_ROOM", clientId: "client-a", name: "Alice" }
+    });
+    const lastSnapshotVersion = () => {
+      for (let i = alice.received.length - 1; i >= 0; i -= 1) {
+        const frame = JSON.parse(alice.received[i]) as { snapshot?: RoomSnapshot };
+        if (frame.snapshot) {
+          return frame.snapshot.version;
+        }
+      }
+      throw new Error("no snapshot received");
+    };
+    await server.onMessage(join, alice as unknown as EdgeConnection);
+    expect(lastSnapshotVersion()).toBe(8);
+
+    appUp = true;
+    await server.onMessage(join, alice as unknown as EdgeConnection);
+    // Answered from the ledger; the state did NOT advance to 9.
+    await server.onMessage(JSON.stringify({ type: "sync" }), alice as unknown as EdgeConnection);
+    expect(lastSnapshotVersion()).toBe(8);
+  });
 });

@@ -2573,6 +2573,51 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## Transport self-healing: receipt probe, dedupe-safe re-send, durable ledger (2026-07-30b)
+
+"The room did not answer in time" kept recurring in live play even with the
+transport receipt deployed: a submit was ONE send followed by 15 s of passive
+waiting, so a frame lost to a half-dead socket (laptop sleep, NAT drop, edge
+migration) always became a user-visible error — and in single player it broke
+the ADVANCE_COMPUTER cadence (the "AI got interrupted" reports). Leading with
+what does NOT change / deliberate limits:
+- **Everything re-send is gated on the receipt latch**: the client re-sends
+  ONLY once this room server has proven it sends `action-received` — which also
+  proves the requestId dedupe ledger, since the ledger (5b6ae65f) shipped
+  BEFORE the receipt (bdae13c3). An old edge keeps the exact single-send 15 s
+  behaviour (CONTROL-pinned), so a session's very FIRST action has no probe
+  protection either.
+- **The 15 s receipt / 60 s processing deadlines are UNCHANGED** — recovery
+  works only INSIDE them, so a genuinely unreachable room errors at the same
+  moment it always did, and `PENDING_ECHO_TTL_MS` (75 s) still covers the sum.
+- **PartyKit sockets only**: the built-in backend's HTTP action path has no
+  requestId, so no dedupe and no re-send there.
+- **A slow identity verify can degrade that action to guest**: the app verify
+  callback now has a hard deadline (`VERIFY_TOKEN_TIMEOUT_MS` = 5 s,
+  `verified-actor.ts`) so a hung/cold app can no longer stall every action
+  behind an unbounded fetch; the storage identity cache (Fix A) and the
+  dual-key ledger absorb the identity flap.
+
+What runs (each claim mutation-checked — `realtime.test.ts`,
+`room-action-concurrency.test.ts`, `edge-action-race.test.ts`,
+`verified-actor.test.ts`):
+- **Receipt probe** (`ACTION_RECEIPT_PROBE_MS` 5 s, realtime.ts): a submit with
+  no receipt runs the pong-watchdog recovery (seat-snapshot refetch +
+  `socket.reconnect`) instead of idling toward the 15 s error — active play
+  heals a dead socket in ~5 s instead of the 35–40 s ping watchdog.
+- **Dedupe-safe re-send**: every socket (re)open re-sends unsettled action
+  frames verbatim (same requestId, ≤ `MAX_ACTION_RESENDS` 2 per request) — the
+  server answers a repeat from its ledger, so a result lost with the old socket
+  settles with the ORIGINAL outcome, and a frame that never arrived simply
+  arrives.
+- **The ledger is DURABLE and identity-flap-proof** (party/index.ts): applied
+  outcomes are recorded BEFORE persist and ride the SAME coalesced storage
+  write as the snapshot (`answered-actions` key, newest 64), so a retry that
+  wakes a fresh instance never re-applies; outcomes record under BOTH the
+  verified userId and the clientId, so a verify that fails on one send and
+  succeeds on the repeat still dedupes. Rejections stay in-memory (replaying a
+  rejected action just re-rejects it). The ledger is wiped with the room.
+
 ## Explorers hand step · Settlement-reroll option · Cannon vs walls · Secondary-hero defeat · transport receipt (2026-07-30)
 
 Four codex commits landed with an audit (5 audit fixes on top, each mutation-
