@@ -2854,14 +2854,20 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .cardPopover {
-  position: absolute;
-  bottom: calc(100% + 64px);
+  /* Combat hands live at the top of the battle screen. Anchoring this menu
+     above its card sends its actions past y=0 on short/narrow viewports.
+     A viewport-centred menu stays wholly reachable at every battle size. */
+  position: fixed;
+  top: 50%;
+  bottom: auto;
   left: 50%;
-  transform: translateX(-50%);
-  z-index: 50;
+  transform: translate(-50%, -50%);
+  z-index: 120;
   display: grid;
   gap: 6px;
   width: 218px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   padding: 10px;
   border: 1px solid var(--gold);
   border-radius: 9px;

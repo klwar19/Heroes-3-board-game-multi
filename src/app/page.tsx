@@ -82,6 +82,7 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
+import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { takePendingSinglePlayerLoad } from "@/lib/single-player-saves";
@@ -450,48 +451,6 @@ function CostPlayBar({
       <button onClick={onCancel} type="button">
         Cancel
       </button>
-    </div>
-  );
-}
-
-/**
- * Morale caps at +1. Gaining a positive token while already at the cap (e.g.
- * playing Leadership at full morale) does not stack — the extra token must be
- * spent right away. This modal pops up to spend it: draw a card, or discard and
- * draw that many (rerolling a die is not an option for the overflow token).
- */
-function MoraleOverflowPrompt({
-  count,
-  canRedraw,
-  onDraw,
-  onRedraw
-}: {
-  count: number;
-  canRedraw: boolean;
-  onDraw: () => void;
-  onRedraw: () => void;
-}) {
-  if (count <= 0) {
-    return null;
-  }
-  return (
-    <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Spend extra morale">
-      <div className="moraleOverflowPopup">
-        <strong>Morale is already at its maximum (+1)</strong>
-        <p>
-          You gained {count} more positive morale token{count === 1 ? "" : "s"}. It cannot be stored — spend it now.
-        </p>
-        <div className="handButtons">
-          <button className="commandButton primary" onClick={onDraw} type="button">
-            Draw a card
-          </button>
-          {canRedraw ? (
-            <button className="commandButton" onClick={onRedraw} type="button">
-              Discard &amp; draw
-            </button>
-          ) : null}
-        </div>
-      </div>
     </div>
   );
 }
@@ -5292,7 +5251,9 @@ export default function Home() {
       hasOpenAdventureTurn(state, viewerPlayerId) &&
       !forcedDiscard &&
       !canDraw;
-    const hasMorale = (viewer?.morale ?? 0) > 0;
+    const moraleDrawAvailable = legalActions.some(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
+    );
     const moraleRedrawCardAvailable = legalActions.some(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "redraw"
     );
@@ -5328,7 +5289,9 @@ export default function Home() {
       handMode === null &&
       !forcedDiscard &&
       !explorersDiscardPending &&
-      (hasMorale ||
+      !armedHandPlay &&
+      !pendingCostPlay &&
+      (moraleDrawAvailable ||
         moraleRedrawCardAvailable ||
         moraleCombatPlays.length > 0 ||
         Boolean(coverOfDarknessAction));
@@ -6072,9 +6035,9 @@ export default function Home() {
                         ) : null}
                       </>
                     ) : null}
-                    {hasMorale || moraleRedrawCardAvailable ? (
+                    {moraleDrawAvailable || moraleRedrawCardAvailable ? (
                       <>
-                        {hasMorale ? (
+                        {moraleDrawAvailable ? (
                           <button
                             className="commandButton"
                             onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
@@ -6083,9 +6046,9 @@ export default function Home() {
                             Morale: draw 1
                           </button>
                         ) : null}
-                        {handCards.length > 0 && (hasMorale || moraleRedrawCardAvailable) ? (
+                        {handCards.length > 0 && (moraleDrawAvailable || moraleRedrawCardAvailable) ? (
                           <button className="commandButton" onClick={() => setHandMode("morale-redraw")} type="button">
-                            {hasMorale ? "Morale: redraw cards" : "Positive Morale: redraw cards"}
+                            {moraleDrawAvailable ? "Morale: redraw cards" : "Positive Morale: redraw cards"}
                           </button>
                         ) : null}
                       </>
@@ -6666,9 +6629,9 @@ export default function Home() {
           ) : null}
           {isSeated && handMode === null && !forcedDiscard ? (
             <MoraleOverflowPrompt
-              canRedraw={handCards.length > 0}
               count={moraleOverflow}
-              onDraw={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+              legalActions={legalActions}
+              onDraw={(action) => submitAction(action)}
               onRedraw={() => setHandMode("morale-redraw")}
             />
           ) : null}
@@ -6924,9 +6887,9 @@ export default function Home() {
 
       {isSeated && handMode === null ? (
         <MoraleOverflowPrompt
-          canRedraw={(playerView.players[viewerPlayerId]?.hand?.length ?? 0) > 0}
           count={state.players[viewerPlayerId]?.moraleOverflow ?? 0}
-          onDraw={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+          legalActions={legalActions}
+          onDraw={(action) => submitAction(action)}
           onRedraw={() => {
             // The selective discard-and-draw picker lives on the map view; flip
             // to it so the player can pick which cards to cycle.

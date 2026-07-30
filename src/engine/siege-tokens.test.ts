@@ -739,7 +739,10 @@ describe("turn-start town buildings", () => {
 
   it("runs the Mana Vortex discard-shuffle-search at turn start", () => {
     let state = createAdventureGameState({ seed: "vortex-seed", rollFirstPlayer: false });
-  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
     state.towns.town_p2.buildings.push("dungeon.mana_vortex");
     state.players.p2.hand = ["stat.knowledge"];
     state.players.p2.deck = ["stat.attack", "stat.power", "stat.defense"];
@@ -758,6 +761,9 @@ describe("turn-start town buildings", () => {
     expect(step?.type).toBe("CHOOSE_ONE");
     if (step?.type === "CHOOSE_ONE") {
       expect(step.prompt).toContain("Mana Vortex");
+      // The Vortex options are built from the SETTLED hand, not the stale hand
+      // from before REFRESH_HAND. Defense was drawn during that hand step.
+      expect(step.options.map((option) => option.label)).toContain("Discard Defense");
       // First option discards the first distinct hand card.
       state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p2", optionIndex: 0 });
       expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
