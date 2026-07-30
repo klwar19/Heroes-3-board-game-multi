@@ -20,6 +20,7 @@ import {
   refreshComputerMemory,
   setStickyObjective,
 } from "@/engine/computer/memory";
+import { computerStallRecoveryDecision } from "@/engine/computer/stall-recovery";
 
 export const DEFAULT_COMPUTER_STEP_LIMIT = 256;
 
@@ -424,7 +425,32 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
     if (!computerDecisionOwner(current)) {
       return { state: current, decisions, stalled: false };
     }
-    const peek = driveComputerPlayers(current, liveApply, { maxSteps: 1 });
+    let peek = driveComputerPlayers(current, liveApply, { maxSteps: 1 });
+    if (peek.decisions.length === 0 && peek.stalled) {
+      // LAST-RESORT stall recovery: the policy found no safe legal action for
+      // a computer-owned window. On a live table — especially inside a
+      // human-participant combat, where ADVANCE_COMPUTER is deliberately not
+      // offered and no AFK/turn clock exists in single player — a stall here
+      // used to freeze the game FOREVER (every human click rejected with the
+      // generic "not legal"). Take the do-least window-resolving action (pass
+      // the reaction, the skip-flavoured option, hold the unit) through the
+      // normal rules pipeline instead. Progress is required (fingerprint must
+      // move) so a no-op recovery can never loop inside this tick.
+      const fallback = computerStallRecoveryDecision(current);
+      if (fallback) {
+        const before = progressFingerprint(current, fallback.playerId);
+        const result = liveApply(current, fallback.action, fallback.playerId);
+        if (
+          result.errors.length === 0 &&
+          progressFingerprint(result.state, fallback.playerId) !== before
+        ) {
+          console.warn(
+            `[computer-runner] stall recovered with default ${fallback.action.type} for ${fallback.playerId} (${peek.reason ?? "no safe legal action"})`,
+          );
+          peek = { state: result.state, decisions: [fallback], stalled: false };
+        }
+      }
+    }
     if (peek.decisions.length === 0) {
       return {
         state: current,

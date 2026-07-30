@@ -302,4 +302,206 @@ describe("computer decision ownership", () => {
     // incomplete (no hero) but has NO legal setup action — never the owner.
     expect(computerDecisionOwner(state)).toBeNull();
   });
+
+  /**
+   * The reported round-6 single-player freeze: on a round-start barrier round
+   * (a Calamity Wave / Astrologers round), a COMPUTER seat that won its wave
+   * assault opens its after-combat Necromancy window while the barrier is
+   * still up. `roundStartEventResolver` reads only pendingChoice/pendingVisit
+   * (null here), and the pre-fix barrier branch returned that null
+   * UNCONDITIONALLY — so nobody owned the window: the pump never drove the
+   * computer, the human's legal set was empty, and every click was rejected
+   * with "That action is not legal in the current game state." forever.
+   */
+  it("drives a computer-owned window the barrier's resolver read does not cover (the round-6 wave/Necromancy freeze)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-barrier-necromancy",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "player-turn";
+    state.activePlayerId = "p1";
+    state.adventure = {
+      ...(state.adventure as object),
+      eventResolution: { round: state.round },
+      pendingNecromancy: { playerId: "p2", remaining: 1 },
+    } as typeof state.adventure;
+    // Barrier up, resolver null (no pendingChoice/pendingVisit), the computer
+    // owns the Necromancy window: it MUST be driven.
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL: a HUMAN-owned window behind the barrier still makes everyone wait.
+    (
+      state.adventure as unknown as { pendingNecromancy: { playerId: string } }
+    ).pendingNecromancy.playerId = "p1";
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL: a named resolver (an open pendingVisit) wins the barrier — the
+    // human resolver freezes the computer, a computer resolver is driven.
+    (
+      state.adventure as unknown as { pendingNecromancy: { playerId: string } }
+    ).pendingNecromancy.playerId = "p2";
+    (state.adventure as unknown as { pendingVisit: unknown }).pendingVisit = {
+      playerId: "p1",
+      heroId: "h1",
+      fieldId: "0,0",
+      steps: [{ type: "CHOOSE_ONE", prompt: "Event", options: [{ label: "x", steps: [] }] }],
+    };
+    expect(computerDecisionOwner(state)).toBeNull();
+  });
+
+  it("an OPEN COMBAT outranks a human-owned map window (mirrors getLegalActions' dispatcher-first order)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-combat-first",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    // A human-owned map window is open (e.g. commander First Aid from the
+    // previous fight) while the COMPUTER's queued wave assault is already on
+    // the table and owes its deployment. legal-actions shadows the map window
+    // behind the combat dispatcher, so ownership must follow the combat — the
+    // pre-fix map-first read returned null and froze the assault forever.
+    state.adventure = {
+      ...(state.adventure as object),
+      pendingCommanderFirstAid: {
+        playerId: "p1",
+        options: [{ label: "Restore", kind: "revive", unitDefId: "castle.pikemen", side: "few" }],
+      },
+    } as typeof state.adventure;
+    state.combat = {
+      id: "cb-wave",
+      context: { kind: "neutral" },
+      attackerPlayerId: "p2",
+      defenderPlayerId: NEUTRAL_PLAYER_ID,
+      prep: null,
+      setup: { pendingPlayerIds: ["p2"], placedUnitIds: [] },
+      units: {},
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL: with the combat gone, the human's map window makes the table wait.
+    state.combat = null;
+    state.phase = "player-turn";
+    expect(computerDecisionOwner(state)).toBeNull();
+  });
+
+  it("map windows resolve in getLegalActions' own gate order (First Aid gates Necromancy, not the reverse)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-map-order",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "player-turn";
+    state.activePlayerId = "p1";
+    // Both windows open with DIFFERENT owners: legal-actions gates the whole
+    // table on pendingCommanderFirstAid FIRST, so a computer Necromancy owner
+    // has zero legal actions until the human's First Aid resolves. The pre-fix
+    // "any computer among the owners" read claimed the computer and stalled.
+    state.adventure = {
+      ...(state.adventure as object),
+      pendingCommanderFirstAid: {
+        playerId: "p1",
+        options: [{ label: "Restore", kind: "revive", unitDefId: "castle.pikemen", side: "few" }],
+      },
+      pendingNecromancy: { playerId: "p2", remaining: 1 },
+    } as typeof state.adventure;
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL (reversed owners): the computer First Aid head is driven.
+    (
+      state.adventure as unknown as {
+        pendingCommanderFirstAid: { playerId: string };
+        pendingNecromancy: { playerId: string };
+      }
+    ).pendingCommanderFirstAid.playerId = "p2";
+    (
+      state.adventure as unknown as { pendingNecromancy: { playerId: string } }
+    ).pendingNecromancy.playerId = "p1";
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
+  it("WAITS on the WOG commander pre-combat sort window instead of claiming the active unit's computer owner", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-commander-sort",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat-setup";
+    state.combat = {
+      id: "cb-sort",
+      context: { kind: "player" },
+      attackerPlayerId: "p2",
+      defenderPlayerId: "p1",
+      prep: null,
+      setup: null,
+      pendingCommanderPlacement: ["p1"],
+      activeUnitId: "unit_p2",
+      units: { unit_p2: { id: "unit_p2", controllerId: "p2", position: 9 } },
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+    // legal-actions gates the whole table on the sort head (the human): the
+    // pre-fix fall-through claimed the computer active-unit owner, which had
+    // zero legal actions → stall.
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL: a computer head would be driven (future-proofing — today the
+    // window opener skips computer seats).
+    (
+      state.combat as unknown as { pendingCommanderPlacement: string[] }
+    ).pendingCommanderPlacement = ["p2"];
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
+  it("a guard-walk pause with NO named reactor belongs to the attacking fighter (legal-actions' own default)", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-pause-default",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "combat";
+    state.combat = {
+      id: "cb-pause-default",
+      context: { kind: "neutral" },
+      attackerPlayerId: "p2",
+      defenderPlayerId: NEUTRAL_PLAYER_ID,
+      prep: null,
+      setup: null,
+      activeUnitId: "guard_1",
+      units: { guard_1: { id: "guard_1", controllerId: NEUTRAL_PLAYER_ID, position: 3 } },
+      pendingNeutralStep: { kind: "guard-walk", unitId: "guard_1" },
+      outcome: null,
+      endAcknowledged: false,
+    } as unknown as typeof state.combat;
+    // Legacy pause with no reactingPlayerId: legal-actions offers the
+    // CONTINUE to the attacker — a computer attacker must be driven (the
+    // pre-fix fall-through reached the NEUTRAL active unit and returned null).
+    expect(computerDecisionOwner(state)).toBe("p2");
+  });
+
+  it("an orphaned garrison prompt on an ELIMINATED defender no longer freezes every computer seat", () => {
+    const state = createAdventureLobbyState({
+      seed: "window-orphan-garrison",
+      sessionMode: "single-player",
+      computerOpponents: 1,
+    });
+    state.phase = "player-turn";
+    state.activePlayerId = "p2";
+    state.players.p1.eliminated = true;
+    state.adventure = {
+      ...(state.adventure as object),
+      pendingGarrison: { defenderPlayerId: "p1" },
+    } as typeof state.adventure;
+    // The eliminated defender's window gates nothing in legal-actions — the
+    // computer's open turn must still be driven (pre-fix: permanent null).
+    expect(computerDecisionOwner(state)).toBe("p2");
+
+    // CONTROL: a LIVE human defender's garrison prompt makes the table wait.
+    state.players.p1.eliminated = false;
+    expect(computerDecisionOwner(state)).toBeNull();
+  });
 });

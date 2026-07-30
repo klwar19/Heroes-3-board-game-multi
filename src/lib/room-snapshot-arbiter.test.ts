@@ -43,6 +43,43 @@ describe("room snapshot arbiter", () => {
     });
   });
 
+  it("a divergence-recovery 'resync' frame re-commits ONCE at the held version; other sources stay deduped", () => {
+    // Hosted-room shape: every broadcast is seat-authoritative, so the one-shot
+    // seat-upgrade latch is spent the moment version 5 lands…
+    const held = accept(initialSnapshotArbiterState(), 5, { viewerSeat: "p1", seatAuthoritative: true });
+    expect(held.accept).toBe(true);
+    // …after which an equal-version recovery refetch used to be dropped as
+    // "duplicate", leaving a content-diverged client frozen with every click
+    // rejected. The dedicated "resync" source may re-commit once.
+    const recovery = decideSnapshot(held.state, {
+      version: 5,
+      viewerSeat: "p1",
+      source: "resync",
+      seatAuthoritative: true
+    });
+    expect(recovery).toMatchObject({ accept: true, reason: "recovery" });
+    // Once per version: a second resync at 5 is a duplicate again.
+    expect(
+      decideSnapshot(recovery.state, { version: 5, viewerSeat: "p1", source: "resync", seatAuthoritative: true })
+    ).toMatchObject({ accept: false, reason: "duplicate" });
+    // A newer version clears the latch, so a later divergence can heal again.
+    const newer = accept(recovery.state, 6, { viewerSeat: "p1", seatAuthoritative: true });
+    expect(newer.accept).toBe(true);
+    expect(
+      decideSnapshot(newer.state, { version: 6, viewerSeat: "p1", source: "resync", seatAuthoritative: true })
+    ).toMatchObject({ accept: true, reason: "recovery" });
+
+    // CONTROLS: no other source gains the power — the watchdog's periodic
+    // "http-recovery" refetch and plain broadcasts stay deduped at the held
+    // version, and a repeated resync can never accept a LOWER version.
+    expect(
+      decideSnapshot(held.state, { version: 5, viewerSeat: "p1", source: "http-recovery", seatAuthoritative: true })
+    ).toMatchObject({ accept: false, reason: "duplicate" });
+    expect(
+      decideSnapshot(newer.state, { version: 5, viewerSeat: "p1", source: "resync", seatAuthoritative: true })
+    ).toMatchObject({ accept: false, reason: "older" });
+  });
+
   it("accepts a lower version on a new boot and rejects the retired boot", () => {
     const oldBoot = accept(initialSnapshotArbiterState(), 20, { bootId: "old" });
     const newBoot = accept(oldBoot.state, 1, { bootId: "new" });

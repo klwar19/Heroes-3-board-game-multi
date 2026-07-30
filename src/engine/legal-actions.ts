@@ -5700,8 +5700,12 @@ function getLegalActionsCore(
       });
 
       // Optional choices carry a skip (Fireball's empty second space, the
-      // Enchanters' "+1 Attack instead" of healing).
-      if (choice.optional) {
+      // Enchanters' "+1 Attack instead" of healing). A MANDATORY choice whose
+      // every candidate has died since it opened (an intervening reaction /
+      // retaliation removed them) must offer the skip too — with zero offers
+      // its owner (possibly a computer seat) could never answer, and the whole
+      // table froze on an unanswerable window. The resolver mirrors this gate.
+      if (choice.optional || targetActions.length === 0) {
         targetActions.push({
           label: choice.skipLabel ?? "Skip (no second target)",
           action: {
@@ -5720,6 +5724,13 @@ function getLegalActionsCore(
     // can be kept, earlier candidates are history.
     const latestIndex = state.pendingChoice.candidates.length - 1;
     const latest = state.pendingChoice.candidates[latestIndex];
+    // A reroll window always opens WITH its first roll, so an empty candidate
+    // list is a corrupted snapshot — but dereferencing it here would make
+    // getLegalActions THROW inside assertLegal, failing EVERY action from
+    // EVERY seat (a whole-table crash instead of one broken window).
+    if (!latest) {
+      return [];
+    }
     // An ability-roll window (Death Stare & co.) names the ability and shows
     // every die — its outcome is the faces, not a single kept value.
     const abilityRoll = state.pendingChoice.abilityRoll;

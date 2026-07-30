@@ -1345,7 +1345,27 @@ export default class GameRoomServer implements Party.Server {
           .filter((event) => event.type === "SPELL_CAST_REFUNDED")
           .map((event) => event.reason);
         if (result.errors.length > 0) {
-          const rejected = { errors, notices, version: current.version };
+          // Honor the reducer's repair contract: when applyAction found
+          // duplicate army-unit ids it validated against a REPAIRED clone and
+          // "that copy is returned even on failure so the stored room heals".
+          // Dropping it here (the old behaviour) left the room serving the
+          // UNREPAIRED state while every action was validated against the
+          // repaired one — the ids the client held never matched the legality
+          // set again, so every unit command rejected with the generic
+          // "not legal" forever. Identity check: fail() returns the input
+          // state object unchanged unless a repair cloned it.
+          if (result.state !== current.state) {
+            this.snapshot = {
+              roomId: this.room.id,
+              version: current.version + 1,
+              updatedAt: new Date().toISOString(),
+              ...this.creationMeta(result.state),
+              state: result.state
+            };
+            await this.persist();
+            await this.broadcastSnapshot();
+          }
+          const rejected = { errors, notices, version: this.snapshot?.version ?? current.version };
           for (const key of dedupeKeys) this.recordAnsweredRequest(key, rejected);
           return { ...rejected, applied: false, prev: null as GameState | null };
         }
@@ -1801,6 +1821,21 @@ export default class GameRoomServer implements Party.Server {
               scheduleComputer: computerPumpOwed(settled),
               computerDelayMs: computerStepDelayMs(settled),
             };
+          }
+          // Rejected: adopt the reducer's duplicate-army-id repair when one
+          // happened (result.state is a repaired clone then — see the WS path)
+          // so the served room heals instead of diverging from what every
+          // later legality check validates against.
+          if (result.state !== current.state) {
+            this.snapshot = {
+              roomId: this.room.id,
+              version: current.version + 1,
+              updatedAt: new Date().toISOString(),
+              ...this.creationMeta(result.state),
+              state: result.state
+            };
+            await this.persist();
+            await this.broadcastSnapshot();
           }
           return {
             result,

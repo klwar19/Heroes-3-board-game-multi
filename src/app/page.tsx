@@ -3499,8 +3499,10 @@ export default function Home() {
       }
     }
 
-    // Advance only after every presentation delta above was derived without
-    // throwing, so a failed ingestion can be retried by the next recovery frame.
+    // Advance the cursor with the commit below; a throw anywhere above is
+    // caught by ingestServerStateSafely, which commits the frame without this
+    // window's cosmetics instead of retrying it (a deterministic thrower would
+    // otherwise re-throw on every frame, freezing the rendered table forever).
     presentationEventCursorRef.current = eventWindow.cursor;
     recordPerformanceMetric({
       name: "room.presentation.event-window",
@@ -3514,6 +3516,50 @@ export default function Home() {
     });
     setState(nextState);
   }, [showFeedItems]);
+
+  /**
+   * The presentation layer must never hold the AUTHORITATIVE frame hostage.
+   * ingestServerState interleaves ~2000 lines of cosmetic derivation (feed
+   * lines, fx cues, sounds, overlays) BEFORE its final setState — so a single
+   * TypeError in a cue builder used to freeze the rendered table at the old
+   * state while the snapshot arbiter (already committed by ingestSnapshot)
+   * kept tracking the server. Every click then failed with the generic
+   * "That action is not legal in the current game state" — and because the
+   * rejection reply's version MATCHED the arbiter's, the stale-state resync
+   * never fired. Seen live as "game crashes, nothing is legal any more".
+   *
+   * This wrapper makes the commit unconditional: on a derivation throw it
+   * skips that event window's cosmetics (advancing the cursor so a
+   * deterministic thrower cannot re-fire on every later frame) and still
+   * commits the state, so the table keeps playing with at worst one missing
+   * animation batch.
+   */
+  const ingestServerStateSafely = useCallback(
+    (nextState: GameState) => {
+      try {
+        ingestServerState(nextState);
+      } catch (error) {
+        console.error("presentation derivation failed; committing the frame without its cosmetics", error);
+        try {
+          presentationEventCursorRef.current = presentationEventWindow(
+            presentationEventCursorRef.current,
+            nextState.eventLog
+          ).cursor;
+        } catch {
+          // Even the cursor math failed: leave the cursor; the commit below
+          // still keeps the table playable.
+        }
+        stateRef.current = nextState;
+        setState(nextState);
+        recordPerformanceMetric({
+          name: "room.presentation.derivation-error",
+          at: metricNow(),
+          fields: { events: nextState.eventLog.length }
+        });
+      }
+    },
+    [ingestServerState]
+  );
 
   const ingestSnapshot = useCallback(
     (snapshot: GameRoomSnapshot, meta?: SnapshotMeta) => {
@@ -3555,6 +3601,7 @@ export default function Home() {
         setPendingEchoView(prunedEchoes);
       }
       const bootChanged = decision.reason === "new-boot";
+      const contentRecovery = decision.reason === "recovery";
       // A fresh mount (arbiter at version -1) reconnecting to a room the server
       // recycled to a bare setup lobby must still restore the cached in-progress
       // game — the old seenBootIdRef treated the first frame as a boot change,
@@ -3562,10 +3609,12 @@ export default function Home() {
       // block below would otherwise never fire on an F5 / direct room link. The
       // fresh-lobby + cached-game guards keep this scoped exactly as before.
       const firstFrameRecovery = previousArbiterVersion < 0 && Boolean(snapshot.bootId);
-      if (bootChanged || decision.reason === "seat-upgrade") {
+      if (bootChanged || decision.reason === "seat-upgrade" || contentRecovery) {
         // Event ids/counters are scoped to one server generation. A hosted
         // observer-to-seat upgrade also changes which pending Event/choice is
-        // visible without changing the version. Prime either viewer context
+        // visible without changing the version. A divergence-recovery frame
+        // (reason "recovery") replaces the held CONTENT at the same version, so
+        // its cursor may point past the truth. Prime either viewer context
         // from authoritative state so a reconnect overlay cannot remain hidden
         // until F5 or the next action.
         presentationEventCursorRef.current = initialPresentationEventCursor();
@@ -3597,7 +3646,7 @@ export default function Home() {
             .then((restored) => ingestSnapshotRef.current(restored, { seatAuthoritative: true }))
             .catch(() => {
               // Restore failed: fall back to showing whatever the server has.
-              ingestServerState(snapshot.state);
+              ingestServerStateSafely(snapshot.state);
               setRoomVersion(snapshot.version);
             });
           return;
@@ -3610,7 +3659,7 @@ export default function Home() {
         saveCachedRoom(roomId, snapshot.version, snapshot.state);
       }
       const presentationStart = metricNow();
-      ingestServerState(snapshot.state);
+      ingestServerStateSafely(snapshot.state);
       recordPerformanceMetric({
         name: "room.snapshot.presentation-derived",
         at: presentationStart,
@@ -3627,7 +3676,7 @@ export default function Home() {
         });
       });
     },
-    [ingestServerState, roomId]
+    [ingestServerStateSafely, roomId]
   );
 
   useEffect(() => {
@@ -3992,13 +4041,21 @@ export default function Home() {
         setHandMode(null);
         setHandDiscards([]);
         setTilePlacement(null);
-      } else if (payload.version !== snapshotArbiterRef.current.version) {
+      } else {
         // The server refused an action the local table thought was legal: the
-        // local snapshot is stale (missed frames, server restart). Resync so
-        // the next click works instead of staying frozen on old state.
+        // local snapshot is stale (missed frames, server restart) OR the
+        // rendered state lagged the arbiter (a presentation fault). Resync
+        // UNCONDITIONALLY — not only on a version mismatch: a rendered-state
+        // lag rejects at the arbiter's own version, and gating on the arbiter
+        // used to leave exactly that freeze unhealed. The "resync" source lets
+        // the arbiter re-commit this frame once even at the version it already
+        // holds (a hosted room's broadcasts spend the seat-upgrade latch, so
+        // an equal-version recovery would otherwise be dropped as duplicate).
+        // Rejections are rare and user-triggered, and re-ingesting a current
+        // frame is an idempotent re-render, so the extra fetch costs nothing.
         connection
           .fetchSnapshot()
-          .then((snapshot) => ingestSnapshot(snapshot, { seatAuthoritative: true }))
+          .then((snapshot) => ingestSnapshot(snapshot, { source: "resync", seatAuthoritative: true }))
           .catch(() => {
             /* the live stream keeps trying */
           });
