@@ -18119,7 +18119,18 @@ function chooseAbilityTarget(
     throw new Error("Combat is not active.");
   }
 
-  const isSkip = choice.optional && action.targetUnitId === "skip";
+  // A MANDATORY choice may also be skipped once every candidate has died since
+  // it opened (an intervening reaction/retaliation removed them) — the offer
+  // side mirrors this, so the window can never become unanswerable and freeze
+  // the table. Fortification pseudo-targets (Walls/Gates) count as available.
+  const noLivingCandidate = choice.candidateUnitIds.every((unitId) => {
+    if (parseFortificationTargetId(unitId)) {
+      return false;
+    }
+    const unit = combat.units[unitId];
+    return !unit || !isUnitAlive(unit);
+  });
+  const isSkip = (choice.optional || noLivingCandidate) && action.targetUnitId === "skip";
   const selectedIndex = isSkip ? -1 : choice.candidateUnitIds.indexOf(action.targetUnitId);
   if (selectedIndex === -1 && !isSkip) {
     throw new Error("That unit is not a legal target for the ability.");

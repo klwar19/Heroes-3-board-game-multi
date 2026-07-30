@@ -2573,6 +2573,97 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## The frozen-table class: "That action is not legal…" forever (2026-07-31)
+
+Live report (round 6, single player): the game "crashes" — every combat click
+(attack, hold) rejected with the generic "That action is not legal in the
+current game state." The transport fixes below could not touch it because the
+class is NOT transport: it is a table where NOBODY can act (or where the
+client's rendered state silently diverged from the server's). Five fixes ship
+together, each mutation-checked; protocol bumped to v16 so a STALE PartyKit
+edge now shows the "room server out of date" banner instead of producing
+exactly this symptom silently (`npm run deploy:partykit` is still required —
+a Vercel deploy alone leaves the old edge running the old rules).
+
+Leading with what does NOT work / deliberate limits:
+- **The stall recovery only takes curated do-least actions** (window resolvers,
+  pass-reaction, hold/defend/end-turn — `RECOVERY_TYPE_PREFERENCE` in
+  `src/engine/computer/stall-recovery.ts`). A stall whose only offers are
+  outside that set (or whose offer list is EMPTY) stays a logged stall — it
+  never blind-fires retreats/surrenders/card plays, and it never answers a
+  HUMAN-owned window.
+- **Structural view-vs-state legality flips are NOT fixed here** (single-player
+  rooms are HOSTED — `room.ts:302` — so clients hold per-seat REDACTED states):
+  the confirmed `playerOwnsWarMachine` flip (own deck masked → a dead
+  BUY_WAR_MACHINE offer that always rejects) remains open, and the "resync"
+  recovery cannot heal it (re-fetching re-ingests the same redacted content).
+  Flagged as its own task.
+- **`eliminatePlayer` still leaves an orphaned `pendingGarrison`** when the
+  DEFENDER is eliminated mid-prompt; `computerDecisionOwner` now skips
+  eliminated owners (so it can no longer freeze every computer seat), but the
+  engine-level decline cleanup is a separate task.
+- **PvP prep + a still-open `pendingVisit` can coexist** (teleport-arrival
+  fights, queue pumping during prep) and such a visit is shadowed by the combat
+  dispatcher until the fight ends — the owner mismatch no longer freezes the
+  pump (combat-first ordering below), but the underlying coexistence is not
+  untangled here.
+- **The soak matrix still doesn't cover the freeze configs** (waves cadence 3 +
+  Necropolis AI, raid bosses, dungeon, manual guard control) — flagged as a
+  task; the shapes are pinned by unit tests instead.
+
+What runs (each with a failing-if-removed test):
+- **`computerDecisionOwner` now mirrors `getLegalActions`' window precedence**
+  (`src/engine/computer/window.ts`, pinned in `window.test.ts`). The reported
+  freeze: on a round-start barrier round (waves/Astrologers), a COMPUTER seat's
+  after-wave Necromancy window was invisible — `roundStartEventResolver` reads
+  only pendingChoice/pendingVisit, and the barrier branch returned that null
+  UNCONDITIONALLY, so nobody owned the window, the pump never drove it, the
+  human's legal set was `[]`, and every click rejected forever. Now: a named
+  resolver still rules; a null resolver FALLS THROUGH to the normal gates.
+  Also fixed in the same rewrite: an open COMBAT outranks a human-owned map
+  window (a queued wave assault could never deploy while the human held a
+  First-Aid window); map windows resolve in legal-actions' own order
+  (First Aid gates Necromancy, not "any computer owner wins"); the WOG
+  commander pre-combat sort head is honored (was: fall-through claimed the
+  active unit's computer owner → stall); a reactor-less guard-walk pause
+  belongs to the attacking fighter (legal-actions' own default); eliminated
+  owners of paired windows no longer null the whole table. Keep window.ts in
+  LOCKSTEP with legal-actions' gate order when editing either.
+- **Runner stall recovery** (`src/engine/computer/stall-recovery.ts`, wired in
+  `settleComputerVisibleStep`, pinned in `stall-recovery.test.ts` +
+  `computer-runner-stall-recovery.test.ts`): when the policy yields nothing
+  for a computer-owned window ("no safe legal action" — previously a permanent
+  freeze inside human-participant combat, where ADVANCE_COMPUTER is withheld
+  and single player has no AFK/turn-clock recovery), the runner applies ONE
+  do-least window-resolving action through the normal rules pipeline (progress
+  required via `progressFingerprint`, so a no-op recovery can never loop), logs
+  it, and continues.
+- **A mandatory ability-target choice whose every candidate died is skippable**
+  (offer side `legal-actions.ts`, resolver `chooseAbilityTarget`;
+  `ability-target-dead-candidates.test.ts` with a living-candidate CONTROL that
+  keeps the mandatory pick and rejects a forged skip). Also: an empty
+  attack-die-reroll candidate list no longer THROWS inside getLegalActions
+  (which failed every action from every seat).
+- **The edge adopts the reducer's duplicate-army-id repair on REJECTED actions**
+  (`party/index.ts` WS + HTTP paths, `edge-army-id-repair.test.ts` with a
+  healthy-room CONTROL): applyAction validates against a repaired clone and
+  returns it even on failure; dropping it (the old edge behaviour) left the
+  room serving ids that no longer matched what every legality check validated
+  against — unit commands rejected forever at an unchanging version. The
+  built-in store already healed on read.
+- **The client's rendered table can no longer freeze behind the arbiter**
+  (`page.tsx` `ingestServerStateSafely` + the unconditional rejected-action
+  resync with the new `"resync"` snapshot source;
+  `page-snapshot-resilience.test.tsx`, `room-snapshot-arbiter.test.ts`): a
+  throw anywhere in the ~2000-line presentation derivation used to skip the
+  final setState while the snapshot arbiter had ALREADY committed the version —
+  rendered state frozen, every click rejected, and the old
+  version-mismatch-only resync never fired (versions matched). Now the frame
+  commits without that window's cosmetics, any rejected action refetches
+  unconditionally, and the arbiter accepts a `"resync"`-source frame ONCE per
+  version even after the hosted seat-upgrade latch is spent (all other sources
+  keep the duplicate drop — CONTROL-pinned).
+
 ## Transport self-healing: receipt probe, dedupe-safe re-send, durable ledger (2026-07-30b)
 
 "The room did not answer in time" kept recurring in live play even with the

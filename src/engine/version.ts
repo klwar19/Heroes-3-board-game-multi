@@ -42,7 +42,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and joinRoom stamps that id onto the member. A stale room server would ignore
 // the new action and the verified-identity guard, so the explicit bump surfaces
 // the version-skew banner instead of silently reverting to clientId-only seats.
-export const ENGINE_PROTOCOL_VERSION = 15;
+// v16: changed reducer/legal-actions semantics — computerDecisionOwner mirrors
+// getLegalActions' window precedence (the round-6 single-player table freeze: a
+// computer-owned window behind the round-start barrier was owned by nobody),
+// the runner's stall recovery, the edge adopting the duplicate-army-id repair
+// on rejected actions, and mandatory ability-target choices becoming skippable
+// once every candidate died. A stale worker legality-checks differently from
+// the new client, which surfaces as "That action is not legal in the current
+// game state" on clicks the table itself offered — the catalogs cannot detect
+// any of this, so the explicit bump makes the skew banner fire.
+export const ENGINE_PROTOCOL_VERSION = 16;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

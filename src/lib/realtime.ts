@@ -59,7 +59,10 @@ export type RoomResetOptions = {
 
 /** Provenance of a delivered snapshot, for the caller's version gate. */
 export type SnapshotMeta = {
-  source?: "connect" | "broadcast" | "action-ack" | "sync" | "http-recovery" | "reset";
+  // "resync" is the deliberate divergence-recovery refetch after a REJECTED
+  // action: the arbiter may re-commit it once at the version it already holds
+  // (see room-snapshot-arbiter.ts), which no other source is allowed to do.
+  source?: "connect" | "broadcast" | "action-ack" | "sync" | "http-recovery" | "resync" | "reset";
   /**
    * The snapshot came from a channel the server redacts to THIS client's own
    * seat (the HTTP snapshot fetch with clientId+token attached). The caller may
