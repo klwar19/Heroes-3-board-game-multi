@@ -136,8 +136,14 @@ type ServerMessage =
    * Immediate transport receipt for a submitted action. Large late-game hosted
    * rooms redact and serialize one full snapshot per connected seat before the
    * final action-result can be sent.
+   *
+   * `durable: true` additionally advertises that this server's answered-action
+   * ledger SURVIVES an instance restart (it persists with the snapshot). It is
+   * the client's permission to RE-SEND an unacknowledged frame: a repeat is
+   * then safe even when it wakes a fresh Durable Object instance. A server
+   * with only the in-memory ledger must omit it — see realtime.ts.
    */
-  | { type: "action-received"; requestId: string }
+  | { type: "action-received"; requestId: string; durable?: true }
   | {
       type: "action-result";
       requestId?: string;
@@ -1280,7 +1286,10 @@ export default class GameRoomServer implements Party.Server {
       if (message.requestId) {
         sender.send(JSON.stringify({
           type: "action-received",
-          requestId: message.requestId
+          requestId: message.requestId,
+          // This server persists its answered-action ledger, so a client
+          // re-send is dedupe-safe even against a woken instance.
+          durable: true
         } satisfies ServerMessage));
       }
       // Resolve the sender's VERIFIED account id from the token on its socket

@@ -111,8 +111,18 @@ describe("PartyKit edge server — concurrent action serialization", () => {
 
     // Each sender gets an immediate transport receipt before identity
     // verification, mutation queueing, persistence, and full-state fan-out.
-    expect(JSON.parse(alice.received[0])).toEqual({ type: "action-received", requestId: "req-a" });
-    expect(JSON.parse(bob.received[0])).toEqual({ type: "action-received", requestId: "req-b" });
+    // `durable: true` advertises the persisted dedupe ledger — the client's
+    // permission to re-send an unacknowledged frame (see realtime.ts).
+    expect(JSON.parse(alice.received[0])).toEqual({
+      type: "action-received",
+      requestId: "req-a",
+      durable: true
+    });
+    expect(JSON.parse(bob.received[0])).toEqual({
+      type: "action-received",
+      requestId: "req-b",
+      durable: true
+    });
 
     // Both actions landed: two version bumps, and BOTH members exist in the
     // final snapshot. Before the fix the later write overwrote the earlier one:

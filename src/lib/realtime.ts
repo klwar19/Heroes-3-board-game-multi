@@ -256,7 +256,7 @@ export function connectRoom(
 
 type PartyServerMessage =
   | { type: "snapshot"; snapshot: GameRoomSnapshot }
-  | { type: "action-received"; requestId: string }
+  | { type: "action-received"; requestId: string; durable?: boolean }
   | {
       type: "action-result";
       requestId?: string;
@@ -388,12 +388,13 @@ function connectPartyRoom(
   };
   const pending = new Map<string, PendingActionRequest>();
   /**
-   * Latch: this room server sends transport receipts. That also proves it
-   * carries the requestId dedupe ledger (the ledger predates the receipt in
-   * every deploy), so re-sending a pending frame is safe — a repeat is
-   * answered with the recorded outcome, never applied twice. While false (an
-   * older room server), no probe fires and no frame is ever re-sent: exactly
-   * the old single-send behaviour.
+   * Latch: this room server answered a receipt with `durable: true`, i.e. its
+   * requestId dedupe ledger PERSISTS across instance restarts. That is the
+   * permission to re-send a pending frame — a repeat is answered with the
+   * recorded outcome, never applied twice, even by a freshly-woken instance.
+   * While false (an older room server, or the very first action of a session),
+   * no probe fires and no frame is ever re-sent: exactly the old single-send
+   * behaviour, so a frontend-only deploy can never double-apply.
    */
   let serverAcksActions = false;
   let requestCounter = 0;
@@ -575,7 +576,15 @@ function connectPartyRoom(
     }
 
     if (message.type === "action-received") {
-      serverAcksActions = true;
+      // Only a server that advertises a DURABLE ledger unlocks the probe and
+      // the re-send. A receipt alone proves just the in-memory ledger, which a
+      // woken (hibernated/evicted/redeployed) instance loses — a repeat would
+      // then APPLY THE ACTION TWICE. This handshake is also what keeps a
+      // frontend-only deploy (Vercel ships before/without the room server)
+      // safe: an older edge omits the flag, so nothing is ever re-sent.
+      if (message.durable === true) {
+        serverAcksActions = true;
+      }
       pending.get(message.requestId)?.markReceived();
       return;
     }
