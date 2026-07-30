@@ -2581,12 +2581,17 @@ waiting, so a frame lost to a half-dead socket (laptop sleep, NAT drop, edge
 migration) always became a user-visible error — and in single player it broke
 the ADVANCE_COMPUTER cadence (the "AI got interrupted" reports). Leading with
 what does NOT change / deliberate limits:
-- **Everything re-send is gated on the receipt latch**: the client re-sends
-  ONLY once this room server has proven it sends `action-received` — which also
-  proves the requestId dedupe ledger, since the ledger (5b6ae65f) shipped
-  BEFORE the receipt (bdae13c3). An old edge keeps the exact single-send 15 s
-  behaviour (CONTROL-pinned), so a session's very FIRST action has no probe
-  protection either.
+- **Every re-send is gated on an explicit DURABILITY HANDSHAKE**, not merely on
+  the receipt: the edge stamps `durable: true` on `action-received` to advertise
+  that its dedupe ledger survives an instance restart, and only that flag
+  unlocks the probe and the re-send. A receipt WITHOUT the flag changes nothing
+  (CONTROL-pinned in both directions). This is what makes a FRONTEND-ONLY deploy
+  safe — Vercel ships minutes before the PartyKit edge, and a failed
+  deploy-partykit workflow can leave that gap open indefinitely (it happened on
+  2026-07-28): the older edge sends receipts but keeps its ledger in memory
+  only, so a repeat waking a fresh instance would apply the action TWICE. Never
+  gate a re-send on the plain receipt. Consequence: a session's very FIRST
+  action has no probe protection (the flag is not known yet).
 - **The 15 s receipt / 60 s processing deadlines are UNCHANGED** — recovery
   works only INSIDE them, so a genuinely unreachable room errors at the same
   moment it always did, and `PENDING_ECHO_TTL_MS` (75 s) still covers the sum.
@@ -2613,10 +2618,12 @@ What runs (each claim mutation-checked — `realtime.test.ts`,
 - **The ledger is DURABLE and identity-flap-proof** (party/index.ts): applied
   outcomes are recorded BEFORE persist and ride the SAME coalesced storage
   write as the snapshot (`answered-actions` key, newest 64), so a retry that
-  wakes a fresh instance never re-applies; outcomes record under BOTH the
-  verified userId and the clientId, so a verify that fails on one send and
-  succeeds on the repeat still dedupes. Rejections stay in-memory (replaying a
-  rejected action just re-rejects it). The ledger is wiped with the room.
+  wakes a fresh instance never re-applies — and that persistence is exactly
+  what `durable: true` promises the client above, so the two must ship
+  together; outcomes record under BOTH the verified userId and the clientId, so
+  a verify that fails on one send and succeeds on the repeat still dedupes.
+  Rejections stay in-memory (replaying a rejected action just re-rejects it).
+  The ledger is wiped with the room.
 
 ## Explorers hand step · Settlement-reroll option · Cannon vs walls · Secondary-hero defeat · transport receipt (2026-07-30)
 

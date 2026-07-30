@@ -532,11 +532,25 @@ describe("connectRoom — PartyKit action receipt probe & dedupe-safe re-send", 
 
   type Socket = (typeof partySocketMock.instances)[number];
 
-  /** Prove the room server acks actions (submit → receipt → result). */
-  const primeReceiptLatch = async (connection: ReturnType<typeof connectRoom>, socket: Socket) => {
+  /**
+   * Prove the room server acks actions AND persists its dedupe ledger
+   * (submit → durable receipt → result) — the handshake that unlocks the
+   * probe and the re-send.
+   */
+  const primeReceiptLatch = async (
+    connection: ReturnType<typeof connectRoom>,
+    socket: Socket,
+    durable = true
+  ) => {
     const first = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
     const frame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
-    socket.emit("message", { data: JSON.stringify({ type: "action-received", requestId: frame.requestId }) });
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "action-received",
+        requestId: frame.requestId,
+        ...(durable ? { durable: true } : {})
+      })
+    });
     socket.emit("message", {
       data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 2, errors: [] })
     });
@@ -579,7 +593,37 @@ describe("connectRoom — PartyKit action receipt probe & dedupe-safe re-send", 
     connection.close();
   });
 
-  it("CONTROL: an old room server (no receipt ever seen) keeps the plain single-send 15 s behaviour", async () => {
+  it("CONTROL: a receipt WITHOUT the durable flag never probes or re-sends (an in-memory-only ledger would double-apply)", async () => {
+    // The deploy shape that makes this matter: Vercel ships the frontend
+    // minutes before (or, on a failed workflow, entirely without) the room
+    // server. That older edge DOES send receipts but keeps its dedupe ledger
+    // in memory only, so a repeat landing on a woken instance would apply the
+    // action twice. Absent the flag, the transport must behave exactly as it
+    // did before this feature.
+    vi.useFakeTimers();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket, false);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const rejection = expect(resultPromise).rejects.toThrow(/did not answer in time/i);
+
+    await vi.advanceTimersByTimeAsync(ACTION_RECEIPT_PROBE_MS + 1_000);
+    expect(socket.reconnect).not.toHaveBeenCalled();
+    expect(framesMatching(socket, rawFrame)).toHaveLength(1);
+    // Not even a socket flap re-sends it.
+    socket.emit("close");
+    socket.emit("open");
+    expect(framesMatching(socket, rawFrame)).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(ACTION_RECEIPT_TIMEOUT_MS);
+    await rejection;
+    connection.close();
+  });
+
+  it("CONTROL: an old room server (no receipt at all) keeps the plain single-send 15 s behaviour", async () => {
     vi.useFakeTimers();
     const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");
     const socket = partySocketMock.instances.at(-1)!;
