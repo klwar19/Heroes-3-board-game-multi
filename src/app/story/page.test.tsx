@@ -4,90 +4,68 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import StoryPage from "./page";
 import { getCampaignBinding } from "@/lib/campaign-progress";
 
-const { push, createSinglePlayerRoom } = vi.hoisted(() => ({
-  push: vi.fn(),
-  createSinglePlayerRoom: vi.fn()
-}));
+const { push, createSinglePlayerRoom } = vi.hoisted(() => ({ push: vi.fn(), createSinglePlayerRoom: vi.fn() }));
 
 vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, replace: vi.fn(), prefetch: vi.fn() })
-}));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push, replace: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock("@/lib/realtime", () => ({ createSinglePlayerRoom }));
 
-beforeEach(() => {
-  window.localStorage.clear();
-});
+beforeEach(() => window.localStorage.clear());
+afterEach(() => { cleanup(); push.mockClear(); createSinglePlayerRoom.mockReset(); });
 
-afterEach(() => {
-  cleanup();
-  push.mockClear();
-  createSinglePlayerRoom.mockReset();
-});
-
-describe("/story (campaign hub)", () => {
-  it("lists BOTH campaigns", () => {
+describe("/story (Erathia campaign map)", () => {
+  it("shows only Restoration of Erathia on the main map and keeps mods in the corner", () => {
     render(<StoryPage />);
-    expect(screen.getByRole("heading", { name: "The Jianghu Chronicle" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Bin's Otherworld Chronicle" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Restoration of Erathia" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "The Jianghu Chronicle" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /MODS/i }));
+    expect(screen.getByText("The Jianghu Chronicle")).toBeTruthy();
+    expect(screen.getByText("Bin's Otherworld Chronicle")).toBeTruthy();
   });
 
-  it("renders Restoration of Erathia FIRST (registry order)", () => {
+  it("renders the three researched Long Live the Queen locations with sequential locks", () => {
     render(<StoryPage />);
-    const titles = screen
-      .getAllByRole("heading", { level: 2 })
-      .map((node) => node.textContent);
-    expect(titles[0]).toBe("Restoration of Erathia");
+    expect(screen.getByRole("button", { name: /Homecoming — available/i })).toBeTruthy();
+    expect((screen.getByRole("button", { name: /Guardian Angels — locked/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Griffin Cliff — locked/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows Begin on the playable, unlocked Chapter 1 of each campaign", () => {
+  it("opens a full briefing with rules, bonuses, heroes and computer forces", () => {
     render(<StoryPage />);
-    expect(screen.getByRole("button", { name: /Begin chapter: Awakening/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Begin chapter: Summoned at Dawn/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
+    expect(screen.getByRole("dialog", { name: /Homecoming briefing/i })).toBeTruthy();
+    expect(screen.getAllByText("Capture Terraneus").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /14 Pikemen/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Catherine")).toBeTruthy();
+    expect(screen.getByText("Dungeon")).toBeTruthy();
+    expect(screen.getByText(/18 fixed tiles/i)).toBeTruthy();
   });
 
-  it("a LOCKED chapter is not beginnable (CONTROL)", () => {
-    render(<StoryPage />);
-    // Chapter 2 ("The Valley") is locked until ch-1 is completed.
-    expect(screen.queryByRole("button", { name: /Begin chapter: The Valley/i })).toBeNull();
-    const valley = screen.getByText("The Valley").closest("li")!;
-    expect(valley.textContent).toContain("Locked");
-  });
-
-  it("mints the sp room with the chapter's opponent count and binds the campaign context", async () => {
+  it("mints the room with the chapter opponent count and selected bonus binding", async () => {
     createSinglePlayerRoom.mockResolvedValue({ roomId: "sp-story-1" });
     render(<StoryPage />);
-
-    fireEvent.click(screen.getByRole("button", { name: /Begin chapter: Awakening/i }));
-
+    fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
+    fireEvent.click(screen.getByRole("button", { name: /rare resources/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Begin chapter/i }));
     await waitFor(() => expect(createSinglePlayerRoom).toHaveBeenCalledWith(1));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/?room=sp-story-1"));
-    expect(getCampaignBinding("sp-story-1")).toEqual({ campaignId: "jianghu", chapterId: "ch1" });
+    expect(getCampaignBinding("sp-story-1")).toEqual({ campaignId: "erathia", chapterId: "homecoming", bonusId: "rare-resources" });
   });
 
-  it("renders the completed state and unlocks the next (in-development) chapter", async () => {
-    window.localStorage.setItem("binh-campaign:jianghu", JSON.stringify({ completed: ["ch1"] }));
+  it("unlocks Guardian Angels after Homecoming completion", async () => {
+    window.localStorage.setItem("binh-campaign:erathia", JSON.stringify({ completed: ["homecoming"] }));
     render(<StoryPage />);
-
-    await waitFor(() => {
-      const awakening = screen.getByText("Awakening").closest("li")!;
-      expect(awakening.textContent).toContain("Completed");
-    });
-    // ch-2 is now unlocked but still in development (no Begin button).
-    const valley = screen.getByText("The Valley").closest("li")!;
-    expect(valley.textContent).toContain("In development");
-    expect(screen.queryByRole("button", { name: /Begin chapter: The Valley/i })).toBeNull();
+    await waitFor(() => expect((screen.getByRole("button", { name: /Guardian Angels — available/i }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: /Guardian Angels — available/i }));
+    expect(screen.getByRole("heading", { name: "Guardian Angels" })).toBeTruthy();
   });
 
-  it("the EN/VI toggle swaps the campaign titles", () => {
+  it("moves the language switch to the corner and localizes campaign copy", () => {
     render(<StoryPage />);
-    // English by default.
-    expect(screen.getByRole("heading", { name: "The Jianghu Chronicle" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "EN" }));
-
-    // Vietnamese titles now render.
-    expect(screen.getByRole("heading", { name: "Giang Hồ Chí" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Dị Giới Ký Của Bin" })).toBeTruthy();
+    const toggle = screen.getByRole("button", { name: "EN" });
+    expect(toggle.className).toContain("campaignLanguage");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("heading", { name: "Phục Hưng Erathia" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Ngày Trở Về/ })).toBeTruthy();
   });
 });

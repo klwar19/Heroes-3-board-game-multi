@@ -107,8 +107,8 @@ export function campaignSceneToFire(
  * A locked chapter (no `setup` ⇒ `chapterRoomOptions` null) or a faction with no
  * heroes yields an empty list (nothing to inject).
  */
-export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId): GameAction[] {
-  const options = chapterRoomOptions(chapter);
+export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId, bonusId?: string): GameAction[] {
+  const options = chapterRoomOptions(chapter, bonusId);
   if (!options) {
     return [];
   }
@@ -117,6 +117,9 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       type: "SET_GAME_OPTIONS",
       playerId,
       options: {
+        ...(options.customMap ? { scenarioId: "skirmish", customMap: options.customMap } : {}),
+        ...(options.customMapName ? { customMapName: options.customMapName } : {}),
+        ...(options.customMapPreset ? { customMapPreset: options.customMapPreset } : {}),
         anime: options.anime,
         fieldOverrides: options.fieldOverrides,
         ...(options.difficulty ? { difficulty: options.difficulty } : {}),
@@ -127,7 +130,34 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       }
     }
   ];
-  const heroDefId = coreFactionDefinitions[options.playerFaction]?.heroes[0];
+  const heroDefId = options.playerHeroDefId ?? coreFactionDefinitions[options.playerFaction]?.heroes[0];
+  // ORDER MATTERS — set the fixed campaign opponents BEFORE the human's
+  // CHOOSE_FACTION. The single-player computer setup policy only rolls a random
+  // town for a computer seat once the HUMAN seat has a faction, so while the
+  // human is still on auto the opponent seats stay untouched: we can clear them
+  // to auto and assign each scripted (faction, hero) with no random pick ever
+  // reserving a faction we are about to hand another seat. Doing this AFTER the
+  // human chooses (the old order) let the settle re-roll the auto seats between
+  // our clears and sets, so a random pick landing on a scripted faction threw
+  // "Another seat already picked that faction." — an intermittent setup failure.
+  // The clears keep it robust even if a seat carried a faction from room
+  // creation; nothing re-randomizes a seat before CHOOSE_FACTION.
+  for (const [index] of (options.computerSeats ?? []).entries()) {
+    actions.push({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId,
+      seatPlayerId: `p${index + 2}`,
+      choice: "clear"
+    });
+  }
+  for (const [index, computer] of (options.computerSeats ?? []).entries()) {
+    actions.push({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId,
+      seatPlayerId: `p${index + 2}`,
+      choice: { factionId: computer.factionId, heroDefId: computer.heroDefId }
+    });
+  }
   if (heroDefId) {
     actions.push({
       type: "CHOOSE_FACTION",

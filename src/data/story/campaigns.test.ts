@@ -52,14 +52,14 @@ describe("campaign registry", () => {
     expect(listCampaigns()[0].id).toBe("erathia");
   });
 
-  it("ships all FOUR campaigns, each with 7 chapters and matching registry lookups", () => {
+  it("keeps four registry campaigns while Erathia exposes its three researched Long Live the Queen scenarios", () => {
     expect(listCampaigns()).toBe(CAMPAIGNS);
     expect(CAMPAIGNS.map((c) => c.id)).toEqual(["erathia", "jianghu", "bin-otherworld", "convergence"]);
     expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["classic", "xianxia", "isekai", "xianxia"]);
     for (const campaign of CAMPAIGNS) {
-      expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(7);
+      expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(campaign.id === "erathia" ? 3 : 7);
       expect(getCampaign(campaign.id)).toBe(campaign);
-      expect(new Set(campaign.chapters.map((ch) => ch.id)).size).toBe(7);
+      expect(new Set(campaign.chapters.map((ch) => ch.id)).size).toBe(campaign.chapters.length);
     }
     expect(getCampaign("does-not-exist")).toBeUndefined();
     expect(getCampaignChapter("jianghu", "ch1")?.title.en).toBe("Awakening");
@@ -89,17 +89,18 @@ describe("campaign registry", () => {
     }
   });
 
-  it("exactly ONE playable chapter per campaign (chapter 1); it carries a full setup + all three scenes", () => {
+  it("makes all three Erathia scenarios playable; mod campaigns retain their chapter-1 slice", () => {
     for (const campaign of CAMPAIGNS) {
       const playable = campaign.chapters.filter((ch) => ch.playable);
-      expect(playable.map((ch) => ch.id), campaign.id).toEqual(["ch1"]);
-
-      const ch1 = campaign.chapters[0];
-      expect(ch1.setup, `${campaign.id}/ch1 setup`).toBeDefined();
-      // A playable chapter drives intro / victory / defeat.
-      expect(isStoryScene(ch1.scenes.onStart ?? "")).toBe(true);
-      expect(isStoryScene(ch1.scenes.onVictory ?? "")).toBe(true);
-      expect(isStoryScene(ch1.scenes.onDefeat ?? "")).toBe(true);
+      expect(playable.map((ch) => ch.id), campaign.id).toEqual(
+        campaign.id === "erathia" ? ["homecoming", "guardian-angels", "griffin-cliff"] : ["ch1"]
+      );
+      for (const chapter of playable) {
+        expect(chapter.setup, `${campaign.id}/${chapter.id} setup`).toBeDefined();
+        expect(isStoryScene(chapter.scenes.onStart ?? "")).toBe(true);
+        expect(isStoryScene(chapter.scenes.onVictory ?? "")).toBe(true);
+        expect(isStoryScene(chapter.scenes.onDefeat ?? "")).toBe(true);
+      }
     }
   });
 
@@ -177,6 +178,19 @@ describe("chapterRoomOptions", () => {
     expect(options.anime.enabled).toBe(false);
     expect(options.wog).toBeUndefined();
     expect(options.houseRules).toBeUndefined();
+    expect(options.customMapName).toMatch(/Homecoming/);
+    expect(options.customMap?.length).toBeGreaterThan(10);
+    expect(options.customMapPreset?.customWinConditions).toEqual([{ kind: "control-towns", count: 2 }]);
+    expect(options.playerHeroDefId).toBe("catherine");
+    expect(options.computerSeats?.[0]).toMatchObject({ factionId: "dungeon", heroDefId: "alamar" });
+  });
+
+  it("applies exactly the selected classic starting bonus", () => {
+    const chapter = ch1("erathia");
+    const resources = chapterRoomOptions(chapter, "rare-resources")!;
+    expect(resources.customMapPreset?.startingBonuses).toEqual([{ kind: "resources", valuables: 5 }]);
+    const pikemen = chapterRoomOptions(chapter, "pikemen")!;
+    expect(pikemen.customMapPreset?.startingUnits).toHaveLength(3);
   });
 
   it("maps the Convergence ch-1 to EVERYTHING at once — anime modules + WOG Commanders + Polish stacks", () => {

@@ -755,6 +755,45 @@ const CH1_SCENES: StoryScene[] = [
  * Deliberately art-less (no background/sprite refs — the overlay's theme
  * gradient + narrator layout carry them), so they add no asset obligations.
  */
+const ERATHIA_CAMPAIGN_SCENES: StoryScene[] = [
+  {
+    id: "story.erathia.homecoming.intro",
+    theme: "classic",
+    background: "/assets/story/erathia/homecoming.webp",
+    lines: [
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "General, our landing confirms the worst. Nighon has held this coast for a month, and the road to its command post runs beneath our feet.", vi: "Tướng quân, cuộc đổ bộ xác nhận điều tồi tệ nhất. Nighon đã chiếm bờ biển này suốt một tháng, và đường tới căn cứ chỉ huy chạy ngay dưới chân ta." } },
+      { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Caryatid can be rebuilt. Plinth, Mirham and Trailia are occupied, but their militia still watches for the griffin banner.", vi: "Caryatid có thể được dựng lại. Plinth, Mirham và Trailia đang bị chiếm, nhưng dân quân vẫn chờ cờ Griffin." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Then raise it. Rally the coast, descend through the invasion road, and take Terraneus. Assume we are at war.", vi: "Vậy hãy giương cờ. Tập hợp bờ biển, đi xuống đường xâm lược và chiếm Terraneus. Hãy coi như chúng ta đang có chiến tranh." } }
+    ]
+  },
+  { id: "story.erathia.homecoming.victory", theme: "classic", background: "/assets/story/erathia/homecoming.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Terraneus is ours. Nighon's route is exposed, and Erathia has a coast from which to fight back.", vi: "Terraneus đã thuộc về ta. Đường xâm lược của Nighon đã lộ, và Erathia có một bờ biển để phản công." } }] },
+  { id: "story.erathia.homecoming.defeat", theme: "classic", background: "/assets/story/erathia/homecoming.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "The beachhead is lost, Majesty. The fleet can land again, but the enemy will be waiting.", vi: "Đầu cầu đã mất, thưa Bệ Hạ. Hạm đội có thể đổ bộ lại, nhưng kẻ thù sẽ chờ sẵn." } }] },
+  {
+    id: "story.erathia.guardian-angels.intro",
+    theme: "classic",
+    background: "/assets/story/erathia/guardian-angels.webp",
+    lines: [
+      { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Peasants speak of Fair Feather, a white city that has survived every assault. They say angels guard its walls.", vi: "Nông dân kể về Fair Feather, thành phố trắng sống sót qua mọi cuộc tấn công. Họ nói thiên thần bảo vệ tường thành." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Angels fought the Kreegans once before. We must reach them before four underground strongholds close the valley.", vi: "Thiên thần từng chống Kreegan. Ta phải đến trước khi bốn cứ điểm dưới lòng đất khóa kín thung lũng." } },
+      { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "One road to Fair Feather; four roads for the enemy. We will have to move quickly.", vi: "Một đường tới Fair Feather; bốn đường cho kẻ thù. Chúng ta phải thật nhanh." } }
+    ]
+  },
+  { id: "story.erathia.guardian-angels.victory", theme: "classic", background: "/assets/story/erathia/guardian-angels.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Fair Feather stands, and the angels have answered. Steadwick will hear their wings before it sees our banners.", vi: "Fair Feather vẫn đứng vững, và các thiên thần đã đáp lời. Steadwick sẽ nghe tiếng cánh trước khi thấy cờ của ta." } }] },
+  { id: "story.erathia.guardian-angels.defeat", theme: "classic", background: "/assets/story/erathia/guardian-angels.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "We were too slow. Regroup and open the valley before Fair Feather's light goes out.", vi: "Ta đã quá chậm. Tập hợp lại và mở thung lũng trước khi ánh sáng Fair Feather tắt." } }] },
+  {
+    id: "story.erathia.griffin-cliff.intro",
+    theme: "classic",
+    background: "/assets/story/erathia/griffin-cliff.webp",
+    lines: [
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Every year the griffins return to these cliffs. Gryphonheart the First tamed them here, and with them forged Erathia.", vi: "Mỗi năm griffin trở về những vách đá này. Gryphonheart Đệ Nhất đã thuần hóa chúng tại đây và cùng chúng lập nên Erathia." } },
+      { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Nighon and Kreegan troops hold all seven towers. Their two armies are stripping the nests for the siege of Steadwick.", vi: "Quân Nighon và Kreegan giữ cả bảy tháp. Hai đạo quân đang vét tổ griffin để vây Steadwick." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Free every tower. We do not march on the capital without the wings that built it.", vi: "Giải phóng mọi ngọn tháp. Ta sẽ không tiến về kinh đô nếu thiếu đôi cánh đã xây nên nó." } }
+    ]
+  },
+  { id: "story.erathia.griffin-cliff.victory", theme: "classic", background: "/assets/story/erathia/griffin-cliff.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Seven towers fly the griffin banner. The sky itself is marching with us toward Steadwick.", vi: "Bảy ngọn tháp tung cờ Griffin. Cả bầu trời đang cùng ta tiến về Steadwick." } }] },
+  { id: "story.erathia.griffin-cliff.defeat", theme: "classic", background: "/assets/story/erathia/griffin-cliff.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The cliffs remain chained. We return before the last aerie is emptied; Erathia cannot lose its griffins twice.", vi: "Các vách đá vẫn bị xiềng xích. Ta phải trở lại trước khi tổ cuối cùng bị vét sạch; Erathia không thể mất griffin hai lần." } }] }
+];
+
 const DUNGEON_SCENES: StoryScene[] = [
   {
     id: "dungeon_whispers_first",
@@ -798,7 +837,7 @@ const DUNGEON_SCENES: StoryScene[] = [
   }
 ];
 
-const ALL_SCENES: StoryScene[] = [...DEMO_SCENES, ...CH1_SCENES, ...DUNGEON_SCENES];
+const ALL_SCENES: StoryScene[] = [...DEMO_SCENES, ...CH1_SCENES, ...ERATHIA_CAMPAIGN_SCENES, ...DUNGEON_SCENES];
 
 export const storySceneRegistry: Record<string, StoryScene> = Object.fromEntries(
   ALL_SCENES.map((scene) => [scene.id, scene])
