@@ -54,6 +54,9 @@ export type ArtifactDeckAccess = {
  */
 export type HouseRuleId =
   | "split-decks"
+  // BINH Mystical Garden reward: its gold choice grants 3 instead of the
+  // printed 2. Off restores the official card value.
+  | "mystical-garden-gold"
   | "griffin-buff"
   | "marksman-buff"
   | "wisdom-expert-discount"
@@ -64,6 +67,10 @@ export type HouseRuleId =
   // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
   // Off: they change only Initiative, never movement (the standard/wiki rule).
   | "combat-move-initiative"
+  // BINH Far-tile mulligan: after revealing a II-III tile, the opener may
+  // replace an Ore-Mine tile once, and their second opening may reroll toward
+  // their first Settlement. Off (official): the revealed tile is final.
+  | "far-tile-rerolls"
   // Winning the Dragon Fly Hive / Griffin Conservatory bank ALSO grants an
   // Ability Empower token (max 1; spend anytime to Empower one hand Ability —
   // Expert then costs no crown). Off: those banks grant only the unit, as printed.
@@ -9057,6 +9064,18 @@ export type AdventureReward =
     }
   | {
       /**
+       * Final opening-setup divider. It stays behind every rulebook/designer
+       * starting bonus (including follow-up Searches), then publishes the
+       * first-player roll and starts round 1.
+       */
+      playerId: PlayerId;
+      kind: "opening-first-player-roll";
+      secondPlayerMorale?: boolean;
+      /** No difficulty bonus: deal the ordinary opening hands after the roll. */
+      dealStartingHands?: boolean;
+    }
+  | {
+      /**
        * Calamity Waves (§6.6): one queued assault per live seat on a wave
        * round, resolved in seat order behind the round-start barrier. When the
        * pump reaches it, the seat's wave combat opens (a normal neutral fight
@@ -10701,11 +10720,6 @@ export type AdventureState = {
    */
   farTileBlindChoice?: boolean;
   /**
-   * Settlement rerolls for Ⅱ–Ⅲ tiles (default ON). When false, the second Far
-   * tile is accepted as drawn even if the player has not opened a Settlement.
-   */
-  farTileSettlementReroll?: boolean;
-  /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
    */
@@ -10729,6 +10743,11 @@ export type AdventureState = {
   farTileScriptedDraws?: string[];
   /** Start-of-game first-player roll, shown to every seat. */
   firstPlayerRoll?: FirstPlayerRollState | null;
+  /**
+   * Server-baked seed for the delayed opening roll. Hidden from player views
+   * and cleared as soon as the ceremony is committed.
+   */
+  openingFirstPlayerSeed?: string;
   /** Garrison decision pending while an undefended town is attacked. */
   pendingGarrison?: PendingGarrisonState | null;
   /**
@@ -11331,11 +11350,6 @@ export type GameSetupOptions = {
    * `adventure.farTileBlindChoice` at setup.
    */
   farTileBlindChoice?: boolean;
-  /**
-   * Whether the second Ⅱ–Ⅲ tile may be rerolled to secure a Settlement.
-   * Defaults ON; maps that require exact tile identities may turn it OFF.
-   */
-  farTileSettlementReroll?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -11428,8 +11442,6 @@ export type CustomMapPreset = {
   difficulty?: GameDifficulty;
   farTileOpening?: boolean;
   farTilesPerPlayer?: number;
-  /** Map-authored default for the second-tile Settlement reroll rule. */
-  farTileSettlementReroll?: boolean;
   /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
    * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER

@@ -123,8 +123,9 @@ export const locationDefinitions: Record<string, LocationDefinition> = {
     interaction: {
       type: "CHOOSE_ONE",
       options: [
-        // HOUSE RULE: the gold branch grants 3 gold (was 2).
-        { label: "Gain 3 gold", interaction: { type: "GAIN_RESOURCES", gold: 3 } },
+        // Printed reward. The optional BINH increase to 3 gold is applied when
+        // the visit is built, where the frozen house-rule flags are available.
+        { label: "Gain 2 gold", interaction: { type: "GAIN_RESOURCES", gold: 2 } },
         { label: "Gain 1 valuables", interaction: { type: "GAIN_RESOURCES", valuables: 1 } }
       ]
     },

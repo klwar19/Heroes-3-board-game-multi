@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { ChevronDown, ChevronUp, Crown, Footprints, Hourglass, Mountain, Plus, ScrollText, Shield, Sparkles, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Hourglass, Mountain, Plus, ScrollText, Shield, Swords } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
@@ -69,6 +69,7 @@ import {
   type CardBoardAction
 } from "./utils";
 import { useCardZoom } from "./zoom";
+import { BattleMetric, signedMorale } from "./battle-metrics";
 
 /** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
 const STACK_TOKEN_LABELS: Record<NonNullable<CombatUnitState["stackToken"]>, string> = {
@@ -2415,9 +2416,6 @@ export function CommandDock({
   const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
   const crownsTotal = player ? player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0) : 0;
   const crownsLeft = player ? crownsTotal - player.combatStats.expertUsesSpentThisRound : 0;
-  // Public, already-unmasked reads (a redacted view keeps opponent hand/deck as
-  // same-length placeholders, so their COUNT is real while the cards stay hidden).
-  const handCount = player?.hand.length ?? 0;
   const shownHero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === shownPlayerId && candidate.kind === "main"
   );
@@ -2427,28 +2425,42 @@ export function CommandDock({
     <div className="commandDock" aria-label="Commands">
       <span className="dockStatus">{status}</span>
       {state.combat && !outcome ? (
-        <div className="dockLimits" aria-label={watching ? `${player?.name ?? shownPlayerId} — resources` : "Per-round limits"}>
+        <div className="dockLimits" aria-label={watching ? `${player?.name ?? shownPlayerId} battle status` : "Your battle status"}>
           {watching ? <span className="dockLimitsWho">{player?.name ?? shownPlayerId}</span> : null}
-          <span
-            className={!ignoreSpellLimit && spellsCast >= spellLimit ? "limitSpent" : ""}
+          {shownHero ? (
+            <BattleMetric kind="level" label="Level" title={`${whose} main hero level`} value={shownHero.level} />
+          ) : null}
+          <BattleMetric
+            kind="spell"
+            label="Spell"
+            spent={!ignoreSpellLimit && spellsCast >= spellLimit}
             title={
               ignoreSpellLimit
                 ? `Intelligence (expert): ${whose} spells no longer count toward the per-combat-round limit.`
                 : `One spell per combat round${spellLimit > 1 ? ` (+${spellLimit - 1} from Knowledge)` : ""}. Hero specialties never count against it.`
             }
-          >
-            <Sparkles aria-hidden="true" size={12} /> Spell {spellsCast}/{spellLimitLabel}
-          </span>
-          <span title={`Expert-effect crowns left this combat round (${whose} total: ${crownsTotal})`}>
-            <Crown aria-hidden="true" size={12} /> {crownsLeft}/{crownsTotal} crown{crownsTotal === 1 ? "" : "s"}
-          </span>
-          <span title={`Cards in ${whose} hand`}>
-            <ScrollText aria-hidden="true" size={12} /> Hand {handCount}
-          </span>
+            value={`${spellsCast}/${spellLimitLabel}`}
+          />
+          <BattleMetric
+            kind="crown"
+            label="Crowns"
+            title={`Expert-effect crowns left this combat round (${whose} total: ${crownsTotal})`}
+            value={`${crownsLeft}/${crownsTotal}`}
+          />
+          <BattleMetric
+            kind="morale"
+            label="Morale"
+            morale={player?.morale ?? 0}
+            title={`${whose} current morale`}
+            value={signedMorale(player?.morale ?? 0)}
+          />
           {shownHero ? (
-            <span title={`Movement points ${whose} main hero has left this turn`}>
-              <Footprints aria-hidden="true" size={12} /> MP {shownHero.movementPoints}
-            </span>
+            <BattleMetric
+              kind="movement"
+              label="Move"
+              title={`Movement points ${whose} main hero has left this turn`}
+              value={shownHero.movementPoints}
+            />
           ) : null}
         </div>
       ) : null}

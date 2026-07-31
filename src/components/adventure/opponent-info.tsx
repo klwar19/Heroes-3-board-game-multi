@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { Crown, Footprints, Hand, Layers, Trash2, Users, X } from "lucide-react";
-import type { GameState, PlayerId } from "@/engine/state";
+import { Layers, Trash2, Users, X } from "lucide-react";
+import { playerSpellCastsIgnoreLimit, type GameState, type PlayerId } from "@/engine";
 import { getSeatIdentity } from "@/engine/player-identity";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
@@ -13,6 +13,7 @@ import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/descri
 import { CardFrame, SeatNameplate } from "@/components/table/seats";
 import { HeroBoard } from "@/components/hero-board";
 import { ArmyPanel } from "@/components/adventure/screen";
+import { BattleMetric, signedMorale } from "@/components/table/battle-metrics";
 
 // ---------------------------------------------------------------------------
 // Opponent info — a clear per-opponent button that opens a read-only panel with
@@ -66,6 +67,9 @@ function OpponentInfoModal({
   // combat command dock uses for the viewer's own crowns.
   const crownsTotal = (player?.limits.expertUses ?? 0) + (player?.combatStats.expertUseBonusThisRound ?? 0);
   const crownsLeft = Math.max(0, crownsTotal - (player?.combatStats.expertUsesSpentThisRound ?? 0));
+  const ignoreSpellLimit = Boolean(player) && playerSpellCastsIgnoreLimit(state, playerId);
+  const spellLimit = 1 + (player?.combatStats.spellLimitBonusThisRound ?? 0);
+  const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
 
   // PORTAL to <body>: the dock lives inside the fixed, scrollable left rail
   // (z-index 36). Rendered inline, this fixed backdrop is trapped in that
@@ -111,32 +115,51 @@ function OpponentInfoModal({
         ) : null}
 
         {player ? (
-          <section className="opponentInfoSection" aria-label="Cards and crowns">
-            <h4>Cards &amp; crowns</h4>
+          <section className="opponentInfoSection" aria-label="Battle status">
+            <h4>Battle status</h4>
+            <div className="opponentBattleMetrics">
+              {hero ? <BattleMetric kind="level" label="Level" title="Main hero level" value={hero.level} /> : null}
+              <BattleMetric
+                kind="spell"
+                label="Spell"
+                title="Spells cast this combat round"
+                value={`${player.combatStats.spellsCastThisRound}/${spellLimitLabel}`}
+              />
+              <BattleMetric
+                kind="crown"
+                label="Crowns"
+                title={`Expert-effect crowns left this combat round: ${crownsLeft} of ${crownsTotal}`}
+                value={`${crownsLeft}/${crownsTotal}`}
+              />
+              <BattleMetric
+                kind="hand"
+                label="Hand"
+                title="Cards in their hand (card identities remain hidden)"
+                value={handCount}
+              />
+              <BattleMetric
+                kind="morale"
+                label="Morale"
+                morale={player.morale}
+                title="Current morale"
+                value={signedMorale(player.morale)}
+              />
+              {hero ? (
+                <BattleMetric
+                  kind="movement"
+                  label="Move"
+                  title="Movement points their main hero has left this turn"
+                  value={hero.movementPoints}
+                />
+              ) : null}
+            </div>
             <div className="opponentCardCounts">
-              <span className="opponentCountChip" title="Cards in hand (the cards themselves stay hidden)">
-                <Hand aria-hidden="true" size={12} /> Hand <b>{handCount}</b>
-              </span>
               <span className="opponentCountChip" title="Cards left in their draw deck (order hidden from everyone)">
                 <Layers aria-hidden="true" size={12} /> Deck <b>{deckCount}</b>
               </span>
               <span className="opponentCountChip" title="Cards in their discard pile — public, listed below">
                 <Trash2 aria-hidden="true" size={12} /> Discard <b>{player.discard.length}</b>
               </span>
-              <span
-                className={`opponentCountChip${crownsLeft === 0 ? " spent" : ""}`}
-                title={`Expert-effect crowns left this combat round: ${crownsLeft} of ${crownsTotal}`}
-              >
-                <Crown aria-hidden="true" size={12} /> Crowns{" "}
-                <b>
-                  {crownsLeft}/{crownsTotal}
-                </b>
-              </span>
-              {hero ? (
-                <span className="opponentCountChip" title="Movement points their main hero has left this turn">
-                  <Footprints aria-hidden="true" size={12} /> Moves <b>{hero.movementPoints}</b>
-                </span>
-              ) : null}
             </div>
           </section>
         ) : null}

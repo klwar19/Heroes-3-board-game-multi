@@ -6312,10 +6312,36 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
 
   const locationDiceBonus = locationDiceBonusFor(state, playerId);
-  const steps =
+  let steps =
     location.implementationStatus === "implemented"
       ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
+
+  // The location data stays rules-correct (2 gold). Only BINH's explicit
+  // house-rule flag upgrades that branch to 3 when this particular visit is
+  // materialized, so Legacy and per-rule overrides see the printed reward.
+  if (location.id === "mystical_garden" && houseRuleEnabled(state, "mystical-garden-gold")) {
+    steps = steps.map((step) =>
+      step.type === "CHOOSE_ONE"
+        ? {
+            ...step,
+            options: step.options.map((option) =>
+              option.steps.some(
+                (inner) => inner.type === "GAIN_RESOURCES" && inner.gold === 2 && !inner.buildingMaterials && !inner.valuables
+              )
+                ? {
+                    ...option,
+                    label: "Gain 3 gold",
+                    steps: option.steps.map((inner) =>
+                      inner.type === "GAIN_RESOURCES" && inner.gold === 2 ? { ...inner, gold: 3 } : inner
+                    )
+                  }
+                : option
+            )
+          }
+        : step
+    );
+  }
 
   // Treasure Symbols roll the number printed on that specific field. Most
   // chests roll one die; only artwork explicitly marked "2 → 1" carries
