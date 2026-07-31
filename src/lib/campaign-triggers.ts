@@ -107,8 +107,8 @@ export function campaignSceneToFire(
  * A locked chapter (no `setup` ⇒ `chapterRoomOptions` null) or a faction with no
  * heroes yields an empty list (nothing to inject).
  */
-export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId): GameAction[] {
-  const options = chapterRoomOptions(chapter);
+export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId, bonusId?: string): GameAction[] {
+  const options = chapterRoomOptions(chapter, bonusId);
   if (!options) {
     return [];
   }
@@ -117,6 +117,9 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       type: "SET_GAME_OPTIONS",
       playerId,
       options: {
+        ...(options.customMap ? { scenarioId: "skirmish", customMap: options.customMap } : {}),
+        ...(options.customMapName ? { customMapName: options.customMapName } : {}),
+        ...(options.customMapPreset ? { customMapPreset: options.customMapPreset } : {}),
         anime: options.anime,
         fieldOverrides: options.fieldOverrides,
         ...(options.difficulty ? { difficulty: options.difficulty } : {}),
@@ -127,13 +130,33 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       }
     }
   ];
-  const heroDefId = coreFactionDefinitions[options.playerFaction]?.heroes[0];
+  const heroDefId = options.playerHeroDefId ?? coreFactionDefinitions[options.playerFaction]?.heroes[0];
+  // Fresh single-player rooms seed computer picks immediately. Clear every
+  // authored opponent first so a seeded pick cannot temporarily reserve the
+  // player's or another scripted opponent's faction while we apply the fixed
+  // campaign cast.
+  for (const [index] of (options.computerSeats ?? []).entries()) {
+    actions.push({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId,
+      seatPlayerId: `p${index + 2}`,
+      choice: "clear"
+    });
+  }
   if (heroDefId) {
     actions.push({
       type: "CHOOSE_FACTION",
       playerId,
       factionId: options.playerFaction,
       heroDefId
+    });
+  }
+  for (const [index, computer] of (options.computerSeats ?? []).entries()) {
+    actions.push({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId,
+      seatPlayerId: `p${index + 2}`,
+      choice: { factionId: computer.factionId, heroDefId: computer.heroDefId }
     });
   }
   return actions;

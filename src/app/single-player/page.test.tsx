@@ -21,31 +21,41 @@ afterEach(() => {
 });
 
 describe("/single-player (creation panel)", () => {
-  it("says Playing with computer and defaults to ONE computer opponent", () => {
+  it("shows exactly VS Computer, Campaign and Back before configuration", () => {
     render(<SinglePlayerPage />);
-    expect(screen.getByRole("heading", { name: /Playing with computer/i })).toBeTruthy();
-    const group = screen.getByRole("group", { name: /Computer opponents/i });
-    const one = screen.getByRole("button", { name: "1" });
-    expect(group.contains(one)).toBe(true);
-    expect(one.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "3" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("heading", { name: /Single Player/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /VS Computer/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Campaign/i }).getAttribute("href")).toBe("/story");
+    expect(screen.getByRole("link", { name: /Back/i }).getAttribute("href")).toBe("/menu");
+    expect(screen.queryByRole("group", { name: /Computer opponents/i })).toBeNull();
   });
 
-  it("carries the Story-mode entry (moved here from the main menu) with its spell icon", () => {
+  it("opens the opponent picker on VS Computer and defaults to one", () => {
     render(<SinglePlayerPage />);
-    const story = screen.getByRole("link", { name: /Story mode/i });
+    fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
+    const group = screen.getByRole("group", { name: /Computer opponents/i });
+    const one = screen.getByRole("button", { name: "1 computer opponent" });
+    expect(group.contains(one)).toBe(true);
+    expect(one.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "3 computer opponents" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("uses the generated campaign art on the Campaign entry", () => {
+    render(<SinglePlayerPage />);
+    const story = screen.getByRole("link", { name: /Campaign/i });
     expect(story.getAttribute("href")).toBe("/story");
-    const icon = story.querySelector("img.spNavSpellIcon");
-    expect(icon, "Homm3BG spell icon on the story entry").toBeTruthy();
-    expect(icon!.getAttribute("src")).toContain("/assets/spell-icons/teleport.png");
+    const icon = story.querySelector("img.singlePlayerNavArt");
+    expect(icon).toBeTruthy();
+    expect(icon!.getAttribute("src")).toContain("/assets/ui/single-player/campaign.webp");
   });
 
   it("creates the private game with the chosen count and navigates to the room", async () => {
     createSinglePlayerRoom.mockResolvedValue({ roomId: "sp-abc123" });
     render(<SinglePlayerPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "3" }));
-    fireEvent.click(screen.getByRole("button", { name: /Create game/i }));
+    fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
+    fireEvent.click(screen.getByRole("button", { name: "3 computer opponents" }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue with 3 opponents/i }));
 
     await waitFor(() => expect(createSinglePlayerRoom).toHaveBeenCalledWith(3));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/?room=sp-abc123"));
@@ -55,7 +65,8 @@ describe("/single-player (creation panel)", () => {
     createSinglePlayerRoom.mockRejectedValue(new Error("offline"));
     render(<SinglePlayerPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Create game/i }));
+    fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue with 1 opponent/i }));
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("offline"));
     expect(push).not.toHaveBeenCalled();

@@ -33,9 +33,17 @@
  */
 
 import type { FactionId } from "@/data/factions/types";
+import { ERATHIA_SCENARIO_MAPS, type ErathiaScenarioMap } from "@/data/story/erathia-maps";
 import { resolveAnimeOptions } from "@/engine/anime";
 import { DEFAULT_WOG_OPTIONS } from "@/engine/state";
-import type { AnimeModOptions, GameDifficulty, HouseRuleId, WogModOptions } from "@/engine/state";
+import type {
+  AnimeModOptions,
+  CustomMapPreset,
+  CustomMapTilePlan,
+  GameDifficulty,
+  HouseRuleId,
+  WogModOptions
+} from "@/engine/state";
 
 export type LocalizedText = { en: string; vi: string };
 
@@ -61,6 +69,8 @@ export type AnimeModuleFlag = keyof Omit<
 export type CampaignChapterSetup = {
   /** Core faction stand-in for the protagonist (anime towns are unshipped). */
   playerFaction: FactionId;
+  /** Fixed campaign commander; falls back to the faction's first hero. */
+  playerHeroDefId?: string;
   /** Number of computer opponents (1–3). The only field applied to the room in V1. */
   opponents: number;
   /** Intended scenario difficulty — carried config, not applied in V1. */
@@ -73,6 +83,16 @@ export type CampaignChapterSetup = {
   wog?: Partial<WogModOptions>;
   /** House-rule toggles (Polish stacks …) this chapter wants injected. */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
+  /** Fixed computer seats, in p2/p3/p4 order. */
+  computerSeats?: Array<{ factionId: FactionId; heroDefId: string; label: string }>;
+};
+
+export type CampaignStartingBonus = {
+  id: string;
+  title: LocalizedText;
+  effect: LocalizedText;
+  /** Board-game implementation of the selected classic PC bonus. */
+  preset: Partial<CustomMapPreset>;
 };
 
 /** Scene hooks into the shared `storySceneRegistry` (all optional). */
@@ -92,6 +112,15 @@ export type CampaignChapter = {
   setup?: CampaignChapterSetup;
   /** Designed CustomMapPreset id — unused in V1 (standard map generation). */
   mapPresetId?: string;
+  /** Fully-authored board map and scenario rules; campaign rooms inject it verbatim. */
+  scenarioMap?: ErathiaScenarioMap;
+  briefingArt?: string;
+  mapPosition?: { x: number; y: number };
+  objective?: LocalizedText;
+  levelCap?: number;
+  carryOverHeroes?: number;
+  heroIds?: string[];
+  startingBonuses?: CampaignStartingBonus[];
   scenes: CampaignChapterScenes;
 };
 
@@ -107,6 +136,7 @@ export type Campaign = {
 };
 
 const cover = (slug: string) => `/assets/story/covers/${slug}.webp`;
+const erathiaArt = (slug: string) => `/assets/story/erathia/${slug}.webp`;
 
 // -----------------------------------------------------------------------------
 // Locked-chapter helper — chapters 2–7 are DATA only (no setup, no scenes).
@@ -472,12 +502,176 @@ const CONVERGENCE: Campaign = {
 };
 
 // -----------------------------------------------------------------------------
+// Restoration of Erathia — the first original PC campaign, Long Live the Queen.
+// Every scenario is playable, fixed, and backed by a designed board map.
+// -----------------------------------------------------------------------------
+
+const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
+  id: "erathia",
+  theme: "classic",
+  title: { en: "Restoration of Erathia", vi: "Phục Hưng Erathia" },
+  cover: cover("erathia"),
+  tagline: {
+    en: "Long Live the Queen — Catherine's first campaign to reclaim her homeland.",
+    vi: "Nữ Hoàng Vạn Tuế — chiến dịch đầu tiên của Catherine để giành lại quê hương."
+  },
+  protagonist: { en: "Queen Catherine Ironfist", vi: "Nữ Hoàng Catherine Ironfist" },
+  chapters: [
+    {
+      id: "homecoming",
+      title: { en: "Homecoming", vi: "Ngày Trở Về" },
+      synopsis: {
+        en: "Establish a base on the occupied coast, rally Erathia's militia, uncover Nighon's invasion road and capture the underground town of Terraneus.",
+        vi: "Lập căn cứ trên bờ biển bị chiếm đóng, tập hợp dân quân Erathia, tìm đường xâm lược của Nighon và chiếm thành Terraneus dưới lòng đất."
+      },
+      objective: { en: "Capture Terraneus", vi: "Chiếm Terraneus" },
+      playable: true,
+      briefingArt: erathiaArt("homecoming"),
+      mapPosition: { x: 24, y: 78 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS.homecoming,
+      levelCap: 6,
+      carryOverHeroes: 4,
+      heroIds: ["catherine", "rion", "valeska", "lord_haart"],
+      startingBonuses: [
+        {
+          id: "pikemen",
+          title: { en: "14 Pikemen", vi: "14 Lính Giáo" },
+          effect: { en: "Board equivalent: add a Pack of level-1 Castle troops.", vi: "Tương đương bàn cờ: thêm một Pack lính Castle cấp 1." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 1, side: "pack" }, { level: 2, side: "few" }] }
+        },
+        {
+          id: "rare-resources",
+          title: { en: "+5 rare resources", vi: "+5 tài nguyên quý" },
+          effect: { en: "Board equivalent: +5 Valuables at the start.", vi: "Tương đương bàn cờ: +5 Valuables khi bắt đầu." },
+          preset: { startingBonuses: [{ kind: "resources", valuables: 5 }] }
+        },
+        {
+          id: "first-aid",
+          title: { en: "First Aid Tent", vi: "Lều Cứu Thương" },
+          effect: { en: "Board equivalent: Search 3 Ability cards for battlefield support.", vi: "Tương đương bàn cờ: Search 3 thẻ Ability hỗ trợ chiến trường." },
+          preset: { startingBonuses: [{ kind: "search", deck: "abilities", count: 3 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 1,
+        difficulty: "easy",
+        computerSeats: [{ factionId: "dungeon", heroDefId: "alamar", label: "Nighon occupation — Alamar" }]
+      },
+      scenes: {
+        onStart: "story.erathia.homecoming.intro",
+        onVictory: "story.erathia.homecoming.victory",
+        onDefeat: "story.erathia.homecoming.defeat"
+      }
+    },
+    {
+      id: "guardian-angels",
+      title: { en: "Guardian Angels", vi: "Những Thiên Thần Hộ Mệnh" },
+      synopsis: {
+        en: "Reach Fair Feather and break the Nighon–Kreegan siege. If the rumors are true, the angels protecting the city may join Erathia's cause.",
+        vi: "Tiến đến Fair Feather và phá vòng vây Nighon–Kreegan. Nếu tin đồn đúng, các thiên thần bảo vệ thành có thể gia nhập Erathia."
+      },
+      objective: { en: "Defeat every enemy", vi: "Đánh bại mọi kẻ thù" },
+      playable: true,
+      briefingArt: erathiaArt("guardian-angels"),
+      mapPosition: { x: 28, y: 20 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS["guardian-angels"],
+      levelCap: 12,
+      carryOverHeroes: 8,
+      heroIds: ["catherine", "valeska", "rion", "adelaide"],
+      startingBonuses: [
+        {
+          id: "angel",
+          title: { en: "1 Angel", vi: "1 Thiên Thần" },
+          effect: { en: "Begin with one Few level-7 unit.", vi: "Bắt đầu với một đơn vị Few cấp 7." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 7, side: "few" }] }
+        },
+        {
+          id: "zealots",
+          title: { en: "3 Zealots", vi: "3 Zealot" },
+          effect: { en: "Board equivalent: add a Pack of level-5 Castle troops.", vi: "Tương đương bàn cờ: thêm một Pack lính Castle cấp 5." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 5, side: "pack" }] }
+        },
+        {
+          id: "prayer",
+          title: { en: "Scroll of Prayer", vi: "Cuộn Phép Prayer" },
+          effect: { en: "Board equivalent: Search 3 Spell cards.", vi: "Tương đương bàn cờ: Search 3 thẻ Spell." },
+          preset: { startingBonuses: [{ kind: "search", deck: "spells", count: 3 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 1,
+        difficulty: "normal",
+        computerSeats: [{ factionId: "inferno", heroDefId: "xyron", label: "Nighon–Kreegan siege — Xyron" }]
+      },
+      scenes: {
+        onStart: "story.erathia.guardian-angels.intro",
+        onVictory: "story.erathia.guardian-angels.victory",
+        onDefeat: "story.erathia.guardian-angels.defeat"
+      }
+    },
+    {
+      id: "griffin-cliff",
+      title: { en: "Griffin Cliff", vi: "Vách Đá Griffin" },
+      synopsis: {
+        en: "Liberate all seven Griffin Towers from the combined Nighon and Kreegan occupation before the march on Steadwick.",
+        vi: "Giải phóng cả bảy Tháp Griffin khỏi liên quân Nighon và Kreegan trước khi tiến quân đến Steadwick."
+      },
+      objective: { en: "Flag all 7 Griffin Towers", vi: "Cắm cờ cả 7 Tháp Griffin" },
+      playable: true,
+      briefingArt: erathiaArt("griffin-cliff"),
+      mapPosition: { x: 65, y: 31 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS["griffin-cliff"],
+      heroIds: ["catherine", "valeska", "rion", "lord_haart", "adelaide"],
+      startingBonuses: [
+        {
+          id: "golden-bow",
+          title: { en: "Golden Bow", vi: "Cung Vàng" },
+          effect: { en: "Board equivalent: Search 4 Artifact cards.", vi: "Tương đương bàn cờ: Search 4 thẻ Artifact." },
+          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 4 }] }
+        },
+        {
+          id: "lions-shield",
+          title: { en: "Lion's Shield of Courage", vi: "Khiên Sư Tử Dũng Khí" },
+          effect: { en: "Board equivalent: +1 Morale and Search 3 Artifacts.", vi: "Tương đương bàn cờ: +1 Morale và Search 3 Artifact." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 3 }] }
+        },
+        {
+          id: "sack-of-gold",
+          title: { en: "Endless Sack of Gold", vi: "Túi Vàng Bất Tận" },
+          effect: { en: "Board equivalent: +15 Gold at the start.", vi: "Tương đương bàn cờ: +15 Gold khi bắt đầu." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 15 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 2,
+        difficulty: "normal",
+        computerSeats: [
+          { factionId: "dungeon", heroDefId: "alamar", label: "Nighon — Alamar" },
+          { factionId: "inferno", heroDefId: "xyron", label: "Kreegan — Xyron" }
+        ]
+      },
+      scenes: {
+        onStart: "story.erathia.griffin-cliff.intro",
+        onVictory: "story.erathia.griffin-cliff.victory",
+        onDefeat: "story.erathia.griffin-cliff.defeat"
+      }
+    }
+  ]
+};
+
+// -----------------------------------------------------------------------------
 // Registry.
 // -----------------------------------------------------------------------------
 
 // Restoration of Erathia leads the hub — the classic board-game campaign is the
 // front door to Story mode; the anime/crossover campaigns follow.
-export const CAMPAIGNS: readonly Campaign[] = [ERATHIA, JIANGHU, BIN, CONVERGENCE];
+export const CAMPAIGNS: readonly Campaign[] = [ERATHIA_LONG_LIVE_QUEEN, JIANGHU, BIN, CONVERGENCE];
 
 export const campaignRegistry: Record<string, Campaign> = Object.fromEntries(
   CAMPAIGNS.map((campaign) => [campaign.id, campaign])
@@ -505,6 +699,8 @@ export function getCampaignChapter(campaignId: string, chapterId: string): Campa
 export type ChapterRoomOptions = {
   opponents: number;
   playerFaction: FactionId;
+  playerHeroDefId?: string;
+  computerSeats?: Array<{ factionId: FactionId; heroDefId: string; label: string }>;
   difficulty?: GameDifficulty;
   /** Global Field Override system toggle. */
   fieldOverrides: boolean;
@@ -514,22 +710,46 @@ export type ChapterRoomOptions = {
   wog?: WogModOptions;
   /** House-rule toggles to inject (absent = untouched defaults). */
   houseRules?: Partial<Record<HouseRuleId, boolean>>;
+  customMap?: CustomMapTilePlan[];
+  customMapName?: string;
+  customMapPreset?: CustomMapPreset;
 };
 
-export function chapterRoomOptions(chapter: CampaignChapter): ChapterRoomOptions | null {
+export function chapterRoomOptions(chapter: CampaignChapter, bonusId?: string): ChapterRoomOptions | null {
   const setup = chapter.setup;
   if (!setup) {
     return null;
   }
+  const bonus = chapter.startingBonuses?.find((candidate) => candidate.id === bonusId)
+    ?? chapter.startingBonuses?.[0];
+  const basePreset = chapter.scenarioMap?.preset;
+  const customMapPreset = basePreset
+    ? {
+        ...basePreset,
+        ...(bonus?.preset ?? {}),
+        ...(basePreset.startingBonuses || bonus?.preset.startingBonuses
+          ? { startingBonuses: [...(basePreset.startingBonuses ?? []), ...(bonus?.preset.startingBonuses ?? [])] }
+          : {})
+      }
+    : undefined;
   return {
     opponents: setup.opponents,
     playerFaction: setup.playerFaction,
+    ...(setup.playerHeroDefId ? { playerHeroDefId: setup.playerHeroDefId } : {}),
+    ...(setup.computerSeats ? { computerSeats: setup.computerSeats } : {}),
     ...(setup.difficulty ? { difficulty: setup.difficulty } : {}),
     fieldOverrides: Boolean(setup.fieldOverrides),
     anime: resolveAnimeOptions(setup.anime ?? null),
     // GameSetupOptions.wog wants the FULL module record — resolve the partial
     // against the defaults (the anime twin of resolveAnimeOptions).
     ...(setup.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...setup.wog } } : {}),
-    ...(setup.houseRules ? { houseRules: setup.houseRules } : {})
+    ...(setup.houseRules ? { houseRules: setup.houseRules } : {}),
+    ...(chapter.scenarioMap
+      ? {
+          customMap: chapter.scenarioMap.tiles,
+          customMapName: chapter.scenarioMap.name,
+          customMapPreset
+        }
+      : {})
   };
 }

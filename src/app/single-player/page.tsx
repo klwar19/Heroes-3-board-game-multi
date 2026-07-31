@@ -1,32 +1,27 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 
-/**
- * Single-player front door (plan §5.1): a short creation panel that mints a
- * PRIVATE room with one human seat and the chosen number of computer seats,
- * then drops the player into the normal setup screen at /?room=<id>. The
- * opponent count picked here is only the starting value — the setup screen's
- * own "Computer opponents" control (SET_COMPUTER_OPPONENTS) can change it up
- * to the selected scenario's capacity before the adventure starts.
- */
+function SinglePlayerNavArt({ src }: { src: string }) {
+  return <img alt="" aria-hidden="true" className="singlePlayerNavArt" draggable={false} src={assetUrl(src)} />;
+}
+
 export default function SinglePlayerPage() {
   const router = useRouter();
+  const [computerOpen, setComputerOpen] = useState(false);
   const [opponents, setOpponents] = useState(1);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const create = async () => {
-    if (creating) {
-      return;
-    }
+    if (creating) return;
     setCreating(true);
     setError(null);
     try {
@@ -39,67 +34,46 @@ export default function SinglePlayerPage() {
   };
 
   return (
-    <MenuShell backdrop="lobby-backdrop" title="Playing with computer">
-      <p className="loadingStatus">
-        A private table: you against computer opponents. Nobody else can join or
-        watch, and the game never appears in the multiplayer lobby or the ladder.
-      </p>
-      <p className="loadingTip">
-        The computer opponents build up their towns, recruit units, march their
-        heroes toward objectives and fight — they take on the neutral guards they
-        can beat and will attack you when their army is a match. Their battles
-        resolve instantly; you get a recap of each result, then choose when to
-        watch their moves play out on the map.
-      </p>
-      <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">
-        <span className="loadingStatus">Computer opponents</span>
-        <div className="singlePlayerOpponentChoices">
-          {[1, 2, 3].map((count) => (
-            <button
-              aria-pressed={opponents === count}
-              className={`menuNavButton singlePlayerOpponentChoice${opponents === count ? " selected" : ""}`}
-              key={count}
-              onClick={() => setOpponents(count)}
-              type="button"
-            >
-              {count}
-            </button>
-          ))}
-        </div>
-        <small className="loadingStatus">
-          Some scenarios seat fewer players — the count is capped by the map you
-          pick during setup.
-        </small>
-      </div>
-      <SinglePlayerSavePanel />
-      {error ? <p className="authError" role="alert">{error}</p> : null}
-      <nav className="menuNav" aria-label="Single player">
-        <button className="menuNavButton" disabled={creating} onClick={() => void create()} type="button">
-          <span className="menuNavText">
-            <span className="menuNavLabel">{creating ? "Creating…" : "Create game"}</span>
-            <small>Pick your faction and hero on the next screen, then start</small>
-          </span>
+    <MenuShell backdrop="lobby-backdrop" title="Single Player">
+      <p className="singlePlayerLead">Choose a free battle against computer opponents, or enter a fixed story campaign.</p>
+      <nav className="menuNav singlePlayerModeNav" aria-label="Single player">
+        <button className="menuNavButton" onClick={() => setComputerOpen(true)} type="button">
+          <SinglePlayerNavArt src="/assets/ui/single-player/vs-computer.webp" />
+          <span className="menuNavText"><span className="menuNavLabel">VS Computer</span><small>Create a private match and choose 1–3 opponents</small></span>
         </button>
         <Link className="menuNavButton" href="/story">
-          <img
-            alt=""
-            aria-hidden="true"
-            className="spNavSpellIcon"
-            draggable={false}
-            src={assetUrl("/assets/spell-icons/teleport.png")}
-          />
-          <span className="menuNavText">
-            <span className="menuNavLabel">Story mode</span>
-            <small>Solo campaigns — Wuxia, Isekai, the classic chronicle and the Grand Convergence</small>
-          </span>
+          <SinglePlayerNavArt src="/assets/ui/single-player/campaign.webp" />
+          <span className="menuNavText"><span className="menuNavLabel">Campaign</span><small>Restoration of Erathia · authored maps and story</small></span>
         </Link>
         <Link className="menuNavButton" href="/menu">
-          <span className="menuNavText">
-            <span className="menuNavLabel">Back</span>
-            <small>Return to the main menu</small>
-          </span>
+          <span className="singlePlayerBackSigil" aria-hidden>←</span>
+          <span className="menuNavText"><span className="menuNavLabel">Back</span><small>Return to the main menu</small></span>
         </Link>
       </nav>
+
+      {computerOpen ? (
+        <div className="singlePlayerDialogScrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setComputerOpen(false)}>
+          <section aria-label="VS Computer setup" aria-modal="true" className="singlePlayerDialog" role="dialog">
+            <button aria-label="Close VS Computer setup" className="campaignBriefingClose" onClick={() => setComputerOpen(false)} type="button">×</button>
+            <div className="singlePlayerDialogHead">
+              <SinglePlayerNavArt src="/assets/ui/single-player/vs-computer.webp" />
+              <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>You can change the opponent count, factions, heroes and map again in Game Settings before starting.</p></div>
+            </div>
+            <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">
+              <strong>Number of opponents</strong>
+              <div className="singlePlayerOpponentChoices">
+                {[1, 2, 3].map((count) => (
+                  <button aria-label={`${count} computer opponent${count === 1 ? "" : "s"}`} aria-pressed={opponents === count} className={`menuNavButton singlePlayerOpponentChoice${opponents === count ? " selected" : ""}`} key={count} onClick={() => setOpponents(count)} type="button">{count}</button>
+                ))}
+              </div>
+              <small>Some maps support fewer seats; Game Settings will cap the count to the selected scenario.</small>
+            </div>
+            <SinglePlayerSavePanel />
+            {error ? <p className="authError" role="alert">{error}</p> : null}
+            <button className="campaignPrimaryButton singlePlayerCreate" disabled={creating} onClick={() => void create()} type="button">{creating ? "Creating…" : `Continue with ${opponents} opponent${opponents === 1 ? "" : "s"}`}</button>
+          </section>
+        </div>
+      ) : null}
     </MenuShell>
   );
 }
