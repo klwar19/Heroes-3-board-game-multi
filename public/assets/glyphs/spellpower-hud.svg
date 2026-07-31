@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 0 1359 1631.8286">
+  <defs>
+    <linearGradient id="spell" x1="170" y1="1500" x2="1160" y2="160" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8b55e8"/>
+      <stop offset=".42" stop-color="#62c9ff"/>
+      <stop offset=".7" stop-color="#fff0a4"/>
+      <stop offset="1" stop-color="#ffb632"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-16%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="18" result="blur"/>
+      <feFlood flood-color="#5ecbff" flood-opacity=".52" result="color"/>
+      <feComposite in="color" in2="blur" operator="in" result="halo"/>
+      <feMerge>
+        <feMergeNode in="halo"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Refined from Heegu-sama/Homm3BG spellpower-yellow.svg: the authentic
+       wand-and-stars silhouette, with a readable jewel-tone HUD treatment. -->
+  <path
+    d="m 1018,582 h -1 L 1349,776 967,812 884,1188 766,916 Q 708,1032 586,1269.5 464,1507 447,1540 q -6,14 -11.5,23 -5.5,9 -17.5,25.5 -12,16.5 -27.5,27.5 -15.5,11 -34.5,14 -38,8 -81,-19 -45,-25 -57,-62 -17,-50 34,-124 21,-30 169.5,-251.5 Q 570,952 643,844 L 349,873 637,619 483,267 814,463 1101,207 Z m -581,4 q -81,10 -145,62 -63,49 -91,124 -22,-86 -86,-145 -53,-50 -125,-70 73,-10 132,-52 72,-51 105,-133 18,77 74,134 57,59 136,80 z m 731,457 q 82,1 153,-41 -50,65 -58,147 -9,79 24,151 -76,-44 -163,-40 -73,3 -137,40 44,-59 55,-131 14,-86 -22,-167 69,41 148,41 z M 778,251 q -8,-46 -38,-81 -28,-33 -71,-48 47,-14 80,-51 27,-31 36,-71 7,41 32,73 30,39 77,56 -43,12 -74,44 -32,33 -42,78 z"
+    fill="url(#spell)"
+    filter="url(#glow)"
+    stroke="#2b174d"
+    stroke-linejoin="round"
+    stroke-width="24"
+  />
+  <path d="M336 1502c22 22 56 34 91 24" fill="none" stroke="#fff4bd" stroke-linecap="round" stroke-width="24"/>
+</svg>

@@ -46,6 +46,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "mystical-garden-gold",
+    label: "Mystical Garden: 3 gold",
+    description:
+      "BINH house rule: the Mystical Garden's gold option grants 3 gold. Off: it grants the printed 2 gold (the 1-valuables option is unchanged).",
+    category: "global",
+    default: true,
+    legacyDefault: false
+  },
+  {
     id: "torso-of-legion-major",
     label: "Torso of Legion plays as Major",
     description:
@@ -123,6 +132,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
       "Haste, Slow and the initiative-only hero specialties also shift a unit's Combat movement by ±1 (the Battlefield-Expansion rule). Off: they change only Initiative, not movement (the standard/wiki rule).",
     category: "combat",
     default: true
+  },
+  {
+    id: "far-tile-rerolls",
+    label: "Ⅱ–Ⅲ tile Ore / Settlement rerolls",
+    description:
+      "On (BINH house rule): an Ore-Mine Ⅱ–Ⅲ tile may be rerolled once, and your second Ⅱ–Ⅲ opening may reroll toward your first Settlement. Off (official): the tile you reveal is final even when it has Ore or no Settlement; its identity cannot be changed.",
+    category: "combat",
+    default: true,
+    legacyDefault: false
   },
   {
     id: "ballistics-buff",

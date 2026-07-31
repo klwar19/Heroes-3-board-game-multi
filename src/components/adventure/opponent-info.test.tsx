@@ -114,7 +114,7 @@ describe("OpponentInfoDock — hand/deck/discard counts, crowns and the discard 
     return within(screen.getByRole("dialog"));
   }
 
-  it("shows hand / deck / discard sizes, crowns left of total, and hero movement", () => {
+  it("shows level / spell / crown / morale / move status and public pile sizes", () => {
     const state = twoPlayerGame();
     // Public counts: 4 in hand, 9 in the deck, 2 discarded (hidden identities for
     // hand/deck are irrelevant — only the COUNT is public).
@@ -123,17 +123,22 @@ describe("OpponentInfoDock — hand/deck/discard counts, crowns and the discard 
     state.players.p2.discard = ["ability.offense", "spell.magic_arrow"];
     state.players.p2.limits.expertUses = 2;
     state.players.p2.combatStats.expertUsesSpentThisRound = 1;
+    state.players.p2.combatStats.spellsCastThisRound = 1;
+    state.players.p2.morale = 1;
     const hero = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
     hero.movementPoints = 3;
 
     const panel = openBob(state);
-    const counts = panel.getByLabelText("Cards and crowns");
+    const counts = panel.getByLabelText("Battle status");
     expect(counts.textContent).toMatch(/Hand\s*4/);
     expect(counts.textContent).toMatch(/Deck\s*9/);
     expect(counts.textContent).toMatch(/Discard\s*2/);
+    expect(counts.textContent).toMatch(/Level\s*3/);
+    expect(counts.textContent).toMatch(/Spell\s*1\/1/);
     // Crowns: 1 of 2 left this combat round.
     expect(counts.textContent).toMatch(/Crowns\s*1\/2/);
-    expect(counts.textContent).toMatch(/Moves\s*3/);
+    expect(counts.textContent).toMatch(/Morale\s*\+1/);
+    expect(counts.textContent).toMatch(/Move\s*3/);
   });
 
   it("lists the discard pile (public), newest first, and marks the face-up top", () => {

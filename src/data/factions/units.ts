@@ -1620,7 +1620,7 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "neutral",
     tier: "bronze",
     type: "ranged",
-    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-dungeon-bronze-evil_eyes-few.webp" },
+    neutral: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 6 }, abilities: ["ignore-combat-penalties"], abilityText: "[unit_passive] Ignore the combat penalty against adjacent units.", cardImage: "/assets/units-neutral-bronze-evil_eyes.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/evil_eyes/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Core Game)",

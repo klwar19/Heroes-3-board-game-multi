@@ -139,7 +139,7 @@ describe("Resource die house rule", () => {
 });
 
 describe('Map "OR" choices resolve exactly one branch', () => {
-  it("Mystical Garden: taking gold grants +3 gold (house rule) and NOT the valuables branch", () => {
+  it("Mystical Garden: BINH gold rule grants +3 gold and NOT the valuables branch", () => {
     const state = makeGame();
     const player = state.players.p1;
     const gold = player.resources.gold;
@@ -150,6 +150,20 @@ describe('Map "OR" choices resolve exactly one branch', () => {
 
     expect(player.resources.gold).toBe(gold + 3);
     expect(player.resources.valuables).toBe(valuables); // the other branch did not run
+  });
+
+  it("Mystical Garden: with the BINH rule off, the printed gold branch grants exactly +2", () => {
+    const state = makeGame("mystical-garden-printed");
+    state.adventure!.houseRules!["mystical-garden-gold"] = false;
+    const player = state.players.p1;
+    const gold = player.resources.gold;
+    const valuables = player.resources.valuables;
+    visit(state, "p1", injectField(state, "mystical_garden"));
+
+    choose(state, "p1", (label) => label.includes("2 gold"));
+
+    expect(player.resources.gold).toBe(gold + 2);
+    expect(player.resources.valuables).toBe(valuables);
   });
 
   it("Mystical Garden: taking valuables grants +1 valuables and NOT the gold branch", () => {

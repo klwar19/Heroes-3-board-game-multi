@@ -45,6 +45,7 @@ import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 import { SpellBookModal } from "@/components/adventure/spell-book-modal";
 import { cardUnplayableReason } from "./helper-coach";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
+import { BattleMetric, signedMorale } from "./battle-metrics";
 
 export function CardFrame({
   cardId,
@@ -1163,19 +1164,39 @@ export function OpponentBar({
         }
         const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
         const spellLimitLabel = playerSpellCastsIgnoreLimit(state, playerId) ? "∞" : String(spellLimit);
-        const crownsLeft = player.limits.expertUses - player.combatStats.expertUsesSpentThisRound;
+        const crownsTotal = player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0);
+        const crownsLeft = Math.max(0, crownsTotal - player.combatStats.expertUsesSpentThisRound);
+        const hero = Object.values(state.heroes).find(
+          (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
+        );
 
         return (
           <section className="opponentSeat" key={playerId} aria-label={`${player.name} seat`}>
             <div className="seatBadge">
               <SeatNameplate state={state} playerId={playerId} />
               <span className="seatMetrics">
-                <span title="Crowns left this combat round">
-                  <Crown aria-hidden="true" size={12} /> {crownsLeft}
-                </span>
-                <span title="Spells cast / limit">
-                  <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel}
-                </span>
+                {hero ? (
+                  <BattleMetric kind="level" label="Level" title={`${player.name}'s hero level`} value={hero.level} />
+                ) : null}
+                <BattleMetric
+                  kind="spell"
+                  label="Spell"
+                  title={`${player.name}'s spells cast this combat round`}
+                  value={`${player.combatStats.spellsCastThisRound}/${spellLimitLabel}`}
+                />
+                <BattleMetric
+                  kind="crown"
+                  label="Crowns"
+                  title={`${player.name}'s expert-effect crowns left this combat round`}
+                  value={`${crownsLeft}/${crownsTotal}`}
+                />
+                <BattleMetric
+                  kind="morale"
+                  label="Morale"
+                  morale={player.morale}
+                  title={`${player.name}'s current morale`}
+                  value={signedMorale(player.morale)}
+                />
               </span>
               <RuneTrack state={state} playerId={playerId} compact />
             </div>
@@ -1217,7 +1238,11 @@ export function PlayerDock({
 
   const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
   const spellLimitLabel = playerSpellCastsIgnoreLimit(state, viewerPlayerId) ? "∞" : String(spellLimit);
-  const crownsLeft = player.limits.expertUses - player.combatStats.expertUsesSpentThisRound;
+  const crownsTotal = player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0);
+  const crownsLeft = Math.max(0, crownsTotal - player.combatStats.expertUsesSpentThisRound);
+  const hero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
+  );
   const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
   const openDiscard = () =>
     onShowPile?.(`${player.name} — discard pile`, player.discard, "cards");
@@ -1261,12 +1286,27 @@ export function PlayerDock({
         <div className="combatSpellShelfHost" id={`combat-spell-shelf-${viewerPlayerId}`} />
       </div>
       <div className="dockMetrics">
-        <span title="Crowns left this combat round">
-          <Crown aria-hidden="true" size={12} /> {crownsLeft}
-        </span>
-        <span title="Spells cast this combat round">
-          <Sparkles aria-hidden="true" size={12} /> {player.combatStats.spellsCastThisRound}/{spellLimitLabel}
-        </span>
+        <SeatNameplate state={state} playerId={viewerPlayerId} />
+        {hero ? <BattleMetric kind="level" label="Level" title="Your hero level" value={hero.level} /> : null}
+        <BattleMetric
+          kind="spell"
+          label="Spell"
+          title="Your spells cast this combat round"
+          value={`${player.combatStats.spellsCastThisRound}/${spellLimitLabel}`}
+        />
+        <BattleMetric
+          kind="crown"
+          label="Crowns"
+          title="Your expert-effect crowns left this combat round"
+          value={`${crownsLeft}/${crownsTotal}`}
+        />
+        <BattleMetric
+          kind="morale"
+          label="Morale"
+          morale={player.morale}
+          title="Your current morale"
+          value={signedMorale(player.morale)}
+        />
         <span title="Gold / materials / valuables">
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v
         </span>

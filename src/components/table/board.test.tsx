@@ -1840,22 +1840,25 @@ describe("CommandDock — a watcher sees the fighting player's resources", () =>
     );
   }
 
-  it("names the fighter and shows THEIR spell count, crowns, hand and movement", () => {
+  it("names the fighter and shows THEIR level, spell count, crowns, morale and movement", () => {
     const { container } = renderDock(neutralFightState(), "p3");
     const limits = container.querySelector(".dockLimits")!;
     expect(limits.querySelector(".dockLimitsWho")?.textContent).toBe(neutralFightState().players.p1.name);
-    expect(limits.textContent).toMatch(/Spell 1\/1/);
-    expect(limits.textContent).toMatch(/1\/2 crowns/); // fighter's, not the watcher's 9
-    expect(limits.textContent).toMatch(/Hand 3/);
-    expect(limits.textContent).toMatch(/MP 4/);
+    expect(limits.textContent).toMatch(/Level\s*5/);
+    expect(limits.textContent).toMatch(/Spell\s*1\/1/);
+    expect(limits.textContent).toMatch(/Crowns\s*1\/2/); // fighter's, not the watcher's 9
+    expect(limits.textContent).toMatch(/Morale\s*0/);
+    expect(limits.textContent).toMatch(/Move\s*4/);
+    expect(limits.textContent).not.toMatch(/Hand/);
   });
 
   it("CONTROL: the FIGHTER's own dock keeps their own numbers and no name label", () => {
     const { container } = renderDock(neutralFightState(), "p1");
     const limits = container.querySelector(".dockLimits")!;
     expect(limits.querySelector(".dockLimitsWho")).toBeNull();
-    expect(limits.textContent).toMatch(/Spell 1\/1/);
-    expect(limits.textContent).toMatch(/1\/2 crowns/);
-    expect(limits.textContent).toMatch(/Hand 3/);
+    expect(limits.textContent).toMatch(/Spell\s*1\/1/);
+    expect(limits.textContent).toMatch(/Crowns\s*1\/2/);
+    expect(limits.textContent).toMatch(/Morale\s*0/);
+    expect(limits.textContent).not.toMatch(/Hand/);
   });
 });

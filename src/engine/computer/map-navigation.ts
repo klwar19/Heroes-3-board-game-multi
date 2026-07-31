@@ -175,7 +175,7 @@ export const VISITABLE_LOCATION_VALUE: Record<string, number> = {
   derrick: 15, // 3 gold
   windmill: 12, // 1 valuables
   prospector: 12, // 1 valuables
-  mystical_garden: 12, // 3 gold or 1 valuables
+  mystical_garden: 12, // printed 2 gold / 1 valuables; BINH can raise gold to 3
   flotsam: 12, // 2 building materials
   resource_symbol: 10, // 1 Resource die
   sea_barrel: 10,
