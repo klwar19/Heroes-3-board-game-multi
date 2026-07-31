@@ -730,10 +730,10 @@ export function getScenario(scenarioId?: string): ScenarioDefinition {
 function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptions): Record<string, DeckState> {
   const decks: Record<string, DeckState> = {};
   const wogCreaturesOn = Boolean(wog.enabled && wog.newCreatures);
-  const doomCreaturesOn = Boolean(
-    wogCreaturesOn ||
-      animeModuleEnabled({ anime }, "doomNeutrals")
-  );
+  // The Doom neutral slice belongs to the ANIME mod only — WOG's "new creatures"
+  // adds the WOG roster alone. (Previously `wogCreaturesOn ||` forced the doom
+  // units into the decks for every WOG game too.)
+  const doomCreaturesOn = animeModuleEnabled({ anime }, "doomNeutrals");
   for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
     const deckId = NEUTRAL_DECK_IDS[tier];
     const unitIds = [
@@ -2599,7 +2599,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : wogPveOn
         ? wog.pveTheme
         : "classic");
-  const pveTheme = resolvePveEncounterTheme(requestedPveTheme, seed);
+  // Doom is an ANIME-mod theme: a WOG-only PvE game (anime off) can never mint
+  // Doom armies/bosses, whether it picked "doom" or "random". A designer map
+  // that explicitly authored the Doom theme keeps it (pveTheme is designer-first).
+  const doomThemeAllowed = Boolean(anime.enabled) || setupOptions.customMapPreset?.pveTheme === "doom";
+  const pveTheme = resolvePveEncounterTheme(requestedPveTheme, seed, doomThemeAllowed);
   const pressureCandidate =
     setupOptions.customMapPreset?.monsterWaves?.pressure ??
     (anime.enabled && anime.monsterWaves

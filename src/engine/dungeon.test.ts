@@ -529,7 +529,7 @@ describe("The Dungeon — delving floors", () => {
       ["doom", "pve-calamity-doom"]
     ] as const) {
       const state = dungeonGame(`dungeon-board-${theme}`, {
-        wog: { enabled: true, dungeon: true, pveTheme: theme }
+        anime: { enabled: true, dungeon: true, pveTheme: theme }
       });
       const fieldId = placeSiteUnderHero(state);
       const fought = delveFloor(state, fieldId);
@@ -539,7 +539,7 @@ describe("The Dungeon — delving floors", () => {
 
   it("the Doom dungeon swaps in Doom rooms, guards, and its own layered floor bosses", () => {
     const state = dungeonGame("dungeon-doom-floor", {
-      wog: { enabled: true, dungeon: true, pveTheme: "doom" }
+      anime: { enabled: true, dungeon: true, pveTheme: "doom" }
     });
     const fieldId = placeSiteUnderHero(state);
     state.players.p1.dungeonFloor = 5;

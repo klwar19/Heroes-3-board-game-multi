@@ -834,15 +834,9 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
 
-    const theme = within(dialog).getByRole("group", { name: /PvE encounter theme/i });
-    fireEvent.click(within(theme).getByRole("button", { name: "Doom" }));
-    expect(onAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        options: expect.objectContaining({
-          wog: expect.objectContaining({ pveTheme: "doom" })
-        })
-      })
-    );
+    // The Doom PvE THEME picker is anime-only now, so the WOG window offers no
+    // theme choice (its PvE encounters are always the classic world).
+    expect(within(dialog).queryByRole("group", { name: /PvE encounter theme/i })).toBeNull();
 
     const pressure = within(dialog).getByRole("group", { name: /Wave pressure/i });
     fireEvent.click(within(pressure).getByRole("button", { name: /Brutal/ }));

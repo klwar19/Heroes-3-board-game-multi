@@ -298,17 +298,19 @@ describe("Setup Hub — Advanced settings window", () => {
 });
 
 /**
- * The cross-window strip. The four windows edit ONE shared options object, so
- * the connection between them has to be VISIBLE: every window shows all four
- * boxes' live values (read from the same derivation the boxes render) and
- * switches to any of them in one click.
+ * The setup SUMMARY RAIL. The painted scene shows only each box's TITLE (the
+ * per-box summary is hidden), so the consolidated live view of every choice
+ * lives in ONE always-visible panel pinned to the right of the scene — not
+ * inside the popup windows anymore. It reads the same derivation the boxes use,
+ * and each chip is one click into that box.
  */
-describe("Setup Hub — the cross-window strip", () => {
-  function stripValues() {
-    return Array.from(document.querySelectorAll(".setupHubNavItem")).map((item) => item.textContent ?? "");
+describe("Setup Hub — the summary rail", () => {
+  function railValues() {
+    const rail = document.querySelector(".setupSummaryRail") as HTMLElement | null;
+    return Array.from(rail?.querySelectorAll(".setupHubNavItem") ?? []).map((item) => item.textContent ?? "");
   }
 
-  it("shows every box's live choice inside EVERY window, marking the current one", () => {
+  it("shows every box's live choice in one always-visible rail, all four as buttons", () => {
     renderLobby((state) => {
       const options = state.setupLobby!.options;
       options.ruleset = "legacy";
@@ -321,40 +323,41 @@ describe("Setup Hub — the cross-window strip", () => {
       seat.heroDefId = "catherine";
     });
 
-    for (const [boxName, dialogName, hereTitle] of [
-      [/Game mode/, "Game mode", "Game mode"],
-      [/Heroes & Draft/, "Heroes & Draft", "Heroes & Draft"],
-      [/^Map/, "Choose a map", "Map"],
-      [/Advanced settings/, "Advanced settings", "Advanced settings"]
+    const values = railValues();
+    expect(values).toHaveLength(4);
+    // The rail reflects EVERY box at once — mode, mods, hero, map, difficulty.
+    expect(values.join(" | ")).toContain("Legacy");
+    expect(values.join(" | ")).toContain("WOG");
+    expect(values.join(" | ")).toContain("Castle — Catherine");
+    expect(values.join(" | ")).toContain("Twin Peaks");
+    expect(values.join(" | ")).toContain("Easy");
+    // No "you are here" span on the scene: all four chips are actionable.
+    expect(document.querySelectorAll(".setupHubNavItem.here")).toHaveLength(0);
+    const rail = document.querySelector(".setupSummaryRail") as HTMLElement;
+    expect(rail.querySelectorAll("button.setupHubNavItem")).toHaveLength(4);
+  });
+
+  it("the rail is NOT inside any popup window — the strip was removed from windows", () => {
+    renderLobby();
+    // The rail sits on the scene, a sibling of the boxes — never inside a window.
+    expect(document.querySelector(".setupHubWindow .setupSummaryRail")).toBeNull();
+    for (const [boxName, dialogName] of [
+      [/Game mode/, "Game mode"],
+      [/Heroes & Draft/, "Heroes & Draft"],
+      [/^Map/, "Choose a map"],
+      [/Advanced settings/, "Advanced settings"]
     ] as const) {
       fireEvent.click(box(boxName));
-      const values = stripValues();
-      expect(values).toHaveLength(4);
       const content = document.querySelector(".setupHubWindowContent") as HTMLElement;
-      expect(content.lastElementChild?.classList.contains("setupHubSummaryRail")).toBe(true);
-      // The MAP window shows the game mode and difficulty; the ADVANCED window
-      // shows the map — that is the "reflection" the four separate boxes lost.
-      expect(values.join(" | ")).toContain("Legacy");
-      expect(values.join(" | ")).toContain("WOG");
-      expect(values.join(" | ")).toContain("Castle — Catherine");
-      expect(values.join(" | ")).toContain("Twin Peaks");
-      expect(values.join(" | ")).toContain("Easy");
-
-      const here = document.querySelector(".setupHubNavItem.here") as HTMLElement;
-      expect(here.textContent).toContain(hereTitle);
-      // "You are here" is not a button — only the other three switch windows.
-      expect(here.tagName).toBe("SPAN");
-      expect(document.querySelectorAll("button.setupHubNavItem")).toHaveLength(3);
+      expect(content.querySelector(".setupHubNavItem")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: `Close ${dialogName}` }));
     }
   });
 
-  it("a strip chip switches straight to that window", () => {
+  it("a rail chip opens straight into that box's window", () => {
     renderLobby();
-    fireEvent.click(box(/Advanced settings/));
-    fireEvent.click(screen.getByRole("button", { name: "Switch to the Map box" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change the Map box" }));
     expect(screen.getByRole("dialog", { name: "Choose a map" })).toBeTruthy();
-    expect(screen.queryByRole("dialog", { name: "Advanced settings" })).toBeNull();
     // Still exactly one hub window open.
     expect(document.querySelectorAll(".setupHubWindow")).toHaveLength(1);
   });
@@ -375,9 +378,9 @@ describe("Setup Hub — the cross-window strip", () => {
     expect(box(/Game mode/).textContent).toContain("Legacy");
     expect(box(/Advanced settings/).textContent).toContain("Default");
 
-    fireEvent.click(box(/^Map/));
-    expect(stripValues().join(" | ")).toContain("Legacy");
-    expect(stripValues().join(" | ")).toContain("Twin Peaks");
+    // The always-visible rail reflects both the mode and the designed map.
+    expect(railValues().join(" | ")).toContain("Legacy");
+    expect(railValues().join(" | ")).toContain("Twin Peaks");
   });
 });
 

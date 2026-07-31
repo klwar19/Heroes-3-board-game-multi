@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DOOM_UNIT_IDS, DOOM_UNIT_IDS_BY_TIER, doomUnitDefinitions } from "@/data/doom";
+import { WOG_UNIT_IDS } from "@/data/wog";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { createAdventureGameState } from "./adventure-setup";
@@ -69,7 +70,10 @@ describe("Doom neutral monster slice", () => {
     expect(doomUnitDefinitions["doom.cacodemon"].type).toBe("flying");
   });
 
-  it("adds Doom guards through WOG or Anime neutral-creature gates", () => {
+  it("adds Doom guards through the ANIME gate only; WOG new-creatures adds its OWN roster, never Doom", () => {
+    // WOG "new creatures" shuffles in the WOG roster — but NOT the Doom slice,
+    // which now belongs to the anime mod alone. (The WOG PvE modules keep their
+    // WOG special neutrals; only Doom moved.)
     const on = createAdventureGameState({
       seed: "doom-decks-on",
       ruleset: "binh",
@@ -77,7 +81,10 @@ describe("Doom neutral monster slice", () => {
       rollFirstPlayer: false
     });
     const cardsOn = Object.values(NEUTRAL_DECK_IDS).flatMap((deckId) => on.decks[deckId].drawPile);
-    expect(cardsOn).toEqual(expect.arrayContaining(DOOM_UNIT_IDS));
+    // The WOG roster IS present…
+    expect(cardsOn).toEqual(expect.arrayContaining(WOG_UNIT_IDS));
+    // …but the Doom slice is NOT (anime-only now).
+    expect(cardsOn.filter((id) => id.startsWith("doom."))).toEqual([]);
 
     const off = createAdventureGameState({
       seed: "doom-decks-off",

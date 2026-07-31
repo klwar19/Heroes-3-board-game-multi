@@ -699,6 +699,11 @@ export default function Home() {
   const pendingRoomNameRef = useRef<{ roomId: string; name: string } | null>(null);
   // A Closed table chosen at /play: host this room once connected (creator → host).
   const pendingRoomHostedRef = useRef<string | null>(null);
+  // The CREATOR of a closed/ranked table: once the room is hosted, self-take the
+  // first open seat so the setup screen renders the seat + player-count picker
+  // like a normal game (a hosted room otherwise leaves the creator an unseated
+  // observer with the seat controls hidden behind the top-bar menu). Fires once.
+  const autoSeatHostedRef = useRef<string | null>(null);
   // A Battle Test chosen at /battle: switch this fresh room to combat-sandbox
   // once connected (PartyKit makes every room an adventure lobby first).
   const pendingRoomModeRef = useRef<{ roomId: string; mode: GameMode } | null>(null);
@@ -1085,6 +1090,9 @@ export default function Home() {
       const pendingHosted = takePendingRoomHosted();
       if (pendingHosted && pendingHosted === initialRoom) {
         pendingRoomHostedRef.current = pendingHosted;
+        // Ranked/closed creator: also auto-take a seat once hosting applies, so
+        // the setup UI (seat + player-count picker) appears like a normal game.
+        autoSeatHostedRef.current = pendingHosted;
       }
       // A Battle Test chosen at create time → switch the room to that mode.
       const pendingMode = takePendingRoomMode();
@@ -4181,6 +4189,34 @@ export default function Home() {
             });
           if (pendingRanked.ranked && !state.room?.hosted) {
             void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+          }
+        }
+      }
+      // Closed/ranked CREATOR: once the table actually shows hosted, self-take the
+      // first open seat. A hosted room starts every member (the creator included)
+      // as an unseated observer, and the whole Setup Hub — seat display AND the
+      // player-count picker — is gated on having a seat, so a ranked game looked
+      // like it "had no choice for picking seat or players". Seating the creator
+      // makes ranked setup match a normal game. Fires ONCE (ref cleared on submit);
+      // while the room is still flipping to hosted the ref is kept and retried.
+      if (autoSeatHostedRef.current === roomId) {
+        const mySeat = me?.seat;
+        if (state.room?.hosted && me && (!mySeat || mySeat === "observer")) {
+          if (state.phase === "setup" && state.setupLobby) {
+            const takenSeats = new Set(
+              (state.room.members ?? [])
+                .filter((member) => member.clientId !== clientId)
+                .map((member) => member.seat)
+            );
+            const firstOpenSeat = state.setupLobby.seats
+              .map((seat) => seat.playerId)
+              .find((seatId) => !takenSeats.has(seatId));
+            autoSeatHostedRef.current = null; // one-shot, whether or not a seat is free
+            if (firstOpenSeat) {
+              void connection
+                .submitAction({ type: "ASSIGN_SEAT", clientId, targetClientId: clientId, seat: firstOpenSeat })
+                .catch(() => {});
+            }
           }
         }
       }

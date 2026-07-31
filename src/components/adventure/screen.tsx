@@ -187,7 +187,7 @@ import {
   type SetupModeId
 } from "@/components/adventure/setup-hub-summary";
 import { MapPickModal } from "@/components/adventure/map-pick-modal";
-import { SetupHubNav } from "@/components/adventure/setup-hub-nav";
+import { SetupSummaryRail } from "@/components/adventure/setup-summary-rail";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
 import { SetupSceneArt } from "@/components/adventure/setup-scene";
 import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ART } from "@/data/assets/homm-assets";
@@ -8592,7 +8592,7 @@ function GameModeSection({
             </header>
             <div className="wogModuleList">
               {([
-                ["newCreatures", "New neutral creatures", "Adds the WOG roster and the Doom neutral slice to the Bronze, Silver, Gold and Azure Neutral decks."],
+                ["newCreatures", "New neutral creatures", "Adds the WOG roster to the Bronze, Silver, Gold and Azure Neutral decks."],
                 ["commanders", "Commanders", "Every player gets their faction's commander: it fights in the main hero's battles as the army's 5th unit (you deploy up to 4), grades up at hero level 2, 4 and 6, and casts a command ability once per combat round."],
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
@@ -8635,41 +8635,10 @@ function GameModeSection({
                   ))}
                 </div>
               ) : null}
-              {wog.monsterWaves || wog.raidBosses || wog.dungeon ? (
-                <div className="pveDirectorPanel">
-                  <div className="pveDirectorHeading">
-                    <span>Encounter director</span>
-                    <strong>Choose the world these battles belong to</strong>
-                  </div>
-                  <div className="pveThemeCards" role="group" aria-label="PvE encounter theme">
-                    {([
-                      ["classic", "Erathian", "Arcane calamity", "/assets/board/battlefield-4x5-pve-calamity-classic-scenery.webp"],
-                      ["doom", "Doom", "Infernal invasion", "/assets/board/battlefield-4x5-pve-calamity-doom-scenery.webp"]
-                    ] as const).map(([theme, label, subtitle, image]) => (
-                      <button
-                        aria-label={label}
-                        aria-pressed={(wog.pveTheme ?? "classic") === theme}
-                        className={(wog.pveTheme ?? "classic") === theme ? "selected" : ""}
-                        key={theme}
-                        onClick={() => send({ wog: { ...wog, pveTheme: theme } })}
-                        type="button"
-                      >
-                        <img alt="" aria-hidden="true" src={assetUrl(image)} />
-                        <span><strong>{label}</strong><small>{subtitle}</small></span>
-                      </button>
-                    ))}
-                    <button
-                      aria-label="Random"
-                      aria-pressed={wog.pveTheme === "random"}
-                      className={`pveThemeRandom${wog.pveTheme === "random" ? " selected" : ""}`}
-                      onClick={() => send({ wog: { ...wog, pveTheme: "random" } })}
-                      type="button"
-                    >
-                      <span><strong>Random</strong><small>Seeded once</small></span>
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+              {/* No PvE THEME picker for WOG: the Doom theme is an anime-mod
+                  feature, so WOG's PvE encounters are always the classic
+                  (Erathian) world. The theme picker lives in the Anime mod
+                  window instead. */}
               {wog.raidBosses ? (
                 <div className="waveCadenceRow pveSettingRow" role="group" aria-label="Raid boss arrival">
                   <strong>Rift Lair arrival</strong>
@@ -11333,13 +11302,11 @@ function GameModeModal({
   state,
   viewerPlayerId,
   onAction,
-  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
-  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   const lobby = state.setupLobby;
@@ -11354,7 +11321,6 @@ function GameModeModal({
       className="setupHubWindow--mode"
       eyebrow="Game setup"
       label="Game mode"
-      nav={<SetupHubNav current="mode" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
       onClose={onClose}
     >
       <GameModeSection
@@ -11383,14 +11349,12 @@ function HeroesDraftModal({
   viewerPlayerId,
   onAction,
   onInspect,
-  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
   onInspect: (heroDefId: string) => void;
-  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   // Hot-seat (open table, several seats, one browser): the local seat switcher
@@ -11402,7 +11366,6 @@ function HeroesDraftModal({
       className="setupHubWindow--heroes"
       eyebrow="Map setup"
       label="Heroes & Draft"
-      nav={<SetupHubNav current="heroes" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
       onClose={onClose}
     >
       <SeatCountControl onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
@@ -11437,7 +11400,6 @@ function AdvancedSettingsModal({
       className="setupHubWindow--advanced"
       eyebrow="Full options"
       label="Advanced settings"
-      nav={<SetupHubNav current="advanced" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
       onClose={onClose}
     >
       <GameOptionsPanel onAction={onAction} onOpenBox={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
@@ -11685,11 +11647,13 @@ export function SetupLobbyScreen({
       {mySeat ? (
         <>
           <SetupHub onOpen={setOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
+          {/* Always-visible consolidated summary, pinned to the right of the
+              scene — the painted boxes show only their titles. */}
+          <SetupSummaryRail onOpen={setOpenBox} state={state} viewerPlayerId={viewerPlayerId} />
           {openBox === "mode" ? (
             <GameModeModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
-              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -11699,7 +11663,6 @@ export function SetupLobbyScreen({
               onAction={onAction}
               onClose={() => setOpenBox(null)}
               onInspect={setInfoHeroId}
-              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />
@@ -11708,7 +11671,6 @@ export function SetupLobbyScreen({
             <MapPickModal
               onAction={onAction}
               onClose={() => setOpenBox(null)}
-              onOpenBox={setOpenBox}
               state={state}
               viewerPlayerId={viewerPlayerId}
             />

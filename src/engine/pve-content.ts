@@ -22,13 +22,26 @@ export const WAVE_DEFEAT_LIMIT_LABELS: Record<WaveDefeatLimit, string> = {
   3: "Eliminated after 3 losses"
 };
 
-/** Resolve the lobby's Random choice once, deterministically, when the game is built. */
+/**
+ * Resolve the lobby's Random choice once, deterministically, when the game is
+ * built. `doomAllowed` (default true, so every existing caller is unchanged)
+ * gates the Doom theme to the ANIME mod: with it false, an explicit "doom" pick
+ * AND a "random" roll both collapse to "classic", so a WOG-only PvE game can
+ * never mint Doom armies/bosses.
+ */
 export function resolvePveEncounterTheme(
   requested: PveEncounterTheme | undefined,
-  seed: string
+  seed: string,
+  doomAllowed = true
 ): ResolvedPveEncounterTheme {
-  if (requested === "doom" || requested === "classic") {
-    return requested;
+  if (requested === "classic") {
+    return "classic";
+  }
+  if (requested === "doom") {
+    return doomAllowed ? "doom" : "classic";
+  }
+  if (!doomAllowed) {
+    return "classic";
   }
   let hash = 2166136261;
   for (const character of `${seed}#pve-theme`) {
