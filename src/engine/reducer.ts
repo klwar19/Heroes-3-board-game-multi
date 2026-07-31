@@ -9641,18 +9641,24 @@ function openReactionWindowForTrigger(
     return false;
   }
 
-  // The bare positive-Morale token (draw / discard-redraw) rides along in any
-  // window that is open for OTHER reasons, but must not PAUSE the game by
-  // itself — a table where someone always holds a token would otherwise stop
-  // at every attack and cast. The one deliberate exception is a Retaliation
-  // Attack: that is the retaliating side's only pre-roll moment, so a held
-  // token may open it to fish up a defense instant before the die is rolled
-  // (pinned in morale-in-combat.test.ts, both directions).
+  // The bare positive-Morale TOKEN spends (draw / discard-redraw) ride along in
+  // any window that is open for OTHER reasons, but must not PAUSE the game by
+  // themselves — a table where someone always holds a token would otherwise
+  // stop at every attack and cast. The one deliberate exception is a
+  // Retaliation Attack: that is the retaliating side's only pre-roll moment, so
+  // a held token may open it to fish up a defense instant before the die is
+  // rolled (pinned in morale-in-combat.test.ts, both directions). The Morale
+  // CARDS' combat-bonus reaction (SPEND_MORALE benefit "combat-bonus") is a
+  // real printed reaction and still opens its window
+  // (morale-card-effects.test.ts "playable as an INSTANT-WINDOW REACTION").
   const moraleOnlyMayOpen =
     triggerEvent.type === "UNIT_ATTACK_DECLARED" && triggerEvent.isRetaliation;
   const opensWindow = allowedPlayerIds.some((playerId) =>
     (legalReactions[playerId] ?? []).some(
-      (legal) => legal.action.type !== "SPEND_MORALE" || moraleOnlyMayOpen
+      (legal) =>
+        legal.action.type !== "SPEND_MORALE" ||
+        (legal.action.benefit !== "draw" && legal.action.benefit !== "redraw") ||
+        moraleOnlyMayOpen
     )
   );
   if (!opensWindow) {
