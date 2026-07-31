@@ -126,3 +126,40 @@ export function polishQuickCombatXpPossible(hero: HeroState, difficulty: number)
   }
   return difficulty >= hero.level;
 }
+
+/**
+ * How a fought neutral guard field of the given difficulty resolves under the
+ * strength shortcut — the SINGLE classifier shared by the engine wiring
+ * (`startNeutralEncounter`) and the map's pre-fight display, so the two can
+ * never disagree about what a click will do:
+ * - `"mandatory"`: the army covers the field AND the fight would pay no
+ *   Experience → the guards fall unfought (auto Quick Combat).
+ * - `"choice"`: the army covers the field but the fight could pay Experience →
+ *   the player is asked to Quick Combat or fight.
+ * - `"fight"`: the shortcut does not apply — the rule is off, the hero is at the
+ *   EXACT field level (its XP-bearing fight is preserved), or the army is too
+ *   weak — so the normal guard combat is fought.
+ *
+ * `level` is the hero's NEUTRAL-battle level (a Secondary Hero fights at its
+ * Main Hero's level), i.e. the exact `level` `startNeutralEncounter` computes.
+ */
+export type PolishQuickCombatOutcome = "mandatory" | "choice" | "fight";
+
+export function polishQuickCombatOutcome(
+  state: GameState,
+  hero: HeroState,
+  difficulty: number,
+  level: number
+): PolishQuickCombatOutcome {
+  if (!polishQuickCombatEnabled(state)) {
+    return "fight";
+  }
+  // A hero at the exact field level keeps its normal (XP-bearing) fight.
+  if (level === difficulty) {
+    return "fight";
+  }
+  if (polishQuickCombatArmyStrength(state, hero.controllerId) < polishQuickCombatFieldStrength(state, difficulty)) {
+    return "fight";
+  }
+  return polishQuickCombatXpPossible(hero, difficulty) ? "choice" : "mandatory";
+}

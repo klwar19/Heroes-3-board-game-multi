@@ -339,3 +339,57 @@ describe("map floating cards — click-to-inspect a designer-altered object", ()
     expect(container.querySelector(".designedGuardInspectFloat")).toBeNull();
   });
 });
+
+describe("map floating cards — Polish strength-based Quick Combat readout", () => {
+  /** A p1 turn with a reachable, ordinary guarded neighbour; house rule toggled. */
+  function guardedNeighbour(seed: string, ruleOn: boolean): { state: GameState; spaceId: string } {
+    let state = createAdventureGameState({
+      seed,
+      rollFirstPlayer: false,
+      houseRules: { "polish-quick-combat": ruleOn }
+    });
+    state.activePlayerId = "p1";
+    if (state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.heroes.hero_p1!.movementPoints = 5;
+    const heroSpace = state.heroes.hero_p1!.spaceId as string;
+    for (const spaceId of getAdjacentSpaceIds(heroSpace)) {
+      const field = state.adventure!.fields[spaceId];
+      if (!field) {
+        continue;
+      }
+      field.location = "empty_field";
+      field.difficulty = 2;
+      field.blackCube = false;
+      field.flagOwnerId = null;
+      field.everFlagged = false;
+      delete field.customGuardUnits;
+      delete field.designedGuard;
+      if (canCrossEdge(state, heroSpace, spaceId)) {
+        return { state, spaceId };
+      }
+    }
+    throw new Error("need a crossable guarded neighbour");
+  }
+
+  it("the move-confirm float shows the viewer's army strength vs. the required strength (rule ON)", () => {
+    const { state, spaceId } = guardedNeighbour("pqc-float-on", true);
+    const { container } = renderBoard(state);
+    fireEvent.click(container.querySelector(`.hexCell[data-space-id="${spaceId}"]`)!);
+
+    const note = container.querySelector(".moveConfirmFloat .quickCombatNote") as HTMLElement;
+    expect(note, "the Quick Combat readout").toBeTruthy();
+    expect(note.textContent).toMatch(/army strength/i);
+    expect(note.textContent).toMatch(/needs/i);
+  });
+
+  it("CONTROL: no readout when the rule is OFF", () => {
+    const { state, spaceId } = guardedNeighbour("pqc-float-off", false);
+    const { container } = renderBoard(state);
+    fireEvent.click(container.querySelector(`.hexCell[data-space-id="${spaceId}"]`)!);
+
+    expect(container.querySelector(".moveConfirmFloat"), "the move-confirm float still opens").toBeTruthy();
+    expect(container.querySelector(".quickCombatNote"), "but no Quick Combat readout").toBeNull();
+  });
+});

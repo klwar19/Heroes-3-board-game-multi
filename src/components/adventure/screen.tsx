@@ -83,6 +83,7 @@ import {
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
+  polishQuickCombatFieldInfo,
   readyCheckConfirmers,
   remainingParallelPlayerIds,
   observatoryRevealTargets,
@@ -118,7 +119,8 @@ import {
   type MapSpaceId,
   type MapTileState,
   type PlayerId,
-  type PlayerVisibleState
+  type PlayerVisibleState,
+  type PolishQuickCombatFieldInfo
 } from "@/engine";
 import {
   abilitySymbolIcon,
@@ -2731,6 +2733,33 @@ export function HexMapBoard({
   };
   const mapFloats: MapFloat[] = [];
 
+  // Polish strength-based Quick Combat (`polish-quick-combat`): a compact
+  // pre-fight readout of the viewer's army strength vs. the field's required
+  // strength, shown on the map floats so the player can see BEFORE committing
+  // whether a guarded fight can be resolved as a Quick Combat. Only rendered
+  // when `polishQuickCombatFieldInfo` returns a value — the rule is on AND the
+  // field is an ordinary guarded neutral fight (never a Bank / exact-army /
+  // teleport guard) — and the verdict mirrors the engine's own classifier.
+  const renderQuickCombatNote = (info: PolishQuickCombatFieldInfo): ReactNode => {
+    const verdict =
+      info.outcome === "mandatory"
+        ? "Covered — resolves as a Quick Combat (auto-win, no Experience)."
+        : info.outcome === "choice"
+          ? "Covered — you may Quick Combat or fight for Experience."
+          : info.covered
+            ? "Fight for Experience — your level matches this field."
+            : "Army too weak for Quick Combat — you must fight.";
+    return (
+      <div className={`quickCombatNote quickCombatNote-${info.outcome}`} role="note">
+        <strong>
+          <span aria-hidden="true">⚡</span> Quick Combat — army strength {info.armyStrength} / needs{" "}
+          {info.requiredStrength}
+        </strong>
+        <span>{verdict}</span>
+      </div>
+    );
+  };
+
   // Click-to-inspect a designer-altered object OR a Field Override (WOG / anime)
   // hex: ONE readable card with the override's art + name + mod tag + what
   // visiting does, plus (when present) the exact guard army / first-clear reward
@@ -2743,6 +2772,7 @@ export function HexMapBoard({
     const overrideInspect = field ? fieldOverridePresentation(field.location) : null;
     const preview = designedGuardPreview(field);
     const inspectGuarded = Boolean(field && isFieldGuarded(field));
+    const inspectQuickCombat = field && myHero ? polishQuickCombatFieldInfo(state, myHero, field) : null;
     const inspectClaimed = Boolean(
       field && (field.centerHexClaimed || field.viiBonusClaimed || field.designerRewardClaimed)
     );
@@ -2767,7 +2797,8 @@ export function HexMapBoard({
         cardWidth: 258,
         cardHeight:
           (overrideInspect ? 150 : 96) +
-          (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0),
+          (preview?.units.length ? Math.min(3, preview.units.length) * 14 : 0) +
+          (inspectQuickCombat ? 52 : 0),
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
@@ -2827,6 +2858,7 @@ export function HexMapBoard({
                 {[rewardSummary, rewardVp > 0 ? `+${rewardVp} VP` : ""].filter(Boolean).join(" · ")}
               </span>
             ) : null}
+            {inspectQuickCombat ? renderQuickCombatNote(inspectQuickCombat) : null}
             <button
               className="commandButton ghost"
               onClick={() => setInspectGuardAt(null)}
@@ -2853,11 +2885,13 @@ export function HexMapBoard({
         destField && isFieldGuarded(destField) && destField.flagOwnerId !== viewerPlayerId
           ? designedGuardPreview(destField)
           : null;
+      const quickCombat = destField ? polishQuickCombatFieldInfo(state, myHero, destField) : null;
       mapFloats.push({
         key: "move-confirm-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
         cardWidth: 236,
-        cardHeight: alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104,
+        cardHeight:
+          (alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104) + (quickCombat ? 52 : 0),
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
@@ -2886,6 +2920,7 @@ export function HexMapBoard({
                 )}
               </div>
             ) : null}
+            {quickCombat ? renderQuickCombatNote(quickCombat) : null}
             <div className="mapFloatButtons">
               <button
                 className="commandButton primary"
