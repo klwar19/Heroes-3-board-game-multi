@@ -20,7 +20,7 @@ import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
-  polishQuickCombatXpPossible
+  polishQuickCombatOutcome
 } from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
@@ -4959,20 +4959,22 @@ export function startNeutralEncounter(
   // Quick Combat; not covered → the fight is mandatory, so the classic
   // level > difficulty auto-win below deliberately does NOT apply.
   if (polishQuickCombatEnabled(state)) {
-    // A hero at the exact field level still needs the normal fight for its XP.
-    // The strength shortcut remains available above or below the field level,
-    // but must not turn a level-2 fight into a Quick Combat on a level-2 tile.
-    if (
-      level !== difficulty &&
-      polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)
-    ) {
-      if (!polishQuickCombatXpPossible(hero, difficulty)) {
-        resolveQuickCombatWin(state, hero, field, difficulty);
-        return;
-      }
+    // The mandatory-vs-choice-vs-fight decision (army strength vs field strength,
+    // the exact-level carve-out, and the no-Experience test) lives in ONE shared
+    // classifier so the map's pre-fight display can never disagree with what a
+    // fight here actually does.
+    const outcome = polishQuickCombatOutcome(state, hero, difficulty, level);
+    if (outcome === "mandatory") {
+      resolveQuickCombatWin(state, hero, field, difficulty);
+      return;
+    }
+    if (outcome === "choice") {
       openPolishQuickCombatChoice(state, hero, field, difficulty);
       return;
     }
+    // outcome "fight": the shortcut does not apply (exact level or too weak) —
+    // fall through to the Diplomacy check / normal guard combat below. The
+    // classic level > difficulty auto-win deliberately does NOT apply here.
   } else if (level > difficulty) {
     // Quick Combat: a hero whose level beats the field difficulty wins outright.
     resolveQuickCombatWin(state, hero, field, difficulty);

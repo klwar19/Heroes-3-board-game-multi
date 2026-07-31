@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { polishQuickCombatFieldInfo } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { applyAction, createAdventureGameState } from "./index";
 import { HOUSE_RULES, resolveHouseRules } from "./house-rules";
@@ -6,6 +7,7 @@ import {
   POLISH_QUICK_COMBAT_DIFFICULTY_X,
   polishQuickCombatArmyStrength,
   polishQuickCombatFieldStrength,
+  polishQuickCombatOutcome,
   polishQuickCombatUnitStrength,
   polishQuickCombatXpPossible
 } from "./polish-quick-combat";
@@ -171,6 +173,95 @@ describe("polish-quick-combat — the no-Experience read (mandatory vs optional)
     expect(polishQuickCombatXpPossible({ kind: "secondary", level: 1 } as HeroState, 5), "a Secondary Hero never gains XP").toBe(
       false
     );
+  });
+});
+
+describe("polish-quick-combat — outcome classifier (shared by engine + display)", () => {
+  const strongArmy = () => [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]; // 12
+
+  it("classifies mandatory / choice / fight exactly as the encounter branch would", () => {
+    // Covered, no XP (level above the field) → mandatory auto Quick Combat.
+    const mandatory = makeGame("pqc-out-mand");
+    mandatory.heroes.hero_p1.level = 3;
+    setArmy(mandatory, strongArmy());
+    expect(polishQuickCombatOutcome(mandatory, mandatory.heroes.hero_p1, 1, 3)).toBe("mandatory");
+
+    // Covered, XP possible (field above the level) → the player chooses.
+    const choice = makeGame("pqc-out-choice");
+    choice.heroes.hero_p1.level = 1;
+    setArmy(choice, strongArmy());
+    expect(polishQuickCombatOutcome(choice, choice.heroes.hero_p1, 2, 1)).toBe("choice");
+
+    // Exact field level → the strength shortcut is off (the XP fight is kept).
+    const exact = makeGame("pqc-out-exact");
+    exact.heroes.hero_p1.level = 2;
+    setArmy(exact, strongArmy());
+    expect(polishQuickCombatOutcome(exact, exact.heroes.hero_p1, 2, 2)).toBe("fight");
+
+    // Army too weak → must fight.
+    const weak = makeGame("pqc-out-weak");
+    weak.heroes.hero_p1.level = 3;
+    setArmy(weak, [armyCard("castle.griffins", "few")]); // 1 < 4
+    expect(polishQuickCombatOutcome(weak, weak.heroes.hero_p1, 1, 3)).toBe("fight");
+
+    // CONTROL: rule OFF → always "fight".
+    const off = makeGame("pqc-out-off", { houseRules: { "polish-quick-combat": false } });
+    off.heroes.hero_p1.level = 3;
+    setArmy(off, strongArmy());
+    expect(polishQuickCombatOutcome(off, off.heroes.hero_p1, 1, 3)).toBe("fight");
+  });
+});
+
+describe("polish-quick-combat — field info readout (the map float's source)", () => {
+  const strongArmy = () => [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]; // 12
+
+  it("reports army strength, required strength, coverage and outcome for an ordinary guarded field", () => {
+    const state = makeGame("pqc-info");
+    state.heroes.hero_p1.level = 1;
+    setArmy(state, strongArmy());
+    const info = polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 2));
+    expect(info?.armyStrength).toBe(12);
+    expect(info?.requiredStrength).toBe(6); // 2×2 + 2
+    expect(info?.covered).toBe(true);
+    expect(info?.outcome).toBe("choice"); // covered, XP possible (field 2 > level 1)
+  });
+
+  it("CONTROL: returns null when the rule is OFF", () => {
+    const state = makeGame("pqc-info-off", { houseRules: { "polish-quick-combat": false } });
+    setArmy(state, strongArmy());
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 2))).toBeNull();
+  });
+
+  it("returns null for a designer EXACT army (keeps its own no-Quick-Combat rule)", () => {
+    const state = makeGame("pqc-info-exact");
+    setArmy(state, strongArmy());
+    const field = guardField(state, 2);
+    field.customGuardUnits = ["neutral.cyclopes"];
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, field)).toBeNull();
+  });
+
+  it("returns null for a bank-style outpost and a teleport-gateway guard", () => {
+    const state = makeGame("pqc-info-special");
+    setArmy(state, strongArmy());
+    const field = guardField(state, 2);
+    field.location = "garrison";
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, field), "bank-style outpost").toBeNull();
+    field.location = "monolith";
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, field), "teleport gateway").toBeNull();
+  });
+
+  it("returns null for an unlimited-rounds break fight and for an already-flagged field", () => {
+    const unlimitedState = makeGame("pqc-info-unlimited");
+    setArmy(unlimitedState, strongArmy());
+    const unlimited = guardField(unlimitedState, 2);
+    unlimited.unlimitedCombatRounds = true;
+    expect(polishQuickCombatFieldInfo(unlimitedState, unlimitedState.heroes.hero_p1, unlimited)).toBeNull();
+
+    const flaggedState = makeGame("pqc-info-flagged");
+    setArmy(flaggedState, strongArmy());
+    const flagged = guardField(flaggedState, 2);
+    flagged.everFlagged = true;
+    expect(polishQuickCombatFieldInfo(flaggedState, flaggedState.heroes.hero_p1, flagged)).toBeNull();
   });
 });
 

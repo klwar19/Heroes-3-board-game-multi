@@ -9533,6 +9533,41 @@ button.hbSlot:disabled { cursor: default; }
   letter-spacing: 0.02em;
 }
 
+/* Polish `polish-quick-combat`: the pre-fight Army-strength vs. Field-strength
+   readout on the move-confirm / inspect floats. Green when the army covers the
+   field (Quick Combat available), neutral blue when the fight must be fought. */
+.quickCombatNote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 2px;
+  padding: 5px 7px;
+  background: rgba(24, 40, 60, 0.6);
+  border: 1px solid rgba(120, 170, 230, 0.55);
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: #d7e6fb;
+}
+
+.quickCombatNote strong {
+  color: #bcd8ff;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.quickCombatNote.quickCombatNote-mandatory,
+.quickCombatNote.quickCombatNote-choice {
+  background: rgba(28, 48, 26, 0.6);
+  border-color: rgba(126, 196, 118, 0.6);
+  color: #d8f0d2;
+}
+
+.quickCombatNote.quickCombatNote-mandatory strong,
+.quickCombatNote.quickCombatNote-choice strong {
+  color: #c3f0b9;
+}
+
 .mapFloatCard.passive small {
   white-space: nowrap;
 }

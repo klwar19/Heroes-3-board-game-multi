@@ -117,7 +117,9 @@ import {
 import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
-  polishQuickCombatFieldStrength
+  polishQuickCombatFieldStrength,
+  polishQuickCombatOutcome,
+  type PolishQuickCombatOutcome
 } from "./polish-quick-combat";
 import {
   CAST_A_SPELL_CARD_ID,
@@ -3062,6 +3064,62 @@ export function neutralBattleLevel(state: GameState, hero: HeroState): number {
     }
   }
   return hero.level;
+}
+
+export interface PolishQuickCombatFieldInfo {
+  /** Sum of the army's 5 strongest cards' strengths. */
+  armyStrength: number;
+  /** The field strength the army must equal or exceed (2×difficulty + X, +1 with Stacks). */
+  requiredStrength: number;
+  /** Whether `armyStrength >= requiredStrength`. */
+  covered: boolean;
+  /** How a fight here resolves under the strength shortcut (`polishQuickCombatOutcome`). */
+  outcome: PolishQuickCombatOutcome;
+}
+
+/**
+ * Pre-fight Quick-Combat readout for a guarded neutral FIELD under the Polish
+ * `polish-quick-combat` rule — the map floats show the player their army
+ * strength and the field's required strength before they commit to a fight.
+ *
+ * Returns null (nothing to show) when the rule is OFF, or the field is not an
+ * ordinary guarded neutral fight: Creature Banks, bank-style outposts / teleport
+ * guards, designer EXACT armies and break-field unlimited fights all keep their
+ * own no-Quick-Combat rules, exactly as `startNeutralEncounter` early-returns
+ * before reaching the Quick-Combat branch. The `outcome` mirrors that branch via
+ * the shared `polishQuickCombatOutcome` classifier, so the float can never
+ * promise a Quick Combat the engine would not grant.
+ */
+export function polishQuickCombatFieldInfo(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState
+): PolishQuickCombatFieldInfo | null {
+  if (!polishQuickCombatEnabled(state)) {
+    return null;
+  }
+  const difficulty = field.difficulty ?? 0;
+  if (difficulty <= 0 || !isFieldGuarded(field)) {
+    return null;
+  }
+  if (
+    fieldCreatureBankId(field) ||
+    isBankStyleGuardLocation(field.location) ||
+    isTeleportObjectGuardLocation(field.location) ||
+    (field.customGuardUnits?.length ?? 0) > 0 ||
+    field.unlimitedCombatRounds
+  ) {
+    return null;
+  }
+  const level = neutralBattleLevel(state, hero);
+  const armyStrength = polishQuickCombatArmyStrength(state, hero.controllerId);
+  const requiredStrength = polishQuickCombatFieldStrength(state, difficulty);
+  return {
+    armyStrength,
+    requiredStrength,
+    covered: armyStrength >= requiredStrength,
+    outcome: polishQuickCombatOutcome(state, hero, difficulty, level)
+  };
 }
 
 /**

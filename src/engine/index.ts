@@ -275,10 +275,12 @@ export {
   flagField,
   materializeTileFields,
   playerPossessesGrail,
+  polishQuickCombatFieldInfo,
   startAdventureRound,
   tickSettlementHoldControl,
   tournamentMoraleSearchAgainEnabled,
-  VII_FIELD_LOCATION
+  VII_FIELD_LOCATION,
+  type PolishQuickCombatFieldInfo
 } from "./adventure";
 export {
   CAST_A_SPELL_CARD_ID,
@@ -296,8 +298,10 @@ export {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
+  polishQuickCombatOutcome,
   polishQuickCombatUnitStrength,
-  polishQuickCombatXpPossible
+  polishQuickCombatXpPossible,
+  type PolishQuickCombatOutcome
 } from "./polish-quick-combat";
 
 export {
