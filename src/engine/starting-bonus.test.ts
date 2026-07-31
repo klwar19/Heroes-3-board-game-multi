@@ -10,12 +10,15 @@ import {
 import { hexSpaceId } from "./hex";
 import { scenarioDefinitions } from "@/data/map/scenarios";
 import {
+  eliminatePlayer,
   openDrawChooseMinorArtifacts,
   reshuffleArtifactDecksAfterStartingBonus,
   revealUntilMinorArtifact,
   startingBonusDescription,
   startingBonusVisitSteps
 } from "./adventure";
+import { pumpAdventureQueues } from "./adventure-reducer";
+import { calculateFirstPlayerRoll, gameOrderForFirstPlayerRoll } from "./first-player";
 import type { GameState, PlayerId } from "./state";
 
 /** Starting bonuses (and field visits) use RESOLVE_VISIT_STEP on pendingVisit, not CHOOSE_OPTION. */
@@ -430,6 +433,56 @@ describe("starting bonus at game setup", () => {
     const filled = drawn.state.players.p1!;
     expect(filled.hand.length).toBe(limit);
     expect(filled.hand).toContain(bonusArtifact);
+  });
+
+  it("survives eliminating seat 1 mid-bonus: the ceremony still publishes the PREVIEW's winner and round 1 starts", () => {
+    // Two regressions pinned at once. (1) eliminatePlayer used to sweep the
+    // table-wide opening divider with seat 1's rewards (it nominally carries
+    // p1's id) — round 1 then never started: the frozen-table class. (2) the
+    // delayed commit used to re-roll over the LIVE turn order, which consumes
+    // different random values after a mid-bonus elimination and could crown a
+    // different winner than the one whose town the preview placed at position 1.
+    let state = createAdventureGameState({
+      seed: "bonus-elim-seat1",
+      difficulty: "hard",
+      startingBonus: true,
+      players: [
+        { id: "p1", name: "A", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "B", factionId: "rampart", heroDefId: "mephala" },
+        { id: "p3", name: "C", factionId: "tower", heroDefId: "solmyr" }
+      ]
+    });
+    const allSeats: PlayerId[] = ["p1", "p2", "p3"];
+    const previewRoll = calculateFirstPlayerRoll(
+      allSeats.map((id) => ({ playerId: id, name: state.players[id]!.name })),
+      state.adventure!.openingFirstPlayerSeed!
+    )!;
+
+    eliminatePlayer(state, "p1", "removed mid-bonus", false);
+    // The table-wide divider survives the eliminated seat's reward sweep.
+    expect(
+      state.adventure!.rewardQueue.some((reward) => reward.kind === "opening-first-player-roll")
+    ).toBe(true);
+    pumpAdventureQueues(state);
+
+    let guard = 0;
+    while (state.adventure?.pendingVisit && guard < 30) {
+      const owner = state.adventure.pendingVisit.playerId;
+      state = resolveVisitOption(state, owner, 0);
+      state = resolveResourceDieWindow(state, owner);
+      guard += 1;
+    }
+
+    // Round 1 really starts, publishing the SAME winner the setup preview used
+    // to place the towns; the dead seat leads nothing.
+    expect(state.eventLog.some((event) => event.type === "FIRST_PLAYER_ROLLED")).toBe(true);
+    expect(state.adventure?.firstPlayerRoll?.winnerPlayerId).toBe(previewRoll.winnerPlayerId);
+    const expectedOrder = gameOrderForFirstPlayerRoll(allSeats, previewRoll).filter(
+      (id) => id !== "p1"
+    );
+    expect(state.turnOrder).toEqual(expectedOrder);
+    expect(state.activePlayerId).toBe(expectedOrder[0]);
+    expect(state.eventLog.some((event) => event.type === "ROUND_STARTED")).toBe(true);
   });
 
   it("resolves for every player and hands off to a normal, playable round 1", () => {

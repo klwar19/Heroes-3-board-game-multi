@@ -213,6 +213,15 @@ export default class GameRoomServer implements Party.Server {
    */
   private recalledIdentities = new Map<string, StoredIdentity>();
 
+  /**
+   * Serializes rememberVerifiedIdentity's get-modify-put: the parallel hosted
+   * fan-out can verify several fresh tokens in one broadcast, and interleaved
+   * get/get/put/put would let the last write clobber the other token's entry
+   * while persistedTokens marks BOTH persisted (the clobbered one then never
+   * re-persists for the instance lifetime).
+   */
+  private identityWriteQueue: Promise<void> = Promise.resolve();
+
   /** Identity-cache tuning: one full game session, bounded to a small map. */
   private static readonly VERIFIED_IDENTITY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
   private static readonly VERIFIED_IDENTITY_CACHE_MAX = 64;
@@ -414,6 +423,16 @@ export default class GameRoomServer implements Party.Server {
    * crashed action.
    */
   private async rememberVerifiedIdentity(token: string, identity: VerifiedIdentity): Promise<void> {
+    if (this.persistedTokens.has(token)) {
+      return;
+    }
+    const work = () => this.rememberVerifiedIdentityNow(token, identity);
+    const queued = this.identityWriteQueue.then(work, work);
+    this.identityWriteQueue = queued;
+    return queued;
+  }
+
+  private async rememberVerifiedIdentityNow(token: string, identity: VerifiedIdentity): Promise<void> {
     if (this.persistedTokens.has(token)) {
       return;
     }

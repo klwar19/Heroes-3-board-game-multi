@@ -120,6 +120,19 @@ describe("blank-wiki neutral card faces", () => {
     }
   });
 
+  it("wears the dedicated neutral Evil Eyes scan, never the Dungeon Few face (wrong baked stats)", () => {
+    // A real board scan, NOT composed by the placeholder builder — so it is
+    // pinned here standalone instead of in EXPECTED. The old cardImage was the
+    // Dungeon FEW face, whose printed A3/D0/I5 contradicted the neutral side.
+    const expectedPath = "/assets/units-neutral-bronze-evil_eyes.webp";
+    const side = coreUnitDefinitions["neutral.evil_eyes"]?.neutral;
+    expect(side?.cardImage).toBe(expectedPath);
+    const file = onDisk(expectedPath);
+    expect(existsSync(file), expectedPath).toBe(true);
+    expect(isWebp(file), "must be a valid WebP").toBe(true);
+    expect(statSync(file).size, "must contain a rendered card").toBeGreaterThan(40_000);
+  });
+
   it("keeps the shared-art compositor and every legend glyph source reproducible", () => {
     const builder = readFileSync(repoFile("scripts/build-placeholder-neutral-cards.mjs"), "utf8");
     for (const id of Object.keys(EXPECTED)) {

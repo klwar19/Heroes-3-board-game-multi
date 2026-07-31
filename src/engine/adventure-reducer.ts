@@ -3228,8 +3228,15 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   const candidate = flip.candidate;
   // Official rule: the tile that was revealed is the tile that stays. Both
   // identity-changing offers below are one BINH house rule, never an
-  // independent map/scenario option.
-  if (!houseRuleEnabled(state, "far-tile-rerolls")) {
+  // independent map/scenario option. In-flight LEGACY snapshots froze the
+  // removed `farTileSettlementReroll` option on adventure state; when present
+  // it keeps deciding for THAT game — a mid-game server update must not flip
+  // a table's reroll offers in either direction.
+  const legacyReroll = (requireAdventure(state) as { farTileSettlementReroll?: unknown })
+    .farTileSettlementReroll;
+  const rerollsEnabled =
+    typeof legacyReroll === "boolean" ? legacyReroll : houseRuleEnabled(state, "far-tile-rerolls");
+  if (!rerollsEnabled) {
     finalizeFarTileFlip(state, candidate);
     return;
   }
@@ -15848,6 +15855,13 @@ export function pumpAdventureQueues(state: GameState): void {
       adventure.rewardQueue.shift();
       if (adventure.rewardQueue.length > 0) {
         adventure.rewardQueue.push(reward);
+        continue;
+      }
+
+      // Mid-bonus eliminations can END the game (last-faction-standing) before
+      // round 1 ever starts — the wave-assault precedent: never publish a
+      // ceremony or open a round for a finished table.
+      if (adventure.winnerPlayerId) {
         continue;
       }
 

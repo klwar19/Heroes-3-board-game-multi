@@ -282,8 +282,13 @@ export function chooseComputerAction(
       return {
         legal,
         ...scored,
+        // Only ACCEPT sits AT the floor: the escapes must stay strictly below
+        // it, or once no prep action remains the exit would be decided by the
+        // tie hash and a healthy defender could retreat from a winnable fight.
         ...(delayingPrepExit
-          ? { score: 225, policy: "combat.prepare-before-exit" }
+          ? legal.action.type === "ACCEPT_COMBAT"
+            ? { score: 225, policy: "combat.prepare-before-exit" }
+            : { score: Math.min(scored.score, 224), policy: "combat.prepare-before-exit" }
           : {}),
         tie: tieValue(tieSeed, legal),
       };

@@ -2816,10 +2816,15 @@ What runs (each with a failing-if-removed test):
   `turn-timeout.test.ts` "Explorers round", mutation-checked); `eliminatePlayer`
   clears the hand-step flags, and the pending flag never hijacks a seat whose
   turn is not open.
-- **`GameSetupOptions.farTileSettlementReroll`** (default ON; lobby Map & Setup
-  row + map-preset soft default): OFF preserves exact Ⅱ–Ⅲ tile identities — no
-  2nd-tile Settlement reroll AND (audit fix) no one-time Ore-Mine reroll either
-  (`far-tile-flip.test.ts`, `far-tile-reveal.test.ts`, `custom-setup.test.ts`).
+- **Ⅱ–Ⅲ tile identity rerolls are the `far-tile-rerolls` HOUSE RULE now**
+  (2026-07-31; BINH default ON, Legacy OFF = the official "the revealed tile is
+  final"): the 2nd-tile Settlement reroll AND the one-time Ore-Mine reroll ride
+  ONE gate in `presentFarTileOffersOrFinalize`. The old standalone
+  `GameSetupOptions.farTileSettlementReroll` option (and its map-preset soft
+  default) is REMOVED — do not reintroduce a separate setup or map-preset
+  switch. An in-flight legacy snapshot's frozen `adventure.farTileSettlementReroll`
+  keeps deciding for THAT game in either direction (`far-tile-flip.test.ts`,
+  `far-tile-reveal.test.ts`).
 - **Stack-Token default flip**: the official guaranteed difficulty count is the
   default; the old roll survives as the opt-in `bank-stack-chance-80` house rule
   (80%, default OFF in BOTH modes) — see the Creature-Banks section.
@@ -3147,10 +3152,11 @@ No engine change; every value shown is already public in player views.
 - **Watching a PvM fight shows the FIGHTER's resources.** The combat command dock
   used to report the VIEWER's own spell/crown counters even when another seat was
   playing out a neutral fight ("anyone may watch"), which is meaningless noise. It
-  now follows the fighter — name-labelled, with their Spell x/y, crowns left/total,
-  hand size and hero MP — whenever the viewer is not a participant (attacker,
-  defender or a living unit's controller). A participant's own dock is unchanged.
-  `board.test.tsx`.
+  now follows the fighter — name-labelled, with their hero Level, Spell x/y,
+  crowns left/total, Morale and hero MP (2026-07-31: the hand COUNT left the
+  dock for the glyph metric row; it lives in the Opponent-info window) —
+  whenever the viewer is not a participant (attacker, defender or a living
+  unit's controller). A participant's own dock is unchanged. `board.test.tsx`.
 - **The card name/HP plate no longer covers the printed initiative.**
   `.boardCardHud` was `max-width: 100%`, so a long name ("Neutral Iron Golems")
   spanned the card bottom and hid the bottom entry of the left stat rail —
