@@ -2721,9 +2721,10 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("solmyr")
   },
-  // Torosar (Wizard, might): the Ballista specialist. I gains a Ballista for
-  // gold (map) or fires one now (combat); IV/VI field extra Ballistas — each
-  // "counts as a Ballista" — and VI fires all of them at once.
+  // Torosar (Tower, Alchemist): all three cards count as a temporary Ballista
+  // through the end of the current game round. They may be committed on the map
+  // before a Combat; when played during Combat, IV activates this Ballista plus
+  // one other and VI activates every Ballista immediately.
   "specialty.torosar.1": {
     id: "specialty.torosar.1",
     name: "Ballista I",
@@ -2734,24 +2735,10 @@ export const adventureCards: CardLibrary = {
       "instant",
       "torosar",
       "ballista",
-      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+      "Until the end of the game round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
-    effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Pay 5 gold to gain a Ballista",
-          mapOnly: true,
-          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
-        },
-        {
-          label: "Activate your Ballista",
-          combatOnly: true,
-          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
-        }
-      ]
-    },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   },
@@ -2759,17 +2746,16 @@ export const adventureCards: CardLibrary = {
     id: "specialty.torosar.4",
     name: "Ballista IV",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "torosar",
       "ballista",
-      "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
+      "Until the end of the game round, gain an additional Ballista during Combat. This and 1 other Ballista can be activated now. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
-    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "up-to-two" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   },
@@ -2777,17 +2763,16 @@ export const adventureCards: CardLibrary = {
     id: "specialty.torosar.6",
     name: "Ballista VI",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "torosar",
       "ballista",
-      "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista."
+      "Until the end of the game round, gain an additional Ballista during Combat. This and all other Ballistas can be activated now. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
-    effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "all" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   },
@@ -4075,11 +4060,10 @@ export const adventureCards: CardLibrary = {
     id: "specialty.tarnum_castle.4",
     name: "Ballista IV",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "tarnum_castle",
       "ballista",
       "For this Combat, gain an additional Ballista, even if you already have one. — OR — Draw 1 card."
@@ -4872,7 +4856,6 @@ export const adventureCards: CardLibrary = {
     name: "Cannon IV",
     kind: "hero-specialty",
     timing: "instant",
-    phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
       "instant",
@@ -4909,7 +4892,6 @@ export const adventureCards: CardLibrary = {
     name: "Cannon VI",
     kind: "hero-specialty",
     timing: "instant",
-    phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
       "instant",

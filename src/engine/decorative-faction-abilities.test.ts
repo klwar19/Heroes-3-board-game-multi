@@ -317,9 +317,9 @@ describe("faction Familiars 'Mana Leech' spell tax", () => {
     expect(hasSpellCastHandTax(unitWith(["familiar-spell-tax"]))).toBe(true);
   });
 
-  it("an enemy Familiar costs the caster one extra random card", () => {
+  it("an enemy Familiar lets the caster choose the extra discarded card", () => {
     const state = createInitialGameState("faction-familiar-seed");
-    state.players.p1.hand = ["spell.magic_arrow", "stat.power"];
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.defense"];
     state.players.p2.hand = [];
     state.combat!.units.unit_p2_skeletons.abilities = ["familiar-spell-tax"];
     state.activePlayerId = "p1";
@@ -328,8 +328,27 @@ describe("faction Familiars 'Mana Leech' spell tax", () => {
       (legal) => legal.action.type === "CAST_SPELL" && !legal.action.fromScroll && legal.action.cardId === "spell.magic_arrow"
     );
     expect(cast).toBeTruthy();
-    const next = passAllReactions(applyOk(state, cast!.action));
-    expect(next.players.p1.hand).toEqual([]); // spell + taxed card both gone
+    let next = applyOk(state, cast!.action);
+    expect(next.pendingChoice).toMatchObject({
+      type: "COMBAT_HAND_DISCARD",
+      kind: "familiar-choose-discard"
+    });
+    if (next.pendingChoice?.type !== "COMBAT_HAND_DISCARD") {
+      return;
+    }
+    const choices = getLegalActions(next, "p1");
+    const choice = choices.find(
+      (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD" && legal.action.cardId === "stat.power"
+    );
+    expect(choice).toBeTruthy();
+    expect(
+      choices.some(
+        (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD" && legal.action.cardId === "random"
+      )
+    ).toBe(false);
+    next = passAllReactions(applyOk(next, choice!.action));
+    expect(next.players.p1.hand).toEqual(["stat.defense"]);
+    expect(next.players.p1.discard).toEqual(expect.arrayContaining(["spell.magic_arrow", "stat.power"]));
     expect(abilityEventIds(next)).toContain("familiar-spell-tax");
   });
 });

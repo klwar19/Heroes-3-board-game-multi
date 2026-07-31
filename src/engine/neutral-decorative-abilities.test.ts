@@ -474,9 +474,9 @@ describe("Familiar 'Mana Leech' spell tax", () => {
     expect(hasSpellCastHandTax(unitWith([]))).toBe(false);
   });
 
-  function castArrowFromHand(enemyAbilities: string[]): GameState {
+  function declareArrowFromHand(enemyAbilities: string[], hand = ["spell.magic_arrow", "stat.power"]): GameState {
     const state = createInitialGameState();
-    state.players.p1.hand = ["spell.magic_arrow", "stat.power"];
+    state.players.p1.hand = hand;
     state.players.p2.hand = [];
     state.combat!.units.unit_p2_skeletons.abilities = enemyAbilities;
     state.activePlayerId = "p1";
@@ -486,19 +486,50 @@ describe("Familiar 'Mana Leech' spell tax", () => {
         legal.action.type === "CAST_SPELL" && !legal.action.fromScroll && legal.action.cardId === "spell.magic_arrow"
     );
     expect(cast, "hand cast of Magic Arrow should be legal").toBeTruthy();
-    return passAllReactions(applyOk(state, cast!.action));
+    return applyOk(state, cast!.action);
   }
 
-  it("an enemy Familiar costs the caster one extra random card", () => {
-    const next = castArrowFromHand(["familiar-spell-tax"]);
-    expect(next.players.p1.hand).toEqual([]); // the spell + the taxed card are both gone
+  it("lets the caster choose which extra card an enemy Familiar discards", () => {
+    let next = declareArrowFromHand(
+      ["familiar-spell-tax"],
+      ["spell.magic_arrow", "stat.power", "stat.defense"]
+    );
+    expect(next.pendingChoice).toMatchObject({
+      type: "COMBAT_HAND_DISCARD",
+      kind: "familiar-choose-discard",
+      playerId: "p1"
+    });
+    if (next.pendingChoice?.type !== "COMBAT_HAND_DISCARD") {
+      return;
+    }
+
+    const choices = getLegalActions(next, "p1");
+    expect(choices.map((legal) => legal.action)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "RESOLVE_COMBAT_DISCARD", cardId: "stat.power" }),
+        expect.objectContaining({ type: "RESOLVE_COMBAT_DISCARD", cardId: "stat.defense" })
+      ])
+    );
+    expect(
+      choices.some(
+        (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD" && legal.action.cardId === "random"
+      )
+    ).toBe(false);
+
+    const discardDefense = choices.find(
+      (legal) => legal.action.type === "RESOLVE_COMBAT_DISCARD" && legal.action.cardId === "stat.defense"
+    );
+    expect(discardDefense).toBeTruthy();
+    next = passAllReactions(applyOk(next, discardDefense!.action));
+
+    expect(next.players.p1.hand).toEqual(["stat.power"]);
     expect(next.players.p1.discard).toContain("spell.magic_arrow");
-    expect(next.players.p1.discard).toContain("stat.power");
+    expect(next.players.p1.discard).toContain("stat.defense");
     expect(abilityEventIds(next)).toContain("familiar-spell-tax");
   });
 
   it("no Familiar → only the spell itself leaves the hand", () => {
-    const next = castArrowFromHand([]);
+    const next = passAllReactions(declareArrowFromHand([]));
     expect(next.players.p1.hand).toEqual(["stat.power"]);
     expect(abilityEventIds(next)).not.toContain("familiar-spell-tax");
   });

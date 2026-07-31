@@ -837,7 +837,7 @@ export type UnitAbilityEffectDefinition =
        * Familiars: "Whenever an enemy casts a spell from hand, they must
        * discard 1 card from hand." A passive tax: while a living Familiar is on
        * the opposing side, each Spell an enemy casts from hand costs them one
-       * extra random card from hand.
+       * extra card of the caster's choice from hand.
        */
       type: "SPELL_CAST_HAND_TAX";
     }

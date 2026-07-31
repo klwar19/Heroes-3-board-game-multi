@@ -1021,6 +1021,8 @@ describe("map Spell Power parity — events, specialties, Tomes, Orbs, and recal
     expect(state.players.p1.hand).toEqual(
       expect.arrayContaining(["spell.view_air", "spell.haste"])
     );
+    expect(state.players.p1.hand).not.toContain("ability.mysticism");
+    expect(state.players.p1.discard).toContain("ability.mysticism");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 

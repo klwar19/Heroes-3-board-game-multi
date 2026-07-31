@@ -97,6 +97,105 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
   });
 });
 
+describe("ReactionTray - retaliation morale draw", () => {
+  it("surfaces the token draw as a clickable action before the counterattack roll", () => {
+    const initial = createInitialGameState("tray-retaliation-morale");
+    initial.players.p1.hand = [];
+    initial.players.p2.hand = [];
+    initial.players.p1.morale = 1;
+    for (const unit of Object.values(initial.combat!.units)) {
+      unit.abilities = [];
+    }
+    initial.combat!.units.unit_p1_griffins.type = "ground";
+    initial.combat!.units.unit_p1_griffins.position = 9;
+    initial.combat!.units.unit_p1_griffins.attack = 1;
+    initial.combat!.units.unit_p2_skeletons.position = 13;
+    initial.combat!.units.unit_p2_skeletons.defense = 0;
+    initial.combat!.units.unit_p2_skeletons.maxHealth = 40;
+    initial.combat!.units.unit_p2_skeletons.retaliatedThisRound = false;
+    initial.combat!.dice.scriptedRolls = [0, 0];
+    initial.combat!.dice.rollCount = 0;
+    initial.activePlayerId = "p1";
+    initial.combat!.activeUnitId = "unit_p1_griffins";
+
+    let result = applyAction(initial, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.errors).toEqual([]);
+    let state = result.state;
+    let safety = 30;
+    while (safety-- > 0) {
+      if (
+        state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+        state.reactionWindow.triggerEvent.isRetaliation
+      ) {
+        break;
+      }
+      if (state.reactionWindow) {
+        result = applyAction(state, {
+          type: "PASS_REACTION",
+          playerId: state.reactionWindow.priorityPlayerId
+        });
+        expect(result.errors).toEqual([]);
+        state = result.state;
+        continue;
+      }
+      if (state.pendingChoice?.type === "ATTACK_DIE_REROLL") {
+        const choice = state.pendingChoice;
+        result = applyAction(state, {
+          type: "CHOOSE_PENDING_ROLL",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          candidateIndex: choice.candidates.length - 1
+        });
+        expect(result.errors).toEqual([]);
+        state = result.state;
+        continue;
+      }
+      break;
+    }
+    while (state.reactionWindow && state.reactionWindow.priorityPlayerId !== "p1") {
+      result = applyAction(state, {
+        type: "PASS_REACTION",
+        playerId: state.reactionWindow.priorityPlayerId
+      });
+      expect(result.errors).toEqual([]);
+      state = result.state;
+    }
+    expect(state.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_ATTACK_DECLARED",
+      isRetaliation: true
+    });
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /draw a card before the Retaliation Attack/i
+      })
+    );
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SPEND_MORALE",
+      playerId: "p1",
+      benefit: "draw"
+    });
+  });
+});
+
 describe("DiceOverlay — summed (Slayer/Inferno) and spell-roll modes", () => {
   it("keeps every die lit when all dice count (Slayer / apply-both)", () => {
     vi.useFakeTimers();
