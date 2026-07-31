@@ -1202,7 +1202,7 @@ export default function Home() {
     if (!chapter) {
       return;
     }
-    const actions = campaignSetupActions(chapter, seat);
+    const actions = campaignSetupActions(chapter, seat, campaignBinding.bonusId);
     if (actions.length === 0) {
       return;
     }
@@ -1213,6 +1213,13 @@ export default function Home() {
     void (async () => {
       for (const action of actions) {
         await connection.submitAction(action).catch(() => {});
+      }
+      // Authored campaign scenarios are deliberately configuration-free: the
+      // briefing already showed every fixed rule, hero, opponent and bonus.
+      // Once those deterministic choices land, start immediately so the first
+      // thing the player sees is the chapter's visual-novel scene, then its map.
+      if (chapter.scenarioMap) {
+        await connection.submitAction({ type: "START_ADVENTURE", playerId: seat }).catch(() => {});
       }
     })();
   }, [state, roomId, campaignBinding, clientId]);

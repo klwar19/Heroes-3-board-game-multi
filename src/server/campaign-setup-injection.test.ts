@@ -25,14 +25,21 @@ function uniqueId(name: string): string {
 }
 
 /** Drive a single-player room from a fresh lobby to a started adventure. */
-function startWith(roomId: string, preStartActions: readonly Parameters<typeof submitRoomAction>[1][]): GameState {
-  createRoom({ roomId, sessionMode: "single-player", computerOpponents: 1 });
+function startWith(
+  roomId: string,
+  preStartActions: readonly Parameters<typeof submitRoomAction>[1][],
+  computerOpponents = 1
+): GameState {
+  createRoom({ roomId, sessionMode: "single-player", computerOpponents });
   const joined = submitRoomAction(roomId, { type: "JOIN_ROOM", clientId: "owner-1", name: "Owner" }, "owner-1");
   expect(joined.result.errors).toEqual([]);
 
   for (const action of preStartActions) {
     const outcome = submitRoomAction(roomId, action, "owner-1");
-    expect(outcome.result.errors, outcome.result.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(
+      outcome.result.errors,
+      `${JSON.stringify(action)}: ${outcome.result.errors.map((error) => error.message).join("; ")}`
+    ).toEqual([]);
   }
 
   const started = submitRoomAction(roomId, { type: "START_ADVENTURE", playerId: "p1" }, "owner-1");
@@ -41,6 +48,53 @@ function startWith(roomId: string, preStartActions: readonly Parameters<typeof s
 }
 
 describe("campaign setup injection", () => {
+  it("starts the authored Erathia maps with the selected bonus and fixed computer seats", () => {
+    const homecoming = getCampaignChapter("erathia", "homecoming")!;
+    const homecomingState = startWith(
+      uniqueId("sp-erathia-homecoming"),
+      campaignSetupActions(homecoming, "p1", "rare-resources"),
+      homecoming.setup!.opponents
+    );
+
+    expect(homecomingState.adventure?.difficulty).toBe("easy");
+    expect(homecomingState.adventure?.scenarioId).toBe("skirmish");
+    expect(homecomingState.adventure?.mapPreset?.customWinConditions).toEqual([
+      { kind: "control-towns", count: 2 }
+    ]);
+    expect(homecomingState.adventure?.mapPreset?.startingResources).toEqual({
+      gold: 15,
+      buildingMaterials: 3,
+      valuables: 1
+    });
+    expect(homecomingState.adventure?.mapPreset?.startingBonuses).toEqual([
+      { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 5 }
+    ]);
+    expect(Object.keys(homecomingState.adventure?.tiles ?? {})).toHaveLength(homecoming.scenarioMap!.tiles.length);
+    expect(homecomingState.players.p1?.factionId).toBe("castle");
+    expect(homecomingState.players.p1?.heroDefId).toBe("catherine");
+    expect(homecomingState.players.p2?.factionId).toBe("dungeon");
+    expect(homecomingState.players.p2?.heroDefId).toBe("alamar");
+
+    const griffinCliff = getCampaignChapter("erathia", "griffin-cliff")!;
+    const griffinState = startWith(
+      uniqueId("sp-erathia-griffin"),
+      campaignSetupActions(griffinCliff, "p1", "lions-shield"),
+      griffinCliff.setup!.opponents
+    );
+
+    expect(griffinState.adventure?.difficulty).toBe("normal");
+    expect(griffinState.adventure?.mapPreset?.customWinConditions).toEqual([
+      { kind: "flag-mines", count: 7 }
+    ]);
+    expect(griffinState.adventure?.mapPreset?.startingBonuses).toEqual([
+      { kind: "morale", amount: 1 },
+      { kind: "search", deck: "artifacts", count: 3 }
+    ]);
+    expect(Object.keys(griffinState.adventure?.tiles ?? {})).toHaveLength(griffinCliff.scenarioMap!.tiles.length);
+    expect(griffinState.players.p2?.factionId).toBe("dungeon");
+    expect(griffinState.players.p3?.factionId).toBe("inferno");
+  });
+
   it("a room built with the Jianghu ch-1 options starts with anime + Field Overrides ON and the seat's faction", () => {
     const chapter = getCampaignChapter("jianghu", "ch1")!;
     const actions = campaignSetupActions(chapter, "p1");

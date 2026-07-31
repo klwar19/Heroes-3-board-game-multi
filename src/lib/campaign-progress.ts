@@ -26,6 +26,8 @@ export type CampaignProgress = { completed: string[] };
 export type CampaignRoomBinding = {
   campaignId: string;
   chapterId: string;
+  /** Starting bonus selected in the chapter briefing. */
+  bonusId?: string;
   /** The chapter's setup injection (game options + faction preselect) has run. */
   setupApplied?: boolean;
   /** The chapter's onStart scene has been popped for this room. */
@@ -109,11 +111,12 @@ export function isChapterUnlocked(campaign: Campaign, chapterId: string): boolea
 /** Bind a single-player room to a campaign chapter (fresh markers). */
 export function bindCampaignRoom(
   roomId: string,
-  binding: { campaignId: string; chapterId: string }
+  binding: { campaignId: string; chapterId: string; bonusId?: string }
 ): void {
   writeJson(`${ROOM_PREFIX}${roomId}`, {
     campaignId: binding.campaignId,
-    chapterId: binding.chapterId
+    chapterId: binding.chapterId,
+    ...(binding.bonusId ? { bonusId: binding.bonusId } : {})
   } satisfies CampaignRoomBinding);
 }
 
