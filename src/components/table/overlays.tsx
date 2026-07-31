@@ -558,6 +558,13 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
   );
 
+  // Retaliation pre-roll Morale-token draw. This is a standalone SPEND_MORALE
+  // action, not a card play; keep the window open after drawing so a newly drawn
+  // defense instant can be selected from the refreshed tray.
+  const retaliationMoraleDraws = legalActions.filter(
+    (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
+  );
+
   if (!window) {
     return null;
   }
@@ -1016,6 +1023,7 @@ export function ReactionTray({
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
         schoolFetchExpertReactions.length === 0 &&
+        retaliationMoraleDraws.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
@@ -1044,6 +1052,16 @@ export function ReactionTray({
               <strong>
                 <Plus aria-hidden="true" size={15} /> Hero Grade skill
               </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
+        {retaliationMoraleDraws.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>Positive Morale</strong>
               <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                 {legal.label}
               </button>
@@ -1843,7 +1861,11 @@ export function SearchModal({
           <strong>
             Search {searchChoice.revealedCardIds.length} — {searchChoice.deckId}
           </strong>
-          <span>Keep one card. The rest go to the {searchChoice.deckId} discard pile.</span>
+          <span>
+            {searchChoice.allowRemove
+              ? `Keep one card, or Remove one from the game. The rest go to the ${searchChoice.deckId} discard pile.`
+              : `Keep one card. The rest go to the ${searchChoice.deckId} discard pile.`}
+          </span>
           {searchChoice.revealedCardIds.length > 2 ? (
             <button
               className="searchZoomToggle"
@@ -1855,26 +1877,63 @@ export function SearchModal({
           ) : null}
         </header>
         <div className={`searchCards${compact ? " searchCards--compact" : ""}`}>
-          {searchChoice.revealedCardIds.map((cardId, index) => (
-            <div className="searchCardWrap" key={`${cardId}-${index}`}>
-              <button
-                className="searchCard"
-                onClick={() =>
-                  onAction({
-                    type: "RESOLVE_DECK_SEARCH",
-                    playerId: viewerPlayerId,
-                    choiceId: searchChoice.id,
-                    pick: { kind: "revealed", index }
-                  })
-                }
-                type="button"
-              >
-                <CardFrame cardId={cardId} className="searchCardImage" />
-                <span>Keep {cardName(cardId)}</span>
-              </button>
-              <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />
-            </div>
-          ))}
+          {searchChoice.revealedCardIds.map((cardId, index) => {
+            const keepOffer = legalActions?.find(
+              (legal) =>
+                legal.action.type === "RESOLVE_DECK_SEARCH" &&
+                legal.action.choiceId === searchChoice.id &&
+                legal.action.pick.index === index &&
+                legal.action.pick.remove !== true
+            );
+            const removeOffer = legalActions?.find(
+              (legal) =>
+                legal.action.type === "RESOLVE_DECK_SEARCH" &&
+                legal.action.choiceId === searchChoice.id &&
+                legal.action.pick.index === index &&
+                legal.action.pick.remove === true
+            );
+            return (
+              <div className="searchCardWrap" key={`${cardId}-${index}`}>
+                <button
+                  className="searchCard"
+                  onClick={() =>
+                    onAction(
+                      keepOffer?.action ?? {
+                        type: "RESOLVE_DECK_SEARCH",
+                        playerId: viewerPlayerId,
+                        choiceId: searchChoice.id,
+                        pick: { kind: "revealed", index }
+                      }
+                    )
+                  }
+                  type="button"
+                >
+                  <CardFrame cardId={cardId} className="searchCardImage" />
+                  <span>Keep {cardName(cardId)}</span>
+                </button>
+                {searchChoice.allowRemove ? (
+                  <button
+                    className="searchRemoveCard"
+                    disabled={!removeOffer && Boolean(legalActions)}
+                    onClick={() =>
+                      onAction(
+                        removeOffer?.action ?? {
+                          type: "RESOLVE_DECK_SEARCH",
+                          playerId: viewerPlayerId,
+                          choiceId: searchChoice.id,
+                          pick: { kind: "revealed", index, remove: true }
+                        }
+                      )
+                    }
+                    type="button"
+                  >
+                    Remove {cardName(cardId)}
+                  </button>
+                ) : null}
+                <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId)} />
+              </div>
+            );
+          })}
         </div>
         {repeatSearchOffer ? (
           <footer className="searchRepeatRow">

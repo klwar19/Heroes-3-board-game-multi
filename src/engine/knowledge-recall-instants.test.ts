@@ -249,11 +249,12 @@ describe("Mysticism expert recall in an attack window (deferred to the attack's 
 
     // Both +1-defense buffs applied: Griffins 3 + roll 0 vs Vampires 1 + 1 + 1 → 0.
     expect(resolved.combat?.units.unit_p2_vampires.damage).toBe(0);
-    // The spell, the statistic played with it, AND the Mysticism card all
-    // returned to hand once the attack finished (never left in the discard).
+    // The spell and statistic played with it return. Mysticism itself was not
+    // played together with the spell, so it pays normally and stays discarded.
     expect(resolved.players.p2.hand).toContain("spell.stone_skin");
     expect(resolved.players.p2.hand).toContain("stat.defense");
-    expect(resolved.players.p2.hand).toContain("ability.mysticism");
+    expect(resolved.players.p2.hand).not.toContain("ability.mysticism");
+    expect(resolved.players.p2.discard).toContain("ability.mysticism");
     expect(resolved.players.p2.discard).not.toContain("spell.stone_skin");
     expect(resolved.players.p2.discard).not.toContain("stat.defense");
   });

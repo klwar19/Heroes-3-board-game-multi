@@ -183,6 +183,43 @@ describe("DeckSearchModeModal — search back + discard face", () => {
 });
 
 describe("SearchModal — zoom out for Search(3+)", () => {
+  it("renders Tarnum I's Keep and Remove choices and dispatches the exact Remove action", () => {
+    const state = createAdventureGameState({ seed: "tarnum-remove-ui", rollFirstPlayer: false });
+    state.pendingChoice = {
+      id: "choice_tarnum_remove",
+      type: "DECK_SEARCH",
+      playerId: "p1",
+      deckId: "spells",
+      revealedCardIds: ["spell.haste"],
+      allowRemove: true,
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    const view = getPlayerView(state, "p1");
+    const legalActions = getLegalActions(state, "p1");
+    const onAction = vi.fn();
+
+    wrap(
+      <SearchModal
+        legalActions={legalActions}
+        onAction={onAction}
+        state={state}
+        view={view}
+        viewerPlayerId="p1"
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /Keep Haste/i })).toBeTruthy();
+    const remove = screen.getByRole("button", { name: /Remove Haste/i });
+    fireEvent.click(remove);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: "choice_tarnum_remove",
+      pick: { kind: "revealed", index: 0, remove: true }
+    });
+  });
+
   it("defaults compact when more than 2 revealed cards and toggles zoom", () => {
     const state = createAdventureGameState({ seed: "search-zoom", rollFirstPlayer: false });
     const cards = Object.keys(cardLibrary)

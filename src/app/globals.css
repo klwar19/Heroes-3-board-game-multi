@@ -1004,6 +1004,18 @@ button {
   height: 8px;
 }
 
+/* Undo is a small utility at the very top of the combat strip, not a full-width
+   combat panel. Grid items stretch by default, so opt this one out explicitly. */
+.combatUndoMove {
+  justify-self: start;
+  align-self: start;
+  width: max-content;
+  min-height: 26px;
+  padding: 3px 8px;
+  font-size: 10px;
+  line-height: 1;
+}
+
 /* ---------- deck wells (left rail) ---------- */
 
 .leftRail,
@@ -8387,6 +8399,31 @@ button.hbSlot:disabled { cursor: default; }
 
 .searchCardWrap {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.searchRemoveCard {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid rgb(192 75 61 / 72%);
+  border-radius: 7px;
+  background: rgb(74 24 20 / 72%);
+  color: #ffd6ce;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.searchRemoveCard:hover:not(:disabled) {
+  border-color: #ff8b78;
+  filter: brightness(1.12);
+}
+
+.searchRemoveCard:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .inspectZoom {

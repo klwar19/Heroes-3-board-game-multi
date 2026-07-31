@@ -3018,8 +3018,12 @@ function isOptionEffectPlayable(
       return !effect.goldCost || (buyer?.resources.gold ?? 0) >= effect.goldCost;
     }
     case "BALLISTA_SPECIALTY":
-      // Torosar's Ballista I "Activate your Ballista" needs one to activate; the
-      // IV/VI grants always do something (and bring their own Ballista).
+      // Torosar's current-game-round grants may be banked on the map before a
+      // Combat. During Combat, the grant and any immediate activation resolve
+      // together. A bare activation still requires a battlefield and a Ballista.
+      if (context === "map") {
+        return effect.grant === "game-round" && Boolean(state.adventure);
+      }
       if (context !== "combat" || !state.combat) {
         return false;
       }
@@ -7004,6 +7008,23 @@ export function getLegalReactionsForTrigger(
           action: { type: "SPEND_MORALE", playerId: player.id, benefit: "combat-bonus", bonus: "defense" }
         });
       }
+    }
+
+    // Tournament/base positive Morale token: a Retaliation Attack gets the same
+    // pre-roll reaction window as the original attack. Let either combatant spend
+    // a held token to draw now; refreshReactionWindowLegalReactions then exposes
+    // any newly drawn instant (notably Armorer/defense) before the die is rolled.
+    if (
+      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+      triggerEvent.isRetaliation &&
+      !moraleCardsRuleEnabled(state) &&
+      !moraleLockedForPlayer(state.combat, player.id) &&
+      ((player.morale ?? 0) > 0 || (player.moraleOverflow ?? 0) > 0)
+    ) {
+      reactions.push({
+        label: "Spend morale: draw a card before the Retaliation Attack",
+        action: { type: "SPEND_MORALE", playerId: player.id, benefit: "draw" }
+      });
     }
 
     // The printed alternative bottom effect: discard any Spell card for

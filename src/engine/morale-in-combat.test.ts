@@ -39,6 +39,147 @@ describe("morale during combat (combat sandbox)", () => {
     expect(state.players.p1.hand.length).toBe(1);
   });
 
+  it("can draw and play a defense instant before the retaliation die is rolled", () => {
+    let state = createInitialGameState("morale-retaliation-draw");
+    const griffins = state.combat!.units.unit_p1_griffins;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.abilities = [];
+    }
+    griffins.type = "ground";
+    griffins.position = 9;
+    griffins.attack = 1;
+    griffins.defense = 0;
+    griffins.maxHealth = 40;
+    griffins.damage = 0;
+    skeletons.position = 13;
+    skeletons.attack = 5;
+    skeletons.defense = 0;
+    skeletons.maxHealth = 40;
+    skeletons.damage = 0;
+    skeletons.retaliatedThisRound = false;
+    state.players.p1.morale = 1;
+    state.players.p1.hand = [];
+    // Personal-deck top is the final entry. Armorer itself then draws Attack.
+    state.players.p1.deck = ["stat.attack", "ability.armorer"];
+    state.players.p2.hand = [];
+    state.combat!.dice.scriptedRolls = [0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = "p1";
+
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+
+    // Resolve the original attack's window. The engine then opens a fresh
+    // UNIT_ATTACK_DECLARED window for the Skeletons' retaliation, before roll 2.
+    let safety = 30;
+    while (safety-- > 0) {
+      if (
+        state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+        state.reactionWindow.triggerEvent.isRetaliation
+      ) {
+        break;
+      }
+      if (state.reactionWindow) {
+        state = applyOk(state, {
+          type: "PASS_REACTION",
+          playerId: state.reactionWindow.priorityPlayerId
+        });
+        continue;
+      }
+      if (state.pendingChoice?.type === "ATTACK_DIE_REROLL") {
+        const choice = state.pendingChoice;
+        state = applyOk(state, {
+          type: "CHOOSE_PENDING_ROLL",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          candidateIndex: choice.candidates.length - 1
+        });
+        continue;
+      }
+      break;
+    }
+    expect(
+      state.eventLog
+        .filter((event) => event.type === "UNIT_ATTACK_DECLARED")
+        .map((event) => ({
+          attackerId: event.attackerId,
+          defenderId: event.defenderId,
+          isRetaliation: event.isRetaliation,
+          attackKind: event.attackKind
+        }))
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          attackerId: "unit_p2_skeletons",
+          defenderId: "unit_p1_griffins",
+          isRetaliation: true
+        })
+      ])
+    );
+    expect(state.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_ATTACK_DECLARED",
+      isRetaliation: true,
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_griffins"
+    });
+    expect(state.combat!.dice.rollCount).toBe(1);
+
+    // The retaliating side may receive priority first. Pass only until the
+    // defending player can spend the token; do not close the retaliation window.
+    while (state.reactionWindow && state.reactionWindow.priorityPlayerId !== "p1") {
+      state = applyOk(state, {
+        type: "PASS_REACTION",
+        playerId: state.reactionWindow.priorityPlayerId
+      });
+    }
+    const draw = moraleActions(state, "p1").find(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
+    );
+    expect(draw?.label).toMatch(/before the Retaliation Attack/i);
+    state = applyOk(state, draw!.action);
+
+    expect(state.players.p1.morale).toBe(0);
+    expect(state.players.p1.hand).toContain("ability.armorer");
+    expect(state.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_ATTACK_DECLARED",
+      isRetaliation: true
+    });
+    expect(state.combat!.dice.rollCount).toBe(1);
+
+    const armorer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.armorer" &&
+        legal.action.mode === "basic"
+    );
+    expect(armorer, "the newly drawn Armorer must be playable in the same retaliation window").toBeTruthy();
+    state = applyOk(state, armorer!.action);
+    while (state.reactionWindow) {
+      state = applyOk(state, {
+        type: "PASS_REACTION",
+        playerId: state.reactionWindow.priorityPlayerId
+      });
+    }
+
+    const retaliation = [...state.eventLog]
+      .reverse()
+      .find(
+        (event) =>
+          event.type === "ATTACK_ROLLED" &&
+          event.isRetaliation &&
+          event.attackerId === "unit_p2_skeletons"
+      );
+    expect(retaliation).toMatchObject({ type: "ATTACK_ROLLED", defenseBonus: 1 });
+    expect(state.players.p1.discard).toContain("ability.armorer");
+    expect(state.players.p1.hand).toContain("stat.attack");
+  });
+
   it("discards chosen cards and redraws that many in combat", () => {
     let state = createInitialGameState("morale-combat-redraw");
     state.players.p1.morale = 1;

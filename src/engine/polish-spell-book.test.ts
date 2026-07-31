@@ -277,6 +277,8 @@ describe("Polish Spell Book lifecycle", () => {
     // Expert still refreshes the Spell and returns the enabler like basic.
     expect(resolved.players.p1.spellBook).toContain("spell.lightning_bolt");
     expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.hand).not.toContain("ability.mysticism");
+    expect(resolved.players.p1.discard).toContain("ability.mysticism");
   });
 
   it("refreshes every used Spell at the beginning of a new game round", () => {

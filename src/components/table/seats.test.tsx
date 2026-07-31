@@ -826,6 +826,40 @@ describe("HandFan — every immediate card play is cancellable (no accidental co
       })
     );
   });
+
+  it("offers and confirms Tarnum IV's Enchanters purchase from the map hand", () => {
+    const state = createAdventureGameState({
+      seed: "hand-tarnum-enchanters",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Tarnum", factionId: "conflux", heroDefId: "tarnum_conflux" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    state.activePlayerId = "p1";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    state.players.p1.hand = ["specialty.tarnum_conflux.4"];
+    state.players.p1.resources.gold = 10;
+    const onAction = vi.fn();
+    renderHand(state, onAction);
+
+    fireEvent.click(screen.getByRole("button", { name: /Enchanters level IV specialty card/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Pay 10 gold.*Enchanters/i }));
+    expect(onAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^Confirm$/i }));
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "PLAY_CARD",
+        cardId: "specialty.tarnum_conflux.4",
+        optionIndex: 0
+      })
+    );
+  });
 });
 
 describe("SeatNameplate / OpponentBar — person + hero + town", () => {

@@ -329,6 +329,7 @@ describe("phone UI mode — combat surface", () => {
 
     const undo = screen.getByRole("button", { name: /Undo/ });
     expect(undo.className).toContain("combatUndoMove");
+    expect(undo.closest(".combatCardStrip")?.firstElementChild).toBe(undo);
     fireEvent.click(undo);
     expect(submitAction).toHaveBeenCalledWith({ type: "UNDO_MOVE", playerId: "p1" });
   });

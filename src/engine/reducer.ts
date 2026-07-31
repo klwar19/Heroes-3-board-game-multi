@@ -7194,9 +7194,9 @@ function openMagiDiscardChoice(
 }
 
 /**
- * Resolves a COMBAT_HAND_DISCARD. For the Magi Power Drain it discards the chosen
- * (or random) card and unparks the attack; for the Neutral Pegasi "Mystic Toll"
- * it discards the chosen Power card and then casts the deferred Spell.
+ * Resolves a COMBAT_HAND_DISCARD. Magi may choose Power or random; Wraiths and
+ * Familiars choose the exact card; Pegasi choose the exact Power card. The two
+ * spell taxes then resume the deferred cast.
  */
 function resolveCombatHandDiscard(
   state: GameState,
@@ -7245,21 +7245,46 @@ function resolveCombatHandDiscard(
     state.phase = "combat";
     state.priorityPlayerId = null;
     if (toll) {
-      performSpellCast(
+      continueSpellCastAfterPowerTax(
         state,
-        {
-          type: "CAST_SPELL",
-          playerId: action.playerId,
-          cardId: toll.cardId,
-          target: toll.target,
-          ...(toll.fromScroll ? { fromScroll: toll.fromScroll } : {}),
-          ...(toll.fromSpellDeck ? { fromSpellDeck: toll.fromSpellDeck } : {}),
-          ...(toll.fromSpellBook ? { fromSpellBook: true } : {}),
-          ...(toll.castEnablerCardId ? { castEnablerCardId: toll.castEnablerCardId } : {}),
-          ...(toll.tarnumReturn ? { tarnumReturn: toll.tarnumReturn } : {})
-        },
+        spellActionFromDeferred(action.playerId, toll),
         cards
       );
+    }
+    return;
+  }
+
+  // Neutral Familiars "Mana Leech": the caster chooses any eligible card from
+  // hand, then the held hand Spell is cast. There is deliberately no random
+  // branch — the printed ability assigns the discard to the spellcaster.
+  if (choice.kind === "familiar-choose-discard") {
+    if (action.cardId === "random") {
+      throw new Error("Mana Leech discards a card of your choice.");
+    }
+    if (!choice.powerCardIds.includes(action.cardId)) {
+      throw new Error("That card cannot be chosen for Mana Leech.");
+    }
+    if (!discardNamedCardFromHand(state, action.playerId, action.cardId)) {
+      throw new Error("That card is no longer in hand.");
+    }
+    const deferredSpell = choice.tollSpell;
+    appendEvent(state, {
+      type: "PENDING_CHOICE_RESOLVED",
+      choiceId: choice.id,
+      playerId: action.playerId,
+      selectedIndex: choice.powerCardIds.indexOf(action.cardId)
+    });
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: choice.sourceUnitId,
+      abilityId: choice.abilityId,
+      message: `${chooser.name} discards ${cards[action.cardId]?.name ?? action.cardId} to ${choice.abilityName}.`
+    });
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
+    if (deferredSpell) {
+      performSpellCast(state, spellActionFromDeferred(action.playerId, deferredSpell), cards);
     }
     return;
   }
@@ -10162,6 +10187,10 @@ function finalizeSpellCardDestination(
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
+  const expertSupportCards = expertRecallSupportCardIds(
+    stackItem.modifiers.playedCardIds,
+    recall?.sourceCardId
+  );
   if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
     if (recall?.polishRefreshSpell) {
       refreshPolishUsedSpell(state, playerId, cardId);
@@ -10170,7 +10199,7 @@ function finalizeSpellCardDestination(
       returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
     }
     if (recall?.recallPlayedCards) {
-      for (const playedCardId of stackItem.modifiers.playedCardIds) {
+      for (const playedCardId of expertSupportCards) {
         returnSpellFromDiscardToHand(state, playerId, playedCardId);
       }
     }
@@ -10201,7 +10230,7 @@ function finalizeSpellCardDestination(
   if (recall?.recallPlayedCards) {
     const caster = state.players[playerId];
     const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
-    for (const playedCardId of stackItem.modifiers.playedCardIds) {
+    for (const playedCardId of expertSupportCards) {
       const playedIndex = caster.discard.lastIndexOf(playedCardId);
       if (playedIndex !== -1) {
         caster.discard.splice(playedIndex, 1);
@@ -10213,6 +10242,23 @@ function finalizeSpellCardDestination(
       }
     }
   }
+}
+
+/**
+ * Expert Mysticism returns cards played together with the Spell, never the
+ * Mysticism card that created the recall. Card ids are definitions rather than
+ * physical-instance ids, so remove exactly one matching occurrence: another
+ * copy with the same id that genuinely was played as support still qualifies.
+ */
+function expertRecallSupportCardIds(playedCardIds: CardId[], sourceCardId?: CardId): CardId[] {
+  let skippedSource = false;
+  return playedCardIds.filter((cardId) => {
+    if (!skippedSource && sourceCardId && cardId === sourceCardId) {
+      skippedSource = true;
+      return false;
+    }
+    return true;
+  });
 }
 
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
@@ -11155,33 +11201,6 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
 }
 
 /**
- * Familiars' "Mana Leech": while a living enemy Familiar is in the combat, a
- * player who casts a Spell from hand must discard one extra random card. Scroll
- * casts are not "from hand" and are exempt.
- */
-function applyEnemySpellHandTax(state: GameState, casterId: PlayerId): void {
-  const combat = state.combat;
-  if (!combat) {
-    return;
-  }
-  const familiar = Object.values(combat.units).find(
-    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
-  );
-  if (!familiar) {
-    return;
-  }
-  const discarded = discardRandomCardFromHand(state, casterId);
-  if (discarded) {
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: familiar.id,
-      abilityId: "familiar-spell-tax",
-      message: `${familiar.cardName} leeches a card from the spellcaster's hand.`
-    });
-  }
-}
-
-/**
  * Tower Magi (Pack) "[activation] +N power to the first spell you cast this
  * round" and Conflux Pack Elementals "[activation] +N power to the first
  * <school> Magic spell you cast during this Activation": the bonus is only
@@ -11282,7 +11301,7 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
     return;
   }
 
-  performSpellCast(state, action, cards);
+  continueSpellCastAfterPowerTax(state, action, cards);
 }
 
 /**
@@ -11304,7 +11323,7 @@ function openPegasiTollChoice(
     : undefined;
   if (!pegasi) {
     // No enemy Pegasi after all (defensive): cast normally, no toll.
-    performSpellCast(state, action, cards);
+    continueSpellCastAfterPowerTax(state, action, cards);
     return;
   }
 
@@ -11324,11 +11343,15 @@ function openPegasiTollChoice(
     tollSpell: {
       cardId: action.cardId,
       target: action.target,
+      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
       ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {}),
+      ...(action.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
       ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
       ...(action.castEnablerCardId ? { castEnablerCardId: action.castEnablerCardId } : {}),
-      ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {})
+      ...(action.tarnumReturn ? { tarnumReturn: action.tarnumReturn } : {}),
+      ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
+      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
     }
   };
   state.phase = "choice";
@@ -11344,10 +11367,102 @@ function openPegasiTollChoice(
   });
 }
 
+function spellActionFromDeferred(
+  playerId: PlayerId,
+  deferred: NonNullable<Extract<PendingChoice, { type: "COMBAT_HAND_DISCARD" }>["tollSpell"]>
+): Extract<GameAction, { type: "CAST_SPELL" }> {
+  return {
+    type: "CAST_SPELL",
+    playerId,
+    cardId: deferred.cardId,
+    target: deferred.target,
+    ...(deferred.optionIndex !== undefined ? { optionIndex: deferred.optionIndex } : {}),
+    ...(deferred.fromScroll ? { fromScroll: deferred.fromScroll } : {}),
+    ...(deferred.fromSpellDeck ? { fromSpellDeck: deferred.fromSpellDeck } : {}),
+    ...(deferred.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
+    ...(deferred.fromSpellBook ? { fromSpellBook: true } : {}),
+    ...(deferred.castEnablerCardId ? { castEnablerCardId: deferred.castEnablerCardId } : {}),
+    ...(deferred.tarnumReturn ? { tarnumReturn: deferred.tarnumReturn } : {}),
+    ...(deferred.useSchoolExpert ? { useSchoolExpert: true } : {}),
+    ...(deferred.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
+  };
+}
+
 /**
- * Casts the Spell for real: consume it, apply the Familiar tax, build the stack
- * item and open the reaction window / resolve. Split from castSpell so the
- * Neutral Pegasi toll can be paid first and the cast replayed unchanged.
+ * After any Pegasi Power toll, enforce Familiars' hand tax as a real choice.
+ * Only a normal hand cast is taxed; the physical Spell being cast is reserved
+ * and cannot be selected unless another copy of the same card remains.
+ */
+function continueSpellCastAfterPowerTax(
+  state: GameState,
+  action: Extract<GameAction, { type: "CAST_SPELL" }>,
+  cards: CardLibrary
+): void {
+  const normalHandCast =
+    !action.fromScroll &&
+    !action.fromSpellDeck &&
+    !action.fromOwnDiscard &&
+    !action.fromSpellBook &&
+    !action.tarnumReturn;
+  const combat = state.combat;
+  const familiar =
+    normalHandCast && combat
+      ? Object.values(combat.units).find(
+          (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
+        )
+      : undefined;
+  const caster = state.players[action.playerId];
+  if (!familiar || !caster) {
+    performSpellCast(state, action, cards);
+    return;
+  }
+
+  const discardChoices = [...caster.hand];
+  const castCardIndex = discardChoices.indexOf(action.cardId);
+  if (castCardIndex !== -1) {
+    discardChoices.splice(castCardIndex, 1);
+  }
+  if (discardChoices.length === 0) {
+    performSpellCast(state, action, cards);
+    return;
+  }
+
+  const spellName = cards[action.cardId]?.name ?? action.cardId;
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    kind: "familiar-choose-discard",
+    abilityId: "familiar-spell-tax",
+    abilityName: "Mana Leech",
+    sourceUnitId: familiar.id,
+    prompt: `${familiar.cardName}'s Mana Leech — choose a card to discard before casting ${spellName}.`,
+    powerCardIds: discardChoices,
+    tollSpell: {
+      cardId: action.cardId,
+      target: action.target,
+      ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
+      ...(action.useSchoolExpert ? { useSchoolExpert: true } : {}),
+      ...(action.useSchoolFetchExpert ? { useSchoolFetchExpert: true } : {})
+    }
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = action.playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "COMBAT_HAND_DISCARD",
+    playerId: action.playerId,
+    sourceEffectIds: [],
+    message: `${caster.name} chooses a card for ${familiar.cardName}'s Mana Leech.`
+  });
+}
+
+/**
+ * Casts the Spell for real: consume it, build the stack item, then open the
+ * reaction window / resolve. Split from castSpell so Pegasi and Familiars can
+ * collect their player-chosen costs before any cast state is mutated.
  */
 function performSpellCast(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
   const card = cards[action.cardId];
@@ -11431,8 +11546,6 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     if (moveError) {
       throw new Error(moveError.message);
     }
-    // Familiars tax each enemy Spell cast from hand by one extra random card.
-    applyEnemySpellHandTax(state, action.playerId);
   }
 
   const caster = state.players[action.playerId];
@@ -13154,6 +13267,7 @@ function applyReactionPlayCore(
     stackItem.modifiers.recallSpell = {
       toHand: true,
       recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards),
+      sourceCardId: play.cardId,
       toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
       ...(isPolishMysticism ? { polishRefreshSpell: true } : {}),
       // Polish Spell Book (reference sheet): BOTH Knowledge and Mysticism return
@@ -13236,11 +13350,9 @@ function applyReactionPlayCore(
     // Mysticism expert: the OTHER cards this player played into the attack come
     // back too. Snapshot them now (so cards played after the recall are not
     // swept) and defer their return alongside the spell — a Book-sourced support
-    // card routes back to the Book. Only the SPELL is excluded from this sweep:
-    // it rides its own deferred entry above, and is removed from `remainingDiscard`
-    // below so it is never returned twice. Every OTHER card played into the attack
-    // — INCLUDING the Mysticism/Knowledge card itself — DOES return via this sweep
-    // (pinned by `knowledge-recall-instants.test.ts`).
+    // card routes back to the Book. The spell rides its own deferred entry above,
+    // and the Mysticism/Knowledge card itself remains discarded: it was not a
+    // card played together with the Spell.
     if (mode === "expert" && effect.expertRecallPlayedCards) {
       const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
       const remainingDiscard = [...caster.discard];
@@ -13249,8 +13361,13 @@ function applyReactionPlayCore(
       if (spellIdx !== -1) {
         remainingDiscard.splice(spellIdx, 1);
       }
+      let skippedRecallCard = false;
       for (const playedCardId of stackItem.modifiers.playedCardIds) {
         if (playedCardId === entry.cardId) {
+          continue;
+        }
+        if (!skippedRecallCard && playedCardId === play.cardId) {
+          skippedRecallCard = true;
           continue;
         }
         const idx = remainingDiscard.lastIndexOf(playedCardId);
@@ -15951,9 +16068,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     startChainLightning(state, action.playerId, card, target.unitId, chainLightningDamages(effect, card.power ?? 0));
   }
 
-  // Torosar's Ballista specialty: field an extra Ballista (this combat or the
-  // rest of the round) and/or activate Ballistas for an immediate shot each.
-  if (effect.type === "BALLISTA_SPECIALTY" && state.combat) {
+  // Torosar's Ballista specialty: a game-round grant can be banked on the map
+  // before Combat. Immediate activations only fire when a Combat is currently
+  // open; a map-banked Ballista fires normally at that Combat's round start.
+  if (effect.type === "BALLISTA_SPECIALTY") {
     if (effect.grant) {
       createActiveEffect(
         state,
@@ -15969,10 +16087,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         action.playerId
       );
     }
-    // "Activate all your Ballistas" counts the just-granted one too.
-    if (effect.activate === "all") {
+    // Immediate activation counts the just-granted one too.
+    if (state.combat && effect.activate === "all") {
       activateBallistas(state, action.playerId, countBallistas(state, action.playerId));
-    } else if (effect.activate === "one" && countBallistas(state, action.playerId) >= 1) {
+    } else if (state.combat && effect.activate === "up-to-two") {
+      activateBallistas(state, action.playerId, Math.min(2, countBallistas(state, action.playerId)));
+    } else if (state.combat && effect.activate === "one" && countBallistas(state, action.playerId) >= 1) {
       activateBallistas(state, action.playerId, 1);
     }
   }

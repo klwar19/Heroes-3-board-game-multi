@@ -174,6 +174,23 @@ describe("Tarnum IV — pay 10 gold for the Enchanters", () => {
     expect(after.decks[NEUTRAL_DECK_IDS.gold].drawPile).not.toContain("neutral.enchanters");
   });
 
+  it("offers the Enchanters purchase with Tarnum's normal starting army intact", () => {
+    const state = tarnumMap("tarnum-iv-real-army");
+    state.players.p1.hand = [T4];
+    state.players.p1.resources.gold = 10;
+    expect(state.players.p1.army.length).toBeGreaterThan(0);
+
+    const pay = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === T4 &&
+        legal.action.optionIndex === 0
+    );
+    expect(pay?.label).toMatch(/10 gold.*Enchanters/i);
+    const after = applyOk(state, pay!.action);
+    expect(after.players.p1.army.some((unit) => unit.unitDefId === "neutral.enchanters")).toBe(true);
+  });
+
   it("does not offer the trade with fewer than 10 gold (but always offers the draw)", () => {
     const state = tarnumIvState("tarnum-iv-broke");
     state.players.p1.resources.gold = 9;

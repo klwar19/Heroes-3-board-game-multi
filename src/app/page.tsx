@@ -6826,6 +6826,16 @@ export default function Home() {
           animations land in this strip. Heroes stay on the right rail. */}
       <div className="tableTopRow">
         <div className="combatCardStrip">
+          {isSeated && adventureMode && state.combat && state.adventure?.undoMoves ? (
+            <button
+              className="commandButton undoMove combatUndoMove"
+              onClick={() => submitAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
+              title="Testing aid: roll the game back to before your most recent action."
+              type="button"
+            >
+              ↩ Undo
+            </button>
+          ) : null}
           {isSeated ? (
             <div className="combatOpponentRow">
               <OpponentInfoDock seatIds={seatIds} state={state} variant="combat" viewerPlayerId={viewerPlayerId} />
@@ -6867,16 +6877,6 @@ export default function Home() {
                 </button>
               </div>
             </div>
-          ) : null}
-          {isSeated && adventureMode && state.combat && state.adventure?.undoMoves ? (
-            <button
-              className="commandButton undoMove combatUndoMove"
-              onClick={() => submitAction({ type: "UNDO_MOVE", playerId: viewerPlayerId })}
-              title="Testing aid: roll the game back to before your most recent action."
-              type="button"
-            >
-              ↩ Undo
-            </button>
           ) : null}
           {isSeated ? (
             <div className="tableSeatRow">

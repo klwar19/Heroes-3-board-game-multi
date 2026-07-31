@@ -2069,15 +2069,15 @@ export type EffectDefinition =
     }
   | {
       /**
-       * Torosar's Ballista specialty (I activate / IV / VI). `grant` fields one
-       * extra Ballista for the combat or the rest of the game round ("this card
-       * counts as a Ballista"); `activate` fires one of your Ballistas now (I)
-       * or every Ballista you field (VI, after the grant). Either part may be
-       * present alone.
+       * Torosar's Ballista specialty. `grant` fields one extra Ballista for the
+       * combat or the rest of the game round ("this card counts as a Ballista");
+       * `activate` fires one, up to two (IV), or every Ballista (VI) immediately
+       * when the card is played during Combat. A game-round grant may be played
+       * on the map and then participates normally when Combat begins.
        */
       type: "BALLISTA_SPECIALTY";
       grant?: "combat" | "game-round";
-      activate?: "one" | "all";
+      activate?: "one" | "up-to-two" | "all";
     }
   | {
       /**
@@ -6564,6 +6564,8 @@ export type ResolutionStackItem = {
     recallSpell?: {
       toHand: boolean;
       recallPlayedCards: boolean;
+      /** The Mysticism/Knowledge card itself; Expert recall never returns it. */
+      sourceCardId?: CardId;
       toSpellBook?: boolean;
       /** Polish Mysticism: refresh the used Book Spell itself. */
       polishRefreshSpell?: boolean;
@@ -13703,7 +13705,7 @@ export type PendingChoice =
     }
   | {
       /**
-       * A combat hand-discard prompt with three kinds:
+       * A combat hand-discard prompt with four kinds:
        *  - "magi-power-or-random": Neutral Magi "Power Drain" — after the Magi
        *    attack the defending player discards a Power-contributing card (a
        *    Power statistic or any Spell) of their choice, or lets a random card
@@ -13711,6 +13713,9 @@ export type PendingChoice =
        *  - "pegasi-toll": Neutral Pegasi "Mystic Toll" — the caster must pay a
        *    Power card of their choice BEFORE a Spell is cast. The cast is held in
        *    `tollSpell` and replayed once the toll is paid (no random option).
+       *  - "familiar-choose-discard": Neutral Familiars "Mana Leech" — after
+       *    declaring a Spell from hand, the caster chooses any other card to
+       *    discard before that held Spell is cast (no random option).
        *  - "wraith-choose-discard": Creature Bank Crypt/Shipwreck Wraiths "Soul
        *    Siphon" — after the Wraiths' attack the attacked player discards a
        *    card of THEIR choice (any card in hand; no random option). Combat
@@ -13719,28 +13724,32 @@ export type PendingChoice =
       id: string;
       type: "COMBAT_HAND_DISCARD";
       playerId: PlayerId;
-      kind: "magi-power-or-random" | "pegasi-toll" | "wraith-choose-discard";
+      kind: "magi-power-or-random" | "pegasi-toll" | "familiar-choose-discard" | "wraith-choose-discard";
       abilityId: string;
       abilityName: string;
       sourceUnitId: UnitId;
       prompt: string;
       /**
        * Cards the chooser may pick from: the hand's Power cards for
-       * "magi-power-or-random"/"pegasi-toll", the WHOLE hand for
-       * "wraith-choose-discard".
+       * "magi-power-or-random"/"pegasi-toll", or the eligible whole hand for
+       * "familiar-choose-discard"/"wraith-choose-discard".
        */
       powerCardIds: CardId[];
       /** "wraith-choose-discard" only: cards still owed after this pick (>= 1). */
       remaining?: number;
-      /** "pegasi-toll" only: the Spell cast deferred until the toll is paid. */
+      /** Pegasi/Familiars: the Spell cast deferred until the discard is paid. */
       tollSpell?: {
         cardId: CardId;
         target: TargetRef;
+        optionIndex?: number;
         fromScroll?: string;
         fromSpellDeck?: CardId;
+        fromOwnDiscard?: boolean;
         fromSpellBook?: boolean;
         castEnablerCardId?: CardId;
         tarnumReturn?: "deck-top" | "discard";
+        useSchoolExpert?: boolean;
+        useSchoolFetchExpert?: boolean;
       };
     }
   | null;
