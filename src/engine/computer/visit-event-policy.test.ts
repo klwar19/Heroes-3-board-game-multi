@@ -94,7 +94,10 @@ function declineAction(): LegalAction {
 }
 
 describe("visit step policy — Events / settlements", () => {
-  it("auction: prefers a modest bid over dumping the whole treasury", () => {
+  function auctionState(lotCardId: string): {
+    state: GameState;
+    legal: LegalAction[];
+  } {
     const options: { label: string; steps: VisitStep[] }[] = [];
     for (let amount = 0; amount <= 20; amount += 1) {
       options.push({
@@ -106,26 +109,112 @@ describe("visit step policy — Events / settlements", () => {
       [{ type: "CHOOSE_ONE", prompt: "Auction", options }],
       { gold: 20, buildingMaterials: 2, valuables: 0 },
     );
-    const legal = options.map((_, index) => resolveOption(index));
-    const decision = chooseComputerAction(observe(state, legal));
+    state.adventure!.events = {
+      activeCardId: "event.a_shady_auction",
+      nextDrawerIndex: 0,
+      pool: [],
+      poolCleanup: "shuffle-into-deck",
+      dicePool: [],
+      auction: { lotCardId, lotDeckId: "artifacts-minor", bids: {} },
+      deal: null,
+    };
+    return { state, legal: options.map((_, index) => resolveOption(index)) };
+  }
+
+  it("auction: bids materially more for a great Artifact, without dumping the treasury", () => {
+    const nice = auctionState("artifact.helm_of_heavenly_enlightenment");
+    const decision = chooseComputerAction(observe(nice.state, nice.legal));
     expect(decision?.action.type).toBe("RESOLVE_VISIT_STEP");
     const pick = (decision!.action as { optionIndex?: number }).optionIndex ?? -1;
-    // Must not bid half+ of coffers (indices 10..20); sweet spot is 1–4.
-    expect(pick).toBeGreaterThanOrEqual(0);
-    expect(pick).toBeLessThanOrEqual(4);
+    expect(pick, "an S-tier Relic should not get the old automatic 1-gold bid").toBeGreaterThanOrEqual(8);
+    expect(pick, "the AI still preserves cash rather than bidding all 20").toBeLessThanOrEqual(12);
 
-    // CONTROL: score of bid-20 is below bid-2.
-    const bid2 = scoreMapAction(observe(state, []), {
+    const ordinary = auctionState("artifact.speculum");
+    const ordinaryDecision = chooseComputerAction(observe(ordinary.state, ordinary.legal));
+    const ordinaryPick =
+      (ordinaryDecision!.action as { optionIndex?: number }).optionIndex ?? -1;
+    expect(ordinaryPick).toBeLessThan(pick);
+
+    // CONTROL: even for the great lot, bid-20 is below its quality-aware bid.
+    const bidAtTarget = scoreMapAction(observe(nice.state, []), {
       type: "RESOLVE_VISIT_STEP",
       playerId: "p2",
-      optionIndex: 2,
+      optionIndex: pick,
     } as GameAction);
-    const bid20 = scoreMapAction(observe(state, []), {
+    const bid20 = scoreMapAction(observe(nice.state, []), {
       type: "RESOLVE_VISIT_STEP",
       playerId: "p2",
       optionIndex: 20,
     } as GameAction);
-    expect(bid2!.score).toBeGreaterThan(bid20!.score);
+    expect(bidAtTarget!.score).toBeGreaterThan(bid20!.score);
+  });
+
+  it("Messenger / markets buy a premium card but take the resource fallback over weak junk", () => {
+    const optionsFor = (cardId: string): VisitStep[] => [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Messenger",
+        options: [
+          {
+            label: "Buy",
+            steps: [{ type: "EVENT_TAKE_CARD", cardId, deckId: "artifacts", cost: { gold: 7 } }],
+          },
+          { label: "Take resources", steps: [{ type: "ROLL_RESOURCE_DICE", count: 2 }] },
+        ],
+      },
+    ];
+    const rich = { gold: 20, buildingMaterials: 2, valuables: 0 };
+    const premium = visitState(optionsFor("artifact.helm_of_heavenly_enlightenment"), rich);
+    expect(
+      (chooseComputerAction(observe(premium, [resolveOption(0), resolveOption(1)]))!.action as {
+        optionIndex: number;
+      }).optionIndex,
+    ).toBe(0);
+
+    const junk = visitState(optionsFor("artifact.speculum"), rich);
+    expect(
+      (chooseComputerAction(observe(junk, [resolveOption(0), resolveOption(1)]))!.action as {
+        optionIndex: number;
+      }).optionIndex,
+    ).toBe(1);
+  });
+
+  it("penalty and gamble Events protect valuable cards and scarce development resources", () => {
+    const plea = visitState(
+      [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Villagers' Plea",
+          options: [
+            {
+              label: "Remove premium artifact",
+              steps: [{ type: "REMOVE_CARD_FROM_PILE", cardId: "artifact.helm_of_heavenly_enlightenment", source: "hand" }],
+            },
+            { label: "Pay material", steps: [{ type: "LOSE_RESOURCES", buildingMaterials: 1, reason: "plea" }] },
+            { label: "Pay gold", steps: [{ type: "LOSE_RESOURCES", gold: 5, reason: "plea" }] },
+          ],
+        },
+      ],
+      { gold: 10, buildingMaterials: 2, valuables: 0 },
+    );
+    const pleaPick = chooseComputerAction(observe(plea, [0, 1, 2].map(resolveOption)));
+    expect((pleaPick!.action as { optionIndex: number }).optionIndex).toBe(1);
+
+    const hermit = visitState(
+      [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Withered Hermit",
+          options: (["gold", "buildingMaterials", "valuables"] as const).map((resource) => ({
+            label: resource,
+            steps: [{ type: "EVENT_HERMIT_GAMBLE", resource }],
+          })),
+        },
+      ],
+      { gold: 20, buildingMaterials: 0, valuables: 4 },
+    );
+    const hermitPick = chooseComputerAction(observe(hermit, [0, 1, 2].map(resolveOption)));
+    expect((hermitPick!.action as { optionIndex: number }).optionIndex).toBe(1);
   });
 
   it("Event menu: positive morale outranks discarding the cheapest unit", () => {

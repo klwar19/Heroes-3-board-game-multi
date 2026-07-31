@@ -288,6 +288,41 @@ export function nextDevelopmentBuildingCost(
 }
 
 /**
+ * Cheapest missing faction Gold body after its Dwelling is unlocked. This is
+ * the development outcome the policy saves for; constructing the Gold
+ * Dwelling alone is not a completed milestone.
+ */
+export function firstGoldRecruitCost(
+  state: GameState,
+  playerId: PlayerId,
+): ResourceCost | null {
+  const player = state.players[playerId];
+  if (!player) return null;
+  const candidates = (coreFactionDefinitions[player.factionId ?? ""]?.units ?? [])
+    .filter((unitDefId) => {
+      const unit = coreUnitDefinitions[unitDefId];
+      return (
+        unit?.tier === "gold" &&
+        Boolean(unit.few) &&
+        !player.army.some(
+          (owned) => owned.side !== "bank" && owned.unitDefId === unitDefId,
+        )
+      );
+    })
+    .map((unitDefId) => coreUnitDefinitions[unitDefId]!.few!.cost)
+    .sort(
+      (left, right) =>
+        (left.gold ?? 0) +
+        (left.buildingMaterials ?? 0) * 3 +
+        (left.valuables ?? 0) * 7 -
+        ((right.gold ?? 0) +
+          (right.buildingMaterials ?? 0) * 3 +
+          (right.valuables ?? 0) * 7),
+    );
+  return candidates[0] ?? null;
+}
+
+/**
  * Resource stocks worth preserving. They follow the concrete development goal,
  * rather than treating materials above 4 / valuables above 1 as disposable.
  */
@@ -306,6 +341,17 @@ export function developmentResourceTargets(
   }
   if (profile.phase === "establish-core") {
     return { gold: 16, buildingMaterials: 3, valuables: 1 };
+  }
+  if (profile.goldUnlocked && profile.goldUnits === 0) {
+    const recruit = firstGoldRecruitCost(state, playerId);
+    if (recruit) {
+      return {
+        // Preserve the normal five-gold safety cushion after the purchase.
+        gold: (recruit.gold ?? 0) + 5,
+        buildingMaterials: recruit.buildingMaterials ?? 0,
+        valuables: recruit.valuables ?? 0,
+      };
+    }
   }
   // Mature town: keep enough for a Silver recruit or a useful reinforcement.
   return { gold: 18, buildingMaterials: 3, valuables: 2 };

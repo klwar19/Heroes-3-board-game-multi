@@ -568,8 +568,7 @@ export function MapPresetEditor({
     matchSetup:
       (value.difficulty ? 1 : 0) +
       (value.farTileOpening !== undefined ||
-      value.farTilesPerPlayer !== undefined ||
-      value.farTileSettlementReroll !== undefined
+      value.farTilesPerPlayer !== undefined
         ? 1
         : 0) +
       Object.keys(value.houseRules ?? {}).length,
@@ -780,36 +779,10 @@ export function MapPresetEditor({
             })}
           </div>
         ) : null}
-        <div className="mapPresetObjectiveRow">
-          <span className="mapPresetObjectiveLabel">Settlement reroll</span>
-          <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ Settlement reroll map preset">
-            {(
-              [
-                { value: undefined, label: "Lobby default" },
-                { value: true, label: "On" },
-                { value: false, label: "Off" }
-              ] as const
-            ).map((option) => {
-              const active = value.farTileSettlementReroll === option.value;
-              return (
-                <button
-                  aria-pressed={active}
-                  className={`mapPresetChip${active ? " active" : ""}`}
-                  key={option.label}
-                  onClick={() => patch({ farTileSettlementReroll: option.value })}
-                  type="button"
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
         <small className="mapPresetHint">
           Whether players may open their own Ⅱ–Ⅲ Far tiles mid-game, and how many each may add (0–6). Only the
-          count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Settlement reroll also
-          applies to face-down Ⅱ–Ⅲ tiles already designed onto the map; Off preserves their exact type. Seeds the
-          lobby on pick.
+          count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Ore / Settlement tile
+          replacement is a BINH house rule, not a map-preset setting. Seeds the lobby on pick.
         </small>
       </section>
 

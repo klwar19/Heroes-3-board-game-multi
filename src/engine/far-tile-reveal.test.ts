@@ -146,9 +146,9 @@ describe("Ⅱ–Ⅲ tile discovery — keep/reroll/pick on a tile already on the
       expect(next.adventure!.tiles[tile.id].faceDown).toBe(false);
     });
 
-    it("preserves the designed on-map tile exactly when Settlement rerolls are OFF", () => {
+    it("preserves the designed on-map tile exactly when the BINH tile-reroll rule is OFF", () => {
       const { state, tile } = secondOpening(MINE_NO_SETTLEMENT, [SETTLEMENT_NO_MINE], []);
-      state.adventure!.farTileSettlementReroll = false;
+      state.adventure!.houseRules!["far-tile-rerolls"] = false;
       const next = apply(state, discoverAction(tile.id));
       expect(next.pendingChoice).toBeNull();
       expect(next.adventure!.pendingFarTileFlip).toBeNull();

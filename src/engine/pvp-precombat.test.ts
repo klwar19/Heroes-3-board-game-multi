@@ -7,7 +7,8 @@ import {
 } from "./index";
 import { getMainHero } from "./adventure";
 import { startPlayerCombat } from "./adventure-reducer";
-import type { GameAction, GameState, PlayerId } from "./state";
+import { chooseComputerAction } from "./computer/policy";
+import type { GameAction, GameState, PlayerId, PlayerVisibleState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -114,6 +115,67 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     startPlayerCombat(state, attacker, defender, defender.spaceId ?? "0,0");
     return state;
   }
+
+  it("a computer defender spends every useful town action before accepting a human attack", () => {
+    let state = attack("prep-computer-spend", (s) => {
+      s.sessionMode = "single-player";
+      s.controllers = {
+        ...(s.controllers ?? {}),
+        p2: { kind: "computer", difficulty: "standard", policyVersion: 1 },
+      };
+      s.players.p2.hand = [];
+      s.towns.town_p2.buildings.push(`${s.players.p2.factionId}.citadel`);
+      s.players.p2.army.shift();
+    });
+    const actionsBeforeAccept: GameAction["type"][] = [];
+
+    for (let safety = 0; safety < 20; safety += 1) {
+      const legalActions = getLegalActions(state, "p2");
+      const decision = chooseComputerAction({
+        playerId: "p2",
+        state: state as unknown as PlayerVisibleState,
+        legalActions,
+      });
+      expect(
+        decision,
+        `computer owns a preparation decision; prior=${actionsBeforeAccept.join(",")} legal=${legalActions
+          .map((legal) => legal.action.type)
+          .join(",")}`,
+      ).toBeTruthy();
+      if (
+        decision!.action.type === "ACCEPT_COMBAT" ||
+        decision!.action.type === "RETREAT_FROM_COMBAT" ||
+        decision!.action.type === "SURRENDER_COMBAT"
+      ) {
+        // Any prep exit is allowed to win only after the finite town
+        // acquisition actions have been consumed or become unaffordable.
+        expect(
+          legalActions.some((legal) =>
+            ["BUILD_STRUCTURE", "POPULATION_ACTION", "SPELL_BOOK_ACTION"].includes(
+              legal.action.type,
+            ),
+          ),
+          "no town purchase remains when the computer readies",
+        ).toBe(false);
+        state = applyOk(state, decision!.action);
+        break;
+      }
+      actionsBeforeAccept.push(decision!.action.type);
+      const applied = applyAction(state, decision!.action);
+      expect(
+        applied.errors,
+        `${decision!.action.type}: ${applied.errors.map((error) => error.message).join("; ")}`,
+      ).toEqual([]);
+      state = applied.state;
+    }
+
+    expect(actionsBeforeAccept).toContain("BUILD_STRUCTURE");
+    expect(actionsBeforeAccept).toContain("POPULATION_ACTION");
+    expect(
+      state.combat?.prep?.accepted.includes("p2") || Boolean(state.combat?.outcome),
+      "after shopping, the computer either accepts or makes its strategic escape",
+    ).toBe(true);
+  });
 
   it("opens for BOTH participants — each offered Accept, Retreat and town actions", () => {
     const state = attack("prep-open");

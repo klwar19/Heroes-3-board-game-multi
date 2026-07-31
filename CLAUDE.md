@@ -6237,3 +6237,24 @@ Leading with what does NOT run / deliberate limits:
 - **Landmark bans survive onto the placed tile** (`MapTileState.excludeFeatures`)
   so the Gold/valuables resource-pick tile reassignment also refuses a banned
   landmark when swapping the tile def.
+
+## Far-tile rerolls and single-player AI (2026-07-31)
+
+- **Ⅱ–Ⅲ tile replacement is one BINH house rule**:
+  `far-tile-rerolls` controls both Ore/material-tile replacement and the
+  replacement offered when the drawn tile cannot satisfy a Settlement plan.
+  Official/Legacy rules keep the drawn tile; BINH enables the replacement
+  behavior. Do not reintroduce a separate setup or map-preset switch.
+- **Event AI decisions use public value and cost information**: Shady Auction
+  bids scale with the revealed artifact's keep value and preserve a treasury
+  reserve; card, mercenary, neutral-unit, gamble, discard, and pooled-resource
+  event choices protect valuable holdings and compare real printed costs.
+- **A defending computer prepares before resolving PvP prep**: while a human
+  attack is pending, useful legal Town/build/card actions outrank combat-prep
+  exit actions. The AI then accepts, retreats, surrenders, or gives up once no
+  beneficial preparation remains.
+- **Gold development means recruiting an actual Gold unit**: after unlocking
+  the Gold dwelling, development targets preserve the cheapest Gold unit's
+  printed inputs and a gold cushion, while non-Gold population/build spending
+  is suppressed until that unit is recruited. Seeded premium-rush benchmarks
+  assert actual `UNIT_RECRUITED` events, not merely the dwelling unlock.

@@ -410,6 +410,22 @@ function buildingScore(
       return Math.min(score, 280);
     }
   }
+  // Building the Gold Dwelling is not the milestone's outcome. Until one real
+  // Gold unit has joined the army, do not let a side building consume its exact
+  // recruit fund.
+  if (development.goldUnlocked && development.goldUnits === 0) {
+    const cost = coreBuildingDefinitions[buildingId]?.cost ?? {};
+    const resources = playerResources(state, playerId);
+    const target = developmentResourceTargets(state, playerId);
+    const protectsGoldRecruit =
+      resources.gold - (cost.gold ?? 0) >= target.gold &&
+      resources.buildingMaterials - (cost.buildingMaterials ?? 0) >=
+        target.buildingMaterials &&
+      resources.valuables - (cost.valuables ?? 0) >= target.valuables;
+    if (!protectsGoldRecruit) {
+      return Math.min(score, 280);
+    }
+  }
   return score;
 }
 
@@ -520,6 +536,15 @@ function populationScore(
     // Never postpone an adjacent scenario-winning capture just to buy a Pack,
     // while still beating ordinary fights, exploration, and END_TURN.
     return Math.min(score, 970 + Math.min(5, Math.round(efficiency)));
+  }
+  if (development.goldUnlocked && development.goldUnits === 0) {
+    const buysGold = action.purchases.some(
+      (purchase) => coreUnitDefinitions[purchase.unitDefId]?.tier === "gold",
+    );
+    if (!buysGold) {
+      // Hold the Population token and treasury for the first Gold body.
+      return Math.min(score, 240);
+    }
   }
   if (
     development.phase === "unlock-silver" ||
@@ -1286,6 +1311,51 @@ function tribulationTollCost(state: GameState, playerId: PlayerId, unitId: strin
   return (cost.gold ?? 0) + (cost.buildingMaterials ?? 0) * 3 + (cost.valuables ?? 0) * 7;
 }
 
+function eventResourceCostValue(cost: ResourceCost | undefined): number {
+  return (
+    (cost?.gold ?? 0) +
+    (cost?.buildingMaterials ?? 0) * 3 +
+    (cost?.valuables ?? 0) * 7
+  );
+}
+
+/** Net utility of acquiring a known Event card, including the actual price. */
+function eventCardAcquisitionUtility(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  cost?: ResourceCost,
+): number {
+  const keep = cardKeepValue(cardId, { state, playerId });
+  const price = eventResourceCostValue(cost);
+  const player = state.players[playerId];
+  const breaksGoldReserve =
+    (cost?.gold ?? 0) > 0 &&
+    (player?.resources.gold ?? 0) - (cost?.gold ?? 0) < GOLD_RESERVE;
+  return Math.round(keep * 0.65) - price * 4 - (breaksGoldReserve ? 35 : 0);
+}
+
+/** Printed combat value of a known Neutral offered by an Event. */
+function eventNeutralUnitUtility(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+): number {
+  const def = coreUnitDefinitions[unitDefId];
+  const side = def?.neutral;
+  if (!def || !side) return 0;
+  const tierBonus =
+    def.tier === "azure" ? 48 : def.tier === "gold" ? 34 : def.tier === "silver" ? 20 : 8;
+  const combatValue =
+    side.attack * 3 +
+    side.health * 2 +
+    side.defense +
+    Math.round(side.initiative / 2);
+  const cost = eventResourceCostValue(side.cost);
+  const thinArmyBonus = (state.players[playerId]?.army.length ?? 0) < 5 ? 18 : 0;
+  return tierBonus + combatValue + thinArmyBonus - Math.round(cost * 1.5);
+}
+
 function visitStepsUtility(
   state: GameState,
   playerId: PlayerId,
@@ -1379,26 +1449,30 @@ function visitStepsUtility(
         utility -= step.amount * 4;
         break;
       case "EVENT_AUCTION_SET_BID": {
-        // Never dump the treasury on a blind lot. Prefer a modest bid (or 0)
-        // that keeps GOLD_RESERVE; high bids only when gold is very flush.
+        // The lot is public: bid by its real keep value instead of hard-coding
+        // one gold for every Artifact. Strong Major/Relic/S-tier cards justify
+        // a serious bid, while weak Minors still preserve the development fund.
         const amount = step.amount;
-        if (amount === 0) {
-          utility += 8;
+        const lotId = state.adventure?.events?.auction?.lotCardId;
+        const keep = lotId ? cardKeepValue(lotId, { state, playerId }) : 40;
+        const qualityBudget = Math.max(1, Math.min(12, Math.round((keep - 40) / 7)));
+        const flexibleReserve = keep >= 90 ? 2 : GOLD_RESERVE;
+        const spendable = Math.max(0, res.gold - flexibleReserve);
+        const target = Math.min(qualityBudget, spendable);
+        if (amount > spendable) {
+          utility -= 80 + amount * 2;
           break;
         }
-        const affordable = res.gold - amount >= GOLD_RESERVE;
-        if (!affordable) {
-          utility -= 50 + amount;
-          break;
-        }
-        // Sweet spot: 1–4 gold when coffers can spare it (wins vs other 0-bids).
-        if (amount <= 4) {
-          utility += 28 - amount * 2;
-        } else if (amount <= Math.floor(res.gold / 4)) {
-          utility += 10 - amount;
-        } else {
-          utility -= amount;
-        }
+        utility += 36 - Math.abs(amount - target) * 7 - Math.round(amount * 0.5);
+        if (target === 0 && amount === 0) utility += 8;
+        break;
+      }
+      case "EVENT_HERMIT_GAMBLE": {
+        // Wrong guesses lose the named resource. Naming an empty/scarce track
+        // caps the downside; risking a stocked dwelling input is much worse.
+        const stock = res[step.resource] ?? 0;
+        const need = Math.max(0, deficit[step.resource]);
+        utility += 16 - stock * 3 + need * 2;
         break;
       }
       case "EVENT_MARKET_DEAL_OPEN": {
@@ -1424,16 +1498,35 @@ function visitStepsUtility(
         break;
       }
       case "EVENT_NEUTRAL_BUY":
+        utility += eventNeutralUnitUtility(state, playerId, step.unitDefId);
+        break;
       case "EVENT_MERC_RECRUIT":
-      case "EVENT_MERC_TAKE":
         utility += army < 5 ? 30 : 12;
         break;
+      case "EVENT_MERC_TAKE": {
+        // Drawing higher-tier candidates is useful only when the treasury can
+        // plausibly recruit them; otherwise fish in the affordable tiers.
+        const tierValue =
+          step.tier === "azure" ? 50 : step.tier === "gold" ? 40 : step.tier === "silver" ? 28 : 18;
+        const affordability =
+          step.tier === "azure"
+            ? res.gold >= 18
+            : step.tier === "gold"
+              ? res.gold >= 12
+              : step.tier === "silver"
+                ? res.gold >= 8
+                : true;
+        utility += (affordability ? tierValue : 4) + Math.max(0, step.count - 1) * 5;
+        break;
+      }
       case "EVENT_ARTIFACT_SHOP":
       case "EVENT_SPELL_MARKET":
-      case "EVENT_TAKE_CARD":
-      case "EVENT_TAKE_POOL_CARD":
       case "EVENT_MESSENGER_DRAW":
         utility += 24;
+        break;
+      case "EVENT_TAKE_CARD":
+      case "EVENT_TAKE_POOL_CARD":
+        utility += eventCardAcquisitionUtility(state, playerId, step.cardId, step.cost);
         break;
       case "GRANT_WAR_MACHINE":
         // Free grant is excellent; paid only when gold is healthy (cost checked
@@ -1445,8 +1538,26 @@ function visitStepsUtility(
         utility += army < 6 ? 28 : 12;
         break;
       case "EVENT_REMOVE_FOR_SEARCH":
-        // Paying cards for a Search is fine when the hand is full of fodder.
-        utility += 18;
+        // Value the searches already earned, but stop removing once the next
+        // card would not cross another threshold.
+        utility +=
+          (step.single
+            ? step.removed >= (step.minRemoved ?? 0) ? 30 : 4
+            : Math.floor(step.removed / step.per) * 26) +
+          (step.thenDiscardAllRedraw ? 8 : 0);
+        break;
+      case "REMOVE_CARD_FROM_PILE":
+      case "EVENT_DISCARD_HAND_CARD":
+      case "EVENT_POOL_ADD_FROM_HAND":
+        utility += 24 - Math.round(cardKeepValue(step.cardId, { state, playerId }) * 0.75);
+        break;
+      case "EVENT_DISCARD_ANY_THEN_DRAW":
+        // Continuation value makes discarding genuine junk beat Done, while
+        // the card-loss term above protects strong cards.
+        utility += 16;
+        break;
+      case "EVENT_NEUTRAL_DISCARD_GOLD":
+        utility += step.gold * 2 - Math.max(0, eventNeutralUnitUtility(state, playerId, step.unitDefId) / 3);
         break;
       case "EVENT_HERMIT_PAY_SEARCH":
         utility += res.gold >= GOLD_RESERVE + 5 ? 20 : 5;
@@ -1460,12 +1571,29 @@ function visitStepsUtility(
         utility += 16;
         break;
       case "EVENT_LEPRECHAUN_ROLL":
-      case "EVENT_TAKE_POOL_DIE":
         utility += 14;
         break;
+      case "EVENT_TAKE_POOL_DIE": {
+        const die = state.adventure?.events?.dicePool?.[step.index];
+        if (!die) {
+          utility += 8;
+        } else if (die.kind === "resource") {
+          const need = Math.max(0, deficit[die.resource]);
+          utility += die.amount * (die.resource === "gold" ? 3 : die.resource === "buildingMaterials" ? 5 : 7) + need;
+        } else {
+          utility +=
+            die.face === "artifact-search"
+              ? 30
+              : die.face === "experience"
+                ? 24
+                : die.face === "double-resource-die"
+                  ? 22
+                  : 14;
+        }
+        break;
+      }
       case "EVENT_FOREST_CONTRIBUTE":
       case "EVENT_FOREST_TAKE":
-      case "EVENT_POOL_ADD_FROM_HAND":
       case "EVENT_POOL_TAKE_RANDOM":
         utility += 12;
         break;

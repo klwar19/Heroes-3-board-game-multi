@@ -3242,11 +3242,7 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
     !tileDefHasSettlement(candidate) &&
     farTilePoolHasSettlement(state);
   // Only an ORE Mine triggers the reroll — never a gold or valuables Mine.
-  // The Settlement-reroll OFF option promises exact tile identities ("every
-  // Ⅱ–Ⅲ tile stays exactly as drawn or designed"), so it suppresses this
-  // reroll too — otherwise an Ore-Mine tile could still be swapped away.
   const mineEligible =
-    state.adventure?.farTileSettlementReroll !== false &&
     !flip.mineRerollUsed &&
     tileDefHasOreMine(candidate) &&
     poolHasDraw;

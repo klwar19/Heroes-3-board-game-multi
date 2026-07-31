@@ -129,9 +129,9 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       state = apply(state, {
         type: "SET_GAME_OPTIONS",
         playerId: "p1",
-        options: { farTileSettlementReroll: false }
+        options: { houseRules: { "far-tile-rerolls": false } }
       });
-      expect(state.setupLobby!.options.farTileSettlementReroll).toBe(false);
+      expect(state.setupLobby!.options.houseRules?.["far-tile-rerolls"]).toBe(false);
 
       state = apply(state, { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" });
       state = apply(state, { type: "CHOOSE_FACTION", playerId: "p2", factionId: "inferno", heroDefId: "xyron" });
@@ -140,7 +140,7 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(state.adventure!.playerFarTiles.p1).toHaveLength(1);
       expect(state.adventure!.playerFarTiles.p2).toHaveLength(1);
       expect(state.adventure!.playerFarTiles.p1.every((m) => m === "?")).toBe(true);
-      expect(state.adventure!.farTileSettlementReroll).toBe(false);
+      expect(state.adventure!.houseRules?.["far-tile-rerolls"]).toBe(false);
     });
   });
 
@@ -195,9 +195,9 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(state.pendingChoice && "options" in state.pendingChoice ? state.pendingChoice.options.length : 0).toBe(2);
     });
 
-    it("places the exact 2nd tile without a Settlement offer when the reroll option is OFF", () => {
+    it("OFFICIAL / house rule OFF: places the exact 2nd tile without a Settlement offer", () => {
       const initial = secondOpening([MINE_NO_SETTLEMENT]);
-      initial.adventure!.farTileSettlementReroll = false;
+      initial.adventure!.houseRules!["far-tile-rerolls"] = false;
       const placed = apply(initial, PLACE);
       expect(placed.adventure!.pendingFarTileFlip).toBeNull();
       expect(placed.pendingChoice).toBeNull();
@@ -315,6 +315,19 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
   });
 
   describe("ore-mine reroll (every opening, once) — ONLY ore Mines, never gold/valuables", () => {
+    it("OFFICIAL / Legacy: an Ore Mine is final and cannot be replaced", () => {
+      const state = setup();
+      state.adventure!.houseRules!["far-tile-rerolls"] = false;
+      state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT, SETTLEMENT_NO_MINE];
+      const placed = apply(state, PLACE);
+      expect(placed.pendingChoice).toBeNull();
+      expect(placed.adventure!.pendingFarTileFlip).toBeNull();
+      expect(placed.adventure!.tiles[placed.adventure!.pendingTileChoice!.tileInstanceId].tileDefId).toBe(
+        ORE_MINE_NO_SETTLEMENT
+      );
+      expect(placed.adventure!.farTileScriptedDraws).toEqual([SETTLEMENT_NO_MINE]);
+    });
+
     it("offers a one-time reroll when the tile has an ORE Mine, and the reroll replaces it", () => {
       const state = setup();
       // Opening 1, scripted: an ORE Mine tile, then a no-Mine tile on the reroll.
@@ -349,9 +362,9 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       expect(hasOreMine).toBe(true);
     });
 
-    it("is suppressed when the Ⅱ–Ⅲ Settlement reroll option is OFF (exact tile identities)", () => {
+    it("is suppressed when the BINH far-tile rerolls house rule is OFF (exact tile identities)", () => {
       const state = setup();
-      state.adventure!.farTileSettlementReroll = false;
+      state.adventure!.houseRules!["far-tile-rerolls"] = false;
       state.adventure!.farTileScriptedDraws = [ORE_MINE_NO_SETTLEMENT];
       const next = apply(state, PLACE);
       // No ore-mine offer either: the OFF option promises the exact drawn tile.
