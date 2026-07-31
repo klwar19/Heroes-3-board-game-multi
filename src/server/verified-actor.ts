@@ -62,13 +62,30 @@ export function httpTokenVerifier(
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const response = await Promise.race([
-        fetchImpl(`${base}/api/auth/verify-token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-          signal: controller.signal
-        }),
+      // The deadline must bound the WHOLE round-trip (fetch AND body read): a
+      // fetch impl that settles but whose json() hangs past the abort would
+      // otherwise stall the action pipeline forever, so the parse races too.
+      return await Promise.race([
+        (async (): Promise<VerifiedIdentity | null> => {
+          const response = await fetchImpl(`${base}/api/auth/verify-token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+            signal: controller.signal
+          });
+          if (!response.ok) {
+            return null;
+          }
+          const data = (await response.json()) as
+            | { userId?: unknown; nickname?: unknown; isAdmin?: unknown }
+            | null;
+          if (data && typeof data.userId === "string" && typeof data.nickname === "string") {
+            // `isAdmin` is optional on the wire (older app deploys omit it): absent
+            // ⇒ not an admin, so the destructive-op bypass simply never triggers.
+            return { userId: data.userId, nickname: data.nickname, isAdmin: data.isAdmin === true };
+          }
+          return null;
+        })(),
         new Promise<never>((_, reject) => {
           timeout = setTimeout(() => {
             controller.abort();
@@ -76,18 +93,6 @@ export function httpTokenVerifier(
           }, Math.max(1, timeoutMs));
         })
       ]);
-      if (!response.ok) {
-        return null;
-      }
-      const data = (await response.json()) as
-        | { userId?: unknown; nickname?: unknown; isAdmin?: unknown }
-        | null;
-      if (data && typeof data.userId === "string" && typeof data.nickname === "string") {
-        // `isAdmin` is optional on the wire (older app deploys omit it): absent
-        // ⇒ not an admin, so the destructive-op bypass simply never triggers.
-        return { userId: data.userId, nickname: data.nickname, isAdmin: data.isAdmin === true };
-      }
-      return null;
     } catch {
       return null;
     } finally {

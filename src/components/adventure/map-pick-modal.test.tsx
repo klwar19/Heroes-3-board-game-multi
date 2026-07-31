@@ -46,17 +46,14 @@ function designedMap(overrides: Partial<SharedMapRecord> = {}): SharedMapRecord 
 async function open(maps: SharedMapRecord[] = [], mutate?: (state: GameState) => void) {
   vi.mocked(fetchSharedMaps).mockResolvedValue(maps);
   const onAction = vi.fn();
-  const onOpenBox = vi.fn();
   const state = createAdventureLobbyState({ seed: "map-pick" });
   mutate?.(state);
-  render(
-    <MapPickModal onAction={onAction} onClose={vi.fn()} onOpenBox={onOpenBox} state={state} viewerPlayerId="p1" />
-  );
+  render(<MapPickModal onAction={onAction} onClose={vi.fn()} state={state} viewerPlayerId="p1" />);
   const dialog = screen.getByRole("dialog", { name: "Choose a map" });
   if (maps.length) {
     await waitFor(() => expect(within(dialog).getByText(new RegExp(maps[0].name))).toBeTruthy());
   }
-  return { onAction, onOpenBox, dialog, state };
+  return { onAction, dialog, state };
 }
 
 function rows(dialog: HTMLElement) {

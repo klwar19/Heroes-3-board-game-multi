@@ -113,4 +113,40 @@ describe("campaignSetupActions", () => {
     expect(locked.setup).toBeUndefined();
     expect(campaignSetupActions(locked, "p1")).toEqual([]);
   });
+
+  // REGRESSION: the scripted computer opponents MUST be seated BEFORE the human's
+  // CHOOSE_FACTION. In single player, CHOOSE_FACTION triggers the computer setup
+  // policy to roll a random town for every AUTO opponent seat, and a random roll
+  // landing on a scripted faction made the later explicit SET throw "Another seat
+  // already picked that faction." — an intermittent campaign-setup failure. With
+  // the opponents seated while the human is still on auto (no rolling happens
+  // yet), every clear+set completes before the human picks. This order property
+  // is what makes the seating deterministic regardless of the room seed.
+  it("seats the fixed computer opponents BEFORE the human CHOOSE_FACTION (multi-opponent chapter)", () => {
+    const griffin = getCampaignChapter("erathia", "griffin-cliff")!;
+    expect(griffin.setup?.computerSeats).toHaveLength(2);
+    const actions = campaignSetupActions(griffin, "p1");
+
+    const chooseIndex = actions.findIndex((a) => a.type === "CHOOSE_FACTION");
+    const explicitSetIndices = actions
+      .map((a, i) => (a.type === "SET_COMPUTER_SEAT_FACTION" && a.choice !== "clear" ? i : -1))
+      .filter((i) => i >= 0);
+    expect(chooseIndex).toBeGreaterThanOrEqual(0);
+    expect(explicitSetIndices).toHaveLength(2);
+    // Every scripted-opponent assignment precedes the human's faction pick.
+    for (const setIndex of explicitSetIndices) {
+      expect(setIndex).toBeLessThan(chooseIndex);
+    }
+    // Each seat is cleared to auto before being explicitly assigned.
+    for (const seat of ["p2", "p3"] as const) {
+      const clearIndex = actions.findIndex(
+        (a) => a.type === "SET_COMPUTER_SEAT_FACTION" && a.seatPlayerId === seat && a.choice === "clear"
+      );
+      const setIndex = actions.findIndex(
+        (a) => a.type === "SET_COMPUTER_SEAT_FACTION" && a.seatPlayerId === seat && a.choice !== "clear"
+      );
+      expect(clearIndex).toBeGreaterThanOrEqual(0);
+      expect(setIndex).toBeGreaterThan(clearIndex);
+    }
+  });
 });

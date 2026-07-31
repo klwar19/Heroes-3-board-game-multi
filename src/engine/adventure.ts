@@ -117,7 +117,9 @@ import {
 import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
-  polishQuickCombatFieldStrength
+  polishQuickCombatFieldStrength,
+  polishQuickCombatOutcome,
+  type PolishQuickCombatOutcome
 } from "./polish-quick-combat";
 import {
   CAST_A_SPELL_CARD_ID,
@@ -3064,6 +3066,62 @@ export function neutralBattleLevel(state: GameState, hero: HeroState): number {
   return hero.level;
 }
 
+export interface PolishQuickCombatFieldInfo {
+  /** Sum of the army's 5 strongest cards' strengths. */
+  armyStrength: number;
+  /** The field strength the army must equal or exceed (2×difficulty + X, +1 with Stacks). */
+  requiredStrength: number;
+  /** Whether `armyStrength >= requiredStrength`. */
+  covered: boolean;
+  /** How a fight here resolves under the strength shortcut (`polishQuickCombatOutcome`). */
+  outcome: PolishQuickCombatOutcome;
+}
+
+/**
+ * Pre-fight Quick-Combat readout for a guarded neutral FIELD under the Polish
+ * `polish-quick-combat` rule — the map floats show the player their army
+ * strength and the field's required strength before they commit to a fight.
+ *
+ * Returns null (nothing to show) when the rule is OFF, or the field is not an
+ * ordinary guarded neutral fight: Creature Banks, bank-style outposts / teleport
+ * guards, designer EXACT armies and break-field unlimited fights all keep their
+ * own no-Quick-Combat rules, exactly as `startNeutralEncounter` early-returns
+ * before reaching the Quick-Combat branch. The `outcome` mirrors that branch via
+ * the shared `polishQuickCombatOutcome` classifier, so the float can never
+ * promise a Quick Combat the engine would not grant.
+ */
+export function polishQuickCombatFieldInfo(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState
+): PolishQuickCombatFieldInfo | null {
+  if (!polishQuickCombatEnabled(state)) {
+    return null;
+  }
+  const difficulty = field.difficulty ?? 0;
+  if (difficulty <= 0 || !isFieldGuarded(field)) {
+    return null;
+  }
+  if (
+    fieldCreatureBankId(field) ||
+    isBankStyleGuardLocation(field.location) ||
+    isTeleportObjectGuardLocation(field.location) ||
+    (field.customGuardUnits?.length ?? 0) > 0 ||
+    field.unlimitedCombatRounds
+  ) {
+    return null;
+  }
+  const level = neutralBattleLevel(state, hero);
+  const armyStrength = polishQuickCombatArmyStrength(state, hero.controllerId);
+  const requiredStrength = polishQuickCombatFieldStrength(state, difficulty);
+  return {
+    armyStrength,
+    requiredStrength,
+    covered: armyStrength >= requiredStrength,
+    outcome: polishQuickCombatOutcome(state, hero, difficulty, level)
+  };
+}
+
 /**
  * The Fields a newly gained Secondary Hero may be placed on: the spot it was
  * gained at (a Prison/Tavern Field — `originFieldId`, when given), the player's
@@ -4260,7 +4318,13 @@ export function eliminatePlayer(
       }
     }
     state.adventure.rewardQueue = state.adventure.rewardQueue.filter(
-      (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
+      (reward) =>
+        reward.kind === "round-start-events-resolved" ||
+        // The opening first-player divider is table-wide bookkeeping like the
+        // barrier sentinel: it nominally carries seat 1's id, and dropping it
+        // with that seat would leave round 1 unable to ever start.
+        reward.kind === "opening-first-player-roll" ||
+        reward.playerId !== playerId
     );
     if (state.adventure.pendingVisit?.playerId === playerId) {
       // A visit step can hold cards LIFTED out of a shared zone (the Polish

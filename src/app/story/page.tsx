@@ -38,9 +38,14 @@ export default function StoryPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Hydrate completion from localStorage on mount (client-only): SSR + the first
+  // client render both show "no progress" so there is no hydration mismatch, then
+  // this adopts the stored progress. setState-in-effect is the correct pattern here.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     setCompleted(getCampaignProgress(campaign.id).completed);
   }, [campaign.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const selected = useMemo(
     () => campaign.chapters.find((chapter) => chapter.id === selectedId) ?? campaign.chapters[0],

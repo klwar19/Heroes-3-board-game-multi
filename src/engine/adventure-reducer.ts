@@ -20,7 +20,7 @@ import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
-  polishQuickCombatXpPossible
+  polishQuickCombatOutcome
 } from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
@@ -3228,8 +3228,15 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   const candidate = flip.candidate;
   // Official rule: the tile that was revealed is the tile that stays. Both
   // identity-changing offers below are one BINH house rule, never an
-  // independent map/scenario option.
-  if (!houseRuleEnabled(state, "far-tile-rerolls")) {
+  // independent map/scenario option. In-flight LEGACY snapshots froze the
+  // removed `farTileSettlementReroll` option on adventure state; when present
+  // it keeps deciding for THAT game — a mid-game server update must not flip
+  // a table's reroll offers in either direction.
+  const legacyReroll = (requireAdventure(state) as { farTileSettlementReroll?: unknown })
+    .farTileSettlementReroll;
+  const rerollsEnabled =
+    typeof legacyReroll === "boolean" ? legacyReroll : houseRuleEnabled(state, "far-tile-rerolls");
+  if (!rerollsEnabled) {
     finalizeFarTileFlip(state, candidate);
     return;
   }
@@ -4952,20 +4959,22 @@ export function startNeutralEncounter(
   // Quick Combat; not covered → the fight is mandatory, so the classic
   // level > difficulty auto-win below deliberately does NOT apply.
   if (polishQuickCombatEnabled(state)) {
-    // A hero at the exact field level still needs the normal fight for its XP.
-    // The strength shortcut remains available above or below the field level,
-    // but must not turn a level-2 fight into a Quick Combat on a level-2 tile.
-    if (
-      level !== difficulty &&
-      polishQuickCombatArmyStrength(state, playerId) >= polishQuickCombatFieldStrength(state, difficulty)
-    ) {
-      if (!polishQuickCombatXpPossible(hero, difficulty)) {
-        resolveQuickCombatWin(state, hero, field, difficulty);
-        return;
-      }
+    // The mandatory-vs-choice-vs-fight decision (army strength vs field strength,
+    // the exact-level carve-out, and the no-Experience test) lives in ONE shared
+    // classifier so the map's pre-fight display can never disagree with what a
+    // fight here actually does.
+    const outcome = polishQuickCombatOutcome(state, hero, difficulty, level);
+    if (outcome === "mandatory") {
+      resolveQuickCombatWin(state, hero, field, difficulty);
+      return;
+    }
+    if (outcome === "choice") {
       openPolishQuickCombatChoice(state, hero, field, difficulty);
       return;
     }
+    // outcome "fight": the shortcut does not apply (exact level or too weak) —
+    // fall through to the Diplomacy check / normal guard combat below. The
+    // classic level > difficulty auto-win deliberately does NOT apply here.
   } else if (level > difficulty) {
     // Quick Combat: a hero whose level beats the field difficulty wins outright.
     resolveQuickCombatWin(state, hero, field, difficulty);
@@ -6564,6 +6573,62 @@ function applyMapSpellAtPower(
   const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
   const effectivePower = power * multiplier;
   const best = bestMapSpellTier(tiers, effectivePower);
+
+  // Dimension Door teleports through a destination pick that can drop the hero
+  // straight into a fight. If the Knowledge/Mysticism recall were offered AFTER
+  // the effect (as every other map spell does), its reward would be stranded
+  // behind that combat and only surface once the fight ended — the reported "I
+  // had to play the whole fight before I could recall" bug. Offer the recall
+  // FIRST — exactly like a combat cast, before the spell resolves — then apply
+  // the teleport through a queued "map-spell-effect" reward so it runs once the
+  // recall choice is answered. Recalling the (Polish) Cast a Spell enabler here
+  // also hands it back BEFORE the fight, so it is available to cast in combat.
+  // Every other map spell keeps the after-effect recall: none opens a combat,
+  // so nothing can strand the reward.
+  if (best.effect.type === "DIMENSION_DOOR") {
+    const offered = offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
+    if (offered && state.adventure) {
+      state.adventure.rewardQueue.push({
+        playerId,
+        kind: "map-spell-effect",
+        spellCardId,
+        power,
+        ...(bookFlags.fromSpellBook ? { fromSpellBook: true as const } : {}),
+        ...(bookFlags.castEnablerCardId ? { castEnablerCardId: bookFlags.castEnablerCardId } : {}),
+        ...(bookFlags.inFlightCardIds ? { inFlightCardIds: bookFlags.inFlightCardIds } : {})
+      });
+      return;
+    }
+    // No recall available: resolve the teleport now (unchanged behaviour).
+    finalizeMapSpellEffect(state, playerId, spellCardId, power, bookFlags);
+    return;
+  }
+
+  finalizeMapSpellEffect(state, playerId, spellCardId, power, bookFlags);
+  offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
+}
+
+/**
+ * Applies a resolved map spell's effect and finalizes card placement. Split out
+ * of {@link applyMapSpellAtPower} so a teleport spell can offer the recall
+ * BEFORE the effect (see the DIMENSION_DOOR branch there) and apply the effect
+ * afterwards, via the "map-spell-effect" reward in pumpAdventureQueues.
+ */
+function finalizeMapSpellEffect(
+  state: GameState,
+  playerId: PlayerId,
+  spellCardId: CardId,
+  power: number,
+  bookFlags: MapSpellBoostFlags
+): void {
+  const spell = cardLibrary[spellCardId];
+  const tiers = mapSpellPowerTiers(spell);
+  if (!spell || !tiers) {
+    return;
+  }
+  const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
+  const effectivePower = power * multiplier;
+  const best = bestMapSpellTier(tiers, effectivePower);
   const effectCountBefore = state.activeEffects.length;
   applyMapSpellEffect(
     state,
@@ -6586,7 +6651,6 @@ function applyMapSpellAtPower(
   if (!held) {
     maybeReturnFirstSpellToHand(state, playerId, spellCardId);
   }
-  offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
 }
 
 /** Mirror of reducer holdOngoingCardIfEffectCreated for the map cast-then-boost path. */
@@ -6813,13 +6877,13 @@ function offerMapSpellKnowledgeRecall(
     castEnablerCardId?: CardId;
     inFlightCardIds?: CardId[];
   }
-): void {
+): boolean {
   if (!state.adventure || state.combat) {
-    return;
+    return false;
   }
   const player = state.players[playerId];
   if (!player) {
-    return;
+    return false;
   }
   const polishBookCast = Boolean(bookFlags.fromSpellBook && bookFlags.castEnablerCardId);
   const spellIsRecallable =
@@ -6828,7 +6892,7 @@ function offerMapSpellKnowledgeRecall(
       : Boolean(player.discard.includes(spell.id))) ||
     Boolean(player.ongoingCards?.some((entry) => entry.cardId === spell.id));
   if (!spellIsRecallable) {
-    return;
+    return false;
   }
   const returnLabel = polishBookCast
     ? "return Cast a Spell to your hand (the Book spell stays used)"
@@ -6847,7 +6911,7 @@ function offerMapSpellKnowledgeRecall(
         entry.card?.effect.type === "RECALL_SPELL"
     );
   if (recallCards.length === 0) {
-    return;
+    return false;
   }
 
   // Preserve multiplicity: two physical copies with the same card id are two
@@ -6908,6 +6972,7 @@ function offerMapSpellKnowledgeRecall(
       }
     ]
   });
+  return true;
 }
 
 /** True when the card is a map Power-tier spell (cast-then-boost flow). */
@@ -15851,6 +15916,13 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
 
+      // Mid-bonus eliminations can END the game (last-faction-standing) before
+      // round 1 ever starts — the wave-assault precedent: never publish a
+      // ceremony or open a round for a finished table.
+      if (adventure.winnerPlayerId) {
+        continue;
+      }
+
       commitFirstPlayerRoll(state);
       if (reward.secondPlayerMorale && state.turnOrder.length >= 2) {
         changeMorale(state, state.turnOrder[1]!, 1);
@@ -15885,6 +15957,24 @@ export function pumpAdventureQueues(state: GameState): void {
         steps: [...reward.steps]
       };
       processPendingVisit(state);
+      if (state.pendingChoice || adventure.pendingVisit) {
+        return;
+      }
+      continue;
+    }
+
+    if (reward.kind === "map-spell-effect") {
+      // Dimension Door's deferred teleport: the Knowledge/Mysticism recall
+      // queued AHEAD of this (offerMapSpellKnowledgeRecall) has now been
+      // answered, so resolve the spell effect — which opens the destination
+      // pick and, on arrival, any fight. Doing it here (never before the recall)
+      // is what keeps the recall out from behind that combat.
+      adventure.rewardQueue.shift();
+      finalizeMapSpellEffect(state, reward.playerId, reward.spellCardId, reward.power, {
+        ...(reward.fromSpellBook ? { fromSpellBook: true as const } : {}),
+        ...(reward.castEnablerCardId ? { castEnablerCardId: reward.castEnablerCardId } : {}),
+        ...(reward.inFlightCardIds ? { inFlightCardIds: reward.inFlightCardIds } : {})
+      });
       if (state.pendingChoice || adventure.pendingVisit) {
         return;
       }

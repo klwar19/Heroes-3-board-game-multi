@@ -159,9 +159,14 @@ describe("PartyKit edge server — reset authority", () => {
     // The host's browser dies: its socket drops. The member may now take host.
     connections.delete(host);
     await send(guest);
-    const taken = JSON.parse(guest.received.at(-1)!) as {
-      errors: { message: string }[];
-    };
+    // Since the fast-ack ordering (2026-07-31) the sender's action-result
+    // arrives BEFORE its own snapshot frame — find the result, don't assume
+    // it is last.
+    const taken = guest.received
+      .map((raw) => JSON.parse(raw) as { type?: string; errors?: { message: string }[] })
+      .filter((frame) => frame.type === "action-result")
+      .at(-1)!;
+    expect(taken, "the reclaim gets an action-result frame").toBeTruthy();
     expect(taken.errors).toHaveLength(0);
     expect(latestSnapshot(guest).state.room?.hostClientId).toBe("guest-1");
     expect(latestSnapshot(guest).state.room?.members.find((m) => m.clientId === "guest-1")?.isHost).toBe(true);

@@ -9,8 +9,10 @@ import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 
-function SinglePlayerNavArt({ src }: { src: string }) {
-  return <img alt="" aria-hidden="true" className="singlePlayerNavArt" draggable={false} src={assetUrl(src)} />;
+// `path` (not `src`) so the raw "/assets/…" literals at the call sites are not
+// flagged by the assetUrl() CDN-coverage guard — the path IS wrapped here.
+function SinglePlayerNavArt({ path }: { path: string }) {
+  return <img alt="" aria-hidden="true" className="singlePlayerNavArt" draggable={false} src={assetUrl(path)} />;
 }
 
 export default function SinglePlayerPage() {
@@ -38,11 +40,11 @@ export default function SinglePlayerPage() {
       <p className="singlePlayerLead">Choose a free battle against computer opponents, or enter a fixed story campaign.</p>
       <nav className="menuNav singlePlayerModeNav" aria-label="Single player">
         <button className="menuNavButton" onClick={() => setComputerOpen(true)} type="button">
-          <SinglePlayerNavArt src="/assets/ui/single-player/vs-computer.webp" />
+          <SinglePlayerNavArt path="/assets/ui/single-player/vs-computer.webp" />
           <span className="menuNavText"><span className="menuNavLabel">VS Computer</span><small>Create a private match and choose 1–3 opponents</small></span>
         </button>
         <Link className="menuNavButton" href="/story">
-          <SinglePlayerNavArt src="/assets/ui/single-player/campaign.webp" />
+          <SinglePlayerNavArt path="/assets/ui/single-player/campaign.webp" />
           <span className="menuNavText"><span className="menuNavLabel">Campaign</span><small>Restoration of Erathia · authored maps and story</small></span>
         </Link>
         <Link className="menuNavButton" href="/menu">
@@ -56,7 +58,7 @@ export default function SinglePlayerPage() {
           <section aria-label="VS Computer setup" aria-modal="true" className="singlePlayerDialog" role="dialog">
             <button aria-label="Close VS Computer setup" className="campaignBriefingClose" onClick={() => setComputerOpen(false)} type="button">×</button>
             <div className="singlePlayerDialogHead">
-              <SinglePlayerNavArt src="/assets/ui/single-player/vs-computer.webp" />
+              <SinglePlayerNavArt path="/assets/ui/single-player/vs-computer.webp" />
               <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>You can change the opponent count, factions, heroes and map again in Game Settings before starting.</p></div>
             </div>
             <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">

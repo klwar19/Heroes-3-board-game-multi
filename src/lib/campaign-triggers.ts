@@ -131,10 +131,17 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
     }
   ];
   const heroDefId = options.playerHeroDefId ?? coreFactionDefinitions[options.playerFaction]?.heroes[0];
-  // Fresh single-player rooms seed computer picks immediately. Clear every
-  // authored opponent first so a seeded pick cannot temporarily reserve the
-  // player's or another scripted opponent's faction while we apply the fixed
-  // campaign cast.
+  // ORDER MATTERS — set the fixed campaign opponents BEFORE the human's
+  // CHOOSE_FACTION. The single-player computer setup policy only rolls a random
+  // town for a computer seat once the HUMAN seat has a faction, so while the
+  // human is still on auto the opponent seats stay untouched: we can clear them
+  // to auto and assign each scripted (faction, hero) with no random pick ever
+  // reserving a faction we are about to hand another seat. Doing this AFTER the
+  // human chooses (the old order) let the settle re-roll the auto seats between
+  // our clears and sets, so a random pick landing on a scripted faction threw
+  // "Another seat already picked that faction." — an intermittent setup failure.
+  // The clears keep it robust even if a seat carried a faction from room
+  // creation; nothing re-randomizes a seat before CHOOSE_FACTION.
   for (const [index] of (options.computerSeats ?? []).entries()) {
     actions.push({
       type: "SET_COMPUTER_SEAT_FACTION",
@@ -143,20 +150,20 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
       choice: "clear"
     });
   }
-  if (heroDefId) {
-    actions.push({
-      type: "CHOOSE_FACTION",
-      playerId,
-      factionId: options.playerFaction,
-      heroDefId
-    });
-  }
   for (const [index, computer] of (options.computerSeats ?? []).entries()) {
     actions.push({
       type: "SET_COMPUTER_SEAT_FACTION",
       playerId,
       seatPlayerId: `p${index + 2}`,
       choice: { factionId: computer.factionId, heroDefId: computer.heroDefId }
+    });
+  }
+  if (heroDefId) {
+    actions.push({
+      type: "CHOOSE_FACTION",
+      playerId,
+      factionId: options.playerFaction,
+      heroDefId
     });
   }
   return actions;

@@ -2816,10 +2816,15 @@ What runs (each with a failing-if-removed test):
   `turn-timeout.test.ts` "Explorers round", mutation-checked); `eliminatePlayer`
   clears the hand-step flags, and the pending flag never hijacks a seat whose
   turn is not open.
-- **`GameSetupOptions.farTileSettlementReroll`** (default ON; lobby Map & Setup
-  row + map-preset soft default): OFF preserves exact Ⅱ–Ⅲ tile identities — no
-  2nd-tile Settlement reroll AND (audit fix) no one-time Ore-Mine reroll either
-  (`far-tile-flip.test.ts`, `far-tile-reveal.test.ts`, `custom-setup.test.ts`).
+- **Ⅱ–Ⅲ tile identity rerolls are the `far-tile-rerolls` HOUSE RULE now**
+  (2026-07-31; BINH default ON, Legacy OFF = the official "the revealed tile is
+  final"): the 2nd-tile Settlement reroll AND the one-time Ore-Mine reroll ride
+  ONE gate in `presentFarTileOffersOrFinalize`. The old standalone
+  `GameSetupOptions.farTileSettlementReroll` option (and its map-preset soft
+  default) is REMOVED — do not reintroduce a separate setup or map-preset
+  switch. An in-flight legacy snapshot's frozen `adventure.farTileSettlementReroll`
+  keeps deciding for THAT game in either direction (`far-tile-flip.test.ts`,
+  `far-tile-reveal.test.ts`).
 - **Stack-Token default flip**: the official guaranteed difficulty count is the
   default; the old roll survives as the opt-in `bank-stack-chance-80` house rule
   (80%, default OFF in BOTH modes) — see the Creature-Banks section.
@@ -3147,10 +3152,11 @@ No engine change; every value shown is already public in player views.
 - **Watching a PvM fight shows the FIGHTER's resources.** The combat command dock
   used to report the VIEWER's own spell/crown counters even when another seat was
   playing out a neutral fight ("anyone may watch"), which is meaningless noise. It
-  now follows the fighter — name-labelled, with their Spell x/y, crowns left/total,
-  hand size and hero MP — whenever the viewer is not a participant (attacker,
-  defender or a living unit's controller). A participant's own dock is unchanged.
-  `board.test.tsx`.
+  now follows the fighter — name-labelled, with their hero Level, Spell x/y,
+  crowns left/total, Morale and hero MP (2026-07-31: the hand COUNT left the
+  dock for the glyph metric row; it lives in the Opponent-info window) —
+  whenever the viewer is not a participant (attacker, defender or a living
+  unit's controller). A participant's own dock is unchanged. `board.test.tsx`.
 - **The card name/HP plate no longer covers the printed initiative.**
   `.boardCardHud` was `max-width: 100%`, so a long name ("Neutral Iron Golems")
   spanned the card bottom and hid the bottom entry of the left stat rail —
@@ -4903,7 +4909,7 @@ baked in, lower third kept dark for the title plate; on-disk pinned in
 `scripts/codex-gen-art.ps1`) with a bottom text plate, staggered entrance,
 ember-breath rim and a hover light-sweep + art zoom (all CSS, disabled under
 `prefers-reduced-motion`). The small `SETUP_HUB_ICONS` spell-book icons remain
-the cross-window strip's (`SetupHubNav`) icons only. The Map window pins
+the summary rail's (`SetupSummaryRail`) chip icons only. The Map window pins
 "Play this map" in an always-visible `.mapPickApplyBar` under the detail
 column's own scroll area (sticky over the sheet scroll in phone mode) — it
 must never sit below the fold of a long description/conditions list.
@@ -4915,14 +4921,22 @@ Components: `SetupHub` / `GameModeModal` / `HeroesDraftModal` /
 `src/components/adventure/map-pick-modal.tsx` (+ its `DifficultyChessBar`); the
 read-only preview `src/components/adventure/map-shape-preview.tsx` (now the ONE
 home of `GROUP_COLORS` + `flowerOutline`, which `map-designer.tsx` imports); the
-cross-window strip `src/components/adventure/setup-hub-nav.tsx`; the
+right-of-scene summary rail `src/components/adventure/setup-summary-rail.tsx`; the
 pure derivations `src/components/adventure/setup-hub-summary.ts`. Behaviour is
 pinned in `setup-hub.test.tsx`, `setup-hub-summary.test.ts`,
 `map-pick-modal.test.tsx`, `map-shape-preview.test.tsx` (each claim
 mutation-checked with CONTROLs) plus the real-browser half
 `tests/e2e/setup-hub-phone.spec.ts` (jsdom cannot compute CSS).
 
-### Box ownership + the cross-window strip (2026-07-25) — the four boxes are ONE screen
+### Box ownership + the summary rail — the four boxes are ONE screen
+
+(2026-07-31: the cross-window strip that used to sit INSIDE every hub window is
+retired; its consolidated live view now lives in ONE always-visible
+`SetupSummaryRail` pinned to the RIGHT of the painted setup scene — the boxes
+themselves show only their titles there, so a half-transparent right rail is the
+at-a-glance summary, each chip one click into its box. The hub windows carry no
+summary strip anymore — pinned in `setup-hub.test.tsx` "Setup Hub — the summary
+rail".)
 
 Three rules keep the four windows from reading as four unconnected screens (each
 mutation-checked; the first two fix real bugs, not cosmetics):
@@ -4945,13 +4959,17 @@ mutation-checked; the first two fix real bugs, not cosmetics):
    longer be marked in play in one surface while the Map box (and the real game)
    still show the scenario sheet. Both pickers additionally REFUSE an empty saved
    map (`designedMapBlockers`) — applying it would have been a silent no-op.
-3. **Every hub window shows all four boxes' live values** (`SetupHubNav`, fed by
-   the pure `setupHubNavItems`, rendered through `SetupHubWindow`'s `nav` slot):
-   the current box is a non-button "you are here" chip, the other three switch
-   windows in one click. Because the strip reads the SAME derivations the boxes
-   render, it can never disagree with them — that shared reading IS the
-   connection (open Advanced settings and the map, mode and difficulty are right
-   there). Pure presentation: it dispatches nothing.
+3. **The right-of-scene summary rail shows all four boxes' live values**
+   (`SetupSummaryRail`, fed by the pure `setupHubNavItems`): a half-transparent
+   `position: fixed` panel (`.setupSummaryRail`, z 9 — above the full-screen
+   `.setupHubGrid` scene layer at z 8 that would otherwise steal its clicks, far
+   below the hub-window backdrop at 210), vertically centered on the right edge,
+   with all four chips actionable (each opens its box's window; no "you are here"
+   chip — none is current on the scene). Because it reads the SAME derivations the
+   boxes render, it can never disagree with them — that shared reading IS the
+   connection, always visible without opening a window. Hidden under `.phoneMode`
+   (the phone 2×2 box grid is the surface there). Pure presentation: it dispatches
+   only the box-open callback.
 
 Two smaller de-duplications ride along:
 - The **Custom-setting FILE panel** (`PersonalCustomSettingsPanel`) now exists
@@ -5411,6 +5429,27 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   recovers discardable support cards", the Tome case, and "regular Knowledge
   offers only its free basic recall" as the CONTROL),
   `map-movement-spells.test.ts` and `view-spells.test.ts`.
+  **Dimension Door offers the recall BEFORE the teleport (2026-07-31).** Every
+  OTHER map spell offers the recall AFTER its effect, which is fine because none
+  opens a combat. Dimension Door's teleport resolves through a destination pick
+  that can drop the hero into a FIGHT, so the after-effect recall reward was
+  STRANDED behind that combat and only surfaced once the whole fight was played
+  out (the reported bug). Now `applyMapSpellAtPower` special-cases a
+  `DIMENSION_DOOR` best-tier effect: it offers the recall FIRST — exactly like a
+  combat cast — then defers the teleport to a new `map-spell-effect` reward
+  (`AdventureReward` union in state.ts; handled in `pumpAdventureQueues`, which
+  calls the extracted `finalizeMapSpellEffect`). Because the recall reward is
+  queued ahead of the effect reward, it always resolves first. CONNECTED FIX:
+  recalling a Polish-Book Dimension Door hands the "Cast a Spell" enabler back
+  to hand BEFORE the fight, so it is available to cast a Book spell in that
+  combat (the combat cast-a-spell path itself is unchanged — offered whenever
+  the caster's own unit activation window is open and a Cast a Spell is in hand,
+  pinned in `polish-spell-book.test.ts`). When no recall card is in hand the
+  effect resolves synchronously (unchanged). Pinned in `map-movement-spells.test.ts`
+  ("Knowledge after a map Spell" reordered + "offers the recall BEFORE the
+  teleport fight, never stranded behind the combat" — a live guarded landing;
+  the immediate `pendingChoice === null` + pending recall discriminates the
+  reorder from the old after-effect ordering).
   KNOWN DEAD TWIN: `playCard` in reducer.ts keeps a second copy of this offer
   for a non-tiered map Spell. Every map-playable Spell is currently tiered, so
   that copy is unreachable; it also only enumerates the FIRST `RECALL_SPELL`
