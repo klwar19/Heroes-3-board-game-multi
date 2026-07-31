@@ -543,27 +543,21 @@ describe("Game options — tabbed layout", () => {
     expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
   });
 
-  it("Map & Setup exposes the Ⅱ–Ⅲ Settlement reroll toggle, default ON", () => {
+  it("keeps Ⅱ–Ⅲ tile replacement only in the BINH house-rule panel", () => {
     const onAction = openOptions();
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
-    const row = screen.getByText("Ⅱ–Ⅲ Settlement reroll").closest(".optionRow");
-    expect(row).toBeTruthy();
-    expect(within(row as HTMLElement).getByRole("button", { name: "On" }).getAttribute("aria-pressed")).toBe(
-      "true"
-    );
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Off" }));
+    expect(screen.queryByText("Ⅱ–Ⅲ Settlement reroll")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Mode & Rules/ }));
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Ⅱ–Ⅲ tile Ore \/ Settlement rerolls/i });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(toggle);
     expect(onAction).toHaveBeenCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { farTileSettlementReroll: false }
+      options: { houseRules: { "far-tile-rerolls": false } }
     });
-
-    cleanup();
-    openOptionsWith((state) => {
-      state.setupLobby!.options.farTileOpening = false;
-    });
-    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
-    expect(screen.getByText("Ⅱ–Ⅲ Settlement reroll")).toBeTruthy();
   });
 
   it("Map & Setup wires the Creature Banks toggle, default On, and reflects a stored Off", () => {
@@ -633,6 +627,29 @@ describe("Game options — tabbed layout", () => {
       playerId: "p1",
       options: { tournamentObservatoryRerotate: true }
     });
+  });
+
+  it("keeps every binary setting in one physical order: On left, Off right", () => {
+    openOptions();
+
+    for (const label of ["Victory points", "Event deck", "Morale Cards", "Spell Book", "Unit experience"]) {
+      const row = screen.getByText(label).closest(".optionRow") as HTMLElement;
+      const binary = within(row)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim())
+        .filter((text) => text === "On" || text === "Off");
+      expect(binary, label).toEqual(["On", "Off"]);
+    }
+
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    for (const label of ["Creature Banks", "Field Overrides", "Ⅱ–Ⅲ tile opening", "Blind Ⅱ–Ⅲ tile choice"]) {
+      const row = screen.getByText(label).closest(".optionRow") as HTMLElement;
+      const binary = within(row)
+        .getAllByRole("button")
+        .map((button) => button.textContent?.trim())
+        .filter((text) => text === "On" || text === "Off");
+      expect(binary, label).toEqual(["On", "Off"]);
+    }
   });
 
   it("exposes the OPTIONAL Undo-moves (testing) toggle, default OFF, wired to undoMoves", () => {

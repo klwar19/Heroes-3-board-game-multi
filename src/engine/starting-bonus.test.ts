@@ -3,9 +3,12 @@ import { cardLibrary } from "@/data/cards/library";
 import { applyAction } from "./reducer";
 import {
   createAdventureGameState,
+  createAdventureLobbyState,
   TOURNAMENT_REMOVED_ABILITY_ID,
   TOURNAMENT_REMOVED_ARTIFACT_ID
 } from "./adventure-setup";
+import { hexSpaceId } from "./hex";
+import { scenarioDefinitions } from "@/data/map/scenarios";
 import {
   openDrawChooseMinorArtifacts,
   reshuffleArtifactDecksAfterStartingBonus,
@@ -161,6 +164,82 @@ describe("starting bonus at game setup", () => {
     }
     expect(step.options.map((o) => o.label).join(" | ")).toMatch(/both/i);
     expect(step.options.map((o) => o.label).join(" | ")).toMatch(/twice/i);
+  });
+
+  it("takes every starting bonus before publishing the first-player roll", () => {
+    let state = createAdventureGameState({
+      seed: "bonus-before-order",
+      difficulty: "hard",
+      startingBonus: true
+    });
+
+    // The seeded result may already determine home placement internally, but
+    // the ceremony is not part of public game state until both seats finish.
+    expect(state.adventure?.firstPlayerRoll).toBeFalsy();
+    expect(state.eventLog.some((event) => event.type === "FIRST_PLAYER_ROLLED")).toBe(false);
+    expect(startingBonusPrompt(state)).toMatch(/Starting bonus \(Hard\)/);
+
+    for (const playerId of ["p1", "p2"] as const) {
+      expect(state.adventure?.pendingVisit?.playerId).toBe(playerId);
+      state = resolveVisitOption(state, playerId, 0);
+      state = resolveResourceDieWindow(state, playerId);
+      if (playerId === "p1") {
+        expect(state.adventure?.firstPlayerRoll).toBeFalsy();
+      }
+    }
+
+    const bonusRollAt = state.eventLog.findIndex(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "resource"
+    );
+    const firstPlayerRollAt = state.eventLog.findIndex((event) => event.type === "FIRST_PLAYER_ROLLED");
+    expect(bonusRollAt).toBeGreaterThanOrEqual(0);
+    expect(firstPlayerRollAt).toBeGreaterThan(bonusRollAt);
+    expect(state.adventure?.firstPlayerRoll?.winnerPlayerId).toBe(state.turnOrder[0]);
+    expect(state.activePlayerId).toBe(state.turnOrder[0]);
+  });
+
+  it("keeps delayed live-server entropy aligned with the already assigned home positions", () => {
+    let state = createAdventureLobbyState({ seed: "live-opening-order", scenarioId: "skirmish" });
+    state = applyAction(
+      state,
+      { type: "SET_GAME_OPTIONS", playerId: "p1", options: { difficulty: "hard" } },
+      { entropy: "options-entropy" }
+    ).state;
+    state = applyAction(
+      state,
+      { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" },
+      { entropy: "pick-one-entropy" }
+    ).state;
+    state = applyAction(
+      state,
+      { type: "CHOOSE_FACTION", playerId: "p2", factionId: "rampart", heroDefId: "mephala" },
+      { entropy: "pick-two-entropy" }
+    ).state;
+    state = applyAction(
+      state,
+      { type: "START_ADVENTURE", playerId: "p1" },
+      { entropy: "start-entropy" }
+    ).state;
+
+    const firstHome = hexSpaceId(scenarioDefinitions.skirmish.layout.starts[0]!);
+    const firstPositionOwner =
+      state.towns.town_p1.fieldId === firstHome ? ("p1" as const) : ("p2" as const);
+    expect(state.adventure?.firstPlayerRoll).toBeFalsy();
+
+    for (const [playerId, entropy] of [
+      ["p1", "bonus-one-entropy"],
+      ["p2", "bonus-two-different-entropy"]
+    ] as const) {
+      state = applyAction(
+        state,
+        { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 },
+        { entropy }
+      ).state;
+      state = resolveResourceDieWindow(state, playerId);
+    }
+
+    expect(state.adventure?.firstPlayerRoll?.winnerPlayerId).toBe(firstPositionOwner);
+    expect(state.turnOrder[0]).toBe(firstPositionOwner);
   });
 
   it("Easy resource path: both Resource dice add resources (not pick-one)", () => {

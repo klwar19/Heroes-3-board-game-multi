@@ -7741,6 +7741,9 @@ const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
   { id: "army", label: "Town & Resources", icon: <Castle size={13} /> }
 ];
 
+/** Every binary setup row uses the same convention: On left, Off right. */
+const BOOLEAN_OPTION_ORDER = [true, false] as const;
+
 const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   decks: "Decks",
   units: "Unit buffs",
@@ -9276,7 +9279,7 @@ function GameOptionsPanel({
                 title="Victory points"
               />
               <div className="optionButtons">
-                {([false, true] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={vpOn === on}
                     className={vpOn === on ? "selected" : ""}
@@ -9320,7 +9323,7 @@ function GameOptionsPanel({
                 title="Event deck"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={eventsOn === on}
                     className={eventsOn === on ? "selected" : ""}
@@ -9351,7 +9354,7 @@ function GameOptionsPanel({
                 title="Morale Cards"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={moraleCardsOn === on}
                     className={moraleCardsOn === on ? "selected" : ""}
@@ -9379,7 +9382,7 @@ function GameOptionsPanel({
                 title="Spell Book"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={spellBookOn === on}
                     className={spellBookOn === on ? "selected" : ""}
@@ -9414,7 +9417,7 @@ function GameOptionsPanel({
                 title="Undo moves (testing)"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={undoMovesOn === on}
                     className={undoMovesOn === on ? "selected" : ""}
@@ -9442,7 +9445,7 @@ function GameOptionsPanel({
                 title="Manual guard control"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={manualGuardControlOn === on}
                     className={manualGuardControlOn === on ? "selected" : ""}
@@ -9470,7 +9473,7 @@ function GameOptionsPanel({
                 title="First-round hand Mulligan"
               />
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={startingHandMulliganOn === on}
                     className={startingHandMulliganOn === on ? "selected" : ""}
@@ -9498,7 +9501,7 @@ function GameOptionsPanel({
                 title="Unit experience"
               />
               <div className="optionButtons">
-                {([false, true] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={unitExperienceOn === on}
                     className={unitExperienceOn === on ? "selected" : ""}
@@ -9740,7 +9743,7 @@ function GameOptionsPanel({
                 PvP Neutral Control
               </small>
               <div className="optionButtons">
-                {([true, false] as const).map((on) => (
+                {BOOLEAN_OPTION_ORDER.map((on) => (
                   <button
                     aria-pressed={neutralControlOn === on}
                     className={neutralControlOn === on ? "selected" : ""}
@@ -9765,7 +9768,7 @@ function GameOptionsPanel({
                   Neutral Control — guards
                 </small>
                 <div className="optionButtons">
-                  {([true, false] as const).map((on) => (
+                  {BOOLEAN_OPTION_ORDER.map((on) => (
                     <button
                       aria-pressed={mustAttackOn === on}
                       className={mustAttackOn === on ? "selected" : ""}
@@ -9842,7 +9845,7 @@ function GameOptionsPanel({
               Creature Banks
             </small>
             <div className="optionButtons">
-              {([true, false] as const).map((on) => (
+              {BOOLEAN_OPTION_ORDER.map((on) => (
                 <button
                   aria-pressed={creatureBanksOn === on}
                   className={creatureBanksOn === on ? "selected" : ""}
@@ -9880,7 +9883,7 @@ function GameOptionsPanel({
               Field Overrides
             </small>
             <div className="optionButtons">
-              {([true, false] as const).map((on) => (
+              {BOOLEAN_OPTION_ORDER.map((on) => (
                 <button
                   aria-pressed={fieldOverridesOn === on}
                   className={fieldOverridesOn === on ? "selected" : ""}
@@ -9959,7 +9962,7 @@ function GameOptionsPanel({
               Ⅱ–Ⅲ tile opening
             </small>
             <div className="optionButtons">
-              {([true, false] as const).map((on) => (
+              {BOOLEAN_OPTION_ORDER.map((on) => (
                 <button
                   aria-pressed={farTileOpeningOn === on}
                   className={farTileOpeningOn === on ? "selected" : ""}
@@ -10011,37 +10014,8 @@ function GameOptionsPanel({
             </div>
             <small className="optionHint">
               Each player may add this many new Ⅱ–Ⅲ tiles (default {scenarioDefault}). Set 0 when a designed map already
-              places its own Ⅱ–Ⅲ tiles. Any tile showing a resource Mine may be rerolled once.
-            </small>
-          </div>
-        );
-      })()}
-
-      {(() => {
-        const settlementRerollOn = options.farTileSettlementReroll ?? true;
-        return (
-          <div className="optionRow">
-            <small title="Whether a player's second Ⅱ–Ⅲ tile may be rerolled until a Settlement appears">
-              Ⅱ–Ⅲ Settlement reroll
-            </small>
-            <div className="optionButtons">
-              {([true, false] as const).map((on) => (
-                <button
-                  aria-pressed={settlementRerollOn === on}
-                  className={settlementRerollOn === on ? "selected" : ""}
-                  key={String(on)}
-                  onClick={() => send({ farTileSettlementReroll: on })}
-                  title={on ? "Offer the second-tile Settlement reroll" : "Keep exact Ⅱ–Ⅲ tile identities"}
-                  type="button"
-                >
-                  {on ? "On" : "Off"}
-                </button>
-              ))}
-            </div>
-            <small className="optionHint">
-              {settlementRerollOn
-                ? "On — if a player has not found a Settlement, their 2nd Ⅱ–Ⅲ tile may be kept or rerolled until one appears."
-                : "Off — every Ⅱ–Ⅲ tile stays exactly as drawn or designed; neither the Settlement reroll nor the one-time Ore-Mine reroll is offered."}
+              places its own Ⅱ–Ⅲ tiles. Tile replacement for Ore or a missing Settlement is controlled only by the
+              BINH house rule in Combat &amp; map rules.
             </small>
           </div>
         );
@@ -10059,7 +10033,7 @@ function GameOptionsPanel({
               Blind Ⅱ–Ⅲ tile choice
             </small>
             <div className="optionButtons">
-              {([true, false] as const).map((on) => (
+              {BOOLEAN_OPTION_ORDER.map((on) => (
                 <button
                   aria-pressed={blindChoiceOn === on}
                   className={blindChoiceOn === on ? "selected" : ""}

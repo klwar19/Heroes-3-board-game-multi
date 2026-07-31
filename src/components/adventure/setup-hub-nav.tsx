@@ -37,7 +37,7 @@ export function SetupHubNav({
     return null;
   }
   return (
-    <div className="setupHubNav" role="group" aria-label="Setup so far">
+    <div className="setupHubNav setupHubSummaryRail" role="group" aria-label="Setup so far">
       {items.map((item) => {
         const here = item.id === current;
         const full = item.detail ? `${item.title}: ${item.value} — ${item.detail}` : `${item.title}: ${item.value}`;

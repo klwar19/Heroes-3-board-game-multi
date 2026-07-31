@@ -77,8 +77,10 @@ export function SetupHubWindow({
             <X size={18} />
           </button>
         </header>
-        {nav}
-        <div className="setupHubWindowBody">{children}</div>
+        <div className="setupHubWindowContent">
+          <div className="setupHubWindowBody">{children}</div>
+          {nav}
+        </div>
       </section>
     </div>,
     document.body

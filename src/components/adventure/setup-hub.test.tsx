@@ -330,6 +330,8 @@ describe("Setup Hub — the cross-window strip", () => {
       fireEvent.click(box(boxName));
       const values = stripValues();
       expect(values).toHaveLength(4);
+      const content = document.querySelector(".setupHubWindowContent") as HTMLElement;
+      expect(content.lastElementChild?.classList.contains("setupHubSummaryRail")).toBe(true);
       // The MAP window shows the game mode and difficulty; the ADVANCED window
       // shows the map — that is the "reflection" the four separate boxes lost.
       expect(values.join(" | ")).toContain("Legacy");

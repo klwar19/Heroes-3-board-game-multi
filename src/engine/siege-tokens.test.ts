@@ -4,6 +4,7 @@ import { createInitialGameState } from "./setup";
 import { processPendingVisit } from "./adventure";
 import { placeCombatToken } from "./tokens";
 import type { CombatUnitState, GameAction, GameState } from "./state";
+import { scenarioDefinitions } from "@/data/map/scenarios";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -68,6 +69,16 @@ describe("first-player roll", () => {
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
     expect(state.activePlayerId).toBe("p1");
     expect(state.adventure?.firstPlayerRoll).toBeUndefined();
+    expect(state.towns.town_p1.fieldId).toBe(hexSpaceId(scenarioDefinitions.skirmish.layout.starts[0]!));
+  });
+
+  it("assigns map positions by the rolled game order instead of permanent seat number", () => {
+    // This seed gives p2 a unique higher opening roll (-1 vs 0).
+    const state = createAdventureGameState({ seed: "position-1" });
+    expect(state.adventure?.firstPlayerRoll?.winnerPlayerId).toBe("p2");
+    expect(state.turnOrder.slice(0, 2)).toEqual(["p2", "p1"]);
+    expect(state.towns.town_p2.fieldId).toBe(hexSpaceId(scenarioDefinitions.skirmish.layout.starts[0]!));
+    expect(state.towns.town_p1.fieldId).toBe(hexSpaceId(scenarioDefinitions.skirmish.layout.starts[1]!));
   });
 });
 
