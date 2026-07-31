@@ -252,6 +252,7 @@ import {
   dungeonFloorRewardSteps
 } from "./dungeon";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { commitFirstPlayerRoll } from "./first-player";
 import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
 import {
   gainGradeProgress,
@@ -3225,6 +3226,13 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
     return;
   }
   const candidate = flip.candidate;
+  // Official rule: the tile that was revealed is the tile that stays. Both
+  // identity-changing offers below are one BINH house rule, never an
+  // independent map/scenario option.
+  if (!houseRuleEnabled(state, "far-tile-rerolls")) {
+    finalizeFarTileFlip(state, candidate);
+    return;
+  }
   // A reroll can only be offered while the pool still holds something to draw —
   // a Settlement specifically for the 2nd-opening guarantee, or any tile for the
   // one-time material-Mine reroll.
@@ -3236,7 +3244,6 @@ function presentFarTileOffersOrFinalize(state: GameState): void {
   // still offered/forced the reroll on their 2nd tile — the reported bug.
   const alreadyHasFarSettlement = Boolean(state.adventure?.farSettlementOpenedByPlayer?.[flip.playerId]);
   const settlementEligible =
-    state.adventure?.farTileSettlementReroll !== false &&
     flip.openingIndex === 2 &&
     !alreadyHasFarSettlement &&
     !tileDefHasSettlement(candidate) &&
@@ -15788,7 +15795,11 @@ export function pumpAdventureQueues(state: GameState): void {
     // acts on TABLE state, so it is handed to the next live seat instead of
     // dropping the displayed cards — mirrors eliminatePlayer, and covers
     // snapshots saved before that cleanup existed.
-    if (reward.kind !== "round-start-events-resolved" && state.players[reward.playerId]?.eliminated) {
+    if (
+      reward.kind !== "round-start-events-resolved" &&
+      reward.kind !== "opening-first-player-roll" &&
+      state.players[reward.playerId]?.eliminated
+    ) {
       const nextLiveId = humanPlayerIds(state).find((id) => !state.players[id]?.eliminated);
       if (nextLiveId && isSharedEventBookkeepingReward(reward)) {
         reward.playerId = nextLiveId;
@@ -15828,6 +15839,39 @@ export function pumpAdventureQueues(state: GameState): void {
       // first-turn hand, turns) proceed.
       adventure.rewardQueue.shift();
       adventure.eventResolution = null;
+      continue;
+    }
+
+    if (reward.kind === "opening-first-player-roll") {
+      // Bonus choices may enqueue Searches behind this divider. Keep the roll
+      // last until every setup reward has actually resolved.
+      adventure.rewardQueue.shift();
+      if (adventure.rewardQueue.length > 0) {
+        adventure.rewardQueue.push(reward);
+        continue;
+      }
+
+      commitFirstPlayerRoll(state);
+      if (reward.secondPlayerMorale && state.turnOrder.length >= 2) {
+        changeMorale(state, state.turnOrder[1]!, 1);
+      }
+      if (reward.dealStartingHands) {
+        for (const playerId of state.turnOrder) {
+          const player = state.players[playerId];
+          if (player) {
+            drawCardsForPlayer(state, playerId, player.limits.hand);
+          }
+        }
+      }
+
+      startAdventureRound(state);
+      if (state.turn.mode === "parallel") {
+        for (const playerId of state.turnOrder) {
+          startPlayerTurn(state, playerId);
+        }
+      } else {
+        startPlayerTurn(state, state.activePlayerId);
+      }
       continue;
     }
 

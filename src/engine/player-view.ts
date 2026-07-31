@@ -375,6 +375,9 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
         // Same secrecy for the leftover Near (Ⅳ–Ⅴ) pool (designer resource pick).
         nearTilePool: base.adventure.nearTilePool?.map(() => "hidden"),
+        // The delayed roll must use the same server entropy that assigned home
+        // positions, but clients must not be able to predict its result.
+        openingFirstPlayerSeed: undefined,
         // Designer hex events are INVISIBLE in the real game: clients never see
         // where they sit or what they do — an unsprung ambush must stay a
         // surprise. Both the live records AND the preset list are redacted for

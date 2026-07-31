@@ -122,9 +122,10 @@ import { controllerOf, standardComputerController } from "./computer/control";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { makeMoraleDecks } from "./morale-cards";
-import { createSeededRandom, type SeededRandom } from "./random";
+import { bakeEntropy, createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
+import { calculateFirstPlayerRoll, gameOrderForFirstPlayerRoll } from "./first-player";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import {
   hexEquals,
@@ -616,8 +617,6 @@ export type AdventureSetupOptions = {
   farTilesPerPlayer?: number;
   /** Blind Ⅱ–Ⅲ tile choice (default off): pick gold/valuables/no-preference BEFORE the supply draw. */
   farTileBlindChoice?: boolean;
-  /** Second-tile Settlement reroll (default on). Off preserves the exact tile drawn. */
-  farTileSettlementReroll?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -706,7 +705,6 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     farTileBlindChoice: false,
-    farTileSettlementReroll: true,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -2429,9 +2427,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
     ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
-    ...(options.farTileSettlementReroll !== undefined
-      ? { farTileSettlementReroll: options.farTileSettlementReroll }
-      : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
@@ -2446,9 +2441,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ...(options.difficulty !== undefined ? (["difficulty"] as const) : []),
       ...(options.farTileOpening !== undefined ? (["farTileOpening"] as const) : []),
       ...(options.farTilesPerPlayer !== undefined ? (["farTilesPerPlayer"] as const) : []),
-      ...(options.farTileSettlementReroll !== undefined
-        ? (["farTileSettlementReroll"] as const)
-        : []),
       ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
       ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
       ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),
@@ -2662,6 +2654,24 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
+  // Preview without publishing: homes follow the eventual game order, while
+  // the authoritative roll remains hidden until starting bonuses resolve.
+  const openingFirstPlayerSeed =
+    options.rollFirstPlayer !== false ? bakeEntropy(`${seed}#first-player`) : undefined;
+  const openingRoll =
+    options.rollFirstPlayer !== false
+      ? calculateFirstPlayerRoll(
+          playerConfigs.map((config) => ({ playerId: config.id, name: config.name })),
+          openingFirstPlayerSeed!
+        )
+      : null;
+  const startingPositionOrder = gameOrderForFirstPlayerRoll(
+    playerConfigs.map((config) => config.id),
+    openingRoll
+  );
+  const startingPositionIndex = new Map(
+    startingPositionOrder.map((playerId, index) => [playerId, index] as const)
+  );
   const configuredControllers = options.controllers ?? (options.sessionMode === "single-player"
     ? Object.fromEntries(playerConfigs.map((config, index) => [
         config.id,
@@ -2712,8 +2722,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
     // blind gold/valuables/no-preference pick that filters the random draw.
     ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
-    // Default ON for legacy snapshots; only persist the false override.
-    ...(setupOptions.farTileSettlementReroll === false ? { farTileSettlementReroll: false } : {}),
     farTilesOpenedByPlayer: {},
     pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
@@ -2809,6 +2817,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
     ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
     pendingTileChoice: null,
+    ...(openingFirstPlayerSeed ? { openingFirstPlayerSeed } : {}),
     astrologers: {
       activeCardId: null,
       nextResourceModifiers: { gold: 0, valuables: 0 },
@@ -2947,7 +2956,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Starting tiles: position from the seat (designer or scenario), tile fixed
   // by the chosen faction — no rotation choice. Towns and main heroes go on
   // the tile's center field.
-  playerConfigs.forEach((config, index) => {
+  playerConfigs.forEach((config, seatIndex) => {
+    const index = startingPositionIndex.get(config.id) ?? seatIndex;
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
     const center = startCenterFor(index);
     const startPlan = designerStartPlans[index];
@@ -3394,25 +3404,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     openedCounters[config.id] = 0;
   }
 
-  // Roll for the starting player FIRST — before a single card is dealt — so
-  // the game opens with the first-player ceremony and only then deals hands.
-  // Official setup step 22: every player rolls the Attack die, the highest
-  // result starts (ties reroll among the tied players). The full roll history
-  // is kept on the adventure so every seat can read it.
-  if (options.rollFirstPlayer !== false) {
-    rollFirstPlayer(state, seed);
-  }
-
-  // Tournament rule (p.54): "The second player gains +1 positive morale at the
-  // start of the game." Second = next seat after the starting player in the
-  // (possibly reordered) turn order. Necropolis still ignores morale.
-  if (tournamentRules.secondPlayerMorale) {
-    const humanOrder = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
-    if (humanOrder.length >= 2) {
-      changeMorale(state, humanOrder[1]!, 1);
-    }
-  }
-
   // Setup step 17: each player takes the Scenario Difficulty starting bonus
   // (rulebook p.10). Queued before round/start-of-turn rewards so they resolve
   // first. Impossible has none. Artifacts go to hand, not the Starting Deck.
@@ -3437,7 +3428,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // player never opens holding limit+1 cards facing a forced discard. With no
   // bonus (bonus off, or Impossible where `bonusSteps` is null) the hand is
   // pre-dealt exactly as before.
-  if (!bonusSteps) {
+  if (!bonusSteps && options.rollFirstPlayer === false) {
     for (const config of playerConfigs) {
       drawCardsForPlayer(state, config.id, state.players[config.id].limits.hand);
     }
@@ -3480,16 +3471,28 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     appendEvent(state, { type: "PARALLEL_TURNS_STARTED", rounds: parallelRounds });
   }
 
-  startAdventureRound(state);
-  if (parallelRounds > 0) {
-    // Parallel turns: EVERY player's turn starts at once, in seat order — the
-    // shared reward queue then serves round-start effects and the start-of-turn
-    // hand steps clockwise from the first seat.
-    for (const playerId of state.turnOrder) {
-      startPlayerTurn(state, playerId);
-    }
+  if (options.rollFirstPlayer !== false) {
+    // Rulebook order: bonuses are setup step 17; the first-player roll is step
+    // 22. The divider stays behind bonus follow-ups, then opens round 1.
+    adventure.rewardQueue.push({
+      playerId: playerConfigs[0]!.id,
+      kind: "opening-first-player-roll",
+      ...(tournamentRules.secondPlayerMorale ? { secondPlayerMorale: true } : {}),
+      ...(!bonusSteps ? { dealStartingHands: true } : {})
+    });
   } else {
-    startPlayerTurn(state, state.activePlayerId);
+    // Deterministic fixtures keep seat order and their immediate round start.
+    if (tournamentRules.secondPlayerMorale && state.turnOrder.length >= 2) {
+      changeMorale(state, state.turnOrder[1]!, 1);
+    }
+    startAdventureRound(state);
+    if (parallelRounds > 0) {
+      for (const playerId of state.turnOrder) {
+        startPlayerTurn(state, playerId);
+      }
+    } else {
+      startPlayerTurn(state, state.activePlayerId);
+    }
   }
   // Drain the opening round-start / start-of-turn rewards — chiefly the
   // start-of-turn hand snapshot — so the first player's hand step is live the
@@ -3498,56 +3501,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   pumpAdventureQueues(state);
 
   return state;
-}
-
-/**
- * Rolls the Attack die for every seated player to pick the starting player.
- * Tied leaders reroll among themselves; turn order then rotates so the winner
- * goes first while the table's seating order stays intact.
- */
-function rollFirstPlayer(state: GameState, seed: string): void {
-  const playerIds = state.turnOrder.filter((playerId) => playerId !== NEUTRAL_PLAYER_ID);
-  if (playerIds.length < 2 || !state.adventure) {
-    return;
-  }
-
-  const random = createSeededRandom(`${seed}#first-player`);
-  const faces = [-1, -1, 0, 0, 1, 1];
-  const attempts: { rolls: { playerId: string; name: string; value: number }[] }[] = [];
-
-  let contenders = [...playerIds];
-  let winner = contenders[0];
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const rolls = contenders.map((playerId) => ({
-      playerId,
-      name: state.players[playerId]?.name ?? playerId,
-      value: faces[random.nextInt(0, faces.length - 1)]
-    }));
-    attempts.push({ rolls });
-
-    const best = Math.max(...rolls.map((roll) => roll.value));
-    const leaders = rolls.filter((roll) => roll.value === best).map((roll) => roll.playerId);
-    if (leaders.length === 1) {
-      winner = leaders[0];
-      break;
-    }
-    contenders = leaders;
-    winner = leaders[0];
-  }
-
-  state.adventure.firstPlayerRoll = { attempts, winnerPlayerId: winner };
-
-  // Rotate the seating order so the winner starts; everyone else follows in
-  // the original clockwise order.
-  const winnerIndex = playerIds.indexOf(winner);
-  state.turnOrder = [...playerIds.slice(winnerIndex), ...playerIds.slice(0, winnerIndex)];
-  state.activePlayerId = winner;
-
-  appendEvent(state, {
-    type: "FIRST_PLAYER_ROLLED",
-    attempts,
-    winnerPlayerId: winner
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -3733,9 +3686,6 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   }
   if (options.farTileBlindChoice !== undefined) {
     setupOptions.farTileBlindChoice = options.farTileBlindChoice;
-  }
-  if (options.farTileSettlementReroll !== undefined) {
-    setupOptions.farTileSettlementReroll = options.farTileSettlementReroll;
   }
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
@@ -4253,13 +4203,6 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.farTileBlindChoice !== undefined) {
     lobby.options.farTileBlindChoice = Boolean(next.farTileBlindChoice);
     changes.push(`blind Ⅱ–Ⅲ tile choice ${lobby.options.farTileBlindChoice ? "on" : "off"}`);
-  }
-
-  if (next.farTileSettlementReroll !== undefined) {
-    lobby.options.farTileSettlementReroll = Boolean(next.farTileSettlementReroll);
-    changes.push(
-      `Ⅱ–Ⅲ Settlement reroll ${lobby.options.farTileSettlementReroll ? "on" : "off"}`
-    );
   }
 
   if (next.scenarioId !== undefined) {
@@ -5531,7 +5474,6 @@ function buildAdventureFromLobby(state: GameState): void {
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     farTileBlindChoice: lobby.options.farTileBlindChoice,
-    farTileSettlementReroll: lobby.options.farTileSettlementReroll,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,
