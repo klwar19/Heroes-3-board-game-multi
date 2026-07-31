@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
-import { addArmyUnit, beginFieldVisit, getMainHero, RESOURCE_DIE_FACES } from "./adventure";
+import { addArmyUnit, beginFieldVisit, getMainHero, reinforceCostFor, RESOURCE_DIE_FACES } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
 import { applyAction, createAdventureGameState } from "./index";
@@ -541,6 +541,31 @@ describe("Market of Time: remove a card, then Search(2) ANY shared deck", () => 
 // Hill Fort: the bronze/silver-only restriction is real (not decorative)
 // ---------------------------------------------------------------------------
 describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
+  it("stacks a flat Legion reduction after a half-cost source (default), while the old rule keeps them competing", () => {
+    const state = makeGame("hill-fort-half-stack");
+    const player = state.players.p1;
+    player.army = [];
+    const unit = addArmyUnit(player, "castle.crusaders", "few");
+    player.recruitDiscounts = [
+      {
+        cardId: "artifact.legs_of_legion",
+        amount: 4,
+        target: { kind: "reinforce", armyUnitId: unit.id }
+      }
+    ];
+
+    // Default additive pipeline: half price is 5, then the 4-gold voucher leaves 1.
+    expect(reinforceCostFor(state, "p1", unit.id, true, false, false)?.gold).toBe(1);
+
+    // Old rule (`immediate-reinforcement-prompts` ON): half-cost and the flat
+    // stack COMPETE — the cheaper price wins, so half (5) beats 10 - 4 = 6.
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "immediate-reinforcement-prompts": true
+    };
+    expect(reinforceCostFor(state, "p1", unit.id, true, false, false)?.gold).toBe(5);
+  });
+
   it("new default banks the Hill Fort, keeps the unit unchanged, then applies Hill Fort before Legion", () => {
     const state = makeGame("hill-fort-adjustable");
     const player = state.players.p1;

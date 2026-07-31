@@ -114,18 +114,19 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
     expect(taken.phase).toBe("combat");
   });
 
-  it("discarding the find sends it to the deck's discard pile, not the hand", () => {
+  it("offers no discard branch: the found spell must go to hand", () => {
     const state = combatWithEagle("eagle-basic-discard");
     state.decks.spells.drawPile = ["spell.haste"];
     state.decks.spells.discardPile = [];
 
     const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
     const dug = applyOk(state, basic!);
-    const choice = dug.pendingChoice as { id: string };
-    const done = applyOk(dug, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 1 });
+    const choice = dug.pendingChoice as { id: string; options: { label: string }[] };
+    expect(choice.options).toHaveLength(1);
+    const done = applyOk(dug, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
 
-    expect(done.players.p1.hand).not.toContain("spell.haste");
-    expect(done.decks.spells.discardPile).toContain("spell.haste");
+    expect(done.players.p1.hand).toContain("spell.haste");
+    expect(done.decks.spells.discardPile).not.toContain("spell.haste");
   });
 
   it("expert play reads the Expert spell pool, surfaces an Expert spell, and spends a crown", () => {

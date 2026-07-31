@@ -148,6 +148,49 @@ describe("Leadership in battle", () => {
     expect(next.players.p1.hand.length).toBe(handBefore - 1 + 2);
     expect(next.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
+
+  it("can chain Leadership morale and a newly drawn reaction card in one window", () => {
+    const state = meleeDuel();
+    state.players.p1.hand = ["ability.leadership"];
+    state.players.p1.deck = ["spell.curse"];
+    state.players.p1.morale = 0;
+
+    let declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    while (declared.reactionWindow && declared.reactionWindow.priorityPlayerId !== "p1") {
+      declared = applyOk(declared, {
+        type: "PASS_REACTION",
+        playerId: declared.reactionWindow.priorityPlayerId
+      });
+    }
+
+    const leadership = getLegalActions(declared, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.leadership" &&
+        legal.action.mode === "basic"
+    );
+    expect(leadership, "Leadership should be usable in an open reaction window").toBeTruthy();
+    const afterLeadership = applyOk(declared, leadership!.action);
+    expect(afterLeadership.players.p1.morale).toBe(1);
+
+    const spend = getLegalActions(afterLeadership, "p1").find(
+      (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
+    );
+    expect(spend, "the morale gained in the window should be spendable immediately").toBeTruthy();
+    const afterDraw = applyOk(afterLeadership, spend!.action);
+    expect(afterDraw.players.p1.hand).toContain("spell.curse");
+
+    expect(
+      getLegalActions(afterDraw, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.curse"
+      )
+    ).toBe(true);
+  });
 });
 
 describe("Medusas paralysis on retaliation", () => {

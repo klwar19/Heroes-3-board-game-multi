@@ -7,6 +7,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  isRecruitableNeutralUnit,
   isPlayableFaction,
   neutralUnitIdsByFaction
 } from "@/data/factions/core";
@@ -7013,7 +7014,7 @@ export function processPendingVisit(state: GameState): void {
               return false;
             }
             seen.add(unitDefId);
-            return true;
+            return isRecruitableNeutralUnit(unitDefId);
           })
           .map((unitDefId) => ({
             label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (free)`,
@@ -7036,7 +7037,7 @@ export function processPendingVisit(state: GameState): void {
         // (only ONE copy of the recruited id is consumed) to the tier discard pile.
         const player = state.players[visit.playerId];
         if (player) {
-          if (step.recruit) {
+          if (step.recruit && isRecruitableNeutralUnit(step.recruit)) {
             addArmyUnit(player, step.recruit, "neutral");
             appendEvent(state, {
               type: "UNIT_RECRUITED",
@@ -7651,7 +7652,7 @@ export function processPendingVisit(state: GameState): void {
             .filter(([, amount]) => amount)
             .map(([resource, amount]) => `${amount} ${resource}`)
             .join(" + ") || "free";
-        const affordable = hasRecruitResources(state, visit.playerId, cost);
+        const affordable = Boolean(def?.neutral) && hasRecruitResources(state, visit.playerId, cost);
         visit.steps.unshift({
           type: "CHOOSE_ONE",
           prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabel})`,
@@ -12177,7 +12178,13 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
     }
   }
 
-  return deck.drawPile.pop();
+  while (deck.drawPile.length > 0) {
+    const unitDefId = deck.drawPile.pop();
+    if (unitDefId && isRecruitableNeutralUnit(unitDefId)) {
+      return unitDefId;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -12185,9 +12192,8 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
  * the card ENTERS PLAY. Records the rolled resource on the owner; while the
  * card stays in play the Resources-round income (startAdventureRound) pays
  * that resource's full income tier (+5 gold / +2 materials / +1 valuables) on
- * top of production. No production track is touched, so the boost stops the
- * moment the card leaves play — "the effect of this card lasts only as long
- * as it is in play", as printed.
+ * production track by one income level. Removing the permanent reverses that
+ * temporary bonus, so the effect lasts only as long as the card is in play.
  */
 export function rollPandoraIncomePermanentDie(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
@@ -12204,6 +12210,27 @@ export function rollPandoraIncomePermanentDie(state: GameState, playerId: Player
     resourceRolls: [{ resource: roll.resource, amount: roll.amount }]
   });
   player.pandoraIncomeResource = roll.resource;
+  // The card raises the real income track by one level while it remains in
+  // play. Keeping that bonus in production makes the town UI and Resource
+  // round payment use the same source of truth.
+  const amount = RESOURCE_GAIN_LEVEL_AMOUNTS[roll.resource];
+  player.production[roll.resource] += amount;
+  player.pandoraIncomeProductionBonus = amount;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource: roll.resource, amount });
+}
+
+/** Remove Pandora Income's temporary production level when its permanent leaves play. */
+export function removePandoraIncomeProductionBonus(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const resource = player?.pandoraIncomeResource;
+  const amount = player?.pandoraIncomeProductionBonus;
+  if (!player || !resource || !amount) {
+    return;
+  }
+  player.production[resource] = Math.max(0, player.production[resource] - amount);
+  player.pandoraIncomeResource = undefined;
+  player.pandoraIncomeProductionBonus = undefined;
+  appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount: -amount });
 }
 
 /** Half a recruit cost, each resource rounded UP (Pandora's Gift: Recruits). */
@@ -12257,7 +12284,7 @@ export function openNeutralRecruitOffer(
       }
       seen.add(unitDefId);
       const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
-      return hasRecruitResources(state, playerId, halfRecruitCostRoundedUp(cost));
+      return isRecruitableNeutralUnit(unitDefId) && hasRecruitResources(state, playerId, halfRecruitCostRoundedUp(cost));
     })
     .map((unitDefId) => {
       const def = coreUnitDefinitions[unitDefId];
@@ -12383,6 +12410,9 @@ export function neutralDeckHas(
   tier: "bronze" | "silver" | "gold" | "azure",
   unitDefId: string
 ): boolean {
+  if (!isRecruitableNeutralUnit(unitDefId)) {
+    return false;
+  }
   const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
   return Boolean(deck) && (deck!.drawPile.includes(unitDefId) || deck!.discardPile.includes(unitDefId));
 }
@@ -12399,6 +12429,9 @@ export function removeFromNeutralDeck(
   tier: "bronze" | "silver" | "gold" | "azure",
   unitDefId: string
 ): boolean {
+  if (!isRecruitableNeutralUnit(unitDefId)) {
+    return false;
+  }
   const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
   if (!deck) {
     return false;
@@ -14649,7 +14682,11 @@ export function startAdventureRound(state: GameState): void {
       }
       // Pandora's Gift: Income — while the ∞ permanent is in play, its
       // enter-play die's resource pays a FULL income tier each Resources round.
-      if (permanentEffect?.incomeTierDieOnEnter && player.pandoraIncomeResource) {
+      if (
+        permanentEffect?.incomeTierDieOnEnter &&
+        player.pandoraIncomeResource &&
+        !player.pandoraIncomeProductionBonus
+      ) {
         gainResources(
           state,
           playerId,
@@ -16945,6 +16982,13 @@ export function reinforceCostFor(
   const originalGold = packSide.cost.gold ?? 0;
   const sourceGold = halfCost || halfGoldOnly ? half(originalGold) : originalGold;
   const flatDiscount = flatGoldDiscount + totalRecruitGoldDiscount(state, playerId, purchase);
+  // Default (additive pipeline): half the printed gold first, then subtract the
+  // complete stack of flat discounts. Under the `immediate-reinforcement-prompts`
+  // house rule the OLD reading applies instead: half-cost and the flat stack are
+  // COMPETING discounts — the cheaper of the two prices wins (and a reserved
+  // voucher is still consumed either way, see consumeRecruitVoucherFor). Pinned
+  // by the "Old-rule Legion voucher × Necromancy reinforce" cases in
+  // necromancy.test.ts.
   const finalGold = houseRuleEnabled(state, "immediate-reinforcement-prompts") && (halfCost || halfGoldOnly)
     ? Math.min(sourceGold, Math.max(0, originalGold - flatDiscount))
     : Math.max(0, sourceGold - flatDiscount);

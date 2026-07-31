@@ -50,12 +50,16 @@ describe("elemental spell-school immunity (helper)", () => {
 
 describe("every printed Elemental carries its immunity ability", () => {
   const expected: Record<string, string> = {
+    "conflux.air_elementals": "air-elemental-immunity",
     "neutral.air_elementals": "air-elemental-immunity",
+    "conflux.earth_elementals": "earth-elemental-immunity",
     "neutral.storm_elementals": "air-elemental-immunity",
     "neutral.earth_elementals": "earth-elemental-immunity",
+    "conflux.fire_elementals": "fire-elemental-immunity",
     "neutral.magma_elementals": "earth-elemental-immunity",
     "neutral.fire_elementals": "fire-elemental-immunity",
     "neutral.energy_elementals": "fire-elemental-immunity",
+    "conflux.water_elementals": "water-elemental-immunity",
     "neutral.water_elementals": "water-elemental-immunity",
     "neutral.ice_elementals": "water-elemental-immunity",
     "neutral.magic_elementals": "magic-elemental-immunity"

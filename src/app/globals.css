@@ -3029,6 +3029,7 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 }
 
 .trayTile {
+  position: relative;
   display: grid;
   grid-template-columns: 74px minmax(0, 1fr);
   gap: 8px;
@@ -3042,6 +3043,25 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .trayTile.selected {
   border-color: var(--gold);
   box-shadow: 0 0 14px rgb(213 168 79 / 30%);
+}
+
+.trayOrderBadge {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  z-index: 2;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid #f6d27c;
+  border-radius: 50%;
+  background: rgb(22 17 9 / 94%);
+  color: #ffe6a6;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .trayCardImage {
@@ -21419,6 +21439,28 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 
 .tbPartialMissing {
   color: #f0c46a;
+}
+
+/* Combat-cube buildings keep their current black-cube count visible on the
+   board, including at zero, so they do not look like ordinary structures. */
+.tbCubeCount {
+  position: absolute;
+  left: 2%;
+  bottom: 4%;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3cqw 0.7cqw;
+  border: 1px solid rgb(220 220 220 / 75%);
+  border-radius: 999px;
+  background: rgb(8 8 10 / 88%);
+  box-shadow: 0 0.15cqw 0.5cqw rgb(0 0 0 / 55%);
+  color: #f4f1e8;
+  font-size: clamp(8px, 1.05cqw, 13px);
+  font-weight: 800;
+  line-height: 1.2;
+  pointer-events: none;
+  text-shadow: 0 1px 1px #000;
 }
 
 .tbBarHit {

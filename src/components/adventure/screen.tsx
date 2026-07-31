@@ -5653,6 +5653,16 @@ export function PromptTray({
     choice.creatureBank.candidates.length >= 1
       ? choice.creatureBank.candidates
       : null;
+  // Diplomacy exposes only cards the player can currently afford. Show those
+  // actual neutral card faces beside the recruit buttons instead of a blind
+  // text-only list.
+  const diplomacyRecruitCards =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "diplomacy-recruit" &&
+    choice.playerId === viewerPlayerId &&
+    choice.diplomacyRecruit
+      ? choice.diplomacyRecruit.recruitable
+      : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
@@ -5735,6 +5745,18 @@ export function PromptTray({
                   } as VisitRewardArt
                 };
               })
+            : diplomacyRecruitCards
+              ? body.map((legal) => {
+                  const optionIndex =
+                    legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                      ? legal.action.optionIndex
+                      : undefined;
+                  const draw = optionIndex !== undefined ? diplomacyRecruitCards[optionIndex] : undefined;
+                  return {
+                    legal,
+                    art: draw ? { ...rewardArtForId(draw.unitDefId), caption: legal.label } : null
+                  };
+                })
             : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);

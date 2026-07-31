@@ -99,11 +99,10 @@ export const pandoraCards: CardLibrary = {
   },
   // engine: a PERMANENT (the card scan carries the printed ∞ marker and the
   // reminder "the effect of this card lasts only as long as it is in play").
-  // Entering play rolls 1 Resource die (incomeTierDieOnEnter); while the card
-  // stays in play the owner gains that resource's FULL income tier (+5 gold /
-  // +2 materials / +1 valuables) at every Resources round, on top of
-  // production. Leaving play (replaced, discarded, Destruction) stops the
-  // boost. (Card 174) See pandora-cards.test.ts.
+  // Entering play rolls 1 Resource die (incomeTierDieOnEnter) and raises that
+  // resource's production track by one income level (+5 gold / +2 materials /
+  // +1 valuables). Leaving play (replaced, discarded, Destruction) removes the
+  // temporary production bonus. (Card 174) See pandora-cards.test.ts.
   "pandora.resource_income": {
     id: "pandora.resource_income",
     name: "Pandora's Gift: Income",

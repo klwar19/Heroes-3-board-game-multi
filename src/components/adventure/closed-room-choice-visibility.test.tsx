@@ -168,7 +168,7 @@ describe("closed room: the choice owner actually SEES and can click their Eagle 
     // The choice buttons MUST be visible to the owner.
     const takeBtn = screen.getByRole("button", { name: /Take .* into hand/ });
     expect(takeBtn).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Discard it/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Discard it/ })).toBeNull();
 
     // Clicking submits a CHOOSE_OPTION the server accepts from the owner's seat.
     fireEvent.click(takeBtn);

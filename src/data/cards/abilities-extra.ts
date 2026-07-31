@@ -191,7 +191,7 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "spell-deck",
-      "Basic: Draw cards from the Spell deck until you find a Basic Spell card. Take it into your hand or discard it; reshuffle the rest. Expert: the same for an Expert Spell card."
+      "Basic: Draw cards from the Spell deck until you find a Basic Spell card. Take it into your hand; reshuffle the rest. Expert: the same for an Expert Spell card."
     ],
     effect: { type: "EAGLE_EYE_DIG" },
     assets: abilityAssets("eagle_eye", "Eagle Eye"),

@@ -13739,11 +13739,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       throw new Error("There is no dug spell to resolve.");
     }
 
-    if (action.optionIndex === 0) {
-      gainOwnedCard(state, action.playerId, dig.cardId);
-    } else {
-      deck.discardPile.push(dig.cardId);
+    if (action.optionIndex !== 0) {
+      throw new Error("Eagle Eye's found Spell must be taken into your hand.");
     }
+    gainOwnedCard(state, action.playerId, dig.cardId);
 
     state.pendingChoice = null;
     state.phase = choice.returnPhase;

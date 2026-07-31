@@ -5796,8 +5796,9 @@ function getLegalActionsCore(
       return getParallelBystanderActions(state, playerId);
     }
 
+    const reactionActions = [...(state.reactionWindow.legalReactions[playerId] ?? [])];
     return [
-      ...(state.reactionWindow.legalReactions[playerId] ?? []),
+      ...reactionActions,
       {
         label:
           state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED"
@@ -6592,6 +6593,10 @@ export function getLegalReactionsForTrigger(
       if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
         continue;
       }
+      // Leadership and Scholar are trigger-free Instants. They may be used
+      // inside an already-open reaction window so their morale/card gain can
+      // feed another reaction, but holding either card must not open a window.
+      const allowTriggerlessUtility = cardId === "ability.leadership" || cardId === "ability.scholar";
 
       // Spell instants (hand or Book) respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
@@ -6604,7 +6609,10 @@ export function getLegalReactionsForTrigger(
       }
 
       for (const variant of getCardPlayVariants(card)) {
-        if (variant.mapOnly || !variantMatchesTrigger(variant, triggerEvent, player.id)) {
+        if (
+          variant.mapOnly ||
+          !variantMatchesTrigger(variant, triggerEvent, player.id, allowTriggerlessUtility)
+        ) {
           continue;
         }
 
@@ -7010,22 +7018,10 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // Tournament/base positive Morale token: a Retaliation Attack gets the same
-    // pre-roll reaction window as the original attack. Let either combatant spend
-    // a held token to draw now; refreshReactionWindowLegalReactions then exposes
-    // any newly drawn instant (notably Armorer/defense) before the die is rolled.
-    if (
-      triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
-      triggerEvent.isRetaliation &&
-      !moraleCardsRuleEnabled(state) &&
-      !moraleLockedForPlayer(state.combat, player.id) &&
-      ((player.morale ?? 0) > 0 || (player.moraleOverflow ?? 0) > 0)
-    ) {
-      reactions.push({
-        label: "Spend morale: draw a card before the Retaliation Attack",
-        action: { type: "SPEND_MORALE", playerId: player.id, benefit: "draw" }
-      });
-    }
+    // The base positive Morale token's draw/redraw spends are offered inside
+    // EVERY reaction window (retaliations included, so a defense instant can be
+    // fished up before the die is rolled) by the addMoraleActions call below —
+    // one offer, never a second look-alike button here.
 
     // The printed alternative bottom effect: discard any Spell card for
     // +1 Power — toward your own cast, or paired with an instant spell in an
@@ -7180,6 +7176,14 @@ export function getLegalReactionsForTrigger(
           }
         }
       }
+    }
+
+    // A Leadership morale token can be spent in the same reaction window in
+    // which it was gained. Include the action before calculating allowed
+    // players, otherwise a refresh would incorrectly pass priority away from
+    // the Leadership player who has no remaining cards in hand.
+    if (!moraleCardsRuleEnabled(state)) {
+      addMoraleActions(reactions, state, player.id);
     }
 
     if (reactions.length > 0) {
@@ -7363,7 +7367,8 @@ function getSchoolFetchExpertActions(
 function variantMatchesTrigger(
   variant: CardPlayVariant,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
-  playerId: PlayerId
+  playerId: PlayerId,
+  allowTriggerlessUtility = false
 ): boolean {
   if (!variant.trigger) {
     // A trigger-free "Draw a card" instant (the Breastplate of Petrified Wood's
@@ -7380,7 +7385,7 @@ function variantMatchesTrigger(
     // join a reaction window. (A real triggered reaction, e.g. the breastplate's
     // "+1 Power" on your own cast or Armorer's "+defense, then draw" on an
     // incoming attack, still works: those carry a `trigger` and fall through.)
-    return false;
+    return allowTriggerlessUtility && (variant.effect.type === "GAIN_MORALE" || variant.effect.type === "TAKE_FROM_DISCARD");
   }
 
   if (variant.trigger.event !== triggerEvent.type) {
@@ -7669,6 +7674,32 @@ export function isEffectLegalForTrigger(
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
   mode: CardPlayMode
 ): boolean {
+  // These two trigger-free utility cards are explicitly allowed only when a
+  // window already exists (the caller opts them in by card id). Scholar also
+  // needs a real eligible discard candidate so playing it cannot consume the
+  // card for an empty prompt.
+  if (effect.type === "GAIN_MORALE") {
+    return true;
+  }
+  if (effect.type === "TAKE_FROM_DISCARD") {
+    const player = state.players[playerId];
+    if (!player || !state.combat) {
+      return false;
+    }
+    const matches = (cardId: CardId): boolean => {
+      const kind = cardLibrary[cardId]?.kind;
+      if (effect.filter === "spell") return kind === "spell";
+      if (effect.filter === "non-artifact") return kind !== "artifact";
+      if (effect.filter === "spell-or-specialty") return kind === "spell" || kind === "hero-specialty";
+      if (effect.filter === "magic-arrow") return cardId === "spell.magic_arrow";
+      return true;
+    };
+    return (
+      player.discard.some(matches) ||
+      (polishSpellBookEnabled(state) && (player.spellBookUsed ?? []).some(matches))
+    );
+  }
+
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
   // only, and only the CHOOSE_ONE option whose grade matches that unit (bronze
   // free, silver pay 2, gold pay 4) — so the tray shows a single "skip this
