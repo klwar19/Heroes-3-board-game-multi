@@ -5417,6 +5417,27 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   recovers discardable support cards", the Tome case, and "regular Knowledge
   offers only its free basic recall" as the CONTROL),
   `map-movement-spells.test.ts` and `view-spells.test.ts`.
+  **Dimension Door offers the recall BEFORE the teleport (2026-07-31).** Every
+  OTHER map spell offers the recall AFTER its effect, which is fine because none
+  opens a combat. Dimension Door's teleport resolves through a destination pick
+  that can drop the hero into a FIGHT, so the after-effect recall reward was
+  STRANDED behind that combat and only surfaced once the whole fight was played
+  out (the reported bug). Now `applyMapSpellAtPower` special-cases a
+  `DIMENSION_DOOR` best-tier effect: it offers the recall FIRST — exactly like a
+  combat cast — then defers the teleport to a new `map-spell-effect` reward
+  (`AdventureReward` union in state.ts; handled in `pumpAdventureQueues`, which
+  calls the extracted `finalizeMapSpellEffect`). Because the recall reward is
+  queued ahead of the effect reward, it always resolves first. CONNECTED FIX:
+  recalling a Polish-Book Dimension Door hands the "Cast a Spell" enabler back
+  to hand BEFORE the fight, so it is available to cast a Book spell in that
+  combat (the combat cast-a-spell path itself is unchanged — offered whenever
+  the caster's own unit activation window is open and a Cast a Spell is in hand,
+  pinned in `polish-spell-book.test.ts`). When no recall card is in hand the
+  effect resolves synchronously (unchanged). Pinned in `map-movement-spells.test.ts`
+  ("Knowledge after a map Spell" reordered + "offers the recall BEFORE the
+  teleport fight, never stranded behind the combat" — a live guarded landing;
+  the immediate `pendingChoice === null` + pending recall discriminates the
+  reorder from the old after-effect ordering).
   KNOWN DEAD TWIN: `playCard` in reducer.ts keeps a second copy of this offer
   for a non-tiered map Spell. Every map-playable Spell is currently tiered, so
   that copy is unreachable; it also only enumerates the FIRST `RECALL_SPELL`

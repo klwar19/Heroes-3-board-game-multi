@@ -9099,6 +9099,23 @@ export type AdventureReward =
        */
       playerId: PlayerId;
       kind: "round-start-events-resolved";
+    }
+  | {
+      /**
+       * Dimension Door (and any future teleport-into-combat map spell): the
+       * Knowledge/Mysticism recall is offered BEFORE the teleport — exactly like
+       * a combat cast — so it can never be stranded behind the fight the teleport
+       * opens. This reward carries the deferred spell effect, applied once the
+       * recall choice ahead of it has resolved. `power` is the committed value
+       * from the boost window; the rest reconstructs the Spell-Book cast flags.
+       */
+      playerId: PlayerId;
+      kind: "map-spell-effect";
+      spellCardId: CardId;
+      power: number;
+      fromSpellBook?: boolean;
+      castEnablerCardId?: CardId;
+      inFlightCardIds?: CardId[];
     };
 
 export type VisitStep =

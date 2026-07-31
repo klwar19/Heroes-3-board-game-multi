@@ -788,15 +788,12 @@ describe("Knowledge after a map Spell", () => {
     dimensionDoorSetup(state);
     state = playDimensionDoor(state, 0);
 
-    // Resolve Dimension Door's own destination decision first. Knowledge is
-    // queued behind it, never allowed to replace or corrupt the spell's choice.
-    const destinations = dimensionDoorDestinations(state);
-    state = applyOk(state, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: state.pendingChoice!.id,
-      optionIndex: destinations.length
-    });
+    // Dimension Door's teleport resolves through a destination pick that can
+    // drop the hero into a fight, so the recall is offered BEFORE the teleport
+    // (like a combat cast) — the Knowledge choice is pending immediately, and
+    // the destination pick only opens once the recall is answered. It must NOT
+    // be stranded behind the teleport/fight.
+    expect(state.pendingChoice).toBeNull();
     expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({ type: "CHOOSE_ONE" });
     return state;
   }
@@ -854,13 +851,8 @@ describe("Knowledge after a map Spell", () => {
     state.players.p1.limits.expertUses = 0; // no crowns at all
     dimensionDoorSetup(state);
     state = playDimensionDoor(state, 0);
-    const destinations = dimensionDoorDestinations(state);
-    state = applyOk(state, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: state.pendingChoice!.id,
-      optionIndex: destinations.length
-    });
+    // Recall is offered before the teleport (see openKnowledgeAfterDimensionDoor).
+    expect(state.pendingChoice).toBeNull();
     // Only basic + decline — no expert arm without crowns.
     const prompt = state.adventure!.pendingVisit!.steps[0];
     expect(prompt.type === "CHOOSE_ONE" ? prompt.options.map((o) => o.label) : []).toEqual([
@@ -870,6 +862,48 @@ describe("Knowledge after a map Spell", () => {
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(state.players.p1.hand).toContain("spell.dimension_door");
     expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  // The reported bug: Dimension Door onto a guard opened the fight, and the
+  // recall prompt only surfaced AFTER the whole fight was played out (its reward
+  // was stranded behind the open combat). The recall must be offered — and be
+  // resolvable — BEFORE the teleport opens the fight, exactly like a combat cast.
+  it("offers the recall BEFORE the teleport fight, never stranded behind the combat", () => {
+    let state = withHand(makeGame(), ["spell.dimension_door", "stat.knowledge"]);
+    state.players.p1.limits.expertUses = 1;
+    const { near } = dimensionDoorSetup(state);
+    // Make a reachable (Power-0 range 1) landing a live neutral guard, so
+    // teleporting there opens a fight.
+    const guarded = near[0]!;
+    setField(state, guarded, "empty_field");
+    state.adventure!.fields[guarded]!.difficulty = 1; // live guards, nobody's flag
+
+    state = playDimensionDoor(state, 0);
+
+    // Immediately after the cast: recall is pending, no destination pick yet, no
+    // fight yet. (Reverting the reorder makes the destination choice pending here
+    // instead, so pendingChoice would be non-null — this discriminates the fix.)
+    expect(state.combat).toBeFalsy();
+    expect(state.pendingChoice).toBeNull();
+    expect(state.adventure?.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+
+    // Recall Dimension Door back to hand — the whole point: done before the fight.
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.hand).toContain("spell.dimension_door");
+
+    // The destination pick opens only now; teleport onto the guard to start the
+    // fight — the spell is already safely recalled, and the combat is real.
+    const destinations = dimensionDoorDestinations(state);
+    const guardedIndex = destinations.indexOf(guarded);
+    expect(guardedIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: guardedIndex
+    });
+    expect(state.combat, "teleport onto a guard opens the fight").toBeTruthy();
+    expect(state.players.p1.hand).toContain("spell.dimension_door");
   });
 
   it("marks a lasting map Spell to return after its effect ends instead of duplicating an active card", () => {
