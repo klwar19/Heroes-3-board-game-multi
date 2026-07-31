@@ -9096,11 +9096,11 @@ button.hbSlot:disabled { cursor: default; }
 .battleMetric {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  min-height: 29px;
-  padding: 3px 7px 3px 5px;
+  gap: 4px;
+  min-height: 23px;
+  padding: 2px 6px 2px 4px;
   border: 1px solid rgb(217 178 90 / 35%);
-  border-radius: 7px;
+  border-radius: 6px;
   color: #f4ead4;
   background:
     linear-gradient(180deg, rgb(45 38 27 / 90%), rgb(21 18 14 / 94%)),
@@ -9114,8 +9114,8 @@ button.hbSlot:disabled { cursor: default; }
 .battleMetricIcon {
   display: block;
   flex: 0 0 auto;
-  width: 21px;
-  height: 21px;
+  width: 17px;
+  height: 17px;
   object-fit: contain;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 78%));
 }
@@ -9141,25 +9141,28 @@ button.hbSlot:disabled { cursor: default; }
     drop-shadow(0 1px 1px rgb(0 0 0 / 78%));
 }
 
-.battleMetric-movement .battleMetricIcon {
-  filter:
-    invert(72%)
-    sepia(42%)
-    saturate(1160%)
-    hue-rotate(107deg)
-    brightness(104%)
-    drop-shadow(0 0 2px rgb(76 226 151 / 30%))
-    drop-shadow(0 1px 1px rgb(0 0 0 / 78%));
+/* Movement uses the map's 🐎 emoji (see BattleMetric) — render it as a glyph, no
+   colour filter (a filter would tint the emoji). */
+.battleMetricEmoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 78%));
 }
 
+/* Experience/level in GOLD (was blue). currentColor glyph recoloured to the
+   app's antique gold via filter. */
 .battleMetric-level .battleMetricIcon {
   filter:
-    invert(73%)
-    sepia(28%)
-    saturate(1230%)
-    hue-rotate(167deg)
-    brightness(108%)
-    drop-shadow(0 0 2px rgb(103 193 255 / 36%))
+    invert(78%)
+    sepia(46%)
+    saturate(760%)
+    hue-rotate(357deg)
+    brightness(96%)
+    contrast(94%)
+    drop-shadow(0 0 2px rgb(244 200 92 / 40%))
     drop-shadow(0 1px 1px rgb(0 0 0 / 78%));
 }
 
@@ -9173,16 +9176,16 @@ button.hbSlot:disabled { cursor: default; }
 
 .battleMetricLabel {
   color: #cdbf9e;
-  font-size: 9px;
+  font-size: 8.5px;
   font-weight: 800;
-  letter-spacing: 0.045em;
+  letter-spacing: 0.04em;
   line-height: 1;
   text-transform: uppercase;
 }
 
 .battleMetricValue {
   color: #fff6dd;
-  font-size: 12px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-shadow: 0 1px 2px #000;
@@ -9196,8 +9199,8 @@ button.hbSlot:disabled { cursor: default; }
 .opponentBattleMetrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
+  gap: 4px;
+  margin-bottom: 6px;
 }
 
 .dieMultiplier {
@@ -11920,46 +11923,70 @@ body:has(.setupHubBackdrop) .wogWindowBackdrop {
   overflow-y: auto;
 }
 
-/* Main picker + quiet confirmation rail. Every committed choice stays visible
-   while the player selects a hero, map, mode, or advanced rule. */
+/* The picker fills the window; the live summary of choices lives on the setup
+   scene now (SetupSummaryRail), not inside each window. */
 .setupHubWindowContent {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
 }
 
-/* --- Right-side setup summary: all live choices, one click apart ----------- */
-.setupHubNav {
+/* --- Setup summary rail: all four boxes' live choices, pinned right of the
+   scene, half-transparent, one click into any box. Item chips (below) are
+   shared with nothing else now; the container styles are the rail's own. --- */
+.setupSummaryRail {
+  position: fixed;
+  /* Above the full-screen .setupHubGrid scene layer (z 8), which otherwise
+     paints over the rail and steals its clicks; still far below the hub-window
+     backdrop (210) so a popup covers it. */
+  z-index: 9;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 6px;
-  flex: 0 0 auto;
-  padding: 12px 10px;
-  border-left: 1px solid rgba(170, 130, 70, 0.32);
+  width: 178px;
+  max-height: calc(100vh - 168px);
+  padding: 9px 9px 10px;
+  border: 1px solid rgba(170, 130, 70, 0.34);
+  border-radius: 11px;
   background:
-    linear-gradient(180deg, rgba(35, 25, 13, 0.72), rgba(15, 11, 7, 0.46));
-  backdrop-filter: blur(8px);
+    linear-gradient(180deg, rgba(34, 24, 12, 0.62), rgba(14, 10, 6, 0.44));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 232, 161, 0.1),
+    0 10px 26px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(7px);
+  opacity: 0.82;
   overflow-y: auto;
+  transition: opacity 140ms ease;
 }
 
-/* A narrow sheet keeps the same summary, compactly above the picker. */
-@media (max-width: 820px) {
-  .setupHubWindowContent {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .setupHubNav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    order: -1;
-    padding: 6px 10px;
-    border-left: 0;
-    border-bottom: 1px solid rgba(170, 130, 70, 0.28);
-    overflow-y: visible;
-  }
+.setupSummaryRail:hover,
+.setupSummaryRail:focus-within {
+  opacity: 1;
 }
+
+.setupSummaryRailTitle {
+  padding: 0 2px 1px;
+  color: #c9a55e;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+}
+
+/* Hidden where the fixed rail would collide with the phone 2×2 box grid; the
+   painted boxes stay the setup surface there. */
+.phoneMode .setupSummaryRail {
+  display: none;
+}
+
+/* Narrow desktop windows: nothing to shrink — the rail auto-hides via the
+   phone rule above and the max-height keeps it scrollable on short screens. */
 
 .setupHubNavItem {
   display: flex;
@@ -11984,21 +12011,12 @@ button.setupHubNavItem:hover {
   background: rgba(66, 48, 24, 0.9);
 }
 
-.setupHubNavItem.here {
-  border-color: rgba(255, 215, 106, 0.85);
-  background: rgba(78, 58, 26, 0.85);
-}
-
 .setupHubNavIcon {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
   border-radius: 4px;
   object-fit: cover;
-}
-
-.setupHubNavItem.here .setupHubNavIcon {
-  box-shadow: 0 0 0 1px rgba(255, 215, 106, 0.7);
 }
 
 .setupHubNavText {
@@ -13157,17 +13175,17 @@ button.setupHubNavItem:hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 4px 5px;
+  padding: 4px 6px;
   border: 1px solid rgba(170, 130, 70, 0.4);
-  border-radius: 10px;
+  border-radius: 9px;
   background: rgba(26, 22, 14, 0.7);
 }
 
 /* Left-rail placement: it sits at the TOP of the rail, above the town/hero
    dock, as its own compact pill — the buttons stay inline and small. */
 .opponentInfoDock.map {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .opponentInfoDock.combat {
@@ -13178,10 +13196,10 @@ button.setupHubNavItem:hover {
 .opponentInfoDockLabel {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: #d9c79b;
   text-transform: uppercase;
 }
@@ -13189,13 +13207,13 @@ button.setupHubNavItem:hover {
 .opponentInfoBtn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
+  gap: 5px;
+  padding: 3px 7px;
   border: 1px solid rgba(170, 130, 70, 0.55);
-  border-radius: 8px;
+  border-radius: 7px;
   background: rgba(38, 30, 18, 0.9);
   color: #eedebd;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -24070,9 +24088,12 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   box-shadow: inset 0 1px 0 rgb(255 235 190 / 8%);
 }
 
+/* Pack the opponent buttons INLINE (they used to each take a full rail-width
+   row, stacking one-per-line and wasting vertical space). Auto width + wrap
+   fits two short names per row; long names simply wrap as needed. */
 .adventureRoot:not(.phoneMode) .leftRailDock .opponentInfoBtn {
-  width: 100%;
-  justify-content: flex-start;
+  width: auto;
+  flex: 0 1 auto;
   box-shadow: inset 0 1px 0 rgb(255 235 190 / 7%), 0 2px 6px rgb(0 0 0 / 35%);
 }
 
@@ -32723,15 +32744,6 @@ body:has(main.phoneMode) .setupHubWindowHead {
 
 body:has(main.phoneMode) .setupHubWindowClose {
   order: -1;
-}
-
-/* Four cross-window chips never fit a phone row — stack them 2×2. */
-body:has(main.phoneMode) .setupHubNav {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  order: -1;
-  padding: 6px 10px;
-  border-left: 0;
-  border-bottom: 1px solid rgba(170, 130, 70, 0.28);
 }
 
 /* One column: the shape preview + info stack UNDER the map list. The list keeps

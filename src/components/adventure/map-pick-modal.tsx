@@ -27,14 +27,8 @@ import {
   type ScenarioDefinition
 } from "@/engine";
 import { DIFFICULTY_CHESS_ICONS } from "@/data/assets/homm-assets";
-import {
-  DIFFICULTY_CHOICES,
-  designedMapBlockers,
-  designedMapInPlay,
-  type SetupHubBoxId
-} from "./setup-hub-summary";
+import { DIFFICULTY_CHOICES, designedMapBlockers, designedMapInPlay } from "./setup-hub-summary";
 import { designedTilesToPreview, MapShapePreview, scenarioToTilePlans } from "./map-shape-preview";
-import { SetupHubNav } from "./setup-hub-nav";
 import { SetupHubWindow } from "./setup-hub-window";
 
 type MapEntry =
@@ -89,14 +83,11 @@ export function MapPickModal({
   state,
   viewerPlayerId,
   onAction,
-  onOpenBox,
   onClose
 }: {
   state: GameState;
   viewerPlayerId: PlayerId;
   onAction: (action: GameAction) => void;
-  /** Switch to another Setup Hub window from the cross-window strip. */
-  onOpenBox: (box: SetupHubBoxId) => void;
   onClose: () => void;
 }) {
   const lobby = state.setupLobby;
@@ -259,7 +250,6 @@ export function MapPickModal({
       className="setupHubWindow--map"
       eyebrow="Map setup"
       label="Choose a map"
-      nav={<SetupHubNav current="map" onOpen={onOpenBox} state={state} viewerPlayerId={viewerPlayerId} />}
       onClose={onClose}
     >
       <div className="mapPickFilters">

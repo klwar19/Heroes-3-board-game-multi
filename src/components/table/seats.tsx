@@ -1236,13 +1236,6 @@ export function PlayerDock({
     return null;
   }
 
-  const spellLimit = 1 + player.combatStats.spellLimitBonusThisRound;
-  const spellLimitLabel = playerSpellCastsIgnoreLimit(state, viewerPlayerId) ? "∞" : String(spellLimit);
-  const crownsTotal = player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0);
-  const crownsLeft = Math.max(0, crownsTotal - player.combatStats.expertUsesSpentThisRound);
-  const hero = Object.values(state.heroes).find(
-    (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
-  );
   const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
   const openDiscard = () =>
     onShowPile?.(`${player.name} — discard pile`, player.discard, "cards");
@@ -1285,29 +1278,13 @@ export function PlayerDock({
         </div>
         <div className="combatSpellShelfHost" id={`combat-spell-shelf-${viewerPlayerId}`} />
       </div>
+      {/* The viewer's own Level/Spell/Crowns/Morale live in the CommandDock (right
+          of the battlefield) — the single source, which also follows the FIGHTER
+          when watching a PvM fight. Here by the deck we keep only the nameplate
+          and the resource line, so your own stats are never shown twice. */}
       <div className="dockMetrics">
         <SeatNameplate state={state} playerId={viewerPlayerId} />
-        {hero ? <BattleMetric kind="level" label="Level" title="Your hero level" value={hero.level} /> : null}
-        <BattleMetric
-          kind="spell"
-          label="Spell"
-          title="Your spells cast this combat round"
-          value={`${player.combatStats.spellsCastThisRound}/${spellLimitLabel}`}
-        />
-        <BattleMetric
-          kind="crown"
-          label="Crowns"
-          title="Your expert-effect crowns left this combat round"
-          value={`${crownsLeft}/${crownsTotal}`}
-        />
-        <BattleMetric
-          kind="morale"
-          label="Morale"
-          morale={player.morale}
-          title="Your current morale"
-          value={signedMorale(player.morale)}
-        />
-        <span title="Gold / materials / valuables">
+        <span className="dockResourceLine" title="Gold / materials / valuables">
           {player.resources.gold}g · {player.resources.buildingMaterials}m · {player.resources.valuables}v
         </span>
       </div>

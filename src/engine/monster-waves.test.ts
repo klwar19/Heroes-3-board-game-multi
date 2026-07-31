@@ -164,7 +164,7 @@ describe("Calamity Waves — schedule purity", () => {
 describe("Calamity Waves — shared map object", () => {
   it("the first Far Blocked Field becomes a themed, revisitable Gate that prepares a player for the next wave", () => {
     const state = wavesGame("waves-calamity-gate", {
-      wog: {
+      anime: {
         enabled: true,
         monsterWaves: true,
         waveCadence: 3,
@@ -659,7 +659,7 @@ describe("Calamity Waves — barrier reuse", () => {
 describe("Calamity Waves — themes and pressure", () => {
   it("a Doom theme mints an all-Doom wave without polluting the shared Neutral decks", () => {
     const state = wavesGame("waves-doom", {
-      wog: {
+      anime: {
         enabled: true,
         monsterWaves: true,
         waveCadence: 3,
@@ -701,7 +701,7 @@ describe("Calamity Waves — themes and pressure", () => {
       ["doom", "pve-calamity-doom"]
     ] as const) {
       const state = wavesGame(`waves-board-${theme}`, {
-        wog: { enabled: true, monsterWaves: true, waveCadence: 3, pveTheme: theme }
+        anime: { enabled: true, monsterWaves: true, waveCadence: 3, pveTheme: theme }
       });
       const opened = openWave(state, 3);
       expect(opened.combat?.boardArtId, theme).toBe(expected);

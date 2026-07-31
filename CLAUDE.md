@@ -4909,7 +4909,7 @@ baked in, lower third kept dark for the title plate; on-disk pinned in
 `scripts/codex-gen-art.ps1`) with a bottom text plate, staggered entrance,
 ember-breath rim and a hover light-sweep + art zoom (all CSS, disabled under
 `prefers-reduced-motion`). The small `SETUP_HUB_ICONS` spell-book icons remain
-the cross-window strip's (`SetupHubNav`) icons only. The Map window pins
+the summary rail's (`SetupSummaryRail`) chip icons only. The Map window pins
 "Play this map" in an always-visible `.mapPickApplyBar` under the detail
 column's own scroll area (sticky over the sheet scroll in phone mode) — it
 must never sit below the fold of a long description/conditions list.
@@ -4921,14 +4921,22 @@ Components: `SetupHub` / `GameModeModal` / `HeroesDraftModal` /
 `src/components/adventure/map-pick-modal.tsx` (+ its `DifficultyChessBar`); the
 read-only preview `src/components/adventure/map-shape-preview.tsx` (now the ONE
 home of `GROUP_COLORS` + `flowerOutline`, which `map-designer.tsx` imports); the
-cross-window strip `src/components/adventure/setup-hub-nav.tsx`; the
+right-of-scene summary rail `src/components/adventure/setup-summary-rail.tsx`; the
 pure derivations `src/components/adventure/setup-hub-summary.ts`. Behaviour is
 pinned in `setup-hub.test.tsx`, `setup-hub-summary.test.ts`,
 `map-pick-modal.test.tsx`, `map-shape-preview.test.tsx` (each claim
 mutation-checked with CONTROLs) plus the real-browser half
 `tests/e2e/setup-hub-phone.spec.ts` (jsdom cannot compute CSS).
 
-### Box ownership + the cross-window strip (2026-07-25) — the four boxes are ONE screen
+### Box ownership + the summary rail — the four boxes are ONE screen
+
+(2026-07-31: the cross-window strip that used to sit INSIDE every hub window is
+retired; its consolidated live view now lives in ONE always-visible
+`SetupSummaryRail` pinned to the RIGHT of the painted setup scene — the boxes
+themselves show only their titles there, so a half-transparent right rail is the
+at-a-glance summary, each chip one click into its box. The hub windows carry no
+summary strip anymore — pinned in `setup-hub.test.tsx` "Setup Hub — the summary
+rail".)
 
 Three rules keep the four windows from reading as four unconnected screens (each
 mutation-checked; the first two fix real bugs, not cosmetics):
@@ -4951,13 +4959,17 @@ mutation-checked; the first two fix real bugs, not cosmetics):
    longer be marked in play in one surface while the Map box (and the real game)
    still show the scenario sheet. Both pickers additionally REFUSE an empty saved
    map (`designedMapBlockers`) — applying it would have been a silent no-op.
-3. **Every hub window shows all four boxes' live values** (`SetupHubNav`, fed by
-   the pure `setupHubNavItems`, rendered through `SetupHubWindow`'s `nav` slot):
-   the current box is a non-button "you are here" chip, the other three switch
-   windows in one click. Because the strip reads the SAME derivations the boxes
-   render, it can never disagree with them — that shared reading IS the
-   connection (open Advanced settings and the map, mode and difficulty are right
-   there). Pure presentation: it dispatches nothing.
+3. **The right-of-scene summary rail shows all four boxes' live values**
+   (`SetupSummaryRail`, fed by the pure `setupHubNavItems`): a half-transparent
+   `position: fixed` panel (`.setupSummaryRail`, z 9 — above the full-screen
+   `.setupHubGrid` scene layer at z 8 that would otherwise steal its clicks, far
+   below the hub-window backdrop at 210), vertically centered on the right edge,
+   with all four chips actionable (each opens its box's window; no "you are here"
+   chip — none is current on the scene). Because it reads the SAME derivations the
+   boxes render, it can never disagree with them — that shared reading IS the
+   connection, always visible without opening a window. Hidden under `.phoneMode`
+   (the phone 2×2 box grid is the surface there). Pure presentation: it dispatches
+   only the box-open callback.
 
 Two smaller de-duplications ride along:
 - The **Custom-setting FILE panel** (`PersonalCustomSettingsPanel`) now exists

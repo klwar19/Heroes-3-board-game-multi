@@ -178,8 +178,9 @@ describe("Raid Bosses — spawn schedule", () => {
   });
 
   it("the frozen PvE theme picks the pool: a Doom game can only spawn a Doom boss, a classic game never one", () => {
+    // Doom is an ANIME-mod theme now (see the WOG-only CONTROL below).
     const doom = raidGame("raid-doom-pool", {
-      wog: { enabled: true, raidBosses: true, pveTheme: "doom" }
+      anime: { enabled: true, raidBosses: true, pveTheme: "doom" }
     });
     expect(doom.adventure?.pveTheme).toBe("doom");
     expect(scheduledBossPool(doom).sort()).toEqual(["cyberdemon_prime", "spider_overmind"]);
@@ -203,18 +204,37 @@ describe("Raid Bosses — spawn schedule", () => {
     );
   });
 
+  it("CONTROL: Doom is anime-only — a WOG-only game can never get the Doom theme (explicit pick OR random)", () => {
+    // A WOG PvE game that asks for "doom" is coerced to classic (the theme belongs
+    // to the anime mod), so no Doom boss can ever spawn from a WOG-only table.
+    const wogDoom = raidGame("raid-wog-doom", {
+      wog: { enabled: true, raidBosses: true, pveTheme: "doom" }
+    });
+    expect(wogDoom.adventure?.pveTheme).toBe("classic");
+    for (const doomId of DOOM_RAID_BOSS_IDS) {
+      expect(scheduledBossPool(wogDoom)).not.toContain(doomId);
+    }
+    // Random on a WOG-only table also stays classic across every seed.
+    for (let index = 0; index < 12; index += 1) {
+      const wogRandom = raidGame(`raid-wog-random-${index}`, {
+        wog: { enabled: true, raidBosses: true, pveTheme: "random" }
+      });
+      expect(wogRandom.adventure?.pveTheme, `seed ${index}`).toBe("classic");
+    }
+  });
+
   it('the "random" theme is resolved ONCE from the game seed and frozen (never Math.random)', () => {
     const themes = new Set<string>();
     for (let index = 0; index < 12; index += 1) {
       const rolled = raidGame(`raid-random-theme-${index}`, {
-        wog: { enabled: true, raidBosses: true, pveTheme: "random" }
+        anime: { enabled: true, raidBosses: true, pveTheme: "random" }
       });
       const theme = rolled.adventure?.pveTheme;
       expect(theme === "classic" || theme === "doom", String(theme)).toBe(true);
       themes.add(String(theme));
       // Same seed ⇒ same theme (a Math.random / Date.now roll would drift).
       const twin = raidGame(`raid-random-theme-${index}`, {
-        wog: { enabled: true, raidBosses: true, pveTheme: "random" }
+        anime: { enabled: true, raidBosses: true, pveTheme: "random" }
       });
       expect(twin.adventure?.pveTheme).toBe(theme);
     }
@@ -256,7 +276,7 @@ describe("Raid Bosses — the lair fight", () => {
       ["doom", "pve-calamity-doom"]
     ] as const) {
       const state = raidGame(`raid-board-${theme}`, {
-        wog: { enabled: true, raidBosses: true, pveTheme: theme }
+        anime: { enabled: true, raidBosses: true, pveTheme: theme }
       });
       const { fieldId } = spawnLair(state);
       const fight = challengeLair(state, fieldId);
