@@ -141,6 +141,52 @@ describe("Scholar basic — take a card from the discard pile", () => {
 // ===========================================================================
 
 describe("Scholar basic — usable during Combat", () => {
+  it("can recover a card inside an open reaction window, then play that card there", () => {
+    const state = createInitialGameState("scholar-reaction");
+    state.players.p1.hand = ["ability.scholar"];
+    state.players.p1.discard = ["spell.curse"];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.activePlayerId = "p1";
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+
+    let declared = apply(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    while (declared.reactionWindow && declared.reactionWindow.priorityPlayerId !== "p1") {
+      declared = apply(declared, {
+        type: "PASS_REACTION",
+        playerId: declared.reactionWindow.priorityPlayerId
+      });
+    }
+
+    const scholar = getLegalActions(declared, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.scholar" &&
+        legal.action.mode === "basic"
+    );
+    expect(scholar, "Scholar should be usable in an open reaction window").toBeTruthy();
+    const afterPlay = apply(declared, scholar!.action);
+    const choice = afterPlay.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("discard-pick");
+
+    const afterPick = apply(afterPlay, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: (choice as { id: string }).id,
+      optionIndex: 0
+    });
+    expect(
+      getLegalActions(afterPick, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.curse"
+      )
+    ).toBe(true);
+  });
+
   it("opens the discard pick mid-fight and pulls the card into hand, combat still live", () => {
     const state = createInitialGameState("scholar-combat");
     state.players.p1.hand = ["ability.scholar"];

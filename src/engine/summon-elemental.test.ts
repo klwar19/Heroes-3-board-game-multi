@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import soundManifest from "../../public/sounds/manifest.json";
 import { spellFxPlans } from "@/data/fx";
-import { neutralUnitIdsByTier } from "@/data/factions/core";
+import { coreFactionDefinitions, isRecruitableNeutralUnit, neutralUnitIdsByTier } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitSoundKey } from "@/data/unit-sounds";
 import {
@@ -331,7 +331,7 @@ describe("Summon Elemental spell", () => {
   it("Power 2 summons a Few onto the chosen empty space", () => {
     const { state, position } = castSummon("spell.summon_air_elemental", 2);
     const summoned = unitAt(state, position);
-    expect(summoned?.unitDefId).toBe("neutral.air_elementals");
+    expect(summoned?.unitDefId).toBe("conflux.air_elementals");
     expect(summoned?.variant).toBe("few");
     expect(summoned?.controllerId).toBe("p1");
     expect(summoned?.abilities).toContain("elemental-damage");
@@ -340,12 +340,12 @@ describe("Summon Elemental spell", () => {
   it("Power 4 summons a Pack and it joins the caster's army", () => {
     const { state, position } = castSummon("spell.summon_fire_elemental", 4);
     const summoned = unitAt(state, position);
-    expect(summoned?.unitDefId).toBe("neutral.fire_elementals");
+    expect(summoned?.unitDefId).toBe("conflux.fire_elementals");
     expect(summoned?.variant).toBe("pack");
     // It acts on its own initiative this round (not pre-activated)…
     expect(summoned?.activatedThisRound).toBe(false);
     // …and persists in the army afterwards, like the Pit Lords' Demons.
-    expect(state.players.p1.army.some((entry) => entry.unitDefId === "neutral.fire_elementals")).toBe(true);
+    expect(state.players.p1.army.some((entry) => entry.unitDefId === "conflux.fire_elementals")).toBe(true);
   });
 
   it("enters the current round at its printed speed and receives a normal activation after faster units", () => {
@@ -386,7 +386,7 @@ describe("Summon Elemental spell", () => {
     const before = Object.keys(createInitialGameState("summon-seed").combat!.units).length;
     const { state } = castSummon("spell.summon_water_elemental", 0);
     const summoned = Object.values(state.combat!.units).filter(
-      (unit) => unit.unitDefId === "neutral.water_elementals"
+      (unit) => unit.unitDefId === "conflux.water_elementals"
     );
     expect(summoned).toHaveLength(0);
     expect(Object.keys(state.combat!.units).length).toBe(before);
@@ -555,10 +555,10 @@ describe("summon elemental sound coverage", () => {
   });
 
   it("the summoned Earth & Water Elementals speak with their own H3 voices", () => {
-    expect(unitSoundKey("neutral.earth_elementals", "attack")).toBe("units/earth-elemental-attack");
-    expect(unitSoundKey("neutral.water_elementals", "move")).toBe("units/water-elemental-move");
-    expect(unitSoundKey("neutral.air_elementals", "attack")).toBe("units/air-elemental-attack");
-    expect(unitSoundKey("neutral.fire_elementals", "attack")).toBe("units/fire-elemental-attack");
+    expect(unitSoundKey("conflux.earth_elementals", "attack")).toBe("units/earth-elemental-attack");
+    expect(unitSoundKey("conflux.water_elementals", "move")).toBe("units/water-elemental-move");
+    expect(unitSoundKey("conflux.air_elementals", "attack")).toBe("units/air-elemental-attack");
+    expect(unitSoundKey("conflux.fire_elementals", "attack")).toBe("units/fire-elemental-attack");
   });
 });
 
@@ -587,24 +587,58 @@ describe("neutral guard elementals are distinct from the summon", () => {
     );
   });
 
-  it("Earth & Water Elementals are BOTH summon units (Few/Pack) and neutral guards", () => {
-    // The fan wiki lists a Neutral guard card for each, with stats distinct from
-    // the summon Few/Pack — Earth is gold tier, Water is silver tier.
-    expect(neutralUnitIdsByTier.gold).toContain("neutral.earth_elementals");
+  it("the four base-school summon forms are separate from neutral recruit cards", () => {
+    expect(guardPool).not.toContain("conflux.air_elementals");
+    expect(guardPool).not.toContain("conflux.earth_elementals");
+    expect(guardPool).not.toContain("conflux.fire_elementals");
+    expect(guardPool).not.toContain("conflux.water_elementals");
+    expect(guardPool).toContain("neutral.air_elementals");
+    expect(guardPool).toContain("neutral.earth_elementals");
+    expect(guardPool).toContain("neutral.fire_elementals");
     expect(neutralUnitIdsByTier.silver).toContain("neutral.water_elementals");
 
-    const earth = coreUnitDefinitions["neutral.earth_elementals"];
-    const water = coreUnitDefinitions["neutral.water_elementals"];
-    // Guard side present AND distinct from the summon Few side.
-    expect(earth.neutral).toMatchObject({ attack: 3, defense: 2, health: 5, initiative: 4 });
+    const earth = coreUnitDefinitions["conflux.earth_elementals"];
+    const water = coreUnitDefinitions["conflux.water_elementals"];
+    expect(earth.faction).toBe("conflux");
+    expect(earth.neutral).toBeUndefined();
     expect(earth.few).toMatchObject({ attack: 2, defense: 2, health: 2, initiative: 5 });
-    expect(water.neutral).toMatchObject({ attack: 2, defense: 1, health: 4, initiative: 5 });
+    expect(water.faction).toBe("conflux");
+    expect(water.neutral).toBeUndefined();
     expect(water.pack).toMatchObject({ attack: 3, defense: 0, health: 5, initiative: 6 });
   });
 
+  it("keeps summon forms out of the Conflux roster and every Neutral deck", () => {
+    const summonIds = [
+      "conflux.air_elementals",
+      "conflux.earth_elementals",
+      "conflux.fire_elementals",
+      "conflux.water_elementals"
+    ];
+    const neutralDeckIds = [
+      ...neutralUnitIdsByTier.bronze,
+      ...neutralUnitIdsByTier.silver,
+      ...neutralUnitIdsByTier.gold,
+      ...neutralUnitIdsByTier.azure
+    ];
+
+    for (const id of summonIds) {
+      expect(coreFactionDefinitions.conflux.units, id).not.toContain(id);
+      expect(neutralDeckIds, id).not.toContain(id);
+      expect(isRecruitableNeutralUnit(id), id).toBe(false);
+      expect(coreUnitDefinitions[id].neutral, id).toBeUndefined();
+    }
+    for (const id of neutralDeckIds) {
+      expect(isRecruitableNeutralUnit(id), id).toBe(true);
+      expect(coreUnitDefinitions[id].neutral, id).toBeTruthy();
+      expect(coreUnitDefinitions[id].few, `${id} must not use Few`).toBeUndefined();
+      expect(coreUnitDefinitions[id].pack, `${id} must not use Pack`).toBeUndefined();
+    }
+  });
+
   it("the neutral guard side differs from the summon Few side (Air)", () => {
-    const air = coreUnitDefinitions["neutral.air_elementals"];
-    expect(air.neutral).toMatchObject({ attack: 2, defense: 0, health: 3, initiative: 7 }); // guard
+    const air = coreUnitDefinitions["conflux.air_elementals"];
+    const neutralAir = coreUnitDefinitions["neutral.air_elementals"];
+    expect(neutralAir.neutral).toMatchObject({ attack: 2, defense: 0, health: 3, initiative: 7 }); // guard
     expect(air.few).toMatchObject({ attack: 2, defense: 0, health: 4, initiative: 8 }); // summon
   });
 

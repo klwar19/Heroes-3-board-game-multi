@@ -60,7 +60,7 @@ describe("Pandora reserve cards — now in the game", () => {
 // ===========================================================================
 
 describe("Pandora's Gift: Income (permanent)", () => {
-  it("enters play as a permanent, rolls the Resource die, and touches NO production track", () => {
+  it("enters play as a permanent, rolls the Resource die, and raises that production track", () => {
     const state = readyAdventure("pandora-income");
     state.players.p1.hand = ["pandora.resource_income"];
     const productionBefore = { ...state.players.p1.production };
@@ -73,9 +73,11 @@ describe("Pandora's Gift: Income (permanent)", () => {
     // The enter-play die was rolled and its resource recorded.
     expect(resourceDieEvents(after, logLen).length).toBe(1);
     expect(after.players.p1.pandoraIncomeResource).toBeTruthy();
-    // No production track moved — the boost is paid per Resources round while
-    // in play, so removing the card cleanly ends it.
-    expect(after.players.p1.production).toEqual(productionBefore);
+    // The card raises the selected income track while it remains in play.
+    const resource = after.players.p1.pandoraIncomeResource!;
+    expect(after.players.p1.production[resource]).toBe(
+      productionBefore[resource] + RESOURCE_GAIN_LEVEL_AMOUNTS[resource]
+    );
   });
 
   it("pays the rolled resource's FULL income tier each Resources round — and stops once the card leaves play", () => {
@@ -85,6 +87,8 @@ describe("Pandora's Gift: Income (permanent)", () => {
     const control = readyAdventure("pandora-income-round");
     withCard.players.p1.permanents = ["pandora.resource_income"];
     withCard.players.p1.pandoraIncomeResource = "gold";
+    withCard.players.p1.pandoraIncomeProductionBonus = RESOURCE_GAIN_LEVEL_AMOUNTS.gold;
+    withCard.players.p1.production.gold += RESOURCE_GAIN_LEVEL_AMOUNTS.gold;
 
     for (const state of [withCard, control]) {
       state.round = 3; // an odd round after the first = a Resources round

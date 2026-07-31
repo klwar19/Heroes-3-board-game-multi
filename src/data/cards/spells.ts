@@ -489,7 +489,7 @@ export const spellCards: CardLibrary = {
     ],
     power: 0,
     target: { type: "empty-space" },
-    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.air_elementals" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "conflux.air_elementals" },
     assets: {
       // Original card face built from the Expert Air frame and new elemental art.
       cardImage: "/assets/spells-summon_air_elemental.webp",
@@ -514,7 +514,7 @@ export const spellCards: CardLibrary = {
     ],
     power: 0,
     target: { type: "empty-space" },
-    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.earth_elementals" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "conflux.earth_elementals" },
     assets: {
       // Original card face built from the Expert Earth frame and new elemental art.
       cardImage: "/assets/spells-summon_earth_elemental.webp",
@@ -539,7 +539,7 @@ export const spellCards: CardLibrary = {
     ],
     power: 0,
     target: { type: "empty-space" },
-    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.fire_elementals" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "conflux.fire_elementals" },
     assets: {
       // Original card face built from the Expert Fire frame and new elemental art.
       cardImage: "/assets/spells-summon_fire_elemental.webp",
@@ -564,7 +564,7 @@ export const spellCards: CardLibrary = {
     ],
     power: 0,
     target: { type: "empty-space" },
-    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "neutral.water_elementals" },
+    effect: { type: "SUMMON_ELEMENTAL", unitDefId: "conflux.water_elementals" },
     assets: {
       // Original card face built from the Expert Water frame and new elemental art.
       cardImage: "/assets/spells-summon_water_elemental.webp",

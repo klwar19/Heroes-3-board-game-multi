@@ -2876,12 +2876,10 @@ export type PermanentEffectDefinition = {
   resourceRoundGain?: { resource: ResourceKind; amount: number; requiresHeroInTown?: boolean };
   /**
    * Pandora's Gift: Income (card 174 — a PERMANENT, the printed ∞): entering
-   * play rolls 1 Resource die and records the rolled resource on the owner
-   * (`player.pandoraIncomeResource`); while the card stays in play the owner
-   * gains that resource's FULL income tier (+5 gold / +2 materials / +1
-   * valuables) at the start of every Resources round. Leaving play stops the
-   * boost — the round-start read only sees in-play permanents, exactly as the
-   * printed reminder ("lasts only as long as it is in play") requires.
+   * play rolls 1 Resource die and raises the rolled production track by one
+   * income level (+5 gold / +2 materials / +1 valuables). Leaving play removes
+   * that temporary production bonus, exactly as the printed reminder ("lasts
+   * only as long as it is in play") requires.
    */
   incomeTierDieOnEnter?: boolean;
   /**
@@ -7325,11 +7323,13 @@ export type PlayerState = {
   pandoraUpkeepResolvedThisTurn?: boolean;
   /**
    * Pandora's Gift: Income (the ∞ permanent) — the resource its enter-play
-   * Resource die rolled. Only meaningful while that permanent is in play (the
-   * Resources-round income read checks the in-play card, so a stale value is
-   * inert); replaying the card re-rolls and overwrites it.
+   * Resource die rolled. While the permanent is in play, the corresponding
+   * production track is raised by one income level; leaving play removes that
+   * temporary bonus. Replaying the card re-rolls and overwrites the value.
    */
   pandoraIncomeResource?: ResourceKind | null;
+  /** Production-track amount currently supplied by the in-play Pandora Income card. */
+  pandoraIncomeProductionBonus?: number;
   /**
    * Opening free-rotation of this player's faction Ⅰ (starting) tile. A
    * tri-state: `undefined` means the feature is off for this game (deterministic
@@ -13344,7 +13344,7 @@ export type PendingChoice =
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
-      /** eagle-eye: the dug spell waiting on take/discard. */
+      /** eagle-eye: the dug spell waiting to be taken. */
       eagleEye?: { deckId: DeckId; cardId: CardId };
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
       handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };

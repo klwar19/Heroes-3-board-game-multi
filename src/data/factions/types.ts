@@ -46,6 +46,8 @@ export type UnitDefinition = {
   faction: FactionId | "neutral";
   tier: UnitTier;
   type: UnitType;
+  /** A faction-aligned form that can only enter play through a summon effect. */
+  summonOnly?: boolean;
   few?: UnitSideDefinition;
   pack?: UnitSideDefinition;
   /** Neutral units are single sided. */

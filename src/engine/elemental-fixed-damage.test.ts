@@ -161,10 +161,9 @@ function runAttack(state: GameState): GameState {
 describe("every Elemental deals die-proof, fixed damage (real unit data)", () => {
   it("covers every neutral guard AND both summon sides", () => {
     // Sanity on the inventory so a dropped side can't silently shrink coverage.
-    // Per the verbatim wiki cards, "deals elemental damage" belongs ONLY to the
-    // NEUTRAL elementals: the 9 neutral guards, plus the Air/Earth/Water/Fire
-    // SUMMON units (which are `neutral.*` with Few/Pack/Neutral sides, all
-    // immune + elemental). The recruitable CONFLUX faction elementals
+    // Per the verbatim wiki cards, "deals elemental damage" belongs to the
+    // 9 neutral guards plus the separate Air/Earth/Water/Fire summon defs.
+    // The recruitable CONFLUX faction elementals
     // (Storm/Ice/Energy/Magma/Magic Few & Pack) do NOT deal elemental damage —
     // only their separate neutral guard card does — so no conflux.* id appears.
     // The ONE non-neutral exception is the anime Fuyuki Casters (an ORIGINAL
@@ -175,6 +174,10 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
+        "conflux.air_elementals",
+        "conflux.earth_elementals",
+        "conflux.water_elementals",
+        "conflux.fire_elementals",
         "neutral.air_elementals",
         "neutral.earth_elementals",
         "neutral.water_elementals",
@@ -187,8 +190,8 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "fuyuki.casters"
       ])
     );
-    expect([...ids].every((id) => id.startsWith("neutral.") || id === "fuyuki.casters")).toBe(true);
-    // 17 neutral sides + the Fuyuki Casters Few & Pack.
+    expect([...ids].every((id) => id.startsWith("neutral.") || id.startsWith("conflux.") || id === "fuyuki.casters")).toBe(true);
+    // 9 neutral sides + 8 summon sides + the Fuyuki Casters Few & Pack.
     expect(elementalSides.length).toBe(19);
   });
 

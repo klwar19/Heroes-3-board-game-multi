@@ -2681,7 +2681,7 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
 
 function unitsOfFaction(faction: string): string[] {
   return Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === faction)
+    .filter((unit) => unit.faction === faction && !unit.summonOnly)
     .map((unit) => unit.id);
 }
 
@@ -2855,19 +2855,25 @@ export const coreFactionDefinitions: Record<string, FactionDefinition> = {
   }
 };
 
+/** Whether an id is a genuine single-sided Neutral Unit card. */
+export function isRecruitableNeutralUnit(unitDefId: string): boolean {
+  const unit = coreUnitDefinitions[unitDefId];
+  return Boolean(unit && unit.faction === "neutral" && unit.neutral && !unit.summonOnly);
+}
+
 /** Neutral unit definition ids grouped by tier, used to build the four neutral decks. */
 export const neutralUnitIdsByTier: Record<"bronze" | "silver" | "gold" | "azure", string[]> = {
   bronze: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "bronze" && Boolean(unit.neutral))
+    .filter((unit) => !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "bronze" && isRecruitableNeutralUnit(unit.id))
     .map((unit) => unit.id),
   silver: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "silver" && Boolean(unit.neutral))
+    .filter((unit) => !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "silver" && isRecruitableNeutralUnit(unit.id))
     .map((unit) => unit.id),
   gold: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "gold" && Boolean(unit.neutral))
+    .filter((unit) => !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "gold" && isRecruitableNeutralUnit(unit.id))
     .map((unit) => unit.id),
   azure: Object.values(coreUnitDefinitions)
-    .filter((unit) => unit.faction === "neutral" && !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "azure" && Boolean(unit.neutral))
+    .filter((unit) => !unit.id.startsWith("wog.") && !unit.id.startsWith("doom.") && unit.tier === "azure" && isRecruitableNeutralUnit(unit.id))
     .map((unit) => unit.id)
 };
 

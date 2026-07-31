@@ -138,10 +138,13 @@ describe("morale during combat (combat sandbox)", () => {
         playerId: state.reactionWindow.priorityPlayerId
       });
     }
-    const draw = moraleActions(state, "p1").find(
+    const draws = moraleActions(state, "p1").filter(
       (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
     );
-    expect(draw?.label).toMatch(/before the Retaliation Attack/i);
+    // Exactly ONE draw offer (the addMoraleActions one) — never a second
+    // look-alike retaliation-specific button beside it.
+    expect(draws).toHaveLength(1);
+    const draw = draws[0];
     state = applyOk(state, draw!.action);
 
     expect(state.players.p1.morale).toBe(0);

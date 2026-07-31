@@ -49,16 +49,20 @@ function onDisk(assetPath: string): string {
 describe("summoned Elemental card faces", () => {
   it("matches every Few, Pack, and Neutral wiki column", () => {
     for (const [slug, expected] of Object.entries(EXPECTED)) {
-      const unit = coreUnitDefinitions[`neutral.${slug}_elementals`];
-      expect(stats(unit.few!)).toEqual(expected.few);
-      expect(stats(unit.pack!)).toEqual(expected.pack);
-      expect(stats(unit.neutral!)).toEqual(expected.neutral);
-      expect(unit.few!.cost).toEqual({});
-      expect(unit.pack!.cost).toEqual({});
-      expect(unit.neutral!.cost).toEqual({ gold: expected.cost });
+      // Few/Pack are summon-only Conflux cards. The single-sided Neutral card
+      // is a separate recruitable card and must never be merged into that
+      // summon definition.
+      const summon = coreUnitDefinitions[`conflux.${slug}_elementals`];
+      const neutral = coreUnitDefinitions[`neutral.${slug}_elementals`];
+      expect(stats(summon.few!)).toEqual(expected.few);
+      expect(stats(summon.pack!)).toEqual(expected.pack);
+      expect(stats(neutral.neutral!)).toEqual(expected.neutral);
+      expect(summon.few!.cost).toEqual({});
+      expect(summon.pack!.cost).toEqual({});
+      expect(neutral.neutral!.cost).toEqual({ gold: expected.cost });
 
       const printedText = `Immune to Magic Arrow and ${expected.school} Magic spells. This unit deals elemental damage.`;
-      for (const side of [unit.few!, unit.pack!, unit.neutral!]) {
+      for (const side of [summon.few!, summon.pack!, neutral.neutral!]) {
         expect(side.abilityText).toContain(printedText);
         expect(side.abilities).toEqual([
           "elemental-damage",
@@ -70,12 +74,13 @@ describe("summoned Elemental card faces", () => {
 
   it("ships distinct Few/Pack/Neutral faces and one shared art panel per creature", () => {
     for (const [slug, expected] of Object.entries(EXPECTED)) {
-      const unit = coreUnitDefinitions[`neutral.${slug}_elementals`];
-      const faces = [unit.few!.cardImage, unit.pack!.cardImage, unit.neutral!.cardImage];
+      const summon = coreUnitDefinitions[`conflux.${slug}_elementals`];
+      const neutral = coreUnitDefinitions[`neutral.${slug}_elementals`];
+      const faces = [summon.few!.cardImage, summon.pack!.cardImage, neutral.neutral!.cardImage];
       expect(new Set(faces).size).toBe(3);
-      expect(unit.few!.cardImage).toBe(`/assets/units-conflux-bronze-${slug}_elementals-few.webp`);
-      expect(unit.pack!.cardImage).toBe(`/assets/units-conflux-bronze-${slug}_elementals-pack.webp`);
-      expect(unit.neutral!.cardImage).toBe(
+      expect(summon.few!.cardImage).toBe(`/assets/units-conflux-bronze-${slug}_elementals-few.webp`);
+      expect(summon.pack!.cardImage).toBe(`/assets/units-conflux-bronze-${slug}_elementals-pack.webp`);
+      expect(neutral.neutral!.cardImage).toBe(
         `/assets/units-neutral-${expected.tier}-${slug}_elementals.webp`
       );
 

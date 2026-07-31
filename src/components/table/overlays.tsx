@@ -561,7 +561,7 @@ export function ReactionTray({
   // Retaliation pre-roll Morale-token draw. This is a standalone SPEND_MORALE
   // action, not a card play; keep the window open after drawing so a newly drawn
   // defense instant can be selected from the refreshed tray.
-  const retaliationMoraleDraws = legalActions.filter(
+  const moraleDrawOffers = legalActions.filter(
     (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
   );
 
@@ -731,7 +731,9 @@ export function ReactionTray({
           };
         });
       next.push(incoming);
-      return next.sort((left, right) => left.handIndex - right.handIndex);
+      // Keep declaration order. Sorting by physical hand position makes the
+      // visible order lie about what the batch will resolve.
+      return next;
     });
   };
 
@@ -1023,7 +1025,7 @@ export function ReactionTray({
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
         schoolFetchExpertReactions.length === 0 &&
-        retaliationMoraleDraws.length === 0 &&
+        moraleDrawOffers.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
@@ -1058,7 +1060,7 @@ export function ReactionTray({
             </div>
           </div>
         ))}
-        {retaliationMoraleDraws.map((legal) => (
+        {moraleDrawOffers.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">
               <strong>Positive Morale</strong>
@@ -1159,6 +1161,7 @@ export function ReactionTray({
         })}
         {tiles.map((tile) => {
           const selection = selections.find((candidate) => candidate.handIndex === tile.handIndex);
+          const selectedOrder = selection ? selections.indexOf(selection) + 1 : null;
           const empowered = cardIsEmpoweredFor(
             tile.cardId,
             view.players[viewerPlayerId]?.empoweredAbilities
@@ -1166,6 +1169,11 @@ export function ReactionTray({
           return (
             <div className={`trayTile ${selection ? "selected" : ""}`} key={`${tile.cardId}-${tile.handIndex}`}>
               <CardFrame cardId={tile.cardId} className="trayCardImage" empowered={empowered} />
+              {selectedOrder ? (
+                <span className="trayOrderBadge" aria-label={`Play order ${selectedOrder}`}>
+                  {selectedOrder}
+                </span>
+              ) : null}
               <ZoomButton label={`Read ${cardName(tile.cardId)}`} onZoom={() => zoomCard(tile.cardId)} />
               <div className="trayTileBody">
                 <strong>

@@ -6,6 +6,7 @@ import {
   getActiveAstrologersCard,
   hasResources,
   processPendingVisit,
+  removePandoraIncomeProductionBonus,
   rollPandoraIncomePermanentDie,
   spendResources
 } from "./adventure";
@@ -454,6 +455,9 @@ export function discardPermanentFromPlay(
   if (card) {
     removePermanentCombatEffects(state, playerId, card);
   }
+  if (discardId === "pandora.resource_income") {
+    removePandoraIncomeProductionBonus(state, playerId);
+  }
   setPermanentCardIds(
     state,
     playerId,
@@ -494,6 +498,9 @@ export function removePermanentFromPlayToRemoved(
   const card = cardLibrary[removeId];
   if (card) {
     removePermanentCombatEffects(state, playerId, card);
+  }
+  if (removeId === "pandora.resource_income") {
+    removePandoraIncomeProductionBonus(state, playerId);
   }
   setPermanentCardIds(
     state,
@@ -566,9 +573,8 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
   // enforcement discards oldest-first, so it always survives.
   enforcePermanentLimit(state, playerId);
 
-  // Pandora's Gift: Income — the ∞ permanent rolls its Resource die as it
-  // enters play; the rolled resource pays a full income tier each Resources
-  // round for as long as the card stays in play (startAdventureRound).
+  // Pandora's Gift: Income — the ∞ permanent rolls its Resource die and raises
+  // the selected production track while it stays in play.
   if (card.permanentEffect?.incomeTierDieOnEnter) {
     rollPandoraIncomePermanentDie(state, playerId);
   }

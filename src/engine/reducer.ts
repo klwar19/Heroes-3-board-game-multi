@@ -4753,7 +4753,10 @@ function finishResolvedAttack(
   // the resolved hit and the die-triggered abilities below all read it the same.
   const dieCancelled = Boolean(stackItem.modifiers.attackDieCancelled);
   const uncappedCandidate: AttackRollCandidate = dieCancelled
-    ? { rolls: candidate.rolls, roll: 0 }
+    // "Ignore the Attack die" is a true cancellation, including a -1 face:
+    // expose a zeroed candidate to every downstream reader, not merely a
+    // selected value of 0 while leaving the original negative face in `rolls`.
+    ? { ...candidate, rolls: candidate.rolls.map(() => 0), roll: 0 }
     : candidate;
   const minimumAttackDie = getMinimumAttackDie(details.attacker);
   let resolvedCandidate: AttackRollCandidate =
@@ -9638,6 +9641,24 @@ function openReactionWindowForTrigger(
     return false;
   }
 
+  // The bare positive-Morale token (draw / discard-redraw) rides along in any
+  // window that is open for OTHER reasons, but must not PAUSE the game by
+  // itself — a table where someone always holds a token would otherwise stop
+  // at every attack and cast. The one deliberate exception is a Retaliation
+  // Attack: that is the retaliating side's only pre-roll moment, so a held
+  // token may open it to fish up a defense instant before the die is rolled
+  // (pinned in morale-in-combat.test.ts, both directions).
+  const moraleOnlyMayOpen =
+    triggerEvent.type === "UNIT_ATTACK_DECLARED" && triggerEvent.isRetaliation;
+  const opensWindow = allowedPlayerIds.some((playerId) =>
+    (legalReactions[playerId] ?? []).some(
+      (legal) => legal.action.type !== "SPEND_MORALE" || moraleOnlyMayOpen
+    )
+  );
+  if (!opensWindow) {
+    return false;
+  }
+
   const windowId = `reaction_${triggerEvent.id}`;
   // The Sorrow activation-skip window has no paused stack item — nothing is
   // mid-resolution. Every other window pauses the spell/attack being reacted to.
@@ -12880,6 +12901,19 @@ function applyReactionPlayCore(
     changeMorale(state, playerId, effect.amount);
   }
 
+  // Scholar's combat-use house rule: resolve its discard recovery immediately
+  // inside the still-open reaction window instead of parking a reward until the
+  // fight ends. The option choice is completed by the normal adventure reducer;
+  // the dispatcher refreshes reaction offers once the pick resolves.
+  if (effect.type === "TAKE_FROM_DISCARD" && state.combat && !state.combat.prep) {
+    openDiscardPickChoice(state, playerId, {
+      count: effect.count,
+      filter: effect.filter,
+      fromTop: effect.fromTop,
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+    });
+  }
+
   if (
     effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
@@ -14110,20 +14144,10 @@ function playReactions(
 ): void {
   // Batch legality (validated up front) excludes window-ending effects, so
   // every play lands in the same window before priority moves on once.
-  // Power is paid before the spell consumes it (rulebook Empower order):
-  // process power-granting plays first so spell instants in the same batch
-  // see the full Power pool.
-  const isPowerPlay = (play: (typeof action.plays)[number]) => {
-    if (play.asPowerBoost) {
-      return true;
-    }
-    const card = cards[play.cardId];
-    const effect = card ? getEffectiveCardEffect(card, play.optionIndex) : null;
-    return effect?.type === "ADD_SPELL_POWER";
-  };
-  const ordered = [...action.plays.filter(isPowerPlay), ...action.plays.filter((play) => !isPowerPlay(play))];
-
-  for (const play of ordered) {
+  // Preserve the order declared by the player. A batch must not silently move
+  // a stat-changing or newly drawn instant around the sequence shown in the
+  // reaction tray.
+  for (const play of action.plays) {
     applyReactionPlayCore(state, action.playerId, play, cards);
   }
 
@@ -16517,9 +16541,9 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
 
 /**
  * Eagle Eye: dig the Spell deck from the top for the first Basic (basic play)
- * or Expert (expert play) spell, reshuffle the rest, then take or discard
- * the find. In BINH mode the split decks make the dig a plain top-card draw
- * of the matching deck.
+ * or Expert (expert play) spell, reshuffle the rest, then take the find into
+ * hand. In BINH mode the split decks make the dig a plain top-card draw of the
+ * matching deck.
  */
 function resolveEagleEyeDig(
   state: GameState,
@@ -16583,10 +16607,7 @@ function resolveEagleEyeDig(
     type: "OPTION_CHOICE",
     playerId,
     prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
-    options: [
-      { label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` },
-      { label: "Discard it" }
-    ],
+    options: [{ label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` }],
     context: "eagle-eye",
     eagleEye: { deckId, cardId: foundCardId },
     returnPhase: state.combat ? "combat" : "player-turn"
@@ -21360,6 +21381,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           resolveActivationOrderChoice(nextState, action);
         } else {
           chooseOption(nextState, action);
+        }
+        // Some reaction plays (notably Scholar) open a nested option choice.
+        // Once that choice resolves, the newly acquired card must be visible
+        // to the still-open reaction window before priority can continue.
+        if (nextState.reactionWindow && !nextState.pendingChoice) {
+          nextState.reactionWindow.passedPlayerIds = [];
+          nextState.reactionWindow.priorityPlayerId = action.playerId;
+          nextState.phase = "reaction";
+          refreshReactionWindowLegalReactions(nextState, cards);
         }
         break;
       case "RESOLVE_COMBAT_DISCARD":

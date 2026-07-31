@@ -183,11 +183,12 @@ describe("ReactionTray - retaliation morale draw", () => {
       </CardZoomProvider>
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /draw a card before the Retaliation Attack/i
-      })
-    );
+    const drawButtons = screen.getAllByRole("button", {
+      name: /Spend morale: draw a card/i
+    });
+    // Exactly one tile — the addMoraleActions offer; no duplicate look-alike.
+    expect(drawButtons).toHaveLength(1);
+    fireEvent.click(drawButtons[0]);
     expect(onAction).toHaveBeenCalledWith({
       type: "SPEND_MORALE",
       playerId: "p1",

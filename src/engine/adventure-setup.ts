@@ -39,6 +39,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  isRecruitableNeutralUnit,
   isPlayableFaction,
   neutralUnitIdsByTier,
   startingTileByFaction
@@ -741,7 +742,7 @@ function makeNeutralDecks(seed: string, wog: WogModOptions, anime: AnimeModOptio
       ...neutralUnitIdsByTier[tier],
       ...(wogCreaturesOn ? WOG_UNIT_IDS_BY_TIER[tier] : []),
       ...(doomCreaturesOn ? DOOM_UNIT_IDS_BY_TIER[tier] : [])
-    ];
+    ].filter(isRecruitableNeutralUnit);
     decks[deckId] = {
       id: deckId,
       drawPile: shuffleCards(unitIds, `${seed}#neutral#${tier}`),

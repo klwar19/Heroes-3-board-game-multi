@@ -938,6 +938,23 @@ export function TownBoardView({
                   </span>
                 </span>
               ) : null}
+              {bar.map((buildingId) => {
+                const building = coreBuildingDefinitions[buildingId];
+                if (!building || !built(buildingId) || building.effect?.type !== "COMBAT_CUBES") {
+                  return null;
+                }
+                const cubes = town.factionCubes?.[buildingId] ?? 0;
+                return (
+                  <span
+                    aria-label={`${building.name}: ${cubes} of ${building.effect.max} faction cubes stored`}
+                    className="tbCubeCount"
+                    key={`cubes-${buildingId}`}
+                    title={`${building.name}: ${cubes} of ${building.effect.max} faction cubes stored`}
+                  >
+                    cubes {cubes}/{building.effect.max}
+                  </span>
+                );
+              })}
               <button
                 aria-expanded={openPanel?.kind === "bar" && openPanel.index === index}
                 aria-label={`Bar ${index + 1}: ${label}`}
