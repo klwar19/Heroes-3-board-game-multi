@@ -912,7 +912,14 @@ export default class GameRoomServer implements Party.Server {
     if (!room?.hosted) {
       // Open table: one shared frame to everyone (the client redacts locally).
       const frame = JSON.stringify({ type: "snapshot", snapshot: this.signed(this.snapshot) });
-      this.room.broadcast(frame);
+      try {
+        this.room.broadcast(frame);
+      } catch (error) {
+        // Persistence is the transaction boundary. A stale/broken recipient
+        // must never turn a committed action into a failed action response;
+        // socket health/sync will repair that recipient independently.
+        console.warn("[room-broadcast] open-room fan-out failed", error);
+      }
       this.metric("room.broadcast", startedAt, {
         connections: this.connectionCount(),
         hosted: false,
@@ -920,20 +927,60 @@ export default class GameRoomServer implements Party.Server {
       });
       return;
     }
-    // Hosted: each socket gets a frame redacted to its own seat.
-    for (const connection of this.room.getConnections()) {
-      const redactStartedAt = Date.now();
-      const snapshot = await this.snapshotForConnection(connection);
-      this.metric("room.redaction", redactStartedAt, { version: snapshot.version });
-      const serializeStartedAt = Date.now();
-      const frame = JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage);
-      connection.send(frame);
-      this.metric("room.serialization", serializeStartedAt, {
-        version: snapshot.version,
-        bytes: new TextEncoder().encode(frame).byteLength
-      });
-    }
+    // Hosted: each socket gets a frame redacted to its own seat. Resolve seats
+    // in parallel so four slow identity callbacks cost one bounded timeout,
+    // not four sequential timeouts.
+    await Promise.all(
+      [...this.room.getConnections()].map(async (connection) => {
+        try {
+          const redactStartedAt = Date.now();
+          const snapshot = await this.snapshotForConnection(connection);
+          this.metric("room.redaction", redactStartedAt, { version: snapshot.version });
+          const serializeStartedAt = Date.now();
+          const frame = JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage);
+          connection.send(frame);
+          this.metric("room.serialization", serializeStartedAt, {
+            version: snapshot.version,
+            bytes: new TextEncoder().encode(frame).byteLength
+          });
+        } catch (error) {
+          // Continue to the other seats. One dead socket used to abort fan-out
+          // and strand the sender without an action-result after commit.
+          console.warn("[room-broadcast] hosted recipient failed", error);
+        }
+      })
+    );
     this.metric("room.broadcast", startedAt, { connections: this.connectionCount(), hosted: true });
+  }
+
+  /**
+   * Complete the initiating request as soon as its authoritative state is
+   * persisted. Full snapshot fan-out is delivery work, not part of the room
+   * transaction, and may legitimately be slower on a large hosted table.
+   */
+  private sendActionResult(
+    sender: Party.Connection,
+    requestId: string | undefined,
+    outcome: {
+      version: number;
+      errors: { code: string; message: string }[];
+      notices: string[];
+    }
+  ): void {
+    const reply: ServerMessage = {
+      type: "action-result",
+      requestId,
+      version: outcome.version,
+      errors: outcome.errors,
+      ...(outcome.notices.length > 0 ? { notices: outcome.notices } : {})
+    };
+    try {
+      sender.send(JSON.stringify(reply));
+    } catch (error) {
+      // The action is already committed. A dead initiating socket will recover
+      // from the persisted snapshot on reconnect; never poison the room queue.
+      console.warn("[room-action] could not deliver action-result", error);
+    }
   }
 
   /**
@@ -1319,7 +1366,19 @@ export default class GameRoomServer implements Party.Server {
         // member, or there is nothing to undo. The history lives only in the
         // undo-history module (never in state, never broadcast, never in a view).
         if (message.action.type === "UNDO_MOVE") {
-          return await this.applyUndo(current, message.action.playerId, senderClientId, actorUserId, dedupeKeys);
+          const undo = await this.applyUndo(
+            current,
+            message.action.playerId,
+            senderClientId,
+            actorUserId,
+            dedupeKeys
+          );
+          if (!undo.applied) {
+            return undo;
+          }
+          this.sendActionResult(sender, message.requestId, undo);
+          await this.broadcastSnapshot();
+          return { ...undo, acknowledged: true };
         }
         // Record the PRE-action state on the undo stack when the mode is on
         // (no-op otherwise), so an undo rolls back exactly this action.
@@ -1395,11 +1454,15 @@ export default class GameRoomServer implements Party.Server {
         const persistStartedAt = Date.now();
         await this.persist();
         this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
+        // The move is authoritative once storage accepts it. Acknowledge the
+        // sender before expensive per-seat snapshot delivery.
+        this.sendActionResult(sender, message.requestId, accepted);
         await this.broadcastSnapshot();
         return {
           ...accepted,
           applied: true,
           prev: current.state,
+          acknowledged: true,
           scheduleComputer: computerPumpOwed(settled),
           computerDelayMs: computerStepDelayMs(settled),
         };
@@ -1409,21 +1472,14 @@ export default class GameRoomServer implements Party.Server {
         await this.scheduleComputerPump(outcome.computerDelayMs ?? computerStepDelayMs(this.snapshot?.state as GameState));
       }
 
-      const reply: ServerMessage = {
-        type: "action-result",
-        requestId: message.requestId,
-        version: outcome.version,
-        errors: outcome.errors,
-        // Actor-only notices replace the old second full snapshot. The room
-        // broadcast above remains the sole authoritative state frame.
-        ...(outcome.notices.length > 0 ? { notices: outcome.notices } : {})
-      };
-      sender.send(JSON.stringify(reply));
-      // Do not hold the initiating browser's action-result behind a lobby
-      // registry round trip. The snapshot is already persisted + broadcast;
-      // replying now lets local UI state (including discard selections) settle
-      // immediately. Keep awaiting the best-effort directory report afterward
-      // so the Durable Object remains alive until it finishes.
+      // Rejections and duplicate requestIds have no persistence/fan-out work,
+      // so answer them here. Applied actions were already acknowledged at the
+      // persistence boundary, before snapshot broadcast.
+      if (!("acknowledged" in outcome && outcome.acknowledged)) {
+        this.sendActionResult(sender, message.requestId, outcome);
+      }
+      // Keep awaiting the best-effort directory report afterward so the
+      // Durable Object remains alive until it finishes.
       if (outcome.applied && outcome.prev) {
         await this.reportToLobby();
         // Ranked-match auto-report (Phase 6): if this action just ended the
@@ -1440,9 +1496,9 @@ export default class GameRoomServer implements Party.Server {
   /**
    * OPTIONAL Undo mode (debug/testing) — the WebSocket action path handler for
    * UNDO_MOVE. Pops+restores the server-side prior snapshot (atomic whole-state
-   * swap), persists and broadcasts it. Returns the same outcome shape the normal
-   * action path builds. `prev` is null so no match report / lobby churn fires (an
-   * undo can never finish a game).
+   * swap) and persists it. The caller acknowledges that commit before
+   * broadcasting, matching the normal action path. `prev` is null so no match
+   * report / lobby churn fires (an undo can never finish a game).
    */
   private async applyUndo(
     current: RoomSnapshot,
@@ -1488,7 +1544,6 @@ export default class GameRoomServer implements Party.Server {
     const accepted = { errors: [] as { code: string; message: string }[], notices: [] as string[], version: this.snapshot.version };
     for (const key of dedupeKeys) this.recordAnsweredRequest(key, accepted);
     await this.persist();
-    await this.broadcastSnapshot();
     return {
       ...accepted,
       applied: true,

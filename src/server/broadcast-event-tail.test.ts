@@ -14,7 +14,7 @@
  * presentation-event-window.test.ts "detects rotation and primes current
  * history instead of replaying a partial timeline").
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import { createInitialGameState, type GameEvent, type GameState } from "@/engine";
 
@@ -22,6 +22,12 @@ type EdgeRoom = ConstructorParameters<typeof GameRoomServer>[0];
 type EdgeConnection = Parameters<GameRoomServer["onConnect"]>[0];
 
 type MockConnection = { id: string; uri: string; received: string[]; send: (data: string) => void };
+
+const realFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 function makeConnection(id: string, query: string): MockConnection {
   const received: string[] = [];
@@ -181,5 +187,53 @@ describe("HOMM3BG_BROADCAST_EVENT_TAIL — wire-only event-log tail (plan N4)", 
     const stored = storage.get("snapshot") as RoomSnapshot;
     const storedPandora = stored.state.eventLog.find((event) => event.type === "PANDORA_CARD_DRAWN");
     expect((storedPandora as { cardId?: string }).cardId).toBe("spell.fireball");
+  });
+});
+
+describe("PartyKit action acknowledgement boundary", () => {
+  it("acknowledges a persisted action before a slow hosted recipient finishes fan-out", async () => {
+    let releasePeer!: () => void;
+    globalThis.fetch = (async () =>
+      new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
+        releasePeer = () => resolve({ ok: false, json: async () => ({}) });
+      })) as unknown as typeof fetch;
+
+    const { room, connections } = makeEdgeRoom(
+      "ack-before-fanout",
+      seedState(true),
+      { HOMM3BG_APP_URL: "https://app.example" }
+    );
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const owner = makeConnection("owner-conn", "clientId=owner-1");
+    const slowPeer = makeConnection("slow-conn", "clientId=slow-peer&token=slow-token");
+    connections.add(owner);
+    connections.add(slowPeer);
+
+    let completed = false;
+    const running = server
+      .onMessage(
+        JSON.stringify({
+          type: "action",
+          requestId: "req-heavy",
+          actorClientId: "owner-1",
+          action: { type: "JOIN_ROOM", clientId: "owner-1", name: "Owner" }
+        }),
+        owner as unknown as EdgeConnection
+      )
+      .finally(() => {
+        completed = true;
+      });
+
+    // Persistence completes, then hosted fan-out parks on the peer callback.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const ownerFrames = owner.received.map((raw) => JSON.parse(raw) as { type: string; requestId?: string });
+    expect(ownerFrames[0]).toEqual({ type: "action-received", requestId: "req-heavy", durable: true });
+    expect(ownerFrames[1]).toMatchObject({ type: "action-result", requestId: "req-heavy" });
+    expect(completed).toBe(false);
+
+    releasePeer();
+    await running;
+    expect(completed).toBe(true);
   });
 });
