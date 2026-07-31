@@ -4260,7 +4260,13 @@ export function eliminatePlayer(
       }
     }
     state.adventure.rewardQueue = state.adventure.rewardQueue.filter(
-      (reward) => reward.kind === "round-start-events-resolved" || reward.playerId !== playerId
+      (reward) =>
+        reward.kind === "round-start-events-resolved" ||
+        // The opening first-player divider is table-wide bookkeeping like the
+        // barrier sentinel: it nominally carries seat 1's id, and dropping it
+        // with that seat would leave round 1 unable to ever start.
+        reward.kind === "opening-first-player-roll" ||
+        reward.playerId !== playerId
     );
     if (state.adventure.pendingVisit?.playerId === playerId) {
       // A visit step can hold cards LIFTED out of a shared zone (the Polish

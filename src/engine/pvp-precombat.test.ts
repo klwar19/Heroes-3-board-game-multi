@@ -147,8 +147,11 @@ describe("PvP pre-battle preparation window (both sides)", () => {
         decision!.action.type === "RETREAT_FROM_COMBAT" ||
         decision!.action.type === "SURRENDER_COMBAT"
       ) {
-        // Any prep exit is allowed to win only after the finite town
-        // acquisition actions have been consumed or become unaffordable.
+        // A prep exit is allowed to win only after the finite town
+        // acquisition actions have been consumed or become unaffordable —
+        // and for a healthy defender that exit is READYING UP, never a
+        // tie-hash retreat that hands the attacker the fight for free.
+        expect(decision!.action.type, "a healthy defender readies up").toBe("ACCEPT_COMBAT");
         expect(
           legalActions.some((legal) =>
             ["BUILD_STRUCTURE", "POPULATION_ACTION", "SPELL_BOOK_ACTION"].includes(
@@ -172,9 +175,33 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     expect(actionsBeforeAccept).toContain("BUILD_STRUCTURE");
     expect(actionsBeforeAccept).toContain("POPULATION_ACTION");
     expect(
-      state.combat?.prep?.accepted.includes("p2") || Boolean(state.combat?.outcome),
-      "after shopping, the computer either accepts or makes its strategic escape",
+      state.combat?.prep?.accepted.includes("p2"),
+      "after shopping, the computer readies up for the fight",
     ).toBe(true);
+  });
+
+  it("a computer defender with NOTHING to prepare ALWAYS readies up — never a tie-hash retreat", () => {
+    // Only the four exit actions remain legal in prep here. Before the fix the
+    // exits all tied at score 225 and the seed hash picked one — a healthy
+    // defender retreated from a winnable fight on ~2/3 of seeds. ACCEPT must
+    // outrank every escape strictly, so all seeds agree.
+    for (const seed of ["prep-exit-a", "prep-exit-b", "prep-exit-c", "prep-exit-d", "prep-exit-e", "prep-exit-f"]) {
+      const state = attack(seed, (s) => {
+        s.sessionMode = "single-player";
+        s.controllers = {
+          ...(s.controllers ?? {}),
+          p2: { kind: "computer", difficulty: "standard", policyVersion: 1 },
+        };
+        s.players.p2.hand = [];
+        s.players.p2.townTokens = { build: false, population: false, spellBook: false };
+      });
+      const decision = chooseComputerAction({
+        playerId: "p2",
+        state: state as unknown as PlayerVisibleState,
+        legalActions: getLegalActions(state, "p2"),
+      });
+      expect(decision?.action.type, `${seed}: a healthy defender readies up`).toBe("ACCEPT_COMBAT");
+    }
   });
 
   it("opens for BOTH participants — each offered Accept, Retreat and town actions", () => {

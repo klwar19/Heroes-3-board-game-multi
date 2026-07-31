@@ -206,6 +206,24 @@ describe("Ⅱ–Ⅲ tile flip — true random + keep/reroll/pick", () => {
       );
     });
 
+    it("honors a legacy snapshot's frozen farTileSettlementReroll over the house rule (both directions)", () => {
+      // A pre-house-rule snapshot froze `false` (exact tile identities): the
+      // BINH default (rule ON) must not resurrect the reroll offers mid-game.
+      const frozenOff = secondOpening([MINE_NO_SETTLEMENT]);
+      (frozenOff.adventure as unknown as { farTileSettlementReroll?: boolean }).farTileSettlementReroll = false;
+      const placedOff = apply(frozenOff, PLACE);
+      expect(placedOff.adventure!.pendingFarTileFlip).toBeNull();
+      expect(placedOff.pendingChoice).toBeNull();
+
+      // And the reverse: a frozen `true` keeps that game's offers even where
+      // the modern rule resolves OFF.
+      const frozenOn = secondOpening([MINE_NO_SETTLEMENT]);
+      frozenOn.adventure!.houseRules!["far-tile-rerolls"] = false;
+      (frozenOn.adventure as unknown as { farTileSettlementReroll?: boolean }).farTileSettlementReroll = true;
+      const placedOn = apply(frozenOn, PLACE);
+      expect(placedOn.adventure!.pendingFarTileFlip?.offerMode).toBe("settlement");
+    });
+
     it("KEEP lands the non-Settlement tile (control: no Settlement on the board)", () => {
       const placed = apply(secondOpening([MINE_NO_SETTLEMENT]), PLACE);
       const kept = choose(placed, 0); // Keep

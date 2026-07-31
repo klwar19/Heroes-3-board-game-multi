@@ -1,5 +1,6 @@
 import { appendEvent } from "./events";
 import { createSeededRandom } from "./random";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import type { FirstPlayerRollState, GameState, PlayerId } from "./state";
 
 type FirstPlayerCandidate = {
@@ -68,9 +69,17 @@ export function commitFirstPlayerRoll(state: GameState): FirstPlayerRollState | 
   if (!state.adventure) {
     return null;
   }
-  const playerIds = state.turnOrder.filter((playerId) => Boolean(state.players[playerId]));
+  // Reproduce the SETUP-TIME preview exactly: the same candidate list — every
+  // seat that started the scenario, in creation order, eliminated seats
+  // included — fed to the same stored seed. Rolling over the live turnOrder
+  // instead would consume different random values after a mid-bonus
+  // elimination and could crown a different winner than the one whose town
+  // the preview already placed at map position 1.
+  const seatOrder = Object.keys(state.players).filter(
+    (playerId) => playerId !== NEUTRAL_PLAYER_ID
+  ) as PlayerId[];
   const roll = calculateFirstPlayerRoll(
-    playerIds.map((playerId) => ({
+    seatOrder.map((playerId) => ({
       playerId,
       name: state.players[playerId]?.name ?? playerId
     })),
@@ -82,8 +91,17 @@ export function commitFirstPlayerRoll(state: GameState): FirstPlayerRollState | 
 
   state.adventure.firstPlayerRoll = roll;
   state.adventure.openingFirstPlayerSeed = undefined;
-  state.turnOrder = gameOrderForFirstPlayerRoll(playerIds, roll);
-  state.activePlayerId = roll.winnerPlayerId;
+  // Rotate the FULL seat order to the winner, then keep only still-live seats:
+  // when the winner was eliminated during the bonus phase, the next live seat
+  // clockwise from them leads, and the map positions still agree.
+  const live = new Set(state.turnOrder);
+  const rotated = gameOrderForFirstPlayerRoll(seatOrder, roll).filter((playerId) =>
+    live.has(playerId)
+  );
+  if (rotated.length > 0) {
+    state.turnOrder = rotated;
+    state.activePlayerId = rotated[0]!;
+  }
   appendEvent(state, {
     type: "FIRST_PLAYER_ROLLED",
     attempts: roll.attempts,

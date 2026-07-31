@@ -2415,7 +2415,7 @@ export function CommandDock({
   const spellLimitLabel = ignoreSpellLimit ? "∞" : String(spellLimit);
   const spellsCast = player?.combatStats.spellsCastThisRound ?? 0;
   const crownsTotal = player ? player.limits.expertUses + (player.combatStats.expertUseBonusThisRound ?? 0) : 0;
-  const crownsLeft = player ? crownsTotal - player.combatStats.expertUsesSpentThisRound : 0;
+  const crownsLeft = player ? Math.max(0, crownsTotal - player.combatStats.expertUsesSpentThisRound) : 0;
   const shownHero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === shownPlayerId && candidate.kind === "main"
   );
