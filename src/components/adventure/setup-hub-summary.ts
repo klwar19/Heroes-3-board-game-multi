@@ -180,7 +180,6 @@ const ADVANCED_OWNED_KEYS = [
   "farTileOpening",
   "farTilesPerPlayer",
   "farTileBlindChoice",
-  "farTileSettlementReroll",
   "startingResources",
   "startingProduction",
   "startingUnitTiers",
@@ -203,7 +202,6 @@ const ADVANCED_KEY_DEFAULTS: Partial<Record<keyof GameSetupOptions, unknown>> = 
   victoryPoints: false,
   victoryPointsRoundLimit: 0,
   customWinConditions: [],
-  farTileSettlementReroll: true,
   parallelTurns: 0,
   undoMoves: false,
   unitExperience: false

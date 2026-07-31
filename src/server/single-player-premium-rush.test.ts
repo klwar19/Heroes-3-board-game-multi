@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAdventureGameState, type GameState } from "@/engine";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { armyDevelopmentProfile } from "@/engine/computer/development";
 import { isPremiumEconomyField } from "@/engine/computer/army-strength";
 import { playUntilRound } from "./single-player-soak-helpers";
@@ -58,6 +59,8 @@ type RushReport = {
   captureRound: number | null;
   silverRound: number | null;
   goldRound: number | null;
+  /** First round a real Gold-tier unit was recruited (not merely unlocked). */
+  goldUnitRound: number | null;
   finalArmy: number;
   finalLevel: number;
 };
@@ -74,6 +77,7 @@ function measureRush(
     captureRound: null,
     silverRound: null,
     goldRound: null,
+    goldUnitRound: null,
     finalArmy: 0,
     finalLevel: 0,
   };
@@ -86,6 +90,7 @@ function measureRush(
     startingBuildings: LIVE_PREBUILT,
   });
   let seenEvents = 0;
+  let seenRecruitEvents = 0;
   const snap = (state: GameState) => {
     if (report.attemptRound === null) {
       const log = state.eventLog ?? [];
@@ -121,6 +126,23 @@ function measureRush(
     if (report.goldRound === null && profile.goldUnlocked) {
       report.goldRound = state.round;
     }
+    const log = state.eventLog ?? [];
+    for (; seenRecruitEvents < log.length; seenRecruitEvents += 1) {
+      const event = log[seenRecruitEvents] as unknown as {
+        type: string;
+        playerId?: string;
+        unitDefId?: string;
+      };
+      if (
+        report.goldUnitRound === null &&
+        event.type === "UNIT_RECRUITED" &&
+        event.playerId === SEAT &&
+        event.unitDefId &&
+        coreUnitDefinitions[event.unitDefId]?.tier === "gold"
+      ) {
+        report.goldUnitRound = state.round;
+      }
+    }
   };
   const result = playUntilRound(initial, targetRound, {
     maxLoops: 900,
@@ -142,6 +164,7 @@ function summary(reports: RushReport[]): string {
       (r) =>
         `${r.seed}: attempt=R${r.attemptRound ?? "-"} capture=R${r.captureRound ?? "-"}` +
         ` silver=R${r.silverRound ?? "-"} gold=R${r.goldRound ?? "-"}` +
+        ` goldUnit=R${r.goldUnitRound ?? "-"}` +
         ` army=${r.finalArmy} level=${r.finalLevel}${r.stalled ? ` STALLED(${r.stalled})` : ""}`,
     )
     .join("\n");
@@ -180,6 +203,9 @@ describe("single-player premium-economy rush benchmarks", () => {
     expect(atMost(reports, 13, (r) => r.goldRound), info).toBeGreaterThanOrEqual(7);
     expect(atMost(reports, 10, (r) => r.goldRound), info).toBeGreaterThanOrEqual(3);
     expect(atMost(reports, 11, (r) => r.goldRound), info).toBeGreaterThanOrEqual(4);
+    // A dwelling is not the outcome: pin the actual Gold body joining the army.
+    expect(atMost(reports, 10, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(3);
+    expect(atMost(reports, 13, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(4);
     // The roster must never stall at the 3 starting cards: measured army size
     // at R14 [7,7,4,5,6,8,6,6] (6/8 at 5+); floors 6-of-8 at ≥4 and 5-of-8 at ≥5.
     expect(
@@ -223,5 +249,7 @@ describe("single-player premium-economy rush benchmarks", () => {
     // ceiling — every seed before R9 would be a dishonest floor.
     expect(atMost(reports, 8, (r) => r.goldRound), info).toBeGreaterThanOrEqual(2);
     expect(atMost(reports, 11, (r) => r.goldRound), info).toBeGreaterThanOrEqual(5);
+    expect(atMost(reports, 10, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(3);
+    expect(atMost(reports, 11, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(5);
   }, 240_000);
 });

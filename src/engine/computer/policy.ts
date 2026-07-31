@@ -265,9 +265,26 @@ export function chooseComputerAction(
         scoreCardAction(observation, legal.action) ??
         scoreCombatAction(observation, legal.action) ??
         scoreMapAction(observation, legal.action);
+      const scored = strategic ?? foundationScore(legal.action);
+      // A computer under human attack must exhaust every useful, finite
+      // pre-battle preparation it can legally make before readying up. The prep
+      // action set contains town purchases and map-card plays only; destructive
+      // permanent discards stay below this floor. Once those actions consume
+      // their card/token/resource and disappear, Accept becomes the winner.
+      const delayingPrepExit =
+        Boolean(observation.state.combat?.prep) &&
+        (
+          legal.action.type === "ACCEPT_COMBAT" ||
+          legal.action.type === "RETREAT_FROM_COMBAT" ||
+          legal.action.type === "SURRENDER_COMBAT" ||
+          legal.action.type === "GIVE_UP_COMBAT"
+        );
       return {
         legal,
-        ...(strategic ?? foundationScore(legal.action)),
+        ...scored,
+        ...(delayingPrepExit
+          ? { score: 225, policy: "combat.prepare-before-exit" }
+          : {}),
         tie: tieValue(tieSeed, legal),
       };
     })
