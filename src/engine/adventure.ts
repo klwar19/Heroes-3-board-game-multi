@@ -12178,13 +12178,11 @@ export function drawFromNeutralDeck(state: GameState, tier: "bronze" | "silver" 
     }
   }
 
-  while (deck.drawPile.length > 0) {
-    const unitDefId = deck.drawPile.pop();
-    if (unitDefId && isRecruitableNeutralUnit(unitDefId)) {
-      return unitDefId;
-    }
-  }
-  return undefined;
+  // A plain top pull. Summon-only forms never ENTER a Neutral deck (the deck
+  // builds and every recruit surface are gated on isRecruitableNeutralUnit), so
+  // no filter belongs here — this is also the generic lift the Visions scry and
+  // draw-style effects use, and a filtering pop would silently DESTROY cards.
+  return deck.drawPile.pop();
 }
 
 /**

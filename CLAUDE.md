@@ -2573,6 +2573,73 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## Specialties & combat reactions · summon/recruit elemental split (2026-07-31)
+
+Two audited codex commits. Leading with what does NOT run / deliberate limits:
+- **The reaction-batch resolves in the PLAYER'S declared order** (the engine no
+  longer reorders +Power plays first; the tray shows a numbered play-order badge
+  and keeps declaration order). Power played AFTER a power-scaled instant still
+  lands via the `powerScaledAttackInstants` re-scale records, but the order shown
+  IS the order resolved.
+- **The bare positive-Morale token opens a reaction window ONLY on a Retaliation
+  Attack** (`openReactionWindowForTrigger`'s morale-only gate): its draw /
+  discard-redraw spends join EVERY already-open window (so Leadership's token,
+  gained in-window, is spendable there — `unit-ability-interactions.test.ts`),
+  but a mere held token must not pause every attack/cast at the table. The
+  retaliation window is the deliberate exception (the retaliating side's only
+  pre-roll moment — both directions pinned in `morale-in-combat.test.ts`, one
+  offer only, never a duplicate look-alike button).
+- **Scholar/Leadership are the ONLY trigger-free instants allowed into an open
+  window** (explicit id opt-in in `getLegalReactionsForTrigger`); Scholar's
+  discard-pick resolves inside the window and the CHOOSE_OPTION dispatch then
+  re-derives + re-opens the window offers (passed players get to react again).
+- **Familiars' "Mana Leech" is the CASTER'S chosen discard, paid BEFORE the held
+  Spell casts** (`familiar-choose-discard` COMBAT_HAND_DISCARD with a deferred
+  `tollSpell`, replacing the old random-discard-after-cast; scroll/Book/deck/
+  Tarnum casts stay exempt — not "from hand"). The Pegasi toll then chains into
+  the Familiar tax, and the deferred cast now preserves `optionIndex` /
+  `fromOwnDiscard` / school-expert flags (previously dropped — a CHOOSE_ONE
+  spell deferred by Pegasi lost its chosen option). AFK/AI answer it via the
+  existing first-offer / lowest-value paths (no random arm to mis-fire).
+- **Expert Mysticism/Knowledge recall never returns the recall card itself**
+  (`recallSpell.sourceCardId`; one occurrence skipped, a genuine second copy
+  played as support still returns — `knowledge-recall-instants.test.ts`).
+- **Torosar I/IV/VI are all game-round Ballista grants** playable on the MAP
+  before a combat (banked `EXTRA_BALLISTA` active effect, `current-game-round`
+  duration): I grants only, IV also activates up to two, VI activates all —
+  the old "pay 5 gold / activate one" CHOOSE_ONE reading is gone (Tarnum-Castle
+  and Gerwulf keep it — theirs print it). Map-timing for EVERY war-machine
+  specialty is pinned in `war-machine-specialty-map-timing.test.ts`.
+- **Summon elementals are separate `summonOnly` definitions**
+  (`conflux.{air,earth,fire,water}_elementals` carry the Few/Pack summon forms;
+  `neutral.*_elementals` are single-sided recruitable guards): the Summon spells
+  mint the conflux ids and `isRecruitableNeutralUnit` gates the neutral-deck
+  BUILDS and every RECRUIT surface — deliberately NOT the generic
+  `drawFromNeutralDeck` top pull (the Visions scry and draw-style effects ride
+  it; a filtering pop would silently destroy cards, and no summon-only id can
+  enter a deck in the first place). The five neutral guard faces (incl. Steel
+  Golems) are now the real board scans (`elemental-card-images.test.ts`;
+  the files sit in `compress-media.mjs`'s protected q94 exclude family).
+- **Eagle Eye's find MUST be taken into hand** (the "discard it" arm was not
+  printed; offer + resolver both enforce it).
+- **Pandora's Gift: Income raises the real production track** while in play
+  (`pandoraIncomeProductionBonus`, removed at EVERY permanent-exit path incl.
+  the limit squeeze; legacy snapshots without the field keep the old flat
+  round-start payment — the round-start read is gated on the bonus's absence).
+- **"Ignore the Attack die" zeroes the whole rolls array** so die-face-keyed
+  abilities (Death Stare "-1"s, reroll_plus_one "+1"s) can no longer fire off a
+  cancelled face.
+- **AUDIT fixes on top** (this batch's cherry-pick audit): the branch's
+  `reinforceCostFor` rewrite silently removed the documented
+  `immediate-reinforcement-prompts` rule-ON "competing discounts" pricing —
+  REVERTED (the old-rule min-compare stays, `necromancy.test.ts` old-rule
+  cases + the both-readings case in `map-tile-effects-audit.test.ts`); a stale
+  branch expectation reverting main's phone "End turn" tab was dropped; the
+  duplicated OpponentInfoDock/OpponentBar from the page.tsx merge was removed;
+  the morale-draw offer is deduped to ONE button per window (the Morale CARDS
+  combat-bonus reaction still OPENS its window as documented); and the branch's
+  filtering `drawFromNeutralDeck` pop was reverted to the plain pull (above).
+
 ## The frozen-table class: "That action is not legal…" forever (2026-07-31)
 
 Live report (round 6, single player): the game "crashes" — every combat click
