@@ -345,6 +345,32 @@ describe("connectRoom - PartyKit acknowledgement and health protocol", () => {
     connection.close();
   });
 
+  it("accepts a commit acknowledgement before the large snapshot fan-out arrives", async () => {
+    const onSnapshot = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot, onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const actionFrame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "action-result",
+        requestId: actionFrame.requestId,
+        version: 2,
+        errors: []
+      })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 2, errors: [] });
+    expect(onSnapshot).not.toHaveBeenCalled();
+
+    socket.emit("message", {
+      data: JSON.stringify({ type: "snapshot", snapshot: { roomId: "room-42", version: 2, updatedAt: "now", state: {} } })
+    });
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
+
   it("keeps a received late-game action pending beyond the short no-response deadline", async () => {
     vi.useFakeTimers();
     const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus: vi.fn() }, "client-abc");

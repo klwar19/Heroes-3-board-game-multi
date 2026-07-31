@@ -33,35 +33,12 @@ type FetchLike = (input: string, init?: {
   method?: string;
   headers?: Record<string, string>;
   body?: string;
+  signal?: AbortSignal;
 }) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
 
-/**
- * Upper bound on ONE identity-verification round-trip (fetch + body read). The
- * edge resolves the sender's identity before EVERY action, and the app
- * callback occasionally cold-starts or hangs — an unbounded verify used to
- * stall the whole action behind it (client-visible as "The room did not answer
- * in time"). On timeout the verification resolves null exactly like a network
- * failure: the caller's storage-cache recall / guest fallback takes over, and
- * the action proceeds.
- */
+/** A seat lookup must never hold a room action/mutation queue indefinitely. */
 export const VERIFY_TOKEN_TIMEOUT_MS = 5_000;
-
-/** Run a verification attempt with a hard deadline; late/failed ⇒ null. */
-function withVerifyDeadline<T>(run: () => Promise<T | null>, ms: number): Promise<T | null> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(null), ms);
-    run().then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      () => {
-        clearTimeout(timer);
-        resolve(null);
-      }
-    );
-  });
-}
+export const TOKEN_VERIFY_TIMEOUT_MS = VERIFY_TOKEN_TIMEOUT_MS;
 
 /**
  * A verifier that POSTs the token to the app's `/api/auth/verify-token` route
@@ -72,18 +49,33 @@ function withVerifyDeadline<T>(run: () => Promise<T | null>, ms: number): Promis
  * resolves to null — a verification failure must degrade to "guest", never
  * throw, never grant a seat, and never stall the action pipeline.
  */
-export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVerifier {
+export function httpTokenVerifier(
+  appUrl: string,
+  fetchImpl: FetchLike,
+  timeoutMs = TOKEN_VERIFY_TIMEOUT_MS
+): TokenVerifier {
   const base = appUrl.replace(/\/+$/, "");
   return async (token) => {
     if (!token) {
       return null;
     }
-    return withVerifyDeadline(async () => {
-      const response = await fetchImpl(`${base}/api/auth/verify-token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token })
-      });
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const response = await Promise.race([
+        fetchImpl(`${base}/api/auth/verify-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          signal: controller.signal
+        }),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error("Token verification timed out."));
+          }, Math.max(1, timeoutMs));
+        })
+      ]);
       if (!response.ok) {
         return null;
       }
@@ -96,7 +88,13 @@ export function httpTokenVerifier(appUrl: string, fetchImpl: FetchLike): TokenVe
         return { userId: data.userId, nickname: data.nickname, isAdmin: data.isAdmin === true };
       }
       return null;
-    }, VERIFY_TOKEN_TIMEOUT_MS);
+    } catch {
+      return null;
+    } finally {
+      if (timeout !== undefined) {
+        clearTimeout(timeout);
+      }
+    }
   };
 }
 

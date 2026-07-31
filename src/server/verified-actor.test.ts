@@ -119,6 +119,21 @@ describe("httpTokenVerifier", () => {
       vi.useRealTimers();
     }
   });
+
+  it("bounds a hung callback so identity lookup cannot freeze the room action queue", async () => {
+    let signal: AbortSignal | undefined;
+    const verify = httpTokenVerifier(
+      "https://app.example",
+      async (_input, init) => {
+        signal = init?.signal;
+        return new Promise<never>(() => {});
+      },
+      5
+    );
+
+    await expect(verify("tok")).resolves.toBeNull();
+    expect(signal?.aborted).toBe(true);
+  });
 });
 
 describe("memoizeVerifier", () => {
