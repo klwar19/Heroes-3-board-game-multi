@@ -129,17 +129,28 @@ export function saveSinglePlayerGame(name: string, roomId: string, state: GameSt
     round: state.round,
     signature: ENGINE_SIGNATURE
   };
+  // A same-name save overwrites an existing blob. Keep the previous bytes until
+  // the metadata index commits too: localStorage has no transaction primitive,
+  // and an index quota failure must never destroy the player's last good copy.
+  const key = stateKey(save.id);
+  let previousState: string | null = null;
   try {
-    window.localStorage.setItem(stateKey(save.id), JSON.stringify({ signature: ENGINE_SIGNATURE, state }));
+    previousState = window.localStorage.getItem(key);
+    window.localStorage.setItem(key, JSON.stringify({ signature: ENGINE_SIGNATURE, state }));
   } catch {
     return { ok: false, reason: "Browser storage is full — delete a save (or other site data) and try again." };
   }
   if (!writeIndex([save, ...saves.filter((entry) => entry.id !== save.id)])) {
-    // Keep the pair consistent: no index entry, no orphaned state blob.
+    // Roll the blob back as well as the index. For a new slot there was no old
+    // blob; for an overwrite restore the exact previous checkpoint.
     try {
-      window.localStorage.removeItem(stateKey(save.id));
+      if (previousState === null) {
+        window.localStorage.removeItem(key);
+      } else {
+        window.localStorage.setItem(key, previousState);
+      }
     } catch {
-      /* best-effort */
+      /* best-effort: the index still points at the original slot metadata */
     }
     return { ok: false, reason: "Browser storage is full — delete a save (or other site data) and try again." };
   }
@@ -183,23 +194,25 @@ export function deleteSavedSinglePlayerGame(id: string): void {
 
 type PendingLoad = { id: string; roomId: string; at: number };
 
-export function setPendingSinglePlayerLoad(id: string, roomId: string): void {
+export function setPendingSinglePlayerLoad(id: string, roomId: string): boolean {
   if (typeof window === "undefined") {
-    return;
+    return false;
   }
   try {
     window.localStorage.setItem(PENDING_KEY, JSON.stringify({ id, roomId, at: Date.now() } satisfies PendingLoad));
+    return true;
   } catch {
-    /* best-effort — the in-game Load button still works */
+    return false;
   }
 }
 
 /**
- * Consumes (removes) the pending load for this room, returning its saved state.
- * Stale or mismatched markers are dropped so an abandoned navigation can never
- * overwrite a game the player opened later.
+ * Reads (without consuming) the pending load for this room. A caller must clear
+ * it only AFTER the server confirms the whole-state swap; retaining the marker
+ * across a network/deploy failure makes a refresh a safe retry instead of
+ * silently losing the player's requested load.
  */
-export function takePendingSinglePlayerLoad(roomId: string): { save: SavedSinglePlayerGame; state: GameState } | null {
+export function peekPendingSinglePlayerLoad(roomId: string): { save: SavedSinglePlayerGame; state: GameState } | null {
   if (typeof window === "undefined") {
     return null;
   }
@@ -212,8 +225,8 @@ export function takePendingSinglePlayerLoad(roomId: string): { save: SavedSingle
     if (!pending || pending.roomId !== roomId) {
       return null;
     }
-    window.localStorage.removeItem(PENDING_KEY);
     if (typeof pending.at !== "number" || Date.now() - pending.at > PENDING_TTL_MS || typeof pending.id !== "string") {
+      window.localStorage.removeItem(PENDING_KEY);
       return null;
     }
     const save = readIndex().find((entry) => entry.id === pending.id);
@@ -222,4 +235,29 @@ export function takePendingSinglePlayerLoad(roomId: string): { save: SavedSingle
   } catch {
     return null;
   }
+}
+
+/** Clear exactly the pending marker whose load the server just committed. */
+export function clearPendingSinglePlayerLoad(id: string, roomId: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    const pending = raw ? (JSON.parse(raw) as Partial<PendingLoad> | null) : null;
+    if (pending?.id === id && pending.roomId === roomId) {
+      window.localStorage.removeItem(PENDING_KEY);
+    }
+  } catch {
+    /* A malformed marker is harmless and expires naturally. */
+  }
+}
+
+/** Back-compatible consume-on-read helper for direct callers and tests. */
+export function takePendingSinglePlayerLoad(roomId: string): { save: SavedSinglePlayerGame; state: GameState } | null {
+  const pending = peekPendingSinglePlayerLoad(roomId);
+  if (pending) {
+    clearPendingSinglePlayerLoad(pending.save.id, roomId);
+  }
+  return pending;
 }

@@ -99,6 +99,7 @@ describe("prepareSinglePlayerLoad", () => {
     const saved = soloGame("load-current");
     saved.round = 5;
     saved.room = { hosted: true, hostClientId: "stale-c", members: [{ clientId: "stale-c", name: "Stale", seat: "p1", isHost: false }] };
+    const savedBytes = JSON.stringify(saved);
 
     const outcome = prepareSinglePlayerLoad(current, saved, { clientId: "owner-c" });
     expect(outcome.ok).toBe(true);
@@ -109,6 +110,10 @@ describe("prepareSinglePlayerLoad", () => {
     const tail = outcome.state.eventLog[outcome.state.eventLog.length - 1];
     expect(tail.type).toBe("EVENT_NOTE");
     expect("message" in tail ? tail.message : "").toContain("loaded a saved game (round 5)");
+    // Loading prepares a detached timeline. The browser-owned checkpoint stays
+    // byte-for-byte reusable and never absorbs live room membership or events.
+    expect(JSON.stringify(saved)).toBe(savedBytes);
+    expect(outcome.state).not.toBe(saved);
   });
 
   it("CONTROL: refuses a non-single-player snapshot, and refuses loading into a multiplayer room", () => {

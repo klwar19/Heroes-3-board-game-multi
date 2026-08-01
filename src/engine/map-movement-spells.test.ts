@@ -1258,6 +1258,40 @@ describe("Logistics ability", () => {
     });
     expect(heroP1(state).movementPoints).toBe(before + 1);
   });
+
+  it("enters and visits an adjacent Subterranean Gate so its hidden side can reveal", () => {
+    let state = withHand(makeGame(), ["ability.logistics"]);
+    const [gateId] = adjacentCrossableFields(state);
+    const gate = state.adventure!.fields[gateId]!;
+    gate.location = "subterranean_gate";
+    gate.borderEdges = [0, 1, 2, 3, 4, 5];
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.logistics",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+
+    const choose = state.adventure?.pendingVisit?.steps[0];
+    expect(choose?.type).toBe("CHOOSE_ONE");
+    const optionIndex =
+      choose?.type === "CHOOSE_ONE"
+        ? choose.options.findIndex((option) => {
+            const step = option.steps[0];
+            return step?.type === "TELEPORT_HERO" && step.spaceId === gateId;
+          })
+        : -1;
+    expect(optionIndex).toBeGreaterThanOrEqual(0);
+    const gateStep = choose?.type === "CHOOSE_ONE" ? choose.options[optionIndex].steps[0] : undefined;
+    expect(gateStep?.type === "TELEPORT_HERO" ? gateStep.visit : false).toBe(true);
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex });
+    expect(heroP1(state).spaceId).toBe(gateId);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1280,6 +1314,22 @@ function adjacentCrossableFields(state: GameState): string[] {
 }
 
 describe("end-of-turn move: empty-field detection", () => {
+  it("treats a carved Subterranean Gate as empty even when its old field edge was sealed", () => {
+    const state = withHand(makeGame(), []);
+    const [gateId] = adjacentCrossableFields(state);
+    const heroSpace = heroP1(state).spaceId as string;
+    const gate = state.adventure!.fields[gateId]!;
+    gate.location = "subterranean_gate";
+    gate.borderEdges = [0, 1, 2, 3, 4, 5];
+
+    expect(canCrossEdge(state, heroSpace, gateId)).toBe(true);
+    expect(getEndTurnMoveDestinations(state, "p1")).toContain(gateId);
+
+    gate.location = "empty_field";
+    expect(canCrossEdge(state, heroSpace, gateId)).toBe(false);
+    expect(getEndTurnMoveDestinations(state, "p1")).not.toContain(gateId);
+  });
+
   it("counts empty fields and used (black-cube) visitables, never ones that can still trigger", () => {
     const state = withHand(makeGame(), []);
     const fields = adjacentCrossableFields(state);

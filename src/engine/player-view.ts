@@ -57,6 +57,23 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     return null;
   }
 
+  // The two underground tile faces are private to the Hero who entered the
+  // gate. Other seats can see that a decision is pending, but not either id.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "subterranean-tile-pick" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      prompt: "Choosing the Subterranean tile.",
+      options: choice.options.map(() => ({ label: "Hidden tile" })),
+      subterraneanTilePick: choice.subterraneanTilePick
+        ? { ...choice.subterraneanTilePick, candidates: ["hidden", "hidden"] }
+        : undefined
+    };
+  }
+
   // Search reveals stay private to the searcher; opponents only learn how
   // many cards were lifted off the deck.
   if (choice.type === "DECK_SEARCH" && choice.playerId !== viewerPlayerId) {
@@ -375,6 +392,8 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
         farTilePool: base.adventure.farTilePool?.map(() => "hidden"),
         // Same secrecy for the leftover Near (Ⅳ–Ⅴ) pool (designer resource pick).
         nearTilePool: base.adventure.nearTilePool?.map(() => "hidden"),
+        // Gate-entry alternatives stay secret until offered to their owner.
+        subterraneanTilePool: base.adventure.subterraneanTilePool?.map(() => "hidden"),
         // The delayed roll must use the same server entropy that assigned home
         // positions, but clients must not be able to predict its result.
         openingFirstPlayerSeed: undefined,

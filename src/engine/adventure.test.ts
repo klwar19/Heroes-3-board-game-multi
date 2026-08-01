@@ -843,12 +843,22 @@ describe("tile discovery and placement", () => {
     expect(next.adventure!.fields["h:9:4"]).toBeTruthy();
   });
 
-  it("official: adjacency alone lets a hero discover across a sealed yellow border", () => {
+  it("Legacy toggle off: adjacency alone lets a hero discover across a sealed yellow border", () => {
     // Official rules "only require your hero to be adjacent to the discovered
     // tile … There is no mention of blockers or yellow borders." (8,3) sits behind
     // a printed yellow arc facing the face-down hub at (9,4) — the very vantage
     // the house-rule case below refuses — and here the reveal simply works.
-    const state = refreshP1(makeGame());
+    const state = refreshP1(
+      createAdventureGameState({
+        startingBuildings: [],
+        seed: "test-seed",
+        difficulty: "normal",
+        ruleset: "legacy",
+        rollFirstPlayer: false,
+        events: false,
+        houseRules: { "discovery-border-gate": false }
+      })
+    );
     state.heroes.hero_p1.spaceId = "h:8:3";
     state.heroes.hero_p1.movementPoints = 3;
     const tile = Object.values(state.adventure!.tiles).find(

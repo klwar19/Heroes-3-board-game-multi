@@ -1148,15 +1148,17 @@ export async function createRoomOnServer(options: {
 }
 
 /**
- * Creates a PRIVATE single-player room (one human + `computerOpponents`
- * computer seats) and returns its id. Purpose-built (plan §5.1): on the
+ * Creates a PRIVATE single-player room and returns its id. The fresh room uses
+ * one provisional computer seat; choosing a map replaces that deployment with
+ * the map-authored solo count/locations. The optional argument remains for
+ * backwards-compatible callers and saved flows. Purpose-built (plan §5.1): on the
  * built-in backend the server creates the room private/single-player with a
  * non-guessable id BEFORE it could ever be listed; on PartyKit (implicit
  * creation) this mints a 128-bit id locally and stores the one-shot
  * `?singlePlayer=` socket marker the room server honors only on a fresh,
  * memberless, unconfigured room.
  */
-export async function createSinglePlayerRoom(computerOpponents: number): Promise<{ roomId: string }> {
+export async function createSinglePlayerRoom(computerOpponents = 1): Promise<{ roomId: string }> {
   const count = Math.max(1, Math.floor(computerOpponents));
   if (getPartyKitHost()) {
     const bytes = new Uint8Array(16);

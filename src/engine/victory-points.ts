@@ -39,6 +39,7 @@ import type {
   VictoryPointObjective,
   VpLedgerEntry
 } from "./state";
+import { grailPossessionVp } from "./map-design-features";
 
 /** One scored line in a player's breakdown (only nonzero contributions get a row). */
 export type VictoryPointRow = { label: string; vp: number };
@@ -298,6 +299,35 @@ export function describeVictoryPointObjective(objective: VictoryPointObjective):
   }
 }
 
+/** Live progress for one extra VP objective. The scorer and objective UI share
+ * this reader so the checkmark can never disagree with final scoring. */
+export function victoryPointObjectiveProgress(
+  state: GameState,
+  playerId: PlayerId,
+  objective: VictoryPointObjective
+): { current: number; target: number; complete: boolean } {
+  let current = 0;
+  let target = 1;
+  switch (objective.kind) {
+    case "control-towns":
+      current = townsControlledBy(state, playerId).length;
+      target = objective.count;
+      break;
+    case "flag-mines":
+      current = flaggedMineSettlementCount(state, playerId);
+      target = objective.count;
+      break;
+    case "hero-level":
+      current = mainHeroOf(state, playerId)?.level ?? 0;
+      target = objective.level;
+      break;
+    case "defeat-dragon-utopia":
+      current = state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true ? 1 : 0;
+      break;
+  }
+  return { current, target, complete: current >= target };
+}
+
 /**
  * Plain-words description of ONE custom win condition — the SINGLE source for the
  * map editor preview, the map-pick banner entry, the lobby section list, and the
@@ -347,18 +377,9 @@ function playerMeetsObjective(
   state: GameState,
   playerId: PlayerId,
   objective: VictoryPointObjective,
-  ledger: VpLedgerEntry
+  _ledger: VpLedgerEntry
 ): boolean {
-  switch (objective.kind) {
-    case "control-towns":
-      return townsControlledBy(state, playerId).length >= objective.count;
-    case "flag-mines":
-      return flaggedMineSettlementCount(state, playerId) >= objective.count;
-    case "hero-level":
-      return (mainHeroOf(state, playerId)?.level ?? 0) >= objective.level;
-    case "defeat-dragon-utopia":
-      return ledger.utopiaDefeated === true;
-  }
+  return victoryPointObjectiveProgress(state, playerId, objective).complete;
 }
 
 /** Seats scored for VP: every LIVE human seat (eliminated seats leave turnOrder). */
@@ -431,7 +452,7 @@ function buildBreakdown(
   // only while the Grail is carried by a hero or built at a Town/Settlement.
   // ("delivered" = the grail win path; possession after delivery is the
   // completer — completion VP covers it, playerPossessesGrail returns false.)
-  const grailVp = state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
+  const grailVp = grailPossessionVp(state);
   if (grailVp > 0 && playerPossessesGrail(state, playerId)) {
     add("Possessing the Grail", grailVp);
   }

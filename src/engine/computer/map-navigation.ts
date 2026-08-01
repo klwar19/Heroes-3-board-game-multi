@@ -21,7 +21,7 @@ import {
 } from "../adventure";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
 import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
-import { canHeroDiscoverAdjacentTile } from "../adventure-reducer";
+import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import type {
   GameState,
   HeroState,
@@ -217,6 +217,30 @@ function victoryObjectiveKind(
 ): MapObjectiveKind | null {
   const mode = adventureVictoryMode(state);
   const playerId = hero.controllerId;
+
+  // A designer can mark one SPECIFIC monster/object/town as "first clear ends
+  // the scenario". This stamp is the most literal objective on the board and
+  // must outrank generic economy even when VP scoring decides the final winner.
+  if (field.designerWinCondition) {
+    return "victory";
+  }
+
+  const vpObjectives = state.adventure?.mapPreset?.victoryPoints?.enabled
+    ? state.adventure.mapPreset.victoryPoints.objectives ?? []
+    : [];
+  if (
+    (field.centerHexVp ?? 0) + (field.designerRewardVp ?? 0) > 0 ||
+    (vpObjectives.some((objective) => objective.kind === "defeat-dragon-utopia") &&
+      field.location === "dragon_utopia") ||
+    (vpObjectives.some((objective) => objective.kind === "control-towns") &&
+      locationDefinitions[field.location]?.category === "town" &&
+      field.flagOwnerId !== playerId) ||
+    (vpObjectives.some((objective) => objective.kind === "flag-mines") &&
+      (field.location === "mine" || field.location === "settlement") &&
+      field.flagOwnerId !== playerId)
+  ) {
+    return "victory";
+  }
 
   if (mode === "grail") {
     const grail = state.adventure?.grail;
@@ -673,8 +697,9 @@ export function tentKeysStillNeeded(state: GameState, playerId: PlayerId): Set<1
  * Far (Ⅱ–Ⅲ) supply tile (same geometry/seal rules legal-actions uses).
  * Marching here then flipping/placing is how the AI expands the map.
  *
- * Yellow (sealed) outer borders NEVER open a tile — `canHeroDiscoverAdjacentTile`
- * and `farTilePlacementCenters` both refuse a hero standing on a sealed edge.
+ * Yellow (sealed) outer borders NEVER become AI explore objectives: immediate-
+ * access discovery and strict placement both refuse a sealed hero edge, even
+ * when a Legacy human table has adjacency-only discovery enabled.
  * Explore objectives therefore only include real open doorways; a face-down
  * tile sitting behind a yellow wall is not a march target from the sealed side.
  *
@@ -712,9 +737,9 @@ function collectExploreObjectives(
     let useful = false;
     let opensFarTile = false;
     for (const tile of faceDown) {
-      // Engine gate: geometric adjacency + NOT heroFieldSealedForDiscovery
-      // (yellow outer border blocks ordinary discovery; Creature Bank exception).
-      if (canHeroDiscoverAdjacentTile(state, probe, tile)) {
+      // AI gate: geometric adjacency plus an open doorway now. A Creature Bank
+      // is border-free on the hero side; an ordinary yellow arc is refused.
+      if (canHeroImmediatelyAccessAdjacentTile(state, probe, tile)) {
         useful = true;
         if (tile.group === "far") {
           opensFarTile = true;
@@ -724,8 +749,12 @@ function collectExploreObjectives(
     }
     // A field where the hero could DROP a Ⅱ–Ⅲ tile is an expand objective even
     // when every laid face-down tile is sealed off from here. Placement also
-    // refuses sealed hero edges (canHeroReachPlacementCenter).
-    if (!useful && canPlaceFar && farTilePlacementCenters(state, probe).length > 0) {
+    // refuses sealed hero edges independently of the human rules toggle.
+    if (
+      !useful &&
+      canPlaceFar &&
+      farTilePlacementCenters(state, probe, undefined, { requireImmediateAccess: true }).length > 0
+    ) {
       useful = true;
     }
     if (useful) {

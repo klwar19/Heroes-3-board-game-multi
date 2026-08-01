@@ -1,11 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { Award, Trophy, X } from "lucide-react";
-import { computeVictoryPoints, victoryPointsModeActive, type GameState, type PlayerId } from "@/engine";
+import { Award, CheckCircle2, Circle, MapPin, Target, Trophy, X } from "lucide-react";
+import {
+  computeVictoryPoints,
+  customWinConditionProgress,
+  describeCustomWinCondition,
+  describeVictoryPointObjective,
+  victoryPointObjectiveProgress,
+  victoryPointsConfig,
+  victoryPointsModeActive,
+  VICTORY_MODE_LABELS,
+  type GameState,
+  type PlayerId
+} from "@/engine";
 import { getSeatIdentity } from "@/engine/player-identity";
 import { assetUrl } from "@/lib/asset-url";
 import { REWARD_GLYPH_ICONS } from "@/data/assets/homm-assets";
+import { locationDefinitions } from "@/data/map/locations";
 
 /**
  * The board-game reward glyph (Heegu-sama/Homm3BG print-and-play set) for a VP
@@ -162,6 +174,130 @@ export function VictoryPointsDock({
       </small>
       {open ? (
         <VictoryPointsStandingsModal onClose={() => setOpen(false)} state={state} viewerPlayerId={viewerPlayerId} />
+      ) : null}
+    </div>
+  );
+}
+
+/** A compact, always-readable scenario brief. Designed-map targets, custom win
+ * conditions and VP objectives are deliberately derived from live engine state;
+ * this is not a second set of hand-written campaign claims. */
+export function ScenarioObjectivesDock({
+  state,
+  viewerPlayerId
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+}) {
+  const [open, setOpen] = useState(false);
+  const adventure = state.adventure;
+  if (!adventure) return null;
+
+  const preset = adventure.mapPreset;
+  const custom = preset?.customWinConditions ?? [];
+  const vp = victoryPointsConfig(state);
+  const encounterFields = Object.values(adventure.fields).filter((field) => field.designerWinCondition);
+  const modeLabel = adventure.victoryMode
+    ? VICTORY_MODE_LABELS[adventure.victoryMode] ?? "Scenario victory"
+    : "Scenario victory";
+  const roundLimit = preset?.roundLimit;
+  const headline = encounterFields.length > 0
+    ? `Defeat ${locationDefinitions[encounterFields[0]!.location]?.name ?? "the marked encounter"}`
+    : custom[0]
+      ? describeCustomWinCondition(custom[0])
+      : modeLabel;
+
+  return (
+    <div className="objectiveDock" aria-label="Scenario objectives">
+      <button
+        aria-label="Show scenario objectives"
+        className="objectiveDockButton"
+        onClick={() => setOpen(true)}
+        title="Show objectives and live progress"
+        type="button"
+      >
+        <Target aria-hidden size={15} />
+        <span><small>Objective</small><strong>{headline}</strong></span>
+      </button>
+      {roundLimit ? <span className="objectiveRound">Round {state.round}/{roundLimit}</span> : null}
+      {open ? (
+        <div className="modalBackdrop objectiveBackdrop" role="dialog" aria-modal="true" aria-label="Scenario objectives" onClick={() => setOpen(false)}>
+          <section className="objectiveModal" onClick={(event) => event.stopPropagation()}>
+            <button className="heroInfoClose" onClick={() => setOpen(false)} title="Close" type="button"><X size={16} /></button>
+            <header className="objectiveModalHead">
+              <Target aria-hidden size={22} />
+              <div>
+                <span>MISSION LEDGER</span>
+                <h2>Scenario objectives</h2>
+              </div>
+            </header>
+            <p className="objectiveRuleSummary">
+              {vp
+                ? `Complete an end condition or reach round ${roundLimit ?? "limit"}; then the highest Victory Point total wins. The completer earns +${vp.victoryConditionVp ?? 3} VP.`
+                : `${modeLabel}. Complete any marked or listed victory condition to win immediately.`}
+            </p>
+
+            {encounterFields.length > 0 ? (
+              <section className="objectiveGroup">
+                <h3><MapPin aria-hidden size={15} /> Marked encounters</h3>
+                <ul className="objectiveList">
+                  {encounterFields.map((field) => {
+                    const tile = adventure.tiles[field.tileInstanceId];
+                    const location = locationDefinitions[field.location]?.name ?? field.location;
+                    const guard = field.customGuardUnits?.length
+                      ? `${field.customGuardUnits.length} specified guard card${field.customGuardUnits.length === 1 ? "" : "s"}`
+                      : field.difficulty
+                        ? `level ${field.difficulty} encounter`
+                        : "marked encounter";
+                    return (
+                      <li key={field.spaceId}>
+                        <Circle aria-hidden size={16} />
+                        <span><strong>Defeat {location}</strong><small>{guard} · {tile?.group ?? "map"} tile · {field.spaceId}</small></span>
+                        <b>ENDS</b>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
+            {custom.length > 0 ? (
+              <section className="objectiveGroup">
+                <h3><Target aria-hidden size={15} /> Victory conditions</h3>
+                <ul className="objectiveList">
+                  {custom.map((condition, index) => {
+                    const progress = customWinConditionProgress(state, viewerPlayerId, condition);
+                    return (
+                      <li className={progress.complete ? "complete" : undefined} key={`${condition.kind}-${index}`}>
+                        {progress.complete ? <CheckCircle2 aria-hidden size={16} /> : <Circle aria-hidden size={16} />}
+                        <span><strong>{describeCustomWinCondition(condition)}</strong><small>Your progress: {Math.min(progress.current, progress.target)} / {progress.target}</small></span>
+                        <b>{progress.complete ? "DONE" : "WIN"}</b>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+
+            {vp?.objectives?.length ? (
+              <section className="objectiveGroup">
+                <h3><Award aria-hidden size={15} /> Bonus Victory Points</h3>
+                <ul className="objectiveList">
+                  {vp.objectives.map((objective, index) => {
+                    const progress = victoryPointObjectiveProgress(state, viewerPlayerId, objective);
+                    return (
+                      <li className={progress.complete ? "complete" : undefined} key={`${objective.kind}-${index}`}>
+                        {progress.complete ? <CheckCircle2 aria-hidden size={16} /> : <Circle aria-hidden size={16} />}
+                        <span><strong>{describeVictoryPointObjective(objective)}</strong><small>Your progress: {Math.min(progress.current, progress.target)} / {progress.target}</small></span>
+                        <b>+{objective.vp} VP</b>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ) : null}
+          </section>
+        </div>
       ) : null}
     </div>
   );

@@ -9,6 +9,8 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { hasInternalBorder } from "@/data/map/borders";
 import {
   adventureVictoryMode,
+  canHeroImmediatelyReachPlacementCenter,
+  canHeroReachPlacementCenter,
   canHeroReachPlacedTile,
   getAdjacentSpaceIds,
   getUnitSide,
@@ -17,7 +19,11 @@ import {
   neutralBattleLevel,
   playerHasPlaceableFarTile,
 } from "../adventure";
-import { isTileRotationConnected } from "../adventure-reducer";
+import {
+  canHeroDiscoverAdjacentTile,
+  canHeroImmediatelyAccessAdjacentTile,
+  isTileRotationConnected,
+} from "../adventure-reducer";
 import { hexSpaceId, tileFootprint } from "../hex";
 import type {
   GameAction,
@@ -2013,8 +2019,21 @@ export function scoreMapAction(
       };
     }
     case "DISCOVER_TILE": {
+      const hero = state.heroes[action.heroId];
+      const tile = state.adventure?.tiles[action.tileInstanceId];
+      if (
+        hero &&
+        tile &&
+        canHeroDiscoverAdjacentTile(state, hero, tile) &&
+        !canHeroImmediatelyAccessAdjacentTile(state, hero, tile)
+      ) {
+        // A human Legacy table may legally reveal by adjacency alone. The AI is
+        // stricter: never spend its move exposing land behind a yellow wall it
+        // cannot enter immediately; END_TURN (300) safely wins instead.
+        return { score: 100, policy: "map.discover-inaccessible-skip" };
+      }
       const farGroup =
-        state.adventure?.tiles[action.tileInstanceId]?.group === "far";
+        tile?.group === "far";
       // FAR-TILE HUNT: flipping a face-down Ⅱ–Ⅲ tile while the seat has no Far
       // economy is the settlement lottery the premium rush depends on — never
       // let the "collect the nearby payoff first" collapse (640/670) defer it.
@@ -2035,6 +2054,14 @@ export function scoreMapAction(
       // Near/center faces (the "stare at VI–VII" stall). Boost further when no
       // fightable prize remains so expand-or-recruit wins over END_TURN.
       const hero = state.heroes[action.heroId];
+      const placementCenter = { row: action.centerRow, col: action.centerCol };
+      if (
+        hero &&
+        canHeroReachPlacementCenter(state, hero, placementCenter) &&
+        !canHeroImmediatelyReachPlacementCenter(state, hero, placementCenter)
+      ) {
+        return { score: 100, policy: "map.place-inaccessible-skip" };
+      }
       const objectives = hero ? collectMapObjectives(state, hero) : [];
       const hasFight = objectives.some(
         (objective) =>

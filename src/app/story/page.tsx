@@ -215,14 +215,15 @@ export default function StoryPage() {
                     <div><dt>{language === "en" ? "Victory" : "Chiến thắng"}</dt><dd>{text(selected.objective, language)}</dd></div>
                     <div><dt>{language === "en" ? "Difficulty" : "Độ khó"}</dt><dd>{difficultyLabel(selected)} · {language === "en" ? "fixed" : "cố định"}</dd></div>
                     <div><dt>{language === "en" ? "Hero cap" : "Giới hạn hero"}</dt><dd>{selected.levelCap ?? (language === "en" ? "None" : "Không")}</dd></div>
-                    <div><dt>{language === "en" ? "Carry over" : "Chuyển tiếp"}</dt><dd>{selected.carryOverHeroes ? `${selected.carryOverHeroes} ${language === "en" ? "heroes" : "hero"}` : language === "en" ? "Campaign finale" : "Chương cuối"}</dd></div>
+                    <div><dt>{language === "en" ? "Commander" : "Chỉ huy"}</dt><dd>{selected.setup?.playerHeroDefId ? coreHeroDefinitions[selected.setup.playerHeroDefId]?.name : "Catherine"} · {language === "en" ? "1 main hero deployed" : "triển khai 1 hero chính"}</dd></div>
                     <div><dt>{language === "en" ? "Map design" : "Thiết kế bản đồ"}</dt><dd>{selected.scenarioMap?.tiles.length} {language === "en" ? "fixed tiles, no player setup" : "ô cố định, không cài đặt"}</dd></div>
                     <div><dt>{language === "en" ? "Round guide" : "Số vòng"}</dt><dd>{selected.scenarioMap?.preset.roundLimit}</dd></div>
                   </dl>
                 </section>
 
                 <section className="campaignBriefingBlock">
-                  <h3>{language === "en" ? "Choose one starting bonus" : "Chọn một phần thưởng khởi đầu"}</h3>
+                  <h3>{language === "en" ? "Choose one board-game starting package" : "Chọn một gói khởi đầu board game"}</h3>
+                  <p className="campaignBonusNote">{language === "en" ? "Each package is a small, scenario-scaled alternative—not an extra hero or the original PC campaign reward." : "Mỗi gói là một lựa chọn nhỏ được cân theo nhiệm vụ—không phải hero bổ sung hay phần thưởng nguyên bản của bản PC."}</p>
                   <div className="campaignBonusGrid">
                     {selected.startingBonuses?.map((bonus) => (
                       <button aria-pressed={selectedBonus?.id === bonus.id} className={selectedBonus?.id === bonus.id ? "selected" : ""} key={bonus.id} onClick={() => setBonusId(bonus.id)} type="button">
@@ -276,12 +277,15 @@ export default function StoryPage() {
                 <section className="campaignBriefingBlock">
                   <h3>{language === "en" ? "Forces" : "Lực lượng"}</h3>
                   <div className="campaignForces">
-                    <div className="campaignHeroRoster">
-                      <span>{language === "en" ? "Your heroes" : "Hero của bạn"}</span>
-                      {selected.heroIds?.map((heroId) => {
-                        const hero = coreHeroDefinitions[heroId];
-                        return hero ? <figure key={heroId}><img alt="" src={assetUrl(hero.portrait)} /><figcaption>{hero.name}</figcaption></figure> : null;
-                      })}
+                    <div className="campaignHeroColumn">
+                      <div className="campaignHeroRoster">
+                        <span>{language === "en" ? "Story cast" : "Nhân vật"}</span>
+                        {selected.heroIds?.map((heroId) => {
+                          const hero = coreHeroDefinitions[heroId];
+                          return hero ? <figure key={heroId}><img alt="" src={assetUrl(hero.portrait)} /><figcaption>{hero.name}</figcaption></figure> : null;
+                        })}
+                      </div>
+                      <small className="campaignCastNote">{language === "en" ? "Portraits identify the chapter's story cast. Only the fixed commander above starts on the board." : "Chân dung thể hiện nhân vật trong truyện. Chỉ chỉ huy cố định ở trên bắt đầu trên bàn."}</small>
                     </div>
                     <div className="campaignEnemyRoster">
                       <span>{language === "en" ? "Computer forces" : "Quân máy"}</span>

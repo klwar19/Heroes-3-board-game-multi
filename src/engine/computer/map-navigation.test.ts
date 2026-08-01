@@ -204,6 +204,118 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
   });
 });
 
+describe("computer exploration requires immediate open-border access", () => {
+  it("does not reveal a face-down tile behind a yellow border even when Legacy humans may", () => {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "test-seed",
+      difficulty: "normal",
+      ruleset: "legacy",
+      houseRules: { "discovery-border-gate": false },
+      rollFirstPlayer: false,
+      events: false,
+    });
+    state.activePlayerId = "p1";
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.canMulligan = false;
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = "h:8:3";
+    hero.movementPoints = 3;
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
+    )!;
+    const discover = {
+      type: "DISCOVER_TILE" as const,
+      playerId: "p1" as const,
+      heroId: hero.id,
+      tileInstanceId: tile.id,
+    };
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+      ),
+      "Legacy human control: adjacency-only discovery remains legal"
+    ).toBe(true);
+
+    const observation: ComputerObservation = {
+      playerId: "p1",
+      state: state as unknown as ComputerObservation["state"],
+      legalActions: [
+        { label: "reveal sealed tile", action: discover },
+        { label: "end", action: { type: "END_TURN", playerId: "p1" } },
+      ],
+    };
+    expect(scoreMapAction(observation, discover)).toEqual({
+      score: 100,
+      policy: "map.discover-inaccessible-skip",
+    });
+    expect(chooseComputerAction(observation)?.action.type).toBe("END_TURN");
+    expect(
+      collectMapObjectives(state, hero).some(
+        (objective) => objective.kind === "explore" && objective.spaceId === hero.spaceId
+      )
+    ).toBe(false);
+  });
+
+  it("does not place/open a Far tile from a sealed edge when the human toggle is off", () => {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "nav-map",
+      difficulty: "normal",
+      ruleset: "legacy",
+      houseRules: { "discovery-border-gate": false },
+      rollFirstPlayer: false,
+      events: false,
+    });
+    state.activePlayerId = "p2";
+    state.players.p2.needsHandRefresh = false;
+    state.players.p2.canMulligan = false;
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    if ((state.adventure!.farTilePool?.length ?? 0) === 0) {
+      state.adventure!.farTilePool = ["F1"];
+    }
+    const hero = p2Hero(state);
+    hero.movementPoints = 3;
+    let blockedCenter: { row: number; col: number } | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      const humanCenters = farTilePlacementCenters(state, hero);
+      const aiCenters = new Set(
+        farTilePlacementCenters(state, hero, undefined, { requireImmediateAccess: true }).map(
+          (center) => `${center.row}:${center.col}`
+        )
+      );
+      blockedCenter = humanCenters.find((center) => !aiCenters.has(`${center.row}:${center.col}`));
+      if (blockedCenter) break;
+    }
+    expect(blockedCenter, "fixture should expose a Legacy-only sealed placement notch").toBeDefined();
+    const place = {
+      type: "PLACE_TILE" as const,
+      playerId: "p2" as const,
+      heroId: hero.id,
+      supplyIndex: 0,
+      centerRow: blockedCenter!.row,
+      centerCol: blockedCenter!.col,
+    };
+    expect(scoreMapAction(observe(state), place)).toEqual({
+      score: 100,
+      policy: "map.place-inaccessible-skip",
+    });
+    expect(
+      chooseComputerAction({
+        ...observe(state),
+        legalActions: [
+          { label: "place behind seal", action: place },
+          { label: "end", action: { type: "END_TURN", playerId: "p2" } },
+        ],
+      })?.action.type
+    ).toBe("END_TURN");
+  });
+});
+
 describe("Far-tile opening and Bronze-rush tempo", () => {
   it("scores opening a II–III tile above an otherwise identical later tile", () => {
     const state = game();
@@ -834,6 +946,31 @@ describe("collectMapObjectives", () => {
       (o) => o.spaceId === TREASURE,
     );
     expect(dragon?.kind).toBe("victory");
+  });
+
+  it("understands designer-marked encounters and scoreable VP objectives", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    state.adventure!.victoryMode = "conquest";
+    state.adventure!.mapPreset = {
+      victoryPoints: {
+        enabled: true,
+        objectives: [
+          { kind: "flag-mines", count: 2, vp: 2 },
+          { kind: "defeat-dragon-utopia", vp: 4 }
+        ]
+      }
+    };
+    state.adventure!.fields[RESOURCE].designerWinCondition = true;
+    state.adventure!.fields[MINE].location = "mine";
+    state.adventure!.fields[MINE].flagOwnerId = null;
+    state.adventure!.fields[TREASURE].location = "dragon_utopia";
+    state.adventure!.fields[TREASURE].difficulty = 0;
+
+    const objectives = collectMapObjectives(state, hero);
+    expect(objectives.find((objective) => objective.spaceId === RESOURCE)?.kind).toBe("victory");
+    expect(objectives.find((objective) => objective.spaceId === MINE)?.kind).toBe("victory");
+    expect(objectives.find((objective) => objective.spaceId === TREASURE)?.kind).toBe("victory");
   });
 
   it("drops a guard from the objective set once the hero can no longer beat it", () => {

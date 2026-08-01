@@ -89,6 +89,28 @@ describe("house-rule resolver", () => {
     expect(legacyOn["estates-nerf"], "untouched rules keep the mode default (off)").toBe(false);
   });
 
+  it("makes yellow-border discovery a hard BINH invariant and a Polish package companion", () => {
+    expect(
+      resolveHouseRules({
+        ruleset: "binh",
+        houseRules: { "discovery-border-gate": false },
+      })["discovery-border-gate"]
+    ).toBe(true);
+    expect(
+      resolveHouseRules({
+        ruleset: "legacy",
+        houseRules: {
+          "polish-bank-sizes": true,
+          "discovery-border-gate": false,
+        },
+      })["discovery-border-gate"]
+    ).toBe(true);
+
+    const loaded = binhWith({ "discovery-border-gate": true });
+    loaded.adventure!.houseRules!["discovery-border-gate"] = false;
+    expect(houseRuleEnabled(loaded, "discovery-border-gate")).toBe(true);
+  });
+
   it("reads frozen house-rule flags even when the ruleset label is Legacy", () => {
     const state = binhWith({ "griffin-buff": true });
     state.ruleset = "legacy";

@@ -711,6 +711,69 @@ function sanitizeResources(
   };
 }
 
+/** A designed solo map supports one human plus at most three computer seats. */
+export const MAX_SINGLE_PLAYER_MAP_OPPONENTS = 3;
+
+/**
+ * Sanitise the solo-only role carried by one starting tile. Kept here beside
+ * the other map-persistence sanitizers so HTTP, PartyKit and direct engine
+ * setup all accept exactly the same shape.
+ */
+export function sanitizeSinglePlayerMapStart(
+  input: unknown
+): NonNullable<CustomMapTilePlan["singlePlayer"]> | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const raw = input as { role?: unknown; bonus?: unknown };
+  if (raw.role !== "human" && raw.role !== "computer") {
+    return undefined;
+  }
+  const bonus = raw.role === "computer" ? sanitizeResources(raw.bonus) : undefined;
+  const hasBonus = Boolean(bonus && Object.values(bonus).some((amount) => amount > 0));
+  return {
+    role: raw.role,
+    ...(hasBonus ? { bonus } : {})
+  };
+}
+
+export type SinglePlayerMapDeployment = {
+  human: CustomMapTilePlan;
+  computers: CustomMapTilePlan[];
+};
+
+/**
+ * Resolve a COMPLETE map-authored solo deployment. Partial/invalid markings are
+ * deliberately inactive: legacy maps then retain their normal seat-count and
+ * seat-order behaviour instead of starting with a surprising partial layout.
+ */
+export function singlePlayerMapDeployment(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  maxOpponents: number = MAX_SINGLE_PLAYER_MAP_OPPONENTS
+): SinglePlayerMapDeployment | null {
+  const opponentLimit = Math.max(
+    0,
+    Math.min(MAX_SINGLE_PLAYER_MAP_OPPONENTS, Number.isFinite(maxOpponents) ? Math.floor(maxOpponents) : 0)
+  );
+  const marked = (plans ?? []).filter(
+    (plan) => plan.group === "starting" && sanitizeSinglePlayerMapStart(plan.singlePlayer)
+  );
+  if (marked.length === 0) {
+    return null;
+  }
+  const humans = marked.filter((plan) => plan.singlePlayer?.role === "human");
+  const computers = marked.filter((plan) => plan.singlePlayer?.role === "computer");
+  if (
+    humans.length !== 1 ||
+    computers.length < 1 ||
+    computers.length > opponentLimit ||
+    marked.length !== humans.length + computers.length
+  ) {
+    return null;
+  }
+  return { human: humans[0], computers };
+}
+
 function sanitizeStartingUnits(input: unknown): CustomStartingUnit[] | undefined {
   if (!Array.isArray(input)) {
     return undefined;
@@ -1379,6 +1442,7 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
     placement?: unknown;
     bankId?: unknown;
     bankSize?: unknown;
+    garrisonBorderPassage?: unknown;
   };
   if (typeof raw.kind !== "string" || !CUSTOM_MAP_OBJECT_KINDS.has(raw.kind as CustomMapObjectKind)) {
     return null;
@@ -1470,6 +1534,9 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   }
   if (carriesAlwaysPickable && rawOneway.alwaysPickable === true) {
     object.alwaysPickable = true;
+  }
+  if (kind === "garrison" && raw.garrisonBorderPassage === true) {
+    object.garrisonBorderPassage = true;
   }
   // Designer yellow border edges on the object hex (absolute dirs 0-5).
   const rawEdges = (input as { borderEdges?: unknown }).borderEdges;
@@ -1965,6 +2032,10 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (resources) {
     preset.startingResources = resources;
   }
+  const computerStartingBonus = sanitizeResources(raw.computerStartingBonus);
+  if (computerStartingBonus && Object.values(computerStartingBonus).some((amount) => amount > 0)) {
+    preset.computerStartingBonus = computerStartingBonus;
+  }
   const production = sanitizeResources(raw.startingProduction);
   if (production) {
     preset.startingProduction = production;
@@ -2116,6 +2187,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.farTilesPerPlayer !== undefined ||
       Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
+      preset.computerStartingBonus ||
       preset.startingProduction ||
       (preset.startingBuildings && preset.startingBuildings.length > 0) ||
       preset.startingUnits ||
@@ -2561,6 +2633,12 @@ export function describeCustomMapPresetEntries(
     entries.push({
       icon: "🪙",
       text: `Starting resources: ${formatResources(preset.startingResources)}`
+    });
+  }
+  if (preset.computerStartingBonus) {
+    entries.push({
+      icon: "🤖",
+      text: `Single-player AI base bonus: +${formatResources(preset.computerStartingBonus)} (ignored in multiplayer)`
     });
   }
   if (preset.startingProduction) {

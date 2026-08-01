@@ -3,8 +3,7 @@
  * Setup lobby in SINGLE-PLAYER: the screen says "Playing with computer",
  * computer seats carry a Computer badge, and the Heroes & Draft hub window
  * (plus the Advanced settings → Map & Setup tab) replaces the multiplayer
- * "Players" control with a "Computer opponents" control that dispatches the
- * dedicated SET_COMPUTER_OPPONENTS action (never SET_GAME_OPTIONS.playerCount).
+ * "Players" control with a read-only map-driven solo deployment summary.
  * A multiplayer lobby is the CONTROL: no badges, the classic Players control.
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -41,14 +40,18 @@ describe("SetupLobbyScreen — single-player", () => {
     expect(screen.getByText("You", { selector: ".computerSeatBadge" })).toBeTruthy();
   });
 
-  it("offers Computer opponents (SET_COMPUTER_OPPONENTS) in the Heroes & Draft window, not the multiplayer Players control", () => {
+  it("shows the map-driven solo count without an enemy-count control", () => {
     const onAction = renderSinglePlayer();
     openHeroes();
 
     expect(screen.queryByText("Players", { selector: ".optionRow small" })).toBeNull();
-    const row = screen.getByText("Computer opponents").closest(".optionRow") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: /3 computers/ }));
-    expect(onAction).toHaveBeenCalledWith({ type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 3 });
+    const row = screen.getByText("Solo deployment").closest(".optionRow") as HTMLElement;
+    expect(within(row).getByLabelText("Map-selected computer opponents").textContent).toContain(
+      "2 computer opponents"
+    );
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(row.textContent).toContain("ignored in multiplayer");
+    expect(onAction).not.toHaveBeenCalled();
   });
 
   it("CONTROL: a multiplayer lobby keeps the Players control and shows no badges", () => {

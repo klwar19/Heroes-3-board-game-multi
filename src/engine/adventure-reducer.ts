@@ -26,7 +26,13 @@ import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
-import { grailDigMovementCost, survivorsToCustomGuardUnits } from "./map-design-features";
+import {
+  grailBuildAt,
+  grailBuildReward,
+  grailDigMovementCost,
+  polishGrailUtopiaEnabled,
+  survivorsToCustomGuardUnits
+} from "./map-design-features";
 import { planExcludedSecretFeatures, tilePassesSecretFilters } from "./map-preset";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
@@ -48,7 +54,8 @@ import {
   canHeroReachPlacedTile,
   canHeroReachPlacementCenter,
   canPlaceTileAt,
-  creatureBankTierForGroup,
+  creatureBankHostLocationForTile,
+  creatureBankTierForTile,
   applyRecruitGoldDiscount,
   changeMorale,
   markAbilityEmpowered,
@@ -133,6 +140,7 @@ import {
   hasResources,
   heroAtSpace,
   heroCanDiscoverTileAcrossBorders,
+  heroCanImmediatelyAccessTile,
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
@@ -168,6 +176,7 @@ import {
   SCHOLAR_STAT_CARDS,
   setHexEventEncounterHook,
   setOnMapTileRevealHook,
+  subterraneanTileBand,
   spendRecruitResources,
   spendResources,
   startAdventureRound,
@@ -177,7 +186,8 @@ import {
   townHasBuildingEffect,
   unlockedRecruitTiers,
   victoryModeCountsHeroDefeats,
-  type NeutralDraw
+  type NeutralDraw,
+  type OnMapTileRevealSource
 } from "./adventure";
 import {
   offerPendingFieldOverridePlacement,
@@ -2003,7 +2013,7 @@ export function buildGrail(state: GameState, action: Extract<GameAction, { type:
   assertHandRefreshed(state, action.playerId);
   assertNoPendingInput(state);
 
-  const buildAt = adventure.mapPreset?.objectives?.grailBuildAt;
+  const buildAt = grailBuildAt(state);
   if (!buildAt) {
     throw new Error("Building the Grail is not allowed on this map.");
   }
@@ -2039,7 +2049,7 @@ export function buildGrail(state: GameState, action: Extract<GameAction, { type:
   field.flagOwnerId = action.playerId;
   field.everFlagged = true;
 
-  const reward = adventure.mapPreset?.objectives?.grailBuildReward;
+  const reward = grailBuildReward(state);
   if (reward) {
     const resources: { gold?: number; buildingMaterials?: number; valuables?: number } = {};
     if (reward.gold) resources.gold = reward.gold;
@@ -2369,9 +2379,9 @@ function attackRollLabel(roll: number): string {
  * the tile (`reservedBankId`) the moment the tile is revealed — before rotation —
  * so the player knows the bank up front. Only PEEKED (never popped): the token
  * is consumed from the pile only when the placement is accepted, so a declined
- * placement or a Blocked Field lost to a Subterranean Gate leaves the pile
- * intact. No-op when the rule is off (no piles), the tile can't host a bank
- * (wrong group / no Blocked Field in its definition), or the pile is empty.
+ * placement or a host field lost to a later override leaves the pile intact.
+ * Polish sizing may use an Empty Field on a no-block II–V tile and may draw a
+ * Near bank for a sea IV–V tile; the classic path is unchanged when it is off.
  */
 function reserveCreatureBankForTile(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = state.adventure;
@@ -2383,12 +2393,11 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
   if (calamityGateClaimsTile(state, tile) || dungeonClaimsTile(state, tile)) {
     return;
   }
-  const tier = creatureBankTierForGroup(tile.group);
+  const tier = creatureBankTierForTile(state, tile);
   if (!tier) {
     return;
   }
-  const def = allTileDefinitions[tile.tileDefId];
-  if (!def?.fields.some((field) => field.location === "blocked_field")) {
+  if (!creatureBankHostLocationForTile(state, tile)) {
     return;
   }
   const pile = tier === "far" ? adventure.creatureBankTokensFar : adventure.creatureBankTokensNear;
@@ -2449,11 +2458,10 @@ function reserveCreatureBankForTile(state: GameState, tile: MapTileState, player
 
 /**
  * Bank choice BEFORE rotation: the discovering player sees the rolled bank(s)
- * (type + Polish sizes when on), picks one OR leaves the field blocked, THEN
+ * (type + Polish sizes when on), picks one OR leaves the host unchanged, THEN
  * rotates the tile. The chosen token is only reserved here (not consumed);
- * after rotation/gate carving it is placed on the surviving Blocked Field and
- * removed from the pile. "Leave it blocked" clears the reservation so the post-
- * rotation step is a no-op.
+ * after rotation/gate carving it is placed on the surviving host and removed
+ * from the pile. Declining clears the reservation, so post-rotation is a no-op.
  *
  * Polish with 2 candidates → A / B / Leave blocked.
  * Polish with 1 candidate → Place (name · size) / Leave blocked.
@@ -2469,26 +2477,30 @@ function openPolishBankChoiceBeforeRotation(state: GameState, tile: MapTileState
   if (candidates.length === 0) {
     return;
   }
-  const tier = creatureBankTierForGroup(tile.group);
+  const tier = creatureBankTierForTile(state, tile);
   if (!tier) {
     return;
   }
 
-  const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
+  const tierLabel =
+    tile.group === "subterranean" ? "cavern" : tile.group === "sea" ? "Sea IV–V tile" : tier === "far" ? "Far tile" : "Near tile";
+  const hostLocation = creatureBankHostLocationForTile(state, tile);
+  const hostLabel = hostLocation === "empty_field" ? "Empty Field" : "Blocked Field";
+  const leaveLabel = hostLocation === "empty_field" ? "Leave it empty" : "Leave it blocked";
   const bankOptions = candidates.map((candidate, index) => ({
     label: `${String.fromCharCode(65 + index)} · ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
   }));
   const prompt =
     candidates.length > 1
-      ? `This ${tierLabel} has a Blocked Field — choose a rolled Creature Bank, or leave it blocked. Then rotate the tile.`
-      : `This ${tierLabel} has a Blocked Field — place the rolled Creature Bank, or leave it blocked. Then rotate the tile.`;
+      ? `This ${tierLabel} has a ${hostLabel} — choose a rolled Creature Bank, or leave it ${hostLocation === "empty_field" ? "empty" : "blocked"}. Then rotate the tile.`
+      : `This ${tierLabel} has a ${hostLabel} — place the rolled Creature Bank, or leave it ${hostLocation === "empty_field" ? "empty" : "blocked"}. Then rotate the tile.`;
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt,
-    options: [...bankOptions, { label: "Leave it blocked" }],
+    options: [...bankOptions, { label: leaveLabel }],
     context: "place-creature-bank",
     creatureBank: {
       // Fields do not materialize until rotation. The reducer ignores this
@@ -2829,12 +2841,10 @@ function openSubterraneanGatePlacementChoice(
 }
 
 /**
- * Offers the discovering player the choice to place a Creature Bank token on a
- * just-revealed tile's Blocked Field (rulebook p.66): a Far (II-III) tile draws
- * from the Far pile, a Near (IV-V) tile AND a Subterranean cavern both draw from
- * the Near pile (the cavern being a BINH house-rule addition). Sea, center and
- * starting tiles never trigger this — even a sea tile that carries a Blocked
- * Field / impassable terrain (the gate is the tile group, not the Blocked Field).
+ * Offers a Creature Bank on a just-revealed tile: Far (II–III) draws from Far;
+ * Near (IV–V) and Subterranean draw from Near. Polish Bank Sizes also treats sea
+ * IV–V as Near and, on a qualifying tile with no Blocked Field, replaces an
+ * Empty Field. Deep-sea VI–VII, center, and starting tiles remain excluded.
  *
  * Called AFTER rotation and BEFORE the Subterranean Gate exit is fixed, so the
  * player sees the bank first, then locks the gate position. No-op when the rule
@@ -2885,7 +2895,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     tile.reservedBankOptions = undefined;
     return;
   }
-  const tier = creatureBankTierForGroup(tile.group);
+  const tier = creatureBankTierForTile(state, tile);
   if (!tier) {
     return;
   }
@@ -2893,17 +2903,22 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
   if (!pile || pile.length === 0) {
     return;
   }
-  const blockedSpaceId = getTileFootprintSpaceIds(tile).find(
-    (spaceId) => adventure.fields[spaceId]?.location === "blocked_field"
-  );
-  if (!blockedSpaceId) {
-    // The Blocked Field was lost (e.g. carved into a Subterranean Gate): the bank
-    // this tile reserved at reveal is not placed. The pile was only peeked, so
-    // nothing is consumed — just drop the reservation.
+  const hostLocation = creatureBankHostLocationForTile(state, tile);
+  const bankSpaceId = hostLocation
+    ? getTileFootprintSpaceIds(tile).find(
+        (spaceId) => adventure.fields[spaceId]?.location === hostLocation
+      )
+    : undefined;
+  if (!bankSpaceId) {
+    // The printed host was lost (for example a Blocked Field carved into a
+    // Subterranean Gate, or an Empty Field consumed by a field override). The
+    // pile was only peeked, so dropping the reservation loses no token.
     tile.reservedBankId = undefined;
     tile.reservedBankOptions = undefined;
     return;
   }
+  const hostLabel = hostLocation === "empty_field" ? "Empty Field" : "Blocked Field";
+  const leaveLabel = hostLocation === "empty_field" ? "Leave it empty" : "Leave it blocked";
 
   // The Polish flow selected exactly one rolled bank before rotation. Place it
   // automatically now that the final Blocked Field is known; do not reopen the
@@ -2915,7 +2930,7 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
       throw new Error("The selected Creature Bank is no longer available.");
     }
     pile.splice(tokenIndex, 1);
-    placeCreatureBank(state, blockedSpaceId, selected.bankId, selected.size);
+    placeCreatureBank(state, bankSpaceId, selected.bankId, selected.size);
     tile.reservedBankId = undefined;
     tile.reservedBankOptions = undefined;
     return;
@@ -2934,7 +2949,8 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     tile.reservedBankId && isCreatureBankId(tile.reservedBankId) ? tile.reservedBankId : pile[pile.length - 1];
   tile.reservedBankId = isCreatureBankId(reservedBankId) ? reservedBankId : undefined;
   const bankName = isCreatureBankId(reservedBankId) ? CREATURE_BANKS[reservedBankId]?.name ?? "Creature Bank" : "Creature Bank";
-  const tierLabel = tile.group === "subterranean" ? "cavern" : tier === "far" ? "Far tile" : "Near tile";
+  const tierLabel =
+    tile.group === "subterranean" ? "cavern" : tile.group === "sea" ? "Sea IV–V tile" : tier === "far" ? "Far tile" : "Near tile";
   const sizedCandidates = houseRuleEnabled(state, "polish-bank-sizes")
     ? (tile.reservedBankOptions ?? []).filter((candidate) => pile.includes(candidate.bankId))
     : [];
@@ -2944,9 +2960,9 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
           ...sizedCandidates.map((candidate, index) => ({
             label: `${String.fromCharCode(65 + index)} · Place ${CREATURE_BANKS[candidate.bankId as CreatureBankId]?.name ?? "Creature Bank"} · size ${BANK_SIZE_ROMAN[candidate.size]}`
           })),
-          { label: "Leave it blocked" }
+          { label: leaveLabel }
         ]
-      : [{ label: `Place the ${bankName} Creature Bank` }, { label: "Leave it blocked" }];
+      : [{ label: `Place the ${bankName} Creature Bank` }, { label: leaveLabel }];
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -2954,12 +2970,12 @@ function offerCreatureBankPlacement(state: GameState, tile: MapTileState, player
     playerId,
     prompt:
       sizedCandidates.length > 0
-        ? `This ${tierLabel} has a Blocked Field — choose a rolled Creature Bank, or leave it blocked.`
-        : `This ${tierLabel} has a Blocked Field — place the ${bankName} Creature Bank here?`,
+        ? `This ${tierLabel} has a ${hostLabel} — choose a rolled Creature Bank, or leave it ${hostLocation === "empty_field" ? "empty" : "blocked"}.`
+        : `This ${tierLabel} has a ${hostLabel} — place the ${bankName} Creature Bank here?`,
     options,
     context: "place-creature-bank",
     creatureBank: {
-      fieldId: blockedSpaceId,
+      fieldId: bankSpaceId,
       tier,
       ...(tile.reservedBankId ? { bankId: tile.reservedBankId } : {}),
       ...(sizedCandidates.length > 0 ? { candidates: sizedCandidates } : {}),
@@ -3082,6 +3098,29 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
   // instead); a border-free Creature Bank the hero stands on is open for the
   // whole-arc rule, though a per-edge line still seals.
   return heroCanDiscoverTileAcrossBorders(state, hero.spaceId, field, tile);
+}
+
+/**
+ * Computer safety gate for ordinary discovery. Geometry and layer rules match
+ * the authoritative human action, but yellow borders are always enforced even
+ * in a Legacy game whose human-facing toggle allows adjacency-only discovery.
+ */
+export function canHeroImmediatelyAccessAdjacentTile(
+  state: GameState,
+  hero: HeroState,
+  tile: MapTileState
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId || !tile.faceDown) {
+    return false;
+  }
+  const field = adventure.fields[hero.spaceId];
+  return Boolean(
+    field &&
+      isTileAdjacentToSpace(state, tile.id, hero.spaceId) &&
+      tileLayer(tile) === fieldLayer(state, hero.spaceId) &&
+      heroCanImmediatelyAccessTile(state, hero.spaceId, field, tile)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -3506,7 +3545,57 @@ function beginFarTileReveal(state: GameState, playerId: PlayerId, tile: MapTileS
  * Map-designer player picks (resource gold/valuables, multi-select Ⅶ) open
  * BEFORE the normal reveal chain when the tile carries those flags.
  */
-function revealOnMapTile(state: GameState, playerId: PlayerId, tile: MapTileState): void {
+function openSubterraneanTilePick(state: GameState, playerId: PlayerId, tile: MapTileState): boolean {
+  if (tile.group !== "subterranean" || !tile.gateTileChoiceEligible || tile.tileIdentityLocked) {
+    return false;
+  }
+  const adventure = requireAdventure(state);
+  const currentDef = allTileDefinitions[tile.tileDefId];
+  const pool = adventure.subterraneanTilePool ?? (adventure.subterraneanTilePool = []);
+  if (!currentDef || pool.length === 0) {
+    return false;
+  }
+  const band = subterraneanTileBand(currentDef);
+  let alternateIndex = -1;
+  for (let index = pool.length - 1; index >= 0; index -= 1) {
+    const candidate = allTileDefinitions[pool[index]];
+    if (candidate?.group === "subterranean" && subterraneanTileBand(candidate) === band) {
+      alternateIndex = index;
+      break;
+    }
+  }
+  if (alternateIndex < 0) {
+    return false;
+  }
+
+  const [alternateId] = pool.splice(alternateIndex, 1);
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Choose 1 of 2 Subterranean tiles",
+    options: [{ label: "Choose tile A" }, { label: "Choose tile B" }],
+    context: "subterranean-tile-pick",
+    subterraneanTilePick: { tileInstanceId: tile.id, candidates: [tile.tileDefId, alternateId] },
+    returnPhase: state.phase
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  return true;
+}
+
+function revealOnMapTile(
+  state: GameState,
+  playerId: PlayerId,
+  tile: MapTileState,
+  source: OnMapTileRevealSource = "ordinary"
+): void {
+  // Entering a gate is a special blind draw: inspect two same-band underground
+  // tiles, choose one, then rotate the chosen exit tile normally. Ordinary
+  // discoveries and designer-pinned tile identities keep their existing flow.
+  if (source === "subterranean-gate" && openSubterraneanTilePick(state, playerId, tile)) {
+    return;
+  }
   // Designer: player chooses Gold vs Valuables mine before the tile content is
   // fixed (replaces tileDefId from the matching pool for that group).
   if (tile.playerResourcePick && (tile.group === "far" || tile.group === "near")) {
@@ -10262,6 +10351,34 @@ function queuePiratesResourceDie(state: GameState, winnerId: PlayerId): void {
   });
 }
 
+/** Transfer the carried Polish Grail token after any player-vs-player loss. */
+export function transferPolishCarriedGrailAfterPvp(
+  state: GameState,
+  winnerId: PlayerId,
+  loserId: PlayerId,
+  winnerHero?: HeroState
+): boolean {
+  const grail = state.adventure?.grail;
+  const carrier = grail?.carrierHeroId ? state.heroes[grail.carrierHeroId] : undefined;
+  if (
+    !polishGrailUtopiaEnabled(state) ||
+    grail?.status !== "carried" ||
+    carrier?.controllerId !== loserId ||
+    winnerId === NEUTRAL_PLAYER_ID
+  ) {
+    return false;
+  }
+  const newCarrier = winnerHero ?? getMainHero(state, winnerId);
+  if (!newCarrier) return false;
+  grail.carrierHeroId = newCarrier.id;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: winnerId,
+    message: `${state.players[winnerId]?.name ?? winnerId} takes the Grail token after winning the battle.`
+  });
+  return true;
+}
+
 /**
  * Raid Bosses (§6.5.3) — the KILL: mark the slayer, pay the printed reward
  * (gold at once + a relic-tier Artifact search unshifted to the queue front)
@@ -10866,6 +10983,11 @@ export function finalizeAdventureCombat(state: GameState): void {
   const loserId = outcome.defeatedPlayerId;
   const loserHero = attackerHero?.controllerId === loserId ? attackerHero : defenderHero;
   const winnerHero = attackerHero?.controllerId === winnerId ? attackerHero : defenderHero;
+
+  // Polish Grail token: every PvP loss transfers the carried token to the
+  // winner, including surrender/retreat. A built Grail stays in its field and
+  // therefore changes hands through normal field control instead.
+  transferPolishCarriedGrailAfterPvp(state, winnerId, loserId, winnerHero ?? undefined);
 
   // Surrender (house rule) is a paid escape, not a defeat: the loser keeps every
   // unit (handled by `keepTroops` above), pays a flat toll to the opponent,
@@ -13295,6 +13417,30 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "subterranean-tile-pick") {
+    const data = choice.subterraneanTilePick;
+    const adventure = state.adventure;
+    const selectedId = data?.candidates[action.optionIndex];
+    if (!data || !adventure || !selectedId || !allTileDefinitions[selectedId]) {
+      throw new Error("Choose one of the two offered Subterranean tiles.");
+    }
+    const tile = adventure.tiles[data.tileInstanceId];
+    if (!tile || !tile.faceDown || tile.group !== "subterranean") {
+      throw new Error("That Subterranean tile is no longer available.");
+    }
+    const unchosenId = data.candidates[action.optionIndex === 0 ? 1 : 0];
+    const pool = adventure.subterraneanTilePool ?? (adventure.subterraneanTilePool = []);
+    if (unchosenId && !pool.includes(unchosenId)) {
+      pool.push(unchosenId);
+    }
+    tile.tileDefId = selectedId;
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    beginTileRotation(state, action.playerId, tile, "reveal");
+    return;
+  }
+
   if (choice.context === "subterranean-gate-placement") {
     const data = choice.subterraneanGate;
     const adventure = state.adventure;
@@ -14230,9 +14376,17 @@ function offerEndTurnAdjacentMove(state: GameState, playerId: PlayerId, prompt: 
     const destinations = getEndTurnMoveDestinationsForHero(state, hero);
     const heroLabel = hero.kind === "main" ? "Main Hero" : "Secondary Hero";
     for (const spaceId of destinations) {
+      const entersSubterraneanGate = adventure.fields[spaceId]?.location === "subterranean_gate";
       moveOptions.push({
         label: heroes.length > 1 ? `${heroLabel}: move to ${spaceId}` : `Move to ${spaceId}`,
-        steps: [{ type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId }]
+        steps: [
+          {
+            type: "TELEPORT_HERO" as const,
+            heroId: hero.id,
+            spaceId,
+            ...(entersSubterraneanGate ? { visit: true } : {})
+          }
+        ]
       });
     }
   }

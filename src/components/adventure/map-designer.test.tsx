@@ -2504,6 +2504,21 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     expect(latest[0]).toMatchObject({ kind: "keymaster_tent", pair: 1 });
   });
 
+  it("Garrison panel exposes and persists the adjacent yellow-border passage option", () => {
+    let latest: CustomMapObject[] = [
+      { kind: "garrison", placement: { type: "standalone", row: far.row + 2, col: far.col + 2 } }
+    ];
+    const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
+      latest = next;
+    });
+    const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
+    fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
+    const checkbox = within(container).getByLabelText("Garrison opens yellow borders");
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(checkbox);
+    expect(latest[0].garrisonBorderPassage).toBe(true);
+  });
+
   it("Creature Bank: places standalone-only with a specific bankId; panel rewrites bank + size", () => {
     let latest: CustomMapObject[] = [];
     const onObjectsChange = vi.fn((next: CustomMapObject[]) => {
@@ -3457,6 +3472,50 @@ describe("MapDesigner — tile-carried token direct manipulation (click + drag)"
     // Remove still clears the token.
     fireEvent.click(within(panel).getByRole("button", { name: /Remove the Monolith token/i }));
     expect(latest[1].token, "face-down token removed").toBeUndefined();
+  });
+});
+
+describe("MapDesigner — single-player Town deployment", () => {
+  const towns: CustomMapTilePlan[] = [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    { row: 10, col: 7, group: "starting", faceDown: false },
+    { row: 6, col: 4, group: "starting", faceDown: false }
+  ];
+
+  it("marks exactly one human Town and exposes a per-enemy resource bonus", () => {
+    const fixture = renderStatefulDesigner(towns);
+
+    let popover = openTilePopover(fixture.container, 1);
+    fireEvent.click(within(popover).getByRole("button", { name: /^You/ }));
+    expect(fixture.get()[1].singlePlayer).toEqual({ role: "human" });
+
+    popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(popover).getByRole("button", { name: /^You/ }));
+    expect(fixture.get()[0].singlePlayer).toEqual({ role: "human" });
+    expect(fixture.get()[1].singlePlayer).toBeUndefined();
+
+    fireEvent.click(within(popover).getByRole("button", { name: /^Enemy AI/ }));
+    fireEvent.change(within(popover).getByLabelText("Gold bonus for this enemy AI"), {
+      target: { value: "7" }
+    });
+    fireEvent.change(within(popover).getByLabelText("Valuables bonus for this enemy AI"), {
+      target: { value: "2" }
+    });
+    expect(fixture.get()[0].singlePlayer).toEqual({
+      role: "computer",
+      bonus: { gold: 7, buildingMaterials: 0, valuables: 2 }
+    });
+    expect(fixture.container.querySelector(".designerSoloStartBadge.computer")?.textContent).toMatch(/AI$/);
+  });
+
+  it("states that incomplete solo roles fall back and never alter multiplayer", () => {
+    const container = renderDesigner([
+      { ...towns[0], singlePlayer: { role: "human" } },
+      towns[1]
+    ]);
+    const popover = openTilePopover(container, 0);
+    expect(within(popover).getByText(/Mark exactly one Town as You and 1–3 Towns as Enemy AI/)).toBeTruthy();
+    expect(within(popover).getByText(/Ignored completely in multiplayer/)).toBeTruthy();
   });
 });
 
