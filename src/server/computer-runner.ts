@@ -368,7 +368,8 @@ export function isPacedComputerAction(
   stateAfter?: GameState,
 ): boolean {
   if (stateAfter) {
-    // Mid AI-only fight: keep bulk-resolving; never broadcast a combat frame.
+    // Mid genuinely AI-only fight: keep bulk-resolving. A neutral fight whose
+    // guards are assigned to a human is classified as human-involved here.
     if (stateAfter.combat && !combatHasHumanParticipant(stateAfter)) {
       return false;
     }
@@ -405,11 +406,11 @@ export function computerStepDelayMs(state: GameState): number {
 /**
  * Apply bulk non-paced computer work, then at most ONE paced (visible) action.
  *
- * Critical: walking onto a neutral guard opens combat. That fight is AI-only
- * for a computer hero, so this tick MUST keep resolving until the combat is
- * gone (ack'd) — never broadcast a mid-neutral-battle snapshot. Map movement
- * still stops after each MOVE_HERO so the human sees 1-by-1 steps. PvP combat
- * stops after each combat beat so the human watches the fight normally.
+ * Critical: walking onto a neutral guard normally opens an AI-only combat for
+ * a computer hero, so this tick keeps resolving until that fight is gone.
+ * PvP Neutral Control is the exception: when a human owns the guards, the fight
+ * remains visible and stops after each combat beat like normal PvP. Map movement
+ * still stops after each MOVE_HERO so the human sees 1-by-1 steps.
  */
 export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
   if (computerPlayerIds(state).length === 0) {
@@ -463,7 +464,8 @@ export function settleComputerVisibleStep(state: GameState): ComputerRunResult {
     current = peek.state;
     decisions.push(step);
 
-    // AI-only fight open: keep going (extend the cap) — never return mid-fight.
+    // Genuinely AI-only fight open: keep going (extend the cap). Human-controlled
+    // neutrals are intentionally excluded by combatHasHumanParticipant.
     if (current.combat && !combatHasHumanParticipant(current)) {
       bulkCap = Math.max(bulkCap, i + DEFAULT_COMPUTER_STEP_LIMIT);
       continue;
@@ -506,11 +508,10 @@ export function settleComputerWork(state: GameState): GameState {
  * Live room entry after a normal human action (not ADVANCE_COMPUTER):
  * - Setup: bulk-settle computers (draft is boring to watch).
  * - Human-involved PvP combat: one visible combat beat now; further beats via
- *   the auto timer (normal PvP pace).
- * - Map / AI-only work: DO NOTHING. The human must press ADVANCE_COMPUTER for
- *   each map beat so the computer never finishes its turn during first-player
- *   dice, END_TURN, or any other human action. Policy/AI logic is unchanged —
- *   only WHEN a map step is applied is gated.
+ *   the server timer (normal PvP pace).
+ * - Map / AI-only work: leave the committed human frame untouched. The room
+ *   transport then starts its authoritative paced pump, making the first AI
+ *   movement a separate broadcast instead of hiding it inside END_TURN.
  */
 export function settleComputerForLiveAction(state: GameState): GameState {
   if (computerPlayerIds(state).length === 0) {
@@ -523,13 +524,14 @@ export function settleComputerForLiveAction(state: GameState): GameState {
   if (computerAutoPumpOwed(state)) {
     return settleComputerVisibleStep(state).state;
   }
-  // Map: wait for ADVANCE_COMPUTER. Leaving state untouched is intentional.
+  // Map: the server pump starts after this action commits. Keeping the state
+  // untouched here lets clients render the human-to-computer turn hand-off.
   return state;
 }
 
 /**
  * True when a computer seat still owns a required decision (map or combat).
- * Includes human-gated map work — NOT the same as auto-timer owed.
+ * Includes map work, AI-only encounters and human-involved combat.
  */
 export function computerWorkPending(state: GameState): boolean {
   return (
@@ -540,38 +542,34 @@ export function computerWorkPending(state: GameState): boolean {
 }
 
 /**
- * Map / AI-only: the human must press ADVANCE_COMPUTER before the next beat.
- * False during human-involved PvP (auto-pumped) and when no computer work is
- * pending. Used by legal-actions + the client Next button.
+ * Manual recovery affordance for map / AI-only work. ADVANCE_COMPUTER remains
+ * legal so a delayed client watchdog can revive a failed pump, while normal
+ * live play is driven by computerPumpOwed on the server.
  */
 export function computerNeedsHumanAdvance(state: GameState): boolean {
   return computerWorkPending(state) && !combatHasHumanParticipant(state);
 }
 
 /**
- * Auto timer / alarm pump — ONLY for human-involved PvP combat. Map turns
- * never auto-fire (that was the "computer already finished their move during
- * first-player dice" bug). PartyKit alarms and the in-process setTimeout both
- * key off this; map freezes are impossible because ADVANCE_COMPUTER is always
- * legal for the human while computerNeedsHumanAdvance is true.
+ * Whether a pending computer decision is part of human-involved PvP. Kept as
+ * a context classifier for tests and UI; it is not the transport pump gate.
  */
 export function computerAutoPumpOwed(state: GameState): boolean {
   return computerWorkPending(state) && combatHasHumanParticipant(state);
 }
 
 /**
- * @deprecated Prefer computerAutoPumpOwed (auto timer) or computerNeedsHumanAdvance
- * (map Next). Kept as the auto-timer predicate so existing call sites keep the
- * same name without re-arming map pumps.
+ * Authoritative server timer/alarm predicate. Every pending single-player
+ * computer decision is pumped: map movement, AI-only encounters and PvP.
+ * ADVANCE_COMPUTER is only a recovery path, never the primary clock.
  */
 export function computerPumpOwed(state: GameState): boolean {
-  return computerAutoPumpOwed(state);
+  return computerWorkPending(state);
 }
 
 /**
- * After a validated ADVANCE_COMPUTER action: run exactly one visible step
- * (map MOVE_HERO / discover / …, or bulk AI-only combat if a walk opened one).
- * Never schedules more work — the human presses again for the next beat.
+ * After a validated recovery ADVANCE_COMPUTER action, run exactly one visible
+ * step. If work remains, the room transport re-arms its normal server pump.
  */
 export function applyHumanComputerAdvance(state: GameState): ComputerRunResult {
   if (!computerNeedsHumanAdvance(state)) {

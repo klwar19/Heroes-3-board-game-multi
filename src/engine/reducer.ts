@@ -321,6 +321,7 @@ import {
   syncAbilitySuppression,
   unitDealsElementalDamage,
   unitHasUnlimitedRetaliationEffect,
+  unitIgnoresCardNonDamage,
   unitImmuneToParalysis
 } from "./active-effects";
 import {
@@ -2868,13 +2869,21 @@ function applyAreaPickAdjacentPlay(
  * holding one is unchanged; the tokens render straight from unit state, and the
  * card-played event already records the play.
  */
-function grantDefenseTokensToAll(state: GameState, playerId: PlayerId): void {
+function grantDefenseTokensToAll(
+  state: GameState,
+  playerId: PlayerId,
+  sourceCard?: CardDefinition
+): void {
   const combat = state.combat;
   if (!combat) {
     return;
   }
   for (const unit of Object.values(combat.units)) {
-    if (unit.controllerId === playerId && isUnitAlive(unit)) {
+    if (
+      unit.controllerId === playerId &&
+      isUnitAlive(unit) &&
+      !unitIgnoresCardNonDamage(unit, sourceCard)
+    ) {
       unit.defenseToken = true;
     }
   }
@@ -10329,6 +10338,11 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
   if (stackItem.action.type === "CAST_SPELL") {
     const card = cards[stackItem.action.cardId];
+    const targetedUnit =
+      state.combat && stackItem.action.target.type === "unit"
+        ? state.combat.units[stackItem.action.target.unitId]
+        : undefined;
+    const targetIgnoresNonDamage = Boolean(targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card));
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
@@ -10423,7 +10437,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (card?.effect.type === "HEAL_DAMAGE" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "HEAL_DAMAGE" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target) {
         const power = getCurrentSpellPower(state, stackItem, cards);
@@ -10441,7 +10460,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (card?.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const amount = getSpellDamageAmount(card, power);
       const source = {
@@ -10630,7 +10654,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // the cast does nothing — mirrors Anti-Magic's resolution-time gate. A unit
     // that cannot gain Paralysis (the printed ignore-paralysis ability, or a
     // Pendant of Second Sight immunity) shrugs the token off all the same.
-    if (card?.effect.type === "PLACE_PARALYSIS" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "PLACE_PARALYSIS" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
@@ -10700,7 +10729,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const power = getCurrentSpellPower(state, stackItem, cards);
         const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
         const target = state.combat.units[stackItem.action.target.unitId];
-        if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+        if (
+          target &&
+          !unitIgnoresCardNonDamage(target, card) &&
+          maxGrade &&
+          gradeRankOfUnit(target) <= gradeRank(maxGrade)
+        ) {
           removeEffectsFromTarget(state, dispelSource, stackItem.action.target, "any-removable");
           clearBattlefieldTokensAt(state, state.combat, target.position);
         }
@@ -10764,7 +10798,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // obstacles and distance. Grade-gated like Anti-Magic; above the unlocked
     // grade the cast does nothing. The destination is picked in a follow-up
     // (the combat-teleport choice), resolved by resolveTeleportChoice.
-    if (card?.effect.type === "TELEPORT_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "TELEPORT_UNIT" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
@@ -10781,7 +10820,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // hand, a notice explains, and the caster goes back to the battle screen
     // (nothing lost). On success the destination is picked in a follow-up (the
     // combat-clone OPTION_CHOICE), resolved by resolveCloneChoice.
-    if (card?.effect.type === "CLONE_UNIT" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CLONE_UNIT" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
@@ -10849,7 +10893,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
     // the sacrifice is picked in a follow-up ABILITY_TARGET_CHOICE. Grade-gated
     // (0/2/4 → bronze/silver/gold) on the HEAL target; above the unlocked grade,
     // or with nothing to transfer / no other unit to spend, the cast does nothing.
-    if (card?.effect.type === "SACRIFICE_TRANSFER" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "SACRIFICE_TRANSFER" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const healTarget = state.combat.units[stackItem.action.target.unitId];
@@ -10893,7 +10942,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (card?.effect.type === "CLEAR_RETALIATION" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "CLEAR_RETALIATION" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
@@ -10908,7 +10962,12 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       }
     }
 
-    if (card?.effect.type === "ADD_UNIT_MAX_HEALTH" && state.combat && stackItem.action.target.type === "unit") {
+    if (
+      card?.effect.type === "ADD_UNIT_MAX_HEALTH" &&
+      state.combat &&
+      stackItem.action.target.type === "unit" &&
+      !targetIgnoresNonDamage
+    ) {
       const target = state.combat.units[stackItem.action.target.unitId];
       if (target && target.controllerId === stackItem.action.playerId) {
         applyUnitMaxHealthBonus(
@@ -14855,8 +14914,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   const negatedByDwarf =
     card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name, action.playerId);
   const target = negatedByDwarf ? undefined : action.target?.type === "unit" ? action.target : undefined;
+  const targetUnit = target && state.combat ? state.combat.units[target.unitId] : undefined;
+  const nonDamageTarget = targetUnit && unitIgnoresCardNonDamage(targetUnit, card) ? undefined : target;
 
-  if (effect.type === "HEAL_DAMAGE" && target) {
+  if (effect.type === "HEAL_DAMAGE" && nonDamageTarget) {
     healUnitDamage(
       state,
       {
@@ -14864,13 +14925,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         cardId: card.id,
         controllerId: action.playerId
       },
-      target,
+      nonDamageTarget,
       getEffectDamageAmount(effect, card.power ?? 0)
     );
     // Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — the
     // chosen unit also loses its Paralysis token.
     if (effect.removeParalysis && state.combat) {
-      const unit = state.combat.units[target.unitId];
+      const unit = state.combat.units[nonDamageTarget.unitId];
       if (unit && hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
@@ -14883,17 +14944,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
-  if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && target) {
+  if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && nonDamageTarget) {
     const source = {
       type: "card" as const,
       cardId: card.id,
       controllerId: action.playerId
     };
-    healUnitDamage(state, source, target, getEffectDamageAmount(effect, card.power ?? 0));
-    removeEffectsFromTarget(state, source, target, effect.removePolarity);
+    healUnitDamage(state, source, nonDamageTarget, getEffectDamageAmount(effect, card.power ?? 0));
+    removeEffectsFromTarget(state, source, nonDamageTarget, effect.removePolarity);
     // Cure: "Remove any effect or paralysis …" — also clears the Paralysis token.
     if (effect.removeParalysis && state.combat) {
-      const unit = state.combat.units[target.unitId];
+      const unit = state.combat.units[nonDamageTarget.unitId];
       if (unit && hasToken(unit, "paralysis")) {
         removeToken(state, unit, "paralysis", "dispelled");
       }
@@ -14910,19 +14971,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
     // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
     // selected unit — it spends its Retaliation for the round.
-    if (effect.placeBlackCube && state.combat && target?.type === "unit") {
-      const cubed = state.combat.units[target.unitId];
+    if (effect.placeBlackCube && state.combat && nonDamageTarget?.type === "unit") {
+      const cubed = state.combat.units[nonDamageTarget.unitId];
       if (cubed && cubed.controllerId === action.playerId) {
         cubed.retaliatedThisRound = true;
       }
     }
   }
 
-  if (effect.type === "REMOVE_ACTIVE_EFFECT" && target) {
+  if (effect.type === "REMOVE_ACTIVE_EFFECT" && nonDamageTarget) {
     removeOneEffectFromTarget(
       state,
       { type: "card", cardId: card.id, controllerId: action.playerId },
-      target
+      nonDamageTarget
     );
   }
 
@@ -14958,9 +15019,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // an Azure unit — above the gate — is left untouched, matching "except
   // Azure"). The Blind Spell shares the PLACE_PARALYSIS effect but resolves via
   // the spell stack, so this branch only fires for directly-played cards.
-  if (effect.type === "PLACE_PARALYSIS" && state.combat && target) {
+  if (effect.type === "PLACE_PARALYSIS" && state.combat && nonDamageTarget) {
     const maxGrade = gradeAtPower(effect.gradeByPower, card.power ?? 0);
-    const unit = state.combat.units[target.unitId];
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && maxGrade && gradeRankOfUnit(unit) <= gradeRank(maxGrade)) {
       placeCombatToken(state, unit, "paralysis", 0, card.name);
     }
@@ -14969,8 +15030,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Casmetra's Sorceresses VI (option A): place a Weakness token (−N attack for
   // `rounds` rounds) on the chosen unit. Not tier-gated — reaches any unit, like
   // the Cove Sorceresses' own token.
-  if (effect.type === "PLACE_WEAKNESS_TOKEN" && state.combat && target) {
-    const unit = state.combat.units[target.unitId];
+  if (effect.type === "PLACE_WEAKNESS_TOKEN" && state.combat && nonDamageTarget) {
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit) {
       placeCombatToken(state, unit, "weakness", effect.amount, card.name, effect.rounds);
     }
@@ -15314,8 +15375,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Tarnum (Dungeon)'s Dragons VI (option A): toggle the selected Dragons unit's
   // Black cube — remove it if the unit has already spent its Retaliation this
   // round (so it may retaliate again), otherwise place one (so it cannot).
-  if (effect.type === "TOGGLE_RETALIATION_MARKER" && state.combat && target?.type === "unit") {
-    const unit = state.combat.units[target.unitId];
+  if (effect.type === "TOGGLE_RETALIATION_MARKER" && state.combat && nonDamageTarget?.type === "unit") {
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && isUnitAlive(unit)) {
       const removing = unit.retaliatedThisRound;
       unit.retaliatedThisRound = !unit.retaliatedThisRound;
@@ -15333,7 +15394,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Merist's Stone Skin IV: "All your units gain a Defense token." Every living
   // unit the caster controls gets the Defend shield for the rest of the combat.
   if (effect.type === "GRANT_DEFENSE_TOKENS" && state.combat) {
-    grantDefenseTokensToAll(state, action.playerId);
+    grantDefenseTokensToAll(state, action.playerId, card);
   }
 
   // Merist's Stone Skin VI: place a Defense token on all your units AND, for the
@@ -15341,7 +15402,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Defense roll (the player-scoped DEFENSE_TOKEN_ON_ZERO effect created via
   // holdOngoingCardIfEffectCreated, like any combat-duration aura).
   if (effect.type === "STONE_SKIN_AURA" && state.combat) {
-    grantDefenseTokensToAll(state, action.playerId);
+    grantDefenseTokensToAll(state, action.playerId, card);
     createActiveEffect(
       state,
       {
@@ -15925,14 +15986,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DISCOVER_TILE_CARD") {
     const hero = getMainHero(state, action.playerId);
     if (state.adventure && hero?.spaceId) {
-      // Tournament rule (Observatory / Speculum re-rotate): the Speculum may ALSO
-      // re-rotate one nearby placed tile. Prepend the offer so it resolves BEFORE
-      // the discover step (which stays last, like the Observatory location visit).
-      const steps: VisitStep[] = [];
-      if (state.adventure.tournamentObservatoryRerotate) {
-        steps.push({ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: hero.spaceId });
-      }
-      steps.push({ type: "DISCOVER_ADJACENT_TILE" });
+      // Tournament changes the Redwood Observatory location, not the Speculum
+      // artifact: Speculum retains its printed adjacent-tile discovery.
+      const steps: VisitStep[] = [{ type: "DISCOVER_ADJACENT_TILE" }];
       state.adventure.rewardQueue.unshift({
         playerId: action.playerId,
         kind: "visit-steps",
@@ -15969,8 +16025,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     );
   }
 
-  if (effect.type === "ADD_UNIT_MAX_HEALTH" && target && state.combat) {
-    const unit = state.combat.units[target.unitId];
+  if (effect.type === "ADD_UNIT_MAX_HEALTH" && nonDamageTarget && state.combat) {
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && unit.controllerId === action.playerId) {
       applyUnitMaxHealthBonus(
         state,
@@ -15987,8 +16043,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // destination empty space is picked in a follow-up (the "combat-step"
   // OPTION_CHOICE), resolved by resolveUnitStepChoice. Only the controller's
   // own units may be moved; a unit hemmed in with no empty neighbour is a no-op.
-  if (effect.type === "MOVE_UNIT_ADJACENT" && target && state.combat) {
-    const unit = state.combat.units[target.unitId];
+  if (effect.type === "MOVE_UNIT_ADJACENT" && nonDamageTarget && state.combat) {
+    const unit = state.combat.units[nonDamageTarget.unitId];
     if (unit && unit.controllerId === action.playerId) {
       openUnitStepChoice(state, action.playerId, unit);
     }

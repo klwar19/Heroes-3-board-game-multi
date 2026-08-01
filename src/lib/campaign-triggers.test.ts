@@ -3,6 +3,7 @@ import { getCampaign, getCampaignChapter } from "@/data/story/campaigns";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { campaignSceneToFire, campaignSetupActions, type CampaignStateRead } from "./campaign-triggers";
 import type { CampaignRoomBinding } from "./campaign-progress";
+import { DEFAULT_CAMPAIGN_RULE_OPTIONS } from "./campaign-progress";
 
 const BINDING: CampaignRoomBinding = { campaignId: "jianghu", chapterId: "ch1" };
 const CH1 = getCampaign("jianghu")!.chapters[0];
@@ -106,6 +107,25 @@ describe("campaignSetupActions", () => {
     const [setOptions] = campaignSetupActions(chapter, "p1");
     if (setOptions.type !== "SET_GAME_OPTIONS") throw new Error("expected SET_GAME_OPTIONS");
     expect("difficulty" in setOptions.options).toBe(false);
+  });
+
+  it("injects only the allowed optional systems without replacing the authored map", () => {
+    const chapter = getCampaignChapter("erathia", "homecoming")!;
+    const rules = {
+      ...DEFAULT_CAMPAIGN_RULE_OPTIONS,
+      events: true,
+      moraleCards: true,
+      creatureBanks: false,
+      unitExperience: true,
+    };
+    const [setOptions] = campaignSetupActions(chapter, "p1", "rare-resources", rules);
+    if (setOptions.type !== "SET_GAME_OPTIONS") throw new Error("expected SET_GAME_OPTIONS");
+    expect(setOptions.options).toMatchObject(rules);
+    expect(setOptions.options.customMap).toEqual(chapter.scenarioMap?.tiles);
+    expect(setOptions.options.customMapName).toBe(chapter.scenarioMap?.name);
+    expect(setOptions.options.customMapPreset?.customWinConditions).toEqual(
+      chapter.scenarioMap?.preset.customWinConditions,
+    );
   });
 
   it("a LOCKED chapter (no setup) injects nothing (CONTROL)", () => {

@@ -125,7 +125,7 @@ import {
   type ComputerBattleCue,
 } from "@/components/table/computer-battle-report";
 import { OpponentTurnOverlay } from "@/components/table/opponent-turn-overlay";
-import { usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
+import { computerAutoAdvanceEnabled, usePacedComputerAdvance } from "@/components/table/computer-auto-advance";
 import { TableErrorBoundary } from "@/components/error-boundary";
 import {
   ADVENTURE_FEED_CUES,
@@ -600,24 +600,6 @@ const ABILITY_DICE_AFTER_STRIKE_MS = ATTACK_IMPACT_MS + 450;
 
 /** Deliberate single-player auto pace: visible, but without a click per AI beat. */
 const COMPUTER_AUTO_RECAP_MS = 700;
-const COMPUTER_AUTO_MATCH_STORAGE_KEY = "homm3bg.singlePlayerAutoMatch";
-
-function storedComputerAutoMatchSeed(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.sessionStorage.getItem(COMPUTER_AUTO_MATCH_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function storeComputerAutoMatchSeed(seed: string): void {
-  try {
-    window.sessionStorage.setItem(COMPUTER_AUTO_MATCH_STORAGE_KEY, seed);
-  } catch {
-    // Auto mode still works in-memory when session storage is unavailable.
-  }
-}
 
 /**
  * The dice a Spell rolls to size its own effect (Inferno): shown in the same
@@ -656,10 +638,6 @@ type HandMode = null | "mulligan" | "opening-mulligan" | "morale-redraw" | "cove
 
 export default function Home() {
   const [state, setState] = useState<GameState | null>(null);
-  /** Match seed whose computer confirmations were skipped in this tab. */
-  const [autoAdvanceMatchSeed, setAutoAdvanceMatchSeed] = useState<string | null>(
-    storedComputerAutoMatchSeed,
-  );
   /** Latest ingested state — used as `prev` for ladder dual-claim detection. */
   const stateRef = useRef<GameState | null>(null);
   const [viewerPlayerId, setViewerPlayerId] = useState<PlayerId>("p1");
@@ -947,9 +925,10 @@ export default function Home() {
   // hero walks are replayed for the human slowly, cell by cell, one hero at a
   // time. The pawns render at these override cells until the walk finishes.
   const computerReplay = useComputerMoveReplay();
-  const autoAdvanceEnabled = Boolean(
-    state?.sessionMode === "single-player" && autoAdvanceMatchSeed === state.seed,
-  );
+  // A single-player computer is a real opponent, not a click-to-continue slide
+  // show. The server owns its paced turns; this flag also enables the delayed
+  // browser recovery watchdog and automatic presentation playback.
+  const autoAdvanceEnabled = computerAutoAdvanceEnabled(state?.sessionMode);
   const startComputerReplayRef = useRef(computerReplay.start);
   startComputerReplayRef.current = computerReplay.start;
   const cancelComputerReplayRef = useRef(computerReplay.cancel);
@@ -1202,25 +1181,41 @@ export default function Home() {
     if (!chapter) {
       return;
     }
-    const actions = campaignSetupActions(chapter, seat, campaignBinding.bonusId);
+    const actions = campaignSetupActions(
+      chapter,
+      seat,
+      campaignBinding.bonusId,
+      campaignBinding.rules,
+    );
     if (actions.length === 0) {
       return;
     }
     appliedCampaignSetupRef.current = true;
-    markCampaignSetupApplied(roomId);
-    // Sequential so options land before (or alongside) the faction pick; a
-    // failed submit degrades to the plain setup screen (the player picks by hand).
+    // Sequential so options and fixed seats land before the faction pick. Only
+    // mark the launch complete after START_ADVENTURE succeeds: a rejected setup
+    // action must never strand a campaign room behind a permanently-set marker.
     void (async () => {
       for (const action of actions) {
-        await connection.submitAction(action).catch(() => {});
+        const result = await connection.submitAction(action).catch(() => null);
+        if (!result || result.errors.length > 0) {
+          appliedCampaignSetupRef.current = false;
+          setErrors([result?.errors.map((entry) => entry.message).join("; ") || "Campaign setup could not be applied. Retrying…"]);
+          return;
+        }
       }
-      // Authored campaign scenarios are deliberately configuration-free: the
-      // briefing already showed every fixed rule, hero, opponent and bonus.
-      // Once those deterministic choices land, start immediately so the first
-      // thing the player sees is the chapter's visual-novel scene, then its map.
+      // The briefing already collected the allowed optional-system settings.
+      // Map, objective, factions and opponents remain authored and locked, so
+      // once those deterministic choices land the chapter starts immediately.
       if (chapter.scenarioMap) {
-        await connection.submitAction({ type: "START_ADVENTURE", playerId: seat }).catch(() => {});
+        const started = await connection.submitAction({ type: "START_ADVENTURE", playerId: seat }).catch(() => null);
+        if (!started || started.errors.length > 0) {
+          appliedCampaignSetupRef.current = false;
+          setErrors([started?.errors.map((entry) => entry.message).join("; ") || "The campaign chapter could not start. Retrying…"]);
+          return;
+        }
       }
+      markCampaignSetupApplied(roomId);
+      setErrors([]);
     })();
   }, [state, roomId, campaignBinding, clientId]);
 
@@ -1595,7 +1590,8 @@ export default function Home() {
               results: event.results,
               resourceRolls: event.resourceRolls,
               treasureRolls: event.treasureRolls,
-              attackRolls: event.attackRolls
+              attackRolls: event.attackRolls,
+              origin: event.origin
             }) satisfies MapDiceCue
         );
         setMapDice((current) => {
@@ -4751,8 +4747,6 @@ export default function Home() {
     if (current?.sessionMode !== "single-player") {
       return;
     }
-    storeComputerAutoMatchSeed(current.seed);
-    setAutoAdvanceMatchSeed(current.seed);
     cancelComputerReplayRef.current();
     setOpponentTurnSummary(null);
   }, []);
@@ -4788,8 +4782,9 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [autoAdvanceEnabled, computerReplay.active, computerReplay.finished, computerReplay.remainingSteps]);
 
-  // The server still applies exactly one authoritative AI decision per action.
-  // The hook only submits the already-legal advance when visual pacing is idle.
+  // The server pump normally changes roomVersion before this fires. If the room
+  // remains on the same legal ADVANCE_COMPUTER frame for five seconds, the hook
+  // submits one recovery beat so an alarm/timer failure cannot freeze a campaign.
   usePacedComputerAdvance({
     enabled: autoAdvanceEnabled,
     roomKey: `${roomId ?? ""}:${state?.seed ?? ""}`,
@@ -5136,26 +5131,38 @@ export default function Home() {
           Map Designer), so they are not duplicated here. */}
       <div className="menuRow gameControlsRow" aria-label="Game controls">
         <div className="menuGroupLabel">Game</div>
-        <button
-          className="commandButton"
-          onClick={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
-          title={
-            adventureMode
-              ? "Restart this table from a fresh map setup"
-              : "Restart this arena with a fresh battle test"
-          }
-          type="button"
-        >
-          {adventureMode ? (
-            <>
-              <MapIcon aria-hidden="true" size={13} /> New adventure
-            </>
-          ) : (
-            <>
-              <Swords aria-hidden="true" size={13} /> New battle test
-            </>
-          )}
-        </button>
+        {campaignBinding ? (
+          <button
+            className="commandButton primary campaignReturnButton"
+            onClick={() => router.push("/story")}
+            title="Return to the campaign map to replay or continue to the next unlocked chapter"
+            type="button"
+          >
+            <MapIcon aria-hidden="true" size={13} />
+            {state.phase === "game-over" ? "Continue campaign" : "Campaign map"}
+          </button>
+        ) : (
+          <button
+            className="commandButton"
+            onClick={() => requestNewGame(adventureMode ? "adventure" : "combat-sandbox")}
+            title={
+              adventureMode
+                ? "Restart this table from a fresh map setup"
+                : "Restart this arena with a fresh battle test"
+            }
+            type="button"
+          >
+            {adventureMode ? (
+              <>
+                <MapIcon aria-hidden="true" size={13} /> New adventure
+              </>
+            ) : (
+              <>
+                <Swords aria-hidden="true" size={13} /> New battle test
+              </>
+            )}
+          </button>
+        )}
         {singlePlayerSaveSection}
       </div>
     </div>
@@ -5785,10 +5792,9 @@ export default function Home() {
                   </div>
                 ) : null}
                 {/*
-                  Single-player map: manual pacing asks for Next while a computer
-                  owns the decision. Skip confirmations switches only this match
-                  to the paced auto-submit hook above. Hidden during first-player
-                  dice so the ceremony finishes before any step is offered.
+                  Legacy recovery overlay. New single-player rooms always use the
+                  server-owned paced pump, so this only renders for a non-auto
+                  session restored from an older client preference.
                 */}
                 {(() => {
                   const advanceLegal = legalActions.find(

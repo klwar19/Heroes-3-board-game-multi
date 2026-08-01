@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ArrowLeft, Bot, ChevronRight, Crown, Shield, Swords, Users } from "lucide-react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
@@ -37,19 +38,35 @@ export default function SinglePlayerPage() {
 
   return (
     <MenuShell backdrop="lobby-backdrop" title="Single Player">
-      <p className="singlePlayerLead">Choose a free battle against computer opponents, or enter a fixed story campaign.</p>
+      <div className="singlePlayerHeroCopy">
+        <span>CHOOSE YOUR WAR</span>
+        <p className="singlePlayerLead">Fight a custom skirmish or command Queen Catherine through six authored campaign chapters.</p>
+      </div>
       <nav className="menuNav singlePlayerModeNav" aria-label="Single player">
-        <button className="menuNavButton" onClick={() => setComputerOpen(true)} type="button">
+        <button className="singlePlayerModeCard skirmish" onClick={() => setComputerOpen(true)} type="button">
           <SinglePlayerNavArt path="/assets/ui/single-player/vs-computer.webp" />
-          <span className="menuNavText"><span className="menuNavLabel">VS Computer</span><small>Create a private match and choose 1–3 opponents</small></span>
+          <span className="singlePlayerModeVeil" />
+          <span className="singlePlayerModeIcon"><Swords aria-hidden size={28} /></span>
+          <span className="singlePlayerModeCopy">
+            <small><Bot aria-hidden size={13} /> CUSTOM MATCH</small>
+            <strong>VS Computer</strong>
+            <span>Build a private battlefield against one to three active AI commanders.</span>
+            <b>Configure skirmish <ChevronRight aria-hidden size={16} /></b>
+          </span>
         </button>
-        <Link className="menuNavButton" href="/story">
-          <SinglePlayerNavArt path="/assets/ui/single-player/campaign.webp" />
-          <span className="menuNavText"><span className="menuNavLabel">Campaign</span><small>Restoration of Erathia · authored maps and story</small></span>
+        <Link className="singlePlayerModeCard campaign" href="/story">
+          <SinglePlayerNavArt path="/assets/story/erathia/campaign-map-rebuilt.webp" />
+          <span className="singlePlayerModeVeil" />
+          <span className="singlePlayerModeIcon"><Crown aria-hidden size={28} /></span>
+          <span className="singlePlayerModeCopy">
+            <small><Shield aria-hidden size={13} /> SIX-CHAPTER WAR</small>
+            <strong>Campaign</strong>
+            <span>Restore Erathia across new fixed maps, briefings, unlocks, and escalating objectives.</span>
+            <b>Open campaign map <ChevronRight aria-hidden size={16} /></b>
+          </span>
         </Link>
-        <Link className="menuNavButton" href="/menu">
-          <span className="singlePlayerBackSigil" aria-hidden>←</span>
-          <span className="menuNavText"><span className="menuNavLabel">Back</span><small>Return to the main menu</small></span>
+        <Link className="singlePlayerBackButton" href="/menu">
+          <ArrowLeft aria-hidden size={17} /> Back to main menu
         </Link>
       </nav>
 
@@ -58,7 +75,7 @@ export default function SinglePlayerPage() {
           <section aria-label="VS Computer setup" aria-modal="true" className="singlePlayerDialog" role="dialog">
             <button aria-label="Close VS Computer setup" className="campaignBriefingClose" onClick={() => setComputerOpen(false)} type="button">×</button>
             <div className="singlePlayerDialogHead">
-              <SinglePlayerNavArt path="/assets/ui/single-player/vs-computer.webp" />
+              <span className="singlePlayerDialogIcon"><Users aria-hidden size={30} /></span>
               <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>You can change the opponent count, factions, heroes and map again in Game Settings before starting.</p></div>
             </div>
             <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">

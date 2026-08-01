@@ -26,6 +26,7 @@ import {
   playerHasPlaceableFarTile,
   reinforcementDiscountCostFor,
   reinforceCostFor,
+  secondaryHeroPlacementFields,
   getActiveAstrologersCard,
   explorersHandStepActive,
   getMainHero,
@@ -8934,6 +8935,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     playerHasResources(player, { gold: 10 })
   ) {
     const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+    const placements = secondaryHeroPlacementFields(state, playerId);
     const mainHeroDefId = Object.values(state.heroes).find(
       (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
     )?.heroDefId;
@@ -8941,10 +8943,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       if (heroDefId === mainHeroDefId) {
         continue;
       }
-      actions.push({
-        label: `Hire Secondary Hero as ${coreHeroDefinitions[heroDefId]?.name ?? heroDefId} (10 gold)`,
-        action: { type: "HIRE_SECONDARY_HERO", playerId, heroDefId }
-      });
+      for (const placement of placements) {
+        actions.push({
+          label: `Hire ${coreHeroDefinitions[heroDefId]?.name ?? heroDefId} at ${placement.label} (10 gold)`,
+          action: { type: "HIRE_SECONDARY_HERO", playerId, heroDefId, fieldId: placement.fieldId }
+        });
+      }
     }
   }
 }

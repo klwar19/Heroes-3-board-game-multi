@@ -3673,6 +3673,15 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   color: var(--text);
 }
 
+.mapDiceStepLabel {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
 .diceStage header strong {
   font-size: 15px;
 }
@@ -17275,6 +17284,118 @@ img.cardBack {
 .townActions .commandButton {
   justify-content: flex-start;
   text-align: left;
+}
+
+.hireHeroHint {
+  color: #c7b187;
+  line-height: 1.35;
+}
+
+.hireHeroRoster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hireHeroChoice {
+  gap: 7px;
+  opacity: 0.76;
+}
+
+.hireHeroChoice.selected {
+  border-color: #e7c369;
+  box-shadow: 0 0 0 1px rgba(231, 195, 105, 0.35), 0 0 12px rgba(231, 195, 105, 0.18);
+  opacity: 1;
+}
+
+.hireLocationGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
+  gap: 8px;
+}
+
+.hireLocationCard {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid rgba(214, 178, 94, 0.52);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(42, 31, 20, 0.96), rgba(18, 17, 16, 0.96));
+  color: #f2e3be;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hireLocationCard:hover,
+.hireLocationCard:focus-visible {
+  border-color: #f0cb70;
+  background: linear-gradient(145deg, rgba(66, 47, 25, 0.98), rgba(25, 22, 18, 0.98));
+  outline: none;
+}
+
+.hireLocationThumb {
+  position: relative;
+  display: block;
+  width: 72px;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(232, 199, 116, 0.45);
+  border-radius: 6px;
+  background: #17201b;
+}
+
+.hireLocationThumb > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hireLocationFallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  background: radial-gradient(circle at 50% 38%, #4d6448, #1c2c24 68%, #101712);
+  color: #e4cf93;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.hireLocationMarker {
+  position: absolute;
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 2px solid #fff2bd;
+  border-radius: 50%;
+  background: #a8211d;
+  color: white;
+  filter: drop-shadow(0 2px 3px #000);
+  transform: translate(-50%, -50%);
+}
+
+.hireLocationText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hireLocationText strong,
+.hireLocationText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hireLocationText small {
+  color: #bba77c;
+  white-space: nowrap;
 }
 
 /* The "Effect ▾" / "Use ▾" button shown on every built special building. */
@@ -30941,6 +31062,130 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   min-height: 90px;
 }
 
+.singlePlayerHeroCopy {
+  margin: -8px 0 18px;
+  text-align: center;
+}
+.singlePlayerHeroCopy > span {
+  color: #cda75d;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .26em;
+}
+.singlePlayerModeNav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  width: min(820px, 88vw);
+}
+.singlePlayerModeCard {
+  position: relative;
+  min-height: 310px;
+  overflow: hidden;
+  border: 1px solid rgb(223 189 112 / 48%);
+  border-radius: 14px;
+  background: #11151a;
+  color: #f8edd0;
+  box-shadow: inset 0 0 0 1px rgb(255 244 207 / 8%), 0 18px 42px rgb(0 0 0 / 50%);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  isolation: isolate;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.singlePlayerModeCard:hover,
+.singlePlayerModeCard:focus-visible {
+  transform: translateY(-4px);
+  border-color: #f0ce78;
+  box-shadow: inset 0 0 0 1px rgb(255 244 207 / 15%), 0 24px 54px rgb(0 0 0 / 64%), 0 0 25px rgb(221 175 77 / 15%);
+  outline: none;
+}
+.singlePlayerModeCard > .singlePlayerNavArt {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  object-fit: cover;
+  box-shadow: none;
+  filter: saturate(.82) contrast(1.08);
+  transition: transform 550ms ease, filter 250ms ease;
+}
+.singlePlayerModeCard:hover > .singlePlayerNavArt { transform: scale(1.045); filter: saturate(1) contrast(1.05); }
+.singlePlayerModeVeil {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(6 9 12 / 10%) 0 24%, rgb(8 10 13 / 86%) 66%, #080a0d 100%), linear-gradient(90deg, rgb(7 9 12 / 48%), transparent 70%);
+}
+.singlePlayerModeCard.campaign .singlePlayerModeVeil {
+  background: linear-gradient(180deg, rgb(6 9 12 / 5%) 0 26%, rgb(8 10 13 / 88%) 68%, #080a0d 100%), linear-gradient(90deg, rgb(56 28 6 / 28%), transparent 70%);
+}
+.singlePlayerModeIcon,
+.singlePlayerDialogIcon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid #e4c36e;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgb(45 35 20 / 94%), rgb(15 18 23 / 94%));
+  color: #f2d681;
+  box-shadow: inset 0 0 0 1px rgb(255 245 207 / 12%), 0 8px 20px rgb(0 0 0 / 50%);
+}
+.singlePlayerModeIcon { position: absolute; top: 18px; left: 18px; }
+.singlePlayerModeCopy {
+  position: absolute;
+  right: 20px;
+  bottom: 19px;
+  left: 20px;
+  display: grid;
+  gap: 7px;
+}
+.singlePlayerModeCopy small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #d6b765;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .17em;
+}
+.singlePlayerModeCopy strong { color: #fff1c4; font: 750 30px/1.05 Georgia, serif; text-shadow: 0 3px 10px #000; }
+.singlePlayerModeCopy > span { min-height: 38px; color: #c9c4b7; font-size: 12px; line-height: 1.45; }
+.singlePlayerModeCopy b {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+  padding-top: 10px;
+  border-top: 1px solid rgb(229 198 121 / 22%);
+  color: #f0d48a;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.singlePlayerBackButton {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  justify-self: center;
+  padding: 9px 16px;
+  border: 1px solid rgb(201 169 96 / 30%);
+  border-radius: 999px;
+  background: rgb(10 13 17 / 56%);
+  color: #cfc5ad;
+  font-size: 11px;
+  letter-spacing: .06em;
+  text-decoration: none;
+}
+.singlePlayerBackButton:hover { border-color: #c9a960; color: #f4dfaa; }
+.singlePlayerDialogIcon { flex: 0 0 62px; width: 62px; height: 62px; }
+
 .singlePlayerNavArt {
   width: 72px;
   height: 72px;
@@ -31049,10 +31294,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   width: 100%;
   min-height: calc(100vh - 112px);
   overflow: hidden;
-  border: 4px ridge #a77f35;
-  border-radius: 12px;
+  border: 1px solid #9f7f43;
+  border-radius: 16px;
   background: #17120a;
-  box-shadow: 0 25px 75px #000, inset 0 0 55px #000;
+  box-shadow: 0 25px 75px #000, inset 0 0 0 1px rgb(255 231 169 / 14%), inset 0 0 55px #000;
 }
 .campaignMapArt { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .campaignMapShade { position: absolute; inset: 0; background: radial-gradient(circle at 50% 45%, transparent 40%, rgb(0 0 0 / 38%) 100%), linear-gradient(90deg, transparent 58%, rgb(6 7 8 / 58%) 100%); pointer-events: none; }
@@ -31070,10 +31315,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   cursor: pointer;
   filter: drop-shadow(0 4px 5px rgb(0 0 0 / 75%));
 }
-.campaignMapNodeSigil { display: grid; place-items: center; width: 48px; height: 48px; border: 3px double #fff0ac; border-radius: 50%; background: radial-gradient(circle, #ffd875 0 35%, #9b651c 70%); font: 800 20px Georgia, serif; box-shadow: 0 0 0 3px #40250b, 0 0 25px #ffcb52; }
-.campaignMapNodeLabel { padding: 6px 10px; border: 1px solid #c49a4e; border-radius: 5px; background: rgb(24 16 8 / 90%); color: #f5df9c; font: 700 14px Georgia, serif; white-space: nowrap; }
-.campaignMapNode:hover .campaignMapNodeSigil, .campaignMapNode.active .campaignMapNodeSigil { transform: scale(1.13); box-shadow: 0 0 0 3px #fff0ac, 0 0 34px #fff18a; }
-.campaignMapNode.completed .campaignMapNodeSigil { background: radial-gradient(circle, #bdf09e, #437d2b 70%); }
+.campaignMapNodeSigil { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid #fff0ac; border-radius: 9px; background: linear-gradient(145deg, #dfbd65, #75501c); clip-path: polygon(50% 0, 94% 25%, 94% 75%, 50% 100%, 6% 75%, 6% 25%); color: #251407; font: 800 17px Georgia, serif; box-shadow: inset 0 0 0 3px #39240d, 0 0 0 1px #e5c77b, 0 0 22px rgb(255 203 82 / 65%); transition: transform 150ms ease, box-shadow 150ms ease; }
+.campaignMapNodeLabel { padding: 7px 11px; border: 1px solid rgb(212 177 95 / 70%); border-radius: 7px; background: linear-gradient(90deg, rgb(18 14 9 / 96%), rgb(30 22 12 / 90%)); color: #f5df9c; font: 700 13px Georgia, serif; box-shadow: 0 5px 14px rgb(0 0 0 / 45%); white-space: nowrap; }
+.campaignMapNode:hover .campaignMapNodeSigil, .campaignMapNode.active .campaignMapNodeSigil { transform: scale(1.13); box-shadow: inset 0 0 0 3px #39240d, 0 0 0 2px #fff0ac, 0 0 32px #fff18a; }
+.campaignMapNode.completed .campaignMapNodeSigil { background: linear-gradient(145deg, #b8d79b, #3f6e35); }
 .campaignMapNode.locked { filter: grayscale(1) brightness(.55); cursor: not-allowed; }
 
 .campaignSelectionPanel {
@@ -31083,9 +31328,10 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   right: 2.2%;
   width: min(360px, 29%);
   padding: 20px;
-  border: 2px ridge #b08a45;
-  border-radius: 10px;
-  background: linear-gradient(150deg, rgb(28 21 12 / 94%), rgb(8 11 14 / 94%));
+  border: 1px solid rgb(202 165 88 / 62%);
+  border-radius: 14px;
+  background: linear-gradient(150deg, rgb(29 23 15 / 92%), rgb(8 11 14 / 95%));
+  backdrop-filter: blur(12px);
   box-shadow: 0 18px 50px rgb(0 0 0 / 70%);
 }
 .campaignChapterEyebrow { color: #caa65e; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
@@ -31133,6 +31379,27 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .campaignBonusGrid strong, .campaignBonusGrid small { display: block; }
 .campaignBonusGrid strong { color: #f0dda7; font: 700 14px Georgia, serif; }
 .campaignBonusGrid small { margin-top: 5px; color: #aca38e; line-height: 1.35; }
+.campaignOptionsBlock { background: linear-gradient(145deg, rgb(34 28 18 / 76%), rgb(9 12 15 / 84%)); }
+.campaignOptionsHead { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.campaignOptionsHead > div > span { color: #9e8f70; font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.campaignOptionsHead h3 { margin: 2px 0 0; }
+.campaignMapLockedBadge { flex: none; padding: 6px 9px; border: 1px solid rgb(116 151 174 / 46%); border-radius: 999px; background: rgb(18 39 52 / 55%); color: #b7d8e7; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.campaignMapLockedBadge > span { color: #e3c578; }
+.campaignOptionsIntro { margin: 4px 0 12px; color: #aaa18c; font-size: 11px; line-height: 1.45; }
+.campaignOptionGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.campaignOptionGrid button { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; min-height: 66px; padding: 9px 10px; border: 1px solid #504831; border-radius: 8px; background: linear-gradient(145deg, #17140e, #0d1013); color: #beb49c; text-align: left; cursor: pointer; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.campaignOptionGrid button:hover { transform: translateY(-1px); border-color: #9d8249; }
+.campaignOptionGrid button.enabled { border-color: #b9984d; background: linear-gradient(145deg, rgb(70 52 23 / 82%), rgb(16 20 21 / 94%)); box-shadow: inset 0 0 0 1px rgb(233 197 110 / 13%); }
+.campaignOptionSwitch { position: relative; width: 30px; height: 17px; border: 1px solid #655c48; border-radius: 999px; background: #24221d; }
+.campaignOptionSwitch i { position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #746d5e; transition: transform 140ms ease, background 140ms ease; }
+.campaignOptionGrid button.enabled .campaignOptionSwitch { border-color: #d0ad58; background: #544019; }
+.campaignOptionGrid button.enabled .campaignOptionSwitch i { transform: translateX(13px); background: #f1d681; box-shadow: 0 0 8px rgb(239 203 111 / 58%); }
+.campaignOptionCopy strong, .campaignOptionCopy small { display: block; }
+.campaignOptionCopy strong { color: #e9d9b3; font: 700 12px Georgia, serif; }
+.campaignOptionCopy small { margin-top: 2px; color: #8f887a; font-size: 9px; line-height: 1.3; }
+.campaignOptionGrid button.enabled .campaignOptionCopy small { color: #b9ae96; }
+.campaignOptionGrid button > b { color: #766f61; font-size: 9px; letter-spacing: .08em; }
+.campaignOptionGrid button.enabled > b { color: #e3c578; }
 .campaignForces { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
 .campaignHeroRoster, .campaignEnemyRoster { display: flex; align-items: stretch; gap: 9px; }
 .campaignHeroRoster > span, .campaignEnemyRoster > span { writing-mode: vertical-rl; transform: rotate(180deg); color: #9c8e70; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
@@ -31152,6 +31419,7 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 .campaignAutoStartNote { margin: -6px 0 0; color: #928a78; font-size: 11px; text-align: center; }
 
 @media (max-width: 860px) {
+  .singlePlayerModeNav { width: min(620px, 92vw); }
   .campaignScreen { width: calc(100vw - 12px); min-height: 100vh; margin: 6px auto; padding-top: 94px; }
   .campaignHeader { width: 78vw; }
   .campaignHeader > p:not(.campaignKicker) { display: none; }
@@ -31165,7 +31433,8 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .campaignSelectionPanel dd { text-align: left; }
   .campaignMapNodeLabel { font-size: 11px; }
   .campaignMapNodeSigil { width: 40px; height: 40px; }
-  .campaignRulesGrid, .campaignBonusGrid { grid-template-columns: 1fr; }
+  .campaignRulesGrid, .campaignBonusGrid, .campaignOptionGrid { grid-template-columns: 1fr; }
+  .campaignOptionsHead { align-items: flex-start; flex-direction: column; }
   .campaignForces { grid-template-columns: 1fr; }
   .campaignBriefingHero { min-height: 250px; }
   .campaignBriefingHeroCopy { left: 18px; bottom: 16px; width: 78%; }
@@ -31175,6 +31444,9 @@ details.mapPresetGroup > summary::-webkit-details-marker {
 }
 
 @media (max-width: 560px) {
+  .singlePlayerModeNav { grid-template-columns: 1fr; }
+  .singlePlayerModeCard { min-height: 230px; }
+  .singlePlayerBackButton { grid-column: 1; }
   .singlePlayerNavArt { width: 58px; height: 58px; flex-basis: 58px; }
   .campaignScreen { padding-top: 134px; }
   .campaignHeader { top: 44px; width: calc(100vw - 22px); }

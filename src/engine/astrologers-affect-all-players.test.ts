@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { ASTROLOGERS_DECK_ID } from "./adventure";
-import type { GameAction, GameState, PlayerId } from "./state";
+import { ASTROLOGERS_DECK_ID, TREASURE_DIE_FACES } from "./adventure";
+import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
  * Astrologers "affects EVERY player" proclamations — driven end-to-end through a
@@ -111,10 +111,16 @@ describe("Astrologers proclamations affect EVERY player (real round wrap)", () =
     const state = wrapToAstrologers("astrologers.fluffy_rabbit");
     for (const pid of SEATS) {
       const rolls = state.eventLog.filter(
-        (e) => e.type === "ADVENTURE_DICE_ROLLED" && "playerId" in e && e.playerId === pid && e.dice === "treasure"
+        (e): e is Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }> =>
+          e.type === "ADVENTURE_DICE_ROLLED" && e.playerId === pid && e.dice === "treasure"
       );
-      expect(rolls.length, `${pid} should have rolled a Treasure die`).toBeGreaterThan(0);
+      expect(rolls, `${pid} should roll exactly one Treasure die`).toHaveLength(1);
+      expect(rolls[0].results).toHaveLength(1);
     }
+    // CONTROL: one physical Treasure-die face legitimately resolves as two
+    // Resource dice, choose one. Seeing that follow-up does not mean Fluffy
+    // rolled two Treasure dice.
+    expect(TREASURE_DIE_FACES.filter((face) => face === "double-resource-die")).toHaveLength(1);
   });
 
   it("Fancy Pixie (morale +1): BOTH players' morale rises", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureLobbyState } from "../index";
+import { applyAction, createAdventureLobbyState, NEUTRAL_PLAYER_ID, type GameState } from "../index";
 import { createInitialGameState } from "../setup";
 import {
   combatHasHumanParticipant,
@@ -92,6 +92,38 @@ describe("computer controller foundation", () => {
     const pvp = createInitialGameState("human-participant-pvp");
     pvp.controllers = { p2: standardComputerController() };
     expect(combatHasHumanParticipant(pvp)).toBe(true);
+
+    // Single-player PvP-Neutral-Control: the computer is the fighter, but the
+    // next clockwise seat (human p1) owns the neutral side. That derived owner
+    // is a real combat participant even though neutral unit.controllerId values
+    // remain the sentinel "neutrals".
+    const humanControlledNeutrals = createInitialGameState("human-participant-neutral-controller");
+    humanControlledNeutrals.controllers = { p2: standardComputerController() };
+    humanControlledNeutrals.sessionMode = "single-player";
+    humanControlledNeutrals.adventure = {
+      pvpNeutralControl: true,
+    } as GameState["adventure"];
+    const neutralCombat = humanControlledNeutrals.combat!;
+    neutralCombat.attackerPlayerId = "p2";
+    neutralCombat.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    neutralCombat.context = {
+      kind: "neutral",
+      heroId: "hero_p2",
+      fieldId: "neutral-field",
+      difficulty: 2,
+      hasAzure: false,
+    };
+    for (const unit of Object.values(neutralCombat.units)) {
+      if (unit.controllerId === "p1") {
+        unit.controllerId = NEUTRAL_PLAYER_ID;
+      }
+    }
+    expect(combatHasHumanParticipant(humanControlledNeutrals)).toBe(true);
+
+    // CONTROL: with the option off, the same computer-vs-neutral encounter is
+    // genuinely AI-only and remains eligible for off-screen bulk resolution.
+    humanControlledNeutrals.adventure!.pvpNeutralControl = false;
+    expect(combatHasHumanParticipant(humanControlledNeutrals)).toBe(false);
 
     // CONTROL: no open combat → false.
     pvp.combat = null;

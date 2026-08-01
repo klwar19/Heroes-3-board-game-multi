@@ -311,29 +311,29 @@ describe("Hiring a Secondary Hero (10 gold)", () => {
     expect(offered).not.toContain(mainHeroDefId);
   });
 
-  it("offers a Town-or-Settlement placement choice when a Settlement is also held", () => {
+  it("offers separate map locations and hires directly at the selected Settlement", () => {
     const state = makeGame();
     state.players.p1.resources.gold = 10;
     const townField = getTownOfPlayer(state, "p1")!.fieldId!;
     injectSettlement(state, "p1", "84,84");
 
-    const hire = offeredHire(state)!;
-    hireSecondaryHero(state, hire);
+    const hire = getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .find(
+        (action): action is Extract<GameAction, { type: "HIRE_SECONDARY_HERO" }> =>
+          action.type === "HIRE_SECONDARY_HERO" && action.fieldId === "84,84"
+      );
+    expect(hire).toBeDefined();
+    hireSecondaryHero(state, hire!);
 
-    // The 10 gold was paid, but the hero waits on a Town-vs-Settlement choice.
+    // Location is part of the legal action, so no generic text-only choice is
+    // opened after paying: the selected map Field receives the hero directly.
     expect(state.players.p1.resources.gold).toBe(0);
-    expect(getSecondaryHero(state, "p1")).toBeNull();
-    const labels = placementOptionLabels(state);
-    expect(labels.some((label) => label.startsWith("Your Town"))).toBe(true);
-    const settlementIndex = labels.findIndex((label) => label.startsWith("Settlement"));
-    expect(settlementIndex).toBeGreaterThanOrEqual(0);
-
-    // Place at the Settlement, wearing the hired portrait.
-    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: settlementIndex });
+    expect(placementOptionLabels(state)).toHaveLength(0);
     const secondary = getSecondaryHero(state, "p1")!;
     expect(secondary.spaceId).toBe("84,84");
     expect(secondary.spaceId).not.toBe(townField);
-    expect(secondary.heroDefId).toBe(hire.heroDefId);
+    expect(secondary.heroDefId).toBe(hire!.heroDefId);
   });
 });
 

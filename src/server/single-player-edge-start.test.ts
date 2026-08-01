@@ -20,7 +20,6 @@ import {
   type GameState,
 } from "@/engine";
 import {
-  computerNeedsHumanAdvance,
   computerPumpOwed,
   settleComputerVisibleStep,
 } from "./computer-runner";
@@ -142,23 +141,13 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
     const snapshot = storedSnapshot(storage);
     if (!snapshot) return "no snapshot persisted";
     const state = snapshot.state;
-    // Map: human-gated Next (ADVANCE_COMPUTER). PvP combat: auto-alarm only.
-    if (computerNeedsHumanAdvance(state)) {
-      const advance = getLegalActions(state, "p1").find(
-        (legal) => legal.action.type === "ADVANCE_COMPUTER",
-      );
-      if (!advance) {
-        return `FROZEN at step ${step}: computer needs advance but ADVANCE_COMPUTER not legal (owner=${computerDecisionOwner(state)}, round=${state.round})`;
-      }
-      await act(advance.action);
-      continue;
-    }
+    // Every computer-owned window is advanced by the authoritative alarm.
     if (computerPumpOwed(state)) {
       if (!alarmPending()) {
         await new Promise((resolve) => setTimeout(resolve, 10));
         if (!alarmPending()) {
           const reason = settleComputerVisibleStep(state).reason ?? "no alarm pending";
-          return `FROZEN at step ${step}: PvP pump owed but not advancing (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId}, reason=${reason})`;
+          return `FROZEN at step ${step}: computer pump owed but not advancing (owner=${computerDecisionOwner(state)}, round=${state.round}, active=${state.activePlayerId}, reason=${reason})`;
         }
       }
       alarmFires += 1;
@@ -178,7 +167,7 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
       continue;
     }
     if (computerDecisionOwner(state)) {
-      return `owner=${computerDecisionOwner(state)} but neither human-advance nor auto-pump (phase=${state.phase})`;
+      return `owner=${computerDecisionOwner(state)} but no server pump is owed (phase=${state.phase})`;
     }
     if (state.round >= 2 && state.activePlayerId === "p1" && !state.adventure?.pendingTileChoice) {
       return null; // survived the beginning of the game
@@ -192,7 +181,7 @@ async function runEdgeGameStart(tag: string, opponents: number, coldEvery: numbe
     await act(action);
     const after = storedSnapshot(storage).state;
     if (computerPumpOwed(after) && !alarmPending()) {
-      return `action ${action.type} left PvP pump owed WITHOUT arming the alarm (round=${after.round})`;
+      return `action ${action.type} left computer work owed WITHOUT arming the alarm (round=${after.round})`;
     }
   }
   return "did not finish within 700 steps";

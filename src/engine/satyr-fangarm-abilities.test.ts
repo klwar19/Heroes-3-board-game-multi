@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { effectAppliesToUnit, makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
+import {
+  effectAppliesToUnit,
+  effectiveInitiative,
+  makeActiveEffect,
+  unitImmuneToParalysis,
+  unitIsBerserk
+} from "./active-effects";
 import { hasIgnoreSpellAndSpecialtyNonDamage } from "./unit-abilities";
+import { hasToken } from "./tokens";
 import type { GameAction, GameEvent, GameState, SourceRef } from "./state";
 
 /**
@@ -25,6 +32,20 @@ function applyOk(state: GameState, action: GameAction): GameState {
 
 function applyErr(state: GameState, action: GameAction): string[] {
   return applyAction(state, action).errors.map((e) => e.message);
+}
+
+function passAllReactions(state: GameState): GameState {
+  let current = state;
+  let safety = 40;
+  while (current.reactionWindow && safety > 0) {
+    safety -= 1;
+    current = applyOk(current, {
+      type: "PASS_REACTION",
+      playerId: current.reactionWindow.priorityPlayerId
+    });
+  }
+  expect(safety).toBeGreaterThan(0);
+  return current;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,11 +245,33 @@ describe("Fangarm non-damage spell/specialty immunity", () => {
     expect(effectAppliesToUnit(slowEffect(state, specialtySource, unit.id), unit)).toBe(true);
   });
 
-  it("Fangarm is immune to Paralysis (Blind spell) placement", () => {
-    const state = createInitialGameState("fangarm-blind");
+  it("Fangarm does not gain Paralysis from the Blind spell", () => {
+    let state = createInitialGameState("fangarm-blind");
+    state.players.p1.hand = ["spell.blind"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.abilities = ["fangarm-nondamage-immunity"];
-    expect(unitImmuneToParalysis(state, unit)).toBe(true);
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.blind" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === unit.id
+    );
+    expect(cast).toBeTruthy();
+    state = passAllReactions(applyOk(state, cast!.action));
+
+    expect(hasToken(state.combat!.units[unit.id], "paralysis")).toBe(false);
+  });
+
+  it("Fangarm still receives creature-sourced Paralysis normally", () => {
+    const state = createInitialGameState("fangarm-creature-paralysis");
+    const unit = state.combat!.units.unit_p2_skeletons;
+    unit.abilities = ["fangarm-nondamage-immunity"];
+    expect(unitImmuneToParalysis(state, unit)).toBe(false);
   });
 
   it("control: an ordinary unit without Fangarm can receive Paralysis", () => {
@@ -238,22 +281,115 @@ describe("Fangarm non-damage spell/specialty immunity", () => {
     expect(unitImmuneToParalysis(state, unit)).toBe(false);
   });
 
-  it("Fangarm can still be targeted by damage spells (Fireball, Lightning Bolt, etc.)", () => {
-    // hasIgnoreSpellAndSpecialtyNonDamage must NOT add the unit to unitIgnoresCardDamage.
-    // We verify by checking that Fangarm appears as a legal target for a damage spell.
-    const state = createInitialGameState("fangarm-damage");
-    state.players.p1.hand = ["spell.lightning_bolt"];
+  it("Fangarm ignores Slow and Berserk in their real spell-resolution paths", () => {
+    let state = createInitialGameState("fangarm-live-debuffs");
+    state.players.p1.hand = ["spell.slow", "spell.berserk"];
+    state.players.p2.hand = [];
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_marksmen";
-    state.combat!.units.unit_p2_skeletons.abilities = ["fangarm-nondamage-immunity"];
+    const targetId = "unit_p2_skeletons";
+    state.combat!.units[targetId].abilities = ["fangarm-nondamage-immunity"];
+    const initiativeBefore = effectiveInitiative(state.combat!.units[targetId], state.activeEffects);
 
-    const castTargets = getLegalActions(state, "p1")
-      .filter((a) => a.action.type === "CAST_SPELL" && a.action.cardId === "spell.lightning_bolt")
-      .flatMap((a) =>
-        a.action.type === "CAST_SPELL" && a.action.target?.type === "unit"
-          ? [a.action.target.unitId]
-          : []
+    for (const cardId of ["spell.slow", "spell.berserk"]) {
+      const cast = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          legal.action.cardId === cardId &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === targetId
       );
-    expect(castTargets).toContain("unit_p2_skeletons");
+      expect(cast, `${cardId} should remain a legal target so the ignored cast resolves normally`).toBeTruthy();
+      state = passAllReactions(applyOk(state, cast!.action));
+      // The sandbox normally permits only one spell per round; reset only this
+      // test fixture's counter so both independent immunity paths are exercised.
+      state.players.p1.combatStats.spellsCastThisRound = 0;
+    }
+
+    const target = state.combat!.units[targetId];
+    expect(effectiveInitiative(target, state.activeEffects)).toBe(initiativeBefore);
+    expect(unitIsBerserk(state.activeEffects, target)).toBe(false);
+  });
+
+  it("Fangarm ignores an immediate Specialty debuff token too", () => {
+    let state = createInitialGameState("fangarm-specialty-weakness");
+    state.players.p1.hand = ["specialty.casmetra.6"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const targetId = "unit_p2_skeletons";
+    state.combat!.units[targetId].abilities = ["fangarm-nondamage-immunity"];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.casmetra.6" &&
+        legal.action.optionIndex === 0 &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === targetId
+    );
+    expect(play).toBeTruthy();
+    state = passAllReactions(applyOk(state, play!.action));
+
+    expect(hasToken(state.combat!.units[targetId], "weakness")).toBe(false);
+  });
+
+  it("Fangarm takes direct Spell damage and records the real non-zero hit", () => {
+    let state = createInitialGameState("fangarm-damage");
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const targetId = "unit_p2_skeletons";
+    state.combat!.units[targetId].abilities = ["fangarm-nondamage-immunity"];
+    const damageBefore = state.combat!.units[targetId].damage;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === targetId
+    );
+    expect(cast).toBeTruthy();
+    state = passAllReactions(applyOk(state, cast!.action));
+
+    expect(state.combat!.units[targetId].damage).toBe(damageBefore + 1);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "DAMAGE_ASSIGNED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === targetId &&
+          event.amount === 1
+      )
+    ).toBe(true);
+  });
+
+  it("Fangarm also takes targetless Hero Specialty damage", () => {
+    let state = createInitialGameState("fangarm-specialty-damage");
+    state.players.p1.hand = ["specialty.miku.6"];
+    state.players.p2.hand = [];
+    const targetId = "unit_p2_skeletons";
+    state.combat!.units[targetId].abilities = ["fangarm-nondamage-immunity"];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.miku.6"
+    );
+    expect(play).toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    expect(state.combat!.units[targetId].damage).toBe(1);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "DAMAGE_ASSIGNED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === targetId &&
+          event.amount === 1
+      )
+    ).toBe(true);
   });
 });

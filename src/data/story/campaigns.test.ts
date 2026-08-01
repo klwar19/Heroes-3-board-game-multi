@@ -52,12 +52,12 @@ describe("campaign registry", () => {
     expect(listCampaigns()[0].id).toBe("erathia");
   });
 
-  it("keeps four registry campaigns while Erathia exposes its three researched Long Live the Queen scenarios", () => {
+  it("keeps four registry campaigns while Erathia exposes its six-mission restoration arc", () => {
     expect(listCampaigns()).toBe(CAMPAIGNS);
     expect(CAMPAIGNS.map((c) => c.id)).toEqual(["erathia", "jianghu", "bin-otherworld", "convergence"]);
     expect(CAMPAIGNS.map((c) => c.theme)).toEqual(["classic", "xianxia", "isekai", "xianxia"]);
     for (const campaign of CAMPAIGNS) {
-      expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(campaign.id === "erathia" ? 3 : 7);
+      expect(campaign.chapters.length, `${campaign.id} chapters`).toBe(campaign.id === "erathia" ? 6 : 7);
       expect(getCampaign(campaign.id)).toBe(campaign);
       expect(new Set(campaign.chapters.map((ch) => ch.id)).size).toBe(campaign.chapters.length);
     }
@@ -89,11 +89,13 @@ describe("campaign registry", () => {
     }
   });
 
-  it("makes all three Erathia scenarios playable; mod campaigns retain their chapter-1 slice", () => {
+  it("makes all six Erathia scenarios playable; mod campaigns retain their chapter-1 slice", () => {
     for (const campaign of CAMPAIGNS) {
       const playable = campaign.chapters.filter((ch) => ch.playable);
       expect(playable.map((ch) => ch.id), campaign.id).toEqual(
-        campaign.id === "erathia" ? ["homecoming", "guardian-angels", "griffin-cliff"] : ["ch1"]
+        campaign.id === "erathia"
+          ? ["homecoming", "guardian-angels", "griffin-cliff", "road-to-steadwick", "liberation-day", "throne-of-ash"]
+          : ["ch1"]
       );
       for (const chapter of playable) {
         expect(chapter.setup, `${campaign.id}/${chapter.id} setup`).toBeDefined();

@@ -4905,7 +4905,7 @@ export function TownPanel({
 
       <TownRecruitSection legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
 
-      <HireHeroesSection legalActions={legalActions} onAction={onAction} />
+      <HireHeroesSection legalActions={legalActions} onAction={onAction} state={state} />
     </section>
   );
 }
@@ -9209,7 +9209,7 @@ function GameOptionsPanel({
             key: "tournamentObservatoryRerotate" as const,
             label: "Observatory re-rotates a nearby tile",
             on: tournamentRules.observatoryRerotate,
-            hint: "The Redwood Observatory and the Speculum artifact may ALSO re-rotate one nearby placed tile (with no Hero/Town/Gate on it), in addition to discovering an adjacent tile."
+            hint: "The Redwood Observatory may rotate one adjacent revealed tile with no Hero on it, then still discovers a face-down tile normally."
           }
         ] as const;
         const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;
@@ -9743,7 +9743,7 @@ function GameOptionsPanel({
         return (
           <>
             <div className="optionRow">
-              <small title="Optional PvP mode (OFF by default): the next player clockwise plays the Neutral units in every Neutral combat, like a real PvP side (multiplayer only)">
+              <small title="Optional mode (OFF by default): the next seat clockwise plays the Neutral units in every Neutral combat, including human/computer single-player tables">
                 PvP Neutral Control
               </small>
               <div className="optionButtons">
@@ -9762,7 +9762,7 @@ function GameOptionsPanel({
               </div>
               <small className="optionHint">
                 {neutralControlOn
-                  ? "Every Neutral combat becomes PvP-like: the NEXT player clockwise plays the guards — moving and attacking each one, breaking their activation ties, and answering their ability targets and dice rerolls. That player is notified when the fight starts. Multiplayer only — a solo game keeps the Neutral AI."
+                  ? "Every Neutral combat becomes PvP-like: the NEXT seat clockwise plays the guards — moving and attacking each one, breaking activation ties, and answering ability targets and dice rerolls. In single-player, you control guards in computer heroes' fights; computer seats control them in yours. A one-seat game keeps the Neutral AI."
                   : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
               </small>
             </div>
