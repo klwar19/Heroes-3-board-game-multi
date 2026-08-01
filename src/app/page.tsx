@@ -4204,7 +4204,12 @@ export default function Home() {
       // while the room is still flipping to hosted the ref is kept and retried.
       if (autoSeatHostedRef.current === roomId) {
         const mySeat = me?.seat;
-        if (state.room?.hosted && me && (!mySeat || mySeat === "observer")) {
+        if (state.room?.hosted && me && mySeat && mySeat !== "observer") {
+          // The current engine auto-seats ranked setup members authoritatively.
+          // Clear the old client fallback once that assignment is visible so a
+          // later deliberate "Leave seat" is never undone by this creation hint.
+          autoSeatHostedRef.current = null;
+        } else if (state.room?.hosted && me && (!mySeat || mySeat === "observer")) {
           if (state.phase === "setup" && state.setupLobby) {
             const takenSeats = new Set(
               (state.room.members ?? [])

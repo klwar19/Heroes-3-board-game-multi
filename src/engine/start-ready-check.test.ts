@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   createAdventureLobbyState,
+  readyCheckConfirmers,
   START_CHECK_MS,
   type GameAction,
   type GameState,
@@ -119,6 +120,38 @@ describe("start ready check — hosted multiplayer", () => {
     expect(
       expectRejected(state, { type: "CONFIRM_START_ADVENTURE", playerId: "p1" }, T0)
     ).toContain("No start check is open");
+  });
+
+  it("ranked room creation auto-seats every joining player and lets the non-creator confirm", () => {
+    let state = seatedLobby("rc-ranked-creation");
+    // This is the real creation order: the API seeds ranked before the creator
+    // joins; the creator then turns hosting on, and the opponent joins later.
+    state.room = { hosted: false, hostClientId: null, ranked: true, members: [] };
+    state = applyOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" });
+    state = applyOk(state, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true });
+    expect(state.room?.members.find((member) => member.clientId === "c1")?.seat).toBe("p1");
+
+    state = applyOk(state, { type: "JOIN_ROOM", clientId: "c2", name: "Bob" });
+    expect(state.room?.members.find((member) => member.clientId === "c2")?.seat).toBe("p2");
+    expect(readyCheckConfirmers(state)).toEqual(["p1", "p2"]);
+
+    const opened = applyAction(
+      state,
+      { type: "START_ADVENTURE", playerId: "p1" },
+      { now: T0, actorClientId: "c1" }
+    );
+    expect(opened.errors).toEqual([]);
+    expect(opened.state.setupLobby?.startCheck?.confirmations).toEqual(["p1"]);
+
+    const confirmed = applyAction(
+      opened.state,
+      { type: "CONFIRM_START_ADVENTURE", playerId: "p2" },
+      { now: T0 + 1_000, actorClientId: "c2" }
+    );
+    expect(confirmed.errors).toEqual([]);
+    expect(confirmed.state.setupLobby).toBeNull();
+    expect(confirmed.state.adventure).not.toBeNull();
+    expect(confirmed.state.room?.ranked).toBe(true);
   });
 });
 

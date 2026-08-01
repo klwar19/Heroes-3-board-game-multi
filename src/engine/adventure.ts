@@ -7398,7 +7398,13 @@ export function processPendingVisit(state: GameState): void {
           playerId: visit.playerId,
           kind: "shared-deck-search",
           deckId: step.deckId,
-          count: step.count
+          count: step.count,
+          // Split-deck access is based on the map tile that granted this
+          // Search. Preserve the real visitor (including a Secondary Hero)
+          // across the deferred reward queue instead of later substituting the
+          // Main Hero and their unrelated tile.
+          sourceHeroId: visit.heroId,
+          sourceFieldId: visit.fieldId
         };
         queueVisitFollowUpReward(state, adventure, reward);
         break;
