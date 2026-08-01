@@ -931,11 +931,6 @@ export function ReactionTray({
   };
 
   const preview = selectionPreview(selections);
-  const passLabel = isAttackWindow
-    ? "Done — roll the die!"
-    : window.triggerEvent.type === "UNIT_LETHAL_HIT"
-      ? "Let it die"
-      : "Pass";
   const crownsOver = crownsSelected > crownsAvailable;
 
   // Pending CAST_SPELL Power bounds for the viewing caster (Pass gating).
@@ -951,6 +946,25 @@ export function ReactionTray({
   const castPowerBounds = spellCastPowerBounds(pendingSpellCard);
   const livePower = getPendingReactionPower(state);
   const castTotalPower = livePower?.kind === "spell" ? livePower.totalPower : 0;
+  const pendingSpellDamage =
+    pendingSpellCard?.effect.type === "DEAL_DAMAGE"
+      ? getSpellDamageAmount(pendingSpellCard, castTotalPower)
+      : null;
+  // "Pass" looked like it discarded the cast, and players reasonably read the
+  // unchanged health bar as a zero-damage result. For the caster, name the
+  // committed outcome explicitly: this button RESOLVES the spell and applies
+  // the shown damage after everyone has finished reacting.
+  const passLabel = isAttackWindow
+    ? "Done — roll the die!"
+    : window.triggerEvent.type === "UNIT_LETHAL_HIT"
+      ? "Let it die"
+      : isSpellCaster
+        ? `Resolve ${pendingSpellCard?.name ?? "spell"}${
+            pendingSpellDamage !== null ? ` — deal ${pendingSpellDamage} damage` : ""
+          }`
+        : pendingSpellCard
+          ? `Pass — allow ${pendingSpellCard.name}`
+          : "Pass";
   const scrollLocked = Boolean(pendingCast?.modifiers.scrollLocked);
   // Scroll casts may still need the floor (Implosion etc.): paid Power is the
   // only fuel, capped at minUseful — so under-min still blocks Pass.
@@ -2263,6 +2277,8 @@ export type MapDiceCue = {
   resourceRolls?: { resource: "gold" | "buildingMaterials" | "valuables"; amount: number }[];
   treasureRolls?: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[];
   attackRolls?: number[];
+  /** Resource dice thrown because the Treasure die landed on a Resource face. */
+  origin?: "treasure";
 };
 
 /** Cube-face transforms shared by every die; index-aligned with face lists. */
@@ -2426,6 +2442,12 @@ export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () =>
   }, [onDone, dieCount]);
 
   const rolling = phase === "rolling";
+  const stageLabel =
+    cue.dice === "treasure"
+      ? "STEP 1 · TREASURE DIE"
+      : cue.dice === "resource" && cue.origin === "treasure"
+        ? "STEP 2 · RESOURCE DICE FROM TREASURE"
+        : null;
 
   return (
     <div
@@ -2437,10 +2459,13 @@ export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () =>
       <div className="diceStage">
         <header>
           <Dices aria-hidden="true" size={16} />
-          <strong>
-            {cue.playerName} rolls the {MAP_DICE_TITLES[cue.dice]}
-            {faceIndexes.length > 1 ? ` ×${faceIndexes.length}` : ""}
-          </strong>
+          <span>
+            {stageLabel ? <small className="mapDiceStepLabel">{stageLabel}</small> : null}
+            <strong>
+              {cue.playerName} rolls the {MAP_DICE_TITLES[cue.dice]}
+              {faceIndexes.length > 1 ? ` ×${faceIndexes.length}` : ""}
+            </strong>
+          </span>
         </header>
         <div className="diceRow">
           {faceIndexes.map((faceIndex, index) => (
@@ -2450,7 +2475,7 @@ export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () =>
         <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
           {cue.results.map((result, index) => (
             <strong className="damageResult hit" key={index}>
-              {result}
+              {cue.dice === "treasure" ? `Treasure result → ${result}` : result}
             </strong>
           ))}
           {faceIndexes.length > 1 ? <span className="versus">choose one</span> : null}

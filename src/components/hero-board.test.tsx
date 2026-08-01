@@ -5,7 +5,16 @@ import { HeroBoard } from "./hero-board";
 import { CardZoomProvider } from "./table/zoom";
 import { cardLibrary } from "@/data/cards/library";
 import type { FactionId } from "@/data/factions/types";
-import { createAdventureGameState, getMainHero, type GameAction, type GameState, type PlayerId } from "@/engine";
+import {
+  applyAction,
+  createAdventureGameState,
+  gainExperience,
+  getMainHero,
+  pumpAdventureQueues,
+  type GameAction,
+  type GameState,
+  type PlayerId
+} from "@/engine";
 
 afterEach(cleanup);
 
@@ -538,6 +547,71 @@ describe("HeroBoard — Feature B: the kept level-up Ability at levels 2/3/5/7",
     state.players.p2.levelUpAbilityPicks = { 2: "ability.offense" };
     const { container } = renderBoardState(state, "p2");
     expect(container.querySelectorAll(".hbSlotAbilityPick")).toHaveLength(1);
+  });
+
+  it("shows Adrienne's level-III Ability in the III slot after real progression to XP 5", () => {
+    let state = createAdventureGameState({
+      seed: "hero-board-adrienne-level-three",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Adrienne", factionId: "fortress", heroDefId: "adrienne" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 0;
+    hero.level = 1;
+    state.players.p1.hand = [];
+    state.players.p1.deck = [];
+    state.players.p1.discard = [];
+    state.decks.abilities.drawPile = [
+      "ability.luck",
+      "ability.offense",
+      "ability.archery",
+      "ability.armorer"
+    ];
+    state.decks.abilities.discardPile = [];
+
+    const resolveCurrentSearch = () => {
+      if (state.pendingChoice?.type === "OPTION_CHOICE") {
+        const result = applyAction(state, {
+          type: "CHOOSE_OPTION",
+          playerId: "p1",
+          choiceId: state.pendingChoice.id,
+          optionIndex: 0
+        });
+        expect(result.errors).toEqual([]);
+        state = result.state;
+      }
+      expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+      if (state.pendingChoice?.type !== "DECK_SEARCH") return "";
+      const kept = state.pendingChoice.revealedCardIds[0];
+      const result = applyAction(state, {
+        type: "RESOLVE_DECK_SEARCH",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        pick: { kind: "revealed", index: 0 }
+      });
+      expect(result.errors).toEqual([]);
+      state = result.state;
+      return kept;
+    };
+
+    gainExperience(state, "p1", 2);
+    pumpAdventureQueues(state);
+    const level2 = resolveCurrentSearch();
+    gainExperience(state, "p1", 3);
+    pumpAdventureQueues(state);
+    const level3 = resolveCurrentSearch();
+
+    expect(getMainHero(state, "p1")!.experience).toBe(5);
+    expect(state.players.p1.levelUpAbilityPicks).toEqual({ 2: level2, 3: level3 });
+    const { container } = renderBoardState(state);
+    const levelThreeBox = container.querySelector('.hbXpBox[data-xp-value="3"]');
+    const shown = levelThreeBox?.querySelector<HTMLButtonElement>(".hbSlotAbilityPick");
+    expect(shown, "the level-III board hole must contain the kept Ability card").toBeTruthy();
+    expect(shown?.title).toContain(cardLibrary[level3].name);
+    expect(shown?.querySelector(".hbArt")).toBeTruthy();
   });
 });
 

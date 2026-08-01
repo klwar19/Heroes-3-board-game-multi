@@ -10870,8 +10870,9 @@ export function finalizeAdventureCombat(state: GameState): void {
   // Surrender (house rule) is a paid escape, not a defeat: the loser keeps every
   // unit (handled by `keepTroops` above), pays a flat toll to the opponent,
   // takes no morale hit, and the opponent gains NOTHING toward winning — no
-  // experience, no Necromancy window, and no credit toward the "defeat every
-  // enemy hero" victory path. A Retreat or a fought-out loss is a real defeat
+  // experience and no credit toward the "defeat every enemy hero" victory
+  // path. Necromancy is still an after-PvP-combat ability regardless of how
+  // the loser conceded. A Retreat or a fought-out loss is a real defeat
   // with the usual consequences (and its 5-gold toll may push the loser into
   // debt — gold can go negative).
   const surrendered = outcome.reason === "surrender";
@@ -11051,11 +11052,7 @@ export function finalizeAdventureCombat(state: GameState): void {
   state.activePlayerId = attackerHero?.controllerId ?? state.activePlayerId;
   state.priorityPlayerId = null;
 
-  if (
-    !escapedWithoutDefeat &&
-    winnerId !== NEUTRAL_PLAYER_ID &&
-    state.players[winnerId]
-  ) {
+  if (winnerId !== NEUTRAL_PLAYER_ID && state.players[winnerId]) {
     const attackerWon =
       winnerHero?.id === context.attackerHeroId && Boolean(winnerHero);
     const deferredReward =
@@ -11847,6 +11844,12 @@ export function hireSecondaryHero(
   if (placements.length === 0) {
     throw new Error("You need a town or settlement to hire a Secondary Hero.");
   }
+  const selectedPlacement = action.fieldId
+    ? placements.find((placement) => placement.fieldId === action.fieldId)
+    : undefined;
+  if (action.fieldId && !selectedPlacement) {
+    throw new Error("Choose one of your controlled Town or Settlement Fields.");
+  }
   const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
   if (!faction?.heroes.includes(action.heroDefId)) {
     throw new Error("That hero does not lead your faction.");
@@ -11858,6 +11861,10 @@ export function hireSecondaryHero(
   spendResources(state, action.playerId, cost, "hired a Secondary Hero");
   // Spend the Population Token on the hero: no unit recruit/reinforce this round.
   player.townTokens.population = false;
+  if (selectedPlacement) {
+    createSecondaryHero(state, action.playerId, selectedPlacement.fieldId, action.heroDefId);
+    return;
+  }
   if (placements.length === 1) {
     createSecondaryHero(state, action.playerId, placements[0].fieldId, action.heroDefId);
     return;

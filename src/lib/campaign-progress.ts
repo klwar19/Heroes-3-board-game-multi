@@ -17,17 +17,42 @@
  */
 
 import type { Campaign } from "@/data/story/campaigns";
+import type { GameSetupOptions } from "@/engine";
 
 const COMPLETION_PREFIX = "binh-campaign:";
 const ROOM_PREFIX = "binh-campaign-room:";
 
 export type CampaignProgress = { completed: string[] };
 
+/** Optional systems a player may tune before launching an authored campaign map. */
+export type CampaignRuleOptions = Required<
+  Pick<
+    GameSetupOptions,
+    | "events"
+    | "moraleCards"
+    | "spellBook"
+    | "creatureBanks"
+    | "startingHandMulligan"
+    | "unitExperience"
+  >
+>;
+
+export const DEFAULT_CAMPAIGN_RULE_OPTIONS: CampaignRuleOptions = {
+  events: false,
+  moraleCards: false,
+  spellBook: true,
+  creatureBanks: true,
+  startingHandMulligan: true,
+  unitExperience: false,
+};
+
 export type CampaignRoomBinding = {
   campaignId: string;
   chapterId: string;
   /** Starting bonus selected in the chapter briefing. */
   bonusId?: string;
+  /** Player-selected optional systems; authored map/objective remain immutable. */
+  rules?: CampaignRuleOptions;
   /** The chapter's setup injection (game options + faction preselect) has run. */
   setupApplied?: boolean;
   /** The chapter's onStart scene has been popped for this room. */
@@ -111,13 +136,29 @@ export function isChapterUnlocked(campaign: Campaign, chapterId: string): boolea
 /** Bind a single-player room to a campaign chapter (fresh markers). */
 export function bindCampaignRoom(
   roomId: string,
-  binding: { campaignId: string; chapterId: string; bonusId?: string }
+  binding: {
+    campaignId: string;
+    chapterId: string;
+    bonusId?: string;
+    rules?: CampaignRuleOptions;
+  }
 ): void {
   writeJson(`${ROOM_PREFIX}${roomId}`, {
     campaignId: binding.campaignId,
     chapterId: binding.chapterId,
-    ...(binding.bonusId ? { bonusId: binding.bonusId } : {})
+    ...(binding.bonusId ? { bonusId: binding.bonusId } : {}),
+    ...(binding.rules ? { rules: { ...binding.rules } } : {}),
   } satisfies CampaignRoomBinding);
+}
+
+function readCampaignRules(value: unknown): CampaignRuleOptions | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const stored = value as Partial<Record<keyof CampaignRuleOptions, unknown>>;
+  const rules = { ...DEFAULT_CAMPAIGN_RULE_OPTIONS };
+  for (const key of Object.keys(rules) as Array<keyof CampaignRuleOptions>) {
+    if (typeof stored[key] === "boolean") rules[key] = stored[key];
+  }
+  return rules;
 }
 
 /** The campaign binding for a room, or null when the room is not a campaign room. */
@@ -126,7 +167,16 @@ export function getCampaignBinding(roomId: string): CampaignRoomBinding | null {
   if (!stored || typeof stored.campaignId !== "string" || typeof stored.chapterId !== "string") {
     return null;
   }
-  return stored;
+  const rules = readCampaignRules(stored.rules);
+  return {
+    campaignId: stored.campaignId,
+    chapterId: stored.chapterId,
+    ...(typeof stored.bonusId === "string" ? { bonusId: stored.bonusId } : {}),
+    ...(rules ? { rules } : {}),
+    ...(stored.setupApplied === true ? { setupApplied: true } : {}),
+    ...(stored.introShown === true ? { introShown: true } : {}),
+    ...(stored.outcomeShown === true ? { outcomeShown: true } : {}),
+  };
 }
 
 function updateBinding(roomId: string, patch: Partial<CampaignRoomBinding>): void {

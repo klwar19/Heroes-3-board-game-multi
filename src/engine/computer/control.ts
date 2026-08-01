@@ -5,6 +5,7 @@ import type {
   PlayerController,
   PlayerId,
 } from "../state";
+import { neutralCombatControllerId } from "../neutral-control";
 
 const HUMAN_CONTROLLER: PlayerController = Object.freeze({ kind: "human" });
 const STANDARD_COMPUTER: PlayerController = Object.freeze({
@@ -74,9 +75,9 @@ export function humanPlayerIdsByController(state: GameState): PlayerId[] {
 
 /**
  * True when a living human seat is a participant of the open combat (attacker,
- * defender, or a unit controller). Used by the live computer pump: AI-only
- * fights (computer vs neutrals / computer vs computer) bulk-resolve off-screen;
- * a fight that involves the human is paced like normal PvP.
+ * defender, unit controller, or the derived controller of the Neutral side).
+ * Used by the live computer pump: genuinely AI-only fights bulk-resolve
+ * off-screen; a fight that involves human input is paced like normal PvP.
  */
 export function combatHasHumanParticipant(state: GameState): boolean {
   const combat = state.combat;
@@ -89,6 +90,12 @@ export function combatHasHumanParticipant(state: GameState): boolean {
   for (const unit of Object.values(combat.units)) {
     if (unit.controllerId) seats.add(unit.controllerId);
   }
+  // PvP Neutral Control deliberately leaves each guard's persisted controller
+  // as NEUTRAL_PLAYER_ID. Its owner is derived from turn order, so include that
+  // seat explicitly or a computer hero's fight is misclassified as AI-only and
+  // bulk-resolved before the human ever sees the combat board.
+  const neutralControllerId = neutralCombatControllerId(state, combat);
+  if (neutralControllerId) seats.add(neutralControllerId);
   for (const playerId of seats) {
     if (
       playerId !== NEUTRAL_PLAYER_ID &&

@@ -624,11 +624,9 @@ export function submitRoomAction(
     : result.state;
 
   // Single-player settle rules:
-  // - ADVANCE_COMPUTER: human confirmed one map beat → apply exactly one
-  //   settleComputerVisibleStep (AI-only combat bulk-resolves inside it).
-  // - Other actions: setup bulk; PvP combat one auto beat; map does NOT move
-  //   the computer (waits for ADVANCE_COMPUTER). Never races past first-player
-  //   dice or END_TURN.
+  // - ADVANCE_COMPUTER: recovery watchdog requested one map beat.
+  // - Other actions: setup bulk; PvP combat one immediate beat; map work waits
+  //   for the authoritative timer so the END_TURN frame broadcasts first.
   let settledState = afkSettledState;
   if (action.type === "ADVANCE_COMPUTER") {
     const advanced = applyHumanComputerAdvance(afkSettledState);
@@ -682,9 +680,9 @@ export function submitRoomAction(
   const snapshot = withBootId(cloneSerializable(next));
   notifyRoomListeners(roomId, snapshot);
 
-  // Auto timer ONLY for human-involved PvP. Map turns never schedule a pump —
-  // the human presses ADVANCE_COMPUTER for each beat (no freeze: that action
-  // stays legal while computerNeedsHumanAdvance).
+  // Server-authoritative computer clock. Map turns, AI-only encounters and PvP
+  // all pump until control returns to a human. ADVANCE_COMPUTER remains legal
+  // as a delayed recovery watchdog, not as normal turn progression.
   if (computerPumpOwed(settledState)) {
     scheduleComputerPump(roomId, computerStepDelayMs(settledState));
   } else {

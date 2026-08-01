@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCampaign } from "@/data/story/campaigns";
 import {
   bindCampaignRoom,
+  DEFAULT_CAMPAIGN_RULE_OPTIONS,
   getCampaignBinding,
   getCampaignProgress,
   isCampaignIntroShown,
@@ -67,6 +68,33 @@ describe("per-room campaign binding + one-per-room markers", () => {
 
     bindCampaignRoom("sp-1", { campaignId: "jianghu", chapterId: "ch1" });
     expect(getCampaignBinding("sp-1")).toEqual({ campaignId: "jianghu", chapterId: "ch1" });
+  });
+
+  it("persists the optional rule choices with the room binding", () => {
+    const rules = {
+      ...DEFAULT_CAMPAIGN_RULE_OPTIONS,
+      events: true,
+      moraleCards: true,
+      unitExperience: true,
+    };
+    bindCampaignRoom("sp-rules", {
+      campaignId: "erathia",
+      chapterId: "homecoming",
+      rules,
+    });
+    expect(getCampaignBinding("sp-rules")?.rules).toEqual(rules);
+  });
+
+  it("sanitizes malformed stored rule values instead of breaking chapter launch", () => {
+    window.localStorage.setItem("binh-campaign-room:sp-bad-rules", JSON.stringify({
+      campaignId: "erathia",
+      chapterId: "homecoming",
+      rules: { events: "yes", moraleCards: true, customMap: "hijack" },
+    }));
+    expect(getCampaignBinding("sp-bad-rules")?.rules).toEqual({
+      ...DEFAULT_CAMPAIGN_RULE_OPTIONS,
+      moraleCards: true,
+    });
   });
 
   it("intro/outcome markers default false, flip true, and preserve the binding", () => {

@@ -2,7 +2,8 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
 
 /**
- * PvP Neutral Control (OPTIONAL mode, multiplayer only,
+ * PvP Neutral Control (OPTIONAL mode for any game with at least two seats,
+ * including one human plus computer opponents,
  * `GameSetupOptions.pvpNeutralControl`): in every Neutral combat the NEXT live
  * player clockwise from the fighter becomes the NEUTRAL CONTROLLER — a human
  * plays the guards like a PvP side. The engine stops on each guard's
@@ -23,7 +24,7 @@ import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
  */
 
 /**
- * The player controlling the Neutral side of `combat`, or null when the normal
+ * The seat controlling the Neutral side of `combat`, or null when the normal
  * Neutral AI plays it: the mode is off (or the snapshot predates it), the
  * combat is not a Neutral fight, or no OTHER live seat exists (solo table, or
  * everyone else eliminated — `turnOrder` holds live seats only, so the next

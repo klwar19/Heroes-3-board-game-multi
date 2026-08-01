@@ -18,8 +18,8 @@ import type { CombatState, CombatUnitState, GameState, HouseRuleId, MapFieldStat
  *
  * - Surrender: pay a flat 10 gold to the opponent (only choosable with the full
  *   toll in hand), keep your WHOLE army in both troop-loss modes, take no morale
- *   hit, return home, and give the opponent NOTHING toward winning (no XP, no
- *   Necromancy, no "defeat every enemy hero" credit).
+ *   hit, return home, and give the opponent no XP or "defeat every enemy hero"
+ *   credit. Necromancy remains available after the PvP combat itself.
  * - Retreat / fought-out loss: pay 5 gold to the winner — which may push the
  *   loser into debt (gold goes negative) — take -1 morale, lose troops per the
  *   lobby mode, count as a win for the opponent, and fall back home.
@@ -170,7 +170,7 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
     expect(state.players[winnerId].resources.gold).toBe(20);
   });
 
-  it("applies no morale penalty and grants the opponent no experience or Necromancy", () => {
+  it("applies no morale penalty and grants the opponent no experience", () => {
     const state = makeGame();
     const { winnerId, loserId } = stageFinishedPvpFight(state, "surrender");
     state.players[loserId].morale = 0;
@@ -182,6 +182,22 @@ describe("Surrender (house rule): a paid escape, not a defeat", () => {
     expect(state.players[loserId].morale).toBe(0);
     expect(getMainHero(state, winnerId)!.experience).toBe(winnerXpBefore);
     expect(state.players[winnerId].necromancyWindow).toBeFalsy();
+  });
+
+  it("opens Necromancy for an eligible winner after PvP surrender", () => {
+    const state = makeGame();
+    const { winnerId } = stageFinishedPvpFight(state, "surrender");
+    state.players[winnerId].factionId = "necropolis";
+    state.players[winnerId].hand = ["ability.necromancy"];
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe(winnerId);
+    expect(
+      getLegalActions(state, winnerId).some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.necromancy"
+      )
+    ).toBe(true);
   });
 
   it("sends the surrendering hero home (to its town)", () => {

@@ -192,10 +192,10 @@ describe("HOMM3BG_BROADCAST_EVENT_TAIL — wire-only event-log tail (plan N4)", 
 
 describe("PartyKit action acknowledgement boundary", () => {
   it("acknowledges a persisted action before a slow hosted recipient finishes fan-out", async () => {
-    let releasePeer!: () => void;
+    const releasePeers: (() => void)[] = [];
     globalThis.fetch = (async () =>
       new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
-        releasePeer = () => resolve({ ok: false, json: async () => ({}) });
+        releasePeers.push(() => resolve({ ok: false, json: async () => ({}) }));
       })) as unknown as typeof fetch;
 
     const { room, connections } = makeEdgeRoom(
@@ -232,8 +232,46 @@ describe("PartyKit action acknowledgement boundary", () => {
     expect(ownerFrames[1]).toMatchObject({ type: "action-result", requestId: "req-heavy" });
     expect(completed).toBe(false);
 
-    releasePeer();
-    await running;
+    // Fan-out for req-heavy is still parked, but it no longer owns the mutation
+    // lock: another action can persist and receive its acknowledgement now.
+    let secondCompleted = false;
+    const secondRunning = server
+      .onMessage(
+        JSON.stringify({
+          type: "action",
+          requestId: "req-after-slow-peer",
+          actorClientId: "owner-1",
+          action: { type: "JOIN_ROOM", clientId: "owner-1", name: "Owner" }
+        }),
+        owner as unknown as EdgeConnection
+      )
+      .finally(() => {
+        secondCompleted = true;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const framesWhileBlocked = owner.received.map(
+      (raw) => JSON.parse(raw) as { type: string; requestId?: string }
+    );
+    expect(framesWhileBlocked).toContainEqual({
+      type: "action-received",
+      requestId: "req-after-slow-peer",
+      durable: true
+    });
+    expect(framesWhileBlocked).toContainEqual(
+      expect.objectContaining({ type: "action-result", requestId: "req-after-slow-peer" })
+    );
+    expect(secondCompleted).toBe(false);
+
+    for (const releasePeer of releasePeers) releasePeer();
+    await Promise.all([running, secondRunning]);
     expect(completed).toBe(true);
+    expect(secondCompleted).toBe(true);
+
+    const committedSnapshots = owner.received
+      .map((raw) => JSON.parse(raw) as { type: string; requestId?: string })
+      .filter((frame) => frame.type === "snapshot");
+    expect(committedSnapshots.map((frame) => frame.requestId)).toEqual(
+      expect.arrayContaining(["req-heavy", "req-after-slow-peer"])
+    );
   });
 });

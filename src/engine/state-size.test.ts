@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getPlayerView, type AdventurePlayerConfig, type GameState } from "./index";
+import { getMainHero } from "./adventure";
+import { startNeutralEncounter } from "./adventure-reducer";
 
 // ---------------------------------------------------------------------------
 // Snapshot-size regression guard (Phase 2, plan §D6).
@@ -69,5 +71,30 @@ describe("GameState snapshot size stays within transport budgets", () => {
     // never bigger than the raw state — the property Phase 2's per-connection
     // redaction relies on to also shrink frames.
     expect(view).toBeLessThanOrEqual(full);
+  });
+
+  it("a single-player Field-Difficulty V combat snapshot stays under the Durable Object value cap", () => {
+    let state = createAdventureGameState({
+      seed: "state-size-field-v",
+      difficulty: "impossible",
+      players: FOUR_PLAYERS.slice(0, 2),
+      sessionMode: "single-player",
+      computerOpponents: 1,
+      rollFirstPlayer: false
+    });
+    const active = state.activePlayerId;
+    if (state.players[active].needsHandRefresh || state.players[active].canMulligan) {
+      const refreshed = applyAction(state, { type: "REFRESH_HAND", playerId: active, discardCardIds: [] });
+      expect(refreshed.errors).toEqual([]);
+      state = refreshed.state;
+    }
+    const hero = getMainHero(state, active)!;
+    const field = state.adventure!.fields[hero.spaceId!]!;
+    field.difficulty = 5;
+    startNeutralEncounter(state, hero, field);
+
+    const bytes = bytesOf(state);
+    console.log(`[state-size] single-player Field V combat: ${bytes} bytes (${(bytes / 1024).toFixed(1)} KiB)`);
+    expect(bytes).toBeLessThan(128 * 1024);
   });
 });

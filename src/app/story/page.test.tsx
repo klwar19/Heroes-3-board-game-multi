@@ -23,11 +23,14 @@ describe("/story (Erathia campaign map)", () => {
     expect(screen.getByText("Bin's Otherworld Chronicle")).toBeTruthy();
   });
 
-  it("renders the three researched Long Live the Queen locations with sequential locks", () => {
+  it("renders the six-mission restoration route with sequential locks", () => {
     render(<StoryPage />);
     expect(screen.getByRole("button", { name: /Homecoming — available/i })).toBeTruthy();
     expect((screen.getByRole("button", { name: /Guardian Angels — locked/i }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: /Griffin Cliff — locked/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Road to Steadwick — locked/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Liberation Day — locked/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Throne of Ash — locked/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("opens a full briefing with rules, bonuses, heroes and computer forces", () => {
@@ -39,6 +42,9 @@ describe("/story (Erathia campaign map)", () => {
     expect(screen.getByText("Catherine")).toBeTruthy();
     expect(screen.getByText("Dungeon")).toBeTruthy();
     expect(screen.getByText(/18 fixed tiles/i)).toBeTruthy();
+    expect(screen.getByText(/Authored map locked/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Event cards/i }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: /Spell Book/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("mints the room with the chapter opponent count and selected bonus binding", async () => {
@@ -46,10 +52,25 @@ describe("/story (Erathia campaign map)", () => {
     render(<StoryPage />);
     fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
     fireEvent.click(screen.getByRole("button", { name: /rare resources/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Event cards/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Morale cards/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Unit experience/i }));
     fireEvent.click(screen.getByRole("button", { name: /Begin chapter/i }));
     await waitFor(() => expect(createSinglePlayerRoom).toHaveBeenCalledWith(1));
     await waitFor(() => expect(push).toHaveBeenCalledWith("/?room=sp-story-1"));
-    expect(getCampaignBinding("sp-story-1")).toEqual({ campaignId: "erathia", chapterId: "homecoming", bonusId: "rare-resources" });
+    expect(getCampaignBinding("sp-story-1")).toEqual({
+      campaignId: "erathia",
+      chapterId: "homecoming",
+      bonusId: "rare-resources",
+      rules: {
+        events: true,
+        moraleCards: true,
+        spellBook: true,
+        creatureBanks: true,
+        startingHandMulligan: true,
+        unitExperience: true,
+      },
+    });
   });
 
   it("unlocks Guardian Angels after Homecoming completion", async () => {

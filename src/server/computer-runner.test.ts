@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   getLegalActions,
   getMainHero,
+  NEUTRAL_PLAYER_ID,
   standardComputerController,
   type ComputerDecision,
   type GameAction,
@@ -859,7 +860,7 @@ describe("computer combat activation", () => {
   });
 });
 
-describe("human-gated computer map steps (ADVANCE_COMPUTER)", () => {
+describe("server-pumped computer map steps (ADVANCE_COMPUTER recovery)", () => {
   /** Drive human until p2 (computer) owns a decision — map turn or rotation. */
   function stateWithComputerMapWork(seed: string): GameState {
     let state = createAdventureGameState({
@@ -886,13 +887,13 @@ describe("human-gated computer map steps (ADVANCE_COMPUTER)", () => {
       }
       state = humanAct(state, action);
     }
-    // CRITICAL: live settle after a human action must NOT run computer map work.
+    // Live settle keeps the hand-off frame intact; the transport pump runs next.
     state = settleComputerForLiveAction(state);
     expect(computerDecisionOwner(state)).toBe("p2");
     return state;
   }
 
-  it("does NOT auto-run computer map work after END_TURN / live settle", () => {
+  it("keeps END_TURN atomic, then reports map work owed to the server pump", () => {
     const state = stateWithComputerMapWork("gate-no-auto");
     const heroBefore = Object.values(state.heroes).find(
       (h) => h.controllerId === "p2" && h.kind === "main",
@@ -912,8 +913,8 @@ describe("human-gated computer map steps (ADVANCE_COMPUTER)", () => {
       );
     expect(newMoves).toHaveLength(0);
 
-    // Auto timer must NOT arm for map work (only PvP).
-    expect(computerPumpOwed(settled)).toBe(false);
+    // The general server pump arms for map work; the PvP classifier stays false.
+    expect(computerPumpOwed(settled)).toBe(true);
     expect(computerAutoPumpOwed(settled)).toBe(false);
     expect(computerNeedsHumanAdvance(settled)).toBe(true);
   });
@@ -979,9 +980,9 @@ describe("human-gated computer map steps (ADVANCE_COMPUTER)", () => {
       expect(step.decisions.length).toBeLessThan(
         driveComputerPlayers(requested.state).decisions.length,
       );
-      // Still waiting on the human for the rest of the turn.
+      // Manual recovery remains legal while the server pump also stays owed.
       expect(computerNeedsHumanAdvance(step.state)).toBe(true);
-      expect(computerPumpOwed(step.state)).toBe(false);
+      expect(computerPumpOwed(step.state)).toBe(true);
     }
     // Full work eventually clears the computer owner (or human's turn).
     expect(full).toBeDefined();
@@ -1235,6 +1236,133 @@ describe("paced computer visible steps (live single-player)", () => {
           d.action.type === "END_ACTIVATION",
       ),
     ).toBe(true);
+  });
+
+  it("keeps a computer-vs-neutral fight visible when the human controls the guards", () => {
+    const state = createInitialGameState("visible-human-controlled-neutrals");
+    state.controllers = { p2: standardComputerController() };
+    state.sessionMode = "single-player";
+    // The computer observation path projects the full AdventureState, so attach
+    // a real one rather than a hand-shaped flag-only stub.
+    state.adventure = createAdventureGameState({
+      seed: "visible-human-controlled-neutrals-map",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      pvpNeutralControl: true,
+    }).adventure;
+
+    const combat = state.combat!;
+    combat.attackerPlayerId = "p2";
+    combat.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    combat.context = {
+      kind: "neutral",
+      heroId: "hero_p2",
+      fieldId: "neutral-field",
+      difficulty: 2,
+      hasAzure: false,
+    };
+    combat.dice.scriptedRolls = Array(60).fill(0);
+    combat.dice.rollCount = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects = [];
+
+    // Re-shape p1's sandbox army into durable neutral guards. Their persisted
+    // controller remains the neutral sentinel; p1 owns their decisions through
+    // neutralCombatControllerId, which is exactly the classification regression.
+    for (const unit of Object.values(combat.units)) {
+      unit.abilities = [];
+      if (unit.controllerId === "p1") {
+        unit.controllerId = NEUTRAL_PLAYER_ID;
+        unit.maxHealth = unit.id === "unit_p1_marksmen" ? 12 : unit.maxHealth;
+        unit.damage = 0;
+        unit.defense = 10;
+      }
+    }
+    const attacker = combat.units.unit_p2_dread_knights;
+    attacker.position = 9;
+    attacker.attack = 1;
+    attacker.defense = 0;
+    attacker.maxHealth = 6;
+    attacker.damage = 0;
+    attacker.activatedThisRound = false;
+    for (const unit of Object.values(combat.units)) {
+      if (unit.id !== attacker.id && unit.id !== "unit_p1_marksmen") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    const guard = combat.units.unit_p1_marksmen;
+    guard.position = 8;
+    guard.attack = 20;
+    // The computer's opening poke must not be ended by an automatic
+    // retaliation: p1 needs to receive and exercise the guard activation.
+    guard.retaliatedThisRound = true;
+    state.activePlayerId = "p2";
+    combat.activeUnitId = attacker.id;
+
+    expect(combatHasHumanParticipant(state)).toBe(true);
+    const step = settleComputerVisibleStep(state);
+
+    expect(step.stalled, step.reason).toBe(false);
+    expect(step.decisions).toHaveLength(1);
+    expect(step.state.combat).not.toBeNull();
+    expect(step.state.combat?.outcome).toBeNull();
+    // The computer's first visible beat has happened, but the human-controlled
+    // neutral side was never driven by the bulk AI loop.
+    expect(step.state.eventLog.some((event) => event.type === "COMBAT_ENDED")).toBe(false);
+
+    // Continue exactly as the live room does: server-pump every computer-owned
+    // window, but stop and use p1's real legal actions whenever the derived
+    // Neutral controller owns the current window. This is the reported freeze
+    // path end-to-end, not merely a participant-classification assertion.
+    let current = step.state;
+    let humanGuardActed = false;
+    let safety = 100;
+    while (current.combat && !current.combat.outcome && safety-- > 0) {
+      const humanActions = getLegalActions(current, "p1");
+      const guardAction = humanActions.find((legal) => {
+        const action = legal.action;
+        return (
+          (action.type === "ATTACK_UNIT" && action.attackerId === guard.id) ||
+          (action.type === "MOVE_AND_ATTACK_UNIT" && action.attackerId === guard.id) ||
+          (action.type === "MOVE_UNIT" && action.unitId === guard.id) ||
+          (action.type === "DEFEND_UNIT" && action.unitId === guard.id) ||
+          (action.type === "END_ACTIVATION" && action.unitId === guard.id)
+        );
+      });
+      if (guardAction) {
+        humanGuardActed = true;
+        current = humanAct(current, guardAction.action);
+        continue;
+      }
+
+      const humanWindow = humanActions.find(
+        (legal) =>
+          legal.action.type !== "GIVE_UP" &&
+          legal.action.type !== "RETREAT_FROM_COMBAT" &&
+          legal.action.type !== "SURRENDER_COMBAT" &&
+          legal.action.type !== "ADVANCE_COMPUTER",
+      );
+      if (humanWindow) {
+        current = humanAct(current, humanWindow.action);
+        continue;
+      }
+
+      if (computerPumpOwed(current)) {
+        const pumped = settleComputerVisibleStep(current);
+        expect(pumped.stalled, pumped.reason).toBe(false);
+        expect(pumped.decisions.length).toBeGreaterThan(0);
+        current = pumped.state;
+        continue;
+      }
+
+      throw new Error("AI-vs-human-controlled-neutrals reached a window with no owner or legal action");
+    }
+
+    expect(safety).toBeGreaterThan(0);
+    expect(humanGuardActed, "the battle must reach an actionable p1-controlled guard turn").toBe(true);
+    expect(current.combat?.outcome, "the guard action and reaction passes must resolve the battle").toBeTruthy();
+    expect(current.combat?.units[attacker.id].damage).toBeGreaterThanOrEqual(attacker.maxHealth);
   });
 });
 

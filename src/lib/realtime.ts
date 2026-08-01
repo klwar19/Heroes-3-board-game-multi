@@ -202,6 +202,13 @@ export const ACTION_PROCESSING_TIMEOUT_MS = 60_000;
  */
 export const ACTION_RECEIPT_PROBE_MS = 5_000;
 /**
+ * A durable receipt proves the request reached the room, but its final result
+ * can still be lost with the socket that carried it. Probe that second half of
+ * the round-trip too: replace the socket and re-send the same dedupe-safe frame
+ * well before the 60 s processing deadline instead of passively timing out.
+ */
+export const ACTION_PROCESSING_PROBE_MS = 15_000;
+/**
  * How many times one request's frame may be re-sent over a recovered socket.
  * The server's requestId dedupe ledger answers a repeat with the original
  * outcome, so a re-send can never double-apply — this cap only stops a
@@ -258,7 +265,7 @@ export function connectRoom(
 // ---------------------------------------------------------------------------
 
 type PartyServerMessage =
-  | { type: "snapshot"; snapshot: GameRoomSnapshot }
+  | { type: "snapshot"; snapshot: GameRoomSnapshot; requestId?: string }
   | { type: "action-received"; requestId: string; durable?: boolean }
   | {
       type: "action-result";
@@ -387,6 +394,8 @@ function connectPartyRoom(
     resends: number;
     settle: (reply: Extract<PartyServerMessage, { type: "action-result" }>) => void;
     markReceived: () => void;
+    /** A snapshot causally stamped with this request is also an authoritative commit acknowledgement. */
+    markCommitted: (version: number) => void;
     cancel: () => void;
   };
   const pending = new Map<string, PendingActionRequest>();
@@ -564,6 +573,16 @@ function connectPartyRoom(
         source: syncRequested ? "sync" : "broadcast",
         seatAuthoritative: syncRequested || (message.snapshot.viewerSeat !== undefined && message.snapshot.viewerSeat !== "observer")
       });
+      // The room stamps the post-commit broadcast with the initiating request
+      // id. Normally action-result arrived first; if that tiny frame was lost
+      // with a dying socket while the authoritative snapshot survived, this is
+      // equally strong proof that the action committed. Finish the promise now
+      // instead of showing a false processing timeout over already-applied play.
+      if (message.requestId) {
+        const request = pending.get(message.requestId);
+        request?.markCommitted(message.snapshot.version);
+        pending.delete(message.requestId);
+      }
       syncRequested = false;
       handlers.onStatus(`live (edge) v${message.snapshot.version}`);
       return;
@@ -714,6 +733,32 @@ function connectPartyRoom(
           }, ACTION_RECEIPT_PROBE_MS);
         };
 
+        // The receipt only proves that the durable room accepted the request.
+        // If its tiny result frame is lost during a socket flap, retrying the
+        // SAME request id is safe and lets the durable ledger replay the
+        // answer. Do this well before the user-facing processing deadline.
+        const armProcessingProbe = () => {
+          if (!serverAcksActions) return;
+          window.clearTimeout(probeTimer);
+          probeTimer = window.setTimeout(() => {
+            const pendingRequest = pending.get(requestId);
+            if (!pendingRequest || !pendingRequest.received || pendingRequest.resends >= MAX_ACTION_RESENDS) return;
+            recordPerformanceMetric({
+              name: "room.action.processing-probe",
+              at: metricNow(),
+              fields: { requestId, actionType: action.type }
+            });
+            if (!dropped) {
+              handlers.onStatus("edge action reply delayed; recovering");
+              markDropped();
+              recoveryRequestedForDrop = true;
+              void refetchSeatSnapshot();
+              socket.reconnect(4000, "action processing timeout");
+            }
+            armProcessingProbe();
+          }, ACTION_PROCESSING_PROBE_MS);
+        };
+
         const frame = JSON.stringify({ type: "action", requestId, action, ...(actorClientId ? { actorClientId } : {}) });
         const request: PendingActionRequest = {
           frame,
@@ -726,6 +771,10 @@ function connectPartyRoom(
               ACTION_PROCESSING_TIMEOUT_MS,
               "The room received the action but could not finish it in time."
             );
+            armProcessingProbe();
+          },
+          markCommitted: (version) => {
+            request.settle({ type: "action-result", requestId, version, errors: [] });
           },
           cancel: () => {
             window.clearTimeout(timeout);

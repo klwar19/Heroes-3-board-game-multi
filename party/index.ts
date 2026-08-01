@@ -131,7 +131,7 @@ function matchReportConfigOf(room: Party.Room): { appUrl: string; key: string } 
 }
 
 type ServerMessage =
-  | { type: "snapshot"; snapshot: RoomSnapshot }
+  | { type: "snapshot"; snapshot: RoomSnapshot; requestId?: string }
   /**
    * Immediate transport receipt for a submitted action. Large late-game hosted
    * rooms redact and serialize one full snapshot per connected seat before the
@@ -922,7 +922,7 @@ export default class GameRoomServer implements Party.Server {
     return (await this.resolveVerifiedIdentity(this.tokenFromRequest(request)))?.isAdmin === true;
   }
 
-  private async broadcastSnapshot(): Promise<void> {
+  private async broadcastSnapshot(requestId?: string): Promise<void> {
     const startedAt = Date.now();
     if (!this.snapshot) {
       return;
@@ -930,7 +930,11 @@ export default class GameRoomServer implements Party.Server {
     const room = this.snapshot.state.room;
     if (!room?.hosted) {
       // Open table: one shared frame to everyone (the client redacts locally).
-      const frame = JSON.stringify({ type: "snapshot", snapshot: this.signed(this.snapshot) });
+      const frame = JSON.stringify({
+        type: "snapshot",
+        snapshot: this.signed(this.snapshot),
+        ...(requestId ? { requestId } : {})
+      } satisfies ServerMessage);
       try {
         this.room.broadcast(frame);
       } catch (error) {
@@ -956,7 +960,11 @@ export default class GameRoomServer implements Party.Server {
           const snapshot = await this.snapshotForConnection(connection);
           this.metric("room.redaction", redactStartedAt, { version: snapshot.version });
           const serializeStartedAt = Date.now();
-          const frame = JSON.stringify({ type: "snapshot", snapshot } satisfies ServerMessage);
+          const frame = JSON.stringify({
+            type: "snapshot",
+            snapshot,
+            ...(requestId ? { requestId } : {})
+          } satisfies ServerMessage);
           connection.send(frame);
           this.metric("room.serialization", serializeStartedAt, {
             version: snapshot.version,
@@ -1396,8 +1404,7 @@ export default class GameRoomServer implements Party.Server {
             return undo;
           }
           this.sendActionResult(sender, message.requestId, undo);
-          await this.broadcastSnapshot();
-          return { ...undo, acknowledged: true };
+          return { ...undo, acknowledged: true, broadcast: true };
         }
         // Record the PRE-action state on the undo stack when the mode is on
         // (no-op otherwise), so an undo rolls back exactly this action.
@@ -1449,8 +1456,8 @@ export default class GameRoomServer implements Party.Server {
         }
         // A passed AFK kick vote or an expired 10-minute turn: drive the forced
         // resolution through the normal action pipeline until it settles (or
-        // the table must wait). ADVANCE_COMPUTER = one human-confirmed map beat;
-        // other actions: setup bulk / PvP one auto beat; map never races ahead.
+        // the table must wait). ADVANCE_COMPUTER is a recovery beat; the server
+        // alarm owns normal map and combat computer progression.
         const afkSettled = forcedResolutionPending(result.state)
           ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
           : result.state;
@@ -1476,16 +1483,26 @@ export default class GameRoomServer implements Party.Server {
         // The move is authoritative once storage accepts it. Acknowledge the
         // sender before expensive per-seat snapshot delivery.
         this.sendActionResult(sender, message.requestId, accepted);
-        await this.broadcastSnapshot();
         return {
           ...accepted,
           applied: true,
           prev: current.state,
           acknowledged: true,
+          broadcast: true,
           scheduleComputer: computerPumpOwed(settled),
           computerDelayMs: computerStepDelayMs(settled),
         };
       });
+
+      // Snapshot delivery is deliberately outside the mutation queue. A slow
+      // or stale hosted peer must not keep the next action from reaching its
+      // persistence boundary. Snapshot versions arbitrate any reordered
+      // fan-out, and the initiating request id lets the client treat this
+      // authoritative post-commit frame as an acknowledgement if the smaller
+      // action-result frame was lost.
+      if ("broadcast" in outcome && outcome.broadcast) {
+        await this.broadcastSnapshot(message.requestId);
+      }
 
       if (outcome.applied && "scheduleComputer" in outcome && outcome.scheduleComputer) {
         await this.scheduleComputerPump(outcome.computerDelayMs ?? computerStepDelayMs(this.snapshot?.state as GameState));
@@ -1869,8 +1886,8 @@ export default class GameRoomServer implements Party.Server {
             ...(actorUserId ? { actorUserId } : {})
           });
           if (result.errors.length === 0) {
-            // Mirrors the WebSocket path: ADVANCE_COMPUTER = one map beat;
-            // otherwise setup bulk / PvP auto beat; map never races ahead.
+            // Mirrors the WebSocket path: ADVANCE_COMPUTER is one recovery beat;
+            // otherwise setup settles and the server alarm owns later AI work.
             const afkSettled = forcedResolutionPending(result.state)
               ? driveAfkDrop(result.state, () => ({ entropy: freshEntropy(), now: Date.now() }))
               : result.state;

@@ -1130,7 +1130,7 @@ export function TownBoardView({
         </div>
       ) : null}
 
-      <HireHeroesSection legalActions={legalActions} onAction={onAction} />
+      <HireHeroesSection legalActions={legalActions} onAction={onAction} state={state} />
     </section>
   );
 }

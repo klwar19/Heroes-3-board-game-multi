@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ACTION_PROCESSING_TIMEOUT_MS,
+  ACTION_PROCESSING_PROBE_MS,
   ACTION_RECEIPT_PROBE_MS,
   ACTION_RECEIPT_TIMEOUT_MS,
   connectRoom,
@@ -585,6 +586,60 @@ describe("connectRoom — PartyKit action receipt probe & dedupe-safe re-send", 
 
   const framesMatching = (socket: Socket, raw: string) =>
     socket.send.mock.calls.filter((call) => String(call[0]) === raw);
+
+  it("recovers a durably received action when its result frame is delayed", async () => {
+    vi.useFakeTimers();
+    const onStatus = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot: vi.fn(), onStatus }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const rawFrame = String(socket.send.mock.calls.at(-1)![0]);
+    const frame = JSON.parse(rawFrame) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-received", requestId: frame.requestId, durable: true })
+    });
+
+    await vi.advanceTimersByTimeAsync(ACTION_PROCESSING_PROBE_MS);
+    expect(socket.reconnect).toHaveBeenCalledWith(4000, "action processing timeout");
+    expect(onStatus).toHaveBeenCalledWith("edge action reply delayed; recovering");
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+
+    socket.emit("open");
+    expect(framesMatching(socket, rawFrame)).toHaveLength(2);
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-result", requestId: frame.requestId, version: 6, errors: [] })
+    });
+    await expect(resultPromise).resolves.toMatchObject({ version: 6, errors: [] });
+    connection.close();
+  });
+
+  it("settles from the request-stamped committed snapshot if action-result is lost", async () => {
+    const onSnapshot = vi.fn();
+    const connection = connectRoom("room-42", { onSnapshot, onStatus: vi.fn() }, "client-abc");
+    const socket = partySocketMock.instances.at(-1)!;
+    socket.emit("open");
+    await primeReceiptLatch(connection, socket);
+
+    const resultPromise = connection.submitAction({ type: "END_TURN", playerId: "p1" } as never);
+    const frame = JSON.parse(String(socket.send.mock.calls.at(-1)![0])) as { requestId: string };
+    socket.emit("message", {
+      data: JSON.stringify({ type: "action-received", requestId: frame.requestId, durable: true })
+    });
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "snapshot",
+        requestId: frame.requestId,
+        snapshot: { roomId: "room-42", version: 7, updatedAt: "now", state: {} }
+      })
+    });
+
+    await expect(resultPromise).resolves.toMatchObject({ version: 7, errors: [] });
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+    connection.close();
+  });
 
   it("probes a silent submit, replaces the socket, and re-sends the SAME frame on reopen", async () => {
     vi.useFakeTimers();

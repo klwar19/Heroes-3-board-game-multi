@@ -1,28 +1,19 @@
 /**
  * Campaign registry — the Story-mode shell (Anime mod §12 / §3.3).
  *
- * ONE shell, N campaigns. Each campaign lists 7 chapters as DATA (title,
- * synopsis, the arc from §12.1 / §12.2). Only **Chapter 1** of each campaign is
- * PLAYABLE this slice — it carries a `setup` (faction + opponents + the anime
- * options it wants) and `scenes` (intro / victory / defeat hooks into the
- * shared `StoryScene` registry). Chapters 2–7 are locked data: `playable:false`,
- * no `setup`, empty `scenes` — they render as "in development" once unlocked.
+ * ONE shell, N campaigns. Restoration of Erathia carries six fully playable,
+ * sequential authored missions. Optional mod chronicles remain registered
+ * beside it and can still use locked placeholder chapters.
  *
  * WHAT DOES NOT RUN (lead with the limits):
  *  - **Protagonists are PRESENTATION only.** Chen Fan / Bin live in the story
  *    scenes; the playable seat uses a CORE faction stand-in (anime towns are
  *    unshipped). `setup.playerFaction` names that stand-in.
- *  - **`setup` is APPLIED to the live game** (setup-injection slice). The Begin
- *    flow mints a standard single-player room; once the human is seated the page
- *    pushes the chapter's `anime` + `fieldOverrides` + `difficulty` into the
- *    room's game options and PRESELECTS `playerFaction` for the human seat, all
- *    through the NORMAL action pipeline (`campaignSetupActions` →
- *    `SET_GAME_OPTIONS` + `CHOOSE_FACTION`; pinned in `campaign-triggers.test.ts`
- *    and the integration `campaign-setup-injection.test.ts`). The player still
- *    sees the normal setup screen and may change any pick before starting.
- *    `chapterRoomOptions` remains the tested pure source for those options.
- *  - **`mapPresetId` is unused.** Campaign maps use standard map generation in
- *    V1; a designed `CustomMapPreset` per chapter is a later content pass.
+ *  - **`setup` is APPLIED to the live game.** The chapter briefing collects a
+ *    starting bonus and an allow-listed set of optional systems, then injects
+ *    those choices, fixed forces and the authored map through normal actions.
+ *  - **Erathia maps are authored scenario data.** Players cannot replace their
+ *    geometry, objective, difficulty, factions or enemy seats.
  *  - **No routes / karma / cheat picks / quest-log (§13).** Chapters that print
  *    a 5A/5B split are one chapter here; the split, Golden Fingers / Cheat
  *    Skills and the System quest-log are deferred (§13, campaign-only).
@@ -139,7 +130,7 @@ const cover = (slug: string) => `/assets/story/covers/${slug}.webp`;
 const erathiaArt = (slug: string) => `/assets/story/erathia/${slug}.webp`;
 
 // -----------------------------------------------------------------------------
-// Locked-chapter helper — chapters 2–7 are DATA only (no setup, no scenes).
+// Locked-chapter helper for the optional mod chronicles.
 // -----------------------------------------------------------------------------
 
 function lockedChapter(id: string, title: LocalizedText, synopsis: LocalizedText): CampaignChapter {
@@ -440,7 +431,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
       objective: { en: "Capture Terraneus", vi: "Chiếm Terraneus" },
       playable: true,
       briefingArt: erathiaArt("homecoming"),
-      mapPosition: { x: 24, y: 78 },
+      mapPosition: { x: 17, y: 72 },
       scenarioMap: ERATHIA_SCENARIO_MAPS.homecoming,
       levelCap: 6,
       carryOverHeroes: 4,
@@ -488,7 +479,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
       objective: { en: "Defeat every enemy", vi: "Đánh bại mọi kẻ thù" },
       playable: true,
       briefingArt: erathiaArt("guardian-angels"),
-      mapPosition: { x: 28, y: 20 },
+      mapPosition: { x: 30, y: 18 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["guardian-angels"],
       levelCap: 12,
       carryOverHeroes: 8,
@@ -536,7 +527,7 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
       objective: { en: "Flag all 7 Griffin Towers", vi: "Cắm cờ cả 7 Tháp Griffin" },
       playable: true,
       briefingArt: erathiaArt("griffin-cliff"),
-      mapPosition: { x: 65, y: 31 },
+      mapPosition: { x: 40, y: 43 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["griffin-cliff"],
       heroIds: ["catherine", "valeska", "rion", "lord_haart", "adelaide"],
       startingBonuses: [
@@ -573,6 +564,157 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         onStart: "story.erathia.griffin-cliff.intro",
         onVictory: "story.erathia.griffin-cliff.victory",
         onDefeat: "story.erathia.griffin-cliff.defeat"
+      }
+    },
+    {
+      id: "road-to-steadwick",
+      title: { en: "Road to Steadwick", vi: "Đường Tới Steadwick" },
+      synopsis: {
+        en: "The griffin legions are assembled, but two enemy relief columns control the river roads. Seize both bridge towns and open the final march to Erathia's capital.",
+        vi: "Quân đoàn Griffin đã tập hợp, nhưng hai cánh quân cứu viện của địch kiểm soát các tuyến đường ven sông. Hãy chiếm hai thành cầu và mở đường tiến quân cuối cùng tới kinh đô Erathia."
+      },
+      objective: { en: "Control 3 towns", vi: "Kiểm soát 3 thành" },
+      playable: true,
+      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      mapPosition: { x: 49, y: 58 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS["road-to-steadwick"],
+      levelCap: 18,
+      carryOverHeroes: 8,
+      heroIds: ["catherine", "valeska", "rion", "lord_haart", "adelaide"],
+      startingBonuses: [
+        {
+          id: "royal-treasury",
+          title: { en: "Royal Treasury", vi: "Ngân Khố Hoàng Gia" },
+          effect: { en: "+18 Gold for the river campaign.", vi: "+18 Vàng cho chiến dịch ven sông." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 18 }] }
+        },
+        {
+          id: "griffin-vanguard",
+          title: { en: "Griffin Vanguard", vi: "Tiền Quân Griffin" },
+          effect: { en: "Add a Pack of level-4 Castle troops.", vi: "Thêm một Pack lính Castle cấp 4." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "pack" }, { level: 4, side: "pack" }, { level: 5, side: "few" }] }
+        },
+        {
+          id: "scouts-map",
+          title: { en: "Scouts' Map", vi: "Bản Đồ Trinh Sát" },
+          effect: { en: "+1 Morale and Search 3 Abilities.", vi: "+1 Morale và Search 3 Ability." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "abilities", count: 3 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 2,
+        difficulty: "normal",
+        computerSeats: [
+          { factionId: "dungeon", heroDefId: "mutare", label: "Nighon river host — Mutare" },
+          { factionId: "inferno", heroDefId: "rashka", label: "Kreegan relief column — Rashka" }
+        ]
+      },
+      scenes: {
+        onStart: "story.erathia.road-to-steadwick.intro",
+        onVictory: "story.erathia.road-to-steadwick.victory",
+        onDefeat: "story.erathia.road-to-steadwick.defeat"
+      }
+    },
+    {
+      id: "liberation-day",
+      title: { en: "Liberation Day", vi: "Ngày Giải Phóng" },
+      synopsis: {
+        en: "Steadwick is encircled by Nighon and the undead court that betrayed King Gryphonheart. Break the siege ring, storm the capital, and raise Catherine's standard above the palace.",
+        vi: "Steadwick bị bao vây bởi Nighon và triều đình undead đã phản bội Vua Gryphonheart. Hãy phá vòng vây, công phá kinh đô và dựng cờ Catherine trên cung điện."
+      },
+      objective: { en: "Capture Steadwick and control 3 towns", vi: "Chiếm Steadwick và kiểm soát 3 thành" },
+      playable: true,
+      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      mapPosition: { x: 58, y: 53 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS["liberation-day"],
+      levelCap: 24,
+      carryOverHeroes: 8,
+      heroIds: ["catherine", "lord_haart", "adelaide", "valeska", "rion"],
+      startingBonuses: [
+        {
+          id: "angel-host",
+          title: { en: "Angel Host", vi: "Đạo Quân Thiên Thần" },
+          effect: { en: "Begin with an additional Few level-7 unit.", vi: "Bắt đầu với thêm một đơn vị Few cấp 7." },
+          preset: { startingUnits: [{ level: 2, side: "pack" }, { level: 4, side: "pack" }, { level: 6, side: "few" }, { level: 7, side: "few" }] }
+        },
+        {
+          id: "siege-train",
+          title: { en: "Siege Train", vi: "Đoàn Công Thành" },
+          effect: { en: "+5 Building Materials and Search 3 Abilities.", vi: "+5 Vật Liệu Xây Dựng và Search 3 Ability." },
+          preset: { startingBonuses: [{ kind: "resources", buildingMaterials: 5 }, { kind: "search", deck: "abilities", count: 3 }] }
+        },
+        {
+          id: "crown-of-courage",
+          title: { en: "Crown of Courage", vi: "Vương Miện Dũng Khí" },
+          effect: { en: "+1 Morale and Search 4 Artifacts.", vi: "+1 Morale và Search 4 Artifact." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 4 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 2,
+        difficulty: "hard",
+        computerSeats: [
+          { factionId: "necropolis", heroDefId: "sandro", label: "The traitor court — Sandro" },
+          { factionId: "dungeon", heroDefId: "deemer", label: "Nighon siege command — Deemer" }
+        ]
+      },
+      scenes: {
+        onStart: "story.erathia.liberation-day.intro",
+        onVictory: "story.erathia.liberation-day.victory",
+        onDefeat: "story.erathia.liberation-day.defeat"
+      }
+    },
+    {
+      id: "throne-of-ash",
+      title: { en: "Throne of Ash", vi: "Ngai Tro Tàn" },
+      synopsis: {
+        en: "Steadwick is free, yet the invasion survives behind the Ash Gate. Lead the royal host into the scorched southeast, destroy the final war-engine, and take the Black Citadel.",
+        vi: "Steadwick đã tự do, nhưng cuộc xâm lược vẫn tồn tại sau Cổng Tro. Hãy dẫn hoàng quân vào vùng đông nam cháy xém, phá hủy chiến cụ cuối cùng và chiếm Hắc Thành."
+      },
+      objective: { en: "Break the Ash Gate and seize the Black Citadel", vi: "Phá Cổng Tro và chiếm Hắc Thành" },
+      playable: true,
+      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      mapPosition: { x: 66, y: 80 },
+      scenarioMap: ERATHIA_SCENARIO_MAPS["throne-of-ash"],
+      heroIds: ["catherine", "adelaide", "valeska", "rion", "lord_haart"],
+      startingBonuses: [
+        {
+          id: "royal-legion",
+          title: { en: "Royal Legion", vi: "Quân Đoàn Hoàng Gia" },
+          effect: { en: "Add a Pack of level-6 troops to the final army.", vi: "Thêm một Pack lính cấp 6 vào đạo quân cuối." },
+          preset: { startingUnits: [{ level: 3, side: "pack" }, { level: 5, side: "pack" }, { level: 6, side: "pack" }, { level: 7, side: "few" }] }
+        },
+        {
+          id: "grail-treasury",
+          title: { en: "Grail Treasury", vi: "Kho Báu Grail" },
+          effect: { en: "+20 Gold and +4 Valuables.", vi: "+20 Vàng và +4 Tài Nguyên Quý." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 20, valuables: 4 }] }
+        },
+        {
+          id: "blessed-armory",
+          title: { en: "Blessed Armory", vi: "Kho Vũ Khí Ban Phước" },
+          effect: { en: "Search 4 Artifacts and 3 Spells.", vi: "Search 4 Artifact và 3 Spell." },
+          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 4 }, { kind: "search", deck: "spells", count: 3 }] }
+        }
+      ],
+      setup: {
+        playerFaction: "castle",
+        playerHeroDefId: "catherine",
+        opponents: 2,
+        difficulty: "hard",
+        computerSeats: [
+          { factionId: "inferno", heroDefId: "zydar", label: "Ash Gate legion — Zydar" },
+          { factionId: "dungeon", heroDefId: "alamar", label: "Black Citadel guard — Alamar" }
+        ]
+      },
+      scenes: {
+        onStart: "story.erathia.throne-of-ash.intro",
+        onVictory: "story.erathia.throne-of-ash.victory",
+        onDefeat: "story.erathia.throne-of-ash.defeat"
       }
     }
   ]
