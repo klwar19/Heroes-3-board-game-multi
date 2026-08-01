@@ -14824,11 +14824,18 @@ export function beginSharedDeckSearchNow(
   deckId: string,
   count: number,
   allowRemove = false,
-  options?: { strictExpertGate?: boolean; artifactBand?: "tile" | "level" }
+  options?: {
+    strictExpertGate?: boolean;
+    artifactBand?: "tile" | "level";
+    sourceHeroId?: HeroId;
+    sourceFieldId?: MapSpaceId;
+  }
 ): boolean {
   const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
     strictExpertGate: options?.strictExpertGate,
-    artifactBand: options?.artifactBand
+    artifactBand: options?.artifactBand,
+    sourceHeroId: options?.sourceHeroId,
+    sourceFieldId: options?.sourceFieldId
   }).filter((candidateId) => {
     const deck = state.decks[candidateId];
     return deck && deck.drawPile.length + deck.discardPile.length > 0;
@@ -14929,9 +14936,22 @@ export function resolveSearchDeckCandidates(
   state: GameState,
   playerId: PlayerId,
   deckId: string,
-  options?: { strictExpertGate?: boolean; artifactBand?: "tile" | "level" }
+  options?: {
+    strictExpertGate?: boolean;
+    artifactBand?: "tile" | "level";
+    sourceHeroId?: HeroId;
+    sourceFieldId?: MapSpaceId;
+  }
 ): string[] {
-  const hero = getMainHero(state, playerId);
+  const liveHero = options?.sourceHeroId
+    ? (state.heroes[options.sourceHeroId] ?? getMainHero(state, playerId))
+    : getMainHero(state, playerId);
+  // Freeze a queued map find to the field that granted it. This also makes the
+  // rule robust if another deferred reward moves the hero before this Search
+  // surfaces; deck access belongs to the source tile, not the later position.
+  const hero = liveHero && options?.sourceFieldId
+    ? ({ ...liveHero, spaceId: options.sourceFieldId } as HeroState)
+    : liveHero;
 
   if (deckId === "spells") {
     return eligibleSpellDecks(state, playerId, hero, { ignoreKeyCards: options?.strictExpertGate });
@@ -16038,7 +16058,9 @@ export function pumpAdventureQueues(state: GameState): void {
       if (
         beginSharedDeckSearchNow(state, reward.playerId, reward.deckId, reward.count, Boolean(reward.allowRemove), {
           strictExpertGate: reward.strictExpertGate,
-          artifactBand: reward.polishArtifactBand
+          artifactBand: reward.polishArtifactBand,
+          sourceHeroId: reward.sourceHeroId,
+          sourceFieldId: reward.sourceFieldId
         })
       ) {
         return;

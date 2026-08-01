@@ -137,8 +137,8 @@ export function polishQuickCombatXpPossible(hero: HeroState, difficulty: number)
  * - `"choice"`: the army covers the field but the fight could pay Experience →
  *   the player is asked to Quick Combat or fight.
  * - `"fight"`: the shortcut does not apply — the rule is off, the hero is at the
- *   EXACT field level (its XP-bearing fight is preserved), or the army is too
- *   weak — so the normal guard combat is fought.
+ *   EXACT field level and can actually gain Experience, or the army is too weak
+ *   — so the normal guard combat is fought.
  *
  * `level` is the hero's NEUTRAL-battle level (a Secondary Hero fights at its
  * Main Hero's level), i.e. the exact `level` `startNeutralEncounter` computes.
@@ -154,12 +154,16 @@ export function polishQuickCombatOutcome(
   if (!polishQuickCombatEnabled(state)) {
     return "fight";
   }
-  // A hero at the exact field level keeps its normal (XP-bearing) fight.
-  if (level === difficulty) {
+  const xpPossible = polishQuickCombatXpPossible(hero, difficulty);
+  // Preserve the ordinary exact-level fight only when THIS hero can actually
+  // gain its Experience. A Secondary Hero uses the Main Hero's effective level
+  // for neutral difficulty, but never gains XP; treating an exact level as an
+  // unconditional carve-out incorrectly disabled its mandatory Quick Combat.
+  if (level === difficulty && xpPossible) {
     return "fight";
   }
   if (polishQuickCombatArmyStrength(state, hero.controllerId) < polishQuickCombatFieldStrength(state, difficulty)) {
     return "fight";
   }
-  return polishQuickCombatXpPossible(hero, difficulty) ? "choice" : "mandatory";
+  return xpPossible ? "choice" : "mandatory";
 }
