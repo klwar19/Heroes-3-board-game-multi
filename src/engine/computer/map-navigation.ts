@@ -225,11 +225,14 @@ function victoryObjectiveKind(
     return "victory";
   }
 
+  const vpEnabled = Boolean(state.adventure?.mapPreset?.victoryPoints?.enabled);
   const vpObjectives = state.adventure?.mapPreset?.victoryPoints?.enabled
     ? state.adventure.mapPreset.victoryPoints.objectives ?? []
     : [];
   if (
-    (field.centerHexVp ?? 0) + (field.designerRewardVp ?? 0) > 0 ||
+    // A designer VP bonus only scores while VP mode is enabled; without it the
+    // field is just its underlying economy, not a top-priority "victory" march.
+    (vpEnabled && (field.centerHexVp ?? 0) + (field.designerRewardVp ?? 0) > 0) ||
     (vpObjectives.some((objective) => objective.kind === "defeat-dragon-utopia") &&
       field.location === "dragon_utopia") ||
     (vpObjectives.some((objective) => objective.kind === "control-towns") &&
@@ -551,6 +554,21 @@ function objectiveKind(
       if (field.location !== "dragon_utopia") {
         return null;
       }
+    }
+    // A `control-towns` VP objective (non-conquest modes) elevates an
+    // enemy-flagged town/settlement to "victory"; it still opens a GARRISON
+    // fight, so respect the army-strength gate rather than march to a certain
+    // loss turn after turn. Conquest mode is untouched (an enemy town is a
+    // conquest target there, gated by its own clause).
+    if (
+      adventureVictoryMode(state) !== "conquest" &&
+      field.flagOwnerId &&
+      field.flagOwnerId !== playerId &&
+      (locationDefinitions[field.location]?.category === "town" ||
+        field.location === "settlement") &&
+      !shouldAssaultEnemyHolding(state, playerId, field)
+    ) {
+      return null;
     }
     return victory;
   }

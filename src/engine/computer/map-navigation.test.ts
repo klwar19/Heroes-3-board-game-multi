@@ -26,6 +26,7 @@ import {
 } from "../hex";
 import { getLegalActions } from "../legal-actions";
 import type {
+  ArmyUnitState,
   GameAction,
   GameState,
   HeroState,
@@ -45,6 +46,7 @@ import {
   armyEngagementTier,
   armyTierCoversGuardField,
   armyTierGuardCap,
+  unitSideStrength,
 } from "./army-strength";
 import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
@@ -982,6 +984,75 @@ describe("collectMapObjectives", () => {
     expect(spaces).not.toContain(MINE);
     // The other, still-beatable guard remains.
     expect(spaces).toContain(TREASURE);
+  });
+
+  it("treats a designer-VP field as a victory objective only while VP mode is enabled", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // A designer VP bonus on an otherwise-plain visitable field.
+    state.adventure!.fields[RESOURCE].location = "temple";
+    state.adventure!.fields[RESOURCE].centerHexVp = 5;
+
+    // VP mode OFF: the bonus scores nothing, so the field is a plain visitable,
+    // never a top-priority "victory" march. CONTROL for the VP-enabled case.
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === RESOURCE)?.kind,
+    ).not.toBe("victory");
+
+    // VP mode ON: the designer VP now makes it a victory objective.
+    state.adventure!.mapPreset = { victoryPoints: { enabled: true } };
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === RESOURCE)?.kind,
+    ).toBe("victory");
+  });
+
+  it("gates a non-conquest control-towns enemy-town assault by army strength", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // Non-conquest victory with a control-towns VP objective.
+    state.adventure!.victoryMode = "grail";
+    state.adventure!.mapPreset = {
+      victoryPoints: { enabled: true, objectives: [{ kind: "control-towns", count: 3, vp: 3 }] },
+    };
+    // A bare enemy-flagged town: no neutral guard, no hero occupying it.
+    const enemyTown = Object.values(state.adventure!.fields).find(
+      (f) => locationDefinitions[f.location]?.category === "town" && f.flagOwnerId === "p1",
+    );
+    expect(enemyTown, "default map should have an enemy town").toBeTruthy();
+    enemyTown!.difficulty = undefined;
+    for (const h of Object.values(state.heroes)) {
+      if (h.spaceId === enemyTown!.spaceId) h.spaceId = null;
+    }
+    // A gold unit that actually has a `few` side with real strength (some
+    // catalogue entries — e.g. WOG summons — have no standard side).
+    const gold = Object.values(coreUnitDefinitions).find(
+      (d) => d.tier === "gold" && unitSideStrength({ id: "probe", unitDefId: d.id, side: "few" } as ArmyUnitState) > 0,
+    )!;
+
+    // UNBEATABLE: p1 fields a gold stack, p2 is empty -> the AI must NOT march
+    // to a certain-loss garrison fight just because control-towns elevated it.
+    state.players.p2.army = [];
+    state.players.p1.army = [{ id: "enemy-gold", unitDefId: gold.id, side: "few" }];
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+      "unbeatable enemy town is not a victory march target in a non-conquest game",
+    ).not.toBe("victory");
+
+    // CONTROL: a defenceless owner (0 strength) makes the town beatable -> it IS
+    // a victory objective again.
+    state.players.p1.army = [];
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+    ).toBe("victory");
+
+    // CONTROL: conquest mode elevates the enemy town regardless of strength
+    // (the strength gate is scoped to non-conquest modes).
+    state.players.p1.army = [{ id: "enemy-gold-2", unitDefId: gold.id, side: "few" }];
+    state.players.p2.army = [];
+    state.adventure!.victoryMode = "conquest";
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+    ).toBe("victory");
   });
 });
 

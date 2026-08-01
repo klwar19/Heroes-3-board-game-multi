@@ -4624,6 +4624,19 @@ export function eliminatePlayer(
         }
       }
     }
+    if (choice.type === "OPTION_CHOICE" && choice.subterraneanTilePick) {
+      // The gate-entry tile pick spliced the held-out alternate (candidate[1])
+      // OUT of the pool while the choice was open; its resolution returns the
+      // unchosen tile to the pool. Eliminating the owner mid-pick must do the
+      // same or the tile is orphaned (underground supply silently shrinks by 1).
+      // The tile keeps its current def (candidate[0]), so only the alternate
+      // returns — matching the resolution's `!pool.includes` guard.
+      const heldOut = choice.subterraneanTilePick.candidates[1];
+      if (heldOut) {
+        const pool = state.adventure?.subterraneanTilePool;
+        if (pool && !pool.includes(heldOut)) pool.push(heldOut);
+      }
+    }
     state.pendingChoice = null;
     if (state.phase === "choice") {
       const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
@@ -5193,7 +5206,17 @@ function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSp
   const adventure = state.adventure;
   if (!adventure) return;
   for (const field of Object.values(adventure.fields)) {
-    if (field.spaceId === clearedFieldId || field.location !== "grail") continue;
+    // Only convert OTHER Grail sites that have not yet been fought. A Grail
+    // whose guards already fell (`blackCube`) is a spent dig site — a second
+    // Grail materialising later (its tile was face-down at this fight) must not
+    // resurrect it into a fresh, fightable Dragon Utopia with a full reward.
+    if (
+      field.spaceId === clearedFieldId ||
+      field.location !== "grail" ||
+      field.blackCube
+    ) {
+      continue;
+    }
     field.location = "dragon_utopia";
     delete field.grailDiggable;
     field.blackCube = false;
@@ -13421,7 +13444,9 @@ export function isCreatureBankId(bankId: string | undefined): bankId is Creature
  * The remaining groups (starting, center, sea) return null — no bank. So a sea
  * tile never offers a bank, even though some sea tiles (e.g. the Cove tile W1) DO
  * carry a Blocked Field / impassable terrain. This is the gate, not the presence
- * of a Blocked Field.
+ * of a Blocked Field. (NOTE: this is the BASE, group-only gate; with the
+ * `polish-bank-sizes` house rule ON, `creatureBankTierForTile` below additionally
+ * hosts a bank on IV–V-band SEA tiles and on Empty Fields — see its docstring.)
  */
 export function creatureBankTierForGroup(group: string | undefined): "far" | "near" | null {
   return group === "far" ? "far" : group === "near" ? "near" : group === "subterranean" ? "near" : null;

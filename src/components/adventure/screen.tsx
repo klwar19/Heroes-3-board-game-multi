@@ -8078,6 +8078,7 @@ function GroupToggleAllButton({
   groupLabel,
   houseRules,
   creatureBanksEnabled,
+  ruleset,
   setHouseRules,
   enableExtras
 }: {
@@ -8085,6 +8086,7 @@ function GroupToggleAllButton({
   groupLabel: string;
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
+  ruleset: GameSetupOptions["ruleset"];
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
   /**
    * Companion rules auto-enabled alongside the group (e.g. the Polish package
@@ -8099,8 +8101,13 @@ function GroupToggleAllButton({
   // (they land in the SAME dispatch), so e.g. Random Artifacts is not skipped
   // just because Divided decks is currently off.
   const withExtras = { ...houseRules, ...enableExtras };
+  // A rule the current mode force-locks ON (BINH's `discovery-border-gate`) is
+  // fixed — it must not be counted as toggleable nor written false by "Disable
+  // all" (that would grey the chip while the engine still runs it ON — the same
+  // lock the individual toggle already shows). Matches the per-toggle predicate.
+  const isLockedOn = (id: HouseRuleId) => ruleset === "binh" && id === "discovery-border-gate";
   const enableable = rules.filter(
-    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+    (rule) => !isLockedOn(rule.id) && !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
   );
   const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
   const anyOn = rules.some((rule) => houseRules[rule.id]);
@@ -8109,7 +8116,7 @@ function GroupToggleAllButton({
   const apply = () => {
     const updates: Partial<Record<HouseRuleId, boolean>> = {};
     if (allOn) {
-      for (const rule of rules) updates[rule.id] = false;
+      for (const rule of rules) if (!isLockedOn(rule.id)) updates[rule.id] = false;
     } else {
       for (const [id, value] of Object.entries(enableExtras ?? {})) {
         if (value && !houseRules[id as HouseRuleId]) {
@@ -8183,6 +8190,7 @@ function HouseRuleCategoryGroup({
           groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
           houseRules={houseRules}
           rules={rules}
+          ruleset={ruleset}
           setHouseRules={setHouseRules}
         />
       </div>
@@ -8335,6 +8343,7 @@ function HouseRulesSection({
               groupLabel="Polish"
               houseRules={houseRules}
               rules={polishRules}
+              ruleset={ruleset}
               setHouseRules={setHouseRules}
             />
           </div>
@@ -9085,7 +9094,7 @@ function SeatCountControl({
         <small title="The selected map determines the solo enemy count and starting locations">
           Solo deployment
         </small>
-        <div className="optionButtons" aria-label="Map-selected computer opponents">
+        <div className="optionButtons" role="group" aria-label="Map-selected computer opponents">
           <span className="selected">
             {current} computer opponent{current === 1 ? "" : "s"}
           </span>

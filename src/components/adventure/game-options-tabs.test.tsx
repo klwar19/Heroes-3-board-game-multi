@@ -521,6 +521,39 @@ describe("Game options — tabbed layout", () => {
     expect(hr["polish-wait"]).toBe(false);
   });
 
+  it("in BINH, 'Disable all' leaves the locked discovery-border-gate ON (no greyed-but-ON contradiction)", () => {
+    // BINH is the default ruleset here; discovery-border-gate is force-locked ON.
+    // The whole Polish group must be ON so the button reads "Disable all".
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": true,
+        "polish-spell-book": true,
+        "polish-bank-sizes": true,
+        "polish-unit-stacks": true,
+        "polish-reduced-starting-bonus": true,
+        "polish-rule-111": true,
+        "polish-reduced-surrender": true,
+        "polish-random-artifacts": true,
+        "polish-pandora-search": true,
+        "polish-wait": true,
+        "polish-quick-combat": true,
+        "polish-grail-utopia": true,
+        "discovery-border-gate": true
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // Ordinary Polish rules turn off...
+    expect(hr["polish-wait"]).toBe(false);
+    // ...but the BINH-locked invariant is NOT written false (which would grey the
+    // chip while the engine still runs it ON). CONTROL: without the lock skip in
+    // GroupToggleAllButton this dispatch sets it false.
+    expect(hr["discovery-border-gate"]).not.toBe(false);
+  });
+
   it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {
     const onAction = openOptions();
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));

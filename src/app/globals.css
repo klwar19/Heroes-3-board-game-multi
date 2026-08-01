@@ -21446,6 +21446,9 @@ img.cardBack {
   flex-direction: row;
   align-items: center;
   gap: 10px;
+  /* With a secondary hero the cell gains a second movement chip; wrap on a
+     tight viewport instead of overflowing (no effect where the chips fit). */
+  flex-wrap: wrap;
 }
 
 .statChip {

@@ -118,6 +118,39 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(scored?.rows.find((row) => row.label === "Possessing the Grail")?.vp).toBe(3);
   });
 
+  it("does NOT resurrect an already-fought Grail when a later Grail is cleared", () => {
+    // Repro of the face-down-timing bug: the 2nd Grail's tile is still
+    // face-down (not in adventure.fields) when the 1st Grail is fought+dug, so
+    // it escapes the 1st fight's conversion. When the 2nd Grail is later
+    // revealed and fought, its conversion pass must SKIP the spent 1st Grail,
+    // not rewrite it into a fresh, fightable Dragon Utopia with a full reward.
+    const state = game("polish-grail-reconvert");
+    const hero = getMainHero(state, "p1")!;
+    const first = field("grail", "30,30");
+    state.adventure!.fields[first.spaceId] = first;
+    hero.spaceId = first.spaceId;
+
+    beginFieldVisit(state, hero.id, first.spaceId, false);
+    expect(first.grailDiggable).toBe(true);
+    beginFieldVisit(state, hero.id, first.spaceId, true);
+    expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: hero.id });
+    // Spent dig site: still a Grail field, guards fallen, no longer diggable.
+    expect(first.location).toBe("grail");
+    expect(first.blackCube).toBe(true);
+
+    // The 2nd Grail tile is revealed later and fought.
+    const second = field("grail", "31,31");
+    state.adventure!.fields[second.spaceId] = second;
+    hero.spaceId = second.spaceId;
+    beginFieldVisit(state, hero.id, second.spaceId, false);
+
+    // CONTROL: without the `blackCube` skip, the spent first Grail is converted
+    // back into a fresh difficulty-7 Dragon Utopia (blackCube cleared).
+    expect(first.location, "spent Grail must stay a spent Grail, not become a Utopia").toBe("grail");
+    expect(first.blackCube).toBe(true);
+    expect(first.grailDiggable ?? false).toBe(false);
+  });
+
   it("builds at a controlled Town for free and opens the free-building picker", () => {
     const state = game("polish-grail-build");
     const hero = getMainHero(state, "p1")!;

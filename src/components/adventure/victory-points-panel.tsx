@@ -208,7 +208,7 @@ export function ScenarioObjectivesDock({
       : modeLabel;
 
   return (
-    <div className="objectiveDock" aria-label="Scenario objectives">
+    <div className="objectiveDock">
       <button
         aria-label="Show scenario objectives"
         className="objectiveDockButton"
