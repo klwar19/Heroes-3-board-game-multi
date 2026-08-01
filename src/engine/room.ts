@@ -199,6 +199,46 @@ function assertValidSeat(state: GameState, seat: RoomSeat): void {
   }
 }
 
+/**
+ * Ranked setup is always a closed, one-person-per-seat table. Fill its open
+ * lobby seats in join order so every actual player immediately receives the
+ * map-preparation controls and participates in the start ready check. Normal
+ * hosted rooms keep explicit host/self-service seating, and once every seat is
+ * occupied later arrivals remain observers.
+ */
+function autoSeatRankedSetupObservers(
+  state: GameState,
+  room: RoomMembershipState,
+  byClientId: string
+): void {
+  const lobby = state.setupLobby;
+  if (!room.ranked || !room.hosted || state.phase !== "setup" || !lobby) {
+    return;
+  }
+
+  for (const member of room.members) {
+    if (member.seat !== "observer") {
+      continue;
+    }
+    const occupied = new Set(
+      room.members
+        .filter((candidate) => candidate.clientId !== member.clientId && candidate.seat !== "observer")
+        .map((candidate) => candidate.seat)
+    );
+    const openSeat = lobby.seats.find((seat) => !occupied.has(seat.playerId))?.playerId;
+    if (!openSeat) {
+      return;
+    }
+    member.seat = openSeat;
+    appendEvent(state, {
+      type: "ROOM_SEAT_CHANGED",
+      clientId: member.clientId,
+      seat: openSeat,
+      byClientId
+    });
+  }
+}
+
 /** The seat a client controls, or null if they are not a member. */
 export function seatOfClient(state: GameState, clientId: string): RoomSeat | null {
   return state.room ? (findMember(state.room, clientId)?.seat ?? null) : null;
@@ -408,6 +448,7 @@ export function joinRoom(
     verified: Boolean(userId),
     newMember: true
   });
+  autoSeatRankedSetupObservers(state, room, action.clientId);
   // Announce a genuinely NEW arrival in the room chat too (forced, so it shows
   // even on a table where nobody has chatted yet): everyone should know who
   // walked in — by registered nickname, or honestly labeled a guest. Reconnects
@@ -519,6 +560,7 @@ export function setRoomHosted(
       appendEvent(state, { type: "ROOM_HOSTED_CHANGED", hosted: true, byClientId: action.clientId });
     }
     appendEvent(state, { type: "ROOM_HOST_CHANGED", clientId: action.clientId, byClientId: action.clientId });
+    autoSeatRankedSetupObservers(state, room, action.clientId);
     return;
   }
 
@@ -797,6 +839,9 @@ export function setRoomRanked(state: GameState, action: Extract<GameAction, { ty
   const ranked = Boolean(action.ranked);
   room.ranked = ranked;
   appendEvent(state, { type: "ROOM_RANKED_CHANGED", ranked, byClientId: action.clientId });
+  if (ranked) {
+    autoSeatRankedSetupObservers(state, room, action.clientId);
+  }
 }
 
 // ---------------------------------------------------------------------------

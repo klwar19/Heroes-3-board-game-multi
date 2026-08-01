@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { polishQuickCombatFieldInfo } from "./adventure";
+import { createSecondaryHero, neutralBattleLevel, polishQuickCombatFieldInfo } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { applyAction, createAdventureGameState } from "./index";
 import { HOUSE_RULES, resolveHouseRules } from "./house-rules";
@@ -210,6 +210,16 @@ describe("polish-quick-combat — outcome classifier (shared by engine + display
     setArmy(off, strongArmy());
     expect(polishQuickCombatOutcome(off, off.heroes.hero_p1, 1, 3)).toBe("fight");
   });
+
+  it("makes exact-level Quick Combat mandatory for a Secondary Hero, who cannot gain XP", () => {
+    const state = makeGame("pqc-out-secondary-exact");
+    state.heroes.hero_p1.level = 2;
+    setArmy(state, strongArmy());
+    const secondary = createSecondaryHero(state, "p1", "secondary-qc-field");
+
+    expect(neutralBattleLevel(state, secondary)).toBe(2);
+    expect(polishQuickCombatOutcome(state, secondary, 2, 2)).toBe("mandatory");
+  });
 });
 
 describe("polish-quick-combat — field info readout (the map float's source)", () => {
@@ -284,6 +294,21 @@ describe("polish-quick-combat — mandatory Quick Combat when covered with no XP
     expect(state.combat, "no combat opens").toBeNull();
     expect(state.pendingChoice, "the mandatory case never asks").toBeNull();
     expect(state.heroes.hero_p1.experience, "a Quick Combat pays no Experience").toBe(xpBefore);
+  });
+
+  it("secondary hero auto-wins when the Main Hero's effective level exactly matches the field", () => {
+    const state = makeGame("pqc-secondary-exact");
+    state.heroes.hero_p1.level = 2;
+    setArmy(state, [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]);
+    const field = guardField(state, 2);
+    const secondary = createSecondaryHero(state, "p1", field.spaceId);
+
+    startNeutralEncounter(state, secondary, field);
+
+    expect(quickCombatWon(state)).toBe(true);
+    expect(state.combat).toBeNull();
+    expect(state.pendingChoice).toBeNull();
+    expect(secondary.experience).toBe(0);
   });
 
   it("MUTATION CONTROL: a covered high-level hero with a too-weak army must FIGHT (rule off: classic auto-win)", () => {

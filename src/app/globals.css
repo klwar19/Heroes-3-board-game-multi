@@ -35068,10 +35068,39 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   backdrop-filter: blur(4px);
 }
 
-.setupPhase > .tableTopRow > .tableMenu > .seatLocked,
 .setupPhase > .tableTopRow > .tableMenu > .statusRow,
 .setupPhase > .tableTopRow > .tableMenu > .gameControlsRow {
   display: none;
+}
+
+/* Ranked/closed setup must expose seating directly. Hiding `.seatLocked` here
+   left every non-creator as an observer with no way to enter map preparation,
+   which in turn meant they never received the ready-check Confirm button. */
+.setupPhase > .tableTopRow > .tableMenu > .seatLocked {
+  display: flex;
+  min-height: 24px;
+  max-width: min(520px, calc(100vw - 118px));
+  padding: 3px 5px;
+  gap: 4px;
+  border-color: rgb(203 158 78 / 48%);
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgb(35 20 7 / 88%), rgb(18 9 3 / 92%));
+  box-shadow: 0 2px 8px rgb(0 0 0 / 34%);
+  color: #ead9b5;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .seatLocked .seatClaimButton {
+  min-height: 20px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.setupPhase > .tableTopRow > .tableMenu > .seatLocked .seatClaimHint {
+  line-height: 1.25;
 }
 
 .setupPhase > .tableTopRow > .tableMenu > .roomPanel {
@@ -35200,6 +35229,25 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 .setupLobby--ready .setupSceneStartButton {
   border-color: rgb(255 225 119 / 96%);
   animation: setupStartReadyPulse 1.15s ease-in-out infinite;
+}
+
+/* The ready check is a table-wide setup decision, not an in-flow note. Keep it
+   above the painted scene and centered for every seated ranked-room client. */
+.setupPhase .startReadyCheck {
+  position: fixed;
+  z-index: 45;
+  top: 88px;
+  left: 50%;
+  width: min(620px, calc(100vw - 24px));
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+.setupPhase .startReadyCheckBody {
+  justify-content: center;
+  border-color: rgb(255 225 119 / 82%);
+  background: rgb(24 14 5 / 97%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 68%), 0 0 18px rgb(255 174 46 / 28%);
 }
 
 @keyframes setupStartReadyPulse {

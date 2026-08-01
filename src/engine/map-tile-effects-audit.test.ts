@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
-import { addArmyUnit, beginFieldVisit, getMainHero, reinforceCostFor, RESOURCE_DIE_FACES } from "./adventure";
-import { resolveVisitStep } from "./adventure-reducer";
+import {
+  addArmyUnit,
+  beginFieldVisit,
+  createSecondaryHero,
+  getMainHero,
+  reinforceCostFor,
+  RESOURCE_DIE_FACES
+} from "./adventure";
+import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
-import { applyAction, createAdventureGameState } from "./index";
+import { applyAction, createAdventureGameState, eligibleSpellDecks } from "./index";
 import { locationDefinitions } from "@/data/map/locations";
 
 /**
@@ -55,6 +62,20 @@ function visit(state: GameState, playerId: PlayerId, field: MapFieldState): void
   const hero = getMainHero(state, playerId)!;
   hero.spaceId = field.spaceId;
   beginFieldVisit(state, hero.id, field.spaceId, false);
+}
+
+/** Put a synthetic audit field on a real split-deck tile band. */
+function putFieldOnBand(state: GameState, field: MapFieldState, group: "starting" | "far" | "near" | "center"): void {
+  const template = Object.values(state.adventure!.tiles)[0]!;
+  const backLabel = group === "starting" ? "Ⅰ" : group === "far" ? "Ⅱ–Ⅲ" : group === "near" ? "Ⅳ–Ⅴ" : "Ⅵ–Ⅶ";
+  state.adventure!.tiles[field.tileInstanceId] = {
+    ...template,
+    id: field.tileInstanceId,
+    group,
+    backLabel,
+    faceDown: false,
+    awaitingRotation: false
+  };
 }
 
 /** Resolve the first pending CHOOSE_ONE step by matching an option label. */
@@ -135,6 +156,73 @@ describe("Resource die house rule", () => {
     expect(valuableFaces.length).toBeGreaterThan(0);
     expect(Math.max(...valuableFaces.map((face) => face.amount))).toBe(1);
     expect(RESOURCE_DIE_FACES.some((face) => face.resource === "valuables" && face.amount >= 2)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Map-tile deck access — preserve the actual visiting Hero across reward queue
+// ---------------------------------------------------------------------------
+describe("map-location searches use the visiting hero's tile", () => {
+  it("Warrior's Tomb on IV–V offers Minor + Major and rolls for Relic for a Secondary Hero", () => {
+    const state = createAdventureGameState({
+      seed: "secondary-tomb-near",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "split-decks": true, "polish-random-artifacts": true }
+    });
+    const field = injectField(state, "warriors_tomb", { spaceId: "secondary-tomb" });
+    putFieldOnBand(state, field, "near");
+    const secondary = createSecondaryHero(state, "p1", field.spaceId);
+
+    beginFieldVisit(state, secondary.id, field.spaceId, false);
+    const queued = state.adventure!.rewardQueue.filter((reward) => reward.kind === "shared-deck-search");
+    expect(queued).toHaveLength(2);
+    expect(queued[0]).toMatchObject({ sourceHeroId: secondary.id, sourceFieldId: field.spaceId });
+
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("deck-pick");
+    const deckIds = choice?.type === "OPTION_CHOICE" ? (choice.deckPick?.deckIds ?? []) : [];
+    expect(deckIds).toEqual(expect.arrayContaining(["artifacts-minor", "artifacts-major"]));
+    const roll = [...state.eventLog].reverse().find(
+      (event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === "attack"
+    );
+    expect(roll?.type).toBe("ADVENTURE_DICE_ROLLED");
+    const rolledPlus = roll?.type === "ADVENTURE_DICE_ROLLED" && roll.attackRolls?.[0] === 1;
+    expect(deckIds.includes("artifacts-relic")).toBe(rolledPlus);
+
+    // CONTROL: the Main Hero stayed on a different tile. Substituting it in the
+    // reward pump would reduce this near-tile find to the wrong shallow access.
+    expect(state.heroes.hero_p1.spaceId).not.toBe(field.spaceId);
+  });
+
+  it("a Secondary Hero's IV–V shrine search offers Basic + Expert spells", () => {
+    const state = createAdventureGameState({
+      seed: "secondary-shrine-near",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "split-decks": true, "polish-spell-book": false }
+    });
+    const field = injectField(state, "shrine_of_magic_gesture", { spaceId: "secondary-shrine" });
+    putFieldOnBand(state, field, "near");
+    const secondary = createSecondaryHero(state, "p1", field.spaceId);
+    expect(state.decks["spells-expert"]).toBeTruthy();
+    expect(eligibleSpellDecks(state, "p1", secondary)).toEqual(["spells", "spells-expert"]);
+
+    beginFieldVisit(state, secondary.id, field.spaceId, false);
+    const queued = state.adventure!.rewardQueue.filter((reward) => reward.kind === "shared-deck-search");
+    expect(queued).toHaveLength(1);
+    expect(queued[0]).toMatchObject({ sourceHeroId: secondary.id, sourceFieldId: field.spaceId });
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("deck-pick");
+    const deckIds = choice?.type === "OPTION_CHOICE" ? (choice.deckPick?.deckIds ?? []) : [];
+    expect(deckIds).toEqual(expect.arrayContaining(["spells", "spells-expert"]));
+    expect(state.heroes.hero_p1.spaceId).not.toBe(field.spaceId);
   });
 });
 

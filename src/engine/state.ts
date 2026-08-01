@@ -8992,6 +8992,14 @@ export type AdventureReward =
       kind: "shared-deck-search";
       deckId: DeckId;
       count: number;
+      /**
+       * Map-location searches keep the actual visiting Hero/Field. Without
+       * this context the deferred reward pump falls back to the Main Hero and
+       * can offer the wrong split decks when a Secondary Hero is on a deeper
+       * tile (Minor/Major/Relic artifacts and Basic/Expert spells).
+       */
+      sourceHeroId?: HeroId;
+      sourceFieldId?: MapSpaceId;
       allowRemove?: boolean;
       /**
        * Polish Random Artifacts: which band table to use for the die roll.

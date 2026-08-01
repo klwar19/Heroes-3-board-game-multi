@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StartReadyCheck } from "./screen";
-import { createAdventureLobbyState } from "@/engine";
+import { createAdventureLobbyState, redactStateForSeat } from "@/engine";
 import type { GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -13,6 +13,7 @@ function lobbyWithCheck(startedAt = 1_000): GameState {
   state.room = {
     hosted: true,
     hostClientId: "c1",
+    ranked: true,
     members: [
       { clientId: "c1", name: "Alice", seat: "p1", isHost: true },
       { clientId: "c2", name: "Bob", seat: "p2", isHost: false }
@@ -30,7 +31,9 @@ function lobbyWithCheck(startedAt = 1_000): GameState {
 describe("StartReadyCheck", () => {
   it("shows Confirm/Cancel to a seated player and dispatches their choice", () => {
     vi.useRealTimers();
-    const state = lobbyWithCheck(Date.now());
+    // Ranked/hosted clients receive a per-seat redacted snapshot in production.
+    // The non-creator must retain the same ready-check controls on that frame.
+    const state = redactStateForSeat(lobbyWithCheck(Date.now()), "p2");
     const onAction = vi.fn();
     render(<StartReadyCheck onAction={onAction} state={state} viewerPlayerId="p2" />);
 
