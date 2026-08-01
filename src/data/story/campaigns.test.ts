@@ -190,7 +190,9 @@ describe("chapterRoomOptions", () => {
   it("applies exactly the selected classic starting bonus", () => {
     const chapter = ch1("erathia");
     const resources = chapterRoomOptions(chapter, "rare-resources")!;
-    expect(resources.customMapPreset?.startingBonuses).toEqual([{ kind: "resources", valuables: 5 }]);
+    expect(resources.customMapPreset?.startingBonuses).toEqual([
+      { kind: "resources", gold: 8, buildingMaterials: 2 }
+    ]);
     const pikemen = chapterRoomOptions(chapter, "pikemen")!;
     expect(pikemen.customMapPreset?.startingUnits).toHaveLength(3);
   });

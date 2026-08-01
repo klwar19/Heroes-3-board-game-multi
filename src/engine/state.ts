@@ -154,6 +154,8 @@ export type HouseRuleId =
   // fight vs Quick Combat; not covered → the fight is mandatory (the classic
   // level > difficulty auto-win no longer applies).
   | "polish-quick-combat"
+  // Polish house rule: random Grail/Utopia placement and shared objective rules.
+  | "polish-grail-utopia"
   // Pit Lords' Summon Demons: while ON, a Pit Lords may summon a new Few even
   // when Demons are already on the field (multiple Demon units). Off (official):
   // only ONE Demons unit may stand on the field (Few or Pack) — summon is
@@ -8439,6 +8441,13 @@ export type ReservedBankOption = {
 export type MapTileState = {
   id: string;
   tileDefId: string;
+  /**
+   * The map designer fixed this tile's identity (an exact pin or a `oneOf`
+   * result). Gate-entry choices must not replace designer-authored content.
+   */
+  tileIdentityLocked?: boolean;
+  /** This random face-down underground slot may offer the gate-entry 1-of-2 draw. */
+  gateTileChoiceEligible?: boolean;
   centerRow: number;
   centerCol: number;
   rotation: number;
@@ -8906,6 +8915,8 @@ export type MapFieldState = {
   onewayExitMode?: OnewayExitMode;
   /** One-way monolith EXIT: freely choosable before the roll in "mix" mode. */
   onewayAlwaysPickable?: boolean;
+  /** Designer Garrison option: this hex opens adjacent yellow borders. */
+  garrisonBorderPassage?: boolean;
   /**
    * Designer yellow border lines on a STANDALONE object hex — ABSOLUTE
    * directions 0-5 sealing single edges of THIS field, the field-level twin of
@@ -10737,6 +10748,13 @@ export type AdventureState = {
    */
   nearTilePool?: string[];
   /**
+   * Undrawn Subterranean tiles left after map setup. When a Hero first enters
+   * a gate, one same-band tile is reserved from here and offered alongside the
+   * face-down tile already occupying the connected underground slot.
+   * Redacted in every player view. Absent on pre-feature saves.
+   */
+  subterraneanTilePool?: string[];
+  /**
    * Live designer hex events keyed by their hex ({@link HexEventState}).
    * REDACTED from every player view — an unsprung event must stay invisible in
    * the real game; only the engine reads it (the beginFieldVisit trigger seam).
@@ -11506,6 +11524,11 @@ export type CustomMapPreset = {
     floorBosses?: Partial<Record<5 | 10, string>>;
   };
   startingResources?: { gold: number; buildingMaterials: number; valuables: number };
+  /** Extra opening resources granted to every computer-controlled seat in
+   * SINGLE-PLAYER only. This is explicit scenario pressure (and is surfaced in
+   * the briefing), never a hidden global difficulty modifier. Per-enemy extras
+   * may also live on a starting tile's `singlePlayer.bonus`. */
+  computerStartingBonus?: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction?: { gold: number; buildingMaterials: number; valuables: number };
   startingBuildings?: string[];
   startingUnits?: CustomStartingUnit[];
@@ -11998,6 +12021,8 @@ export type CustomMapObject = {
    * cap 6) at sanitize.
    */
   borderEdges?: number[];
+  /** Garrison only: this hex opens adjacent yellow borders while occupied. */
+  garrisonBorderPassage?: boolean;
   /** One-way ENTRANCE only: how the traveller's exit is picked (default "certain"). */
   exitMode?: OnewayExitMode;
   /** One-way EXIT only ("mix" mode): freely choosable BEFORE the roll. */
@@ -12200,6 +12225,20 @@ export type CustomMapTilePlan = {
    * opening-ceremony flow byte-identically.
    */
   lockRotation?: boolean;
+  /**
+   * Optional SOLO-ONLY deployment for this starting tile. A complete authored
+   * deployment has exactly one `human` tile and one or more `computer` tiles;
+   * those marked tiles determine the solo seat count and starting locations.
+   * Unmarked starting tiles remain available to multiplayer, and this entire
+   * block is ignored outside `sessionMode === "single-player"`.
+   *
+   * A computer tile may add its own opening resource bonus on top of the map's
+   * shared `computerStartingBonus`, allowing enemies on the same map to differ.
+   */
+  singlePlayer?: {
+    role: "human" | "computer";
+    bonus?: { gold: number; buildingMaterials: number; valuables: number };
+  };
   /**
    * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
    * ships both Ⅳ–Ⅴ and Ⅵ–Ⅶ tiles behind one wave back, so the designer offers
@@ -13096,6 +13135,7 @@ export type PendingChoice =
         | "place-creature-bank"
         | "place-map-token"
         | "place-field-override"
+        | "subterranean-tile-pick"
         | "subterranean-gate-placement"
         | "judge-dread"
         | "rule-111"
@@ -13617,6 +13657,15 @@ export type PendingChoice =
         tileInstanceId: string;
         candidates: SubterraneanGateChoiceCandidate[];
         deferBank: boolean;
+      };
+      /**
+       * subterranean-tile-pick: on first gate entry, choose which of two
+       * same-band underground tiles occupies the connected slot. The second
+       * tile is held out of the live pool until this choice resolves.
+       */
+      subterraneanTilePick?: {
+        tileInstanceId: string;
+        candidates: [string, string];
       };
       /**
        * place-map-token: the discovering player picks which field of the

@@ -82,6 +82,40 @@ describe("sanitizeSharedMap", () => {
     expect(record!.tiles[0]).toMatchObject({ row: 1, col: 1, group: "far" });
   });
 
+  it("keeps sanitized solo roles/bonuses only on starting Towns", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "solo-roles",
+        tiles: [
+          {
+            row: 1,
+            col: 1,
+            group: "starting",
+            faceDown: false,
+            singlePlayer: {
+              role: "computer",
+              bonus: { gold: 999, buildingMaterials: -4, valuables: 3.8 }
+            }
+          },
+          {
+            row: 9,
+            col: 9,
+            group: "near",
+            faceDown: true,
+            singlePlayer: { role: "human", bonus: { gold: 9 } }
+          }
+        ]
+      },
+      1
+    );
+
+    expect(record!.tiles[0].singlePlayer).toEqual({
+      role: "computer",
+      bonus: { gold: 99, buildingMaterials: 0, valuables: 3 }
+    });
+    expect(record!.tiles[1].singlePlayer).toBeUndefined();
+  });
+
   it("preserves a tile's guard band — sea AND underground — through sanitization", () => {
     // Regression: sanitizeTile rebuilds each plan from an allow-list of fields,
     // so a newly added band field must be carried explicitly or a saved

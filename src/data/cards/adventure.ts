@@ -4380,8 +4380,8 @@ export const adventureCards: CardLibrary = {
     id: "specialty.tarnum_dungeon.4",
     name: "Dragons IV",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
+    phaseLimit: ["reaction", "combat"],
     tags: [
       "hero-specialty",
       "combat",
@@ -4389,8 +4389,18 @@ export const adventureCards: CardLibrary = {
       "dragons",
       "Choose a row (straight line of 5 consecutive spaces). Every unit in that row suffers 2 damage."
     ],
-    target: { type: "any-space" },
-    effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 },
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Choose a row: every unit in it suffers 2 damage",
+          combatAnytime: true,
+          target: { type: "any-space" },
+          effect: { type: "DAMAGE_BATTLEFIELD_LINE", amount: 2 }
+        }
+      ]
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_dungeon")
   }),
@@ -4414,6 +4424,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Remove/place a Black cube on a Dragons unit",
           combatOnly: true,
+          combatAnytime: true,
           target: { type: "any-unit", unitName: "a Dragons unit" },
           effect: { type: "TOGGLE_RETALIATION_MARKER" }
         },

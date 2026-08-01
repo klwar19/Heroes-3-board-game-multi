@@ -272,6 +272,7 @@ export {
 } from "./polish-random-artifacts";
 export {
   currentSurrenderGoldCost,
+  customWinConditionProgress,
   flagField,
   materializeTileFields,
   playerPossessesGrail,
@@ -418,6 +419,7 @@ export {
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_GATES_PER_PAIR,
   MAX_OBELISK_BONUSES,
+  MAX_SINGLE_PLAYER_MAP_OPPONENTS,
   MAX_SETTLEMENT_VP,
   MAX_SETTLEMENT_HOLD_ROUNDS,
   MAX_TIMED_EVENTS,
@@ -455,7 +457,9 @@ export {
   sanitizeObjectFieldPlan,
   sanitizeObjectPlans,
   sanitizeObjectGuard,
+  sanitizeSinglePlayerMapStart,
   secretFeatureDemandWarnings,
+  singlePlayerMapDeployment,
   tileMatchesSecretFeature,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
@@ -463,6 +467,7 @@ export {
   victoryDesignConflicts,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
+export type { SinglePlayerMapDeployment } from "./map-preset";
 export {
   describeGuardArmyGrouped,
   expandGuardUnitGroups,
@@ -498,6 +503,7 @@ export {
   recordVpHeroDefeat,
   recordVpSurrender,
   recordVpUtopiaDefeat,
+  victoryPointObjectiveProgress,
   victoryConditionVp,
   victoryPointsConfig,
   victoryPointsModeActive

@@ -108,7 +108,7 @@ export default function MenuPage() {
           <MenuNavIcon icon={SKILL_ICONS.attack} />
           <span className="menuNavText">
             <span className="menuNavLabel">Single player</span>
-            <small>Playing with computer — a private table vs 1–3 computer opponents</small>
+            <small>Playing with computer — the selected map sets enemies and starting positions</small>
           </span>
         </Link>
         <Link className="menuNavButton" href="/play">

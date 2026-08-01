@@ -127,7 +127,7 @@ export type Campaign = {
 };
 
 const cover = (slug: string) => `/assets/story/covers/${slug}.webp`;
-const erathiaArt = (slug: string) => `/assets/story/erathia/${slug}.webp`;
+const erathiaArt = (slug: string, extension = ".webp") => `/assets/story/erathia/${slug}${extension}`;
 
 // -----------------------------------------------------------------------------
 // Locked-chapter helper for the optional mod chronicles.
@@ -428,32 +428,31 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Establish a base on the occupied coast, rally Erathia's militia, uncover Nighon's invasion road and capture the underground town of Terraneus.",
         vi: "Lập căn cứ trên bờ biển bị chiếm đóng, tập hợp dân quân Erathia, tìm đường xâm lược của Nighon và chiếm thành Terraneus dưới lòng đất."
       },
-      objective: { en: "Capture Terraneus", vi: "Chiếm Terraneus" },
+      objective: { en: "Defeat Terraneus's marked garrison or control 2 towns; then score VP", vi: "Đánh bại đồn trú Terraneus hoặc kiểm soát 2 thành; sau đó tính VP" },
       playable: true,
       briefingArt: erathiaArt("homecoming"),
       mapPosition: { x: 17, y: 72 },
       scenarioMap: ERATHIA_SCENARIO_MAPS.homecoming,
       levelCap: 6,
-      carryOverHeroes: 4,
       heroIds: ["catherine", "rion", "valeska", "lord_haart"],
       startingBonuses: [
         {
           id: "pikemen",
-          title: { en: "14 Pikemen", vi: "14 Lính Giáo" },
-          effect: { en: "Board equivalent: add a Pack of level-1 Castle troops.", vi: "Tương đương bàn cờ: thêm một Pack lính Castle cấp 1." },
+          title: { en: "Militia Muster", vi: "Tập Hợp Dân Quân" },
+          effect: { en: "Add one Pack of level-1 Castle troops to the printed opening army.", vi: "Thêm một Pack lính Castle cấp 1 vào quân khởi đầu." },
           preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 1, side: "pack" }, { level: 2, side: "few" }] }
         },
         {
           id: "rare-resources",
-          title: { en: "+5 rare resources", vi: "+5 tài nguyên quý" },
-          effect: { en: "Board equivalent: +5 Valuables at the start.", vi: "Tương đương bàn cờ: +5 Valuables khi bắt đầu." },
-          preset: { startingBonuses: [{ kind: "resources", valuables: 5 }] }
+          title: { en: "Supply Wagons", vi: "Xe Tiếp Tế" },
+          effect: { en: "+8 Gold and +2 Building Materials.", vi: "+8 Vàng và +2 Vật Liệu Xây Dựng." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 8, buildingMaterials: 2 }] }
         },
         {
           id: "first-aid",
-          title: { en: "First Aid Tent", vi: "Lều Cứu Thương" },
-          effect: { en: "Board equivalent: Search 3 Ability cards for battlefield support.", vi: "Tương đương bàn cờ: Search 3 thẻ Ability hỗ trợ chiến trường." },
-          preset: { startingBonuses: [{ kind: "search", deck: "abilities", count: 3 }] }
+          title: { en: "Field Chaplain", vi: "Giáo Sĩ Chiến Trường" },
+          effect: { en: "+1 Morale and Search 2 Ability cards.", vi: "+1 Morale và Search 2 thẻ Ability." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "abilities", count: 2 }] }
         }
       ],
       setup: {
@@ -476,32 +475,31 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Reach Fair Feather and break the Nighon–Kreegan siege. If the rumors are true, the angels protecting the city may join Erathia's cause.",
         vi: "Tiến đến Fair Feather và phá vòng vây Nighon–Kreegan. Nếu tin đồn đúng, các thiên thần bảo vệ thành có thể gia nhập Erathia."
       },
-      objective: { en: "Defeat every enemy", vi: "Đánh bại mọi kẻ thù" },
+      objective: { en: "Defeat Fair Feather's marked siege army; then score VP", vi: "Đánh bại quân vây hãm được đánh dấu tại Fair Feather; sau đó tính VP" },
       playable: true,
       briefingArt: erathiaArt("guardian-angels"),
       mapPosition: { x: 30, y: 18 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["guardian-angels"],
       levelCap: 12,
-      carryOverHeroes: 8,
       heroIds: ["catherine", "valeska", "rion", "adelaide"],
       startingBonuses: [
         {
           id: "angel",
-          title: { en: "1 Angel", vi: "1 Thiên Thần" },
-          effect: { en: "Begin with one Few level-7 unit.", vi: "Bắt đầu với một đơn vị Few cấp 7." },
-          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 7, side: "few" }] }
+          title: { en: "Guardian Cadre", vi: "Đội Hộ Vệ" },
+          effect: { en: "Add one Few level-4 Castle unit; the Angel remains a mission reward.", vi: "Thêm một đơn vị Few Castle cấp 4; Thiên Thần vẫn là phần thưởng nhiệm vụ." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 4, side: "few" }] }
         },
         {
           id: "zealots",
-          title: { en: "3 Zealots", vi: "3 Zealot" },
-          effect: { en: "Board equivalent: add a Pack of level-5 Castle troops.", vi: "Tương đương bàn cờ: thêm một Pack lính Castle cấp 5." },
-          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 5, side: "pack" }] }
+          title: { en: "Veteran Zealots", vi: "Zealot Kỳ Cựu" },
+          effect: { en: "Add one Few level-5 Castle unit.", vi: "Thêm một đơn vị Few Castle cấp 5." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "few" }, { level: 5, side: "few" }] }
         },
         {
           id: "prayer",
           title: { en: "Scroll of Prayer", vi: "Cuộn Phép Prayer" },
-          effect: { en: "Board equivalent: Search 3 Spell cards.", vi: "Tương đương bàn cờ: Search 3 thẻ Spell." },
-          preset: { startingBonuses: [{ kind: "search", deck: "spells", count: 3 }] }
+          effect: { en: "+1 Morale and Search 2 Spell cards.", vi: "+1 Morale và Search 2 thẻ Spell." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "spells", count: 2 }] }
         }
       ],
       setup: {
@@ -534,20 +532,20 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         {
           id: "golden-bow",
           title: { en: "Golden Bow", vi: "Cung Vàng" },
-          effect: { en: "Board equivalent: Search 4 Artifact cards.", vi: "Tương đương bàn cờ: Search 4 thẻ Artifact." },
-          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 4 }] }
+          effect: { en: "Search 2 Artifact cards.", vi: "Search 2 thẻ Artifact." },
+          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 2 }] }
         },
         {
           id: "lions-shield",
           title: { en: "Lion's Shield of Courage", vi: "Khiên Sư Tử Dũng Khí" },
-          effect: { en: "Board equivalent: +1 Morale and Search 3 Artifacts.", vi: "Tương đương bàn cờ: +1 Morale và Search 3 Artifact." },
-          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 3 }] }
+          effect: { en: "+1 Morale and Search 1 Artifact.", vi: "+1 Morale và Search 1 Artifact." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 1 }] }
         },
         {
           id: "sack-of-gold",
           title: { en: "Endless Sack of Gold", vi: "Túi Vàng Bất Tận" },
-          effect: { en: "Board equivalent: +15 Gold at the start.", vi: "Tương đương bàn cờ: +15 Gold khi bắt đầu." },
-          preset: { startingBonuses: [{ kind: "resources", gold: 15 }] }
+          effect: { en: "+10 Gold and +2 Building Materials.", vi: "+10 Vàng và +2 Vật Liệu Xây Dựng." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 10, buildingMaterials: 2 }] }
         }
       ],
       setup: {
@@ -573,32 +571,31 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "The griffin legions are assembled, but two enemy relief columns control the river roads. Seize both bridge towns and open the final march to Erathia's capital.",
         vi: "Quân đoàn Griffin đã tập hợp, nhưng hai cánh quân cứu viện của địch kiểm soát các tuyến đường ven sông. Hãy chiếm hai thành cầu và mở đường tiến quân cuối cùng tới kinh đô Erathia."
       },
-      objective: { en: "Control 3 towns", vi: "Kiểm soát 3 thành" },
+      objective: { en: "Control 3 towns across the twin banks; then score VP", vi: "Kiểm soát 3 thành dọc hai bờ sông; sau đó tính VP" },
       playable: true,
-      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      briefingArt: erathiaArt("road-to-steadwick-generated", ".webp"),
       mapPosition: { x: 49, y: 58 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["road-to-steadwick"],
       levelCap: 18,
-      carryOverHeroes: 8,
       heroIds: ["catherine", "valeska", "rion", "lord_haart", "adelaide"],
       startingBonuses: [
         {
           id: "royal-treasury",
           title: { en: "Royal Treasury", vi: "Ngân Khố Hoàng Gia" },
-          effect: { en: "+18 Gold for the river campaign.", vi: "+18 Vàng cho chiến dịch ven sông." },
-          preset: { startingBonuses: [{ kind: "resources", gold: 18 }] }
+          effect: { en: "+10 Gold and +2 Building Materials for the river campaign.", vi: "+10 Vàng và +2 Vật Liệu Xây Dựng cho chiến dịch ven sông." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 10, buildingMaterials: 2 }] }
         },
         {
           id: "griffin-vanguard",
           title: { en: "Griffin Vanguard", vi: "Tiền Quân Griffin" },
-          effect: { en: "Add a Pack of level-4 Castle troops.", vi: "Thêm một Pack lính Castle cấp 4." },
-          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "pack" }, { level: 4, side: "pack" }, { level: 5, side: "few" }] }
+          effect: { en: "Add one Few level-4 Castle unit.", vi: "Thêm một đơn vị Few Castle cấp 4." },
+          preset: { startingUnits: [{ level: 1, side: "pack" }, { level: 3, side: "pack" }, { level: 4, side: "few" }, { level: 5, side: "few" }] }
         },
         {
           id: "scouts-map",
           title: { en: "Scouts' Map", vi: "Bản Đồ Trinh Sát" },
-          effect: { en: "+1 Morale and Search 3 Abilities.", vi: "+1 Morale và Search 3 Ability." },
-          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "abilities", count: 3 }] }
+          effect: { en: "+1 Morale and Search 2 Abilities.", vi: "+1 Morale và Search 2 Ability." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "abilities", count: 2 }] }
         }
       ],
       setup: {
@@ -624,32 +621,31 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Steadwick is encircled by Nighon and the undead court that betrayed King Gryphonheart. Break the siege ring, storm the capital, and raise Catherine's standard above the palace.",
         vi: "Steadwick bị bao vây bởi Nighon và triều đình undead đã phản bội Vua Gryphonheart. Hãy phá vòng vây, công phá kinh đô và dựng cờ Catherine trên cung điện."
       },
-      objective: { en: "Capture Steadwick and control 3 towns", vi: "Chiếm Steadwick và kiểm soát 3 thành" },
+      objective: { en: "Defeat Steadwick's marked garrison or control 3 towns; then score VP", vi: "Đánh bại đồn trú Steadwick hoặc kiểm soát 3 thành; sau đó tính VP" },
       playable: true,
-      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      briefingArt: erathiaArt("liberation-day-generated", ".webp"),
       mapPosition: { x: 58, y: 53 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["liberation-day"],
       levelCap: 24,
-      carryOverHeroes: 8,
       heroIds: ["catherine", "lord_haart", "adelaide", "valeska", "rion"],
       startingBonuses: [
         {
           id: "angel-host",
-          title: { en: "Angel Host", vi: "Đạo Quân Thiên Thần" },
-          effect: { en: "Begin with an additional Few level-7 unit.", vi: "Bắt đầu với thêm một đơn vị Few cấp 7." },
-          preset: { startingUnits: [{ level: 2, side: "pack" }, { level: 4, side: "pack" }, { level: 6, side: "few" }, { level: 7, side: "few" }] }
+          title: { en: "Royal Guard", vi: "Cận Vệ Hoàng Gia" },
+          effect: { en: "Add one Few level-5 Castle unit; no free level-7 stack.", vi: "Thêm một đơn vị Few Castle cấp 5; không có stack cấp 7 miễn phí." },
+          preset: { startingUnits: [{ level: 2, side: "pack" }, { level: 4, side: "pack" }, { level: 5, side: "few" }, { level: 6, side: "few" }] }
         },
         {
           id: "siege-train",
           title: { en: "Siege Train", vi: "Đoàn Công Thành" },
-          effect: { en: "+5 Building Materials and Search 3 Abilities.", vi: "+5 Vật Liệu Xây Dựng và Search 3 Ability." },
-          preset: { startingBonuses: [{ kind: "resources", buildingMaterials: 5 }, { kind: "search", deck: "abilities", count: 3 }] }
+          effect: { en: "+4 Building Materials and Search 2 Abilities.", vi: "+4 Vật Liệu Xây Dựng và Search 2 Ability." },
+          preset: { startingBonuses: [{ kind: "resources", buildingMaterials: 4 }, { kind: "search", deck: "abilities", count: 2 }] }
         },
         {
           id: "crown-of-courage",
           title: { en: "Crown of Courage", vi: "Vương Miện Dũng Khí" },
-          effect: { en: "+1 Morale and Search 4 Artifacts.", vi: "+1 Morale và Search 4 Artifact." },
-          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 4 }] }
+          effect: { en: "+1 Morale and Search 2 Artifacts.", vi: "+1 Morale và Search 2 Artifact." },
+          preset: { startingBonuses: [{ kind: "morale", amount: 1 }, { kind: "search", deck: "artifacts", count: 2 }] }
         }
       ],
       setup: {
@@ -675,9 +671,9 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         en: "Steadwick is free, yet the invasion survives behind the Ash Gate. Lead the royal host into the scorched southeast, destroy the final war-engine, and take the Black Citadel.",
         vi: "Steadwick đã tự do, nhưng cuộc xâm lược vẫn tồn tại sau Cổng Tro. Hãy dẫn hoàng quân vào vùng đông nam cháy xém, phá hủy chiến cụ cuối cùng và chiếm Hắc Thành."
       },
-      objective: { en: "Break the Ash Gate and seize the Black Citadel", vi: "Phá Cổng Tro và chiếm Hắc Thành" },
+      objective: { en: "Defeat the Utopia, then the marked Black Citadel army; highest VP wins", vi: "Đánh bại Utopia rồi quân Hắc Thành được đánh dấu; VP cao nhất thắng" },
       playable: true,
-      briefingArt: erathiaArt("campaign-map-rebuilt"),
+      briefingArt: erathiaArt("throne-of-ash-generated", ".webp"),
       mapPosition: { x: 66, y: 80 },
       scenarioMap: ERATHIA_SCENARIO_MAPS["throne-of-ash"],
       heroIds: ["catherine", "adelaide", "valeska", "rion", "lord_haart"],
@@ -685,20 +681,20 @@ const ERATHIA_LONG_LIVE_QUEEN: Campaign = {
         {
           id: "royal-legion",
           title: { en: "Royal Legion", vi: "Quân Đoàn Hoàng Gia" },
-          effect: { en: "Add a Pack of level-6 troops to the final army.", vi: "Thêm một Pack lính cấp 6 vào đạo quân cuối." },
-          preset: { startingUnits: [{ level: 3, side: "pack" }, { level: 5, side: "pack" }, { level: 6, side: "pack" }, { level: 7, side: "few" }] }
+          effect: { en: "Add one Few level-6 Castle unit to the final army.", vi: "Thêm một đơn vị Few Castle cấp 6 vào đạo quân cuối." },
+          preset: { startingUnits: [{ level: 3, side: "pack" }, { level: 5, side: "pack" }, { level: 6, side: "few" }, { level: 7, side: "few" }] }
         },
         {
           id: "grail-treasury",
           title: { en: "Grail Treasury", vi: "Kho Báu Grail" },
-          effect: { en: "+20 Gold and +4 Valuables.", vi: "+20 Vàng và +4 Tài Nguyên Quý." },
-          preset: { startingBonuses: [{ kind: "resources", gold: 20, valuables: 4 }] }
+          effect: { en: "+12 Gold and +2 Valuables.", vi: "+12 Vàng và +2 Tài Nguyên Quý." },
+          preset: { startingBonuses: [{ kind: "resources", gold: 12, valuables: 2 }] }
         },
         {
           id: "blessed-armory",
           title: { en: "Blessed Armory", vi: "Kho Vũ Khí Ban Phước" },
-          effect: { en: "Search 4 Artifacts and 3 Spells.", vi: "Search 4 Artifact và 3 Spell." },
-          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 4 }, { kind: "search", deck: "spells", count: 3 }] }
+          effect: { en: "Search 2 Artifacts and 2 Spells.", vi: "Search 2 Artifact và 2 Spell." },
+          preset: { startingBonuses: [{ kind: "search", deck: "artifacts", count: 2 }, { kind: "search", deck: "spells", count: 2 }] }
         }
       ],
       setup: {

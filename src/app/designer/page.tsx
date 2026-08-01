@@ -9,6 +9,7 @@ import {
   customMapPresetIsActive,
   scenarioDefinitions,
   secretFeatureDemandWarnings,
+  singlePlayerMapDeployment,
   validateCustomMapPlan,
   type CustomMapObject,
   type CustomMapPreset,
@@ -106,6 +107,17 @@ export default function MapDesignerPage() {
     [tiles, scenario]
   );
   const secretWarnings = useMemo(() => secretFeatureDemandWarnings(tiles), [tiles]);
+  const soloOpponentLimit = scenario
+    ? Math.max(0, Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1)
+    : 0;
+  const soloDeployment = useMemo(
+    () => singlePlayerMapDeployment(tiles, soloOpponentLimit),
+    [tiles, soloOpponentLimit]
+  );
+  const soloMarkedStarts = useMemo(
+    () => tiles.filter((tile) => tile.group === "starting" && tile.singlePlayer).length,
+    [tiles]
+  );
 
   // Seat counts this scenario can open (skirmish 2–4, the symmetric duels 2).
   const playerCounts = useMemo(() => {
@@ -208,10 +220,11 @@ export default function MapDesignerPage() {
         </h1>
         <p>
           Build a map around the starting tiles, dropping tiles wherever you like — they can interlock, leave gaps,
-          touch at a corner or sit apart on their own. Pick how many players it opens for (2–4), flip a tile face up
+          touch at a corner or sit apart on their own. Pick how many multiplayer seats it opens for (2–4), flip a tile face up
           (choose the exact tile and rotation) or face down (random from its pool), then save the design. Saved maps are
           shared with everyone — anyone can open, edit, play, or delete them, here or in the map-setup lobby under “Map
-          design”.
+          design”. For single-player, click Town tiles to mark exactly one as You and the others as Enemy AI; those
+          solo-only roles, locations and bonuses are ignored when this same map is used in multiplayer.
         </p>
       </header>
 
@@ -242,9 +255,9 @@ export default function MapDesignerPage() {
               </select>
             </label>
             <label>
-              <small>Players</small>
+              <small>Multiplayer seats</small>
               <select
-                aria-label="Players"
+                aria-label="Multiplayer seats"
                 onChange={(event) => setPlayers(Number(event.target.value))}
                 value={players}
               >
@@ -320,6 +333,13 @@ export default function MapDesignerPage() {
             </div>
           ) : null}
 
+          {soloMarkedStarts > 0 && !soloDeployment ? (
+            <div className="designerProblems designerWarnings" aria-label="Single-player deployment warning" role="status">
+              <strong>Single-player deployment is incomplete:</strong>
+              <small>Mark exactly one Town as You and 1–{soloOpponentLimit} Town{soloOpponentLimit === 1 ? "" : "s"} as Enemy AI. Until then, solo games fall back to the map&apos;s ordinary seat order.</small>
+            </div>
+          ) : null}
+
           <MapDesigner
             customMap={tiles}
             hexEvents={preset?.hexEvents ?? []}
@@ -353,7 +373,8 @@ export default function MapDesignerPage() {
             victoryMode={preset?.victoryMode}
           />
           <small className="optionHint">
-            {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} seat{players === 1 ? "" : "s"} ·
+            {tiles.length} tile{tiles.length === 1 ? "" : "s"} placed · opens {players} multiplayer seat{players === 1 ? "" : "s"}
+            {soloDeployment ? ` · solo: you vs ${soloDeployment.computers.length} AI` : ""} ·
             face-down Secret landmarks draw a random matching tile from their pool when the adventure starts (if none
             match, pure random — players are notified).
           </small>

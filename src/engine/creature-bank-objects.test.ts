@@ -288,9 +288,9 @@ describe("applyCustomMapObjects — creature_bank carve", () => {
 
     // Discovery while standing on the bank is open when the target tile has
     // no designed edges (bank side never contributes a seal). Asserted with the
-    // opt-in `discovery-border-gate` house rule ON — with it OFF (the official
-    // default) adjacency alone already allows every discovery, so the bank
-    // exception would be vacuous here.
+    // `discovery-border-gate` house rule ON (its BINH default since 2026-08-02;
+    // still a Legacy toggle) — with it OFF adjacency alone already allows every
+    // discovery, so the bank exception would be vacuous here.
     state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "discovery-border-gate": true } as never;
     expect(
       heroCanDiscoverTileAcrossBorders(state, BANK_ID, field, {

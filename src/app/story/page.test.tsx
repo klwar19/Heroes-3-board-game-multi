@@ -37,11 +37,11 @@ describe("/story (Erathia campaign map)", () => {
     render(<StoryPage />);
     fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
     expect(screen.getByRole("dialog", { name: /Homecoming briefing/i })).toBeTruthy();
-    expect(screen.getAllByText("Capture Terraneus").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /14 Pikemen/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getAllByText("Defeat Terraneus's marked garrison or control 2 towns; then score VP").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Militia Muster/i }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("Catherine")).toBeTruthy();
     expect(screen.getByText("Dungeon")).toBeTruthy();
-    expect(screen.getByText(/18 fixed tiles/i)).toBeTruthy();
+    expect(screen.getByText(/20 fixed tiles/i)).toBeTruthy();
     expect(screen.getByText(/Authored map locked/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Event cards/i }).getAttribute("aria-pressed")).toBe("false");
     expect(screen.getByRole("button", { name: /Spell Book/i }).getAttribute("aria-pressed")).toBe("true");
@@ -51,7 +51,7 @@ describe("/story (Erathia campaign map)", () => {
     createSinglePlayerRoom.mockResolvedValue({ roomId: "sp-story-1" });
     render(<StoryPage />);
     fireEvent.click(screen.getByRole("button", { name: /Open briefing/i }));
-    fireEvent.click(screen.getByRole("button", { name: /rare resources/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Supply Wagons/i }));
     fireEvent.click(screen.getByRole("button", { name: /Event cards/i }));
     fireEvent.click(screen.getByRole("button", { name: /Morale cards/i }));
     fireEvent.click(screen.getByRole("button", { name: /Unit experience/i }));

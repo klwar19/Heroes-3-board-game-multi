@@ -262,7 +262,8 @@ import {
   randomTownCaptureReward,
   randomTownIncomeGold,
   grailDigMovementCost,
-  grailAsUtopiaMode
+  grailAsUtopiaMode,
+  polishGrailUtopiaEnabled
 } from "./map-design-features";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -1600,6 +1601,24 @@ export function canCrossEdge(
     return movement.moveThrough;
   }
 
+  // A designer Garrison may be a deliberate pass through a yellow border.
+  // The exception is local to an edge touching that Garrison and does not cross
+  // layers or turn a blocked destination into a legal stopping point.
+  if (
+    (fromField.location === "garrison" && fromField.garrisonBorderPassage) ||
+    (toField.location === "garrison" && toField.garrisonBorderPassage)
+  ) {
+    return true;
+  }
+
+  // A Subterranean Gate token replaces the field underneath it and makes that
+  // field empty. Its local entrances therefore stay reachable even if the
+  // replaced artwork carried an internal/designer border. The layer boundary
+  // above still permits only the gate's mutually linked cross-layer half.
+  if (fromField.location === "subterranean_gate" || toField.location === "subterranean_gate") {
+    return true;
+  }
+
   // A hero may always step from land onto an adjacent sea field. Without Water
   // Walk that step is a forced stop (classifyHeroStep returns "stop" and the
   // mover is halted for the turn); with Water Walk the sea is normal terrain.
@@ -1899,11 +1918,10 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
  * Whether a hero on `heroField` (at `heroSpaceId`) may DISCOVER the adjacent
  * face-down `tile`.
  *
- * OFFICIAL rule (house rule `discovery-border-gate` OFF — the default): being
- * ADJACENT is the whole requirement, so this always returns true. The printed
- * rules require only that the hero stands next to the tile (already checked by
- * the caller); they mention no blockers or yellow borders for discovery. Borders
- * still block MOVEMENT — only the discovery gate is lifted.
+ * In Legacy with `discovery-border-gate` OFF, being ADJACENT is the whole
+ * requirement, so this returns true. BINH locks the rule ON, and every Polish
+ * variant pulls it in as a companion: the hero must touch an OPEN doorway.
+ * Borders always continue to block MOVEMENT.
  *
  * With the house rule ON, the older BINH reading applies: the hero must also
  * touch the tile across an OPEN border. Two sub-rules combine:
@@ -1923,7 +1941,7 @@ export function heroFieldSealedForDiscovery(adventure: AdventureState, field: Ma
  * border question. Shared by the discovery OFFER (`canHeroDiscoverAdjacentTile`)
  * and HANDLER (`revealTileForHero`) so the two can never drift.
  */
-export function heroCanDiscoverTileAcrossBorders(
+function heroCanDiscoverTileAcrossOpenBorders(
   state: Pick<GameState, "ruleset" | "adventure">,
   heroSpaceId: MapSpaceId,
   heroField: MapFieldState,
@@ -1932,10 +1950,6 @@ export function heroCanDiscoverTileAcrossBorders(
   const adventure = state.adventure;
   if (!adventure) {
     return false;
-  }
-  // Official rule: adjacency alone (checked by the caller) is the requirement.
-  if (!houseRuleEnabled(state, "discovery-border-gate")) {
-    return true;
   }
   if (heroFieldSealedForDiscovery(adventure, heroField)) {
     return false;
@@ -1989,6 +2003,33 @@ export function heroCanDiscoverTileAcrossBorders(
   // Every shared edge is sealed → no ordinary discovery. (With no shared edge at
   // all — never, once the caller has checked adjacency — don't over-block.)
   return !sharedEdge;
+}
+
+export function heroCanDiscoverTileAcrossBorders(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  heroSpaceId: MapSpaceId,
+  heroField: MapFieldState,
+  tile: MapTileState
+): boolean {
+  // Legacy adjacency-only mode deliberately bypasses the border test for human
+  // rules. BINH and the Polish companion flag take the open-border path.
+  return !houseRuleEnabled(state, "discovery-border-gate") ||
+    heroCanDiscoverTileAcrossOpenBorders(state, heroSpaceId, heroField, tile);
+}
+
+/**
+ * AI-only safety predicate: whether the hero can step through an open doorway
+ * immediately after revealing the tile. This never inherits Legacy's optional
+ * adjacency-only relaxation — a computer must not flip land behind a wall it
+ * cannot enter on the same move.
+ */
+export function heroCanImmediatelyAccessTile(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  heroSpaceId: MapSpaceId,
+  heroField: MapFieldState,
+  tile: MapTileState
+): boolean {
+  return heroCanDiscoverTileAcrossOpenBorders(state, heroSpaceId, heroField, tile);
 }
 
 export function getAdjacentSpaceIds(spaceId: MapSpaceId): MapSpaceId[] {
@@ -2478,10 +2519,11 @@ export function canHeroReachPlacedTile(
  * sealed yellow arc under the hero cannot be circumvented. The footprint is the
  * same seven hexes at every rotation, so rotation 0 suffices for adjacency.
  */
-export function canHeroReachPlacementCenter(
+function canHeroReachPlacementCenterWithBorderMode(
   state: GameState,
   hero: HeroState,
-  center: HexCoord
+  center: HexCoord,
+  requireOpenBorder: boolean
 ): boolean {
   const adventure = state.adventure;
   if (!adventure || !hero.spaceId) {
@@ -2491,10 +2533,9 @@ export function canHeroReachPlacementCenter(
   if (!heroField) {
     return false;
   }
-  // Official rule (house rule `discovery-border-gate` OFF — the default): opening
-  // a new tile needs only that the hero's field TOUCHES the footprint; yellow
-  // borders and blockers are not part of the printed discovery/placement rule.
-  const borderGate = houseRuleEnabled(state, "discovery-border-gate");
+  // Legacy may relax opening to footprint adjacency. BINH and the Polish
+  // package require the hero's edge toward the footprint to be open.
+  const borderGate = requireOpenBorder;
   // A sealed outer arc under the hero walls off every outward edge — no opening.
   if (borderGate && isOuterEdgeSealed(adventure, heroField)) {
     return false;
@@ -2519,6 +2560,28 @@ export function canHeroReachPlacementCenter(
   });
 }
 
+export function canHeroReachPlacementCenter(
+  state: GameState,
+  hero: HeroState,
+  center: HexCoord
+): boolean {
+  return canHeroReachPlacementCenterWithBorderMode(
+    state,
+    hero,
+    center,
+    houseRuleEnabled(state, "discovery-border-gate")
+  );
+}
+
+/** AI-only placement gate: the new tile must be directly enterable now. */
+export function canHeroImmediatelyReachPlacementCenter(
+  state: GameState,
+  hero: HeroState,
+  center: HexCoord
+): boolean {
+  return canHeroReachPlacementCenterWithBorderMode(state, hero, center, true);
+}
+
 /**
  * Empty lattice slots where {@link hero} may drop a Far (Ⅱ–Ⅲ) supply tile.
  * Mirrors the PLACE_TILE guard (`canPlaceTileAt` + reachability): the slot must
@@ -2534,6 +2597,7 @@ export function farTilePlacementCenters(
   state: GameState,
   hero: HeroState,
   tileDefId?: string,
+  options: { requireImmediateAccess?: boolean } = {},
 ): HexCoord[] {
   const adventure = state.adventure;
   if (!adventure || !hero.spaceId) {
@@ -2575,7 +2639,11 @@ export function farTilePlacementCenters(
         ) {
           continue;
         }
-      } else if (!canHeroReachPlacementCenter(state, hero, candidate)) {
+      } else if (
+        !(options.requireImmediateAccess
+          ? canHeroImmediatelyReachPlacementCenter(state, hero, candidate)
+          : canHeroReachPlacementCenter(state, hero, candidate))
+      ) {
         continue;
       }
       centers.push(candidate);
@@ -3836,42 +3904,71 @@ export function endGameByVictoryPoints(
  * readers ARE the Victory-Points readers (same numbers as VP scoring — an
  * invariant); `defeat-heroes` counts main (once per opponent) + secondary hero
  * defeats off the VP ledger, tolerating an absent ledger on legacy snapshots. */
+export function customWinConditionProgress(
+  state: GameState,
+  playerId: PlayerId,
+  condition: CustomWinCondition
+): { current: number; target: number; complete: boolean } {
+  let current = 0;
+  let target = 1;
+  switch (condition.kind) {
+    case "control-towns":
+      current = townsControlledBy(state, playerId).length;
+      target = condition.count;
+      break;
+    case "flag-mines":
+      current = flaggedMineSettlementCount(state, playerId);
+      target = condition.count;
+      break;
+    case "hero-level":
+      current = mainHeroOf(state, playerId)?.level ?? 0;
+      target = condition.level;
+      break;
+    case "gold":
+      current = state.players[playerId]?.resources.gold ?? 0;
+      target = condition.amount;
+      break;
+    case "artifacts":
+      current = artifactCountOf(state.players[playerId]);
+      target = condition.count;
+      break;
+    case "buildings":
+      // Same reader VP scoring uses for its "Buildings in controlled Towns" row.
+      current = controlledBuildingCount(state, playerId);
+      target = condition.count;
+      break;
+    case "obelisks":
+      // The per-player Holy-Grail Obelisk-visit tally (accrues in grail mode only).
+      current = grailObelisksVisitedCount(state, playerId);
+      target = condition.count;
+      break;
+    case "defeat-heroes": {
+      const ledger = state.adventure?.vpLedger?.[playerId];
+      current = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);
+      target = condition.count;
+      break;
+    }
+    case "defeat-dragon-utopia":
+      current = state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true ? 1 : 0;
+      break;
+    case "hold-with-grail": {
+      // Progress is ticked at round start; meeting = continuous hold already reached N.
+      const key = holdWithGrailKey(condition);
+      const progress = state.adventure?.holdWithGrailProgress?.[key];
+      current = progress?.playerId === playerId ? progress.rounds : 0;
+      target = condition.rounds;
+      break;
+    }
+  }
+  return { current, target, complete: current >= target };
+}
+
 function playerMeetsCustomWinCondition(
   state: GameState,
   playerId: PlayerId,
   condition: CustomWinCondition
 ): boolean {
-  switch (condition.kind) {
-    case "control-towns":
-      return townsControlledBy(state, playerId).length >= condition.count;
-    case "flag-mines":
-      return flaggedMineSettlementCount(state, playerId) >= condition.count;
-    case "hero-level":
-      return (mainHeroOf(state, playerId)?.level ?? 0) >= condition.level;
-    case "gold":
-      return (state.players[playerId]?.resources.gold ?? 0) >= condition.amount;
-    case "artifacts":
-      return artifactCountOf(state.players[playerId]) >= condition.count;
-    case "buildings":
-      // Same reader VP scoring uses for its "Buildings in controlled Towns" row.
-      return controlledBuildingCount(state, playerId) >= condition.count;
-    case "obelisks":
-      // The per-player Holy-Grail Obelisk-visit tally (accrues in grail mode only).
-      return grailObelisksVisitedCount(state, playerId) >= condition.count;
-    case "defeat-heroes": {
-      const ledger = state.adventure?.vpLedger?.[playerId];
-      const defeats = (ledger?.mainHeroDefeats?.length ?? 0) + (ledger?.secondaryHeroDefeats ?? 0);
-      return defeats >= condition.count;
-    }
-    case "defeat-dragon-utopia":
-      return state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true;
-    case "hold-with-grail": {
-      // Progress is ticked at round start; meeting = continuous hold already reached N.
-      const key = holdWithGrailKey(condition);
-      const progress = state.adventure?.holdWithGrailProgress?.[key];
-      return progress?.playerId === playerId && progress.rounds >= condition.rounds;
-    }
-  }
+  return customWinConditionProgress(state, playerId, condition).complete;
 }
 
 /** Stable key for abstract hold-with-grail progress (one counter per condition). */
@@ -4527,6 +4624,19 @@ export function eliminatePlayer(
         }
       }
     }
+    if (choice.type === "OPTION_CHOICE" && choice.subterraneanTilePick) {
+      // The gate-entry tile pick spliced the held-out alternate (candidate[1])
+      // OUT of the pool while the choice was open; its resolution returns the
+      // unchosen tile to the pool. Eliminating the owner mid-pick must do the
+      // same or the tile is orphaned (underground supply silently shrinks by 1).
+      // The tile keeps its current def (candidate[0]), so only the alternate
+      // returns — matching the resolution's `!pool.includes` guard.
+      const heldOut = choice.subterraneanTilePick.candidates[1];
+      if (heldOut) {
+        const pool = state.adventure?.subterraneanTilePool;
+        if (pool && !pool.includes(heldOut)) pool.push(heldOut);
+      }
+    }
     state.pendingChoice = null;
     if (state.phase === "choice") {
       const returnPhase = "returnPhase" in choice ? choice.returnPhase : undefined;
@@ -4979,6 +5089,9 @@ export function grailObelisksRequired(state: GameState): number {
  * Holy Grail: whether this player has visited enough Obelisks to dig.
  */
 export function canDigGrail(state: GameState, playerId: PlayerId): boolean {
+  if (polishGrailUtopiaEnabled(state)) {
+    return true;
+  }
   if (adventureVictoryMode(state) !== "grail") {
     return false;
   }
@@ -5034,7 +5147,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
-  if (adventureVictoryMode(state) !== "grail") {
+  const polishRule = polishGrailUtopiaEnabled(state);
+  if (!polishRule && adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
       giveCreatureBankConsolation(state, hero.controllerId, "Grail");
@@ -5051,6 +5165,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     field.blackCube = true;
     if (grail.status === "uncollected") {
       field.grailDiggable = true;
+    }
+    if (polishRule) {
+      // The conversion happens when the fight is won, before anyone digs.
+      applyPolishGrailFightConversion(state, field.spaceId);
     }
     return;
   }
@@ -5070,12 +5188,41 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
       previousOwnerId: null
     });
     // Optional dig reward (map-maker resources).
-    const digReward = adventure.mapPreset?.objectives?.grailDigReward;
+    const digReward = polishRule
+      ? { gold: 20 }
+      : adventure.mapPreset?.objectives?.grailDigReward;
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
     // After dig: convert OTHER undug Grail fields (utopia or empty).
-    applyGrailAfterDigConversion(state, field.spaceId);
+    if (!polishRule) {
+      applyGrailAfterDigConversion(state, field.spaceId);
+    }
+  }
+}
+
+/** Polish rule: clearing one Grail fight turns every other Grail field into Utopia. */
+function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSpaceId): void {
+  const adventure = state.adventure;
+  if (!adventure) return;
+  for (const field of Object.values(adventure.fields)) {
+    // Only convert OTHER Grail sites that have not yet been fought. A Grail
+    // whose guards already fell (`blackCube`) is a spent dig site — a second
+    // Grail materialising later (its tile was face-down at this fight) must not
+    // resurrect it into a fresh, fightable Dragon Utopia with a full reward.
+    if (
+      field.spaceId === clearedFieldId ||
+      field.location !== "grail" ||
+      field.blackCube
+    ) {
+      continue;
+    }
+    field.location = "dragon_utopia";
+    delete field.grailDiggable;
+    field.blackCube = false;
+    field.everFlagged = false;
+    field.flagOwnerId = null;
+    field.difficulty = 7;
   }
 }
 
@@ -5132,6 +5279,46 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
   recordVpUtopiaDefeat(state, hero.controllerId);
+
+  if (polishGrailUtopiaEnabled(state)) {
+    if (!field.blackCube) {
+      field.blackCube = true;
+      gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
+      // Two distinct Search (3) rewards: each acquisition gets its own Polish
+      // Artifact die roll, and the actual visiting Hero/Field preserves VII
+      // Relic access even when a Secondary Hero won the fight.
+      for (let index = 0; index < 2; index += 1) {
+        state.adventure?.rewardQueue.push({
+          playerId: hero.controllerId,
+          kind: "shared-deck-search",
+          deckId: "artifacts",
+          count: 3,
+          sourceHeroId: hero.id,
+          sourceFieldId: field.spaceId,
+          polishArtifactBand: "tile"
+        });
+      }
+      state.adventure?.rewardQueue.push({
+        playerId: hero.controllerId,
+        kind: "visit-steps",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Choose the Dragon Utopia token reward",
+            options: [
+              { label: "Gain 1 positive Morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] },
+              {
+                label: "Gain 1 Ability Empower token",
+                steps: [{ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }]
+              }
+            ]
+          }
+        ]
+      });
+      grantUtopiaBonusSearch(state, hero.controllerId);
+    }
+    return;
+  }
 
   if (mode === "dragon-hunt") {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {
@@ -5458,7 +5645,7 @@ function grantClassicObeliskReward(
  */
 export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
   const adventure = state.adventure;
-  if (!adventure || adventureVictoryMode(state) !== "grail") {
+  if (!adventure || polishGrailUtopiaEnabled(state) || adventureVictoryMode(state) !== "grail") {
     return false;
   }
 
@@ -9216,9 +9403,14 @@ function drawTopOfSharedDeck(
  * registered (or for non-Far tiles), the gate falls back to a plain inline
  * reveal. See {@link resolveSubterraneanGate} and the reducer's revealOnMapTile.
  */
-let onMapTileRevealHook: ((state: GameState, playerId: PlayerId, tile: MapTileState) => void) | null = null;
+export type OnMapTileRevealSource = "ordinary" | "subterranean-gate";
+let onMapTileRevealHook:
+  | ((state: GameState, playerId: PlayerId, tile: MapTileState, source: OnMapTileRevealSource) => void)
+  | null = null;
 export function setOnMapTileRevealHook(
-  hook: ((state: GameState, playerId: PlayerId, tile: MapTileState) => void) | null
+  hook:
+    | ((state: GameState, playerId: PlayerId, tile: MapTileState, source: OnMapTileRevealSource) => void)
+    | null
 ): void {
   onMapTileRevealHook = hook;
 }
@@ -9259,7 +9451,7 @@ function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
   // empty pending visit is not left behind an OPTION_CHOICE the hook may open.
   if (onMapTileRevealHook && visit.steps.length === 0) {
     adventure.pendingVisit = null;
-    onMapTileRevealHook(state, visit.playerId, farTile);
+    onMapTileRevealHook(state, visit.playerId, farTile, "subterranean-gate");
     return;
   }
 
@@ -10512,7 +10704,7 @@ function resolveTokenTeleportReveal(
   // after the token is placed. The travel visit is complete, so clear it first.
   if (onMapTileRevealHook && visit.steps.length === 0) {
     adventure.pendingVisit = null;
-    onMapTileRevealHook(state, visit.playerId, tile);
+    onMapTileRevealHook(state, visit.playerId, tile, "ordinary");
     return;
   }
 
@@ -13183,6 +13375,22 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     return drawNeutralArmy(state, levelForDraw);
   }
 
+  if (polishGrailUtopiaEnabled(state) && field?.location === "grail") {
+    return Array.from({ length: 2 }, () => drawFromNeutralDeck(state, "azure"))
+      .filter((unitDefId): unitDefId is string => Boolean(unitDefId))
+      .map((unitDefId) => ({ unitDefId, tier: "azure" as const }));
+  }
+
+  if (polishGrailUtopiaEnabled(state) && field?.location === "dragon_utopia") {
+    const azure = Array.from({ length: 2 }, () => drawFromNeutralDeck(state, "azure"))
+      .filter((unitDefId): unitDefId is string => Boolean(unitDefId))
+      .map((unitDefId) => ({ unitDefId, tier: "azure" as const }));
+    return [
+      ...azure,
+      { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }
+    ];
+  }
+
   // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).
   if (
     field?.location === "grail" &&
@@ -13236,10 +13444,59 @@ export function isCreatureBankId(bankId: string | undefined): bankId is Creature
  * The remaining groups (starting, center, sea) return null — no bank. So a sea
  * tile never offers a bank, even though some sea tiles (e.g. the Cove tile W1) DO
  * carry a Blocked Field / impassable terrain. This is the gate, not the presence
- * of a Blocked Field.
+ * of a Blocked Field. (NOTE: this is the BASE, group-only gate; with the
+ * `polish-bank-sizes` house rule ON, `creatureBankTierForTile` below additionally
+ * hosts a bank on IV–V-band SEA tiles and on Empty Fields — see its docstring.)
  */
 export function creatureBankTierForGroup(group: string | undefined): "far" | "near" | null {
   return group === "far" ? "far" : group === "near" ? "near" : group === "subterranean" ? "near" : null;
+}
+
+/**
+ * Creature Bank pile for one concrete tile. The base rules remain group-based.
+ * Polish Bank Sizes additionally treats sea tiles whose printed encounters are
+ * in the IV–V band as Near-bank tiles; deep-sea VI–VII tiles stay excluded.
+ */
+export function creatureBankTierForTile(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  tile: Pick<MapTileState, "group" | "tileDefId">
+): "far" | "near" | null {
+  const ordinary = creatureBankTierForGroup(tile.group);
+  if (ordinary) {
+    return ordinary;
+  }
+
+  if (tile.group !== "sea" || !houseRuleEnabled(state, "polish-bank-sizes")) {
+    return null;
+  }
+  const difficulties = (allTileDefinitions[tile.tileDefId]?.fields ?? [])
+    .map((field) => field.difficulty)
+    .filter((difficulty): difficulty is number => typeof difficulty === "number");
+  const highest = difficulties.length > 0 ? Math.max(...difficulties) : 0;
+  const hasNearBandEncounter = difficulties.some((difficulty) => difficulty >= 4 && difficulty <= 5);
+  return hasNearBandEncounter && highest <= 5 ? "near" : null;
+}
+
+/**
+ * Printed field a bank may replace on this tile. A Blocked Field always wins.
+ * Under Polish Bank Sizes only, a qualifying II–V tile that printed no Blocked
+ * Field may sacrifice an Empty Field instead, keeping no-block expansion/sea
+ * tiles from making the bank supply and map economy weaker by accident.
+ */
+export function creatureBankHostLocationForTile(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  tile: Pick<MapTileState, "group" | "tileDefId">
+): "blocked_field" | "empty_field" | null {
+  if (!creatureBankTierForTile(state, tile)) {
+    return null;
+  }
+  const fields = allTileDefinitions[tile.tileDefId]?.fields ?? [];
+  if (fields.some((field) => field.location === "blocked_field")) {
+    return "blocked_field";
+  }
+  return houseRuleEnabled(state, "polish-bank-sizes") && fields.some((field) => field.location === "empty_field")
+    ? "empty_field"
+    : null;
 }
 
 /** The Creature Bank a field hosts, if any. */

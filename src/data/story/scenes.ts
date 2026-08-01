@@ -72,6 +72,12 @@ const BIN: StorySpeaker = { en: "Bin", vi: "Bin" };
 const GUILD_GIRL: StorySpeaker = { en: "Guild Girl", vi: "Tiếp Tân Hội" };
 const CATHERINE: StorySpeaker = { en: "Queen Catherine", vi: "Nữ Hoàng Catherine" };
 const KENDAL: StorySpeaker = { en: "General Kendal", vi: "Tướng Quân Kendal" };
+const VALESKA: StorySpeaker = { en: "Captain Valeska", vi: "Đội Trưởng Valeska" };
+const MUTARE: StorySpeaker = { en: "Warlord Mutare", vi: "Lãnh Chúa Mutare" };
+const SANDRO: StorySpeaker = { en: "Sandro", vi: "Sandro" };
+const VALESKA_SPRITE = "/assets/story/sprites/valeska-generated.webp";
+const MUTARE_SPRITE = "/assets/story/sprites/mutare-generated.webp";
+const SANDRO_SPRITE = "/assets/story/sprites/sandro-generated.webp";
 
 const DEMO_SCENES: StoryScene[] = [
   {
@@ -766,6 +772,15 @@ const ERATHIA_CAMPAIGN_SCENES: StoryScene[] = [
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Then raise it. Rally the coast, descend through the invasion road, and take Terraneus. Assume we are at war.", vi: "Vậy hãy giương cờ. Tập hợp bờ biển, đi xuống đường xâm lược và chiếm Terraneus. Hãy coi như chúng ta đang có chiến tranh." } }
     ]
   },
+  {
+    id: "story.erathia.homecoming.cavern-road",
+    theme: "classic",
+    background: "/assets/story/erathia/homecoming.webp",
+    lines: [
+      { speaker: VALESKA, sprite: VALESKA_SPRITE, side: "right", text: { en: "The tide caves are not empty, Majesty. I found a blue monolith under Nighon's supply marks—and a whirlpool route their ships refuse to sail.", vi: "Các hang thủy triều không trống, thưa Bệ Hạ. Tôi tìm thấy một monolith xanh dưới dấu tiếp tế Nighon—và một tuyến xoáy nước mà tàu của chúng không dám đi." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Then we use both. Let Terraneus watch the road while Erathia arrives through every door it forgot to guard.", vi: "Vậy ta dùng cả hai. Cứ để Terraneus canh con đường, còn Erathia sẽ tới qua mọi cánh cửa chúng quên bảo vệ." } }
+    ]
+  },
   { id: "story.erathia.homecoming.victory", theme: "classic", background: "/assets/story/erathia/homecoming.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Terraneus is ours. Nighon's route is exposed, and Erathia has a coast from which to fight back.", vi: "Terraneus đã thuộc về ta. Đường xâm lược của Nighon đã lộ, và Erathia có một bờ biển để phản công." } }] },
   { id: "story.erathia.homecoming.defeat", theme: "classic", background: "/assets/story/erathia/homecoming.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "The beachhead is lost, Majesty. The fleet can land again, but the enemy will be waiting.", vi: "Đầu cầu đã mất, thưa Bệ Hạ. Hạm đội có thể đổ bộ lại, nhưng kẻ thù sẽ chờ sẵn." } }] },
   {
@@ -776,6 +791,15 @@ const ERATHIA_CAMPAIGN_SCENES: StoryScene[] = [
       { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Peasants speak of Fair Feather, a white city that has survived every assault. They say angels guard its walls.", vi: "Nông dân kể về Fair Feather, thành phố trắng sống sót qua mọi cuộc tấn công. Họ nói thiên thần bảo vệ tường thành." } },
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Angels fought the Kreegans once before. We must reach them before four underground strongholds close the valley.", vi: "Thiên thần từng chống Kreegan. Ta phải đến trước khi bốn cứ điểm dưới lòng đất khóa kín thung lũng." } },
       { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "One road to Fair Feather; four roads for the enemy. We will have to move quickly.", vi: "Một đường tới Fair Feather; bốn đường cho kẻ thù. Chúng ta phải thật nhanh." } }
+    ]
+  },
+  {
+    id: "story.erathia.guardian-angels.cavern-gates",
+    theme: "classic",
+    background: "/assets/story/erathia/guardian-angels.webp",
+    lines: [
+      { speaker: VALESKA, sprite: VALESKA_SPRITE, side: "right", text: { en: "The colored tent opens one pass, but the Kreegans are feeding troops through a paired cavern gate. Strike either mouth and the other becomes our road.", vi: "Lều màu mở một lối, nhưng Kreegan đang đưa quân qua cặp cổng hang. Đánh vào một cửa và cửa kia sẽ thành đường của ta." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Good. We do not have to outnumber a siege if we can turn its roads against it.", vi: "Tốt. Ta không cần đông hơn vòng vây nếu có thể biến chính đường của nó chống lại nó." } }
     ]
   },
   { id: "story.erathia.guardian-angels.victory", theme: "classic", background: "/assets/story/erathia/guardian-angels.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Fair Feather stands, and the angels have answered. Steadwick will hear their wings before it sees our banners.", vi: "Fair Feather vẫn đứng vững, và các thiên thần đã đáp lời. Steadwick sẽ nghe tiếng cánh trước khi thấy cờ của ta." } }] },
@@ -790,41 +814,77 @@ const ERATHIA_CAMPAIGN_SCENES: StoryScene[] = [
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Free every tower. We do not march on the capital without the wings that built it.", vi: "Giải phóng mọi ngọn tháp. Ta sẽ không tiến về kinh đô nếu thiếu đôi cánh đã xây nên nó." } }
     ]
   },
+  {
+    id: "story.erathia.griffin-cliff.sky-tyrant",
+    theme: "classic",
+    background: "/assets/story/erathia/griffin-cliff.webp",
+    lines: [
+      { speaker: VALESKA, sprite: VALESKA_SPRITE, side: "right", text: { en: "Seven aeries are chained, but their commander nests beyond a one-way stone. Free the towers for strength—or take the monolith and cut off the head.", vi: "Bảy tổ đang bị xiềng, nhưng chỉ huy của chúng ở sau đá một chiều. Giải phóng tháp để lấy sức mạnh—hoặc dùng monolith và chặt đầu chúng." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Two plans, one victory ledger. Let the battlefield decide which opening we earn.", vi: "Hai kế hoạch, một sổ chiến thắng. Hãy để chiến trường quyết định cơ hội ta giành được." } }
+    ]
+  },
   { id: "story.erathia.griffin-cliff.victory", theme: "classic", background: "/assets/story/erathia/griffin-cliff.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Seven towers fly the griffin banner. The sky itself is marching with us toward Steadwick.", vi: "Bảy ngọn tháp tung cờ Griffin. Cả bầu trời đang cùng ta tiến về Steadwick." } }] },
   { id: "story.erathia.griffin-cliff.defeat", theme: "classic", background: "/assets/story/erathia/griffin-cliff.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The cliffs remain chained. We return before the last aerie is emptied; Erathia cannot lose its griffins twice.", vi: "Các vách đá vẫn bị xiềng xích. Ta phải trở lại trước khi tổ cuối cùng bị vét sạch; Erathia không thể mất griffin hai lần." } }] },
   {
     id: "story.erathia.road-to-steadwick.intro",
     theme: "classic",
-    background: "/assets/story/erathia/campaign-map-rebuilt.webp",
+    background: "/assets/story/erathia/road-to-steadwick-generated.webp",
     lines: [
       { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "The griffin host is ready, Majesty, but Nighon holds the northern bank and Kreegan riders are crossing from the south. Both roads meet at the capital.", vi: "Đạo quân Griffin đã sẵn sàng, thưa Bệ Hạ, nhưng Nighon giữ bờ bắc và kỵ binh Kreegan đang vượt từ phía nam. Cả hai đường đều gặp nhau tại kinh đô." } },
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Then we take the bridges before they can join. Steadwick has waited long enough to hear friendly wings.", vi: "Vậy ta sẽ chiếm các cây cầu trước khi chúng hợp quân. Steadwick đã chờ quá lâu để nghe tiếng cánh quân mình." } }
     ]
   },
-  { id: "story.erathia.road-to-steadwick.victory", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Both banks are ours. The road ahead ends at Steadwick's wall — and the enemy has nowhere left to retreat.", vi: "Cả hai bờ đã thuộc về ta. Con đường phía trước kết thúc tại tường Steadwick — và kẻ địch không còn nơi rút lui." } }] },
-  { id: "story.erathia.road-to-steadwick.defeat", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The columns joined before we could break them. Fall back to the highlands; next time we cross the river as one army.", vi: "Hai cánh quân đã hợp lại trước khi ta phá được chúng. Rút về cao nguyên; lần tới ta vượt sông như một đạo quân duy nhất." } }] },
+  {
+    id: "story.erathia.road-to-steadwick.river-race",
+    theme: "classic",
+    background: "/assets/story/erathia/road-to-steadwick-generated.webp",
+    lines: [
+      { speaker: MUTARE, sprite: MUTARE_SPRITE, side: "right", text: { en: "Your griffins own the sky, Catherine. The river belongs to whoever understands its stones and whirlpools. Chase my banners if you can.", vi: "Griffin của ngươi giữ bầu trời, Catherine. Dòng sông thuộc về kẻ hiểu đá và xoáy nước của nó. Hãy đuổi theo cờ ta nếu có thể." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "I am not chasing you, Mutare. I am taking every bridge you need to escape.", vi: "Ta không đuổi theo ngươi, Mutare. Ta đang chiếm mọi cây cầu ngươi cần để trốn." } }
+    ]
+  },
+  { id: "story.erathia.road-to-steadwick.victory", theme: "classic", background: "/assets/story/erathia/road-to-steadwick-generated.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Both banks are ours. The road ahead ends at Steadwick's wall — and the enemy has nowhere left to retreat.", vi: "Cả hai bờ đã thuộc về ta. Con đường phía trước kết thúc tại tường Steadwick — và kẻ địch không còn nơi rút lui." } }] },
+  { id: "story.erathia.road-to-steadwick.defeat", theme: "classic", background: "/assets/story/erathia/road-to-steadwick-generated.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The columns joined before we could break them. Fall back to the highlands; next time we cross the river as one army.", vi: "Hai cánh quân đã hợp lại trước khi ta phá được chúng. Rút về cao nguyên; lần tới ta vượt sông như một đạo quân duy nhất." } }] },
   {
     id: "story.erathia.liberation-day.intro",
     theme: "classic",
-    background: "/assets/story/erathia/campaign-map-rebuilt.webp",
+    background: "/assets/story/erathia/liberation-day-generated.webp",
     lines: [
       { speaker: "narrator", text: { en: "At dawn, the royal banners appear across every ridge west of Steadwick. Bells answer from inside the occupied city.", vi: "Rạng đông, cờ hoàng gia xuất hiện trên mọi sườn đồi phía tây Steadwick. Tiếng chuông đáp lại từ trong thành phố bị chiếm." } },
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "That is not a plea. It is the capital telling us it still lives. Break the ring and bring Erathia home.", vi: "Đó không phải lời cầu cứu. Đó là kinh đô báo rằng nó vẫn sống. Hãy phá vòng vây và đưa Erathia trở về." } }
     ]
   },
-  { id: "story.erathia.liberation-day.victory", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Open the palace gates. Today the crown returns not to a throne, but to its people. Steadwick is free.", vi: "Hãy mở cổng cung điện. Hôm nay vương miện trở về không phải với ngai vàng, mà với nhân dân. Steadwick đã tự do." } }] },
-  { id: "story.erathia.liberation-day.defeat", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "The inner wall held. The city's bells have gone silent, but our army has not. We rebuild the siege line tonight.", vi: "Tường trong vẫn đứng vững. Chuông thành đã im, nhưng quân ta chưa. Đêm nay ta dựng lại tuyến vây công." } }] },
+  {
+    id: "story.erathia.liberation-day.traitor-court",
+    theme: "classic",
+    background: "/assets/story/erathia/liberation-day-generated.webp",
+    lines: [
+      { speaker: SANDRO, sprite: SANDRO_SPRITE, side: "right", text: { en: "The inner bell is mine now. Every ring spends another living soldier for a dead king's empty chair.", vi: "Chuông trong thành giờ là của ta. Mỗi hồi chuông đổi thêm một lính sống cho chiếc ghế trống của vị vua đã chết." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "You mistake a throne for a kingdom, Sandro. Today the people outside your wall will teach you the difference.", vi: "Ngươi nhầm ngai vàng với vương quốc, Sandro. Hôm nay người dân ngoài tường sẽ dạy ngươi sự khác biệt." } }
+    ]
+  },
+  { id: "story.erathia.liberation-day.victory", theme: "classic", background: "/assets/story/erathia/liberation-day-generated.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "Open the palace gates. Today the crown returns not to a throne, but to its people. Steadwick is free.", vi: "Hãy mở cổng cung điện. Hôm nay vương miện trở về không phải với ngai vàng, mà với nhân dân. Steadwick đã tự do." } }] },
+  { id: "story.erathia.liberation-day.defeat", theme: "classic", background: "/assets/story/erathia/liberation-day-generated.webp", lines: [{ speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "The inner wall held. The city's bells have gone silent, but our army has not. We rebuild the siege line tonight.", vi: "Tường trong vẫn đứng vững. Chuông thành đã im, nhưng quân ta chưa. Đêm nay ta dựng lại tuyến vây công." } }] },
   {
     id: "story.erathia.throne-of-ash.intro",
     theme: "classic",
-    background: "/assets/story/erathia/campaign-map-rebuilt.webp",
+    background: "/assets/story/erathia/throne-of-ash-generated.webp",
     lines: [
       { speaker: KENDAL, sprite: sprite("kendal"), side: "right", text: { en: "Steadwick is safe, but the Ash Gate still feeds soldiers into Erathia. Beyond it stands the Black Citadel and the last engine of invasion.", vi: "Steadwick đã an toàn, nhưng Cổng Tro vẫn đưa binh lính vào Erathia. Phía sau là Hắc Thành và chiến cụ xâm lược cuối cùng." } },
       { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "We did not come home merely to survive. Break the gate. Take the citadel. End this war where the enemy believed it began.", vi: "Ta không trở về chỉ để sống sót. Phá cổng. Chiếm thành. Kết thúc cuộc chiến nơi kẻ địch tin rằng nó đã bắt đầu." } }
     ]
   },
-  { id: "story.erathia.throne-of-ash.victory", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The Black Citadel is silent. Let its ashes mark the border: Erathia is restored, and no invader will mistake our grief for weakness again.", vi: "Hắc Thành đã im lặng. Hãy để tro tàn của nó đánh dấu biên giới: Erathia đã phục hưng, và không kẻ xâm lược nào còn nhầm nỗi đau của ta với sự yếu đuối." } }] },
-  { id: "story.erathia.throne-of-ash.defeat", theme: "classic", background: "/assets/story/erathia/campaign-map-rebuilt.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The gate stands, but so does Erathia. Pull the wounded clear. We return with every banner the kingdom can raise.", vi: "Cánh cổng vẫn đứng, nhưng Erathia cũng vậy. Đưa người bị thương ra ngoài. Ta sẽ trở lại với mọi lá cờ mà vương quốc có thể dựng lên." } }] }
+  {
+    id: "story.erathia.throne-of-ash.last-gate",
+    theme: "classic",
+    background: "/assets/story/erathia/throne-of-ash-generated.webp",
+    lines: [
+      { speaker: MUTARE, sprite: MUTARE_SPRITE, side: "right", text: { en: "Beyond the ash monolith, even victory has a price. Your score will crown you—or expose every army you sacrificed to reach me.", vi: "Sau monolith tro, ngay cả chiến thắng cũng có giá. Điểm số sẽ trao vương miện—hoặc phơi bày mọi đạo quân ngươi đã hy sinh để tới đây." } },
+      { speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "A crown is not the objective. Ending the road that keeps bringing war to my people is.", vi: "Vương miện không phải mục tiêu. Kết thúc con đường luôn mang chiến tranh tới dân ta mới là mục tiêu." } }
+    ]
+  },
+  { id: "story.erathia.throne-of-ash.victory", theme: "classic", background: "/assets/story/erathia/throne-of-ash-generated.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The Black Citadel is silent. Let its ashes mark the border: Erathia is restored, and no invader will mistake our grief for weakness again.", vi: "Hắc Thành đã im lặng. Hãy để tro tàn của nó đánh dấu biên giới: Erathia đã phục hưng, và không kẻ xâm lược nào còn nhầm nỗi đau của ta với sự yếu đuối." } }] },
+  { id: "story.erathia.throne-of-ash.defeat", theme: "classic", background: "/assets/story/erathia/throne-of-ash-generated.webp", lines: [{ speaker: CATHERINE, sprite: sprite("catherine"), side: "left", text: { en: "The gate stands, but so does Erathia. Pull the wounded clear. We return with every banner the kingdom can raise.", vi: "Cánh cổng vẫn đứng, nhưng Erathia cũng vậy. Đưa người bị thương ra ngoài. Ta sẽ trở lại với mọi lá cờ mà vương quốc có thể dựng lên." } }] }
 ];
 
 const DUNGEON_SCENES: StoryScene[] = [

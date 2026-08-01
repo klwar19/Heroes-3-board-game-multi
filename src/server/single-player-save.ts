@@ -83,15 +83,25 @@ export function prepareSinglePlayerLoad(
   incoming: unknown,
   actor: SinglePlayerSaveActor
 ): SinglePlayerLoadOutcome {
-  const candidate = incoming as GameState | null;
+  const source = incoming as GameState | null;
   if (
-    !candidate ||
-    typeof candidate !== "object" ||
-    !candidate.players ||
-    typeof candidate.phase !== "string" ||
-    candidate.sessionMode !== "single-player"
+    !source ||
+    typeof source !== "object" ||
+    !source.players ||
+    typeof source.phase !== "string" ||
+    source.sessionMode !== "single-player"
   ) {
     return { ok: false, reason: "That save is not a single-player game state." };
+  }
+
+  // Work on a detached, serializable snapshot. Callers may retain the local
+  // save object for later loads, so grafting live membership and appending the
+  // audit event must never mutate their checkpoint in memory.
+  let candidate: GameState;
+  try {
+    candidate = JSON.parse(JSON.stringify(source)) as GameState;
+  } catch {
+    return { ok: false, reason: "That save is damaged and could not be read." };
   }
 
   if (current.sessionMode === "single-player") {

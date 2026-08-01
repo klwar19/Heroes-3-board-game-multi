@@ -36,6 +36,22 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(container.querySelectorAll(".mapPresetEntryIcon").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("authors an explicit all-enemy bonus labelled single-player-only", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    const aiBonus = screen.getByRole("region", { name: "Single-player AI base bonus" });
+    const gold = within(within(aiBonus).getByText("Gold").closest("label") as HTMLElement).getByRole("spinbutton");
+    fireEvent.change(gold, { target: { value: "6" } });
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        computerStartingBonus: { gold: 6, buildingMaterials: 0, valuables: 0 }
+      })
+    );
+    expect(aiBonus.textContent).toContain("single-player game only");
+    expect(aiBonus.textContent).toContain("Neither bonus applies in multiplayer");
+  });
+
   it("Waves & Raid bosses: the cadence chip, a wave-army override, and a custom boss all dispatch through onChange", () => {
     const onChange = vi.fn();
     render(<MapPresetEditor preset={undefined} onChange={onChange} />);

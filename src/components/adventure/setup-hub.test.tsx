@@ -235,7 +235,7 @@ describe("Setup Hub — Heroes & Draft window", () => {
     expect(screen.getByRole("dialog", { name: "Heroes & Draft" })).toBeTruthy();
   });
 
-  it("single-player: the computer-opponent COUNT and per-seat pickers live here", () => {
+  it("single-player: the map-owned deployment summary and per-seat pickers live here", () => {
     const onAction = vi.fn();
     const state = createAdventureLobbyState({
       seed: "setup-hub-sp",
@@ -247,15 +247,24 @@ describe("Setup Hub — Heroes & Draft window", () => {
     fireEvent.click(box(/Heroes & Draft/));
     const dialog = screen.getByRole("dialog", { name: "Heroes & Draft" });
 
-    // The seat-count control (computer opponents, not "Players").
-    const countRow = within(dialog).getByText("Computer opponents").closest(".optionRow") as HTMLElement;
-    fireEvent.click(within(countRow).getByRole("button", { name: /3 computers/ }));
-    expect(onAction).toHaveBeenCalledWith({ type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 3 });
+    // The count is map-owned and read-only (not a Players/enemy-count picker).
+    const countRow = within(dialog).getByText("Solo deployment").closest(".optionRow") as HTMLElement;
+    expect(within(countRow).getByLabelText("Map-selected computer opponents").textContent).toContain(
+      "2 computer opponents"
+    );
+    expect(within(countRow).queryByRole("button")).toBeNull();
 
     // …and the per-seat pickers.
     const pickers = within(dialog).getByLabelText("Computer opponents setup");
-    fireEvent.click(within(pickers).getByLabelText("Set up Computer 1").querySelector("button") as HTMLElement);
-    expect(onAction).toHaveBeenCalled();
+    fireEvent.click(
+      within(within(pickers).getByLabelText("Set up Computer 1")).getByRole("button", { name: "Roll random now" })
+    );
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p2",
+      choice: "roll"
+    });
   });
 
   it("CONTROL: a multiplayer table shows the Players count and no computer pickers", () => {

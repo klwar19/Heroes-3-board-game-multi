@@ -85,7 +85,10 @@ import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
-import { takePendingSinglePlayerLoad } from "@/lib/single-player-saves";
+import {
+  clearPendingSinglePlayerLoad,
+  peekPendingSinglePlayerLoad
+} from "@/lib/single-player-saves";
 import { campaignSceneToFire, campaignSetupActions } from "@/lib/campaign-triggers";
 import { getCampaignChapter } from "@/data/story/campaigns";
 import {
@@ -155,7 +158,7 @@ import { SetupAmbientFx } from "@/components/adventure/setup-ambient";
 import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { AzureClawChill } from "@/components/adventure/azure-claw-chill";
 import { OpponentInfoDock } from "@/components/adventure/opponent-info";
-import { VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
+import { ScenarioObjectivesDock, VictoryPointsDock, VictoryPointsScoringOverlay } from "@/components/adventure/victory-points-panel";
 import { TownWindow } from "@/components/adventure/town-board";
 import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
 import {
@@ -3922,9 +3925,9 @@ export default function Home() {
 
   // Single-player save slots: a Load clicked on the /single-player menu page
   // (no live connection there) navigates here with a pending marker; apply it
-  // ONCE per room as soon as the connection and the first snapshot exist. The
-  // server validates owner + solo mode, and a stale or foreign marker is
-  // dropped by takePendingSinglePlayerLoad itself.
+  // as soon as the connection and the first snapshot exist. The marker is
+  // cleared only AFTER the server confirms the whole-state swap, so a transient
+  // network/deploy failure remains safely retryable on refresh.
   const pendingSpLoadRoomRef = useRef<string | null>(null);
   useEffect(() => {
     if (!roomId || !state || pendingSpLoadRoomRef.current === roomId) {
@@ -3935,17 +3938,37 @@ export default function Home() {
       return;
     }
     pendingSpLoadRoomRef.current = roomId;
-    const pending = takePendingSinglePlayerLoad(roomId);
+    const pending = peekPendingSinglePlayerLoad(roomId);
     if (!pending) {
       return;
     }
-    connection
-      .loadSinglePlayerSave(pending.state)
-      .then((snapshot) => ingestSnapshotRef.current(snapshot, { seatAuthoritative: true }))
-      .catch((error) => {
-        // The in-game save panel remains the manual fallback.
-        console.warn("Pending single-player load failed:", error);
-      });
+    void (async () => {
+      let lastError: unknown = null;
+      // A freshly navigated room can briefly race its edge deployment/wake-up.
+      // Retry the idempotent whole-state load a few times; no marker is consumed
+      // and no partial state is accepted between attempts.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if (connectionRef.current !== connection) {
+          return;
+        }
+        try {
+          const snapshot = await connection.loadSinglePlayerSave(pending.state);
+          clearPendingSinglePlayerLoad(pending.save.id, roomId);
+          if (connectionRef.current === connection) {
+            ingestSnapshotRef.current(snapshot, { seatAuthoritative: true });
+          }
+          return;
+        } catch (error) {
+          lastError = error;
+          if (attempt < 2) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400 * 2 ** attempt));
+          }
+        }
+      }
+      const message = lastError instanceof Error ? lastError.message : "Could not load the saved game.";
+      setErrors([`${message} The save is intact; refresh to retry or load it again from Saves.`]);
+      console.warn("Pending single-player load failed:", lastError);
+    })();
   }, [roomId, state]);
 
   const submitAction = async (action: GameAction) => {
@@ -5755,6 +5778,7 @@ export default function Home() {
                   <HeroActionsDock legalActions={legalActions} onAction={submitAction} />
                 ) : null}
                 <MoraleCardsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
+                <ScenarioObjectivesDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />
                 {/* Live "if scored now" Victory-Points standings — visible to
                     everyone when the designed map turns VP mode on. */}
                 <VictoryPointsDock state={state} viewerPlayerId={isSeated ? viewerPlayerId : seatIds[0]} />

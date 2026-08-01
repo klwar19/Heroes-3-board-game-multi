@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { VictoryPointsDock, VictoryPointsScoringOverlay } from "./victory-points-panel";
+import { ScenarioObjectivesDock, VictoryPointsDock, VictoryPointsScoringOverlay } from "./victory-points-panel";
 import { createAdventureGameState, type GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -63,6 +63,38 @@ describe("VictoryPointsDock (live standings)", () => {
     state.adventure!.mapPreset = null;
     const { container } = render(<VictoryPointsDock state={state} viewerPlayerId="p1" />);
     expect(container.querySelector(".vpDock")).toBeNull();
+  });
+});
+
+describe("ScenarioObjectivesDock", () => {
+  it("shows a specific marked encounter plus live win and VP-objective progress", () => {
+    const state = vpGame();
+    state.adventure!.mapPreset = {
+      roundLimit: 12,
+      customWinConditions: [{ kind: "control-towns", count: 2 }],
+      victoryPoints: {
+        enabled: true,
+        victoryConditionVp: 4,
+        objectives: [{ kind: "hero-level", level: 5, vp: 2 }]
+      }
+    };
+    const target = Object.values(state.adventure!.fields).find((field) => field.location === "mine")
+      ?? Object.values(state.adventure!.fields)[0]!;
+    target.location = "creature_bank";
+    target.difficulty = 6;
+    target.designerWinCondition = true;
+
+    render(<ScenarioObjectivesDock state={state} viewerPlayerId="p1" />);
+    expect(screen.getByText("Defeat Creature Bank")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show scenario objectives" }));
+    const dialog = screen.getByRole("dialog", { name: "Scenario objectives" });
+    expect(within(dialog).getByText(/level 6 encounter/)).toBeTruthy();
+    expect(within(dialog).getByText("control 2 Towns")).toBeTruthy();
+    expect(within(dialog).getByText("Reach Hero level 5")).toBeTruthy();
+    expect(within(dialog).getAllByText(/Your progress:/).map((node) => node.textContent)).toEqual(
+      expect.arrayContaining(["Your progress: 1 / 2", "Your progress: 4 / 5"])
+    );
+    expect(within(dialog).getByText("+2 VP")).toBeTruthy();
   });
 });
 

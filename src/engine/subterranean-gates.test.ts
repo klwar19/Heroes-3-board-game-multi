@@ -8,6 +8,7 @@ import {
   gateFieldsLinked,
   instantiateTile,
   recomputeSubterraneanGates,
+  subterraneanTileBand,
   tileLayer
 } from "./adventure";
 import {
@@ -386,6 +387,59 @@ describe("subterranean layer: card movement effects cannot breach the divide", (
 });
 
 describe("subterranean tile discovery", () => {
+  it("offers two same-band tiles on gate entry, then rotates and carves the chosen exit", () => {
+    let state = makeGame();
+    const { surface, underground } = placePair(state, { undergroundUp: false });
+    setAllEmpty(state, surface);
+    underground.gateTileChoiceEligible = true;
+    const currentDef = allTileDefinitions[underground.tileDefId]!;
+    const alternate = Object.values(allTileDefinitions).find(
+      (def) =>
+        def.group === "subterranean" &&
+        def.id !== currentDef.id &&
+        subterraneanTileBand(def) === subterraneanTileBand(currentDef)
+    );
+    expect(alternate).toBeDefined();
+    adv(state).subterraneanTilePool = [alternate!.id];
+    recomputeSubterraneanGates(adv(state));
+    const gate = gateHalfTo(state, underground.id)!;
+
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = gate.spaceId;
+    beginFieldVisit(state, hero.id, gate.spaceId, false);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("subterranean-tile-pick");
+    expect(choice?.type === "OPTION_CHOICE" ? choice.subterraneanTilePick?.candidates : null).toEqual([
+      currentDef.id,
+      alternate!.id
+    ]);
+    expect(adv(state).tiles[underground.id].faceDown).toBe(true);
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 1
+    });
+    expect(adv(state).tiles[underground.id].tileDefId).toBe(alternate!.id);
+    expect(adv(state).subterraneanTilePool).toContain(currentDef.id);
+    expect(adv(state).tiles[underground.id].awaitingRotation).toBe(true);
+    expect(adv(state).pendingTileChoice?.tileInstanceId).toBe(underground.id);
+
+    state = applyOk(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: underground.id,
+      rotation: 3
+    });
+    expect(adv(state).tiles[underground.id].rotation).toBe(3);
+    const entrance = gateHalfTo(state, surface.id);
+    expect(entrance).toBeDefined();
+    expect(gateFieldsLinked(adv(state).fields[gate.spaceId], entrance)).toBe(true);
+  });
+
   it("discovers the far tile for free when a hero enters the gate, then carves the entrance", () => {
     const state = makeGame();
     const { surface, underground } = placePair(state, { undergroundUp: false });

@@ -51,7 +51,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // the new client, which surfaces as "That action is not legal in the current
 // game state" on clicks the table itself offered — the catalogs cannot detect
 // any of this, so the explicit bump makes the skew banner fire.
-export const ENGINE_PROTOCOL_VERSION = 16;
+// v17: new persisted GameState schema + reducer semantics that a stale room
+// server cannot understand — the `polish-grail-utopia` house rule (random
+// Grail/Utopia placement, guard packages, dig/build rules), a new
+// `subterranean-tile-pick` OPTION_CHOICE opened on first gate entry (resolved
+// through CHOOSE_OPTION), the single-player map-authored deployment + per-seat
+// `computerStartingBonus`, the `garrisonBorderPassage` field, and the
+// `subterraneanTilePool` / `tileIdentityLocked` / `gateTileChoiceEligible`
+// state. None of these touch the hero/faction/unit catalogs the fingerprint
+// hashes, so the explicit bump is required to make a skewed edge/client show
+// the version banner instead of silently ignoring the new rules or rejecting a
+// `subterranean-tile-pick` click the new client offers.
+export const ENGINE_PROTOCOL_VERSION = 17;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

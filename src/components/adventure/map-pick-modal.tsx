@@ -19,6 +19,7 @@ import {
   clampSeatCount,
   describeCustomMapPresetEntries,
   scenarioDefinitions,
+  singlePlayerMapDeployment,
   validateCustomMapPlan,
   type GameAction,
   type GameSetupOptions,
@@ -177,6 +178,27 @@ export function MapPickModal({
   // designed plan the game ignores would be marked applied while the Map box
   // still named the scenario sheet.
   const usingScenarioSheet = !designedMapInPlay(options);
+  const singlePlayer = state.sessionMode === "single-player";
+  const seatsForEntry = (entry: MapEntry): number => {
+    const scenario =
+      entry.kind === "builtin" ? entry.scenario : scenarioDefinitions[entry.record.scenarioId];
+    if (!scenario) {
+      return lobby.seats.length;
+    }
+    if (entry.kind === "builtin") {
+      return clampSeatCount(scenario, singlePlayer ? scenario.minPlayers : lobby.seats.length);
+    }
+    const deployment = singlePlayer
+      ? singlePlayerMapDeployment(
+          entry.record.tiles,
+          Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+        )
+      : null;
+    return clampSeatCount(
+      scenario,
+      deployment ? 1 + deployment.computers.length : entry.record.players
+    );
+  };
   const isApplied = (entry: MapEntry) =>
     entry.kind === "builtin"
       ? usingScenarioSheet && options.scenarioId === entry.scenario.id
@@ -202,7 +224,7 @@ export function MapPickModal({
       return null;
     }
     const now = lobby.seats.length;
-    const next = clampSeatCount(scenario, selected.kind === "builtin" ? now : selected.record.players);
+    const next = seatsForEntry(selected);
     if (next === now) {
       return null;
     }
@@ -230,7 +252,12 @@ export function MapPickModal({
       // Picking a scenario sheet uses its own face-down layout and drops any
       // designed map (sent together so the engine never leaves a stale map
       // attached to a different scenario).
-      send({ scenarioId: entry.scenario.id, customMap: null, customMapName: null });
+      send({
+        scenarioId: entry.scenario.id,
+        ...(singlePlayer ? { playerCount: entry.scenario.minPlayers } : {}),
+        customMap: null,
+        customMapName: null
+      });
       return;
     }
     // A saved map carries the seat count it was designed for; switch the
@@ -238,7 +265,7 @@ export function MapPickModal({
     // many seats, then apply the map — same payload as the classic picker.
     send({
       ...(entry.record.scenarioId !== options.scenarioId ? { scenarioId: entry.record.scenarioId } : {}),
-      playerCount: entry.record.players,
+      playerCount: seatsForEntry(entry),
       customMap: entry.record.tiles,
       customMapName: entry.record.name,
       customMapPreset: entry.record.preset ?? null
@@ -353,6 +380,12 @@ export function MapPickModal({
                     <small>
                       Built-in scenario sheet · {selected.scenario.minPlayers}–{selected.scenario.maxPlayers} players
                     </small>
+                    {singlePlayer ? (
+                      <small className="mapPickSoloSetup">
+                        Solo setup: {Math.max(1, selected.scenario.minPlayers - 1)} computer opponent
+                        {selected.scenario.minPlayers === 2 ? "" : "s"} · standard starting positions
+                      </small>
+                    ) : null}
                     <small>{selected.scenario.description}</small>
                     <small className="mapPickCredit">{selected.scenario.source.product}</small>
                   </>
@@ -360,8 +393,28 @@ export function MapPickModal({
                   <>
                     <small>
                       Designed map · by {selected.record.createdByName?.trim() || "a player"} ·{" "}
-                      {selected.record.players} players · {selected.record.tiles.length} tiles
+                      {selected.record.players} {singlePlayer ? "multiplayer seats" : "players"} · {selected.record.tiles.length} tiles
                     </small>
+                    {singlePlayer ? (() => {
+                      const selectedScenario = scenarioDefinitions[selected.record.scenarioId];
+                      const deployment = singlePlayerMapDeployment(
+                        selected.record.tiles,
+                        selectedScenario
+                          ? Math.min(selectedScenario.maxPlayers, selectedScenario.layout.starts.length) - 1
+                          : 0
+                      );
+                      const enemies = deployment
+                        ? deployment.computers.length
+                        : Math.max(1, selected.record.players - 1);
+                      const startPlans = selected.record.tiles.filter((plan) => plan.group === "starting");
+                      const humanStart = deployment ? startPlans.indexOf(deployment.human) + 1 : 1;
+                      return (
+                        <small className="mapPickSoloSetup">
+                          Solo setup: {enemies} computer opponent{enemies === 1 ? "" : "s"} · you start at S{humanStart}
+                          {deployment ? " (authored)" : " (standard seat order)"}
+                        </small>
+                      );
+                    })() : null}
                     <small>
                       Built on {scenarioDefinitions[selected.record.scenarioId]?.name ?? selected.record.scenarioId}
                     </small>
@@ -443,8 +496,9 @@ export function MapPickModal({
         <Link href="/designer" target="_blank">
           <Hammer aria-hidden="true" size={11} /> Open the map designer
         </Link>{" "}
-        to create, edit and save your own maps (shared with everyone), then pick one above. Picking a designed map
-        opens the seat count it was designed for.
+        to create, edit and save your own maps (shared with everyone), then pick one above. {singlePlayer
+          ? "In single-player, the map chooses your start, AI starts and opponent count; multiplayer still uses its ordinary seats."
+          : "Picking a designed map opens the multiplayer seat count it was designed for."}
       </small>
     </SetupHubWindow>
   );

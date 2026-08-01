@@ -1064,10 +1064,10 @@ export default class GameRoomServer implements Party.Server {
   }
 
   private async runComputerPumpTick(): Promise<void> {
-    const continuePump = await this.serialized(async () => {
+    const outcome = await this.serialized(async () => {
       const current = this.snapshot;
       if (!current || !computerPumpOwed(current.state)) {
-        return false;
+        return null;
       }
       const before = current.state;
       const run = settleComputerVisibleStep(before);
@@ -1080,7 +1080,7 @@ export default class GameRoomServer implements Party.Server {
             `[computer-runner] alarm stall in room ${current.roomId}: ${run.reason ?? "no safe legal action"}`,
           );
         }
-        return false;
+        return null;
       }
       this.snapshot = {
         // PartyKit THROWS on `this.room.id` inside onAlarm ("You can not access
@@ -1093,13 +1093,24 @@ export default class GameRoomServer implements Party.Server {
         ...this.creationMeta(run.state),
         state: run.state,
       };
-      await this.persist();
-      await this.broadcastSnapshot();
-      // Match report may fire mid-computer-turn (last faction standing, etc.).
-      void this.reportFinishedMatchToApp(before, run.state);
-      return computerPumpOwed(run.state);
+      try {
+        await this.persist();
+      } catch (error) {
+        this.snapshot = current;
+        throw error;
+      }
+      return { continuePump: computerPumpOwed(run.state), before, after: run.state };
     });
-    if (continuePump && this.snapshot) {
+    if (!outcome) {
+      return;
+    }
+    // Fan-out is delivery work, not mutation work. Keeping it outside the room
+    // lock prevents a slow redaction/identity callback during an AI animation
+    // from queueing the human's next click until its processing deadline.
+    await this.broadcastSnapshot();
+    // Match report may fire mid-computer-turn (last faction standing, etc.).
+    void this.reportFinishedMatchToApp(outcome.before, outcome.after);
+    if (outcome.continuePump && this.snapshot) {
       await this.scheduleComputerPump(computerStepDelayMs(this.snapshot.state));
     }
   }
@@ -1366,17 +1377,19 @@ export default class GameRoomServer implements Party.Server {
           durable: true
         } satisfies ServerMessage));
       }
-      // Resolve the sender's VERIFIED account id from the token on its socket
-      // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
-      // can no longer act for a signed-in player's seat. Undefined for guests.
-      // Resolved BEFORE the mutation lock: the verification may fetch, and the
-      // room must stay serialized-but-responsive while it does.
-      const actorUserId = await this.verifiedUserId(sender);
-      const senderClientId = message.actorClientId ?? this.clientIdOf(sender);
-      const dedupeKeys = message.requestId
-        ? this.dedupeKeysFor(message.requestId, actorUserId, senderClientId ?? sender.id)
-        : [];
-      const outcome = await this.serialized(async () => {
+      const outcome = await (async () => {
+        try {
+          // Resolve the sender's VERIFIED account id from the token on its socket
+          // (Phase 2). Authoritative over the claimed actorClientId — a spoofed id
+          // can no longer act for a signed-in player's seat. Undefined for guests.
+          // Resolved BEFORE the mutation lock: the verification may fetch, and the
+          // room must stay serialized-but-responsive while it does.
+          const actorUserId = await this.verifiedUserId(sender);
+          const senderClientId = message.actorClientId ?? this.clientIdOf(sender);
+          const dedupeKeys = message.requestId
+            ? this.dedupeKeysFor(message.requestId, actorUserId, senderClientId ?? sender.id)
+            : [];
+          return await this.serialized(async () => {
         const current = this.ensureSnapshot();
         // A requestId this room already answered is a duplicate frame (client
         // retry / double-send): reply with the recorded outcome, apply nothing.
@@ -1406,9 +1419,6 @@ export default class GameRoomServer implements Party.Server {
           this.sendActionResult(sender, message.requestId, undo);
           return { ...undo, acknowledged: true, broadcast: true };
         }
-        // Record the PRE-action state on the undo stack when the mode is on
-        // (no-op otherwise), so an undo rolls back exactly this action.
-        recordUndoSnapshot(this.room.id, current.state);
         const applyStartedAt = Date.now();
         const result = applyAction(current.state, message.action, {
           // Fresh crypto entropy per action makes every die roll, shuffle and Ⅱ–Ⅲ
@@ -1447,10 +1457,27 @@ export default class GameRoomServer implements Party.Server {
               ...this.creationMeta(result.state),
               state: result.state
             };
-            await this.persist();
-            await this.broadcastSnapshot();
+            try {
+              await this.persist();
+            } catch (error) {
+              this.snapshot = current;
+              throw error;
+            }
+            const rejected = { errors, notices, version: this.snapshot.version };
+            for (const key of dedupeKeys) this.recordAnsweredRequest(key, rejected);
+            // The repaired snapshot is committed. Finish the request now and
+            // fan it out outside the mutation queue, exactly like a successful
+            // action; a slow hosted peer must not strand this sender.
+            this.sendActionResult(sender, message.requestId, rejected);
+            return {
+              ...rejected,
+              applied: false,
+              prev: null as GameState | null,
+              acknowledged: true,
+              broadcast: true
+            };
           }
-          const rejected = { errors, notices, version: this.snapshot?.version ?? current.version };
+          const rejected = { errors, notices, version: current.version };
           for (const key of dedupeKeys) this.recordAnsweredRequest(key, rejected);
           return { ...rejected, applied: false, prev: null as GameState | null };
         }
@@ -1478,8 +1505,20 @@ export default class GameRoomServer implements Party.Server {
         const accepted = { errors, notices, version: this.snapshot.version };
         for (const key of dedupeKeys) this.recordAnsweredRequest(key, accepted);
         const persistStartedAt = Date.now();
-        await this.persist();
+        try {
+          await this.persist();
+        } catch (error) {
+          // The mutation is not authoritative until storage accepts BOTH the
+          // snapshot and its dedupe ledger. Restore the in-memory timeline and
+          // remove the uncommitted ledger keys so a retry applies exactly once.
+          this.snapshot = current;
+          for (const key of dedupeKeys) this.answeredActionRequests.delete(key);
+          throw error;
+        }
         this.metric("room.storage.persist", persistStartedAt, { version: this.snapshot.version });
+        // Undo history is also a commit-side effect: record it only after the
+        // new timeline is durable, never for a failed storage attempt.
+        recordUndoSnapshot(this.room.id, current.state);
         // The move is authoritative once storage accepts it. Acknowledge the
         // sender before expensive per-seat snapshot delivery.
         this.sendActionResult(sender, message.requestId, accepted);
@@ -1492,7 +1531,29 @@ export default class GameRoomServer implements Party.Server {
           scheduleComputer: computerPumpOwed(settled),
           computerDelayMs: computerStepDelayMs(settled),
         };
-      });
+          });
+        } catch (error) {
+          // Every durable receipt must have a terminal answer. Previously an
+          // unexpected reducer/storage failure escaped the handler after
+          // `action-received`, leaving the browser to wait a full minute for
+          // "could not finish in time" with no idea whether the move landed.
+          // Transactional branches below roll their in-memory snapshot back
+          // before rethrowing, so this explicit failure is safe to retry.
+          console.error("[room-action] transaction failed before commit", error);
+          this.sendActionResult(sender, message.requestId, {
+            version: this.snapshot?.version ?? 0,
+            errors: [{
+              code: "ACTION_NOT_LEGAL",
+              message: "The room could not commit that action. Nothing changed; please try it again."
+            }],
+            notices: []
+          });
+          return null;
+        }
+      })();
+      if (!outcome) {
+        return;
+      }
 
       // Snapshot delivery is deliberately outside the mutation queue. A slow
       // or stale hosted peer must not keep the next action from reaching its
@@ -1579,7 +1640,16 @@ export default class GameRoomServer implements Party.Server {
     };
     const accepted = { errors: [] as { code: string; message: string }[], notices: [] as string[], version: this.snapshot.version };
     for (const key of dedupeKeys) this.recordAnsweredRequest(key, accepted);
-    await this.persist();
+    try {
+      await this.persist();
+    } catch (error) {
+      this.snapshot = current;
+      for (const key of dedupeKeys) this.answeredActionRequests.delete(key);
+      // applyUndoMove popped this checkpoint; put it back so a transient
+      // storage failure does not consume the player's undo step.
+      recordUndoSnapshot(this.room.id, outcome.state);
+      throw error;
+    }
     return {
       ...accepted,
       applied: true,
@@ -1746,32 +1816,55 @@ export default class GameRoomServer implements Party.Server {
         const actorClientId = "actorClientId" in body ? body.actorClientId : undefined;
         const userId = await this.verifiedUserIdFromRequest(request);
         const incoming = body.state;
-        const outcome = await this.serialized(async () => {
-          const current = this.ensureSnapshot();
-          const prepared = prepareSinglePlayerLoad(current.state, incoming, { clientId: actorClientId, userId });
-          if (!prepared.ok) {
-            return { denied: prepared.reason as string | null, snapshot: current };
-          }
-          // A load jumps timelines — drop the undo history like a reset does.
-          clearUndoHistory(this.room.id);
-          this.snapshot = {
-            roomId: this.room.id,
-            version: current.version + 1,
-            updatedAt: new Date().toISOString(),
-            ...this.creationMeta(prepared.state),
-            state: prepared.state
-          };
-          await this.persist();
-          await this.broadcastSnapshot();
-          return { denied: null, snapshot: this.snapshot };
-        });
+        let outcome: { denied: string | null; snapshot: RoomSnapshot };
+        try {
+          outcome = await this.serialized(async () => {
+            const current = this.ensureSnapshot();
+            const prepared = prepareSinglePlayerLoad(current.state, incoming, { clientId: actorClientId, userId });
+            if (!prepared.ok) {
+              return { denied: prepared.reason as string | null, snapshot: current };
+            }
+            this.snapshot = {
+              roomId: this.room.id,
+              version: current.version + 1,
+              updatedAt: new Date().toISOString(),
+              ...this.creationMeta(prepared.state),
+              state: prepared.state
+            };
+            try {
+              await this.persist();
+            } catch (error) {
+              this.snapshot = current;
+              throw error;
+            }
+            // A load jumps timelines — drop undo only after the new timeline is
+            // durable, never when storage rejected the swap.
+            clearUndoHistory(this.room.id);
+            return { denied: null, snapshot: this.snapshot };
+          });
+        } catch (error) {
+          console.error("[single-player-save] load transaction failed", error);
+          return jsonWithCors(
+            { reason: "The room could not commit the saved game. Nothing changed; the save is safe to retry." },
+            503
+          );
+        }
         if (outcome.denied) {
           return jsonWithCors({ reason: outcome.denied }, 403);
         }
+        // Persisted already: fan-out no longer owns the room mutation lock.
+        await this.broadcastSnapshot();
         // The loaded game may be mid-computer-turn: re-arm the paced pump for
-        // the restored state (mirrors the undo path's scheduleComputer).
+        // the restored state; otherwise cancel any alarm from the abandoned
+        // timeline so it cannot wake needlessly after a human-owned load.
         if (this.snapshot && computerPumpOwed(this.snapshot.state)) {
           await this.scheduleComputerPump(computerStepDelayMs(this.snapshot.state));
+        } else {
+          try {
+            await this.room.storage.deleteAlarm();
+          } catch {
+            /* old runtimes/mocks may not expose alarms */
+          }
         }
         // `spLoad: true` marker: an OLDER room-server deploy answers an unknown
         // body with a plain snapshot WITHOUT applying anything — the client

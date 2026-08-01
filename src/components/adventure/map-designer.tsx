@@ -55,6 +55,7 @@ import {
   customGuardArmyDifficulty,
   describeGuardArmyGrouped,
   describeHexEvent,
+  MAX_SINGLE_PLAYER_MAP_OPPONENTS,
   MAX_HEX_EVENTS,
   MAX_HEX_EVENT_MESSAGE,
   MAX_SETTLEMENT_HOLD_ROUNDS,
@@ -3128,6 +3129,62 @@ export function MapDesigner({
     updateTile(selectedIndex, { lockRotation: selected.lockRotation ? undefined : true });
   };
 
+  /** Assign this Town a solo-only role. Choosing You clears any previous human
+   * marker; multiplayer never reads these fields and keeps normal seat order. */
+  const setSinglePlayerRole = (role: "human" | "computer" | undefined) => {
+    if (selectedIndex === null || !selected || selected.group !== "starting") {
+      return;
+    }
+    onChange(
+      customMap.map((plan, index) => {
+        if (plan.group !== "starting") return plan;
+        if (index === selectedIndex) {
+          if (!role) {
+            const rest = { ...plan };
+            delete rest.singlePlayer;
+            return rest;
+          }
+          return {
+            ...plan,
+            singlePlayer: {
+              role,
+              ...(role === "computer" && plan.singlePlayer?.role === "computer" && plan.singlePlayer.bonus
+                ? { bonus: plan.singlePlayer.bonus }
+                : {})
+            }
+          };
+        }
+        if (role === "human" && plan.singlePlayer?.role === "human") {
+          const rest = { ...plan };
+          delete rest.singlePlayer;
+          return rest;
+        }
+        return plan;
+      })
+    );
+  };
+
+  const setSinglePlayerComputerBonus = (
+    key: "gold" | "buildingMaterials" | "valuables",
+    amount: number
+  ) => {
+    if (
+      selectedIndex === null ||
+      !selected ||
+      selected.group !== "starting" ||
+      selected.singlePlayer?.role !== "computer"
+    ) {
+      return;
+    }
+    const current = selected.singlePlayer.bonus ?? { gold: 0, buildingMaterials: 0, valuables: 0 };
+    updateTile(selectedIndex, {
+      singlePlayer: {
+        role: "computer",
+        bonus: { ...current, [key]: Math.max(0, Math.min(99, Math.floor(amount || 0))) }
+      }
+    });
+  };
+
   /**
    * Toggle a far/near/center/sea tile's UNDERGROUND layer. On: the tile is
    * topologically a cavern (reachable only through a Subterranean Gate) while
@@ -3144,6 +3201,18 @@ export function MapDesigner({
   };
 
   const seatNumberOf = (index: number) => startingPlanIndexes.indexOf(index) + 1;
+  const soloHumanStarts = customMap.filter(
+    (plan) => plan.group === "starting" && plan.singlePlayer?.role === "human"
+  ).length;
+  const soloComputerStarts = customMap.filter(
+    (plan) => plan.group === "starting" && plan.singlePlayer?.role === "computer"
+  ).length;
+  const soloOpponentLimit = Math.min(
+    MAX_SINGLE_PLAYER_MAP_OPPONENTS,
+    Math.max(0, Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1)
+  );
+  const soloDeploymentComplete =
+    soloHumanStarts === 1 && soloComputerStarts >= 1 && soloComputerStarts <= soloOpponentLimit;
 
   // --- Designer Subterranean Gate links ------------------------------------
   // Every Surface tile (or seat) the selected cavern physically touches, so the
@@ -3773,6 +3842,24 @@ export function MapDesigner({
           S{seatNumberOf(index)}
         </text>
       );
+      if (plan.singlePlayer) {
+        labelLayer.push(
+          <text
+            className={`designerSoloStartBadge ${plan.singlePlayer.role}`}
+            key={`plan-solo-${index}`}
+            textAnchor="middle"
+            x={centerPixel.x}
+            y={centerPixel.y + size * 0.72}
+          >
+            <title>
+              {plan.singlePlayer.role === "human"
+                ? "Single-player: your starting Town"
+                : "Single-player: computer starting Town"}
+            </title>
+            {plan.singlePlayer.role === "human" ? "YOU" : "AI"}
+          </text>
+        );
+      }
       // Fixed-orientation seats wear a small lock badge naming the forced angle —
       // the faction art is unknown at design time, so the degrees are the signal.
       if (plan.lockRotation) {
@@ -5250,6 +5337,65 @@ export function MapDesigner({
             {selected.group === "starting" ? (
               <>
                 <small className="popoverHint">A player&apos;s starting town. Drag it to move; its tile art comes from each player&apos;s faction.</small>
+                <div className="popoverSectionLabel">Single-player deployment</div>
+                <div className="popoverModeRow popoverSoloRoleRow" role="group" aria-label="Single-player role for this Town">
+                  {(
+                    [
+                      [undefined, "Not used", "Multiplayer only / normal seat order"],
+                      ["human", "You", "Your solo starting Town"],
+                      ["computer", "Enemy AI", "A solo computer starting Town"]
+                    ] as const
+                  ).map(([role, label, hint]) => {
+                    const active = selected.singlePlayer?.role === role || (!selected.singlePlayer && role === undefined);
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverModeCard${active ? " active" : ""}`}
+                        key={label}
+                        onClick={() => setSinglePlayerRole(role)}
+                        type="button"
+                      >
+                        <span className="popoverModeTitle">{label}</span>
+                        <span className="popoverModeSub">{hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <small className={`popoverHint${soloDeploymentComplete ? "" : " popoverWarning"}`}>
+                  {soloDeploymentComplete
+                    ? `Ready: 1 human start and ${soloComputerStarts} AI start${soloComputerStarts === 1 ? "" : "s"}. This decides the solo enemy count.`
+                    : `Mark exactly one Town as You and 1–${soloOpponentLimit} Town${soloOpponentLimit === 1 ? "" : "s"} as Enemy AI. Until complete, solo play uses the map's standard ${startingPlanIndexes.length || starts.length}-seat order.`}
+                  {" "}Ignored completely in multiplayer.
+                </small>
+                {selected.singlePlayer?.role === "computer" ? (
+                  <>
+                    <div className="popoverSubLabel">This enemy&apos;s extra starting war chest</div>
+                    <div className="mapPresetResourceRow popoverSoloBonusRow">
+                      {(
+                        [
+                          ["gold", "Gold"],
+                          ["buildingMaterials", "Materials"],
+                          ["valuables", "Valuables"]
+                        ] as const
+                      ).map(([key, label]) => (
+                        <label className="mapPresetResourceField" key={key}>
+                          <span>{label}</span>
+                          <input
+                            aria-label={`${label} bonus for this enemy AI`}
+                            max={99}
+                            min={0}
+                            onChange={(event) => setSinglePlayerComputerBonus(key, Number(event.target.value))}
+                            type="number"
+                            value={selected.singlePlayer?.bonus?.[key] ?? 0}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <small className="popoverHint">
+                      Added only to this AI in single-player, on top of any all-enemy bonus in Map conditions.
+                    </small>
+                  </>
+                ) : null}
                 {/* Rotation + Fix-orientation: the faction art is unknown at design
                     time, so the preview shows the orientation as a badge/degrees. */}
                 <div className="popoverActions">
@@ -5878,6 +6024,7 @@ export function MapDesigner({
                         <span>Requires Grail possession</span>
                       </label>
                     ) : null}
+                    <div className="popoverSubLabel">Marked scenario objective — this exact encounter at this location</div>
                     <label className="popoverCheckRow" title="The first player to clear / capture THIS objective wins the game immediately (in Victory-Points mode the completion scores the table instead).">
                       <input
                         aria-label="First clear of this center hex wins the game"
@@ -5996,6 +6143,7 @@ export function MapDesigner({
                         <span>Requires Grail possession</span>
                       </label>
                     ) : null}
+                    <div className="popoverSubLabel">Marked scenario objective — this exact settlement at this location</div>
                     <label className="popoverCheckRow" title="The first player to flag THIS settlement wins the game immediately (the instant twin of hold-to-win).">
                       <input
                         aria-label="First flag of this settlement wins the game"
@@ -6113,6 +6261,7 @@ export function MapDesigner({
                           </label>
                         ))}
                       </div>
+                      <div className="popoverSubLabel">Marked scenario objective — this exact {objectKind} at this location</div>
                       <label className="popoverCheckRow" title={`The first player to clear / flag THIS ${objectKind} wins the game immediately.`}>
                         <input
                           aria-label={`First clear of this ${objectKind} wins the game`}
@@ -6608,6 +6757,27 @@ export function MapDesigner({
                     ? " (“mix” entrances offer it before the roll)"
                     : " (in “mix” mode, other network nodes offer this exit before the roll)"}
                 </span>
+              </label>
+            ) : null}
+            {selectedObject.kind === "garrison" ? (
+              <label className="popoverCheckRow">
+                <input
+                  aria-label="Garrison opens yellow borders"
+                  checked={selectedObject.garrisonBorderPassage === true}
+                  onChange={(event) =>
+                    onObjectsChange?.(
+                      objects.map((object, i) => {
+                        if (i !== (selectedObjectIndex as number)) return object;
+                        const next = { ...object };
+                        if (event.target.checked) next.garrisonBorderPassage = true;
+                        else delete next.garrisonBorderPassage;
+                        return next;
+                      })
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span>Allow Heroes at this Garrison to cross adjacent yellow borders</span>
               </label>
             ) : null}
             {selectedObject.kind === "creature_bank" ? (

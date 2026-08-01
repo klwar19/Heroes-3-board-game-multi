@@ -18,7 +18,14 @@ import {
   type PendingChoice,
   type PlayerVisibleState,
 } from "./index";
-import { buildCreatureBankCombatUnits, grantCreatureBankReward, placeCreatureBank } from "./adventure";
+import {
+  buildCreatureBankCombatUnits,
+  creatureBankHostLocationForTile,
+  creatureBankTierForTile,
+  grantCreatureBankReward,
+  instantiateTile,
+  placeCreatureBank,
+} from "./adventure";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
@@ -41,10 +48,12 @@ function placeFarTileAwaitingRotation({
   enabled = true,
   openings = 0,
   pile,
+  tileDefId = "F1",
 }: {
   enabled?: boolean;
   openings?: number;
   pile?: CreatureBankId[];
+  tileDefId?: string;
 } = {}): GameState {
   let state = createAdventureGameState({
     seed: `polish-bank-${enabled}-${openings}-${pile?.length ?? "full"}`,
@@ -63,7 +72,7 @@ function placeFarTileAwaitingRotation({
   if (pile) {
     state.adventure!.creatureBankTokensFar = [...pile];
   }
-  state.adventure!.farTileScriptedDraws = ["F1"];
+  state.adventure!.farTileScriptedDraws = [tileDefId];
   state = apply(state, {
     type: "PLACE_TILE",
     playerId: "p1",
@@ -147,6 +156,81 @@ describe("Polish bank size roll", () => {
 });
 
 describe("Polish Creature Bank offer", () => {
+  it("uses an Empty Field on a no-block Far tile, while rule-off leaves that tile unchanged", () => {
+    let state = placeFarTileAwaitingRotation({ tileDefId: "F23" });
+    const choice = bankChoice(state);
+    expect(choice.prompt).toContain("Empty Field");
+    expect(choice.options.at(-1)?.label).toBe("Leave it empty");
+    state = choosePolishBank(state, 0);
+    const tile = state.adventure!.tiles[state.adventure!.pendingTileChoice!.tileInstanceId];
+    state = finishRotation(state);
+    const bank = Object.values(state.adventure!.fields).find(
+      (field) => field.tileInstanceId === tile.id && field.location === "creature_bank"
+    );
+    expect(bank?.bankId).toBeTruthy();
+    expect(
+      Object.values(state.adventure!.fields).some(
+        (field) => field.tileInstanceId === tile.id && field.location === "empty_field"
+      )
+    ).toBe(false);
+
+    const control = finishRotation(placeFarTileAwaitingRotation({ enabled: false, tileDefId: "F23" }));
+    const controlTile = Object.values(control.adventure!.tiles).find((candidate) => candidate.tileDefId === "F23")!;
+    expect(control.pendingChoice).toBeNull();
+    expect(
+      Object.values(control.adventure!.fields).some(
+        (field) => field.tileInstanceId === controlTile.id && field.location === "creature_bank"
+      )
+    ).toBe(false);
+    expect(
+      Object.values(control.adventure!.fields).some(
+        (field) => field.tileInstanceId === controlTile.id && field.location === "empty_field"
+      )
+    ).toBe(true);
+  });
+
+  it("treats IV–V sea tiles as Near banks, including the no-block Empty Field fallback", () => {
+    let state = createAdventureGameState({
+      seed: "polish-sea-empty-bank",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      creatureBanks: true,
+      houseRules: { "polish-bank-sizes": true },
+    });
+    for (const player of Object.values(state.players)) {
+      player.canMulligan = false;
+      player.needsHandRefresh = false;
+    }
+    const w2 = instantiateTile(state.adventure!, "W2", { row: 40, col: 40 }, 0, false, { materialize: false });
+    w2.awaitingRotation = true;
+    state.adventure!.pendingTileChoice = {
+      tileInstanceId: w2.id,
+      playerId: "p1",
+      kind: "reveal",
+    };
+    expect(creatureBankTierForTile(state, w2)).toBe("near");
+    expect(creatureBankHostLocationForTile(state, w2)).toBe("empty_field");
+    expect(
+      creatureBankTierForTile(state, { group: "sea", tileDefId: "W7" })
+    ).toBeNull();
+
+    state = apply(state, {
+      type: "SET_TILE_ROTATION",
+      playerId: "p1",
+      tileInstanceId: w2.id,
+      rotation: 0,
+    });
+    const choice = bankChoice(state);
+    expect(choice.creatureBank?.tier).toBe("near");
+    expect(choice.prompt).toContain("Empty Field");
+    state = choosePolishBank(state, 0);
+    expect(
+      Object.values(state.adventure!.fields).some(
+        (field) => field.tileInstanceId === w2.id && field.location === "creature_bank"
+      )
+    ).toBe(true);
+  });
+
   it("chooses between two sized candidates before rotation, then consumes only the chosen id", () => {
     let state = placeFarTileAwaitingRotation();
     const pileBefore = [...state.adventure!.creatureBankTokensFar!];

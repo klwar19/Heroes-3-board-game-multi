@@ -30,14 +30,13 @@ describe("/single-player (creation panel)", () => {
     expect(screen.queryByRole("group", { name: /Computer opponents/i })).toBeNull();
   });
 
-  it("opens the opponent picker on VS Computer and defaults to one", () => {
+  it("explains that the selected map owns the solo deployment and shows no enemy-count picker", () => {
     render(<SinglePlayerPage />);
     fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
-    const group = screen.getByRole("group", { name: /Computer opponents/i });
-    const one = screen.getByRole("button", { name: "1 computer opponent" });
-    expect(group.contains(one)).toBe(true);
-    expect(one.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "3 computer opponents" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("note", { name: /Map-driven solo setup/i }).textContent).toMatch(
+      /No enemy-count picker is needed/i
+    );
+    expect(screen.queryByRole("button", { name: /computer opponent/i })).toBeNull();
   });
 
   it("uses the generated campaign art on the Campaign entry", () => {
@@ -49,15 +48,14 @@ describe("/single-player (creation panel)", () => {
     expect(icon!.getAttribute("src")).toContain("/assets/story/erathia/campaign-map-rebuilt.webp");
   });
 
-  it("creates the private game with the chosen count and navigates to the room", async () => {
+  it("creates a provisional private game without asking for a count and navigates to the room", async () => {
     createSinglePlayerRoom.mockResolvedValue({ roomId: "sp-abc123" });
     render(<SinglePlayerPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
-    fireEvent.click(screen.getByRole("button", { name: "3 computer opponents" }));
-    fireEvent.click(screen.getByRole("button", { name: /Continue with 3 opponents/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create private skirmish/i }));
 
-    await waitFor(() => expect(createSinglePlayerRoom).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(createSinglePlayerRoom).toHaveBeenCalledWith());
     await waitFor(() => expect(push).toHaveBeenCalledWith("/?room=sp-abc123"));
   });
 
@@ -66,7 +64,7 @@ describe("/single-player (creation panel)", () => {
     render(<SinglePlayerPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /VS Computer/i }));
-    fireEvent.click(screen.getByRole("button", { name: /Continue with 1 opponent/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Create private skirmish/i }));
 
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("offline"));
     expect(push).not.toHaveBeenCalled();

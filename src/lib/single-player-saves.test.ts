@@ -8,13 +8,15 @@
  * tolerance — the confirm dialog warns instead), and the menu-page pending
  * marker is consumed once by the right room only.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ENGINE_SIGNATURE, type GameState } from "@/engine";
 import {
   MAX_SINGLE_PLAYER_SAVES,
+  clearPendingSinglePlayerLoad,
   deleteSavedSinglePlayerGame,
   loadSavedSinglePlayerGames,
   loadSavedSinglePlayerGameState,
+  peekPendingSinglePlayerLoad,
   saveMatchesEngine,
   saveSinglePlayerGame,
   setPendingSinglePlayerLoad,
@@ -51,6 +53,27 @@ describe("single-player save slots (browser storage)", () => {
     expect(second.save.id).toBe(first.save.id);
     expect(loadSavedSinglePlayerGames()).toHaveLength(1);
     expect(loadSavedSinglePlayerGameState(first.save.id)).toEqual(fakeState(6, "v2"));
+  });
+
+  it("keeps the previous checkpoint intact when an overwrite cannot commit its index", () => {
+    const first = saveSinglePlayerGame("Checkpoint", "sp-room-1", fakeState(2, "last-good"));
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const nativeSetItem = Storage.prototype.setItem;
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key.startsWith("homm3bg.sp-save-index:")) {
+        throw new DOMException("quota", "QuotaExceededError");
+      }
+      nativeSetItem.call(this, key, value);
+    });
+
+    const overwrite = saveSinglePlayerGame("Checkpoint", "sp-room-1", fakeState(9, "uncommitted"));
+    setItem.mockRestore();
+
+    expect(overwrite.ok).toBe(false);
+    expect(loadSavedSinglePlayerGames()).toEqual([first.save]);
+    expect(loadSavedSinglePlayerGameState(first.save.id)).toEqual(fakeState(2, "last-good"));
   });
 
   it("refuses past the slot cap with a reason (never a silent drop); overwrite still allowed (CONTROL)", () => {
@@ -93,6 +116,18 @@ describe("single-player save slots (browser storage)", () => {
 });
 
 describe("pending menu-page load marker", () => {
+  it("can be retried until the server confirms, then cleared exactly", () => {
+    const saved = saveSinglePlayerGame("Retryable", "sp-room-A", fakeState(4, "retry"));
+    expect(saved.ok).toBe(true);
+    if (!saved.ok) return;
+    expect(setPendingSinglePlayerLoad(saved.save.id, "sp-room-A")).toBe(true);
+
+    expect(peekPendingSinglePlayerLoad("sp-room-A")?.save.id).toBe(saved.save.id);
+    expect(peekPendingSinglePlayerLoad("sp-room-A")?.state).toEqual(fakeState(4, "retry"));
+    clearPendingSinglePlayerLoad(saved.save.id, "sp-room-A");
+    expect(peekPendingSinglePlayerLoad("sp-room-A")).toBeNull();
+  });
+
   it("is consumed once by the matching room and left alone by others", () => {
     const saved = saveSinglePlayerGame("Menu load", "sp-room-A", fakeState(4, "menu"));
     expect(saved.ok).toBe(true);
