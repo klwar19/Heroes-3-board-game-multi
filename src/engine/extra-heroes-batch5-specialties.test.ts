@@ -9,6 +9,7 @@ import {
   getLegalActions
 } from "./index";
 import { startWarMachineRound } from "./permanents";
+import { getOffTurnCombatReactions } from "./legal-actions";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { adventureCards } from "@/data/cards/adventure";
 import type { FactionId } from "@/data/factions/types";
@@ -453,6 +454,39 @@ describe("Tarnum (Dungeon)'s Dragons specialty", () => {
     expect(attackPlusOne("tarnum-d-1-dragon", "Black Dragons"), "a Dragons unit → +2").toBe(2);
   });
 
+  it("I also doubles the defense reaction for a Dragons unit", () => {
+    const state = createInitialGameState("tarnum-d-1-defense");
+    state.players.p1.hand = ["specialty.tarnum_dungeon.1"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.abilities = [];
+    attacker.position = 13;
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.abilities = [];
+    defender.name = "Black Dragons";
+    defender.position = 9;
+    defender.maxHealth = 40;
+    state.combat!.dice.scriptedRolls = new Array(8).fill(0);
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = attacker.id;
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: attacker.id,
+      defenderId: defender.id
+    });
+    const reaction = (declared.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.tarnum_dungeon.1" &&
+        legal.action.optionIndex === 1
+    );
+    expect(reaction).toBeTruthy();
+    const resolved = passAllReactions(applyOk(declared, reaction!.action));
+    expect(lastAttackRolled(resolved, (event) => event.attackerId === attacker.id)?.defenseBonus).toBe(2);
+  });
+
   it("IV damages every unit (friend and foe) in the chosen vertical line of 5", () => {
     const state = createInitialGameState("tarnum-d-4");
     state.players.p1.hand = ["specialty.tarnum_dungeon.4"];
@@ -488,6 +522,22 @@ describe("Tarnum (Dungeon)'s Dragons specialty", () => {
     expect(after.combat!.units.unit_p2_vampires.damage, "foe in the line is hit").toBe(2);
     expect(after.combat!.units.unit_p2_dread_knights.damage, "a different column is spared").toBe(0);
     expect(after.combat!.units.unit_p1_marksmen.damage, "a different column is spared").toBe(0);
+  });
+
+  it("IV is a real Instant and offers its five-space row during an enemy activation", () => {
+    const state = createInitialGameState("tarnum-d-4-off-turn");
+    state.players.p1.hand = ["specialty.tarnum_dungeon.4"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    const plays = getOffTurnCombatReactions(state, "p1").filter(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.tarnum_dungeon.4" &&
+        legal.action.optionIndex === 0 &&
+        legal.action.target?.type === "space"
+    );
+    expect(plays).toHaveLength(20);
   });
 
   it("VI option A toggles the Black cube only on a Dragons unit", () => {

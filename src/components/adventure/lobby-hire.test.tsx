@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { SetupLobbyScreen, TownPanel } from "./screen";
-import { createAdventureGameState, createAdventureLobbyState, getLegalActions } from "@/engine";
+import { AdventureHud, SetupLobbyScreen, TownPanel } from "./screen";
+import { CardZoomProvider } from "@/components/table/zoom";
+import { applyAction, createAdventureGameState, createAdventureLobbyState, getLegalActions } from "@/engine";
 
 afterEach(cleanup);
 
@@ -60,5 +61,33 @@ describe("TownPanel — hiring a Secondary Hero with exactly 10 gold", () => {
       playerId: "p1",
       fieldId: expect.any(String)
     });
+  });
+
+  it("adds a live Secondary Hero movement counter to the adventure HUD after purchase", () => {
+    const state = createAdventureGameState({ seed: "ui-secondary-move", rollFirstPlayer: false });
+    state.players.p1.resources.gold = 10;
+    const hire = getLegalActions(state, "p1").find((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
+    expect(hire, "engine offers the purchase").toBeTruthy();
+
+    const hiredState = applyAction(state, hire!.action).state;
+    const secondary = Object.values(hiredState.heroes).find(
+      (hero) => hero.controllerId === "p1" && hero.kind === "secondary"
+    );
+    expect(secondary?.movementPoints).toBe(2);
+
+    render(
+      <CardZoomProvider>
+        <AdventureHud
+          legalActions={getLegalActions(hiredState, "p1")}
+          onAction={vi.fn()}
+          state={hiredState}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const counter = screen.getByLabelText("Secondary Hero movement points: 2");
+    expect(counter.querySelector("b")?.textContent).toBe("2");
+    expect(counter.textContent).toMatch(/secondary move/i);
   });
 });

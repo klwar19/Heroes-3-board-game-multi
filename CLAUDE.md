@@ -2371,10 +2371,14 @@ Leading with what does NOT run / deliberate limits:
 ## Official-rules switch-over (2026-07-25) — three OLD readings became opt-in house rules
 
 Three engine readings the printed/official rules contradict were replaced by the
-OFFICIAL rule, with the OLD behaviour preserved behind a NEW house rule that is
-**default OFF in BOTH binh and legacy**. So a table that changes nothing now plays
-the official rule; a table that wants the old engine flips the toggle. Each rule is
-one boolean read at ONE seam, with the old behaviour pinned as the CONTROL.
+OFFICIAL rule, with the OLD behaviour preserved behind a NEW house rule. Two of
+them (`elemental-damage-no-die`, `deck-access-hero-level`) stay **default OFF in
+BOTH binh and legacy** (a table that changes nothing plays the official rule).
+The third, **`discovery-border-gate`, was RE-FLIPPED on the 2026-08-02
+five-session branch to `default: true` and force-locked ON in BINH / the Polish
+package** (see its bullet) — so BINH's default tile-discovery is the old
+require-open-border reading again, not adjacency-only. Each rule is one boolean
+read at ONE seam, with the CONTROL behaviour pinned.
 
 - **`elemental-damage-no-die`** (category combat). OFFICIAL (OFF): elemental damage
   does exactly ONE thing — it ignores the target's Defense value (printed Defense,
@@ -2387,23 +2391,30 @@ one boolean read at ONE seam, with the old behaviour pinned as the CONTROL.
   house-rule CONTROLs in `elemental-fixed-damage.test.ts` (every shipped elemental
   side, driven from the unit data) and `summon-elemental.test.ts` (attack maths,
   Attack tokens, Moandor's granted elemental damage).
-- **`discovery-border-gate`** (category combat — it sits in the BINH house-rules
-  panel under "Combat & map rules", beside its two official-rules siblings, NOT in
-  the "Global map rules" panel; placement pinned in `game-options-tabs.test.tsx`). OFFICIAL (OFF): DISCOVERING a
-  face-down Tile — and OPENING a new Ⅱ–Ⅲ one — needs only that the hero is
-  ADJACENT; the printed rules mention no blockers or yellow borders for discovery.
-  ON: the old reading — the hero must also touch the tile across an OPEN border
-  (printed arc, designer whole arc, or a designed per-edge line on every shared
-  edge), with a Redwood Observatory / Speculum as the bypass. Two seams:
-  `heroCanDiscoverTileAcrossBorders` (now takes the STATE, not a bare
-  AdventureState) and `canHeroReachPlacementCenter`. **Movement is UNTOUCHED** —
-  yellow borders still seal every step, in both readings, and the
-  Surface/Subterranean divide still blocks discovery either way. Official half
-  pinned in `adventure.test.ts` ("official: adjacency alone lets a hero discover
-  across a sealed yellow border", which also asserts the movement seal survives);
-  the ON half is the renamed "HOUSE RULE ON: …" cases there plus
-  `designed-borders.test.ts` / `map-objects.test.ts` (whose fixtures now turn the
-  rule ON) and the bank-exception case in `creature-bank-objects.test.ts`.
+- **`discovery-border-gate`** (category combat — BINH house-rules panel under
+  "Combat & map rules"; placement pinned in `game-options-tabs.test.tsx`).
+  **UPDATED 2026-08-02 (five-session branch): this rule is now `default: true`
+  and is a HARD BINH MAP INVARIANT, no longer the default-OFF official reading.**
+  When ON: DISCOVERING a face-down Tile — or OPENING a new Ⅱ–Ⅲ one — needs an
+  OPEN border between the Hero's field and the tile (a printed yellow arc,
+  designer whole arc, or a designed per-edge line seals it), with a Redwood
+  Observatory / Speculum as the bypass. When OFF: adjacency alone suffices
+  (the printed-rules reading). **Forcing:** `resolveHouseRules` AND
+  `houseRuleEnabled` both force it `true` whenever `ruleset === "binh"` OR any
+  Polish-category house rule is enabled — so BINH cannot switch it off, and it
+  is part of the Polish package in Legacy too (an explicit `false` or a stale
+  save no longer wins). Legacy WITHOUT any Polish rule keeps it as an ordinary
+  toggle (`legacyDefault: false`). Two seams: `heroCanDiscoverTileAcrossBorders`
+  (takes the STATE) and `canHeroReachPlacementCenter`. **Movement is UNTOUCHED**
+  — yellow borders still seal every step in both readings, and the
+  Surface/Subterranean divide still blocks discovery either way. Behaviour
+  pinned in `official-rules-house-rules.test.ts` (BINH locked-ON, an explicit
+  `false` cannot disable it, Legacy default-OFF) and `adventure.test.ts`; the
+  ON-path map fixtures live in `designed-borders.test.ts` / `map-objects.test.ts`
+  and the bank-exception case in `creature-bank-objects.test.ts`. NOTE: because
+  BINH always runs this ON, the SP-AI "immediate-access" discovery variants
+  (`computer/map-navigation.ts`) are a no-op in BINH and only change Legacy
+  toggle-off games. Its two siblings below stay default-OFF (official).
 - **`deck-access-hero-level`** (category decks). OFFICIAL (OFF): which Spell /
   Artifact decks a Search may reach is decided by the TILE the (main) hero stands
   on and nothing else — starting & far Ⅰ–Ⅲ = basic Spells / Minor artifacts, near

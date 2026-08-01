@@ -43,6 +43,26 @@ function designedMap(overrides: Partial<SharedMapRecord> = {}): SharedMapRecord 
   } as SharedMapRecord;
 }
 
+function authoredSoloMap(): SharedMapRecord {
+  const record = designedMap({ id: "solo-map", name: "Solo Ambush", players: 4 });
+  const starts = record.tiles.filter((tile) => tile.group === "starting");
+  starts[0].singlePlayer = {
+    role: "computer",
+    bonus: { gold: 3, buildingMaterials: 0, valuables: 0 }
+  };
+  starts[1].singlePlayer = { role: "computer" };
+  starts[2].singlePlayer = { role: "human" };
+  return record;
+}
+
+function makeSinglePlayer(state: GameState): void {
+  state.sessionMode = "single-player";
+  state.controllers = {
+    p1: { kind: "human" },
+    p2: { kind: "computer", difficulty: "standard", policyVersion: 1 }
+  };
+}
+
 async function open(maps: SharedMapRecord[] = [], mutate?: (state: GameState) => void) {
   vi.mocked(fetchSharedMaps).mockResolvedValue(maps);
   const onAction = vi.fn();
@@ -204,6 +224,39 @@ describe("Map window — applying a map", () => {
     // Sending `customMode: true` here threw a BINH/Legacy/Tournament table into
     // "Custom — your saved setup" on every designed-map pick.
     expect(Object.keys(onAction.mock.calls[0][0].options)).not.toContain("customMode");
+  });
+
+  it("single-player derives enemy count from authored Town roles while multiplayer still uses record.players", async () => {
+    const record = authoredSoloMap();
+    const { dialog, onAction } = await open([record], makeSinglePlayer);
+    fireEvent.click(within(dialog).getByText(/Solo Ambush/).closest("button") as HTMLElement);
+
+    expect(dialog.querySelector(".mapPickSoloSetup")?.textContent).toContain("2 computer opponents");
+    expect(dialog.querySelector(".mapPickSoloSetup")?.textContent).toContain("you start at S3");
+    fireEvent.click(within(dialog).getByRole("button", { name: /Play this map/ }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        playerCount: 3,
+        customMap: record.tiles,
+        customMapName: "Solo Ambush",
+        customMapPreset: null
+      }
+    });
+  });
+
+  it("single-player built-in maps reset to their minimum solo deployment without changing multiplayer payloads", async () => {
+    const { dialog, onAction } = await open([], makeSinglePlayer);
+    fireEvent.click(within(dialog).getByText("📜 Twin Kingdoms (2P Land)").closest("button") as HTMLElement);
+    fireEvent.click(within(dialog).getByRole("button", { name: /Play this map/ }));
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { scenarioId: "land-2p", playerCount: 2, customMap: null, customMapName: null }
+    });
   });
 
   it("an EMPTY designed map cannot be applied — the engine would keep the scenario layout", async () => {

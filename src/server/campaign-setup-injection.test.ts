@@ -123,7 +123,7 @@ describe("campaign setup injection", () => {
       valuables: 1
     });
     expect(homecomingState.adventure?.mapPreset?.startingBonuses).toEqual([
-      { kind: "resources", gold: 0, buildingMaterials: 0, valuables: 5 }
+      { kind: "resources", gold: 8, buildingMaterials: 2, valuables: 0 }
     ]);
     expect(Object.keys(homecomingState.adventure?.tiles ?? {})).toHaveLength(homecoming.scenarioMap!.tiles.length);
     expect(homecomingState.players.p1?.factionId).toBe("castle");
@@ -144,7 +144,7 @@ describe("campaign setup injection", () => {
     ]);
     expect(griffinState.adventure?.mapPreset?.startingBonuses).toEqual([
       { kind: "morale", amount: 1 },
-      { kind: "search", deck: "artifacts", count: 3 }
+      { kind: "search", deck: "artifacts", count: 1 }
     ]);
     expect(Object.keys(griffinState.adventure?.tiles ?? {})).toHaveLength(griffinCliff.scenarioMap!.tiles.length);
     expect(griffinState.players.p2?.factionId).toBe("dungeon");

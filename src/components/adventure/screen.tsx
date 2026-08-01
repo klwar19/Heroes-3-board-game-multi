@@ -91,6 +91,7 @@ import {
   seatPickSummary,
   reservedTownIdsForOtherSeats,
   scenarioDefinitions,
+  singlePlayerMapDeployment,
   startingBonusDescription,
   tileFootprint,
   tileLayer,
@@ -3406,6 +3407,9 @@ export function AdventureHud({
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "main"
   );
+  const secondaryHero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === viewerPlayerId && candidate.kind === "secondary"
+  );
   // Crowns (expert uses): remaining / round total, read straight from the engine
   // helpers so the HUD can never diverge from what canPlayExpertMode enforces.
   const crownsRemaining = player ? expertUsesAvailable(player) : 0;
@@ -3527,7 +3531,8 @@ export function AdventureHud({
         <div className="advHudCell moveMoraleCell" aria-label="Movement, morale, ability token and crowns">
           <span
             className="statChip"
-            title={`${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
+            aria-label={`Main Hero movement points: ${hero.movementPoints}`}
+            title={`Main Hero: ${hero.movementPoints} movement point${hero.movementPoints === 1 ? "" : "s"} left this turn`}
           >
             <span aria-hidden="true" className="movePointIcon">
               🐎
@@ -3535,6 +3540,19 @@ export function AdventureHud({
             <b>{hero.movementPoints}</b>
             <small>move</small>
           </span>
+          {secondaryHero ? (
+            <span
+              aria-label={`Secondary Hero movement points: ${secondaryHero.movementPoints}`}
+              className="statChip secondaryHeroMoveChip"
+              title={`Secondary Hero: ${secondaryHero.movementPoints} movement point${secondaryHero.movementPoints === 1 ? "" : "s"} left this turn`}
+            >
+              <span aria-hidden="true" className="movePointIcon">
+                🐎
+              </span>
+              <b>{secondaryHero.movementPoints}</b>
+              <small>secondary move</small>
+            </span>
+          ) : null}
           <span
             className={`statChip${(player?.morale ?? 0) <= -2 ? " moraleDiscardPending" : ""}`}
             title={
@@ -4917,6 +4935,8 @@ export function TownPanel({
 type VisitRewardArt = {
   image?: string;
   name: string;
+  /** Compact resource-symbol option rather than a card scan. */
+  resource?: boolean;
   /** Map-tile options (Disruption): rotation in 60° turns, for the thumb. */
   tileRotation?: number;
   /** Short caption under the thumb (degrees, unit side, …) when the full legal label is long. */
@@ -4942,6 +4962,22 @@ function rewardArtFromVisitSteps(
 ): VisitRewardArt | null {
   if (!steps) {
     return null;
+  }
+  if (steps.length === 1 && steps[0]?.type === "GAIN_RESOURCES") {
+    const resourceStep = steps[0] as {
+      gold?: unknown;
+      buildingMaterials?: unknown;
+      valuables?: unknown;
+    };
+    const rewards = (["gold", "buildingMaterials", "valuables"] as const).filter(
+      (kind) => typeof resourceStep[kind] === "number" && (resourceStep[kind] as number) > 0
+    );
+    if (rewards.length === 1) {
+      const kind = rewards[0];
+      const amount = resourceStep[kind] as number;
+      const name = kind === "buildingMaterials" ? "Building materials" : kind === "gold" ? "Gold" : "Valuables";
+      return { image: RESOURCE_ICONS[kind], name, caption: `+${amount}`, resource: true };
+    }
   }
   for (const step of steps) {
     if (!step || typeof step !== "object") {
@@ -5671,6 +5707,12 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
       ? choice.discardPick?.cardIds ?? null
       : null;
+  const subterraneanTileCandidates =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "subterranean-tile-pick" &&
+    choice.playerId === viewerPlayerId
+      ? choice.subterraneanTilePick?.candidates ?? null
+      : null;
   // Rule 111 (Polish house rule): options 1..N each replace a bronze guard, so
   // show that bronze unit's Neutral card face (option 0 keeps — a plain button).
   const rule111Draws =
@@ -5723,6 +5765,24 @@ export function PromptTray({
             (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
           return { legal, art };
         })
+      : subterraneanTileCandidates
+        ? body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const tileDefId = optionIndex !== undefined ? subterraneanTileCandidates[optionIndex] : undefined;
+            const def = tileDefId ? allTileDefinitions[tileDefId] : undefined;
+            const art: VisitRewardArt | null = tileDefId
+              ? {
+                  name: def?.id ?? tileDefId,
+                  image: def?.assets?.tileImage,
+                  tileRotation: 0,
+                  caption: optionIndex === 0 ? "Tile A" : "Tile B"
+                }
+              : null;
+            return { legal, art };
+          })
       : discardPickCards
         ? body.map((legal) => {
             const optionIndex =
@@ -6073,7 +6133,7 @@ export function PromptTray({
           art ? (
             <button
               aria-label={legal.label}
-              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}`}
+              className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}`}
               key={actionKey(legal.action)}
               onClick={() => onAction(legal.action)}
               title={legal.label}
@@ -6101,7 +6161,7 @@ export function PromptTray({
                 <span className="marketCardFallback">{art.name}</span>
               )}
               <small>
-                {art.caption && art.caption.endsWith("°") ? art.caption : legal.label}
+                {art.resource || (art.caption && art.caption.endsWith("°")) ? art.caption : legal.label}
               </small>
             </button>
           ) : (
@@ -7448,10 +7508,12 @@ function StartingUnitsPicker({
  */
 function MapPicker({
   options,
-  send
+  send,
+  singlePlayer = false
 }: {
   options: GameSetupOptions;
   send: (next: Partial<GameSetupOptions>) => void;
+  singlePlayer?: boolean;
 }) {
   const [savedMaps, setSavedMaps] = useState<SharedMapRecord[]>([]);
 
@@ -7497,7 +7559,14 @@ function MapPicker({
                 // leaves a stale map attached to a different scenario). It does
                 // NOT touch `customMode` — the game MODE belongs to the
                 // Game-mode box, and a map pick must never silently drop it.
-                onClick={() => send({ scenarioId: scenario.id, customMap: null, customMapName: null })}
+                onClick={() =>
+                  send({
+                    scenarioId: scenario.id,
+                    ...(singlePlayer ? { playerCount: scenario.minPlayers } : {}),
+                    customMap: null,
+                    customMapName: null
+                  })
+                }
                 title={scenario.description}
                 type="button"
               >
@@ -7541,7 +7610,13 @@ function MapPicker({
                   onClick={() =>
                     send({
                       ...(record.scenarioId !== options.scenarioId ? { scenarioId: record.scenarioId } : {}),
-                      playerCount: record.players,
+                      playerCount: singlePlayer
+                        ? 1 +
+                          (singlePlayerMapDeployment(
+                            record.tiles,
+                            scenario ? Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1 : 0
+                          )?.computers.length ?? Math.max(1, record.players - 1))
+                        : record.players,
                       customMap: record.tiles,
                       customMapName: record.name,
                       customMapPreset: record.preset ?? null
@@ -7820,11 +7895,13 @@ function HouseRuleToggleButton({
   rule,
   on,
   disabled,
+  lockedOn = false,
   onToggle
 }: {
   rule: (typeof HOUSE_RULES)[number];
   on: boolean;
   disabled: boolean;
+  lockedOn?: boolean;
   onToggle: () => void;
 }) {
   const iconSrc = HOUSE_RULE_ICONS[rule.id];
@@ -7835,7 +7912,9 @@ function HouseRuleToggleButton({
       disabled={disabled}
       onClick={onToggle}
       title={
-        disabled
+        lockedOn
+          ? `${rule.description} This rule is always on in BINH.`
+          : disabled
           ? rule.id === "polish-random-artifacts"
             ? `${rule.description} Turn Split Spell/Artifact decks on first.`
             : `${rule.description} Turn Creature Banks on in Map & Setup first.`
@@ -7862,7 +7941,7 @@ function HouseRuleToggleButton({
         <small>{rule.description}</small>
       </span>
       <span className={`houseRuleState ${on ? "on" : "off"}`}>
-        {disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
+        {lockedOn ? "BINH · ON" : disabled ? "BANKS OFF" : on ? "ON" : "OFF"}
       </span>
     </button>
   );
@@ -7999,6 +8078,7 @@ function GroupToggleAllButton({
   groupLabel,
   houseRules,
   creatureBanksEnabled,
+  ruleset,
   setHouseRules,
   enableExtras
 }: {
@@ -8006,6 +8086,7 @@ function GroupToggleAllButton({
   groupLabel: string;
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
+  ruleset: GameSetupOptions["ruleset"];
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
   /**
    * Companion rules auto-enabled alongside the group (e.g. the Polish package
@@ -8020,8 +8101,13 @@ function GroupToggleAllButton({
   // (they land in the SAME dispatch), so e.g. Random Artifacts is not skipped
   // just because Divided decks is currently off.
   const withExtras = { ...houseRules, ...enableExtras };
+  // A rule the current mode force-locks ON (BINH's `discovery-border-gate`) is
+  // fixed — it must not be counted as toggleable nor written false by "Disable
+  // all" (that would grey the chip while the engine still runs it ON — the same
+  // lock the individual toggle already shows). Matches the per-toggle predicate.
+  const isLockedOn = (id: HouseRuleId) => ruleset === "binh" && id === "discovery-border-gate";
   const enableable = rules.filter(
-    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+    (rule) => !isLockedOn(rule.id) && !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
   );
   const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
   const anyOn = rules.some((rule) => houseRules[rule.id]);
@@ -8030,7 +8116,7 @@ function GroupToggleAllButton({
   const apply = () => {
     const updates: Partial<Record<HouseRuleId, boolean>> = {};
     if (allOn) {
-      for (const rule of rules) updates[rule.id] = false;
+      for (const rule of rules) if (!isLockedOn(rule.id)) updates[rule.id] = false;
     } else {
       for (const [id, value] of Object.entries(enableExtras ?? {})) {
         if (value && !houseRules[id as HouseRuleId]) {
@@ -8066,12 +8152,14 @@ function GroupToggleAllButton({
  */
 function HouseRuleCategoryGroup({
   category,
+  ruleset,
   houseRules,
   creatureBanksEnabled,
   setHouseRule,
   setHouseRules
 }: {
   category: string;
+  ruleset: GameSetupOptions["ruleset"];
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
@@ -8102,14 +8190,19 @@ function HouseRuleCategoryGroup({
           groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
           houseRules={houseRules}
           rules={rules}
+          ruleset={ruleset}
           setHouseRules={setHouseRules}
         />
       </div>
       <div className="houseRuleGrid">
         {rules.map((rule) => (
           <HouseRuleToggleButton
-            disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+            disabled={
+              (ruleset === "binh" && rule.id === "discovery-border-gate") ||
+              houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)
+            }
             key={rule.id}
+            lockedOn={ruleset === "binh" && rule.id === "discovery-border-gate"}
             on={houseRules[rule.id]}
             onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
             rule={rule}
@@ -8132,11 +8225,13 @@ function HouseRuleCategoryGroup({
 function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
+  ruleset,
   setHouseRule,
   setHouseRules
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
+  ruleset: GameSetupOptions["ruleset"];
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
@@ -8151,7 +8246,11 @@ function HouseRulesSection({
   const globalRules = HOUSE_RULES.filter((rule) =>
     (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
   );
-  const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
+  // Yellow-border discovery belongs to both packages: it remains in BINH's
+  // map category and is mirrored here so Enable all Polish includes it too.
+  const polishRules = HOUSE_RULES.filter(
+    (rule) => rule.category === "polish" || rule.id === "discovery-border-gate"
+  );
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
   const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
@@ -8184,6 +8283,7 @@ function HouseRulesSection({
             creatureBanksEnabled={creatureBanksEnabled}
             houseRules={houseRules}
             key={category}
+            ruleset={ruleset}
             setHouseRule={setHouseRule}
             setHouseRules={setHouseRules}
           />
@@ -8215,6 +8315,7 @@ function HouseRulesSection({
             creatureBanksEnabled={creatureBanksEnabled}
             houseRules={houseRules}
             key={category}
+            ruleset={ruleset}
             setHouseRule={setHouseRule}
             setHouseRules={setHouseRules}
           />
@@ -8242,14 +8343,19 @@ function HouseRulesSection({
               groupLabel="Polish"
               houseRules={houseRules}
               rules={polishRules}
+              ruleset={ruleset}
               setHouseRules={setHouseRules}
             />
           </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
-                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                disabled={
+                  (ruleset === "binh" && rule.id === "discovery-border-gate") ||
+                  houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)
+                }
                 key={rule.id}
+                lockedOn={ruleset === "binh" && rule.id === "discovery-border-gate"}
                 on={houseRules[rule.id]}
                 onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
                 rule={rule}
@@ -8977,44 +9083,30 @@ function SeatCountControl({
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
   const scenario = scenarioDefinitions[options.scenarioId];
   const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
-  // Single-player: the seat count is 1 human + N computers, changed only
-  // through the dedicated action (the engine reasserts the controller
-  // invariant on every resize — no resize can mint a human opponent).
+  // Single-player: the selected map owns the deployment. This is deliberately
+  // read-only here—changing maps is the one source of truth for opponent count
+  // and starting locations, while multiplayer keeps its editable Players row.
   if (state.sessionMode === "single-player") {
     const current = lobby.seats.length - 1;
-    const counts: number[] = [];
-    for (let n = 1; n < max; n += 1) {
-      counts.push(n);
-    }
-    return counts.length > 1 ? (
+    return (
       <>
       <div className="optionRow">
-        <small title="How many computer opponents this game seats — leave them on auto and they pick their own factions after you, or hand-pick / roll each one's town & hero in Heroes & Draft">
-          Computer opponents
+        <small title="The selected map determines the solo enemy count and starting locations">
+          Solo deployment
         </small>
-        <div className="optionButtons">
-          {counts.map((count) => (
-            <button
-              aria-pressed={current === count}
-              className={current === count ? "selected" : ""}
-              key={count}
-              onClick={() =>
-                onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })
-              }
-              title={`Play against ${count} computer opponent${count === 1 ? "" : "s"}`}
-              type="button"
-            >
-              {count === 1 ? "1 computer" : `${count} computers`}
-            </button>
-          ))}
+        <div className="optionButtons" role="group" aria-label="Map-selected computer opponents">
+          <span className="selected">
+            {current} computer opponent{current === 1 ? "" : "s"}
+          </span>
         </div>
         <small className="optionHint">
-          Playing with computer — every other seat is a computer opponent; nobody else can join this game.
+          Set by the selected map. Choose another map to change the number or positions; map authors configure solo
+          starts and individual AI bonuses in the Map Designer. These settings are ignored in multiplayer.
         </small>
       </div>
       {footer}
       </>
-    ) : null;
+    );
   }
   const min = scenario?.minPlayers ?? 2;
   const seatCount = lobby.seats.length;
@@ -9131,7 +9223,12 @@ function GameOptionsPanel({
     // Artifacts (Random Artifacts outright depends on it). Turning a Polish
     // rule OFF never touches it.
     const polishAuto: Partial<Record<HouseRuleId, boolean>> =
-      value && id.startsWith("polish-") && !houseRules["split-decks"] ? { "split-decks": true } : {};
+      value && id.startsWith("polish-")
+        ? {
+            ...(!houseRules["split-decks"] ? { "split-decks": true } : {}),
+            ...(!houseRules["discovery-border-gate"] ? { "discovery-border-gate": true } : {})
+          }
+        : {};
     if (id === "polish-spell-book" && value) {
       send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
       return;
@@ -9531,6 +9628,7 @@ function GameOptionsPanel({
       <HouseRulesSection
         creatureBanksEnabled={options.creatureBanks ?? true}
         houseRules={houseRules}
+        ruleset={options.ruleset}
         setHouseRule={setHouseRule}
         setHouseRules={setHouseRules}
       />
@@ -10070,7 +10168,7 @@ function GameOptionsPanel({
         <small title="The map you play on — a built-in scenario sheet or a designed map a player saved in the map designer">
           Map
         </small>
-        <MapPicker options={options} send={send} />
+        <MapPicker options={options} send={send} singlePlayer={state.sessionMode === "single-player"} />
       </div>
       <SameChoiceAsBoxNote box="map" boxLabel="Map" onOpenBox={onOpenBox} />
       {onOpenBox ? (

@@ -14,7 +14,7 @@
  * presentation-event-window.test.ts "detects rotation and primes current
  * history instead of replaying a partial timeline").
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import GameRoomServer, { type RoomSnapshot } from "../../party/index";
 import { createInitialGameState, type GameEvent, type GameState } from "@/engine";
 
@@ -191,6 +191,67 @@ describe("HOMM3BG_BROADCAST_EVENT_TAIL — wire-only event-log tail (plan N4)", 
 });
 
 describe("PartyKit action acknowledgement boundary", () => {
+  it("turns an unexpected commit failure into an immediate terminal result and rolls the room back", async () => {
+    const { room, connections, storage } = makeEdgeRoom(
+      "terminal-commit-failure",
+      seedState(true),
+      {}
+    );
+    const rawRoom = room as unknown as {
+      storage: { put: (key: string, value: unknown) => Promise<void> };
+    };
+    const normalPut = rawRoom.storage.put;
+    let failSnapshotWrite = true;
+    rawRoom.storage.put = async (key, value) => {
+      if (failSnapshotWrite && key === "snapshot") {
+        throw new Error("simulated storage outage");
+      }
+      await normalPut(key, value);
+    };
+
+    const server = new GameRoomServer(room);
+    await server.onStart();
+    const owner = makeConnection("owner-conn", "clientId=owner-1");
+    connections.add(owner);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await server.onMessage(
+      JSON.stringify({
+        type: "action",
+        requestId: "req-storage-failure",
+        actorClientId: "owner-1",
+        action: { type: "JOIN_ROOM", clientId: "owner-1", name: "Owner" }
+      }),
+      owner as unknown as EdgeConnection
+    );
+
+    const actionFrames = owner.received.map((raw) => JSON.parse(raw) as {
+      type: string;
+      requestId?: string;
+      version?: number;
+      errors?: { message: string }[];
+    });
+    expect(actionFrames[0]).toEqual({
+      type: "action-received",
+      requestId: "req-storage-failure",
+      durable: true
+    });
+    expect(actionFrames[1]).toMatchObject({
+      type: "action-result",
+      requestId: "req-storage-failure",
+      version: 7,
+      errors: [{ message: expect.stringMatching(/nothing changed/i) }]
+    });
+    expect((storage.get("snapshot") as RoomSnapshot).version).toBe(7);
+
+    // The failed request did not poison the in-memory mutation queue or state.
+    failSnapshotWrite = false;
+    owner.received.length = 0;
+    await server.onMessage(JSON.stringify({ type: "sync" }), owner as unknown as EdgeConnection);
+    expect(firstSnapshotFrame(owner).version).toBe(7);
+    error.mockRestore();
+  });
+
   it("acknowledges a persisted action before a slow hosted recipient finishes fan-out", async () => {
     const releasePeers: (() => void)[] = [];
     globalThis.fetch = (async () =>

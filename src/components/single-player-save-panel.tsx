@@ -4,6 +4,7 @@ import { FolderOpen, Save, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { GameState } from "@/engine";
 import {
+  clearPendingSinglePlayerLoad,
   deleteSavedSinglePlayerGame,
   loadSavedSinglePlayerGames,
   loadSavedSinglePlayerGameState,
@@ -110,6 +111,9 @@ export function SinglePlayerSavePanel({
       setBusy(true);
       try {
         await onLoadSave(savedState);
+        // Manual fallback after an automatic menu load failed: consume the
+        // marker only now that this direct whole-state load actually committed.
+        clearPendingSinglePlayerLoad(save.id, save.roomId);
         setNotice(`Loaded “${save.name}”.`);
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "Could not load the saved game.");
@@ -118,7 +122,10 @@ export function SinglePlayerSavePanel({
       }
       return;
     }
-    setPendingSinglePlayerLoad(save.id, save.roomId);
+    if (!setPendingSinglePlayerLoad(save.id, save.roomId)) {
+      setNotice("Could not prepare the load in browser storage. The current game was not changed.");
+      return;
+    }
     window.location.assign(`/?room=${encodeURIComponent(save.roomId)}`);
   };
 

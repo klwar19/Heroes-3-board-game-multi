@@ -16,6 +16,7 @@ import type {
   MapFieldState
 } from "./state";
 import { MAX_CUSTOM_GUARD_UNITS } from "./state";
+import { houseRuleEnabled } from "./house-rules";
 
 /** Tier a random certain-army slot may roll. */
 export type RandomGuardTier = "bronze" | "silver" | "gold" | "azure";
@@ -599,13 +600,35 @@ export function applyBreakFieldOptions(
 
 /** Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. */
 export function grailDigMovementCost(state: GameState): 0 | 1 | 2 {
+  if (polishGrailUtopiaEnabled(state)) return 1;
   const cost = state.adventure?.mapPreset?.objectives?.grailDigCost;
   return cost === 0 || cost === 1 || cost === 2 ? cost : 1;
 }
 
 /** End-game VP for possessing / controlling the Grail (0 when unset). */
 export function grailPossessionVp(state: GameState): number {
+  if (polishGrailUtopiaEnabled(state)) return 3;
   return state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
+}
+
+/** The global Polish Grail / Dragon Utopia rules package. */
+export function polishGrailUtopiaEnabled(state: GameState): boolean {
+  return houseRuleEnabled(state, "polish-grail-utopia");
+}
+
+/** Legal construction sites for the effective Grail rules. */
+export function grailBuildAt(
+  state: GameState
+): NonNullable<CustomMapObjectivesConfig["grailBuildAt"]> | undefined {
+  return polishGrailUtopiaEnabled(state)
+    ? "both"
+    : state.adventure?.mapPreset?.objectives?.grailBuildAt;
+}
+
+/** Effective construction reward; the Polish rule always grants a free building. */
+export function grailBuildReward(state: GameState): CustomMapObjectivesConfig["grailBuildReward"] {
+  const authored = state.adventure?.mapPreset?.objectives?.grailBuildReward;
+  return polishGrailUtopiaEnabled(state) ? { ...authored, freeBuilding: true } : authored;
 }
 
 /** How a second / Grail dig site may convert after dig (or always-as-utopia). */

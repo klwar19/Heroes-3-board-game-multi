@@ -322,10 +322,8 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("hosts the Yellow-borders-block-discovery rule in the BINH panel, not the Global one", () => {
-    const onAction = openOptions();
-    // It restores an OLD BINH reading, so it belongs beside its official-rules
-    // siblings under BINH house rules → "Combat & map rules".
+  it("locks Yellow-border discovery on in BINH and mirrors it into the Polish package", () => {
+    openOptions();
     expandGlobalMapRules();
     expect(
       screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i }),
@@ -333,13 +331,16 @@ describe("Game options — tabbed layout", () => {
     ).toBeNull();
     expandBinhHouseRules();
     const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
-    expect(toggle.getAttribute("aria-pressed"), "the official rule is the default (OFF)").toBe("false");
-    fireEvent.click(toggle);
-    expect(onAction).toHaveBeenCalledWith({
-      type: "SET_GAME_OPTIONS",
-      playerId: "p1",
-      options: { houseRules: { "discovery-border-gate": true } }
-    });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+
+    // It is one shared rule, shown in both package checklists. Collapse BINH so
+    // the Polish mirror is the only accessible button with this name.
+    expandBinhHouseRules();
+    expandPolishHouseRules();
+    const polishToggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
+    expect(polishToggle.getAttribute("aria-pressed")).toBe("true");
+    expect((polishToggle as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("renders the Old-Legion/reinforcement row OFF by default (the new adjustable banks are the default)", () => {
@@ -503,7 +504,8 @@ describe("Game options — tabbed layout", () => {
       "polish-random-artifacts": true,
       "polish-pandora-search": true,
       "polish-wait": true,
-      "polish-quick-combat": true
+      "polish-quick-combat": true,
+      "polish-grail-utopia": true
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
@@ -517,6 +519,39 @@ describe("Game options — tabbed layout", () => {
       .options.houseRules;
     expect(hr["polish-reduced-starting-bonus"]).toBe(false);
     expect(hr["polish-wait"]).toBe(false);
+  });
+
+  it("in BINH, 'Disable all' leaves the locked discovery-border-gate ON (no greyed-but-ON contradiction)", () => {
+    // BINH is the default ruleset here; discovery-border-gate is force-locked ON.
+    // The whole Polish group must be ON so the button reads "Disable all".
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "split-decks": true,
+        "polish-spell-book": true,
+        "polish-bank-sizes": true,
+        "polish-unit-stacks": true,
+        "polish-reduced-starting-bonus": true,
+        "polish-rule-111": true,
+        "polish-reduced-surrender": true,
+        "polish-random-artifacts": true,
+        "polish-pandora-search": true,
+        "polish-wait": true,
+        "polish-quick-combat": true,
+        "polish-grail-utopia": true,
+        "discovery-border-gate": true
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    // Ordinary Polish rules turn off...
+    expect(hr["polish-wait"]).toBe(false);
+    // ...but the BINH-locked invariant is NOT written false (which would grey the
+    // chip while the engine still runs it ON). CONTROL: without the lock skip in
+    // GroupToggleAllButton this dispatch sets it false.
+    expect(hr["discovery-border-gate"]).not.toBe(false);
   });
 
   it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {

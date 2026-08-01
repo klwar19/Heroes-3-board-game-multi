@@ -26,6 +26,7 @@ import {
 } from "../hex";
 import { getLegalActions } from "../legal-actions";
 import type {
+  ArmyUnitState,
   GameAction,
   GameState,
   HeroState,
@@ -45,6 +46,7 @@ import {
   armyEngagementTier,
   armyTierCoversGuardField,
   armyTierGuardCap,
+  unitSideStrength,
 } from "./army-strength";
 import type { UnitTier } from "@/data/factions/types";
 import { scoreMapAction } from "./map-policy";
@@ -201,6 +203,118 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
     const nearBank = { ...farBank, bankId: "derelict_ship" };
     expect(canBeatGuardedField(state, secondary, farBank)).toBe(true);
     expect(canBeatGuardedField(state, secondary, nearBank)).toBe(false);
+  });
+});
+
+describe("computer exploration requires immediate open-border access", () => {
+  it("does not reveal a face-down tile behind a yellow border even when Legacy humans may", () => {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "test-seed",
+      difficulty: "normal",
+      ruleset: "legacy",
+      houseRules: { "discovery-border-gate": false },
+      rollFirstPlayer: false,
+      events: false,
+    });
+    state.activePlayerId = "p1";
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.canMulligan = false;
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = "h:8:3";
+    hero.movementPoints = 3;
+    const tile = Object.values(state.adventure!.tiles).find(
+      (candidate) => candidate.centerRow === 9 && candidate.centerCol === 4
+    )!;
+    const discover = {
+      type: "DISCOVER_TILE" as const,
+      playerId: "p1" as const,
+      heroId: hero.id,
+      tileInstanceId: tile.id,
+    };
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+      ),
+      "Legacy human control: adjacency-only discovery remains legal"
+    ).toBe(true);
+
+    const observation: ComputerObservation = {
+      playerId: "p1",
+      state: state as unknown as ComputerObservation["state"],
+      legalActions: [
+        { label: "reveal sealed tile", action: discover },
+        { label: "end", action: { type: "END_TURN", playerId: "p1" } },
+      ],
+    };
+    expect(scoreMapAction(observation, discover)).toEqual({
+      score: 100,
+      policy: "map.discover-inaccessible-skip",
+    });
+    expect(chooseComputerAction(observation)?.action.type).toBe("END_TURN");
+    expect(
+      collectMapObjectives(state, hero).some(
+        (objective) => objective.kind === "explore" && objective.spaceId === hero.spaceId
+      )
+    ).toBe(false);
+  });
+
+  it("does not place/open a Far tile from a sealed edge when the human toggle is off", () => {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "nav-map",
+      difficulty: "normal",
+      ruleset: "legacy",
+      houseRules: { "discovery-border-gate": false },
+      rollFirstPlayer: false,
+      events: false,
+    });
+    state.activePlayerId = "p2";
+    state.players.p2.needsHandRefresh = false;
+    state.players.p2.canMulligan = false;
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    if ((state.adventure!.farTilePool?.length ?? 0) === 0) {
+      state.adventure!.farTilePool = ["F1"];
+    }
+    const hero = p2Hero(state);
+    hero.movementPoints = 3;
+    let blockedCenter: { row: number; col: number } | undefined;
+    for (const field of Object.values(state.adventure!.fields)) {
+      hero.spaceId = field.spaceId;
+      const humanCenters = farTilePlacementCenters(state, hero);
+      const aiCenters = new Set(
+        farTilePlacementCenters(state, hero, undefined, { requireImmediateAccess: true }).map(
+          (center) => `${center.row}:${center.col}`
+        )
+      );
+      blockedCenter = humanCenters.find((center) => !aiCenters.has(`${center.row}:${center.col}`));
+      if (blockedCenter) break;
+    }
+    expect(blockedCenter, "fixture should expose a Legacy-only sealed placement notch").toBeDefined();
+    const place = {
+      type: "PLACE_TILE" as const,
+      playerId: "p2" as const,
+      heroId: hero.id,
+      supplyIndex: 0,
+      centerRow: blockedCenter!.row,
+      centerCol: blockedCenter!.col,
+    };
+    expect(scoreMapAction(observe(state), place)).toEqual({
+      score: 100,
+      policy: "map.place-inaccessible-skip",
+    });
+    expect(
+      chooseComputerAction({
+        ...observe(state),
+        legalActions: [
+          { label: "place behind seal", action: place },
+          { label: "end", action: { type: "END_TURN", playerId: "p2" } },
+        ],
+      })?.action.type
+    ).toBe("END_TURN");
   });
 });
 
@@ -836,6 +950,31 @@ describe("collectMapObjectives", () => {
     expect(dragon?.kind).toBe("victory");
   });
 
+  it("understands designer-marked encounters and scoreable VP objectives", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    state.adventure!.victoryMode = "conquest";
+    state.adventure!.mapPreset = {
+      victoryPoints: {
+        enabled: true,
+        objectives: [
+          { kind: "flag-mines", count: 2, vp: 2 },
+          { kind: "defeat-dragon-utopia", vp: 4 }
+        ]
+      }
+    };
+    state.adventure!.fields[RESOURCE].designerWinCondition = true;
+    state.adventure!.fields[MINE].location = "mine";
+    state.adventure!.fields[MINE].flagOwnerId = null;
+    state.adventure!.fields[TREASURE].location = "dragon_utopia";
+    state.adventure!.fields[TREASURE].difficulty = 0;
+
+    const objectives = collectMapObjectives(state, hero);
+    expect(objectives.find((objective) => objective.spaceId === RESOURCE)?.kind).toBe("victory");
+    expect(objectives.find((objective) => objective.spaceId === MINE)?.kind).toBe("victory");
+    expect(objectives.find((objective) => objective.spaceId === TREASURE)?.kind).toBe("victory");
+  });
+
   it("drops a guard from the objective set once the hero can no longer beat it", () => {
     const state = game();
     const hero = p2Hero(state);
@@ -845,6 +984,75 @@ describe("collectMapObjectives", () => {
     expect(spaces).not.toContain(MINE);
     // The other, still-beatable guard remains.
     expect(spaces).toContain(TREASURE);
+  });
+
+  it("treats a designer-VP field as a victory objective only while VP mode is enabled", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // A designer VP bonus on an otherwise-plain visitable field.
+    state.adventure!.fields[RESOURCE].location = "temple";
+    state.adventure!.fields[RESOURCE].centerHexVp = 5;
+
+    // VP mode OFF: the bonus scores nothing, so the field is a plain visitable,
+    // never a top-priority "victory" march. CONTROL for the VP-enabled case.
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === RESOURCE)?.kind,
+    ).not.toBe("victory");
+
+    // VP mode ON: the designer VP now makes it a victory objective.
+    state.adventure!.mapPreset = { victoryPoints: { enabled: true } };
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === RESOURCE)?.kind,
+    ).toBe("victory");
+  });
+
+  it("gates a non-conquest control-towns enemy-town assault by army strength", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    // Non-conquest victory with a control-towns VP objective.
+    state.adventure!.victoryMode = "grail";
+    state.adventure!.mapPreset = {
+      victoryPoints: { enabled: true, objectives: [{ kind: "control-towns", count: 3, vp: 3 }] },
+    };
+    // A bare enemy-flagged town: no neutral guard, no hero occupying it.
+    const enemyTown = Object.values(state.adventure!.fields).find(
+      (f) => locationDefinitions[f.location]?.category === "town" && f.flagOwnerId === "p1",
+    );
+    expect(enemyTown, "default map should have an enemy town").toBeTruthy();
+    enemyTown!.difficulty = undefined;
+    for (const h of Object.values(state.heroes)) {
+      if (h.spaceId === enemyTown!.spaceId) h.spaceId = null;
+    }
+    // A gold unit that actually has a `few` side with real strength (some
+    // catalogue entries — e.g. WOG summons — have no standard side).
+    const gold = Object.values(coreUnitDefinitions).find(
+      (d) => d.tier === "gold" && unitSideStrength({ id: "probe", unitDefId: d.id, side: "few" } as ArmyUnitState) > 0,
+    )!;
+
+    // UNBEATABLE: p1 fields a gold stack, p2 is empty -> the AI must NOT march
+    // to a certain-loss garrison fight just because control-towns elevated it.
+    state.players.p2.army = [];
+    state.players.p1.army = [{ id: "enemy-gold", unitDefId: gold.id, side: "few" }];
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+      "unbeatable enemy town is not a victory march target in a non-conquest game",
+    ).not.toBe("victory");
+
+    // CONTROL: a defenceless owner (0 strength) makes the town beatable -> it IS
+    // a victory objective again.
+    state.players.p1.army = [];
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+    ).toBe("victory");
+
+    // CONTROL: conquest mode elevates the enemy town regardless of strength
+    // (the strength gate is scoped to non-conquest modes).
+    state.players.p1.army = [{ id: "enemy-gold-2", unitDefId: gold.id, side: "few" }];
+    state.players.p2.army = [];
+    state.adventure!.victoryMode = "conquest";
+    expect(
+      collectMapObjectives(state, hero).find((o) => o.spaceId === enemyTown!.spaceId)?.kind,
+    ).toBe("victory");
   });
 });
 

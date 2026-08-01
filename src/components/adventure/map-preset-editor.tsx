@@ -332,6 +332,16 @@ export function MapPresetEditor({
   };
 
   const resources = value.startingResources ?? { gold: 10, buildingMaterials: 0, valuables: 0 };
+  const computerBonus = value.computerStartingBonus ?? { gold: 0, buildingMaterials: 0, valuables: 0 };
+  const setComputerBonus = (
+    key: "gold" | "buildingMaterials" | "valuables",
+    amount: number
+  ) => {
+    const next = { ...computerBonus, [key]: amount };
+    patch({
+      computerStartingBonus: Object.values(next).some((value) => value > 0) ? next : undefined
+    });
+  };
   const production = value.startingProduction ?? { gold: 10, buildingMaterials: 0, valuables: 0 };
   const buildings = new Set(value.startingBuildings ?? []);
   const units = value.startingUnits ?? null;
@@ -574,6 +584,7 @@ export function MapPresetEditor({
       Object.keys(value.houseRules ?? {}).length,
     startingPosition:
       (value.startingResources ? 1 : 0) +
+      (value.computerStartingBonus ? 1 : 0) +
       (value.startingProduction ? 1 : 0) +
       (value.startingBuildings && value.startingBuildings.length > 0 ? 1 : 0) +
       (value.startingUnits ? 1 : 0) +
@@ -832,6 +843,39 @@ export function MapPresetEditor({
         >
           Use scenario default resources
         </button>
+      </section>
+
+      <section className="mapPresetSection" aria-label="Single-player AI base bonus">
+        <div className="mapPresetSectionLabel">Single-player AI base bonus</div>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Gold"
+            value={value.computerStartingBonus ? computerBonus.gold : null}
+            onChange={(gold) => setComputerBonus("gold", gold)}
+          />
+          <ResourceField
+            label="Materials"
+            value={value.computerStartingBonus ? computerBonus.buildingMaterials : null}
+            onChange={(buildingMaterials) => setComputerBonus("buildingMaterials", buildingMaterials)}
+          />
+          <ResourceField
+            label="Valuables"
+            value={value.computerStartingBonus ? computerBonus.valuables : null}
+            onChange={(valuables) => setComputerBonus("valuables", valuables)}
+          />
+        </div>
+        <button
+          className="mapPresetLinkBtn"
+          onClick={() => patch({ computerStartingBonus: undefined })}
+          type="button"
+          disabled={!value.computerStartingBonus}
+        >
+          No all-enemy bonus
+        </button>
+        <small className="mapPresetHint">
+          Added to every computer opponent at the start of a single-player game only. To make enemies different,
+          click an Enemy AI Town on the map and add that Town&apos;s extra war chest. Neither bonus applies in multiplayer.
+        </small>
       </section>
 
       <section className="mapPresetSection">

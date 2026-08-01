@@ -18,15 +18,15 @@
  *      Far (Ⅱ–Ⅲ) supply tile, on your turn — REQUIRES the border-and-edge
  *      interaction: the hero's own field must touch the tile across an OPEN
  *      (unsealed) outer edge, on the same Surface/Subterranean layer.
- *      *** SCOPE (2026-07-25): this half is now the OPT-IN house rule
- *      `discovery-border-gate`. The OFFICIAL rules require only that the hero be
- *      ADJACENT to the tile ("There is no mention of blockers or yellow
- *      borders"), so that is the default and the border gate is a toggle. Every
- *      case below therefore builds its game with the rule ON — the configuration
- *      in which this invariant is exactly true — and none of them was weakened.
- *      The DEFAULT (adjacency-only) behaviour is pinned in adventure.test.ts
- *      ("official: adjacency alone lets a hero discover across a sealed yellow
- *      border"). The LAYER rule and rule #1's movement seal are unconditional. ***
+ *      *** SCOPE: this half is the house rule `discovery-border-gate`. Its
+ *      DEFAULT flipped on 2026-08-02 (five-session branch): it is now a hard
+ *      BINH invariant (and part of the Polish package), while Legacy keeps it a
+ *      default-OFF toggle whose OFF reading is adjacency-only ("no mention of
+ *      blockers or yellow borders"). Every case below builds its game with the
+ *      rule ON — the configuration in which this invariant is exactly true — and
+ *      none was weakened. The rule-OFF (adjacency-only) behaviour is pinned in
+ *      adventure.test.ts. The LAYER rule and rule #1's movement seal are
+ *      unconditional. ***
  *
  *   3. The Redwood Observatory and the Speculum artifact are the ONLY ways to
  *      open a tile WITHOUT that gate — no edge, no open border, across yellow

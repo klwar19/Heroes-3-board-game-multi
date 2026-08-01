@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Bot, ChevronRight, Crown, Shield, Swords, Users } from "lucide-react";
+import { ArrowLeft, Bot, ChevronRight, Crown, MapPinned, Shield, Swords } from "lucide-react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
@@ -19,7 +19,6 @@ function SinglePlayerNavArt({ path }: { path: string }) {
 export default function SinglePlayerPage() {
   const router = useRouter();
   const [computerOpen, setComputerOpen] = useState(false);
-  const [opponents, setOpponents] = useState(1);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +27,7 @@ export default function SinglePlayerPage() {
     setCreating(true);
     setError(null);
     try {
-      const { roomId } = await createSinglePlayerRoom(opponents);
+      const { roomId } = await createSinglePlayerRoom();
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the game.");
@@ -37,10 +36,15 @@ export default function SinglePlayerPage() {
   };
 
   return (
-    <MenuShell backdrop="lobby-backdrop" title="Single Player">
+    <MenuShell backdrop="lobby-backdrop" title="Single Player" wide>
       <div className="singlePlayerHeroCopy">
         <span>CHOOSE YOUR WAR</span>
         <p className="singlePlayerLead">Fight a custom skirmish or command Queen Catherine through six authored campaign chapters.</p>
+        <div className="singlePlayerModeLegend" aria-label="Single-player mode benefits">
+          <span><Swords aria-hidden size={13} /> Board-first rules</span>
+          <span><Bot aria-hidden size={13} /> Objective-aware AI</span>
+          <span><Shield aria-hidden size={13} /> Private autosaves</span>
+        </div>
       </div>
       <nav className="menuNav singlePlayerModeNav" aria-label="Single player">
         <button className="singlePlayerModeCard skirmish" onClick={() => setComputerOpen(true)} type="button">
@@ -50,8 +54,8 @@ export default function SinglePlayerPage() {
           <span className="singlePlayerModeCopy">
             <small><Bot aria-hidden size={13} /> CUSTOM MATCH</small>
             <strong>VS Computer</strong>
-            <span>Build a private battlefield against one to three active AI commanders.</span>
-            <b>Configure skirmish <ChevronRight aria-hidden size={16} /></b>
+            <span>Pick a map; it sets your start, enemy positions, enemy count and any visible AI bonuses.</span>
+            <b>Start skirmish <ChevronRight aria-hidden size={16} /></b>
           </span>
         </button>
         <Link className="singlePlayerModeCard campaign" href="/story">
@@ -75,21 +79,16 @@ export default function SinglePlayerPage() {
           <section aria-label="VS Computer setup" aria-modal="true" className="singlePlayerDialog" role="dialog">
             <button aria-label="Close VS Computer setup" className="campaignBriefingClose" onClick={() => setComputerOpen(false)} type="button">×</button>
             <div className="singlePlayerDialogHead">
-              <span className="singlePlayerDialogIcon"><Users aria-hidden size={30} /></span>
-              <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>You can change the opponent count, factions, heroes and map again in Game Settings before starting.</p></div>
+              <span className="singlePlayerDialogIcon"><MapPinned aria-hidden size={30} /></span>
+              <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>The map determines how many enemies you face and where everyone starts. You will choose the map, factions and heroes at the private table.</p></div>
             </div>
-            <div className="singlePlayerOpponents" role="group" aria-label="Computer opponents">
-              <strong>Number of opponents</strong>
-              <div className="singlePlayerOpponentChoices">
-                {[1, 2, 3].map((count) => (
-                  <button aria-label={`${count} computer opponent${count === 1 ? "" : "s"}`} aria-pressed={opponents === count} className={`menuNavButton singlePlayerOpponentChoice${opponents === count ? " selected" : ""}`} key={count} onClick={() => setOpponents(count)} type="button">{count}</button>
-                ))}
-              </div>
-              <small>Some maps support fewer seats; Game Settings will cap the count to the selected scenario.</small>
+            <div className="singlePlayerOpponents" role="note" aria-label="Map-driven solo setup">
+              <strong>Map-driven opponents</strong>
+              <small>No enemy-count picker is needed. Built-in maps use their solo deployment; designed maps can set your exact Town, each AI Town, and different starting war chests. Those solo settings never change multiplayer on the same map.</small>
             </div>
             <SinglePlayerSavePanel />
             {error ? <p className="authError" role="alert">{error}</p> : null}
-            <button className="campaignPrimaryButton singlePlayerCreate" disabled={creating} onClick={() => void create()} type="button">{creating ? "Creating…" : `Continue with ${opponents} opponent${opponents === 1 ? "" : "s"}`}</button>
+            <button className="campaignPrimaryButton singlePlayerCreate" disabled={creating} onClick={() => void create()} type="button">{creating ? "Creating…" : "Create private skirmish"}</button>
           </section>
         </div>
       ) : null}

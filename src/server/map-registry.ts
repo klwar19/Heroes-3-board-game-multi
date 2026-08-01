@@ -10,6 +10,7 @@ import {
   sanitizeCustomMapPreset,
   sanitizeFieldReward,
   sanitizeObjectPlans,
+  sanitizeSinglePlayerMapStart,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
   scenarioDefinitions,
@@ -275,6 +276,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   // SPECIFIC (per-tile) object plans (obelisk / mine) — any group that can host
   // them; a plan on a tile with no such location stays inert (settlement twin).
   const objectPlans = sanitizeObjectPlans(candidate.objectPlans);
+  const singlePlayer =
+    candidate.group === "starting" ? sanitizeSinglePlayerMapStart(candidate.singlePlayer) : undefined;
 
   return {
     row: candidate.row as number,
@@ -291,6 +294,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     // rotation). Meaningful only on a starting plan — kept there, dropped on any
     // other group; only a literal `true` survives so garbage can't set it.
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
+    // Solo roles/bonuses are start-tile-only and are ignored by multiplayer.
+    ...(singlePlayer ? { singlePlayer } : {}),
     // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
     // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
     // only a known designation survives so garbage can't set it. The center-hex

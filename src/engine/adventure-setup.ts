@@ -111,8 +111,10 @@ import {
   sanitizeFieldReward,
   sanitizeHexEvents,
   sanitizeObjectPlans,
+  sanitizeSinglePlayerMapStart,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
+  singlePlayerMapDeployment,
   type CustomMapPreset,
   type PresetForcedOptionKey
 } from "./map-preset";
@@ -1434,6 +1436,26 @@ export function validateCustomMapPlan(
     }
   }
 
+  // Solo deployment metadata belongs only to Town/start tiles. Normalise its
+  // role and bonus even for direct in-memory SET_GAME_OPTIONS payloads (saved
+  // maps already pass through the registry sanitiser), and strip malformed or
+  // misplaced data. A partial collection is harmless: it remains visible to
+  // the designer but is inactive until it has one human plus >=1 computer.
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    const singlePlayer =
+      plan.group === "starting" ? sanitizeSinglePlayerMapStart(plan.singlePlayer) : undefined;
+    if (singlePlayer) {
+      if (singlePlayer !== plan.singlePlayer) {
+        accepted[index] = { ...plan, singlePlayer };
+      }
+    } else if (plan.singlePlayer !== undefined) {
+      const next = { ...plan };
+      delete next.singlePlayer;
+      accepted[index] = next;
+    }
+  }
+
   // The UNDERGROUND layer override is a supply/sea/center-only flag (kept as a
   // literal true): strip it on `starting` (seat tiles stay Surface — the v1
   // limit) and `subterranean` (redundant — already underground), and drop any
@@ -1953,6 +1975,9 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     ) {
       field.onewayAlwaysPickable = true;
     }
+    if (object.kind === "garrison" && object.garrisonBorderPassage) {
+      field.garrisonBorderPassage = true;
+    }
     applyCustomGuardToField(field, objectGuardSpec(object));
     stampDesignerFieldReward(field, object.reward, object.vp);
     // Outpost / one-way-entrance fights run BANK-style (no Quick Combat, no
@@ -2291,9 +2316,70 @@ function popTileMatchingFeature(
  * index-aligned with the scenario's Center positions; undefined entries fall
  * back to a random draw. Holy Grail no longer forces a Dragon Utopia.
  */
-function forcedObjectiveCenterTiles(pool: string[], slots: number, mode: VictoryMode): (string | undefined)[] {
+type GrailUtopiaCounts = { grail: number; dragon_utopia: number };
+
+/** Polish objective mix: one objective per seat, with the 3-player split rolled. */
+function polishGrailUtopiaCounts(playerCount: number, seed: string): GrailUtopiaCounts {
+  if (playerCount >= 4) return { grail: 2, dragon_utopia: 2 };
+  if (playerCount === 3) {
+    const grails = createSeededRandom(`${seed}#polish-grail-utopia-mix`).nextInt(1, 2);
+    return { grail: grails, dragon_utopia: 3 - grails };
+  }
+  if (playerCount === 2) return { grail: 1, dragon_utopia: 1 };
+  const grails = createSeededRandom(`${seed}#polish-grail-utopia-solo`).nextInt(0, 1);
+  return { grail: grails, dragon_utopia: 1 - grails };
+}
+
+function objectiveCountsInTiles(tileIds: readonly (string | undefined)[]): GrailUtopiaCounts {
+  const counts: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 };
+  for (const tileId of tileIds) {
+    const fields = tileId ? allTileDefinitions[tileId]?.fields ?? [] : [];
+    if (fields.some((field) => field.location === "grail")) counts.grail += 1;
+    if (fields.some((field) => field.location === "dragon_utopia")) counts.dragon_utopia += 1;
+  }
+  return counts;
+}
+
+function takeObjectiveTiles(
+  pool: string[],
+  counts: GrailUtopiaCounts,
+  seed: string,
+  limit = Number.POSITIVE_INFINITY
+): string[] {
+  const locations = shuffleCards(
+    [
+      ...Array.from({ length: counts.grail }, () => "grail"),
+      ...Array.from({ length: counts.dragon_utopia }, () => "dragon_utopia")
+    ],
+    `${seed}#polish-grail-utopia-order`
+  );
+  return locations
+    .slice(0, limit)
+    .map((location) => takeCenterTileWith(pool, location))
+    .filter((id): id is string => Boolean(id));
+}
+
+function forcedObjectiveCenterTiles(
+  pool: string[],
+  slots: number,
+  mode: VictoryMode,
+  polishRule = false,
+  playerCount = 0,
+  seed = "",
+  alreadyPlaced: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 }
+): (string | undefined)[] {
   if (slots <= 0) {
     return [];
+  }
+  if (polishRule) {
+    const desired = polishGrailUtopiaCounts(playerCount, seed);
+    const needed = {
+      grail: Math.max(0, desired.grail - alreadyPlaced.grail),
+      dragon_utopia: Math.max(0, desired.dragon_utopia - alreadyPlaced.dragon_utopia)
+    };
+    const forced: (string | undefined)[] = takeObjectiveTiles(pool, needed, seed, slots);
+    while (forced.length < slots) forced.push(undefined);
+    return forced;
   }
   if (mode === "grail") {
     // Prefer a Grail on every Center slot, capped at 2 dig sites.
@@ -2652,12 +2738,23 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ? dungeonDescentCandidate
       : 1;
   const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
+  const polishGrailUtopiaOn = houseRules["polish-grail-utopia"];
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
   const playerConfigs = (options.players?.length ? options.players : DEFAULT_PLAYERS).slice(
     0,
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
+  const customMap = setupOptions.customMap?.length
+    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
+    : null;
+  const soloOpponentLimit = Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1;
+  // Resolve authored solo roles only for an actual single-player session. The
+  // same tile plan keeps ordinary seat-order placement in multiplayer.
+  const authoredSoloDeployment =
+    options.sessionMode === "single-player"
+      ? singlePlayerMapDeployment(customMap, soloOpponentLimit)
+      : null;
   // Preview without publishing: homes follow the eventual game order, while
   // the authoritative roll remains hidden until starting bonuses resolve.
   const openingFirstPlayerSeed =
@@ -2817,7 +2914,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
-    ...(victoryMode === "grail" ? { grail: { status: "uncollected" as const } } : {}),
+    ...(victoryMode === "grail" || polishGrailUtopiaOn
+      ? { grail: { status: "uncollected" as const } }
+      : {}),
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
     ...(victoryModeCountsHeroDefeats(victoryMode) ? { heroDefeats: {} } : {}),
     pendingTileChoice: null,
@@ -2866,6 +2965,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     tilePoolIds("subterranean", tileContent),
     `${seed}#pool#subterranean`
   );
+  // If a compact layout has fewer placed Near/Center slots than the Polish
+  // objective count, the remaining objective tiles become the first hidden Far
+  // supply draws. They are still randomly assigned/placed during play instead
+  // of being silently dropped from a 3- or 4-player game.
+  let polishObjectiveFarSupply: string[] = [];
 
   const state: GameState = {
     id: "adventure-game",
@@ -2945,10 +3049,6 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     }
   }
 
-  const customMap = setupOptions.customMap?.length
-    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
-    : null;
-
   // Seat positions: the designer's own Ⅰ tiles in placement order when it
   // drew any, otherwise the scenario sheet's fixed seats. Each seat falls back
   // to the scenario seat if the design left it unplaced.
@@ -2956,6 +3056,24 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const designerStartCenters = designerStartPlans.map((plan) => ({ row: plan.row, col: plan.col }));
   const startCenterFor = (index: number): HexCoord =>
     designerStartCenters[index] ?? scenario.layout.starts[index];
+  const authoredStartByPlayer = new Map<PlayerId, CustomMapTilePlan>();
+  if (authoredSoloDeployment) {
+    const humanConfig = playerConfigs.find(
+      (config) => configuredControllers?.[config.id]?.kind !== "computer"
+    );
+    if (humanConfig) {
+      authoredStartByPlayer.set(humanConfig.id, authoredSoloDeployment.human);
+    }
+    const computerConfigs = playerConfigs.filter(
+      (config) => configuredControllers?.[config.id]?.kind === "computer"
+    );
+    computerConfigs.forEach((config, index) => {
+      const plan = authoredSoloDeployment.computers[index];
+      if (plan) {
+        authoredStartByPlayer.set(config.id, plan);
+      }
+    });
+  }
 
   // Starting tiles: position from the seat (designer or scenario), tile fixed
   // by the chosen faction — no rotation choice. Towns and main heroes go on
@@ -2963,8 +3081,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   playerConfigs.forEach((config, seatIndex) => {
     const index = startingPositionIndex.get(config.id) ?? seatIndex;
     const startTileId = startingTileByFaction[config.factionId] ?? "S1";
-    const center = startCenterFor(index);
-    const startPlan = designerStartPlans[index];
+    const authoredStart = authoredStartByPlayer.get(config.id);
+    const center = authoredStart
+      ? { row: authoredStart.row, col: authoredStart.col }
+      : startCenterFor(index);
+    const startPlan = authoredStart ?? designerStartPlans[index];
     // A designer may FIX this seat's home-tile orientation. Honour plan.rotation
     // ONLY when it is locked — an unlocked starting plan (or a legacy map that
     // happened to store a rotation) keeps the classic rotation-0 + opening-ceremony
@@ -3031,6 +3152,33 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
   });
+
+  // Authored campaign pressure: some scenarios openly grant computer opponents
+  // a small war chest. It is map-local and visible in the briefing/condition
+  // summary, so single-player difficulty never hides an unexplained rules cheat.
+  const computerBonus = mapPreset?.computerStartingBonus;
+  if (state.sessionMode === "single-player") {
+    for (const config of playerConfigs) {
+      if (controllerOf(state, config.id).kind !== "computer") continue;
+      const personalBonus = authoredStartByPlayer.get(config.id)?.singlePlayer?.bonus;
+      const bonus = {
+        gold: (computerBonus?.gold ?? 0) + (personalBonus?.gold ?? 0),
+        buildingMaterials:
+          (computerBonus?.buildingMaterials ?? 0) + (personalBonus?.buildingMaterials ?? 0),
+        valuables: (computerBonus?.valuables ?? 0) + (personalBonus?.valuables ?? 0)
+      };
+      if (bonus.gold <= 0 && bonus.buildingMaterials <= 0 && bonus.valuables <= 0) continue;
+      const resources = state.players[config.id]?.resources;
+      if (!resources) continue;
+      resources.gold = Math.min(99, resources.gold + bonus.gold);
+      resources.buildingMaterials = Math.min(99, resources.buildingMaterials + bonus.buildingMaterials);
+      resources.valuables = Math.min(99, resources.valuables + bonus.valuables);
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        message: `${state.players[config.id]?.name ?? config.id} receives the single-player map war chest (+${bonus.gold} gold, +${bonus.buildingMaterials} materials, +${bonus.valuables} valuables).`
+      });
+    }
+  }
 
   if (customMap) {
     // Map designer: hand-placed tiles instead of the scenario layout.
@@ -3109,22 +3257,61 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       (plan) =>
         plan.faceDown && plan.group === "center" && !effectiveExactTileDefId(plan) && !plan.secretFeature
     ).length;
-    const forcedCenters = forcedObjectiveCenterTiles(centerPool, unpinnedFaceDownCenterSlots, victoryMode);
+    const authoredObjectives: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 };
+    for (const plan of customMap) {
+      const designated = plan.viiField;
+      if (designated === "grail" || designated === "dragon_utopia") {
+        authoredObjectives[designated] += 1;
+        continue;
+      }
+      const pinnedId = effectiveExactTileDefId(plan);
+      const counts = objectiveCountsInTiles([pinnedId]);
+      authoredObjectives.grail += counts.grail;
+      authoredObjectives.dragon_utopia += counts.dragon_utopia;
+    }
+    const forcedCenters = forcedObjectiveCenterTiles(
+      centerPool,
+      unpinnedFaceDownCenterSlots,
+      victoryMode,
+      polishGrailUtopiaOn,
+      playerConfigs.length,
+      seed,
+      authoredObjectives
+    );
     let forcedCenterIndex = 0;
 
     // Holy Grail: also force leftover Grail tiles (when fewer than 2 Center
     // slots took them) and enough Obelisks (designer presets count) onto
     // unpinned face-down Near/Far draws.
+    const forcedObjectiveCounts = objectiveCountsInTiles(forcedCenters);
+    const polishDesired = polishGrailUtopiaCounts(playerConfigs.length, seed);
+    const polishObjectiveOverflow = polishGrailUtopiaOn
+      ? takeObjectiveTiles(
+          centerPool,
+          {
+            grail: Math.max(0, polishDesired.grail - authoredObjectives.grail - forcedObjectiveCounts.grail),
+            dragon_utopia: Math.max(
+              0,
+              polishDesired.dragon_utopia - authoredObjectives.dragon_utopia - forcedObjectiveCounts.dragon_utopia
+            )
+          },
+          `${seed}#overflow`
+        )
+      : [];
     const grailOverflow: string[] =
-      victoryMode === "grail" ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length) : [];
+      victoryMode === "grail" && !polishGrailUtopiaOn
+        ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length)
+        : [];
     // Count designer-guaranteed Obelisks; pull the shortfall from Near/Far pools.
     const obelisksStillNeeded =
-      victoryMode === "grail" ? Math.max(0, 2 - countGuaranteedObelisks(customMap)) : 0;
+      victoryMode === "grail" && !polishGrailUtopiaOn
+        ? Math.max(0, 2 - countGuaranteedObelisks(customMap))
+        : 0;
     const forcedObelisks: string[] =
       obelisksStillNeeded > 0 ? takeObeliskTiles({ near: nearPool, far: farPool }, obelisksStillNeeded) : [];
     // Obelisks first so dig unlock is completable on tight layouts (e.g. skirmish
     // has only 2 Near slots); the second Grail fills any leftover Near/Far slots.
-    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow];
+    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow, ...polishObjectiveOverflow];
     let grailNearFarIndex = 0;
 
     // Designed Monolith/Whirlpool Location Tokens + Field Overrides, applied
@@ -3205,6 +3392,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // Orientation rides along for both secret pins and random draws —
           // the tile is revealed at the slot's rotation.
           const tile = instantiateTile(adventure, tileDefId, center, plan.rotation ?? 0, true);
+          if (pinnedId) {
+            tile.tileIdentityLocked = true;
+          } else if (
+            plan.group === "subterranean" &&
+            allowedFeatures.length === 0 &&
+            excludedFeatures.length === 0
+          ) {
+            tile.gateTileChoiceEligible = true;
+          }
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
           applyDesignedViiField(adventure, tile, plan);
@@ -3236,6 +3432,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           }
         }
       }
+    }
+
+    if (polishGrailUtopiaOn && grailNearFarIndex < grailNearFarOverflow.length) {
+      polishObjectiveFarSupply = grailNearFarOverflow.slice(grailNearFarIndex);
     }
 
     applyCustomMapTokens(adventure, plannedTokens);
@@ -3314,13 +3514,36 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Holy Grail: force leftover Grail tiles (2 dig sites total) and at least
     // 2 Obelisks onto Near/Far draws when the layout's Center slots alone cannot
     // host them.
-    const forcedCenters = forcedObjectiveCenterTiles(centerPool, scenario.layout.center.length, victoryMode);
+    const forcedCenters = forcedObjectiveCenterTiles(
+      centerPool,
+      scenario.layout.center.length,
+      victoryMode,
+      polishGrailUtopiaOn,
+      playerConfigs.length,
+      seed
+    );
+    const forcedObjectiveCounts = objectiveCountsInTiles(forcedCenters);
+    const polishDesired = polishGrailUtopiaCounts(playerConfigs.length, seed);
+    const polishObjectiveOverflow = polishGrailUtopiaOn
+      ? takeObjectiveTiles(
+          centerPool,
+          {
+            grail: Math.max(0, polishDesired.grail - forcedObjectiveCounts.grail),
+            dragon_utopia: Math.max(0, polishDesired.dragon_utopia - forcedObjectiveCounts.dragon_utopia)
+          },
+          `${seed}#overflow`
+        )
+      : [];
     const grailOverflow: string[] =
-      victoryMode === "grail" ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length) : [];
+      victoryMode === "grail" && !polishGrailUtopiaOn
+        ? takeRemainingGrailTiles(centerPool, 2 - forcedCenters.filter(Boolean).length)
+        : [];
     const forcedObelisks: string[] =
-      victoryMode === "grail" ? takeObeliskTiles({ near: nearPool, far: farPool }, 2) : [];
+      victoryMode === "grail" && !polishGrailUtopiaOn
+        ? takeObeliskTiles({ near: nearPool, far: farPool }, 2)
+        : [];
     // Obelisks first (dig unlock needs 2); second Grail uses leftover Near/Far slots.
-    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow];
+    const grailNearFarOverflow = [...forcedObelisks, ...grailOverflow, ...polishObjectiveOverflow];
     let grailNearFarIndex = 0;
 
     // Face-down Far (II–III) tiles fixed in the layout (symmetric clash maps use
@@ -3344,6 +3567,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         instantiateTile(adventure, tileDefId, center, 0, true);
       }
     }
+    if (polishGrailUtopiaOn && grailNearFarIndex < grailNearFarOverflow.length) {
+      polishObjectiveFarSupply = grailNearFarOverflow.slice(grailNearFarIndex);
+    }
     // Holy Grail / Dragon modes force their objective onto the VI–VII Center
     // tiles; any remaining Center tiles stay random.
     scenario.layout.center.forEach((center, index) => {
@@ -3366,7 +3592,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     for (const center of scenario.layout.subterranean ?? []) {
       const tileDefId = subterraneanPool.pop();
       if (tileDefId) {
-        instantiateTile(adventure, tileDefId, center, 0, true);
+        const tile = instantiateTile(adventure, tileDefId, center, 0, true);
+        tile.gateTileChoiceEligible = true;
       }
     }
     // Standard (non-designer) maps: still stamp pool overrides when the global
@@ -3388,10 +3615,14 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // (the "flip"). Off, or a count of 0, gives an empty supply. The pool of tiles
   // left after the scenario's own face-down Far tiles is parked on the adventure
   // for those in-play draws (and the reroll returns).
-  adventure.farTilePool = [...farPool];
+  adventure.farTilePool = [...farPool, ...polishObjectiveFarSupply];
   // Leftover Near (Ⅳ–Ⅴ) tiles after the layout's face-down Near draws — used by
   // designer player-resource-pick on Near tiles (live pool, not face-down swap).
   adventure.nearTilePool = [...nearPool];
+  // Leftover underground tiles are a live, secret pool. Entering a
+  // Subterranean Gate offers the pre-positioned tile plus one same-band tile
+  // from this pool; the unchosen tile returns after the player decides.
+  adventure.subterraneanTilePool = [...subterraneanPool];
 
   // Designer HEX EVENTS — invisible triggers keyed by hex. Runs on the COMMON
   // path (custom AND standard layouts, once every tile is placed): an event is
@@ -3625,6 +3856,15 @@ export function setComputerOpponents(
   const humans = lobby.seats.filter((seat) => controllerOf(state, seat.playerId).kind === "human");
   if (humans.length !== 1 || humans[0].playerId !== action.playerId || !Number.isFinite(action.count)) {
     throw new Error("Only the single-player human seat may change computer opponents.");
+  }
+  const scenario = getScenario(lobby.options.scenarioId);
+  if (
+    singlePlayerMapDeployment(
+      lobby.options.customMap,
+      Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+    )
+  ) {
+    throw new Error("This map determines its single-player computer opponents.");
   }
   // resizeLobbySeats itself (re)stamps the single-player controller invariant
   // (seat 0 human, every other seat a named standard computer).
@@ -4250,7 +4490,18 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
 
   if (next.playerCount !== undefined) {
     const scenario = getScenario(lobby.options.scenarioId);
-    const count = resizeLobbySeats(state, scenario, next.playerCount);
+    const authoredSolo =
+      state.sessionMode === "single-player" && next.customMap === undefined
+        ? singlePlayerMapDeployment(
+            lobby.options.customMap,
+            Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+          )
+        : null;
+    const count = resizeLobbySeats(
+      state,
+      scenario,
+      authoredSolo ? 1 + authoredSolo.computers.length : next.playerCount
+    );
     changes.push(`players ${count}`);
   }
 
@@ -4342,6 +4593,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       lobby.options.customMap = null;
       lobby.options.customMapName = null;
       lobby.options.customMapPreset = null;
+      if (state.sessionMode === "single-player") {
+        const scenario = getScenario(lobby.options.scenarioId);
+        const count = resizeLobbySeats(state, scenario, scenario.minPlayers);
+        changes.push(`map sets ${Math.max(1, count - 1)} computer opponent${count === 2 ? "" : "s"}`);
+      }
       const reverted = revertCustomMapPresetOptions(
         lobby.options,
         previousPreset,
@@ -4363,6 +4619,16 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       }
       lobby.options.customMap = accepted;
       lobby.options.customMapName = mapName;
+      if (state.sessionMode === "single-player") {
+        const deployment = singlePlayerMapDeployment(
+          accepted,
+          Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+        );
+        if (deployment) {
+          const count = resizeLobbySeats(state, scenario, 1 + deployment.computers.length);
+          changes.push(`map sets ${count - 1} computer opponent${count === 2 ? "" : "s"}`);
+        }
+      }
       changes.push(
         `designed map ${mapName ? `"${mapName}" ` : ""}(${accepted.length} tile${accepted.length === 1 ? "" : "s"})`
       );

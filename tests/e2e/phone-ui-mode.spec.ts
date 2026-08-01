@@ -133,6 +133,20 @@ test("phone mode on the map: one full-screen panel at a time, switched by the ta
   await expect(page.locator(".leftRailDock")).toBeVisible();
   await expect(page.locator(".hexMapSvg")).toBeHidden();
 
+  // The full faction roster is taller than the phone viewport. The sheet owns
+  // vertical touch scrolling (like Town) and its final unit must be reachable
+  // above the fixed phone-tab safe area.
+  await page.locator(".leftRailDock").getByRole("button", { name: /unit deck/i }).click();
+  const unitDeck = page.getByRole("dialog", { name: "Unit deck" });
+  await expect(unitDeck).toBeVisible();
+  const rosterRows = unitDeck.locator(".armyPanel li");
+  expect(await rosterRows.count()).toBeGreaterThan(5);
+  await rosterRows.last().scrollIntoViewIfNeeded();
+  await expect(rosterRows.last()).toBeInViewport();
+  expect(await unitDeck.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await unitDeck.getByRole("button", { name: /close the unit deck/i }).click();
+  await expect(unitDeck).toHaveCount(0);
+
   // Menu tab: the table menu (seats, room, music, the mode switch) gets the screen.
   await tabBar.getByRole("tab", { name: /menu/i }).click();
   await expect(page.locator(".tableMenu")).toBeVisible();

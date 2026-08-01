@@ -50,6 +50,7 @@ import {
   heroHasFreeGateStep
 } from "./adventure";
 import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
+import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
 import {
   placementCellsFor,
   neutralFormationCellsFor,
@@ -2619,6 +2620,7 @@ function addCombatAnytimeSpecialtyPlays(
     if (
       !card ||
       card.kind !== "hero-specialty" ||
+      card.timing === "instant" ||
       card.implementationStatus !== "implemented" ||
       card.effect.type !== "CHOOSE_ONE" ||
       !card.effect.options.some((option) => option.combatAnytime)
@@ -3083,6 +3085,9 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "DISCARD_WAR_MACHINE_DAMAGE" ||
     // Tarnum (Dungeon)'s Dragons VI: toggle the Black cube on a chosen Dragons unit.
     effect.type === "TOGGLE_RETALIATION_MARKER" ||
+    // Tarnum (Dungeon)'s Dragons IV: the option targets any battlefield space,
+    // which identifies its five-space row/column.
+    effect.type === "DAMAGE_BATTLEFIELD_LINE" ||
     effect.type === "PLACE_PARALYSIS" ||
     // Zilare's Forgetfulness specialty (the chosen enemy cannot attack next activation).
     effect.type === "FORGETFULNESS" ||
@@ -9243,13 +9248,6 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
 
   if (state.sessionMode === "single-player" && controllerOf(state, playerId).kind === "human" &&
       humanPlayerIdsByController(state).length === 1 && !lobby.startCheck) {
-    const scenario = getScenario(lobby.options.scenarioId);
-    const max = Math.min(scenario.maxPlayers, scenario.layout.starts.length);
-    for (let count = 1; count < max; count += 1) {
-      actions.push({ label: `${count} computer opponent${count === 1 ? "" : "s"}`,
-        action: { type: "SET_COMPUTER_OPPONENTS", playerId, count } });
-    }
-
     // The human owner may hand-pick, roll, or clear each COMPUTER seat's faction
     // + hero (single-player Free-pick only). Mirrors how CHOOSE_FACTION enumerates
     // untaken factions × heroes, but targets a computer seat via seatPlayerId.
@@ -10115,8 +10113,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     // Dig / build the Grail may be free (0 MP) — offered even when the hero has
     // no movement left. Other movement actions still need MP.
     if (field?.grailDiggable && canDigGrail(state, playerId)) {
-      const digCost = state.adventure?.mapPreset?.objectives?.grailDigCost;
-      const cost = digCost === 0 || digCost === 1 || digCost === 2 ? digCost : 1;
+      const cost = grailDigMovementCost(state);
       if (hero.movementPoints >= cost) {
         actions.push({
           label:
@@ -10130,7 +10127,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     // Build carried Grail at a legal Town/Settlement (map-maker grailBuildAt).
     {
       const grail = adventure.grail;
-      const buildAt = adventure.mapPreset?.objectives?.grailBuildAt;
+      const buildAt = grailBuildAt(state);
       if (
         buildAt &&
         grail?.status === "carried" &&
