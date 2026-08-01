@@ -32,7 +32,7 @@ describe("SetupLobbyScreen — portrait-less heroes are still selectable", () =>
 });
 
 describe("TownPanel — hiring a Secondary Hero with exactly 10 gold", () => {
-  it("shows the hire section and dispatches HIRE_SECONDARY_HERO on click", () => {
+  it("shows a map location preview and dispatches the exact selected Field", () => {
     const state = createAdventureGameState({ seed: "ui-town", rollFirstPlayer: false });
     state.players.p1.resources.gold = 10; // exactly the 10-gold cost
     const legalActions = getLegalActions(state, "p1");
@@ -45,11 +45,20 @@ describe("TownPanel — hiring a Secondary Hero with exactly 10 gold", () => {
     render(<TownPanel legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />);
 
     const hireSection = screen.getByLabelText("Hire a Secondary Hero");
-    const hireButtons = within(hireSection).getAllByRole("button");
-    expect(hireButtons.length, "at least one hire button").toBeGreaterThan(0);
+    const locationPicker = within(hireSection).getByLabelText("Choose hire location");
+    const locationButtons = within(locationPicker).getAllByRole("button");
+    expect(locationButtons.length, "at least one map location").toBeGreaterThan(0);
+    expect(
+      locationButtons[0].querySelector("img, .hireLocationFallback"),
+      "the location is visual, not a generic text box"
+    ).toBeTruthy();
 
-    fireEvent.click(hireButtons[0]);
+    fireEvent.click(locationButtons[0]);
     expect(onAction).toHaveBeenCalledTimes(1);
-    expect(onAction.mock.calls[0][0]).toMatchObject({ type: "HIRE_SECONDARY_HERO", playerId: "p1" });
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "HIRE_SECONDARY_HERO",
+      playerId: "p1",
+      fieldId: expect.any(String)
+    });
   });
 });

@@ -2,7 +2,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GameAction, LegalAction } from "@/engine";
-import { usePacedComputerAdvance } from "./computer-auto-advance";
+import { computerAutoAdvanceEnabled, usePacedComputerAdvance } from "./computer-auto-advance";
 
 const advance: LegalAction = {
   label: "Next computer step",
@@ -11,6 +11,14 @@ const advance: LegalAction = {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("computerAutoAdvanceEnabled", () => {
+  it("moves AI by default in every single-player match and nowhere else", () => {
+    expect(computerAutoAdvanceEnabled("single-player")).toBe(true);
+    expect(computerAutoAdvanceEnabled("multiplayer")).toBe(false);
+    expect(computerAutoAdvanceEnabled(undefined)).toBe(false);
+  });
 });
 
 describe("usePacedComputerAdvance", () => {

@@ -13,7 +13,12 @@ import {
   type LocalizedText
 } from "@/data/story/campaigns";
 import { assetUrl } from "@/lib/asset-url";
-import { bindCampaignRoom, getCampaignProgress } from "@/lib/campaign-progress";
+import {
+  bindCampaignRoom,
+  DEFAULT_CAMPAIGN_RULE_OPTIONS,
+  getCampaignProgress,
+  type CampaignRuleOptions,
+} from "@/lib/campaign-progress";
 import { createSinglePlayerRoom } from "@/lib/realtime";
 import { useStoryLanguage, type StoryLanguage } from "@/lib/story-language";
 
@@ -26,6 +31,43 @@ function difficultyLabel(chapter: CampaignChapter): string {
   return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 }
 
+const CAMPAIGN_RULE_CHOICES: Array<{
+  key: keyof CampaignRuleOptions;
+  title: LocalizedText;
+  detail: LocalizedText;
+}> = [
+  {
+    key: "events",
+    title: { en: "Event cards", vi: "Thẻ sự kiện" },
+    detail: { en: "Draw a world event each resource round.", vi: "Rút sự kiện thế giới mỗi vòng tài nguyên." },
+  },
+  {
+    key: "moraleCards",
+    title: { en: "Morale cards", vi: "Thẻ tinh thần" },
+    detail: { en: "Use the positive and negative Morale decks.", vi: "Dùng bộ bài tinh thần tích cực và tiêu cực." },
+  },
+  {
+    key: "spellBook",
+    title: { en: "Spell Book", vi: "Sách phép" },
+    detail: { en: "Store spells outside your normal hand.", vi: "Cất phép bên ngoài tay bài thông thường." },
+  },
+  {
+    key: "creatureBanks",
+    title: { en: "Creature banks", vi: "Kho sinh vật" },
+    detail: { en: "Enable optional bank encounters on eligible tiles.", vi: "Bật các trận kho sinh vật trên ô phù hợp." },
+  },
+  {
+    key: "startingHandMulligan",
+    title: { en: "Opening mulligan", vi: "Đổi bài khởi đầu" },
+    detail: { en: "Replace unwanted cards in the opening hand.", vi: "Thay các lá không muốn trong tay bài đầu." },
+  },
+  {
+    key: "unitExperience",
+    title: { en: "Unit experience", vi: "Kinh nghiệm đơn vị" },
+    detail: { en: "Surviving troops gain ranks across battles.", vi: "Quân sống sót tăng hạng qua các trận chiến." },
+  },
+];
+
 export default function StoryPage() {
   const router = useRouter();
   const { language, toggle: toggleLanguage } = useStoryLanguage();
@@ -35,6 +77,9 @@ export default function StoryPage() {
   const [briefingOpen, setBriefingOpen] = useState(false);
   const [bonusId, setBonusId] = useState(campaign.chapters[0].startingBonuses?.[0]?.id ?? "");
   const [modsOpen, setModsOpen] = useState(false);
+  const [rules, setRules] = useState<CampaignRuleOptions>(() => ({
+    ...DEFAULT_CAMPAIGN_RULE_OPTIONS,
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,7 +120,8 @@ export default function StoryPage() {
       bindCampaignRoom(roomId, {
         campaignId: campaign.id,
         chapterId: selected.id,
-        ...(selectedBonus ? { bonusId: selectedBonus.id } : {})
+        ...(selectedBonus ? { bonusId: selectedBonus.id } : {}),
+        rules,
       });
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     } catch (cause) {
@@ -112,7 +158,7 @@ export default function StoryPage() {
         </div>
 
         <div className="campaignMapFrame">
-          <img alt="Painted map of the Long Live the Queen campaign route" className="campaignMapArt" src={assetUrl("/assets/story/erathia/campaign-map.webp")} />
+          <img alt="Newly painted six-mission map of Catherine's Erathian campaign" className="campaignMapArt" src={assetUrl("/assets/story/erathia/campaign-map-rebuilt.webp")} />
           <div className="campaignMapShade" />
           {campaign.chapters.map((chapter, index) => {
             const unlocked = index === 0 || completed.includes(campaign.chapters[index - 1].id);
@@ -135,7 +181,7 @@ export default function StoryPage() {
           })}
 
           <aside className="campaignSelectionPanel">
-            <span className="campaignChapterEyebrow">{language === "en" ? `Chapter ${selectedIndex + 1} of 3` : `Chương ${selectedIndex + 1} / 3`}</span>
+            <span className="campaignChapterEyebrow">{language === "en" ? `Chapter ${selectedIndex + 1} of ${campaign.chapters.length}` : `Chương ${selectedIndex + 1} / ${campaign.chapters.length}`}</span>
             <h2>{text(selected.title, language)}</h2>
             <p>{text(selected.synopsis, language)}</p>
             <dl>
@@ -186,6 +232,47 @@ export default function StoryPage() {
                   </div>
                 </section>
 
+                <section className="campaignBriefingBlock campaignOptionsBlock">
+                  <div className="campaignOptionsHead">
+                    <div>
+                      <span>{language === "en" ? "Before deployment" : "Trước khi triển khai"}</span>
+                      <h3>{language === "en" ? "Optional campaign systems" : "Hệ thống chiến dịch tùy chọn"}</h3>
+                    </div>
+                    <span className="campaignMapLockedBadge">
+                      <span aria-hidden>◆</span> {language === "en" ? "Authored map locked" : "Bản đồ thiết kế đã khóa"}
+                    </span>
+                  </div>
+                  <p className="campaignOptionsIntro">
+                    {language === "en"
+                      ? "Tune the supporting rules. Mission map, victory objective, heroes and enemy forces stay fixed."
+                      : "Tùy chỉnh luật hỗ trợ. Bản đồ, mục tiêu, hero và quân địch vẫn cố định."}
+                  </p>
+                  <div className="campaignOptionGrid">
+                    {CAMPAIGN_RULE_CHOICES.map((choice) => {
+                      const enabled = rules[choice.key];
+                      return (
+                        <button
+                          aria-pressed={enabled}
+                          className={enabled ? "enabled" : ""}
+                          key={choice.key}
+                          onClick={() => setRules((current) => ({
+                            ...current,
+                            [choice.key]: !current[choice.key],
+                          }))}
+                          type="button"
+                        >
+                          <span className="campaignOptionSwitch" aria-hidden><i /></span>
+                          <span className="campaignOptionCopy">
+                            <strong>{text(choice.title, language)}</strong>
+                            <small>{text(choice.detail, language)}</small>
+                          </span>
+                          <b>{enabled ? (language === "en" ? "ON" : "BẬT") : (language === "en" ? "OFF" : "TẮT")}</b>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
                 <section className="campaignBriefingBlock">
                   <h3>{language === "en" ? "Forces" : "Lực lượng"}</h3>
                   <div className="campaignForces">
@@ -216,7 +303,7 @@ export default function StoryPage() {
                 <button className="campaignPrimaryButton campaignBegin" disabled={busy} onClick={() => void begin()} type="button">
                   {busy ? (language === "en" ? "Preparing the battlefield…" : "Đang chuẩn bị chiến trường…") : (language === "en" ? "Begin chapter" : "Bắt đầu chương")}
                 </button>
-                <p className="campaignAutoStartNote">{language === "en" ? "The fixed scenario starts immediately. Catherine's visual-novel briefing plays before your first map action." : "Kịch bản cố định sẽ bắt đầu ngay. Đối thoại của Catherine xuất hiện trước hành động bản đồ đầu tiên."}</p>
+                <p className="campaignAutoStartNote">{language === "en" ? "Your selected systems are applied, then the locked scenario starts immediately. Catherine's briefing plays before your first map action." : "Các hệ thống đã chọn sẽ được áp dụng, sau đó kịch bản khóa bắt đầu ngay. Đối thoại của Catherine xuất hiện trước hành động bản đồ đầu tiên."}</p>
               </div>
             </section>
           </div>

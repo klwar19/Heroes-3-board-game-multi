@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, getLegalActions } from "./index";
 import { createInitialGameState } from "./setup";
-import type { GameAction, GameState } from "./state";
+import type { GameAction, GameEvent, GameState } from "./state";
 
 /**
  * Astrologers school-power proclamations, engine-enforced end to end:
@@ -71,6 +71,32 @@ function castDamage(seed: string, spellId: string, proclamation: string | null):
   return resolved.combat!.units.unit_p2_skeletons.damage;
 }
 
+/** Cast and return the engine's resolved Power event (not a UI preview). */
+function castPower(seed: string, spellId: string, proclamation: string | null): number | undefined {
+  const state = createInitialGameState(seed);
+  state.players.p1.hand = [spellId];
+  state.activePlayerId = "p1";
+  state.combat!.activeUnitId = "unit_p1_marksmen";
+  state.combat!.units.unit_p2_skeletons.abilities = [];
+  state.combat!.units.unit_p2_skeletons.maxHealth = 50;
+  setProclamation(state, proclamation);
+  const cast = getLegalActions(state, "p1").find(
+    (legal) =>
+      legal.action.type === "CAST_SPELL" &&
+      legal.action.cardId === spellId &&
+      legal.action.target?.type === "unit" &&
+      legal.action.target.unitId === "unit_p2_skeletons"
+  );
+  expect(cast).toBeTruthy();
+  const resolved = passAll(applyOk(state, cast!.action));
+  return [...resolved.eventLog]
+    .reverse()
+    .find(
+      (event): event is Extract<GameEvent, { type: "SPELL_CAST_RESOLVED" }> =>
+        event.type === "SPELL_CAST_RESOLVED" && event.spellCardId === spellId
+    )?.power;
+}
+
 describe("Astrologers — Blue Sky / Scorched Ground school power", () => {
   it("Scorched Ground gives Earth spells +1 Power (Implosion 0 -> 2 damage)", () => {
     expect(castDamage("scorch-base", "spell.implosion", null)).toBe(0);
@@ -88,6 +114,11 @@ describe("Astrologers — Blue Sky / Scorched Ground school power", () => {
   it("Blue Sky gives matching/any spells +1 Power (Magic Arrow 1 -> 2 damage)", () => {
     expect(castDamage("blue-base", "spell.magic_arrow", null)).toBe(1);
     expect(castDamage("blue-on", "spell.magic_arrow", "astrologers.blue_sky")).toBe(2);
+  });
+
+  it("Scorched Ground counts school-agnostic Magic Arrow only once (+1, never +2)", () => {
+    expect(castPower("scorch-arrow-power", "spell.magic_arrow", "astrologers.scorched_ground")).toBe(1);
+    expect(castDamage("scorch-arrow-damage", "spell.magic_arrow", "astrologers.scorched_ground")).toBe(2);
   });
 
   it("a non-school proclamation never changes spell Power", () => {

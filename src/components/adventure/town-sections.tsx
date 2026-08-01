@@ -3,13 +3,15 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useState } from "react";
-import { ChevronsUp, Star } from "lucide-react";
+import { ChevronsUp, MapPin, Star } from "lucide-react";
 
 import { cardLibrary } from "@/data/cards/library";
 import { buildingTimingLabel, describeBuildingEffect } from "@/data/towns/describe";
 import { coreBuildingDefinitions, coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
+import { locationDefinitions } from "@/data/map/locations";
+import { allTileDefinitions } from "@/data/map/tiles";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
@@ -980,40 +982,97 @@ export function HeroPortrait({
 /** The tavern row: hire a Secondary Hero for 10 gold (one per player). */
 export function HireHeroesSection({
   legalActions,
-  onAction
+  onAction,
+  state
 }: {
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  state: GameState;
 }) {
-  const hireActions = legalActions.filter((legal) => legal.action.type === "HIRE_SECONDARY_HERO");
+  const [selectedHeroDefId, setSelectedHeroDefId] = useState<string | null>(null);
+  const hireActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "HIRE_SECONDARY_HERO" }> } =>
+      legal.action.type === "HIRE_SECONDARY_HERO"
+  );
   if (hireActions.length === 0) {
     return null;
   }
+  const heroDefIds = [...new Set(hireActions.map((legal) => legal.action.heroDefId))];
+  const activeHeroDefId = heroDefIds.includes(selectedHeroDefId ?? "")
+    ? selectedHeroDefId!
+    : heroDefIds[0];
+  const locationActions = hireActions.filter((legal) => legal.action.heroDefId === activeHeroDefId);
+  const slotPositions: Record<number, { left: string; top: string }> = {
+    0: { left: "50%", top: "50%" },
+    1: { left: "67%", top: "20%" },
+    2: { left: "83%", top: "50%" },
+    3: { left: "67%", top: "80%" },
+    4: { left: "33%", top: "80%" },
+    5: { left: "17%", top: "50%" },
+    6: { left: "33%", top: "20%" }
+  };
   return (
     <div className="townActions" aria-label="Hire a Secondary Hero">
       <h4 title="A Secondary Hero has 2 movement, plays no cards and never gains experience. One per player.">
         Hire a Secondary Hero — 10 gold
       </h4>
-      <div className="hireHeroRow">
-        {hireActions.map((legal) => {
-          const action = legal.action;
-          const heroDefId = action.type === "HIRE_SECONDARY_HERO" ? action.heroDefId : "";
+      <small className="hireHeroHint">Choose a portrait, then choose the Town or Settlement on the map.</small>
+      <div className="hireHeroRoster" aria-label="Choose Secondary Hero portrait">
+        {heroDefIds.map((heroDefId) => {
           const heroDef = heroDefId ? coreHeroDefinitions[heroDefId] : undefined;
           return (
             <button
-              className="commandButton"
-              key={actionKey(action)}
-              onClick={() => onAction(action)}
-              title={`Appears at your town as ${heroDef?.name ?? heroDefId} (10 gold)`}
+              aria-pressed={heroDefId === activeHeroDefId}
+              className={`commandButton hireHeroChoice${heroDefId === activeHeroDefId ? " selected" : ""}`}
+              key={heroDefId}
+              onClick={() => setSelectedHeroDefId(heroDefId)}
+              title={`Use ${heroDef?.name ?? heroDefId}'s portrait`}
               type="button"
             >
               <HeroPortrait
                 name={heroDef?.name ?? heroDefId}
                 portrait={heroDef?.portrait}
-                size={18}
-                style={{ marginRight: 4, verticalAlign: "middle" }}
+                size={28}
               />
               {heroDef?.name ?? heroDefId}
+            </button>
+          );
+        })}
+      </div>
+      <div className="hireLocationGrid" aria-label="Choose hire location">
+        {locationActions.map((legal) => {
+          const action = legal.action;
+          const field = action.fieldId ? state.adventure?.fields[action.fieldId] : undefined;
+          const tile = field ? state.adventure?.tiles[field.tileInstanceId] : undefined;
+          const tileArt = tile ? allTileDefinitions[tile.tileDefId]?.assets?.tileImage : undefined;
+          const locationName = field
+            ? (locationDefinitions[field.location]?.name ?? field.location)
+            : "Your Town";
+          const placeName = field?.location === "settlement" ? "Controlled Settlement" : locationName;
+          const heroName = coreHeroDefinitions[action.heroDefId]?.name ?? action.heroDefId;
+          const markerPosition = slotPositions[field?.slot ?? 0] ?? slotPositions[0];
+          return (
+            <button
+              aria-label={`Hire ${heroName} at ${placeName}${action.fieldId ? ` ${action.fieldId}` : ""}`}
+              className="hireLocationCard"
+              key={actionKey(action)}
+              onClick={() => onAction(action)}
+              type="button"
+            >
+              <span className="hireLocationThumb" aria-hidden="true">
+                {tileArt ? (
+                  <img alt="" draggable={false} src={assetUrl(tileArt)} />
+                ) : (
+                  <span className="hireLocationFallback">{field?.location === "settlement" ? "Village" : "Town"}</span>
+                )}
+                <span className="hireLocationMarker" style={markerPosition}>
+                  <MapPin size={18} strokeWidth={3} />
+                </span>
+              </span>
+              <span className="hireLocationText">
+                <strong>{placeName}</strong>
+                <small>{action.fieldId ?? "Town"}</small>
+              </span>
             </button>
           );
         })}

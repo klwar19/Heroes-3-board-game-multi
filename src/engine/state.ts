@@ -3923,6 +3923,8 @@ export type GameAction =
       type: "HIRE_SECONDARY_HERO";
       playerId: PlayerId;
       heroDefId: string;
+      /** Exact controlled Town/Settlement selected from the map-aware hire UI. */
+      fieldId?: MapSpaceId;
     }
   | {
       /**
@@ -5477,6 +5479,8 @@ export type GameEvent =
       resourceRolls?: { resource: ResourceKind; amount: number }[];
       treasureRolls?: ("experience" | "artifact-search" | "resource-die" | "double-resource-die")[];
       attackRolls?: number[];
+      /** This Resource roll was caused by a Treasure-die face. */
+      origin?: "treasure";
     }
   | {
       id: string;
@@ -9224,6 +9228,8 @@ export type VisitStep =
   | {
       type: "ROLL_RESOURCE_DICE";
       count: number;
+      /** This Resource roll is the second stage of a Treasure-die face. */
+      origin?: "treasure";
       /**
        * Polish reduced starting bonus: reroll any "high value" Resource-die face
        * (6 gold / 4 building materials / 2 valuables) so the grant stays random
@@ -9405,9 +9411,8 @@ export type VisitStep =
     }
   | {
       /**
-       * Tournament rule (Observatory / Speculum re-rotate): offer one NEARBY
-       * placed tile to re-rotate, or skip. `anchorSpaceId` is the hero's own
-       * field — "nearby" = a tile whose flower touches the anchor's tile.
+       * Tournament Redwood Observatory: offer one adjacent revealed tile with
+       * no Hero to re-rotate, or skip. `anchorSpaceId` is the visited field.
        */
       type: "OBSERVATORY_REROTATE_OFFER";
       anchorSpaceId: MapSpaceId;
@@ -10937,13 +10942,12 @@ export type AdventureState = {
   /** Second player gains +1 positive morale at game start (Tournament rule). */
   tournamentSecondPlayerMorale?: boolean;
   /**
-   * Tournament rule: the Redwood Observatory and the Speculum artifact may ALSO
-   * re-rotate one nearby placed tile (in addition to discovering a face-down
-   * tile). See GameSetupOptions.tournamentObservatoryRerotate.
+   * Tournament option: the Redwood Observatory may rotate one adjacent revealed
+   * tile with no Hero, then continues its normal face-down-tile discovery.
    */
   tournamentObservatoryRerotate?: boolean;
   /**
-   * PvP Neutral Control mode (optional, multiplayer only). When on, the next
+   * PvP Neutral Control mode (optional, any game with two or more seats). When on, the next
    * live player clockwise from a Neutral combat's fighter commands the Neutral
    * side's decisions (see GameSetupOptions.pvpNeutralControl). Absent on older
    * snapshots and solo tables — treated as OFF.
@@ -11252,15 +11256,15 @@ export type GameSetupOptions = {
    */
   tournamentSecondPlayerMorale?: boolean;
   /**
-   * Tournament rule (community sheet): the Redwood Observatory AND the Speculum
-   * artifact may ALSO re-rotate one nearby, already-placed tile — in addition to
-   * discovering an adjacent face-down tile. Rotation reuses the safe in-place
-   * `rotateTileInPlace` primitive (no hero/town/gate tile is offered). Absent
-   * falls back to `tournamentMode`.
+   * Tournament option: the Redwood Observatory may re-rotate one adjacent,
+   * already-revealed tile with no Hero on it, then continues normal discovery.
+   * Town and Subterranean Gate tiles remain eligible. Absent falls back to
+   * `tournamentMode`.
    */
   tournamentObservatoryRerotate?: boolean;
   /**
-   * PvP Neutral Control mode (default OFF, multiplayer only). In every Neutral
+   * PvP Neutral Control mode (default OFF, any game with at least two seats,
+   * including one human plus computer opponents). In every Neutral
    * combat the NEXT live player clockwise from the fighter PLAYS the Neutral
    * units — they drive the guards like a PvP side: move, attack, use abilities
    * and resolve every ability follow-up (target picks, rerolls, Magic Mirror)

@@ -1114,9 +1114,10 @@ export function getTileFootprintSpaceIds(tile: MapTileState): MapSpaceId[] {
  * wipe that state. Borders/edges derive from the definition + `tile.rotation`
  * at query time, so they follow automatically.
  *
- * The caller is responsible for eligibility (no hero/town/gate on the tile —
- * see disruptionEligibleTiles); this routine only refuses a tile whose seven
- * fields are not all materialized, returning false untouched.
+ * The caller is responsible for eligibility. This routine only refuses a tile
+ * whose ring fields are not materialized, returning false untouched. Any
+ * Subterranean Gate link pointers are re-keyed with their moving field so a
+ * legitimate in-place rotation cannot leave a stale coordinate behind.
  */
 export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState, rotation: number): boolean {
   const normalized = ((rotation % 6) + 6) % 6;
@@ -1129,12 +1130,15 @@ export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState,
   const newCells = tileFootprint(center, normalized);
 
   const bySlot: MapFieldState[] = [];
+  const movedSpaceIds = new Map<MapSpaceId, MapSpaceId>();
   for (let slot = 1; slot < oldCells.length; slot += 1) {
-    const field = adventure.fields[hexSpaceId(oldCells[slot])];
+    const oldSpaceId = hexSpaceId(oldCells[slot]);
+    const field = adventure.fields[oldSpaceId];
     if (!field || field.tileInstanceId !== tile.id) {
       return false;
     }
     bySlot[slot] = field;
+    movedSpaceIds.set(oldSpaceId, hexSpaceId(newCells[slot]));
   }
 
   // Same six keys before and after: writing all six re-keys every ring hex, so
@@ -1144,6 +1148,19 @@ export function rotateTileInPlace(adventure: AdventureState, tile: MapTileState,
     const field = bySlot[slot];
     field.spaceId = spaceId;
     adventure.fields[spaceId] = field;
+  }
+  // Gate halves point to one another by map-space id. Re-key both the moving
+  // half and its stationary partner after the field permutation.
+  for (const field of Object.values(adventure.fields)) {
+    if (field.gateLinkSpaceId) {
+      field.gateLinkSpaceId = movedSpaceIds.get(field.gateLinkSpaceId) ?? field.gateLinkSpaceId;
+    }
+  }
+  // Player/designer gate plans pin the sacrificed hex as well; keep those
+  // transactional references aligned with the moved gate field.
+  for (const plan of adventure.gatePlans ?? []) {
+    if (plan.gateHex) plan.gateHex = movedSpaceIds.get(plan.gateHex) ?? plan.gateHex;
+    if (plan.entranceHex) plan.entranceHex = movedSpaceIds.get(plan.entranceHex) ?? plan.entranceHex;
   }
   tile.rotation = normalized;
   return true;
@@ -1216,14 +1233,10 @@ export function disruptionTileLabel(state: GameState, tile: MapTileState): strin
 }
 
 /**
- * Tournament rule (Observatory / Speculum re-rotate): the placed tiles a hero
- * standing at `anchorSpaceId` may re-rotate right now. Reuses the same safety
- * gate as {@link disruptionEligibleTiles} (revealed + fully materialized, no
- * Hero/Town/Subterranean-Gate on any of its seven hexes) and adds the "nearby"
- * restriction: a tile on the SAME layer whose flower directly touches the
- * anchor's tile (center hex distance 3, matching the Observatory discover
- * adjacency). The anchor's own tile is excluded — the hero stands on it, so it
- * already fails the no-Hero gate; the explicit filter documents the intent.
+ * Tournament Redwood Observatory: any revealed, fully materialized adjacent
+ * tile with no Hero on it. Unlike Disruption, the printed Tournament rule does
+ * not exclude a Town or Subterranean Gate tile. The anchor's own tile is
+ * excluded explicitly (and also contains the visiting Hero).
  */
 export function nearbyRerotateEligibleTiles(state: GameState, anchorSpaceId: MapSpaceId): MapTileState[] {
   const adventure = state.adventure;
@@ -1236,12 +1249,26 @@ export function nearbyRerotateEligibleTiles(state: GameState, anchorSpaceId: Map
   }
   const anchorLayer = tileLayer(anchorTile);
   const anchorCenter = { row: anchorTile.centerRow, col: anchorTile.centerCol };
-  return disruptionEligibleTiles(state).filter(
-    (tile) =>
-      tile.id !== anchorTile.id &&
-      tileLayer(tile) === anchorLayer &&
-      hexDistance({ row: tile.centerRow, col: tile.centerCol }, anchorCenter) === 3
+  const heroSpaces = new Set(
+    Object.values(state.heroes)
+      .map((hero) => hero.spaceId)
+      .filter((spaceId): spaceId is MapSpaceId => Boolean(spaceId))
   );
+  return Object.values(adventure.tiles).filter((tile) => {
+    if (
+      tile.id === anchorTile.id ||
+      tile.faceDown ||
+      tile.awaitingRotation ||
+      tileLayer(tile) !== anchorLayer ||
+      hexDistance({ row: tile.centerRow, col: tile.centerCol }, anchorCenter) !== 3
+    ) {
+      return false;
+    }
+    return getTileFootprintSpaceIds(tile).every((spaceId) => {
+      const field = adventure.fields[spaceId];
+      return field?.tileInstanceId === tile.id && !heroSpaces.has(spaceId);
+    });
+  });
 }
 
 export function findTileAtSpace(adventure: AdventureState, spaceId: MapSpaceId): MapTileState | null {
@@ -6417,11 +6444,11 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     };
   }
 
-  // Tournament rule (Observatory re-rotate): the Redwood Observatory may ALSO
-  // re-rotate one nearby placed tile. Prepended so it resolves BEFORE the
-  // discover step — the discover stays the visit's LAST step, so a far-tile flip
-  // triggered by the discovery still finalizes against an otherwise-empty visit.
-  if (adventure.tournamentObservatoryRerotate && steps.some((s) => s.type === "DISCOVER_ADJACENT_TILE")) {
+  // Tournament option: the Redwood Observatory gains an additional, optional
+  // re-rotation before its ordinary adjacent-tile discovery. Keep discovery
+  // last: it can suspend the visit for far-tile placement and expects every
+  // earlier Observatory choice to be finished first. Speculum is unaffected.
+  if (adventure.tournamentObservatoryRerotate && location.id === "redwood_observatory") {
     steps.unshift({ type: "OBSERVATORY_REROTATE_OFFER", anchorSpaceId: fieldId });
   }
 
@@ -6712,7 +6739,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count, step.capHighValues);
+        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
@@ -7222,8 +7249,8 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "OBSERVATORY_REROTATE_OFFER": {
-        // Tournament rule: after the Observatory / Speculum discover, offer to
-        // re-rotate ONE nearby placed tile (or skip). Eligibility is recomputed
+        // Tournament Redwood Observatory: offer to re-rotate ONE adjacent,
+        // already-revealed tile (or skip). Eligibility is recomputed
         // from live state each time so a tile that gained a hero drops out; with
         // nothing eligible (or the rule off) the step resolves silently.
         if (!state.adventure?.tournamentObservatoryRerotate) {
@@ -11819,10 +11846,13 @@ function extraDieRerollOptions(
   state: GameState,
   visit: PendingVisit,
   dice: "treasure" | "resource",
-  count: number
+  count: number,
+  origin?: "treasure"
 ): { label: string; steps: VisitStep[] }[] {
   const rollStep: VisitStep =
-    dice === "resource" ? { type: "ROLL_RESOURCE_DICE", count } : { type: "ROLL_TREASURE_DICE", count };
+    dice === "resource"
+      ? { type: "ROLL_RESOURCE_DICE", count, ...(origin ? { origin } : {}) }
+      : { type: "ROLL_TREASURE_DICE", count };
   const options: { label: string; steps: VisitStep[] }[] = [];
 
   const astrologers = state.adventure?.astrologers;
@@ -11919,7 +11949,8 @@ function rollResourceDice(
   state: GameState,
   visit: PendingVisit,
   count: number,
-  capHighValues = false
+  capHighValues = false,
+  origin?: "treasure"
 ): void {
   const random = adventureRandom(state, "resource-die");
   const rollFace = () => {
@@ -11940,11 +11971,12 @@ function rollResourceDice(
     playerId: visit.playerId,
     dice: "resource",
     results: rolls.map(resourceDieLabel),
-    resourceRolls: rolls.map((roll) => ({ resource: roll.resource, amount: roll.amount }))
+    resourceRolls: rolls.map((roll) => ({ resource: roll.resource, amount: roll.amount })),
+    ...(origin ? { origin } : {})
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
-  const extraOptions = extraDieRerollOptions(state, visit, "resource", count);
+  const extraOptions = extraDieRerollOptions(state, visit, "resource", count, origin);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
   const octaviaOption = octaviaGoldReactionOption(state, visit);
 
@@ -11963,7 +11995,7 @@ function rollResourceDice(
       label: `${luck.name}: reroll the Resource ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "resource" } as VisitStep,
-        { type: "ROLL_RESOURCE_DICE", count } as VisitStep
+        { type: "ROLL_RESOURCE_DICE", count, ...(origin ? { origin } : {}) } as VisitStep
       ]
     });
   }
@@ -11992,9 +12024,9 @@ function treasureFaceSteps(face: TreasureDieFace): VisitStep[] {
     case "artifact-search":
       return [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 2 }];
     case "resource-die":
-      return [{ type: "ROLL_RESOURCE_DICE", count: 1 }];
+      return [{ type: "ROLL_RESOURCE_DICE", count: 1, origin: "treasure" }];
     case "double-resource-die":
-      return [{ type: "ROLL_RESOURCE_DICE", count: 2 }];
+      return [{ type: "ROLL_RESOURCE_DICE", count: 2, origin: "treasure" }];
   }
 }
 

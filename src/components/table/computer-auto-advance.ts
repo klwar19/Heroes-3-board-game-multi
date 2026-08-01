@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import type { GameAction, LegalAction } from "@/engine";
+import type { GameAction, GameState, LegalAction } from "@/engine";
 
-export const COMPUTER_AUTO_ADVANCE_MS = 850;
+/** Last-resort delay; the server normally advances and broadcasts within 900ms. */
+export const COMPUTER_AUTO_ADVANCE_MS = 5_000;
+
+/** Single-player keeps a client watchdog; multiplayer has no computer seats. */
+export function computerAutoAdvanceEnabled(sessionMode: GameState["sessionMode"] | undefined): boolean {
+  return sessionMode === "single-player";
+}
 
 export type ComputerAutoAdvanceOptions = {
   enabled: boolean;
@@ -14,7 +20,8 @@ export type ComputerAutoAdvanceOptions = {
 };
 
 /**
- * Submit one already-legal ADVANCE_COMPUTER action after a readable pause.
+ * Submit one already-legal ADVANCE_COMPUTER action only if the authoritative
+ * server pump has left the same room version stuck beyond the watchdog delay.
  * A room/version key is submitted at most once, even if presentation state
  * rerenders repeatedly before the next authoritative snapshot arrives.
  */
@@ -61,7 +68,8 @@ export function usePacedComputerAdvance({
 
     const timer = window.setTimeout(submitAdvance, delayMs);
     // Background tabs and sleeping laptops may suspend this timer for minutes.
-    // Run the already-legal step as soon as play becomes visible again.
+    // If the authoritative snapshot is still unchanged on wake, this recovery
+    // request is safe; if a server tick won the race, normal legality rejects it.
     const onWake = () => {
       if (document.visibilityState !== "hidden") {
         window.clearTimeout(timer);

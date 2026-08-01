@@ -108,6 +108,58 @@ describe("level-up Ability-Search picks are recorded per level", () => {
     expect(resolved.players.p1.levelUpAbilityPicks).toEqual({ 3: kept });
   });
 
+  it("awards and records both level-2 and level-3 abilities during normal progression to XP 5", () => {
+    let state = makeGame("lvup-through-3");
+    state.decks.abilities.drawPile = [
+      "ability.luck",
+      "ability.offense",
+      "ability.archery",
+      "ability.armorer",
+    ];
+    state.decks.abilities.discardPile = [];
+
+    gainExperience(state, "p1", 2);
+    pumpAdventureQueues(state);
+    let choice = expectDeckSearch(state);
+    const level2Pick = choice.revealedCardIds[0];
+    state = apply(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: choice.id,
+      pick: { kind: "revealed", index: 0 },
+    });
+
+    gainExperience(state, "p1", 3); // XP 2 -> 5, crossing level III at XP 4.
+    pumpAdventureQueues(state);
+    // The first Search put its unchosen card on the shared discard, so the
+    // ordinary second Search first offers "search or take the top discard".
+    if (state.pendingChoice?.type === "OPTION_CHOICE") {
+      state = apply(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0,
+      });
+    }
+    choice = expectDeckSearch(state);
+    expect(state.players.p1.pendingLevelUpAbilitySearch).toBe(3);
+    const level3Pick = choice.revealedCardIds[0];
+    state = apply(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: choice.id,
+      pick: { kind: "revealed", index: 0 },
+    });
+
+    expect(getMainHero(state, "p1")!.experience).toBe(5);
+    expect(getMainHero(state, "p1")!.level).toBe(3);
+    expect(state.players.p1.levelUpAbilityPicks).toEqual({
+      2: level2Pick,
+      3: level3Pick,
+    });
+    expect(state.players.p1.hand).toEqual(expect.arrayContaining([level2Pick, level3Pick]));
+  });
+
   it("records even when the kept card comes from the Search's top-discard pick", () => {
     const state = makeGame("lvup-discard");
     state.decks.abilities.drawPile = ["ability.luck"];

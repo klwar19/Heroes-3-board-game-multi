@@ -261,6 +261,19 @@ function effectIsFromSpecialty(effect: ActiveEffectState): boolean {
   return effect.source.type === "card" && cardLibrary[effect.source.cardId]?.kind === "hero-specialty";
 }
 
+/**
+ * Fangarm's printed exception is deliberately about the EFFECT of a Spell or
+ * Specialty, not about being a legal target and not about damage. Keep this
+ * predicate separate from the damage-immunity path so a mixed card can still
+ * deal its damage while every non-damage rider is ignored.
+ */
+export function unitIgnoresCardNonDamage(unit: CombatUnitState, card: CardDefinition | undefined): boolean {
+  return (
+    hasIgnoreSpellAndSpecialtyNonDamage(unit) &&
+    (card?.kind === "spell" || card?.kind === "hero-specialty")
+  );
+}
+
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
   // Tower Titans ignore every ongoing effect on themselves (friendly or
   // hostile); Tower Gargoyles ignore the ones a Spell created. Checked first so
@@ -377,12 +390,6 @@ export function unitImmuneToParalysis(state: GameState, unit: CombatUnitState): 
   if (hasIgnoreParalysis(unit)) {
     return true;
   }
-  // Fangarm: "Ignore all spell and Specialty effects other than damage" — Blind
-  // (PLACE_PARALYSIS) is a non-damage spell effect, so the token placement is skipped.
-  if (hasIgnoreSpellAndSpecialtyNonDamage(unit)) {
-    return true;
-  }
-
   return state.activeEffects.some(
     (effect) =>
       effect.modifiers.some((modifier) => modifier.type === "PARALYSIS_IMMUNITY") &&

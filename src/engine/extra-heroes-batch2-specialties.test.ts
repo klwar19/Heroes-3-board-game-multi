@@ -490,6 +490,82 @@ describe("Adrienne's Fire Magic specialty", () => {
     expect(power).toBe(1);
   });
 
+  it("Fire Magic I boosts Magic Arrow once and its damage still lands on Fangarm", () => {
+    const state = fireMagicCombat(1);
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p2.hand = [];
+    const fangarm = state.combat!.units.unit_p2_skeletons;
+    fangarm.abilities = ["fangarm-nondamage-immunity"];
+    fangarm.maxHealth = 40;
+    fangarm.damage = 0;
+
+    const cast = applyOk(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: fangarm.id },
+    });
+    const resolved = passAllReactions(cast);
+    const power = [...resolved.eventLog]
+      .reverse()
+      .find(
+        (event): event is Extract<GameEvent, { type: "SPELL_CAST_RESOLVED" }> =>
+          event.type === "SPELL_CAST_RESOLVED" && event.spellCardId === "spell.magic_arrow"
+      )?.power;
+    expect(power).toBe(1);
+    expect(resolved.combat!.units[fangarm.id].damage).toBe(2);
+    expect(
+      resolved.eventLog.some(
+        (event) =>
+          event.type === "DAMAGE_ASSIGNED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === fangarm.id &&
+          event.amount === 2
+      )
+    ).toBe(true);
+  });
+
+  it("stacks Adrienne's +1 with Scorched Ground's separate +1 exactly once each", () => {
+    const state = fireMagicCombat(1);
+    state.adventure = {
+      astrologers: {
+        activeCardId: "astrologers.scorched_ground",
+        nextResourceModifiers: { gold: 0, valuables: 0 },
+        crazyWizardUsedBy: [],
+        swiftWeaselUsedBy: [],
+      },
+    } as unknown as GameState["adventure"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    state.players.p1.hand = ["spell.magic_arrow"];
+    state.players.p2.hand = [];
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.abilities = [];
+    target.maxHealth = 40;
+    target.damage = 0;
+
+    const resolved = passAllReactions(
+      applyOk(state, {
+        type: "CAST_SPELL",
+        playerId: "p1",
+        cardId: "spell.magic_arrow",
+        target: { type: "unit", unitId: target.id },
+      })
+    );
+    const power = [...resolved.eventLog]
+      .reverse()
+      .find(
+        (event): event is Extract<GameEvent, { type: "SPELL_CAST_RESOLVED" }> =>
+          event.type === "SPELL_CAST_RESOLVED" && event.spellCardId === "spell.magic_arrow"
+      )?.power;
+    expect(power).toBe(2);
+    expect(resolved.combat!.units[target.id].damage).toBe(3);
+  });
+
   it("does NOT boost a Water spell cast under the same effect (Frost Ring stays Power 0)", () => {
     const state = fireMagicCombat(6);
     state.activePlayerId = "p1";

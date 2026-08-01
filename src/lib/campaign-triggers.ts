@@ -13,7 +13,7 @@
 
 import { chapterRoomOptions, getCampaign, type CampaignChapter } from "@/data/story/campaigns";
 import { coreFactionDefinitions } from "@/data/factions/core";
-import type { CampaignRoomBinding } from "@/lib/campaign-progress";
+import type { CampaignRoomBinding, CampaignRuleOptions } from "@/lib/campaign-progress";
 import type { GameAction, GamePhase, PlayerId } from "@/engine";
 
 /** The minimal slice of game state the decision needs (a `GameState` is assignable). */
@@ -107,7 +107,12 @@ export function campaignSceneToFire(
  * A locked chapter (no `setup` ⇒ `chapterRoomOptions` null) or a faction with no
  * heroes yields an empty list (nothing to inject).
  */
-export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerId, bonusId?: string): GameAction[] {
+export function campaignSetupActions(
+  chapter: CampaignChapter,
+  playerId: PlayerId,
+  bonusId?: string,
+  rules?: CampaignRuleOptions,
+): GameAction[] {
   const options = chapterRoomOptions(chapter, bonusId);
   if (!options) {
     return [];
@@ -126,7 +131,19 @@ export function campaignSetupActions(chapter: CampaignChapter, playerId: PlayerI
         // Cross-mod chapters (the Convergence) also inject WOG modules and
         // house-rule toggles; absent = the room's defaults stay untouched.
         ...(options.wog ? { wog: options.wog } : {}),
-        ...(options.houseRules ? { houseRules: options.houseRules } : {})
+        ...(options.houseRules ? { houseRules: options.houseRules } : {}),
+        // Only this explicit allow-list is player-adjustable. Authored map,
+        // objective, factions, difficulty and scenario preset stay locked.
+        ...(rules
+          ? {
+              events: rules.events,
+              moraleCards: rules.moraleCards,
+              spellBook: rules.spellBook,
+              creatureBanks: rules.creatureBanks,
+              startingHandMulligan: rules.startingHandMulligan,
+              unitExperience: rules.unitExperience,
+            }
+          : {}),
       }
     }
   ];

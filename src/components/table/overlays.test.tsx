@@ -7,6 +7,7 @@ import {
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
   DiceOverlay,
+  MapDiceOverlay,
   MapNoticeOverlay,
   NeutralStepOverlay,
   ReactionTray,
@@ -94,6 +95,125 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
     // The pre-delay shifts the whole roll-then-read window later.
     act(() => vi.advanceTimersByTime(DICE_PRESENT_MS));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("MapDiceOverlay — Treasure result is visibly staged before Resource dice", () => {
+  it("labels the Treasure throw as step 1 and identifies its rolled face", () => {
+    vi.useFakeTimers();
+    render(
+      <MapDiceOverlay
+        cue={{
+          id: "fluffy-treasure",
+          playerName: "Adrienne",
+          dice: "treasure",
+          results: ["Roll 2 Resource dice, choose one"],
+          treasureRolls: ["double-resource-die"]
+        }}
+        onDone={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("STEP 1 · TREASURE DIE")).toBeTruthy();
+    expect(screen.getByText(/Adrienne rolls the Treasure die/i)).toBeTruthy();
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 20));
+    expect(screen.getByText(/Treasure result → Roll 2 Resource dice, choose one/i)).toBeTruthy();
+  });
+
+  it("labels the caused Resource throw as a separate step 2", () => {
+    vi.useFakeTimers();
+    render(
+      <MapDiceOverlay
+        cue={{
+          id: "fluffy-resource",
+          playerName: "Adrienne",
+          dice: "resource",
+          origin: "treasure",
+          results: ["3 gold", "2 materials"],
+          resourceRolls: [
+            { resource: "gold", amount: 3 },
+            { resource: "buildingMaterials", amount: 2 }
+          ]
+        }}
+        onDone={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("STEP 2 · RESOURCE DICE FROM TREASURE")).toBeTruthy();
+    expect(screen.getByText(/Adrienne rolls the Resource die/i)).toBeTruthy();
+  });
+});
+
+describe("ReactionTray — Adrienne's pending damage is explicit and resolves", () => {
+  it("shows Adrienne's pending 2 damage on the resolve button and lands it on Fangarm", () => {
+    let state = createInitialGameState("adrienne-visible-auto-resolve");
+    state.players.p1.hand = ["specialty.adrienne.1"];
+    state.players.p2.hand = [];
+
+    const specialty = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.adrienne.1"
+    );
+    expect(specialty).toBeTruthy();
+    state = applyAction(state, specialty!.action).state;
+
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    // Keep one legal Power response so the real Instant window remains open;
+    // without any response the engine already resolves the cast immediately.
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power"];
+    const fangarm = state.combat!.units.unit_p2_skeletons;
+    fangarm.abilities = ["fangarm-nondamage-immunity"];
+    fangarm.maxHealth = 40;
+    fangarm.damage = 0;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === fangarm.id
+    );
+    expect(cast).toBeTruthy();
+    state = applyAction(state, cast!.action).state;
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    let resolved = state;
+    const onAction = vi.fn((action: GameAction) => {
+      resolved = applyAction(resolved, action).state;
+      while (resolved.reactionWindow) {
+        resolved = applyAction(resolved, {
+          type: "PASS_REACTION",
+          playerId: resolved.reactionWindow.priorityPlayerId
+        }).state;
+      }
+    });
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    expect(screen.getByText(/Magic Arrow · 2 damage/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Resolve Magic Arrow — deal 2 damage/i }));
+
+    expect(onAction).toHaveBeenCalledWith({ type: "PASS_REACTION", playerId: "p1" });
+    expect(resolved.combat!.units[fangarm.id].damage).toBe(2);
+    expect(
+      resolved.eventLog.some(
+        (event) =>
+          event.type === "DAMAGE_ASSIGNED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === fangarm.id &&
+          event.amount === 2
+      )
+    ).toBe(true);
   });
 });
 
@@ -909,7 +1029,7 @@ describe("ReactionTray — live Power readout", () => {
     // Magic Arrow at Power 1 reads "Power 1" and "2 damage", with the fuel split.
     // (Meter also shows top-tier / needs-min chips when relevant — match loosely.)
     expect(screen.getByText("Power 1")).toBeTruthy();
-    expect(screen.getByText(/2 damage/)).toBeTruthy();
+    expect(screen.getAllByText(/2 damage/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/0 base \+ 1 fuelled/)).toBeTruthy();
   });
 
@@ -1895,7 +2015,7 @@ describe("ReactionTray — spell cast Power floor / ceiling", () => {
     expect(screen.getByText(/needs at least Power 1/i)).toBeTruthy();
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /resolve implosion/i }));
     });
     // Modal: go back only — no resolve path while under min with fuel available.
     expect(screen.getByRole("dialog", { name: /spell power check/i })).toBeTruthy();
@@ -1936,7 +2056,7 @@ describe("ReactionTray — spell cast Power floor / ceiling", () => {
     expect(screen.getByText(/past top tier|top tier 5/i)).toBeTruthy();
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /resolve implosion/i }));
     });
     expect(screen.getByRole("dialog", { name: /spell power check/i })).toBeTruthy();
     expect(screen.getByText(/power past the top tier/i)).toBeTruthy();
@@ -1949,7 +2069,7 @@ describe("ReactionTray — spell cast Power floor / ceiling", () => {
     expect(onAction).not.toHaveBeenCalled();
 
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: /^pass$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /resolve implosion/i }));
     });
     act(() => {
       fireEvent.click(screen.getByRole("button", { name: /resolve anyway/i }));

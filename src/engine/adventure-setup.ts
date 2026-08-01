@@ -570,11 +570,11 @@ export type AdventureSetupOptions = {
   tournamentBanHourglass?: boolean;
   /** Tournament rule: second player +1 positive morale at game start. */
   tournamentSecondPlayerMorale?: boolean;
-  /** Tournament rule: Observatory + Speculum may also re-rotate a nearby tile. */
+  /** Tournament option: Redwood Observatory may re-rotate an adjacent no-Hero tile, then still discovers normally. */
   tournamentObservatoryRerotate?: boolean;
   /**
-   * PvP Neutral Control mode (default off, multiplayer only): the next live
-   * player clockwise plays the Neutral units in every Neutral combat, PvP-style.
+   * PvP Neutral Control mode (default off, any table with at least two seats):
+   * the next live seat clockwise plays the Neutral units, including single-player AI tables.
    */
   pvpNeutralControl?: boolean;
   /** PvP Neutral Control sub-toggle (default on): controlled guards must still attack when they can. */
@@ -2689,9 +2689,9 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // Parallel turns (optional, multiplayer only): the number of opening rounds
   // everyone plays simultaneously. A solo table always plays ordered.
   const parallelRounds = playerConfigs.length >= 2 ? normalizeParallelTurnRounds(setupOptions.parallelTurns) : 0;
-  // PvP Neutral Control (optional, multiplayer only): the next live player
-  // clockwise plays the Neutral units in every Neutral combat. A solo table
-  // has no next player, so the flag never lands there and the AI plays on.
+  // PvP Neutral Control (optional, any table with at least two seats): the next
+  // live seat clockwise plays the Neutral units in every combat. This includes
+  // one-human-plus-computer tables; a true one-seat table keeps the Neutral AI.
   const pvpNeutralControlOn = (setupOptions.pvpNeutralControl ?? false) && playerConfigs.length >= 2;
   const pvpNeutralControlMustAttackOn = setupOptions.pvpNeutralControlMustAttack ?? true;
 
@@ -4092,7 +4092,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
 
   if (next.pvpNeutralControl !== undefined) {
     lobby.options.pvpNeutralControl = Boolean(next.pvpNeutralControl);
-    changes.push(`PvP Neutral Control ${next.pvpNeutralControl ? "on (multiplayer only)" : "off"}`);
+    changes.push(`PvP Neutral Control ${next.pvpNeutralControl ? "on (two or more seats)" : "off"}`);
   }
 
   if (next.pvpNeutralControlMustAttack !== undefined) {

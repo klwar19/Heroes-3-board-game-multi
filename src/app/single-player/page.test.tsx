@@ -46,7 +46,7 @@ describe("/single-player (creation panel)", () => {
     expect(story.getAttribute("href")).toBe("/story");
     const icon = story.querySelector("img.singlePlayerNavArt");
     expect(icon).toBeTruthy();
-    expect(icon!.getAttribute("src")).toContain("/assets/ui/single-player/campaign.webp");
+    expect(icon!.getAttribute("src")).toContain("/assets/story/erathia/campaign-map-rebuilt.webp");
   });
 
   it("creates the private game with the chosen count and navigates to the room", async () => {

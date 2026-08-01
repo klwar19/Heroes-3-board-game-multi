@@ -8,16 +8,14 @@ import {
   tileLatticeNeighbors,
   type GameState
 } from "@/engine";
-import { instantiateTile, nearbyRerotateEligibleTiles } from "@/engine/adventure";
+import { beginFieldVisit, instantiateTile, nearbyRerotateEligibleTiles } from "@/engine/adventure";
 import type { HexCoord } from "@/engine/hex";
 
 // ---------------------------------------------------------------------------
-// Tournament rule: the Redwood Observatory AND the Speculum artifact may ALSO
-// re-rotate one NEARBY, already-placed tile (a tile whose flower touches the
-// hero's own tile, with no Hero / Town / Subterranean Gate on it). It reuses the
-// safe in-place `rotateTileInPlace` primitive — the same one the Disruption
-// Astrologers card uses — so a re-rotated tile keeps every field's state and
-// only re-keys which hex each ring field sits on.
+// Tournament option: Redwood Observatory first offers "choose 1 adjacent tile
+// with no Hero; freely rotate it", then retains its normal adjacent discovery.
+// Town and Gate tiles are not excluded. Speculum remains unchanged. Rotation
+// uses the same state-preserving in-place primitive as Disruption.
 //
 // Every assertion below has a rule-OFF or eligibility CONTROL so removing the
 // wiring fails the test.
@@ -88,7 +86,33 @@ function playSpeculum(state: GameState): { anchorId: string; nearbyId: string } 
   return { anchorId: anchor.id, nearbyId: nearby.id };
 }
 
-describe("Tournament rule — Observatory / Speculum re-rotate a nearby tile", () => {
+/** Visit a real Redwood Observatory with one adjacent Town/Gate-bearing tile. */
+function visitObservatory(state: GameState): { nearbyId: string; townFieldId: string } {
+  const O: HexCoord = { row: 40, col: 30 };
+  const anchor = instantiateTile(state.adventure!, "N1", O, 0, false);
+  const nearbySlot = firstEmptyNeighbour(state, O);
+  const nearby = instantiateTile(state.adventure!, "N2", nearbySlot, 0, false);
+  const anchorFieldId = getTileFootprintSpaceIds(anchor)[1];
+  const nearbySpaceIds = getTileFootprintSpaceIds(nearby);
+  const townFieldId = nearbySpaceIds[0]; // centre is rotation-invariant
+  const gateFieldId = nearbySpaceIds[1];
+
+  state.heroes.hero_p1.spaceId = anchorFieldId;
+  state.adventure!.fields[anchorFieldId].location = "redwood_observatory";
+  state.adventure!.fields[anchorFieldId].blackCube = false;
+
+  // These are both legal under the Tournament rule (only a Hero excludes the
+  // tile). They reproduce the over-restrictive eligibility that yielded Skip.
+  state.adventure!.fields[townFieldId].location = "town";
+  Object.values(state.towns)[0].fieldId = townFieldId;
+  state.adventure!.fields[gateFieldId].location = "subterranean_gate";
+  state.adventure!.fields[gateFieldId].gateToTileId = "future-cavern";
+
+  beginFieldVisit(state, "hero_p1", anchorFieldId, false);
+  return { nearbyId: nearby.id, townFieldId };
+}
+
+describe("Tournament rule — Redwood Observatory re-rotates an adjacent tile", () => {
   it("freezes onto adventure state (explicit flag, tournamentMode fallback, default OFF)", () => {
     expect(freshGame("rerotate-on", true).adventure!.tournamentObservatoryRerotate).toBe(true);
     expect(freshGame("rerotate-off", false).adventure!.tournamentObservatoryRerotate).toBeFalsy();
@@ -97,11 +121,10 @@ describe("Tournament rule — Observatory / Speculum re-rotate a nearby tile", (
     expect(master.adventure!.tournamentObservatoryRerotate).toBe(true);
   });
 
-  it("offers a nearby placed tile to re-rotate and actually rotates it in place", () => {
-    const state = freshGame("rerotate-speculum", true);
-    const { nearbyId } = playSpeculum(state);
+  it("offers a Town/Gate tile, rotates it in place, then still discovers normally", () => {
+    const state = freshGame("rerotate-observatory", true);
+    const { nearbyId, townFieldId } = visitObservatory(state);
 
-    // With the rule on, the discover reward opens the re-rotate offer FIRST.
     const offer = state.adventure!.pendingVisit?.steps[0];
     expect(offer?.type).toBe("CHOOSE_ONE");
     expect((offer as { prompt?: string }).prompt).toMatch(/re-rotate one nearby tile/i);
@@ -127,12 +150,49 @@ describe("Tournament rule — Observatory / Speculum re-rotate a nearby tile", (
     for (const spaceId of getTileFootprintSpaceIds(rotated)) {
       expect(afterRotate.adventure!.fields[spaceId]?.tileInstanceId).toBe(nearbyId);
     }
-    // The discover step remains queued behind the re-rotate (the rule is "TOO").
+    // The Town's centre anchor remains valid, and the Gate field survived the
+    // field permutation instead of being erased or making the tile ineligible.
+    expect(Object.values(afterRotate.towns)[0].fieldId).toBe(townFieldId);
+    expect(
+      Object.values(afterRotate.adventure!.fields).some(
+        (field) =>
+          field.tileInstanceId === nearbyId &&
+          field.location === "subterranean_gate" &&
+          field.gateToTileId === "future-cavern"
+      )
+    ).toBe(true);
+    // The additional Tournament action never consumes the Observatory's normal
+    // reward: after rotation, the face-down adjacent-tile discovery is next.
     expect(afterRotate.adventure!.pendingVisit?.steps[0]?.type).toBe("DISCOVER_ADJACENT_TILE");
   });
 
-  it("CONTROL: with the rule OFF the discover opens straight to DISCOVER_ADJACENT_TILE (no re-rotate offer)", () => {
+  it("Skip also continues to the Observatory's normal discovery", () => {
+    const state = freshGame("rerotate-observatory-skip", true);
+    visitObservatory(state);
+
+    const offer = state.adventure!.pendingVisit?.steps[0];
+    expect(offer?.type).toBe("CHOOSE_ONE");
+    const skipIndex = offer?.type === "CHOOSE_ONE"
+      ? offer.options.findIndex((option) => option.label === "Skip")
+      : -1;
+    expect(skipIndex).toBeGreaterThanOrEqual(0);
+
+    const skipped = applyAction(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: skipIndex
+    }).state;
+    expect(skipped.adventure!.pendingVisit?.steps[0]?.type).toBe("DISCOVER_ADJACENT_TILE");
+  });
+
+  it("CONTROL: with the rule OFF a real Observatory keeps its normal discovery", () => {
     const state = freshGame("rerotate-control-off", false);
+    visitObservatory(state);
+    expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("DISCOVER_ADJACENT_TILE");
+  });
+
+  it("CONTROL: Tournament mode does not change the Speculum artifact", () => {
+    const state = freshGame("rerotate-speculum-control", true);
     playSpeculum(state);
     expect(state.adventure!.pendingVisit?.steps[0]?.type).toBe("DISCOVER_ADJACENT_TILE");
   });
