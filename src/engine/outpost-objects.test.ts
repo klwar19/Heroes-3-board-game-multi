@@ -102,6 +102,41 @@ function stageHero(state: GameState, playerId: "p1" | "p2", spaceId: MapSpaceId 
 // ---------------------------------------------------------------------------
 
 describe("Garrison — flag, 3-gold army-only defense, bank-style guard", () => {
+  it("lets a hero leave a standalone garrison across its yellow border", () => {
+    let state = outpostGame([
+      standalone("garrison", { borderEdges: [0, 1, 2, 3, 4, 5] })
+    ], "garrison-exit");
+    const hero = state.heroes.hero_p1;
+    hero.spaceId = OUTPOST_ID;
+    hero.movementPoints = 4;
+    adv(state).fields[OUTPOST_ID]!.flagOwnerId = "p1";
+
+    expect(getReachableHeroPaths(state, hero).has(RING_ID)).toBe(true);
+    expect(
+      getLegalActions(state, "p1").some(
+        (entry) => entry.action.type === "MOVE_HERO" && entry.action.to === RING_ID
+      )
+    ).toBe(true);
+    state = applyOk(state, {
+      type: "MOVE_HERO",
+      playerId: "p1",
+      heroId: hero.id,
+      to: RING_ID
+    });
+    expect(state.heroes.hero_p1.spaceId).toBe(RING_ID);
+
+    const sealed = outpostGame([
+      standalone("garrison", {
+        borderEdges: [0, 1, 2, 3, 4, 5],
+        garrisonBorderPassage: false
+      })
+    ], "garrison-exit-sealed");
+    sealed.heroes.hero_p1.spaceId = OUTPOST_ID;
+    sealed.heroes.hero_p1.movementPoints = 4;
+    adv(sealed).fields[OUTPOST_ID]!.flagOwnerId = "p1";
+    expect(getReachableHeroPaths(sealed, sealed.heroes.hero_p1).has(RING_ID)).toBe(false);
+  });
+
   it("an unguarded garrison is FLAGGED by the first visitor; walking your own garrison changes nothing", () => {
     let state = outpostGame([standalone("garrison")]);
     const field = adv(state).fields[OUTPOST_ID]!;

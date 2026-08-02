@@ -322,8 +322,8 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("locks Yellow-border discovery on in BINH and mirrors it into the Polish package", () => {
-    openOptions();
+  it("keeps Yellow-border discovery as an editable BINH rule and out of the Polish package", () => {
+    const onAction = openOptions();
     expandGlobalMapRules();
     expect(
       screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i }),
@@ -332,15 +332,50 @@ describe("Game options — tabbed layout", () => {
     expandBinhHouseRules();
     const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "discovery-border-gate": false } }
+    });
 
-    // It is one shared rule, shown in both package checklists. Collapse BINH so
-    // the Polish mirror is the only accessible button with this name.
     expandBinhHouseRules();
     expandPolishHouseRules();
-    const polishToggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
-    expect(polishToggle.getAttribute("aria-pressed")).toBe("true");
-    expect((polishToggle as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /Yellow borders block Tile discovery/i })).toBeNull();
+  });
+
+  it("manually selecting Rule 111 changes only Rule 111", () => {
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.ruleset = "legacy";
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "polish-rule-111": false,
+        "discovery-border-gate": false
+      };
+    });
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: /Rule 111/i }));
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-rule-111": true } }
+    });
+  });
+
+  it("keeps Yellow-border discovery off and editable while Rule 111 is on", () => {
+    openOptionsWith((state) => {
+      state.setupLobby!.options.ruleset = "legacy";
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "polish-rule-111": true,
+        "discovery-border-gate": false
+      };
+    });
+    expandBinhHouseRules();
+    const toggle = screen.getByRole("button", { name: /Yellow borders block Tile discovery/i });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("renders the Old-Legion/reinforcement row OFF by default (the new adjustable banks are the default)", () => {
@@ -419,12 +454,12 @@ describe("Game options — tabbed layout", () => {
     expect(call.options.spellBook).toBe(false);
   });
 
-  it("selecting ANY Polish rule auto-selects Divided Artifact decks (split-decks) in the same dispatch", () => {
-    // Seed split-decks OFF (BINH defaults it on) so the auto-companion is observable.
+  it("selecting a Polish rule changes only that rule", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
-        "split-decks": false
+        "split-decks": false,
+        "discovery-border-gate": false
       };
     });
     expandPolishHouseRules();
@@ -432,21 +467,10 @@ describe("Game options — tabbed layout", () => {
     expect(onAction).toHaveBeenLastCalledWith({
       type: "SET_GAME_OPTIONS",
       playerId: "p1",
-      options: { houseRules: { "split-decks": true, "polish-wait": true } }
-    });
-
-    // CONTROL A: with split-decks already ON, only the rule itself dispatches.
-    cleanup();
-    const onDefault = openOptions();
-    expandPolishHouseRules();
-    fireEvent.click(screen.getByRole("button", { name: /Wait \(combat\)/i }));
-    expect(onDefault).toHaveBeenLastCalledWith({
-      type: "SET_GAME_OPTIONS",
-      playerId: "p1",
       options: { houseRules: { "polish-wait": true } }
     });
 
-    // CONTROL B: turning a Polish rule OFF never touches split-decks.
+    // Turning it off is equally isolated.
     cleanup();
     const onOff = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
@@ -464,7 +488,7 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("Enable-all Polish also auto-selects split-decks AND enables Random Artifacts (blocked only by it)", () => {
+  it("Enable-all Polish leaves split-decks alone and skips Random Artifacts while its dependency is off", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
@@ -475,10 +499,10 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
     const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
       .options.houseRules;
-    // The companion lands in the SAME dispatch…
-    expect(hr["split-decks"]).toBe(true);
-    // …and Random Artifacts (which depends on it) is no longer skipped.
-    expect(hr["polish-random-artifacts"]).toBe(true);
+    // Independent rules are not smuggled into the group dispatch.
+    expect(hr["split-decks"]).toBeUndefined();
+    // Random Artifacts remains dependency-blocked until split-decks is enabled.
+    expect(hr["polish-random-artifacts"]).toBeUndefined();
   });
 
   it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
@@ -521,9 +545,9 @@ describe("Game options — tabbed layout", () => {
     expect(hr["polish-wait"]).toBe(false);
   });
 
-  it("in BINH, 'Disable all' leaves the locked discovery-border-gate ON (no greyed-but-ON contradiction)", () => {
-    // BINH is the default ruleset here; discovery-border-gate is force-locked ON.
-    // The whole Polish group must be ON so the button reads "Disable all".
+  it("Disable-all Polish never changes the separate discovery-border rule", () => {
+    // The whole Polish group is ON so the button reads "Disable all"; the
+    // separate border flag is also ON and must be left untouched.
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
@@ -546,12 +570,8 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Disable all Polish rules" }));
     const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
       .options.houseRules;
-    // Ordinary Polish rules turn off...
     expect(hr["polish-wait"]).toBe(false);
-    // ...but the BINH-locked invariant is NOT written false (which would grey the
-    // chip while the engine still runs it ON). CONTROL: without the lock skip in
-    // GroupToggleAllButton this dispatch sets it false.
-    expect(hr["discovery-border-gate"]).not.toBe(false);
+    expect(hr["discovery-border-gate"], "the separate border rule is absent from the dispatch").toBeUndefined();
   });
 
   it("Map & Setup exposes the Blind Ⅱ–Ⅲ tile choice toggle, default OFF, wired to farTileBlindChoice", () => {

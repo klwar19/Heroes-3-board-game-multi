@@ -6,18 +6,21 @@ import {
   canDigGrail,
   drawGuardArmy,
   getMainHero,
-  getTownOfPlayer
+  getTownOfPlayer,
+  instantiateTile,
+  materializeTileFields
 } from "./adventure";
 import { buildGrail, transferPolishCarriedGrailAfterPvp } from "./adventure-reducer";
 import { createAdventureGameState } from "./adventure-setup";
 import {
   grailBuildAt,
   grailBuildReward,
+  grailDigMovementCost,
   grailPossessionVp
 } from "./map-design-features";
 import { sanitizeCustomMapObject } from "./map-preset";
 import { computeVictoryPoints } from "./victory-points";
-import type { GameState, MapFieldState, PendingChoice } from "./state";
+import type { GameDifficulty, GameState, MapFieldState, PendingChoice } from "./state";
 
 const PLAYERS = [
   { id: "p1", name: "P1", factionId: "castle" as const, heroDefId: "catherine" },
@@ -29,9 +32,20 @@ const PLAYERS = [
 function game(seed: string, playerCount = 2): GameState {
   return createAdventureGameState({
     seed,
+    difficulty: "normal",
     rollFirstPlayer: false,
     players: PLAYERS.slice(0, playerCount),
     houseRules: { "polish-grail-utopia": true }
+  });
+}
+
+function editorGame(seed: string, difficulty: GameDifficulty = "normal"): GameState {
+  return createAdventureGameState({
+    seed,
+    difficulty,
+    rollFirstPlayer: false,
+    players: PLAYERS.slice(0, 2),
+    customMapPreset: { objectives: { hiddenGrailUtopia: true } }
   });
 }
 
@@ -202,14 +216,115 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
   });
 });
 
+describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
+  it("scales both VII armies from scenario difficulty and adds exactly one Black Dragon to Utopia", () => {
+    const expected: Record<GameDifficulty, string[]> = {
+      easy: ["azure"],
+      normal: ["azure", "azure"],
+      hard: ["gold", "azure", "azure"],
+      impossible: ["gold", "gold", "azure", "azure"]
+    };
+    for (const difficulty of Object.keys(expected) as GameDifficulty[]) {
+      const state = editorGame(`editor-guards-${difficulty}`, difficulty);
+      const grail = drawGuardArmy(state, field("grail", `g-${difficulty}`), 7);
+      const utopia = drawGuardArmy(state, field("dragon_utopia", `u-${difficulty}`), 7);
+      expect(grail.map((draw) => draw.tier), `Grail ${difficulty}`).toEqual(expected[difficulty]);
+      expect(utopia.slice(0, -1).map((draw) => draw.tier), `Utopia base ${difficulty}`).toEqual(expected[difficulty]);
+      expect(utopia.at(-1), `Utopia Black Dragon ${difficulty}`).toMatchObject({
+        unitDefId: "neutral.black_dragons",
+        tier: "gold"
+      });
+    }
+  });
+
+  it("converts a second Grail that was still face-down when the first guard fell", () => {
+    const state = editorGame("hidden-second-grail");
+    const hero = getMainHero(state, "p1")!;
+    const first = field("grail", "32,32");
+    state.adventure!.fields[first.spaceId] = first;
+    const hiddenSecond = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);
+    hero.spaceId = first.spaceId;
+
+    beginFieldVisit(state, hero.id, first.spaceId, false);
+    expect(state.adventure!.grailFieldCleared).toBe(true);
+
+    hiddenSecond.faceDown = false;
+    materializeTileFields(state.adventure!, hiddenSecond);
+    const revealedObjective = Object.values(state.adventure!.fields).find(
+      (candidate) => candidate.tileInstanceId === hiddenSecond.id && candidate.difficulty === 7
+    );
+    expect(revealedObjective?.location).toBe("dragon_utopia");
+  });
+
+  it("uses the exact editor reward bundle without the legacy Utopia gold bonus", () => {
+    const state = editorGame("editor-utopia-rewards");
+    const hero = getMainHero(state, "p1")!;
+    const utopia = field("dragon_utopia", "50,50");
+    state.adventure!.fields[utopia.spaceId] = utopia;
+    hero.spaceId = utopia.spaceId;
+    const goldBefore = state.players.p1.resources.gold;
+
+    beginFieldVisit(state, hero.id, utopia.spaceId, false);
+
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(
+      state.adventure!.rewardQueue.filter(
+        (reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts" && reward.count === 3
+      )
+    ).toHaveLength(2);
+    const choice = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
+    expect(choice?.kind === "visit-steps" && choice.steps[0]).toMatchObject({
+      type: "CHOOSE_ONE",
+      options: [
+        expect.objectContaining({ label: expect.stringMatching(/Morale/) }),
+        expect.objectContaining({ label: expect.stringMatching(/Ability/) })
+      ]
+    });
+  });
+
+  it("applies the 1-MP, 20-gold, 3-VP, build-anywhere Grail defaults without a Polish rule toggle", () => {
+    const state = editorGame("editor-grail-defaults");
+    const hero = getMainHero(state, "p1")!;
+    const grailField = field("grail", "51,51");
+    state.adventure!.fields[grailField.spaceId] = grailField;
+    hero.spaceId = grailField.spaceId;
+    hero.movementPoints = 3;
+    const goldBefore = state.players.p1.resources.gold;
+
+    beginFieldVisit(state, hero.id, grailField.spaceId, false);
+    expect(canDigGrail(state, "p1")).toBe(true);
+    expect(grailDigMovementCost(state)).toBe(1);
+    beginFieldVisit(state, hero.id, grailField.spaceId, true);
+
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
+    expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: hero.id });
+    expect(grailPossessionVp(state)).toBe(3);
+    expect(grailBuildAt(state)).toBe("both");
+    expect(grailBuildReward(state)?.freeBuilding).toBe(true);
+  });
+});
+
 describe("Garrison yellow-border passage", () => {
-  it("sanitizes/persists only on Garrisons and opens a sealed adjacent edge both ways", () => {
+  it("defaults legacy Garrisons to open, persists an explicit opt-out, and crosses both ways", () => {
     const sanitized = sanitizeCustomMapObject({
       kind: "garrison",
       placement: { type: "standalone", row: 0, col: 0 },
       garrisonBorderPassage: true
     });
     expect(sanitized?.garrisonBorderPassage).toBe(true);
+    expect(
+      sanitizeCustomMapObject({
+        kind: "garrison",
+        placement: { type: "standalone", row: 0, col: 0 }
+      })?.garrisonBorderPassage
+    ).toBe(true);
+    expect(
+      sanitizeCustomMapObject({
+        kind: "garrison",
+        placement: { type: "standalone", row: 0, col: 0 },
+        garrisonBorderPassage: false
+      })?.garrisonBorderPassage
+    ).toBe(false);
     expect(
       sanitizeCustomMapObject({
         kind: "monolith",
@@ -222,6 +337,8 @@ describe("Garrison yellow-border passage", () => {
     const garrison = { ...field("garrison", "h:0:0"), borderEdges: [0, 1, 2, 3, 4, 5] };
     const neighbor = field("empty_field", "h:0:1");
     state.adventure!.fields = { [garrison.spaceId]: garrison, [neighbor.spaceId]: neighbor };
+    expect(canCrossEdge(state, garrison.spaceId, neighbor.spaceId)).toBe(true);
+    garrison.garrisonBorderPassage = false;
     expect(canCrossEdge(state, garrison.spaceId, neighbor.spaceId)).toBe(false);
     garrison.garrisonBorderPassage = true;
     expect(canCrossEdge(state, garrison.spaceId, neighbor.spaceId)).toBe(true);

@@ -82,6 +82,7 @@ import {
   type MapEventCue
 } from "@/components/table/overlays";
 import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
+import { attackDeclarationForRoll, makeCombatDiceCue } from "@/components/table/combat-dice-cue";
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
@@ -498,62 +499,6 @@ function isFreshLobbyState(state: GameState): boolean {
  * floater and slash to anchor to the still-standing card before it falls.
  */
 const DAMAGE_REVEAL_DELAY_MS = 150;
-
-/**
- * Whether a resolved attack was melee or ranged. The ATTACK_ROLLED event
- * doesn't carry the kind, so recover it from its UNIT_ATTACK_DECLARED — which
- * always precedes the roll in the log even when a reaction window pushes the
- * roll into a later snapshot. Defaults to melee if the declaration scrolled off.
- */
-function attackKindForRoll(
-  log: GameState["eventLog"],
-  attackerId: string,
-  defenderId: string,
-  isRetaliation: boolean
-): "melee" | "ranged" {
-  for (let i = log.length - 1; i >= 0; i -= 1) {
-    const event = log[i];
-    if (
-      event.type === "UNIT_ATTACK_DECLARED" &&
-      event.attackerId === attackerId &&
-      event.defenderId === defenderId &&
-      event.isRetaliation === isRetaliation
-    ) {
-      return event.attackKind;
-    }
-  }
-  return "melee";
-}
-
-function makeDiceCue(
-  state: GameState,
-  event: Extract<GameEvent, { type: "ATTACK_ROLLED" }>,
-  preDelayMs = 0
-): DiceCue {
-  return {
-    id: event.id,
-    rolls: event.rolls,
-    roll: event.roll,
-    dieMultiplier: event.dieMultiplier ?? 1,
-    rollMode: event.rollMode,
-    attackerName: unitName(state, event.attackerId),
-    defenderName: unitName(state, event.defenderId),
-    attackValue: event.attackValue,
-    defenseValue: event.defenseValue,
-    attackBonus: event.attackBonus,
-    defenseBonus: event.defenseBonus,
-    damage: event.damage,
-    isRetaliation: event.isRetaliation,
-    // Slayer (and the Champions' "apply both") sum every die — keep them all lit.
-    ...(event.sumAllDice ? { sumAllDice: true } : {}),
-    // The defender's Defend die, the commander's Might dice and any morale/
-    // artifact/spell adjustment that changed this roll all read out with it.
-    ...(event.defendRoll !== undefined ? { defendRoll: event.defendRoll } : {}),
-    ...(event.mightRolls?.length ? { mightRolls: event.mightRolls } : {}),
-    ...(event.rollModifiers?.length ? { modifiers: event.rollModifiers } : {}),
-    ...(preDelayMs > 0 ? { preDelayMs } : {})
-  };
-}
 
 /**
  * An ability's own dice throw (Death Stare, the Thunderbird extra die, the
@@ -2084,7 +2029,7 @@ export default function Home() {
         }
         diceClock += preDelay + DICE_PRESENT_MS;
         diceDismissAt.push(diceClock);
-        return makeDiceCue(nextState, event, preDelay);
+        return makeCombatDiceCue(nextState, event, preDelay);
       });
 
       // When each attacker's FIRST die is thrown (its strike beat backed out by
@@ -2509,8 +2454,14 @@ export default function Home() {
           }
 
           const ranged =
-            attackKindForRoll(nextState.eventLog, roll.attackerId, roll.defenderId, roll.isRetaliation) ===
-            "ranged";
+            attackDeclarationForRoll(
+              nextState.eventLog,
+              roll.attackerId,
+              roll.defenderId,
+              roll.isRetaliation,
+              roll.id
+            )
+              ?.attackKind === "ranged";
           // The attacker's own H3 voice as it strikes (after the die, not on the
           // declaration). A magical striker (the Magic Elemental) layers a magic
           // zap over its voice so its blow reads as raw magic, not a plain thwack.
@@ -5427,6 +5378,7 @@ export default function Home() {
       !explorersDiscardPending &&
       !armedHandPlay &&
       !pendingCostPlay &&
+      moraleOverflow === 0 &&
       (moraleDrawAvailable ||
         moraleRedrawCardAvailable ||
         moraleCombatPlays.length > 0 ||
@@ -5494,6 +5446,12 @@ export default function Home() {
     };
     const playActionsByCard = new Map<string, HandCardLegal[]>();
     const bookPlayActionsByCard = new Map<string, PlayLegal[]>();
+    // Keep the Mage Guild's Book economy beside the stored spells. The modal
+    // shows purchase/search actions globally and matches Rolling Spells to the
+    // selected owned Spell.
+    const spellBookShortcuts = legalActions.filter(
+      (legal) => legal.action.type === "SPELL_BOOK_ACTION"
+    );
     for (const legal of legalActions) {
       if (legal.action.type === "ASTROLOGERS_HERO_EMPOWER") {
         const list = playActionsByCard.get(legal.action.cardId) ?? [];
@@ -5967,11 +5925,16 @@ export default function Home() {
               usedCardIds={polishBook ? spellBookUsedCards : []}
               polishMode={polishBook}
               castsByCard={bookPlayActionsByCard}
+              shortcuts={spellBookShortcuts}
               onCast={(legal) => {
                 // Book casts come from bookPlayActionsByCard, so every one is a
                 // PLAY_CARD legal — narrow it back for startPlay's staging.
                 startPlay(legal as PlayLegal);
                 setSpellBookOpen(false);
+              }}
+              onShortcut={(legal) => {
+                setSpellBookOpen(false);
+                void submitAction(legal.action);
               }}
               onClose={() => setSpellBookOpen(false)}
             />
@@ -6807,7 +6770,7 @@ export default function Home() {
           {mapDice.current ? (
             <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
           ) : null}
-          {firstRoll ? (
+          {firstRoll && !mapDice.current && !mapNotice.current ? (
             <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />
           ) : null}
           {!firstRoll && newDay.current ? (
@@ -7214,7 +7177,7 @@ export default function Home() {
       {!dice.current && mapDice.current ? (
         <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
       ) : null}
-      {firstRoll ? (
+      {firstRoll && !dice.current && !mapDice.current && !mapNotice.current ? (
         <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />
       ) : null}
       {!firstRoll && newDay.current ? (

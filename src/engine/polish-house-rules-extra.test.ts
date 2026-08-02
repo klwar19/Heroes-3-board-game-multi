@@ -4,7 +4,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { cardLibrary } from "@/data/cards/library";
-import { applyAction, createInitialGameState, getLegalActions, hexSpaceId, NEUTRAL_PLAYER_ID } from "./index";
+import {
+  applyAction,
+  createInitialGameState,
+  getLegalActions,
+  hexSpaceId,
+  NEUTRAL_PLAYER_ID,
+  redactStateForSeat
+} from "./index";
 import { createAdventureGameState } from "./adventure-setup";
 import { openSharedDeckSearch, startNeutralEncounter } from "./adventure-reducer";
 import {
@@ -532,13 +539,27 @@ describe("polish-rule-111", () => {
    */
   function homeTileGuardFight(
     seed: string,
-    opts: { rule?: boolean; homeTile?: boolean; alreadyUsed?: boolean } = {}
+    opts: {
+      rule?: boolean;
+      homeTile?: boolean;
+      alreadyUsed?: boolean;
+      manualGuardControl?: boolean;
+      pvpNeutralControl?: boolean;
+      solo?: boolean;
+    } = {}
   ): GameState {
     let state = createAdventureGameState({
       seed,
       difficulty: "easy",
       rollFirstPlayer: false,
-      houseRules: { "polish-rule-111": opts.rule !== false }
+      houseRules: { "polish-rule-111": opts.rule !== false },
+      manualGuardControl: opts.manualGuardControl,
+      pvpNeutralControl: opts.pvpNeutralControl,
+      ...(opts.solo
+        ? {
+            players: [{ id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" }]
+          }
+        : {})
     });
     if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
       state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -585,6 +606,11 @@ describe("polish-rule-111", () => {
     return state;
   }
 
+  const rule111ChoiceOf = (state: GameState) =>
+    state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "rule-111"
+      ? state.pendingChoice
+      : null;
+
   it("offers the once-per-game bronze swap at guard reveal on the OWN home tile", () => {
     let state = homeTileGuardFight("rule111-offer");
     const choice = state.pendingChoice;
@@ -618,10 +644,82 @@ describe("polish-rule-111", () => {
     ).toBe(true);
   });
 
-  const rule111ChoiceOf = (state: GameState) =>
-    state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "rule-111"
-      ? state.pendingChoice
-      : null;
+  it("continues from Rule 111 into SINGLE-PLAYER manual placement, even with its one guard", () => {
+    let state = homeTileGuardFight("rule111-manual-solo", { manualGuardControl: true, solo: true });
+    const choice = rule111ChoiceOf(state);
+    expect(choice?.playerId).toBe("p1");
+    expect(state.combat?.pendingNeutralPlacement ?? null).toBeNull();
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0
+    });
+
+    expect(Object.values(state.combat!.units).filter((unit) => unit.controllerId === NEUTRAL_PLAYER_ID)).toHaveLength(1);
+    expect(state.combat!.pendingNeutralPlacement).toBe("p1");
+    expect(state.phase).toBe("combat-setup");
+    const actions = getLegalActions(state, "p1").map((legal) => legal.action.type);
+    expect(actions).toContain("PLACE_NEUTRAL_GUARD");
+    expect(actions).toContain("AUTO_NEUTRAL_PLACEMENT");
+    expect(actions).toContain("FINISH_NEUTRAL_PLACEMENT");
+
+    state = applyOk(state, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
+    expect(state.combat!.pendingNeutralPlacement ?? null).toBeNull();
+    expect(state.phase).not.toBe("combat-setup");
+  });
+
+  it("hands placement to the PvP controller after the fighter resolves Rule 111, with hosted seats enforced", () => {
+    let state = homeTileGuardFight("rule111-pvp-hosted", { pvpNeutralControl: true });
+    state.room = {
+      hosted: true,
+      hostClientId: "fighter-client",
+      members: [
+        { clientId: "fighter-client", name: "Fighter", seat: "p1", isHost: true },
+        { clientId: "neutral-client", name: "Neutral controller", seat: "p2", isHost: false }
+      ]
+    };
+    const choice = rule111ChoiceOf(state);
+    expect(choice?.playerId).toBe("p1");
+
+    const stolenChoice = applyAction(
+      state,
+      { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 1 },
+      { actorClientId: "neutral-client" }
+    );
+    expect(stolenChoice.errors[0]?.message).toContain("own seat");
+    const resolved = applyAction(
+      state,
+      { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice!.id, optionIndex: 1 },
+      { actorClientId: "fighter-client" }
+    );
+    expect(resolved.errors, resolved.errors.map((error) => error.message).join("; ")).toEqual([]);
+    state = resolved.state;
+
+    expect(state.adventure!.rule111UsedBy).toEqual(["p1"]);
+    expect(state.combat!.pendingNeutralPlacement).toBe("p2");
+    expect(state.priorityPlayerId).toBe("p2");
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "PLACE_NEUTRAL_GUARD")).toBe(false);
+
+    const controllerFrame = redactStateForSeat(state, "p2");
+    const placement = getLegalActions(controllerFrame, "p2").find(
+      (legal) => legal.action.type === "PLACE_NEUTRAL_GUARD"
+    );
+    const ready = getLegalActions(controllerFrame, "p2").find(
+      (legal) => legal.action.type === "FINISH_NEUTRAL_PLACEMENT"
+    );
+    expect(placement, "p2 should be able to relocate the single Rule 111 guard").toBeTruthy();
+    expect(ready, "p2 should be able to finish the formation").toBeTruthy();
+
+    const stolenPlacement = applyAction(state, placement!.action, { actorClientId: "fighter-client" });
+    expect(stolenPlacement.errors[0]?.message).toContain("own seat");
+    const acceptedPlacement = applyAction(state, placement!.action, { actorClientId: "neutral-client" });
+    expect(acceptedPlacement.errors, acceptedPlacement.errors.map((error) => error.message).join("; ")).toEqual([]);
+    const started = applyAction(acceptedPlacement.state, ready!.action, { actorClientId: "neutral-client" });
+    expect(started.errors, started.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(started.state.combat!.pendingNeutralPlacement ?? null).toBeNull();
+    expect(started.state.phase).not.toBe("combat-setup");
+  });
 
   it("CONTROL: rule off — no offer, the army reveals straight away", () => {
     const state = homeTileGuardFight("rule111-off", { rule: false });

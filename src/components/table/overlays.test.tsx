@@ -7,6 +7,7 @@ import {
   DICE_PRESENT_MS,
   DICE_ROLL_MS,
   DiceOverlay,
+  FirstPlayerRollOverlay,
   MapDiceOverlay,
   MapNoticeOverlay,
   NeutralStepOverlay,
@@ -60,6 +61,24 @@ function diceCue(overrides: Partial<DiceCue> = {}): DiceCue {
 }
 
 describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
+  it("explicitly labels a printed follow-up as the 2nd attack", () => {
+    render(
+      <DiceOverlay
+        cue={diceCue({
+          attackerName: "Gold Dragons",
+          defenderName: "Pegasi",
+          attackValue: 3,
+          damage: 3,
+          abilityAttack: { name: "Dragon Breath", baseAttack: 3 }
+        })}
+        onDone={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/2nd attack — Dragon Breath \(Attack 3\)! Gold Dragons → Pegasi/i)).toBeTruthy();
+    expect(screen.getByRole("status", { name: /attack roll/i })).toBeTruthy();
+  });
+
   it("rolls right away and settles after the roll when there is no pre-delay", () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
@@ -94,6 +113,45 @@ describe("DiceOverlay — tabletop pacing & neutral pre-attack pause", () => {
 
     // The pre-delay shifts the whole roll-then-read window later.
     act(() => vi.advanceTimersByTime(DICE_PRESENT_MS));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("FirstPlayerRollOverlay opening confirmation", () => {
+  it("waits for confirmation before rolling for first player", () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(
+      <FirstPlayerRollOverlay
+        cue={{
+          id: "first-roll",
+          attempts: [
+            {
+              rolls: [
+                { playerId: "p1", name: "Player 1", value: 1 },
+                { playerId: "p2", name: "Player 2", value: 0 }
+              ]
+            }
+          ],
+          winnerPlayerId: "p1",
+          winnerName: "Player 1",
+          order: [
+            { playerId: "p1", name: "Player 1" },
+            { playerId: "p2", name: "Player 2" }
+          ]
+        }}
+        onDone={onDone}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /roll for first player/i })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.queryByText(/plays first/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /roll for first player/i }));
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.getByText("Player 1 plays first!")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /begin the adventure/i }));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });

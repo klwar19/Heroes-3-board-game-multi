@@ -27,28 +27,17 @@ export function isSharedDeckId(deckId: string): deckId is SharedDeckId {
  * recovery artifact…) the deck's next draw-pile card is flipped into its place,
  * exactly like the physical game.
  *
- * ONE seam: called at the tail of every action transaction (`applyAction`) with
- * the PRE-action state, so no take path can bypass it and none has to remember
- * to refill. It moves a card only from that deck's own draw pile to its own
+ * ONE seam: called at the tail of every action transaction (`applyAction`), so
+ * no take path can bypass it and none has to remember to refill. It moves a
+ * card only from that deck's own draw pile to its own
  * discard pile, so nothing is created or lost and every downstream tier /
  * uniqueness gate still applies to the flipped card.
  *
- * The helper also repairs a pile that is already empty. Search calls it before
- * revealing cards, so the current top card becomes the mandatory face-up
- * discard and the requested Search count comes from the cards beneath it.
- *
- * Three deliberate limits for the transaction-tail refill:
- *  - `before` gates it on the pile having held a card when the action started.
- *    Search itself repairs an already-empty pile immediately before revealing
- *    cards, while unrelated actions leave deliberately constructed/imported
- *    empty piles alone until a Search actually needs them.
- *  - never while a pendingChoice is open: an open decision can be HOLDING cards
- *    lifted out of a deck (a Search's revealed cards, a Pandora scry, the
- *    discard face-up pick) that are about to land back on that pile, so flipping
- *    a replacement then would burn a draw-pile card for nothing. The invariant
- *    re-checks on the next action, so the flip lands as soon as it settles.
- *  - a deck whose draw pile is ALSO empty has nothing left to show and is left
- *    alone (a Search reshuffle refills the draw pile first).
+ * There are NO action-history or pending-choice exceptions: whenever a shared
+ * discard is empty, it is refilled immediately, including while revealed cards
+ * are being chosen and when loading an older/imported state. A deck whose draw
+ * pile is also empty is the sole physical exception because it has no card that
+ * can be moved.
  *
  * Deliberately silent (no feed event): the discard top is rendered on the table,
  * so a line per flip would be noise, and the state is public either way.
@@ -65,14 +54,8 @@ export function ensureSharedDeckDiscard(state: GameState, deckId: string): boole
   return true;
 }
 
-export function refillSharedDeckDiscards(state: GameState, _before: GameState): void {
-  if (state.pendingChoice) {
-    return;
-  }
+export function refillSharedDeckDiscards(state: GameState): void {
   for (const deckId of SHARED_DECK_IDS) {
-    if ((_before.decks[deckId]?.discardPile.length ?? 0) === 0) {
-      continue;
-    }
     ensureSharedDeckDiscard(state, deckId);
   }
 }

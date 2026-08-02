@@ -89,13 +89,13 @@ describe("house-rule resolver", () => {
     expect(legacyOn["estates-nerf"], "untouched rules keep the mode default (off)").toBe(false);
   });
 
-  it("makes yellow-border discovery a hard BINH invariant and a Polish package companion", () => {
+  it("keeps yellow-border discovery independent from modes and every Polish rule", () => {
     expect(
       resolveHouseRules({
         ruleset: "binh",
         houseRules: { "discovery-border-gate": false },
       })["discovery-border-gate"]
-    ).toBe(true);
+    ).toBe(false);
     expect(
       resolveHouseRules({
         ruleset: "legacy",
@@ -104,11 +104,21 @@ describe("house-rule resolver", () => {
           "discovery-border-gate": false,
         },
       })["discovery-border-gate"]
-    ).toBe(true);
+    ).toBe(false);
+    expect(
+      resolveHouseRules({
+        ruleset: "legacy",
+        houseRules: {
+          "polish-rule-111": true,
+          "discovery-border-gate": false,
+        },
+      })["discovery-border-gate"],
+      "Rule 111 must not change yellow-border discovery",
+    ).toBe(false);
 
     const loaded = binhWith({ "discovery-border-gate": true });
     loaded.adventure!.houseRules!["discovery-border-gate"] = false;
-    expect(houseRuleEnabled(loaded, "discovery-border-gate")).toBe(true);
+    expect(houseRuleEnabled(loaded, "discovery-border-gate")).toBe(false);
   });
 
   it("reads frozen house-rule flags even when the ruleset label is Legacy", () => {

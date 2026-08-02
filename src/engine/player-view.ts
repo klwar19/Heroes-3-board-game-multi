@@ -11,6 +11,7 @@ import type {
   PlayerVisibleState,
   ReactionWindow
 } from "./state";
+import { refillSharedDeckDiscards } from "./decks";
 
 function cloneSerializable<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -316,6 +317,11 @@ function getVisiblePendingVisit(visit: PendingVisit | null, viewerPlayerId: Play
 
 export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): PlayerVisibleState {
   const base = cloneSerializable(state);
+  // A restored/legacy snapshot may predate the standing face-up-discard
+  // invariant. Repair the detached view immediately so the table never renders
+  // a shared Spell / Ability / Artifact discard as empty; the reducer performs
+  // the same repair on the authoritative state at every action boundary.
+  refillSharedDeckDiscards(base);
   // Computer policy memory is internal notes for AI seats — never show another
   // seat's focus/sticky/visit trail. The viewing computer seat may keep its own
   // (harmless for humans; observeForComputer also injects from authoritative).

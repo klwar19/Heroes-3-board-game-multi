@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { startNeutralEncounter } from "./adventure-reducer";
-import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createAdventureLobbyState,
+  NEUTRAL_PLAYER_ID,
+  redactStateForSeat
+} from "./index";
 import { getLegalActions } from "./legal-actions";
 import { manualGuardControllerId, neutralCombatControllerId, pvpNeutralControllerId } from "./neutral-control";
 import type { CombatUnitState, GameAction, GameState, PlayerId, UnitGrade, UnitType } from "./state";
@@ -14,9 +20,9 @@ import type { CombatUnitState, GameAction, GameState, PlayerId, UnitGrade, UnitT
  * still hand any single activation back to the rulebook AI with the
  * "Let the unit act (automatic)" button.
  *
- * Every claim below is mutation-checked with a mode-off CONTROL, and the mode
- * never grants the fighter the PvP-only perks (the pre-battle formation sort,
- * the NEUTRAL_CONTROL_ASSIGNED notice).
+ * Every claim below is mutation-checked with a mode-off CONTROL. The fighter
+ * gets the manual pre-battle formation window, but never the PvP-only opponent
+ * assignment or its NEUTRAL_CONTROL_ASSIGNED notice.
  */
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -46,20 +52,39 @@ function makeGame(
 /**
  * Runs the Combat Setup flow for a p1 guard fight up to (and stopping at) the
  * pre-battle Neutral formation-sort window when one opens (Manual guard control,
- * ≥2 guards). Used by the placement tests, which then drive the sort by hand.
+ * one or more guards). Used by the placement tests, which then drive the sort by hand.
  */
 function fightToPlacement(
   seed: string,
   options: { manualGuardControl?: boolean; houseRules?: Record<string, boolean>; difficulty?: number } = {}
 ): GameState {
-  let state = makeGame(seed, options);
+  return fightStateToPlacement(makeGame(seed, options), options.difficulty ?? 1);
+}
+
+/** Drives an already-created game through the same real Neutral setup flow. */
+function fightStateToPlacement(initial: GameState, difficulty = 1): GameState {
+  let state = initial;
   const fighter: PlayerId = "p1";
   state.activePlayerId = fighter;
+  state.priorityPlayerId = fighter;
+  state.phase = "player-turn";
+  state.pendingChoice = null;
+  state.reactionWindow = null;
+  state.stack = [];
+  if (state.adventure) {
+    state.adventure.pendingTileChoice = null;
+    state.adventure.pendingVisit = null;
+    state.adventure.rewardQueue = [];
+  }
+  for (const player of Object.values(state.players)) {
+    player.canMulligan = false;
+    player.needsHandRefresh = false;
+  }
   state.players[fighter].hand = [];
   const hero = state.heroes[`hero_${fighter}`];
   const field = Object.values(state.adventure!.fields).find((candidate) => (candidate.difficulty ?? 0) > 0);
   expect(field, "the map should hold at least one guarded field").toBeTruthy();
-  field!.difficulty = options.difficulty ?? 1;
+  field!.difficulty = difficulty;
   startNeutralEncounter(state, hero, field!);
   expect(state.combat?.context.kind).toBe("neutral");
 
@@ -86,11 +111,20 @@ function fightWithGuards(
 ): GameState {
   let state = fightToPlacement(seed, options);
   // Manual guard control opens a pre-battle formation sort for the fighter with
-  // ≥2 guards — finish it so downstream combat scenes reach round 1 as before.
+  // one or more guards — finish it so downstream combat scenes reach round 1.
   if (state.combat?.pendingNeutralPlacement === "p1") {
     state = applyOk(state, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
   }
   return state;
+}
+
+/** Finishes Manual Neutral placement for an already-started game. */
+function fightStateWithGuards(state: GameState, difficulty = 1): GameState {
+  let next = fightStateToPlacement(state, difficulty);
+  if (next.combat?.pendingNeutralPlacement === "p1") {
+    next = applyOk(next, { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p1" });
+  }
+  return next;
 }
 
 function guardsOf(state: GameState): CombatUnitState[] {
@@ -190,6 +224,20 @@ function sceneGuardAdjacent(
   return state;
 }
 
+/** Re-shapes a started game's real Neutral encounter into one deterministic manual guard slot. */
+function sceneGuardAdjacentFromGame(initial: GameState): GameState {
+  const state = fightStateWithGuards(initial);
+  const [guard] = guardsOf(state);
+  reshape(guard, { grade: "bronze", position: 5, initiative: 1 });
+  const [preyA, preyB] = playerUnitsOf(state, "p1");
+  reshape(preyA, { grade: "bronze", position: 1, initiative: 99 });
+  if (preyB) {
+    reshape(preyB, { grade: "silver", position: 9, initiative: 98 });
+  }
+  onlyUnits(state, [guard, preyA, ...(preyB ? [preyB] : [])]);
+  return driveTo(state, guardSlotOpen);
+}
+
 describe("Manual guard control — controller derivation", () => {
   it("assigns the FIGHTER as the guards' controller; CONTROLs: mode off = AI, computer fighter = AI", () => {
     const state = fightWithGuards("mgc-derive", { manualGuardControl: true });
@@ -218,6 +266,14 @@ describe("Manual guard control — the fighter commands the guard", () => {
     const state = sceneGuardAdjacent("mgc-command", { manualGuardControl: true });
     expect(guardSlotOpen(state)).toBe(true);
     const [guard] = guardsOf(state);
+
+    // The guard remains a Neutral ARMY unit, while every public decision-owner
+    // field names the human seat. Changing controllerId would corrupt combat
+    // sides; leaving activePlayerId as "neutral" made the real board, AFK and
+    // hosted-control layers treat this usable activation like nobody's turn.
+    expect(guard.controllerId).toBe(NEUTRAL_PLAYER_ID);
+    expect(state.activePlayerId).toBe("p1");
+    expect(state.priorityPlayerId).toBe("p1");
 
     const offers = getLegalActions(state, "p1").map((legal) => legal.action);
     // Free control (manual-only): strikes AND Defend/hold are offered — not the
@@ -330,6 +386,119 @@ describe("Manual guard control — option plumbing", () => {
 
     const off = createAdventureGameState({ seed: "mgc-freeze-off", difficulty: "normal", rollFirstPlayer: false });
     expect(off.adventure?.manualGuardControl ?? false).toBe(false);
+  });
+
+  it("survives the real private single-player lobby and accepts the owner's hosted neutral command", () => {
+    let state = createAdventureLobbyState({
+      seed: "mgc-lobby-sp",
+      sessionMode: "single-player",
+      computerOpponents: 1
+    });
+    state.room = {
+      hosted: true,
+      hostClientId: "owner-client",
+      visibility: "private",
+      ranked: false,
+      members: [{ clientId: "owner-client", name: "Owner", seat: "p1", isHost: true }]
+    };
+
+    let result = applyAction(
+      state,
+      { type: "SET_GAME_OPTIONS", playerId: "p1", options: { manualGuardControl: true } },
+      { actorClientId: "owner-client" }
+    );
+    expect(result.errors).toEqual([]);
+    state = result.state;
+    result = applyAction(
+      state,
+      { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" },
+      { actorClientId: "owner-client" }
+    );
+    expect(result.errors).toEqual([]);
+    state = result.state;
+    result = applyAction(
+      state,
+      { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: "sandro" },
+      { computerActorPlayerId: "p2" }
+    );
+    expect(result.errors).toEqual([]);
+    state = result.state;
+    result = applyAction(
+      state,
+      { type: "START_ADVENTURE", playerId: "p1" },
+      { actorClientId: "owner-client" }
+    );
+    expect(result.errors).toEqual([]);
+    state = result.state;
+
+    expect(state.sessionMode).toBe("single-player");
+    expect(state.controllers?.p1?.kind).toBe("human");
+    expect(state.controllers?.p2?.kind).toBe("computer");
+    expect(state.adventure?.manualGuardControl).toBe(true);
+
+    const guardTurn = sceneGuardAdjacentFromGame(state);
+    const guard = guardsOf(guardTurn)[0];
+    const command = getLegalActions(guardTurn, "p1").find(
+      (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === guard.id
+    );
+    expect(command, "the private game's owner should receive a guard attack").toBeTruthy();
+    const submitted = applyAction(guardTurn, command!.action, { actorClientId: "owner-client" });
+    expect(submitted.errors, submitted.errors.map((error) => error.message).join("; ")).toEqual([]);
+  });
+
+  it("survives a hosted multiplayer ready-check and binds guard commands to the fighter's seat", () => {
+    let state = createAdventureLobbyState({ seed: "mgc-lobby-mp", playerCount: 2 });
+    state.room = {
+      hosted: true,
+      hostClientId: "client-one",
+      members: [
+        { clientId: "client-one", name: "One", seat: "p1", isHost: true },
+        { clientId: "client-two", name: "Two", seat: "p2", isHost: false }
+      ]
+    };
+    const act = (action: GameAction, actorClientId: string) => {
+      const applied = applyAction(state, action, { actorClientId, now: 2_000_000_000 });
+      expect(applied.errors, applied.errors.map((error) => error.message).join("; ")).toEqual([]);
+      state = applied.state;
+    };
+
+    act({ type: "SET_GAME_OPTIONS", playerId: "p1", options: { manualGuardControl: true } }, "client-one");
+    act(
+      { type: "CHOOSE_FACTION", playerId: "p1", factionId: "castle", heroDefId: "catherine" },
+      "client-one"
+    );
+    act(
+      { type: "CHOOSE_FACTION", playerId: "p2", factionId: "necropolis", heroDefId: "sandro" },
+      "client-two"
+    );
+    act({ type: "START_ADVENTURE", playerId: "p1" }, "client-one");
+    expect(state.setupLobby?.startCheck).toBeTruthy();
+    act({ type: "CONFIRM_START_ADVENTURE", playerId: "p2" }, "client-two");
+    expect(state.adventure?.manualGuardControl).toBe(true);
+
+    const guardTurn = sceneGuardAdjacentFromGame(state);
+    const guard = guardsOf(guardTurn)[0];
+    const command = getLegalActions(guardTurn, "p1").find(
+      (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === guard.id
+    );
+    expect(command, "the fighter should receive a guard attack after the ready-check").toBeTruthy();
+
+    // Multiplayer clients compute their controls from the seat-redacted frame,
+    // not the canonical server state. The command must survive that boundary.
+    const p1Frame = redactStateForSeat(guardTurn, "p1");
+    expect(
+      getLegalActions(p1Frame, "p1").some(
+        (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === guard.id
+      )
+    ).toBe(true);
+
+    // The other browser cannot forge p1's manual guard action.
+    const wrongSeat = applyAction(guardTurn, command!.action, { actorClientId: "client-two" });
+    expect(wrongSeat.errors[0]?.message).toContain("own seat");
+    // The fighter's browser is accepted and the unit stays on the Neutral side.
+    const submitted = applyAction(guardTurn, command!.action, { actorClientId: "client-one" });
+    expect(submitted.errors, submitted.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(submitted.state.combat?.units[guard.id].controllerId).toBe(NEUTRAL_PLAYER_ID);
   });
 });
 

@@ -1060,6 +1060,7 @@ const GATE_PAIR_CSS: Record<1 | 2 | 3 | 4, string> = {
  */
 export function MapDesigner({
   scenarioId,
+  seatCount,
   customMap,
   onChange,
   objects = EMPTY_OBJECTS,
@@ -1072,6 +1073,8 @@ export function MapDesigner({
   onHexEventsChange
 }: {
   scenarioId: string;
+  /** Active scenario seats to draw/reserve (defaults to the legacy footprint). */
+  seatCount?: number;
   customMap: CustomMapTilePlan[];
   onChange: (next: CustomMapTilePlan[]) => void;
   /** Designer one-hex objects (Monolith/Whirlpool tokens + colored Gate pairs). */
@@ -1235,8 +1238,13 @@ export function MapDesigner({
   const hexEventClickSuppressRef = useRef(false);
 
   const starts = useMemo<HexCoord[]>(
-    () => (scenario ? scenario.layout.starts.map((start) => ({ ...start })) : []),
-    [scenario]
+    () => {
+      if (!scenario) return [];
+      const legacyCount = scenario.layout.unusedStartsAsNearFrom ?? scenario.layout.starts.length;
+      const count = Math.max(0, Math.min(seatCount ?? legacyCount, scenario.layout.starts.length));
+      return scenario.layout.starts.slice(0, count).map((start) => ({ ...start }));
+    },
+    [scenario, seatCount]
   );
 
   // Once the designer places its own Town (Ⅰ) tiles, those become the seats and
@@ -2052,6 +2060,7 @@ export function MapDesigner({
       const object: CustomMapObject = {
         kind: armedObject.kind,
         ...(needsPair ? { pair: armedObject.pair ?? 1 } : {}),
+        ...(armedObject.kind === "garrison" ? { garrisonBorderPassage: true } : {}),
         placement: { type: "standalone", row, col }
       };
       onObjectsChange?.([...objects, object]);
@@ -5848,7 +5857,8 @@ export function MapDesigner({
                     <small className="popoverHint">
                       Default keeps the printed objective. Toggle Town / Utopia / Grail to allow any of those —
                       with several selected the engine picks randomly (or the discovering player, when
-                      &quot;Player picks&quot; is on).
+                      &quot;Player picks&quot; is on). Face-down slots that select exactly Grail + Utopia are balanced
+                      together: 4 slots become 2 + 2; 3 slots become a random 2 + 1 split.
                     </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
@@ -6763,14 +6773,13 @@ export function MapDesigner({
               <label className="popoverCheckRow">
                 <input
                   aria-label="Garrison opens yellow borders"
-                  checked={selectedObject.garrisonBorderPassage === true}
+                  checked={selectedObject.garrisonBorderPassage !== false}
                   onChange={(event) =>
                     onObjectsChange?.(
                       objects.map((object, i) => {
                         if (i !== (selectedObjectIndex as number)) return object;
                         const next = { ...object };
-                        if (event.target.checked) next.garrisonBorderPassage = true;
-                        else delete next.garrisonBorderPassage;
+                        next.garrisonBorderPassage = event.target.checked;
                         return next;
                       })
                     )

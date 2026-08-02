@@ -1138,7 +1138,8 @@ function makeNeutralSeatPlayer(): PlayerState {
  */
 export function validateCustomMapPlan(
   plans: CustomMapTilePlan[],
-  scenario: ScenarioDefinition
+  scenario: ScenarioDefinition,
+  activeSeatCount = scenario.layout.unusedStartsAsNearFrom ?? scenario.layout.starts.length
 ): { accepted: CustomMapTilePlan[]; problems: string[] } {
   const problems: string[] = [];
   const accepted: CustomMapTilePlan[] = [];
@@ -1266,7 +1267,11 @@ export function validateCustomMapPlan(
       accepted.push(plan);
     }
   } else {
-    placedCenters.push(...scenario.layout.starts.map((start) => ({ ...start })));
+    placedCenters.push(
+      ...scenario.layout.starts
+        .slice(0, Math.max(0, Math.min(activeSeatCount, scenario.layout.starts.length)))
+        .map((start) => ({ ...start }))
+    );
   }
   // Supply tiles drop wherever the designer placed them — holes, tip-only
   // contact and disconnected islands are all allowed. The one rule is no
@@ -1306,7 +1311,9 @@ export function validateCustomMapPlan(
   const surfaceCenterKeys = new Set<string>(
     startingPlans.length > 0
       ? accepted.filter((plan) => plan.group === "starting").map((plan) => `${plan.row}:${plan.col}`)
-      : scenario.layout.starts.map((start) => `${start.row}:${start.col}`)
+      : scenario.layout.starts
+          .slice(0, Math.max(0, Math.min(activeSeatCount, scenario.layout.starts.length)))
+          .map((start) => `${start.row}:${start.col}`)
   );
   for (const plan of accepted) {
     // A gate link's SURFACE side must be a non-underground tile: an
@@ -1975,8 +1982,8 @@ function applyCustomMapObjects(adventure: AdventureState, objects: CustomMapObje
     ) {
       field.onewayAlwaysPickable = true;
     }
-    if (object.kind === "garrison" && object.garrisonBorderPassage) {
-      field.garrisonBorderPassage = true;
+    if (object.kind === "garrison") {
+      field.garrisonBorderPassage = object.garrisonBorderPassage !== false;
     }
     applyCustomGuardToField(field, objectGuardSpec(object));
     stampDesignerFieldReward(field, object.reward, object.vp);
@@ -2317,6 +2324,38 @@ function popTileMatchingFeature(
  * back to a random draw. Holy Grail no longer forces a Dragon Utopia.
  */
 type GrailUtopiaCounts = { grail: number; dragon_utopia: number };
+
+/**
+ * Resolve editor-authored mystery pairs as ONE balanced pool instead of making
+ * an independent coin flip on every tile. This is the information contract the
+ * map author sees: four paired fields become 2 Grails + 2 Utopias; three become
+ * either 2+1 or 1+2. The shuffled plan order hides which face-down position got
+ * which result while remaining reproducible from the game seed.
+ */
+function balancedHiddenGrailUtopiaAssignments(
+  plans: readonly CustomMapTilePlan[],
+  seed: string
+): Map<CustomMapTilePlan, "grail" | "dragon_utopia"> {
+  const paired = plans.filter((plan) => {
+    if (plan.group !== "center" || !plan.faceDown || plan.playerViiPick) return false;
+    const choices = new Set(plan.viiFields ?? []);
+    return choices.size === 2 && choices.has("grail") && choices.has("dragon_utopia");
+  });
+  if (paired.length === 0) return new Map();
+
+  const random = createSeededRandom(`${seed}#designer-hidden-grail-utopia-count`);
+  const grailCount = Math.floor(paired.length / 2) + (paired.length % 2 === 1 ? random.nextInt(0, 1) : 0);
+  const shuffled = shuffleCards(
+    paired.map((_, index) => String(index)),
+    `${seed}#designer-hidden-grail-utopia-positions`
+  ).map((index) => paired[Number(index)]);
+  return new Map(
+    shuffled.map((plan, index) => [
+      plan,
+      index < grailCount ? "grail" as const : "dragon_utopia" as const
+    ])
+  );
+}
 
 /** Polish objective mix: one objective per seat, with the 3-player split rolled. */
 function polishGrailUtopiaCounts(playerCount: number, seed: string): GrailUtopiaCounts {
@@ -2746,7 +2785,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     Math.min(scenario.maxPlayers, scenario.layout.starts.length)
   );
   const customMap = setupOptions.customMap?.length
-    ? validateCustomMapPlan(setupOptions.customMap, scenario).accepted
+    ? validateCustomMapPlan(setupOptions.customMap, scenario, playerConfigs.length).accepted
     : null;
   const soloOpponentLimit = Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1;
   // Resolve authored solo roles only for an actual single-player session. The
@@ -2914,7 +2953,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       : {}),
     houseRules,
     chooseGatePlacement: chooseGatePlacementOn,
-    ...(victoryMode === "grail" || polishGrailUtopiaOn
+    ...(victoryMode === "grail" || polishGrailUtopiaOn || mapPreset?.objectives?.hiddenGrailUtopia
       ? { grail: { status: "uncollected" as const } }
       : {}),
     // Grail Hunt and Dragon Hunt both track the "defeat every enemy hero" path.
@@ -3214,6 +3253,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // slot returns the same pick. An exact `tileDefId` always wins; starting
     // tiles (faction art) never draw from a list.
     const oneOfPick = new Map<CustomMapTilePlan, string>();
+    const hiddenGrailUtopiaAssignments = balancedHiddenGrailUtopiaAssignments(customMap, seed);
+    const effectiveViiPlan = (plan: CustomMapTilePlan): CustomMapTilePlan => {
+      const designation = hiddenGrailUtopiaAssignments.get(plan);
+      return designation
+        ? { ...plan, viiField: designation, viiFields: undefined, playerViiPick: undefined }
+        : plan;
+    };
     const effectiveExactTileDefId = (plan: CustomMapTilePlan): string | undefined => {
       if (plan.tileDefId) {
         return plan.tileDefId;
@@ -3259,7 +3305,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ).length;
     const authoredObjectives: GrailUtopiaCounts = { grail: 0, dragon_utopia: 0 };
     for (const plan of customMap) {
-      const designated = plan.viiField;
+      const designated = effectiveViiPlan(plan).viiField;
       if (designated === "grail" || designated === "dragon_utopia") {
         authoredObjectives[designated] += 1;
         continue;
@@ -3403,7 +3449,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           }
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
-          applyDesignedViiField(adventure, tile, plan);
+          applyDesignedViiField(adventure, tile, effectiveViiPlan(plan));
           applyDesignedSettlement(adventure, tile, plan);
           if (excludedFeatures.length > 0) {
             tile.excludeFeatures = [...excludedFeatures];
@@ -3422,7 +3468,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           const tile = instantiateTile(adventure, faceUpId, center, plan.rotation ?? 0, false);
           applyDesignedBorders(tile, plan);
           applyDesignedUnderground(tile, plan);
-          applyDesignedViiField(adventure, tile, plan);
+          applyDesignedViiField(adventure, tile, effectiveViiPlan(plan));
           applyDesignedSettlement(adventure, tile, plan);
           if (planTokens(plan).length > 0) {
             plannedTokens.push({ plan, tile });
@@ -3463,7 +3509,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       const { accepted } = validateCustomMapObjects(
         customMap,
         mapPreset.objects,
-        scenario.layout.starts.map((start) => ({ ...start }))
+        playerConfigs.map((_, index) => ({ ...startCenterFor(index) }))
       );
       applyCustomMapObjects(adventure, accepted);
     }
@@ -3558,7 +3604,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       }
     }
     // Face-down Near (IV–V) and Center (VI–VII) tiles per the scenario layout.
-    for (const center of scenario.layout.near) {
+    // Border Skirmish exposes six possible seats around its hub; positions not
+    // occupied at the chosen player count remain Near tiles, preserving the
+    // same complete ring for 2, 3, 4, 5 and 6 players.
+    const unusedSeatCenters = scenario.layout.starts.slice(
+      Math.max(playerConfigs.length, scenario.layout.unusedStartsAsNearFrom ?? scenario.layout.starts.length)
+    );
+    for (const center of [...scenario.layout.near, ...unusedSeatCenters]) {
       const tileDefId =
         grailNearFarIndex < grailNearFarOverflow.length
           ? grailNearFarOverflow[grailNearFarIndex++]
@@ -3742,7 +3794,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 // Map-setup lobby: pick factions and heroes, then build the scenario map
 // ---------------------------------------------------------------------------
 
-const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3", "Player 4"];
+const LOBBY_SEAT_NAMES = ["Player 1", "Player 2", "Player 3", "Player 4", "Player 5", "Player 6"];
 
 /** Seats the lobby opens for a scenario, clamped to its min/max players. */
 /**
@@ -4613,7 +4665,7 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
         throw new Error(`A designed map holds at most ${MAX_CUSTOM_MAP_TILES} tiles.`);
       }
       const scenario = getScenario(lobby.options.scenarioId);
-      const { accepted, problems } = validateCustomMapPlan(next.customMap, scenario);
+      const { accepted, problems } = validateCustomMapPlan(next.customMap, scenario, lobby.seats.length);
       if (problems.length > 0) {
         throw new Error(problems[0]);
       }
@@ -5579,7 +5631,7 @@ export function startAdventureFromLobby(
   // + lobby show the same warnings live, so this is never a surprise at start.
   if (lobby.options.customMap && lobby.options.customMap.length > 0) {
     const scenario = getScenario(lobby.options.scenarioId);
-    const acceptedPlan = validateCustomMapPlan(lobby.options.customMap, scenario).accepted;
+    const acceptedPlan = validateCustomMapPlan(lobby.options.customMap, scenario, lobby.seats.length).accepted;
     const conflicts = victoryDesignConflicts(acceptedPlan, lobby.options.victoryMode);
     if (conflicts.length > 0) {
       throw new Error(conflicts[0]);

@@ -149,7 +149,7 @@ export type HouseRuleId =
   // army's 5 strongest unit cards (bronze 1 / silver 2 / gold 3 / azure 4;
   // Pack ×2; +0.5 per Unit-Stack layer) against 2×Field-Difficulty + X
   // (easy 1 / normal 2 / hard 3 / impossible 4; +1 when playing with Unit
-  // Stacks) — VI–VII fields included. Covered + no Experience possible →
+  // Stacks), including VI–VII fields. Covered + no Experience possible →
   // MANDATORY Quick Combat; covered + Experience possible → the player chooses
   // fight vs Quick Combat; not covered → the fight is mandatory (the classic
   // level > difficulty auto-win no longer applies).
@@ -4609,6 +4609,8 @@ export type GameEvent =
       type: "UNIT_LETHAL_HIT";
       attackerId: UnitId;
       defenderId: UnitId;
+      /** The hit reaches 0 HP on a Polish Stack layer, but not the card. */
+      stackLayerOnly?: boolean;
     }
   | {
       /**
@@ -7979,6 +7981,12 @@ export type CombatContext =
        * (typed loosely here because state.ts has no data-layer imports).
        */
       bankId?: string;
+      /**
+       * Use the Creature Bank battlefield layout (guards in shuffled corners,
+       * attacker in the central six). Also set for Dragon Utopia objective
+       * fields, which use their scenario guard draw rather than `bankId` cards.
+       */
+      bankFormation?: boolean;
       /** Number of Stacked defenders placed on the bank (the reward's X). */
       bankStackCount?: number;
       /**
@@ -8915,7 +8923,10 @@ export type MapFieldState = {
   onewayExitMode?: OnewayExitMode;
   /** One-way monolith EXIT: freely choosable before the roll in "mix" mode. */
   onewayAlwaysPickable?: boolean;
-  /** Designer Garrison option: this hex opens adjacent yellow borders. */
+  /**
+   * Designer Garrison option: this hex opens adjacent yellow borders.
+   * Absent on older maps means enabled; only an explicit `false` disables it.
+   */
   garrisonBorderPassage?: boolean;
   /**
    * Designer yellow border lines on a STANDALONE object hex — ABSOLUTE
@@ -9247,6 +9258,9 @@ export type VisitStep =
   | {
       type: "ROLL_RESOURCE_DICE";
       count: number;
+      /** Number of rolled results to resolve (default 1). Melodia VI raises
+       * both this and `count` for location rolls. */
+      resolveCount?: number;
       /** This Resource roll is the second stage of a Treasure-die face. */
       origin?: "treasure";
       /**
@@ -9257,7 +9271,12 @@ export type VisitStep =
       capHighValues?: boolean;
     }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
-  | { type: "ROLL_TREASURE_DICE"; count: number }
+  | {
+      type: "ROLL_TREASURE_DICE";
+      count: number;
+      /** Number of rolled results to resolve (default 1). */
+      resolveCount?: number;
+    }
   | {
       /**
        * Starting bonus (rulebook p.10): Search (2) the Artifact deck once or
@@ -11118,6 +11137,12 @@ export type AdventureState = {
     obelisksVisited?: Record<PlayerId, MapSpaceId[]>;
   };
   /**
+   * A special-rules Grail guard has already been defeated. Any Grail field
+   * materialized later from a still-hidden tile becomes a Dragon Utopia, so a
+   * face-down second site cannot evade the map-wide conversion.
+   */
+  grailFieldCleared?: boolean;
+  /**
    * Grail Hunt / Dragon Hunt: distinct enemy players each player has beaten in
    * hero combat at least once (the "defeat every enemy hero" win path).
    */
@@ -11578,6 +11603,12 @@ export type CustomMapPreset = {
       | { kind: "treasure_roll"; count: number }
       | { kind: "resource_roll"; count: number }
       /**
+       * Open a Trading-Post resource exchange for every live player. On a
+       * Resource round this is queued only after automatic income is collected;
+       * `tradesOnly` prevents card sales and war-machine purchases.
+       */
+      | { kind: "market_trade" }
+      /**
        * Each live player chooses exactly one reward at round start. Rewards use
        * the same implemented vocabulary as a designer Obelisk bonus.
        */
@@ -11736,6 +11767,14 @@ export type CustomMapPreset = {
    *     Dragon Hunt (defeating the Utopia wins outright).
    */
   objectives?: {
+    /**
+     * Editor-authored hidden Grail / Dragon Utopia field package. Face-down
+     * center slots which allow both designations are balanced as a group
+     * (4 = 2/2; 3 = a seeded-random 2/1 split), while the engine applies the
+     * special guards, dig/build/token and Utopia rewards. The legacy Polish
+     * house-rule toggle enables the same package without writing this flag.
+     */
+    hiddenGrailUtopia?: boolean;
     grailObelisksRequired?: 1 | 2 | 3 | 4;
     utopiaGuards?: DragonUtopiaGuards;
     utopiaBonusSearch?: 1 | 2 | 3;
@@ -11822,8 +11861,8 @@ export type CustomMapPreset = {
  * The metrics ARE the Victory-Points / grail-progress readers (same numbers as
  * VP scoring / the dig unlock — an invariant, never a duplicate). Params are
  * clamped by the sanitiser (`sanitizeCustomWinConditions`, map-preset.ts).
- * `defeat-dragon-utopia` carries NO count: the ledger flag is a boolean, so
- * "defeat N Utopias" is unsupported. HONEST LIMIT: `obelisks` only accrues in
+ * `defeat-dragon-utopia` counts distinct cleared Utopia fields (older saves
+ * carrying only the legacy boolean count as one). HONEST LIMIT: `obelisks` only accrues in
  * GRAIL victory mode — obelisk visits are recorded per player solely for the
  * grail dig (`recordGrailObeliskVisit`), so the condition is meaningful on a
  * grail map (where it short-circuits the dig+deliver) and is a silent no-op on
@@ -11854,7 +11893,7 @@ export type CustomWinCondition =
   | { kind: "buildings"; count: number }
   | { kind: "obelisks"; count: number }
   | { kind: "defeat-heroes"; count: number }
-  | { kind: "defeat-dragon-utopia" }
+  | { kind: "defeat-dragon-utopia"; count?: number }
   | {
       kind: "hold-with-grail";
       /** Consecutive full rounds of continuous control + Grail possession (1–10). */
@@ -11899,6 +11938,8 @@ export type VpLedgerEntry = {
   surrenders?: number;
   /** Whether this player has defeated a Dragon Utopia (the defeat-dragon-utopia objective). */
   utopiaDefeated?: boolean;
+  /** Distinct Dragon Utopia field ids this player cleared (custom N-Utopia wins). */
+  utopiaDefeatedFieldIds?: MapSpaceId[];
   /**
    * Total Victory Points this player earned by capturing designer-designated Ⅶ
    * objective centers (`CustomMapTilePlan.viiFieldVp`). Summed at the capture
@@ -12021,7 +12062,10 @@ export type CustomMapObject = {
    * cap 6) at sanitize.
    */
   borderEdges?: number[];
-  /** Garrison only: this hex opens adjacent yellow borders while occupied. */
+  /**
+   * Garrison only: this hex opens adjacent yellow borders. Defaults to true;
+   * an explicit false lets a designer build a deliberately sealed outpost.
+   */
   garrisonBorderPassage?: boolean;
   /** One-way ENTRANCE only: how the traveller's exit is picked (default "certain"). */
   exitMode?: OnewayExitMode;
@@ -13115,6 +13159,7 @@ export type PendingChoice =
         | "diplomacy-skip"
         | "polish-quick-combat"
         | "diplomacy-recruit"
+        | "dimension-door-hero"
         | "dimension-door"
         | "view-earth"
         | "learning-level-up"
@@ -13425,8 +13470,8 @@ export type PendingChoice =
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
       };
-      /** eagle-eye: the dug spell waiting to be taken. */
-      eagleEye?: { deckId: DeckId; cardId: CardId };
+      /** Found shared-deck Spell waiting for its take-or-discard decision. */
+      eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
       handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
       /**
@@ -13435,6 +13480,8 @@ export type PendingChoice =
        * option carries no destination).
        */
       dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
+      /** First step when more than one deployed Hero can cast Dimension Door. */
+      dimensionDoorHero?: { heroIds: HeroId[]; range: number };
       /**
        * view-earth: the casting Hero and the enemy-owned Mine fields in reach
        * (index-aligned with the options; the final "Cancel" option carries no

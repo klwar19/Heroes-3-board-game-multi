@@ -28,11 +28,13 @@ function makeMap(overrides: Partial<SharedMapRecord> & { id: string }): SharedMa
 }
 
 describe("clampMapPlayers", () => {
-  it("clamps a request into the scenario's seat range (skirmish allows 2–4)", () => {
+  it("clamps a request into the scenario's seat range (skirmish allows 2–6)", () => {
     expect(clampMapPlayers("skirmish", 1)).toBe(2);
     expect(clampMapPlayers("skirmish", 3)).toBe(3);
     expect(clampMapPlayers("skirmish", 4)).toBe(4);
-    expect(clampMapPlayers("skirmish", 9)).toBe(4);
+    expect(clampMapPlayers("skirmish", 5)).toBe(5);
+    expect(clampMapPlayers("skirmish", 6)).toBe(6);
+    expect(clampMapPlayers("skirmish", 9)).toBe(6);
   });
 
   it("pins a 2-player-only scenario to 2 even when 4 is asked for", () => {

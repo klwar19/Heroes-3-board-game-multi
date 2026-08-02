@@ -152,6 +152,15 @@ function fightWithGuards(
     freeze -= 1;
   }
   state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: fighter });
+  // Human-controlled Neutral armies pause for their own formation step even
+  // with one difficulty-I guard. This helper promises a fully started combat,
+  // so explicitly ready that controller before checking combat-start scripts.
+  if (state.combat?.pendingNeutralPlacement) {
+    state = applyOk(state, {
+      type: "FINISH_NEUTRAL_PLACEMENT",
+      playerId: state.combat.pendingNeutralPlacement
+    });
+  }
   state.combat!.dice.scriptedRolls = Array(60).fill(0);
   state.combat!.dice.rollCount = 0;
   return state;

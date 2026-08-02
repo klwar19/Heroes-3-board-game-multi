@@ -1538,6 +1538,8 @@ export type DiceCue = {
   defenseBonus: number;
   damage: number;
   isRetaliation: boolean;
+  /** Printed follow-up attacks are called out as a distinct second attack. */
+  abilityAttack?: { name: string; baseAttack: number };
   /**
    * Every die rolled counts toward the outcome (Slayer counts the "+1"s; the
    * Champions' "apply both" sums two faces). The overlay then keeps every die
@@ -1697,7 +1699,9 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
           <strong>
             {cue.spellMode
               ? (cue.title ?? "Spell")
-              : `${cue.isRetaliation ? "Retaliation!" : "Attack!"} ${cue.attackerName} → ${cue.defenderName}`}
+              : cue.abilityAttack
+                ? `2nd attack — ${cue.abilityAttack.name} (Attack ${cue.abilityAttack.baseAttack})! ${cue.attackerName} → ${cue.defenderName}`
+                : `${cue.isRetaliation ? "Retaliation!" : "Attack!"} ${cue.attackerName} → ${cue.defenderName}`}
           </strong>
           {cue.rollMode !== "normal" ? <span className="rollMode">{cue.rollMode}</span> : null}
         </header>
@@ -2614,7 +2618,10 @@ export type FirstPlayerRollCue = {
  */
 export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCue; onDone: () => void }) {
   const [attemptIndex, setAttemptIndex] = useState(0);
-  const [phase, setPhase] = useState<"rolling" | "revealed">("rolling");
+  // Do not launch immediately behind the last starting-bonus animation. Every
+  // client gets an explicit local acknowledgement before the already-recorded
+  // shared roll ceremony begins.
+  const [phase, setPhase] = useState<"ready" | "rolling" | "revealed">("ready");
 
   const attempt = cue.attempts[attemptIndex] ?? cue.attempts[cue.attempts.length - 1];
   const isFinalAttempt = attemptIndex >= cue.attempts.length - 1;
@@ -2622,9 +2629,8 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
   const revealed = phase === "revealed";
   const rolling = phase === "rolling";
 
-  // The ceremony auto-plays straight off the shared cue, so every seat watches
-  // the identical sequence on the same beat — nobody clicks to roll, and a tie
-  // rolls on by itself. Only the final "Begin" dismissal is left to each seat.
+  // Once acknowledged, the ceremony auto-plays the shared attempts; tied
+  // attempts continue on their own. The final Begin dismissal stays local too.
   useEffect(() => {
     if (phase !== "rolling") {
       return;
@@ -2672,6 +2678,11 @@ export function FirstPlayerRollOverlay({ cue, onDone }: { cue: FirstPlayerRollCu
         </div>
 
         <div className="firstRollActions">
+          {phase === "ready" ? (
+            <button className="commandButton primary" onClick={() => setPhase("rolling")} type="button">
+              <Dices aria-hidden="true" size={15} /> Roll for first player
+            </button>
+          ) : null}
           {rolling ? <span className="firstRollHint">rolling…</span> : null}
           {revealed && !isFinalAttempt ? (
             <strong className="firstRollTie">It&apos;s a tie — rolling again!</strong>

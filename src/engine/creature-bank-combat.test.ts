@@ -547,6 +547,63 @@ describe("Creature Bank battlefield formation", () => {
     expect(guardPositions).toEqual([...CREATURE_BANK_GUARD_CORNERS].sort((left, right) => left - right));
   });
 
+  it.each([
+    ["crypt", "neutral.skeletons"],
+    ["dragon_utopia", "neutral.black_dragons"]
+  ] as const)("randomizes %s unit identities across the corners instead of fixing their slots", (bankId, unitDefId) => {
+    const observed = new Set<number>();
+    for (let index = 0; index < 8; index += 1) {
+      let state = startBankCombat(`bank-random-${bankId}-${index}`, bankId);
+      const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+      state = apply(state, place!.action);
+      state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+      const guard = Object.values(state.combat!.units).find((unit) => unit.unitDefId === unitDefId);
+      expect(guard, `${unitDefId} must be present`).toBeTruthy();
+      expect(CREATURE_BANK_GUARD_CORNERS).toContain(guard!.position);
+      observed.add(guard!.position);
+    }
+    expect(observed.size, `${unitDefId} must not be pinned to one corner`).toBeGreaterThan(1);
+  });
+
+  it("uses the same randomized corner formation for a Dragon Utopia objective field", () => {
+    const observedFaerieDragonCorners = new Set<number>();
+    for (let index = 0; index < 8; index += 1) {
+      let state = createAdventureGameState({
+        seed: `objective-utopia-corners-${index}`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        dragonUtopiaGuards: "four"
+      });
+      state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+        ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+        : state;
+      placeBankUnderHero(state, "dragon_utopia", 7);
+      const field = state.adventure!.fields["bank-field"];
+      field.location = "dragon_utopia";
+      field.difficulty = 7;
+      delete field.bankId;
+      delete field.bankSize;
+
+      startNeutralEncounter(state, getMainHero(state, "p1")!, field);
+      expect(state.combat?.context).toMatchObject({ kind: "neutral", bankFormation: true });
+      expect(placementCellsFor(state, "p1").sort((a, b) => a - b)).toEqual(
+        [...CREATURE_BANK_ATTACKER_CELLS].sort((a, b) => a - b)
+      );
+      const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+      state = apply(state, place!.action);
+      state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+      const guards = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "neutrals");
+      expect(guards.map((unit) => unit.position).sort((a, b) => a - b)).toEqual(
+        [...CREATURE_BANK_GUARD_CORNERS].sort((a, b) => a - b)
+      );
+      const faerieDragon = guards.find((unit) => unit.unitDefId === "neutral.faerie_dragons");
+      expect(faerieDragon).toBeTruthy();
+      observedFaerieDragonCorners.add(faerieDragon!.position);
+    }
+    expect(observedFaerieDragonCorners.size).toBeGreaterThan(1);
+  });
+
   it("lets the attacker deploy only in the central six squares", () => {
     const state = startBankCombat("bank-center", "naga_bank");
 

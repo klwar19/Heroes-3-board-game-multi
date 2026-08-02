@@ -292,7 +292,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-quick-combat",
     label: "Strength-based Quick Combat",
     description:
-      "Polish house rule: Quick Combat availability compares your 5 strongest units (bronze 1 / silver 2 / gold 3 / azure 4; Pack ×2; +0.5 per Stack layer) against 2× the Field Difficulty + game difficulty (easy 1 / normal 2 / hard 3 / impossible 4; +1 when playing with Unit Stacks) — VI–VII fields included. A covered fight that would give no Experience resolves as a mandatory Quick Combat; one that could give Experience offers fight-or-quick. Hero level alone no longer auto-wins.",
+      "Polish house rule: Quick Combat availability compares your 5 strongest units (bronze 1 / silver 2 / gold 3 / azure 4; Pack ×2; +0.5 per Stack layer) against 2× the Field Difficulty + game difficulty (easy 1 / normal 2 / hard 3 / impossible 4; +1 when playing with Unit Stacks) — VI–VII fields included. A covered fight that would give no Experience resolves as a mandatory Quick Combat; one that could give Experience offers fight-or-quick, including when Hero level exactly matches the field. Hero level alone no longer auto-wins.",
     category: "polish",
     default: false,
     legacyDefault: false
@@ -347,9 +347,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "discovery-border-gate",
     label: "Yellow borders block Tile discovery",
     description:
-      "Discovering a face-down Map Tile — or opening a new Ⅱ–Ⅲ one — needs an OPEN border between your Hero's field and the tile; a printed yellow arc or designer border seals it off (a Redwood Observatory / Speculum still reveals across). This is always on in BINH and is also included in the Polish package. Legacy may turn it off for adjacency-only discovery. Movement still obeys borders in every mode, and discovery never crosses the Surface/Subterranean divide.",
-    // Shown in the BINH panel and mirrored into the Polish package by the setup
-    // UI. BINH locks it on; Legacy may still use it as an individual toggle.
+      "Discovering a face-down Map Tile — or opening a new Ⅱ–Ⅲ one — needs an OPEN border between your Hero's field and the tile; a printed yellow arc or designer border seals it off (a Redwood Observatory / Speculum still reveals across). This is an independent toggle: Rule 111 and other Polish rules never change or lock it. Movement still obeys borders in every mode, and discovery never crosses the Surface/Subterranean divide.",
     category: "combat",
     default: true,
     legacyDefault: false
@@ -422,23 +420,14 @@ export function houseRuleDefaultFor(ruleset: GameRuleset, id: HouseRuleId): bool
 /**
  * Resolve every house rule to a concrete boolean for the chosen mode + explicit
  * toggles. Called once at setup; the result is frozen onto adventure state.
- * Explicit flags normally win; yellow-border discovery is the one package
- * invariant forced by BINH or any enabled Polish rule. Legacy otherwise only
- * changes the defaults.
+ * Every flag is independent: an explicit value always wins, while the chosen
+ * mode supplies only the default for flags the host has not touched.
  */
 export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "houseRules">): Record<HouseRuleId, boolean> {
   const explicit = options.houseRules ?? {};
   const resolved = {} as Record<HouseRuleId, boolean>;
-  const polishPackageEnabled = HOUSE_RULES.some(
-    (rule) => rule.category === "polish" && explicit[rule.id] === true
-  );
   for (const def of HOUSE_RULES) {
-    // A yellow border is a hard BINH map invariant. Do not let a stale lobby
-    // override or an old save silently switch it off after BINH is selected.
-    resolved[def.id] =
-      def.id === "discovery-border-gate" && (options.ruleset === "binh" || polishPackageEnabled)
-        ? true
-        : explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
+    resolved[def.id] = explicit[def.id] ?? houseRuleDefaultFor(options.ruleset, def.id);
   }
   return resolved;
 }
@@ -452,15 +441,6 @@ export function resolveHouseRules(options: Pick<GameSetupOptions, "ruleset" | "h
  */
 export function houseRuleEnabled(state: Pick<GameState, "ruleset" | "adventure">, id: HouseRuleId): boolean {
   const frozen = state.adventure?.houseRules;
-  // Enforce the package relationship at read time too, not only at setup. This
-  // upgrades loaded campaigns/saves whose frozen flags predate the invariant.
-  if (
-    id === "discovery-border-gate" &&
-    (state.ruleset === "binh" ||
-      HOUSE_RULES.some((rule) => rule.category === "polish" && frozen?.[rule.id] === true))
-  ) {
-    return true;
-  }
   if (frozen && frozen[id] !== undefined) {
     return frozen[id]!;
   }

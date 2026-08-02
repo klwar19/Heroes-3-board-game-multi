@@ -10,8 +10,7 @@ import type { ArmyUnitState, GameDifficulty, GameState, HeroState, PlayerId } fr
  * - The army's strength — the sum of its 5 STRONGEST unit cards — must reach
  *   the field strength `2 × Field Difficulty + X` (+1 when playing with Unit
  *   Stacks), where X is the game difficulty (easy 1 / normal 2 / hard 3 /
- *   impossible 4). Equal or higher qualifies. VI–VII fields are now eligible
- *   (the classic rule never Quick-Combats those).
+ *   impossible 4). Equal or higher qualifies, including fields VI–VII.
  * - A unit card's strength is its tier value (bronze 1 / silver 2 / gold 3 /
  *   azure 4); a faction PACK side counts double; each purchased Unit-Stack
  *   layer adds 0.5 (the sheet's "stack of Minotaurs = 2×2 + 0.5 = 4.5").
@@ -136,32 +135,22 @@ export function polishQuickCombatXpPossible(hero: HeroState, difficulty: number)
  *   Experience → the guards fall unfought (auto Quick Combat).
  * - `"choice"`: the army covers the field but the fight could pay Experience →
  *   the player is asked to Quick Combat or fight.
- * - `"fight"`: the shortcut does not apply — the rule is off, the hero is at the
- *   EXACT field level and can actually gain Experience, or the army is too weak
- *   — so the normal guard combat is fought.
+ * - `"fight"`: the shortcut does not apply — the rule is off or the army is
+ *   too weak — so the normal guard combat is fought.
  *
- * `level` is the hero's NEUTRAL-battle level (a Secondary Hero fights at its
- * Main Hero's level), i.e. the exact `level` `startNeutralEncounter` computes.
+ * Experience eligibility is read from the actual Hero.
  */
 export type PolishQuickCombatOutcome = "mandatory" | "choice" | "fight";
 
 export function polishQuickCombatOutcome(
   state: GameState,
   hero: HeroState,
-  difficulty: number,
-  level: number
+  difficulty: number
 ): PolishQuickCombatOutcome {
   if (!polishQuickCombatEnabled(state)) {
     return "fight";
   }
   const xpPossible = polishQuickCombatXpPossible(hero, difficulty);
-  // Preserve the ordinary exact-level fight only when THIS hero can actually
-  // gain its Experience. A Secondary Hero uses the Main Hero's effective level
-  // for neutral difficulty, but never gains XP; treating an exact level as an
-  // unconditional carve-out incorrectly disabled its mandatory Quick Combat.
-  if (level === difficulty && xpPossible) {
-    return "fight";
-  }
   if (polishQuickCombatArmyStrength(state, hero.controllerId) < polishQuickCombatFieldStrength(state, difficulty)) {
     return "fight";
   }

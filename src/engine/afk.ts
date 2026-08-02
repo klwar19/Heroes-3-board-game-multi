@@ -1,4 +1,5 @@
 import { appendEvent } from "./events";
+import { combatUnitDecisionOwnerId } from "./neutral-control";
 import {
   isRoundStartEventBarrierActive,
   parallelTurnsActive,
@@ -121,6 +122,10 @@ export function seatIsAwaitedInOrderedPlay(state: GameState, playerId: PlayerId)
     combat.context.kind !== "sandbox" &&
     (combat.attackerPlayerId === playerId || combat.defenderPlayerId === playerId)
   ) {
+    return true;
+  }
+  const activeCombatUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  if (combat && activeCombatUnit && combatUnitDecisionOwnerId(state, combat, activeCombatUnit) === playerId) {
     return true;
   }
   if (state.pendingChoice?.playerId === playerId) {

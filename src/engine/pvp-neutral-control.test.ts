@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { eliminatePlayer, getMainHero, placeCreatureBank } from "./adventure";
 import { startNeutralEncounter } from "./adventure-reducer";
 import { nextAfkDropAction } from "./afk-drop";
-import { turnClockPausedFor } from "./afk";
-import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID } from "./index";
+import { seatIsAwaitedInOrderedPlay, turnClockPausedFor } from "./afk";
+import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID, redactStateForSeat } from "./index";
 import { getLegalActions } from "./legal-actions";
 import { neutralCombatControllerId } from "./neutral-control";
 import { parallelInteractionBlocker } from "./parallel-turns";
@@ -80,8 +80,10 @@ function fightWithGuards(
   const hero = state.heroes[`hero_${fighter}`];
   const field = Object.values(state.adventure!.fields).find((candidate) => (candidate.difficulty ?? 0) > 0);
   expect(field, "the map should hold at least one guarded field").toBeTruthy();
-  // Difficulty 1 draws exactly ONE bronze guard (no pre-battle sort window, which
-  // needs ≥2 guards); a caller wanting the sort window passes difficulty ≥2.
+  // Difficulty 1 draws exactly ONE bronze guard. Controlled Neutral armies now
+  // get a placement window even for that one guard; most combat-behaviour tests
+  // below finish that setup immediately, while the placement-specific tests use
+  // difficulty 2 and intentionally stop at the open window.
   field!.difficulty = options.difficulty ?? 1;
   startNeutralEncounter(state, hero, field!);
   expect(state.combat?.context.kind).toBe("neutral");
@@ -97,6 +99,12 @@ function fightWithGuards(
     freeze -= 1;
   }
   state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: fighter });
+  if (state.combat?.pendingNeutralPlacement && (options.difficulty ?? 1) === 1) {
+    state = applyOk(state, {
+      type: "FINISH_NEUTRAL_PLACEMENT",
+      playerId: state.combat.pendingNeutralPlacement
+    });
+  }
   state.combat!.dice.scriptedRolls = Array(40).fill(0);
   state.combat!.dice.rollCount = 0;
   return state;
@@ -265,6 +273,7 @@ describe("PvP Neutral Control — the next player drives the guards", () => {
   it("stops on the guard's activation and offers the NEXT player its unit actions (fighter gets none)", () => {
     const state = sceneTwoPreys("pnc-drive-menu", {});
     expect(guardSlotOpen(state)).toBe(true);
+    expect(state.activePlayerId).toBe("p2");
     expect(state.priorityPlayerId).toBe("p2");
 
     const guard = guardsOf(state)[0];
@@ -280,6 +289,33 @@ describe("PvP Neutral Control — the next player drives the guards", () => {
         (offer.action.type === "DEFEND_UNIT" && offer.action.unitId === guard.id)
     );
     expect(fighterUnitActions).toEqual([]); // the FIGHTER may not drive the guards
+  });
+
+  it("keeps the controller's command visible in a redacted hosted frame and enforces its multiplayer seat", () => {
+    const state = sceneTwoPreys("pnc-hosted-seat", {});
+    state.room = {
+      hosted: true,
+      hostClientId: "fighter-client",
+      members: [
+        { clientId: "fighter-client", name: "Fighter", seat: "p1", isHost: true },
+        { clientId: "neutral-client", name: "Controller", seat: "p2", isHost: false }
+      ]
+    };
+    const guard = guardsOf(state)[0];
+
+    // This is the state the p2 browser actually receives. Hidden hands/decks
+    // must not erase the public Neutral ownership needed to build board actions.
+    const controllerFrame = redactStateForSeat(state, "p2");
+    const command = getLegalActions(controllerFrame, "p2").find(
+      (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === guard.id
+    );
+    expect(command, "p2's redacted frame should contain a clickable guard attack").toBeTruthy();
+
+    const forged = applyAction(state, command!.action, { actorClientId: "fighter-client" });
+    expect(forged.errors[0]?.message).toContain("own seat");
+    const accepted = applyAction(state, command!.action, { actorClientId: "neutral-client" });
+    expect(accepted.errors, accepted.errors.map((error) => error.message).join("; ")).toEqual([]);
+    expect(accepted.state.combat?.units[guard.id].controllerId).toBe(NEUTRAL_PLAYER_ID);
   });
 
   it("executes the controller's attack AS the neutral seat — on the AI-dispreferred target (mode-off CONTROL: the AI attacks alone)", () => {
@@ -867,6 +903,12 @@ describe("PvP Neutral Control — parallel turns, clock and forced resolution", 
   it("lets the AFK driver play a dropped controller's guard slot out with real unit commands", () => {
     const state = sceneTwoPreys("pnc-afk-slot", { players: 3 });
     expect(guardSlotOpen(state)).toBe(true);
+    expect(seatIsAwaitedInOrderedPlay(state, "p2")).toBe(true);
+    // Saved games from before decision-owner synchronization can still carry
+    // activePlayerId="neutral". Derive the controller from the active guard so
+    // that reconnecting such a game does not disable AFK recovery.
+    state.activePlayerId = NEUTRAL_PLAYER_ID;
+    expect(seatIsAwaitedInOrderedPlay(state, "p2")).toBe(true);
     const action = nextAfkDropAction(state, "p2");
     expect(action && ["MOVE_UNIT", "ATTACK_UNIT", "MOVE_AND_ATTACK_UNIT", "DEFEND_UNIT", "END_ACTIVATION"].includes(action.type)).toBe(
       true

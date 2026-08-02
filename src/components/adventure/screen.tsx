@@ -39,7 +39,6 @@ import {
   PVP_TROOP_LOSS_DESCRIPTIONS,
   PVP_TROOP_LOSS_LABELS,
   RULESET_DESCRIPTIONS,
-  RULESET_LABELS,
   VICTORY_MODE_DESCRIPTIONS,
   VICTORY_MODE_LABELS,
   applyUnitSideRules,
@@ -381,6 +380,35 @@ function pushBorderLines(
 ): void {
   target.push(<line className="tileBorderCasing" key={`${keyBase}-casing`} {...coords} />);
   target.push(<line className="tileBorderLine" key={`${keyBase}-core`} {...coords} />);
+}
+
+/** A quiet perimeter around the seven-hex flower of an Underground tile. The
+ * three outward edges of each ring hex form the complete outline without
+ * drawing noisy internal seams. It is intentionally shown on tile backs too,
+ * because the layer is public map structure rather than reveal information. */
+function pushUndergroundTileOutline(
+  target: ReactNode[],
+  tileId: string,
+  footprint: readonly { row: number; col: number }[],
+  rotation: number
+): void {
+  for (let slot = 1; slot <= 6; slot += 1) {
+    const cell = footprint[slot];
+    if (!cell) continue;
+    const outward = (slot - 1 + rotation) % 6;
+    const pixel = hexToPixel(cell, HEX_SIZE);
+    for (const edge of [outward - 1, outward, outward + 1]) {
+      const direction = ((edge % 6) + 6) % 6;
+      target.push(
+        <line
+          className="undergroundTileOutline"
+          data-underground-tile-id={tileId}
+          key={`${tileId}-underground-outline-${slot}-${direction}`}
+          {...hexEdgeForDirection(pixel.x, pixel.y, HEX_SIZE - 1.2, direction)}
+        />
+      );
+    }
+  }
 }
 
 function playerColor(state: GameState, playerId: PlayerId | null): string {
@@ -1277,6 +1305,9 @@ export function HexMapBoard({
       // (present on every underground tile, absent on a plain Surface tile).
       const undergroundTile = tileLayer(tile) === "subterranean";
       const cavernNeedsGate = undergroundTile && !discover && !readOnly;
+      if (undergroundTile) {
+        pushUndergroundTileOutline(overlays, tile.id, footprint, 0);
+      }
       for (const [slot, coord] of footprint.entries()) {
         const { x, y } = hexToPixel(coord, HEX_SIZE);
         track(x, y);
@@ -1621,6 +1652,9 @@ export function HexMapBoard({
     const artShown = showArt && Boolean(tileDef?.assets?.tileImage);
     const attachFieldSymbols = Boolean(tileDef?.assets?.attachFieldSymbols);
     const footprint = tileFootprint(center, tile.rotation);
+    if (undergroundTile) {
+      pushUndergroundTileOutline(overlays, tile.id, footprint, tile.rotation);
+    }
     // A Blocked Field carved into a Creature Bank is open inward (you walk in
     // from within the Tile) — tell the border builder so it draws only the
     // bank's outer arc, not a full ring that would look impassable.
@@ -2181,6 +2215,24 @@ export function HexMapBoard({
           </g>
         );
       }
+      if (
+        adventure.grail?.status === "built" &&
+        adventure.grail.builtFieldId === field.spaceId
+      ) {
+        overlays.push(
+          <g
+            aria-label="Grail built here"
+            className="mapGrailToken"
+            key={`${spaceId}-built-grail`}
+            role="img"
+            transform={`translate(${x + HEX_SIZE * 0.48} ${y + HEX_SIZE * 0.48})`}
+          >
+            <circle r={9} />
+            <text textAnchor="middle" y={3.5}>🏆</text>
+            <title>Grail built here</title>
+          </g>
+        );
+      }
       if (field.blackCube) {
         overlays.push(
           <rect className="blackCube" height={9} key={`${spaceId}-cube`} width={9} x={x + HEX_SIZE * 0.36} y={y - HEX_SIZE * 0.62} />
@@ -2243,6 +2295,9 @@ export function HexMapBoard({
         const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
         const portrait = heroDef?.portrait;
         const isOwnHero = occupant.playerId === viewerPlayerId;
+        const carriesGrail =
+          adventure.grail?.status === "carried" &&
+          adventure.grail.carrierHeroId === occupant.heroId;
         // Only offer hero switching when the player actually has a second hero.
         const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
         const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
@@ -2303,6 +2358,13 @@ export function HexMapBoard({
               stroke="#160d04"
               strokeWidth={0.8}
             />
+            {carriesGrail ? (
+              <g aria-label="Carrying the Grail" className="mapGrailToken heroGrailToken" role="img" transform="translate(10 8)">
+                <circle r={7.5} />
+                <text textAnchor="middle" y={3}>🏆</text>
+                <title>Carrying the Grail</title>
+              </g>
+            ) : null}
           </g>
         );
       }
@@ -2460,6 +2522,24 @@ export function HexMapBoard({
         </g>
       );
     }
+    if (
+      adventure.grail?.status === "built" &&
+      adventure.grail.builtFieldId === field.spaceId
+    ) {
+      overlays.push(
+        <g
+          aria-label="Grail built here"
+          className="mapGrailToken"
+          key={`standalone-${spaceId}-built-grail`}
+          role="img"
+          transform={`translate(${x + HEX_SIZE * 0.48} ${y + HEX_SIZE * 0.48})`}
+        >
+          <circle r={9} />
+          <text textAnchor="middle" y={3.5}>🏆</text>
+          <title>Grail built here</title>
+        </g>
+      );
+    }
     if (guarded && field.difficulty) {
       overlays.push(
         <text className="hexDifficulty" key={`standalone-${spaceId}-diff`} textAnchor="middle" x={x} y={y - HEX_SIZE * 0.45}>
@@ -2497,6 +2577,9 @@ export function HexMapBoard({
     for (const [index, occupant] of (heroesBySpace.get(spaceId) ?? []).entries()) {
       const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
       const portrait = heroDef?.portrait;
+      const carriesGrail =
+        adventure.grail?.status === "carried" &&
+        adventure.grail.carrierHeroId === occupant.heroId;
       heroPawns.push(
         <g
           className="heroPawn"
@@ -2527,6 +2610,13 @@ export function HexMapBoard({
           <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
           <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
           <path d="M0 -23 L13 -19 L0 -15 Z" fill={playerColor(state, occupant.playerId)} stroke="#160d04" strokeWidth={0.8} />
+          {carriesGrail ? (
+            <g aria-label="Carrying the Grail" className="mapGrailToken heroGrailToken" role="img" transform="translate(10 8)">
+              <circle r={7.5} />
+              <text textAnchor="middle" y={3}>🏆</text>
+              <title>Carrying the Grail</title>
+            </g>
+          ) : null}
         </g>
       );
     }
@@ -3550,7 +3640,7 @@ export function AdventureHud({
                 🐎
               </span>
               <b>{secondaryHero.movementPoints}</b>
-              <small>secondary move</small>
+              <small>2nd move</small>
             </span>
           ) : null}
           <span
@@ -3590,10 +3680,6 @@ export function AdventureHud({
           ) : null}
         </div>
       ) : null}
-      <div className="advHudCell">
-        <strong>{RULESET_LABELS[getRuleset(state)]}</strong>
-        <small>game mode</small>
-      </div>
       {(() => {
         const mode = state.adventure?.victoryMode ?? "conquest";
         let status = "flag an enemy town";
@@ -7190,7 +7276,8 @@ export function PlacementPanel({
   const placed = setup.placedUnitIds[viewerPlayerId] ?? [];
   const versusNeutrals = combat.context.kind === "neutral";
   // Creature Bank battlefield: guardians hold the corners, you deploy centrally.
-  const versusBank = combat.context.kind === "neutral" && Boolean(combat.context.bankId);
+  const versusBank =
+    combat.context.kind === "neutral" && Boolean(combat.context.bankFormation || combat.context.bankId);
 
   const placeActions = legalActions.filter(
     (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLACE_COMBAT_UNIT" }> } =>
@@ -8078,7 +8165,6 @@ function GroupToggleAllButton({
   groupLabel,
   houseRules,
   creatureBanksEnabled,
-  ruleset,
   setHouseRules,
   enableExtras
 }: {
@@ -8086,7 +8172,6 @@ function GroupToggleAllButton({
   groupLabel: string;
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
-  ruleset: GameSetupOptions["ruleset"];
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
   /**
    * Companion rules auto-enabled alongside the group (e.g. the Polish package
@@ -8101,13 +8186,8 @@ function GroupToggleAllButton({
   // (they land in the SAME dispatch), so e.g. Random Artifacts is not skipped
   // just because Divided decks is currently off.
   const withExtras = { ...houseRules, ...enableExtras };
-  // A rule the current mode force-locks ON (BINH's `discovery-border-gate`) is
-  // fixed — it must not be counted as toggleable nor written false by "Disable
-  // all" (that would grey the chip while the engine still runs it ON — the same
-  // lock the individual toggle already shows). Matches the per-toggle predicate.
-  const isLockedOn = (id: HouseRuleId) => ruleset === "binh" && id === "discovery-border-gate";
   const enableable = rules.filter(
-    (rule) => !isLockedOn(rule.id) && !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
+    (rule) => !houseRuleToggleDisabled(rule.id, withExtras, creatureBanksEnabled)
   );
   const allOn = enableable.length > 0 && enableable.every((rule) => houseRules[rule.id]);
   const anyOn = rules.some((rule) => houseRules[rule.id]);
@@ -8116,7 +8196,7 @@ function GroupToggleAllButton({
   const apply = () => {
     const updates: Partial<Record<HouseRuleId, boolean>> = {};
     if (allOn) {
-      for (const rule of rules) if (!isLockedOn(rule.id)) updates[rule.id] = false;
+      for (const rule of rules) updates[rule.id] = false;
     } else {
       for (const [id, value] of Object.entries(enableExtras ?? {})) {
         if (value && !houseRules[id as HouseRuleId]) {
@@ -8152,14 +8232,12 @@ function GroupToggleAllButton({
  */
 function HouseRuleCategoryGroup({
   category,
-  ruleset,
   houseRules,
   creatureBanksEnabled,
   setHouseRule,
   setHouseRules
 }: {
   category: string;
-  ruleset: GameSetupOptions["ruleset"];
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
@@ -8190,19 +8268,15 @@ function HouseRuleCategoryGroup({
           groupLabel={HOUSE_RULE_CATEGORY_LABELS[category]}
           houseRules={houseRules}
           rules={rules}
-          ruleset={ruleset}
           setHouseRules={setHouseRules}
         />
       </div>
       <div className="houseRuleGrid">
         {rules.map((rule) => (
           <HouseRuleToggleButton
-            disabled={
-              (ruleset === "binh" && rule.id === "discovery-border-gate") ||
-              houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)
-            }
+            disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
             key={rule.id}
-            lockedOn={ruleset === "binh" && rule.id === "discovery-border-gate"}
+            lockedOn={false}
             on={houseRules[rule.id]}
             onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
             rule={rule}
@@ -8225,13 +8299,11 @@ function HouseRuleCategoryGroup({
 function HouseRulesSection({
   houseRules,
   creatureBanksEnabled,
-  ruleset,
   setHouseRule,
   setHouseRules
 }: {
   houseRules: Record<HouseRuleId, boolean>;
   creatureBanksEnabled: boolean;
-  ruleset: GameSetupOptions["ruleset"];
   setHouseRule: (id: HouseRuleId, value: boolean) => void;
   setHouseRules: (updates: Partial<Record<HouseRuleId, boolean>>) => void;
 }) {
@@ -8246,11 +8318,7 @@ function HouseRulesSection({
   const globalRules = HOUSE_RULES.filter((rule) =>
     (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
   );
-  // Yellow-border discovery belongs to both packages: it remains in BINH's
-  // map category and is mirrored here so Enable all Polish includes it too.
-  const polishRules = HOUSE_RULES.filter(
-    (rule) => rule.category === "polish" || rule.id === "discovery-border-gate"
-  );
+  const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
   const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
@@ -8283,7 +8351,6 @@ function HouseRulesSection({
             creatureBanksEnabled={creatureBanksEnabled}
             houseRules={houseRules}
             key={category}
-            ruleset={ruleset}
             setHouseRule={setHouseRule}
             setHouseRules={setHouseRules}
           />
@@ -8315,7 +8382,6 @@ function HouseRulesSection({
             creatureBanksEnabled={creatureBanksEnabled}
             houseRules={houseRules}
             key={category}
-            ruleset={ruleset}
             setHouseRule={setHouseRule}
             setHouseRules={setHouseRules}
           />
@@ -8339,23 +8405,18 @@ function HouseRulesSection({
             <span className="houseRuleGroupLabel">Whole Polish package</span>
             <GroupToggleAllButton
               creatureBanksEnabled={creatureBanksEnabled}
-              enableExtras={{ "split-decks": true }}
               groupLabel="Polish"
               houseRules={houseRules}
               rules={polishRules}
-              ruleset={ruleset}
               setHouseRules={setHouseRules}
             />
           </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
               <HouseRuleToggleButton
-                disabled={
-                  (ruleset === "binh" && rule.id === "discovery-border-gate") ||
-                  houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)
-                }
+                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
                 key={rule.id}
-                lockedOn={ruleset === "binh" && rule.id === "discovery-border-gate"}
+                lockedOn={false}
                 on={houseRules[rule.id]}
                 onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
                 rule={rule}
@@ -9218,22 +9279,11 @@ function GameOptionsPanel({
   // default). Flipping one sends just that id; the reducer merges it.
   const houseRules = resolveHouseRules(options);
   const setHouseRule = (id: HouseRuleId, value: boolean) => {
-    // Selecting ANY Polish rule also auto-selects "split-decks" (the divided
-    // Minor/Major/Relic Artifact decks): the Polish package assumes divided
-    // Artifacts (Random Artifacts outright depends on it). Turning a Polish
-    // rule OFF never touches it.
-    const polishAuto: Partial<Record<HouseRuleId, boolean>> =
-      value && id.startsWith("polish-")
-        ? {
-            ...(!houseRules["split-decks"] ? { "split-decks": true } : {}),
-            ...(!houseRules["discovery-border-gate"] ? { "discovery-border-gate": true } : {})
-          }
-        : {};
     if (id === "polish-spell-book" && value) {
-      send({ houseRules: { ...polishAuto, [id]: true }, spellBook: false });
+      send({ houseRules: { [id]: true }, spellBook: false });
       return;
     }
-    send({ houseRules: { ...polishAuto, [id]: value } });
+    send({ houseRules: { [id]: value } });
   };
   // Flip a whole group of rules in ONE dispatch (the reducer merges the ids).
   // Enabling the Polish Spell Book also forces the stash Spell Book off, exactly
@@ -9628,7 +9678,6 @@ function GameOptionsPanel({
       <HouseRulesSection
         creatureBanksEnabled={options.creatureBanks ?? true}
         houseRules={houseRules}
-        ruleset={options.ruleset}
         setHouseRule={setHouseRule}
         setHouseRules={setHouseRules}
       />
