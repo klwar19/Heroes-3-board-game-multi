@@ -157,7 +157,8 @@ import {
   tileCentersOverlap,
   tileFootprint,
   tileFootprintsTouch,
-  tileLatticeNeighbors,
+  tileLatticeColor,
+  tileTouchNeighbors,
   type HexCoord
 } from "./hex";
 import { createSeededRandom } from "./random";
@@ -2025,8 +2026,16 @@ export function heroCanDiscoverTileAcrossBorders(
   state: Pick<GameState, "ruleset" | "adventure">,
   heroSpaceId: MapSpaceId,
   heroField: MapFieldState,
-  tile: MapTileState
+  tile: MapTileState,
+  movement?: HeroMovementCapabilities | null
 ): boolean {
+  // Pathfinding (`crossSealedBorders`) walks through yellow borders, so it also
+  // DISCOVERS across them — the border gate stays ON, this hero just crosses it
+  // (same parity as movement; the Redwood Observatory / Speculum remain the
+  // no-capability bypasses).
+  if (movement?.crossSealedBorders) {
+    return true;
+  }
   // Legacy adjacency-only mode deliberately bypasses the border test for human
   // rules. BINH and the Polish companion flag take the open-border path.
   return !houseRuleEnabled(state, "discovery-border-gate") ||
@@ -2043,8 +2052,14 @@ export function heroCanImmediatelyAccessTile(
   state: Pick<GameState, "ruleset" | "adventure">,
   heroSpaceId: MapSpaceId,
   heroField: MapFieldState,
-  tile: MapTileState
+  tile: MapTileState,
+  movement?: HeroMovementCapabilities | null
 ): boolean {
+  // A live Pathfinding effect steps across the sealed border this same turn,
+  // so the flip-then-enter guarantee holds.
+  if (movement?.crossSealedBorders) {
+    return true;
+  }
   return heroCanDiscoverTileAcrossOpenBorders(state, heroSpaceId, heroField, tile);
 }
 
@@ -2426,12 +2441,31 @@ export function canPlaceTileAt(
     return false;
   }
 
-  // Rulebook: a new tile must be a gapless neighbour of at least two existing
-  // tiles (nesting into the notch between them), which also pins it onto the
-  // map's single tiling sublattice so no holes can open up.
-  const touching = existingCenters.filter((existing) => tileCentersAdjacent(existing, center));
+  // Rulebook: a new tile must touch at least two existing tiles (nesting into
+  // the notch between them). Between tiles on ONE index-7 sublattice, "touch"
+  // is the strict gapless-interlock relation — that pins new tiles onto the
+  // same sublattice so no holes can open up, and every BUILT-IN scenario layout
+  // only ever puts INTERLOCKING tiles in contact (probed: zero freeform touch
+  // pairs across all four layouts), so standard games are untouched by the
+  // branch below. But the map DESIGNER drops tiles freely, so a designed map
+  // can hold touching tiles on DIFFERENT sublattices: such a seam has NO
+  // interlocking slot at all, and demanding interlock there froze Ⅱ–Ⅲ
+  // expansion for the whole game (2026-08-03 report: hero at the edge of the
+  // Ⅰ tile, a touching Ⅳ–Ⅴ to its left, and no slot between them ever
+  // offered). At a CROSS-sublattice seam the physical touch relation is the
+  // rule instead. A seam whose touched tiles all share one sublattice (the
+  // ordinary hole between two aligned tiles) keeps the strict interlock demand,
+  // so a skewed drop can never spoil a properly fillable notch.
+  const touching = existingCenters.filter((existing) => tileFootprintsTouch(existing, center));
   if (touching.length < 2) {
     return false;
+  }
+  const interlocking = touching.filter((existing) => tileCentersAdjacent(existing, center));
+  if (interlocking.length < 2) {
+    const seamColors = new Set(touching.map((existing) => tileLatticeColor(existing)));
+    if (seamColors.size < 2) {
+      return false;
+    }
   }
 
   // The new tile must be adjacent to the hero placing it.
@@ -2630,16 +2664,15 @@ export function farTilePlacementCenters(
   const seen = new Map<string, HexCoord>();
   const centers: HexCoord[] = [];
   for (const center of existing) {
-    for (const candidate of tileLatticeNeighbors(center)) {
+    // Every touching position (interlocking AND the cross-sublattice seam
+    // offsets) is a candidate; canPlaceTileAt owns which of them is legal.
+    for (const candidate of tileTouchNeighbors(center)) {
       const key = `${candidate.row}:${candidate.col}`;
       if (seen.has(key)) {
         continue;
       }
       seen.set(key, candidate);
       if (existing.some((tile) => tileCentersOverlap(tile, candidate))) {
-        continue;
-      }
-      if (existing.filter((tile) => tileCentersAdjacent(tile, candidate)).length < 2) {
         continue;
       }
       if (!canPlaceTileAt(state, hero, candidate, 0)) {
@@ -5476,6 +5509,11 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
         ...Array.from({ length: bonus.treasure }, () => ({ type: "ROLL_TREASURE_DICE", count: 1 }) as const),
         ...Array.from({ length: bonus.resource }, () => ({ type: "ROLL_RESOURCE_DICE", count: 1 }) as const)
       ];
+    case "resource_roll":
+      // "Roll N, choose 1": ONE roll of all N Resource dice resolving exactly
+      // one result — resolveCount opens the "Choose one resource die result"
+      // pick the shared dice machinery already provides.
+      return [{ type: "ROLL_RESOURCE_DICE", count: bonus.count, resolveCount: 1 }];
   }
 }
 
@@ -5501,6 +5539,8 @@ function obeliskBonusLabel(bonus: CustomMapObeliskBonus): string {
       return `+${bonus.amount} experience`;
     case "dice":
       return `Roll ${bonus.treasure} Treasure + ${bonus.resource} Resource dice`;
+    case "resource_roll":
+      return `Roll ${bonus.count} Resource dice, keep 1`;
   }
 }
 

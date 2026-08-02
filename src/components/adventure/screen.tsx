@@ -1082,12 +1082,30 @@ export function HexMapBoard({
     setMoveSelection({ key: moveSelectionKey, target });
 
   const placementCenters = useMemo(() => {
-    if (!placement || !rawAdventure || !myHero) {
-      return [] as { row: number; col: number }[];
+    if (!placement || !rawAdventure || myHeroes.length === 0) {
+      return [] as { row: number; col: number; heroId: string }[];
     }
     const tileDefId = rawAdventure.playerFarTiles?.[viewerPlayerId]?.[placement.supplyIndex];
-    return farTilePlacementCenters(state, myHero, tileDefId);
-  }, [placement, rawAdventure, myHero, state, viewerPlayerId]);
+    // A Ⅱ–Ⅲ tile may be laid at the border by EITHER of the player's heroes —
+    // each opens beside its OWN field (the engine offers PLACE_TILE per hero).
+    // Compute every hero's legal spots and tag each ghost with the hero that can
+    // place it, so a SECONDARY Hero's border tiles appear too — not only the
+    // Main hero's (the default `myHero`, which was the bug: the Secondary Hero,
+    // or a non-selected hero, could never place a Far tile).
+    const byKey = new Map<string, { row: number; col: number; heroId: string }>();
+    for (const hero of myHeroes) {
+      if (hero.movementPoints <= 0) {
+        continue; // placing a Far tile costs 1 movement point
+      }
+      for (const center of farTilePlacementCenters(state, hero, tileDefId)) {
+        const key = `${center.row}:${center.col}`;
+        if (!byKey.has(key)) {
+          byKey.set(key, { row: center.row, col: center.col, heroId: hero.id });
+        }
+      }
+    }
+    return [...byKey.values()];
+  }, [placement, rawAdventure, myHeroes, state, viewerPlayerId]);
 
   if (!adventure || !rawAdventure) {
     return null;

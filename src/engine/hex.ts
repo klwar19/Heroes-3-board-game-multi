@@ -256,6 +256,27 @@ export function tileFootprintsTouch(left: HexCoord, right: HexCoord): boolean {
 }
 
 /**
+ * All 18 tile-center positions whose flowers TOUCH `center` (share at least one
+ * hex edge) without overlapping it: the 6 interlocking sublattice neighbours
+ * plus the 12 shifted distance-3 offsets the map DESIGNER's free drop can
+ * produce. Placement candidate generation scans these so a Ⅱ–Ⅲ tile can nest
+ * into a freeform seam between cross-sublattice designed tiles; which of them
+ * is actually legal stays with `canPlaceTileAt`.
+ */
+export function tileTouchNeighbors(center: HexCoord): HexCoord[] {
+  const { q, r } = offsetToCube(center);
+  const result: HexCoord[] = [];
+  for (let dq = -3; dq <= 3; dq++) {
+    for (let dr = -3; dr <= 3; dr++) {
+      if ((Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2 === 3) {
+        result.push(axialToOffset(q + dq, r + dr));
+      }
+    }
+  }
+  return result;
+}
+
+/**
  * The tile's sublattice class (0-6). Every tile center of one connected,
  * gapless map shares a single color; mixing colors would leave field-sized
  * holes. Useful for validating that a layout actually tiles.

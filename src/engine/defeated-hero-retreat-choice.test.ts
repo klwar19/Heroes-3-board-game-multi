@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions, getMainHero } from "./index";
 import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
+import {
+  customMapPresetIsActive,
+  describeCustomMapPresetEntries,
+  sanitizeCustomMapPreset
+} from "./map-preset";
 import type { CombatState, CombatUnitState, GameState, MapFieldState, PlayerId } from "./state";
 
 /**
@@ -293,5 +298,50 @@ describe("Defeated-hero fall-back keeps the movement left over", () => {
 
   it("CONTROL: a beaten Hero whose movement was genuinely spent is offered no move", () => {
     expect(beatenAttackerMoveOffers(makeGame(), 0)).toEqual([]);
+  });
+});
+
+/**
+ * Designer map bonus `heroDefeatGold`: the winner of a REAL enemy-hero defeat
+ * (fought-out or retreat) gains extra gold, on top of the normal 5-gold spoils.
+ * A surrender never reaches the real-defeat branch, so it pays no bounty. Every
+ * claim is a gold delta with a control that isolates the bounty.
+ */
+describe("Hero-defeat bounty (designer map bonus, heroDefeatGold)", () => {
+  // Gold the WINNER (p1) gains from finalizing a staged PvP loss for p2 with the
+  // given outcome reason and optional bounty. Two runs differ ONLY by the preset,
+  // so the difference is exactly the bounty the branch pays.
+  const winnerGoldDelta = (reason: "retreat" | "surrender", bounty?: number): number => {
+    const state = makeGame();
+    if (bounty !== undefined) {
+      state.adventure!.mapPreset = { heroDefeatGold: bounty };
+    }
+    stagePvp(state, false); // p1 (attacker) WINS; p2 (defender) is beaten
+    state.combat!.outcome!.reason = reason;
+    const before = state.players.p1.resources.gold;
+    finalizeAdventureCombat(state);
+    return state.players.p1.resources.gold - before;
+  };
+
+  it("a real enemy-hero defeat pays the winner the bounty on top of the spoils", () => {
+    // Fails if the grant is removed (both deltas become the spoils toll → 0 gap).
+    expect(winnerGoldDelta("retreat", 25) - winnerGoldDelta("retreat", undefined)).toBe(25);
+  });
+
+  it("CONTROL: a SURRENDER pays no bounty — no hero was truly defeated", () => {
+    expect(winnerGoldDelta("surrender", 25)).toBe(winnerGoldDelta("surrender", undefined));
+  });
+
+  it("sanitize clamps the bounty 0..100, keeps the preset active, and the banner names it", () => {
+    expect(sanitizeCustomMapPreset({ heroDefeatGold: 250 })?.heroDefeatGold).toBe(100);
+    expect(sanitizeCustomMapPreset({ heroDefeatGold: 0 })?.heroDefeatGold).toBeUndefined();
+    const preset = sanitizeCustomMapPreset({ heroDefeatGold: 30 });
+    expect(preset?.heroDefeatGold).toBe(30);
+    expect(customMapPresetIsActive(preset)).toBe(true);
+    expect(
+      describeCustomMapPresetEntries(preset).some((entry) =>
+        entry.text.includes("Defeat an enemy Hero: +30 gold")
+      )
+    ).toBe(true);
   });
 });

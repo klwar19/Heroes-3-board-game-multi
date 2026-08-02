@@ -872,6 +872,10 @@ function sanitizeObeliskBonus(input: unknown): CustomMapObeliskBonus | null {
     }
     return { kind: "dice", treasure, resource };
   }
+  if (raw.kind === "resource_roll") {
+    // Roll 2–3 Resource dice, keep 1 (a single die would make "choose 1" moot).
+    return { kind: "resource_roll", count: clampInt(raw.count, 2, 3, 2) };
+  }
   if (raw.kind === "ability_token") {
     return { kind: "ability_token" };
   }
@@ -2124,6 +2128,12 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       preset.roundLimit = limit;
     }
   }
+  if (raw.heroDefeatGold !== undefined) {
+    const bounty = clampInt(raw.heroDefeatGold, 0, 100, 0);
+    if (bounty > 0) {
+      preset.heroDefeatGold = bounty;
+    }
+  }
   if (typeof raw.notes === "string") {
     const notes = raw.notes.trim().slice(0, 400);
     if (notes.length > 0) {
@@ -2208,6 +2218,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       (preset.startingBonuses && preset.startingBonuses.length > 0) ||
       (preset.timedEvents && preset.timedEvents.length > 0) ||
       preset.roundLimit ||
+      preset.heroDefeatGold ||
       (preset.notes && preset.notes.length > 0) ||
       preset.obelisks ||
       Boolean(preset.settlements) ||
@@ -2351,6 +2362,8 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
       }
       return `roll ${parts.join(" + ")} ${bonus.treasure + bonus.resource === 1 ? "die" : "dice"}`;
     }
+    case "resource_roll":
+      return `roll ${bonus.count} Resource dice, keep 1`;
   }
 }
 
@@ -2751,6 +2764,9 @@ export function describeCustomMapPresetEntries(
         ? `Game ends at round ${preset.roundLimit} (then Victory Points are scored)`
         : `Suggested length: ${preset.roundLimit} rounds`
     });
+  }
+  if (preset.heroDefeatGold) {
+    entries.push({ icon: "⚔️", text: `Defeat an enemy Hero: +${preset.heroDefeatGold} gold` });
   }
   if (preset.obelisks) {
     entries.push({ icon: "🗿", text: describeObeliskRole(preset.obelisks) });
@@ -3285,7 +3301,8 @@ export const MAP_PRESET_OBELISK_BONUS_KINDS: { id: CustomMapObeliskBonus["kind"]
   { id: "resources", label: "Resources" },
   { id: "movement", label: "Movement" },
   { id: "experience", label: "Experience" },
-  { id: "dice", label: "Treasure / Resource dice" }
+  { id: "dice", label: "Treasure / Resource dice" },
+  { id: "resource_roll", label: "Resource dice — roll N, choose 1" }
 ];
 
 /** Fresh default reward when the designer switches the "bonus" role's kind. */
@@ -3305,6 +3322,8 @@ export function defaultObeliskBonusForKind(kind: CustomMapObeliskBonus["kind"]):
       return { kind: "experience", amount: 1 };
     case "dice":
       return { kind: "dice", treasure: 1, resource: 0 };
+    case "resource_roll":
+      return { kind: "resource_roll", count: 2 };
   }
 }
 

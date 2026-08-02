@@ -6314,6 +6314,26 @@ Leading with what does NOT run / deliberate limits:
   so the Gold/valuables resource-pick tile reassignment also refuses a banned
   landmark when swapping the tile def.
 
+## Ⅱ–Ⅲ placement counts PHYSICAL touch at freeform seams (2026-08-03)
+
+Reported on the saved map "Brave New World (2P)(WIP)": not one Ⅱ–Ⅲ tile could
+ever be placed — the map DESIGNER drops tiles freely, so its tiles touch at
+NON-interlocking offsets, and `canPlaceTileAt` counted "touching two tiles"
+with `tileCentersAdjacent`, which only recognises the 6 interlocking
+same-sublattice offsets (a physically touching cross-sublattice neighbour
+counted as ZERO). Fix (`canPlaceTileAt` + `farTilePlacementCenters` in
+adventure.ts, candidates now scanned from `tileTouchNeighbors` — all 18
+distance-3 offsets, hex.ts): touch is `tileFootprintsTouch`, and a slot that
+does NOT interlock with two tiles is legal ONLY where the touched tiles span
+two different sublattice colors (a freeform seam, where no interlocking slot
+exists at all). LIMITS: a notch between two SAME-color tiles keeps the strict
+interlock demand (a skewed drop can never spoil a properly fillable hole), and
+all four built-in scenario layouts have ZERO freeform touch pairs (probed), so
+standard games are byte-identical. Pinned + mutation-checked both ways in
+`src/engine/far-tile-freeform-touch.test.ts` (the seam placement, a
+touch-only-one CONTROL, and the same-color-hole CONTROL that fails under a
+blanket physical-touch relaxation).
+
 ## Far-tile rerolls and single-player AI (2026-07-31)
 
 - **Ⅱ–Ⅲ tile replacement is one BINH house rule**:
