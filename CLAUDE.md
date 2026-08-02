@@ -3666,12 +3666,25 @@ Leading with what does NOT run / deliberate readings:
   free/enemy destination the travel fizzles with a note. The AI's known-teleport
   read (`listKnownTeleportDestinations`, no traveller context) still blocks ANY
   occupied hex — conservative, so it never plans a jump onto an occupied cell.
-- **Guarded fields refuse a token placement** (engine safety reading — the
-  printed rule bans only Location Tokens/Blocked Fields/victory Locations, but
-  overwriting a guard would erase it for free). Towns, Settlements, Mines,
-  Obelisks, the Grail and the Dragon Utopia are excluded as the conservative
-  "victory conditions" reading. Terrain is enforced: monolith = land hex,
-  whirlpool = sea hex.
+- **A token may cover ANY field except a Creature Bank / blocked hex / another
+  teleporter / a PvE-module gate / a live guard** (user rule 2026-08-02 — the old
+  "victory/economy anchor" fence over Settlements, Mines, Obelisks, the Grail and
+  the Dragon Utopia is GONE; `TOKEN_FORBIDDEN_LOCATIONS` now holds only the
+  genuinely unsafe set: `subterranean_gate` / `monolith` / `whirlpool` / `gate`
+  (never stack on another teleporter), `creature_bank` (the explicit exception),
+  and the three PvE latches `calamity_gate` / `dungeon_gate` / `rift_lair`).
+  STILL excluded, in BOTH the design-time (`tokenMayCoverFieldDef`) and runtime
+  (`tokenMayCoverField`) helpers so they never disagree: **guarded fields** (a
+  live guard / printed `difficulty` — overwriting one would erase a live guard
+  for free, and keeping it out of the set at BOTH times keeps the reserved-hex
+  auto-place vs. runtime candidate check consistent), **Towns** (the
+  `category === "town"` guard — replacing a Town field would orphan its
+  TownState), Field-Override hexes (Location-Token protected), and a hex a hero
+  stands on (runtime only). Terrain is enforced: monolith/gate = land hex,
+  whirlpool = sea hex. Pinned in `map-tokens.test.ts` ("teleport-token placement
+  is unrestricted except Bank / blocked / teleporter / guard": an unguarded
+  Mine/Settlement/Obelisk/Grail/Dragon Utopia now accepts a Monolith AND a Gate,
+  with a Bank / blocked / guarded-mine / calamity-gate CONTROL).
 - **Cross-layer monoliths are allowed** (a designer may knowingly link the
   Surface and the Underground — a Town-Portal-like exception to the
   gate-only-crossing rule; the teleport never consults `canCrossEdge`).
