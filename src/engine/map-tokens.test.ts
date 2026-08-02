@@ -12,7 +12,13 @@ import {
   type MapTileState
 } from "./index";
 import { ALL_TILE_CONTENT, allTileDefinitions } from "@/data/map/tiles";
-import { carveMapTokenField, createSecondaryHero, instantiateTile, placeMapToken } from "./adventure";
+import {
+  carveMapTokenField,
+  createSecondaryHero,
+  instantiateTile,
+  placeMapToken,
+  tokenPlacementCandidates
+} from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -947,5 +953,79 @@ describe("multi-token tiles (pendingTokens queue)", () => {
     const monoliths = footprint.filter((spaceId) => after.fields[spaceId]?.location === "monolith");
     expect(monoliths.length).toBeLessThanOrEqual(1);
     expect(after.tiles[tile.id].pendingTokens).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Teleport tokens place ANYWHERE except a Creature Bank / blocked hex / another
+// teleporter / a PvE-module gate / a live guard (user rule 2026-08-02). The old
+// "victory/economy anchor" fence — Settlement / Mine / Obelisk / Grail / Dragon
+// Utopia — is gone. Drives the runtime candidate helper (tokenPlacementCandidates
+// → tokenMayCoverField) that decides the glowing legal hexes.
+// ---------------------------------------------------------------------------
+
+describe("teleport-token placement is unrestricted except Bank / blocked / teleporter / guard", () => {
+  /** Instantiate a face-up N1 (land Near tile) and overwrite each flower hex's
+   * location, forcing an unguarded LAND reading unless the caller says otherwise. */
+  function tileWithLocations(
+    seed: string,
+    locations: readonly string[]
+  ): { state: GameState; tile: MapTileState; spaces: MapSpaceId[] } {
+    const state = makeGame(seed);
+    const tile = instantiateTile(adv(state), "N1", { row: 24, col: 12 }, 0, false);
+    const spaces = getTileFootprintSpaceIds(tile);
+    spaces.forEach((spaceId, index) => {
+      const field = adv(state).fields[spaceId];
+      if (!field || index >= locations.length) {
+        return;
+      }
+      field.location = locations[index];
+      delete field.difficulty;
+      delete field.terrain; // land reading — the Monolith legality
+      field.blackCube = false;
+      field.flagOwnerId = null;
+      field.everFlagged = false;
+    });
+    return { state, tile, spaces };
+  }
+
+  it("an unguarded Mine / Settlement / Obelisk / Grail / Dragon Utopia now ACCEPTS a Monolith", () => {
+    const economy = ["mine", "settlement", "obelisk", "grail", "dragon_utopia"] as const;
+    const { state, tile, spaces } = tileWithLocations("token-anywhere-economy", [
+      ...economy,
+      "empty_field",
+      "empty_field"
+    ]);
+    const candidates = new Set(tokenPlacementCandidates(state, tile, "monolith"));
+    economy.forEach((location, index) => {
+      expect(candidates.has(spaces[index]), `${location} should now be a legal token hex`).toBe(true);
+    });
+    // The same relaxation reaches a colored Teleport Gate (it reuses the Monolith
+    // land legality), so an economy hex is a legal Gate destination too.
+    const gateCandidates = new Set(tokenPlacementCandidates(state, tile, "gate"));
+    expect(gateCandidates.has(spaces[0]), "mine is a legal Gate hex").toBe(true);
+  });
+
+  it("CONTROL: a Creature Bank, a blocked field, a still-guarded field and a PvE gate stay forbidden", () => {
+    const { state, tile, spaces } = tileWithLocations("token-anywhere-control", [
+      "creature_bank",
+      "blocked_field",
+      "mine",
+      "calamity_gate",
+      "empty_field",
+      "empty_field",
+      "empty_field"
+    ]);
+    // Re-guard the mine on the third hex: overwriting a LIVE guard for free stays
+    // barred at design AND runtime.
+    adv(state).fields[spaces[2]]!.difficulty = 2;
+    const candidates = new Set(tokenPlacementCandidates(state, tile, "monolith"));
+    expect(candidates.has(spaces[0]), "creature_bank stays forbidden").toBe(false);
+    expect(candidates.has(spaces[1]), "blocked_field stays forbidden").toBe(false);
+    expect(candidates.has(spaces[2]), "a guarded mine stays forbidden").toBe(false);
+    expect(candidates.has(spaces[3]), "calamity_gate stays forbidden").toBe(false);
+    // Sanity: a plain unguarded land hex on the same tile IS legal, so the four
+    // exclusions above are real rather than the whole tile being unusable.
+    expect(candidates.has(spaces[4]), "a plain empty land hex is legal").toBe(true);
   });
 });

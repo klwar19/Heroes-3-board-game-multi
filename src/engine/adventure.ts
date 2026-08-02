@@ -9598,29 +9598,31 @@ function fieldIsTokenNetworkMember(state: GameState, field: MapFieldState, kind:
 }
 
 /**
- * Locations a Monolith/Whirlpool token may never overwrite. Rulebook p.35:
- * "Tokens cannot be placed on other Location Tokens, Blocked Fields, or Fields
- * containing Locations required to meet any of the Scenario's victory
- * conditions." Towns, Settlements, Mines, Obelisks, the Grail and the Dragon
- * Utopia all anchor victory/economy goals, so they are excluded as the
- * conservative reading; guarded fields are excluded too (overwriting one would
- * erase a live guard for free — an engine safety reading, commented here
- * because the printed rule does not mention guards).
+ * Locations a Monolith/Whirlpool/Gate token may never overwrite. Per the user
+ * rule (2026-08-02) a teleport token may be placed ANYWHERE except a Creature
+ * Bank and a blocked/impassable hex — so the old "conservative reading" that
+ * also fenced off Settlements, Mines, Obelisks, the Grail and the Dragon Utopia
+ * (victory/economy anchors) is GONE: a designer may deliberately drop a
+ * teleporter on any of those, replacing the field. What stays forbidden is the
+ * genuinely unsafe set only:
+ * - other Location Tokens / teleporters — a token can never stack on another
+ *   teleporter (Subterranean Gate, Monolith, Whirlpool, colored Gate);
+ * - the Creature Bank (the user's explicit exception) and blocked/impassable
+ *   fields (the `category === "blocked"` guard below);
+ * - the three PvE-module map objects, one-per-map singletons whose ids are
+ *   latched in adventure state (`monsterWaves.gateFieldId`, `dungeonSite.fieldId`,
+ *   the `raidBosses[id].fieldId` lair record) — overwriting the hex would leave
+ *   that latch pointing at a Monolith and silently kill the module for the rest
+ *   of the game.
+ * Guarded fields (a live guard / printed `difficulty`) stay excluded in the two
+ * legality helpers below too — overwriting one would erase a live guard for free
+ * (an engine safety reading; kept out of this set so it applies uniformly at
+ * design AND runtime). Towns keep the `category === "town"` guard: replacing a
+ * Town field would orphan its TownState.
  */
 const TOKEN_FORBIDDEN_LOCATIONS = new Set([
-  "settlement",
-  "mine",
-  "grail",
-  "obelisk",
-  "dragon_utopia",
   "subterranean_gate",
   "creature_bank",
-  // The three PvE-module map objects are one-per-map singletons whose ids are
-  // latched in adventure state (`monsterWaves.gateFieldId`,
-  // `dungeonSite.fieldId`, the `raidBosses[id].fieldId` lair record). Letting a
-  // designer token overwrite the hex would leave that latch pointing at a
-  // Monolith and silently kill the module for the rest of the game — the
-  // Creature-Bank reasoning, verbatim.
   "calamity_gate",
   "dungeon_gate",
   "rift_lair",
