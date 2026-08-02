@@ -728,7 +728,8 @@ export {
   tileFootprint,
   tileFootprintsTouch,
   tileLatticeColor,
-  tileLatticeNeighbors
+  tileLatticeNeighbors,
+  tileTouchNeighbors
 } from "./hex";
 export type { HexCoord, HexDirection } from "./hex";
 export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";

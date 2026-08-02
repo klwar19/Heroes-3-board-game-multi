@@ -819,12 +819,12 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const onChange = vi.fn();
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
 
-    // Add a condition → the first OFFERED kind's default (the object-scoped
-    // kinds — control-towns / flag-mines / obelisks —
-    // moved to Map objects as per-object win ticks and are no longer offered).
+    // Add a condition → the first OFFERED kind's default (control-towns and
+    // obelisks moved to Map objects as per-object win ticks and are no longer
+    // offered; flag-mines — control X Mines/Settlements — stays offered).
     fireEvent.click(screen.getByRole("button", { name: "Add win condition" }));
     expect(onChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ customWinConditions: [{ kind: "hero-level", level: 5 }] })
+      expect.objectContaining({ customWinConditions: [{ kind: "flag-mines", count: 4 }] })
     );
 
     // Retype the kind → the new kind's default params. A LEGACY object-scoped
@@ -896,16 +896,21 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(buildingsInput.max).toBe("15");
     expect(buildingsInput.value).toBe("10");
 
-    // The object-scoped kinds moved to Map objects — a fresh row's select does
-    // NOT offer obelisks/control-towns/flag-mines. Multi-Utopia victory remains
-    // a global counted condition and is offered here.
+    // control-towns / obelisks moved to Map objects — a fresh row's select does
+    // NOT offer them. Multi-Utopia victory remains a global counted condition.
     const freshSelect = screen.getByLabelText("Condition 1 kind");
-    for (const gone of ["obelisks", "control-towns", "flag-mines"]) {
+    for (const gone of ["obelisks", "control-towns"]) {
       expect(
         Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === gone),
         `${gone} not offered`
       ).toBe(false);
     }
+    // flag-mines (control X Mines/Settlements as an aggregate win condition) has
+    // no per-object equivalent, so it STAYS offered for new rows.
+    expect(
+      Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === "flag-mines"),
+      "flag-mines offered"
+    ).toBe(true);
     expect(
       Array.from((freshSelect as HTMLSelectElement).options).some(
         (option) => option.value === "defeat-dragon-utopia"
@@ -925,6 +930,15 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     // Its own kind joins the select so the row is editable, not stuck.
     const legacySelect = screen.getByLabelText("Condition 1 kind") as HTMLSelectElement;
     expect(Array.from(legacySelect.options).some((option) => option.value === "obelisks")).toBe(true);
+  });
+
+  it("Hero-defeat bounty: the gold field writes preset.heroDefeatGold", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Gold on hero defeat" }), {
+      target: { value: "30" }
+    });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ heroDefeatGold: 30 }));
   });
 
   it("Map settings: a difficulty chip writes the preset difficulty; re-clicking it clears back to undefined", () => {

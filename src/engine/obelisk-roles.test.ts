@@ -16,6 +16,7 @@ import { getLegalActions } from "./legal-actions";
 import { createAdventureGameState } from "./index";
 import {
   describeCustomMapPresetEntries,
+  describeObeliskBonus,
   sanitizeCustomMapPreset,
   type CustomMapObeliskConfig
 } from "./map-preset";
@@ -327,6 +328,45 @@ describe("Obelisk role — bonus", () => {
     expect(diceRolls(state, "treasure")).toBe(1);
     expect(diceRolls(state, "resource")).toBeGreaterThanOrEqual(1);
     expect(attackRolls(state)).toBe(0); // never the classic die
+  });
+
+  it("resource_roll bonus rolls N Resource dice and opens a 'choose 1' pick (CONTROL: 'dice' resolves every die)", () => {
+    const state = makeGame();
+    setObeliskRole(state, { role: "bonus", bonus: { kind: "resource_roll", count: 2 } });
+    const hero = parkHero(state, "p1", O1);
+    injectField(state, O1, "obelisk");
+
+    beginFieldVisit(state, hero.id, O1, false);
+
+    // Resource dice were rolled; a single CHOOSE_ONE pick is open with TWO
+    // options — the visitor keeps exactly ONE of the two results ("roll 2,
+    // choose 1"). The 2-option pick is the proof two dice were thrown.
+    expect(diceRolls(state, "resource")).toBeGreaterThanOrEqual(1);
+    const step = state.adventure!.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    expect((step as { prompt?: string }).prompt).toContain("Choose one resource die result");
+    expect((step as { options?: unknown[] }).options).toHaveLength(2);
+
+    // CONTROL: the plain 'dice' arm with resource:2 resolves EVERY die outright
+    // (two count:1 rolls) — it never opens a "choose one of several" pick.
+    const control = makeGame();
+    setObeliskRole(control, { role: "bonus", bonus: { kind: "dice", treasure: 0, resource: 2 } });
+    const cHero = parkHero(control, "p1", O1);
+    injectField(control, O1, "obelisk");
+    beginFieldVisit(control, cHero.id, O1, false);
+    expect(control.adventure!.pendingVisit?.steps[0]?.type).not.toBe("CHOOSE_ONE");
+  });
+
+  it("sanitize clamps a resource_roll bonus to 2–3 dice; describe reads the keep-1 gamble", () => {
+    const tooMany = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonus: { kind: "resource_roll", count: 9 } }
+    });
+    expect(tooMany?.obelisks?.bonus).toEqual({ kind: "resource_roll", count: 3 });
+    const tooFew = sanitizeCustomMapPreset({
+      obelisks: { role: "bonus", bonus: { kind: "resource_roll", count: 1 } }
+    });
+    expect(tooFew?.obelisks?.bonus).toEqual({ kind: "resource_roll", count: 2 });
+    expect(describeObeliskBonus({ kind: "resource_roll", count: 2 })).toBe("roll 2 Resource dice, keep 1");
   });
 
   it("prevents repeat-visit farming exactly like classic (a re-entry grants nothing more)", () => {

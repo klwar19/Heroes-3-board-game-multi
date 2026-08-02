@@ -2390,9 +2390,18 @@ export function revealTileForHero(
   // heroCanDiscoverTileAcrossBorders). The Redwood Observatory and the Speculum
   // artifact are the only ways to reveal across a still-sealed border.
   const heroField = adventure.fields[hero.spaceId];
-  if (!heroField || !heroCanDiscoverTileAcrossBorders(state, hero.spaceId, heroField, tile)) {
+  if (
+    !heroField ||
+    !heroCanDiscoverTileAcrossBorders(
+      state,
+      hero.spaceId,
+      heroField,
+      tile,
+      getHeroMovementCapabilities(state, hero)
+    )
+  ) {
     throw new Error(
-      "A yellow border line seals this edge — move to an open border, or use a Redwood Observatory / Speculum to discover across it."
+      "A yellow border line seals this edge — move to an open border, use Pathfinding, or a Redwood Observatory / Speculum to discover across it."
     );
   }
 
@@ -3168,10 +3177,16 @@ export function canHeroDiscoverAdjacentTile(state: GameState, hero: HeroState, t
   }
   // …and the field's outer edge toward the tile must be an OPEN border. A
   // yellow-sealed arc — or a designed per-edge line on every shared edge — blocks
-  // ordinary discovery (use a Redwood Observatory or Speculum to reveal across it
-  // instead); a border-free Creature Bank the hero stands on is open for the
-  // whole-arc rule, though a per-edge line still seals.
-  return heroCanDiscoverTileAcrossBorders(state, hero.spaceId, field, tile);
+  // ordinary discovery (Pathfinding, or a Redwood Observatory / Speculum, reveals
+  // across it instead); a border-free Creature Bank the hero stands on is open for
+  // the whole-arc rule, though a per-edge line still seals.
+  return heroCanDiscoverTileAcrossBorders(
+    state,
+    hero.spaceId,
+    field,
+    tile,
+    getHeroMovementCapabilities(state, hero)
+  );
 }
 
 /**
@@ -3193,7 +3208,13 @@ export function canHeroImmediatelyAccessAdjacentTile(
     field &&
       isTileAdjacentToSpace(state, tile.id, hero.spaceId) &&
       tileLayer(tile) === fieldLayer(state, hero.spaceId) &&
-      heroCanImmediatelyAccessTile(state, hero.spaceId, field, tile)
+      heroCanImmediatelyAccessTile(
+        state,
+        hero.spaceId,
+        field,
+        tile,
+        getHeroMovementCapabilities(state, hero)
+      )
   );
 }
 
@@ -11207,6 +11228,20 @@ export function finalizeAdventureCombat(state: GameState): void {
       spendResources(state, loserId, { gold: goldToll }, "defeated by an enemy hero");
       gainResources(state, winnerId, { gold: goldToll }, "spoils of victory");
       changeMorale(state, loserId, -1);
+      // MAP-WIDE designer bounty: an extra fixed gold reward for defeating an
+      // enemy Hero in a real fight (fought-out or retreat), on top of the toll
+      // above. Guarded so the Neutral side (a hero lost to guards) and a
+      // self-fight never collect it; a Surrender / sacrificed Secondary never
+      // reaches this branch. Applies to Main and Secondary enemy heroes alike.
+      const heroDefeatGold = adventure.mapPreset?.heroDefeatGold ?? 0;
+      if (heroDefeatGold > 0 && winnerId !== NEUTRAL_PLAYER_ID && loserId !== winnerId) {
+        gainResources(
+          state,
+          winnerId,
+          { gold: heroDefeatGold },
+          "bounty for defeating an enemy hero"
+        );
+      }
       // Main Heroes retreat. A defeated Secondary Hero is removed from the
       // game entirely; it must never reappear on the starting field.
       if (loserHero.kind === "secondary") {

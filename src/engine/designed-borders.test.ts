@@ -57,6 +57,30 @@ const PATHFINDING: HeroMovementCapabilities = {
 // internal border — a clean canvas so any seal seen is the DESIGNED one.
 const OPEN_TILE = "F23";
 
+/**
+ * Grant a player the Pathfinding movement effect (`crossSealedBorders`) for the
+ * rest of the turn, exactly as playing the ability would. `expert: true` makes
+ * `crossSealedBorders` true regardless of the `pathfinding-expert` house rule
+ * (basic grants it under BINH; the printed-expert side grants it either way), so
+ * the fixture is deterministic. Only `controllerId` + `modifiers` are read by
+ * getHeroMovementCapabilities, hence the cast.
+ */
+function grantPathfinding(state: GameState, playerId: string): void {
+  state.activeEffects.push({
+    id: `pf-${playerId}`,
+    name: "Pathfinding",
+    scope: "player",
+    modifiers: [{ type: "HERO_PATHFINDING", expert: true }],
+    duration: { type: "current-turn" },
+    controllerId: playerId,
+    source: { kind: "card", cardId: "ability.pathfinding" },
+    startedRound: state.round,
+    usedRollEventIds: [],
+    usedChoiceIds: [],
+    usedCombatRoundNumbers: []
+  } as unknown as GameState["activeEffects"][number]);
+}
+
 // Designer yellow borders are ON by default (DESIGNER_BORDER_SEALING_ENABLED).
 // Suites that assert a designed border WALLS movement / discovery / placement
 // run while the flag is on; pure rendering + normalizer suites always run.
@@ -814,6 +838,33 @@ sealingDescribe("per-edge designer borders — tile discovery", () => {
     // not per-field — a single open doorway is enough).
     aTile.borderEdges = facing.dirs.slice(1).map((d) => edgeCodeFor(facing.field, aTile, d));
     expect(canHeroDiscoverAdjacentTile(state, hero, target)).toBe(true);
+  });
+
+  it("Pathfinding lets the hero DISCOVER a face-down tile across a fully-sealed border (house rule stays ON)", () => {
+    const { state, aTile, target, facing } = discoveryFixture();
+    const hero = state.heroes.hero_p1;
+
+    // Seal EVERY shared edge (hero side) → not discoverable under the gate.
+    aTile.borderEdges = facing.dirs.map((d) => edgeCodeFor(facing.field, aTile, d));
+    expect(canHeroDiscoverAdjacentTile(state, hero, target)).toBe(false);
+
+    // Pathfinding crosses yellow borders → discovery is offered AND succeeds,
+    // even though `discovery-border-gate` is still ON (the gate itself unchanged).
+    grantPathfinding(state, "p1");
+    expect(canHeroDiscoverAdjacentTile(state, hero, target)).toBe(true);
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === target.id
+      )
+    ).toBe(true);
+    const revealed = applyAction(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: target.id
+    });
+    expect(revealed.errors).toHaveLength(0);
+    expect(revealed.state.adventure!.tiles[target.id].faceDown).toBe(false);
   });
 });
 

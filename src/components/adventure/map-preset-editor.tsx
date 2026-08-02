@@ -69,17 +69,17 @@ import {
  */
 
 /**
- * Win-condition kinds the editor OFFERS for new rows. The object-scoped kinds
- * (control-towns / flag-mines / obelisks) moved to the
- * Map objects group as per-object "first clear wins" ticks — legacy maps that
- * already carry one keep rendering and stay engine-supported; the picker just
- * no longer offers the duplicates.
+ * Win-condition kinds the editor OFFERS for new rows. `control-towns` and
+ * `obelisks` moved to the Map objects group as per-object "first clear wins"
+ * ticks, so the picker no longer offers those duplicates. `flag-mines` — an
+ * AGGREGATE count of every Mine + Settlement a player currently controls — has
+ * no per-object equivalent (it is "hold X of them", not "clear THIS field"), so
+ * it stays offered here as "control X mines/settlements to win". Legacy maps
+ * carrying a control-towns / obelisks row keep rendering and stay
+ * engine-supported.
  */
 const OFFERED_WIN_CONDITION_OPTIONS = CUSTOM_WIN_CONDITION_OPTIONS.filter(
-  (entry) =>
-    entry.id !== "control-towns" &&
-    entry.id !== "flag-mines" &&
-    entry.id !== "obelisks"
+  (entry) => entry.id !== "control-towns" && entry.id !== "obelisks"
 );
 
 const BUILT_IN_DUNGEON_WARDENS = [
@@ -289,6 +289,9 @@ export function MapPresetEditor({
     }
     if (partial.roundLimit === 0) {
       delete next.roundLimit;
+    }
+    if ("heroDefeatGold" in partial && !partial.heroDefeatGold) {
+      delete next.heroDefeatGold;
     }
     if ("obelisks" in partial && partial.obelisks === undefined) {
       // "Classic" is the ABSENCE of a config — remove the key entirely.
@@ -600,6 +603,7 @@ export function MapPresetEditor({
       (value.victoryPoints?.enabled
         ? describeVictoryPointsConfig(value.victoryPoints, value.roundLimit).length
         : 0) +
+      (value.heroDefeatGold ? 1 : 0) +
       (value.customWinConditions?.length ?? 0) +
       // The Grail / Dragon-Utopia objective tuning now lives in this group.
       (value.objectives ? describeObjectivesConfig(value.objectives).length : 0),
@@ -1674,6 +1678,23 @@ export function MapPresetEditor({
           >
             <Plus aria-hidden="true" size={13} /> Add win condition
           </button>
+        </div>
+      </section>
+
+      <section className="mapPresetSection" aria-label="Hero-defeat bounty">
+        <div className="mapPresetSectionLabel">⚔️ Hero-defeat bounty</div>
+        <small className="mapPresetHint">
+          Extra gold the winner gains for defeating an enemy Hero in a real fight — on top of the normal
+          5-gold spoils. Applies to every player and to Main + Secondary heroes; a surrender or a
+          sacrificed Secondary Hero pays nothing. 0 = off.
+        </small>
+        <div className="mapPresetResourceRow">
+          <ResourceField
+            label="Gold on hero defeat"
+            max={100}
+            value={value.heroDefeatGold ?? 0}
+            onChange={(gold) => patch({ heroDefeatGold: Math.max(0, Math.min(100, gold ?? 0)) || undefined })}
+          />
         </div>
       </section>
       </MapPresetGroup>
@@ -3256,6 +3277,19 @@ function ObeliskBonusFields({
       </div>
     );
   }
+  if (bonus.kind === "resource_roll") {
+    return (
+      <div className="mapPresetResourceRow">
+        <ResourceField
+          label="Resource dice (keep 1)"
+          max={3}
+          min={2}
+          value={bonus.count}
+          onChange={(count) => onChange({ kind: "resource_roll", count: Math.max(2, Math.min(3, count ?? 2)) })}
+        />
+      </div>
+    );
+  }
   if (bonus.kind === "ability_token") {
     return <small className="mapPresetHint">Each visitor Searches (1) the Ability deck (Ability token).</small>;
   }
@@ -3382,6 +3416,8 @@ function obeliskBonusGlyph(kind: CustomMapObeliskBonus["kind"]): string {
     case "experience":
       return REWARD_GLYPH_ICONS.experience;
     case "dice":
+      return REWARD_GLYPH_ICONS.resourceDie;
+    case "resource_roll":
       return REWARD_GLYPH_ICONS.resourceDie;
   }
 }

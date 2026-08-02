@@ -11631,6 +11631,16 @@ export type CustomMapPreset = {
     Record<"no-secondary-heroes" | "free-neutral-combat-extend", boolean>
   >;
   roundLimit?: number;
+  /**
+   * MAP-WIDE combat spoils: the winner of a REAL PvP combat (a fought-out loss
+   * or a retreat — the branch that records a hero defeat) that beats an enemy
+   * Hero gains this many EXTRA gold, on top of the normal 5-gold toll. Applies
+   * to Main AND Secondary enemy heroes; a surrender or a sacrificed Secondary
+   * Hero grants nothing (no hero is actually defeated). 0 / absent = off. Read
+   * directly from `adventure.mapPreset` at the real-defeat branch of
+   * finalizeAdventureCombat (like `obelisks`, never hoisted to lobby options).
+   */
+  heroDefeatGold?: number;
   notes?: string;
   /**
    * Designer-configurable Obelisk role (MAP-WIDE). ABSENT = classic locked-die
@@ -12100,7 +12110,15 @@ export type CustomMapObeliskBonus =
   | { kind: "resources"; gold?: number; buildingMaterials?: number; valuables?: number }
   | { kind: "movement"; amount: number }
   | { kind: "experience"; amount: number }
-  | { kind: "dice"; treasure: number; resource: number };
+  | { kind: "dice"; treasure: number; resource: number }
+  /**
+   * Roll `count` Resource dice and keep exactly ONE result — the visiting player
+   * picks which. Distinct from `dice`, which resolves EVERY rolled die; this is
+   * the "roll N, choose 1" gamble. `count` is clamped 2–3 (rolling one and
+   * keeping one is a no-op). Emits a single ROLL_RESOURCE_DICE with
+   * `resolveCount: 1`, which opens the "Choose one resource die result" pick.
+   */
+  | { kind: "resource_roll"; count: number };
 
 /**
  * The Obelisk "bonus" role's default reward when the designer leaves it unset —
