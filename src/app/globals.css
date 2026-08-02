@@ -32217,13 +32217,14 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     min-width: 0;
   }
 
-  /* The docked chat used to park bottom-left — directly ON the fixed rail's
-     lower tiles and the hand tray. Anchor it beside the rail, above the hand
-     tray (the MMO chat spot over the map's lower-left), so the command column
-     is never covered. Combat screens (no rail) keep the classic corner. */
+  /* Docked chat sits in the map's classic bottom-left corner (the MMO chat
+     spot): anchored to the rail's left edge (≈ screen edge) and kept JUST above
+     the hand tray so hand cards stay clickable. Its lower-left may overlap the
+     rail's lower (usually empty) area — accepted for the corner placement.
+     Combat screens (no rail) keep the base corner. */
   .adventureRoot:not(.phoneMode) .chatDock {
-    left: calc(var(--desktop-edge) + 226px);
-    bottom: calc(var(--desktop-hand-height) + 24px);
+    left: var(--desktop-edge);
+    bottom: calc(var(--desktop-hand-height) + 8px);
   }
 
   /* While a fly-out board (hero / unit deck / commander) is open, lift the
@@ -32619,7 +32620,9 @@ details.mapPresetGroup > summary::-webkit-details-marker {
       0 8px 20px rgb(0 0 0 / 55%);
   }
 
-  .adventureRoot:not(.phoneMode) .chatDock,
+  /* The chat dock is intentionally NOT in this group: it owns its own corner
+     anchor (bottom-left, just above the hand tray) in the .chatDock rule above.
+     These three affordances stay lifted a little higher, above the hand tray. */
   .adventureRoot:not(.phoneMode) .helperCoachChip,
   .adventureRoot:not(.phoneMode) .tableReactionBar,
   .adventureRoot:not(.phoneMode) .reactionStrip {

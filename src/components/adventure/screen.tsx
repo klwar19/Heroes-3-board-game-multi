@@ -2651,13 +2651,18 @@ export function HexMapBoard({
           className="placementGhostFlower"
           key={`ghost-${center.row}-${center.col}`}
           onClick={() => {
-            if (suppressClickRef.current || !myHero) {
+            // Dispatch as the hero that can actually reach THIS slot (tagged on
+            // the ghost by placementCenters), not the currently-selected hero.
+            // A Secondary Hero's border slot is only reachable by it, so using
+            // `myHero` (which defaults to the Main Hero) made the engine reject
+            // the placement — the Secondary Hero could never lay a Ⅱ–Ⅲ tile.
+            if (suppressClickRef.current || !center.heroId) {
               return;
             }
             onAction({
               type: "PLACE_TILE",
               playerId: viewerPlayerId,
-              heroId: myHero.id,
+              heroId: center.heroId,
               supplyIndex: placement.supplyIndex,
               centerRow: center.row,
               centerCol: center.col
