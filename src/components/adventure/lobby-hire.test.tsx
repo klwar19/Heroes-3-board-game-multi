@@ -88,6 +88,7 @@ describe("TownPanel — hiring a Secondary Hero with exactly 10 gold", () => {
 
     const counter = screen.getByLabelText("Secondary Hero movement points: 2");
     expect(counter.querySelector("b")?.textContent).toBe("2");
-    expect(counter.textContent).toMatch(/secondary move/i);
+    expect(counter.textContent).toMatch(/2nd move/i);
+    expect(screen.queryByText(/game mode/i), "the live HUD leaves setup-mode details out to save space").toBeNull();
   });
 });

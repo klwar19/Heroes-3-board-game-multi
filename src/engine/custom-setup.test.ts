@@ -966,6 +966,64 @@ describe("map preset conditions — effects and apply-once semantics", () => {
     ).toBe(true);
   });
 
+  it("opens a trade-only Market event after Resource-round income", () => {
+    const state = createAdventureGameState({
+      seed: "preset-market-day",
+      rollFirstPlayer: false,
+      events: false,
+      startingResources: { gold: 0, buildingMaterials: 0, valuables: 0 },
+      startingProduction: { gold: 7, buildingMaterials: 2, valuables: 1 },
+      customMapPreset: {
+        timedEvents: [{ round: 3, effect: { kind: "market_trade" } }]
+      }
+    });
+    const before = { ...state.players.p1.resources };
+    state.round = 3;
+
+    startAdventureRound(state);
+
+    expect(state.players.p1.resources).toEqual({
+      gold: before.gold + 7,
+      buildingMaterials: before.buildingMaterials + 2,
+      valuables: before.valuables + 1
+    });
+    const incomeIndex = state.eventLog.findIndex(
+      (event) => event.type === "RESOURCES_GAINED" && event.playerId === "p1" && event.reason === "resource round income"
+    );
+    const marketIndex = state.eventLog.findIndex(
+      (event) => event.type === "MAP_PRESET_TRIGGERED" && event.message.includes("Market rates")
+    );
+    expect(incomeIndex).toBeGreaterThanOrEqual(0);
+    expect(marketIndex).toBeGreaterThan(incomeIndex);
+
+    const marketRewards = state.adventure!.rewardQueue.filter(
+      (reward) =>
+        reward.kind === "visit-steps" &&
+        reward.steps.some((step) => step.type === "TRADING_POST" && step.tradesOnly === true)
+    );
+    expect(new Set(marketRewards.map((reward) => reward.playerId))).toEqual(new Set(["p1", "p2"]));
+    expect(
+      marketRewards.every(
+        (reward) => reward.kind === "visit-steps" && reward.steps.every((step) => step.type === "TRADING_POST")
+      )
+    ).toBe(true);
+
+    pumpAdventureQueues(state);
+    expect(state.adventure!.pendingVisit?.steps[0]).toMatchObject({
+      type: "TRADING_POST",
+      tradesOnly: true
+    });
+    const actions = getLegalActions(state, "p1");
+    expect(actions.some((entry) => entry.action.type === "TRADE_RESOURCES")).toBe(true);
+    expect(actions.some((entry) => entry.action.type === "BUY_WAR_MACHINE")).toBe(false);
+    expect(actions.some((entry) => entry.action.type === "SELL_SCROLL_SPELL")).toBe(false);
+    expect(
+      actions.some(
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.action.decline !== true
+      )
+    ).toBe(false);
+  });
+
   it("clear_visitable_cubes also re-opens Factory Derrick/Prospector aliases (rulebook p.7)", () => {
     const state = createAdventureGameState({
       seed: "preset-factory-cubes",

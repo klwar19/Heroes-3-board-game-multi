@@ -238,13 +238,17 @@ describe("adventure setup", () => {
     // A single sublattice color across all tiles is what guarantees no holes.
     expect(new Set(everyTile.map((tile) => tileLatticeColor(tile))).size).toBe(1);
 
-    // The always-on tiles (Near + Center) plus any number of seats stay
-    // non-overlapping and connected through gapless neighbours — so 2-, 3- and
-    // 4-player maps are all one hole-free piece.
-    for (const seats of [2, 3, 4]) {
+    // The always-on tiles (Near + Center), promoted seat-5/6 fillers, and any
+    // number of seats stay non-overlapping and connected through gapless
+    // neighbours — including the new 5- and 6-player layouts.
+    for (const seats of [2, 3, 4, 5, 6]) {
+      const promotedFillers = scenario.layout.starts.slice(
+        Math.max(seats, scenario.layout.unusedStartsAsNearFrom ?? scenario.layout.starts.length)
+      );
       const placed = [
         ...scenario.layout.starts.slice(0, seats),
         ...scenario.layout.near,
+        ...promotedFillers,
         ...scenario.layout.center
       ];
       for (let i = 0; i < placed.length; i += 1) {
@@ -265,6 +269,28 @@ describe("adventure setup", () => {
       }
       expect(seen.size).toBe(placed.length);
     }
+  });
+
+  it("builds six distinct player homes and heroes on the skirmish map", () => {
+    const factions = ["castle", "necropolis", "dungeon", "rampart", "inferno", "tower"] as const;
+    const state = createAdventureGameState({
+      seed: "six-player-skirmish",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: factions.map((factionId, index) => ({
+        id: `p${index + 1}`,
+        name: `Player ${index + 1}`,
+        factionId
+      }))
+    });
+
+    // The neutral combat controller also lives in `state.players`; turn order
+    // is the authoritative list of participating seats.
+    expect(state.turnOrder).toHaveLength(6);
+    expect(Object.keys(state.towns)).toHaveLength(6);
+    expect(Object.keys(state.heroes)).toHaveLength(6);
+    expect(new Set(Object.values(state.heroes).map((hero) => hero.spaceId)).size).toBe(6);
+    expect(Object.values(state.adventure!.tiles).filter((tile) => tile.group === "starting")).toHaveLength(6);
   });
 
   it("hides face-down tiles and every far tile supply in the player view", () => {
@@ -1146,6 +1172,37 @@ describe("tile discovery and placement", () => {
 });
 
 describe("map setup lobby", () => {
+  it("opens and starts a complete six-player skirmish lobby", () => {
+    let state = createAdventureLobbyState({
+      seed: "six-player-lobby",
+      scenarioId: "skirmish",
+      playerCount: 6
+    });
+    expect(state.setupLobby?.seats).toHaveLength(6);
+
+    const picks = [
+      ["castle", "catherine"],
+      ["necropolis", "sandro"],
+      ["dungeon", "mutare"],
+      ["rampart", "gelu"],
+      ["inferno", "xyron"],
+      ["tower", "solmyr"]
+    ] as const;
+    for (const [index, [factionId, heroDefId]] of picks.entries()) {
+      state = apply(state, {
+        type: "CHOOSE_FACTION",
+        playerId: `p${index + 1}`,
+        factionId,
+        heroDefId
+      });
+    }
+    state = apply(state, { type: "START_ADVENTURE", playerId: "p1" });
+
+    expect(state.turnOrder).toHaveLength(6);
+    expect(Object.keys(state.towns)).toHaveLength(6);
+    expect(Object.keys(state.heroes)).toHaveLength(6);
+  });
+
   it("collects faction picks, then builds the scenario map", () => {
     let state = createAdventureLobbyState({ seed: "lobby-seed" });
     expect(state.phase).toBe("setup");

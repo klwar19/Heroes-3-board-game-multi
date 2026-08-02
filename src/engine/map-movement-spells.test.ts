@@ -728,6 +728,59 @@ describe("Dimension Door spell", () => {
     expect(dimensionDoorDestinations(state)).toContain(beyond);
   });
 
+  it("lets the caster choose a Secondary Hero before choosing its destination", () => {
+    let state = withHand(makeGame(), ["spell.dimension_door"]);
+    const { hero: main, footprint } = dimensionDoorSetup(state);
+    const mainStart = main.spaceId;
+    const secondaryStart = footprint[2];
+    expect(secondaryStart).toBeTruthy();
+    state.heroes.hero_p1_secondary = {
+      ...main,
+      id: "hero_p1_secondary",
+      kind: "secondary",
+      level: 1,
+      experience: 0,
+      movementPoints: 2,
+      spaceId: secondaryStart!
+    };
+
+    state = playDimensionDoor(state, 0);
+    expect(state.pendingChoice).toMatchObject({
+      type: "OPTION_CHOICE",
+      context: "dimension-door-hero"
+    });
+    const heroChoice = state.pendingChoice!;
+    if (heroChoice.type !== "OPTION_CHOICE") {
+      throw new Error("missing Dimension Door hero choice");
+    }
+    const secondaryIndex = heroChoice.options.findIndex((option) => /Secondary Hero/i.test(option.label));
+    expect(secondaryIndex).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: heroChoice.id,
+      optionIndex: secondaryIndex
+    });
+
+    expect(state.pendingChoice).toMatchObject({
+      type: "OPTION_CHOICE",
+      context: "dimension-door",
+      dimensionDoor: { heroId: "hero_p1_secondary" }
+    });
+    const destinations = dimensionDoorDestinations(state);
+    const target = destinations.find((spaceId) => spaceId !== mainStart);
+    expect(target).toBeTruthy();
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: destinations.indexOf(target!)
+    });
+
+    expect(state.heroes.hero_p1_secondary.spaceId).toBe(target);
+    expect(state.heroes.hero_p1.spaceId).toBe(mainStart);
+  });
+
   it("teleports the hero and resolves the destination field (visit)", () => {
     let state = withHand(makeGame(), ["spell.dimension_door"]);
     const { near } = dimensionDoorSetup(state);
@@ -990,6 +1043,18 @@ describe("Town Portal spell", () => {
     );
   }
 
+  function townPortalHeroDestinationIndex(state: GameState, heroId: string, spaceId: string): number {
+    const step = state.adventure?.pendingVisit?.steps[0];
+    if (!step || step.type !== "CHOOSE_ONE") {
+      throw new Error("no Town Portal destination choice open");
+    }
+    return step.options.findIndex((option) =>
+      option.steps.some(
+        (inner) => inner.type === "TELEPORT_HERO" && inner.heroId === heroId && inner.spaceId === spaceId
+      )
+    );
+  }
+
   it("is not offered without a controlled destination", () => {
     const state = withHand(makeGame(), [
       "spell.town_portal",
@@ -1091,6 +1156,51 @@ describe("Town Portal spell", () => {
 
     expect(townPortalDestinationIndex(state, occupied)).toBeGreaterThanOrEqual(0);
     expect(townPortalOptions(state).some((option) => /h:-?\d+:-?\d+/.test(option.label))).toBe(false);
+  });
+
+  it("lets the player choose main or secondary hero and never targets a Random Town", () => {
+    let state = withHand(makeGame(), ["spell.town_portal"]);
+    const main = heroP1(state);
+    const footprint = heroTileFootprint(state);
+    const secondaryStart = footprint[2];
+    const settlement = footprint[4];
+    const randomTown = footprint[5];
+    flagSettlement(state, settlement);
+    setField(state, randomTown, "random_town");
+    state.adventure!.fields[randomTown]!.flagOwnerId = "p1";
+    // Regression: even a stale/hand-authored TownState may not make a Random
+    // Town a Town Portal target.
+    state.towns.random_town_record = {
+      id: "random_town_record",
+      controllerId: "p1",
+      buildings: [],
+      factionId: "castle",
+      fieldId: randomTown
+    };
+    state.heroes.hero_p1_secondary = {
+      id: "hero_p1_secondary",
+      controllerId: "p1",
+      kind: "secondary",
+      level: 1,
+      experience: 0,
+      movementPoints: 2,
+      movementPointsMax: 2,
+      spaceId: secondaryStart
+    };
+
+    state = castMapPowerSpell(state, "spell.town_portal");
+
+    const mainIndex = townPortalHeroDestinationIndex(state, main.id, settlement);
+    const secondaryIndex = townPortalHeroDestinationIndex(state, "hero_p1_secondary", settlement);
+    expect(mainIndex).toBeGreaterThanOrEqual(0);
+    expect(secondaryIndex).toBeGreaterThanOrEqual(0);
+    expect(townPortalDestinationIndex(state, randomTown)).toBe(-1);
+    expect(townPortalOptions(state).some((option) => option.label.startsWith("Main Hero →"))).toBe(true);
+    expect(townPortalOptions(state).some((option) => option.label.startsWith("Secondary Hero →"))).toBe(true);
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: secondaryIndex });
+    expect(state.heroes.hero_p1_secondary.spaceId).toBe(settlement);
+    expect(heroP1(state).spaceId).toBe(main.spaceId);
   });
 });
 

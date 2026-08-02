@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, FilePlus2, Lock, Save, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, FilePlus2, Lock, Save, Trash2, Undo2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
 import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
 import {
@@ -32,6 +32,15 @@ import {
 import { getAccountIdentity, getClientId, getDisplayName, type AccountIdentity } from "@/lib/identity";
 import { assetUrl } from "@/lib/asset-url";
 import { DESIGNER_UI_ICONS } from "@/data/assets/homm-assets";
+
+type MapEditorSnapshot = {
+  scenarioId: string;
+  tiles: CustomMapTilePlan[];
+  preset: CustomMapPreset | undefined;
+  players: number;
+};
+
+const MAP_EDITOR_UNDO_LIMIT = 100;
 
 /**
  * Standalone map designer: build a map around the scenario's fixed starting
@@ -64,6 +73,51 @@ export default function MapDesignerPage() {
   // signed-out visitor gets a null actor: they can still browse, play, and copy,
   // and can edit/delete only UNOWNED (legacy / guest-made) maps — exactly as before.
   const [account, setAccount] = useState<AccountIdentity | null>(null);
+  const [undoHistory, setUndoHistory] = useState<MapEditorSnapshot[]>([]);
+  // Keep the authoritative draft available synchronously: several designer
+  // callbacks can fire inside one React batch, and each undo snapshot must see
+  // the immediately preceding edit rather than a stale render.
+  const editorSnapshotRef = useRef<MapEditorSnapshot>({ scenarioId, tiles, preset, players });
+
+  const commitEditorChange = (change: Partial<MapEditorSnapshot>) => {
+    const current = editorSnapshotRef.current;
+    const next = { ...current, ...change };
+    if (
+      next.scenarioId === current.scenarioId &&
+      next.tiles === current.tiles &&
+      next.preset === current.preset &&
+      next.players === current.players
+    ) {
+      return;
+    }
+    setUndoHistory((history) => [...history, current].slice(-MAP_EDITOR_UNDO_LIMIT));
+    editorSnapshotRef.current = next;
+    if ("scenarioId" in change) setScenarioId(next.scenarioId);
+    if ("tiles" in change) setTiles(next.tiles);
+    if ("preset" in change) setPreset(next.preset);
+    if ("players" in change) setPlayers(next.players);
+  };
+
+  const replaceEditorDraft = (next: MapEditorSnapshot) => {
+    editorSnapshotRef.current = next;
+    setScenarioId(next.scenarioId);
+    setTiles(next.tiles);
+    setPreset(next.preset);
+    setPlayers(next.players);
+    setUndoHistory([]);
+  };
+
+  const undoEditorChange = () => {
+    const previous = undoHistory.at(-1);
+    if (!previous) return;
+    editorSnapshotRef.current = previous;
+    setScenarioId(previous.scenarioId);
+    setTiles(previous.tiles);
+    setPreset(previous.preset);
+    setPlayers(previous.players);
+    setPickRequest(null);
+    setUndoHistory((history) => history.slice(0, -1));
+  };
 
   // The library lives on the server now (shared by everyone), so re-fetch on
   // mount and whenever the tab regains focus — a map saved in another tab or by
@@ -103,8 +157,8 @@ export default function MapDesignerPage() {
 
   const scenario = scenarioDefinitions[scenarioId];
   const problems = useMemo(
-    () => (scenario ? validateCustomMapPlan(tiles, scenario).problems : []),
-    [tiles, scenario]
+    () => (scenario ? validateCustomMapPlan(tiles, scenario, players).problems : []),
+    [tiles, scenario, players]
   );
   const secretWarnings = useMemo(() => secretFeatureDemandWarnings(tiles), [tiles]);
   const soloOpponentLimit = scenario
@@ -119,7 +173,7 @@ export default function MapDesignerPage() {
     [tiles]
   );
 
-  // Seat counts this scenario can open (skirmish 2–4, the symmetric duels 2).
+  // Seat counts this scenario can open (skirmish 2–6, the symmetric duels 2).
   const playerCounts = useMemo(() => {
     if (!scenario) {
       return [MIN_MAP_PLAYERS];
@@ -135,26 +189,34 @@ export default function MapDesignerPage() {
 
   // A new scenario may allow fewer seats — keep `players` inside its range.
   const changeScenario = (next: string) => {
-    setScenarioId(next);
-    setPlayers((current) => clampMapPlayers(next, current));
+    commitEditorChange({
+      scenarioId: next,
+      players: clampMapPlayers(next, editorSnapshotRef.current.players)
+    });
   };
 
   const startNew = () => {
     setCurrentId(null);
-    setTiles([]);
-    setPreset(undefined);
+    replaceEditorDraft({
+      scenarioId,
+      tiles: [],
+      preset: undefined,
+      players: clampMapPlayers(scenarioId, players)
+    });
     setName("My map");
-    setPlayers(clampMapPlayers(scenarioId, players));
     setSaveError(null);
   };
 
   const loadRecord = (record: SharedMapRecord) => {
     setCurrentId(record.id);
-    setScenarioId(scenarioDefinitions[record.scenarioId] ? record.scenarioId : "skirmish");
-    setTiles(record.tiles);
-    setPreset(record.preset);
+    const nextScenarioId = scenarioDefinitions[record.scenarioId] ? record.scenarioId : "skirmish";
+    replaceEditorDraft({
+      scenarioId: nextScenarioId,
+      tiles: record.tiles,
+      preset: record.preset,
+      players: clampMapPlayers(nextScenarioId, record.players)
+    });
     setName(record.name);
-    setPlayers(clampMapPlayers(record.scenarioId, record.players));
     setSaveError(null);
   };
 
@@ -220,7 +282,7 @@ export default function MapDesignerPage() {
         </h1>
         <p>
           Build a map around the starting tiles, dropping tiles wherever you like — they can interlock, leave gaps,
-          touch at a corner or sit apart on their own. Pick how many multiplayer seats it opens for (2–4), flip a tile face up
+          touch at a corner or sit apart on their own. Pick how many multiplayer seats it opens for (2–6), flip a tile face up
           (choose the exact tile and rotation) or face down (random from its pool), then save the design. Saved maps are
           shared with everyone — anyone can open, edit, play, or delete them, here or in the map-setup lobby under “Map
           design”. For single-player, click Town tiles to mark exactly one as You and the others as Enemy AI; those
@@ -258,7 +320,7 @@ export default function MapDesignerPage() {
               <small>Multiplayer seats</small>
               <select
                 aria-label="Multiplayer seats"
-                onChange={(event) => setPlayers(Number(event.target.value))}
+                onChange={(event) => commitEditorChange({ players: Number(event.target.value) })}
                 value={players}
               >
                 {playerCounts.map((count) => (
@@ -268,6 +330,16 @@ export default function MapDesignerPage() {
                 ))}
               </select>
             </label>
+            <button
+              aria-label="Undo last map edit"
+              className="commandButton ghost"
+              disabled={undoHistory.length === 0}
+              onClick={undoEditorChange}
+              title={undoHistory.length > 0 ? "Undo the last map or rules edit" : "Nothing to undo"}
+              type="button"
+            >
+              <Undo2 aria-hidden="true" size={14} /> Undo
+            </button>
             {currentId && !canModifyCurrent ? (
               // The loaded map belongs to someone else — you can't overwrite it,
               // only fork it. The primary action becomes "Save as copy".
@@ -344,32 +416,29 @@ export default function MapDesignerPage() {
             customMap={tiles}
             hexEvents={preset?.hexEvents ?? []}
             objects={preset?.objects ?? []}
-            onChange={setTiles}
-            onHexEventsChange={(hexEvents) =>
-              setPreset((current) => {
-                const next: CustomMapPreset = { ...(current ?? {}) };
-                if (hexEvents.length > 0) {
-                  next.hexEvents = hexEvents;
-                } else {
-                  delete next.hexEvents;
-                }
-                return customMapPresetIsActive(next) ? next : undefined;
-              })
-            }
-            onObjectsChange={(objects: CustomMapObject[]) =>
-              setPreset((current) => {
-                const next: CustomMapPreset = { ...(current ?? {}) };
-                if (objects.length > 0) {
-                  next.objects = objects;
-                } else {
-                  delete next.objects;
-                }
-                return customMapPresetIsActive(next) ? next : undefined;
-              })
-            }
+            onChange={(nextTiles) => commitEditorChange({ tiles: nextTiles })}
+            onHexEventsChange={(hexEvents) => {
+              const next: CustomMapPreset = { ...(editorSnapshotRef.current.preset ?? {}) };
+              if (hexEvents.length > 0) {
+                next.hexEvents = hexEvents;
+              } else {
+                delete next.hexEvents;
+              }
+              commitEditorChange({ preset: customMapPresetIsActive(next) ? next : undefined });
+            }}
+            onObjectsChange={(objects: CustomMapObject[]) => {
+              const next: CustomMapPreset = { ...(editorSnapshotRef.current.preset ?? {}) };
+              if (objects.length > 0) {
+                next.objects = objects;
+              } else {
+                delete next.objects;
+              }
+              commitEditorChange({ preset: customMapPresetIsActive(next) ? next : undefined });
+            }}
             onPickResolved={() => setPickRequest(null)}
             pickRequest={pickRequest}
             scenarioId={scenarioId}
+            seatCount={players}
             victoryMode={preset?.victoryMode}
           />
           <small className="optionHint">
@@ -380,7 +449,7 @@ export default function MapDesignerPage() {
           </small>
 
           <MapPresetEditor
-            onChange={setPreset}
+            onChange={(nextPreset) => commitEditorChange({ preset: nextPreset })}
             onPickOnMap={(request) => {
               // Arm the on-map pick and bring the board into view ("jump to
               // the map"); a second press on the same button disarms.

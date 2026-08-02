@@ -349,8 +349,13 @@ describe("Underground designation — the live board marks a flagged tile", () =
     const { container } = renderLiveBoard(state);
     const flaggedHex = hex(container, hexSpaceId({ row: flagged.centerRow, col: flagged.centerCol }));
     expect(flaggedHex.getAttribute("data-underground"), "flagged tile hex carries the layer cue").toBe("true");
+    expect(
+      container.querySelectorAll(`[data-underground-tile-id="${flagged.id}"]`),
+      "the seven-hex flower has 18 outward perimeter edges"
+    ).toHaveLength(18);
     const plainHex = hex(container, hexSpaceId({ row: plain.centerRow, col: plain.centerCol }));
     expect(plainHex.getAttribute("data-underground"), "a plain Surface Far tile has no cue").toBeNull();
+    expect(container.querySelectorAll(`[data-underground-tile-id="${plain.id}"]`)).toHaveLength(0);
   });
 
   it("a face-down flagged tile shows the 'needs a Subterranean Gate' hint + data-underground, just like a cavern", () => {
@@ -383,6 +388,10 @@ describe("Underground designation — the live board marks a flagged tile", () =
     expect(cavernCells.every((cell) => cell.classList.contains("needsGate")), "flagged tile reads needs-a-gate").toBe(true);
     // …carries the always-on underground marker…
     expect(cavernCells.every((cell) => cell.getAttribute("data-underground") === "true")).toBe(true);
+    expect(
+      container.querySelectorAll(`[data-underground-tile-id="${flagged.id}"]`),
+      "the orange layer perimeter is public before reveal"
+    ).toHaveLength(18);
     // …and the standing "via Subterranean Gate" hint fires (the layer predicate).
     const hints = [...container.querySelectorAll(".hexCavernHint")].map((node) => node.textContent);
     expect(hints.some((text) => text?.includes("Subterranean Gate"))).toBe(true);

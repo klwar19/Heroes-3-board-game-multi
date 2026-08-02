@@ -458,6 +458,93 @@ describe("BattlefieldBoard — horizontal cell placement", () => {
   });
 });
 
+describe("manual Neutral control - real battlefield controls", () => {
+  function controlledNeutralScene(): { state: GameState; guardId: string } {
+    const state = createInitialGameState("manual-neutral-board");
+    state.adventure = {
+      fields: {},
+      tiles: {},
+      manualGuardControl: true
+    } as unknown as GameState["adventure"];
+    const combat = state.combat!;
+    combat.context = {
+      kind: "neutral",
+      heroId: "hero_p1",
+      fieldId: "guard-field",
+      difficulty: 1,
+      hasAzure: false
+    };
+    combat.attackerPlayerId = "p1";
+    combat.defenderPlayerId = NEUTRAL_PLAYER_ID;
+    combat.setup = null;
+    combat.outcome = null;
+    state.phase = "combat";
+    state.pendingChoice = null;
+    state.reactionWindow = null;
+    state.stack = [];
+
+    const guard = combat.units.unit_p2_skeletons;
+    guard.controllerId = NEUTRAL_PLAYER_ID;
+    guard.position = 5;
+    guard.activatedThisRound = false;
+    guard.movedThisActivation = false;
+    guard.attackedThisActivation = false;
+    guard.reactionPauseAcked = true;
+    const target = combat.units.unit_p1_marksmen;
+    target.position = 1;
+    for (const unit of Object.values(combat.units)) {
+      if (unit.id !== guard.id && unit.id !== target.id) {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    combat.activeUnitId = guard.id;
+    // The reducer publishes p1 as decision owner without changing the guard's
+    // Neutral army controller.
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+    return { state, guardId: guard.id };
+  }
+
+  it("shows the controlled guard as active and dispatches its board attack as the player seat", () => {
+    const { state, guardId } = controlledNeutralScene();
+    const legalActions = getLegalActions(state, "p1");
+    const attack = legalActions.find(
+      (legal) => legal.action.type === "ATTACK_UNIT" && legal.action.attackerId === guardId
+    );
+    expect(attack, "the engine should offer the guard attack to p1").toBeTruthy();
+    const onAction = vi.fn();
+    const { container } = render(
+      <CardZoomProvider>
+        <>
+          <BattlefieldBoard
+            legalActions={legalActions}
+            onAction={onAction}
+            onInspect={() => {}}
+            selectedCardAction={null}
+            state={state}
+            viewerPlayerId="p1"
+          />
+          <CommandDock legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />
+        </>
+      </CardZoomProvider>
+    );
+
+    expect(container.querySelector(".dockStatus")?.textContent).toContain(
+      `${state.combat!.units[guardId].name} is active`
+    );
+    const attackButton = container.querySelector<HTMLButtonElement>(
+      `[aria-label="Attack ${state.combat!.units.unit_p1_marksmen.name}"]`
+    );
+    expect(attackButton, "the enemy card should be a clickable attack target").toBeTruthy();
+    fireEvent.click(attackButton!);
+    expect(onAction).toHaveBeenCalledWith(attack!.action);
+    expect([...container.querySelectorAll("button")].some((button) => button.textContent?.includes("Defend"))).toBe(true);
+    expect(
+      [...container.querySelectorAll("button")].some((button) => button.textContent?.includes("automatic"))
+    ).toBe(true);
+  });
+});
+
 /**
  * Regression test for the space-target cast fix: an area spell that selects a
  * SPACE (Inferno / Frost Ring / Xyron's Inferno) must be castable on a space

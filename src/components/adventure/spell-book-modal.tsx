@@ -81,7 +81,9 @@ export function SpellBookModal({
   usedCardIds = [],
   polishMode = false,
   castsByCard,
+  shortcuts = [],
   onCast,
+  onShortcut,
   onClose,
   subtitle,
   emptyHint,
@@ -96,8 +98,14 @@ export function SpellBookModal({
   /** Cast actions available right now for each stored Spell id (from the Book).
       Read-only so a `Map<string, PlayLegal[]>` widens in cleanly. */
   castsByCard: ReadonlyMap<string, readonly LegalAction[]>;
+  /** Mage Guild actions exposed inside the map Book: purchases plus Polish
+      Rolling Spells. Combat callers omit these, so town actions never leak
+      into a battle window. */
+  shortcuts?: readonly LegalAction[];
   /** Start a cast (the caller stages/arms it, then may close the Book). */
   onCast: (legal: LegalAction) => void;
+  /** Dispatch a Mage Guild shortcut. Required only when `shortcuts` is used. */
+  onShortcut?: (legal: LegalAction) => void;
   onClose: () => void;
   /** Left-page blurb override (the combat Book explains combat timing). */
   subtitle?: string;
@@ -136,6 +144,15 @@ export function SpellBookModal({
   const card = activeId ? cardLibrary[activeId] : undefined;
   const art = activeId ? spellBookArtFor(activeId) : undefined;
   const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
+  const purchaseShortcuts = shortcuts.filter(
+    (legal) => legal.action.type === "SPELL_BOOK_ACTION" && !legal.action.rollSpell
+  );
+  const rollShortcuts = activeId
+    ? shortcuts.filter(
+        (legal) =>
+          legal.action.type === "SPELL_BOOK_ACTION" && legal.action.rollSpell?.cardId === activeId
+      )
+    : [];
   const schools = card?.spellSchools ?? [];
   const accent = SPELL_SCHOOL_COLORS[schools[0] ?? ""] ?? "var(--gold)";
   // Data-derived timing badge + full Power ladder (read from the effect's own
@@ -208,6 +225,21 @@ export function SpellBookModal({
               })}
             </ul>
           )}
+          {purchaseShortcuts.length > 0 && onShortcut ? (
+            <div className="spellBookShortcuts" aria-label="Mage Guild spell shortcuts">
+              <strong>Mage Guild</strong>
+              {purchaseShortcuts.map((legal) => (
+                <button
+                  className="commandButton"
+                  key={actionKey(legal.action)}
+                  onClick={() => onShortcut(legal)}
+                  type="button"
+                >
+                  {legal.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="spellBookSpine" aria-hidden="true" />
@@ -293,7 +325,21 @@ export function SpellBookModal({
                     {castLabel ? castLabel(legal) : legal.label}
                   </button>
                 ))}
-                {casts.length === 0 ? (
+                {rollShortcuts.length > 0 && onShortcut ? (
+                  <div className="spellBookRollShortcuts" aria-label={`Rolling Spells shortcuts for ${card.name}`}>
+                    {rollShortcuts.map((legal) => (
+                      <button
+                        className="commandButton spellBookRollButton"
+                        key={actionKey(legal.action)}
+                        onClick={() => onShortcut(legal)}
+                        type="button"
+                      >
+                        {legal.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {casts.length === 0 && rollShortcuts.length === 0 ? (
                   <small className="spellBookNote">
                     {emptyHint
                       ? emptyHint(activeId ?? "")

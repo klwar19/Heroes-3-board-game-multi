@@ -45,10 +45,10 @@ const GUARD_TIER_LABELS: Record<(typeof GUARD_TIER_ORDER)[number], string> = {
 };
 
 const RANDOM_NEUTRAL_QUICK: { tier: RandomGuardTier; slot: string; label: string }[] = [
-  { tier: "bronze", slot: "random:bronze", label: "+ Neutral I" },
-  { tier: "silver", slot: "random:silver", label: "+ Neutral II" },
-  { tier: "gold", slot: "random:gold", label: "+ Neutral III" },
-  { tier: "azure", slot: "random:azure", label: "+ Neutral IV" }
+  { tier: "bronze", slot: "random:bronze", label: "+ Random bronze creature" },
+  { tier: "silver", slot: "random:silver", label: "+ Random silver creature" },
+  { tier: "gold", slot: "random:gold", label: "+ Random gold creature" },
+  { tier: "azure", slot: "random:azure", label: "+ Random azure creature" }
 ];
 
 // Only tiers that actually HAVE Pack units are offered (no faction ships an

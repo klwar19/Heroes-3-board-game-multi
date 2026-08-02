@@ -9,6 +9,7 @@ import {
   getMainHero,
   MAX_CUSTOM_WIN_CONDITIONS,
   mergeCustomWinConditions,
+  recordVpUtopiaDefeat,
   sanitizeCustomMapPreset,
   type CustomMapPreset,
   type CustomWinCondition,
@@ -614,6 +615,28 @@ describe("Lobby plumbing", () => {
   });
 });
 
+describe("Flag multiple Dragon Utopias", () => {
+  it("requires two distinct Utopia fields and never counts the same field twice", () => {
+    const state = makeGame({
+      seed: "two-utopias",
+      customWinConditions: [{ kind: "defeat-dragon-utopia", count: 2 }]
+    });
+
+    recordVpUtopiaDefeat(state, "p1", "utopia-a");
+    checkCustomWinConditions(state);
+    expect(state.adventure?.winnerPlayerId).toBeNull();
+
+    recordVpUtopiaDefeat(state, "p1", "utopia-a");
+    checkCustomWinConditions(state);
+    expect(state.adventure?.winnerPlayerId).toBeNull();
+    expect(state.adventure?.vpLedger?.p1?.utopiaDefeatedFieldIds).toEqual(["utopia-a"]);
+
+    recordVpUtopiaDefeat(state, "p1", "utopia-b");
+    checkCustomWinConditions(state);
+    expect(state.adventure?.winnerPlayerId).toBe("p1");
+  });
+});
+
 // ===========================================================================
 // 8. Sanitizer unit cases (preset path).
 // ===========================================================================
@@ -638,15 +661,15 @@ describe("Sanitize (preset path)", () => {
     ]);
   });
 
-  it("defeat-dragon-utopia carries NO param; flag-mines clamps to 12", () => {
+  it("defeat-dragon-utopia carries a 1-6 count; flag-mines clamps to 12", () => {
     const preset = sanitizeCustomMapPreset({
       customWinConditions: [
-        { kind: "defeat-dragon-utopia", count: 5 }, // count ignored
+        { kind: "defeat-dragon-utopia", count: 5 },
         { kind: "flag-mines", count: 99 } // max 12
       ]
     });
     expect(preset?.customWinConditions).toEqual([
-      { kind: "defeat-dragon-utopia" },
+      { kind: "defeat-dragon-utopia", count: 5 },
       { kind: "flag-mines", count: 12 }
     ]);
   });
@@ -701,7 +724,7 @@ describe("Banner + describe", () => {
     });
     expect(entries.filter((entry) => entry.icon === "🏁").map((entry) => entry.text)).toEqual([
       "Custom win: control 3 Towns",
-      "Custom win: defeat the Dragon Utopia"
+      "Custom win: flag 1 Dragon Utopia"
     ]);
   });
 
@@ -715,7 +738,8 @@ describe("Banner + describe", () => {
     expect(describeCustomWinCondition({ kind: "obelisks", count: 3 })).toBe("visit 3 Obelisks");
     expect(describeCustomWinCondition({ kind: "obelisks", count: 1 })).toBe("visit 1 Obelisk");
     expect(describeCustomWinCondition({ kind: "defeat-heroes", count: 2 })).toBe("defeat 2 enemy Heroes");
-    expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia" })).toBe("defeat the Dragon Utopia");
+    expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia" })).toBe("flag 1 Dragon Utopia");
+    expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia", count: 2 })).toBe("flag 2 Dragon Utopias");
     expect(
       describeCustomWinCondition({ kind: "hold-with-grail", rounds: 3, target: "starting-town" })
     ).toBe("control Starting Town with the Grail for 3 rounds");

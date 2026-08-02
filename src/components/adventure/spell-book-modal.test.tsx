@@ -79,6 +79,51 @@ describe("SpellBookModal — the openable Spell Book", () => {
     expect(onCast).toHaveBeenCalledWith(cast);
   });
 
+  it("offers Mage Guild purchases and only the selected spell's Rolling Spells shortcut", () => {
+    const buy = {
+      label: "Buy spells (5 gold, Search 3)",
+      action: { type: "SPELL_BOOK_ACTION", playerId: "p1" }
+    } as LegalAction;
+    const rollHaste = {
+      label: "Rolling Spells: return Haste, pay 3 gold, Search 2",
+      action: {
+        type: "SPELL_BOOK_ACTION",
+        playerId: "p1",
+        rollSpell: { cardId: "spell.haste", source: "refreshed" }
+      }
+    } as LegalAction;
+    const rollSlow = {
+      label: "Rolling Spells: return Slow, pay 3 gold, Search 2",
+      action: {
+        type: "SPELL_BOOK_ACTION",
+        playerId: "p1",
+        rollSpell: { cardId: "spell.slow", source: "used" }
+      }
+    } as LegalAction;
+    const onShortcut = vi.fn();
+    render(
+      <SpellBookModal
+        cardIds={["spell.haste"]}
+        usedCardIds={["spell.slow"]}
+        castsByCard={EMPTY}
+        shortcuts={[buy, rollHaste, rollSlow]}
+        onCast={() => {}}
+        onShortcut={onShortcut}
+        onClose={() => {}}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Buy spells \(5 gold/i }));
+    expect(onShortcut).toHaveBeenCalledWith(buy);
+    expect(screen.getByRole("button", { name: /return Haste/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /return Slow/i })).toBeNull();
+
+    fireEvent.click(document.querySelectorAll<HTMLElement>(".spellBookIndexItem")[1]);
+    expect(screen.queryByRole("button", { name: /return Haste/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /return Slow/i }));
+    expect(onShortcut).toHaveBeenCalledWith(rollSlow);
+  });
+
   it("shows the empty-book state when nothing is stored", () => {
     render(<SpellBookModal cardIds={[]} castsByCard={EMPTY} onCast={() => {}} onClose={() => {}} />);
     expect(document.querySelector(".spellBookEmpty")).toBeTruthy();

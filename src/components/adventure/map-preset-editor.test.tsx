@@ -721,6 +721,26 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(onChange).toHaveBeenLastCalledWith({ victoryMode: "dragon-conqueror" });
   });
 
+  it("offers the hidden Grail/Utopia package directly in the Map Editor", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+    const toggle = screen.getByLabelText("Use hidden Grail and Dragon Utopia rules");
+
+    fireEvent.click(toggle);
+    expect(onChange).toHaveBeenLastCalledWith({ objectives: { hiddenGrailUtopia: true } });
+
+    rerender(
+      <MapPresetEditor
+        preset={{ objectives: { hiddenGrailUtopia: true } }}
+        onChange={onChange}
+      />
+    );
+    expect(screen.getByText(/4 fields = 2 \+ 2/)).toBeTruthy();
+    expect(screen.getByText(/two Search\(3\) Artifacts/)).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Use hidden Grail and Dragon Utopia rules"));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
   it("Objectives: lines show in the active-conditions summary", () => {
     render(
       <MapPresetEditor
@@ -800,7 +820,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     const { rerender } = render(<MapPresetEditor preset={undefined} onChange={onChange} />);
 
     // Add a condition → the first OFFERED kind's default (the object-scoped
-    // kinds — control-towns / flag-mines / obelisks / defeat-dragon-utopia —
+    // kinds — control-towns / flag-mines / obelisks —
     // moved to Map objects as per-object win ticks and are no longer offered).
     fireEvent.click(screen.getByRole("button", { name: "Add win condition" }));
     expect(onChange).toHaveBeenLastCalledWith(
@@ -877,14 +897,20 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(buildingsInput.value).toBe("10");
 
     // The object-scoped kinds moved to Map objects — a fresh row's select does
-    // NOT offer obelisks/control-towns/flag-mines/defeat-dragon-utopia.
+    // NOT offer obelisks/control-towns/flag-mines. Multi-Utopia victory remains
+    // a global counted condition and is offered here.
     const freshSelect = screen.getByLabelText("Condition 1 kind");
-    for (const gone of ["obelisks", "control-towns", "flag-mines", "defeat-dragon-utopia"]) {
+    for (const gone of ["obelisks", "control-towns", "flag-mines"]) {
       expect(
         Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === gone),
         `${gone} not offered`
       ).toBe(false);
     }
+    expect(
+      Array.from((freshSelect as HTMLSelectElement).options).some(
+        (option) => option.value === "defeat-dragon-utopia"
+      )
+    ).toBe(true);
 
     // A LEGACY obelisks condition (saved map) still renders its 1-4 band.
     rerender(

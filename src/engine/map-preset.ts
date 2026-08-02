@@ -623,6 +623,7 @@ export const TIMED_EFFECT_KINDS = [
   "movement",
   "treasure_roll",
   "resource_roll",
+  "market_trade",
   "choice",
   "note",
   "story"
@@ -640,6 +641,7 @@ export const TIMED_EFFECT_KIND_LABELS: Record<TimedEffectKind, string> = {
   movement: "All heroes gain movement",
   treasure_roll: "All players roll Treasure die",
   resource_roll: "All players roll Resource die",
+  market_trade: "Each player may trade resources",
   choice: "Each player chooses one reward",
   note: "Announcement (feed note only)",
   story: "Story scene (visual novel)"
@@ -669,6 +671,8 @@ export function defaultTimedEffect(kind: TimedEffectKind): CustomMapTimedEffect 
       return { kind: "treasure_roll", count: 1 };
     case "resource_roll":
       return { kind: "resource_roll", count: 1 };
+    case "market_trade":
+      return { kind: "market_trade" };
     case "choice":
       return {
         kind: "choice",
@@ -1157,6 +1161,7 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
     return undefined;
   }
   const raw = input as {
+    hiddenGrailUtopia?: unknown;
     grailObelisksRequired?: unknown;
     utopiaGuards?: unknown;
     utopiaBonusSearch?: unknown;
@@ -1168,6 +1173,9 @@ function sanitizeObjectivesConfig(input: unknown): CustomMapObjectivesConfig | u
     grailBuildReward?: unknown;
   };
   const config: CustomMapObjectivesConfig = {};
+  if (raw.hiddenGrailUtopia === true) {
+    config.hiddenGrailUtopia = true;
+  }
   if (raw.grailObelisksRequired === 1 || raw.grailObelisksRequired === 2 || raw.grailObelisksRequired === 3 || raw.grailObelisksRequired === 4) {
     config.grailObelisksRequired = raw.grailObelisksRequired;
   }
@@ -1361,7 +1369,7 @@ function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
     case "defeat-heroes":
       return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
     case "defeat-dragon-utopia":
-      return { kind: "defeat-dragon-utopia" };
+      return { kind: "defeat-dragon-utopia", count: clampInt(raw.count, 1, 6, 1) };
     case "hold-with-grail": {
       const target = sanitizeHoldWithGrailTarget(raw.target);
       if (!target) {
@@ -1535,8 +1543,11 @@ export function sanitizeCustomMapObject(input: unknown): CustomMapObject | null 
   if (carriesAlwaysPickable && rawOneway.alwaysPickable === true) {
     object.alwaysPickable = true;
   }
-  if (kind === "garrison" && raw.garrisonBorderPassage === true) {
-    object.garrisonBorderPassage = true;
+  if (kind === "garrison") {
+    // Garrisons are connectors by default. Preserve an explicit false so map
+    // authors can still make a sealed outpost; absent legacy values inherit
+    // the fixed, crossable default at materialisation/movement time.
+    object.garrisonBorderPassage = raw.garrisonBorderPassage !== false;
   }
   // Designer yellow border edges on the object hex (absolute dirs 0-5).
   const rawEdges = (input as { borderEdges?: unknown }).borderEdges;
@@ -1794,6 +1805,9 @@ function sanitizeTimedEffect(input: unknown): CustomMapTimedEffect | null {
   }
   if (raw.kind === "resource_roll") {
     return { kind: "resource_roll", count: clampInt(raw.count, 1, 3, 1) };
+  }
+  if (raw.kind === "market_trade") {
+    return { kind: "market_trade" };
   }
   if (raw.kind === "choice" && Array.isArray(raw.options)) {
     const options = raw.options
@@ -2357,6 +2371,12 @@ export function describeUtopiaGuards(guards: DragonUtopiaGuards): string {
  */
 export function describeObjectivesConfig(config: CustomMapObjectivesConfig): CustomMapPresetEntry[] {
   const entries: CustomMapPresetEntry[] = [];
+  if (config.hiddenGrailUtopia) {
+    entries.push({
+      icon: "🏆",
+      text: "Hidden Grail / Utopia fields: balanced placement and special rewards"
+    });
+  }
   if (config.grailObelisksRequired) {
     entries.push({
       icon: "🏆",
@@ -2572,6 +2592,9 @@ function describeTimedEffect(effect: CustomMapTimedEffect): string {
     return effect.count === 1
       ? "all players roll a Resource die"
       : `all players roll ${effect.count} Resource dice`;
+  }
+  if (effect.kind === "market_trade") {
+    return "each player may trade resources at Market rates (trade only)";
   }
   if (effect.kind === "choice") {
     return `each player chooses: ${effect.options.map(describeObeliskBonus).join(" OR ")}`;
@@ -3345,7 +3368,11 @@ export const CUSTOM_WIN_CONDITION_OPTIONS: {
   { id: "buildings", label: "Build N Buildings", param: { field: "count", label: "Buildings", min: 8, max: 15 } },
   { id: "obelisks", label: "Visit N Obelisks (grail maps)", param: { field: "count", label: "Obelisks", min: 1, max: 4 } },
   { id: "defeat-heroes", label: "Defeat N enemy Heroes", param: { field: "count", label: "Heroes", min: 1, max: 6 } },
-  { id: "defeat-dragon-utopia", label: "Defeat the Dragon Utopia", param: null },
+  {
+    id: "defeat-dragon-utopia",
+    label: "Flag N Dragon Utopias",
+    param: { field: "count", label: "Utopias", min: 1, max: 6 }
+  },
   {
     id: "hold-with-grail",
     label: "Control place + Grail for N rounds",
@@ -3373,7 +3400,7 @@ export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): Cus
     case "defeat-heroes":
       return { kind: "defeat-heroes", count: 1 };
     case "defeat-dragon-utopia":
-      return { kind: "defeat-dragon-utopia" };
+      return { kind: "defeat-dragon-utopia", count: 2 };
     case "hold-with-grail":
       return { kind: "hold-with-grail", rounds: 3, target: "starting-town" };
   }

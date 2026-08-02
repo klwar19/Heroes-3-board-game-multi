@@ -14,6 +14,7 @@ import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
+  combatUnitDecisionOwnerId,
   effectiveInitiative,
   getActivationOrder,
   getActiveDefenseBonus,
@@ -985,9 +986,11 @@ export function BattlefieldBoard({
   // does not). Flyers ignore routes (they never enter the spaces they cross).
   const activeMover =
     combat && activeUnitId && moveActionsByDestination.size > 0 ? combat.units[activeUnitId] : undefined;
+  const activeMoverOwner =
+    combat && activeMover ? combatUnitDecisionOwnerId(state, combat, activeMover) : null;
   const routePlanningAvailable =
     !!activeMover &&
-    activeMover.controllerId === viewerPlayerId &&
+    activeMoverOwner === viewerPlayerId &&
     activeMover.type !== "flying" &&
     !selectedCardAction &&
     (combat?.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall");
@@ -2366,13 +2369,19 @@ export function CommandDock({
           Number(right.action.type === "USE_ACTIVE_EFFECT" && right.action.mode === "expert"));
   const activeUnitId = state.combat?.activeUnitId;
   const activeUnit = activeUnitId ? state.combat?.units[activeUnitId] : undefined;
+  const activeUnitOwner =
+    state.combat && activeUnit ? combatUnitDecisionOwnerId(state, state.combat, activeUnit) : null;
   const outcome = state.combat?.outcome;
   const waitingOn =
-    state.pendingChoice?.playerId ?? state.reactionWindow?.priorityPlayerId ?? state.activePlayerId;
+    state.pendingChoice?.playerId ??
+    state.reactionWindow?.priorityPlayerId ??
+    activeUnitOwner ??
+    state.priorityPlayerId ??
+    state.activePlayerId;
   // A ranged unit that just fired may still take its 1-space step.
   const postShotMove = Boolean(
     activeUnit &&
-      activeUnit.controllerId === viewerPlayerId &&
+      activeUnitOwner === viewerPlayerId &&
       activeUnit.attackedThisActivation &&
       !activeUnit.activatedThisRound &&
       activeUnit.type === "ranged"
@@ -2385,7 +2394,7 @@ export function CommandDock({
       : prepOpen
         ? "Both sides are preparing for battle on the map…"
         : waitingOn === viewerPlayerId
-          ? activeUnit && activeUnit.controllerId === viewerPlayerId
+          ? activeUnit && activeUnitOwner === viewerPlayerId
             ? postShotMove
               ? `${activeUnit.name} fired — step 1 space or hold`
               : `${activeUnit.name} is active`
@@ -2403,6 +2412,7 @@ export function CommandDock({
     combat &&
       (combat.attackerPlayerId === viewerPlayerId ||
         combat.defenderPlayerId === viewerPlayerId ||
+        (activeUnit && activeUnitOwner === viewerPlayerId) ||
         Object.values(combat.units).some((unit) => isUnitAlive(unit) && unit.controllerId === viewerPlayerId))
   );
   const shownPlayerId = combat && !viewerFights ? combat.attackerPlayerId : viewerPlayerId;

@@ -68,6 +68,30 @@ function parkHero(state: GameState, playerId: PlayerId, field: MapFieldState) {
 }
 
 describe("Obelisk house rule", () => {
+  it("is enabled by BINH but grants no extra ability in normal Legacy rules", () => {
+    const binh = createAdventureGameState({
+      seed: "obelisk-binh",
+      difficulty: "normal",
+      ruleset: "binh",
+      rollFirstPlayer: false
+    });
+    const binhField = injectObelisk(binh);
+    beginFieldVisit(binh, parkHero(binh, "p1", binhField).id, binhField.spaceId, false);
+    expect(binhField.obeliskRoll).toBeDefined();
+
+    const legacy = createAdventureGameState({
+      seed: "obelisk-legacy",
+      difficulty: "normal",
+      ruleset: "legacy",
+      rollFirstPlayer: false
+    });
+    const legacyField = injectObelisk(legacy);
+    beginFieldVisit(legacy, parkHero(legacy, "p1", legacyField).id, legacyField.spaceId, false);
+    expect(legacyField.flagOwnerId).toBe("p1");
+    expect(legacyField.obeliskRoll).toBeUndefined();
+    expect(countRolls(legacy, "attack")).toBe(0);
+  });
+
   it("the first visit rolls one Attack die and locks the face", () => {
     const state = makeGame();
     const field = injectObelisk(state);

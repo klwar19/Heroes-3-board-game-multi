@@ -140,6 +140,14 @@ describe("map-design-features — certain army slots", () => {
     expect(draws[0].bankGuard).toBe(true);
   });
 
+  it("draws repeated random silver slots without replacement", () => {
+    const rng = { nextInt: () => 0 };
+    const draws = resolveCustomGuardDraws(["random:silver", "random:silver"], rng);
+    expect(draws).toHaveLength(2);
+    expect(draws.every((draw) => draw.tier === "silver")).toBe(true);
+    expect(new Set(draws.map((draw) => draw.unitDefId)).size).toBe(2);
+  });
+
   it("customGuardArmyDifficulty understands random azure as Ⅶ", () => {
     expect(customGuardArmyDifficultyFromEntries(["random:azure"])).toBe(7);
     expect(customGuardArmyDifficulty(["random:bronze", "random:bronze"])).toBe(2);
@@ -403,6 +411,7 @@ describe("map-design-features — Grail dig cost + random town income", () => {
         captureReward: { gold: 4, valuables: 1 }
       },
       objectives: {
+        hiddenGrailUtopia: true,
         grailDigCost: 2,
         grailDigReward: { gold: 5 },
         grailPossessionVp: 3,
@@ -421,6 +430,7 @@ describe("map-design-features — Grail dig cost + random town income", () => {
     expect(preset?.mines?.guard).toEqual({ level: 3 });
     expect(preset?.randomTowns?.incomeGold).toBe(7);
     expect(preset?.randomTowns?.guard?.units).toEqual(["random:gold"]);
+    expect(preset?.objectives?.hiddenGrailUtopia).toBe(true);
     expect(preset?.objectives?.grailDigCost).toBe(2);
     expect(preset?.objectives?.grailBuildAt).toBe("both");
     expect(preset?.obelisks?.bonuses).toEqual([{ kind: "ability_token" }]);

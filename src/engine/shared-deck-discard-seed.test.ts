@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState } from "./index";
+import { applyAction, createAdventureGameState, createInitialGameState, getPlayerView } from "./index";
 import { refillSharedDeckDiscards, SHARED_DECK_IDS } from "./decks";
 import type { GameState } from "./state";
 import { cardLibrary } from "@/data/cards/library";
@@ -105,7 +105,7 @@ describe("shared decks — first-round face-up discard seed", () => {
 // ---------------------------------------------------------------------------
 describe("shared decks — the discard pile is refilled when its last card is taken", () => {
   /** A game whose shared discard piles were just emptied (the last card taken). */
-  function gameWithEmptyDiscards(seed: string): { state: GameState; before: GameState } {
+  function gameWithEmptyDiscards(seed: string): { state: GameState } {
     const state = createAdventureGameState({
       seed,
       rollFirstPlayer: false,
@@ -114,25 +114,23 @@ describe("shared decks — the discard pile is refilled when its last card is ta
         { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
       ]
     });
-    // `before` keeps the seeded face-up card, so every pile genuinely went from
-    // "one card" to "empty" — the take the invariant reacts to.
-    const before = JSON.parse(JSON.stringify(state)) as GameState;
+    // Simulate every shared discard pile being emptied at an action boundary.
     for (const deckId of SHARED_DECK_IDS) {
       const deck = state.decks[deckId];
       if (deck) {
         deck.discardPile = [];
       }
     }
-    return { state, before };
+    return { state };
   }
 
   it("flips one card of the right kind back onto EVERY emptied shared discard pile", () => {
-    const { state, before } = gameWithEmptyDiscards("discard-refill");
+    const { state } = gameWithEmptyDiscards("discard-refill");
     const drawBefore = Object.fromEntries(
       SHARED_DECK_IDS.filter((id) => state.decks[id]).map((id) => [id, state.decks[id]!.drawPile.length])
     );
 
-    refillSharedDeckDiscards(state, before);
+    refillSharedDeckDiscards(state);
 
     for (const deckId of SHARED_DECK_IDS) {
       const deck = state.decks[deckId];
@@ -146,33 +144,78 @@ describe("shared decks — the discard pile is refilled when its last card is ta
     }
   });
 
-  it("is idempotent, leaves an already-empty imported pile for Search to repair, and handles an exhausted deck", () => {
-    const { state, before } = gameWithEmptyDiscards("discard-refill-idempotent");
-    refillSharedDeckDiscards(state, before);
+  it("is idempotent, immediately repairs an already-empty pile, and handles an exhausted deck", () => {
+    const { state } = gameWithEmptyDiscards("discard-refill-idempotent");
+    refillSharedDeckDiscards(state);
     const snapshot = JSON.stringify(state.decks);
-    refillSharedDeckDiscards(state, state);
-    // CONTROL: a second pass moves nothing — the invariant only fires on a pile
-    // that JUST went empty, so it can never strip the draw pile card by card.
+    refillSharedDeckDiscards(state);
+    // CONTROL: a second pass moves nothing, so repeated enforcement can never
+    // strip the draw pile card by card.
     expect(JSON.stringify(state.decks)).toBe(snapshot);
 
-    // CONTROL: a pile that was ALREADY empty when the action started is NOT
-    // filled — the rule replaces a TAKEN card, it never conjures one (so it can
-    // never steal a card another effect just placed on the deck top).
+    // A pile that was already empty when the action started is still repaired.
     const abilities = state.decks.abilities!;
     const drawTop = abilities.drawPile[abilities.drawPile.length - 1];
     const drawLength = abilities.drawPile.length;
     abilities.discardPile = [];
-    const alreadyEmpty = JSON.parse(JSON.stringify(state)) as GameState;
-    refillSharedDeckDiscards(state, alreadyEmpty);
-    expect(abilities.discardPile).toEqual([]);
-    expect(abilities.drawPile.at(-1)).toBe(drawTop);
-    expect(abilities.drawPile).toHaveLength(drawLength);
+    refillSharedDeckDiscards(state);
+    expect(abilities.discardPile).toEqual([drawTop]);
+    expect(abilities.drawPile).toHaveLength(drawLength - 1);
 
     // A deck with nothing left at all is left alone (no crash, no phantom card).
     abilities.discardPile = [];
     abilities.drawPile = [];
-    refillSharedDeckDiscards(state, before);
+    refillSharedDeckDiscards(state);
     expect(abilities.discardPile).toEqual([]);
+  });
+
+  it("refills every split Artifact and Spell discard while a choice is open", () => {
+    const state = createAdventureGameState({ seed: "discard-refill-open-choice", rollFirstPlayer: false });
+    const requiredDeckIds = [
+      "artifacts-minor",
+      "artifacts-major",
+      "artifacts-relic",
+      "spells",
+      "spells-expert"
+    ] as const;
+    const expectedTops = Object.fromEntries(
+      requiredDeckIds.map((deckId) => {
+        const deck = state.decks[deckId]!;
+        const top = deck.drawPile.at(-1)!;
+        deck.discardPile = [];
+        return [deckId, top];
+      })
+    );
+    state.pendingChoice = {
+      id: "choice_discard_invariant",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Test choice",
+      options: [{ label: "Continue" }],
+      context: "deck-search-mode",
+      returnPhase: "player-turn"
+    };
+
+    refillSharedDeckDiscards(state);
+
+    for (const deckId of requiredDeckIds) {
+      expect(state.decks[deckId]!.discardPile, `${deckId} discard`).toEqual([expectedTops[deckId]]);
+    }
+  });
+
+  it("never renders an already-empty restored shared discard", () => {
+    const state = createAdventureGameState({ seed: "discard-refill-restored-view", rollFirstPlayer: false });
+    const major = state.decks["artifacts-major"]!;
+    const expectedTop = major.drawPile.at(-1)!;
+    major.discardPile = [];
+
+    const view = getPlayerView(state, "p1");
+
+    expect(view.decks["artifacts-major"]!.discardPile).toEqual([expectedTop]);
+    expect(view.decks["artifacts-major"]!.drawCount).toBe(major.drawPile.length - 1);
+    // Rendering is detached: the authoritative state is repaired at the next
+    // action boundary, not mutated by a read.
+    expect(major.discardPile).toEqual([]);
   });
 
   it("seeds an empty discard BEFORE Search (2), then reveals only the next two draw-pile cards", () => {
@@ -181,8 +224,11 @@ describe("shared decks — the discard pile is refilled when its last card is ta
     state.players.p1.deck = [];
     state.players.p1.discard = [];
     const spells = state.decks.spells!;
+    const abilities = state.decks.abilities!;
     spells.discardPile = [];
+    abilities.discardPile = [];
     const originalTop = spells.drawPile.at(-1)!;
+    const abilityTop = abilities.drawPile.at(-1)!;
     const expectedRevealed = [spells.drawPile.at(-2)!, spells.drawPile.at(-3)!];
 
     const opened = applyAction(state, { type: "SEARCH_DECK", playerId: "p1", deckId: "spells", count: 2 });
@@ -190,6 +236,13 @@ describe("shared decks — the discard pile is refilled when its last card is ta
     const choice = opened.state.pendingChoice;
     expect(choice?.type).toBe("DECK_SEARCH");
     expect(opened.state.decks.spells!.discardPile).toEqual([originalTop]);
+    // A deck whose discard was ALREADY empty when the action started is left
+    // alone in the authoritative state at the tail, so an effect that returned a
+    // card to a deck TOP with an empty discard (Tarnum VI's return-to-top, an
+    // Eagle Eye / Tome reshuffle) is never overwritten. The RENDERING path seeds
+    // it for display instead, so the player never SEES an empty pile.
+    expect(opened.state.decks.abilities!.discardPile).toEqual([]);
+    expect(getPlayerView(opened.state, "p1").decks.abilities!.discardPile).toEqual([abilityTop]);
 
     if (choice?.type === "DECK_SEARCH") {
       expect(choice.revealedCardIds).toEqual(expectedRevealed);

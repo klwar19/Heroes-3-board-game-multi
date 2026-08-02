@@ -30,7 +30,7 @@ import {
   grailBuildAt,
   grailBuildReward,
   grailDigMovementCost,
-  polishGrailUtopiaEnabled,
+  grailUtopiaFieldRulesEnabled,
   survivorsToCustomGuardUnits
 } from "./map-design-features";
 import { planExcludedSecretFeatures, tilePassesSecretFilters } from "./map-preset";
@@ -754,7 +754,7 @@ export function combatUnitLimit(state: GameState): number {
 
 /**
  * Creature Bank battlefield (rulebook Creature Bank setup): unlike a normal
- * neutral fight, the four guardians are fixed in the four CORNERS of the 4x5
+ * neutral fight, the four guardians occupy the four CORNERS of the 4x5
  * board, and the attacker forms up in the central SIX squares (the 2x3 block in
  * the middle) rather than along the bottom rows.
  *
@@ -766,6 +766,24 @@ export function combatUnitLimit(state: GameState): number {
  */
 export const CREATURE_BANK_GUARD_CORNERS = [0, 3, 16, 19];
 export const CREATURE_BANK_ATTACKER_CELLS = [5, 6, 9, 10, 13, 14];
+/**
+ * Free board cells (neither a guard corner nor an attacker cell) that seat a
+ * bank/Dragon-Utopia guard party LARGER than the four corners — a Dragon Utopia
+ * by-difficulty draw can be five guards (up to four table bodies + one Black
+ * Dragon) and a designer center-hex exact army up to six. Without them the fifth
+ * guard keeps its minted default cell 0 and collides with a corner guard.
+ */
+export const CREATURE_BANK_GUARD_OVERFLOW_CELLS = Array.from({ length: 20 }, (_, cell) => cell).filter(
+  (cell) => !CREATURE_BANK_GUARD_CORNERS.includes(cell) && !CREATURE_BANK_ATTACKER_CELLS.includes(cell)
+);
+
+/** New marker plus the legacy `bankId` fallback for combats saved mid-setup. */
+function usesBankFormation(combat: CombatState): boolean {
+  return (
+    combat.context.kind === "neutral" &&
+    (Boolean(combat.context.bankFormation) || isCreatureBankId(combat.context.bankId))
+  );
+}
 
 function requireAdventure(state: GameState) {
   if (!state.adventure) {
@@ -1597,9 +1615,13 @@ export function dimensionDoorDestinations(state: GameState, hero: HeroState, ran
  * no reachable destination the spell fizzles (the card is already spent),
  * mirroring how Town Portal returns when the player controls no other town.
  */
-export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, range: number): void {
+function openDimensionDoorDestinationChoice(
+  state: GameState,
+  playerId: PlayerId,
+  hero: HeroState,
+  range: number
+): void {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
   if (!adventure || !hero || !hero.spaceId) {
     return;
   }
@@ -1633,6 +1655,58 @@ export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, ra
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
+}
+
+/**
+ * Opens Dimension Door for any deployed Hero the caster controls. A single
+ * eligible Hero keeps the direct map-destination flow; with both Heroes in
+ * play, choose the traveller first so duplicate destination hexes are never
+ * ambiguous on the board.
+ */
+export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, range: number): void {
+  if (!state.adventure) {
+    return;
+  }
+  const eligibleHeroes = Object.values(state.heroes).filter(
+    (hero) =>
+      hero.controllerId === playerId &&
+      hero.spaceId !== null &&
+      dimensionDoorDestinations(state, hero, range).length > 0
+  );
+  if (eligibleHeroes.length === 0) {
+    return;
+  }
+  if (eligibleHeroes.length === 1) {
+    openDimensionDoorDestinationChoice(state, playerId, eligibleHeroes[0], range);
+    return;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Dimension Door: choose the Hero to teleport…",
+    options: eligibleHeroes.map((hero) => ({
+      label: hero.kind === "main" ? "Main Hero" : "Secondary Hero"
+    })),
+    context: "dimension-door-hero",
+    dimensionDoorHero: { heroIds: eligibleHeroes.map((hero) => hero.id), range },
+    returnPhase: "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Resolves the first step of a two-Hero Dimension Door cast. */
+export function resolveDimensionDoorHeroChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  const pending = choice?.type === "OPTION_CHOICE" ? choice.dimensionDoorHero : undefined;
+  const heroId = pending?.heroIds[optionIndex];
+  const hero = heroId ? state.heroes[heroId] : undefined;
+  if (!pending || !hero || hero.controllerId !== playerId) {
+    throw new Error("Choose a Hero to teleport with Dimension Door.");
+  }
+  openDimensionDoorDestinationChoice(state, playerId, hero, pending.range);
 }
 
 /** Resolves the Dimension Door destination choice (CHOOSE_OPTION). */
@@ -4970,7 +5044,11 @@ export function startNeutralEncounter(
 ): void {
   requireAdventure(state);
   const playerId = hero.controllerId;
-  const difficulty = field.difficulty ?? 1;
+  // A Random Town is always the printed VII field. A designer may replace its
+  // guard army, but may not accidentally downgrade the fight's rules: winning
+  // still fills a main Hero to level VII and the combat never offers the
+  // spend-MP-to-continue window.
+  const difficulty = field.location === "random_town" ? 7 : field.difficulty ?? 1;
   // A Secondary Hero earns no Experience but fights Neutral Units AS the Main
   // Hero's level (neutralBattleLevel), so it skips / Quick-Combat-wins the same
   // low-level guards instead of being forced to fight at level 1.
@@ -5042,17 +5120,17 @@ export function startNeutralEncounter(
 
   // Polish strength-based Quick Combat (house rule `polish-quick-combat`):
   // availability depends on the ARMY — the 5 strongest cards must cover the
-  // field strength 2×difficulty + X (+1 with Unit Stacks) — with VI–VII fields
-  // now eligible. Covered + no Experience possible → the Quick Combat is
+  // field strength 2×difficulty + X (+1 with Unit Stacks), VI–VII included.
+  // Covered + no Experience possible → the Quick Combat is
   // MANDATORY; covered + Experience possible → the player chooses fight vs
   // Quick Combat; not covered → the fight is mandatory, so the classic
   // level > difficulty auto-win below deliberately does NOT apply.
   if (polishQuickCombatEnabled(state)) {
     // The mandatory-vs-choice-vs-fight decision (army strength vs field strength,
-    // the exact-level carve-out, and the no-Experience test) lives in ONE shared
+    // and the no-Experience test) lives in ONE shared
     // classifier so the map's pre-fight display can never disagree with what a
     // fight here actually does.
-    const outcome = polishQuickCombatOutcome(state, hero, difficulty, level);
+    const outcome = polishQuickCombatOutcome(state, hero, difficulty);
     if (outcome === "mandatory") {
       resolveQuickCombatWin(state, hero, field, difficulty);
       return;
@@ -5061,7 +5139,7 @@ export function startNeutralEncounter(
       openPolishQuickCombatChoice(state, hero, field, difficulty);
       return;
     }
-    // outcome "fight": the shortcut does not apply (exact level or too weak) —
+    // outcome "fight": the shortcut does not apply (the army is too weak) —
     // fall through to the Diplomacy check / normal guard combat below. The
     // classic level > difficulty auto-win deliberately does NOT apply here.
   } else if (level > difficulty) {
@@ -5269,12 +5347,28 @@ function beginNeutralCombatPlacement(
     difficulty,
     hasAzure: false,
     ...(bankId ? { bankId } : {}),
+    ...(bankId || field.location === "dragon_utopia" ? { bankFormation: true } : {}),
     ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {}),
     ...(options?.waveAssault ? { waveAssault: options.waveAssault } : {}),
     ...(options?.raidBossId ? { raidBossId: options.raidBossId } : {}),
     ...(options?.dungeonFloor !== undefined ? { dungeonFloor: options.dungeonFloor } : {}),
     ...(options?.teleportArrival ? { teleportArrival: true } : {})
   };
+  if (field.location === "random_town") {
+    // Random Town fights use the siege battlefield and its four middle-row
+    // fortifications, but the neutral town has no Arrow Tower. The deterministic
+    // gate keeps every client/replay on the same board without consuming a
+    // gameplay random stream.
+    const gatePosition = createSeededRandom(
+      `${state.seed}#random-town-gate#${field.spaceId}`
+    ).pick([...SIEGE_ROW_POSITIONS]);
+    combat.siege = {
+      townPlayerId: NEUTRAL_PLAYER_ID,
+      walls: SIEGE_ROW_POSITIONS.filter((position) => position !== gatePosition),
+      gatePosition,
+      arrowTowerUnitId: null
+    };
+  }
   assignCombatBoardArt(state, combat);
   combat.setup = {
     pendingPlayerIds: [playerId],
@@ -6878,53 +6972,72 @@ export function townPortalDestinations(
   state: GameState,
   playerId: PlayerId,
   movementBonus: number
-): { label: string; spaceId: string }[] {
+): { label: string; spaceId: string; heroId: string }[] {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero) {
+  if (!adventure) {
     return [];
   }
-  const projectedMovement = hero.movementPoints + movementBonus;
-  const fieldHasOtherHero = (spaceId: string) =>
-    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
-  const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
-  const destinations: { label: string; spaceId: string }[] = [];
-  const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
-  const distanceSuffix = (spaceId: string): string => {
-    const coord = parseHexSpaceId(spaceId);
-    const distance = origin && coord ? hexDistance(origin, coord) : null;
-    return distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : "";
-  };
-  for (const town of Object.values(state.towns)) {
-    if (
-      town.controllerId === playerId &&
-      town.fieldId &&
-      town.fieldId !== hero.spaceId &&
-      destinationAllowed(town.fieldId)
-    ) {
-      destinations.push({
-        label: `Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
-        spaceId: town.fieldId
-      });
+  const heroes = Object.values(state.heroes).filter(
+    (hero) => hero.controllerId === playerId && hero.spaceId !== null
+  );
+  const includeHeroInLabel = heroes.length > 1;
+  const destinations: { label: string; spaceId: string; heroId: string }[] = [];
+  for (const hero of heroes) {
+    const projectedMovement = hero.movementPoints + movementBonus;
+    const fieldHasOtherHero = (spaceId: string) =>
+      Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
+    const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
+    const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+    const distanceSuffix = (spaceId: string): string => {
+      const coord = parseHexSpaceId(spaceId);
+      const distance = origin && coord ? hexDistance(origin, coord) : null;
+      return distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : "";
+    };
+    const heroPrefix = includeHeroInLabel
+      ? `${hero.kind === "main" ? "Main Hero" : "Secondary Hero"} → `
+      : "";
+    const seen = new Set<string>();
+    for (const town of Object.values(state.towns)) {
+      // Town Portal targets a real controlled Town. A stale TownState pointing
+      // at a Random Town must never turn that VII field into a legal target.
+      const townField = town.fieldId ? adventure.fields[town.fieldId] : undefined;
+      if (
+        town.fieldId &&
+        townField?.location === "town" &&
+        (townField.flagOwnerId ? townField.flagOwnerId === playerId : town.controllerId === playerId) &&
+        town.fieldId !== hero.spaceId &&
+        destinationAllowed(town.fieldId)
+      ) {
+        seen.add(town.fieldId);
+        destinations.push({
+          label: `${heroPrefix}Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
+          spaceId: town.fieldId,
+          heroId: hero.id
+        });
+      }
     }
-  }
-  for (const field of Object.values(adventure.fields)) {
-    if (
-      field.location === "settlement" &&
-      field.flagOwnerId === playerId &&
-      field.spaceId !== hero.spaceId &&
-      destinationAllowed(field.spaceId)
-    ) {
-      destinations.push({ label: `Settlement${distanceSuffix(field.spaceId)}`, spaceId: field.spaceId });
+    for (const field of Object.values(adventure.fields)) {
+      if (
+        field.location === "settlement" &&
+        field.flagOwnerId === playerId &&
+        field.spaceId !== hero.spaceId &&
+        !seen.has(field.spaceId) &&
+        destinationAllowed(field.spaceId)
+      ) {
+        destinations.push({
+          label: `${heroPrefix}Settlement${distanceSuffix(field.spaceId)}`,
+          spaceId: field.spaceId,
+          heroId: hero.id
+        });
+      }
     }
   }
   return destinations;
 }
 
-function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movementBonus: number): void {
+export function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBonus: number): void {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero) {
+  if (!adventure) {
     return;
   }
   const destinations = townPortalDestinations(state, playerId, movementBonus);
@@ -6937,14 +7050,14 @@ function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movem
     steps: [
       {
         type: "CHOOSE_ONE",
-        prompt: "Town Portal: move your hero to…",
+        prompt: "Town Portal: choose a hero and destination…",
         options: [
           ...destinations.map((destination) => ({
             label: destination.label,
             steps: [
               {
                 type: "TELEPORT_HERO" as const,
-                heroId: hero.id,
+                heroId: destination.heroId,
                 spaceId: destination.spaceId,
                 movementBonus
               }
@@ -6956,6 +7069,8 @@ function queueTownPortalFromMapSpell(state: GameState, playerId: PlayerId, movem
     ]
   });
 }
+
+const queueTownPortalFromMapSpell = queueTownPortalChoice;
 
 function offerMapSpellKnowledgeRecall(
   state: GameState,
@@ -7593,7 +7708,11 @@ export function revealNeutralArmy(
     return;
   }
 
-  placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  if (usesBankFormation(combat)) {
+    placeCreatureBankGuards(state, neutralUnits);
+  } else {
+    placeNeutralUnits(neutralUnits, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
+  }
   // A pre-minted extra (a boss) keeps its pinned back-center cell: any drawn
   // guard the auto-placement dropped there steps aside to the next free
   // defender cell.
@@ -7764,9 +7883,10 @@ function revealDungeonFloorArmy(state: GameState, floor: number): void {
  * neutral formation before battle, just like defender"). Field guards may sit
  * on ANY cell of the defender's two rows (back + front); banks rearrange within
  * their four corner cells. Returns true (and holds priority for the controller)
- * when the window opens. Never opens with no controller (AI/solo), or with
- * fewer than two living guards to arrange — mirroring the Tactics window's
- * threshold.
+ * when the window opens. Never opens with no controller (plain Neutral AI), or
+ * with no living guards. A single guard still gets this window: relocating one
+ * unit is meaningful, and difficulty-I fights (including Polish Rule 111) are
+ * exactly where suppressing it used to make manual placement appear broken.
  */
 function openNeutralPlacementWindow(state: GameState): boolean {
   const combat = state.combat;
@@ -7786,7 +7906,7 @@ function openNeutralPlacementWindow(state: GameState): boolean {
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
   );
-  if (guards.length < 2) {
+  if (guards.length === 0) {
     return false;
   }
 
@@ -7811,7 +7931,7 @@ export function neutralFormationCellsFor(state: GameState): number[] {
   if (!combat) {
     return [];
   }
-  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+  if (usesBankFormation(combat)) {
     return [...CREATURE_BANK_GUARD_CORNERS];
   }
   // Field fight: any cell on the defender side (both rows).
@@ -7845,7 +7965,7 @@ export function neutralFormationCellsForGuard(state: GameState, guard: CombatUni
   if (!combat) {
     return cells;
   }
-  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  const isBank = usesBankFormation(combat);
   if (!isBank && guard.type === "ranged" && neutralPlacementIsManual(state)) {
     return [...DEFENDER_BACKLINE];
   }
@@ -7869,7 +7989,7 @@ export function placeNeutralGuard(state: GameState, action: Extract<GameAction, 
   }
   // Field = any defender-row cell (shooters restricted to the back row under
   // Manual guard control); bank = the four corners only.
-  const isBank = combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId);
+  const isBank = usesBankFormation(combat);
   const shooterRestricted = !isBank && guard.type === "ranged" && neutralPlacementIsManual(state);
   if (!neutralFormationCellsForGuard(state, guard).includes(action.position)) {
     throw new Error(
@@ -7941,8 +8061,8 @@ function resetNeutralFormationToAuto(state: GameState): void {
   const guards = Object.values(combat.units).filter(
     (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.damage < unit.maxHealth && !isArrowTowerUnit(unit)
   );
-  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
-    placeCreatureBankGuards(guards);
+  if (usesBankFormation(combat)) {
+    placeCreatureBankGuards(state, guards);
   } else {
     placeNeutralUnits(guards, DEFENDER_BACKLINE, DEFENDER_FRONTLINE);
   }
@@ -7978,15 +8098,33 @@ export function autoNeutralPlacement(
 }
 
 /**
- * Pins the (always four) Creature Bank guardians to the four board corners,
- * in their fixed party order. The attacker, by contrast, deploys in the central
- * six squares (see CREATURE_BANK_ATTACKER_CELLS / placementCellsFor).
+ * Shuffles the (always four) Creature Bank guardians across the four board
+ * corners. The combat's entropy-baked seed makes the assignment unpredictable
+ * in live play but stable across clients, reconnects and AI-placement resets.
+ * The attacker deploys in the central six squares instead.
  */
-function placeCreatureBankGuards(units: CombatUnitState[]): void {
+function placeCreatureBankGuards(state: GameState, units: CombatUnitState[]): void {
+  const combat = state.combat;
+  const bankId = combat?.context.kind === "neutral" ? combat.context.bankId : undefined;
+  const fieldId = combat?.context.kind === "neutral" ? combat.context.fieldId : "unknown";
+  const random = createSeededRandom(
+    `${combat?.dice.seed ?? state.seed}#creature-bank-corners#${bankId ?? "bank"}#${fieldId}`,
+    // The combat seed already has authoritative entropy baked into it. Do not
+    // salt it again or "return to AI placement" would reshuffle the formation.
+    { salt: false }
+  );
+  const corners = [...CREATURE_BANK_GUARD_CORNERS];
+  for (let index = corners.length - 1; index > 0; index -= 1) {
+    const swapIndex = random.nextInt(0, index);
+    [corners[index], corners[swapIndex]] = [corners[swapIndex]!, corners[index]!];
+  }
   units.forEach((unit, index) => {
-    const corner = CREATURE_BANK_GUARD_CORNERS[index];
-    if (corner !== undefined) {
-      unit.position = corner;
+    // The four corners first; a larger party (Dragon Utopia / designer exact
+    // army) spills onto the free non-attacker cells so no guard is left at the
+    // minted default cell 0.
+    const cell = index < corners.length ? corners[index] : CREATURE_BANK_GUARD_OVERFLOW_CELLS[index - corners.length];
+    if (cell !== undefined) {
+      unit.position = cell;
     }
   });
 }
@@ -7994,7 +8132,7 @@ function placeCreatureBankGuards(units: CombatUnitState[]): void {
 /**
  * Reveals a Creature Bank's defenders once placement is locked in (rulebook
  * p.66): build the fixed bank party, place its Stack Tokens by Scenario
- * Difficulty, then pin them to the four corners (the bank battlefield, not a
+ * Difficulty, then shuffle them across the four corners (the bank battlefield, not a
  * normal guard line). Records X (the number of Stacked defenders) on the combat
  * context for the win reward.
  */
@@ -8022,7 +8160,7 @@ function revealCreatureBankArmy(state: GameState, bankId: CreatureBankId): void 
     return;
   }
 
-  placeCreatureBankGuards(units);
+  placeCreatureBankGuards(state, units);
   for (const unit of units) {
     combat.units[unit.id] = unit;
   }
@@ -8917,7 +9055,7 @@ export function placementCellsFor(state: GameState, playerId: PlayerId): number[
     return [...DEFENDER_FRONTLINE, ...DEFENDER_BACKLINE];
   }
 
-  if (combat.context.kind === "neutral" && isCreatureBankId(combat.context.bankId)) {
+  if (usesBankFormation(combat)) {
     return [...CREATURE_BANK_ATTACKER_CELLS];
   }
 
@@ -9474,8 +9612,7 @@ export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId
     return [];
   }
   const context = combat.context;
-  const isBankAttacker =
-    context.kind === "neutral" && Boolean(context.bankId) && playerId === combat.attackerPlayerId;
+  const isBankAttacker = usesBankFormation(combat) && playerId === combat.attackerPlayerId;
   if (isBankAttacker) {
     return [...CREATURE_BANK_ATTACKER_CELLS];
   }
@@ -9576,7 +9713,7 @@ function injectCombatCommanders(state: GameState): void {
   if (context.kind === "neutral") {
     sides.push({
       playerId: heroBrings(context.heroId),
-      cells: context.bankId
+      cells: usesBankFormation(combat)
         ? CREATURE_BANK_ATTACKER_CELLS
         : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
     });
@@ -10361,7 +10498,7 @@ export function transferPolishCarriedGrailAfterPvp(
   const grail = state.adventure?.grail;
   const carrier = grail?.carrierHeroId ? state.heroes[grail.carrierHeroId] : undefined;
   if (
-    !polishGrailUtopiaEnabled(state) ||
+    !grailUtopiaFieldRulesEnabled(state) ||
     grail?.status !== "carried" ||
     carrier?.controllerId !== loserId ||
     winnerId === NEUTRAL_PLAYER_ID
@@ -10928,7 +11065,7 @@ export function finalizeAdventureCombat(state: GameState): void {
       if (field.location === "dragon_utopia" && adventureVictoryMode(state) === "dragon-hunt") {
         // Victory Points: record the defeater (this fast path bypasses the visit
         // handler where it is normally logged) before the win → scoring seam.
-        recordVpUtopiaDefeat(state, playerId);
+        recordVpUtopiaDefeat(state, playerId, field.spaceId);
         declareAdventureWinner(state, playerId, "defeated the Dragon Utopia", {
           viaVictoryCondition: true
         });
@@ -13960,10 +14097,20 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       throw new Error("There is no dug spell to resolve.");
     }
 
-    if (action.optionIndex !== 0) {
-      throw new Error("Eagle Eye's found Spell must be taken into your hand.");
+    if (action.optionIndex === 0) {
+      gainOwnedCard(state, action.playerId, dig.cardId);
+    } else if (action.optionIndex === 1 && dig.allowDiscard) {
+      // The Tome/Eagle Eye wording explicitly permits discarding the found
+      // Spell. It has already been removed from the draw pile, so put it in the
+      // shared deck's discard pile exactly as a rejected Search card would be.
+      deck.discardPile.push(dig.cardId);
+    } else {
+      throw new Error(
+        dig.allowDiscard
+          ? "Choose whether to take or discard the found Spell."
+          : "Eagle Eye's found Spell must be taken into your hand."
+      );
     }
-    gainOwnedCard(state, action.playerId, dig.cardId);
 
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
@@ -14073,6 +14220,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "dimension-door") {
     resolveDimensionDoorChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "dimension-door-hero") {
+    resolveDimensionDoorHeroChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

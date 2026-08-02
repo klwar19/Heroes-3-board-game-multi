@@ -1,5 +1,5 @@
 import { getDraftPhase } from "../adventure-setup";
-import { neutralCombatControllerId } from "../neutral-control";
+import { combatUnitDecisionOwnerId } from "../neutral-control";
 import {
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
@@ -186,15 +186,12 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
 
     // 9. The active fight: the active unit's controller (or, for a Neutral
     // guard, the seat Neutral Control assigned it to).
-    const activeController = combat.activeUnitId
-      ? combat.units[combat.activeUnitId]?.controllerId
+    const activeUnit = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    const activeController = activeUnit
+      ? combatUnitDecisionOwnerId(state, combat, activeUnit)
       : null;
     const activeOwner = computer(state, activeController);
     if (activeOwner) return activeOwner;
-    if (activeController === NEUTRAL_PLAYER_ID) {
-      const neutralOwner = computer(state, neutralCombatControllerId(state, combat));
-      if (neutralOwner) return neutralOwner;
-    }
 
     // An open combat is an exclusive interaction: while no computer-owned slot
     // inside it is required, every seat (fighters and bystanders alike) waits.

@@ -48,7 +48,7 @@ export const LOBBY_SINGLETON_ID = "directory";
 
 /**
  * Cap on the member roster carried per directory row: enough for any real table
- * (games are 2-4 players plus a few observers) while keeping the directory
+ * (games are 2-6 players plus a few observers) while keeping the directory
  * payload bounded however many clients pile into one room.
  */
 export const MAX_DIRECTORY_MEMBERS = 12;

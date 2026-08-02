@@ -372,6 +372,34 @@ describe("Melodia's Fortune specialty", () => {
 
     visitField(after, "resource_symbol");
     expect(lastDiceRolled(after, "resource")!.results.length, "Fortune VI rolls +1 die at the location").toBe(2);
+    expect(after.adventure!.pendingVisit, "both results of the 2-die roll resolve automatically").toBeNull();
+  });
+
+  it("VI changes a location's roll-2-resolve-1 reward into roll 3 and resolve 2", () => {
+    const state = mapFor("melodia-6-three-keep-two", "melodia", "rampart");
+    state.players.p1.hand = ["specialty.melodia.6"];
+    const after = applyOk(state, findPlay(state, "specialty.melodia.6", 0)!.action);
+
+    visitField(after, "pandoras_box");
+    const pandora = visitChoice(after)!;
+    const resourceOption = pandora.options.findIndex((option) => /2 Resource dice/i.test(option.label));
+    expect(resourceOption).toBeGreaterThanOrEqual(0);
+    resolveVisitStep(after, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: resourceOption });
+
+    const rolled = lastDiceRolled(after, "resource")!;
+    expect(rolled.results, "Fortune VI adds one rolled die").toHaveLength(3);
+    const keepTwo = visitChoice(after)!;
+    expect(keepTwo.prompt).toMatch(/Choose 2 resource die results/i);
+    expect(keepTwo.options, "three physical dice produce the three possible pairs").toHaveLength(3);
+    expect(keepTwo.options.every((option) => option.steps.length === 2), "each choice resolves both kept dice").toBe(true);
+
+    const beforeResolve = totalResources(after);
+    const chosenGain = keepTwo.options[0].steps.reduce((sum, step) => {
+      if (step.type !== "GAIN_RESOURCES") return sum;
+      return sum + (step.gold ?? 0) + (step.buildingMaterials ?? 0) + (step.valuables ?? 0);
+    }, 0);
+    resolveVisitStep(after, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(totalResources(after) - beforeResolve, "two chosen results are paid").toBe(chosenGain);
   });
 });
 

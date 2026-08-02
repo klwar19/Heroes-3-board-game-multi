@@ -1,5 +1,5 @@
 import { NEUTRAL_PLAYER_ID } from "./state";
-import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
+import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId } from "./state";
 
 /**
  * PvP Neutral Control (OPTIONAL mode for any game with at least two seats,
@@ -34,6 +34,27 @@ import type { CombatState, GameState, PendingChoice, PlayerId } from "./state";
  */
 export function neutralCombatControllerId(state: GameState, combat: CombatState): PlayerId | null {
   return pvpNeutralControllerId(state, combat) ?? manualGuardControllerId(state, combat);
+}
+
+/**
+ * The seat that must make decisions for a combat unit right now.
+ *
+ * A Neutral guard deliberately keeps `controllerId === NEUTRAL_PLAYER_ID`: all
+ * attack attribution, friendly/enemy checks, retaliation and effects must still
+ * treat it as belonging to the Neutral army. When one of the optional manual
+ * control modes is enabled, however, a real player seat owns the guard's INPUT.
+ * Keeping that distinction in one helper prevents the engine, computer runner
+ * and battlefield UI from disagreeing about whose activation is open.
+ */
+export function combatUnitDecisionOwnerId(
+  state: GameState,
+  combat: CombatState,
+  unit: CombatUnitState
+): PlayerId {
+  if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+    return unit.controllerId;
+  }
+  return neutralCombatControllerId(state, combat) ?? NEUTRAL_PLAYER_ID;
 }
 
 /**

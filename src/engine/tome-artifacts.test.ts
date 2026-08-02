@@ -153,6 +153,10 @@ describe("Tome option A: School Spell-deck dig", () => {
     const choice = state.pendingChoice;
     expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("eagle-eye");
     expect((choice as { eagleEye?: { cardId: string } }).eagleEye?.cardId).toBe("spell.curse");
+    expect(choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : []).toEqual([
+      expect.stringMatching(/^Take Curse/),
+      "Discard Curse"
+    ]);
 
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -165,6 +169,32 @@ describe("Tome option A: School Spell-deck dig", () => {
     expect(state.decks.spells.drawPile).not.toContain("spell.curse");
     // The skipped Air spell was reshuffled back into the deck, not taken.
     expect(state.decks.spells.drawPile).toContain("spell.haste");
+  });
+
+  it("may discard the found Spell into the shared Spell discard pile", () => {
+    let state = createAdventureGameState({ seed: "tome-dig-discard", difficulty: "normal", rollFirstPlayer: false });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    state.activePlayerId = "p1";
+    state.players.p1.hand = [TOME_WATER];
+    state.decks.spells.drawPile = ["spell.forgetfulness"];
+    state.decks.spells.discardPile = [];
+
+    state = applyOk(state, findPlay(state, "p1", TOME_WATER, 0)!.action);
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("eagle-eye");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 1
+    });
+
+    expect(state.players.p1.hand).not.toContain("spell.forgetfulness");
+    expect(state.players.p1.spellBook).not.toContain("spell.forgetfulness");
+    expect(state.decks.spells.drawPile).not.toContain("spell.forgetfulness");
+    expect(state.decks.spells.discardPile).toContain("spell.forgetfulness");
   });
 
   it("does nothing when the Spell deck holds no spell of that School", () => {

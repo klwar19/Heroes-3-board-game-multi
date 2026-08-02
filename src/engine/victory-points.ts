@@ -125,12 +125,23 @@ export function recordVpSurrender(state: GameState, winnerId: PlayerId): void {
   entry.surrenders = (entry.surrenders ?? 0) + 1;
 }
 
-/** Record that a player has defeated a Dragon Utopia (defeat-dragon-utopia objective). */
-export function recordVpUtopiaDefeat(state: GameState, playerId: PlayerId): void {
+/** Record that a player has cleared one distinct Dragon Utopia field. */
+export function recordVpUtopiaDefeat(
+  state: GameState,
+  playerId: PlayerId,
+  fieldId?: string
+): void {
   if (playerId === NEUTRAL_PLAYER_ID) {
     return;
   }
-  vpLedgerEntry(state, playerId).utopiaDefeated = true;
+  const entry = vpLedgerEntry(state, playerId);
+  entry.utopiaDefeated = true;
+  if (fieldId) {
+    const fields = entry.utopiaDefeatedFieldIds ?? (entry.utopiaDefeatedFieldIds = []);
+    if (!fields.includes(fieldId)) {
+      fields.push(fieldId);
+    }
+  }
 }
 
 /**
@@ -355,7 +366,10 @@ export function describeCustomWinCondition(condition: CustomWinCondition): strin
     case "defeat-heroes":
       return `defeat ${condition.count} enemy Hero${condition.count === 1 ? "" : "es"}`;
     case "defeat-dragon-utopia":
-      return "defeat the Dragon Utopia";
+      {
+        const count = condition.count ?? 1;
+        return `flag ${count} Dragon Utopia${count === 1 ? "" : "s"}`;
+      }
     case "hold-with-grail": {
       const target =
         condition.target === "starting-town"
