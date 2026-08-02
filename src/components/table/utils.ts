@@ -11,6 +11,7 @@ import {
 import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
+import { unitAbilities } from "@/data/units/abilities";
 import {
   cardCanBoostPower,
   cultivationRealmLabel,
@@ -305,6 +306,10 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "UNIT_ACTIVATION_STARTED":
       return `${unitName(state, event.unitId)} activates.`;
     case "UNIT_ATTACK_DECLARED":
+      if (event.abilityAttack) {
+        const abilityName = unitAbilities[event.abilityAttack.abilityId]?.name ?? "Ability attack";
+        return `${unitName(state, event.attackerId)} — 2nd attack: ${abilityName} (Attack ${event.abilityAttack.baseAttack}) targets ${unitName(state, event.defenderId)}.`;
+      }
       return `${unitName(state, event.attackerId)} ${event.isRetaliation ? "retaliates against" : "attacks"} ${unitName(state, event.defenderId)} (${event.attackKind}${event.rollMode === "normal" ? "" : `, ${event.rollMode}`}).`;
     case "ATTACK_ROLLED":
       return `${event.isRetaliation ? "Retaliation" : "Attack"} roll ${event.rolls.map(formatDieFace).join("/")} -> ${formatDieFace(event.roll)}: ${event.attackValue} vs ${event.defenseValue}, ${event.damage} damage.${

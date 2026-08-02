@@ -2374,11 +2374,13 @@ Three engine readings the printed/official rules contradict were replaced by the
 OFFICIAL rule, with the OLD behaviour preserved behind a NEW house rule. Two of
 them (`elemental-damage-no-die`, `deck-access-hero-level`) stay **default OFF in
 BOTH binh and legacy** (a table that changes nothing plays the official rule).
-The third, **`discovery-border-gate`, was RE-FLIPPED on the 2026-08-02
-five-session branch to `default: true` and force-locked ON in BINH / the Polish
-package** (see its bullet) — so BINH's default tile-discovery is the old
-require-open-border reading again, not adjacency-only. Each rule is one boolean
-read at ONE seam, with the CONTROL behaviour pinned.
+The third, **`discovery-border-gate`, defaults `true` in BINH (default OFF in
+Legacy) but is an INDEPENDENT, editable toggle** (see its bullet) — so BINH's
+default tile-discovery is the require-open-border reading, but a table may switch
+it off, and it is NOT part of the Polish package. (An earlier five-session
+iteration force-locked it ON in BINH / the Polish package; the shipped branch
+reverted that to a plain editable toggle.) Each rule is one boolean read at ONE
+seam, with the CONTROL behaviour pinned.
 
 - **`elemental-damage-no-die`** (category combat). OFFICIAL (OFF): elemental damage
   does exactly ONE thing — it ignores the target's Defense value (printed Defense,
@@ -2393,28 +2395,27 @@ read at ONE seam, with the CONTROL behaviour pinned.
   Attack tokens, Moandor's granted elemental damage).
 - **`discovery-border-gate`** (category combat — BINH house-rules panel under
   "Combat & map rules"; placement pinned in `game-options-tabs.test.tsx`).
-  **UPDATED 2026-08-02 (five-session branch): this rule is now `default: true`
-  and is a HARD BINH MAP INVARIANT, no longer the default-OFF official reading.**
-  When ON: DISCOVERING a face-down Tile — or OPENING a new Ⅱ–Ⅲ one — needs an
-  OPEN border between the Hero's field and the tile (a printed yellow arc,
-  designer whole arc, or a designed per-edge line seals it), with a Redwood
-  Observatory / Speculum as the bypass. When OFF: adjacency alone suffices
-  (the printed-rules reading). **Forcing:** `resolveHouseRules` AND
-  `houseRuleEnabled` both force it `true` whenever `ruleset === "binh"` OR any
-  Polish-category house rule is enabled — so BINH cannot switch it off, and it
-  is part of the Polish package in Legacy too (an explicit `false` or a stale
-  save no longer wins). Legacy WITHOUT any Polish rule keeps it as an ordinary
-  toggle (`legacyDefault: false`). Two seams: `heroCanDiscoverTileAcrossBorders`
-  (takes the STATE) and `canHeroReachPlacementCenter`. **Movement is UNTOUCHED**
-  — yellow borders still seal every step in both readings, and the
-  Surface/Subterranean divide still blocks discovery either way. Behaviour
-  pinned in `official-rules-house-rules.test.ts` (BINH locked-ON, an explicit
-  `false` cannot disable it, Legacy default-OFF) and `adventure.test.ts`; the
+  **`default: true` in BINH (`legacyDefault: false`), an INDEPENDENT editable
+  toggle — Rule 111 and the other Polish rules never change or lock it, and it is
+  NOT part of the Polish package.** When ON: DISCOVERING a face-down Tile — or
+  OPENING a new Ⅱ–Ⅲ one — needs an OPEN border between the Hero's field and the
+  tile (a printed yellow arc, designer whole arc, or a designed per-edge line
+  seals it), with a Redwood Observatory / Speculum as the bypass. When OFF:
+  adjacency alone suffices (the printed-rules reading). BINH defaults it ON but a
+  table may switch it off — an explicit `false` wins in every mode (no force-lock;
+  `resolveHouseRules` / `houseRuleEnabled` no longer coerce it). Two seams:
+  `heroCanDiscoverTileAcrossBorders` (takes the STATE) and
+  `canHeroReachPlacementCenter`. **Movement is UNTOUCHED** — yellow borders still
+  seal every step in both readings, and the Surface/Subterranean divide still
+  blocks discovery either way. Behaviour pinned in
+  `official-rules-house-rules.test.ts` (BINH default-ON, an explicit `false`
+  DISABLES it even in BINH, Legacy default-OFF) and `adventure.test.ts`; the
   ON-path map fixtures live in `designed-borders.test.ts` / `map-objects.test.ts`
   and the bank-exception case in `creature-bank-objects.test.ts`. NOTE: because
-  BINH always runs this ON, the SP-AI "immediate-access" discovery variants
-  (`computer/map-navigation.ts`) are a no-op in BINH and only change Legacy
-  toggle-off games. Its two siblings below stay default-OFF (official).
+  BINH DEFAULTS this ON, the SP-AI "immediate-access" discovery variants
+  (`computer/map-navigation.ts`) are a no-op on a default BINH table and only
+  change Legacy / rule-off games. Its two siblings below stay default-OFF
+  (official).
 - **`deck-access-hero-level`** (category decks). OFFICIAL (OFF): which Spell /
   Artifact decks a Search may reach is decided by the TILE the (main) hero stands
   on and nothing else — starting & far Ⅰ–Ⅲ = basic Spells / Minor artifacts, near
@@ -2884,8 +2885,8 @@ Two commits' worth of rules work plus its audit. Leading with what does NOT work
   `isOuterEdgeSealed(adventure, heroField)` reads). That is the Creature Bank's
   long-standing scope, deliberately unchanged: the carve exception covers
   CROSSING and DISCOVERY only, so `isOuterEdgeSealed` keeps its slot-primitive
-  invariant. The second read is additionally behind the non-default
-  `discovery-border-gate` house rule.
+  invariant. The second read is additionally behind the `discovery-border-gate`
+  house rule (BINH-default, Legacy-optional).
 - **A SUBTERRANEAN GATE carved onto a Blocked Field keeps the same wart, on
   purpose.** `gateMayCoverField` (adventure.ts) does not exclude `blocked_field`,
   so when the ring hex nearest the partner tile happens to be the blocked one the
@@ -3008,17 +3009,24 @@ Four fixes to shipped behaviour (not toggles — the previous behaviour was wron
   hand dump at −2 settles the SECOND negative token only: `player.morale = -1` with
   a `MORALE_CHANGED { amount: 1, total: -1 }` feed line (it used to hand out a free
   full recovery to neutral). `map-tile-effects-audit.test.ts`.
-- **A shared discard pile always shows a card.** Setup already flipped one face-up
-  per shared deck; `refillSharedDeckDiscards` (decks.ts, called at the tail of
-  every `applyAction` with the PRE-action state) now keeps that true — taking the
-  LAST discarded card flips the deck's next draw-pile card into its place. Three
-  deliberate limits: it fires only on a pile that HELD a card when the action
-  started (never conjures one onto an already-empty pile, so it can never steal a
-  card another effect just put on the deck top), never while a `pendingChoice` is
-  open (an open Search / Pandora scry / discard-top pick is HOLDING cards that are
-  about to land back there), and a deck with an empty draw pile is left alone.
-  Silent by design (the pile is rendered; a feed line per flip would be noise).
-  `shared-deck-discard-seed.test.ts` + the take-the-top case in `reducer.test.ts`.
+- **A shared discard pile always shows a card.** Setup flips one face-up per
+  shared deck; keeping that true is split across two seams (decks.ts
+  `refillSharedDeckDiscards`). DISPLAY: `getPlayerView` calls it with NO `before`
+  arg on the render clone, so every empty discard is seeded for viewing — a pile
+  never LOOKS empty even mid-choice or on an imported state (five-session branch
+  added this rendering pass + its `player-view.ts` call). AUTHORITATIVE: the
+  action tail calls `refillSharedDeckDiscards(nextState, base)` (`reducer.ts`)
+  with the PRE-action state, and two limits keep the real state honest: it
+  re-seeds only a pile that HELD a card when the action started (never one that
+  was ALREADY empty — so an effect that returned / reshuffled a card onto a deck's
+  draw TOP, Tarnum VI's return-to-top or an Eagle Eye / Tome dig-reshuffle, is
+  DRAWN next instead of flipped face-up into the discard), and a deck whose draw
+  pile is also empty is left alone. Silent by design (the pile is rendered; a feed
+  line per flip would be noise). `shared-deck-discard-seed.test.ts` (incl. the
+  display-vs-authoritative split) + the take-the-top case in `reducer.test.ts`;
+  the return-to-top / reshuffle protection is pinned in
+  `conflux-tarnum-specialty.test.ts`, `eagle-eye-combat.test.ts`,
+  `tome-artifacts.test.ts` and `pandora-cards.test.ts`.
 - **Search (X): the searcher chooses which card sits face up.** When a Search puts
   2+ revealed cards BACK (X ≥ 3 keeping one), `openDiscardTopPick`
   (adventure-reducer.ts) opens a pick — the chosen card goes on TOP of that deck's
@@ -3234,11 +3242,12 @@ is NOT done:
   Heroes never gain XP) → MANDATORY auto-resolved Quick Combat (same
   QUICK_COMBAT_WON path — Freelancer's Guild bounty, field visit, no XP, no
   Necromancy). Covered + Experience possible → a `polish-quick-combat`
-  pendingChoice (fight or quick) — EXCEPT at the EXACT field level, where
-  2026-07-28's `level !== difficulty` gate takes the whole strength shortcut off
-  the table so a level-2 hero on a level-Ⅱ tile keeps the fight (and its XP): it
-  drops straight to the matching-level Cyra's Diplomacy choice, whose "Fight"
-  opens combat. NOT covered → the fight is mandatory even for a hero whose
+  pendingChoice (fight or quick). At the EXACT field level the strength shortcut
+  STAYS on the table (the five-session branch REMOVED the earlier 2026-07-28
+  `level !== difficulty` carve-out): a covered matching-level fight offers Quick
+  Combat FIRST, and choosing "Fight" then opens the matching-level Cyra's
+  Diplomacy choice (whose "Fight" opens combat) — pinned in
+  `polish-quick-combat.test.ts`. NOT covered → the fight is mandatory even for a hero whose
   level beats the field (the classic level auto-win is replaced). Deliberate
   limits: Banks, bank-style outpost/teleport guards and designer EXACT armies
   keep their own no-Quick-Combat rules; the threshold reads the PLAIN scenario
@@ -6163,8 +6172,9 @@ What runs (each with a failing-if-removed test):
   exported from `victory-points.ts` and shared verbatim; gold is `resources.gold`;
   `defeat-heroes` = `vpLedger.mainHeroDefeats.length + secondaryHeroDefeats`
   (main once per opponent, VP-consistent; tolerates an absent ledger on legacy
-  snapshots); `defeat-dragon-utopia` = `vpLedger.utopiaDefeated`. Never duplicate
-  a metric — same numbers as VP scoring is the invariant.
+  snapshots); `defeat-dragon-utopia` = the distinct count of
+  `vpLedger.utopiaDefeatedFieldIds` (older boolean `utopiaDefeated` snapshots read
+  as one). Never duplicate a metric — same numbers as VP scoring is the invariant.
 - **Combat-deferred**: the check SKIPS while a combat is open (`state.combat`), so
   a threshold crossed mid-battle resolves on the next map-side action
   (`ACKNOWLEDGE_COMBAT_END` and co. flow through the same tail) — the game is
@@ -6199,9 +6209,12 @@ Pinned in `map-preset-editor.test.tsx` and `game-options-tabs.test.tsx` (incl. a
 placement test: on Match after the Win condition row, absent from Mode & Rules).
 
 Deliberate LIMITS (documented, not bugs):
-- **No "defeat N Dragon Utopias"**: the VP ledger flag is a BOOLEAN
-  (`utopiaDefeated`), so `defeat-dragon-utopia` carries NO count even though a
-  designed map can host several Utopias — it fires on the FIRST one defeated.
+- **`defeat-dragon-utopia` counts DISTINCT cleared Utopias (1–6)**: the VP ledger
+  tracks `utopiaDefeatedFieldIds` (deduped by fieldId; sanitizer clamps 1–6,
+  reader in `adventure.ts`), so the condition needs N distinct Utopia fields
+  defeated and never counts the same field twice; a second Utopia still face-down
+  when the first fell is converted correctly. (Older boolean-only `utopiaDefeated`
+  snapshots count as one.)
 - **Instant-win foot-gun**: a condition already met at setup ends the game on the
   first action — the designer's responsibility. The min-clamps REDUCE but cannot
   eliminate it (e.g. a preset `startingResources` gold can exceed the gold

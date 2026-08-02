@@ -184,31 +184,38 @@ describe("polish-quick-combat — outcome classifier (shared by engine + display
     const mandatory = makeGame("pqc-out-mand");
     mandatory.heroes.hero_p1.level = 3;
     setArmy(mandatory, strongArmy());
-    expect(polishQuickCombatOutcome(mandatory, mandatory.heroes.hero_p1, 1, 3)).toBe("mandatory");
+    expect(polishQuickCombatOutcome(mandatory, mandatory.heroes.hero_p1, 1)).toBe("mandatory");
 
     // Covered, XP possible (field above the level) → the player chooses.
     const choice = makeGame("pqc-out-choice");
     choice.heroes.hero_p1.level = 1;
     setArmy(choice, strongArmy());
-    expect(polishQuickCombatOutcome(choice, choice.heroes.hero_p1, 2, 1)).toBe("choice");
+    expect(polishQuickCombatOutcome(choice, choice.heroes.hero_p1, 2)).toBe("choice");
 
-    // Exact field level → the strength shortcut is off (the XP fight is kept).
+    // Exact field level still pays XP, so a covered army gets the choice.
     const exact = makeGame("pqc-out-exact");
     exact.heroes.hero_p1.level = 2;
     setArmy(exact, strongArmy());
-    expect(polishQuickCombatOutcome(exact, exact.heroes.hero_p1, 2, 2)).toBe("fight");
+    expect(polishQuickCombatOutcome(exact, exact.heroes.hero_p1, 2)).toBe("choice");
 
     // Army too weak → must fight.
     const weak = makeGame("pqc-out-weak");
     weak.heroes.hero_p1.level = 3;
     setArmy(weak, [armyCard("castle.griffins", "few")]); // 1 < 4
-    expect(polishQuickCombatOutcome(weak, weak.heroes.hero_p1, 1, 3)).toBe("fight");
+    expect(polishQuickCombatOutcome(weak, weak.heroes.hero_p1, 1)).toBe("fight");
 
     // CONTROL: rule OFF → always "fight".
     const off = makeGame("pqc-out-off", { houseRules: { "polish-quick-combat": false } });
     off.heroes.hero_p1.level = 3;
     setArmy(off, strongArmy());
-    expect(polishQuickCombatOutcome(off, off.heroes.hero_p1, 1, 3)).toBe("fight");
+    expect(polishQuickCombatOutcome(off, off.heroes.hero_p1, 1)).toBe("fight");
+
+    // VI–VII fields remain eligible when their higher threshold is covered.
+    const boss = makeGame("pqc-out-boss");
+    boss.heroes.hero_p1.level = 1;
+    setArmy(boss, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack")));
+    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 6)).toBe("choice");
+    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 7)).toBe("choice");
   });
 
   it("makes exact-level Quick Combat mandatory for a Secondary Hero, who cannot gain XP", () => {
@@ -218,7 +225,7 @@ describe("polish-quick-combat — outcome classifier (shared by engine + display
     const secondary = createSecondaryHero(state, "p1", "secondary-qc-field");
 
     expect(neutralBattleLevel(state, secondary)).toBe(2);
-    expect(polishQuickCombatOutcome(state, secondary, 2, 2)).toBe("mandatory");
+    expect(polishQuickCombatOutcome(state, secondary, 2)).toBe("mandatory");
   });
 });
 
@@ -296,6 +303,22 @@ describe("polish-quick-combat — mandatory Quick Combat when covered with no XP
     expect(state.heroes.hero_p1.experience, "a Quick Combat pays no Experience").toBe(xpBefore);
   });
 
+  it("shows the higher Quick Combat threshold for VI–VII fields", () => {
+    const state = makeGame("pqc-info-boss");
+    state.heroes.hero_p1.level = 1;
+    setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack")));
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 6))).toMatchObject({
+      requiredStrength: 14,
+      covered: true,
+      outcome: "choice"
+    });
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 7))).toMatchObject({
+      requiredStrength: 16,
+      covered: true,
+      outcome: "choice"
+    });
+  });
+
   it("secondary hero auto-wins when the Main Hero's effective level exactly matches the field", () => {
     const state = makeGame("pqc-secondary-exact");
     state.heroes.hero_p1.level = 2;
@@ -343,8 +366,7 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
   it("opens the choice; resolving Quick Combat wins unfought with no Experience", () => {
     let state = openChoice("pqc-choice-quick");
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
-    // Exact-level encounters are not eligible for the strength shortcut: the
-    // player must receive the normal fight (or Diplomacy) choice first.
+    // Covered with XP available: offer the fight-or-quick choice.
     expect(choiceContext(state)).toBe("polish-quick-combat");
     expect(state.phase).toBe("choice");
     const xpBefore = state.heroes.hero_p1.experience;
@@ -384,29 +406,37 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
     expect(control.phase).toBe("combat-setup");
   });
 
-  it("choosing Fight at a matching level still offers Cyra's Diplomacy afterwards", () => {
-    const state = makeGame("pqc-diplomacy");
+  it("a covered matching-level fight offers Quick Combat first, then Cyra's Diplomacy after choosing Fight", () => {
+    let state = makeGame("pqc-diplomacy");
     state.heroes.hero_p1.level = 1;
     state.players.p1.hand = ["ability.diplomacy"];
     state.players.p1.limits.expertUses = 1;
     setArmy(state, [armyCard("castle.champions", "pack"), armyCard("castle.champions", "pack")]); // 12 ≥ 4
     encounter(state, guardField(state, 1)); // level == difficulty → +1 XP possible
-    // Exact-level encounters are not eligible for the strength shortcut: the
-    // player must receive the normal fight (or Diplomacy) choice first.
-    expect(choiceContext(state)).toBe("diplomacy-skip");
+    // Quick Combat is offered first; choosing the fought path then preserves
+    // the normal matching-level Diplomacy decision.
+    expect(choiceContext(state)).toBe("polish-quick-combat");
 
-    const next = applyOk(state, {
+    state = applyOk(state, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: state.pendingChoice!.id,
       optionIndex: 1
     });
-    expect(next.phase, "choosing Fight from the matching-level Diplomacy choice opens combat").toBe("combat-setup");
+    expect(choiceContext(state), "the normal fight path still offers matching-level Diplomacy").toBe("diplomacy-skip");
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 1
+    });
+    expect(state.phase, "declining Diplomacy opens combat").toBe("combat-setup");
   });
 });
 
-describe("polish-quick-combat — VI–VII fields become eligible", () => {
-  it("a level-1 hero with a strong army gets the choice at a difficulty-6 field (rule off: always fights)", () => {
+describe("polish-quick-combat — VI–VII fields remain eligible", () => {
+  it("a level-1 hero with a strong army gets the choice at a difficulty-6 field (rule off: fights)", () => {
     const state = makeGame("pqc-vi");
     state.heroes.hero_p1.level = 1;
     setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack"))); // 30 ≥ 14

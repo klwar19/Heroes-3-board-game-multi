@@ -132,7 +132,7 @@ export function MapPickModal({
         record,
         problems: designedMapBlockers(
           record.tiles.length,
-          scenario ? validateCustomMapPlan(record.tiles, scenario).problems : ["Unknown scenario."]
+          scenario ? validateCustomMapPlan(record.tiles, scenario, record.players).problems : ["Unknown scenario."]
         )
       };
     });

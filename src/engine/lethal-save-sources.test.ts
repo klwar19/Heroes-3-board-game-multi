@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { abilityFxPlans } from "@/data/fx";
-import { applyAction, createInitialGameState } from "./index";
+import { applyAction, createInitialGameState, DEFAULT_ANIME_OPTIONS } from "./index";
 import type { GameAction, GameState, LegalAction } from "./state";
 
 /**
@@ -42,8 +42,12 @@ function lethalSetup(opts: {
   rolls?: number[];
   handLockP1?: boolean;
   p1Crowns?: number;
+  defenderStacks?: number;
 }): GameState {
   const state = createInitialGameState("lethal-save-seed");
+  if (opts.defenderStacks !== undefined) {
+    state.anime = { ...DEFAULT_ANIME_OPTIONS, enabled: true, unitStacks: true };
+  }
   state.players.p1.hand = opts.p1Hand ?? [];
   state.players.p2.hand = [];
   if (opts.p1Crowns !== undefined) {
@@ -74,6 +78,9 @@ function lethalSetup(opts: {
   defender.position = 9;
   defender.defense = 0;
   defender.damage = defender.maxHealth - 1; // one hit from death
+  if (opts.defenderStacks !== undefined) {
+    defender.armyStacks = opts.defenderStacks;
+  }
 
   if (opts.archangelSaver) {
     const archangel = state.combat!.units.unit_p1_crusaders;
@@ -86,7 +93,9 @@ function lethalSetup(opts: {
 
   const attacker = state.combat!.units.unit_p2_skeletons;
   attacker.abilities = opts.attackerAbilities ?? [];
-  attacker.attack = 5; // clearly lethal
+  // A Polish-layer case needs to break exactly that health bar without also
+  // carrying enough excess to kill the underlying card.
+  attacker.attack = opts.defenderStacks !== undefined ? 1 : 5;
   attacker.position = 13; // adjacent below the defender
   state.combat!.dice.scriptedRolls = opts.rolls ?? [0];
   state.combat!.dice.rollCount = 0;
@@ -212,6 +221,42 @@ describe("Archangels' once-per-combat lethal save", () => {
     expect(hasAbilityEvent(saved, "resurrection")).toBe(true);
     expect(griffins(saved).damage).toBe(griffins(saved).maxHealth - 1); // fully saved
     expect(saved.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+  });
+  it("can cancel an attack that reduces a Polish Unit Stack layer to 0 HP", () => {
+    const declared = lethalSetup({ archangelSaver: true, defenderStacks: 1 });
+    expect(declared.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_LETHAL_HIT",
+      defenderId: "unit_p1_griffins",
+      stackLayerOnly: true
+    });
+    const actions = p1SaveActions(declared);
+    expect(actions.every((legal) => legal.action.type === "USE_UNIT_RESURRECTION")).toBe(true);
+    const save = actions.find(
+      (legal) => legal.action.type === "USE_UNIT_RESURRECTION" && legal.action.savingUnitId === "unit_p1_crusaders"
+    );
+    const saved = applyOk(declared, save!.action);
+
+    expect(griffins(saved).damage).toBe(griffins(declared).damage);
+    expect(griffins(saved).armyStacks).toBe(1);
+    expect(saved.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
+
+    const readiness = saved.eventLog.find(
+      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "archangel-lethal-save"
+    );
+    expect(readiness).toMatchObject({ unitId: "unit_p1_crusaders", targetUnitId: "unit_p1_griffins" });
+    expect(abilityFxPlans["archangel-lethal-save"]).toMatchObject({
+      affect: [{ key: "resurrection" }],
+      sound: "spells/resurrection"
+    });
+    expect(hasAbilityEvent(saved, "resurrection"), "resolved cancel drives the target resurrection FX too").toBe(true);
+  });
+
+  it("does not offer a card Resurrection merely for a Polish Stack layer", () => {
+    const resolved = lethalSetup({ p1Hand: ["spell.resurrection"], defenderStacks: 1 });
+    expect(resolved.reactionWindow).toBeNull();
+    expect(griffins(resolved).armyStacks).toBe(0);
+    expect(resolved.players.p1.hand).toContain("spell.resurrection");
+    expect(hasAbilityEvent(resolved, "resurrection")).toBe(false);
   });
 });
 
@@ -376,6 +421,7 @@ describe("New abilities have a resurrection/effect sound wired", () => {
   it("maps each new ability id to an FX plan with a sound", () => {
     for (const abilityId of [
       "resurrection",
+      "archangel-lethal-save",
       "wyvern-sting",
       "rust-dragon-acid",
       "gorgon-death-stare",

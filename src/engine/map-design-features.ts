@@ -449,10 +449,21 @@ export function resolveCustomGuardDraws(
       : null;
 
   const draws: ResolvedGuardDraw[] = [];
+  // Random Neutral slots draw without replacement within a tier whenever the
+  // pool has enough distinct cards. Two "random silver" slots therefore cannot
+  // both become the same creature (for example two Zealots) while another
+  // eligible silver creature remains.
+  const remainingNeutralPools = new Map<RandomGuardTier, string[]>();
   for (const entry of units.slice(0, MAX_CUSTOM_GUARD_UNITS)) {
     if (isRandomGuardSlot(entry)) {
       const tier = randomGuardTierOf(entry)!;
-      const unitDefId = pickRandomFromPool(neutralUnitPoolForTier(tier), rng);
+      let pool = remainingNeutralPools.get(tier);
+      if (!pool || pool.length === 0) {
+        pool = [...neutralUnitPoolForTier(tier)];
+        remainingNeutralPools.set(tier, pool);
+      }
+      const pickIndex = pool.length > 0 ? rng.nextInt(0, pool.length - 1) : -1;
+      const unitDefId = pickIndex >= 0 ? pool.splice(pickIndex, 1)[0] : undefined;
       if (!unitDefId) continue;
       draws.push({ unitDefId, tier, bankGuard: true });
       continue;
@@ -600,14 +611,14 @@ export function applyBreakFieldOptions(
 
 /** Grail dig MP cost (0 / 1 / 2). Absent preset ⇒ classic 1. */
 export function grailDigMovementCost(state: GameState): 0 | 1 | 2 {
-  if (polishGrailUtopiaEnabled(state)) return 1;
+  if (grailUtopiaFieldRulesEnabled(state)) return 1;
   const cost = state.adventure?.mapPreset?.objectives?.grailDigCost;
   return cost === 0 || cost === 1 || cost === 2 ? cost : 1;
 }
 
 /** End-game VP for possessing / controlling the Grail (0 when unset). */
 export function grailPossessionVp(state: GameState): number {
-  if (polishGrailUtopiaEnabled(state)) return 3;
+  if (grailUtopiaFieldRulesEnabled(state)) return 3;
   return state.adventure?.mapPreset?.objectives?.grailPossessionVp ?? 0;
 }
 
@@ -616,11 +627,23 @@ export function polishGrailUtopiaEnabled(state: GameState): boolean {
   return houseRuleEnabled(state, "polish-grail-utopia");
 }
 
+/**
+ * Effective special-field package. New maps opt in directly through the Map
+ * Editor; the Polish house-rule switch remains a backwards-compatible way to
+ * enable the same mechanics on older/random maps.
+ */
+export function grailUtopiaFieldRulesEnabled(state: GameState): boolean {
+  return (
+    polishGrailUtopiaEnabled(state) ||
+    state.adventure?.mapPreset?.objectives?.hiddenGrailUtopia === true
+  );
+}
+
 /** Legal construction sites for the effective Grail rules. */
 export function grailBuildAt(
   state: GameState
 ): NonNullable<CustomMapObjectivesConfig["grailBuildAt"]> | undefined {
-  return polishGrailUtopiaEnabled(state)
+  return grailUtopiaFieldRulesEnabled(state)
     ? "both"
     : state.adventure?.mapPreset?.objectives?.grailBuildAt;
 }
@@ -628,6 +651,9 @@ export function grailBuildAt(
 /** Effective construction reward; the Polish rule always grants a free building. */
 export function grailBuildReward(state: GameState): CustomMapObjectivesConfig["grailBuildReward"] {
   const authored = state.adventure?.mapPreset?.objectives?.grailBuildReward;
+  if (state.adventure?.mapPreset?.objectives?.hiddenGrailUtopia) {
+    return { freeBuilding: true };
+  }
   return polishGrailUtopiaEnabled(state) ? { ...authored, freeBuilding: true } : authored;
 }
 

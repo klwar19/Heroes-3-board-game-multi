@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { abilityFxPlans } from "@/data/fx";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { formatEvent } from "@/components/table/utils";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -16,6 +18,24 @@ function passAllReactions(state: GameState): GameState {
     safety -= 1;
     current = applyOk(current, { type: "PASS_REACTION", playerId: current.reactionWindow.priorityPlayerId });
   }
+  return current;
+}
+
+/** Pass exactly the currently open window, stopping if resolution opens another attack window. */
+function passCurrentReactionWindow(state: GameState): GameState {
+  const windowId = state.reactionWindow?.id;
+  expect(windowId, "an attack reaction window should be open").toBeTruthy();
+  let current = state;
+  let safety = 10;
+  while (safety-- > 0) {
+    const window = current.reactionWindow;
+    if (!window || window.id !== windowId) break;
+    current = applyOk(current, {
+      type: "PASS_REACTION",
+      playerId: window.priorityPlayerId
+    });
+  }
+  expect(safety, "the reaction window should close").toBeGreaterThan(0);
   return current;
 }
 
@@ -89,6 +109,172 @@ describe("Gold Dragon line attack", () => {
     expect(lineAttack).toBeDefined();
     expect(lineAttack?.defenderId).toBe("unit_p2_vampires");
     expect(lineAttack?.abilityAttack?.baseAttack).toBe(3);
+  });
+
+  it.each([
+    ["visual front", 16, 17, 18],
+    ["visual back", 18, 17, 16],
+    ["left-to-right", 5, 9, 13],
+    ["right-to-left", 13, 9, 5]
+  ] as const)("strikes through a surviving target in the %s direction", (_label, attackerPos, targetPos, behindPos) => {
+    const state = createInitialGameState();
+    const dragon = state.combat!.units.unit_p1_griffins;
+    const target = state.combat!.units.unit_p2_skeletons;
+    const behind = state.combat!.units.unit_p2_vampires;
+    dragon.name = "Gold Dragon";
+    dragon.cardName = "Gold Dragons";
+    dragon.type = "flying";
+    dragon.abilities = ["dragon-line-attack-3"];
+    dragon.attack = 4;
+    dragon.position = attackerPos;
+    target.position = targetPos;
+    target.maxHealth = 50; // Match the report: the Nagas survive the first hit.
+    target.damage = 0;
+    behind.position = behindPos;
+    behind.maxHealth = 50;
+    behind.damage = 0;
+    behind.activatedThisRound = true; // An already-acted Pegasi is still hit.
+
+    const reserved = new Set<number>([attackerPos, targetPos, behindPos]);
+    let parking = 0;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id === dragon.id || unit.id === target.id || unit.id === behind.id) {
+        continue;
+      }
+      while (reserved.has(parking)) parking += 1;
+      unit.position = parking;
+      reserved.add(parking);
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [0, 0, 0, 0]);
+    setActive(state, "p1", dragon.id);
+
+    const next = settle(
+      applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: dragon.id,
+        defenderId: target.id
+      })
+    );
+    const lineAttack = declaredAttacks(next).find(
+      (event) => event.abilityAttack?.abilityId === "dragon-line-attack-3"
+    );
+    expect(lineAttack?.defenderId).toBe(behind.id);
+    expect(next.combat!.units[behind.id].damage, "the Pegasi-equivalent behind unit takes real damage").toBeGreaterThan(0);
+  });
+
+  it("damages allied Pegasi behind enemy Nagas using the real printed card stats", () => {
+    const state = createInitialGameState();
+    const dragon = state.combat!.units.unit_p1_griffins;
+    const nagas = state.combat!.units.unit_p2_skeletons;
+    const pegasi = state.combat!.units.unit_p1_marksmen;
+    const dragonSide = coreUnitDefinitions["rampart.gold_dragons"].pack!;
+    const nagasSide = coreUnitDefinitions["tower.nagas"].few!;
+    const pegasiSide = coreUnitDefinitions["rampart.pegasi"].few!;
+
+    Object.assign(dragon, {
+      unitDefId: "rampart.gold_dragons",
+      name: "Gold Dragons",
+      cardName: "Gold Dragons",
+      side: "pack",
+      type: "flying",
+      attack: dragonSide.attack,
+      defense: dragonSide.defense,
+      maxHealth: dragonSide.health,
+      initiative: dragonSide.initiative,
+      abilities: [...dragonSide.abilities],
+      position: 16,
+      damage: 0
+    });
+    Object.assign(nagas, {
+      unitDefId: "tower.nagas",
+      name: "Nagas",
+      cardName: "Nagas",
+      side: "few",
+      attack: nagasSide.attack,
+      defense: nagasSide.defense,
+      maxHealth: nagasSide.health,
+      initiative: nagasSide.initiative,
+      abilities: [...nagasSide.abilities],
+      position: 17,
+      damage: 0
+    });
+    Object.assign(pegasi, {
+      unitDefId: "rampart.pegasi",
+      name: "Pegasi",
+      cardName: "Pegasi",
+      side: "few",
+      type: "flying",
+      attack: pegasiSide.attack,
+      defense: pegasiSide.defense,
+      maxHealth: pegasiSide.health,
+      initiative: pegasiSide.initiative,
+      abilities: [...pegasiSide.abilities],
+      position: 18,
+      damage: 0,
+      activatedThisRound: true
+    });
+
+    const reserved = new Set<number>([16, 17, 18]);
+    let parking = 0;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id === dragon.id || unit.id === nagas.id || unit.id === pegasi.id) continue;
+      while (reserved.has(parking)) parking += 1;
+      unit.position = parking;
+      reserved.add(parking);
+    }
+    // Keep a legal Attack response in hand. This forces both the normal hit and
+    // the printed follow-up to pause on their own visible reaction windows.
+    state.players.p1.hand = ["stat.attack"];
+    state.players.p2.hand = [];
+    script(state, [0, 0, 0, 0]);
+    setActive(state, "p1", dragon.id);
+
+    let next = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: dragon.id,
+      defenderId: nagas.id
+    });
+    const primaryWindowId = next.reactionWindow?.id;
+    expect(next.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_ATTACK_DECLARED",
+      defenderId: nagas.id
+    });
+    expect(next.combat!.units[pegasi.id].damage).toBe(0);
+
+    next = passCurrentReactionWindow(next);
+    expect(next.reactionWindow?.id, "the line hit gets a new reaction window").not.toBe(primaryWindowId);
+    expect(next.reactionWindow?.triggerEvent).toMatchObject({
+      type: "UNIT_ATTACK_DECLARED",
+      defenderId: pegasi.id,
+      abilityAttack: { abilityId: "dragon-line-attack-3", baseAttack: 3 }
+    });
+    expect(formatEvent(next.reactionWindow!.triggerEvent, next)).toBe(
+      "Gold Dragons — 2nd attack: Dragon Breath (Attack 3) targets Pegasi."
+    );
+    expect(next.combat!.units[pegasi.id].damage, "damage waits until the 2nd window resolves").toBe(0);
+
+    next = passCurrentReactionWindow(next);
+    const lineDeclarationIndex = next.eventLog.findIndex(
+      (event) =>
+        event.type === "UNIT_ATTACK_DECLARED" &&
+        event.defenderId === pegasi.id &&
+        event.abilityAttack?.abilityId === "dragon-line-attack-3"
+    );
+    expect(lineDeclarationIndex).toBeGreaterThanOrEqual(0);
+    const lineRoll = next.eventLog.slice(lineDeclarationIndex + 1).find(
+      (event) => event.type === "ATTACK_ROLLED" && event.defenderId === pegasi.id
+    );
+    expect(lineRoll).toMatchObject({
+      type: "ATTACK_ROLLED",
+      attackValue: 3,
+      defenseValue: 0,
+      damage: 3
+    });
+    expect(next.combat!.units[pegasi.id].damage, "allied Pegasi lose 3 HP to friendly line fire").toBe(3);
   });
 
   it("does nothing when no unit stands behind the target", () => {

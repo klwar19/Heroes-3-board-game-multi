@@ -123,6 +123,7 @@ import {
   astrologersHeroEmpower,
   tradeResources,
   sellScrollSpell,
+  queueTownPortalChoice,
   unplaceCombatUnit,
   endTurnAdventure
 } from "./adventure-reducer";
@@ -183,6 +184,7 @@ import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeede
 import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
+  combatUnitDecisionOwnerId,
   isNeutralSplashVictimChoice,
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -240,7 +242,6 @@ import {
   sessionModeOf,
 } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
-import { hexDistance, parseHexSpaceId } from "./hex";
 import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
@@ -1564,13 +1565,24 @@ function chainLightningDamages(
 }
 
 /**
- * Whether the unit's controller could play Alamar's Resurrection to save it
+ * Whether the unit's controller has a Resurrection-style save for this hit
  * right now — exactly the reactions the lethal-save window would offer.
  */
-function playerHasLethalSave(state: GameState, defenderId: UnitId, cards: CardLibrary): boolean {
+function playerHasLethalSave(
+  state: GameState,
+  defenderId: UnitId,
+  cards: CardLibrary,
+  stackLayerOnly = false
+): boolean {
   const reactions = getLegalReactionsForTrigger(
     state,
-    { id: "lethal-check", type: "UNIT_LETHAL_HIT", attackerId: "", defenderId },
+    {
+      id: "lethal-check",
+      type: "UNIT_LETHAL_HIT",
+      attackerId: "",
+      defenderId,
+      ...(stackLayerOnly ? { stackLayerOnly: true } : {})
+    },
     cards
   );
   return Object.values(reactions).some((list) => list.length > 0);
@@ -1578,8 +1590,8 @@ function playerHasLethalSave(state: GameState, defenderId: UnitId, cards: CardLi
 
 /**
  * Polish Unit Stacks: simulate the army-stack peel in `markUnitRemovedIfNeeded`.
- * If the unit still has layers that would leave it alive after this hit, the
- * lethal-save window must not open (the unit is not actually dying).
+ * If the unit still has layers that would leave it alive after this hit, it is
+ * a Stack-layer HP-to-0 trigger rather than a card-death trigger.
  */
 function armyStacksWouldAbsorbHit(
   state: GameState,
@@ -4805,16 +4817,12 @@ function finishResolvedAttack(
     resolvedCandidate = { ...resolvedCandidate, modifierNotes: rollNotes };
   }
 
-  // Alamar's Resurrection: before a killing normal attack lands, pause once and
-  // ask the defender's controller whether to cancel it (only if they can). The
+  // Resurrection saves: before a normal attack reaches 0 HP, pause once and ask
+  // the defender's controller whether to cancel it (only if they can). The
   // rolled die is stashed so the resumed attack uses the same outcome. A Clone is
   // destroyed by any damage by rule and cannot be rescued, so it is never offered
   // a lethal save (the post-damage hook then removes it for being attacked).
-  if (
-    !details.defender.cloneOfUnitId &&
-    !stackItem.modifiers.lethalSaveOffered &&
-    playerHasLethalSave(state, details.defender.id, cards)
-  ) {
+  if (!details.defender.cloneOfUnitId && !stackItem.modifiers.lethalSaveOffered) {
     const preview = getAttackDamagePreview(
       details.attacker,
       details.defender,
@@ -4830,19 +4838,22 @@ function finishResolvedAttack(
       mightBonus,
       details.isRetaliation
     );
+    const stackLayerOnly = armyStacksWouldAbsorbHit(state, details.defender, preview.damage);
     if (
       preview.damage > 0 &&
       details.defender.damage + preview.damage >= details.defender.maxHealth &&
-      // Polish Unit Stacks: a paid layer will absorb this blow (and possibly
-      // further layers) before the card dies — not a real lethal window.
-      !armyStacksWouldAbsorbHit(state, details.defender, preview.damage)
+      // A Polish stack layer is lethal to that layer even though it is not yet
+      // lethal to the unit card. Unit saves such as Archangel may prevent it;
+      // card-based Resurrection is filtered out for this trigger.
+      playerHasLethalSave(state, details.defender.id, cards, stackLayerOnly)
     ) {
       stackItem.modifiers.rolledCandidate = candidate;
       stackItem.modifiers.lethalSaveOffered = true;
       const lethalEvent = appendEvent(state, {
         type: "UNIT_LETHAL_HIT",
         attackerId: details.attacker.id,
-        defenderId: details.defender.id
+        defenderId: details.defender.id,
+        ...(stackLayerOnly ? { stackLayerOnly: true } : {})
       });
       if (openReactionWindowForTrigger(state, stackItem, lethalEvent, cards)) {
         return;
@@ -4890,8 +4901,7 @@ function finishResolvedAttack(
       );
       if (
         preview.damage > 0 &&
-        details.defender.damage + preview.damage >= details.defender.maxHealth &&
-        !armyStacksWouldAbsorbHit(state, details.defender, preview.damage)
+        details.defender.damage + preview.damage >= details.defender.maxHealth
       ) {
         const saverAbility = getLethalSaveUnitAbility(saver)!;
         saver.usedLethalSaveThisCombat = true;
@@ -4955,7 +4965,6 @@ function finishResolvedAttack(
       return (
         preview.damage > 0 &&
         details.defender.damage + preview.damage >= details.defender.maxHealth &&
-        !armyStacksWouldAbsorbHit(state, details.defender, preview.damage) &&
         gradeRankOfUnit(details.defender) <= gradeRank(lethalCancel.grade)
       );
     })();
@@ -8521,7 +8530,13 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
     }
   }
 
-  state.activePlayerId = activeUnit.controllerId;
+  // Neutral units keep the Neutral sentinel as their ARMY controller, but a
+  // manual-control mode assigns their decisions to a real seat. Publish that
+  // seat as the active player as soon as the activation opens. Previously only
+  // priorityPlayerId was corrected later by the automation pump; UI/AFK/hosted
+  // ownership readers that use activePlayerId still saw "neutral", making a
+  // genuinely player-controlled guard look and behave like nobody's turn.
+  state.activePlayerId = combatUnitDecisionOwnerId(state, state.combat, activeUnit);
   activeUnit.movedThisActivation = false;
   activeUnit.movementLockedThisActivation = false;
   activeUnit.attackedThisActivation = false;
@@ -9228,12 +9243,12 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
   // PvP Neutral Control: a controlled guard's "[activation]" choice belongs to
   // the HUMAN playing the Neutral side, exactly like a player unit's — the AI
   // path (executeNeutralActivation) only ever runs when no controller exists.
-  const chooser =
-    unit && isNeutralUnit(unit) ? neutralCombatControllerId(state, combat) : (unit?.controllerId ?? null);
+  const chooser = unit ? combatUnitDecisionOwnerId(state, combat, unit) : null;
   if (
     !unit ||
     !isUnitAlive(unit) ||
     !chooser ||
+    chooser === NEUTRAL_PLAYER_ID ||
     unit.activatedThisRound ||
     unit.activationAbilityDone ||
     unit.movedThisActivation ||
@@ -16669,86 +16684,20 @@ function resolveEagleEyeDig(
     type: "OPTION_CHOICE",
     playerId,
     prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
-    options: [{ label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` }],
+    options: [
+      { label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` },
+      ...(school ? [{ label: `Discard ${cards[foundCardId]?.name ?? foundCardId}` }] : [])
+    ],
     context: "eagle-eye",
-    eagleEye: { deckId, cardId: foundCardId },
+    eagleEye: {
+      deckId,
+      cardId: foundCardId,
+      ...(school ? { allowDiscard: true } : {})
+    },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
-}
-
-/** Town Portal: choose a controlled town or flagged settlement to move to. */
-function queueTownPortalChoice(state: GameState, playerId: PlayerId, movementBonus: number): void {
-  const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero) {
-    return;
-  }
-
-  // Rulebook restriction: "If the selected town already has a hero in it, and
-  // the teleporting hero would not be able to move out of the city during this
-  // turn, they can not teleport to the town." The Power-scaled movement bonus
-  // counts toward being able to leave, so it is added to the projection.
-  const projectedMovement = hero.movementPoints + movementBonus;
-  const fieldHasOtherHero = (spaceId: string) =>
-    Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
-  const destinationAllowed = (spaceId: string) => !fieldHasOtherHero(spaceId) || projectedMovement > 0;
-
-  const destinations: { label: string; spaceId: string }[] = [];
-  const origin = hero.spaceId ? parseHexSpaceId(hero.spaceId) : null;
-  const distanceSuffix = (spaceId: string): string => {
-    const coord = parseHexSpaceId(spaceId);
-    const distance = origin && coord ? hexDistance(origin, coord) : null;
-    return distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : "";
-  };
-  for (const town of Object.values(state.towns)) {
-    if (
-      town.controllerId === playerId &&
-      town.fieldId &&
-      town.fieldId !== hero.spaceId &&
-      destinationAllowed(town.fieldId)
-    ) {
-      destinations.push({
-        label: `Town (${town.factionId ?? town.id})${distanceSuffix(town.fieldId)}`,
-        spaceId: town.fieldId
-      });
-    }
-  }
-  for (const field of Object.values(adventure.fields)) {
-    if (
-      field.location === "settlement" &&
-      field.flagOwnerId === playerId &&
-      field.spaceId !== hero.spaceId &&
-      destinationAllowed(field.spaceId)
-    ) {
-      destinations.push({ label: `Settlement${distanceSuffix(field.spaceId)}`, spaceId: field.spaceId });
-    }
-  }
-
-  if (destinations.length === 0) {
-    return;
-  }
-
-  adventure.rewardQueue.unshift({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: "Town Portal: move your hero to…",
-        options: [
-          ...destinations.map((destination) => ({
-            label: destination.label,
-            steps: [
-              { type: "TELEPORT_HERO" as const, heroId: hero.id, spaceId: destination.spaceId, movementBonus }
-            ]
-          })),
-          { label: "Cancel (stay)", steps: [] }
-        ]
-      }
-    ]
-  });
 }
 
 function applyActiveEffectAction(
@@ -20395,6 +20344,12 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
     // the next live seat (or back to the AI) mid-fight.
     const neutralController =
       combat && !combat.outcome ? neutralCombatControllerId(state, combat) : null;
+    const controlledActive = combat?.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    if (neutralController && controlledActive?.controllerId === NEUTRAL_PLAYER_ID) {
+      // Heal legacy/reconnected mid-activation snapshots created before
+      // setActiveUnit published the decision seat through activePlayerId.
+      state.activePlayerId = neutralController;
+    }
 
     // A neutral unit's innate combat reaction (War Zealot Magic Mirror): the AI
     // has no UI to click it, so auto-resolve the window when it holds priority —
@@ -21564,10 +21519,13 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // — whatever this action did) finally reach their discard pile or hand.
   releaseEndedOngoingCards(nextState);
 
-  // Shared decks always show one card face-up on their discard pile: if a take
-  // this action performed (the Search's discard-top option, a Genie wish, a
-  // discard-top purchase…) emptied a pile that HAD a card, flip that deck's next
-  // card into its place. Runs last so it sees every discard the action produced.
+  // Shared decks always show one card face-up on their discard pile. Refill
+  // every empty pile immediately, even when it started the action empty or this
+  // action opened a pending choice. Runs last so it sees every deck mutation the
+  // action and its automatic follow-ups produced. `base` (the pre-action state)
+  // lets it leave alone a deck whose draw-pile top this action just returned /
+  // reshuffled there (Tarnum VI's return-to-top, an Eagle Eye / Tome reshuffle),
+  // so that card is drawn next rather than flipped face-up into the discard.
   refillSharedDeckDiscards(nextState, base);
 
   // Parallel turns: reject a bystander action that touched the exclusive

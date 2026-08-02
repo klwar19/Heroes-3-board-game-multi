@@ -6,8 +6,9 @@ import type { GameAction, GameState } from "./state";
  * Eagle Eye in combat (CLAUDE.md rule #1 — engine-enforced + mutation-checked).
  *
  * Eagle Eye digs the shared Spell deck for the first Basic (basic play) or
- * Expert (expert play, crown) spell, opens a take-or-discard choice, and
- * reshuffles the rest. It NEVER touches a battlefield unit. Two things this
+ * Expert (expert play, crown) spell, takes it, and reshuffles the rest. Unlike
+ * the elemental Tomes, printed Eagle Eye has no discard branch. It NEVER
+ * touches a battlefield unit. Two things this
  * pins down, each with a control that fails if the wiring is removed:
  *
  *  1. Played in combat it is self-targeted — it offers a `{type:"none"}` play
@@ -123,6 +124,13 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
     const dug = applyOk(state, basic!);
     const choice = dug.pendingChoice as { id: string; options: { label: string }[] };
     expect(choice.options).toHaveLength(1);
+    const refused = applyAction(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 1
+    });
+    expect(refused.errors[0]?.message).toMatch(/must be taken/i);
     const done = applyOk(dug, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
 
     expect(done.players.p1.hand).toContain("spell.haste");

@@ -94,7 +94,7 @@ describe("official rule — the hero's TILE decides which decks a Search may rea
 });
 
 describe("official rule — Tile discovery needs only adjacency", () => {
-  it("is locked ON in BINH and remains optional/OFF in Legacy", () => {
+  it("defaults ON in BINH and remains optional/OFF in Legacy", () => {
     expect(houseRuleEnabled(makeGame(), "discovery-border-gate")).toBe(true);
     expect(
       houseRuleEnabled(
@@ -112,7 +112,10 @@ describe("official rule — Tile discovery needs only adjacency", () => {
   //    plus the far-tile placement refusal (the CONTROLs).
   // designed-borders.test.ts covers the designer per-edge variants with the rule
   // ON, and map-objects.test.ts the object-hex ones.
-  it("does not let a stale explicit false override disable the BINH invariant", () => {
-    expect(houseRuleEnabled(makeGame({ "discovery-border-gate": false }), "discovery-border-gate")).toBe(true);
+  it("is an editable toggle — an explicit false disables it even in BINH", () => {
+    // No longer a force-locked BINH invariant: it defaults ON in BINH but a
+    // table may switch it off, and it is NOT part of the Polish package (Rule
+    // 111 and the other Polish rules never change or lock it).
+    expect(houseRuleEnabled(makeGame({ "discovery-border-gate": false }), "discovery-border-gate")).toBe(false);
   });
 });

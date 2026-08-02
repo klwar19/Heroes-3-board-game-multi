@@ -48,7 +48,7 @@ export const MAPS_SINGLETON_ID = "catalog";
 export const MAX_MAP_NAME_LENGTH = 48;
 /** Lowest / highest seat count a designed map can open. */
 export const MIN_MAP_PLAYERS = 2;
-export const MAX_MAP_PLAYERS = 4;
+export const MAX_MAP_PLAYERS = 6;
 /**
  * Total maps the catalog keeps. Beyond this the oldest-touched maps are evicted
  * on upsert, so the shared library can't grow without bound.
@@ -164,7 +164,7 @@ export function newSharedMapId(): string {
  * Clamps a requested seat count into a scenario's allowed range, so a stored map
  * can never claim a player count the scenario can't seat (e.g. a 2-player-only
  * symmetric map asking for 4). Mirrors the engine's `clampSeatCount`: the ceiling
- * is the scenario's `maxPlayers` AND its number of start positions, capped at 4.
+ * is the scenario's `maxPlayers` AND its number of start positions, capped at 6.
  */
 export function clampMapPlayers(scenarioId: string, requested: unknown): number {
   const scenario = scenarioDefinitions[scenarioId];

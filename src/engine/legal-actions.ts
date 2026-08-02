@@ -2773,12 +2773,15 @@ function isOptionEffectPlayable(
     case "PANDORA_SCRY":
       return context === "map" && Boolean(state.adventure);
     case "DIMENSION_DOOR": {
-      const hero = getMainHero(state, playerId);
       return Boolean(
         context === "map" &&
           state.adventure &&
-          hero &&
-          dimensionDoorDestinations(state, hero, effect.fields).length > 0
+          Object.values(state.heroes).some(
+            (hero) =>
+              hero.controllerId === playerId &&
+              hero.spaceId !== null &&
+              dimensionDoorDestinations(state, hero, effect.fields).length > 0
+          )
       );
     }
     case "REMOVE_HAND_CARD_THEN_SEARCH": {
@@ -6212,7 +6215,7 @@ function getLethalSaveReactions(
   // that controller "cannot use your Deck during this Combat" — a Secondary
   // Hero leads the fight, or a heroless garrison defends. The Archangels' free
   // unit ability below is NOT a Deck card, so it must still be offered then.
-  if (!isHandLockedInCombat(state, playerId)) {
+  if (!triggerEvent.stackLayerOnly && !isHandLockedInCombat(state, playerId)) {
     // A Resurrection-style Spell counts against the one-Spell-per-combat-round
     // limit (Expert Knowledge / Intelligence raise it); the specialty and the
     // Archangels' ability do not.
@@ -6264,8 +6267,10 @@ function getLethalSaveReactions(
     }
   }
 
-  // Archangels (Pack): a free once-per-combat cancel of a killing blow on any
-  // OTHER friendly unit (any grade), offered as a unit-ability reaction.
+  // Archangels (Pack): a free once-per-combat cancel when any OTHER friendly
+  // unit reaches 0 HP (any grade), offered as a unit-ability reaction. That
+  // includes a Polish Stack health bar reaching 0; card-based Resurrection
+  // above remains reserved for a blow that would remove/flip the actual card.
   for (const unit of Object.values(combat.units)) {
     if (
       unit.controllerId !== playerId ||

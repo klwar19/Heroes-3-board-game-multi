@@ -8,6 +8,7 @@ import {
   getMainHero,
   grailObelisksRequired,
   materializeTileFields,
+  MAX_EXPERIENCE,
   VII_FIELD_LOCATION
 } from "./adventure";
 import {
@@ -16,7 +17,7 @@ import {
   getScenario
 } from "./adventure-setup";
 import { applyAction, computeVictoryPoints, createAdventureLobbyState } from "./index";
-import { startNeutralEncounter } from "./adventure-reducer";
+import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { getPlayerView } from "./player-view";
 import {
   describeCustomMapPresetEntries,
@@ -150,6 +151,51 @@ describe("Ⅶ designation — face-up center tile", () => {
   });
 });
 
+describe("Random Town is always a VII siege", () => {
+  it("keeps VII reward/round rules with custom guards and places walls without an Arrow Tower", () => {
+    const state = createAdventureGameState({
+      seed: "random-town-vii-siege",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    clearHandGate(state);
+    const hero = getMainHero(state, "p1")!;
+    const randomTown: MapFieldState = {
+      ...fieldWith("random_town"),
+      spaceId: "70,70",
+      // Mutation control: a bad map customization tries to downgrade the field.
+      difficulty: 2,
+      customGuardUnits: ["neutral.magi"]
+    };
+    state.adventure!.fields[randomTown.spaceId] = randomTown;
+    hero.spaceId = randomTown.spaceId;
+
+    startNeutralEncounter(state, hero, randomTown);
+
+    expect(state.combat?.context.kind).toBe("neutral");
+    if (state.combat?.context.kind !== "neutral") return;
+    expect(state.combat.context.difficulty).toBe(7);
+    expect(state.combat.siege?.walls).toHaveLength(3);
+    expect(state.combat.siege?.gatePosition).not.toBeNull();
+    expect(state.combat.siege?.arrowTowerUnitId).toBeNull();
+    expect(state.combat.boardArtId).toBe("castle-siege");
+
+    hero.level = 3;
+    hero.experience = 4;
+    state.combat.setup = null;
+    state.combat.units = {};
+    state.combat.activeUnitId = null;
+    state.combat.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: "neutral",
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(state);
+    expect(hero.experience).toBe(MAX_EXPERIENCE);
+    expect(hero.level).toBe(7);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 2. Face-down center slot + viiField "grail": real grail bookkeeping on reveal,
 //    masked in other players' views until then.
@@ -236,6 +282,52 @@ describe("Ⅶ designation — face-down center slot", () => {
     expect(maskedTile.viiFields).toBeUndefined();
     // The owner-agnostic pick FLAG may stay (behaviour-public, like a pending
     // token) — only the designation set is secret.
+  });
+
+  it("balances hidden Grail/Utopia pairs across editor-authored positions", () => {
+    const pairedPlan = (row: number, col: number): CustomMapTilePlan => ({
+      row,
+      col,
+      group: "center",
+      faceDown: true,
+      viiFields: ["grail", "dragon_utopia"]
+    });
+    const countsFor = (seed: string, count: 3 | 4) => {
+      const positions = [
+        [24, 20],
+        [24, 30],
+        [34, 20],
+        [34, 30]
+      ].slice(0, count);
+      const state = createAdventureGameState({
+        seed,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        victoryMode: "conquest",
+        customMap: [
+          ...startPlans(),
+          ...positions.map(([row, col]) => pairedPlan(row, col))
+        ],
+        customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+      });
+      const designated = Object.values(state.adventure!.tiles)
+        .filter((tile) => tile.group === "center")
+        .map((tile) => tile.viiField);
+      return {
+        grail: designated.filter((entry) => entry === "grail").length,
+        utopia: designated.filter((entry) => entry === "dragon_utopia").length
+      };
+    };
+
+    expect(countsFor("designer-balanced-four", 4)).toEqual({ grail: 2, utopia: 2 });
+    const threeSplits = new Set<string>();
+    for (let index = 0; index < 12; index += 1) {
+      const counts = countsFor(`designer-balanced-three-${index}`, 3);
+      expect(counts.grail + counts.utopia).toBe(3);
+      expect([1, 2]).toContain(counts.grail);
+      threeSplits.add(`${counts.grail}:${counts.utopia}`);
+    }
+    expect(threeSplits).toEqual(new Set(["1:2", "2:1"]));
   });
 
   it("CONTROL: a face-down center pinned to a Utopia tile keeps the Utopia when NOT designated", () => {

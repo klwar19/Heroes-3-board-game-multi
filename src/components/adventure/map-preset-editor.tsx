@@ -70,7 +70,7 @@ import {
 
 /**
  * Win-condition kinds the editor OFFERS for new rows. The object-scoped kinds
- * (control-towns / flag-mines / obelisks / defeat-dragon-utopia) moved to the
+ * (control-towns / flag-mines / obelisks) moved to the
  * Map objects group as per-object "first clear wins" ticks — legacy maps that
  * already carry one keep rendering and stay engine-supported; the picker just
  * no longer offers the duplicates.
@@ -79,8 +79,7 @@ const OFFERED_WIN_CONDITION_OPTIONS = CUSTOM_WIN_CONDITION_OPTIONS.filter(
   (entry) =>
     entry.id !== "control-towns" &&
     entry.id !== "flag-mines" &&
-    entry.id !== "obelisks" &&
-    entry.id !== "defeat-dragon-utopia"
+    entry.id !== "obelisks"
 );
 
 const BUILT_IN_DUNGEON_WARDENS = [
@@ -478,6 +477,12 @@ export function MapPresetEditor({
     } else {
       next.utopiaBonusSearch = count;
     }
+    patchObjectives(next);
+  };
+  const setHiddenGrailUtopia = (enabled: boolean) => {
+    const next = { ...objectives };
+    if (enabled) next.hiddenGrailUtopia = true;
+    else delete next.hiddenGrailUtopia;
     patchObjectives(next);
   };
 
@@ -1082,12 +1087,31 @@ export function MapPresetEditor({
         </small>
       </section>
 
+      <section className="mapPresetSection" aria-label="Hidden Grail and Dragon Utopia fields">
+        <div className="mapPresetSectionLabel">🏆🐉 Hidden Grail / Dragon Utopia</div>
+        <label className="mapPresetToggle">
+          <input
+            aria-label="Use hidden Grail and Dragon Utopia rules"
+            checked={Boolean(objectives.hiddenGrailUtopia)}
+            onChange={(event) => setHiddenGrailUtopia(event.target.checked)}
+            type="checkbox"
+          />
+          <span>Use the special hidden-field rules</span>
+        </label>
+        <small className="mapPresetHint">
+          On each face-down Center (Ⅶ) tile, select both Grail and Dragon Utopia and leave “Player picks” off.
+          The game balances the hidden results: 4 fields = 2 + 2; 3 fields = a random 2 + 1 split.
+          Grail guards use the difficulty table; dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
+          Dragon Utopia adds a Black Dragon and rewards Morale or an Ability token plus two Search(3) Artifacts.
+        </small>
+      </section>
+
       {/* The Grail / Dragon-Utopia objective tuning lives RIGHT BELOW the Win
           condition — it appears the moment you pick the matching victory mode
           (Grail → Grail dig knobs; a Dragon mode → Dragon Utopia knobs), so the
           objective is set up where you chose the condition. Place the objective
           FIELD on the map via a centre tile's Ⅶ field in the tile popover. */}
-      {value.victoryMode === "grail" ? (
+      {value.victoryMode === "grail" && !objectives.hiddenGrailUtopia ? (
         <section className="mapPresetSection" aria-label="Objectives">
           <div className="mapPresetSectionLabel">🏆 Grail objective</div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
@@ -1328,7 +1352,8 @@ export function MapPresetEditor({
         </section>
       ) : null}
 
-      {value.victoryMode === "dragon-hunt" || value.victoryMode === "dragon-conqueror" ? (
+      {(value.victoryMode === "dragon-hunt" || value.victoryMode === "dragon-conqueror") &&
+      !objectives.hiddenGrailUtopia ? (
         <section className="mapPresetSection" aria-label="Objectives">
           <div className="mapPresetSectionLabel">🐉 Dragon Utopia objective</div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
@@ -1541,7 +1566,7 @@ export function MapPresetEditor({
                   : condition.kind === "hold-with-grail"
                     ? condition.rounds
                     : "count" in condition
-                      ? condition.count
+                      ? condition.count ?? 1
                       : null;
             // Object-scoped kinds moved to Map objects (per-object win ticks);
             // legacy conditions of those kinds still render + edit, the select
@@ -2118,6 +2143,14 @@ export function MapPresetEditor({
             type="button"
           >
             Template: Treasure die (r4)
+          </button>
+          <button
+            className="mapPresetChip"
+            disabled={timed.length >= MAX_TIMED_EVENTS}
+            onClick={() => appendTimed({ round: 5, effect: { kind: "market_trade" } })}
+            type="button"
+          >
+            Template: Market trading (r5)
           </button>
           </div>
         </details>
@@ -2972,6 +3005,14 @@ function TimedEffectFields({
           onChange={(count) => onChange({ ...effect, count: Math.max(1, count) })}
         />
       </div>
+    );
+  }
+  if (effect.kind === "market_trade") {
+    return (
+      <small className="mapPresetHint">
+        Opens after Resource-round income is collected. Players may exchange resources at Market rates, but cannot
+        sell cards, buy War Machines, or use any other Market function.
+      </small>
     );
   }
   if (effect.kind === "choice") {

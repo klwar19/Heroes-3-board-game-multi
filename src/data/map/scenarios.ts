@@ -38,6 +38,12 @@ export type ScenarioDefinition = {
     far?: { row: number; col: number }[];
     /** Face-down Near (IV–V) tiles. */
     near: { row: number; col: number }[];
+    /**
+     * Optional first seat index whose unused positions become Near tiles. This
+     * lets a scenario promote former filler tiles to seats 5/6 without changing
+     * its established 2–4 player footprint.
+     */
+    unusedStartsAsNearFrom?: number;
     /** Face-down Center (VI–VII) tiles. */
     center: { row: number; col: number }[];
     /**
@@ -205,21 +211,21 @@ export const scenarioDefinitions: Record<string, ScenarioDefinition> = {
     id: "skirmish",
     name: "Border Skirmish",
     description:
-      "A free-for-all for 2–4 players. Four seats ring a single Center tile, with two Near tiles filling the remaining flanks so every tile interlocks gaplessly. Seats 1 and 2 sit on opposite sides for a classic head-to-head duel; seats 3 and 4 open the other two corners. Flag an enemy town to win.",
+      "A free-for-all for 2–6 players. Six possible seats ring a single Center tile; the last two are face-down Near tiles when unused. Seats 1 and 2 sit opposite for a classic head-to-head duel. Flag an enemy town to win.",
     minPlayers: 2,
-    maxPlayers: 4,
+    maxPlayers: 6,
     difficulty: "normal",
     layout: {
       starts: [
         { row: 8, col: 2 },
         { row: 10, col: 7 },
         { row: 6, col: 4 },
-        { row: 12, col: 5 }
-      ],
-      near: [
+        { row: 12, col: 5 },
         { row: 7, col: 6 },
         { row: 11, col: 2 }
       ],
+      near: [],
+      unusedStartsAsNearFrom: 4,
       center: [{ row: 9, col: 4 }]
     },
     startingResources: { gold: 10, buildingMaterials: 2, valuables: 1 },

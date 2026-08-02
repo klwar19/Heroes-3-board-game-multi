@@ -9387,6 +9387,17 @@ button.hbSlot:disabled { cursor: default; }
   opacity: 0.98;
 }
 
+/* Public layer cue: a thin amber perimeter distinguishes a whole Underground
+   tile from Surface tiles without obscuring its art or adding internal seams. */
+.undergroundTileOutline {
+  stroke: #d97832;
+  stroke-width: 1.65;
+  stroke-linecap: round;
+  pointer-events: none;
+  opacity: 0.96;
+  filter: drop-shadow(0 0 1.5px rgba(38, 15, 5, 0.95));
+}
+
 .placementGhostFlower {
   cursor: pointer;
 }
@@ -9405,6 +9416,27 @@ button.hbSlot:disabled { cursor: default; }
 .heroPawnRing {
   fill: none;
   stroke-width: 2.4;
+}
+
+/* Public Grail token on the adventure map: follows its carrier pawn, then
+   remains on the Town/Settlement field after construction. */
+.mapGrailToken {
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+
+.mapGrailToken circle {
+  fill: #c99b22;
+  stroke: #fff0a6;
+  stroke-width: 1.4;
+}
+
+.mapGrailToken text {
+  font-size: 10px;
+}
+
+.heroGrailToken text {
+  font-size: 8px;
 }
 
 .heroSprite {
@@ -25103,6 +25135,32 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   color: #7a5a28;
 }
 
+/* Town shortcuts live in the Book itself: purchase/search controls remain on
+   the index page, while Rolling Spells for the selected entry sits with that
+   spell's actions on the facing page. */
+.spellBookShortcuts {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(120, 82, 34, 0.35);
+}
+
+.spellBookShortcuts > strong {
+  color: #6a3d16;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spellBookShortcuts .commandButton,
+.spellBookRollShortcuts .commandButton {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
 /* Right page — the illustrated plate */
 .spellBookArtSlot {
   position: relative;
@@ -25211,6 +25269,17 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.spellBookRollShortcuts {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.spellBookRollButton {
+  border-color: rgba(147, 77, 31, 0.7);
 }
 
 .spellBookNote {
@@ -32409,12 +32478,13 @@ details.mapPresetGroup > summary::-webkit-details-marker {
      can cover it and the tray keeps its single-row height. */
   .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives {
     position: fixed;
-    left: 50%;
-    bottom: calc(var(--desktop-hand-height) + 16px);
-    transform: translateX(-50%);
+    left: 234px;
+    top: calc(var(--desktop-hud-height) + 122px);
+    bottom: auto;
+    transform: none;
     z-index: 60; /* prompt-tray band: above rails/hand, under chat 200+ */
-    min-width: 480px;
-    max-width: min(760px, calc(100vw - 480px));
+    min-width: 300px;
+    max-width: min(390px, calc(100vw - 360px));
     gap: 7px;
     padding: 18px 52px 20px;
     border: none;
@@ -32468,6 +32538,32 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives:not(.mandatory) {
     min-width: 0;
     padding: 9px 20px 11px;
+  }
+
+  /* Morale overflow and Ability-token pickers use the same left map-action
+     lane as Cover of Darkness and the other hand directives: immediately
+     below the floating II–III tile supply. The clear backdrop keeps the map
+     readable; engine legal-action gating still makes mandatory choices safe. */
+  .adventureRoot:not(.phoneMode) .moraleOverflowBackdrop {
+    inset: auto;
+    top: calc(var(--desktop-hud-height) + 122px);
+    left: 234px;
+    width: min(320px, calc(100vw - 360px));
+    background: transparent;
+    display: block;
+    pointer-events: none;
+  }
+
+  .adventureRoot:not(.phoneMode) .moraleOverflowPopup {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px;
+    text-align: left;
+    pointer-events: auto;
+  }
+
+  .adventureRoot:not(.phoneMode) .moraleOverflowPopup .handButtons {
+    justify-content: flex-start;
   }
 
   .adventureRoot:not(.phoneMode) .playerCardBar .handDirectives:not(.mandatory)::before {

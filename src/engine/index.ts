@@ -690,6 +690,7 @@ export {
   combatUnitLimit,
   CREATURE_BANK_ATTACKER_CELLS,
   CREATURE_BANK_GUARD_CORNERS,
+  CREATURE_BANK_GUARD_OVERFLOW_CELLS,
   DEFENDER_BACKLINE,
   DEFENDER_FRONTLINE,
   canHeroDiscoverAdjacentTile,
@@ -732,6 +733,7 @@ export {
 export type { HexCoord, HexDirection } from "./hex";
 export { isNeutralUnit, pickNeutralTarget, planNeutralActivation } from "./neutral-ai";
 export {
+  combatUnitDecisionOwnerId,
   isNeutralSideCombatChoice,
   manualGuardControllerId,
   neutralCombatControllerId,

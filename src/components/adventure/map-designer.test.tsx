@@ -53,6 +53,21 @@ function renderDesigner(
   return container;
 }
 
+describe("MapDesigner seat footprint", () => {
+  it("draws only the selected seats while supporting all six skirmish seats", () => {
+    const two = render(
+      <MapDesigner scenarioId="skirmish" seatCount={2} customMap={[]} onChange={() => {}} />
+    );
+    expect(two.container.querySelectorAll(".designerStartLabel")).toHaveLength(2);
+    two.unmount();
+
+    const six = render(
+      <MapDesigner scenarioId="skirmish" seatCount={6} customMap={[]} onChange={() => {}} />
+    );
+    expect(six.container.querySelectorAll(".designerStartLabel")).toHaveLength(6);
+  });
+});
+
 /**
  * Renders the designer with REAL React state, so an onChange re-renders the
  * board (as production does). Needed for multi-step border strokes / re-toggles
@@ -430,7 +445,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
       expect.arrayContaining([expect.objectContaining({ centerHex: { guard: { units: ["neutral.cyclopes"] } } })])
     );
 
-    // Quick "+ Neutral III" appends a random-gold-Neutral slot (controlled
+    // Quick "+ Random gold creature" appends a random-gold-Neutral slot (controlled
     // re-render for each add; label renamed from "+ Gold" when the Pack-of-tier
     // quick row joined the editor).
     let armyUnits: string[] = [];
@@ -449,7 +464,7 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
         onChange
       );
       const mixedPopover = openTilePopover(mixed, 1);
-      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Neutral III" }));
+      fireEvent.click(within(mixedPopover as HTMLElement).getByRole("button", { name: "+ Random gold creature" }));
       const last = onChange.mock.calls.at(-1)![0] as { centerHex?: { guard?: { units?: string[] } } }[];
       armyUnits = last.find((p) => p.centerHex)?.centerHex?.guard?.units ?? [];
     };
@@ -2492,7 +2507,11 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     const standalone = container.querySelector(".designerObjectSlot.standalone");
     expect(standalone, "off-tile candidates offered").toBeTruthy();
     fireEvent.click(standalone!);
-    expect(latest[0]).toMatchObject({ kind: "garrison", placement: { type: "standalone" } });
+    expect(latest[0]).toMatchObject({
+      kind: "garrison",
+      placement: { type: "standalone" },
+      garrisonBorderPassage: true
+    });
 
     // A placed Keymaster's Tent defaults to color 1 (red).
     const tentContainer = renderWithObjects(faceUpMap, [], onObjectsChange);
@@ -2514,9 +2533,9 @@ describe("MapDesigner — objects palette (gates / monolith / standalone)", () =
     const container = renderWithObjects(faceUpMap, latest, onObjectsChange);
     fireEvent.click(container.querySelector(".designerObjectToken.standalone")!);
     const checkbox = within(container).getByLabelText("Garrison opens yellow borders");
-    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
     fireEvent.click(checkbox);
-    expect(latest[0].garrisonBorderPassage).toBe(true);
+    expect(latest[0].garrisonBorderPassage).toBe(false);
   });
 
   it("Creature Bank: places standalone-only with a specific bankId; panel rewrites bank + size", () => {

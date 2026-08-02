@@ -263,6 +263,7 @@ import {
   randomTownIncomeGold,
   grailDigMovementCost,
   grailAsUtopiaMode,
+  grailUtopiaFieldRulesEnabled,
   polishGrailUtopiaEnabled
 } from "./map-design-features";
 
@@ -896,6 +897,21 @@ export function materializeTileFields(
     if (viiOverride && fieldDef.difficulty === 7 && fieldDef.location !== viiOverride) {
       fieldDef = {
         location: viiOverride,
+        difficulty: 7,
+        ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
+      };
+    }
+    // A hidden Grail tile may materialize only after another Grail guard was
+    // beaten. The special field package makes every OTHER Grail an Utopia at
+    // that moment, including fields that did not exist in `adventure.fields`
+    // yet because their tile was face-down or still in the Far supply.
+    if (
+      adventure.grailFieldCleared &&
+      fieldDef.difficulty === 7 &&
+      fieldDef.location === "grail"
+    ) {
+      fieldDef = {
+        location: "dragon_utopia",
         difficulty: 7,
         ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
       };
@@ -1605,8 +1621,8 @@ export function canCrossEdge(
   // The exception is local to an edge touching that Garrison and does not cross
   // layers or turn a blocked destination into a legal stopping point.
   if (
-    (fromField.location === "garrison" && fromField.garrisonBorderPassage) ||
-    (toField.location === "garrison" && toField.garrisonBorderPassage)
+    (fromField.location === "garrison" && fromField.garrisonBorderPassage !== false) ||
+    (toField.location === "garrison" && toField.garrisonBorderPassage !== false)
   ) {
     return true;
   }
@@ -3206,14 +3222,13 @@ export function polishQuickCombatFieldInfo(
   ) {
     return null;
   }
-  const level = neutralBattleLevel(state, hero);
   const armyStrength = polishQuickCombatArmyStrength(state, hero.controllerId);
   const requiredStrength = polishQuickCombatFieldStrength(state, difficulty);
   return {
     armyStrength,
     requiredStrength,
     covered: armyStrength >= requiredStrength,
-    outcome: polishQuickCombatOutcome(state, hero, difficulty, level)
+    outcome: polishQuickCombatOutcome(state, hero, difficulty)
   };
 }
 
@@ -3345,10 +3360,19 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
         }
       ];
     case "ROLL_RESOURCE_DICE":
-      // Melodia's Fortune VI: +1 to the dice rolled & resolved at this location.
-      return [{ type: "ROLL_RESOURCE_DICE", count: interaction.count + extraLocationDice }];
+      // Melodia's Fortune VI: +1 to BOTH the dice rolled and the results
+      // resolved at this location (for example, roll 3 and resolve 2).
+      return [{
+        type: "ROLL_RESOURCE_DICE",
+        count: interaction.count + extraLocationDice,
+        ...(extraLocationDice > 0 ? { resolveCount: 1 + extraLocationDice } : {})
+      }];
     case "ROLL_TREASURE_DICE":
-      return [{ type: "ROLL_TREASURE_DICE", count: interaction.count + extraLocationDice }];
+      return [{
+        type: "ROLL_TREASURE_DICE",
+        count: interaction.count + extraLocationDice,
+        ...(extraLocationDice > 0 ? { resolveCount: 1 + extraLocationDice } : {})
+      }];
     case "SEARCH_SHARED_DECK": {
       const times = interaction.times ?? 1;
       return Array.from({ length: times }, () => ({
@@ -3949,7 +3973,11 @@ export function customWinConditionProgress(
       break;
     }
     case "defeat-dragon-utopia":
-      current = state.adventure?.vpLedger?.[playerId]?.utopiaDefeated === true ? 1 : 0;
+      {
+        const ledger = state.adventure?.vpLedger?.[playerId];
+        current = ledger?.utopiaDefeatedFieldIds?.length ?? (ledger?.utopiaDefeated === true ? 1 : 0);
+      }
+      target = condition.count ?? 1;
       break;
     case "hold-with-grail": {
       // Progress is ticked at round start; meeting = continuous hold already reached N.
@@ -5089,7 +5117,7 @@ export function grailObelisksRequired(state: GameState): number {
  * Holy Grail: whether this player has visited enough Obelisks to dig.
  */
 export function canDigGrail(state: GameState, playerId: PlayerId): boolean {
-  if (polishGrailUtopiaEnabled(state)) {
+  if (grailUtopiaFieldRulesEnabled(state)) {
     return true;
   }
   if (adventureVictoryMode(state) !== "grail") {
@@ -5147,8 +5175,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     return;
   }
 
-  const polishRule = polishGrailUtopiaEnabled(state);
-  if (!polishRule && adventureVictoryMode(state) !== "grail") {
+  const specialRules = grailUtopiaFieldRulesEnabled(state);
+  if (!specialRules && adventureVictoryMode(state) !== "grail") {
     if (!field.blackCube) {
       field.blackCube = true;
       giveCreatureBankConsolation(state, hero.controllerId, "Grail");
@@ -5166,8 +5194,9 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (grail.status === "uncollected") {
       field.grailDiggable = true;
     }
-    if (polishRule) {
+    if (specialRules) {
       // The conversion happens when the fight is won, before anyone digs.
+      adventure.grailFieldCleared = true;
       applyPolishGrailFightConversion(state, field.spaceId);
     }
     return;
@@ -5188,14 +5217,14 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
       previousOwnerId: null
     });
     // Optional dig reward (map-maker resources).
-    const digReward = polishRule
+    const digReward = specialRules
       ? { gold: 20 }
       : adventure.mapPreset?.objectives?.grailDigReward;
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
     // After dig: convert OTHER undug Grail fields (utopia or empty).
-    if (!polishRule) {
+    if (!specialRules) {
       applyGrailAfterDigConversion(state, field.spaceId);
     }
   }
@@ -5278,12 +5307,17 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   // A defeated Utopia otherwise leaves only an owner-less black cube, so this is
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
   // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
-  recordVpUtopiaDefeat(state, hero.controllerId);
+  recordVpUtopiaDefeat(state, hero.controllerId, field.spaceId);
 
-  if (polishGrailUtopiaEnabled(state)) {
+  if (grailUtopiaFieldRulesEnabled(state)) {
     if (!field.blackCube) {
       field.blackCube = true;
-      gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
+      // The editor-authored field package has exactly the rewards printed in
+      // its summary. Keep the older Polish house-rule's historical 20-gold
+      // bonus for save/ruleset compatibility, but do not add it to new maps.
+      if (polishGrailUtopiaEnabled(state)) {
+        gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
+      }
       // Two distinct Search (3) rewards: each acquisition gets its own Polish
       // Artifact die roll, and the actual visiting Hero/Field preserves VII
       // Relic access even when a Secondary Hero won the fight.
@@ -5315,7 +5349,6 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
           }
         ]
       });
-      grantUtopiaBonusSearch(state, hero.controllerId);
     }
     return;
   }
@@ -5645,7 +5678,7 @@ function grantClassicObeliskReward(
  */
 export function tryDeliverGrail(state: GameState, hero: HeroState): boolean {
   const adventure = state.adventure;
-  if (!adventure || polishGrailUtopiaEnabled(state) || adventureVictoryMode(state) !== "grail") {
+  if (!adventure || grailUtopiaFieldRulesEnabled(state) || adventureVictoryMode(state) !== "grail") {
     return false;
   }
 
@@ -6926,7 +6959,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin);
+        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
@@ -6976,7 +7009,7 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       case "ROLL_TREASURE_DICE":
-        rollTreasureDice(state, visit, step.count);
+        rollTreasureDice(state, visit, step.count, step.resolveCount);
         break;
       case "CONSUME_LUCK":
         consumeLuckReroll(state, step.effectId, step.dice);
@@ -11975,7 +12008,30 @@ function consumeDieSet(state: GameState, effectId: string): void {
  * Resource-die face. Choosing it spends the die-set effect, then gains exactly
  * that face's resources — overriding whatever was rolled.
  */
-function setResourceDieOptions(setEffect: ActiveEffectState): { label: string; steps: VisitStep[] }[] {
+type ResourceDieRoll = { resource: ResourceKind; amount: number };
+
+/** All unordered selections of `choose` entries, preserving duplicate dice as
+ * distinct physical results. Dice pools here are tiny, so the direct recursive
+ * form is both clearer and safer than encoding multi-pick state. */
+function diceResultCombinations<T>(items: readonly T[], choose: number): T[][] {
+  const result: T[][] = [];
+  const walk = (start: number, picked: T[]) => {
+    if (picked.length === choose) {
+      result.push(picked);
+      return;
+    }
+    for (let index = start; index <= items.length - (choose - picked.length); index += 1) {
+      walk(index + 1, [...picked, items[index]]);
+    }
+  };
+  walk(0, []);
+  return result;
+}
+
+function setResourceDieOptions(
+  setEffect: ActiveEffectState,
+  companionGroups: readonly ResourceDieRoll[][] = [[]]
+): { label: string; steps: VisitStep[] }[] {
   // Offer one option per DISTINCT face. The house-rule die has two "1 valuable"
   // faces, so dedupe (like the Treasure-die "set" options) to avoid two identical
   // picks.
@@ -11988,13 +12044,20 @@ function setResourceDieOptions(setEffect: ActiveEffectState): { label: string; s
     seen.add(key);
     return true;
   });
-  return distinctFaces.map((face) => ({
-    label: `${setEffect.name}: set the Resource die to ${resourceDieLabel(face)}`,
-    steps: [
-      { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
-      { type: "GAIN_RESOURCES", [face.resource]: face.amount } as VisitStep
-    ]
-  }));
+  return distinctFaces.flatMap((face) =>
+    companionGroups.map((companions) => ({
+      label: `${setEffect.name}: set ${companions.length > 0 ? "one Resource die" : "the Resource die"} to ${resourceDieLabel(face)}${
+        companions.length > 0 ? ` + keep ${companions.map(resourceDieLabel).join(" + ")}` : ""
+      }`,
+      steps: [
+        { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
+        { type: "GAIN_RESOURCES", [face.resource]: face.amount } as VisitStep,
+        ...companions.map(
+          (roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep
+        )
+      ]
+    }))
+  );
 }
 
 /**
@@ -12003,11 +12066,22 @@ function setResourceDieOptions(setEffect: ActiveEffectState): { label: string; s
  * Search each appear twice on the physical die). Choosing it spends the die-set
  * effect, then resolves that face — overriding whatever was rolled.
  */
-function setTreasureDieOptions(setEffect: ActiveEffectState): { label: string; steps: VisitStep[] }[] {
-  return [...new Set(TREASURE_DIE_FACES)].map((face) => ({
-    label: `${setEffect.name}: set the Treasure die to ${treasureFaceLabel(face)}`,
-    steps: [{ type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep, ...treasureFaceSteps(face)]
-  }));
+function setTreasureDieOptions(
+  setEffect: ActiveEffectState,
+  companionGroups: readonly TreasureDieFace[][] = [[]]
+): { label: string; steps: VisitStep[] }[] {
+  return [...new Set(TREASURE_DIE_FACES)].flatMap((face) =>
+    companionGroups.map((companions) => ({
+      label: `${setEffect.name}: set ${companions.length > 0 ? "one Treasure die" : "the Treasure die"} to ${treasureFaceLabel(face)}${
+        companions.length > 0 ? ` + keep ${companions.map(treasureFaceLabel).join(" + ")}` : ""
+      }`,
+      steps: [
+        { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
+        ...treasureFaceSteps(face),
+        ...companions.flatMap(treasureFaceSteps)
+      ]
+    }))
+  );
 }
 
 /**
@@ -12047,12 +12121,13 @@ function extraDieRerollOptions(
   visit: PendingVisit,
   dice: "treasure" | "resource",
   count: number,
+  resolveCount = 1,
   origin?: "treasure"
 ): { label: string; steps: VisitStep[] }[] {
   const rollStep: VisitStep =
     dice === "resource"
-      ? { type: "ROLL_RESOURCE_DICE", count, ...(origin ? { origin } : {}) }
-      : { type: "ROLL_TREASURE_DICE", count };
+      ? { type: "ROLL_RESOURCE_DICE", count, resolveCount, ...(origin ? { origin } : {}) }
+      : { type: "ROLL_TREASURE_DICE", count, resolveCount };
   const options: { label: string; steps: VisitStep[] }[] = [];
 
   const astrologers = state.adventure?.astrologers;
@@ -12108,22 +12183,26 @@ function extraDieRerollOptions(
  * the card itself encodes only that option.)
  */
 const OCTAVIA_GOLD_REACTION_CARD_ID = "specialty.octavia.1";
-function octaviaGoldReactionOption(
+function octaviaGoldReactionOptions(
   state: GameState,
-  visit: PendingVisit
-): { label: string; steps: VisitStep[] } | null {
+  visit: PendingVisit,
+  companionGroups: readonly ResourceDieRoll[][] = [[]]
+): { label: string; steps: VisitStep[] }[] {
   const hand = state.players[visit.playerId]?.hand ?? [];
   if (!hand.includes(OCTAVIA_GOLD_REACTION_CARD_ID)) {
-    return null;
+    return [];
   }
   const label = "Gold I: set this Resource die to 6 gold";
-  return {
-    label,
+  return companionGroups.map((companions) => ({
+    label: `${label}${companions.length > 0 ? ` + keep ${companions.map(resourceDieLabel).join(" + ")}` : ""}`,
     steps: [
       { type: "CONSUME_HELD_CARD", cardId: OCTAVIA_GOLD_REACTION_CARD_ID, optionLabel: label },
-      { type: "GAIN_RESOURCES", gold: 6 }
+      { type: "GAIN_RESOURCES", gold: 6 },
+      ...companions.map(
+        (roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep
+      )
     ]
-  };
+  }));
 }
 
 function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): string {
@@ -12150,7 +12229,8 @@ function rollResourceDice(
   visit: PendingVisit,
   count: number,
   capHighValues = false,
-  origin?: "treasure"
+  origin?: "treasure",
+  requestedResolveCount = 1
 ): void {
   const random = adventureRandom(state, "resource-die");
   const rollFace = () => {
@@ -12165,6 +12245,7 @@ function rollResourceDice(
     return face;
   };
   const rolls = Array.from({ length: count }, rollFace);
+  const resolveCount = Math.max(1, Math.min(requestedResolveCount, rolls.length));
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
@@ -12176,26 +12257,39 @@ function rollResourceDice(
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
-  const extraOptions = extraDieRerollOptions(state, visit, "resource", count, origin);
+  const extraOptions = extraDieRerollOptions(state, visit, "resource", count, resolveCount, origin);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
-  const octaviaOption = octaviaGoldReactionOption(state, visit);
+  const companionGroups = diceResultCombinations(rolls, Math.max(0, resolveCount - 1));
+  const octaviaOptions = octaviaGoldReactionOptions(state, visit, companionGroups);
 
-  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect && !octaviaOption) {
-    gainResources(state, visit.playerId, { [rolls[0].resource]: rolls[0].amount }, "resource die");
+  if (
+    resolveCount === rolls.length &&
+    !luck &&
+    extraOptions.length === 0 &&
+    !setEffect &&
+    octaviaOptions.length === 0
+  ) {
+    for (const roll of rolls) {
+      gainResources(state, visit.playerId, { [roll.resource]: roll.amount }, "resource die");
+    }
     return;
   }
 
-  const options = rolls.map((roll) => ({
-    label: resourceDieLabel(roll),
-    steps: [{ type: "GAIN_RESOURCES", [roll.resource]: roll.amount } as VisitStep]
-  }));
+  const options: { label: string; steps: VisitStep[] }[] = diceResultCombinations(rolls, resolveCount).map(
+    (group) => ({
+      label: group.map(resourceDieLabel).join(" + "),
+      steps: group.map(
+        (roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep
+      )
+    })
+  );
 
   if (luck) {
     options.push({
       label: `${luck.name}: reroll the Resource ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "resource" } as VisitStep,
-        { type: "ROLL_RESOURCE_DICE", count, ...(origin ? { origin } : {}) } as VisitStep
+        { type: "ROLL_RESOURCE_DICE", count, resolveCount, ...(origin ? { origin } : {}) } as VisitStep
       ]
     });
   }
@@ -12203,16 +12297,19 @@ function rollResourceDice(
   // Cards of Prophecy: ignore the roll and set the Resource die to a face of
   // your choice (the whole die-set effect is spent on the chosen option).
   if (setEffect) {
-    options.push(...setResourceDieOptions(setEffect));
+    options.push(...setResourceDieOptions(setEffect, companionGroups));
   }
   // Octavia's Gold I: discard it to set one rolled Resource die to "6 gold".
-  if (octaviaOption) {
-    options.push(octaviaOption);
-  }
+  options.push(...octaviaOptions);
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: rolls.length > 1 ? "Choose one resource die result" : "Resource die result",
+    prompt:
+      resolveCount > 1
+        ? `Choose ${resolveCount} resource die results`
+        : rolls.length > 1
+          ? "Choose one resource die result"
+          : "Resource die result",
     options
   });
 }
@@ -12243,7 +12340,7 @@ function treasureFaceLabel(face: TreasureDieFace): string {
   }
 }
 
-function rollTreasureDice(state: GameState, visit: PendingVisit, count: number): void {
+function rollTreasureDice(state: GameState, visit: PendingVisit, count: number, requestedResolveCount = 1): void {
   // Negative Morale "when you are about to roll at least 2 Treasure dice, roll
   // 1 die less": resolves the held card on the first ≥2-dice Treasure roll.
   // Applied before the roll (and before the Luck-reroll option is built, so a
@@ -12253,6 +12350,7 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
   }
   const random = adventureRandom(state, "treasure-die");
   const rolls = Array.from({ length: count }, () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]);
+  const resolveCount = Math.max(1, Math.min(requestedResolveCount, rolls.length));
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
@@ -12263,25 +12361,27 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
-  const extraOptions = extraDieRerollOptions(state, visit, "treasure", count);
+  const extraOptions = extraDieRerollOptions(state, visit, "treasure", count, resolveCount);
   const setEffect = getDieSetEffect(state, visit.playerId, "treasure");
 
-  if (rolls.length === 1 && !luck && extraOptions.length === 0 && !setEffect) {
-    visit.steps.unshift(...treasureFaceSteps(rolls[0]));
+  if (resolveCount === rolls.length && !luck && extraOptions.length === 0 && !setEffect) {
+    visit.steps.unshift(...rolls.flatMap(treasureFaceSteps));
     return;
   }
 
-  const options = rolls.map((face) => ({
-    label: treasureFaceLabel(face),
-    steps: treasureFaceSteps(face)
-  }));
+  const options: { label: string; steps: VisitStep[] }[] = diceResultCombinations(rolls, resolveCount).map(
+    (group) => ({
+      label: group.map(treasureFaceLabel).join(" + "),
+      steps: group.flatMap(treasureFaceSteps)
+    })
+  );
 
   if (luck) {
     options.push({
       label: `${luck.name}: reroll the Treasure ${count > 1 ? "dice" : "die"}`,
       steps: [
         { type: "CONSUME_LUCK", effectId: luck.id, dice: "treasure" } as VisitStep,
-        { type: "ROLL_TREASURE_DICE", count } as VisitStep
+        { type: "ROLL_TREASURE_DICE", count, resolveCount } as VisitStep
       ]
     });
   }
@@ -12289,12 +12389,18 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number):
   // Cards of Prophecy: ignore the roll and set the Treasure die to a face of
   // your choice (the whole die-set effect is spent on the chosen option).
   if (setEffect) {
-    options.push(...setTreasureDieOptions(setEffect));
+    const companionGroups = diceResultCombinations(rolls, Math.max(0, resolveCount - 1));
+    options.push(...setTreasureDieOptions(setEffect, companionGroups));
   }
 
   visit.steps.unshift({
     type: "CHOOSE_ONE",
-    prompt: rolls.length > 1 ? "Choose one treasure die result" : "Treasure die result",
+    prompt:
+      resolveCount > 1
+        ? `Choose ${resolveCount} treasure die results`
+        : rolls.length > 1
+          ? "Choose one treasure die result"
+          : "Treasure die result",
     options
   });
 }
@@ -13377,18 +13483,13 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     return drawNeutralArmy(state, levelForDraw);
   }
 
-  if (polishGrailUtopiaEnabled(state) && field?.location === "grail") {
-    return Array.from({ length: 2 }, () => drawFromNeutralDeck(state, "azure"))
-      .filter((unitDefId): unitDefId is string => Boolean(unitDefId))
-      .map((unitDefId) => ({ unitDefId, tier: "azure" as const }));
+  if (grailUtopiaFieldRulesEnabled(state) && field?.location === "grail") {
+    return drawNeutralArmy(state, difficulty);
   }
 
-  if (polishGrailUtopiaEnabled(state) && field?.location === "dragon_utopia") {
-    const azure = Array.from({ length: 2 }, () => drawFromNeutralDeck(state, "azure"))
-      .filter((unitDefId): unitDefId is string => Boolean(unitDefId))
-      .map((unitDefId) => ({ unitDefId, tier: "azure" as const }));
+  if (grailUtopiaFieldRulesEnabled(state) && field?.location === "dragon_utopia") {
     return [
-      ...azure,
+      ...drawNeutralArmy(state, difficulty),
       { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }
     ];
   }
@@ -14909,8 +15010,12 @@ export function startAdventureRound(state: GameState): void {
   // round they wait until AFTER the proclamation is drawn (below), so the
   // documented "resolve the Astrologers card before ANY other trigger" order
   // holds for map events too.
-  if (kind !== "astrologers") {
+  if (kind === "first") {
     applyCustomMapTimedEvents(state);
+  } else if (kind === "resource") {
+    // Market-trade events are deferred until the automatic income pass below;
+    // every other timed effect keeps its established start-of-round ordering.
+    applyCustomMapTimedEvents(state, "before-resource-income");
   }
 
   if (kind === "astrologers") {
@@ -15082,6 +15187,10 @@ export function startAdventureRound(state: GameState): void {
     }
   }
 
+  // A designed Market day belongs after collection of resources. Queue only
+  // the trade-only event here, before the ordinary Event/City Hall windows.
+  applyCustomMapTimedEvents(state, "after-resource-income");
+
   // FORTRESS EXPANSION Events (optional rule, multiplayer only) resolve as a
   // whole-table barrier — before any City Hall choice, resource die,
   // war-machine offer, start-of-turn draw or turn. Drawn AFTER the inline
@@ -15209,13 +15318,27 @@ export function isTimedEventDue(
   return (round - event.round) % interval === 0;
 }
 
-export function applyCustomMapTimedEvents(state: GameState): void {
+export function applyCustomMapTimedEvents(
+  state: GameState,
+  phase: "all" | "before-resource-income" | "after-resource-income" = "all"
+): void {
   const preset = state.adventure?.mapPreset;
   if (!preset?.timedEvents?.length) {
     return;
   }
   const round = state.round;
-  const due = preset.timedEvents.filter((event) => isTimedEventDue(event, round));
+  const due = preset.timedEvents.filter((event) => {
+    if (!isTimedEventDue(event, round)) {
+      return false;
+    }
+    if (phase === "before-resource-income") {
+      return event.effect.kind !== "market_trade";
+    }
+    if (phase === "after-resource-income") {
+      return event.effect.kind === "market_trade";
+    }
+    return true;
+  });
   if (due.length === 0) {
     return;
   }
@@ -15503,6 +15626,21 @@ export function applyCustomMapTimedEvents(state: GameState): void {
         message: `Map event (round ${round}): every player rolls ${
           effect.count === 1 ? "a Resource die" : `${effect.count} Resource dice`
         }.`
+      });
+      continue;
+    }
+    if (effect.kind === "market_trade") {
+      for (const playerId of players) {
+        adventure.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{ type: "TRADING_POST", tradesOnly: true }]
+        });
+      }
+      appendEvent(state, {
+        type: "MAP_PRESET_TRIGGERED",
+        round,
+        message: `Map event (round ${round}): every player may trade resources at Market rates.`
       });
       continue;
     }

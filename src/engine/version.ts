@@ -62,7 +62,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // hashes, so the explicit bump is required to make a skewed edge/client show
 // the version banner instead of silently ignoring the new rules or rejecting a
 // `subterranean-tile-pick` click the new client offers.
-export const ENGINE_PROTOCOL_VERSION = 17;
+// v18: another batch of persisted schema + reducer semantics a stale room
+// server cannot replicate — the `market_trade` designer timed event (a
+// trade-only Market after Resource-round income, raising the round-start
+// barrier), the hidden Grail/Utopia editor package (`objectives.hiddenGrailUtopia`,
+// `grailFieldCleared`) and the now-COUNTED `defeat-dragon-utopia` win condition
+// (`utopiaDefeatedFieldIds`), a new `dimension-door-hero` OPTION_CHOICE with
+// multi-hero Dimension Door / Town Portal (a v17 server offers only the main
+// hero, so a secondary-hero cast or its CHOOSE_OPTION indices mismatch), the
+// `garrisonBorderPassage` default flipped OFF→ON (changed `canCrossEdge`
+// movement legality) and the lethal-save reaction window now opening for a
+// Polish Unit-Stack layer hit (`stackLayerOnly`), plus 6-player skirmish seats
+// (`unusedStartsAsNearFrom`). None touch the hero/faction/unit catalogs the
+// fingerprint hashes, so the explicit bump makes a skewed edge/client show the
+// version banner instead of silently dropping these rules or rejecting a
+// `dimension-door-hero` click the new client offers.
+export const ENGINE_PROTOCOL_VERSION = 18;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */
