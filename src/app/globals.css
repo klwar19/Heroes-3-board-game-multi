@@ -5316,53 +5316,21 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   flex-basis: 100%;
 }
 
-/* Optional positive-Morale spend ("Morale: draw 1 / redraw cards") — a COMPACT
-   VERTICAL box anchored to the RIGHT of the Far-tile tray (232px at left:10px)
-   instead of a wide horizontal row in the hand banner. Styled to match the
-   ornate hand-step banner (leather panel + HoMM3 button plates), clamped so it
-   never spills off a narrow (phone) map. */
-.mapMoraleSpend {
+/* Optional positive-Morale spend ("Morale: draw 1 / redraw cards"). It carries
+   the `handDirectives` class too, so it inherits the EXACT ornate hand-step
+   look (leather panel + HoMM3 button plates) — the desktop fixed-banner rules
+   are scoped to `.playerCardBar .handDirectives`, so they do NOT apply here.
+   This class only RE-POSITIONS it: a compact vertical box to the RIGHT of the
+   Far-tile tray (232px at left:10px), clamped so it never spills off a narrow
+   (phone) map. */
+.mapMoraleSpend.handDirectives {
   position: absolute;
   top: 10px;
   left: min(252px, calc(100% - 176px));
   z-index: 7;
   width: max-content;
-  max-width: 172px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 9px 11px 11px;
-  border: 1px solid rgba(220, 175, 95, 0.55);
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgb(48 36 21 / 96%), rgb(30 22 12 / 97%));
-  box-shadow:
-    0 4px 14px rgb(0 0 0 / 50%),
-    inset 0 0 0 1px rgb(255 215 106 / 12%);
-}
-
-/* HoMM3 dark button plate, matching the hand-step banner's plate skin. The
-   :not() chain outranks the app-wide flat-gold .commandButton so it reads as a
-   proper plate, not gold-on-gold. */
-.mapMoraleSpend .commandButton:not(.ghost) {
-  min-height: 34px;
-  padding: 7px 12px;
-  border: none;
-  border-radius: 8px;
-  color: #f2ddae;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
-  background:
-    url("/assets/ui/ornate/button-plate.webp") center / 100% 100% no-repeat,
-    linear-gradient(180deg, #3b2c18 0%, #201509 100%);
-  box-shadow: 0 3px 9px rgb(0 0 0 / 45%);
-}
-
-.mapMoraleSpend .commandButton:not(.ghost):hover:not(:disabled) {
-  filter: brightness(1.08);
+  max-width: 176px;
+  padding: 8px 10px 10px;
 }
 
 .commandButton.selected {
