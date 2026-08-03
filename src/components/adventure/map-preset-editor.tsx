@@ -71,15 +71,27 @@ import {
 /**
  * Win-condition kinds the editor OFFERS for new rows. `control-towns` and
  * `obelisks` moved to the Map objects group as per-object "first clear wins"
- * ticks, so the picker no longer offers those duplicates. `flag-mines` — an
- * AGGREGATE count of every Mine + Settlement a player currently controls — has
- * no per-object equivalent (it is "hold X of them", not "clear THIS field"), so
- * it stays offered here as "control X mines/settlements to win". Legacy maps
- * carrying a control-towns / obelisks row keep rendering and stay
- * engine-supported.
+ * ticks; `defeat-dragon-utopia` (instant win after flagging N Utopias) moved
+ * into the 🐉 Dragon Utopia section as its own inline knob — so the picker no
+ * longer offers those duplicates. `flag-mines` — an AGGREGATE count of every
+ * Mine + Settlement a player currently controls — has no per-object equivalent
+ * (it is "hold X of them", not "clear THIS field"), so it stays offered here as
+ * "control X mines/settlements to win". Legacy maps carrying any moved kind keep
+ * rendering (their kind rejoins that row's select) and stay engine-supported.
  */
 const OFFERED_WIN_CONDITION_OPTIONS = CUSTOM_WIN_CONDITION_OPTIONS.filter(
-  (entry) => entry.id !== "control-towns" && entry.id !== "obelisks"
+  (entry) =>
+    entry.id !== "control-towns" && entry.id !== "obelisks" && entry.id !== "defeat-dragon-utopia"
+);
+
+/**
+ * VP objective kinds the editor OFFERS for new rows. `defeat-dragon-utopia`
+ * moved into the 🐉 Dragon Utopia section as an inline "VP per Utopia defeated"
+ * knob, so it is no longer offered here (a legacy row of that kind still renders
+ * — its kind rejoins that row's select via the per-row merge below).
+ */
+const OFFERED_VP_OBJECTIVE_OPTIONS = VICTORY_POINT_OBJECTIVE_OPTIONS.filter(
+  (entry) => entry.id !== "defeat-dragon-utopia"
 );
 
 const BUILT_IN_DUNGEON_WARDENS = [
@@ -543,6 +555,66 @@ export function MapPresetEditor({
   const removeWinCondition = (index: number) => {
     writeWinConditions(winConditions.filter((_, i) => i !== index));
   };
+
+  // The 🐉 Dragon Utopia section's two INLINE knobs upsert/remove the single
+  // entry of the matching kind in the existing VP-objectives / custom-win arrays
+  // (no new data model) — so "beat a Utopia" scoring lives beside the Utopia
+  // guards, not scattered across two generic dropdowns. They touch the FIRST
+  // such entry and leave any legacy duplicates in place (flagged with a note).
+  const utopiaVpIndex = vpObjectives.findIndex((entry) => entry.kind === "defeat-dragon-utopia");
+  const utopiaVpValue = utopiaVpIndex >= 0 ? vpObjectives[utopiaVpIndex].vp : 0;
+  const utopiaVpDuplicates = vpObjectives.filter((entry) => entry.kind === "defeat-dragon-utopia").length;
+  const setUtopiaVp = (vp: number) => {
+    const clamped = Math.max(0, Math.min(10, Math.floor(vp || 0)));
+    if (clamped <= 0) {
+      if (utopiaVpIndex >= 0) {
+        writeVictoryPoints({ objectives: vpObjectives.filter((_, i) => i !== utopiaVpIndex) });
+      }
+      return;
+    }
+    if (utopiaVpIndex >= 0) {
+      writeVictoryPoints({
+        objectives: vpObjectives.map((entry, i) => (i === utopiaVpIndex ? { ...entry, vp: clamped } : entry))
+      });
+      return;
+    }
+    if (vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES) {
+      return;
+    }
+    writeVictoryPoints({
+      objectives: [...vpObjectives, { ...defaultVictoryPointObjective("defeat-dragon-utopia"), vp: clamped }]
+    });
+  };
+  const utopiaWinIndex = winConditions.findIndex((entry) => entry.kind === "defeat-dragon-utopia");
+  const utopiaWinCondition = utopiaWinIndex >= 0 ? winConditions[utopiaWinIndex] : undefined;
+  const utopiaWinValue =
+    utopiaWinCondition && "count" in utopiaWinCondition ? utopiaWinCondition.count ?? 0 : 0;
+  const setUtopiaWin = (count: number) => {
+    const clamped = Math.max(0, Math.min(6, Math.floor(count || 0)));
+    if (clamped <= 0) {
+      if (utopiaWinIndex >= 0) {
+        writeWinConditions(winConditions.filter((_, i) => i !== utopiaWinIndex));
+      }
+      return;
+    }
+    if (utopiaWinIndex >= 0) {
+      writeWinConditions(
+        winConditions.map((entry, i) =>
+          i === utopiaWinIndex ? { kind: "defeat-dragon-utopia", count: clamped } : entry
+        )
+      );
+      return;
+    }
+    if (winConditions.length >= MAX_CUSTOM_WIN_CONDITIONS) {
+      return;
+    }
+    writeWinConditions([...winConditions, { kind: "defeat-dragon-utopia", count: clamped }]);
+  };
+  // A Dragon Utopia is placeable on ANY map (a centre tile's Ⅶ field), so its
+  // tuning must be reachable outside the two dragon victory modes too.
+  const utopiaOnMap = (tiles ?? []).some(
+    (plan) => plan.viiField === "dragon_utopia" || plan.viiFields?.includes("dragon_utopia")
+  );
 
   const setTimed = (next: CustomMapTimedEvent[]) => {
     patch({ timedEvents: next });
@@ -1356,8 +1428,76 @@ export function MapPresetEditor({
         </section>
       ) : null}
 
-      {(value.victoryMode === "dragon-hunt" || value.victoryMode === "dragon-conqueror") &&
-      !objectives.hiddenGrailUtopia ? (
+      {/* Under the hidden Grail/Utopia package the engine FIXES most Grail knobs,
+          so the full editor above would be misleading. Surface only the two it
+          still honours (Obelisks needed; dig-site-as-Utopia Off/Always) and spell
+          out the forced values, instead of silently hiding everything. */}
+      {objectives.hiddenGrailUtopia ? (
+        <section className="mapPresetSection" aria-label="Objectives">
+          <div className="mapPresetSectionLabel">🏆 Grail objective (hidden rules)</div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail Obelisks required">
+            <span className="mapPresetObjectiveLabel">🏆 Grail dig — Obelisks needed</span>
+            <div className="mapPresetChipRow">
+              <button
+                aria-pressed={objectives.grailObelisksRequired === undefined}
+                className={`mapPresetChip${objectives.grailObelisksRequired === undefined ? " active" : ""}`}
+                onClick={() => setGrailObelisks(undefined)}
+                title="Use the default (2 Obelisks)."
+                type="button"
+              >
+                Default (2)
+              </button>
+              {([1, 2, 3, 4] as const).map((count) => (
+                <button
+                  aria-pressed={objectives.grailObelisksRequired === count}
+                  className={`mapPresetChip${objectives.grailObelisksRequired === count ? " active" : ""}`}
+                  key={count}
+                  onClick={() => setGrailObelisks(count)}
+                  type="button"
+                >
+                  {count}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Grail as Utopia">
+            <span className="mapPresetObjectiveLabel">Grail dig site as Utopia</span>
+            <div className="mapPresetChipRow">
+              {([{ id: undefined, label: "Off" }, { id: "always" as const, label: "Always" }] as const).map((opt) => (
+                <button
+                  aria-pressed={objectives.grailAsUtopia === opt.id}
+                  className={`mapPresetChip${objectives.grailAsUtopia === opt.id ? " active" : ""}`}
+                  key={String(opt.id)}
+                  onClick={() => {
+                    const next = { ...objectives };
+                    if (opt.id === undefined) delete next.grailAsUtopia;
+                    else next.grailAsUtopia = opt.id;
+                    patchObjectives(next);
+                  }}
+                  type="button"
+                >
+                  {opt.label}
+                </button>
+              ))}
+              {objectives.grailAsUtopia === "after-dig-utopia" || objectives.grailAsUtopia === "after-dig-empty" ? (
+                <button className="mapPresetChip" disabled title="After-dig conversion is ignored under the hidden rules." type="button">
+                  After dig (inactive)
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <small className="mapPresetHint">
+            Hidden rules fix the rest: dig costs 1 MP and grants 20 gold plus the 3-VP Grail token; the Grail builds at
+            both a Town and a Settlement with a free building; there is no after-dig conversion. Turn the hidden package
+            off to tune those knobs individually.
+          </small>
+        </section>
+      ) : null}
+
+      {value.victoryMode === "dragon-hunt" ||
+      value.victoryMode === "dragon-conqueror" ||
+      objectives.hiddenGrailUtopia ||
+      utopiaOnMap ? (
         <section className="mapPresetSection" aria-label="Objectives">
           <div className="mapPresetSectionLabel">🐉 Dragon Utopia objective</div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia guards">
@@ -1419,8 +1559,41 @@ export function MapPresetEditor({
               ))}
             </div>
           </div>
+
+          {/* "Beat a Utopia" scoring/win — the ONE home for it now, instead of a
+              row hidden in the VP-objectives + custom-win-conditions dropdowns.
+              Each knob upserts/removes the matching entry in those same arrays. */}
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia defeat VP">
+            <span className="mapPresetObjectiveLabel">VP for defeating a Utopia</span>
+            <ResourceField
+              label="VP"
+              max={10}
+              value={utopiaVpValue || null}
+              onChange={(vp) => setUtopiaVp(vp ?? 0)}
+            />
+            {!vpOn ? (
+              <span className="mapPresetHint">Setting this turns on Victory Points scoring.</span>
+            ) : null}
+          </div>
+          <div className="mapPresetObjectiveRow" role="group" aria-label="Dragon Utopia instant win">
+            <span className="mapPresetObjectiveLabel">Instant win after flagging N Utopias</span>
+            <ResourceField
+              label="N"
+              max={6}
+              value={utopiaWinValue || null}
+              onChange={(count) => setUtopiaWin(count ?? 0)}
+            />
+            <span className="mapPresetHint">0 = off.</span>
+          </div>
+          {utopiaVpDuplicates > 1 ? (
+            <small className="mapPresetHint">
+              ⚠ This map has {utopiaVpDuplicates} “defeat a Dragon Utopia” VP rows (from an older save). This knob edits
+              the first; remove extras in the Victory Points list below.
+            </small>
+          ) : null}
           <small className="mapPresetHint">
-            Place the Dragon Utopia on the map via a centre tile&apos;s Ⅶ field in the tile popover.
+            Place the Dragon Utopia on the map via a centre tile&apos;s Ⅶ field in the tile popover. VP for defeating one
+            needs Victory Points on; the instant-win counts distinct Utopias flagged.
           </small>
         </section>
       ) : null}
@@ -1476,7 +1649,18 @@ export function MapPresetEditor({
                   {vpObjectives.length}/{MAX_VICTORY_POINT_OBJECTIVES}
                 </span>
               </div>
-              {vpObjectives.map((objective, index) => (
+              {vpObjectives.map((objective, index) => {
+                // A legacy objective whose kind is no longer OFFERED for new rows
+                // (defeat-dragon-utopia, moved to the Dragon Utopia section as an
+                // inline knob) still needs its kind in THIS row's select, or it
+                // would vanish from the dropdown and the row become unreadable.
+                const vpRowOptions = OFFERED_VP_OBJECTIVE_OPTIONS.some((entry) => entry.id === objective.kind)
+                  ? OFFERED_VP_OBJECTIVE_OPTIONS
+                  : [
+                      ...OFFERED_VP_OBJECTIVE_OPTIONS,
+                      ...VICTORY_POINT_OBJECTIVE_OPTIONS.filter((entry) => entry.id === objective.kind)
+                    ];
+                return (
                 <div className="mapPresetVpObjectiveRow" key={index}>
                   <RewardGlyph src={vpObjectiveGlyph(objective.kind)} title={`Objective ${index + 1}`} />
                   <select
@@ -1490,7 +1674,7 @@ export function MapPresetEditor({
                     }
                     value={objective.kind}
                   >
-                    {VICTORY_POINT_OBJECTIVE_OPTIONS.map((option) => (
+                    {vpRowOptions.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.label}
                       </option>
@@ -1528,7 +1712,8 @@ export function MapPresetEditor({
                     <Trash2 aria-hidden="true" size={13} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
               <button
                 className="mapPresetTimedAdd"
                 disabled={vpObjectives.length >= MAX_VICTORY_POINT_OBJECTIVES}
@@ -1551,7 +1736,8 @@ export function MapPresetEditor({
         <small className="mapPresetHint">
           Extra early-end triggers on top of the victory mode: the FIRST player to satisfy ANY of these wins
           immediately. Keep the thresholds above what a player already has at setup, or the game ends on the first
-          action.
+          action. For a hold-to-win tied to a specific field, you can instead stamp “Hold rounds to win” (with
+          “Requires Grail” if you want) on a settlement or centre hex in the tile popover.
         </small>
         <div className="mapPresetVpObjectives" role="group" aria-label="Custom win condition list">
           <div className="mapPresetTimedSectionHeading">
@@ -2008,7 +2194,7 @@ export function MapPresetEditor({
                     : undefined
               });
             }}
-            title="Extra Victory Points per Random Town controlled (VP mode)."
+            title="Extra Victory Points per Random Town controlled (VP mode). Stacks ON TOP of any per-tile Control VP set in the tile popover."
             type="number"
             value={value.randomTowns?.vp ?? 0}
           />

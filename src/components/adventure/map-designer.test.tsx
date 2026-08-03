@@ -316,6 +316,77 @@ describe("MapDesigner — clustered pre-board chrome", () => {
     fireEvent.click(btn);
     expect(btn.classList.contains("armed"), "disarmed after a second click").toBe(false);
   });
+
+  it("groups the three clusters in a left rail that is a SIBLING of the board (board-dominant 2-pane)", () => {
+    const container = renderDesigner(loneTown);
+    const rail = container.querySelector(".designerRail");
+    expect(rail, "left rail present").toBeTruthy();
+    // All three placeable/tool clusters live inside the rail…
+    expect(rail!.querySelectorAll(".designerCluster").length, "three clusters in the rail").toBe(3);
+    // …and the board is a sibling of the rail under .mapDesigner, never nested in it.
+    const board = container.querySelector(".designerBoardWrap") as HTMLElement;
+    expect(board, "board present").toBeTruthy();
+    expect(rail!.contains(board), "board is NOT inside the rail").toBe(false);
+    expect(board.parentElement, "board and rail share the .mapDesigner parent").toBe(rail!.parentElement);
+  });
+});
+
+describe("MapDesigner — tile popover collapsible sections", () => {
+  const townPlus = (extra: CustomMapTilePlan): CustomMapTilePlan[] => [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    extra
+  ];
+  const groupByLabel = (popover: HTMLElement, label: string) =>
+    popover.querySelector(`details.popoverGroup[aria-label="${label}"]`) as HTMLDetailsElement | null;
+
+  it("keeps the primary slot-mode controls FLAT but wraps secondary sections in groups", () => {
+    const container = renderDesigner(townPlus({ row: 9, col: 4, group: "far", faceDown: true }));
+    const popover = openTilePopover(container, 1);
+    // The primary interaction (choosing what is on the slot) is NOT inside a collapsible group.
+    const modeRow = popover.querySelector(".popoverModeRow");
+    expect(modeRow, "slot mode row present").toBeTruthy();
+    expect(modeRow!.closest(".popoverGroup"), "slot mode stays flat, not in a group").toBeNull();
+    // The secondary sections ARE grouped, and start collapsed on a bare tile.
+    const borders = groupByLabel(popover, "Yellow borders (impassable edges)");
+    expect(borders, "borders group present").toBeTruthy();
+    expect(borders!.open, "borders group closed on a bare tile").toBe(false);
+    // The borders controls still live in the DOM while collapsed (jsdom keeps them queryable).
+    expect(borders!.querySelector(".popoverBorders"), "borders body still rendered").toBeTruthy();
+  });
+
+  it("auto-opens a section that already carries a setting", () => {
+    const container = renderDesigner(
+      townPlus({ row: 9, col: 4, group: "far", faceDown: true, borderEdges: [3] })
+    );
+    const popover = openTilePopover(container, 1);
+    const borders = groupByLabel(popover, "Yellow borders (impassable edges)");
+    expect(borders!.open, "borders group open when the tile has border edges").toBe(true);
+  });
+
+  it("opens the Center group when the center hex is configured (with a bare-tile CONTROL)", () => {
+    const bare = openTilePopover(
+      renderDesigner(townPlus({ row: 9, col: 4, group: "center", faceDown: true })),
+      1
+    );
+    expect(groupByLabel(bare, "Center (Ⅶ) objective")!.open, "closed on a bare center tile").toBe(false);
+
+    const configured = openTilePopover(
+      renderDesigner(
+        townPlus({ row: 9, col: 4, group: "center", faceDown: true, centerHex: { guard: { level: 3 } } })
+      ),
+      1
+    );
+    expect(groupByLabel(configured, "Center (Ⅶ) objective")!.open, "open when centerHex set").toBe(true);
+  });
+
+  it("honours a manual toggle of a section header", () => {
+    const container = renderDesigner(townPlus({ row: 9, col: 4, group: "far", faceDown: true }));
+    const popover = openTilePopover(container, 1);
+    const borders = groupByLabel(popover, "Yellow borders (impassable edges)")!;
+    expect(borders.open).toBe(false);
+    fireEvent.click(borders.querySelector(".popoverGroupHead")!);
+    expect(borders.open, "opens on a header click").toBe(true);
+  });
 });
 
 describe("MapDesigner — center Ⅶ-field designation", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { Layers, Lock, Trash2 } from "lucide-react";
 import { allTileDefinitions } from "@/data/map/tiles";
@@ -159,6 +159,50 @@ function DesignerGlyph({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- assetUrl CDN path; decorative
     <img alt="" aria-hidden="true" className={className} draggable={false} src={assetUrl(src)} />
+  );
+}
+
+/**
+ * A collapsible section of the tile inspector popover — the same sticky-open
+ * pattern as the preset editor's MapPresetGroup: seeded open when the section
+ * already carries settings (`active`), auto-opens the moment it gains content
+ * (inactive → active edge), and otherwise honours the user's manual toggle. The
+ * jsdom-friendly `<details>` keeps every wrapped control in the DOM (queryable
+ * and clickable) even while collapsed, so it only tames the popover's length.
+ */
+function PopoverGroup({
+  title,
+  active,
+  children
+}: {
+  title: string;
+  active: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(active);
+  const prevActive = useRef(active);
+  useEffect(() => {
+    if (!prevActive.current && active) {
+      setOpen(true);
+    }
+    prevActive.current = active;
+  }, [active]);
+  return (
+    <details
+      aria-label={title}
+      className={`popoverGroup${active ? " active" : ""}`}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="popoverGroupHead">
+        <span className="popoverGroupTitle">{title}</span>
+        {active ? <span className="popoverGroupDot" aria-hidden="true" /> : null}
+        <span aria-hidden="true" className="popoverGroupChevron">
+          ▸
+        </span>
+      </summary>
+      <div className="popoverGroupBody">{children}</div>
+    </details>
   );
 }
 
@@ -4733,6 +4777,7 @@ export function MapDesigner({
 
   return (
     <div className="mapDesigner" aria-label="Map designer">
+      <div className="designerRail">
       <section className="designerCluster designerClusterTiles" aria-label="Tiles">
         <span className="designerClusterLabel">Tiles</span>
         <div className="designerClusterBody">
@@ -5094,6 +5139,7 @@ export function MapDesigner({
         ) : null}
         </div>
       </section>
+      </div>
 
       <div className="designerBoardWrap" ref={wrapRef}>
         {pickRequest ? (
@@ -5851,8 +5897,11 @@ export function MapDesigner({
                     Points. Always shown for a center slot; every control is
                     optional and independent. */}
                 {selected.group === "center" ? (
+                  <PopoverGroup
+                    title="Center (Ⅶ) objective"
+                    active={Boolean(selected.viiField || selected.viiFields?.length || selected.centerHex)}
+                  >
                   <div className="popoverViiField popoverSection popoverCenterHex">
-                    <div className="popoverSectionLabel">Center (Ⅶ) hex</div>
                     <div className="popoverSubLabel">Objective (multi-select)</div>
                     <small className="popoverHint">
                       Default keeps the printed objective. Toggle Town / Utopia / Grail to allow any of those —
@@ -5984,7 +6033,7 @@ export function MapDesigner({
                               })
                             });
                           }}
-                          title="VP while you control this Random Town / Random Settlement (VP mode)."
+                          title="VP while you control this Random Town / Random Settlement (VP mode). Adds ON TOP of the map-wide Control VP in Map objects."
                           type="number"
                           value={selected.centerHex?.controlVp ?? ""}
                         />
@@ -6051,6 +6100,7 @@ export function MapDesigner({
                       <span>🏁 First clear wins the game</span>
                     </label>
                   </div>
+                  </PopoverGroup>
                 ) : null}
 
                 {/* Per-tile settlement: stronger guard / extra VP / hold-to-win.
@@ -6058,8 +6108,8 @@ export function MapDesigner({
                     Excludes center tiles — their own hex is customized by the
                     center-hex editor above, whose guard/VP would otherwise clash. */}
                 {selected.group !== "sea" && selected.group !== "center" ? (
+                  <PopoverGroup title="Special settlement" active={Boolean(selected.settlement)}>
                   <div className="popoverSettlementPlan popoverSection" aria-label="Special settlement">
-                    <div className="popoverSectionLabel">Special settlement (this tile)</div>
                     <small className="popoverHint">
                       Make THIS tile&apos;s settlement matter: a stronger first-flag guard, extra Victory Points,
                       and/or win by holding it for N consecutive rounds. Overrides the map-wide settlement guard for
@@ -6181,6 +6231,7 @@ export function MapDesigner({
                       </button>
                     ) : null}
                   </div>
+                  </PopoverGroup>
                 ) : null}
 
                 {/* SPECIFIC (per-tile) object plans — obelisk / mine on THIS tile.
@@ -6189,6 +6240,8 @@ export function MapDesigner({
                     guaranteeing a mine), so the popover never bloats with inert
                     sections. A set field OVERRIDES the map-wide config; unset
                     fields fall back to it. */}
+                {planEligibleForObjectKind(selected, "obelisk") || planEligibleForObjectKind(selected, "mine") ? (
+                  <PopoverGroup title="Obelisk & Mine (this tile)" active={Boolean(selected.objectPlans)}>
                 {(["obelisk", "mine"] as const).map((objectKind) =>
                   planEligibleForObjectKind(selected, objectKind) ? (
                     <div
@@ -6307,7 +6360,13 @@ export function MapDesigner({
                     </div>
                   ) : null
                 )}
+                  </PopoverGroup>
+                ) : null}
 
+                <PopoverGroup
+                  title="Tokens, underground & gates"
+                  active={Boolean(planTokens(selected).length > 0 || planIsUnderground(selected) || selected.gateLinks?.length)}
+                >
                 {/* Monolith/Whirlpool/colored-Gate Location Token on this tile. */}
                 {selectedToken ? (
                   <>
@@ -6545,6 +6604,7 @@ export function MapDesigner({
                     )}
                   </div>
                 ) : null}
+                </PopoverGroup>
               </>
             )}
 
@@ -6553,8 +6613,8 @@ export function MapDesigner({
                 including starting Ⅰ Town tiles). They copy onto the live map
                 at setup and render + seal in game. The panel reports the count
                 and offers a one-click Clear. */}
+            <PopoverGroup title="Yellow borders (impassable edges)" active={selectedBorderEdgeCount > 0}>
             <div className="popoverBorders">
-              <div className="popoverSectionLabel">Yellow borders (impassable edges)</div>
               <small className="popoverHint">
                 Arm the <strong>🖌 Yellow border</strong> tool and draw on the board, edge by edge — click an edge to seal
                 it, click again to remove, or drag to paint several. Works on every tile including starting Ⅰ Towns.
@@ -6578,6 +6638,7 @@ export function MapDesigner({
                 ) : null}
               </div>
             </div>
+            </PopoverGroup>
 
             <button className="popoverRemove" onClick={() => removeTile(selectedIndex as number)} type="button">
               <Trash2 size={13} /> Remove

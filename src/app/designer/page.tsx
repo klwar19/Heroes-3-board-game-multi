@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, FilePlus2, Lock, Save, Trash2, Undo2 } from "lucide-react";
+import { ArrowLeft, FilePlus2, FolderOpen, Lock, Save, Undo2 } from "lucide-react";
 import { MapDesigner } from "@/components/adventure/map-designer";
 import { MapPresetEditor } from "@/components/adventure/map-preset-editor";
+import { DesignerMapLibraryModal } from "@/components/adventure/designer-map-library-modal";
 import {
   customMapPresetIsActive,
   scenarioDefinitions,
@@ -67,6 +68,7 @@ export default function MapDesignerPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   // The signed-in account (if any) — the owner/admin gate for editing & deleting.
   // Read from the client cache on mount and refreshed on focus so signing in
   // (in this or another tab) lights up the controls without a reload. A guest /
@@ -366,6 +368,17 @@ export default function MapDesignerPage() {
             <button className="commandButton ghost" onClick={startNew} type="button">
               <FilePlus2 aria-hidden="true" size={13} /> New map
             </button>
+            <button
+              className="commandButton"
+              onClick={() => {
+                refresh();
+                setLibraryOpen(true);
+              }}
+              title="Browse, open or delete saved maps"
+              type="button"
+            >
+              <FolderOpen aria-hidden="true" size={13} /> Maps{saved.length > 0 ? ` (${saved.length})` : ""}
+            </button>
           </div>
 
           {currentId && !canModifyCurrent ? (
@@ -463,48 +476,23 @@ export default function MapDesignerPage() {
             tiles={tiles}
           />
         </section>
-
-        <aside className="designerSaved" aria-label="Saved maps">
-          <h2>Shared maps</h2>
-          {loading ? <small>Loading the shared library…</small> : null}
-          {!loading && saved.length === 0 ? (
-            <small>Nothing saved yet — design a map and press Save. Everyone shares this library.</small>
-          ) : null}
-          <ul>
-            {saved.map((record) => (
-              <li className={record.id === currentId ? "current" : ""} key={record.id}>
-                <button className="savedMapLoad" onClick={() => loadRecord(record)} title="Open this map in the designer" type="button">
-                  <strong>{record.name}</strong>
-                  <small>
-                    {scenarioDefinitions[record.scenarioId]?.name ?? record.scenarioId} · {record.players}P ·{" "}
-                    {record.tiles.length} tile{record.tiles.length === 1 ? "" : "s"}
-                    {record.preset ? " · has conditions" : ""}
-                    {record.createdByName ? ` · by ${record.createdByName}` : ""}
-                  </small>
-                </button>
-                {actorMayModifyMap(record, actor) ? (
-                  <button
-                    aria-label={`Delete ${record.name}`}
-                    className="savedMapDelete"
-                    onClick={() => void remove(record.id)}
-                    title="Delete this saved map for everyone"
-                    type="button"
-                  >
-                    <Trash2 aria-hidden="true" size={13} />
-                  </button>
-                ) : (
-                  <span
-                    className="savedMapLock"
-                    title={`Only ${record.createdByName ?? "the owner"} or an admin can edit or delete this map`}
-                  >
-                    <Lock aria-hidden="true" size={13} />
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </aside>
       </div>
+
+      {libraryOpen ? (
+        <DesignerMapLibraryModal
+          actor={actor}
+          currentId={currentId}
+          loading={loading}
+          onClose={() => setLibraryOpen(false)}
+          onDelete={(id) => void remove(id)}
+          onLoad={(record) => {
+            loadRecord(record);
+            setLibraryOpen(false);
+          }}
+          onNew={startNew}
+          records={saved}
+        />
+      ) : null}
     </main>
   );
 }
