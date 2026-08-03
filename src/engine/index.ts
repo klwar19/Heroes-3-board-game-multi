@@ -465,9 +465,11 @@ export {
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
   victoryDesignConflicts,
+  viiObjectiveRewardStacks,
+  viiRewardStackWarnings,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
-export type { SinglePlayerMapDeployment } from "./map-preset";
+export type { SinglePlayerMapDeployment, ViiRewardStack, ViiRewardStackSource } from "./map-preset";
 export {
   describeGuardArmyGrouped,
   expandGuardUnitGroups,

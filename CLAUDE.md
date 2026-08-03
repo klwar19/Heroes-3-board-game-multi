@@ -2532,6 +2532,69 @@ Neither is a toggle — the previous behaviour was wrong.
   lone-hero CONTROL) and `hero-actions-dock.test.tsx` (both buttons render under
   distinct keys and each dispatches its OWN hero).
 
+## Ⅶ Utopia / Grail reward STACKING — warned, never blocked (2026-08-03)
+
+Reported: "so many things that can change utopia or grail fields right now" — do
+the payouts pile up? They DO, and every one of them is deliberate, so nothing was
+nerfed or blocked. The MATRIX for ONE clear of a Ⅶ objective field, verified
+empirically in `src/engine/vii-objective-reward-stacking.test.ts` (each pair
+asserts the COMBINED observable outcome, so a change to either half fails):
+
+- **Built-in** — Ⅶ Dragon Utopia: 10 gold on a plain Ⅶ field (0 under the
+  designer/hidden field-rules package, 20 under the legacy `polish-grail-utopia`
+  house rule) + the fixed Search 3 / 5 / 5 Artifact ladder + the
+  Morale-or-Ability-Empower pick. Ⅶ Grail: arms the dig (the dig itself pays 20
+  gold under the package, else `objectives.grailDigReward`), or — outside Grail
+  Hunt — 10 gold + a Search (2) Relic (`giveCreatureBankConsolation`).
+- **+ centre-hex reward / VP** (`plan.centerHex`, via `grantCenterHexBonus`) —
+  pays IN FULL on top, once (the `centerHexClaimed` latch survives a revisit /
+  re-capture; the Grail's dig on a later visit does NOT re-pay it).
+- **+ a hidden hex event's reward / VP on that same hex** (`preset.hexEvents`,
+  via `payDesignerFieldReward`) — pays IN FULL on top, before the field's own
+  visit ("first" mode once, "each-player" once per player). A `replaceVisit`
+  event instead SUPPRESSES the objective's own payout for that entry.
+- **+ `objectives.utopiaBonusSearch`** (opt-in, Utopia only) — an extra Artifact
+  Search. **BUG FIXED**: it was read ONLY by the plain-mode branch, so on a
+  DESIGNATED Ⅶ Utopia (which auto-activates the field-rules package — exactly
+  the map a designer sets the knob for) it silently paid NOTHING while the
+  map-pick banner still advertised "Dragon Utopia bonus: Search(N) Artifacts".
+  Every paying Ⅶ Utopia branch now reads it; Dragon Hunt still does not (that
+  clear wins outright, so there is no turn left to spend it). Repro + control in
+  the test above ("STACK C", mutation-checked).
+- A fully loaded Ⅶ Utopia therefore pays SIX Artifact Searches and both gold
+  packages from one clear. Deliberate — hence the two warnings.
+
+Warnings (both from ONE pure derivation, `viiObjectiveRewardStacks` /
+`viiRewardStackWarnings` in `map-preset.ts`, so the surfaces cannot disagree):
+- **MAP DESIGNER**: a line per stacked Ⅶ field in the existing alert panel beside
+  the Ⅶ victory-vs-design conflicts (`map-designer.tsx`, `.designerObjectAlert`),
+  naming the objective, its row/col, what it already pays and which extras stack.
+  Never a block. The designer takes the preset's `objectives` block as a new prop
+  purely to see the bonus-Search knob.
+- **PLAYER**: one line in the map-pick banner
+  (`describeCustomMapPresetEntries(preset, tiles)` — the second arg is NEW; the
+  line rides the TILES, so both banner call sites now render even when the preset
+  itself carries no other condition).
+
+Leading with the deliberate LIMITS of the warning:
+- It reports only a Ⅶ objective the design is CERTAIN to host — a `viiField`
+  designation, an exact tile pin, or a "one of these tiles" list whose EVERY
+  candidate prints the same objective. A plain/mixed random centre slot is not
+  warned (whether it even becomes a Grail/Utopia is unknown at design time).
+- A centre tile's Ⅶ objective is always slot 0 — the tile's own centre hex
+  (verified across every centre tile definition) — so a hex event stacks exactly
+  when it sits on the plan's own row/col, rotation-proof. An event on a RING hex
+  is a different field and is not reported.
+- Only Grail / Dragon Utopia Ⅶ fields are covered (a Ⅶ Random Town / Settlement
+  pays no comparable built-in reward). The `map-preset-editor` summary still
+  takes the preset alone (no tiles), so the stack line appears in the designer's
+  alert panel and the lobby banner, not in that collapsible summary.
+- NOT changed, and NOT a double-pay: `applyGrailAfterDigConversion` still
+  converts an already-CLEARED (black-cubed) second Grail site into a fresh
+  fightable Utopia, unlike its `applyPolishGrailFightConversion` sibling which
+  skips one. The player must beat fresh Ⅶ guards for that second payout and the
+  designer reward stays latched, so it is a re-fight, not a double reward.
+
 ## Atomic Necromancy window · Luck lasts the round · printed Treasure dice (2026-07-28)
 
 Reported-bug batch. Leading with what does NOT work / the deliberate limits:

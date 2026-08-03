@@ -752,6 +752,59 @@ describe("MapDesigner — center Ⅶ-field designation", () => {
     expect(ok.querySelector(".designerVictoryConflict")).toBeNull();
   });
 
+  it("warns when extra designer rewards STACK on a Ⅶ Dragon Utopia's own reward (CONTROL: no extras, no warning)", () => {
+    // A Ⅶ Grail / Utopia field already pays a built-in objective reward; the
+    // centre-hex reward, a hidden hex event on that same hex and the Utopia bonus
+    // Search all pay ON TOP for one clear. Warned here, never blocked.
+    const stacked = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={[
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          {
+            row: 9,
+            col: 4,
+            group: "center",
+            faceDown: false,
+            tileDefId: "C1",
+            viiField: "dragon_utopia",
+            centerHex: { reward: { gold: 25 } }
+          }
+        ]}
+        hexEvents={[{ id: "e1", placement: { row: 9, col: 4 }, reward: { gold: 5 } }]}
+        objectives={{ utopiaBonusSearch: 2 }}
+        onChange={() => {}}
+      />
+    );
+    const alerts = [...stacked.container.querySelectorAll(".designerObjectAlert")].map(
+      (node) => node.textContent ?? ""
+    );
+    const stackAlert = alerts.find((text) => /already pays/.test(text));
+    expect(stackAlert, "Ⅶ reward-stacking warning shown").toBeTruthy();
+    expect(stackAlert!).toMatch(/Dragon Utopia at row 9, col 4/);
+    expect(stackAlert!).toMatch(/centre-hex reward/);
+    expect(stackAlert!).toMatch(/hidden hex event/);
+    expect(stackAlert!).toMatch(/bonus Search/);
+
+    // CONTROL: the same designated Ⅶ Utopia with no extra reward warns nothing.
+    cleanup();
+    const plain = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={[
+          { row: 8, col: 2, group: "starting", faceDown: false },
+          { row: 9, col: 4, group: "center", faceDown: false, tileDefId: "C1", viiField: "dragon_utopia" }
+        ]}
+        onChange={() => {}}
+      />
+    );
+    expect(
+      [...plain.container.querySelectorAll(".designerObjectAlert")].filter((node) =>
+        /already pays/.test(node.textContent ?? "")
+      )
+    ).toHaveLength(0);
+  });
+
   it("shows a green all-clear (tick glyph) when a Grail design already supports the win condition", () => {
     // A forced-Grail centre plus a face-down Far overflow slot → capacity ≥ 2 →
     // no conflict → the all-clear appears for the design-requiring victory mode.

@@ -428,6 +428,7 @@ export default function MapDesignerPage() {
           <MapDesigner
             customMap={tiles}
             hexEvents={preset?.hexEvents ?? []}
+            objectives={preset?.objectives}
             objects={preset?.objects ?? []}
             onChange={(nextTiles) => commitEditorChange({ tiles: nextTiles })}
             onHexEventsChange={(hexEvents) => {

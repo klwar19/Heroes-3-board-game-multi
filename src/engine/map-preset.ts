@@ -2624,10 +2624,16 @@ export type CustomMapPresetEntry = { icon: string; text: string };
 
 /** Icon-tagged bullet entries for lobby / designer summary. */
 export function describeCustomMapPresetEntries(
-  preset: CustomMapPreset | null | undefined
+  preset: CustomMapPreset | null | undefined,
+  plans?: CustomMapTilePlan[] | null
 ): CustomMapPresetEntry[] {
+  // The Ⅶ Grail / Utopia reward-stacking line rides the TILE plans, so it is
+  // built even when the preset itself carries nothing "active" (a centre-hex
+  // reward lives on the tile, not the preset) — players must see before they
+  // start that a Ⅶ objective pays more than its standard reward.
+  const stackEntries = describeViiRewardStackEntries(plans, preset);
   if (!preset || !customMapPresetIsActive(preset)) {
-    return [];
+    return stackEntries;
   }
   const entries: CustomMapPresetEntry[] = [];
   if (preset.victoryMode) {
@@ -2820,7 +2826,36 @@ export function describeCustomMapPresetEntries(
   if (preset.notes) {
     entries.push({ icon: "📜", text: preset.notes });
   }
+  for (const line of stackEntries) {
+    entries.push(line);
+  }
   return entries;
+}
+
+/**
+ * ONE concise lobby-banner line when the map stacks extra designer rewards on a
+ * Ⅶ Grail / Dragon Utopia field (empty when nothing stacks). Shares
+ * {@link viiObjectiveRewardStacks} with the designer warning.
+ */
+function describeViiRewardStackEntries(
+  plans: CustomMapTilePlan[] | null | undefined,
+  preset: CustomMapPreset | null | undefined
+): CustomMapPresetEntry[] {
+  const stacks = viiObjectiveRewardStacks(plans, preset);
+  if (stacks.length === 0) {
+    return [];
+  }
+  const names = Array.from(
+    new Set(stacks.map((stack) => (stack.objective === "dragon_utopia" ? "Dragon Utopia" : "Grail")))
+  ).join(" / ");
+  return [
+    {
+      icon: "🐉",
+      text: `Extra rewards stack on ${stacks.length === 1 ? "the" : `${stacks.length}`} Ⅶ ${names} field${
+        stacks.length === 1 ? "" : "s"
+      } — the standard objective reward still pays too`
+    }
+  ];
 }
 
 /** Short bullet lines for lobby / designer summary (plain-text form). */
@@ -3240,6 +3275,153 @@ export function victoryDesignConflicts(
   }
 
   return [];
+}
+
+// ---------------------------------------------------------------------------
+// Ⅶ objective reward STACKING (Dragon Utopia / Grail) — designer + lobby warning
+//
+// A Ⅶ Grail or Dragon Utopia field ALREADY pays a built-in objective reward (the
+// Utopia's 10 gold + the fixed Search 3 / 5 / 5 Artifact ladder and its
+// morale-or-Empower-token pick; the Grail's dig reward, or 10 gold + a Relic
+// Search outside Grail Hunt). Several INDEPENDENT map-design options can attach
+// MORE payouts to that same field for the same clear:
+//   • the centre-hex reward / VP (`plan.centerHex`),
+//   • an invisible hex event's reward / VP on that hex (`preset.hexEvents`),
+//   • the Dragon Utopia bonus Search (`preset.objectives.utopiaBonusSearch`).
+// Every one of those is DELIBERATE (a designer authored it), so nothing is
+// blocked or nerfed — but they stack silently, which is easy to do by accident.
+// These pure helpers are the single derivation behind BOTH warning surfaces: the
+// map designer's alert panel and the lobby map-pick banner line.
+// ---------------------------------------------------------------------------
+
+/** One extra payout stacked on a Ⅶ objective field's own built-in reward. */
+export type ViiRewardStackSource = "center-hex" | "hex-event" | "utopia-bonus-search";
+
+/** A Ⅶ Grail / Dragon Utopia field that pays MORE than its built-in reward. */
+export type ViiRewardStack = {
+  /** Plan centre of the tile — a centre tile's Ⅶ field is always its own centre hex. */
+  row: number;
+  col: number;
+  objective: "dragon_utopia" | "grail";
+  /** Which extra options pay on top, in a stable order. */
+  sources: ViiRewardStackSource[];
+};
+
+/** True when a designer reward package actually pays something. */
+function fieldRewardPays(reward: CustomFieldReward | undefined): boolean {
+  if (!reward) {
+    return false;
+  }
+  return Object.values(reward).some((value) =>
+    typeof value === "number" ? value !== 0 : Boolean(value)
+  );
+}
+
+/**
+ * The Ⅶ objective a CENTRE plan is CERTAIN to host, or undefined when the slot
+ * could still draw anything. Certain = a `viiField` designation, an exact tile
+ * pin, or a "one of these tiles" list whose EVERY candidate prints the same Ⅶ
+ * objective. A plain random / partly-random slot is deliberately NOT reported:
+ * whether it even becomes a Grail / Utopia is unknown at design time (documented
+ * limit — the stack warning would be a guess).
+ */
+function certainViiObjective(plan: CustomMapTilePlan): "dragon_utopia" | "grail" | undefined {
+  if (plan.group !== "center") {
+    return undefined;
+  }
+  if (plan.viiField) {
+    return plan.viiField === "dragon_utopia" || plan.viiField === "grail" ? plan.viiField : undefined;
+  }
+  const fromLocation = (location: string | undefined): "dragon_utopia" | "grail" | undefined =>
+    location === "dragon_utopia" || location === "grail" ? location : undefined;
+  if (plan.tileDefId) {
+    return fromLocation(tileViiLocation(plan.tileDefId));
+  }
+  const oneOf = plan.oneOfTileDefIds;
+  if (oneOf && oneOf.length > 0) {
+    const first = fromLocation(tileViiLocation(oneOf[0]));
+    if (!first) {
+      return undefined;
+    }
+    return oneOf.every((id) => fromLocation(tileViiLocation(id)) === first) ? first : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Every Ⅶ Grail / Dragon Utopia field whose built-in objective reward is stacked
+ * with extra designer payouts, with WHICH options stack. Pure; drives the
+ * designer alert AND the lobby banner so the two can never disagree.
+ *
+ * A centre tile's Ⅶ objective is always slot 0 — the tile's own centre hex
+ * (verified across every centre tile definition) — so a hex event stacks exactly
+ * when it sits on the plan's own `row`/`col`, whatever the tile's rotation.
+ */
+export function viiObjectiveRewardStacks(
+  plans: CustomMapTilePlan[] | null | undefined,
+  preset: CustomMapPreset | null | undefined
+): ViiRewardStack[] {
+  if (!plans || plans.length === 0) {
+    return [];
+  }
+  const hexEventAt = new Map<string, CustomHexEvent>();
+  for (const event of preset?.hexEvents ?? []) {
+    hexEventAt.set(`${event.placement.row},${event.placement.col}`, event);
+  }
+  const bonusSearch = preset?.objectives?.utopiaBonusSearch;
+  const stacks: ViiRewardStack[] = [];
+  for (const plan of plans) {
+    const objective = certainViiObjective(plan);
+    if (!objective) {
+      continue;
+    }
+    const sources: ViiRewardStackSource[] = [];
+    if (fieldRewardPays(plan.centerHex?.reward) || (plan.centerHex?.vp ?? 0) > 0) {
+      sources.push("center-hex");
+    }
+    const event = hexEventAt.get(`${plan.row},${plan.col}`);
+    if (event && (fieldRewardPays(event.reward) || (event.vp ?? 0) > 0)) {
+      sources.push("hex-event");
+    }
+    if (objective === "dragon_utopia" && bonusSearch) {
+      sources.push("utopia-bonus-search");
+    }
+    if (sources.length > 0) {
+      stacks.push({ row: plan.row, col: plan.col, objective, sources });
+    }
+  }
+  return stacks;
+}
+
+/** What a Ⅶ objective field pays on its own, in plain words. */
+function viiBuiltInRewardText(objective: "dragon_utopia" | "grail"): string {
+  return objective === "dragon_utopia"
+    ? "10 gold + three Artifact Searches (3, then 5, 5) + a Morale / Ability-Empower pick"
+    : "its own objective reward (the Grail dig, or 10 gold + a Relic Artifact Search outside Grail Hunt)";
+}
+
+const VII_STACK_SOURCE_LABELS: Record<ViiRewardStackSource, string> = {
+  "center-hex": "the centre-hex reward",
+  "hex-event": "a hidden hex event on that same hex",
+  "utopia-bonus-search": "the Dragon Utopia bonus Search"
+};
+
+/**
+ * Designer warnings (never blocks): one line per Ⅶ Grail / Dragon Utopia field
+ * that pays extra options ON TOP of its built-in objective reward. Rendered in
+ * the designer's existing alert panel beside the Ⅶ victory-vs-design conflicts.
+ */
+export function viiRewardStackWarnings(
+  plans: CustomMapTilePlan[] | null | undefined,
+  preset: CustomMapPreset | null | undefined
+): string[] {
+  return viiObjectiveRewardStacks(plans, preset).map((stack) => {
+    const name = stack.objective === "dragon_utopia" ? "Dragon Utopia" : "Grail";
+    const extras = stack.sources.map((source) => VII_STACK_SOURCE_LABELS[source]).join(" and ");
+    return `The ${name} at row ${stack.row}, col ${stack.col} already pays ${viiBuiltInRewardText(
+      stack.objective
+    )} — ${extras} stack${stack.sources.length > 1 ? "" : "s"} on top for the same clear. That is allowed; clear the extra reward if you did not mean to pay twice.`;
+  });
 }
 
 /** Building suffixes the designer may pre-build (shared across factions). */
