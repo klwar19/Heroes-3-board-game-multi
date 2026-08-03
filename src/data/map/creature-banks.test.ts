@@ -230,15 +230,26 @@ describe("Creature Bank rewards", () => {
     });
   });
 
-  it("builds the Dragon Utopia base reward plus one Artifact/Spell choice per Stacked defender", () => {
-    const reward = CREATURE_BANKS.dragon_utopia.buildReward(2);
-    expect(reward.type).toBe("SEQUENCE");
-    if (reward.type !== "SEQUENCE") return;
-    expect(reward.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 40 });
-    expect(reward.interactions[1]).toEqual({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 });
-    const choices = reward.interactions.slice(2);
-    expect(choices).toHaveLength(2);
-    expect(choices.every((step) => step.type === "CHOOSE_ONE")).toBe(true);
+  // USER RULE 2026-08-03 ("Utopia VII field is still giving too much artifacts.
+  // Should be 3. First you take Search(3) and then 2 times Search(5)"): the
+  // Utopia's artifact reward is FIXED at three Artifact Searches and no longer
+  // multiplies the Search (5) by X — which paid five Artifacts on Impossible.
+  // The printed card's "Artifact OR Spell Deck" alternative goes with it (the
+  // rule names Artifact Searches only), so the two CHOOSE_ONE steps this test
+  // used to expect are gone. Behaviour: dragon-utopia-artifact-reward.test.ts.
+  it("builds the Dragon Utopia reward as a fixed Search 3 / 5 / 5, whatever the Stacked count", () => {
+    for (const stacked of [0, 1, 2, 3, 4]) {
+      const reward = CREATURE_BANKS.dragon_utopia.buildReward(stacked);
+      expect(reward).toEqual({
+        type: "SEQUENCE",
+        interactions: [
+          { type: "GAIN_RESOURCES", gold: 40 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
+        ]
+      });
+    }
   });
 
   // Pulls the GAIN_UNIT out of a unit bank's reward sequence (which now also
