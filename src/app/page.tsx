@@ -4897,7 +4897,7 @@ export default function Home() {
     setJoinPasswordEntry({ roomId, value: attempt });
   };
   // `.roomPasswordRow` keeps this gate VISIBLE while the in-game table controls
-  // are collapsed behind the "Table" trigger (globals.css excludes it from the
+  // are collapsed behind the "Menu" trigger (globals.css excludes it from the
   // collapse) — a locked-room joiner must be able to type the password without
   // first discovering a menu button.
   const roomPasswordPrompt = roomLockedForViewer ? (
@@ -4981,7 +4981,7 @@ export default function Home() {
           type="button"
         >
           <MenuIcon aria-hidden="true" size={14} />
-          <span>Table</span>
+          <span>Menu</span>
         </button>
       ) : null}
       {roomPasswordPrompt}
@@ -5883,6 +5883,17 @@ export default function Home() {
                     viewerPlayerId={viewerPlayerId}
                   />
                 ) : null}
+                {/* Compact positive-morale overflow spend box, anchored to the
+                    RIGHT of the Far-tile tray so it never covers the map. */}
+                {isSeated && !mapReadOnly && handMode === null && !forcedDiscard ? (
+                  <MoraleOverflowPrompt
+                    count={moraleOverflow}
+                    legalActions={legalActions}
+                    onDraw={(action) => submitAction(action)}
+                    onRedraw={() => setHandMode("morale-redraw")}
+                    variant="map"
+                  />
+                ) : null}
               </div>
             </div>
           </div>
@@ -6725,14 +6736,6 @@ export default function Home() {
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           {phoneUi ? (
             <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
-          ) : null}
-          {isSeated && handMode === null && !forcedDiscard ? (
-            <MoraleOverflowPrompt
-              count={moraleOverflow}
-              legalActions={legalActions}
-              onDraw={(action) => submitAction(action)}
-              onRedraw={() => setHandMode("morale-redraw")}
-            />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
           {pendingBattleTroopWarn ? (
