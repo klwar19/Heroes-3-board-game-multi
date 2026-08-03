@@ -10154,6 +10154,47 @@ export type VisitStep =
       type: "ELEMENTAL_CONFLUX";
     }
   | {
+      /**
+       * THE shared "recruit a Neutral Unit for its printed cost" menu — the ONE
+       * seam every such surface (Elemental Conflux, Portal of Summoning, Charlie
+       * and his Circus, the Den of Thieves / Mercenary Camp Events) builds its
+       * CHOOSE_ONE through, so Legion-voucher pricing, the discounted label and
+       * the inline "play a Legion piece now" offer can never diverge between
+       * them. Auto-resolving: it unshifts the real CHOOSE_ONE.
+       *
+       * Each candidate carries the surface's OWN recruit leaf (which charges the
+       * discounted cost and spends the voucher); `decline` is the surface's own
+       * bookkeeping (return the drawn cards, place the pool token, …).
+       */
+      type: "NEUTRAL_RECRUIT_MENU";
+      prompt: string;
+      /** Option verb, so each surface keeps its own printed wording ("Buy …"). */
+      verb?: string;
+      candidates: { unitDefId: string; steps: VisitStep[] }[];
+      decline: { label: string; steps: VisitStep[] };
+      /**
+       * With nothing affordable (even after a held Legion piece), resolve
+       * `decline.steps` straight away instead of prompting with a lone Decline.
+       * Matches each surface's pre-existing behaviour.
+       */
+      skipWhenEmpty?: boolean;
+    }
+  | {
+      /**
+       * Inline Legion play from inside a NEUTRAL_RECRUIT_MENU: discard the held
+       * Legion piece, bank its voucher for `unitDefId`, then RE-OPEN `menu` so
+       * the refreshed prices show and a second distinct piece can stack on top.
+       * This is the only way the discount is reachable at a surface whose visit
+       * blocks card plays (a field reached by MOVING — which wipes pre-banked
+       * vouchers — or an Event behind the round-start barrier).
+       */
+      type: "USE_LEGION_RECRUIT_DISCOUNT";
+      cardId: CardId;
+      amount: number;
+      unitDefId: string;
+      menu: VisitStep;
+    }
+  | {
       /** Elemental Conflux: recruit the chosen Elementals card for its cost. */
       type: "ELEMENTAL_RECRUIT_ONE";
       unitDefId: string;
@@ -13531,6 +13572,14 @@ export type PendingChoice =
         recruitable: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[];
         /** Oidana IV's gold discount, applied to the recruited unit's cost. */
         goldReduction?: number;
+        /**
+         * Inline Legion plays offered AFTER the recruit + "Recruit none" options
+         * (so those indices are unchanged): each discards that held Legion piece,
+         * banks its voucher for that drawn unit and RE-OPENS this choice at the
+         * reduced price, letting distinct pieces stack. Labels name the owner's
+         * PRIVATE hand cards, so `player-view` scrubs them for other seats.
+         */
+        legionPlays?: { cardId: CardId; amount: number; unitDefId: string }[];
       };
       /**
        * learning-level-up: the Learning play modes offered, index-aligned with

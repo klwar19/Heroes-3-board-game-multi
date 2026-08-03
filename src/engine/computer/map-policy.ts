@@ -1543,6 +1543,14 @@ function visitStepsUtility(
       case "RECRUIT_FACTION_UNIT":
         utility += army < 6 ? 28 : 12;
         break;
+      case "USE_LEGION_RECRUIT_DISCOUNT":
+        // Inline Legion play at a neutral-recruit menu. Deliberately scored BELOW
+        // a plain recruit (28/12): the option re-opens the same menu, so a higher
+        // score could make the AI cycle its whole hand of Legion pieces before
+        // buying. A computer seat therefore only takes it when the recruit itself
+        // is unaffordable at full price (the plain option is then absent).
+        utility += 10;
+        break;
       case "EVENT_REMOVE_FOR_SEARCH":
         // Value the searches already earned, but stop removing once the next
         // card would not cross another threshold.

@@ -23,6 +23,7 @@ import {
   farTilePlacementCenters,
   freeSpellBookActive,
   legionDiscountTargets,
+  legionPieceAlreadyBanked,
   playerHasPlaceableFarTile,
   reinforcementDiscountCostFor,
   reinforceCostFor,
@@ -3256,10 +3257,12 @@ function addOptionPlays(
     // sensible choice is the resource side, so the discount side is withheld
     // (this also guarantees the selection prompt is never opened empty).
     if (option.effect.type === "GAIN_RECRUIT_DISCOUNT") {
-      const alreadyBanked = houseRuleEnabled(state, "immediate-reinforcement-prompts")
-        ? player.recruitDiscounts?.some((voucher) => voucher.cardId === cardId) ?? false
-        : player.legionDiscountCardIdsUsed?.includes(cardId) ?? false;
-      if (alreadyBanked || legionDiscountTargets(state, playerId).length === 0) {
+      // Same ledger read the inline neutral-recruit Legion offer uses, so the two
+      // surfaces can never disagree about whether this piece is spent.
+      if (
+        legionPieceAlreadyBanked(state, playerId, cardId) ||
+        legionDiscountTargets(state, playerId).length === 0
+      ) {
         continue;
       }
     }

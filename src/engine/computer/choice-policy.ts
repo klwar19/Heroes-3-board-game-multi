@@ -655,6 +655,16 @@ function scorePositionOption(
   }
 
   if (context === "diplomacy-recruit") {
+    // The trailing inline Legion offers (2026-08-03) score BELOW decline: they
+    // re-open the same choice, so a competitive score could cycle the whole hand
+    // of Legion pieces, and every pre-existing option index keeps the score it
+    // had before they were added (the seeded single-player runs stay identical).
+    // A computer seat therefore never spends a Legion piece here — a documented
+    // limit, not an oversight.
+    const legionCount = choice?.type === "OPTION_CHOICE" ? choice.diplomacyRecruit?.legionPlays?.length ?? 0 : 0;
+    if (legionCount > 0 && optionIndex >= choice!.options.length - legionCount) {
+      return CHOICE_BASE + 2;
+    }
     // Free / cheap neutral recruit — take it.
     if (looksLikeDecline(optionLabel(choice, optionIndex))) {
       return CHOICE_BASE + 8;
