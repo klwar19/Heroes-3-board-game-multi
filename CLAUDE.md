@@ -2479,39 +2479,48 @@ Neither is a toggle — the previous behaviour was wrong.
   CONTROL, and "conserves the Neutral decks" — the table draw shrinks the piles
   by exactly its count while the minted party leaves them untouched and stays
   flagged, so neither mode can consume or CREATE a card).
-- **The Dragon Utopia's artifact reward is FIXED at Search (3) + two Search (5)
-  = exactly THREE Artifact cards** (user rule 2026-08-03, "Utopia VII field Is
-  still giving too much artifacts. Should be 3. First you take Search(3) and then
-  2 times Search(5) (search properly according to VI-VII tile)"). ONE source —
-  `DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS` = `[3, 5, 5]`
-  (`src/data/map/creature-banks.ts`) — feeds EVERY Utopia surface: the bank
-  token's `buildReward` (via `dragonUtopiaArtifactSearchInteractions`) and both Ⅶ
-  objective-field branches (via `queueDragonUtopiaArtifactSearches` in
-  adventure.ts). LEAD WITH THE LOSSES/CHANGES, all deliberate: (a) the bank card's
-  printed "**X times**, Search (5) the Artifact **or Spell** Deck" is gone in BOTH
-  halves — the count no longer scales with X = the Stacked defenders (which paid
-  1+X searches: 4 on Hard, **5 on Impossible** — the reported over-pay), and the
-  Spell-deck alternative is dropped because the rule names Artifact searches only;
-  (b) the hidden Grail/Utopia editor package used to pay **two Search (3)** (2
-  artifacts) and now pays 3/5/5 — the editor hint + the `polish-grail-utopia`
-  house-rule description were updated in lockstep; (c) a plain-mode Ⅶ Utopia
-  (conquest/grail, package off) used to take the shared Lvl-VII
-  `giveCreatureBankConsolation` (10 gold + a **hardcoded** `artifacts-relic`
-  Search (2), which bypassed the eligible-deck pick) and now keeps the 10 gold but
-  pays the same three FAMILY (`"artifacts"`) searches — that family routing is the
-  "search properly according to VI-VII tile" half: on a centre tile the deck pick
-  really offers Minor/Major/**Relic**. The GRAIL keeps the consolation unchanged.
-  Untouched: the gold each surface pays (40 bank / 10 plain / legacy 20 polish),
-  the Morale-or-Ability-token pick, the guard modes (`utopiaGuards` four vs
-  by-difficulty only pick the army), Dragon Hunt (the win is the reward) and
-  Dragon Conqueror (the capture is the reward — it still pays no artifacts, only
-  the opt-in `objectives.utopiaBonusSearch`), and that knob still appends its
-  EXTRA Search on top (default absent ⇒ exactly three). Pinned in
-  `dragon-utopia-artifact-reward.test.ts` (the real pipeline reveals 3/5/5 and the
-  winner ends with exactly +3 Artifact cards; CONTROLs: identical at every Stacked
-  count 0–4 and on Easy vs Impossible, the bank token, the plain branch's family
-  routing, both guard modes, the bonus knob, and the atomic Necromancy window's
-  `deferredReward` still paying it on Resolve and never before).
+- **The Ⅶ Dragon-Utopia FIELD pays a FIXED Search (3) + two Search (5) = exactly
+  THREE Artifact cards. The Creature-Bank Dragon Utopia TOKEN is UNCHANGED**
+  (user rule 2026-08-03, "Utopia VII field Is still giving too much artifacts.
+  Should be 3. First you take Search(3) and then 2 times Search(5) (search
+  properly according to VI-VII tile)" — scoped by an explicit follow-up veto: "I
+  ONLY SAID TO DO FOR VII, ESPECIALLY ONLY FOR POLISH RULE AND MAP DESIGN, NOT
+  CHANGE THE FUCKING CREATURE BANK"). Lead with the scope, because the two
+  surfaces now deliberately DISAGREE:
+  - **Ⅶ objective FIELD** — the map-designed / hidden Grail & Dragon Utopia
+    package, the `polish-grail-utopia` house rule, AND the plain conquest/grail Ⅶ
+    field: the fixed ladder `VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS` =
+    `[3, 5, 5]` queued by `queueDragonUtopiaArtifactSearches` (adventure.ts —
+    deliberately NOT in creature-banks.ts, so nothing implies the bank shares it).
+    Two behaviour changes here: the hidden/Polish package used to pay **two
+    Search (3)** (2 artifacts), and the plain branch used to take the shared
+    Lvl-VII `giveCreatureBankConsolation` (10 gold + a **hardcoded**
+    `artifacts-relic` Search (2), which bypassed the eligible-deck pick). Both now
+    pay three `"artifacts"`-FAMILY searches — that family routing IS the "search
+    properly according to VI-VII tile" half: on a centre tile the deck pick really
+    offers Minor/Major/**Relic**. Each search is pinned to the visiting hero+field
+    so a Secondary Hero's win still reads the Ⅵ–Ⅶ band. The **GRAIL** keeps the
+    consolation unchanged.
+  - **Creature-Bank `dragon_utopia` TOKEN** — the PRINTED card, untouched: 40 gold
+    + Search (3) + **X × CHOOSE_ONE(Search (5) Artifact | Search (5) Spell)**,
+    X = the number of Stacked defenders (incl. the Polish rolled bank size), so up
+    to five Artifacts on Impossible. That scaling and the Artifact-or-Spell choice
+    are the printed rule and stay.
+  Untouched everywhere: the gold per surface (40 bank / 10 plain / legacy 20
+  Polish), the Morale-or-Ability-token pick, the guard modes (`utopiaGuards` four
+  vs by-difficulty only pick the army), Dragon Hunt (the win is the reward) and
+  Dragon Conqueror (the capture is the reward — no artifacts, only the opt-in
+  `objectives.utopiaBonusSearch`, which still appends its EXTRA search on top of
+  the three; default absent ⇒ exactly three). Pinned in
+  `dragon-utopia-artifact-reward.test.ts`: the real pipeline reveals 3/5/5 on the
+  Ⅶ field and the winner ends with exactly +3 Artifact cards, with CONTROLs for
+  Easy-vs-Impossible sameness, the plain branch's family routing, both guard
+  modes, the bonus knob — plus TWO bank CONTROLs proving the ladder never leaks
+  there (the printed 1+X shape at every Stacked count 0–4, and an Impossible X=4
+  bank win through the atomic Necromancy deferral revealing 3/5/5/5/5 for **five**
+  Artifacts). The bank's own printed shape is also still pinned in
+  `src/data/map/creature-banks.test.ts` ("…plus one Artifact/Spell choice per
+  Stacked defender").
 - **Also in this batch:** `REVISIT_FIELD` finally has a human button (the
   `HeroActionsDock`), so a hero that starts its turn standing on a Monolith can
   travel without walking off and back — the hex tooltip promised "step on (or
