@@ -259,8 +259,10 @@ import {
   applyBreakFieldOptions,
   customGuardArmyDifficultyFromEntries,
   describeGuardArmyGrouped,
+  neutralUnitPoolForTier,
   resolveCustomGuardDraws,
   resolveLevelPackGuardDraws,
+  type ResolvedGuardDraw,
   randomTownCaptureReward,
   randomTownIncomeGold,
   grailDigMovementCost,
@@ -13669,6 +13671,63 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
   }
 
   return draws;
+}
+
+/**
+ * Resolve a designer {@link CustomGuardSpec} into a deterministic STARTING ARMY
+ * for one seat — a list of `{ unitDefId, side }` cards for a player's unit deck.
+ * Reuses the guard-army resolution so the exact-army, random-tier and level
+ * (Neutrals or Packs) arms field the SAME bodies a guard of that spec would;
+ * only the fight-time draw is mapped onto persistent army sides:
+ *   • faction Pack draw  → `pack`
+ *   • faction Few draw   → `few`
+ *   • Neutral (named / random-tier / faction-fallback) → `neutral`
+ * Every entry is re-validated to have the resolved side, so an unknown id can
+ * never mint a broken card. Used by single-player per-enemy deployment.
+ */
+export function resolveStartingArmyFromGuardSpec(
+  spec: CustomGuardSpec | undefined,
+  rng: { nextInt: (min: number, max: number) => number },
+  anime?: Parameters<typeof isPlayableFaction>[1]
+): { unitDefId: string; side: "few" | "pack" | "neutral" }[] {
+  if (!spec) return [];
+  const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, anime));
+  let draws: ResolvedGuardDraw[] = [];
+  if (spec.units && spec.units.length > 0) {
+    draws = resolveCustomGuardDraws(spec.units, rng, {
+      packFaction: spec.packFaction,
+      playableFactions: playable
+    });
+  } else if (spec.level) {
+    const level = Math.max(1, Math.min(7, Math.floor(spec.level)));
+    const composition = NEUTRAL_ARMY_TABLE.normal[level] ?? NEUTRAL_ARMY_TABLE.normal[1];
+    if (spec.levelArmy === "packs") {
+      draws = resolveLevelPackGuardDraws(composition, rng, {
+        packFaction: spec.packFaction,
+        playableFactions: playable
+      });
+    } else {
+      // Level-as-Neutrals: random Neutral bodies matching the table row counts.
+      for (const tier of ["bronze", "silver", "gold", "azure"] as const) {
+        const pool = neutralUnitPoolForTier(tier);
+        for (let index = 0; index < composition[tier]; index += 1) {
+          if (pool.length === 0) continue;
+          const unitDefId = pool[rng.nextInt(0, pool.length - 1)];
+          if (unitDefId) draws.push({ unitDefId, tier, bankGuard: true });
+        }
+      }
+    }
+  }
+  return draws
+    .map((draw) => ({
+      unitDefId: draw.unitDefId,
+      side: draw.factionPack
+        ? ("pack" as const)
+        : draw.factionFew
+          ? ("few" as const)
+          : ("neutral" as const)
+    }))
+    .filter((entry) => Boolean(getUnitSide(entry.unitDefId, entry.side)));
 }
 
 // ---------------------------------------------------------------------------

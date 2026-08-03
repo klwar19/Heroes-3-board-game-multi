@@ -98,6 +98,7 @@ import {
   UNIT_LEVELS,
   unitAbilities,
   armyUnitRankInfo,
+  mapForcedComputerFaction,
   unitExperienceActive,
   unitSideRuleOverrides,
   validateCustomMapPlan,
@@ -11234,10 +11235,30 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
         <small>Hand-pick each one’s town &amp; hero, roll one at random, or leave it on auto (picked at game start).</small>
       </div>
       {computerSeats.map((seat) => {
+        // A designed map may FORCE this enemy's town type — the seat is then
+        // locked (no pick/roll/clear); the engine picks the map's faction.
+        const forcedFactionId = mapForcedComputerFaction(state, seat.playerId);
+        const forcedFaction = forcedFactionId ? coreFactionDefinitions[forcedFactionId] : null;
         const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
         const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
         const expanded = openSeatId === seat.playerId;
         const picked = Boolean(seat.factionId || seat.heroDefId);
+        if (forcedFaction) {
+          return (
+            <div className="computerSeatPicker locked" key={seat.playerId} aria-label={`${seat.name} — town set by map`}>
+              <div className="computerSeatPickerHead">
+                <span className="computerSeatPickerName">{seat.name}</span>
+                <span className="computerSeatPickerPick">
+                  <Lock aria-hidden="true" size={13} />
+                  <span className="computerSeatPickerNames">
+                    <strong style={{ color: forcedFaction.color }}>{forcedFaction.name}</strong>
+                    <small>Town set by this map</small>
+                  </span>
+                </span>
+              </div>
+            </div>
+          );
+        }
         return (
           <div className="computerSeatPicker" key={seat.playerId} aria-label={`Set up ${seat.name}`}>
             <div className="computerSeatPickerHead">

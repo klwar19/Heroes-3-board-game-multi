@@ -97,6 +97,88 @@ function renderStatefulDesigner(initial: CustomMapTilePlan[]): {
   return { container, get: () => box.current };
 }
 
+describe("MapDesigner — per-enemy town type (single-player)", () => {
+  it("Enemy AI town-type dropdown writes singlePlayer.factionId and survives a war-chest edit", () => {
+    const { container, get } = renderStatefulDesigner([
+      { row: 10, col: 10, group: "starting", faceDown: false }
+    ]);
+    openTilePopover(container, 0);
+    // Mark the Town as Enemy AI.
+    let popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.click(within(popover).getByRole("button", { name: /Enemy AI/i }));
+
+    // The town-type dropdown now shows, defaulting to Random.
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    const select = within(popover).getByLabelText("Enemy AI town type") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    fireEvent.change(select, { target: { value: "rampart" } });
+    expect(get()[0].singlePlayer).toMatchObject({ role: "computer", factionId: "rampart" });
+
+    // A later war-chest edit must NOT wipe the forced town type (whole-object replace).
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    const gold = within(popover).getByLabelText("Gold bonus for this enemy AI") as HTMLInputElement;
+    fireEvent.change(gold, { target: { value: "4" } });
+    expect(get()[0].singlePlayer).toMatchObject({
+      role: "computer",
+      factionId: "rampart",
+      bonus: { gold: 4 }
+    });
+
+    // Selecting Random clears the forced faction again.
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.change(within(popover).getByLabelText("Enemy AI town type"), { target: { value: "" } });
+    expect(get()[0].singlePlayer?.factionId).toBeUndefined();
+    expect(get()[0].singlePlayer).toMatchObject({ role: "computer", bonus: { gold: 4 } });
+  });
+
+  it("Enemy AI custom starting army + veteran XP write singlePlayer.army and survive a war-chest edit", () => {
+    const { container, get } = renderStatefulDesigner([
+      { row: 10, col: 10, group: "starting", faceDown: false }
+    ]);
+    openTilePopover(container, 0);
+    let popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.click(within(popover).getByRole("button", { name: /Enemy AI/i }));
+
+    // Build an exact army for this AI, then add a body.
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.click(within(popover).getByRole("button", { name: "Exact army" }));
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.click(within(popover).getByRole("button", { name: /Random bronze creature/i }));
+    expect(get()[0].singlePlayer?.army).toEqual({ units: ["random:bronze"] });
+
+    // The veteran-XP input appears only once an army exists; setting it writes armyExperience.
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    const xp = within(popover).getByLabelText(
+      "Starting army veteran experience for this enemy AI"
+    ) as HTMLInputElement;
+    fireEvent.change(xp, { target: { value: "5" } });
+    expect(get()[0].singlePlayer).toMatchObject({
+      role: "computer",
+      army: { units: ["random:bronze"] },
+      armyExperience: 5
+    });
+
+    // A later war-chest edit must NOT wipe the custom army or its XP (whole-object replace).
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.change(within(popover).getByLabelText("Gold bonus for this enemy AI"), {
+      target: { value: "3" }
+    });
+    expect(get()[0].singlePlayer).toMatchObject({
+      role: "computer",
+      bonus: { gold: 3 },
+      army: { units: ["random:bronze"] },
+      armyExperience: 5
+    });
+
+    // Clearing the army back to Default drops both the army and its XP.
+    popover = container.querySelector(".designerPopover") as HTMLElement;
+    fireEvent.click(within(popover).getByRole("button", { name: "Default (faction units)" }));
+    expect(get()[0].singlePlayer?.army).toBeUndefined();
+    expect(get()[0].singlePlayer?.armyExperience).toBeUndefined();
+    expect(get()[0].singlePlayer).toMatchObject({ role: "computer", bonus: { gold: 3 } });
+  });
+});
+
 /** Rotation-0 footprint index of a board hex within a tile centred at `center`. */
 function footprintIndexOf(center: HexCoord, coord: HexCoord): number {
   return tileFootprint(center, 0).findIndex((cell) => cell.row === coord.row && cell.col === coord.col);

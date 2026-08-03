@@ -7246,8 +7246,12 @@ export type PlayerState = {
   army: ArmyUnitState[];
   /** WOG Santa Gremlin: Resource dice owed before the next conquered field visit. */
   pendingWogResourceDice?: number;
-  /** Scenario starting units, restored when the unit deck empties. */
-  startingArmy: { unitDefId: string; side: "few" | "pack" }[];
+  /**
+   * Scenario starting units, restored when the unit deck empties. `neutral` is
+   * permitted so a designer's per-enemy custom starting army (which may field
+   * Neutral-side cards) restocks with the same side it started with.
+   */
+  startingArmy: { unitDefId: string; side: "few" | "pack" | "neutral" }[];
   resources: {
     [key in ResourceKind]: number;
   };
@@ -12343,10 +12347,37 @@ export type CustomMapTilePlan = {
    *
    * A computer tile may add its own opening resource bonus on top of the map's
    * shared `computerStartingBonus`, allowing enemies on the same map to differ.
+   *
+   * A computer tile may also FORCE that enemy's town type via `factionId`: the
+   * matching solo computer seat is locked to that faction (its first hero) at
+   * setup instead of rolling a random one. Ignored for a `human` tile (the human
+   * always picks their own town). If the forced faction is unavailable (already
+   * taken by another seat, or not playable under the current mods) the seat
+   * falls back to a normal random pick, so a bad authored value never stalls.
    */
   singlePlayer?: {
     role: "human" | "computer";
     bonus?: { gold: number; buildingMaterials: number; valuables: number };
+    factionId?: FactionId;
+    /**
+     * A computer tile may FIELD a fully custom STARTING ARMY, authored with the
+     * same {@link CustomGuardSpec} vocabulary the designer guard editor uses: an
+     * exact army of Neutrals / faction Packs / faction Fews (random-tier slots
+     * too, honouring `packFaction`), or a Field-Difficulty level (as Neutrals or
+     * Packs). Resolved deterministically at setup and REPLACES this AI seat's
+     * default faction-tier starting units. Ignored for a `human` tile and outside
+     * single-player. Absent = the normal faction start. A spec that resolves to
+     * no valid body is ignored (the seat keeps its default), so a bad authored
+     * value never blanks out an army.
+     */
+    army?: CustomGuardSpec;
+    /**
+     * Veteran EXPERIENCE stamped on every card of {@link army} at setup (0..12).
+     * It only BITES when the Unit Experience optional rule is on for the game —
+     * with the rule off the field is a no-op fold (see the veterancy section) —
+     * so it is exactly "stack exp if the mod is on". Ignored without `army`.
+     */
+    armyExperience?: number;
   };
   /**
    * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
