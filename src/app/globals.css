@@ -5316,6 +5316,40 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   flex-basis: 100%;
 }
 
+/* Optional positive-Morale spend ("Morale: draw 1 / redraw cards") — a COMPACT
+   VERTICAL box anchored to the RIGHT of the Far-tile tray (232px at left:10px)
+   instead of a wide horizontal row in the hand banner. Clamped so it never
+   spills off a narrow (phone) map. */
+.mapMoraleSpend {
+  position: absolute;
+  top: 10px;
+  left: min(252px, calc(100% - 172px));
+  z-index: 7;
+  width: max-content;
+  max-width: 164px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(33, 25, 15, 0.92);
+  border: 1px solid rgba(255, 215, 106, 0.8);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.mapMoraleSpend strong {
+  font-size: 0.78rem;
+  color: #f0dcb8;
+  text-align: center;
+}
+
+.mapMoraleSpend .commandButton {
+  font-size: 0.78rem;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
 .commandButton.selected {
   outline: 2px solid #ffd76a;
 }
@@ -7320,49 +7354,6 @@ button.hbSlot:disabled { cursor: default; }
   display: flex;
   gap: 10px;
   justify-content: center;
-}
-
-/* Compact, non-blocking overflow box on the MAP: a tight vertical card anchored
-   to the RIGHT of the Far-tile tray (.farTileTray, 232px at left:10px) so the
-   mandatory spend never covers the map. */
-.moraleOverflowMap {
-  position: absolute;
-  top: 10px;
-  /* Right of the 232px Far-tile tray on desktop; clamped so it never spills off
-     a narrow (phone) map. */
-  left: min(252px, calc(100% - 176px));
-  z-index: 8;
-  width: max-content;
-  max-width: 168px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  padding: 8px 10px;
-  background: rgba(33, 25, 15, 0.94);
-  border: 1px solid rgba(255, 215, 106, 0.7);
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-  color: #f0dcb8;
-}
-
-.moraleOverflowMap strong {
-  font-size: 0.82rem;
-  line-height: 1.2;
-}
-
-.moraleOverflowMap p {
-  margin: 0;
-  font-size: 0.74rem;
-  color: #d8c39a;
-}
-
-.moraleOverflowMap .handButtons {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-  margin-top: 2px;
 }
 
 .combatMorale {

@@ -12,19 +12,12 @@ export function MoraleOverflowPrompt({
   count,
   legalActions,
   onDraw,
-  onRedraw,
-  variant = "modal"
+  onRedraw
 }: {
   count: number;
   legalActions: LegalAction[];
   onDraw: (action: Extract<GameAction, { type: "SPEND_MORALE" }>) => void;
   onRedraw: (action: Extract<GameAction, { type: "SPEND_MORALE" }>) => void;
-  /**
-   * "modal" (default): the full centered dialog used in combat. "map": a
-   * compact, non-blocking vertical box anchored to the right of the Far-tile
-   * tray, so the mandatory spend never covers the whole map.
-   */
-  variant?: "modal" | "map";
 }) {
   if (count <= 0) {
     return null;
@@ -45,31 +38,6 @@ export function MoraleOverflowPrompt({
     return null;
   }
 
-  const buttons = (
-    <div className="handButtons">
-      {draw ? (
-        <button className="commandButton primary" onClick={() => onDraw(draw)} type="button">
-          Draw a card
-        </button>
-      ) : null}
-      {redraw ? (
-        <button className="commandButton" onClick={() => onRedraw(redraw)} type="button">
-          Discard &amp; draw
-        </button>
-      ) : null}
-    </div>
-  );
-
-  if (variant === "map") {
-    return (
-      <div className="moraleOverflowMap" role="dialog" aria-label="Spend extra morale">
-        <strong>Morale maxed (+1)</strong>
-        <p>+{count} positive morale — spend it now.</p>
-        {buttons}
-      </div>
-    );
-  }
-
   return (
     <div className="moraleOverflowBackdrop" role="dialog" aria-modal="true" aria-label="Spend extra morale">
       <div className="moraleOverflowPopup">
@@ -77,7 +45,18 @@ export function MoraleOverflowPrompt({
         <p>
           You gained {count} more positive morale token{count === 1 ? "" : "s"}. It cannot be stored — spend it now.
         </p>
-        {buttons}
+        <div className="handButtons">
+          {draw ? (
+            <button className="commandButton primary" onClick={() => onDraw(draw)} type="button">
+              Draw a card
+            </button>
+          ) : null}
+          {redraw ? (
+            <button className="commandButton" onClick={() => onRedraw(redraw)} type="button">
+              Discard &amp; draw
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
