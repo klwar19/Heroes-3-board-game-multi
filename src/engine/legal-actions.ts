@@ -121,6 +121,7 @@ import {
   firstAidVolleyHeals,
   getPermanentCardIds,
   getPermanentSchoolBonus,
+  isLowestInitiativeEnemy,
   permanentCrackOpenGain,
   permanentSpellPowerBonus,
   playerCanUseFirstAidVolley,
@@ -144,7 +145,7 @@ import {
 } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
-import { getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
+import { defenderOnFortification, getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -4019,6 +4020,7 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
 }
 
 const FIRST_AID_ABILITY_CARD_ID = "ability.first_aid" as CardId;
+const ARTILLERY_ABILITY_CARD_ID = "ability.artillery" as CardId;
 
 /**
  * The First Aid ability card's BASIC heal played as an instant reaction the
@@ -4056,6 +4058,50 @@ export function firstAidCardHealReactions(state: GameState, playerId: PlayerId):
         type: "PLAY_REACTION",
         playerId,
         cardId: FIRST_AID_ABILITY_CARD_ID,
+        mode: "basic",
+        optionIndex: 0,
+        target: { type: "unit", unitId: unit.id }
+      })
+    );
+  }
+  return out;
+}
+
+/**
+ * Artillery (basic) as an instant REACTION: when the owner's unit is attacked,
+ * the owner may fire the ballista shot — 1 damage to the slowest enemy — before
+ * the exchange resolves (and before that unit's own counter-attack). Offered per
+ * tied lowest-initiative enemy, exactly like the on-turn play. Only the basic
+ * side (option 0) is a reaction; the expert side rides the war-machine Ballista.
+ * Mirrors `firstAidCardHealReactions`.
+ */
+export function artilleryCardReactions(state: GameState, playerId: PlayerId): LegalAction[] {
+  const combat = state.combat;
+  const player = state.players[playerId];
+  if (!combat || !player || isHandLockedInCombat(state, playerId)) {
+    return [];
+  }
+  if (!player.hand.includes(ARTILLERY_ABILITY_CARD_ID)) {
+    return [];
+  }
+  const card = cardLibrary[ARTILLERY_ABILITY_CARD_ID];
+  if (!card || card.implementationStatus !== "implemented") {
+    return [];
+  }
+
+  const out: LegalAction[] = [];
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId === playerId || !isUnitAlive(unit)) {
+      continue;
+    }
+    if (!isLowestInitiativeEnemy(state, playerId, unit)) {
+      continue;
+    }
+    out.push(
+      makeReactionAction(`${card.name}: shoot ${unit.name} (1 damage)`, {
+        type: "PLAY_REACTION",
+        playerId,
+        cardId: ARTILLERY_ABILITY_CARD_ID,
         mode: "basic",
         optionIndex: 0,
         target: { type: "unit", unitId: unit.id }
@@ -4570,6 +4616,11 @@ function addFortificationActions(actions: LegalAction[], state: GameState, playe
     const adjacentDemolisher =
       activeUnit.type !== "ranged" && isAdjacent(activeUnit.position, target.position);
     if (!adjacentDemolisher && !demolish) {
+      continue;
+    }
+    // A defender standing on the Gate shields it — it cannot be demolished while
+    // occupied, so do not offer the (no-op) shot.
+    if (defenderOnFortification(combat, siege, target.position)) {
       continue;
     }
 
@@ -7216,6 +7267,14 @@ export function getLegalReactionsForTrigger(
       if (heals.length > 0) {
         result[defenderId] = [...(result[defenderId] ?? []), ...heals];
       }
+      // Artillery (basic): the attacked unit's owner may fire the ballista shot
+      // at the slowest enemy before the exchange resolves (and before their own
+      // counter-attack). Trigger-free instant, so it is not caught by the
+      // variant loop above — offered explicitly here like the First Aid heal.
+      const artillery = artilleryCardReactions(state, defenderId);
+      if (artillery.length > 0) {
+        result[defenderId] = [...(result[defenderId] ?? []), ...artillery];
+      }
     }
 
     // WOG Commanders: the defend buffs (Hierophant's Shield, Ogre Leader's Stone
@@ -8745,12 +8804,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     if (magesFree || player.mageGuildBuiltRound !== state.round) {
       if (player.resources.gold >= cost) {
         actions.push({
-          label: `Buy spells (${cost} gold, Search ${baseSearchCount})`,
+          label: `${cost} gold: Buy spell — search (${baseSearchCount})`,
           action: { type: "SPELL_BOOK_ACTION", playerId }
         });
         if (polishSpellBookEnabled(state)) {
           actions.push({
-            label: `Buy Cast a Spell instead (${cost} gold)`,
+            label: `${cost} gold: Buy "Cast a Spell" instead`,
             action: { type: "SPELL_BOOK_ACTION", playerId, takeCastCard: true }
           });
         }
@@ -8763,7 +8822,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         const basicCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "basic"));
         if (player.resources.gold >= basicCost) {
           actions.push({
-            label: `Buy spells with Wisdom (${basicCost} gold, Search ${wisdomSearchCount("basic")})`,
+            label: `${basicCost} gold: Buy spell with Wisdom — search (${wisdomSearchCount("basic")})`,
             action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "basic" } }
           });
         }
@@ -8775,7 +8834,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         // Empowered Wisdom skips the crown but still pays the gold.
         if (canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
           actions.push({
-            label: `Buy spells with expert Wisdom (${expertCost} gold, Search ${wisdomSearchCount("expert")})`,
+            label: `${expertCost} gold: Buy spell with Wisdom expert — search (${wisdomSearchCount("expert")})`,
             action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "expert" } }
           });
         }
@@ -8796,7 +8855,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
     for (const candidate of rollCandidates) {
       const name = cardLibrary[candidate.cardId]?.name ?? candidate.cardId;
       actions.push({
-        label: `Rolling Spells: return ${name}${candidate.source === "used" ? " (used)" : ""}, pay 3 gold, Search 2`,
+        label: `3 gold: Roll spell — remove ${name}${candidate.source === "used" ? " (used)" : ""}, search (2)`,
         action: { type: "SPELL_BOOK_ACTION", playerId, rollSpell: candidate }
       });
     }

@@ -2652,6 +2652,66 @@ Two audited codex commits. Leading with what does NOT run / deliberate limits:
   combat-bonus reaction still OPENS its window as documented); and the branch's
   filtering `drawFromNeutralDeck` pop was reverted to the plain pull (above).
 
+## Gate shield · Artillery instant · Grail build button · Spell-Book labels (2026-08-03)
+
+Batch audited together with the Ⅵ/Ⅶ Quick-Combat cap (its own bullet in the
+Creature-Banks section) and the map-designer UX / morale-box commits already on
+main. Leading with the limits, then what runs (each engine claim
+mutation-checked).
+
+- **Gate shield (house rule, always on in a siege)**: a DEFENDING unit standing
+  on its own Gate SHIELDS it — the Gate cannot be destroyed while occupied.
+  ONE backstop guards every destruction path (`defenderOnFortification` at the
+  top of `destroyFortification`, siege.ts: Catapult/Cannon, melee demolish,
+  Earthquake, splash), plus offer-side filters so no dead button is shown: the
+  melee-demolish offer (`addFortificationActions`), the Catapult splash targets
+  (`splashTargets`) and the Cannon target list (`cannonTargetIds`) all skip an
+  occupied Gate — the unit standing there stays an ORDINARY target. Defenders
+  could always stop on the Gate ("not an Obstacle to the defending player");
+  the board now renders a unit standing there normally and offers the empty
+  Gate as a move target (`board.tsx`, presentation over the real MOVE_UNIT
+  offer). Walls are unaffected (nobody can stand on one; the Arrow Tower sits
+  at position −1). Pinned in `gate-shield.test.ts` (the real MOVE onto the
+  Gate, the destroy backstop, Catapult/Cannon/demolish filters, each with an
+  empty-Gate CONTROL).
+- **Artillery (basic) is an instant REACTION when your unit is attacked**: the
+  attacked side's owner may fire the ballista shot (1 effect damage to the
+  slowest enemy) into the open attack window, BEFORE the exchange — offered
+  per tied lowest-initiative enemy like the on-turn play
+  (`artilleryCardReactions`, a dedicated block beside the First Aid heal in
+  `getLegalReactionsForTrigger`; resolution re-validates the
+  lowest-initiative filter in `applyReactionPlayCore`). The expert side still
+  rides the war-machine Ballista only. Pinned in
+  `artillery-reaction.test.ts` (offer + no-card CONTROL, shot-lands-before-
+  the-hit event order).
+- **A unit REMOVED while its blow is parked no longer attacks from beyond the
+  grave** (audit fix found via the Artillery reaction — the first mechanism
+  that can kill an attacker inside its own attack window): an early guard in
+  `resolveAttackStackItem` drops the parked attack of a dead attacker,
+  mirroring the pre-emptive-retaliation cancel — a cancelled ordinary
+  retaliation hands the activation back to the original attacker, a cancelled
+  pre-emptive counter lands the parked original blow, and a Pack the shot
+  merely FLIPPED keeps fighting (still alive, the exchange proceeds with the
+  flipped side). Pinned in `artillery-reaction.test.ts` ("no attack from
+  beyond the grave", with a healthy-attacker CONTROL whose blow still lands).
+- **"Build the Grail" finally has a button** (`HeroActionsDock`): the engine
+  has ALWAYS offered `BUILD_GRAIL` (map-maker `grailBuildAt` / the hidden
+  Grail-Utopia package), but no component rendered it — the action was
+  unreachable in the UI. The dock button reads the legal-action offer only
+  (no re-derivation) and dispatches the exact payload
+  (`hero-actions-dock.test.tsx`, with a not-carrying CONTROL).
+- **Game-UI polish (presentation only)**: the Mage Guild / Spell Book shortcut
+  labels are restyled "<n> gold: Buy spell — search (n)" with inline gold-coin
+  / sparkle glyphs in the Spell Book modal — the engine label stays plain text
+  and is kept as the button's aria-label, so accessible names (and tests) are
+  unchanged; "Enable all Polish rules" now pulls in `split-decks` as its
+  companion (unblocking the dependent Random Artifacts in the same dispatch —
+  `game-options-tabs.test.tsx`); the helper-coach tips panel defaults to the
+  bottom-RIGHT corner instead of dead center; the siege Arrow-Tower panel
+  flows in-document below the board on every viewport (it used to float over
+  the right rail's inspect/command buttons at some layouts). jsdom cannot
+  compute CSS, so the arrow-tower/coach position halves are unpinned.
+
 ## The frozen-table class: "That action is not legal…" forever (2026-07-31)
 
 Live report (round 6, single player): the game "crashes" — every combat click
@@ -3229,16 +3289,31 @@ is NOT done:
   still skip pending waiters (test mode, deliberate); the reduced starting
   bonus's Minor-Artifact draw returns skipped non-minors under the pile without
   a reshuffle.
+- **NO Quick Combat on Ⅵ/Ⅶ fields — EVER, either rule** (user rule 2026-08-03,
+  fixing the recurring "there is STILL a Quick Combat option on VI/VII"
+  complaint). A centre-band guard (difficulty 6–7) is ALWAYS fought out: neither
+  the classic `level > difficulty` auto-win NOR the Polish strength shortcut
+  applies. ONE shared cap — `QUICK_COMBAT_MAX_FIELD_DIFFICULTY` = 5 /
+  `quickCombatAllowedAtDifficulty` in `src/engine/polish-quick-combat.ts` —
+  gates every seam: the classic branch and the Polish outcome in
+  `startNeutralEncounter`, plus the two display reads
+  (`heroMoveResolvesAsQuickCombat`, `polishQuickCombatFieldInfo` returns null on
+  Ⅵ/Ⅶ). Diplomacy's matching-level skip is untouched (it is a separate crown
+  card, not Quick Combat). Pinned in `polish-quick-combat.test.ts` (Ⅵ fights
+  rule-on AND rule-off, with a fully-covered Ⅴ CONTROL that still gets the
+  choice — proving it is the difficulty cap, not coverage, that forces the
+  fight; mutation-checked).
 - **Polish strength-based Quick Combat (`polish-quick-combat`, default OFF;
   tournament community sheet).** With it ON, Quick Combat at an ordinary guard
-  FIELD (VI–VII now eligible) keys off the ARMY, not hero level: the 5
+  FIELD (Ⅰ–Ⅴ only — Ⅵ/Ⅶ never qualify, above) keys off the ARMY, not hero
+  level: the 5
   strongest cards (bronze 1 / silver 2 / gold 3 / azure 4; faction Pack ×2;
   +0.5 per `polish-unit-stacks` layer; a recruited NEUTRAL card counts 1× its
   tier — a single group, and azure exists only as Neutrals, matching the
   sheet's flat "azure 4") must reach `2×FieldDifficulty + X` (easy 1 / normal
   2 / hard 3 / impossible 4; +1 whenever the Unit-Stacks machinery
   `armyUnitStacksActive` is on), equal-or-higher qualifying. Covered + no
-  Experience possible (level above the field; a level-7 hero at Ⅶ; Secondary
+  Experience possible (level above the field; Secondary
   Heroes never gain XP) → MANDATORY auto-resolved Quick Combat (same
   QUICK_COMBAT_WON path — Freelancer's Guild bounty, field visit, no XP, no
   Necromancy). Covered + Experience possible → a `polish-quick-combat`

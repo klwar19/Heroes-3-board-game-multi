@@ -11,10 +11,11 @@
 // spells turns a real paper leaf (3D flip + page foley).
 // ---------------------------------------------------------------------------
 
-import { useEffect, useState, type ComponentType, type CSSProperties } from "react";
+import { useEffect, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, Hourglass, Map as MapIcon, Sparkles, Swords, X, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
+import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { playSpellBookPageTurn } from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -25,6 +26,39 @@ import {
   type SpellTimingKind
 } from "@/engine";
 import { actionKey, titleCase } from "@/components/table/utils";
+
+/**
+ * Render a Mage Guild / Spell Book shortcut label ("<n> gold: …search (n)")
+ * with inline glyphs: the leading gold cost becomes a number + coin, and a
+ * "search (n)" clause gains a spell sparkle. Presentation only — the engine
+ * label stays plain, honest text and is kept as the button's aria-label, so the
+ * accessible name (and every test that queries by it) is unchanged. Mirrors the
+ * label→glyph substitution in victory-points-panel.tsx.
+ */
+function renderSpellBookLabel(label: string): ReactNode {
+  const goldMatch = /^(\d+) gold: (.*)$/.exec(label);
+  if (!goldMatch) {
+    return label;
+  }
+  const [, cost, rest] = goldMatch;
+  const searchMatch = /^(.*?)(search \(\d+\))(.*)$/i.exec(rest);
+  return (
+    <>
+      <strong>{cost}</strong>{" "}
+      <img alt="" aria-hidden className="resourceIcon small" src={assetUrl(RESOURCE_ICONS.gold)} />{" "}
+      {searchMatch ? (
+        <>
+          {searchMatch[1]}
+          {searchMatch[2]}{" "}
+          <Sparkles aria-hidden size={13} style={{ verticalAlign: "-2px" }} />
+          {searchMatch[3]}
+        </>
+      ) : (
+        rest
+      )}
+    </>
+  );
+}
 
 /**
  * Timing badge art per kind, keyed to the `spellTimingKind` derivation (data,
@@ -230,12 +264,13 @@ export function SpellBookModal({
               <strong>Mage Guild</strong>
               {purchaseShortcuts.map((legal) => (
                 <button
+                  aria-label={legal.label}
                   className="commandButton"
                   key={actionKey(legal.action)}
                   onClick={() => onShortcut(legal)}
                   type="button"
                 >
-                  {legal.label}
+                  {renderSpellBookLabel(legal.label)}
                 </button>
               ))}
             </div>
@@ -329,12 +364,13 @@ export function SpellBookModal({
                   <div className="spellBookRollShortcuts" aria-label={`Rolling Spells shortcuts for ${card.name}`}>
                     {rollShortcuts.map((legal) => (
                       <button
+                        aria-label={legal.label}
                         className="commandButton spellBookRollButton"
                         key={actionKey(legal.action)}
                         onClick={() => onShortcut(legal)}
                         type="button"
                       >
-                        {legal.label}
+                        {renderSpellBookLabel(legal.label)}
                       </button>
                     ))}
                   </div>

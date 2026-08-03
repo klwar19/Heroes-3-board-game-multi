@@ -336,7 +336,7 @@ describe("Astrologers — Mages (free Spell Book, no Mage Guild)", () => {
   it("legal-actions offers the free (0 gold) Spell Book without a Mage Guild while Mages is up", () => {
     const state = magesGame(2);
     const offer = getLegalActions(state, "p1").find((legal) => legal.action.type === "SPELL_BOOK_ACTION");
-    expect(offer?.label).toMatch(/Buy spells \(0 gold/);
+    expect(offer?.label).toMatch(/^0 gold: Buy spell/);
   });
 
   it("CONTROL: without Mages, using the Spell Book with no Mage Guild is rejected", () => {

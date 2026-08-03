@@ -9992,6 +9992,46 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // The attacker FELL while its blow was parked on the stack (an Artillery
+  // reaction can shoot the attacker — or the retaliator — down inside the open
+  // attack window): the blow is cancelled, mirroring the pre-emptive-retaliation
+  // rule ("unless the counter felled the attacker, in which case its blow is
+  // cancelled"). A Pack the same shot merely FLIPPED keeps fighting — it is
+  // still alive — so only a truly removed unit's attack is dropped.
+  if (!isUnitAlive(details.attacker)) {
+    stackItem.status = "resolved";
+    state.stack.pop();
+    // Release any held Knowledge/Mysticism recall on the dropped attack.
+    processDeferredSpellRecalls(state, stackItem);
+    if (finishCombatIfNeeded(state)) {
+      return;
+    }
+    if (details.isRetaliation) {
+      // A cancelled preemptive counter fired BEFORE the original attack, which
+      // is still parked beneath — land it now (its attacker was never shot: the
+      // Artillery reactor is that attacker's own controller).
+      if (stackItem.modifiers.isPreemptiveRetaliation) {
+        resolveTopStack(state, cards);
+        return;
+      }
+      // A cancelled ordinary retaliation still hands the activation back to the
+      // original attacker (the retaliation's target), as if it had resolved.
+      if (declareAfterRetaliationAbilityAttack(state, cards)) {
+        return;
+      }
+      if (combat.attackSequence?.attackerId === details.defender.id) {
+        combat.attackSequence = null;
+      }
+      concludeAttackerActivation(state, details.defender);
+      return;
+    }
+    if (combat.attackSequence?.attackerId === details.attacker.id) {
+      combat.attackSequence = null;
+    }
+    concludeAttackerActivation(state, details.attacker);
+    return;
+  }
+
   // Factory Bounty Hunters' Preemptive Shot: before this attack's blow lands,
   // spin off the defender's Retaliation Attack (once, and only for a fresh
   // player/AI attack — never a retaliation or a printed follow-up). This attack
@@ -13579,6 +13619,32 @@ function applyReactionPlayCore(
         });
       }
     }
+  }
+
+  // Artillery (basic) fired as an instant reaction (e.g. when the owner's unit
+  // is attacked): the slowest enemy takes `amount` "effect" damage — the same
+  // shot the Ballista makes. Mirrors the on-turn resolution in playCard;
+  // re-validated here so removing the offer's lowest-initiative filter is caught
+  // (a thrown error rolls the whole play back, card included).
+  if (effect.type === "DAMAGE_LOWEST_INITIATIVE_ENEMY" && state.combat && play.target?.type === "unit") {
+    const unit = state.combat.units[play.target.unitId];
+    if (!unit || !isUnitAlive(unit) || unit.controllerId === playerId) {
+      throw new Error("Artillery must hit a living enemy unit.");
+    }
+    if (!isLowestInitiativeEnemy(state, playerId, unit)) {
+      throw new Error("Artillery hits an enemy unit with the lowest initiative.");
+    }
+    unit.damage += effect.amount;
+    noteUnitDamagedForTokens(state, unit, effect.amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: playerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: effect.amount,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, unit);
+    finishCombatIfNeeded(state);
   }
 
   // Targ of the Rampaging Ogre (top side): "instead of discarding, put this card

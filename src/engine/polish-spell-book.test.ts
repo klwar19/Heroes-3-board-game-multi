@@ -708,7 +708,7 @@ describe("Polish Mage Guild", () => {
     town.buildings.push("castle.mage_guild");
 
     const legal = getLegalActions(state, "p1");
-    expect(legal.some((entry) => entry.label.includes("Search 3"))).toBe(true);
+    expect(legal.some((entry) => entry.label.includes("search (3)"))).toBe(true);
     const buyCast = legal.find(
       (entry) => entry.action.type === "SPELL_BOOK_ACTION" && entry.action.takeCastCard
     );

@@ -20,7 +20,8 @@ import {
   polishQuickCombatArmyStrength,
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
-  polishQuickCombatOutcome
+  polishQuickCombatOutcome,
+  quickCombatAllowedAtDifficulty
 } from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
@@ -5163,8 +5164,10 @@ export function startNeutralEncounter(
     // outcome "fight": the shortcut does not apply (the army is too weak) —
     // fall through to the Diplomacy check / normal guard combat below. The
     // classic level > difficulty auto-win deliberately does NOT apply here.
-  } else if (level > difficulty) {
+  } else if (quickCombatAllowedAtDifficulty(difficulty) && level > difficulty) {
     // Quick Combat: a hero whose level beats the field difficulty wins outright.
+    // NEVER on a Ⅵ/Ⅶ field (difficulty ≥ 6) — a level-7 hero cannot skip a Ⅵ
+    // guard; the centre-band fight is always fought out (user rule).
     resolveQuickCombatWin(state, hero, field, difficulty);
     return;
   }

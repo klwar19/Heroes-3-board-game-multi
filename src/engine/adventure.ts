@@ -119,6 +119,7 @@ import {
   polishQuickCombatEnabled,
   polishQuickCombatFieldStrength,
   polishQuickCombatOutcome,
+  quickCombatAllowedAtDifficulty,
   type PolishQuickCombatOutcome
 } from "./polish-quick-combat";
 import {
@@ -2264,6 +2265,12 @@ function heroMoveResolvesAsQuickCombat(state: GameState, hero: HeroState, field:
     return false;
   }
 
+  // Ⅵ/Ⅶ centre-band guards are never Quick Combat (user rule) — always the full
+  // fight the warning describes.
+  if (!quickCombatAllowedAtDifficulty(difficulty)) {
+    return false;
+  }
+
   const level = neutralBattleLevel(state, hero);
   if (polishQuickCombatEnabled(state)) {
     return (
@@ -3244,6 +3251,10 @@ export function polishQuickCombatFieldInfo(
   }
   const difficulty = field.difficulty ?? 0;
   if (difficulty <= 0 || !isFieldGuarded(field)) {
+    return null;
+  }
+  // No Quick-Combat readout on a Ⅵ/Ⅶ field — it is always a full fight (user rule).
+  if (!quickCombatAllowedAtDifficulty(difficulty)) {
     return null;
   }
   if (

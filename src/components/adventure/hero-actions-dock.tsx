@@ -10,6 +10,9 @@ import type { GameAction, LegalAction } from "@/engine";
 //   - HEAVEN_TRIBULATION (Anime Cultivation §5.6): brave the tribulation dice.
 //   - REVISIT_FIELD: activate the location under a stationary Hero, including a
 //     Monolith at the beginning of the turn.
+//   - BUILD_GRAIL: build the carried Grail token at a Town/Settlement the Hero
+//     controls (map-maker `grailBuildAt` / the hidden Grail-Utopia package). The
+//     engine offers this, but without a button here it was unreachable in the UI.
 //
 // Availability is READ from the legal-action list (never re-derived here), so a
 // button appears IFF `getLegalActions` currently offers that action to the
@@ -17,7 +20,7 @@ import type { GameAction, LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit";
+type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit" | "build";
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -40,6 +43,11 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "Revisit field",
     vi: "",
     title: "Activate the field under this Hero"
+  },
+  build: {
+    en: "Build the Grail",
+    vi: "",
+    title: "Build the carried Grail at this Town or Settlement you control"
   }
 };
 
@@ -53,6 +61,9 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   }
   if (action.type === "REVISIT_FIELD") {
     return "revisit";
+  }
+  if (action.type === "BUILD_GRAIL") {
+    return "build";
   }
   // Forced March is the only map-active grade skill: it uses USE_HERO_SKILL with
   // no unitId (the combat War Cry / reactions carry a unitId).
@@ -87,7 +98,7 @@ export function HeroActionsDock({
       {offers.map((offer) => {
         const label = HERO_MAP_ACTION_LABELS[offer.key];
         const reactKey =
-          offer.action.type === "REVISIT_FIELD"
+          offer.action.type === "REVISIT_FIELD" || offer.action.type === "BUILD_GRAIL"
             ? `${offer.key}:${offer.action.heroId}`
             : offer.key;
         return (
@@ -99,7 +110,7 @@ export function HeroActionsDock({
             type="button"
           >
             <span className="heroActionLabelEn">
-              {offer.key === "revisit" ? offer.legalLabel : label.en}
+              {offer.key === "revisit" || offer.key === "build" ? offer.legalLabel : label.en}
             </span>
             {label.vi ? <small className="heroActionLabelVi">{label.vi}</small> : null}
           </button>

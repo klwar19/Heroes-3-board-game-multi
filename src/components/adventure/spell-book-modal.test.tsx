@@ -81,11 +81,11 @@ describe("SpellBookModal — the openable Spell Book", () => {
 
   it("offers Mage Guild purchases and only the selected spell's Rolling Spells shortcut", () => {
     const buy = {
-      label: "Buy spells (5 gold, Search 3)",
+      label: "5 gold: Buy spell — search (3)",
       action: { type: "SPELL_BOOK_ACTION", playerId: "p1" }
     } as LegalAction;
     const rollHaste = {
-      label: "Rolling Spells: return Haste, pay 3 gold, Search 2",
+      label: "3 gold: Roll spell — remove Haste, search (2)",
       action: {
         type: "SPELL_BOOK_ACTION",
         playerId: "p1",
@@ -93,7 +93,7 @@ describe("SpellBookModal — the openable Spell Book", () => {
       }
     } as LegalAction;
     const rollSlow = {
-      label: "Rolling Spells: return Slow, pay 3 gold, Search 2",
+      label: "3 gold: Roll spell — remove Slow (used), search (2)",
       action: {
         type: "SPELL_BOOK_ACTION",
         playerId: "p1",
@@ -113,14 +113,14 @@ describe("SpellBookModal — the openable Spell Book", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /Buy spells \(5 gold/i }));
+    fireEvent.click(screen.getByRole("button", { name: /5 gold: Buy spell/i }));
     expect(onShortcut).toHaveBeenCalledWith(buy);
-    expect(screen.getByRole("button", { name: /return Haste/i })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /return Slow/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /remove Haste/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /remove Slow/i })).toBeNull();
 
     fireEvent.click(document.querySelectorAll<HTMLElement>(".spellBookIndexItem")[1]);
-    expect(screen.queryByRole("button", { name: /return Haste/i })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /return Slow/i }));
+    expect(screen.queryByRole("button", { name: /remove Haste/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /remove Slow/i }));
     expect(onShortcut).toHaveBeenCalledWith(rollSlow);
   });
 
