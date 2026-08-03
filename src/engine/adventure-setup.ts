@@ -3283,14 +3283,17 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     const popSubTile = (band?: "iv-v" | "vi-vii"): string | undefined =>
       band ? popSubBandTile(subterraneanPool, band) : subterraneanPool.pop();
 
-    // "One of these tiles" (map designer): a slot may name a LIST of candidate
-    // tile ids instead of one exact `tileDefId`. Resolve it to a single concrete
-    // id here — seeded by the slot's board position, so it is deterministic — and
-    // then treat it exactly like an exact pin everywhere below (pool removal,
-    // face-up placement, face-down secret pin). Memoized so every read of one
-    // slot returns the same pick. An exact `tileDefId` always wins; starting
-    // tiles (faction art) never draw from a list.
-    const oneOfPick = new Map<CustomMapTilePlan, string>();
+    // A random draw for a slot's OWN group / band — the shared fallback used
+    // whenever a slot's designed identity cannot be honoured (an exhausted
+    // filtered pool, or a "one of" list whose every candidate is already on the
+    // map). Popping keeps every pool strictly without-replacement.
+    const popGroupTile = (plan: CustomMapTilePlan): string | undefined =>
+      plan.group === "sea"
+        ? popSeaTile(plan.seaBand)
+        : plan.group === "subterranean"
+          ? popSubTile(plan.subBand)
+          : pools[plan.group]?.pop();
+
     const hiddenGrailUtopiaAssignments = balancedHiddenGrailUtopiaAssignments(customMap, seed);
     const effectiveViiPlan = (plan: CustomMapTilePlan): CustomMapTilePlan => {
       const designation = hiddenGrailUtopiaAssignments.get(plan);
@@ -3298,6 +3301,55 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         ? { ...plan, viiField: designation, viiFields: undefined, playerViiPick: undefined }
         : plan;
     };
+
+    // "One of these tiles" (map designer): a slot may name a LIST of candidate
+    // tile ids instead of one exact `tileDefId`. Every such slot is resolved to
+    // one concrete id ONCE, up front, and then treated exactly like an exact pin
+    // everywhere below (pool removal, face-up placement, face-down secret pin).
+    //
+    // THE PHYSICAL BOARD HAS ONE COPY OF EVERY TILE. Each list pick therefore
+    // skips ids already CLAIMED — by an explicit pin anywhere on the map or by an
+    // earlier list — because two slots sharing one list (the natural way to
+    // author a symmetric map) used to resolve independently and could both land
+    // on, say, C1, putting the same tile on the board twice (reported bug).
+    // The per-slot seed and the shuffled order are unchanged, so a map whose
+    // lists do not collide draws exactly the tiles it always did.
+    //
+    // DELIBERATE EXCEPTION: two slots that EXPLICITLY pin the same `tileDefId`
+    // keep doing so. That is an authored duplicate the designer can see and the
+    // plan validator has always allowed; silently rewriting one of them would
+    // change existing designed maps. Only RANDOM picks are de-duplicated here.
+    const claimedTileDefIds = new Set<string>();
+    for (const plan of customMap) {
+      if (plan.group !== "starting" && plan.tileDefId && allTileDefinitions[plan.tileDefId]) {
+        claimedTileDefIds.add(plan.tileDefId);
+      }
+    }
+    const oneOfPick = new Map<CustomMapTilePlan, string>();
+    for (const plan of customMap) {
+      if (plan.group === "starting" || plan.tileDefId) {
+        continue;
+      }
+      const choices = (plan.oneOfTileDefIds ?? []).filter((id) => Boolean(allTileDefinitions[id]));
+      if (choices.length === 0) {
+        continue;
+      }
+      const ordered = shuffleCards(choices, `${seed}#tilechoice#${plan.row}#${plan.col}`);
+      const pick = ordered.find((id) => !claimedTileDefIds.has(id));
+      if (!pick) {
+        // Graceful exhaustion: every candidate is already on the map, so this
+        // slot falls back to an ordinary random draw of its own group (a
+        // face-down slot keeps any secret-landmark filter it also carries).
+        // Never a duplicate.
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          message: `Map design: every tile in the “one of these tiles” list for the ${plan.group} slot at ${plan.row},${plan.col} is already placed elsewhere — that slot draws a random ${plan.group} tile instead (no tile can be placed twice).`
+        });
+        continue;
+      }
+      claimedTileDefIds.add(pick);
+      oneOfPick.set(plan, pick);
+    }
     const effectiveExactTileDefId = (plan: CustomMapTilePlan): string | undefined => {
       if (plan.tileDefId) {
         return plan.tileDefId;
@@ -3305,17 +3357,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       if (plan.group === "starting") {
         return undefined;
       }
-      const choices = (plan.oneOfTileDefIds ?? []).filter((id) => Boolean(allTileDefinitions[id]));
-      if (choices.length === 0) {
-        return undefined;
-      }
-      const cached = oneOfPick.get(plan);
-      if (cached) {
-        return cached;
-      }
-      const pick = shuffleCards(choices, `${seed}#tilechoice#${plan.row}#${plan.col}`)[0];
-      oneOfPick.set(plan, pick);
-      return pick;
+      return oneOfPick.get(plan);
     };
 
     // Designed tiles that pin a specific id (face-up OR exact secret face-down),
@@ -3434,13 +3476,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           }
           if (!tileDefId) {
             // Soft fallback only when the filtered pool is empty.
-            if (plan.group === "sea") {
-              tileDefId = popSeaTile(plan.seaBand);
-            } else if (plan.group === "subterranean") {
-              tileDefId = popSubTile(plan.subBand);
-            } else {
-              tileDefId = pools[plan.group]?.pop();
-            }
+            tileDefId = popGroupTile(plan);
             if (tileDefId) {
               const label =
                 allowedFeatures.length > 0
@@ -3501,7 +3537,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         }
       } else {
         // Face-up: an exact `tileDefId` or a resolved "one of" random pick.
-        const faceUpId = effectiveExactTileDefId(plan);
+        let faceUpId = effectiveExactTileDefId(plan);
+        if (!faceUpId && (plan.oneOfTileDefIds?.length ?? 0) > 0) {
+          // Its whole "one of" list is already on the map (note emitted above).
+          // A face-up slot must still SHOW a tile, so draw a random one of its
+          // own group rather than leaving a hole in the board.
+          faceUpId = popGroupTile(plan);
+        }
         if (faceUpId && allTileDefinitions[faceUpId]) {
           const tile = instantiateTile(adventure, faceUpId, center, plan.rotation ?? 0, false);
           applyDesignedBorders(tile, plan);
