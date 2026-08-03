@@ -896,25 +896,20 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(buildingsInput.max).toBe("15");
     expect(buildingsInput.value).toBe("10");
 
-    // control-towns / obelisks moved to Map objects — a fresh row's select does
-    // NOT offer them. Multi-Utopia victory remains a global counted condition.
+    // control-towns / obelisks moved to Map objects, and defeat-dragon-utopia
+    // moved into the 🐉 Dragon Utopia section's inline "instant win" knob — a
+    // fresh row's select offers NONE of them. flag-mines (an aggregate count of
+    // controlled Mines/Settlements) has no per-object/section home, so it STAYS.
     const freshSelect = screen.getByLabelText("Condition 1 kind");
-    for (const gone of ["obelisks", "control-towns"]) {
+    for (const gone of ["obelisks", "control-towns", "defeat-dragon-utopia"]) {
       expect(
         Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === gone),
         `${gone} not offered`
       ).toBe(false);
     }
-    // flag-mines (control X Mines/Settlements as an aggregate win condition) has
-    // no per-object equivalent, so it STAYS offered for new rows.
     expect(
       Array.from((freshSelect as HTMLSelectElement).options).some((option) => option.value === "flag-mines"),
       "flag-mines offered"
-    ).toBe(true);
-    expect(
-      Array.from((freshSelect as HTMLSelectElement).options).some(
-        (option) => option.value === "defeat-dragon-utopia"
-      )
     ).toBe(true);
 
     // A LEGACY obelisks condition (saved map) still renders its 1-4 band.
@@ -930,6 +925,97 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     // Its own kind joins the select so the row is editable, not stuck.
     const legacySelect = screen.getByLabelText("Condition 1 kind") as HTMLSelectElement;
     expect(Array.from(legacySelect.options).some((option) => option.value === "obelisks")).toBe(true);
+  });
+
+  it("Dragon Utopia section appears in conquest mode when a Utopia tile is placed (CONTROL: absent without it)", () => {
+    const { rerender } = render(
+      <MapPresetEditor
+        preset={{ victoryMode: "conquest" }}
+        tiles={[{ row: 9, col: 4, group: "center", faceDown: true, viiField: "dragon_utopia" }]}
+        onChange={() => {}}
+      />
+    );
+    expect(screen.getByRole("group", { name: "Dragon Utopia guards" })).toBeTruthy();
+    // CONTROL: conquest with no Utopia placed anywhere → the section stays hidden.
+    rerender(<MapPresetEditor preset={{ victoryMode: "conquest" }} tiles={[]} onChange={() => {}} />);
+    expect(screen.queryByRole("group", { name: "Dragon Utopia guards" })).toBeNull();
+  });
+
+  it("Dragon Utopia: the inline VP knob upserts/removes the defeat-dragon-utopia VP objective", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor
+        preset={{ victoryMode: "dragon-conqueror", victoryPoints: { enabled: true, victoryConditionVp: 3 } }}
+        onChange={onChange}
+      />
+    );
+    const group = screen.getByRole("group", { name: "Dragon Utopia defeat VP" });
+    fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "4" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        victoryPoints: expect.objectContaining({ objectives: [{ kind: "defeat-dragon-utopia", vp: 4 }] })
+      })
+    );
+    // Back to 0 removes the objective (VP block keeps only its base fields).
+    rerender(
+      <MapPresetEditor
+        preset={{
+          victoryMode: "dragon-conqueror",
+          victoryPoints: { enabled: true, victoryConditionVp: 3, objectives: [{ kind: "defeat-dragon-utopia", vp: 4 }] }
+        }}
+        onChange={onChange}
+      />
+    );
+    fireEvent.change(
+      within(screen.getByRole("group", { name: "Dragon Utopia defeat VP" })).getByRole("spinbutton"),
+      { target: { value: "0" } }
+    );
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ victoryPoints: { enabled: true, victoryConditionVp: 3 } })
+    );
+  });
+
+  it("Dragon Utopia: the inline instant-win knob upserts the defeat-dragon-utopia win condition", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={{ victoryMode: "dragon-conqueror" }} onChange={onChange} />);
+    const group = screen.getByRole("group", { name: "Dragon Utopia instant win" });
+    fireEvent.change(within(group).getByRole("spinbutton"), { target: { value: "2" } });
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "defeat-dragon-utopia", count: 2 }] })
+    );
+  });
+
+  it("VP objective dropdown drops defeat-dragon-utopia for new rows but a legacy row keeps it selectable", () => {
+    // Legacy row of the moved kind still renders + its kind stays selectable.
+    const { rerender } = render(
+      <MapPresetEditor
+        preset={{ victoryPoints: { enabled: true, victoryConditionVp: 3, objectives: [{ kind: "defeat-dragon-utopia", vp: 5 }] } }}
+        onChange={() => {}}
+      />
+    );
+    const legacy = screen.getByLabelText("Objective 1 kind") as HTMLSelectElement;
+    expect(legacy.value).toBe("defeat-dragon-utopia");
+    expect(Array.from(legacy.options).some((o) => o.value === "defeat-dragon-utopia")).toBe(true);
+    // CONTROL: a normal control-towns row's select does NOT offer the moved kind.
+    rerender(
+      <MapPresetEditor
+        preset={{ victoryPoints: { enabled: true, victoryConditionVp: 3, objectives: [{ kind: "control-towns", vp: 3, count: 2 }] } }}
+        onChange={() => {}}
+      />
+    );
+    const fresh = screen.getByLabelText("Objective 1 kind") as HTMLSelectElement;
+    expect(Array.from(fresh.options).some((o) => o.value === "defeat-dragon-utopia")).toBe(false);
+  });
+
+  it("under the hidden Grail/Utopia package, Grail shows only the honored knobs + the forced-values note", () => {
+    render(<MapPresetEditor preset={{ objectives: { hiddenGrailUtopia: true } }} onChange={() => {}} />);
+    // The two engine-honored knobs are shown…
+    expect(screen.getByRole("group", { name: "Grail Obelisks required" })).toBeTruthy();
+    expect(screen.getByText(/Hidden rules fix the rest/)).toBeTruthy();
+    // …and the full-editor-only knobs (fixed by the engine under hidden rules) are NOT.
+    expect(screen.queryByRole("group", { name: "Grail dig movement cost" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Grail possession VP" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Build Grail at" })).toBeNull();
   });
 
   it("Hero-defeat bounty: the gold field writes preset.heroDefeatGold", () => {

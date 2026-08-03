@@ -16111,10 +16111,56 @@ button.setupHubNavItem:hover {
   font-weight: 400;
 }
 
+/* Board-dominant 2-pane layout: the placeables/tools clusters live in a compact
+   sticky LEFT RAIL, and the board fills the rest of the width and is taller — so
+   the map (and drag-to-place onto it) is the main part of the page. Alerts and
+   the help walkthrough span the full width below. Below 900px it falls back to a
+   single-column stack (see the media query further down). */
 .mapDesigner {
   display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.designerRail {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  justify-items: start;
+  position: sticky;
+  top: 8px;
+  max-height: min(78vh, 860px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-width: 0;
+}
+/* Narrow rail → tile palette becomes a 2-column grid instead of a wide row. */
+.designerRail .designerPalette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.mapDesigner > .designerBoardWrap {
+  grid-column: 2;
+}
+.mapDesigner > .designerCavernAlert,
+.mapDesigner > .designerHelp {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 900px) {
+  .mapDesigner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .designerRail {
+    grid-column: 1;
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .mapDesigner > .designerBoardWrap {
+    grid-column: 1;
+    height: min(72vh, 760px);
+  }
 }
 
 /* Pre-board chrome grouped into three labeled clusters — Tiles /
@@ -17035,17 +17081,24 @@ img.cardBack {
   font-size: 13px;
 }
 
+/* The saved-map library moved into a popup (the "Maps" toolbar button), so the
+   designer page is a single full-width column and the board can dominate. */
 .designerLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 18px;
-  align-items: start;
+  display: block;
 }
 
-@media (max-width: 900px) {
-  .designerLayout {
-    grid-template-columns: 1fr;
-  }
+/* The saved-map library popup's small header row (New-map button + hint). */
+.designerLibraryTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.designerLibraryTop .optionHint {
+  flex: 1;
+  min-width: 160px;
 }
 
 .designerMain {
@@ -17844,7 +17897,7 @@ img.cardBack {
 .designerBoardWrap {
   position: relative;
   width: 100%;
-  height: min(72vh, 760px);
+  height: min(78vh, 860px);
   border-radius: 14px;
   border: 1px solid rgba(214, 178, 94, 0.35);
   background:
@@ -19451,6 +19504,53 @@ img.cardBack {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgba(240, 220, 184, 0.72);
+}
+
+/* Collapsible tile-inspector sections: a clickable header row with a chevron
+   and an "active" dot, so a long popover reads as a few tidy groups instead of
+   one endless scroll. Content stays in the DOM while collapsed. */
+.designerPopover .popoverGroup {
+  border-top: 1px solid rgba(214, 178, 94, 0.18);
+  margin-top: 2px;
+}
+.designerPopover .popoverGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 1px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(240, 220, 184, 0.78);
+}
+.designerPopover .popoverGroupHead::-webkit-details-marker {
+  display: none;
+}
+.designerPopover .popoverGroupTitle {
+  flex: 1;
+}
+.designerPopover .popoverGroupDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(214, 178, 94, 0.7);
+}
+.designerPopover .popoverGroupChevron {
+  transition: transform 0.15s ease;
+  color: rgba(240, 220, 184, 0.6);
+}
+.designerPopover .popoverGroup[open] .popoverGroupChevron {
+  transform: rotate(90deg);
+}
+.designerPopover .popoverGroupBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 4px;
 }
 
 .designerPopover .popoverHint {
