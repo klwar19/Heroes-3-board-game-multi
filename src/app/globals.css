@@ -5318,36 +5318,61 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 
 /* Optional positive-Morale spend ("Morale: draw 1 / redraw cards") — a COMPACT
    VERTICAL box anchored to the RIGHT of the Far-tile tray (232px at left:10px)
-   instead of a wide horizontal row in the hand banner. Clamped so it never
-   spills off a narrow (phone) map. */
+   instead of a wide horizontal row in the hand banner. Styled to match the
+   ornate hand-step banner (leather panel + HoMM3 button plates), clamped so it
+   never spills off a narrow (phone) map. */
 .mapMoraleSpend {
   position: absolute;
   top: 10px;
-  left: min(252px, calc(100% - 172px));
+  left: min(252px, calc(100% - 176px));
   z-index: 7;
   width: max-content;
-  max-width: 164px;
+  max-width: 172px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  padding: 6px 8px;
-  background: rgba(33, 25, 15, 0.92);
-  border: 1px solid rgba(255, 215, 106, 0.8);
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  gap: 6px;
+  padding: 9px 11px 11px;
+  border: 1px solid rgba(220, 175, 95, 0.55);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(48 36 21 / 96%), rgb(30 22 12 / 97%));
+  box-shadow:
+    0 4px 14px rgb(0 0 0 / 50%),
+    inset 0 0 0 1px rgb(255 215 106 / 12%);
 }
 
-.mapMoraleSpend strong {
-  font-size: 0.78rem;
-  color: #f0dcb8;
+.mapMoraleSpend > strong {
+  color: #ffd766;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 75%);
 }
 
-.mapMoraleSpend .commandButton {
-  font-size: 0.78rem;
-  padding: 4px 8px;
+/* HoMM3 dark button plate, matching the hand-step banner's plate skin. The
+   :not() chain outranks the app-wide flat-gold .commandButton so it reads as a
+   proper plate, not gold-on-gold. */
+.mapMoraleSpend .commandButton:not(.ghost) {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  color: #f2ddae;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.03em;
   white-space: nowrap;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 80%);
+  background:
+    url("/assets/ui/ornate/button-plate.webp") center / 100% 100% no-repeat,
+    linear-gradient(180deg, #3b2c18 0%, #201509 100%);
+  box-shadow: 0 3px 9px rgb(0 0 0 / 45%);
+}
+
+.mapMoraleSpend .commandButton:not(.ghost):hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 .commandButton.selected {
