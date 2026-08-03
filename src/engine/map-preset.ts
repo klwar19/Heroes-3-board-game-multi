@@ -2345,7 +2345,7 @@ export function describeObeliskBonus(bonus: CustomMapObeliskBonus): string {
     case "search":
       return `Search(${bonus.count}) ${bonus.deck}`;
     case "ability_token":
-      return "Ability token (Search 1 Ability)";
+      return "Ability Empower token";
     case "resources":
       return `+${formatPresetResources(bonus)}`;
     case "movement":
@@ -3297,7 +3297,7 @@ export const MAP_PRESET_OBELISK_ROLE_OPTIONS: {
 export const MAP_PRESET_OBELISK_BONUS_KINDS: { id: CustomMapObeliskBonus["kind"]; label: string }[] = [
   { id: "morale", label: "+1 morale" },
   { id: "search", label: "Search a deck" },
-  { id: "ability_token", label: "Ability token" },
+  { id: "ability_token", label: "Ability Empower token" },
   { id: "resources", label: "Resources" },
   { id: "movement", label: "Movement" },
   { id: "experience", label: "Experience" },

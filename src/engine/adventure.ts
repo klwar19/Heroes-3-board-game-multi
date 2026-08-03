@@ -5490,7 +5490,9 @@ function obeliskBonusVisitSteps(bonus: CustomMapObeliskBonus): VisitStep[] {
     case "search":
       return [{ type: "SEARCH_SHARED_DECK", deckId: bonus.deck, count: bonus.count }];
     case "ability_token":
-      return [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }];
+      // Grant an Ability Empower token (respects its own max-1 / auto-use
+      // handling). NOT a deck Search — this is the "Empowered Ability" reward.
+      return [{ type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true }];
     case "resources":
       return [
         {

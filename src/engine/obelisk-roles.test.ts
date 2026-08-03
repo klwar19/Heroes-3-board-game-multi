@@ -287,6 +287,27 @@ describe("Obelisk role — bonus", () => {
     expect(state.pendingChoice).toBeTruthy();
   });
 
+  it("ability_token bonus grants an Ability Empower token (NOT a deck Search)", () => {
+    const state = makeGame();
+    setObeliskRole(state, { role: "bonus", bonus: { kind: "ability_token" } });
+    injectField(state, O1, "obelisk");
+    const hero = parkHero(state, "p1", O1);
+    expect(state.players.p1.abilityEmpowerToken ?? 0).toBe(0);
+
+    beginFieldVisit(state, hero.id, O1, false);
+
+    // Observable outcome: an Ability Empower token (the old wiring granted none —
+    // it opened an Ability-deck Search instead), and no such Search is queued.
+    expect(state.players.p1.abilityEmpowerToken ?? 0).toBe(1);
+    expect(
+      state.adventure!.rewardQueue.some(
+        (reward) => reward.kind === "shared-deck-search" && reward.deckId === "abilities"
+      )
+    ).toBe(false);
+    // The editor label reads the reward, not the removed deck Search.
+    expect(describeObeliskBonus({ kind: "ability_token" })).toBe("Ability Empower token");
+  });
+
   it("resources bonus grants exactly the designed resources", () => {
     const state = makeGame();
     setObeliskRole(state, {

@@ -7324,15 +7324,20 @@ button.hbSlot:disabled { cursor: default; }
 
 .combatMorale {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
   margin-top: 6px;
 }
 
+/* Compact vertical stack: the morale/ability-token buttons sit in a tight
+   left-aligned column (content width) instead of a wide centered row. */
 .combatMorale .handButtons {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  flex-wrap: nowrap;
 }
 
 .moraleRedrawCards {
@@ -32217,14 +32222,15 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     min-width: 0;
   }
 
-  /* Docked chat sits in the map's classic bottom-left corner (the MMO chat
-     spot): anchored to the rail's left edge (≈ screen edge) and kept JUST above
-     the hand tray so hand cards stay clickable. Its lower-left may overlap the
-     rail's lower (usually empty) area — accepted for the corner placement.
-     Combat screens (no rail) keep the base corner. */
+  /* Docked chat sits in the map's true bottom-left corner (the MMO chat spot):
+     anchored to the rail's left edge (≈ screen edge) and dropped to the corner
+     itself. The collapsed chat button (its default state) sits in the corner;
+     an OPEN panel overlaps the hand tray's left deck box (chat is z 200, over
+     the tray's 48) — accepted, consistent with the chat-open-takes-priority
+     band rule below. Combat screens (no rail) keep the base corner. */
   .adventureRoot:not(.phoneMode) .chatDock {
     left: var(--desktop-edge);
-    bottom: calc(var(--desktop-hand-height) + 8px);
+    bottom: 16px;
   }
 
   /* While a fly-out board (hero / unit deck / commander) is open, lift the

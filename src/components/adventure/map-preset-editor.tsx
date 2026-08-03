@@ -3291,7 +3291,11 @@ function ObeliskBonusFields({
     );
   }
   if (bonus.kind === "ability_token") {
-    return <small className="mapPresetHint">Each visitor Searches (1) the Ability deck (Ability token).</small>;
+    return (
+      <small className="mapPresetHint">
+        Each visitor gains an Ability Empower token (empowers one hand Ability — its Expert side stays crown-free).
+      </small>
+    );
   }
   // morale: a fixed single positive token — nothing to configure.
   return <small className="mapPresetHint">Each visitor gains a single positive morale token.</small>;

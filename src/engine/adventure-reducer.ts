@@ -5368,7 +5368,13 @@ function beginNeutralCombatPlacement(
     difficulty,
     hasAzure: false,
     ...(bankId ? { bankId } : {}),
-    ...(bankId || field.location === "dragon_utopia" ? { bankFormation: true } : {}),
+    // A Dragon Utopia deploys in bank-corner formation in the classic modes
+    // (where it IS a creature bank). Under the Grail & Dragon Utopia field
+    // rules a Utopia is a NORMAL Level-VII field fight (opposing rows), like
+    // its sibling Grail — never bank corners.
+    ...(bankId || (field.location === "dragon_utopia" && !grailUtopiaFieldRulesEnabled(state))
+      ? { bankFormation: true }
+      : {}),
     ...(options?.unlimitedRounds ? { unlimitedRounds: true } : {}),
     ...(options?.waveAssault ? { waveAssault: options.waveAssault } : {}),
     ...(options?.raidBossId ? { raidBossId: options.raidBossId } : {}),

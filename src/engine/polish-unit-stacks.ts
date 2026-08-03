@@ -28,10 +28,13 @@ export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "
 }
 
 /**
- * Cost of one Stack in gold only:
- * - Pack: Pack printed gold + tier surcharge
- * - Neutral: Neutral printed gold + same surcharge
- * Other resources, recruit discounts, and substitutions never apply.
+ * Cost of one Stack:
+ * - Pack: Pack printed gold + tier gold surcharge, plus the Pack's printed valuables
+ * - Neutral: Neutral printed gold + same surcharge, plus the Neutral's printed valuables
+ * The valuables fee is exactly the side's printed valuables — the same valuables
+ * paid to reinforce that unit Few→Pack (a Pack that costs no valuables adds none).
+ * Building materials, recruit discounts, and Freelancer's Guild gold substitution
+ * never apply.
  */
 export function polishUnitStackCost(
   unitDefId: string,
@@ -50,8 +53,13 @@ export function polishUnitStackCost(
   if (!printed) {
     return null;
   }
-  // Neutrals and packs always pay gold + surcharge (0 printed gold still pays the tier fee).
-  return { gold: (printed.cost.gold ?? 0) + rule.goldSurcharge };
+  // Gold: printed gold + the tier surcharge (0 printed gold still pays the fee).
+  // Valuables: the side's printed valuables — the same fee as a Few→Pack reinforce.
+  const valuables = printed.cost.valuables ?? 0;
+  return {
+    gold: (printed.cost.gold ?? 0) + rule.goldSurcharge,
+    ...(valuables > 0 ? { valuables } : {})
+  };
 }
 
 /**

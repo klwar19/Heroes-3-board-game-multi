@@ -1188,7 +1188,7 @@ export function ReactionTray({
                   {selectedOrder}
                 </span>
               ) : null}
-              <ZoomButton label={`Read ${cardName(tile.cardId)}`} onZoom={() => zoomCard(tile.cardId)} />
+              <ZoomButton label={`Read ${cardName(tile.cardId)}`} onZoom={() => zoomCard(tile.cardId, empowered)} />
               <div className="trayTileBody">
                 <strong>
                   {cardName(tile.cardId)}

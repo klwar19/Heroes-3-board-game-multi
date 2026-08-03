@@ -106,4 +106,14 @@ describe("zoom — empowered cue on the read view", () => {
     expect(cardZoomContent("stat.power.empowered").empowered).toBe(true);
     expect(cardZoomContent("stat.power").empowered).toBe(false);
   });
+
+  it("marks an empowered ABILITY only when the owner's flag is threaded in", () => {
+    // An empowered ability is per-owner, so the zoom relies on the caller
+    // passing the flag. Without it the glow was lost in the zoom (the bug).
+    expect(cardZoomContent("ability.estates", true).empowered).toBe(true);
+    // CONTROL: the same ability with no flag is not intrinsically empowered.
+    expect(cardZoomContent("ability.estates").empowered).toBe(false);
+    // A Statistic stays intrinsic whether or not a flag is passed.
+    expect(cardZoomContent("stat.power.empowered", false).empowered).toBe(true);
+  });
 });

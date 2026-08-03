@@ -51,12 +51,22 @@ function addCitadel(state: GameState): void {
 const griffin = { id: "stack_griffins", unitDefId: "castle.griffins", side: "pack" as const };
 
 describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
-  it("uses Pack gold + tier-gold cost and the printed bronze/silver/gold 3/2/1 caps", () => {
-    expect(polishUnitStackCost("rampart.centaurs"), "Centaur: 3 Pack gold + tier 1").toEqual({ gold: 4 });
+  it("uses Pack gold + tier-gold cost plus the Pack's printed valuables (the Few→Pack fee)", () => {
+    // Valuables = the side's printed valuables (same as a Few→Pack reinforce):
+    // a Pack that prints no valuables adds none; a Gold Dragon Pack prints 2.
+    expect(polishUnitStackCost("rampart.centaurs"), "Centaur: 3 Pack gold + tier 1, no valuables").toEqual({
+      gold: 4
+    });
     expect(polishUnitStackCost("castle.griffins")).toEqual({ gold: 7 });
     expect(polishUnitStackCost("castle.crusaders")).toEqual({ gold: 12 });
-    expect(polishUnitStackCost("rampart.gold_dragons"), "Gold Dragon: 30 Pack gold + tier 3").toEqual({ gold: 33 });
-    expect(polishUnitStackCost("castle.archangels"), "non-gold Pack resources are not charged").toEqual({ gold: 33 });
+    expect(
+      polishUnitStackCost("rampart.gold_dragons"),
+      "Gold Dragon: 30 Pack gold + tier 3, + the Pack's 2 valuables"
+    ).toEqual({ gold: 33, valuables: 2 });
+    expect(
+      polishUnitStackCost("castle.archangels"),
+      "Archangel: 30 Pack gold + tier 3, + the Pack's 2 valuables"
+    ).toEqual({ gold: 33, valuables: 2 });
     expect(polishUnitStackCap("castle.griffins")).toBe(3);
     expect(polishUnitStackCap("castle.crusaders")).toBe(2);
     expect(polishUnitStackCap("castle.archangels")).toBe(1);
@@ -83,9 +93,30 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     });
 
     expect(state.players.p1.army[0].stacks).toBe(2);
+    // Two bronze Griffin Stacks: 2 × 7 gold (the Griffin Pack prints no valuables).
     expect(state.players.p1.resources.gold).toBe(beforeGold - 14);
     expect(state.players.p1.townTokens.population, "the normal multi-purchase window stays open").toBe(true);
     expect(state.eventLog.filter((event) => event.type === "ARMY_STACK_PURCHASED")).toHaveLength(2);
+  });
+
+  it("charges the Pack's printed valuables (the Few→Pack fee) in real valuables", () => {
+    let state = makeState();
+    addCitadel(state);
+    const dragon = { id: "stack_gd", unitDefId: "rampart.gold_dragons", side: "pack" as const };
+    state.players.p1.army = [{ ...dragon }];
+    const beforeGold = state.players.p1.resources.gold;
+    const beforeValuables = state.players.p1.resources.valuables;
+
+    state = applyOk(state, {
+      type: "POPULATION_ACTION",
+      playerId: "p1",
+      purchases: [{ kind: "stack", unitDefId: dragon.unitDefId, armyUnitId: dragon.id }]
+    });
+
+    // Gold Dragon Pack: 30 gold + 2 valuables → one Stack = 33 gold + 2 valuables.
+    expect(state.players.p1.army[0].stacks).toBe(1);
+    expect(state.players.p1.resources.gold).toBe(beforeGold - 33);
+    expect(state.players.p1.resources.valuables).toBe(beforeValuables - 2);
   });
 
   it("enforces the cap across a batch and leaves state unchanged on rejection", () => {
@@ -142,7 +173,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
   });
 
   it("lets recruited Neutrals buy Stacks using neutral gold + army caps (bronze 3 / silver 2 / gold 1)", () => {
-    // CONTROL: Pack griffin cost/cap unchanged (gold 6 + bronze 1 = 7; cap 3).
+    // CONTROL: Pack griffin cost/cap unchanged (gold 6 + bronze 1 = 7, no valuables; cap 3).
     expect(polishUnitStackCost("castle.griffins", "pack")).toEqual({ gold: 7 });
     expect(polishUnitStackCap("castle.griffins", "pack")).toBe(3);
 
@@ -157,7 +188,7 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(polishUnitStackCap("neutral.griffins", "neutral")).toBe(3);
     expect(polishArmyUnitCanBuyStack(neutralGriffin)).toBe(true);
 
-    // Gold Neutral (Nagas): human cap is 1.
+    // Gold Neutral (Nagas): human cap is 1. Nagas print no valuables.
     expect(polishUnitStackCap("neutral.nagas", "neutral")).toBe(1);
     expect(polishUnitStackCost("neutral.nagas", "neutral")).toEqual({ gold: 16 + 3 });
 
