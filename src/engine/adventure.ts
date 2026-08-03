@@ -14403,6 +14403,11 @@ export function refreshRoundTokens(state: GameState): void {
  * this round and then moves a hero. Moving with nothing bought yet leaves the
  * window open — the player may still recruit/reinforce later, even on another
  * player's turn. Call this from every site that relocates a hero on the map.
+ *
+ * The lock is therefore ORDER-SENSITIVE, and the PvP pre-battle prep window is
+ * the one place a purchase lands on the wrong side of it (the attacker has
+ * already moved, the defender has not moved at all) — so `populationAction`
+ * commits the window itself when a purchase is made with a combat open.
  */
 export function commitPopulationOnMove(state: GameState, controllerId: PlayerId): void {
   const owner = state.players[controllerId];

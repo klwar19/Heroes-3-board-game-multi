@@ -12423,6 +12423,21 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   // the movement lock — the next time one of this player's heroes moves, the
   // Population window closes (see commitPopulationOnMove).
   player.populationPurchasedThisRound = true;
+  // …with ONE exception: a purchase made inside the PvP pre-battle preparation
+  // window commits the Population window AT ONCE. The movement lock cannot close
+  // it there, because the purchase lands on the wrong side of the move — the
+  // ATTACKER already walked onto the enemy before buying (commitPopulationOnMove
+  // has been and gone, having seen no purchase yet) and the DEFENDER is dragged
+  // into the fight on someone else's turn without moving at all. Without this the
+  // round's Population action leaked PAST the battle and stayed spendable (the
+  // reported "I recruited right before the battle and still had the token" bug).
+  // Combat is the definitive end of shopping: the hero is in a battle, not at
+  // home in its town. The combat guard above already restricts a purchase with
+  // `state.combat` set to a prep-window participant, so no other window can
+  // reach this. See population-token-combat-prep.test.ts.
+  if (state.combat) {
+    player.townTokens.population = false;
+  }
 
   for (let index = 0; index < action.purchases.length; index += 1) {
     const purchase = action.purchases[index];

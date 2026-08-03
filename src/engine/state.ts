@@ -7266,6 +7266,12 @@ export type PlayerState = {
    * flips off for the rest of the round. Moving before any purchase leaves the
    * window open (you may still buy later, even on an opponent's turn). Reset by
    * refreshRoundTokens.
+   *
+   * EXCEPTION: a purchase made inside the PvP pre-battle preparation window
+   * spends the Population token immediately (`populationAction`), because the
+   * move-lock cannot close it there — the attacker moved BEFORE buying and the
+   * defender never moved at all — so the round's Population action used to leak
+   * past the battle.
    */
   populationPurchasedThisRound?: boolean;
   /** Round number the Mage Guild was built (token unusable that round). */
