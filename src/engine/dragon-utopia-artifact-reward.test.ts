@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CREATURE_BANKS, DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS } from "@/data/map/creature-banks";
+import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { beginFieldVisit, getMainHero, grantCreatureBankReward } from "./adventure";
 import { finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
@@ -12,16 +12,20 @@ import type {
 } from "./state";
 
 // ---------------------------------------------------------------------------
-// Dragon Utopia artifact reward (USER RULE 2026-08-03, reported in live play:
-// "Utopia VII field Is still giving too much artifacts. Should be 3. First you
-// take Search(3) and then 2 times Search(5) (search properly according to VI-VII
-// tile)").
+// Ⅶ Dragon-Utopia FIELD artifact reward (USER RULE 2026-08-03, reported in live
+// play: "Utopia VII field Is still giving too much artifacts. Should be 3. First
+// you take Search(3) and then 2 times Search(5) (search properly according to
+// VI-VII tile)").
 //
-// The reward is now FIXED at three Artifact-deck Searches — 3, then 5, then 5 —
-// on EVERY Utopia surface (the Ⅶ objective field with and without the hidden
-// Grail/Utopia field-rules package, and the Creature-Bank Dragon Utopia token).
-// It no longer multiplies the Search (5) by X = the number of Stacked defenders,
-// which paid up to five Artifacts on Impossible.
+// SCOPE — the rule covers the Ⅶ OBJECTIVE FIELD only: the map-designed / hidden
+// Grail & Dragon Utopia package, the `polish-grail-utopia` house rule, and the
+// plain conquest/grail Ⅶ field. Those pay a FIXED ladder of three Artifact-deck
+// Searches (3, then 5, then 5) = exactly three Artifact cards.
+//
+// The Creature-Bank `dragon_utopia` TOKEN is DELIBERATELY UNTOUCHED and keeps its
+// printed card: 40 gold + Search (3) + X × the "Search (5) the Artifact or Spell
+// Deck" choice, X = the number of Stacked defenders. The bank test below is the
+// CONTROL proving the Ⅶ ladder never leaks onto it.
 //
 // Every test asserts an OBSERVABLE outcome — the reveal counts the real Search
 // pipeline opens and how many Artifact cards the winner ends up owning — with a
@@ -100,7 +104,19 @@ function driveSearches(state: GameState): DriveResult {
   pumpAdventureQueues(state);
   for (let guard = 0; guard < 60; guard += 1) {
     const choice = state.pendingChoice;
-    if (!choice) break;
+    if (!choice) {
+      // A visit-step CHOOSE_ONE (the bank's printed "Artifact or Spell" Extra)
+      // is answered through RESOLVE_VISIT_STEP, not a pendingChoice. Always take
+      // the Artifact arm so the artifact count is the observable.
+      const visitStep = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Artifact/i.test(legal.label)
+      );
+      if (!visitStep) break;
+      const next = applyAction(state, visitStep.action);
+      expect(next.errors.map((error) => error.message).join("; ")).toBe("");
+      Object.assign(state, next.state);
+      continue;
+    }
     if (choice.type === "DECK_SEARCH") {
       revealCounts.push(choice.revealedCardIds.length);
       const next = applyAction(state, {
@@ -138,7 +154,7 @@ function queuedArtifactSearchCounts(state: GameState): number[] {
     .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0));
 }
 
-describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", () => {
+describe("Ⅶ Dragon-Utopia FIELD — the artifact reward is fixed at Search 3 / 5 / 5", () => {
   it("a won Ⅶ Utopia field opens exactly three Searches (3, 5, 5) and the winner keeps exactly 3 Artifacts", () => {
     const state = utopiaCentreMap("utopia-reward-3");
     const hero = getMainHero(state, "p1")!;
@@ -165,25 +181,9 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
     }
   });
 
-  it("CONTROL: the reward does NOT scale with the Stacked count / scenario difficulty", () => {
-    // Bank data: X is ignored — every Stacked count builds the same reward. The
-    // old arithmetic was 1 + X searches (5 on Impossible).
-    const rewards = [0, 1, 2, 3, 4].map((x) => CREATURE_BANKS.dragon_utopia.buildReward(x));
-    for (const reward of rewards) {
-      expect(reward).toEqual(rewards[0]);
-      expect(reward.type).toBe("SEQUENCE");
-      if (reward.type !== "SEQUENCE") return;
-      expect(reward.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 40 });
-      expect(reward.interactions.slice(1)).toEqual([
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
-      ]);
-    }
-    expect([...DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS]).toEqual([3, 5, 5]);
-
-    // Field path: an Impossible game (4 Stacked defenders' worth of difficulty)
-    // pays the same three Searches as an Easy one.
+  it("the Ⅶ field's ladder does NOT scale with the scenario difficulty", () => {
+    // An Impossible game (where a bank would field 4 Stacked defenders and pay
+    // 1 + 4 Searches) pays the Ⅶ field's same three Searches as an Easy one.
     for (const difficulty of ["easy", "impossible"] as const) {
       const state = utopiaCentreMap(`utopia-scale-${difficulty}`, difficulty);
       const hero = getMainHero(state, "p1")!;
@@ -194,7 +194,34 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
     }
   });
 
-  it("a Creature-Bank Dragon Utopia token pays the same three Searches (40 gold as printed)", () => {
+  it("CONTROL: the Creature-Bank Dragon Utopia TOKEN is untouched — printed X-scaling with the Artifact-or-Spell choice", () => {
+    // The Ⅶ ladder must never leak onto the bank token: its printed reward is
+    // 40 gold + Search (3) + X × "Search (5) the Artifact OR Spell Deck".
+    for (const stacked of [0, 1, 2, 3, 4]) {
+      const reward = CREATURE_BANKS.dragon_utopia.buildReward(stacked);
+      expect(reward.type).toBe("SEQUENCE");
+      if (reward.type !== "SEQUENCE") return;
+      expect(reward.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 40 });
+      expect(reward.interactions[1]).toEqual({
+        type: "SEARCH_SHARED_DECK",
+        deckId: "artifacts",
+        count: 3
+      });
+      const extras = reward.interactions.slice(2);
+      expect(extras, `stacked ${stacked}`).toHaveLength(stacked);
+      for (const extra of extras) {
+        expect(extra.type).toBe("CHOOSE_ONE");
+        if (extra.type !== "CHOOSE_ONE") return;
+        expect(extra.options.map((option) => option.interaction)).toEqual([
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
+          { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 }
+        ]);
+      }
+    }
+
+    // …and through the real grant path: an Impossible bank with all four
+    // defenders Stacked pays Search (3) plus FOUR Artifact-or-Spell choices, so
+    // its Artifact ceiling is five — never the Ⅶ field's fixed three.
     const state = utopiaCentreMap("utopia-bank-token");
     const hero = getMainHero(state, "p1")!;
     const bankField: MapFieldState = {
@@ -212,18 +239,17 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
     hero.spaceId = bankField.spaceId;
     const gold = state.players.p1.resources.gold;
 
-    // All four defenders Stacked — the worst case of the old X arithmetic.
     grantCreatureBankReward(state, hero.id, bankField.spaceId, 4);
 
     expect(state.players.p1.resources.gold - gold).toBe(40);
-    expect(queuedArtifactSearchCounts(state)).toEqual([3, 5, 5]);
-    // No Spell-deck Search is queued or offered any more (the printed
-    // "Artifact or Spell Deck" alternative is deliberately dropped).
-    expect(
-      (state.adventure!.rewardQueue ?? []).filter(
-        (reward) => reward.kind === "shared-deck-search" && reward.deckId === "spells"
-      )
-    ).toHaveLength(0);
+    // The base Search (3) is queued; the four Extras are still pending as visit
+    // steps / an open choice, because each is a player pick.
+    expect(queuedArtifactSearchCounts(state)).toEqual([3]);
+    const extraChoices =
+      state.adventure!.pendingVisit?.steps.filter((step) => step.type === "CHOOSE_ONE").length ??
+      0;
+    const openChoice = state.pendingChoice?.type === "OPTION_CHOICE" ? 1 : 0;
+    expect(extraChoices + openChoice).toBe(4);
   });
 
   it("a plain-mode Ⅶ Utopia (no field-rules package) pays the same three Searches through the Artifact FAMILY", () => {
@@ -311,7 +337,7 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
     expect(queuedArtifactSearchCounts(bonus)).toEqual([3, 5, 5, 2]);
   });
 
-  it("the atomic Necromancy window still pays the fixed reward on Resolve, never before", () => {
+  it("CONTROL: the bank token's atomic Necromancy deferral still pays its PRINTED 1 + X reward on Resolve", () => {
     const state = createAdventureGameState({
       seed: "utopia-necro-defer",
       ruleset: "binh",
@@ -353,7 +379,7 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
         difficulty: 1,
         hasAzure: false,
         bankId: "dragon_utopia",
-        // Impossible: all four defenders Stacked (the old 1 + X = 5 searches).
+        // Impossible: all four defenders Stacked ⇒ the printed 1 + X = 5 Searches.
         bankStackCount: 4
       },
       outcome: {
@@ -376,11 +402,13 @@ describe("Dragon Utopia — the artifact reward is fixed at Search 3 / 5 / 5", (
     expect(resolved.errors.map((error) => error.message).join("; ")).toBe("");
     expect(resolved.state.players.p1.resources.gold).toBe(40);
     expect(resolved.state.adventure!.fields[fieldId]!.blackCube).toBe(true);
-    // The deferred reward pays the fixed three Searches — the first is already
-    // open, so drive the whole chain and count what it reveals.
+    // The deferred reward pays the PRINTED bank reward: the base Search (3) plus
+    // one Search (5) per Stacked defender (Artifact chosen on each choice), so
+    // FIVE Artifacts here — the Ⅶ field's fixed three never applies to a bank.
     const after = resolved.state;
     const beforeArtifacts = artifactsOwned(after, "p1").length;
-    expect(driveSearches(after).revealCounts).toEqual([3, 5, 5]);
-    expect(artifactsOwned(after, "p1").length - beforeArtifacts).toBe(3);
+    const { revealCounts } = driveSearches(after);
+    expect([...revealCounts].sort((a, b) => a - b)).toEqual([3, 5, 5, 5, 5]);
+    expect(artifactsOwned(after, "p1").length - beforeArtifacts).toBe(5);
   });
 });
