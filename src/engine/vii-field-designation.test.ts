@@ -24,6 +24,7 @@ import {
   sanitizeCustomMapPreset,
   victoryDesignConflicts
 } from "./map-preset";
+import { grailUtopiaFieldRulesEnabled } from "./map-design-features";
 import type {
   CustomCenterHexPlan,
   CustomMapTilePlan,
@@ -130,17 +131,18 @@ describe("Ⅶ designation — face-up center tile", () => {
     });
   }
 
-  it("forces the Ⅶ field to a Dragon Utopia at setup — and it is fightable like a printed one", () => {
+  it("forces the Ⅶ field to a Dragon Utopia at setup — the field rules auto-activate for a designer Utopia", () => {
     const state = faceUpCenter("dragon_utopia");
     const field = objectiveField(state);
     expect(field?.location).toBe("dragon_utopia");
     expect(field?.difficulty).toBe(7);
 
-    // Fightable exactly like a printed Utopia: the default mode uses the full
-    // Field Difficulty row. Normal VII is 2 azure units drawn from the deck.
+    // A designer-placed Utopia auto-activates the Grail & Dragon Utopia field
+    // rules (no separate toggle): a normal Level-VII fight vs 2 Azure guards
+    // PLUS a Black Dragon (the Utopia signature).
     const draws = drawGuardArmy(state, field!, 7);
-    expect(draws.map((draw) => draw.tier)).toEqual(["azure", "azure"]);
-    expect(draws.every((draw) => !draw.bankGuard)).toBe(true);
+    expect(draws.map((draw) => draw.tier)).toEqual(["azure", "azure", "gold"]);
+    expect(draws.at(-1)?.unitDefId).toBe("neutral.black_dragons");
   });
 
   it("CONTROL: no viiField keeps C4's printed Grail field", () => {
@@ -148,6 +150,22 @@ describe("Ⅶ designation — face-up center tile", () => {
     const field = objectiveField(state);
     expect(field?.location).toBe("grail");
     expect(field?.difficulty).toBe(7);
+  });
+
+  it("auto-activates the Grail & Dragon Utopia field rules for a designer-placed objective (no toggle)", () => {
+    // A designer who PLACES a Grail/Utopia gets the field rules without also
+    // toggling the house rule — so the Grail digs / the Utopia gets its Black
+    // Dragon, never the old generic Level-VII artifact bank.
+    expect(grailUtopiaFieldRulesEnabled(faceUpCenter("grail"))).toBe(true);
+    expect(grailUtopiaFieldRulesEnabled(faceUpCenter("dragon_utopia"))).toBe(true);
+    // CONTROL: a plain map with no Grail/Utopia designation leaves them off.
+    const plain = createAdventureGameState({
+      seed: "vii-auto-control",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest"
+    });
+    expect(grailUtopiaFieldRulesEnabled(plain)).toBe(false);
   });
 });
 

@@ -834,7 +834,7 @@ export function HandFan({
                     ) : null}
                     <button
                       onClick={() => {
-                        zoomCard(entry.cardId);
+                        zoomCard(entry.cardId, empowered);
                         setOpenIndex(null);
                       }}
                       type="button"

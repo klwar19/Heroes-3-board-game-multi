@@ -10,7 +10,12 @@ import {
   instantiateTile,
   materializeTileFields
 } from "./adventure";
-import { buildGrail, transferPolishCarriedGrailAfterPvp } from "./adventure-reducer";
+import { CREATURE_BANK_ATTACKER_CELLS, placementCellsFor } from "./index";
+import {
+  buildGrail,
+  startNeutralEncounter,
+  transferPolishCarriedGrailAfterPvp
+} from "./adventure-reducer";
 import { createAdventureGameState } from "./adventure-setup";
 import {
   grailBuildAt,
@@ -103,6 +108,43 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(grail.map((draw) => draw.tier)).toEqual(["azure", "azure"]);
     expect(utopia.map((draw) => draw.tier)).toEqual(["azure", "azure", "gold"]);
     expect(utopia.at(-1)?.unitDefId).toBe("neutral.black_dragons");
+  });
+
+  it("fights the Dragon Utopia as a NORMAL Level-VII field (opposing rows), not bank corners", () => {
+    const state = game("polish-utopia-formation");
+    const hero = getMainHero(state, "p1")!;
+    const utopia = field("dragon_utopia", "40,40");
+    state.adventure!.fields[utopia.spaceId] = utopia;
+    hero.spaceId = utopia.spaceId;
+
+    startNeutralEncounter(state, hero, utopia);
+
+    // A field-VII fight: NO bank-corner formation, and the attacker deploys in
+    // the normal rows — not the central six bank cells.
+    expect(state.combat?.context).toMatchObject({ kind: "neutral" });
+    expect((state.combat?.context as { bankFormation?: boolean } | undefined)?.bankFormation ?? false).toBe(false);
+    const cells = placementCellsFor(state, "p1").slice().sort((a, b) => a - b);
+    expect(cells).not.toEqual([...CREATURE_BANK_ATTACKER_CELLS].sort((a, b) => a - b));
+  });
+
+  it("CONTROL: a classic-mode Dragon Utopia still deploys in bank-corner formation", () => {
+    const state = createAdventureGameState({
+      seed: "classic-utopia-formation",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: PLAYERS.slice(0, 2),
+      victoryMode: "dragon-hunt"
+    });
+    const hero = getMainHero(state, "p1")!;
+    const utopia = field("dragon_utopia", "41,41");
+    state.adventure!.fields[utopia.spaceId] = utopia;
+    hero.spaceId = utopia.spaceId;
+
+    startNeutralEncounter(state, hero, utopia);
+
+    expect(state.combat?.context).toMatchObject({ kind: "neutral", bankFormation: true });
+    const cells = placementCellsFor(state, "p1").slice().sort((a, b) => a - b);
+    expect(cells).toEqual([...CREATURE_BANK_ATTACKER_CELLS].sort((a, b) => a - b));
   });
 
   it("clears for XP only, converts other Grails immediately, then digs for 1 MP/20 gold and a 3-VP token", () => {

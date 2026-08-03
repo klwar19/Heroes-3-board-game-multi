@@ -454,6 +454,8 @@ function UnitStackPurchaseControls({
   const kindLabel = owned.side === "neutral" ? "Neutral" : "Pack";
   const capLabel = polishUnitStackCapLabel(owned.unitDefId);
   const goldCost = stackCost.gold ?? 0;
+  const valuablesCost = stackCost.valuables ?? 0;
+  const costLabel = valuablesCost > 0 ? `${goldCost} gold + ${valuablesCost} valuables` : `${goldCost} gold`;
 
   return (
     <div className="stackPurchasePanel" role="group" aria-label={`Unit Stacks for ${unitName}`}>
@@ -470,7 +472,7 @@ function UnitStackPurchaseControls({
         </strong>
         <small className="stackPurchaseCost">
           {stackCount}/{stackCap}
-          {capLabel ? ` · ${capLabel}` : ""} · +{goldCost} gold each
+          {capLabel ? ` · ${capLabel}` : ""} · {costLabel} each
         </small>
         <small className="stackPurchaseHint">
           +1 Attack while stacked · each Stack is one full health bar
@@ -484,7 +486,7 @@ function UnitStackPurchaseControls({
         >
           <small className="stackConfirmPrompt">
             Buy a Stack for <strong>{unitName}</strong> for{" "}
-            <strong className="stackConfirmCost">{goldCost} gold</strong>?
+            <strong className="stackConfirmCost">{costLabel}</strong>?
           </small>
           <button
             className="recruitQuick stackQuick stackConfirm"
@@ -505,7 +507,7 @@ function UnitStackPurchaseControls({
           aria-label={
             stackAtCap
               ? `${unitName} at max ${stackCap} Stacks`
-              : `Buy Stack for ${unitName} for ${goldCost} gold`
+              : `Buy Stack for ${unitName} for ${costLabel}`
           }
           className={`recruitQuick stackQuick ${stackAtCap ? "atCap" : ""} ${!stackLegal && !stackAtCap ? "blocked" : ""}`}
           disabled={!stackLegal}

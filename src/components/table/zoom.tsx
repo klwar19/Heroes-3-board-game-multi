@@ -43,7 +43,7 @@ export type ZoomContent = {
 };
 
 type CardZoomContextValue = {
-  zoomCard: (cardId: string) => void;
+  zoomCard: (cardId: string, empowered?: boolean) => void;
   zoomUnit: (unit: CombatUnitState, ruleset?: GameRuleset) => void;
   zoomContent: (content: ZoomContent) => void;
 };
@@ -69,10 +69,10 @@ export function useOptionalCardZoom(): CardZoomContextValue | null {
   return useContext(CardZoomContext);
 }
 
-export function cardZoomContent(cardId: string): ZoomContent {
+export function cardZoomContent(cardId: string, empowered?: boolean): ZoomContent {
   const card = cardLibrary[cardId];
   if (!card) {
-    return { title: cardId, lines: [] };
+    return { title: cardId, lines: [], empowered: Boolean(empowered) };
   }
 
   const lines: string[] = [describeCardEffect(card)];
@@ -87,7 +87,10 @@ export function cardZoomContent(cardId: string): ZoomContent {
     specialtyCardId: !card.assets?.cardImage && canRenderSpecialtyCard(cardId) ? cardId : undefined,
     subtitle: getCardMetaLabels(card).join(" · "),
     lines,
-    empowered: isEmpoweredStatisticCard(cardId)
+    // An Empowered Statistic card is intrinsic; an Empowered *ability* is
+    // per-owner, so the caller (which holds the player's empoweredAbilities)
+    // passes the flag in — without it a zoomed empowered ability lost its glow.
+    empowered: isEmpoweredStatisticCard(cardId) || Boolean(empowered)
   };
 }
 
@@ -148,7 +151,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CardZoomContextValue>(
     () => ({
-      zoomCard: (cardId) => setContent(cardZoomContent(cardId)),
+      zoomCard: (cardId, empowered) => setContent(cardZoomContent(cardId, empowered)),
       zoomUnit: (unit, ruleset) => setContent(unitZoomContent(unit, ruleset)),
       zoomContent: (next) => setContent(next)
     }),

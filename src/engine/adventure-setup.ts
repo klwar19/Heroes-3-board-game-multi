@@ -2379,6 +2379,26 @@ function objectiveCountsInTiles(tileIds: readonly (string | undefined)[]): Grail
   return counts;
 }
 
+/**
+ * Whether a DESIGNER map authors any Grail / Dragon Utopia field (a Ⅶ
+ * designation or a pinned tile carrying one). When it does, the Grail & Dragon
+ * Utopia field rules AUTO-ACTIVATE at setup, so a placed Grail behaves as a real
+ * Grail — a normal Level-VII fight vs 2 Azure guards, cleared for XP only, then
+ * dug for 20 gold + a transferable 3-VP token (a Utopia = 2 Azure + a Black
+ * Dragon with the printed rewards) — instead of a generic Level-VII artifact
+ * bank. A designer no longer has to ALSO toggle the rule for a field they
+ * explicitly placed to work.
+ */
+function customMapHasGrailUtopiaDesignation(plans: readonly CustomMapTilePlan[] | null): boolean {
+  if (!plans) return false;
+  return plans.some((plan) => {
+    if (plan.viiField === "grail" || plan.viiField === "dragon_utopia") return true;
+    if (plan.viiFields?.some((entry) => entry === "grail" || entry === "dragon_utopia")) return true;
+    const counts = objectiveCountsInTiles([plan.tileDefId, ...(plan.oneOfTileDefIds ?? [])]);
+    return counts.grail > 0 || counts.dragon_utopia > 0;
+  });
+}
+
 function takeObjectiveTiles(
   pool: string[],
   counts: GrailUtopiaCounts,
@@ -2840,13 +2860,31 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // enables VP stays authoritative (see `applyLobbyVictoryPoints`).
   // Lobby custom win conditions merge onto the effective preset AFTER the VP fold
   // (both edit `adventure.mapPreset`; the win-condition check reads it there).
-  const mapPreset = applyLobbyCustomWinConditions(
+  const resolvedMapPreset = applyLobbyCustomWinConditions(
     applyLobbyVictoryPoints(
       sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
       setupOptions
     ),
     setupOptions
   );
+  // A designer map that PLACES Grail/Dragon Utopia fields auto-activates the
+  // Grail & Dragon Utopia field rules (dig / XP-only clear / normal Level-VII
+  // fight / 2-Azure guards, Utopia = +1 Black Dragon), so a placed Grail is a
+  // real Grail, never a generic Level-VII artifact bank — no separate
+  // lobby/editor toggle required. EXCLUDED in classic Grail-VICTORY mode, whose
+  // grail is the win objective dug only after visiting Obelisks (a distinct
+  // feature). This only flips `hiddenGrailUtopia`; it does NOT trigger the house
+  // rule's extra per-seat objective overflow (gated on `polishGrailUtopiaOn`),
+  // so the designer's explicit placement stands.
+  const mapPreset =
+    customMapHasGrailUtopiaDesignation(customMap) &&
+    victoryMode !== "grail" &&
+    !resolvedMapPreset?.objectives?.hiddenGrailUtopia
+      ? {
+          ...(resolvedMapPreset ?? {}),
+          objectives: { ...(resolvedMapPreset?.objectives ?? {}), hiddenGrailUtopia: true }
+        }
+      : resolvedMapPreset;
 
   const adventure: AdventureState = {
     difficulty,
