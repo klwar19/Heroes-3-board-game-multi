@@ -421,11 +421,18 @@ export function MapPickModal({
                     {selected.problems.length > 0 ? (
                       <small className="mapPickProblem">Needs fixing in the designer: {selected.problems[0]}</small>
                     ) : null}
-                    {selected.record.preset ? (
+                    {/* Entries include the Ⅶ Grail / Utopia reward-stacking line,
+                        which rides the TILES — so the banner shows even when the
+                        map carries no other special condition. */}
+                    {describeCustomMapPresetEntries(selected.record.preset, selected.record.tiles).length >
+                    0 ? (
                       <div className="mapPresetLobbyBanner" role="status">
                         <strong>📜 This map has special conditions</strong>
                         <ul className="mapPresetEntryList">
-                          {describeCustomMapPresetEntries(selected.record.preset).map((entry) => (
+                          {describeCustomMapPresetEntries(
+                            selected.record.preset,
+                            selected.record.tiles
+                          ).map((entry) => (
                             <li key={entry.text}>
                               <span className="mapPresetEntryIcon" aria-hidden="true">
                                 {entry.icon}

@@ -5128,6 +5128,12 @@ function processHexEventOnVisit(
  * reward, reusing the same reward-queue plumbing every field search uses. No-op
  * unless the option is set. NOT called in Dragon Hunt (defeating the Utopia wins
  * the game outright, so there is no later turn to spend a search).
+ *
+ * Read by EVERY paying Ⅶ Utopia branch: the designer/hidden field-rules package,
+ * dragon-conqueror's first capture, and the plain Ⅶ field. It is one of the three
+ * options that STACK on the field's built-in reward (see
+ * `viiObjectiveRewardStacks` in map-preset.ts, which warns the designer and the
+ * lobby about exactly that).
  */
 function grantUtopiaBonusSearch(state: GameState, playerId: PlayerId): void {
   const count = state.adventure?.mapPreset?.objectives?.utopiaBonusSearch;
@@ -5419,6 +5425,14 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
         gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
       }
       queueDragonUtopiaArtifactSearches(state, hero, field);
+      // BUG FIX 2026-08-03: the opt-in designer knob used to be read ONLY by the
+      // plain-mode branch below, so on a DESIGNATED Ⅶ Utopia — which
+      // auto-activates this field-rules package, i.e. exactly the map a designer
+      // sets the knob for — it silently paid nothing while the map-pick banner
+      // still advertised "Dragon Utopia bonus: Search(N) Artifacts". Every Ⅶ
+      // Utopia branch that pays now reads it (Dragon Hunt still does not: that
+      // clear wins the game outright, so there is no turn left to spend it).
+      grantUtopiaBonusSearch(state, hero.controllerId);
       state.adventure?.rewardQueue.push({
         playerId: hero.controllerId,
         kind: "visit-steps",

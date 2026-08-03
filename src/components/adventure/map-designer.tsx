@@ -52,6 +52,7 @@ import {
   unreachableUndergroundCenters,
   validateCustomMapObjects,
   victoryDesignConflicts,
+  viiRewardStackWarnings,
   customGuardArmyDifficulty,
   describeGuardArmyGrouped,
   describeHexEvent,
@@ -64,6 +65,7 @@ import {
   type CustomGuardSpec,
   type CustomMapGateLink,
   type CustomHexEvent,
+  type CustomMapObjectivesConfig,
   type CustomMapSettlementFieldPlan,
   type CustomObjectFieldPlan,
   type CustomMapTileToken,
@@ -1114,7 +1116,8 @@ export function MapDesigner({
   pickRequest = null,
   onPickResolved,
   hexEvents = EMPTY_HEX_EVENTS,
-  onHexEventsChange
+  onHexEventsChange,
+  objectives
 }: {
   scenarioId: string;
   /** Active scenario seats to draw/reserve (defaults to the legacy footprint). */
@@ -1140,6 +1143,11 @@ export function MapDesigner({
   /** Designer hex events (invisible in game; markers here only). */
   hexEvents?: CustomHexEvent[];
   onHexEventsChange?: (next: CustomHexEvent[]) => void;
+  /**
+   * The preset's Grail / Utopia objectives block — read ONLY to warn when
+   * `utopiaBonusSearch` stacks on a Ⅶ Dragon Utopia's own reward.
+   */
+  objectives?: CustomMapObjectivesConfig;
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -1861,6 +1869,14 @@ export function MapDesigner({
   const victoryConflicts = useMemo(
     () => victoryDesignConflicts(customMap, victoryMode),
     [customMap, victoryMode]
+  );
+  // Ⅶ objective reward STACKING: a Grail / Dragon Utopia field already pays its
+  // own built-in reward, and the centre-hex reward / a hidden hex event on that
+  // same hex / the Utopia bonus Search all pay ON TOP for the same clear. Warned
+  // beside the Ⅶ victory conflicts, never blocked — a designer may well mean it.
+  const viiRewardStacks = useMemo(
+    () => viiRewardStackWarnings(customMap, { hexEvents, objectives }),
+    [customMap, hexEvents, objectives]
   );
   // The Grail / Dragon victory modes need supporting tiles; when one is chosen
   // and the design already provides them (no conflicts), show an all-clear so
@@ -7268,6 +7284,11 @@ export function MapDesigner({
           win condition — its objective tiles are all in place.
         </div>
       ) : null}
+      {viiRewardStacks.map((warning, index) => (
+        <div className="designerCavernAlert designerObjectAlert" key={`vii-stack-${index}`} role="status">
+          ⚠ {warning}
+        </div>
+      ))}
       {objectValidation.problems.map((problem, index) => (
         <div className="designerCavernAlert designerObjectAlert" key={`obj-problem-${index}`} role="alert">
           ⚠ {problem}

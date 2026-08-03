@@ -7772,11 +7772,13 @@ function MapPicker({
               </small>
             ) : null;
           })()}
-          {options.customMapPreset ? (
+          {/* The Ⅶ Grail / Utopia reward-stacking line rides the TILES, so the
+              banner can be worth showing even with no preset conditions. */}
+          {describeCustomMapPresetEntries(options.customMapPreset, options.customMap).length > 0 ? (
             <div className="mapPresetLobbyBanner" role="status">
               <strong>📜 This map has special conditions</strong>
               <ul className="mapPresetEntryList">
-                {describeCustomMapPresetEntries(options.customMapPreset).map((entry) => (
+                {describeCustomMapPresetEntries(options.customMapPreset, options.customMap).map((entry) => (
                   <li key={entry.text}>
                     <span className="mapPresetEntryIcon" aria-hidden="true">
                       {entry.icon}
