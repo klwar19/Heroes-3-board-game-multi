@@ -5889,7 +5889,6 @@ export default function Home() {
                     the RIGHT of the Far-tile tray — no longer a wide banner. */}
                 {isSeated && !mapReadOnly && handMode === null && !forcedDiscard && moraleMapSpendAvailable ? (
                   <div className="mapMoraleSpend" role="group" aria-label="Spend positive morale">
-                    <strong>Positive Morale</strong>
                     {moraleDrawAvailable ? (
                       <button
                         className="commandButton"
