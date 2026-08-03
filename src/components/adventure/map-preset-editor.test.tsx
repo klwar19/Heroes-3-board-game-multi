@@ -736,7 +736,9 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       />
     );
     expect(screen.getByText(/4 fields = 2 \+ 2/)).toBeTruthy();
-    expect(screen.getByText(/two Search\(3\) Artifacts/)).toBeTruthy();
+    // USER RULE 2026-08-03: the hint used to promise "two Search(3) Artifacts";
+    // the Utopia now pays the fixed Search(3) + two Search(5) = three Artifacts.
+    expect(screen.getByText(/Search\(3\), Search\(5\) and\s+Search\(5\)/)).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Use hidden Grail and Dragon Utopia rules"));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });

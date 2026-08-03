@@ -635,23 +635,26 @@ describe("objectives options", () => {
     const hero = getMainHero(withBonus, "p1")!;
     hero.spaceId = field.spaceId;
     beginFieldVisit(withBonus, hero.id, field.spaceId, false);
-    // The distinct count-3 Search is the bonus, on top of the printed Relic
-    // Search(2) — a count no printed Utopia reward carries.
-    const bonusRewards = withBonus.adventure!.rewardQueue.filter(
-      (reward) => reward.kind === "shared-deck-search" && reward.count === 3 && reward.deckId === "artifacts"
-    );
-    expect(bonusRewards).toHaveLength(1);
+    // USER RULE 2026-08-03: the Utopia's OWN reward is now the fixed three
+    // Artifact Searches 3 / 5 / 5 (it used to be a hardcoded Relic Search(2)),
+    // so the bonus is the FOURTH Search appended after them — the old
+    // "the count-3 Search must be the bonus" discriminator no longer holds.
+    const searchCounts = (state: GameState): number[] =>
+      state
+        .adventure!.rewardQueue.filter(
+          (reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts"
+        )
+        .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0));
+    expect(searchCounts(withBonus)).toEqual([3, 5, 5, 3]);
 
-    // CONTROL: no objectives → only the printed reward, no count-3 bonus Search.
+    // CONTROL: no objectives → the Utopia's own three Searches and no fourth.
     const control = createAdventureGameState({ seed: "vii-bonus-ctl", difficulty: "normal", rollFirstPlayer: false, victoryMode: "conquest" });
     const cField: MapFieldState = { ...fieldWith("dragon_utopia"), spaceId: "88,88" };
     control.adventure!.fields[cField.spaceId] = cField;
     const cHero = getMainHero(control, "p1")!;
     cHero.spaceId = cField.spaceId;
     beginFieldVisit(control, cHero.id, cField.spaceId, false);
-    expect(
-      control.adventure!.rewardQueue.filter((reward) => reward.kind === "shared-deck-search" && reward.count === 3)
-    ).toHaveLength(0);
+    expect(searchCounts(control)).toEqual([3, 5, 5]);
   });
 });
 

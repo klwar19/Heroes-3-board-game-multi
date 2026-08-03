@@ -1178,7 +1178,8 @@ export function MapPresetEditor({
           On each face-down Center (Ⅶ) tile, select both Grail and Dragon Utopia and leave “Player picks” off.
           The game balances the hidden results: 4 fields = 2 + 2; 3 fields = a random 2 + 1 split.
           Grail guards use the difficulty table; dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
-          Dragon Utopia adds a Black Dragon and rewards Morale or an Ability token plus two Search(3) Artifacts.
+          Dragon Utopia adds a Black Dragon and rewards Morale or an Ability token plus Search(3), Search(5) and
+          Search(5) of the Artifact deck (three Artifacts).
         </small>
       </section>
 

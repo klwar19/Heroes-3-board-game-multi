@@ -20,6 +20,7 @@ import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
   BINH_STACK_TOKEN_PLACEMENT_PERCENT,
+  DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS,
   STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
   rollStackTokenStat,
@@ -4806,8 +4807,10 @@ export function relicArtifactDeckId(state: GameState): "artifacts-relic" | "arti
 }
 
 /**
- * Creature-bank consolation (a Grail or Dragon Utopia that is not this game's
- * objective): "gain 10 gold and Search (2) the Relic Artifact deck."
+ * Creature-bank consolation (a Grail that is not this game's objective): "gain
+ * 10 gold and Search (2) the Relic Artifact deck." The Dragon Utopia no longer
+ * uses it — it pays its own fixed 3/5/5 Artifact reward (see
+ * {@link queueDragonUtopiaArtifactSearches}).
  */
 function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, fieldName: string): void {
   gainResources(state, playerId, { gold: 10 }, `cleared the ${fieldName}`);
@@ -5336,13 +5339,48 @@ function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId):
 }
 
 /**
+ * Queues the Dragon Utopia's fixed artifact reward — Search (3), Search (5),
+ * Search (5) of the Artifact deck FAMILY ({@link DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS}) —
+ * for a Ⅶ objective-field clear. THREE distinct rewards, so each acquisition
+ * gets its own Polish Artifact die roll, and each is pinned to the visiting
+ * Hero + Field so split-deck access follows the Ⅵ–Ⅶ centre tile (Relic
+ * reachable) even when a Secondary Hero won the fight. The Searches run through
+ * the normal pipeline — never a hardcoded split deck — so the discard-top take,
+ * Scouting overrides and the `deck-access-hero-level` house rule all apply.
+ */
+function queueDragonUtopiaArtifactSearches(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState
+): void {
+  for (const count of DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS) {
+    state.adventure?.rewardQueue.push({
+      playerId: hero.controllerId,
+      kind: "shared-deck-search",
+      deckId: "artifacts",
+      count,
+      sourceHeroId: hero.id,
+      sourceFieldId: field.spaceId,
+      polishArtifactBand: "tile"
+    });
+  }
+}
+
+/**
  * Dragon Utopia visit (after its guards are defeated — the full Field
  * Difficulty Ⅶ table row by default, the fixed four-dragon party in the
  * explicit "four" mode; see {@link DragonUtopiaGuards}):
  *  - Dragon Hunt: defeating the Utopia wins outright (no need to hold it).
  *  - Dragon Conqueror: the victor captures and must hold it; rivals besiege it.
- *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank rewarding gold and a
- *    Relic artifact — the Utopia is NOT a win condition in those modes.
+ *  - Grail Hunt & Conquest: a normal Lvl-VII creature bank paying 10 gold plus
+ *    the Utopia's fixed artifact reward — the Utopia is NOT a win condition in
+ *    those modes.
+ *
+ * Every mode that PAYS the Utopia pays the SAME artifact reward (Search 3 / 5 /
+ * 5, {@link queueDragonUtopiaArtifactSearches}); only the gold differs (40 on
+ * the bank token as printed, 10 on a plain Ⅶ field, the legacy 20 under the
+ * Polish house rule). The guard mode (`utopiaGuards` four vs by-difficulty) only
+ * picks the guard army and never changes the reward.
  */
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
@@ -5362,20 +5400,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
       if (polishGrailUtopiaEnabled(state)) {
         gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
       }
-      // Two distinct Search (3) rewards: each acquisition gets its own Polish
-      // Artifact die roll, and the actual visiting Hero/Field preserves VII
-      // Relic access even when a Secondary Hero won the fight.
-      for (let index = 0; index < 2; index += 1) {
-        state.adventure?.rewardQueue.push({
-          playerId: hero.controllerId,
-          kind: "shared-deck-search",
-          deckId: "artifacts",
-          count: 3,
-          sourceHeroId: hero.id,
-          sourceFieldId: field.spaceId,
-          polishArtifactBand: "tile"
-        });
-      }
+      queueDragonUtopiaArtifactSearches(state, hero, field);
       state.adventure?.rewardQueue.push({
         playerId: hero.controllerId,
         kind: "visit-steps",
@@ -5429,7 +5454,12 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
 
   if (!field.blackCube) {
     field.blackCube = true;
-    giveCreatureBankConsolation(state, hero.controllerId, "Dragon Utopia");
+    // 10 gold (the generic Lvl-VII bank consolation) + the Utopia's OWN fixed
+    // artifact reward. It no longer takes the shared consolation's hardcoded
+    // Search (2) of the RELIC deck: that bypassed the eligible-deck pick, so the
+    // Searches did not follow the field's Ⅵ–Ⅶ tile band like every other Search.
+    gainResources(state, hero.controllerId, { gold: 10 }, "cleared the Dragon Utopia");
+    queueDragonUtopiaArtifactSearches(state, hero, field);
     grantUtopiaBonusSearch(state, hero.controllerId);
   }
 }

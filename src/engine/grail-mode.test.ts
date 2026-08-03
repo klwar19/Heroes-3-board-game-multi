@@ -248,14 +248,22 @@ describe("Dragon Utopia objective", () => {
 
     beginFieldVisit(state, heroId, field.spaceId, false);
 
-    // The Dragon Utopia pays the creature-bank consolation, never the game.
+    // The Dragon Utopia pays its Lvl-VII bank reward, never the game. Its
+    // artifact half is the fixed Search 3 / 5 / 5 (USER RULE 2026-08-03) — it
+    // used to be the shared consolation's single hardcoded Relic Search (2).
     expect(state.adventure!.winnerPlayerId).toBeNull();
     expect(state.phase).not.toBe("game-over");
     expect(field.blackCube).toBe(true);
     expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
-    const reward = state.adventure!.rewardQueue.at(-1);
-    expect(reward).toMatchObject({ kind: "shared-deck-search", count: 2 });
-    expect((reward as { deckId: string }).deckId).toMatch(/artifacts/);
+    expect(
+      state.adventure!.rewardQueue
+        .filter((reward) => reward.kind === "shared-deck-search")
+        .map((reward) => (reward.kind === "shared-deck-search" ? [reward.deckId, reward.count] : []))
+    ).toEqual([
+      ["artifacts", 3],
+      ["artifacts", 5],
+      ["artifacts", 5]
+    ]);
   });
 
   it("is captured and held to win in Dragon Conqueror", () => {
@@ -276,23 +284,48 @@ describe("Dragon Utopia objective", () => {
 });
 
 describe("Creature-bank consolation (Conquest)", () => {
-  for (const location of ["grail", "dragon_utopia"]) {
-    it(`gives 10 gold and a Relic search when ${location} is not the objective`, () => {
-      const state = makeGame("conquest");
-      const field = injectField(state, location);
-      const heroId = placeHeroOn(state, "p1", field.spaceId);
-      const goldBefore = state.players.p1.resources.gold;
+  // The GRAIL keeps the shared Lvl-VII consolation (10 gold + Search (2) of the
+  // Relic deck). The DRAGON UTOPIA no longer does: USER RULE 2026-08-03 gives it
+  // its own fixed 3 / 5 / 5 Artifact-FAMILY reward (the hardcoded Relic deck also
+  // bypassed the normal eligible-deck pick, so the Search did not follow the
+  // field's Ⅵ–Ⅶ tile band). Behaviour: dragon-utopia-artifact-reward.test.ts.
+  it("gives 10 gold and a Relic search when grail is not the objective", () => {
+    const state = makeGame("conquest");
+    const field = injectField(state, "grail");
+    const heroId = placeHeroOn(state, "p1", field.spaceId);
+    const goldBefore = state.players.p1.resources.gold;
 
-      beginFieldVisit(state, heroId, field.spaceId, false);
+    beginFieldVisit(state, heroId, field.spaceId, false);
 
-      expect(field.blackCube).toBe(true);
-      expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
-      const reward = state.adventure!.rewardQueue.at(-1);
-      expect(reward).toMatchObject({ kind: "shared-deck-search", count: 2 });
-      expect((reward as { deckId: string }).deckId).toMatch(/artifacts/);
-      expect(state.adventure!.winnerPlayerId).toBeNull();
-    });
-  }
+    expect(field.blackCube).toBe(true);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    const reward = state.adventure!.rewardQueue.at(-1);
+    expect(reward).toMatchObject({ kind: "shared-deck-search", count: 2 });
+    expect((reward as { deckId: string }).deckId).toMatch(/artifacts/);
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+  });
+
+  it("gives 10 gold and the fixed Search 3 / 5 / 5 when dragon_utopia is not the objective", () => {
+    const state = makeGame("conquest");
+    const field = injectField(state, "dragon_utopia");
+    const heroId = placeHeroOn(state, "p1", field.spaceId);
+    const goldBefore = state.players.p1.resources.gold;
+
+    beginFieldVisit(state, heroId, field.spaceId, false);
+
+    expect(field.blackCube).toBe(true);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(
+      state.adventure!.rewardQueue
+        .filter((reward) => reward.kind === "shared-deck-search")
+        .map((reward) => (reward.kind === "shared-deck-search" ? [reward.deckId, reward.count] : []))
+    ).toEqual([
+      ["artifacts", 3],
+      ["artifacts", 5],
+      ["artifacts", 5]
+    ]);
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+  });
 });
 
 describe("Defeat every enemy hero", () => {

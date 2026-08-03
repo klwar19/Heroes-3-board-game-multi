@@ -498,27 +498,51 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Dragon Utopia",
     tier: "near",
     units: ["neutral.black_dragons", "neutral.gold_dragons", "neutral.faerie_dragons", "neutral.crystal_dragons"],
-    rewardText: "40 gold and Search (3) the Artifact Deck. Extra: X times, Search (5) the Artifact or Spell Deck.",
+    rewardText: "40 gold, then Search (3), Search (5) and Search (5) the Artifact Deck.",
     rewardStatus: "implemented",
-    buildReward: (x) => ({
+    // USER RULE 2026-08-03: the Utopia's artifact reward is FIXED at three
+    // Searches (3 / 5 / 5) and no longer scales with the Stacked count X — see
+    // DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS. The 40 gold stays as printed.
+    buildReward: () => ({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_RESOURCES", gold: 40 },
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
-        ...Array.from(
-          { length: Math.max(0, x) },
-          (): LocationInteraction => ({
-            type: "CHOOSE_ONE",
-            options: [
-              { label: "Search (5) the Artifact Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 } },
-              { label: "Search (5) the Spell Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 } }
-            ]
-          })
-        )
+        ...dragonUtopiaArtifactSearchInteractions()
       ]
     })
   }
 };
+
+/**
+ * Dragon Utopia artifact reward — the SINGLE source of the Utopia's Searches.
+ *
+ * USER RULE 2026-08-03 ("Utopia VII field is still giving too much artifacts.
+ * Should be 3. First you take Search(3) and then 2 times Search(5)"): defeating
+ * a Dragon Utopia pays exactly THREE Artifact-deck Searches — one Search (3),
+ * then two Search (5) — so the winner keeps exactly three Artifact cards. It is
+ * FIXED: the old reading multiplied the Search (5) by X = the number of Stacked
+ * defenders (1 on Easy … 4 on Impossible / the Polish rolled bank size), which
+ * paid up to five Artifacts.
+ *
+ * DELIBERATE DEVIATION from the printed bank card: its "Search (5) the Artifact
+ * OR Spell Deck" alternative is dropped — the user's rule names Artifact
+ * searches only, and every Utopia surface (bank token, Ⅶ objective field, the
+ * hidden Grail/Utopia editor package) now pays this one reward.
+ *
+ * Every consumer must route these through the NORMAL shared-deck Search
+ * pipeline (deck family "artifacts", never a hardcoded split deck), so the
+ * discard-top take, Scouting overrides, Polish Random Artifacts and the
+ * tile-band / `deck-access-hero-level` access gates all behave as for any other
+ * Search — on a centre Ⅵ–Ⅶ field that means Relic access.
+ */
+export const DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 5, 5] as const;
+
+/** The three Utopia Artifact Searches as location interactions (bank path). */
+export function dragonUtopiaArtifactSearchInteractions(): LocationInteraction[] {
+  return DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS.map(
+    (count): LocationInteraction => ({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count })
+  );
+}
 
 /** Stack Tokens placed on the bank by Scenario Difficulty (rulebook p.66). */
 export const STACK_TOKENS_BY_DIFFICULTY = {
