@@ -5888,7 +5888,7 @@ export default function Home() {
                 {/* Optional positive-Morale spend, as a COMPACT VERTICAL box to
                     the RIGHT of the Far-tile tray — no longer a wide banner. */}
                 {isSeated && !mapReadOnly && handMode === null && !forcedDiscard && moraleMapSpendAvailable ? (
-                  <div className="mapMoraleSpend" role="group" aria-label="Spend positive morale">
+                  <div className="handDirectives mapMoraleSpend" role="group" aria-label="Spend positive morale">
                     {moraleDrawAvailable ? (
                       <button
                         className="commandButton"
