@@ -5372,6 +5372,11 @@ export default function Home() {
     // desktop tray can anchor it above the cards — the cards used to paint
     // over the mandatory "Draw new" button there, making it unclickable.
     const handStepMandatory = canDraw || canOpeningMulligan || explorersDiscardPending || selecting;
+    // The optional positive-Morale "draw 1 / redraw cards" spends no longer live
+    // in the wide hand-step banner — they render as a compact box on the map, to
+    // the right of the Far-tile tray (see `.mapMoraleSpend`). So they no longer
+    // open the banner on their own.
+    const moraleMapSpendAvailable = moraleDrawAvailable || moraleRedrawCardAvailable;
     const handOptionalPlays =
       handMode === null &&
       !forcedDiscard &&
@@ -5379,10 +5384,7 @@ export default function Home() {
       !armedHandPlay &&
       !pendingCostPlay &&
       moraleOverflow === 0 &&
-      (moraleDrawAvailable ||
-        moraleRedrawCardAvailable ||
-        moraleCombatPlays.length > 0 ||
-        Boolean(coverOfDarknessAction));
+      (moraleCombatPlays.length > 0 || Boolean(coverOfDarknessAction));
     // Parallel turns: a bystander (open parallel turn, NOT fighting) keeps the
     // map interactive while someone else's battle runs — they may flip to the
     // map tab and keep taking their quiet moves. Everyone else gets the classic
@@ -5883,16 +5885,26 @@ export default function Home() {
                     viewerPlayerId={viewerPlayerId}
                   />
                 ) : null}
-                {/* Compact positive-morale overflow spend box, anchored to the
-                    RIGHT of the Far-tile tray so it never covers the map. */}
-                {isSeated && !mapReadOnly && handMode === null && !forcedDiscard ? (
-                  <MoraleOverflowPrompt
-                    count={moraleOverflow}
-                    legalActions={legalActions}
-                    onDraw={(action) => submitAction(action)}
-                    onRedraw={() => setHandMode("morale-redraw")}
-                    variant="map"
-                  />
+                {/* Optional positive-Morale spend, as a COMPACT VERTICAL box to
+                    the RIGHT of the Far-tile tray — no longer a wide banner. */}
+                {isSeated && !mapReadOnly && handMode === null && !forcedDiscard && moraleMapSpendAvailable ? (
+                  <div className="mapMoraleSpend" role="group" aria-label="Spend positive morale">
+                    <strong>Positive Morale</strong>
+                    {moraleDrawAvailable ? (
+                      <button
+                        className="commandButton"
+                        onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
+                        type="button"
+                      >
+                        Morale: draw 1
+                      </button>
+                    ) : null}
+                    {handCards.length > 0 ? (
+                      <button className="commandButton" onClick={() => setHandMode("morale-redraw")} type="button">
+                        {moraleDrawAvailable ? "Morale: redraw cards" : "Positive Morale: redraw cards"}
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             </div>
@@ -6145,24 +6157,9 @@ export default function Home() {
                         ) : null}
                       </>
                     ) : null}
-                    {moraleDrawAvailable || moraleRedrawCardAvailable ? (
-                      <>
-                        {moraleDrawAvailable ? (
-                          <button
-                            className="commandButton"
-                            onClick={() => submitAction({ type: "SPEND_MORALE", playerId: viewerPlayerId, benefit: "draw" })}
-                            type="button"
-                          >
-                            Morale: draw 1
-                          </button>
-                        ) : null}
-                        {handCards.length > 0 && (moraleDrawAvailable || moraleRedrawCardAvailable) ? (
-                          <button className="commandButton" onClick={() => setHandMode("morale-redraw")} type="button">
-                            {moraleDrawAvailable ? "Morale: redraw cards" : "Positive Morale: redraw cards"}
-                          </button>
-                        ) : null}
-                      </>
-                    ) : null}
+                    {/* The optional "Morale: draw 1 / redraw cards" spends moved
+                        to the compact `.mapMoraleSpend` box on the map (right of
+                        the Far-tile tray) — see below. */}
                     {moraleCombatPlays.map((legal) => (
                       <button
                         className="commandButton"
@@ -6736,6 +6733,14 @@ export default function Home() {
           <SearchModal legalActions={legalActions} onAction={submitAction} state={state} view={playerView} viewerPlayerId={viewerPlayerId} />
           {phoneUi ? (
             <LogDrawer state={state} viewerPlayerId={isSeated ? viewerPlayerId : OBSERVER_SEAT} />
+          ) : null}
+          {isSeated && handMode === null && !forcedDiscard ? (
+            <MoraleOverflowPrompt
+              count={moraleOverflow}
+              legalActions={legalActions}
+              onDraw={(action) => submitAction(action)}
+              onRedraw={() => setHandMode("morale-redraw")}
+            />
           ) : null}
           {pile ? <PileModal {...pile} onClose={() => setPile(null)} /> : null}
           {pendingBattleTroopWarn ? (
