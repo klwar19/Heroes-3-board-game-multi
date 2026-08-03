@@ -10,7 +10,9 @@ import type { ArmyUnitState, GameDifficulty, GameState, HeroState, PlayerId } fr
  * - The army's strength — the sum of its 5 STRONGEST unit cards — must reach
  *   the field strength `2 × Field Difficulty + X` (+1 when playing with Unit
  *   Stacks), where X is the game difficulty (easy 1 / normal 2 / hard 3 /
- *   impossible 4). Equal or higher qualifies, including fields VI–VII.
+ *   impossible 4). Equal or higher qualifies — on fields Ⅰ–Ⅴ ONLY. A Ⅵ/Ⅶ
+ *   (difficulty ≥ 6) centre-band guard is NEVER Quick Combat, whether this rule
+ *   is on or off (`quickCombatAllowedAtDifficulty`); it is always fought out.
  * - A unit card's strength is its tier value (bronze 1 / silver 2 / gold 3 /
  *   azure 4); a faction PACK side counts double; each purchased Unit-Stack
  *   layer adds 0.5 (the sheet's "stack of Minotaurs = 2×2 + 0.5 = 4.5").
@@ -49,6 +51,21 @@ export const POLISH_QUICK_COMBAT_STACK_LAYER_STRENGTH = 0.5;
 
 /** The army strength sums only the N strongest cards (the sheet's "5 stronger units"). */
 export const POLISH_QUICK_COMBAT_UNIT_COUNT = 5;
+
+/**
+ * Quick Combat — of EITHER variety (the classic `level > difficulty` auto-win
+ * AND the Polish strength shortcut) — is NEVER offered on a Ⅵ or Ⅶ field. A
+ * high-value centre-band guard (difficulty 6–7) must ALWAYS be fought out, per
+ * the user rule "No quick combat on fields VI and VII" — this holds whether the
+ * `polish-quick-combat` house rule is on or off. Fields Ⅰ–Ⅴ (difficulty ≤ 5)
+ * are unaffected.
+ */
+export const QUICK_COMBAT_MAX_FIELD_DIFFICULTY = 5;
+
+/** Whether Quick Combat may EVER apply on a field of this difficulty (Ⅰ–Ⅴ only). */
+export function quickCombatAllowedAtDifficulty(difficulty: number): boolean {
+  return difficulty <= QUICK_COMBAT_MAX_FIELD_DIFFICULTY;
+}
 
 /**
  * The sheet's X — the game-difficulty term of the field strength. Same numbers
@@ -148,6 +165,11 @@ export function polishQuickCombatOutcome(
   difficulty: number
 ): PolishQuickCombatOutcome {
   if (!polishQuickCombatEnabled(state)) {
+    return "fight";
+  }
+  // Ⅵ/Ⅶ centre-band guards are always fought out — no Quick Combat, even under
+  // the Polish rule (user rule).
+  if (!quickCombatAllowedAtDifficulty(difficulty)) {
     return "fight";
   }
   const xpPossible = polishQuickCombatXpPossible(hero, difficulty);

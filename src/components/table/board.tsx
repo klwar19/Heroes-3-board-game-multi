@@ -1259,9 +1259,12 @@ export function BattlefieldBoard({
             : {};
 
           // Siege fortifications: walls and the gate live in the middle row.
+          // A defender may move onto (and stop on) its own Gate — when a unit
+          // stands there this branch is skipped so the unit renders normally
+          // (and shields the Gate from being destroyed).
           const isWall = wallPositions.has(index);
           const isGate = gatePosition === index;
-          if (isWall || isGate) {
+          if ((isWall || isGate) && !unit) {
             // An adjacent unit's melee demolish, or — during a Catapult target
             // pick — the bombardment shot. Either makes the Wall/Gate clickable.
             const fortAction = fortificationActionsByPosition.get(index) ?? fortAbilityTargetByPosition.get(index);
@@ -1290,6 +1293,25 @@ export function BattlefieldBoard({
                   onClick={() => onAction(fortAction.action)}
                   style={cellStyle}
                   title={`${fortAction.label} — automatically successful, no die, no cards`}
+                  type="button"
+                >
+                  {content}
+                </button>
+              );
+            }
+            // The defender may walk onto its own Gate (open to defending units)
+            // and stand there to shield it — offer the empty Gate as a move
+            // target when it is reachable this activation.
+            if (moveAction && !selectedCardAction && !planning) {
+              return (
+                <button
+                  aria-label={`Move onto the ${isGate ? "Gate" : "Wall"} and stand there to shield it`}
+                  className={`${className} fortification`}
+                  data-fx-cell={index}
+                  key={index}
+                  onClick={() => onAction(moveAction)}
+                  style={cellStyle}
+                  title={`Move onto the ${isGate ? "Gate" : "Wall"} — a unit standing on the Gate shields it from being destroyed`}
                   type="button"
                 >
                   {content}

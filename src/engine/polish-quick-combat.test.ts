@@ -210,12 +210,16 @@ describe("polish-quick-combat — outcome classifier (shared by engine + display
     setArmy(off, strongArmy());
     expect(polishQuickCombatOutcome(off, off.heroes.hero_p1, 1)).toBe("fight");
 
-    // VI–VII fields remain eligible when their higher threshold is covered.
+    // Ⅵ/Ⅶ centre-band guards are ALWAYS fought out — no Quick Combat even with a
+    // fully covering army (user rule "No quick combat on fields VI and VII").
+    // CONTROL: the same army covers a Ⅴ field and gets the choice, proving it is
+    // the difficulty cap — not a coverage shortfall — that forces the fight.
     const boss = makeGame("pqc-out-boss");
     boss.heroes.hero_p1.level = 1;
     setArmy(boss, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack")));
-    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 6)).toBe("choice");
-    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 7)).toBe("choice");
+    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 5)).toBe("choice");
+    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 6)).toBe("fight");
+    expect(polishQuickCombatOutcome(boss, boss.heroes.hero_p1, 7)).toBe("fight");
   });
 
   it("makes exact-level Quick Combat mandatory for a Secondary Hero, who cannot gain XP", () => {
@@ -303,20 +307,18 @@ describe("polish-quick-combat — mandatory Quick Combat when covered with no XP
     expect(state.heroes.hero_p1.experience, "a Quick Combat pays no Experience").toBe(xpBefore);
   });
 
-  it("shows the higher Quick Combat threshold for VI–VII fields", () => {
+  it("shows NO Quick Combat readout for VI–VII fields (always a full fight)", () => {
     const state = makeGame("pqc-info-boss");
     state.heroes.hero_p1.level = 1;
     setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack")));
-    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 6))).toMatchObject({
-      requiredStrength: 14,
+    // CONTROL: a fully covered Ⅴ field still shows the readout with the choice —
+    // so it is the Ⅵ/Ⅶ difficulty cap, not a coverage shortfall, that removes it.
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 5))).toMatchObject({
       covered: true,
       outcome: "choice"
     });
-    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 7))).toMatchObject({
-      requiredStrength: 16,
-      covered: true,
-      outcome: "choice"
-    });
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 6)), "Ⅵ").toBeNull();
+    expect(polishQuickCombatFieldInfo(state, state.heroes.hero_p1, guardField(state, 7)), "Ⅶ").toBeNull();
   });
 
   it("secondary hero auto-wins when the Main Hero's effective level exactly matches the field", () => {
@@ -332,6 +334,36 @@ describe("polish-quick-combat — mandatory Quick Combat when covered with no XP
     expect(state.combat).toBeNull();
     expect(state.pendingChoice).toBeNull();
     expect(secondary.experience).toBe(0);
+  });
+
+  it("no Quick Combat on a Ⅵ field with the Polish rule OFF — a level-7 hero must FIGHT it", () => {
+    // The reported bug: classic `level > difficulty` auto-won a Ⅵ (difficulty 6)
+    // field for a level-7 hero. Ⅵ/Ⅶ are now always fought out.
+    const state = makeGame("pqc-classic-vi", { houseRules: { "polish-quick-combat": false } });
+    state.heroes.hero_p1.level = 7;
+    setArmy(state, [armyCard("castle.griffins", "few")]);
+    encounter(state, guardField(state, 6));
+    expect(quickCombatWon(state), "a Ⅵ field is never skipped by level").toBe(false);
+    expect(state.combat?.context.kind).toBe("neutral");
+
+    // CONTROL: the SAME level-7 hero DOES auto-win a Ⅴ field (difficulty ≤ 5),
+    // proving it is the Ⅵ/Ⅶ cap that forces the fight.
+    const control = makeGame("pqc-classic-v", { houseRules: { "polish-quick-combat": false } });
+    control.heroes.hero_p1.level = 7;
+    setArmy(control, [armyCard("castle.griffins", "few")]);
+    encounter(control, guardField(control, 5));
+    expect(quickCombatWon(control), "a Ⅴ field is still auto-won on level").toBe(true);
+    expect(control.combat).toBeNull();
+  });
+
+  it("no Quick Combat on a Ⅵ field with the Polish rule ON — a fully covered army must FIGHT it", () => {
+    const state = makeGame("pqc-polish-vi");
+    state.heroes.hero_p1.level = 2; // above the field would be no-XP; covered → would-be mandatory
+    setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack"))); // 30 ≥ 14
+    encounter(state, guardField(state, 6));
+    expect(quickCombatWon(state), "a Ⅵ field is never a Polish Quick Combat").toBe(false);
+    expect(state.pendingChoice, "no fight-or-quick popup on Ⅵ").toBeNull();
+    expect(state.combat?.context.kind).toBe("neutral");
   });
 
   it("MUTATION CONTROL: a covered high-level hero with a too-weak army must FIGHT (rule off: classic auto-win)", () => {
@@ -435,13 +467,15 @@ describe("polish-quick-combat — fight-or-quick choice when Experience is possi
   });
 });
 
-describe("polish-quick-combat — VI–VII fields remain eligible", () => {
-  it("a level-1 hero with a strong army gets the choice at a difficulty-6 field (rule off: fights)", () => {
+describe("polish-quick-combat — VI–VII fields are never Quick Combat", () => {
+  it("a level-1 hero with a strong army FIGHTS a difficulty-6 field, rule on OR off", () => {
+    // User rule: no Quick Combat on Ⅵ/Ⅶ. A fully covering army opens no choice.
     const state = makeGame("pqc-vi");
     state.heroes.hero_p1.level = 1;
     setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack"))); // 30 ≥ 14
     encounter(state, guardField(state, 6));
-    expect(choiceContext(state)).toBe("polish-quick-combat");
+    expect(state.pendingChoice, "no fight-or-quick popup on Ⅵ (rule on)").toBeNull();
+    expect(state.phase).toBe("combat-setup");
 
     const control = makeGame("pqc-vi-control", { houseRules: { "polish-quick-combat": false } });
     control.heroes.hero_p1.level = 1;
@@ -449,6 +483,14 @@ describe("polish-quick-combat — VI–VII fields remain eligible", () => {
     encounter(control, guardField(control, 6));
     expect(control.pendingChoice).toBeNull();
     expect(control.phase).toBe("combat-setup");
+  });
+
+  it("CONTROL: the same covered army DOES get the choice on a Ⅴ field (the cap boundary)", () => {
+    const state = makeGame("pqc-v-boundary");
+    state.heroes.hero_p1.level = 1;
+    setArmy(state, Array.from({ length: 5 }, () => armyCard("castle.champions", "pack")));
+    encounter(state, guardField(state, 5));
+    expect(choiceContext(state)).toBe("polish-quick-combat");
   });
 });
 

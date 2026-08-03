@@ -12,7 +12,7 @@ import {
 } from "./adventure";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
-import { destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
+import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { expertUsesAvailable } from "./ruleset";
 import { appendEvent, nextEventNumber } from "./events";
@@ -794,9 +794,16 @@ function splashTargets(state: GameState): SplashTarget[] {
   const targets: SplashTarget[] = livingUnits(state)
     .filter((unit) => unit.position >= 0)
     .map((unit) => ({ id: unit.id, position: unit.position }));
-  const siege = state.combat?.siege;
-  if (siege) {
+  const combat = state.combat;
+  const siege = combat?.siege;
+  if (combat && siege) {
     for (const fort of fortificationTargets(siege)) {
+      // A defender standing on the Gate shields it — it cannot be battered while
+      // occupied, so leave it out of the Catapult's target list (the defender
+      // unit on it is still targetable as an ordinary unit).
+      if (defenderOnFortification(combat, siege, fort.position)) {
+        continue;
+      }
       targets.push({ id: fort.id, position: fort.position });
     }
   }
@@ -818,9 +825,16 @@ function splashFirstTargets(state: GameState): SplashTarget[] {
  */
 function cannonTargetIds(state: GameState, playerId: PlayerId): UnitId[] {
   const targets: UnitId[] = enemiesOf(state, playerId).map((unit) => unit.id);
-  const siege = state.combat?.siege;
-  if (siege && playerId !== siege.townPlayerId) {
-    targets.push(...fortificationTargets(siege).map((target) => target.id));
+  const combat = state.combat;
+  const siege = combat?.siege;
+  if (combat && siege && playerId !== siege.townPlayerId) {
+    // Skip a Gate a defender is standing on — it is shielded and cannot be shot
+    // down while occupied.
+    targets.push(
+      ...fortificationTargets(siege)
+        .filter((target) => !defenderOnFortification(combat, siege, target.position))
+        .map((target) => target.id)
+    );
   }
   return targets;
 }

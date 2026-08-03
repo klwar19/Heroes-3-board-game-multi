@@ -13,6 +13,16 @@ import {
   type LegalAction
 } from "@/engine";
 
+/** p1's home Town field id (its controller's Town, materialized at setup). */
+function homeTownFieldId(state: GameState): string {
+  const town = Object.values(state.towns).find((entry) => entry.controllerId === "p1");
+  const fieldId = town?.fieldId;
+  if (!fieldId) {
+    throw new Error("expected p1 to control a home Town with a field");
+  }
+  return fieldId;
+}
+
 afterEach(cleanup);
 
 const GRADES_ON = { ...DEFAULT_ANIME_OPTIONS, enabled: true, heroGrades: true };
@@ -150,6 +160,53 @@ describe("HeroActionsDock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Main Hero/ }));
     expect(onAction).toHaveBeenLastCalledWith(mainAction);
+  });
+
+  it("surfaces Build the Grail when carrying it at a controlled Town, and dispatches the exact payload", () => {
+    // Regression: the engine has ALWAYS offered BUILD_GRAIL, but no component
+    // rendered it, so "Build the Grail" was unreachable in the UI. The hidden
+    // Grail/Utopia package sets grailBuildAt = "both" and guards off the
+    // deliver-home win, so a carrier standing on its own Town may build.
+    let state = createAdventureGameState({
+      seed: "hero-actions-dock-grail",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = homeTownFieldId(state);
+    state.adventure!.grail = { status: "carried", carrierHeroId: hero.id };
+
+    const legalActions = getLegalActions(state, "p1");
+    const build = legalActions.find((entry) => entry.action.type === "BUILD_GRAIL");
+    expect(build, "engine must offer BUILD_GRAIL while carrying at an owned Town").toBeTruthy();
+
+    const onAction = vi.fn();
+    render(<HeroActionsDock legalActions={legalActions} onAction={onAction} />);
+    fireEvent.click(screen.getByRole("button", { name: /Build the Grail/i }));
+    expect(onAction).toHaveBeenCalledWith(build!.action);
+  });
+
+  it("does NOT surface Build the Grail when the hero is not carrying it (CONTROL)", () => {
+    let state = createAdventureGameState({
+      seed: "hero-actions-dock-grail-control",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyAction(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }).state;
+    }
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = homeTownFieldId(state);
+    // No carried Grail on this player → no offer, no button.
+    const legalActions = getLegalActions(state, "p1");
+    expect(legalActions.some((entry) => entry.action.type === "BUILD_GRAIL")).toBe(false);
+    render(<HeroActionsDock legalActions={legalActions} onAction={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Build the Grail/i })).toBeNull();
   });
 
   it("ignores a non-Forced-March USE_HERO_SKILL (e.g. combat War Cry)", () => {

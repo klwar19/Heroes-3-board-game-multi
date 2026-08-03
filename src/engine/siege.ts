@@ -124,6 +124,32 @@ export function siegeBlockedPositions(siege: SiegeState, movingUnit: CombatUnitS
   return intactFortificationPositions(siege);
 }
 
+/**
+ * A living DEFENDER unit standing on this fortification cell, if any. Only the
+ * Gate can be occupied — defending units may stop on it, Walls block everyone,
+ * and the besieger may never enter a fortification cell. A defender standing on
+ * its own Gate SHIELDS it: the Gate cannot be destroyed while occupied (so a
+ * champion may plug the Gate to keep it from being battered down). Walls always
+ * return null here (nobody can stand on a Wall), so this only ever guards the
+ * Gate.
+ */
+export function defenderOnFortification(
+  combat: CombatState,
+  siege: SiegeState,
+  position: number
+): CombatUnitState | null {
+  for (const unit of Object.values(combat.units)) {
+    if (
+      unit.controllerId === siege.townPlayerId &&
+      unit.position === position &&
+      unit.damage < unit.maxHealth
+    ) {
+      return unit;
+    }
+  }
+  return null;
+}
+
 export function makeArrowTowerUnit(unitId: UnitId, controllerId: PlayerId): CombatUnitState {
   return {
     id: unitId,
@@ -210,6 +236,14 @@ export function destroyFortification(
   const combat = state.combat;
   const siege = combat?.siege;
   if (!combat || !siege) {
+    return;
+  }
+
+  // A defender standing on the Gate shields it — it cannot be destroyed while
+  // occupied (backstop for every destruction path: Catapult/Cannon, melee
+  // demolish, Earthquake, splash). Only the Gate can be occupied, so this never
+  // affects Walls.
+  if (defenderOnFortification(combat, siege, position)) {
     return;
   }
 

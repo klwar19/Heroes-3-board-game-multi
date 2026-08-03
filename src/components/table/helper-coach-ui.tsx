@@ -50,14 +50,18 @@ function savePos(pos: PanelPos): void {
   }
 }
 
-/** Center of the viewport, in fixed-pixel coordinates (top-left of panel). */
-function defaultCenterPos(panelWidth: number, panelHeight: number): PanelPos {
+/**
+ * Default resting place: the bottom-right corner (top-left of the panel in
+ * fixed-pixel coordinates), so the tips panel sits out of the way of the
+ * board/buttons instead of over the center. Matches the "Tips off" chip corner.
+ */
+function defaultCornerPos(panelWidth: number, panelHeight: number): PanelPos {
   if (typeof window === "undefined") {
     return { x: 80, y: 160 };
   }
   return {
-    x: Math.max(12, (window.innerWidth - panelWidth) / 2),
-    y: Math.max(12, (window.innerHeight - panelHeight) / 2)
+    x: Math.max(12, window.innerWidth - panelWidth - 16),
+    y: Math.max(12, window.innerHeight - panelHeight - 16)
   };
 }
 
@@ -180,7 +184,7 @@ export function HelperCoachStrip({
     const width = el?.offsetWidth ?? 420;
     const height = el?.offsetHeight ?? 110;
     const saved = readSavedPos();
-    setPos(clampPos(saved ?? defaultCenterPos(width, height), width, height));
+    setPos(clampPos(saved ?? defaultCornerPos(width, height), width, height));
   }, [ready, enabled, tip?.id]);
 
   // Keep on-screen if the window is resized.
@@ -290,7 +294,9 @@ export function HelperCoachStrip({
 
   const style: CSSProperties = pos
     ? { left: pos.x, top: pos.y, transform: "none" }
-    : { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
+    : // Before the panel is measured, anchor bottom-right so it never flashes
+      // in the center of the board.
+      { right: 16, bottom: 16, left: "auto", top: "auto", transform: "none" };
 
   return (
     <div

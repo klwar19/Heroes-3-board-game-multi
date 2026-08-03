@@ -8428,6 +8428,7 @@ function HouseRulesSection({
             <span className="houseRuleGroupLabel">Whole Polish package</span>
             <GroupToggleAllButton
               creatureBanksEnabled={creatureBanksEnabled}
+              enableExtras={{ "split-decks": true }}
               groupLabel="Polish"
               houseRules={houseRules}
               rules={polishRules}

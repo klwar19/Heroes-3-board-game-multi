@@ -488,7 +488,7 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
-  it("Enable-all Polish leaves split-decks alone and skips Random Artifacts while its dependency is off", () => {
+  it("Enable-all Polish pulls in split-decks (divided decks) and its dependent Random Artifacts", () => {
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
         ...state.setupLobby!.options.houseRules,
@@ -499,10 +499,13 @@ describe("Game options — tabbed layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
     const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
       .options.houseRules;
-    // Independent rules are not smuggled into the group dispatch.
-    expect(hr["split-decks"]).toBeUndefined();
-    // Random Artifacts remains dependency-blocked until split-decks is enabled.
-    expect(hr["polish-random-artifacts"]).toBeUndefined();
+    // The Polish package pulls in split-decks as its companion (the first BINH
+    // house rule — divided Spell/Artifact decks — is the default when playing
+    // with Polish rules).
+    expect(hr["split-decks"]).toBe(true);
+    // …which unblocks Random Artifacts (it depends on split-decks), so the whole
+    // package genuinely enables in the same dispatch.
+    expect(hr["polish-random-artifacts"]).toBe(true);
   });
 
   it("Enable-all skips a dependency-blocked rule (Rolled Bank Sizes without Creature Banks)", () => {
