@@ -5776,6 +5776,91 @@ What runs (each mutation-checked):
   onto a mine you are about to defend (pinned with a forged-off-turn rejection +
   an own-turn CONTROL in `legion-artifacts.test.ts`).
 
+## Legion vouchers on NEUTRAL-Unit recruits (2026-08-03) — what runs vs. limits
+
+Reported bug: "Elemental Conflux did not allow me to use the Legion piece in my
+hand to reduce the cost of the recruited unit. Actually ALL Legion artifacts
+should give the option to reduce cost when recruiting NEUTRAL units." They never
+did — the discount pipeline only ever reached the town roster (recruit/reinforce/
+Stack), and a Neutral-Unit recruit read the printed cost raw. Behaviour pinned in
+`src/engine/legion-neutral-recruit.test.ts` (each claim mutation-checked with a
+no-voucher / no-piece / excluded-offer CONTROL).
+
+**ONE pricing seam.** `neutralRecruitCost(state, playerId, unitDefId,
+goldReduction?)` (adventure.ts) = the printed NEUTRAL-side cost, minus a printed
+reduction (Oidana IV's −4 gold) FIRST, then `applyRecruitGoldDiscount` (every
+distinct Legion voucher, ADDED). Every "recruit a Neutral for its printed cost"
+surface uses it for the affordability gate, the offer LABEL and the actual spend,
+and calls `consumeRecruitVoucherFor` once the card joins the army — so the three
+can never disagree and the voucher is single-use. Discounted surfaces: **Elemental
+Conflux**, **Portal of Summoning**, **Charlie and his Circus** (Astrologers),
+the **Den of Thieves** and **Mercenary Camp** Events, and **Cyra's / Oidana's
+Diplomacy** recruit side.
+
+**The map Legion "pick a unit" prompt is deliberately UNCHANGED** — a Neutral-deck
+card is NOT a pre-bankable target (`legionDiscountTargets` keeps only the town
+roster / army / Stack arms; its only edit is the explanatory NOTE, so its output
+is byte-identical to before). Adding them was tried and REVERTED because it broke
+two things: the prompt filled with the whole Neutral deck and printed a second,
+ambiguous "Recruit Marksmen" (most faction creatures have a Neutral twin card —
+`legion-discount-ui.test.tsx` caught it), and a computer seat then banked its
+voucher on a Neutral card it never buys, delaying its Gold-dwelling rush on the
+fixed seeds (`single-player-premium-rush.test.ts` caught it). Pre-banking would
+buy nothing anyway: see the limits below.
+
+**ONE menu seam + the inline play.** The five visit-based surfaces build their
+CHOOSE_ONE through the new auto-resolving `NEUTRAL_RECRUIT_MENU` visit step
+(each candidate carries that surface's own recruit leaf; `decline` its own
+bookkeeping; `verb` keeps the Den of Thieves' printed "Buy …" wording;
+`skipWhenEmpty` preserves each surface's pre-existing "nothing affordable ⇒ no
+prompt" behaviour). It also offers each HELD Legion piece inline
+(`USE_LEGION_RECRUIT_DISCOUNT`: discard the piece, bank its voucher for that
+unit, RE-OPEN the menu) — because banking beforehand cannot work at a field
+reached by MOVING (movement is the bank's expiry seam) and an open visit offers
+no card plays at all. Re-opening is what lets **distinct pieces stack** and keeps
+Decline reachable. **Diplomacy** carries the same inline offer inside its own
+`diplomacy-recruit` pendingChoice (`diplomacyRecruit.legionPlays`, appended AFTER
+the recruit + "Recruit none" options so every pre-existing index keeps its
+meaning; `openDiplomacyRecruitChoice` is the split-out re-open that never draws
+again). `bankRecruitDiscountVoucher` is the SINGLE writer of a voucher for all
+three surfaces (the map pick, the visit menu, Diplomacy).
+
+Leading with what does NOT work / deliberate limits:
+- **A voucher is reserved for ONE unit.** Playing a piece inline then recruiting
+  a DIFFERENT candidate wastes it (the menu's own prices make that visible, and
+  the option label names the unit).
+- **The AI never spends a Legion piece on a neutral recruit.**
+  `USE_LEGION_RECRUIT_DISCOUNT` scores 10 in `map-policy.ts` (below a plain
+  recruit's 28/12) and the Diplomacy inline options score `CHOICE_BASE + 2`
+  (below decline's +8) in `choice-policy.ts`. Deliberate on both counts: the
+  option RE-OPENS the same menu, so a competitive score could cycle the whole
+  hand of pieces before buying — and keeping the pre-existing option scores
+  untouched is what keeps the fixed-seed single-player runs
+  (`single-player-premium-rush.test.ts`) byte-identical. Bounded either way
+  (each use consumes a card).
+- **Two clicks per piece** (play the piece → the menu re-opens → recruit). That
+  re-open is what makes stacking AND Decline both reachable; there is no
+  single-click multi-piece combo.
+- **EXCLUDED, unchanged (they print their own price and fold no voucher):**
+  Pandora's Gift half-cost Neutral recruits (`openNeutralRecruitOffer` /
+  `NEUTRAL_RECRUIT_RESOLVE`, still `halfRecruitCostRoundedUp` — CONTROL-pinned
+  with an identical label AND gold spent whether or not a voucher is banked for
+  that exact unit, and no inline offer either), the settlement-capture half-cost
+  arm, the Necromancy / Hill Fort banked reinforcement offers, and the Polish
+  Unit-Stack special offers. FREE neutral recruits (Pandora's free draw,
+  Unexpected Reinforcements, the Skeletons reward) and Gelu/Dracon/Tarnum's
+  fixed-gold `CONVERT_ARMY_UNIT` fetch are not printed-cost recruits and are
+  untouched.
+- **Portal of Summoning's option label gained the unit name** ("Recruit Air
+  Elementals (7 gold)" instead of "Recruit for 7 gold") — cosmetic, the prompt
+  already named the drawn card.
+- The inline offer names the player's own hand cards. On a VISIT that is already
+  safe (a non-owner's view gets `pendingVisit.steps: []`,
+  `getVisiblePendingVisit`); Diplomacy's choice is otherwise public, so
+  `player-view` scrubs exactly its trailing Legion options to "Play a card from
+  hand" and hides their `cardId`, keeping the recruit/decline labels visible as
+  before.
+
 ## Map spell-power bank, map notice icons, teleport-guard bank fights & Rule 111 UI — what runs
 
 Five additions; each engine claim fails a named test if its wiring is removed.

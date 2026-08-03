@@ -63,6 +63,10 @@ import {
   classifyHeroStep,
   commitPopulationOnMove,
   consumeRecruitVoucherFor,
+  neutralRecruitCost,
+  heldRecruitDiscountCards,
+  legionPieceAlreadyBanked,
+  bankRecruitDiscountVoucher,
   controlsTownOrSettlement,
   createSecondaryHero,
   secondaryHeroPlacementFields,
@@ -5551,18 +5555,10 @@ function recruitCostLabel(cost: ResourceCost): string {
   );
 }
 
-/**
- * Oidana IV's Diplomacy discount: knock `goldReduction` off the GOLD portion of
- * a recruit cost (floored at 0), leaving every other resource untouched. Used
- * consistently for the affordability filter, the option label AND the actual
- * spend so the discount a player is shown is exactly the discount they pay.
- */
-function reduceGoldCost(cost: ResourceCost, goldReduction?: number): ResourceCost {
-  if (!goldReduction || (cost.gold ?? 0) <= 0) {
-    return cost;
-  }
-  return { ...cost, gold: Math.max(0, (cost.gold ?? 0) - goldReduction) };
-}
+// Oidana IV's printed Diplomacy discount is now the `goldReduction` argument of
+// the shared `neutralRecruitCost` seam (adventure.ts), which also folds every
+// banked Legion voucher — so the affordability filter, the option label and the
+// actual spend all read the same price.
 
 function diplomacyDwellingDrawTiers(
   state: GameState,
@@ -5636,11 +5632,59 @@ export function openDiplomacyRecruit(
     unitDefIds: draws.map((draw) => draw.unitDefId)
   });
 
+  openDiplomacyRecruitChoice(state, playerId, draws, goldReduction);
+}
+
+/**
+ * Opens (or RE-opens after an inline Legion play) the Diplomacy recruit choice
+ * over already-drawn Neutral cards. Split out of `openDiplomacyRecruit` so the
+ * re-open never draws again.
+ *
+ * Option order is [affordable recruits…, "Recruit none", inline Legion plays…]:
+ * the Legion entries are appended LAST on purpose so every pre-existing index
+ * (including the decline) keeps its meaning for clients, tests and the AI.
+ */
+function openDiplomacyRecruitChoice(
+  state: GameState,
+  playerId: PlayerId,
+  draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[],
+  goldReduction?: number
+): void {
   const recruitable = draws.filter((draw) => {
     const neutral = coreUnitDefinitions[draw.unitDefId]?.neutral;
     return Boolean(neutral) &&
-      hasRecruitResources(state, playerId, reduceGoldCost(neutral?.cost ?? {}, goldReduction));
+      hasRecruitResources(state, playerId, neutralRecruitCost(state, playerId, draw.unitDefId, goldReduction));
   });
+
+  // Inline Legion offers: one per held piece × distinct drawn unit whose cost the
+  // piece would make payable/cheaper. Playing Diplomacy is a hand action so a
+  // piece COULD be played first, but the drawn card is random — nobody can name
+  // the target in advance, which is why the offer belongs here.
+  const legionPlays: { cardId: CardId; amount: number; unitDefId: string }[] = [];
+  const legionLabels: string[] = [];
+  const legionSeen = new Set<string>();
+  for (const draw of draws) {
+    if (legionSeen.has(draw.unitDefId) || !coreUnitDefinitions[draw.unitDefId]?.neutral) {
+      continue;
+    }
+    legionSeen.add(draw.unitDefId);
+    const cost = neutralRecruitCost(state, playerId, draw.unitDefId, goldReduction);
+    if ((cost.gold ?? 0) <= 0) {
+      continue;
+    }
+    for (const piece of heldRecruitDiscountCards(state, playerId)) {
+      const cheaper = { ...cost, gold: Math.max(0, (cost.gold ?? 0) - piece.amount) };
+      if (!hasRecruitResources(state, playerId, cheaper)) {
+        continue;
+      }
+      legionPlays.push({ cardId: piece.cardId, amount: piece.amount, unitDefId: draw.unitDefId });
+      legionLabels.push(
+        `Play ${piece.name} (−${piece.amount} gold) toward ${
+          coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId
+        } — then ${recruitCostLabel(cheaper)}`
+      );
+    }
+  }
 
   // Always open a choice when something was drawn — even when nothing is
   // affordable. The old silent "return cards and leave" made Diplomacy's basic
@@ -5660,14 +5704,24 @@ export function openDiplomacyRecruit(
     options: [
       ...recruitable.map((draw) => {
         const def = coreUnitDefinitions[draw.unitDefId];
+        // Priced through the shared neutral-recruit seam, so a banked Legion
+        // voucher is visible in the label AND charged at resolution.
         return {
-          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(reduceGoldCost(def?.neutral?.cost ?? {}, goldReduction))})`
+          label: `Recruit ${def?.name ?? draw.unitDefId} (${recruitCostLabel(
+            neutralRecruitCost(state, playerId, draw.unitDefId, goldReduction)
+          )})`
         };
       }),
-      { label: recruitable.length === 0 ? "Done — return drawn cards" : "Recruit none" }
+      { label: recruitable.length === 0 ? "Done — return drawn cards" : "Recruit none" },
+      ...legionLabels.map((label) => ({ label }))
     ],
     context: "diplomacy-recruit",
-    diplomacyRecruit: { draws, recruitable, goldReduction },
+    diplomacyRecruit: {
+      draws,
+      recruitable,
+      goldReduction,
+      ...(legionPlays.length > 0 ? { legionPlays } : {})
+    },
     returnPhase: state.phase
   };
   state.phase = "choice";
@@ -5688,6 +5742,39 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
   }
   const recruit = choice.diplomacyRecruit;
 
+  // Inline Legion play (the trailing options): discard the piece, bank its
+  // voucher for that drawn unit, then RE-OPEN this same choice at the reduced
+  // price — so a second distinct piece can stack and "Recruit none" stays
+  // reachable. No card is returned to a deck here; the draws are untouched.
+  const legionIndex = optionIndex - recruit.recruitable.length - 1;
+  const legionPlay = legionIndex >= 0 ? recruit.legionPlays?.[legionIndex] : undefined;
+  if (legionPlay) {
+    const legionPlayer = state.players[playerId];
+    const handIndex = legionPlayer?.hand.indexOf(legionPlay.cardId) ?? -1;
+    if (legionPlayer && handIndex >= 0 && !legionPieceAlreadyBanked(state, playerId, legionPlay.cardId)) {
+      legionPlayer.hand.splice(handIndex, 1);
+      legionPlayer.discard.push(legionPlay.cardId);
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId,
+        cardId: legionPlay.cardId,
+        timing: cardLibrary[legionPlay.cardId]?.timing ?? "instant",
+        mode: "basic",
+        effectAmount: legionPlay.amount,
+        optionLabel: `Reduce the recruit cost of ${
+          coreUnitDefinitions[legionPlay.unitDefId]?.name ?? legionPlay.unitDefId
+        } by ${legionPlay.amount} gold`
+      });
+      bankRecruitDiscountVoucher(state, playerId, {
+        cardId: legionPlay.cardId,
+        amount: legionPlay.amount,
+        target: { kind: "recruit", unitDefId: legionPlay.unitDefId }
+      });
+    }
+    openDiplomacyRecruitChoice(state, playerId, recruit.draws, recruit.goldReduction);
+    return;
+  }
+
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
@@ -5699,12 +5786,14 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
 
   if (pick && player) {
     const def = coreUnitDefinitions[pick.unitDefId];
-    // Apply Oidana IV's gold discount (if any) to the same cost the player was
-    // shown — the affordability check, the label and this spend all agree.
-    const cost = reduceGoldCost(def?.neutral?.cost ?? {}, recruit.goldReduction);
+    // Oidana IV's printed gold discount AND every banked Legion voucher for this
+    // unit, through the ONE shared neutral-recruit seam — the affordability
+    // check, the label and this spend all agree.
+    const cost = neutralRecruitCost(state, playerId, pick.unitDefId, recruit.goldReduction);
     if (def?.neutral && hasRecruitResources(state, playerId, cost)) {
       spendRecruitResources(state, playerId, cost, `recruited ${def.name} with Diplomacy`);
       addArmyUnit(player, pick.unitDefId, "neutral");
+      consumeRecruitVoucherFor(state, playerId, { kind: "recruit", unitDefId: pick.unitDefId });
       appendEvent(state, {
         type: "UNIT_RECRUITED",
         playerId,

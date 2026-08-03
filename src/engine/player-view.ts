@@ -84,6 +84,32 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Diplomacy's recruit choice is otherwise PUBLIC (the drawn Neutral cards are
+  // announced in the feed), but its trailing inline Legion offers name the
+  // owner's PRIVATE hand cards. Scrub exactly those trailing options + payload
+  // for other seats, keeping the recruit/decline labels visible as before.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "diplomacy-recruit" &&
+    choice.playerId !== viewerPlayerId &&
+    (choice.diplomacyRecruit?.legionPlays?.length ?? 0) > 0
+  ) {
+    const firstLegionIndex = (choice.diplomacyRecruit?.recruitable.length ?? 0) + 1;
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map((option, index) =>
+        index >= firstLegionIndex ? { label: "Play a card from hand" } : { ...option }
+      ),
+      diplomacyRecruit: {
+        ...cloneSerializable(choice.diplomacyRecruit!),
+        legionPlays: (choice.diplomacyRecruit!.legionPlays ?? []).map((play) => ({
+          ...play,
+          cardId: "hidden"
+        }))
+      }
+    };
+  }
+
   // Power-boost windows (map-spell-boost / visions-boost / fortune-boost): the
   // option labels name the caster's PRIVATE hand cards ("Discard <card> …"), so
   // other viewers only learn that the boost decision is open — never which

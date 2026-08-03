@@ -7666,6 +7666,50 @@ export function processPendingVisit(state: GameState): void {
           target: step.target
         });
         break;
+      case "NEUTRAL_RECRUIT_MENU": {
+        // THE shared neutral-recruit menu: every option's price already carries
+        // the player's banked Legion vouchers, and each held Legion piece is
+        // offered inline (the only reachable way to use one here — see the step
+        // doc in state.ts).
+        const options = neutralRecruitMenuOptions(state, visit.playerId, step);
+        if (options.length === 0 && step.skipWhenEmpty) {
+          // Pre-existing behaviour for the surfaces that never prompted with a
+          // lone Decline: run their own bookkeeping (return the drawn cards) now.
+          visit.steps.unshift(...step.decline.steps);
+          break;
+        }
+        options.push(step.decline);
+        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: step.prompt, options });
+        break;
+      }
+      case "USE_LEGION_RECRUIT_DISCOUNT": {
+        const player = state.players[visit.playerId];
+        const handIndex = player?.hand.indexOf(step.cardId) ?? -1;
+        if (player && handIndex >= 0 && !legionPieceAlreadyBanked(state, visit.playerId, step.cardId)) {
+          player.hand.splice(handIndex, 1);
+          player.discard.push(step.cardId);
+          appendEvent(state, {
+            type: "CARD_PLAYED",
+            playerId: visit.playerId,
+            cardId: step.cardId,
+            timing: cardLibrary[step.cardId]?.timing ?? "instant",
+            mode: "basic",
+            effectAmount: step.amount,
+            optionLabel: `Reduce the recruit cost of ${
+              coreUnitDefinitions[step.unitDefId]?.name ?? step.unitDefId
+            } by ${step.amount} gold`
+          });
+          bankRecruitDiscountVoucher(state, visit.playerId, {
+            cardId: step.cardId,
+            amount: step.amount,
+            target: { kind: "recruit", unitDefId: step.unitDefId }
+          });
+        }
+        // Re-open the menu either way: refreshed prices, remaining pieces still
+        // offered (so distinct pieces stack), Decline still reachable.
+        visit.steps.unshift(step.menu);
+        break;
+      }
       case "SEARCH_SHARED_DECK": {
         const reward: AdventureReward = {
           playerId: visit.playerId,
@@ -8042,29 +8086,27 @@ export function processPendingVisit(state: GameState): void {
           break;
         }
         const def = coreUnitDefinitions[drawn];
-        const cost = def?.neutral?.cost ?? {};
-        const costLabel =
-          Object.entries(cost)
-            .filter(([, amount]) => amount)
-            .map(([resource, amount]) => `${amount} ${resource}`)
-            .join(" + ") || "free";
-        const affordable = Boolean(def?.neutral) && hasRecruitResources(state, visit.playerId, cost);
+        // Shared neutral-recruit menu: a banked Legion voucher is priced in and a
+        // held Legion piece can be played inline (a Portal draw is a town action,
+        // so the piece could also be played beforehand — the menu just makes it
+        // reachable either way, and identical to every other neutral recruit).
         visit.steps.unshift({
-          type: "CHOOSE_ONE",
-          prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabel})`,
-          options: [
-            ...(affordable
-              ? [{ label: `Recruit for ${costLabel}`, steps: [{ type: "PORTAL_RECRUIT", unitDefId: drawn } as VisitStep] }]
-              : []),
-            { label: "Decline (discard the card)", steps: [{ type: "PORTAL_DECLINE", unitDefId: drawn } as VisitStep] }
-          ]
+          type: "NEUTRAL_RECRUIT_MENU",
+          prompt: `Portal of Summoning: drew ${def?.name ?? drawn} (${costLabelOf(
+            neutralRecruitCost(state, visit.playerId, drawn)
+          )})`,
+          candidates: [{ unitDefId: drawn, steps: [{ type: "PORTAL_RECRUIT", unitDefId: drawn } as VisitStep] }],
+          decline: {
+            label: "Decline (discard the card)",
+            steps: [{ type: "PORTAL_DECLINE", unitDefId: drawn } as VisitStep]
+          }
         });
         break;
       }
       case "PORTAL_RECRUIT": {
         const player = state.players[visit.playerId];
         const def = coreUnitDefinitions[step.unitDefId];
-        const cost = def?.neutral?.cost ?? {};
+        const cost = neutralRecruitCost(state, visit.playerId, step.unitDefId);
         if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
           // Cannot pay after all: the card goes to its tier discard pile.
           state.decks[NEUTRAL_DECK_IDS[(def?.tier ?? "bronze") as "bronze" | "silver" | "gold" | "azure"]]?.discardPile.push(
@@ -8074,6 +8116,7 @@ export function processPendingVisit(state: GameState): void {
         }
         spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} at the Portal of Summoning`);
         addArmyUnit(player, step.unitDefId, "neutral");
+        consumeRecruitVoucherFor(state, visit.playerId, { kind: "recruit", unitDefId: step.unitDefId });
         appendEvent(state, {
           type: "UNIT_RECRUITED",
           playerId: visit.playerId,
@@ -9094,33 +9137,21 @@ export function processPendingVisit(state: GameState): void {
         if (drawn.length === 0) {
           break;
         }
-        const recruitable = drawn.filter((draw) =>
-          hasRecruitResources(state, visit.playerId, coreUnitDefinitions[draw.unitDefId]?.neutral?.cost ?? {})
-        );
-        if (recruitable.length === 0) {
-          // Nothing affordable: every drawn card returns to its tier's discard.
-          for (const draw of drawn) {
-            state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
-          }
-          break;
-        }
-        const options: { label: string; steps: VisitStep[] }[] = recruitable.map((draw) => {
-          const def = coreUnitDefinitions[draw.unitDefId];
-          const cost = def?.neutral?.cost ?? {};
-          const costLabel =
-            Object.entries(cost)
-              .map(([resource, amount]) => `${amount} ${resource}`)
-              .join(" + ") || "free";
-          return {
-            label: `Recruit ${def?.name ?? draw.unitDefId} (${costLabel})`,
-            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn }]
-          };
-        });
-        options.push({ label: "Recruit none", steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn }] });
+        // Shared neutral-recruit menu (Legion vouchers priced in, held pieces
+        // playable inline). `skipWhenEmpty` keeps the old behaviour: with nothing
+        // affordable the drawn cards just return to their discards, no prompt.
         visit.steps.unshift({
-          type: "CHOOSE_ONE",
+          type: "NEUTRAL_RECRUIT_MENU",
           prompt: "Charlie and his Circus: recruit one drawn Neutral Unit",
-          options
+          candidates: drawn.map((draw) => ({
+            unitDefId: draw.unitDefId,
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: draw, drawn } as VisitStep]
+          })),
+          decline: {
+            label: "Recruit none",
+            steps: [{ type: "RECRUIT_DRAWN_NEUTRAL", recruit: null, drawn } as VisitStep]
+          },
+          skipWhenEmpty: true
         });
         break;
       }
@@ -9133,10 +9164,14 @@ export function processPendingVisit(state: GameState): void {
         let recruitedTier: string | undefined;
         if (step.recruit) {
           const def = coreUnitDefinitions[step.recruit.unitDefId];
-          const cost = def?.neutral?.cost ?? {};
+          const cost = neutralRecruitCost(state, visit.playerId, step.recruit.unitDefId);
           if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
             spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name}`);
             addArmyUnit(player, step.recruit.unitDefId, "neutral");
+            consumeRecruitVoucherFor(state, visit.playerId, {
+              kind: "recruit",
+              unitDefId: step.recruit.unitDefId
+            });
             appendEvent(state, {
               type: "UNIT_RECRUITED",
               playerId: visit.playerId,
@@ -9280,32 +9315,26 @@ export function processPendingVisit(state: GameState): void {
         if (candidates.length === 0) {
           break;
         }
-        const options = candidates
-          .filter(({ unitDefId }) =>
-            hasRecruitResources(state, visit.playerId, coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {})
-          )
-          .map(({ unitDefId, tier }) => {
-            const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
-            const costLabel =
-              Object.entries(cost)
-                .map(([resource, amount]) => `${amount} ${resource}`)
-                .join(" + ") || "free";
-            return {
-              label: `Recruit ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (${costLabel})`,
-              steps: [{ type: "ELEMENTAL_RECRUIT_ONE", unitDefId, tier } as VisitStep]
-            };
-          });
-        if (options.length === 0) {
-          break;
-        }
-        options.push({ label: "Decline", steps: [] });
-        visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Elemental Conflux: recruit an Elemental", options });
+        // Priced + offered through THE shared neutral-recruit menu, so a banked
+        // Legion voucher lowers the price shown AND charged, and a Legion piece
+        // still in hand can be played right here (a Conflux is reached by MOVING,
+        // which wipes pre-banked vouchers, and its visit blocks card plays).
+        visit.steps.unshift({
+          type: "NEUTRAL_RECRUIT_MENU",
+          prompt: "Elemental Conflux: recruit an Elemental",
+          candidates: candidates.map(({ unitDefId, tier }) => ({
+            unitDefId,
+            steps: [{ type: "ELEMENTAL_RECRUIT_ONE", unitDefId, tier } as VisitStep]
+          })),
+          decline: { label: "Decline", steps: [] },
+          skipWhenEmpty: true
+        });
         break;
       }
       case "ELEMENTAL_RECRUIT_ONE": {
         const player = state.players[visit.playerId];
         const def = coreUnitDefinitions[step.unitDefId];
-        const cost = def?.neutral?.cost ?? {};
+        const cost = neutralRecruitCost(state, visit.playerId, step.unitDefId);
         if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
           break;
         }
@@ -9321,6 +9350,7 @@ export function processPendingVisit(state: GameState): void {
         }
         spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} at the Elemental Conflux`);
         addArmyUnit(player, step.unitDefId, "neutral");
+        consumeRecruitVoucherFor(state, visit.playerId, { kind: "recruit", unitDefId: step.unitDefId });
         appendEvent(state, {
           type: "UNIT_RECRUITED",
           playerId: visit.playerId,
@@ -17315,6 +17345,137 @@ export function consumeRecruitVoucherFor(state: GameState, playerId: PlayerId, p
   player.recruitDiscounts = player.recruitDiscounts.filter((voucher) => !voucherMatchesPurchase(voucher, purchase));
 }
 
+// ---------------------------------------------------------------------------
+// Neutral-Unit recruits and Legion vouchers (the ONE shared pricing seam)
+// ---------------------------------------------------------------------------
+
+/**
+ * The printed NEUTRAL-side cost of a unit after every recruit gold discount —
+ * distinct Legion vouchers (added) plus any building/location recruit source.
+ * THE single price read for every "recruit a Neutral Unit for its printed cost"
+ * surface (Elemental Conflux, Portal of Summoning, Charlie and his Circus, the
+ * Den of Thieves / Mercenary Camp Events, Cyra's/Oidana's Diplomacy), used for
+ * the affordability gate, the offer LABEL and the actual spend, so the three can
+ * never disagree. Pure read; the voucher is spent separately by
+ * `consumeRecruitVoucherFor` once the unit really joins the army.
+ *
+ * Deliberately NOT used by the special offers that print their own price and
+ * fold no voucher: Pandora's Gift half-cost recruits, the settlement-capture
+ * half-cost arm, the Necromancy / Hill Fort banked reinforcement offers and the
+ * Polish Unit-Stack special offers.
+ */
+export function neutralRecruitCost(
+  state: GameState,
+  playerId: PlayerId,
+  unitDefId: string,
+  /** Extra printed reduction applied BEFORE vouchers (Oidana IV's −4 gold). */
+  goldReduction = 0
+): ResourceCost {
+  const printed = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
+  const base =
+    goldReduction > 0 && (printed.gold ?? 0) > 0
+      ? { ...printed, gold: Math.max(0, (printed.gold ?? 0) - goldReduction) }
+      : printed;
+  return applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, base);
+}
+
+/** Whether this exact Legion piece has already banked a voucher (both readings). */
+export function legionPieceAlreadyBanked(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return true;
+  }
+  return houseRuleEnabled(state, "immediate-reinforcement-prompts")
+    ? player.recruitDiscounts?.some((voucher) => voucher.cardId === cardId) ?? false
+    : player.legionDiscountCardIdsUsed?.includes(cardId) ?? false;
+}
+
+/**
+ * The Legion pieces in the player's HAND whose discount side can still bank a
+ * voucher (same ledger guard the map card play uses). Distinct card ids only —
+ * a second copy of the same piece never banks twice before movement.
+ */
+export function heldRecruitDiscountCards(
+  state: GameState,
+  playerId: PlayerId
+): { cardId: CardId; amount: number; name: string }[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  const seen = new Set<CardId>();
+  const held: { cardId: CardId; amount: number; name: string }[] = [];
+  for (const cardId of player.hand) {
+    if (seen.has(cardId)) {
+      continue;
+    }
+    const card = cardLibrary[cardId];
+    if (card?.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    const option = card.effect.options.find((candidate) => candidate.effect.type === "GAIN_RECRUIT_DISCOUNT");
+    const amount = option?.effect.type === "GAIN_RECRUIT_DISCOUNT" ? option.effect.amount : 0;
+    if (amount <= 0 || legionPieceAlreadyBanked(state, playerId, cardId)) {
+      continue;
+    }
+    seen.add(cardId);
+    held.push({ cardId, amount, name: card.name });
+  }
+  return held;
+}
+
+/**
+ * Builds the CHOOSE_ONE options for a NEUTRAL_RECRUIT_MENU: one "Recruit X"
+ * entry per affordable candidate (priced through `neutralRecruitCost`, so a
+ * banked Legion voucher already shows), plus one "play <Legion piece> toward X"
+ * entry per held piece that would make the recruit affordable OR cheaper. Pure.
+ */
+function neutralRecruitMenuOptions(
+  state: GameState,
+  playerId: PlayerId,
+  menu: Extract<VisitStep, { type: "NEUTRAL_RECRUIT_MENU" }>
+): { label: string; steps: VisitStep[] }[] {
+  const held = heldRecruitDiscountCards(state, playerId);
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const candidate of menu.candidates) {
+    const def = coreUnitDefinitions[candidate.unitDefId];
+    if (!def?.neutral) {
+      continue;
+    }
+    const name = def.name ?? candidate.unitDefId;
+    const verb = menu.verb ?? "Recruit";
+    const cost = neutralRecruitCost(state, playerId, candidate.unitDefId);
+    if (hasRecruitResources(state, playerId, cost)) {
+      options.push({
+        label: `${verb} ${name} (${costLabelOf(cost)})`,
+        steps: candidate.steps
+      });
+    }
+    if ((cost.gold ?? 0) <= 0) {
+      continue;
+    }
+    for (const piece of held) {
+      const cheaper = { ...cost, gold: Math.max(0, (cost.gold ?? 0) - piece.amount) };
+      if (!hasRecruitResources(state, playerId, cheaper)) {
+        continue;
+      }
+      options.push({
+        label: `Play ${piece.name} (−${piece.amount} gold) toward ${name} — then ${costLabelOf(cheaper)}`,
+        steps: [
+          {
+            type: "USE_LEGION_RECRUIT_DISCOUNT",
+            cardId: piece.cardId,
+            amount: piece.amount,
+            unitDefId: candidate.unitDefId,
+            menu
+          }
+        ]
+      });
+    }
+  }
+  return options;
+}
+
 /**
  * One selectable target for a Legion discount side: a unit the player can
  * recruit or reinforce at their town right now. The two existing-discount fields
@@ -17411,6 +17572,17 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
     });
   }
 
+  // NOTE (2026-08-03): recruitable NEUTRAL-deck cards are deliberately NOT
+  // targets here. A voucher banked in advance is useless at every neutral
+  // recruit surface — a Conflux/Circus field is reached by MOVING (the bank's
+  // expiry seam), an Event resolves behind the round-start barrier, and
+  // Diplomacy/Portal draw a RANDOM card nobody can name beforehand — while
+  // listing them would flood this prompt with the whole Neutral deck and show
+  // two "Recruit Marksmen" entries (most faction creatures have a Neutral
+  // twin card). The reachable mechanism is the INLINE Legion offer inside the
+  // neutral recruit menu itself (USE_LEGION_RECRUIT_DISCOUNT / the Diplomacy
+  // choice); see legion-neutral-recruit.test.ts.
+
   return targets;
 }
 
@@ -17490,8 +17662,13 @@ function voucherTargetOf(purchase: RecruitPurchaseRef): RecruitDiscountVoucher["
   return { kind: "reinforce", armyUnitId: purchase.armyUnitId };
 }
 
-/** Banks a chosen Legion discount voucher (resolves the BANK_RECRUIT_DISCOUNT step). */
-function bankRecruitDiscountVoucher(
+/**
+ * Banks a chosen Legion discount voucher (resolves the BANK_RECRUIT_DISCOUNT step,
+ * the inline neutral-recruit menu offer and the inline Diplomacy offer). The
+ * SINGLE writer of a Legion voucher, so the same-piece ledger guard and the
+ * house-rule reading can never diverge between those surfaces.
+ */
+export function bankRecruitDiscountVoucher(
   state: GameState,
   playerId: PlayerId,
   voucher: RecruitDiscountVoucher
@@ -19882,35 +20059,36 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       if (drawn.length === 0) {
         break;
       }
-      const options: { label: string; steps: VisitStep[] }[] = [];
-      const seen = new Set<string>();
-      for (const unitDefId of drawn) {
-        if (seen.has(unitDefId)) {
-          continue;
-        }
-        seen.add(unitDefId);
-        const cost = coreUnitDefinitions[unitDefId]?.neutral?.cost ?? {};
-        if (coreUnitDefinitions[unitDefId]?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
-          options.push({
-            label: `Buy ${coreUnitDefinitions[unitDefId]?.name ?? unitDefId} (${costLabelOf(cost)})`,
+      // Shared neutral-recruit menu — an Event resolves behind the round-start
+      // barrier where no card play is legal, so the inline Legion offer is the
+      // ONLY way a held piece can reach this purchase.
+      const denSeen = new Set<string>();
+      visit.steps.unshift({
+        type: "NEUTRAL_RECRUIT_MENU",
+        prompt: `Den of Thieves: drew ${drawn.map((id) => coreUnitDefinitions[id]?.name ?? id).join(" and ")}`,
+        verb: "Buy",
+        candidates: drawn
+          .filter((unitDefId) => {
+            if (denSeen.has(unitDefId)) {
+              return false;
+            }
+            denSeen.add(unitDefId);
+            return true;
+          })
+          .map((unitDefId) => ({
+            unitDefId,
             steps: [
               { type: "EVENT_NEUTRAL_BUY", unitDefId } as VisitStep,
               { type: "EVENT_DEN_PLACE", tier: step.tier } as VisitStep
             ]
-          });
-        }
-      }
-      options.push({ label: "Buy nothing", steps: [{ type: "EVENT_DEN_PLACE", tier: step.tier }] });
-      visit.steps.unshift({
-        type: "CHOOSE_ONE",
-        prompt: `Den of Thieves: drew ${drawn.map((id) => coreUnitDefinitions[id]?.name ?? id).join(" and ")}`,
-        options
+          })),
+        decline: { label: "Buy nothing", steps: [{ type: "EVENT_DEN_PLACE", tier: step.tier } as VisitStep] }
       });
       break;
     }
     case "EVENT_NEUTRAL_BUY": {
       const def = coreUnitDefinitions[step.unitDefId];
-      const cost = def?.neutral?.cost ?? {};
+      const cost = neutralRecruitCost(state, visit.playerId, step.unitDefId);
       if (!player || !def?.neutral || !hasRecruitResources(state, visit.playerId, cost)) {
         break;
       }
@@ -19919,6 +20097,7 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       }
       spendRecruitResources(state, visit.playerId, cost, `recruited ${def.name} (Event)`);
       addArmyUnit(player, step.unitDefId, "neutral");
+      consumeRecruitVoucherFor(state, visit.playerId, { kind: "recruit", unitDefId: step.unitDefId });
       appendEvent(state, {
         type: "UNIT_RECRUITED",
         playerId: visit.playerId,
@@ -20078,27 +20257,28 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
       if (!player || !events || events.pool.length === 0) {
         break;
       }
-      const options: { label: string; steps: VisitStep[] }[] = [];
-      const seen = new Set<string>();
-      for (const entry of events.pool) {
-        if (seen.has(entry.cardId)) {
-          continue;
-        }
-        seen.add(entry.cardId);
-        const def = coreUnitDefinitions[entry.cardId];
-        const cost = def?.neutral?.cost ?? {};
-        if (def?.neutral && hasRecruitResources(state, visit.playerId, cost)) {
-          options.push({
-            label: `Recruit ${def?.name ?? entry.cardId} (${costLabelOf(cost)})`,
-            steps: [{ type: "EVENT_NEUTRAL_BUY", unitDefId: entry.cardId }]
-          });
-        }
-      }
-      if (options.length === 0) {
-        break;
-      }
-      options.push({ label: "Skip", steps: [] });
-      visit.steps.unshift({ type: "CHOOSE_ONE", prompt: "Mercenary Camp: recruit one unit", options });
+      // Shared neutral-recruit menu (see EVENT_DEN_DRAW): Legion vouchers priced
+      // in, held pieces playable inline. `skipWhenEmpty` keeps the old "nothing
+      // affordable → no prompt at all" behaviour.
+      const mercSeen = new Set<string>();
+      visit.steps.unshift({
+        type: "NEUTRAL_RECRUIT_MENU",
+        prompt: "Mercenary Camp: recruit one unit",
+        candidates: events.pool
+          .filter((entry) => {
+            if (mercSeen.has(entry.cardId) || !coreUnitDefinitions[entry.cardId]?.neutral) {
+              return false;
+            }
+            mercSeen.add(entry.cardId);
+            return true;
+          })
+          .map((entry) => ({
+            unitDefId: entry.cardId,
+            steps: [{ type: "EVENT_NEUTRAL_BUY", unitDefId: entry.cardId } as VisitStep]
+          })),
+        decline: { label: "Skip", steps: [] },
+        skipWhenEmpty: true
+      });
       break;
     }
     case "EVENT_ARTIFACT_SHOP": {
