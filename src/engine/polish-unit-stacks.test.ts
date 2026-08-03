@@ -72,6 +72,38 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     expect(polishUnitStackCap("castle.archangels")).toBe(1);
   });
 
+  it("reflects each side's printed RECRUITMENT valuables for every tier — gold LV6 and azure Neutrals too", () => {
+    // A gold LV6 faction Pack prints 1 valuable to reinforce Few→Pack, so its
+    // Stack also costs 1 valuable — the same fee, not only the LV7 (2 valuables)
+    // Packs. (Champions: 20 Pack gold + tier 3 = 23, + the Pack's 1 valuable.)
+    expect(
+      polishUnitStackCost("castle.champions", "pack"),
+      "gold LV6 Pack (Champions): 20 + 3 gold, + the Pack's 1 valuable"
+    ).toEqual({ gold: 23, valuables: 1 });
+    expect(polishUnitStackCost("necropolis.dread_knights", "pack")).toEqual({ gold: 23, valuables: 1 });
+
+    // Recruited NEUTRALS (incl. AZURE, which has no Pack side) mirror the
+    // Neutral card's own printed recruitment cost: charge valuables iff its
+    // recruit cost lists them, exactly like buying that Neutral.
+    expect(
+      polishUnitStackCost("neutral.azure_dragons", "neutral"),
+      "azure Neutral recruits for 2 valuables → Stack costs 2"
+    ).toEqual({ gold: 48, valuables: 2 });
+    expect(
+      polishUnitStackCost("neutral.rust_dragons", "neutral"),
+      "azure Neutral recruits for 1 valuable → Stack costs 1"
+    ).toEqual({ gold: 41, valuables: 1 });
+    // Azure Neutrals whose recruit cost lists NO valuables charge none.
+    expect(polishUnitStackCost("neutral.titans", "neutral")).toEqual({ gold: 42 });
+    expect(polishUnitStackCost("neutral.gold_dragons", "neutral")).toEqual({ gold: 45 });
+    // Gold LV6 Neutral (cheaper recruit cost, no printed valuables) charges none.
+    expect(polishUnitStackCost("neutral.champions", "neutral")).toEqual({ gold: 21 });
+
+    // Azure counts as gold for the cap (human cap 1).
+    expect(polishUnitStackCap("neutral.azure_dragons", "neutral")).toBe(1);
+    expect(polishUnitStackCap("neutral.titans", "neutral")).toBe(1);
+  });
+
   it("offers a Citadel Pack purchase and can buy several layers in one validated batch", () => {
     let state = makeState();
     addCitadel(state);
