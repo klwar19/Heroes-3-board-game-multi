@@ -19978,6 +19978,20 @@ img.cardBack {
   color: rgba(240, 220, 184, 0.62);
 }
 
+.designerPopover .popoverSelectField {
+  display: block;
+}
+
+.designerPopover .popoverSelectField select {
+  width: 100%;
+  padding: 5px 6px;
+  border-radius: 7px;
+  border: 1px solid rgba(214, 178, 94, 0.4);
+  background: rgba(20, 15, 8, 0.95);
+  color: #f0dcb8;
+  font-size: 12px;
+}
+
 .designerPopover .popoverViiRewardRow {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -3,7 +3,9 @@ import {
   applyAction,
   createAdventureGameState,
   createAdventureLobbyState,
+  getLegalActions,
   hexSpaceId,
+  mapForcedComputerFaction,
   scenarioDefinitions,
   singlePlayerMapDeployment,
   type CustomMapTilePlan,
@@ -125,6 +127,179 @@ describe("map-authored single-player deployment", () => {
     expect(state.players.p1.resources).toEqual({ gold: 10, buildingMaterials: 2, valuables: 1 });
     expect(state.players.p2.resources).toEqual({ gold: 15, buildingMaterials: 3, valuables: 2 });
     expect(state.players.p3.resources).toEqual({ gold: 12, buildingMaterials: 2, valuables: 4 });
+  });
+
+  // A solo map that FORCES p2's enemy town type (its tile is deployment.computers[0]).
+  const FORCED_FACTION_TOWNS: CustomMapTilePlan[] = SOLO_TOWNS.map((plan, index) =>
+    index === 0
+      ? { ...plan, singlePlayer: { role: "computer" as const, factionId: "rampart" as const } }
+      : plan
+  );
+
+  function soloForcedLobby(): GameState {
+    let state = createAdventureLobbyState({
+      seed: "solo-forced-faction",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 1
+    });
+    state = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { playerCount: 4, customMap: FORCED_FACTION_TOWNS, customMapName: "Forced" }
+    }).state;
+    return state;
+  }
+
+  /** Apply the CHOOSE_FACTION legal action that plays `factionId` for `playerId`. */
+  function pickFaction(state: GameState, playerId: string, factionId: string): GameState {
+    const offer = getLegalActions(state, playerId).find(
+      (entry) => entry.action.type === "CHOOSE_FACTION" && entry.action.factionId === factionId
+    );
+    if (!offer) {
+      throw new Error(`no CHOOSE_FACTION offer for ${playerId} → ${factionId}`);
+    }
+    return applyAction(state, offer.action).state;
+  }
+
+  it("mapForcedComputerFaction reads the designer's forced enemy town (only for the mapped AI seat)", () => {
+    const state = soloForcedLobby();
+    // p2 ↔ deployment.computers[0] (the forced tile); p3 ↔ computers[1] (unforced).
+    expect(mapForcedComputerFaction(state, "p2")).toBe("rampart");
+    expect(mapForcedComputerFaction(state, "p3")).toBeNull();
+    // Never forces the human seat.
+    expect(mapForcedComputerFaction(state, "p1")).toBeNull();
+    // CONTROL: the same map with NO forced faction returns null for both AIs.
+    const unforced = applyAction(soloForcedLobby(), {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { customMap: SOLO_TOWNS }
+    }).state;
+    expect(mapForcedComputerFaction(unforced, "p2")).toBeNull();
+  });
+
+  it("offers the forced AI seat ONLY its map faction, and lets an unforced seat pick any", () => {
+    const state = soloForcedLobby();
+    const p2Factions = new Set(
+      getLegalActions(state, "p2")
+        .filter((entry) => entry.action.type === "CHOOSE_FACTION")
+        .map((entry) => (entry.action as { factionId: string }).factionId)
+    );
+    expect([...p2Factions]).toEqual(["rampart"]);
+    // CONTROL: the unforced AI seat still sees many towns to choose from.
+    const p3Factions = new Set(
+      getLegalActions(state, "p3")
+        .filter((entry) => entry.action.type === "CHOOSE_FACTION")
+        .map((entry) => (entry.action as { factionId: string }).factionId)
+    );
+    expect(p3Factions.size).toBeGreaterThan(1);
+    expect(p3Factions.has("rampart")).toBe(true);
+  });
+
+  it("locks a forced AI seat to its map faction even when the human hand-picks another", () => {
+    const state = soloForcedLobby();
+    // The human tries to set p2 to Dungeon — the map lock wins (stays Rampart).
+    const locked = applyAction(state, {
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p2",
+      choice: { factionId: "dungeon", heroDefId: "mutare" }
+    }).state;
+    expect(locked.setupLobby?.seats.find((s) => s.playerId === "p2")?.factionId).toBe("rampart");
+    // CONTROL: an UNFORCED AI seat honours the human's hand-pick.
+    const freePick = applyAction(state, {
+      type: "SET_COMPUTER_SEAT_FACTION",
+      playerId: "p1",
+      seatPlayerId: "p3",
+      choice: { factionId: "dungeon", heroDefId: "mutare" }
+    }).state;
+    expect(freePick.setupLobby?.seats.find((s) => s.playerId === "p3")?.factionId).toBe("dungeon");
+  });
+
+  it("the built game deploys the forced AI with the designer's town (end to end)", () => {
+    let state = soloForcedLobby();
+    state = pickFaction(state, "p1", "castle");
+    state = pickFaction(state, "p2", "rampart"); // the only offer for the forced seat
+    // p3 is free — take any faction its offers include that isn't taken.
+    const p3Faction = getLegalActions(state, "p3")
+      .map((entry) => entry.action)
+      .find(
+        (action): action is Extract<typeof action, { type: "CHOOSE_FACTION" }> =>
+          action.type === "CHOOSE_FACTION" && action.factionId !== "castle" && action.factionId !== "rampart"
+      );
+    expect(p3Faction).toBeTruthy();
+    state = applyAction(state, p3Faction!).state;
+
+    state = applyAction(state, { type: "START_ADVENTURE", playerId: "p1" }).state;
+    expect(state.setupLobby).toBeNull();
+    // p2's town was built from the forced faction.
+    expect(state.towns.town_p2?.factionId).toBe("rampart");
+    // CONTROL: p2's start hero also leads Rampart (not a random town).
+    expect(state.heroes.hero_p2?.heroDefId).toBeTruthy();
+  });
+
+  // A solo map that gives p2's enemy (deployment.computers[0]) a fully custom
+  // starting army; p3 (computers[1]) has none, as the CONTROL.
+  const ARMY_TOWNS: CustomMapTilePlan[] = SOLO_TOWNS.map((plan, index) =>
+    index === 0
+      ? {
+          ...plan,
+          singlePlayer: {
+            role: "computer" as const,
+            army: { units: ["neutral.boars", "random-pack:bronze", "random-few:bronze"] },
+            armyExperience: 5
+          }
+        }
+      : plan
+  );
+
+  it("deploys a per-enemy custom starting army (few/pack/neutral) and stamps its experience", () => {
+    const state = createAdventureGameState({
+      seed: "solo-army-build",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: ARMY_TOWNS,
+      players: PLAYERS
+    });
+
+    // p2 fields EXACTLY the authored army: the named Neutral, a Pack, a Few.
+    const p2Army = state.players.p2.army;
+    expect(p2Army.map((unit) => unit.side)).toEqual(["neutral", "pack", "few"]);
+    expect(p2Army[0].unitDefId).toBe("neutral.boars");
+    // Every custom-army card carries the stamped veteran experience.
+    expect(p2Army.every((unit) => unit.experience === 5)).toBe(true);
+    // The restock list mirrors the deployed army (same sides, so an empty deck
+    // rebuilds the same starting force).
+    expect(state.players.p2.startingArmy).toEqual(
+      p2Army.map((unit) => ({ unitDefId: unit.unitDefId, side: unit.side }))
+    );
+
+    // CONTROL: p3 has no authored army → its default faction (Dungeon) start,
+    // all `few`, no stamped experience.
+    const p3Army = state.players.p3.army;
+    expect(p3Army.length).toBeGreaterThan(0);
+    expect(p3Army.every((unit) => unit.side === "few")).toBe(true);
+    expect(p3Army.every((unit) => unit.unitDefId.startsWith("dungeon."))).toBe(true);
+    expect(p3Army.some((unit) => unit.experience !== undefined)).toBe(false);
+    // CONTROL: the human seat is untouched by any enemy army authoring.
+    expect(state.players.p1.army.every((unit) => unit.side === "few")).toBe(true);
+  });
+
+  it("CONTROL: the same custom-army map grants a multiplayer seat no custom army", () => {
+    const game = createAdventureGameState({
+      seed: "solo-army-mp",
+      scenarioId: "skirmish",
+      sessionMode: "multiplayer",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: ARMY_TOWNS,
+      players: PLAYERS
+    });
+    // No solo deployment in multiplayer → p2 keeps its default Necropolis start.
+    expect(game.players.p2.army.every((unit) => unit.side === "few")).toBe(true);
+    expect(game.players.p2.army.some((unit) => unit.unitDefId === "neutral.boars")).toBe(false);
   });
 
   it("CONTROL: the identical map keeps multiplayer seat order/count and grants no AI-only bonus", () => {

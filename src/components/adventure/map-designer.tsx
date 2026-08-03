@@ -57,6 +57,7 @@ import {
   describeGuardArmyGrouped,
   describeHexEvent,
   MAX_SINGLE_PLAYER_MAP_OPPONENTS,
+  MAX_STARTING_ARMY_EXPERIENCE,
   MAX_HEX_EVENTS,
   MAX_HEX_EVENT_MESSAGE,
   MAX_SETTLEMENT_HOLD_ROUNDS,
@@ -80,8 +81,10 @@ import {
   objectGuardSpec,
   STANDALONE_ONLY_OBJECT_KINDS,
   type SecretTileFeature,
+  type FactionId,
   type VictoryMode
 } from "@/engine";
+import { coreFactionDefinitions, isPlayableFaction } from "@/data/factions/core";
 import { GuardSpecEditor } from "./guard-spec-editor";
 import { FieldRewardEditor } from "./field-reward-editor";
 import {
@@ -3213,12 +3216,18 @@ export function MapDesigner({
             delete rest.singlePlayer;
             return rest;
           }
+          const keepComputerExtras = role === "computer" && plan.singlePlayer?.role === "computer";
           return {
             ...plan,
             singlePlayer: {
               role,
-              ...(role === "computer" && plan.singlePlayer?.role === "computer" && plan.singlePlayer.bonus
-                ? { bonus: plan.singlePlayer.bonus }
+              ...(keepComputerExtras && plan.singlePlayer?.bonus ? { bonus: plan.singlePlayer.bonus } : {}),
+              ...(keepComputerExtras && plan.singlePlayer?.factionId
+                ? { factionId: plan.singlePlayer.factionId }
+                : {}),
+              ...(keepComputerExtras && plan.singlePlayer?.army ? { army: plan.singlePlayer.army } : {}),
+              ...(keepComputerExtras && plan.singlePlayer?.army && plan.singlePlayer?.armyExperience
+                ? { armyExperience: plan.singlePlayer.armyExperience }
                 : {})
             }
           };
@@ -3233,9 +3242,15 @@ export function MapDesigner({
     );
   };
 
-  const setSinglePlayerComputerBonus = (
-    key: "gold" | "buildingMaterials" | "valuables",
-    amount: number
+  /**
+   * Merge a patch into THIS computer start tile's `singlePlayer`, preserving
+   * every other authored extra (bonus / town type / custom army / army XP) —
+   * `singlePlayer` is stored as a whole object, so each setter would otherwise
+   * have to re-list the siblings it must not drop. An explicit `undefined` in
+   * the patch clears that field; `armyExperience` is kept only alongside `army`.
+   */
+  const updateComputerSinglePlayer = (
+    patch: Partial<NonNullable<CustomMapTilePlan["singlePlayer"]>>
   ) => {
     if (
       selectedIndex === null ||
@@ -3245,12 +3260,40 @@ export function MapDesigner({
     ) {
       return;
     }
-    const current = selected.singlePlayer.bonus ?? { gold: 0, buildingMaterials: 0, valuables: 0 };
-    updateTile(selectedIndex, {
-      singlePlayer: {
-        role: "computer",
-        bonus: { ...current, [key]: Math.max(0, Math.min(99, Math.floor(amount || 0))) }
-      }
+    const merged = { ...selected.singlePlayer, ...patch };
+    const next: NonNullable<CustomMapTilePlan["singlePlayer"]> = { role: "computer" };
+    if (merged.bonus) next.bonus = merged.bonus;
+    if (merged.factionId) next.factionId = merged.factionId;
+    if (merged.army) next.army = merged.army;
+    if (merged.army && merged.armyExperience) next.armyExperience = merged.armyExperience;
+    updateTile(selectedIndex, { singlePlayer: next });
+  };
+
+  const setSinglePlayerComputerBonus = (
+    key: "gold" | "buildingMaterials" | "valuables",
+    amount: number
+  ) => {
+    const current = selected?.singlePlayer?.bonus ?? { gold: 0, buildingMaterials: 0, valuables: 0 };
+    updateComputerSinglePlayer({
+      bonus: { ...current, [key]: Math.max(0, Math.min(99, Math.floor(amount || 0))) }
+    });
+  };
+
+  /** Force (or clear) this enemy AI's town type. Solo/computer tiles only; the
+   * matching computer seat locks to this faction at game start. */
+  const setSinglePlayerComputerFaction = (factionId: FactionId | undefined) => {
+    updateComputerSinglePlayer({ factionId });
+  };
+
+  /** Set / clear this enemy AI's custom starting army (guard vocabulary). */
+  const setSinglePlayerComputerArmy = (army: CustomGuardSpec | undefined) => {
+    updateComputerSinglePlayer({ army });
+  };
+
+  /** Veteran experience stamped on every custom-army card (Unit Experience rule). */
+  const setSinglePlayerComputerArmyExperience = (amount: number) => {
+    updateComputerSinglePlayer({
+      armyExperience: Math.max(0, Math.min(MAX_STARTING_ARMY_EXPERIENCE, Math.floor(amount || 0)))
     });
   };
 
@@ -5440,6 +5483,30 @@ export function MapDesigner({
                 </small>
                 {selected.singlePlayer?.role === "computer" ? (
                   <>
+                    <div className="popoverSubLabel">This enemy&apos;s town type</div>
+                    <label className="popoverSelectField">
+                      <select
+                        aria-label="Enemy AI town type"
+                        onChange={(event) =>
+                          setSinglePlayerComputerFaction(
+                            event.target.value ? (event.target.value as FactionId) : undefined
+                          )
+                        }
+                        value={selected.singlePlayer?.factionId ?? ""}
+                      >
+                        <option value="">Random town (default)</option>
+                        {(Object.values(coreFactionDefinitions) as { id: FactionId; name: string }[])
+                          .filter((faction) => isPlayableFaction(faction.id))
+                          .map((faction) => (
+                            <option key={faction.id} value={faction.id}>
+                              {faction.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <small className="popoverHint">
+                      Locks this AI to the chosen town at game start (single-player only). Leave on Random to let it roll.
+                    </small>
                     <div className="popoverSubLabel">This enemy&apos;s extra starting war chest</div>
                     <div className="mapPresetResourceRow popoverSoloBonusRow">
                       {(
@@ -5465,6 +5532,35 @@ export function MapDesigner({
                     <small className="popoverHint">
                       Added only to this AI in single-player, on top of any all-enemy bonus in Map conditions.
                     </small>
+                    <div className="popoverSubLabel">This enemy&apos;s starting army</div>
+                    <GuardSpecEditor
+                      compact
+                      guard={selected.singlePlayer?.army}
+                      noneLabel="Default (faction units)"
+                      onChange={setSinglePlayerComputerArmy}
+                    />
+                    <small className="popoverHint">
+                      Replaces this AI&apos;s default starting units with the exact army above (freely mix Few /
+                      Pack / Neutral). Leave on Default to keep its faction&apos;s normal start.
+                    </small>
+                    {selected.singlePlayer?.army ? (
+                      <label className="popoverSelectField">
+                        <span className="popoverSubLabel">Veteran experience per unit</span>
+                        <input
+                          aria-label="Starting army veteran experience for this enemy AI"
+                          max={MAX_STARTING_ARMY_EXPERIENCE}
+                          min={0}
+                          onChange={(event) =>
+                            setSinglePlayerComputerArmyExperience(Number(event.target.value))
+                          }
+                          type="number"
+                          value={selected.singlePlayer?.armyExperience ?? 0}
+                        />
+                        <small className="popoverHint">
+                          Stamped on every unit above — only applies when the Unit Experience rule is on.
+                        </small>
+                      </label>
+                    ) : null}
                   </>
                 ) : null}
                 {/* Rotation + Fix-orientation: the faction art is unknown at design

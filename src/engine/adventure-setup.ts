@@ -77,6 +77,7 @@ import {
   planIsUnderground,
   UNDERGROUND_LAYER_GROUPS,
   recomputeSubterraneanGates,
+  resolveStartingArmyFromGuardSpec,
   seaTileBand,
   subterraneanTileBand,
   changeMorale,
@@ -3150,6 +3151,32 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         authoredStartByPlayer.set(config.id, plan);
       }
     });
+
+    // Per-enemy custom STARTING ARMY: a designer may hand this AI seat an exact
+    // army (few / pack / neutral) via the same guard vocabulary. Resolve it
+    // deterministically and REPLACE the seat's default faction-tier army. A spec
+    // that resolves to no valid body is skipped, so a bad authored value can
+    // never blank out a seat. Stamped experience only bites when the Unit
+    // Experience rule is on (a no-op fold otherwise).
+    for (const config of playerConfigs) {
+      const solo = authoredStartByPlayer.get(config.id)?.singlePlayer;
+      if (!solo?.army) continue;
+      const player = state.players[config.id];
+      if (!player) continue;
+      const armyRng = createSeededRandom(`${seed}#solo-army#${config.id}`, { salt: false });
+      const resolved = resolveStartingArmyFromGuardSpec(solo.army, armyRng, anime);
+      if (resolved.length === 0) continue;
+      const xp = solo.armyExperience ?? 0;
+      player.army = [];
+      player.startingArmy = [];
+      for (const { unitDefId, side } of resolved) {
+        const unit = addArmyUnit(player, unitDefId, side);
+        if (xp > 0) {
+          unit.experience = xp;
+        }
+        player.startingArmy.push({ unitDefId, side });
+      }
+    }
   }
 
   // Starting tiles: position from the seat (designer or scenario), tile fixed
@@ -5485,6 +5512,50 @@ export function randomAssignSeat(state: GameState, action: Extract<GameAction, {
  * never reassigns a seat (no ASSIGN_SEAT-style takeover), preserving the
  * one-human single-player invariant.
  */
+/**
+ * The town type a DESIGNED map forces on a given single-player COMPUTER seat, or
+ * null. A designed solo deployment maps its AI-marked start tiles to the computer
+ * seats in seat order (exactly the mapping the build uses); if that tile carries
+ * a `singlePlayer.factionId` that is still available — playable under the current
+ * mods and not already taken by another seat — it is returned so the seat locks
+ * to it instead of rolling a random town. An unplayable or already-taken value
+ * yields null, so a bad authored value degrades to a normal random pick (never a
+ * stall). Returns null off single-player, for a human seat, or with no complete
+ * solo deployment on the map.
+ */
+export function mapForcedComputerFaction(state: GameState, seatPlayerId: PlayerId): FactionId | null {
+  const lobby = state.setupLobby;
+  if (!lobby || state.sessionMode !== "single-player") {
+    return null;
+  }
+  if (controllerOf(state, seatPlayerId).kind !== "computer") {
+    return null;
+  }
+  const scenario = getScenario(lobby.options.scenarioId);
+  const deployment = singlePlayerMapDeployment(
+    lobby.options.customMap,
+    Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1
+  );
+  if (!deployment) {
+    return null;
+  }
+  const computerSeats = lobby.seats.filter(
+    (seat) => controllerOf(state, seat.playerId).kind === "computer"
+  );
+  const index = computerSeats.findIndex((seat) => seat.playerId === seatPlayerId);
+  if (index < 0) {
+    return null;
+  }
+  const forced = deployment.computers[index]?.singlePlayer?.factionId;
+  if (!forced || !isPlayableFaction(forced, lobby.options.anime)) {
+    return null;
+  }
+  const takenElsewhere = lobby.seats.some(
+    (seat) => seat.playerId !== seatPlayerId && seat.factionId === forced
+  );
+  return takenElsewhere ? null : forced;
+}
+
 export function setComputerSeatFaction(
   state: GameState,
   action: Extract<GameAction, { type: "SET_COMPUTER_SEAT_FACTION" }>
@@ -5516,6 +5587,22 @@ export function setComputerSeatFaction(
   }
   if (controllerOf(state, action.seatPlayerId).kind !== "computer") {
     throw new Error("Only a computer opponent's faction can be picked this way.");
+  }
+
+  const forcedFaction = mapForcedComputerFaction(state, action.seatPlayerId);
+  if (forcedFaction) {
+    // This enemy's town type is fixed by the designed map — lock it to the forced
+    // faction (its first hero) no matter what pick / roll / clear was requested,
+    // so the human owner can never desync the seat from what the map deploys.
+    const forcedHero = coreFactionDefinitions[forcedFaction].heroes[0];
+    seat.factionId = forcedFaction;
+    seat.heroDefId = forcedHero;
+    const lockedPlayer = state.players[action.seatPlayerId];
+    const lockedHero = coreHeroDefinitions[forcedHero];
+    if (lockedPlayer && lockedHero) {
+      lockedPlayer.name = `${lockedHero.name} of ${coreFactionDefinitions[forcedFaction].name}`;
+    }
+    return;
   }
 
   if (action.choice === "clear") {

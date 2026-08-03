@@ -15,6 +15,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { locationDefinitions } from "@/data/map/locations";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { coreFactionDefinitions } from "@/data/factions/core";
 import type { TileDefinition } from "@/data/map/types";
 import { getStoryScene, isStoryScene, STORY_SCENE_IDS } from "@/data/story/scenes";
 import { RAID_BOSS_ABILITY_CHOICES } from "@/data/anime/bosses";
@@ -718,6 +719,9 @@ function sanitizeResources(
 /** A designed solo map supports one human plus at most three computer seats. */
 export const MAX_SINGLE_PLAYER_MAP_OPPONENTS = 3;
 
+/** Highest veteran experience a per-enemy custom starting army may carry. */
+export const MAX_STARTING_ARMY_EXPERIENCE = 12;
+
 /**
  * Sanitise the solo-only role carried by one starting tile. Kept here beside
  * the other map-persistence sanitizers so HTTP, PartyKit and direct engine
@@ -729,15 +733,41 @@ export function sanitizeSinglePlayerMapStart(
   if (!input || typeof input !== "object") {
     return undefined;
   }
-  const raw = input as { role?: unknown; bonus?: unknown };
+  const raw = input as {
+    role?: unknown;
+    bonus?: unknown;
+    factionId?: unknown;
+    army?: unknown;
+    armyExperience?: unknown;
+  };
   if (raw.role !== "human" && raw.role !== "computer") {
     return undefined;
   }
   const bonus = raw.role === "computer" ? sanitizeResources(raw.bonus) : undefined;
   const hasBonus = Boolean(bonus && Object.values(bonus).some((amount) => amount > 0));
+  // A forced enemy town type is honoured on a computer tile only, and only for a
+  // real, playable core faction id — playability under the current mods is
+  // re-checked at apply time, so here we accept any shipped core faction.
+  const factionId =
+    raw.role === "computer" &&
+    typeof raw.factionId === "string" &&
+    coreFactionDefinitions[raw.factionId as FactionId]?.playable !== false
+      ? (raw.factionId as FactionId)
+      : undefined;
+  // A per-enemy custom starting army (computer tile only). Reuses the guard
+  // vocabulary; `sanitizeCustomGuardSpec` drops unknown ids and empty specs, so
+  // an empty/invalid army is simply absent (the seat keeps its default start).
+  const army = raw.role === "computer" ? sanitizeCustomGuardSpec(raw.army) : undefined;
+  const armyExperience =
+    army && raw.role === "computer"
+      ? clampInt(raw.armyExperience, 0, MAX_STARTING_ARMY_EXPERIENCE, 0)
+      : 0;
   return {
     role: raw.role,
-    ...(hasBonus ? { bonus } : {})
+    ...(hasBonus ? { bonus } : {}),
+    ...(factionId ? { factionId } : {}),
+    ...(army ? { army } : {}),
+    ...(armyExperience > 0 ? { armyExperience } : {})
   };
 }
 

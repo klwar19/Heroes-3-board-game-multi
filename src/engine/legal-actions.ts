@@ -162,7 +162,13 @@ import {
 } from "./parallel-turns";
 import { pvpEscapeWindowOpen } from "./combat-units";
 import { canPlaceTransformOn } from "./unit-transforms";
-import { bannableHeroesForSeat, DRAFT_FORMAT_LABELS, getDraftPhase, getScenario } from "./adventure-setup";
+import {
+  bannableHeroesForSeat,
+  DRAFT_FORMAT_LABELS,
+  getDraftPhase,
+  getScenario,
+  mapForcedComputerFaction
+} from "./adventure-setup";
 import {
   combatHasHumanParticipant,
   controllerOf,
@@ -9323,6 +9329,11 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
         if (controllerOf(state, computerSeat.playerId).kind !== "computer") {
           continue;
         }
+        // A seat whose town type is fixed by the designed map offers no
+        // pick/roll/clear — it is locked to the map's faction.
+        if (mapForcedComputerFaction(state, computerSeat.playerId)) {
+          continue;
+        }
         const takenForSeat = new Set(
           lobby.seats
             .filter((candidate) => candidate.playerId !== computerSeat.playerId)
@@ -9371,8 +9382,13 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
   }
 
   if (phase.format === "open") {
-    // TYPE 4 — free pick: any untaken town + any of its heroes.
-    for (const factionId of untakenFactions) {
+    // TYPE 4 — free pick: any untaken town + any of its heroes. A single-player
+    // computer seat whose town type the designed map FORCES is offered only that
+    // faction (its heroes), so the AI setup pump can pick nothing else.
+    const forcedForSeat = mapForcedComputerFaction(state, playerId);
+    const factionsForSeat =
+      forcedForSeat && untakenFactions.includes(forcedForSeat) ? [forcedForSeat] : untakenFactions;
+    for (const factionId of factionsForSeat) {
       const faction = coreFactionDefinitions[factionId];
       for (const heroDefId of faction.heroes) {
         if (seat.factionId === factionId && seat.heroDefId === heroDefId) {
