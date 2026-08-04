@@ -20,7 +20,7 @@ function applyOk(state: GameState, action: GameAction): GameState {
   return result.state;
 }
 
-function dimensionDoorChoice(): GameState {
+function dimensionDoorHeroChoice(): GameState {
   let state = createAdventureGameState({ seed: "dimension-door-board", rollFirstPlayer: false });
   state.players.p1.canMulligan = false;
   state.players.p1.needsHandRefresh = false;
@@ -32,13 +32,36 @@ function dimensionDoorChoice(): GameState {
   );
   expect(play, "Dimension Door needs a single Cast map play").toBeTruthy();
   state = applyOk(state, play!.action);
-  expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("dimension-door");
+  // Step 1 is the WHO-travels window (Main Hero / … / Cancel); answering it with
+  // the Main Hero opens the map-hex destination pick.
+  expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe(
+    "dimension-door-hero"
+  );
   return state;
+}
+
+/** Casts Dimension Door and answers the WHO-travels window with the Main Hero. */
+function dimensionDoorDestinationChoice(): GameState {
+  const state = dimensionDoorHeroChoice();
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "dimension-door-hero") {
+    throw new Error("missing the Dimension Door hero window");
+  }
+  const mainIndex = choice.options.findIndex((option) => /Main Hero/i.test(option.label));
+  expect(mainIndex).toBeGreaterThanOrEqual(0);
+  const next = applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: choice.id,
+    optionIndex: mainIndex
+  });
+  expect(next.pendingChoice?.type === "OPTION_CHOICE" && next.pendingChoice.context).toBe("dimension-door");
+  return next;
 }
 
 describe("map spell destinations on the adventure board", () => {
   it("highlights every Dimension Door destination and dispatches its choice by clicking the hex", () => {
-    const state = dimensionDoorChoice();
+    const state = dimensionDoorDestinationChoice();
     const choice = state.pendingChoice;
     if (choice?.type !== "OPTION_CHOICE" || choice.context !== "dimension-door") {
       throw new Error("missing Dimension Door choice");
@@ -69,20 +92,55 @@ describe("map spell destinations on the adventure board", () => {
     });
   });
 
-  it("uses readable location-and-distance labels instead of raw hex codes", () => {
-    const state = dimensionDoorChoice();
+  // User request 2026-08-04: the destination window "is not needed" — pick the
+  // Hero in a small window, then click the hex. So the tray must offer the hero
+  // buttons at step 1 and, at step 2, ONLY the hint plus Cancel — never the
+  // engine's per-destination labels as a wall of buttons.
+  it("offers Main Hero / Cancel at step 1, and only a hint + Cancel at the destination step", () => {
+    const heroStep = dimensionDoorHeroChoice();
+    const { unmount } = render(
+      <PromptTray
+        legalActions={getLegalActions(heroStep, "p1")}
+        onAction={vi.fn()}
+        state={heroStep}
+        viewerPlayerId="p1"
+      />
+    );
+    const heroLabels = screen.getAllByRole("button").map((button) => button.textContent ?? "");
+    expect(heroLabels).toEqual(["Main Hero", "Cancel (no teleport)"]);
+    unmount();
+
+    const destinationStep = dimensionDoorDestinationChoice();
+    const choice = destinationStep.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.dimensionDoor) {
+      throw new Error("missing Dimension Door destination choice");
+    }
+    expect(choice.dimensionDoor.destinations.length).toBeGreaterThan(0);
+    const onAction = vi.fn<(action: GameAction) => void>();
     render(
       <PromptTray
-        legalActions={getLegalActions(state, "p1")}
-        onAction={vi.fn()}
-        state={state}
+        legalActions={getLegalActions(destinationStep, "p1")}
+        onAction={onAction}
+        state={destinationStep}
         viewerPlayerId="p1"
       />
     );
 
     const labels = screen.getAllByRole("button").map((button) => button.textContent ?? "");
-    expect(labels.some((label) => /field(?:s)? away/i.test(label))).toBe(true);
+    // CONTROL: rendering the generic option list again would bring these back.
+    expect(labels.some((label) => /field(?:s)? away/i.test(label))).toBe(false);
     expect(labels.some((label) => /h:-?\d+:-?\d+/.test(label))).toBe(false);
+    expect(labels).toEqual(["Cancel (no teleport)"]);
+    expect(screen.getByText(/click one of the glowing hexes/i)).toBeTruthy();
+
+    // Cancel dispatches the trailing option index (past every destination).
+    fireEvent.click(screen.getByRole("button", { name: "Cancel (no teleport)" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.dimensionDoor.destinations.length
+    });
   });
 });
 

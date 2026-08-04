@@ -30,7 +30,7 @@ import {
   type GameState,
   type HexCoord
 } from "./index";
-import { openDimensionDoorChoice } from "./adventure-reducer";
+import { dimensionDoorDestinations } from "./adventure-reducer";
 import type { AdventureState, MapFieldState, MapTileState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -369,9 +369,9 @@ describe("subterranean layer: card movement effects cannot breach the divide", (
     hero.spaceId = hexSpaceId({ row: surface.centerRow, col: surface.centerCol });
 
     // A generous range so the underground tile is comfortably within hex reach.
-    openDimensionDoorChoice(state, "p1", 10);
-    const choice = state.pendingChoice;
-    const destinations = choice?.type === "OPTION_CHOICE" ? (choice.dimensionDoor?.destinations ?? []) : [];
+    // Read the legality helper both Dimension Door windows are built from, so the
+    // layer rule is pinned independently of the two-step choice shape.
+    const destinations = dimensionDoorDestinations(state, hero, 10);
 
     // Sanity: underground fields really are within straight-line range, so it is
     // the layer filter — not distance — that keeps them out.

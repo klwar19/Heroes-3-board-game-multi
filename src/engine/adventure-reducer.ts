@@ -1616,9 +1616,16 @@ export function dimensionDoorDestinations(state: GameState, hero: HeroState, ran
 }
 
 /**
- * Opens the Dimension Door destination choice after the spell is played. With
- * no reachable destination the spell fizzles (the card is already spent),
+ * Opens the Dimension Door destination choice after the traveller is chosen.
+ * With no reachable destination the spell fizzles (the card is already spent),
  * mirroring how Town Portal returns when the player controls no other town.
+ *
+ * The destination is picked BY CLICKING A GLOWING HEX on the map (the
+ * `place-map-token` / `neutral-destination` pattern), so the option labels
+ * exist only as the accessible/AFK-driver fallback — the client's prompt tray
+ * renders a hint plus the trailing Cancel, never a wall of destination buttons.
+ * Keep `options` index-aligned with `destinations` (Cancel last): every
+ * CHOOSE_OPTION consumer, the AI scorer and the driver read that alignment.
  */
 function openDimensionDoorDestinationChoice(
   state: GameState,
@@ -1649,10 +1656,15 @@ function openDimensionDoorDestinationChoice(
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Dimension Door: move your hero up to ${range} field${range === 1 ? "" : "s"} to…`,
+    prompt: `Dimension Door: click a glowing hex to move ${
+      hero.kind === "main" ? "your Main Hero" : "your Secondary Hero"
+    } up to ${range} field${range === 1 ? "" : "s"}…`,
     options: [
       ...destinations.map((spaceId) => ({ label: destinationLabel(spaceId) })),
-      { label: "Cancel (stay)" }
+      // The Spell is already cast and spent by the time this opens (the
+      // cast-then-boost pipeline resolves first), so Cancel is honestly
+      // "no teleport" — it never refunds the card.
+      { label: "Cancel (no teleport)" }
     ],
     context: "dimension-door",
     dimensionDoor: { heroId: hero.id, destinations },
@@ -1663,10 +1675,15 @@ function openDimensionDoorDestinationChoice(
 }
 
 /**
- * Opens Dimension Door for any deployed Hero the caster controls. A single
- * eligible Hero keeps the direct map-destination flow; with both Heroes in
- * play, choose the traveller first so duplicate destination hexes are never
- * ambiguous on the board.
+ * Opens Dimension Door: a small WHO-travels window first — one option per
+ * deployed Hero the caster controls that has at least one legal destination at
+ * the resolved Power, plus a trailing "Cancel (no teleport)" — and only then the
+ * map-hex destination pick. The window opens even with a lone eligible Hero
+ * (user request 2026-08-04: "you just need a window with Main Hero / Secondary
+ * Hero / Cancel, then you select location from the map"), so the flow is the
+ * same two steps every cast and Cancel is reachable before any hex is clicked.
+ * With NO eligible Hero the Spell simply fizzles (already spent), exactly like
+ * Town Portal with no other town.
  */
 export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, range: number): void {
   if (!state.adventure) {
@@ -1681,19 +1698,27 @@ export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, ra
   if (eligibleHeroes.length === 0) {
     return;
   }
-  if (eligibleHeroes.length === 1) {
-    openDimensionDoorDestinationChoice(state, playerId, eligibleHeroes[0], range);
-    return;
-  }
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: "Dimension Door: choose the Hero to teleport…",
-    options: eligibleHeroes.map((hero) => ({
-      label: hero.kind === "main" ? "Main Hero" : "Secondary Hero"
-    })),
+    options: [
+      ...eligibleHeroes.map((hero, index) => ({
+        label:
+          hero.kind === "main"
+            ? "Main Hero"
+            : // Defensive: a seat with several secondaries would otherwise print
+              // look-alike buttons. One secondary (today's rule) keeps the plain
+              // "Secondary Hero" label the client and tests expect.
+              `Secondary Hero${
+                eligibleHeroes.filter((other) => other.kind !== "main").length > 1 ? ` ${index}` : ""
+              }`
+      })),
+      // The Spell is spent before this window opens — Cancel never refunds it.
+      { label: "Cancel (no teleport)" }
+    ],
     context: "dimension-door-hero",
     dimensionDoorHero: { heroIds: eligibleHeroes.map((hero) => hero.id), range },
     returnPhase: "player-turn"
@@ -1702,13 +1727,26 @@ export function openDimensionDoorChoice(state: GameState, playerId: PlayerId, ra
   state.priorityPlayerId = playerId;
 }
 
-/** Resolves the first step of a two-Hero Dimension Door cast. */
+/**
+ * Resolves the WHO-travels step. The trailing option carries no hero id and is
+ * "Cancel (no teleport)": it closes the window with nobody moved and the Spell
+ * still spent (no refund).
+ */
 export function resolveDimensionDoorHeroChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
   const choice = state.pendingChoice;
   const pending = choice?.type === "OPTION_CHOICE" ? choice.dimensionDoorHero : undefined;
-  const heroId = pending?.heroIds[optionIndex];
+  if (!pending) {
+    throw new Error("There is no Dimension Door to resolve.");
+  }
+  if (optionIndex === pending.heroIds.length) {
+    state.pendingChoice = null;
+    state.phase = "player-turn";
+    state.priorityPlayerId = null;
+    return;
+  }
+  const heroId = pending.heroIds[optionIndex];
   const hero = heroId ? state.heroes[heroId] : undefined;
-  if (!pending || !hero || hero.controllerId !== playerId) {
+  if (!hero || hero.controllerId !== playerId) {
     throw new Error("Choose a Hero to teleport with Dimension Door.");
   }
   openDimensionDoorDestinationChoice(state, playerId, hero, pending.range);
@@ -1727,7 +1765,8 @@ export function resolveDimensionDoorChoice(state: GameState, playerId: PlayerId,
   state.priorityPlayerId = null;
 
   const hero = state.heroes[pending.heroId];
-  // The trailing option is "Cancel (stay)", which carries no destination.
+  // The trailing option is "Cancel (no teleport)", which carries no destination:
+  // nobody moves and the already-spent Spell is NOT refunded.
   const destination = pending.destinations[optionIndex];
   if (!hero || !destination) {
     return;
