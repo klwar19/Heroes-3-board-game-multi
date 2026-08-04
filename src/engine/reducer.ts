@@ -94,6 +94,7 @@ import {
   resolveExplorersDiscard,
   mulliganCard,
   openingHandMulligan,
+  autoResolveRandomTownPackChoice,
   resolveVisitStep,
   retreatFromCombat,
   surrenderFromCombat,
@@ -20429,6 +20430,14 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       state.pendingChoice.playerId = neutralController;
       state.priorityPlayerId = neutralController;
       break;
+    }
+
+    // The Random Town's choosable gold Pack with NOBODY left to control the
+    // defense (the human controller was eliminated mid-window, or none was ever
+    // derivable): the Neutral AI keeps the printed default and the army reveals,
+    // so the fight can never strand in combat-setup on an unanswerable choice.
+    if (autoResolveRandomTownPackChoice(state)) {
+      continue;
     }
 
     // BINH house rule ("the player can choose who will get hit when an enemy

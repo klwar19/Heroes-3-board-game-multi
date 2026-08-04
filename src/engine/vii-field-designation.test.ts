@@ -387,10 +387,11 @@ describe("Ⅶ designation — town", () => {
     expect(field.location).toBe("random_town");
     expect(field.difficulty).toBe(7);
 
-    // Defended by an unused faction's Packs (the printed Random Town guard draw).
+    // Defended by an unused faction's printed party (the Random Town guard draw:
+    // 1 gold Pack + 2 silver Packs + 2 gold Fews — see random-town-defenders).
     const draws = drawGuardArmy(state, field, 7);
     expect(draws.length).toBeGreaterThan(0);
-    expect(draws.every((draw) => draw.factionPack && draw.bankGuard)).toBe(true);
+    expect(draws.every((draw) => (draw.factionPack || draw.factionFew) && draw.bankGuard)).toBe(true);
 
     // Conquerable: visiting after the guards fall flags it for +10 gold income.
     const hero = getMainHero(state, "p1")!;

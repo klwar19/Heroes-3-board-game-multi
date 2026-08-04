@@ -8178,7 +8178,19 @@ export type CombatState = {
    * and placed. `bankGuard` marks a minted (never deck-drawn) fixed guard.
    */
   pendingNeutralDraws?:
-    | { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure"; bankGuard?: boolean }[]
+    | {
+        unitDefId: string;
+        tier: "bronze" | "silver" | "gold" | "azure";
+        bankGuard?: boolean;
+        /** Faction Pack / Few side guards (Random Town, designer pack/few slots). */
+        factionPack?: boolean;
+        factionFew?: boolean;
+        /**
+         * Random Town: the printed card's choosable gold Pack slot, rewritten by
+         * the defense controller's pick before the army reveals.
+         */
+        randomTownChoice?: boolean;
+      }[]
     | null;
   /**
    * Set between combat rounds against neutrals: the attacking hero must spend
@@ -13224,6 +13236,7 @@ export type PendingChoice =
       context:
         | "city-hall"
         | "satyr-swap"
+        | "random-town-pack"
         | "war-machine"
         | "deck-pick"
         | "deck-search-mode"

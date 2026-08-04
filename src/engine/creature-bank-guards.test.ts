@@ -145,7 +145,7 @@ describe("Cyclops Stockpile guards", () => {
 });
 
 describe("Random Town", () => {
-  it("is defended by an unused faction's Packs: 1 bronze, 2 silver, 2 gold", () => {
+  it("is defended by the printed card: 1 gold Pack + 2 silver Packs + 2 gold Fews", () => {
     // Default players are Castle and Necropolis, so the town faction differs.
     const state = createAdventureGameState({ seed: "town", difficulty: "normal", rollFirstPlayer: false });
     const field = fieldWith("random_town");
@@ -154,17 +154,26 @@ describe("Random Town", () => {
     expect(field.faction).toBeTruthy();
     expect(["castle", "necropolis"]).not.toContain(field.faction);
 
-    expect(draws.every((draw) => draw.factionPack && draw.bankGuard)).toBe(true);
+    expect(draws.every((draw) => draw.bankGuard)).toBe(true);
     expect(draws.every((draw) => coreUnitDefinitions[draw.unitDefId]?.faction === field.faction)).toBe(true);
-    const byTier = (tier: string) => draws.filter((draw) => draw.tier === tier).length;
-    expect(byTier("bronze")).toBe(1);
-    expect(byTier("silver")).toBe(2);
-    expect(byTier("gold")).toBe(2);
+    const packs = draws.filter((draw) => draw.factionPack);
+    const fews = draws.filter((draw) => draw.factionFew);
+    expect(packs.map((draw) => draw.tier).sort()).toEqual(["gold", "silver", "silver"]);
+    expect(fews.map((draw) => draw.tier)).toEqual(["gold", "gold"]);
+    // The choosable slot is exactly the ONE gold Pack.
+    const choosable = draws.filter((draw) => draw.randomTownChoice);
+    expect(choosable).toHaveLength(1);
+    expect(choosable[0]!.tier).toBe("gold");
+    expect(choosable[0]!.factionPack).toBe(true);
+    // CONTROL against the old composition: no bronze body defends a Random Town.
+    expect(draws.some((draw) => draw.tier === "bronze")).toBe(false);
 
-    // The defenders fight on their Pack side, controlled by the neutrals.
-    const unit = makeCombatUnitFromNeutral(draws[0], "rt1", 0);
-    expect(unit?.variant).toBe("pack");
-    expect(unit?.controllerId).toBe("neutrals");
+    // The Pack slots fight on their Pack side, the Few slots on their Few side.
+    const packUnit = makeCombatUnitFromNeutral(packs[0]!, "rt1", 0);
+    expect(packUnit?.variant).toBe("pack");
+    expect(packUnit?.controllerId).toBe("neutrals");
+    const fewUnit = makeCombatUnitFromNeutral(fews[0]!, "rt2", 1);
+    expect(fewUnit?.variant).toBe("few");
   });
 
   it("grants +10 gold income and 10 gold when first captured", () => {

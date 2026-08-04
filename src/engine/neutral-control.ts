@@ -165,6 +165,11 @@ export function isNeutralSideCombatChoice(combat: CombatState, choice: PendingCh
     if (choice.context === "neutral-destination") {
       return true;
     }
+    // The Random Town's choosable gold Pack: the NEUTRAL side's own pre-battle
+    // decision, merely re-stamped to the seat controlling the defense.
+    if (choice.context === "random-town-pack") {
+      return true;
+    }
     if (choice.context === "combat-activation-order" && choice.activationOrder?.side === NEUTRAL_PLAYER_ID) {
       return true;
     }

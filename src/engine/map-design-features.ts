@@ -389,7 +389,7 @@ export function resolvePackFactionForFight(
  * silently minting nothing: the fight-time army must keep the body COUNT and
  * tier mix the design derived its difficulty (and experience) from.
  */
-function packDrawWithNeutralFallback(
+export function packDrawWithNeutralFallback(
   tier: RandomGuardTier,
   lockedFaction: string | null,
   rng: { nextInt: (min: number, max: number) => number }
@@ -405,7 +405,7 @@ function packDrawWithNeutralFallback(
   return null;
 }
 
-function fewDrawWithNeutralFallback(
+export function fewDrawWithNeutralFallback(
   tier: RandomGuardTier,
   lockedFaction: string | null,
   rng: { nextInt: (min: number, max: number) => number }
