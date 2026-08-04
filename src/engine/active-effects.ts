@@ -8,7 +8,8 @@ import {
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
   hasIgnoreSpellAndSpecialtyNonDamage,
-  hasIgnoreParalysis
+  hasIgnoreParalysis,
+  hasUnitAbilityEffect
 } from "./unit-abilities";
 import type {
   ActiveEffectDefinition,
@@ -271,6 +272,41 @@ export function unitIgnoresCardNonDamage(unit: CombatUnitState, card: CardDefini
   return (
     hasIgnoreSpellAndSpecialtyNonDamage(unit) &&
     (card?.kind === "spell" || card?.kind === "hero-specialty")
+  );
+}
+
+/**
+ * THE single read of the FULL ranged-penalty waiver — "Ignore combat penalties"
+ * (`IGNORE_RANGED_PENALTIES`: Magi / Sharpshooters / the neutral Halfling) plus
+ * the player-scoped Ammo Cart standing effect (`RANGED_IGNORE_ALL_PENALTIES`).
+ *
+ * It lives HERE, below both `getAttackRollMode` (legal-actions.ts) and
+ * `siegeRangedDamageReduction` (siege.ts), so the two ranged penalties the
+ * waiver covers — the "roll two dice, keep the lower" Combat penalty and the
+ * siege behind-Wall −1 damage — can never disagree about who is exempt.
+ *
+ * The unit ABILITY is printed "[unit_attack] Ignore combat penalties", so it
+ * fires only on the unit's own declared attack, never on a Retaliation Attack;
+ * the Ammo Cart's effect is a standing player-scoped effect and applies to
+ * retaliations too. NOTE the deliberate split with the OTHER printed variant,
+ * `IGNORE_RANGED_MELEE_PENALTY` ("No Adjacent Penalty" — Evil Eyes / Medusas /
+ * Zealots / Titans): its card text says the long-range / behind-wall penalty
+ * STILL applies, so it is not read here.
+ */
+export function ignoresAllRangedCombatPenalties(
+  unit: CombatUnitState,
+  state?: GameState,
+  isRetaliation = false
+): boolean {
+  if (!isRetaliation && hasUnitAbilityEffect(unit, "IGNORE_RANGED_PENALTIES")) {
+    return true;
+  }
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
+    )
   );
 }
 
