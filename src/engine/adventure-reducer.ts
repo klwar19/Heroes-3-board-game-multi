@@ -77,6 +77,7 @@ import {
   drawDungeonArmy,
   drawGuardArmy,
   drawNeutralArmy,
+  randomTownGoldPackCandidates,
   drawPveThemedArmy,
   drawWaveArmy,
   grantWaveVictoryRewards,
@@ -9411,31 +9412,14 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     }
     const guardField = state.adventure?.fields[combat.context.fieldId];
     const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
-    // Only one Astrologers card is face up, so Judge Dread and the Groovy Satyr
-    // are mutually exclusive; both only touch deck-drawn guards, never fixed bank
-    // guards. Judge Dread offers to discard the WHOLE army and draw fresh; the
-    // Satyr swaps a single card.
-    const activeEffect = getActiveAstrologersCard(state)?.effect.type;
-    if (activeEffect === "NEUTRAL_REDRAW_ALL" && draws.some((draw) => !draw.bankGuard)) {
-      openJudgeDreadChoice(state, draws);
+    // Random Town: the printed card's choosable gold Pack belongs to the player
+    // who CONTROLS THE DEFENSE. With a human controller (PvP Neutral Control /
+    // manual guard control, multiplayer) that pick opens now; otherwise the
+    // default (most expensive gold Pack) stands and nothing pauses.
+    if (maybeOpenRandomTownPackChoice(state, draws)) {
       return;
     }
-    if (activeEffect === "NEUTRAL_DRAW_SWAP" && draws.some((draw) => !draw.bankGuard)) {
-      openSatyrSwapChoice(state, draws);
-      return;
-    }
-    // No Astrologers swap up: an attacker holding Visions may cast it now to swap
-    // out the drawn guards before the battle (the pre-battle Visions use).
-    if (maybeOpenVisionsGuardSwap(state, draws)) {
-      return;
-    }
-    // Polish Rule 111: once per game on a home-tile difficulty-I fight, the
-    // attacker may replace one bronze guard with the next random bronze.
-    if (maybeOpenRule111Choice(state, draws)) {
-      return;
-    }
-
-    revealNeutralArmy(state, draws);
+    continueGuardDrawWindows(state, draws);
     return;
   }
 
@@ -9447,6 +9431,153 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
   }
 
   beginPlayerCombatRounds(state);
+}
+
+/**
+ * The attacker-side pre-battle guard windows, in order: Astrologers (Judge
+ * Dread / Groovy Satyr, mutually exclusive), a held Visions cast, Polish Rule
+ * 111, then the reveal. Shared by the plain placement tail and by the Random
+ * Town chosen-Pack resolver so both chains offer the same windows.
+ */
+function continueGuardDrawWindows(state: GameState, draws: NeutralDraw[]): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  // Only one Astrologers card is face up, so Judge Dread and the Groovy Satyr
+  // are mutually exclusive; both only touch deck-drawn guards, never fixed bank
+  // guards. Judge Dread offers to discard the WHOLE army and draw fresh; the
+  // Satyr swaps a single card.
+  const activeEffect = getActiveAstrologersCard(state)?.effect.type;
+  if (activeEffect === "NEUTRAL_REDRAW_ALL" && draws.some((draw) => !draw.bankGuard)) {
+    openJudgeDreadChoice(state, draws);
+    return;
+  }
+  if (activeEffect === "NEUTRAL_DRAW_SWAP" && draws.some((draw) => !draw.bankGuard)) {
+    openSatyrSwapChoice(state, draws);
+    return;
+  }
+  // No Astrologers swap up: an attacker holding Visions may cast it now to swap
+  // out the drawn guards before the battle (the pre-battle Visions use).
+  if (maybeOpenVisionsGuardSwap(state, draws)) {
+    return;
+  }
+  // Polish Rule 111: once per game on a home-tile difficulty-I fight, the
+  // attacker may replace one bronze guard with the next random bronze.
+  if (maybeOpenRule111Choice(state, draws)) {
+    return;
+  }
+
+  revealNeutralArmy(state, draws);
+}
+
+/**
+ * Random Town — the printed card's choosable gold Pack ("a Pack of gold-tier
+ * units, CHOSEN BY THE PLAYER WHO CONTROLS THE DEFENSE during this Combat").
+ * Opens the pick when a HUMAN seat controls the guards (PvP Neutral Control, or
+ * manual guard control); returns false — leaving the default (the faction's most
+ * expensive gold Pack) in place — when the Neutral AI plays them, the controller
+ * is a computer seat, or the table is a SINGLE-PLAYER game (user rule: single
+ * player just takes the highest-cost unit, so nothing pauses there).
+ *
+ * The choice is created NEUTRAL-owned and re-stamped to the controller by the
+ * reducer pump, exactly like every other neutral-side follow-up: an eliminated
+ * controller hands it back to the Neutral seat (`isNeutralSideCombatChoice`) and
+ * the next pump pass re-stamps it to the next live controller, or auto-resolves
+ * it to the default when nobody live remains.
+ */
+function maybeOpenRandomTownPackChoice(state: GameState, draws: NeutralDraw[]): boolean {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "neutral") {
+    return false;
+  }
+  const index = draws.findIndex((draw) => draw.randomTownChoice);
+  if (index === -1) {
+    return false;
+  }
+  const field = state.adventure?.fields[combat.context.fieldId];
+  const faction = field?.faction;
+  if (!faction) {
+    return false;
+  }
+  const candidates = randomTownGoldPackCandidates(faction);
+  if (candidates.length < 2) {
+    return false;
+  }
+  if (state.sessionMode === "single-player") {
+    return false;
+  }
+  const controller = neutralCombatControllerId(state, combat);
+  if (!controller || state.controllers?.[controller]?.kind === "computer") {
+    return false;
+  }
+
+  combat.pendingNeutralDraws = draws;
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: NEUTRAL_PLAYER_ID,
+    prompt: "Random Town: choose the Pack of gold-tier units defending the town.",
+    options: candidates.map((id) => ({
+      label: `Pack of ${coreUnitDefinitions[id]?.name ?? id}`
+    })),
+    context: "random-town-pack",
+    returnPhase: "combat-setup"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = null;
+  return true;
+}
+
+/**
+ * Resolves the Random Town choosable gold Pack: rewrite the flagged draw to the
+ * picked candidate (an out-of-range pick keeps the default), then continue the
+ * normal attacker-side guard windows and reveal.
+ */
+export function resolveRandomTownPackChoice(state: GameState, optionIndex: number): void {
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws) {
+    throw new Error("There is no drawn neutral army for the Random Town Pack choice.");
+  }
+  const index = draws.findIndex((draw) => draw.randomTownChoice);
+  const field = state.adventure?.fields[
+    combat.context.kind === "neutral" ? combat.context.fieldId : ""
+  ];
+  const candidates = field?.faction ? randomTownGoldPackCandidates(field.faction) : [];
+  const picked = candidates[optionIndex];
+  if (index !== -1 && picked) {
+    draws[index] = { ...draws[index]!, unitDefId: picked, tier: "gold", factionPack: true };
+  }
+  state.pendingChoice = null;
+  continueGuardDrawWindows(state, draws);
+}
+
+/**
+ * Safety net for a Random Town Pack choice nobody live can answer (the human
+ * controller was eliminated mid-window and no other seat took the guards): the
+ * Neutral AI keeps the printed default and the army reveals. Returns true when
+ * it resolved such a window.
+ */
+export function autoResolveRandomTownPackChoice(state: GameState): boolean {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "random-town-pack" ||
+    choice.playerId !== NEUTRAL_PLAYER_ID
+  ) {
+    return false;
+  }
+  const combat = state.combat;
+  const draws = combat?.pendingNeutralDraws;
+  if (!combat || !draws) {
+    state.pendingChoice = null;
+    return true;
+  }
+  state.pendingChoice = null;
+  continueGuardDrawWindows(state, draws);
+  return true;
 }
 
 /** Common tail of player-combat setup: round 1 begins, war machines fire. */
@@ -13821,6 +13952,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   if (choice.context === "judge-dread") {
     state.pendingChoice = null;
     resolveJudgeDread(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "random-town-pack") {
+    resolveRandomTownPackChoice(state, action.optionIndex);
     return;
   }
 

@@ -261,7 +261,9 @@ import {
   applyBreakFieldOptions,
   customGuardArmyDifficultyFromEntries,
   describeGuardArmyGrouped,
+  fewDrawWithNeutralFallback,
   neutralUnitPoolForTier,
+  packDrawWithNeutralFallback,
   resolveCustomGuardDraws,
   resolveLevelPackGuardDraws,
   type ResolvedGuardDraw,
@@ -12667,6 +12669,14 @@ export type NeutralDraw = {
    * side. Implies bankGuard.
    */
   bankUnit?: boolean;
+  /**
+   * Random Town: THIS is the printed card's choosable gold Pack slot ("chosen by
+   * the player who controls the defense during this Combat"). The reveal chain
+   * offers the pick to a HUMAN defense controller and rewrites this entry's
+   * `unitDefId`; with no human controller the default (the faction's most
+   * expensive gold Pack) stands.
+   */
+  randomTownChoice?: boolean;
 };
 
 /**
@@ -14057,31 +14067,107 @@ function ensureRandomTownFaction(state: GameState, field: MapFieldState): string
 }
 
 /**
- * Random Town defenders: one bronze, two silver and two gold Packs of the
- * rolled faction (the strongest bronze stands in for the defender's choice).
+ * Gold-tier units of `faction` that can field a PACK side — the candidates for
+ * the Random Town's ONE choosable gold Pack ("a Pack of gold-tier units, chosen
+ * by the player who controls the defense"). Printed roster order, so the list is
+ * stable across clients and replays (the choice recovers its options from it).
+ */
+export function randomTownGoldPackCandidates(faction: string): string[] {
+  return (coreFactionDefinitions[faction]?.units ?? []).filter(
+    (id) => coreUnitDefinitions[id]?.tier === "gold" && coreUnitDefinitions[id]?.pack
+  );
+}
+
+/**
+ * The DEFAULT choosable gold Pack: the candidate with the highest printed Pack
+ * cost (materials/valuables valued at Trading Post rates, like every other
+ * "printed cost" read in the engine; ties keep roster order). Used whenever no
+ * human controls the defense — the Neutral AI plays the guards, or the table is
+ * a single-player game (user rule: "just set the [chosen] unit as the one with
+ * the highest cost").
+ */
+export function randomTownDefaultGoldPackId(faction: string): string | undefined {
+  const candidates = randomTownGoldPackCandidates(faction);
+  let best: string | undefined;
+  let bestCost = -1;
+  for (const id of candidates) {
+    const cost = (coreUnitDefinitions[id]?.pack?.cost ?? {}) as Partial<Record<ResourceKind, number>>;
+    const gold = (Object.entries(cost) as [ResourceKind, number][]).reduce(
+      (sum, [resource, amount]) =>
+        sum +
+        (resource === "gold" ? amount : amount * marketGoldValueOf(resource as "buildingMaterials" | "valuables")),
+      0
+    );
+    if (gold > bestCost) {
+      bestCost = gold;
+      best = id;
+    }
+  }
+  return best;
+}
+
+/**
+ * Random Town defenders — the printed card: ONE Pack of gold-tier units (the
+ * slot "chosen by the player who controls the defense during this Combat",
+ * flagged `randomTownChoice` so the reveal chain can offer that pick; the
+ * default is the faction's most expensive gold Pack), TWO Packs of silver-tier
+ * units and TWO Fews of gold-tier units, all from the faction not in play.
+ *
+ * A faction short of a printed body for a slot falls back to a same-tier
+ * NEUTRAL draw (the `packDrawWithNeutralFallback` / `fewDrawWithNeutralFallback`
+ * precedent shared with designer "packs" level guards), so the fight always
+ * fields five bodies of the printed tier mix.
  */
 function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDraw[] {
   const faction = ensureRandomTownFaction(state, field);
   const unitIds = coreFactionDefinitions[faction]?.units ?? [];
-  const byTier = (tier: "bronze" | "silver" | "gold") =>
-    unitIds.filter((id) => coreUnitDefinitions[id]?.tier === tier);
+  const random = adventureRandom(state, `random-town-guards-${field.spaceId}`);
+  const draws: NeutralDraw[] = [];
 
-  const bronze = byTier("bronze");
-  const picks: string[] = [];
-  if (bronze.length > 0) {
-    picks.push(bronze[bronze.length - 1]);
-  }
-  picks.push(...byTier("silver").slice(0, 2));
-  picks.push(...byTier("gold").slice(0, 2));
-
-  return picks
-    .filter((id) => coreUnitDefinitions[id]?.pack)
-    .map((id) => ({
-      unitDefId: id,
-      tier: coreUnitDefinitions[id]!.tier as "bronze" | "silver" | "gold",
+  // 1) the choosable gold Pack.
+  const chosen = randomTownDefaultGoldPackId(faction);
+  if (chosen) {
+    draws.push({
+      unitDefId: chosen,
+      tier: "gold",
       factionPack: true,
-      bankGuard: true
-    }));
+      bankGuard: true,
+      randomTownChoice: true
+    });
+  } else {
+    const fallback = packDrawWithNeutralFallback("gold", faction, random);
+    if (fallback) draws.push({ ...(fallback as NeutralDraw), randomTownChoice: true });
+  }
+
+  // 2) two silver Packs.
+  const silverPacks = unitIds.filter(
+    (id) => coreUnitDefinitions[id]?.tier === "silver" && coreUnitDefinitions[id]?.pack
+  );
+  for (let slot = 0; slot < 2; slot += 1) {
+    const id = silverPacks[slot];
+    if (id) {
+      draws.push({ unitDefId: id, tier: "silver", factionPack: true, bankGuard: true });
+      continue;
+    }
+    const fallback = packDrawWithNeutralFallback("silver", faction, random);
+    if (fallback) draws.push(fallback as NeutralDraw);
+  }
+
+  // 3) two gold Fews.
+  const goldFews = unitIds.filter(
+    (id) => coreUnitDefinitions[id]?.tier === "gold" && coreUnitDefinitions[id]?.few
+  );
+  for (let slot = 0; slot < 2; slot += 1) {
+    const id = goldFews[slot];
+    if (id) {
+      draws.push({ unitDefId: id, tier: "gold", factionFew: true, bankGuard: true });
+      continue;
+    }
+    const fallback = fewDrawWithNeutralFallback("gold", faction, random);
+    if (fallback) draws.push(fallback as NeutralDraw);
+  }
+
+  return draws;
 }
 
 export function makeCombatUnitFromNeutral(
