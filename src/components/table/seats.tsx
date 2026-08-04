@@ -8,6 +8,7 @@ import { playSpellBookOpen } from "@/lib/sound";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
+import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
@@ -65,9 +66,12 @@ export function CardFrame({
   empowered?: boolean;
 }) {
   const card = cardId ? cardLibrary[cardId] : undefined;
-  const src = card?.assets?.cardImage;
   const alt = card?.assets?.imageAlt ?? card?.name ?? cardId ?? "card";
   const showEmpowered = Boolean(empowered) || isEmpoweredStatisticCard(cardId);
+  // An Empowered ability has its OWN printed face on the wiki (the "Empowered"
+  // scan), so render that instead of the base face — the gold ring/badge below
+  // stays on top of it. Falls back to the base face when no scan is registered.
+  const src = cardFaceImage(cardId, showEmpowered);
   // The empowered ring is layered onto whichever element renders, so the cue is
   // identical across the hand fan, trays, piles and discard tops.
   const frameClass = showEmpowered ? `${className} empoweredCard` : className;

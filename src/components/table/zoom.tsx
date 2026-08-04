@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
+import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import {
   describeCardEffect,
   getUnitAbilityDefinitions,
@@ -81,16 +82,19 @@ export function cardZoomContent(cardId: string, empowered?: boolean): ZoomConten
     lines.push(`Printed text: ${note}`);
   }
 
+  const showEmpowered = isEmpoweredStatisticCard(cardId) || Boolean(empowered);
   return {
     title: card.name,
-    image: card.assets?.cardImage,
+    // Empowered abilities have their own printed "Empowered" face; the read view
+    // shows it (with the ring on top) instead of the base scan.
+    image: cardFaceImage(cardId, showEmpowered),
     specialtyCardId: !card.assets?.cardImage && canRenderSpecialtyCard(cardId) ? cardId : undefined,
     subtitle: getCardMetaLabels(card).join(" · "),
     lines,
     // An Empowered Statistic card is intrinsic; an Empowered *ability* is
     // per-owner, so the caller (which holds the player's empoweredAbilities)
     // passes the flag in — without it a zoomed empowered ability lost its glow.
-    empowered: isEmpoweredStatisticCard(cardId) || Boolean(empowered)
+    empowered: showEmpowered
   };
 }
 

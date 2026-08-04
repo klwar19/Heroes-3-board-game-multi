@@ -101,6 +101,55 @@ describe("HandFan — empowered badge in the hand", () => {
   });
 });
 
+describe("empowered card FACE — the printed Empowered scan replaces the base art", () => {
+  // The wiki ships a dedicated "Empowered" scan per ability. Rendering the base
+  // face with a ring on top showed the WRONG card text (the ring is a cue, not
+  // the card). Every case pairs the swap with a not-empowered CONTROL that must
+  // keep the base face — a swap that fires always is as wrong as one that never
+  // fires.
+  const src = (container: HTMLElement) =>
+    container.querySelector<HTMLImageElement>("img")?.getAttribute("src") ?? "";
+
+  it("CardFrame renders the empowered face for an empowered ability, the base face otherwise", () => {
+    const empowered = render(<CardFrame cardId="ability.offense" className="x" empowered />);
+    expect(src(empowered.container)).toContain("abilities-offense-empowered.webp");
+    // The ring/badge wiring must survive the swap (pinned above too).
+    expect(empowered.container.querySelector(".empoweredCard")).not.toBeNull();
+    cleanup();
+    const normal = render(<CardFrame cardId="ability.offense" className="x" />);
+    expect(src(normal.container)).toContain("abilities-offense.webp");
+    expect(src(normal.container)).not.toContain("empowered");
+  });
+
+  it("HandFan shows the empowered face for the owner's empowered ability only", () => {
+    // The hand fan also renders chrome images (the spell-book button), so read
+    // the card art specifically.
+    const fanSrc = (container: HTMLElement) =>
+      container.querySelector<HTMLImageElement>("img.fanCardImage")?.getAttribute("src") ?? "";
+    const empowered = renderHand(handState(["ability.estates"], ["ability.estates"]));
+    expect(fanSrc(empowered.container)).toContain("abilities-estates-empowered.webp");
+    cleanup();
+    const control = renderHand(handState(["ability.estates"], []));
+    expect(fanSrc(control.container)).toContain("abilities-estates.webp");
+    expect(fanSrc(control.container)).not.toContain("empowered");
+  });
+
+  it("the zoom read view swaps the face too (and only when empowered)", () => {
+    expect(cardZoomContent("ability.offense", true).image).toBe(
+      "/assets/abilities-offense-empowered.webp"
+    );
+    expect(cardZoomContent("ability.offense").image).toBe("/assets/abilities-offense.webp");
+  });
+
+  it("an Empowered Statistic already prints its own empowered face", () => {
+    // Intrinsic empowered card: the swap must not double-suffix it.
+    expect(cardZoomContent("stat.attack.empowered").image).toBe(
+      "/assets/statistics-attack-empowered.webp"
+    );
+    expect(cardZoomContent("stat.attack").image).toBe("/assets/statistics-attack.webp");
+  });
+});
+
 describe("zoom — empowered cue on the read view", () => {
   it("marks an Empowered Statistic and leaves the normal statistic plain", () => {
     expect(cardZoomContent("stat.power.empowered").empowered).toBe(true);

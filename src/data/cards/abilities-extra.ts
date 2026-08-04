@@ -343,7 +343,13 @@ export const extraAbilityCards: CardLibrary = {
         }
       ]
     },
-    assets: abilityAssets("diplomacy", "Diplomacy"),
+    // Diplomacy is a PRINTED always-Empowered card ("use either side without
+    // spending a crown" is on the card itself, hence the "empowered" tag above),
+    // so its printed face IS the wiki's Empowered scan — not the plain base one.
+    assets: {
+      cardImage: "/assets/abilities-diplomacy-empowered.webp",
+      imageAlt: "Diplomacy ability card"
+    },
     implementationStatus: "implemented",
     source: abilitySource("diplomacy")
   },
