@@ -3,8 +3,8 @@ import { startNeutralEncounter } from "./adventure-reducer";
 import {
   drawGuardArmy,
   getMainHero,
-  randomTownDefaultGoldPackId,
-  randomTownGoldPackCandidates,
+  randomTownDefaultBronzePackId,
+  randomTownBronzePackCandidates,
   eliminatePlayer
 } from "./adventure";
 import { applyAction, createAdventureGameState, NEUTRAL_PLAYER_ID } from "./index";
@@ -15,7 +15,7 @@ import type { GameAction, GameState, MapFieldState, PlayerId, ResourceKind } fro
 
 /**
  * Random Town defenders (printed Stretch-Goals card): "defended by units from
- * that Faction: a Pack of GOLD-tier units, chosen by the player who controls the
+ * that Faction: a Pack of BRONZE-tier units, chosen by the player who controls the
  * defense during this Combat; two Packs of SILVER-tier units; two Fews of
  * GOLD-tier units. Add Walls and the Gate for this Combat, but not the Arrow
  * Tower." The faction is one NOT in play.
@@ -109,7 +109,7 @@ function packGoldCost(unitDefId: string): number {
 }
 
 describe("Random Town defense — the printed composition", () => {
-  it("mints 1 gold Pack + 2 silver Packs + 2 gold Fews of the chosen faction", () => {
+  it("mints 1 bronze Pack + 2 silver Packs + 2 gold Fews of the chosen faction", () => {
     const state = fightRandomTown(makeGame("rt-composition"));
     const field = state.adventure!.fields["70,70"]!;
     const faction = field.faction!;
@@ -121,7 +121,7 @@ describe("Random Town defense — the printed composition", () => {
 
     const packs = guards.filter((unit) => unit.variant === "pack");
     const fews = guards.filter((unit) => unit.variant === "few");
-    expect(packs.map((unit) => unit.grade).sort()).toEqual(["gold", "silver", "silver"]);
+    expect(packs.map((unit) => unit.grade).sort()).toEqual(["bronze", "silver", "silver"]);
     expect(fews.map((unit) => unit.grade)).toEqual(["gold", "gold"]);
 
     // Each Pack/Few really fights on that printed side (stats, not just a flag).
@@ -136,43 +136,48 @@ describe("Random Town defense — the printed composition", () => {
       expect(unit.maxHealth).toBe(side.health);
     }
 
-    // CONTROL against the OLD composition (1 bronze + 2 silver + 2 gold Packs):
-    // no bronze body defends a Random Town and Fews are really on the table.
-    expect(guards.some((unit) => unit.grade === "bronze")).toBe(false);
+    // CONTROL against the OLD composition (1 bronze + 2 silver + 2 gold PACKS):
+    // the two gold bodies are FEWS, and exactly ONE bronze body (the choosable
+    // Pack) stands — never two gold Packs.
+    expect(guards.filter((unit) => unit.grade === "bronze")).toHaveLength(1);
+    expect(packs.filter((unit) => unit.grade === "gold")).toHaveLength(0);
     expect(fews).toHaveLength(2);
   });
 
-  it("takes the faction's highest-printed-cost gold Pack when no human controls the defense", () => {
+  it("takes the faction's highest-printed-cost bronze Pack when no human controls the defense", () => {
     const state = fightRandomTown(makeGame("rt-default-pick"));
     const faction = state.adventure!.fields["70,70"]!.faction!;
-    const goldPack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "gold")!;
+    const bronzePack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "bronze")!;
 
-    const candidates = randomTownGoldPackCandidates(faction);
+    const candidates = randomTownBronzePackCandidates(faction);
     expect(candidates.length).toBeGreaterThan(1);
     const best = [...candidates].sort((left, right) => packGoldCost(right) - packGoldCost(left))[0]!;
-    expect(goldPack.unitDefId).toBe(best);
-    // CONTROL: it is NOT merely the first (or cheapest) gold unit of the roster.
+    expect(bronzePack.unitDefId).toBe(best);
+    // CONTROL: it is NOT merely the first (or cheapest) bronze unit of the roster.
     const cheapest = [...candidates].sort((left, right) => packGoldCost(left) - packGoldCost(right))[0]!;
     expect(packGoldCost(best)).toBeGreaterThan(packGoldCost(cheapest));
-    expect(goldPack.unitDefId).not.toBe(cheapest);
+    expect(bronzePack.unitDefId).not.toBe(cheapest);
     // No pick window ever opened: the fight went straight to the battle.
     expect(optionChoiceContext(state)).not.toBe("random-town-pack");
   });
 
   it("picks per faction cost table, not a fixed roster slot (CONTROL across factions)", () => {
-    // Rampart's dearest gold Pack is the Gold Dragons; Castle's the Archangels;
-    // in both cases the SECOND gold unit — so also check a faction whose roster
-    // order does not track cost by asserting the max against the real table.
+    // Sweep every faction against its OWN printed bronze cost table: the pick is
+    // never a fixed roster slot. Heavenly Demon is the sharp case — its dearest
+    // bronze Pack is the MIDDLE one (Gu Witches 6 > Shadow Wraiths 5), so a
+    // "last bronze in the roster" reading fails here.
     for (const faction of Object.keys(coreFactionDefinitions)) {
-      const candidates = randomTownGoldPackCandidates(faction);
+      const candidates = randomTownBronzePackCandidates(faction);
       if (candidates.length === 0) continue;
-      const best = randomTownDefaultGoldPackId(faction)!;
+      const best = randomTownDefaultBronzePackId(faction)!;
       const maxCost = Math.max(...candidates.map((id) => packGoldCost(id)));
       expect(packGoldCost(best)).toBe(maxCost);
     }
-    // A concrete divergence: Castle picks Archangels, never Champions.
-    expect(randomTownDefaultGoldPackId("castle")).toBe("castle.archangels");
-    expect(randomTownDefaultGoldPackId("rampart")).toBe("rampart.gold_dragons");
+    // Concrete divergences: never the first (cheapest) bronze, and not always the
+    // last one either.
+    expect(randomTownDefaultBronzePackId("castle")).toBe("castle.griffins");
+    expect(randomTownDefaultBronzePackId("rampart")).toBe("rampart.elves");
+    expect(randomTownDefaultBronzePackId("heavenly_demon")).toBe("heavenly_demon.gu_witches");
   });
 });
 
@@ -216,19 +221,19 @@ describe("Random Town faction pick", () => {
 });
 
 describe("Random Town — single player never pauses for the Pack pick", () => {
-  it("auto-takes the highest-cost gold Pack in a single-player game with manual guard control", () => {
+  it("auto-takes the highest-cost bronze Pack in a single-player game with manual guard control", () => {
     const state = fightRandomTown(
       makeGame("rt-single-player", { manualGuardControl: true, sessionMode: "single-player" })
     );
     expect(state.sessionMode).toBe("single-player");
     expect(optionChoiceContext(state)).not.toBe("random-town-pack");
     const faction = state.adventure!.fields["70,70"]!.faction!;
-    const goldPack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "gold")!;
-    expect(goldPack.unitDefId).toBe(randomTownDefaultGoldPackId(faction));
+    const bronzePack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "bronze")!;
+    expect(bronzePack.unitDefId).toBe(randomTownDefaultBronzePackId(faction));
   });
 });
 
-describe("Random Town — a HUMAN defense controller picks the gold Pack", () => {
+describe("Random Town — a HUMAN defense controller picks the bronze Pack", () => {
   function pvpControlGame(seed: string): GameState {
     const state = makeGame(seed, { pvpNeutralControl: true });
     return state;
@@ -243,8 +248,8 @@ describe("Random Town — a HUMAN defense controller picks the gold Pack", () =>
     expect(controller).not.toBe(NEUTRAL_PLAYER_ID);
 
     const faction = state.adventure!.fields["70,70"]!.faction!;
-    const candidates = randomTownGoldPackCandidates(faction);
-    const wanted = candidates.find((id) => id !== randomTownDefaultGoldPackId(faction))!;
+    const candidates = randomTownBronzePackCandidates(faction);
+    const wanted = candidates.find((id) => id !== randomTownDefaultBronzePackId(faction))!;
     const optionIndex = candidates.indexOf(wanted);
 
     state = applyOk(state, {
@@ -254,11 +259,11 @@ describe("Random Town — a HUMAN defense controller picks the gold Pack", () =>
       optionIndex
     });
 
-    const goldPack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "gold")!;
+    const bronzePack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "bronze")!;
     // CONTROL: the picked unit replaced the default, and it is a real Pack body.
-    expect(goldPack.unitDefId).toBe(wanted);
-    expect(goldPack.unitDefId).not.toBe(randomTownDefaultGoldPackId(faction));
-    expect(goldPack.attack).toBe(coreUnitDefinitions[wanted]!.pack!.attack);
+    expect(bronzePack.unitDefId).toBe(wanted);
+    expect(bronzePack.unitDefId).not.toBe(randomTownDefaultBronzePackId(faction));
+    expect(bronzePack.attack).toBe(coreUnitDefinitions[wanted]!.pack!.attack);
     // The rest of the printed composition is untouched.
     expect(neutralUnits(state)).toHaveLength(5);
   });
@@ -277,8 +282,8 @@ describe("Random Town — a HUMAN defense controller picks the gold Pack", () =>
     // Any next action pumps the engine: the window auto-resolves to the default.
     state = applyOk(state, { type: "JOIN_ROOM", clientId: "c1", name: "watcher" } as GameAction);
     expect(optionChoiceContext(state)).not.toBe("random-town-pack");
-    const goldPack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "gold")!;
-    expect(goldPack.unitDefId).toBe(randomTownDefaultGoldPackId(faction));
+    const bronzePack = neutralUnits(state).find((unit) => unit.variant === "pack" && unit.grade === "bronze")!;
+    expect(bronzePack.unitDefId).toBe(randomTownDefaultBronzePackId(faction));
     expect(neutralUnits(state)).toHaveLength(5);
   });
 });

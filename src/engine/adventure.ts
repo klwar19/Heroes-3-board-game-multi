@@ -12670,11 +12670,11 @@ export type NeutralDraw = {
    */
   bankUnit?: boolean;
   /**
-   * Random Town: THIS is the printed card's choosable gold Pack slot ("chosen by
-   * the player who controls the defense during this Combat"). The reveal chain
+   * Random Town: THIS is the printed card's choosable BRONZE Pack slot ("chosen
+   * by the player who controls the defense during this Combat"). The reveal chain
    * offers the pick to a HUMAN defense controller and rewrites this entry's
    * `unitDefId`; with no human controller the default (the faction's most
-   * expensive gold Pack) stands.
+   * expensive bronze Pack) stands.
    */
   randomTownChoice?: boolean;
 };
@@ -14067,27 +14067,28 @@ function ensureRandomTownFaction(state: GameState, field: MapFieldState): string
 }
 
 /**
- * Gold-tier units of `faction` that can field a PACK side — the candidates for
- * the Random Town's ONE choosable gold Pack ("a Pack of gold-tier units, chosen
- * by the player who controls the defense"). Printed roster order, so the list is
- * stable across clients and replays (the choice recovers its options from it).
+ * BRONZE-tier units of `faction` that can field a PACK side — the candidates for
+ * the Random Town's ONE choosable bronze Pack (the printed card's bronze-star
+ * slot: "a Pack of bronze-tier units, chosen by the player who controls the
+ * defense"). Printed roster order, so the list is stable across clients and
+ * replays (the choice recovers its options from it).
  */
-export function randomTownGoldPackCandidates(faction: string): string[] {
+export function randomTownBronzePackCandidates(faction: string): string[] {
   return (coreFactionDefinitions[faction]?.units ?? []).filter(
-    (id) => coreUnitDefinitions[id]?.tier === "gold" && coreUnitDefinitions[id]?.pack
+    (id) => coreUnitDefinitions[id]?.tier === "bronze" && coreUnitDefinitions[id]?.pack
   );
 }
 
 /**
- * The DEFAULT choosable gold Pack: the candidate with the highest printed Pack
+ * The DEFAULT choosable bronze Pack: the candidate with the highest printed Pack
  * cost (materials/valuables valued at Trading Post rates, like every other
  * "printed cost" read in the engine; ties keep roster order). Used whenever no
  * human controls the defense — the Neutral AI plays the guards, or the table is
  * a single-player game (user rule: "just set the [chosen] unit as the one with
  * the highest cost").
  */
-export function randomTownDefaultGoldPackId(faction: string): string | undefined {
-  const candidates = randomTownGoldPackCandidates(faction);
+export function randomTownDefaultBronzePackId(faction: string): string | undefined {
+  const candidates = randomTownBronzePackCandidates(faction);
   let best: string | undefined;
   let bestCost = -1;
   for (const id of candidates) {
@@ -14107,10 +14108,10 @@ export function randomTownDefaultGoldPackId(faction: string): string | undefined
 }
 
 /**
- * Random Town defenders — the printed card: ONE Pack of gold-tier units (the
+ * Random Town defenders — the printed card: ONE Pack of BRONZE-tier units (the
  * slot "chosen by the player who controls the defense during this Combat",
  * flagged `randomTownChoice` so the reveal chain can offer that pick; the
- * default is the faction's most expensive gold Pack), TWO Packs of silver-tier
+ * default is the faction's most expensive bronze Pack), TWO Packs of silver-tier
  * units and TWO Fews of gold-tier units, all from the faction not in play.
  *
  * A faction short of a printed body for a slot falls back to a same-tier
@@ -14124,18 +14125,18 @@ function randomTownGuardDraws(state: GameState, field: MapFieldState): NeutralDr
   const random = adventureRandom(state, `random-town-guards-${field.spaceId}`);
   const draws: NeutralDraw[] = [];
 
-  // 1) the choosable gold Pack.
-  const chosen = randomTownDefaultGoldPackId(faction);
+  // 1) the choosable BRONZE Pack.
+  const chosen = randomTownDefaultBronzePackId(faction);
   if (chosen) {
     draws.push({
       unitDefId: chosen,
-      tier: "gold",
+      tier: "bronze",
       factionPack: true,
       bankGuard: true,
       randomTownChoice: true
     });
   } else {
-    const fallback = packDrawWithNeutralFallback("gold", faction, random);
+    const fallback = packDrawWithNeutralFallback("bronze", faction, random);
     if (fallback) draws.push({ ...(fallback as NeutralDraw), randomTownChoice: true });
   }
 

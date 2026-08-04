@@ -8186,7 +8186,7 @@ export type CombatState = {
         factionPack?: boolean;
         factionFew?: boolean;
         /**
-         * Random Town: the printed card's choosable gold Pack slot, rewritten by
+         * Random Town: the printed card's choosable bronze Pack slot, rewritten by
          * the defense controller's pick before the army reveals.
          */
         randomTownChoice?: boolean;

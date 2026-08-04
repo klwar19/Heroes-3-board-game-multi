@@ -388,7 +388,7 @@ describe("Ⅶ designation — town", () => {
     expect(field.difficulty).toBe(7);
 
     // Defended by an unused faction's printed party (the Random Town guard draw:
-    // 1 gold Pack + 2 silver Packs + 2 gold Fews — see random-town-defenders).
+    // 1 bronze Pack + 2 silver Packs + 2 gold Fews — see random-town-defenders).
     const draws = drawGuardArmy(state, field, 7);
     expect(draws.length).toBeGreaterThan(0);
     expect(draws.every((draw) => (draw.factionPack || draw.factionFew) && draw.bankGuard)).toBe(true);

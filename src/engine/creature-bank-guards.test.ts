@@ -145,7 +145,7 @@ describe("Cyclops Stockpile guards", () => {
 });
 
 describe("Random Town", () => {
-  it("is defended by the printed card: 1 gold Pack + 2 silver Packs + 2 gold Fews", () => {
+  it("is defended by the printed card: 1 bronze Pack + 2 silver Packs + 2 gold Fews", () => {
     // Default players are Castle and Necropolis, so the town faction differs.
     const state = createAdventureGameState({ seed: "town", difficulty: "normal", rollFirstPlayer: false });
     const field = fieldWith("random_town");
@@ -158,15 +158,15 @@ describe("Random Town", () => {
     expect(draws.every((draw) => coreUnitDefinitions[draw.unitDefId]?.faction === field.faction)).toBe(true);
     const packs = draws.filter((draw) => draw.factionPack);
     const fews = draws.filter((draw) => draw.factionFew);
-    expect(packs.map((draw) => draw.tier).sort()).toEqual(["gold", "silver", "silver"]);
+    expect(packs.map((draw) => draw.tier).sort()).toEqual(["bronze", "silver", "silver"]);
     expect(fews.map((draw) => draw.tier)).toEqual(["gold", "gold"]);
-    // The choosable slot is exactly the ONE gold Pack.
+    // The choosable slot is exactly the ONE bronze Pack.
     const choosable = draws.filter((draw) => draw.randomTownChoice);
     expect(choosable).toHaveLength(1);
-    expect(choosable[0]!.tier).toBe("gold");
+    expect(choosable[0]!.tier).toBe("bronze");
     expect(choosable[0]!.factionPack).toBe(true);
-    // CONTROL against the old composition: no bronze body defends a Random Town.
-    expect(draws.some((draw) => draw.tier === "bronze")).toBe(false);
+    // CONTROL against the old composition (2 gold PACKS): the gold bodies are Fews.
+    expect(packs.some((draw) => draw.tier === "gold")).toBe(false);
 
     // The Pack slots fight on their Pack side, the Few slots on their Few side.
     const packUnit = makeCombatUnitFromNeutral(packs[0]!, "rt1", 0);
