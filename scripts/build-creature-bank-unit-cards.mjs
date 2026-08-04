@@ -14,6 +14,18 @@
  * Sources:
  *   https://en.homm3bg.wiki/units/
  *   https://en.homm3bg.wiki/legend/
+ *
+ * !! STALE AS OF 2026-08-04 — DO NOT RE-RUN BLINDLY !!
+ * The premise above ("the 18 unique Creature Bank unit faces whose wiki images
+ * are blank") is NO LONGER TRUE. en.homm3bg.wiki now publishes the GENUINE
+ * printed NAVAL BATTLES scans for all 18 — not under a units-* name (which is
+ * why the old mirror-name probe 404'd) but bank-scoped, linked from each
+ * creature's own /units/<unit>/ page:
+ *   https://en.homm3bg.wiki/assets/creature_banks-<bank_slug>-<unit_slug>.webp
+ * Those real scans are what is committed in public/assets today. Re-running
+ * this script would OVERWRITE the printed cards with the crop-and-overlay
+ * composites. If you ever do, restore them with:
+ *   py scripts/fetch-wiki-art-round3.py
  */
 
 import { readFile } from "node:fs/promises";
