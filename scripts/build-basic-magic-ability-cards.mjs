@@ -8,6 +8,16 @@
  * frame and expert divider. Generated art is confined to the illustration
  * area; title, rules, and every symbolic rules reference are composed
  * deterministically from the wiki legend glyphs.
+ *
+ * !! STALE AS OF 2026-08-04 — DO NOT RE-RUN BLINDLY !!
+ * The premise in the first paragraph above ("wiki pages expose only the
+ * player-deck back") is NO LONGER TRUE. en.homm3bg.wiki now publishes the
+ * GENUINE printed scans for all four cards (CONFLUX 034-037/080) at
+ * https://en.homm3bg.wiki/assets/abilities-basic_<school>_magic.webp, and those
+ * real scans are what is committed in public/assets today. Re-running this
+ * script would OVERWRITE the printed cards with the generated composites.
+ * If you ever do, restore them with:
+ *   py scripts/fetch-wiki-art-round3.py
  */
 
 import { mkdir, readFile, rename, rm } from "node:fs/promises";

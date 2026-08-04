@@ -39,10 +39,13 @@ describe("Creature Bank unit card faces", () => {
       expect(existsSync(asset(output)), output).toBe(true);
       const size = statSync(asset(output)).size;
       // Real card art (not a tiny placeholder), but compressed: lossy WebP keeps
-      // every bank face in the same size band as the rest of /public/assets. A
-      // regression back to lossless encoding would blow past this ceiling
-      // (lossless rebuilds these at 600KB–1.1MB), so the upper bound is what
-      // actually enforces the compression this audit applied.
+      // every bank face in the same size band as the rest of /public/assets.
+      // As of 2026-08-04 these are the GENUINE printed NAVAL BATTLES scans
+      // imported by scripts/fetch-wiki-art-round3.py at q94/method=6, which land
+      // at 184–212KB — comfortably inside the band the previous crop-and-overlay
+      // composites occupied, so the bounds did not need to move. The floor still
+      // rejects a deck-back/placeholder swap; the ceiling still rejects a
+      // regression to lossless encoding (which rebuilds these at 600KB–1.1MB).
       expect(size, output).toBeGreaterThan(100_000);
       expect(size, output).toBeLessThan(450_000);
       return side.cardImage;
@@ -50,32 +53,59 @@ describe("Creature Bank unit card faces", () => {
     expect(new Set(images).size).toBe(images.length);
   });
 
-  it("keeps the real source illustration (lossy re-encode stays within a tiny delta)", async () => {
-    // The faces are now lossy WebP (quality 94), so the illustration is no longer
-    // byte-identical to the source scan — but it must still BE that scan, only
-    // recompressed. We assert the mean absolute per-channel difference over the
-    // illustration window is tiny. Observed deltas are < 1.5; a wrong or garbled
-    // illustration would diverge by tens to hundreds, so this both permits the
-    // compression and still fails if the art is swapped, blanked, or corrupted.
-    for (const [unitDefId, [source, output]] of Object.entries(EXPECTED)) {
-      const metadata = await sharp(asset(source)).metadata();
-      const width = metadata.width!;
-      const height = metadata.height!;
-      const region = {
-        left: Math.round((190 / 743) * width),
-        top: Math.round((185 / 1040) * height),
-        width: Math.round((480 / 743) * width),
-        height: Math.round((520 / 1040) * height)
-      };
-      const [before, after] = await Promise.all([
-        sharp(asset(source)).extract(region).raw().toBuffer(),
-        sharp(asset(output)).extract(region).raw().toBuffer()
-      ]);
-      expect(after.length, `${unitDefId} buffer length`).toBe(before.length);
-      let total = 0;
-      for (let i = 0; i < before.length; i += 1) total += Math.abs(before[i] - after[i]);
-      const meanAbsDiff = total / before.length;
-      expect(meanAbsDiff, `${unitDefId} illustration delta`).toBeLessThan(4);
+  it("shows each creature's OWN illustration (nearest-match against all 18 sources)", async () => {
+    // Each bank face must depict the SAME creature as its faction/neutral card.
+    //
+    // Why this is a nearest-match test and not an absolute threshold: until
+    // 2026-08-04 these faces were composites built by cropping the faction scan,
+    // so the illustration window was near-identical to it (delta < 1.5) and a
+    // tight absolute bound worked. They are now the GENUINE printed NAVAL BATTLES
+    // scans — photographs of physical cards, with gloss, perspective and a
+    // slightly different crop — so the same-creature delta rose to 8.5–19.9.
+    // A single absolute bound can no longer discriminate: the largest matching
+    // delta (nagas, 19.9) EXCEEDS the smallest mismatching one (a Crypt
+    // Skeletons face measured against Zombies' art, 18.1 — both are dark
+    // Necropolis undead on the same palette). A threshold loose enough to pass
+    // nagas would therefore pass a skeletons/zombies swap, which is exactly the
+    // bug this test exists to catch.
+    //
+    // So instead of a magic number we assert the ARGMIN: of all 18 candidate
+    // source illustrations, the closest to each bank face must be its own. That
+    // is self-calibrating (no bound to retune when art is re-imported) and
+    // strictly discriminating — swapping any two faces makes both rows fail.
+    // Observed margin between the correct source and the runner-up is 7.7 at the
+    // tightest (skeletons vs zombies) and ~22 typically.
+    const region = (width: number, height: number) => ({
+      left: Math.round((190 / 743) * width),
+      top: Math.round((185 / 1040) * height),
+      width: Math.round((480 / 743) * width),
+      height: Math.round((520 / 1040) * height)
+    });
+
+    const entries = Object.entries(EXPECTED);
+    // Every image is normalised to the printed card size AND to 3 channels
+    // (several faction faces carry an alpha channel, the imported scans do not)
+    // so all 18 windows are directly comparable pixel-for-pixel.
+    const illustrationOf = (name: string) =>
+      sharp(asset(name)).resize(743, 1040).removeAlpha().extract(region(743, 1040)).raw().toBuffer();
+    const sources = await Promise.all(
+      entries.map(async ([unitDefId, [source]]) => ({ unitDefId, pixels: await illustrationOf(source) }))
+    );
+
+    for (const [unitDefId, [, output]] of entries) {
+      const face = await illustrationOf(output);
+      const scored = sources
+        .map(({ unitDefId: candidate, pixels }) => {
+          expect(pixels.length, `${candidate} buffer length`).toBe(face.length);
+          let total = 0;
+          for (let i = 0; i < face.length; i += 1) total += Math.abs(face[i] - pixels[i]);
+          return { candidate, delta: total / face.length };
+        })
+        .sort((a, b) => a.delta - b.delta);
+      expect(scored[0].candidate, `${unitDefId} nearest illustration (got ${scored[0].candidate})`).toBe(unitDefId);
+      // Blank/garbled art would collapse toward every source at once; require a
+      // real gap between the right creature and the next-best one.
+      expect(scored[1].delta - scored[0].delta, `${unitDefId} margin over runner-up`).toBeGreaterThan(3);
     }
   });
 });
