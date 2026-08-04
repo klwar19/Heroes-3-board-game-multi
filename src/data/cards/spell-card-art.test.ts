@@ -57,8 +57,11 @@ describe("spell card art is committed", () => {
       "spell.summon_earth_elemental",
       "spell.summon_fire_elemental",
       "spell.summon_water_elemental",
-      // Original card faces built by scripts/build-missing-spell-cards.mjs for
-      // the spells the wiki shows only the deck back for.
+      // Real printed-card scans refreshed from en.homm3bg.wiki by
+      // scripts/fetch-spell-art-refresh.py (2026-08-04). These used to be
+      // locally generated originals built by build-missing-spell-cards.mjs /
+      // build-summon-spell-cards.mjs — re-running either build script would
+      // clobber the printed faces; re-run the fetch script to restore them.
       "spell.magic_mirror",
       "spell.quicksand",
       "spell.land_mine",

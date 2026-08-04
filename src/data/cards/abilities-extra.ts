@@ -298,8 +298,12 @@ export const extraAbilityCards: CardLibrary = {
       "Basic: Instant +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit (the same +1 also reduces that Spell's damage). Expert: Instant +2 defense."
     ],
     effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
-    // Real printed-card scan (user-provided) at /assets/abilities-interference.webp,
-    // so noScan stays off (default false) and the baked art is used.
+    // Real printed-card scan at /assets/abilities-interference.webp, so noScan
+    // stays off (default false) and the baked art is used. Refreshed 2026-08-04
+    // from en.homm3bg.wiki (scripts/fetch-spell-art-refresh.py): the old local
+    // file was an off-standard 726x1040 narrow crop; the wiki serves the full
+    // 743x1040 printed card (COVE 027/058), matching its Empowered twin
+    // (NAVAL BATTLES 078/082).
     assets: abilityAssets("interference", "Interference"),
     implementationStatus: "implemented",
     source: abilitySource("interference")
