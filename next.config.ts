@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 import { assetRedirects, resolveAssetBaseUrl } from "./src/lib/asset-cdn";
+import { computeMediaVersion } from "./src/lib/asset-media-version";
 
 // One resolved value feeds BOTH the client bundle (env below) and the
 // redirect table, so they can never disagree. Explicit env var wins;
@@ -8,9 +9,17 @@ import { assetRedirects, resolveAssetBaseUrl } from "./src/lib/asset-cdn";
 // same-origin. See src/lib/asset-cdn.ts.
 const assetBaseUrl = resolveAssetBaseUrl(process.env);
 
+// Media cache-busting version (path+size hash of public/ media, ~4k stats,
+// sub-second): every CDN asset URL carries ?v=<this>, so replaced art gets a
+// brand-new edge/browser cache key on the next deploy — visible immediately,
+// no Cloudflare purge token required. Computed only when assets are actually
+// served from a CDN; same-origin builds (dev/CI) stay unversioned.
+const assetVersion = assetBaseUrl ? computeMediaVersion() : "";
+
 const nextConfig: NextConfig = {
   env: {
-    NEXT_PUBLIC_ASSET_BASE_URL: assetBaseUrl
+    NEXT_PUBLIC_ASSET_BASE_URL: assetBaseUrl,
+    NEXT_PUBLIC_ASSET_VERSION: assetVersion
   },
   // Send same-origin /assets|/sounds(/fonts) requests to the CDN. Next matches
   // redirects before the public/ filesystem, so this covers globals.css url()
@@ -19,7 +28,7 @@ const nextConfig: NextConfig = {
   // same-origin (env var unset / "same-origin"), i.e. zero behaviour change
   // for local dev and CI.
   async redirects() {
-    return assetRedirects(assetBaseUrl);
+    return assetRedirects(assetBaseUrl, undefined, assetVersion);
   },
   // The room API routes import src/server/game-room-store.ts, which persists rooms
   // with runtime fs reads/writes against a dynamic path (HOMM3BG_ROOM_DIR env var,

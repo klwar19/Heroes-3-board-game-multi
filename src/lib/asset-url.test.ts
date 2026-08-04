@@ -64,3 +64,57 @@ describe("assetUrl", () => {
     expect(assetBaseUrl()).toBe("");
   });
 });
+
+describe("assetUrl media version (?v= cache-busting)", () => {
+  async function loadVersioned(base: string | undefined, version: string) {
+    vi.resetModules();
+    if (base === undefined) {
+      vi.stubEnv("NEXT_PUBLIC_ASSET_BASE_URL", "");
+      delete process.env.NEXT_PUBLIC_ASSET_BASE_URL;
+    } else {
+      vi.stubEnv("NEXT_PUBLIC_ASSET_BASE_URL", base);
+    }
+    vi.stubEnv("NEXT_PUBLIC_ASSET_VERSION", version);
+    return import("./asset-url");
+  }
+
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("appends ?v=<version> to CDN-served media so replaced art busts the edge cache", async () => {
+    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(assetUrl("/assets/spells-quicksand.webp")).toBe(
+      "https://cdn.example.com/assets/spells-quicksand.webp?v=abc123def0"
+    );
+    expect(assetUrl("/sounds/click.mp3")).toBe(
+      "https://cdn.example.com/sounds/click.mp3?v=abc123def0"
+    );
+  });
+
+  it("CONTROL: no version configured keeps the classic unversioned URL", async () => {
+    const { assetUrl } = await loadVersioned("https://cdn.example.com", "");
+    expect(assetUrl("/assets/spells-quicksand.webp")).toBe(
+      "https://cdn.example.com/assets/spells-quicksand.webp"
+    );
+  });
+
+  it("CONTROL: same-origin serving ignores the version (dev/CI unchanged)", async () => {
+    const { assetUrl } = await loadVersioned(undefined, "abc123def0");
+    expect(assetUrl("/assets/spells-quicksand.webp")).toBe("/assets/spells-quicksand.webp");
+  });
+
+  it("keeps an existing query intact (appends with & instead of a second ?)", async () => {
+    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(assetUrl("/assets/x.webp?frame=2")).toBe(
+      "https://cdn.example.com/assets/x.webp?frame=2&v=abc123def0"
+    );
+  });
+
+  it("wrapping twice stays a no-op (already-absolute values pass through untouched)", async () => {
+    const { assetUrl } = await loadVersioned("https://cdn.example.com", "abc123def0");
+    expect(assetUrl(assetUrl("/assets/x.webp"))).toBe(
+      "https://cdn.example.com/assets/x.webp?v=abc123def0"
+    );
+  });
+});

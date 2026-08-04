@@ -29,6 +29,13 @@ const RAW_ASSET_BASE = (process.env.NEXT_PUBLIC_ASSET_BASE_URL ?? "").trim();
 const ASSET_BASE_URL =
   RAW_ASSET_BASE === SAME_ORIGIN_SENTINEL ? "" : RAW_ASSET_BASE.replace(/\/+$/, "");
 
+// Media version computed at build time from the public/ media tree (see
+// src/lib/asset-media-version.ts, set via next.config.ts). Appended as a
+// `?v=` cache-buster to every CDN URL so a replaced file gets a brand-new
+// edge/browser cache key on the next deploy — no Cloudflare purge needed.
+// Empty (no suffix) when unset or when assets are served same-origin.
+const ASSET_VERSION = (process.env.NEXT_PUBLIC_ASSET_VERSION ?? "").trim();
+
 /**
  * The configured external asset origin, or "" when assets are served
  * same-origin (the default). Used for <link rel="preconnect"> hints; use
@@ -49,5 +56,11 @@ export function assetUrl(path: string | undefined): string | undefined {
   if (!path.startsWith("/") || path.startsWith("//")) {
     return path;
   }
-  return `${ASSET_BASE_URL}${path}`;
+  if (!ASSET_VERSION) {
+    return `${ASSET_BASE_URL}${path}`;
+  }
+  // A path that already carries a query keeps it (none of our media paths do
+  // today; the guard keeps wrapping safe for any future caller).
+  const sep = path.includes("?") ? "&" : "?";
+  return `${ASSET_BASE_URL}${path}${sep}v=${ASSET_VERSION}`;
 }

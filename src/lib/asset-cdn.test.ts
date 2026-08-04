@@ -105,4 +105,16 @@ describe("assetRedirects", () => {
     const [first] = assetRedirects("https://cdn.example.com/");
     expect(first.destination).toBe("https://cdn.example.com/assets/:path*");
   });
+
+  it("appends the media version to every destination (cache-busting for globals.css url() refs)", () => {
+    const redirects = assetRedirects("https://cdn.example.com", false, "abc123def0");
+    expect(redirects.map((r) => r.destination)).toEqual([
+      "https://cdn.example.com/assets/:path*?v=abc123def0",
+      "https://cdn.example.com/sounds/:path*?v=abc123def0"
+    ]);
+    // CONTROL: an empty version keeps the classic unversioned destinations.
+    expect(assetRedirects("https://cdn.example.com", false, "")[0].destination).toBe(
+      "https://cdn.example.com/assets/:path*"
+    );
+  });
 });
