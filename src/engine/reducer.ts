@@ -20446,7 +20446,7 @@ function runAdventureAutomations(state: GameState, cards: CardLibrary): void {
       break;
     }
 
-    // The Random Town's choosable gold Pack with NOBODY left to control the
+    // The Random Town's choosable bronze Pack with NOBODY left to control the
     // defense (the human controller was eliminated mid-window, or none was ever
     // derivable): the Neutral AI keeps the printed default and the army reveals,
     // so the fight can never strand in combat-setup on an unanswerable choice.

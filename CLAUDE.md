@@ -2455,13 +2455,13 @@ seam, with the CONTROL behaviour pinned.
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's DEFAULT defense army is now the printed Stretch-Goals card:
-**ONE Pack of GOLD-tier units** (the slot the card gives to "the player who
-controls the defense during this Combat") **+ TWO Packs of SILVER-tier units +
-TWO Fews of GOLD-tier units**, all from the faction not in play
+**ONE Pack of BRONZE-tier units** (the card's bronze-star slot, given to "the
+player who controls the defense during this Combat") **+ TWO Packs of SILVER-tier
+units + TWO Fews of GOLD-tier units**, all from the faction not in play
 (`randomTownGuardDraws`, adventure.ts). BEFORE it was 1 bronze Pack + 2 silver
-Packs + 2 gold PACKS (the strongest bronze standing in for the choosable slot) —
-so the change drops the bronze body and flips the two gold bodies from Pack to
-FEW. Unchanged and re-pinned: the field is difficulty **Ⅶ** whatever a designer
+Packs + 2 gold PACKS, with the strongest bronze silently standing in for the
+choosable slot — so the change makes that bronze body a real player CHOICE (with
+a cost-based default) and flips the two gold bodies from Pack to FEW. Unchanged and re-pinned: the field is difficulty **Ⅶ** whatever a designer
 stamps (`startNeutralEncounter`), the fight adds **Walls + a Gate and NO Arrow
 Tower** (`arrowTowerUnitId: null`, deterministic gate column), and the faction is
 picked SEEDED-random (`adventureRandom`, never `Math.random`) from the playable
@@ -2469,20 +2469,20 @@ factions NOT in play — in every mode, so single player already matched the use
 "random from those not participating".
 
 Leading with what does NOT run / deliberate limits:
-- **The choosable gold Pack only ever opens a window for a HUMAN defense
+- **The choosable bronze Pack only ever opens a window for a HUMAN defense
   controller** — a PvP-Neutral-Control seat or the manual-guard-control fighter
   (`neutralCombatControllerId`). The Neutral AI, a COMPUTER controller and EVERY
   single-player table (`sessionMode === "single-player"`) instead take the
-  DEFAULT with no pause: the faction's **highest printed Pack cost** gold unit
+  DEFAULT with no pause: the faction's **highest printed Pack cost** bronze unit
   (materials/valuables at Trading Post rates, ties keep roster order —
-  `randomTownDefaultGoldPackId`, the user rule "just set the … one with the
-  highest cost").
+  `randomTownDefaultBronzePackId`, the user rule "just set the [brown/bronze]
+  unit as the one with the highest cost").
 - **The multiplayer printed faction PICK is still not modeled** — the card has
   every player roll 2 Attack dice with the highest roller choosing the faction
   (or drawing a Town Card). The engine keeps its seeded pick for every mode; only
   the DEFENDER Pack is a real player choice.
 - **No bespoke UI**: the pick renders through the generic OPTION_CHOICE prompt
-  tray (context `random-town-pack`), one button per gold candidate.
+  tray (context `random-town-pack`), one button per bronze candidate.
 - **Never strands the setup**: the choice is created NEUTRAL-owned and re-stamped
   to the controller by the reducer pump like every other neutral-side follow-up;
   it is registered in `isNeutralSideCombatChoice`, so an eliminated controller
@@ -2491,12 +2491,13 @@ Leading with what does NOT run / deliberate limits:
 - A faction short of a printed body for a slot falls back to a same-tier NEUTRAL
   draw (`packDrawWithNeutralFallback` / `fewDrawWithNeutralFallback`, the designer
   "packs" level-guard precedent), so the fight always fields the printed five
-  bodies. Every shipped faction has 2+ gold and 2+ silver Pack/Few sides, so the
-  fallback is a safety net today, not a live path.
+  bodies. Every shipped faction has 3 bronze, 2 silver and 2+ gold Pack/Few
+  sides, so the fallback is a safety net today, not a live path.
 
 Pinned in `src/engine/random-town-defenders.test.ts` (the minted combat units'
-sides/tiers/stats, the highest-cost default with a cheapest-unit CONTROL and a
-per-faction cost-table sweep, the not-in-play + determinism faction CONTROLs, the
+sides/tiers/stats, the highest-cost bronze default with a cheapest-bronze CONTROL
+and a per-faction cost-table sweep — Heavenly Demon's dearest bronze is the MIDDLE
+roster entry, so a "last bronze" reading fails it —, the not-in-play + determinism faction CONTROLs, the
 Ⅶ + Walls/Gate/no-Arrow-Tower pins, the single-player no-pause case, the human
 controller's pick actually minting their unit, and the eliminated-controller
 auto-resolve) plus the composition pin in `creature-bank-guards.test.ts`.

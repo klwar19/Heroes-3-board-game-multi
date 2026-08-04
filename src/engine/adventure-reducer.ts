@@ -77,7 +77,7 @@ import {
   drawDungeonArmy,
   drawGuardArmy,
   drawNeutralArmy,
-  randomTownGoldPackCandidates,
+  randomTownBronzePackCandidates,
   drawPveThemedArmy,
   drawWaveArmy,
   grantWaveVictoryRewards,
@@ -9412,10 +9412,10 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     }
     const guardField = state.adventure?.fields[combat.context.fieldId];
     const draws = drawGuardArmy(state, guardField, combat.context.difficulty);
-    // Random Town: the printed card's choosable gold Pack belongs to the player
+    // Random Town: the printed card's choosable BRONZE Pack belongs to the player
     // who CONTROLS THE DEFENSE. With a human controller (PvP Neutral Control /
     // manual guard control, multiplayer) that pick opens now; otherwise the
-    // default (most expensive gold Pack) stands and nothing pauses.
+    // default (most expensive bronze Pack) stands and nothing pauses.
     if (maybeOpenRandomTownPackChoice(state, draws)) {
       return;
     }
@@ -9472,11 +9472,11 @@ function continueGuardDrawWindows(state: GameState, draws: NeutralDraw[]): void 
 }
 
 /**
- * Random Town — the printed card's choosable gold Pack ("a Pack of gold-tier
+ * Random Town — the printed card's choosable BRONZE Pack ("a Pack of bronze-tier
  * units, CHOSEN BY THE PLAYER WHO CONTROLS THE DEFENSE during this Combat").
  * Opens the pick when a HUMAN seat controls the guards (PvP Neutral Control, or
  * manual guard control); returns false — leaving the default (the faction's most
- * expensive gold Pack) in place — when the Neutral AI plays them, the controller
+ * expensive bronze Pack) in place — when the Neutral AI plays them, the controller
  * is a computer seat, or the table is a SINGLE-PLAYER game (user rule: single
  * player just takes the highest-cost unit, so nothing pauses there).
  *
@@ -9500,7 +9500,7 @@ function maybeOpenRandomTownPackChoice(state: GameState, draws: NeutralDraw[]): 
   if (!faction) {
     return false;
   }
-  const candidates = randomTownGoldPackCandidates(faction);
+  const candidates = randomTownBronzePackCandidates(faction);
   if (candidates.length < 2) {
     return false;
   }
@@ -9517,7 +9517,7 @@ function maybeOpenRandomTownPackChoice(state: GameState, draws: NeutralDraw[]): 
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId: NEUTRAL_PLAYER_ID,
-    prompt: "Random Town: choose the Pack of gold-tier units defending the town.",
+    prompt: "Random Town: choose the Pack of bronze-tier units defending the town.",
     options: candidates.map((id) => ({
       label: `Pack of ${coreUnitDefinitions[id]?.name ?? id}`
     })),
@@ -9530,7 +9530,7 @@ function maybeOpenRandomTownPackChoice(state: GameState, draws: NeutralDraw[]): 
 }
 
 /**
- * Resolves the Random Town choosable gold Pack: rewrite the flagged draw to the
+ * Resolves the Random Town choosable bronze Pack: rewrite the flagged draw to the
  * picked candidate (an out-of-range pick keeps the default), then continue the
  * normal attacker-side guard windows and reveal.
  */
@@ -9544,10 +9544,10 @@ export function resolveRandomTownPackChoice(state: GameState, optionIndex: numbe
   const field = state.adventure?.fields[
     combat.context.kind === "neutral" ? combat.context.fieldId : ""
   ];
-  const candidates = field?.faction ? randomTownGoldPackCandidates(field.faction) : [];
+  const candidates = field?.faction ? randomTownBronzePackCandidates(field.faction) : [];
   const picked = candidates[optionIndex];
   if (index !== -1 && picked) {
-    draws[index] = { ...draws[index]!, unitDefId: picked, tier: "gold", factionPack: true };
+    draws[index] = { ...draws[index]!, unitDefId: picked, tier: "bronze", factionPack: true };
   }
   state.pendingChoice = null;
   continueGuardDrawWindows(state, draws);
