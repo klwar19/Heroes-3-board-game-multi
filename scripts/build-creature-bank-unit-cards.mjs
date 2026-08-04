@@ -283,8 +283,20 @@ async function buildCard(card) {
 }
 
 await mkdir(OUT, { recursive: true });
+// Optional slug filter: `node scripts/build-creature-bank-unit-cards.mjs cyclopes
+// water_elementals` rebuilds only those faces. No args = every card (unchanged
+// default). Used by the 2026-08 wiki card refresh, which replaced a handful of
+// SOURCE scans (scripts/fetch-unit-art-refresh.py) and so had to re-derive just
+// the bank faces cropped from them, without re-encoding the other sixteen.
+const onlySlugs = new Set(process.argv.slice(2));
+const selected = onlySlugs.size ? CARDS.filter((card) => onlySlugs.has(card.slug)) : CARDS;
+if (onlySlugs.size && selected.length !== onlySlugs.size) {
+  const known = new Set(CARDS.map((card) => card.slug));
+  const unknown = [...onlySlugs].filter((slug) => !known.has(slug));
+  throw new Error(`Unknown creature-bank slug(s): ${unknown.join(", ")}`);
+}
 const outputs = [];
-for (const card of CARDS) outputs.push(await buildCard(card));
+for (const card of selected) outputs.push(await buildCard(card));
 
 const previewWidth = 223;
 const previewHeight = 312;
