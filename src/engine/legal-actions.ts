@@ -3412,6 +3412,28 @@ function effectSupportsExpertOption(effect: ConcreteEffect): boolean {
   return false;
 }
 
+/**
+ * The "then draw N cards" rider a COMBAT-target card face carries, or 0.
+ *
+ * A medic heal face (`HEAL_DAMAGE` / `HEAL_DAMAGE_AND_REMOVE_EFFECTS`) needs a
+ * unit to mend, so outside combat its primary effect has nothing to do — but the
+ * printed rider still reads "…, then draw 1 card". Such a face may therefore be
+ * played on the owner's MAP turn purely for the draw, exactly like
+ * Offense/Armorer's "+stat, then draw" (`ADD_COMBAT_STAT`) and Sorcery's
+ * "+Power, then draw" (`ADD_SPELL_POWER`): the heal fizzles, only the draw
+ * resolves. Deliberately NARROW — a heal face with no printed draw rider stays
+ * combat-only, and no other combat effect kind is opened up.
+ *
+ * ONE read shared by the offer (addTurnCardActions) and the resolution
+ * (playCard's target-less draw-rider branch) so they cannot disagree.
+ */
+export function healDrawOnlyRider(effect: EffectDefinition): number {
+  if (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+    return effect.drawCards ?? 0;
+  }
+  return 0;
+}
+
 /** Effects that do something useful when played on the adventure map. */
 function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDefinition, effect: ConcreteEffect): boolean {
   if (card.timing === "map") {
@@ -3577,7 +3599,44 @@ function addTurnCardActions(
       continue;
     }
 
+    // Medic heal instants ("Remove N damage / paralysis from one of your units,
+    // then draw N cards" — Rion's Battlefield Medic, Astra's Cure I and their
+    // rethemed clones) may be played on your MAP turn just for the draw rider:
+    // with no combat there is no unit to mend, so the heal fizzles and only the
+    // draw resolves (see playCard's target-less draw-rider branch). Bypasses the
+    // card's combat phaseLimit exactly like the combat draw-only play bypasses
+    // its reaction window.
+    if (card.effect.type !== "CHOOSE_ONE" && !fromSpellBook) {
+      const healDraw = healDrawOnlyRider(card.effect);
+      if (healDraw > 0) {
+        actions.push({
+          label: `Play ${card.name} (draw ${healDraw}, no unit to heal)`,
+          action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
+        });
+        continue;
+      }
+    }
+
     if (card.effect.type === "CHOOSE_ONE") {
+      // The CHOOSE_ONE twin of the medic map draw-only play above: each printed
+      // side that carries a "then draw N" rider is offered for its draw alone
+      // (Rion IV/VI's two sides; the level-VI sides still pay their printed
+      // discard cost). Heal sides are never map-playable through addOptionPlays
+      // (isOptionEffectPlayable returns false for them), so there is no
+      // duplicate offer.
+      if (!fromSpellBook) {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          const healDraw = healDrawOnlyRider(option.effect);
+          if (healDraw <= 0 || !canAffordCardCost(state, playerId, cardId, option.cost)) {
+            continue;
+          }
+          actions.push({
+            label: `${card.name}: ${option.label} (draw ${healDraw}, no unit to heal)`,
+            action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", optionIndex, target: { type: "none" } }
+          });
+        }
+      }
+
       // House-rule twin of the combat draw-only CHOOSE_ONE offer: a trigger SIDE
       // carrying a "+Power/+stat, then draw" rider (Scales of the Greater
       // Basilisk, Tunic of the Cyclops King, Armor of Wonder) may be played on
@@ -4166,9 +4225,17 @@ export function instantHealSpellReactions(
       ) {
         continue;
       }
-      // Cure and kin need a wounded friendly unit to target.
+      // Cure and kin need a wounded friendly unit to target — OR, for a face
+      // whose printed cleanse lifts Paralysis (Rion's Battlefield Medic IV/VI
+      // "Remove paralysis …", the Pendant of Second Sight), a PARALYSED one:
+      // a full-health paralysed unit is exactly what that side exists to free,
+      // so gating it on damage alone made the cleanse unplayable in the window.
+      const cleansesParalysis = Boolean(variant.effect.removeParalysis);
       for (const unit of Object.values(combat.units)) {
-        if (unit.controllerId !== playerId || !isUnitAlive(unit) || unit.damage <= 0) {
+        if (unit.controllerId !== playerId || !isUnitAlive(unit)) {
+          continue;
+        }
+        if (unit.damage <= 0 && !(cleansesParalysis && unitHasToken(unit, "paralysis"))) {
           continue;
         }
         const variantName = variant.optionLabel ? `${card.name}: ${variant.optionLabel}` : card.name;

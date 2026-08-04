@@ -5694,6 +5694,76 @@ Four additions; each engine rule fails a named test if its wiring is removed.
   `obelisk-roles.test.ts` (settlement integration) and `map-floats-board.test.tsx`
   (the map marker + the warn/Attack float, with a printed-guard CONTROL).
 
+## Medic specialty map draw-only play + paralysis cleanse in the window (2026-08-04)
+
+Reported on Rion (Battlefield Medic): "Its an instant, I should be able to play
+it before counter attack (reaction window heal). In fact I should be able to play
+it also in adventure map to draw cards — just skip the first effect (similar to
+offense and armourer)." Leading with what was ALREADY working, then the two
+genuine holes that were fixed. Behaviour pinned in
+`src/engine/medic-specialty-heal-draw.test.ts` (each claim mutation-checked with
+a CONTROL).
+
+- **ALREADY WORKING (no change, now pinned for the first time): the
+  reaction-window heal, including before the COUNTER-ATTACK.** Rion I/IV/VI (and
+  Astra's Cure, Gem's First Aid IV, every rethemed clone) were already in the
+  shared `preHitHealReactions` package via the effect-shape scan in
+  `instantHealSpellReactions` — offered on the `UNIT_ATTACK_DECLARED` window of
+  an incoming attack AND on the RETALIATION's own window
+  (`triggerEvent.isRetaliation`), with `applyReactionPlayCore`'s heal branch
+  landing the mend BEFORE the paused hit resolves. Verified end-to-end: a Pack
+  one point from a lethal counter-attack survives un-flipped with the heal and is
+  flipped down without it.
+- **FIXED — the "Remove paralysis" side was unplayable in the window on an
+  undamaged unit.** `instantHealSpellReactions` filtered candidate targets on
+  `damage > 0` alone, so Rion IV/VI's printed cleanse (and the Pendant of Second
+  Sight's) could never be aimed at the full-health PARALYSED unit it exists to
+  free. A face whose `effect.removeParalysis` is set now also accepts a unit
+  carrying a Paralysis token; the damage gate still applies to plain heals (a
+  nothing-wounded, nothing-paralysed board offers no medic reaction — CONTROL).
+- **FIXED — the medic instants are now playable on the adventure MAP purely for
+  their draw rider.** ONE shared read, `healDrawOnlyRider(effect)`
+  (`legal-actions.ts`), returns the printed "then draw N cards" of a
+  `HEAL_DAMAGE` / `HEAL_DAMAGE_AND_REMOVE_EFFECTS` face and is used by BOTH the
+  offer (`addTurnCardActions` — one top-level offer, plus one per printed
+  CHOOSE_ONE side, each paying that side's printed cost) and the resolution
+  (`playCard`'s target-less draw branch), so they cannot disagree. Bypasses the
+  card's combat `phaseLimit` exactly like the combat draw-only Offense/Armorer/
+  Sorcery play bypasses its window. **The gate opens EXACTLY 13 cards** (pinned
+  by an enumeration test over the whole card library): `specialty.rion.{1,4,6}`,
+  `specialty.astra.1`, and the rethemed clones `specialty.aoko.{1,4,6}`,
+  `specialty.sirius.{1,4,6}`, `specialty.molian.{1,4,6}`. A medic face with NO
+  printed draw rider (Astra IV/VI, Gem IV, Vial of Lifeblood, Pendant of Second
+  Sight) stays combat-only — CONTROL-pinned.
+- **SWEEP (both halves, derived from the card library — not a per-card list).**
+  (a) Heal reactions: an invariant test drives EVERY implemented card carrying a
+  `HEAL_DAMAGE` / `HEAL_DAMAGE_AND_REMOVE_EFFECTS` face (25 today — Cure, First
+  Aid, Rion/Astra/Gem and all their clones, Vial of Lifeblood, Pendant of Second
+  Sight, Shaman's Puppet) through a real declared attack and asserts each is
+  offered in the window, so a NEW heal card joins the invariant automatically.
+  Nothing was stranded. NOTE: Rion VI and its clones need a spare hand card —
+  their printed `discardCards: 1` cost is affordability-gated, so with the
+  specialty as the ONLY card in hand there is no reaction offer (correct, not a
+  bug). (b) Draw riders: the ONLY other combat-only instants carrying one are
+  Offense / Armorer / Sorcery + Armor of Wonder / Scales / Tunic
+  (`ADD_COMBAT_STAT` / `ADD_SPELL_POWER` — already map draw-only), Shield of
+  Naval Glory (`GAIN_HERO_MOVEMENT`, already map-playable), Deemer IV
+  (`RESHUFFLE_DISCARD_THEN_DRAW`, already map-playable) and **Kriv I/IV
+  (`GAIN_RUNES`), deliberately LEFT ALONE**: their rune sides are printed
+  `combatOnly: true` and Kriv IV already carries its own dedicated MAP side
+  ("become Rune-Empowered"), so a draw-only map play would contradict the card
+  and duplicate that side.
+- Deliberate LIMITS: the resolution gate is the TARGET-LESS play, never "no
+  combat", so a Dwarf-negated or effect-ignoring combat play (both of which drop
+  the resolved target while `action.target` still names a unit) keeps its
+  existing no-op behaviour and draws NOTHING; **no combat draw-only offer was
+  added** (with nothing wounded and nothing paralysed the card is still
+  unplayable mid-fight — only the map play was asked for); and the AI scores the
+  new map play at a deliberately low **300** (`card-policy.ts`, below the
+  ~590-610 map economy/search families) so a Rion/Aoko/Sirius/Molian seat never
+  dumps the specialty it wants for a combat heal — a real in-combat heal still
+  outranks it (CONTROL).
+
 ## Combat draw-only abilities, Knowledge recall & value-based Power costs (BINH house rules) — what runs
 
 Five additions; each engine rule fails a named test if its wiring is removed.
