@@ -5668,6 +5668,43 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   that copy is unreachable; it also only enumerates the FIRST `RECALL_SPELL`
   card in hand, so if a flat map Spell is ever added, make it match
   `offerMapSpellKnowledgeRecall` before relying on it.
+  **Dimension Door is WHO-travels window → click the hex (2026-08-04).** User
+  request: "you just need a window with Main Hero / Secondary Hero / Cancel, then
+  you select location from the map accordingly" — the old flow listed EVERY
+  reachable destination as a labeled button ("Teleport to Empty Field (2 fields
+  away)" ×N). `openDimensionDoorChoice` now opens the `dimension-door-hero`
+  OPTION_CHOICE on EVERY cast (it used to skip straight to the destinations with
+  a lone eligible Hero): one option per own deployed Hero that has ≥1 legal
+  destination at the RESOLVED Power, plus a trailing "Cancel (no teleport)".
+  Answering with a Hero opens the unchanged `dimension-door` choice, whose
+  destination is picked by CLICKING A GLOWING HEX (`pendingMapChoiceTargets` in
+  screen.tsx — the `place-map-token` pattern, already wired); a dedicated
+  PromptTray branch renders only the hint + Cancel there, so the destination
+  buttons are gone from the UI. Leading with the LIMITS: teleport legality is
+  BYTE-IDENTICAL (`dimensionDoorDestinations` untouched — same layer gate, same
+  blocked/allied-hero rules, same `RESOLVE_TELEPORT_ARRIVAL`-style guard fight on
+  a guarded landing) and the recall-BEFORE-teleport ordering above is unchanged
+  (the recall resolves before even the Hero window opens); **Cancel NEVER refunds
+  the Spell** at either step — the cast-then-boost pipeline already spent it, and
+  the label says so; the engine still fills `options` with the per-destination
+  labels index-aligned with `destinations` (Cancel last) because the AFK driver,
+  the AI scorer and accessibility read them — only the tray stops rendering them,
+  so do not drop that alignment; a hex standing for two options stays
+  button-only (the pre-existing ambiguity guard); and the AI scores the Hero
+  window through the GENERIC option tail ("Main Hero" +15 beats "Cancel" +8 —
+  no bespoke policy), while the AFK/turn-timeout driver prefers the
+  cancel-labelled offer and so ends the whole flow in ONE step (nobody moves,
+  Spell stays spent) — neither can stall. Pinned in
+  `map-movement-spells.test.ts` ("the WHO-travels window": the Main/Secondary/
+  Cancel shape, a lone-Main-Hero CONTROL that the window still opens, a
+  walled-in Hero omitted, hero-step Cancel moves nobody + no refund, and "lands
+  the chosen Hero on the EXACT hex picked" — it picks the LAST candidate so a
+  destinations[0] resolver fails), the secondary-teleports/main-untouched
+  CONTROL in the same file, `map-spell-choice-board.test.tsx` (hero buttons at
+  step 1; at step 2 ONLY the hint + Cancel — the "…fields away" labels asserted
+  ABSENT — plus the hex click and the Cancel index dispatch) and
+  `computer/choice-policy.test.ts` ("answers the Dimension Door hero window with
+  a Hero, never Cancel"). All four halves mutation-checked.
 - **Map Power-tier spells cast then add Power (like combat / Visions).** View
   Air, View Earth, Dimension Door, Fly, Water Walk and Town Portal are a single
   **Cast** action — no up-front tier pick / cost picker. The spell is spent,

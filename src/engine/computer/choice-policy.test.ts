@@ -352,6 +352,49 @@ describe("choice policy — objective-aware map choices", () => {
       (chooseComputerAction(observed)?.action as { optionIndex: number }).optionIndex,
     ).toBe(1);
   });
+
+  // Dimension Door now opens a WHO-travels window first (Main Hero / Secondary
+  // Hero / Cancel). A computer seat must answer it with a HERO and reach the
+  // destination step — answering nothing (or always cancelling) would strand the
+  // pump on its own cast.
+  it("answers the Dimension Door hero window with a Hero, never Cancel", () => {
+    const state = createAdventureGameState({
+      seed: "dimension-door-hero-ai",
+      rollFirstPlayer: false,
+      events: false,
+    });
+    const hero = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p2" && candidate.kind === "main",
+    )!;
+
+    const choice = {
+      id: "dd-hero-ai",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "Dimension Door: choose the Hero to teleport…",
+      context: "dimension-door-hero",
+      options: [{ label: "Main Hero" }, { label: "Cancel (no teleport)" }],
+      dimensionDoorHero: { heroIds: [hero.id], range: 1 },
+    } as unknown as PendingChoice;
+    state.pendingChoice = choice;
+    const actions: LegalAction[] = [0, 1].map((optionIndex) => ({
+      label: `option ${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "dd-hero-ai",
+        optionIndex,
+      } as GameAction,
+    }));
+    const decision = chooseComputerAction({
+      playerId: "p2",
+      state: state as unknown as ComputerObservation["state"],
+      legalActions: actions,
+    });
+    // A decision exists (no stall) and it is the Hero, not the Cancel index.
+    expect(decision).toBeTruthy();
+    expect((decision!.action as { optionIndex: number }).optionIndex).toBe(0);
+  });
 });
 
 describe("choice policy — discard-pick never re-loops a retriever", () => {

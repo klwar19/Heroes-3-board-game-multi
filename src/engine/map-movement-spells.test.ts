@@ -648,9 +648,52 @@ function dimensionDoorSetup(state: GameState): {
   return { hero, near, far, footprint };
 }
 
-/** Cast Dimension Door at a Power tier: 0 → no cost, 1 → pay 2 Spells, 2 → pay 4 Spells. */
+/** Deploys a Secondary Hero for p1 on a footprint hex; returns its space id. */
+function addSecondaryHero(state: GameState, footprint: string[], at?: string): string {
+  const main = heroP1(state);
+  const spaceId = at ?? footprint[2];
+  expect(spaceId, "the home tile needs a spare hex for the Secondary Hero").toBeTruthy();
+  state.heroes.hero_p1_secondary = {
+    ...main,
+    id: "hero_p1_secondary",
+    kind: "secondary",
+    level: 1,
+    experience: 0,
+    movementPoints: 2,
+    spaceId: spaceId!
+  };
+  return spaceId!;
+}
+
+/**
+ * Answers the WHO-travels window every Dimension Door cast now opens: pick the
+ * Hero whose label matches, or the trailing "Cancel (no teleport)".
+ */
+function pickDimensionDoorHero(state: GameState, label: RegExp | "cancel"): GameState {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "dimension-door-hero") {
+    throw new Error("no dimension-door-hero choice open");
+  }
+  const optionIndex =
+    label === "cancel"
+      ? choice.dimensionDoorHero!.heroIds.length
+      : choice.options.findIndex((option) => label.test(option.label));
+  expect(optionIndex, `no Dimension Door hero option for ${String(label)}`).toBeGreaterThanOrEqual(0);
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: choice.id,
+    optionIndex
+  });
+}
+
+/**
+ * Cast Dimension Door at a Power tier (0 → no cost, 1+ → pay power cards) and
+ * answer the WHO-travels window with the Main Hero, leaving the map-hex
+ * destination pick open. The window itself is pinned by its own tests below.
+ */
 function playDimensionDoor(state: GameState, optionIndex: number, costCardIds: string[] = []): GameState {
-  return castMapPowerSpell(state, "spell.dimension_door", costCardIds);
+  return pickDimensionDoorHero(castMapPowerSpell(state, "spell.dimension_door", costCardIds), /Main Hero/i);
 }
 
 function dimensionDoorDestinations(state: GameState): string[] {
@@ -702,7 +745,13 @@ describe("Dimension Door spell", () => {
     expect(reachOne).not.toContain(blocked); // cannot land on a blocked field
     expect(reachOne).not.toContain(beyond); // out of range 1
 
-    // The trailing option is "Cancel (stay)".
+    // The trailing option is "Cancel (no teleport)" — the Spell is already spent,
+    // so cancelling moves nobody and refunds nothing.
+    const destinationChoice = state.pendingChoice;
+    if (destinationChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("missing Dimension Door destination choice");
+    }
+    expect(destinationChoice.options.at(-1)!.label).toBe("Cancel (no teleport)");
     const heroSpaceBefore = heroP1(state).spaceId;
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -712,6 +761,9 @@ describe("Dimension Door spell", () => {
     });
     expect(heroP1(state).spaceId).toBe(heroSpaceBefore);
     expect(state.pendingChoice).toBeNull();
+    // NO refund: the card stays spent in the discard, out of hand.
+    expect(state.players.p1.discard).toContain("spell.dimension_door");
+    expect(state.players.p1.hand).not.toContain("spell.dimension_door");
   });
 
   it("higher Power reaches further, ignoring blocked fields in-between", () => {
@@ -732,35 +784,14 @@ describe("Dimension Door spell", () => {
     let state = withHand(makeGame(), ["spell.dimension_door"]);
     const { hero: main, footprint } = dimensionDoorSetup(state);
     const mainStart = main.spaceId;
-    const secondaryStart = footprint[2];
-    expect(secondaryStart).toBeTruthy();
-    state.heroes.hero_p1_secondary = {
-      ...main,
-      id: "hero_p1_secondary",
-      kind: "secondary",
-      level: 1,
-      experience: 0,
-      movementPoints: 2,
-      spaceId: secondaryStart!
-    };
+    const secondaryStart = addSecondaryHero(state, footprint);
 
-    state = playDimensionDoor(state, 0);
+    state = castMapPowerSpell(state, "spell.dimension_door", []);
     expect(state.pendingChoice).toMatchObject({
       type: "OPTION_CHOICE",
       context: "dimension-door-hero"
     });
-    const heroChoice = state.pendingChoice!;
-    if (heroChoice.type !== "OPTION_CHOICE") {
-      throw new Error("missing Dimension Door hero choice");
-    }
-    const secondaryIndex = heroChoice.options.findIndex((option) => /Secondary Hero/i.test(option.label));
-    expect(secondaryIndex).toBeGreaterThanOrEqual(0);
-    state = applyOk(state, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: heroChoice.id,
-      optionIndex: secondaryIndex
-    });
+    state = pickDimensionDoorHero(state, /Secondary Hero/i);
 
     expect(state.pendingChoice).toMatchObject({
       type: "OPTION_CHOICE",
@@ -777,8 +808,137 @@ describe("Dimension Door spell", () => {
       optionIndex: destinations.indexOf(target!)
     });
 
+    // CONTROL: the Main Hero is untouched when the Secondary travels.
     expect(state.heroes.hero_p1_secondary.spaceId).toBe(target);
     expect(state.heroes.hero_p1.spaceId).toBe(mainStart);
+    expect(secondaryStart).not.toBe(target);
+  });
+
+  // The user-requested shape (2026-08-04): "a window with Main Hero / Secondary
+  // Hero / Cancel. Then you select location from the map accordingly."
+  describe("the WHO-travels window", () => {
+    it("opens for EVERY cast — Main Hero, Secondary Hero, Cancel — before any destination", () => {
+      let state = withHand(makeGame(), ["spell.dimension_door"]);
+      const { footprint } = dimensionDoorSetup(state);
+      addSecondaryHero(state, footprint);
+
+      state = castMapPowerSpell(state, "spell.dimension_door", []);
+      const choice = state.pendingChoice;
+      if (choice?.type !== "OPTION_CHOICE" || choice.context !== "dimension-door-hero") {
+        throw new Error("missing the Dimension Door hero window");
+      }
+      // Exactly one option per eligible hero plus the trailing Cancel — never a
+      // destination list at this step.
+      expect(choice.options.map((option) => option.label)).toEqual([
+        "Main Hero",
+        "Secondary Hero",
+        "Cancel (no teleport)"
+      ]);
+      expect(choice.dimensionDoorHero!.heroIds).toEqual(["hero_p1", "hero_p1_secondary"]);
+      expect(choice.dimensionDoor).toBeUndefined();
+      // Hidden info: the labels name public map heroes only, no card/hand data.
+      expect(choice.options.every((option) => !/spell\.|stat\./.test(option.label))).toBe(true);
+    });
+
+    it("CONTROL: a lone Main Hero still gets the window (Main Hero + Cancel only)", () => {
+      let state = withHand(makeGame(), ["spell.dimension_door"]);
+      dimensionDoorSetup(state);
+
+      state = castMapPowerSpell(state, "spell.dimension_door", []);
+      const choice = state.pendingChoice;
+      if (choice?.type !== "OPTION_CHOICE" || choice.context !== "dimension-door-hero") {
+        throw new Error("the hero window must open even with one eligible hero");
+      }
+      expect(choice.options.map((option) => option.label)).toEqual(["Main Hero", "Cancel (no teleport)"]);
+      expect(choice.dimensionDoorHero!.heroIds).toEqual(["hero_p1"]);
+    });
+
+    it("omits a Hero with no legal destination at the resolved Power", () => {
+      let state = withHand(makeGame(), ["spell.dimension_door"]);
+      const { footprint } = dimensionDoorSetup(state);
+      const mainSpace = heroP1(state).spaceId!;
+      const mainCoord = parseHexSpaceId(mainSpace)!;
+      const spaceIds = Object.keys(state.adventure!.fields);
+      // Wall the Secondary in while leaving the Main Hero exactly one landing:
+      // find a Secondary spot and a keep-open field adjacent to the Main but
+      // OUT of the Secondary's Power-0 reach, then block everything else.
+      let plan: { secondary: string; keep: string } | null = null;
+      for (const candidate of footprint) {
+        if (candidate === mainSpace) {
+          continue;
+        }
+        const candidateCoord = parseHexSpaceId(candidate)!;
+        const keep = spaceIds.find((spaceId) => {
+          const coord = parseHexSpaceId(spaceId);
+          return (
+            coord !== null &&
+            spaceId !== mainSpace &&
+            spaceId !== candidate &&
+            hexDistance(mainCoord, coord) === 1 &&
+            hexDistance(candidateCoord, coord) >= 2
+          );
+        });
+        if (keep) {
+          plan = { secondary: candidate, keep };
+          break;
+        }
+      }
+      expect(plan, "the home tile should allow a walled-in Secondary Hero").toBeTruthy();
+      addSecondaryHero(state, footprint, plan!.secondary);
+      setField(state, plan!.keep, "empty_field");
+      for (const spaceId of spaceIds) {
+        if (spaceId === mainSpace || spaceId === plan!.secondary || spaceId === plan!.keep) {
+          continue;
+        }
+        setField(state, spaceId, "blocked_field");
+      }
+
+      state = castMapPowerSpell(state, "spell.dimension_door", []);
+      const choice = state.pendingChoice;
+      if (choice?.type !== "OPTION_CHOICE" || choice.context !== "dimension-door-hero") {
+        throw new Error("missing the Dimension Door hero window");
+      }
+      expect(choice.dimensionDoorHero!.heroIds).toEqual(["hero_p1"]);
+      expect(choice.options.some((option) => /Secondary/i.test(option.label))).toBe(false);
+    });
+
+    it("Cancel at the hero step moves nobody and does NOT refund the Spell", () => {
+      let state = withHand(makeGame(), ["spell.dimension_door"]);
+      const { footprint } = dimensionDoorSetup(state);
+      const secondaryStart = addSecondaryHero(state, footprint);
+      const mainStart = heroP1(state).spaceId;
+
+      state = castMapPowerSpell(state, "spell.dimension_door", []);
+      state = pickDimensionDoorHero(state, "cancel");
+
+      expect(state.pendingChoice).toBeNull();
+      expect(state.phase).toBe("player-turn");
+      expect(heroP1(state).spaceId).toBe(mainStart);
+      expect(state.heroes.hero_p1_secondary.spaceId).toBe(secondaryStart);
+      // The Spell was cast before the window opened: spent, never refunded.
+      expect(state.players.p1.discard).toContain("spell.dimension_door");
+      expect(state.players.p1.hand).not.toContain("spell.dimension_door");
+    });
+
+    it("lands the chosen Hero on the EXACT hex picked, not the first listed one", () => {
+      let state = withHand(makeGame(), ["spell.dimension_door", "spell.haste", "spell.slow"]);
+      dimensionDoorSetup(state);
+      state = playDimensionDoor(state, 1, ["spell.haste", "spell.slow"]);
+      const destinations = dimensionDoorDestinations(state);
+      // Pick the LAST candidate: a resolver that ignored the clicked index (or
+      // used destinations[0]) would land somewhere else and fail here.
+      expect(destinations.length).toBeGreaterThan(1);
+      const picked = destinations[destinations.length - 1]!;
+      expect(picked).not.toBe(destinations[0]);
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice!.id,
+        optionIndex: destinations.length - 1
+      });
+      expect(heroP1(state).spaceId).toBe(picked);
+      expect(state.pendingChoice).toBeNull();
+    });
   });
 
   it("teleports the hero and resolves the destination field (visit)", () => {
@@ -839,7 +999,9 @@ describe("Knowledge after a map Spell", () => {
     let state = withHand(makeGame(), ["spell.dimension_door", "stat.knowledge"]);
     state.players.p1.limits.expertUses = 1;
     dimensionDoorSetup(state);
-    state = playDimensionDoor(state, 0);
+    // RAW cast: the recall is offered before ANY Dimension Door window, so not
+    // even the WHO-travels pick is open yet.
+    state = castMapPowerSpell(state, "spell.dimension_door", []);
 
     // Dimension Door's teleport resolves through a destination pick that can
     // drop the hero into a fight, so the recall is offered BEFORE the teleport
@@ -903,7 +1065,7 @@ describe("Knowledge after a map Spell", () => {
     let state = withHand(makeGame(), ["spell.dimension_door", "stat.knowledge"]);
     state.players.p1.limits.expertUses = 0; // no crowns at all
     dimensionDoorSetup(state);
-    state = playDimensionDoor(state, 0);
+    state = castMapPowerSpell(state, "spell.dimension_door", []);
     // Recall is offered before the teleport (see openKnowledgeAfterDimensionDoor).
     expect(state.pendingChoice).toBeNull();
     // Only basic + decline — no expert arm without crowns.
@@ -931,7 +1093,7 @@ describe("Knowledge after a map Spell", () => {
     setField(state, guarded, "empty_field");
     state.adventure!.fields[guarded]!.difficulty = 1; // live guards, nobody's flag
 
-    state = playDimensionDoor(state, 0);
+    state = castMapPowerSpell(state, "spell.dimension_door", []);
 
     // Immediately after the cast: recall is pending, no destination pick yet, no
     // fight yet. (Reverting the reorder makes the destination choice pending here
@@ -944,8 +1106,10 @@ describe("Knowledge after a map Spell", () => {
     state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     expect(state.players.p1.hand).toContain("spell.dimension_door");
 
-    // The destination pick opens only now; teleport onto the guard to start the
-    // fight — the spell is already safely recalled, and the combat is real.
+    // The WHO-travels window (and only then the destination pick) opens now;
+    // teleport onto the guard to start the fight — the spell is already safely
+    // recalled, and the combat is real.
+    state = pickDimensionDoorHero(state, /Main Hero/i);
     const destinations = dimensionDoorDestinations(state);
     const guardedIndex = destinations.indexOf(guarded);
     expect(guardedIndex).toBeGreaterThanOrEqual(0);

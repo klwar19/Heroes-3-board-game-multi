@@ -6,7 +6,7 @@ import {
   instantiateTile,
   recomputeSubterraneanGates
 } from "./adventure";
-import { openDimensionDoorChoice } from "./adventure-reducer";
+import { dimensionDoorDestinations } from "./adventure-reducer";
 import {
   applyAction,
   canCrossEdge,
@@ -514,10 +514,10 @@ describe("expert Pathfinding — Surface↔Subterranean without a Gate (the BINH
     hero.spaceId = hexSpaceId({ row: surface.centerRow, col: surface.centerCol });
     state = playPathfinding(state, "expert");
 
-    openDimensionDoorChoice(state, "p1", 10);
-    const choice = state.pendingChoice;
-    const destinations =
-      choice?.type === "OPTION_CHOICE" ? (choice.dimensionDoor?.destinations ?? []) : [];
+    // Read the legality helper the cast's WHO-travels + destination windows are
+    // both built from, so the layer rule is pinned independently of the two-step
+    // choice shape.
+    const destinations = dimensionDoorDestinations(state, heroP1(state), 10);
     expect(destinations.length).toBeGreaterThan(0);
     expect(destinations.every((id) => fieldLayer(state, id) === "surface")).toBe(true);
   });

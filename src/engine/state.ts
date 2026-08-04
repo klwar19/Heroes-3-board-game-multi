@@ -13571,12 +13571,17 @@ export type PendingChoice =
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
       handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
       /**
-       * dimension-door: the Hero being teleported and the candidate
-       * destination fields (index-aligned with the options; the final "stay"
-       * option carries no destination).
+       * dimension-door: the Hero being teleported and the candidate destination
+       * fields (index-aligned with the options; the final "Cancel (no teleport)"
+       * option carries no destination). The client picks the destination by
+       * CLICKING a glowing hex — the labels are the accessible/AFK fallback.
        */
       dimensionDoor?: { heroId: HeroId; destinations: MapSpaceId[] };
-      /** First step when more than one deployed Hero can cast Dimension Door. */
+      /**
+       * dimension-door-hero: the WHO-travels step, opened for EVERY Dimension
+       * Door cast (even with a lone eligible Hero). Hero ids are index-aligned
+       * with the options; the final "Cancel (no teleport)" option carries none.
+       */
       dimensionDoorHero?: { heroIds: HeroId[]; range: number };
       /**
        * view-earth: the casting Hero and the enemy-owned Mine fields in reach

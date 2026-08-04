@@ -5579,6 +5579,43 @@ export function PromptTray({
       </div>
     );
   }
+  // Dimension Door destination: the traveller was already chosen in the
+  // WHO-travels window, so the landing is picked BY CLICKING A GLOWING HEX
+  // (pendingMapChoiceTargets above). Rendering the engine's per-destination
+  // labels here as well produced the wall of "Teleport to Empty Field (2 fields
+  // away)" buttons the user asked to drop — so this tray shows only the hint and
+  // the trailing Cancel. The Spell is already spent: Cancel moves nobody and
+  // refunds nothing.
+  if (
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "dimension-door" &&
+    choice.playerId === viewerPlayerId &&
+    choice.dimensionDoor
+  ) {
+    const cancelIndex = choice.dimensionDoor.destinations.length;
+    const cancel = optionActions.find(
+      (legal) =>
+        legal.action.type === "CHOOSE_OPTION" &&
+        legal.action.choiceId === choice.id &&
+        legal.action.optionIndex === cancelIndex
+    );
+    return (
+      <div className="promptTray" role="dialog" aria-label="Dimension Door destination">
+        <strong>{choice.prompt}</strong>
+        <small>
+          Click one of the glowing hexes on the map to teleport there. The Spell is already spent, so cancelling
+          moves nobody and gives nothing back.
+        </small>
+        {cancel ? (
+          <div className="promptOptions">
+            <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
+              Cancel (no teleport)
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   // Never leave a seat with a blank table while ANOTHER seat's blocking
   // interaction is open. That covers state.pendingChoice (any kind), the
