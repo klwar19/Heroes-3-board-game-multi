@@ -678,6 +678,19 @@ function scoreEffect(
     );
   }
 
+  // A medic heal instant played OUTSIDE combat is the map draw-only play (Rion's
+  // Battlefield Medic, Astra's Cure I and their rethemed clones): there is no
+  // unit to mend, so it is pure card cycling. Scored well below the map
+  // economy/search families so a Rion/Aoko/Sirius/Molian seat never dumps the
+  // specialty it wants for a combat heal just to draw one card.
+  if (
+    !observation.state.combat &&
+    (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") &&
+    effect.drawCards
+  ) {
+    return 300;
+  }
+
   if (COMBAT_BUFF_EFFECTS.has(effect.type)) {
     return scoreBuffTarget(observation, target, 660 + modeBonus(mode));
   }

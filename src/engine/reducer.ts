@@ -393,6 +393,7 @@ import {
   getActivationStep,
   getLegalReactionsForTrigger,
   getOffTurnCombatReactions,
+  healDrawOnlyRider,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
@@ -15061,6 +15062,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         inFlightCardIds: playInFlightCardIds
       });
     }
+  }
+
+  // Medic heal instants (Rion's Battlefield Medic, Astra's Cure I and their
+  // rethemed clones) played with NO unit target — the adventure-map draw-only
+  // play: there is nothing to mend, so the heal fizzles and only the printed
+  // "then draw N cards" rider resolves. The gate is the target-less play itself
+  // (never "no combat"), so a Dwarf-negated or effect-ignoring combat play — both
+  // of which drop `nonDamageTarget` while `action.target` still names a unit —
+  // keeps its existing no-op behaviour and draws nothing.
+  if (healDrawOnlyRider(effect) > 0 && (!action.target || action.target.type === "none")) {
+    drawCardsForPlayer(state, action.playerId, healDrawOnlyRider(effect), {
+      inFlightCardIds: playInFlightCardIds
+    });
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
