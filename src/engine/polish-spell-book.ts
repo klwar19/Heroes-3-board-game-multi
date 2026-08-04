@@ -54,6 +54,52 @@ export function gainOwnedCard(
 }
 
 /**
+ * "In effect" — the third Book section (house rule, user ruling 2026-08-04).
+ *
+ * A Book Spell whose cast left a LASTING effect on the table (Water Walk / Fly
+ * "this turn", a combat-long Haste…) is neither refreshed nor used: it sits in
+ * effect, exactly like a played Luck ability in the Ongoing tray, and NO refresh
+ * source may return it to the refreshed side while that effect lives. When the
+ * effect ends (turn end / game-round end / combat end — whatever the spell's own
+ * duration is) it becomes an ordinary used Book Spell and refreshes again.
+ *
+ * This is the ONE read every refresh path consults: the round-start whole-side
+ * refresh, `refreshPolishUsedSpell` (Mysticism / Clone return / cancel paths) and
+ * the discard-recovery "Refresh a Spell in your Spell Book" pick. A Polish Book
+ * cast never enters `ongoingCards` (the physical card is in `spellBookUsed`), so
+ * the live-effect read is the source of truth here; the tray is checked too so
+ * the same helper is correct for a classic/old-Book card.
+ */
+export function polishBookSpellEffectIsLive(
+  state: Pick<GameState, "activeEffects">,
+  playerId: PlayerId,
+  cardId: CardId,
+  player?: PlayerState
+): boolean {
+  if (
+    state.activeEffects.some(
+      (effect) =>
+        effect.source.type === "card" &&
+        effect.source.cardId === cardId &&
+        (effect.source.controllerId === playerId || effect.controllerId === playerId)
+    )
+  ) {
+    return true;
+  }
+  return Boolean(player?.ongoingCards?.some((entry) => entry.cardId === cardId));
+}
+
+/** Used Book Spells eligible for a refresh right now (in-effect ones excluded). */
+export function refreshablePolishUsedSpells(
+  state: Pick<GameState, "activeEffects">,
+  player: PlayerState
+): CardId[] {
+  return (player.spellBookUsed ?? []).filter(
+    (cardId) => !polishBookSpellEffectIsLive(state, player.id, cardId, player)
+  );
+}
+
+/**
  * Uninscribe an owned Polish Book Spell: remove from the Book (or a leaked
  * hand copy) and put it on the shared Spell discard. Never parks Spells in
  * the personal discard (they would be uncastable and un-refreshable under

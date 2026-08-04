@@ -359,6 +359,7 @@ import {
   gainOwnedCard,
   isCastASpellCard,
   isOwnedSpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
   returnOwnedSpellToSharedDiscard
 } from "./polish-spell-book";
@@ -14199,7 +14200,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const source = pick.sources?.[action.optionIndex] ?? "discard";
     const sourcePile = source === "polish-used" ? (player.spellBookUsed ??= []) : player.discard;
     const index = sourcePile.lastIndexOf(cardId);
-    if (index !== -1) {
+    // Backstop for a forged / stale pick: a Book Spell whose cast's effect is
+    // still live can never be refreshed (the shared "in effect" gate).
+    const lockedInEffect =
+      source === "polish-used" && polishBookSpellEffectIsLive(state, action.playerId, cardId, player);
+    if (index !== -1 && !lockedInEffect) {
       sourcePile.splice(index, 1);
       if (source === "polish-used") {
         player.spellBook.push(cardId);
@@ -16255,7 +16260,12 @@ export function openDiscardPickChoice(
       .map((cardId) => ({ cardId, source: "discard" as const })),
     ...(polishRecovery
       ? (player.spellBookUsed ?? [])
-          .filter(matchesFilter)
+          // A Book Spell still "in effect" is untouchable — never offer a refresh
+          // that the shared live-effect gate would then refuse.
+          .filter(
+            (cardId) =>
+              matchesFilter(cardId) && !polishBookSpellEffectIsLive(state, playerId, cardId, player)
+          )
           .map((cardId) => ({ cardId, source: "polish-used" as const }))
       : [])
   ];
