@@ -1639,6 +1639,80 @@ describe("end-of-turn move: empty-field detection", () => {
     expect(destinations.has(guardedF)).toBe(false);
   });
 
+  it("excludes an UNVISITED Subterranean Gate (entering it triggers the free discovery)", () => {
+    const state = withHand(makeGame(), []);
+    const fields = adjacentCrossableFields(state);
+    const [gateId, openF] = fields;
+    setField(state, openF, "empty_field");
+    const faceDownTile = Object.values(state.adventure!.tiles).find((tile) => tile.faceDown);
+    expect(faceDownTile, "fixture needs a face-down tile to gate toward").toBeTruthy();
+
+    const gate = state.adventure!.fields[gateId]!;
+    gate.location = "subterranean_gate";
+    gate.gateToTileId = faceDownTile!.id;
+
+    // The gate's partner tile is still face-down: stepping on it opens the
+    // reveal/rotation chain, so it is NOT an empty field for this rule.
+    expect(getEndTurnMoveDestinations(state, "p1")).not.toContain(gateId);
+    // CONTROL: a genuinely empty adjacent field is still offered.
+    expect(getEndTurnMoveDestinations(state, "p1")).toContain(openF);
+
+    // CONTROL: with the other side already discovered the gate really is
+    // "treated as an empty Field" — entering it triggers nothing.
+    faceDownTile!.faceDown = false;
+    expect(getEndTurnMoveDestinations(state, "p1")).toContain(gateId);
+  });
+
+  it("never offers an unvisited Subterranean Gate in the Logistics end-turn prompt", () => {
+    let state = withHand(makeGame(), ["ability.logistics"]);
+    const fields = adjacentCrossableFields(state);
+    const [gateId, openF] = fields;
+    setField(state, openF, "empty_field");
+    const faceDownTile = Object.values(state.adventure!.tiles).find((tile) => tile.faceDown);
+    const gate = state.adventure!.fields[gateId]!;
+    gate.location = "subterranean_gate";
+    gate.gateToTileId = faceDownTile!.id;
+
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.logistics",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "none" }
+    });
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+
+    const choose = state.adventure?.pendingVisit?.steps[0];
+    expect(choose?.type).toBe("CHOOSE_ONE");
+    const landings =
+      choose?.type === "CHOOSE_ONE"
+        ? choose.options
+            .map((option) => option.steps[0])
+            .filter((step) => step?.type === "TELEPORT_HERO")
+            .map((step) => (step?.type === "TELEPORT_HERO" ? step.spaceId : null))
+        : [];
+    expect(landings).not.toContain(gateId);
+    expect(landings).toContain(openF);
+  });
+
+  it("excludes a Barrier the player holds no matching Keymaster's Tent flag for", () => {
+    const state = withHand(makeGame(), []);
+    const fields = adjacentCrossableFields(state);
+    const [barrierF, tentF] = fields;
+    setField(state, barrierF, "barrier");
+    state.adventure!.fields[barrierF]!.gatePair = 2;
+    setField(state, tentF, "keymaster_tent");
+    state.adventure!.fields[tentF]!.gatePair = 2;
+
+    expect(getEndTurnMoveDestinations(state, "p1")).not.toContain(barrierF);
+
+    // CONTROL: with the same-color tent flagged the Barrier is an ordinary
+    // open field the hero may land on.
+    state.adventure!.fields[tentF]!.flagOwnerId = "p1";
+    expect(getEndTurnMoveDestinations(state, "p1")).toContain(barrierF);
+  });
+
   it("excludes blocked fields and fields occupied by another hero", () => {
     const state = withHand(makeGame(), []);
     const fields = adjacentCrossableFields(state);

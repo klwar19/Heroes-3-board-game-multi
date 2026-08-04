@@ -164,6 +164,7 @@ import {
   placeMapToken,
   placeNeutralUnits,
   playerDwellingTiers,
+  playerHoldsTentFlag,
   processPendingVisit,
   removeSettlementProduction,
   pvpAttacksBanned,
@@ -181,6 +182,7 @@ import {
   SCHOLAR_STAT_CARDS,
   setHexEventEncounterHook,
   setOnMapTileRevealHook,
+  subterraneanGateEntryRevealsTile,
   subterraneanTileBand,
   spendRecruitResources,
   spendResources,
@@ -14650,8 +14652,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
  *   - a flaggable field or town already flagged by THIS player (their faction
  *     cube — stepping back on triggers nothing).
  * Anything that can still trigger — an unvisited visitable, an unflagged or
- * enemy mine/town, undefeated guards — is NOT empty. Blocked and occupied
- * fields, and edges the hero cannot cross, are excluded too.
+ * enemy mine/town, undefeated guards, a Subterranean Gate whose partner tile is
+ * still face-down (entering it fires the free cross-layer discovery) — is NOT
+ * empty. Blocked and occupied fields, a Barrier the player has no key for, and
+ * edges the hero cannot cross, are excluded too.
  */
 /** Empty-field destinations an end-of-turn step (Logistics / Nomads) may land on. */
 export function getEndTurnMoveDestinationsForHero(state: GameState, hero: HeroState): MapSpaceId[] {
@@ -14677,9 +14681,20 @@ export function getEndTurnMoveDestinationsForHero(state: GameState, hero: HeroSt
       return false;
     }
     // "Empty": nothing would trigger on entering — truly empty fields, used
-    // (black-cubed) visitables, and fields flagged by this player.
+    // (black-cubed) visitables, and fields flagged by this player. Two
+    // "empty"-category locations are NOT nothing-happens fields:
+    //   - a designer Barrier may not be ENTERED at all without a matching
+    //     Keymaster's Tent flag (classifyHeroStep treats it like a blocked
+    //     field), so it can never be a landing;
+    //   - a Subterranean Gate whose partner tile is still face-down TRIGGERS
+    //     its free cross-layer discovery (the reveal/rotation chain) on entry.
+    //     Only a gate whose other side is already discovered is genuinely
+    //     "treated as an empty Field".
     if (location.category === "empty") {
-      return true;
+      if (field.location === "barrier" && !playerHoldsTentFlag(state, playerId, field.gatePair)) {
+        return false;
+      }
+      return !subterraneanGateEntryRevealsTile(state, field);
     }
     if (location.category === "visitable") {
       return field.blackCube;
