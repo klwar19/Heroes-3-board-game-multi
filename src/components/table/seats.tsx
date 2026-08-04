@@ -1233,7 +1233,12 @@ export function PlayerDock({
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
   /** Open the full discard (or other) pile browser — same surface as map mode. */
-  onShowPile?: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
+  onShowPile?: (
+    title: string,
+    cardIds: string[],
+    kind: "cards" | "units" | "astrologers" | "events",
+    empoweredAbilities?: string[]
+  ) => void;
 }) {
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -1242,7 +1247,7 @@ export function PlayerDock({
 
   const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
   const openDiscard = () =>
-    onShowPile?.(`${player.name} — discard pile`, player.discard, "cards");
+    onShowPile?.(`${player.name} — discard pile`, player.discard, "cards", player.empoweredAbilities);
 
   return (
     <div className="playerDock" aria-label="Your decks and resources">
@@ -1308,7 +1313,12 @@ export function CombatOwnPiles({
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
-  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
+  onShowPile: (
+    title: string,
+    cardIds: string[],
+    kind: "cards" | "units" | "astrologers" | "events",
+    empoweredAbilities?: string[]
+  ) => void;
 }) {
   const player = view.players[viewerPlayerId];
   if (!player) {
@@ -1331,7 +1341,7 @@ export function CombatOwnPiles({
       <button
         className={`combatOwnPile combatOwnDiscard${topDiscardId ? " hasCard" : ""}`}
         data-fx-anchor={`discard-bottom:${viewerPlayerId}`}
-        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
+        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards", player.empoweredAbilities)}
         title={
           topDiscard
             ? `Discard top: ${topDiscard.name} (${player.discard.length} total) — click to browse`

@@ -1716,7 +1716,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     id: "torosar",
     name: "Torosar",
     faction: "tower",
-    class: "Wizard",
+    // The 2026-08 wiki board scan prints "Alchemist" (the wiki's hero TABLE
+    // says Wizard, but the printed card wins — user ruling 2026-08-04).
+    class: "Alchemist",
     type: "might",
     startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
     startingAbilityCardId: "ability.mysticism",

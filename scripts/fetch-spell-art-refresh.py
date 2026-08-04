@@ -56,6 +56,10 @@ DOWNLOADS = [
     ("spells-summon_earth_elemental.webp", "spells-summon_earth_elemental.webp"),
     ("spells-summon_fire_elemental.webp", "spells-summon_fire_elemental.webp"),
     ("spells-summon_water_elemental.webp", "spells-summon_water_elemental.webp"),
+    # 2026-08-04 follow-up: the wiki also republished these two, which were
+    # still locally generated art in this repo.
+    ("spells-air_shield.webp", "spells-air_shield.webp"),
+    ("spells-water_walk.webp", "spells-water_walk.webp"),
     # Ability: replaces the off-standard 726x1040 crop with the full printed card.
     ("abilities-interference.webp", "abilities-interference.webp"),
     # The Empowered twin is refreshed from the same source so the pair stays a

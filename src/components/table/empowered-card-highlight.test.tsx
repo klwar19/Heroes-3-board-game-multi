@@ -6,6 +6,7 @@ import { cardIsEmpoweredFor, isEmpoweredStatisticCard } from "./utils";
 import { cardZoomContent } from "./zoom";
 import { CardZoomProvider } from "./zoom";
 import { cardLibrary } from "@/data/cards/library";
+import { PileModal } from "@/components/adventure/screen";
 import { createInitialGameState, getLegalActions, getPlayerView, type GameState } from "@/engine";
 
 afterEach(cleanup);
@@ -147,6 +148,52 @@ describe("empowered card FACE — the printed Empowered scan replaces the base a
       "/assets/statistics-attack-empowered.webp"
     );
     expect(cardZoomContent("stat.attack").image).toBe("/assets/statistics-attack.webp");
+  });
+});
+
+describe("PileModal — the pile browser shows the owner's empowered abilities", () => {
+  // The pile browser used to know only intrinsic Empowered Statistics; an
+  // Empowered ABILITY in a browsed discard pile rendered its base face with no
+  // cue (user rule 2026-08-04: "MUST SHOW EMPOWERED ABILITY, WITH CORRECT
+  // IMAGE"). The producers now pass the pile OWNER's empoweredAbilities.
+  const pileSrc = (container: HTMLElement) =>
+    container.querySelector<HTMLImageElement>(".pileCardButton img")?.getAttribute("src") ?? "";
+
+  it("renders the empowered face + badge for an ability the pile owner empowered", () => {
+    const { container } = render(
+      <CardZoomProvider>
+        <PileModal
+          title="P1 — discard pile"
+          cardIds={["ability.offense"]}
+          kind="cards"
+          empoweredAbilities={["ability.offense"]}
+          onClose={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(pileSrc(container)).toContain("abilities-offense-empowered.webp");
+    expect(within(container).getAllByText("Empowered")).toHaveLength(1);
+  });
+
+  it("CONTROL: the same ability in a pile whose owner did NOT empower it keeps the base face", () => {
+    const { container } = render(
+      <CardZoomProvider>
+        <PileModal title="P1 — discard pile" cardIds={["ability.offense"]} kind="cards" onClose={() => {}} />
+      </CardZoomProvider>
+    );
+    expect(pileSrc(container)).toContain("abilities-offense.webp");
+    expect(pileSrc(container)).not.toContain("empowered");
+    expect(within(container).queryByText("Empowered")).toBeNull();
+  });
+
+  it("an Empowered Statistic still flags intrinsically with no owner list (shared decks)", () => {
+    const { container } = render(
+      <CardZoomProvider>
+        <PileModal title="Spells — discard pile" cardIds={["stat.attack.empowered"]} kind="cards" onClose={() => {}} />
+      </CardZoomProvider>
+    );
+    expect(pileSrc(container)).toContain("statistics-attack-empowered.webp");
+    expect(within(container).getAllByText("Empowered")).toHaveLength(1);
   });
 });
 
