@@ -1,3 +1,4 @@
+import { ignoresAllRangedCombatPenalties } from "./active-effects";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import { BATTLEFIELD_COLUMNS, BATTLEFIELD_CROSSING_ROW } from "./battlefield";
 import { appendEvent } from "./events";
@@ -15,7 +16,8 @@ import type { CombatState, CombatUnitState, GameState, PlayerId, SiegeState, Uni
  *    everything positional, may only be hit by ranged attacks and card
  *    effects, and collapses when all Walls and the Gate are gone.
  *  - Defenders in the column of an intact Wall/Gate take 1 less damage from
- *    ranged attacks shot from the attacker's side.
+ *    ranged attacks shot from the attacker's side — UNLESS the shooter carries
+ *    the full "Ignore combat penalties" waiver (see `siegeRangedDamageReduction`).
  */
 
 /** Middle-row battlefield positions holding the fortification cards. */
@@ -186,10 +188,20 @@ export function siegeRangedDamageReduction(
   combat: CombatState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged"
+  attackKind: "melee" | "ranged",
+  state?: GameState,
+  isRetaliation = false
 ): number {
   const siege = combat.siege;
   if (!siege || attackKind !== "ranged") {
+    return 0;
+  }
+  // "Ignore combat penalties" (Magi / Sharpshooters / the neutral Halfling, plus
+  // the Ammo Cart's player-scoped waiver) covers the behind-Wall shot too — the
+  // SAME read `getAttackRollMode` uses for the roll penalty, so the two can never
+  // disagree. The narrower "No Adjacent Penalty" variant prints that this penalty
+  // still applies and is deliberately NOT read here.
+  if (ignoresAllRangedCombatPenalties(attacker, state, isRetaliation)) {
     return 0;
   }
   if (defender.controllerId !== siege.townPlayerId) {

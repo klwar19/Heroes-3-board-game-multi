@@ -3809,7 +3809,7 @@ function getAttackStackDetails(
     // controller played in this retaliation's window soaks `amount` less damage
     // off the strike (the ×2 for his Dread Knights is folded in when played).
     damageReduction:
-      siegeRangedDamageReduction(combat, attacker, defender, attackKind) +
+      siegeRangedDamageReduction(combat, attacker, defender, attackKind, state, isRetaliation) +
       (isRetaliation ? (stackItem.modifiers.retaliationDamageReductionInstant ?? 0) : 0),
     defenseReductionAbility,
     abilityAttack

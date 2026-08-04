@@ -75,6 +75,7 @@ import {
 } from "./adventure-reducer";
 import {
   effectAppliesToUnit,
+  ignoresAllRangedCombatPenalties,
   effectiveInitiative,
   getSchoolPowerBonus,
   getSchoolPowerMultiplier,
@@ -1260,17 +1261,6 @@ function isOppositeBackRow(leftPosition: number, rightPosition: number): boolean
   );
 }
 
-/** Ammo Cart and friends: a player-scoped waiver of the ranged penalties. */
-function hasRangedPenaltyWaiver(state: GameState | undefined, unit: CombatUnitState): boolean {
-  return Boolean(
-    state?.activeEffects.some(
-      (effect) =>
-        effectAppliesToUnit(effect, unit) &&
-        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_ALL_PENALTIES")
-    )
-  );
-}
-
 export function getAttackRollMode(
   attacker: CombatUnitState,
   defender: CombatUnitState,
@@ -1289,9 +1279,9 @@ export function getAttackRollMode(
   // it still applies on a retaliation. The "[unit_passive] … against adjacent
   // units" melee waiver (Evil Eyes / Medusas / Zealots / Titans) is passive too,
   // so it also stays on when retaliating.
-  const abilityIgnoresAllPenalties =
-    !isRetaliation && hasUnitAbilityEffect(attacker, "IGNORE_RANGED_PENALTIES");
-  const ignoresAllPenalties = abilityIgnoresAllPenalties || hasRangedPenaltyWaiver(state, attacker);
+  // ONE shared read with the siege behind-Wall −1 damage penalty
+  // (`siegeRangedDamageReduction`), so a Magi exempt from one is exempt from both.
+  const ignoresAllPenalties = ignoresAllRangedCombatPenalties(attacker, state, isRetaliation);
   const ignoresMeleePenalty =
     ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
 
