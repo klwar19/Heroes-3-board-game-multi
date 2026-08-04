@@ -3512,12 +3512,48 @@ is NOT done:
   needed or consumed (the offer strips `castEnablerCardId`; the free path lives
   in `consumePolishSpellBookCast`; limit unchanged: basic 1/round, expert +1).
   Knowledge returns the Cast card but not the Spell, Mysticism refreshes the
-  cast Spell, and discard-recovery artifacts refresh used Book Spells. Ciele
-  I/IV, Genie Wish and both Crown of Dragontooth options have Book-specific
-  paths — Genie Wish (2026-07 fix): offered off a USED Book Spell existing
-  (deck-independent), refreshes it; with nothing used the Few's offer is hidden
-  and the Pack's on-attack trigger skips the printed dig entirely (no pointless
-  deck burn). The Mage
+  cast Spell, and discard-recovery artifacts refresh used Book Spells — every one
+  of those refreshes now obeys the "IN EFFECT" section below. Ciele
+  I/IV and both Crown of Dragontooth options have Book-specific
+  paths; **Genie Wish does NOT any more** (user ruling 2026-08-04 — refreshing a
+  Book Spell, e.g. Dimension Door, every fight was far too strong): under Polish
+  it runs the PRINTED dig like every other mode — dig `count` off your own deck,
+  take one takeable card to HAND, the rest to the discard — and since owned Spells
+  live in the Book the takeable card is a **"Cast a Spell" enabler**
+  (`isWishTakeable` in `runGenieDeckDraw`, one predicate for both modes; the
+  `genie-take-spell` multi-pick and `resolveGenieTakeSpell` are now mode-free).
+  Its offer/trigger gating therefore MIRRORS the non-book rule: offered whenever
+  the deck (or the discard that reshuffles in) has a card to dig, and NOT offered
+  on an empty deck+discard — a used Book Spell is now irrelevant to it. Pinned in
+  `polish-spell-book.test.ts` ("Genie Wish digs the deck and takes a Cast a
+  Spell — it NEVER refreshes a Book Spell", with a no-enabler-in-the-top-3
+  CONTROL, a nothing-used-still-offered case and an empty-deck CONTROL); the
+  non-book behaviour is unchanged (`expansion-creature-abilities.test.ts`).
+- **"IN EFFECT" — the third Book section** (user ruling 2026-08-04): a Book Spell
+  whose cast left a LIVE lasting effect (Water Walk / Fly "this turn", a
+  combat-long Haste) is neither refreshed nor plain-used — it sits in effect, like
+  a played Luck ability in the Ongoing tray, and **NO refresh source may return it
+  to the refreshed side until that effect ends**. ONE shared read —
+  `polishBookSpellEffectIsLive` (`polish-spell-book.ts`, matching a live
+  `activeEffects` entry sourced from that card id, plus the classic Ongoing tray) —
+  gates every path: the round-start whole-side refresh (`startAdventureRound`,
+  which also MOVED to after the round-end expiry pass so a round-scoped Book Spell
+  still refreshes in the same round start its effect ends), `refreshPolishUsedSpell`
+  (Mysticism recall, the Clone return, the cancel paths — refused with a feed note)
+  and the discard-recovery "Refresh a Spell in your Spell Book" pick (candidate
+  filter + a forged-pick backstop). When the effect ends at its own duration seam
+  (turn start / round end / combat end) the card becomes an ordinary used Book
+  Spell and refreshes normally. Pinned in `polish-spell-book.test.ts` ("a Spell IN
+  EFFECT cannot be refreshed": the round-start case then the post-expiry refresh,
+  the recovery offer+pick with a plainly-used Spell as the in-test control, the
+  Mysticism case, and an INSTANT Book Spell CONTROL that still refreshes).
+  NOT changed: the Mage Guild's Rolling Spells still UNINSCRIBES a used Book Spell
+  (a paid removal, not a refresh) without consulting this gate. The NON-book
+  (physical card) game needed no fix and is now pinned: an ongoing spell mid-effect
+  sits in `ongoingCards`, never the discard, so no recall/recovery path can reach
+  it (Knowledge only MARKS its `returnTo`) — `polish-spell-book.test.ts` ("Ongoing
+  spells mid-effect stay in play (no Book)", with a resolved-instant CONTROL that
+  IS recoverable). The Mage
   Guild searches 3, may grant/buy Cast cards, grants Cast at levels V/VII when
   built, and offers once-per-round 3-gold Rolling Spells (return one owned Spell,
   Search 2). The Spell deck remains merged even when Artifact decks split. The

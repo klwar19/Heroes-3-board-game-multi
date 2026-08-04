@@ -182,7 +182,8 @@ import { SHARED_DECK_IDS } from "./decks";
 import {
   CAST_A_SPELL_CARD_ID,
   isCastASpellCard,
-  polishSpellBookEnabled
+  polishSpellBookEnabled,
+  refreshablePolishUsedSpells
 } from "./polish-spell-book";
 import {
   abilityExpertIsCrownFree,
@@ -2705,7 +2706,9 @@ function isOptionEffectPlayable(
       // of a discard pile that can no longer contain owned Spells. Preserve any
       // non-Spell half of a mixed filter (Scholar's specialty recovery).
       if (polishSpellBookEnabled(state)) {
-        const used = player?.spellBookUsed ?? [];
+        // A Book Spell still IN EFFECT can never be refreshed, so it must not
+        // make a recovery card look playable (the pick would offer nothing).
+        const used = player ? refreshablePolishUsedSpells(state, player) : [];
         if (effect.filter === "spell" && used.length > 0) {
           return true;
         }
@@ -4573,18 +4576,14 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
     ) {
       const player = state.players[playerId];
       const hasDeckCards = (player?.deck.length ?? 0) + (player?.discard.length ?? 0) > 0;
-      // Polish Spell Book: the Wish's payoff is refreshing a used Book Spell,
-      // which does not depend on what the dig turns up — so the offer keys off
-      // a used Spell existing (an empty deck digs 0 and still refreshes).
-      // Outside the Polish rule the printed dig is the whole ability, so it
-      // needs cards to dig.
-      const usable = polishSpellBookEnabled(state)
-        ? (player?.spellBookUsed?.length ?? 0) > 0
-        : hasDeckCards;
-      if (usable) {
+      // The printed dig IS the whole ability in every mode, so it needs cards to
+      // dig. Under the Polish Spell Book the card it can take out of the deck is
+      // a "Cast a Spell" enabler (owned Spells live in the Book) — it never
+      // refreshes a Book Spell (user ruling 2026-08-04).
+      if (hasDeckCards) {
         actions.push({
           label: polishSpellBookEnabled(state)
-            ? `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, refresh a used Book Spell)`
+            ? `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Cast a Spell)`
             : `${activeUnit.name}: ${ability.name} (discard ${ability.effect.count} from your deck, take a Spell)`,
           action: { type: "USE_GENIE_DECK_DRAW", playerId, unitId: activeUnit.id }
         });

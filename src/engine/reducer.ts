@@ -265,6 +265,7 @@ import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
@@ -11279,11 +11280,24 @@ function returnSpellFromDiscardToHand(
   return true;
 }
 
-/** Refresh one used Polish Book Spell without exposing it to the hand/discard. */
+/**
+ * Refresh one used Polish Book Spell without exposing it to the hand/discard.
+ * A Spell still "in effect" (its cast left a live lasting effect) is untouchable
+ * — no refresh source may return it to the refreshed side until that effect ends
+ * (`polishBookSpellEffectIsLive` is the ONE read every path shares).
+ */
 function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
   const player = state.players[playerId];
   const usedIndex = player?.spellBookUsed?.lastIndexOf(cardId) ?? -1;
   if (!player || usedIndex === -1) {
+    return false;
+  }
+  if (polishBookSpellEffectIsLive(state, playerId, cardId, player)) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${cardLibrary[cardId]?.name ?? cardId} is still in effect and cannot be refreshed yet.`
+    });
     return false;
   }
   player.spellBookUsed!.splice(usedIndex, 1);
@@ -17356,19 +17370,20 @@ function runGenieDeckDraw(
     return false;
   }
 
+  // Polish Spell Book (user ruling 2026-08-04): the Wish NEVER refreshes a Book
+  // Spell (refreshing e.g. Dimension Door every fight was far too strong). It
+  // runs the PRINTED dig instead — and since owned Spells live in the Book under
+  // this rule, the card the dig can take out of the deck is a "Cast a Spell"
+  // enabler. Everything else (gating, the multi-pick, the discard tail) is the
+  // ordinary printed path.
   const polishBook = polishSpellBookEnabled(state);
-  if (polishBook && (player.spellBookUsed?.length ?? 0) === 0) {
-    // Polish Spell Book: with no used Book Spell there is nothing the Wish can
-    // refresh, so the whole ability is skipped — including the printed deck
-    // discard, which would otherwise burn 3 deck cards for zero benefit (the
-    // Pack's on-attack trigger used to do exactly that and read as broken).
-    return false;
-  }
+  const isWishTakeable = (cardId: CardId): boolean =>
+    polishBook
+      ? isCastASpellCard(cardId)
+      : cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId);
 
   const dug = discardFromDeckTop(state, unit.controllerId, ability.count);
-  const spells = polishBook
-    ? [...(player.spellBookUsed ?? [])]
-    : dug.filter((cardId) => cardLibrary[cardId]?.kind === "spell" && !isCastASpellCard(cardId));
+  const spells = dug.filter(isWishTakeable);
 
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -17376,29 +17391,6 @@ function runGenieDeckDraw(
     abilityId: ability.abilityId,
     message: `${unit.cardName} discards ${dug.length} card${dug.length === 1 ? "" : "s"} from the deck for ${ability.abilityName}.`
   });
-
-  if (polishBook) {
-    // The M&M deck contains Cast-a-Spell cards, not owned Spells. Wish keeps
-    // its printed deck discard, then refreshes one actually used Book Spell.
-    player.discard.push(...dug);
-    if (spells.length === 1) {
-      refreshPolishUsedSpell(state, unit.controllerId, spells[0]);
-      return false;
-    }
-    state.pendingChoice = {
-      id: `choice_${nextEventNumber(state)}`,
-      type: "OPTION_CHOICE",
-      playerId: unit.controllerId,
-      prompt: `${ability.abilityName}: refresh one used Spell in your Spell Book.`,
-      options: spells.map((cardId) => ({ label: `Refresh ${cardLibrary[cardId]?.name ?? cardId}` })),
-      context: "genie-take-spell",
-      genieTakeSpell: { spellCardIds: spells, unitId: unit.id, mode, abilityId: ability.abilityId },
-      returnPhase: "combat"
-    };
-    state.phase = "choice";
-    state.priorityPlayerId = unit.controllerId;
-    return true;
-  }
 
   // No choice to make: take the single Spell (if any) to hand, the rest to
   // discard. A neutral seat with no deck simply dug nothing.
@@ -17422,10 +17414,10 @@ function runGenieDeckDraw(
     return false;
   }
 
-  // Several Spells dug up: the non-Spells go to discard now; the controller
-  // chooses which Spell to keep (the rest go to discard on resolution).
+  // Several takeable cards dug up: everything else goes to discard now; the
+  // controller chooses which to keep (the rest go to discard on resolution).
   for (const cardId of dug) {
-    if (cardLibrary[cardId]?.kind !== "spell") {
+    if (!isWishTakeable(cardId)) {
       player.discard.push(cardId);
     }
   }
@@ -17517,19 +17509,16 @@ function resolveGenieTakeSpell(
     throw new Error("Pick one of the dug Spells.");
   }
 
-  if (polishSpellBookEnabled(state)) {
-    refreshPolishUsedSpell(state, action.playerId, chosen);
-  } else {
-    player.hand.push(chosen);
-    player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
-  }
+  // The Wish always TAKES the picked card to hand (Polish Book included — see
+  // runGenieDeckDraw: under that rule the takeable card is a Cast a Spell enabler,
+  // and the Wish never refreshes a Book Spell).
+  player.hand.push(chosen);
+  player.discard.push(...pick.spellCardIds.filter((_, index) => index !== action.optionIndex));
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: pick.unitId,
     abilityId: pick.abilityId,
-    message: polishSpellBookEnabled(state)
-      ? `${player.name} refreshes ${cardLibrary[chosen]?.name ?? chosen} in the Spell Book.`
-      : `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
+    message: `${player.name} takes ${cardLibrary[chosen]?.name ?? chosen} to hand.`
   });
 
   state.pendingChoice = null;

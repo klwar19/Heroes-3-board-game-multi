@@ -16,7 +16,12 @@ import {
   openSharedDeckSearch,
   pumpAdventureQueues
 } from "./adventure-reducer";
-import { gainExperience, processPendingVisit, startAdventureRound } from "./adventure";
+import {
+  gainExperience,
+  processPendingVisit,
+  startAdventureRound,
+  startPlayerTurn
+} from "./adventure";
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 
@@ -454,8 +459,39 @@ describe("Polish Spell Book lifecycle", () => {
     expect(resolved.players.p1.combatStats.spellsCastThisRound).toBe(0);
   });
 
-  it("adapts Genie Wish to discard as printed and refresh one used Book Spell", () => {
+  // User ruling 2026-08-04: the Wish is FAR too strong when it refreshes a Book
+  // Spell (a Dimension Door back every fight). Under the Polish Book it runs the
+  // PRINTED dig instead, and the card it can take out of the M&M deck is a
+  // "Cast a Spell" enabler — never a Book refresh.
+  it("Genie Wish digs the deck and takes a Cast a Spell — it NEVER refreshes a Book Spell", () => {
     const state = polishCombat("polish-book-genie");
+    const genie = state.combat!.units.unit_p1_griffins;
+    genie.abilities = ["genie-spell-draw-few"];
+    state.combat!.activeUnitId = genie.id;
+    state.players.p1.deck = ["stat.attack", CAST_A_SPELL_CARD_ID, "stat.power"];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+
+    const wish = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
+    );
+    expect(wish).toBeTruthy();
+    const resolved = applyOk(state, wish!.action);
+    expect(resolved.players.p1.deck).toEqual([]);
+    // The enabler is TAKEN to hand; the two statistics go to the discard.
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(resolved.players.p1.discard).toEqual(
+      expect.arrayContaining(["stat.attack", "stat.power"])
+    );
+    expect(resolved.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
+    // The used Book Spell is UNTOUCHED — no refresh (mutation control: the old
+    // behaviour moved it back into `spellBook`).
+    expect(resolved.players.p1.spellBookUsed).toEqual(["spell.haste"]);
+    expect(resolved.players.p1.spellBook).not.toContain("spell.haste");
+    expect(resolved.combat!.units[genie.id].activatedThisRound).toBe(true);
+  });
+
+  it("CONTROL: no Cast a Spell in the dug cards → nothing taken, every card discarded", () => {
+    const state = polishCombat("polish-book-genie-nothing-taken");
     const genie = state.combat!.units.unit_p1_griffins;
     genie.abilities = ["genie-spell-draw-few"];
     state.combat!.activeUnitId = genie.id;
@@ -465,21 +501,31 @@ describe("Polish Spell Book lifecycle", () => {
     const wish = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
     );
-    expect(wish).toBeTruthy();
+    expect(wish, "the printed dig is offered whenever there are cards to dig").toBeTruthy();
     const resolved = applyOk(state, wish!.action);
-    expect(resolved.players.p1.deck).toEqual([]);
+    expect(resolved.players.p1.hand).toEqual([]);
     expect(resolved.players.p1.discard).toEqual(
       expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"])
     );
-    expect(resolved.players.p1.spellBook).toContain("spell.haste");
-    expect(resolved.players.p1.spellBookUsed).not.toContain("spell.haste");
-    expect(resolved.combat!.units[genie.id].activatedThisRound).toBe(true);
+    expect(resolved.players.p1.spellBookUsed).toEqual(["spell.haste"]);
   });
 
-  it("offers the Few's Wish off the used Book Spell alone — even with an empty deck", () => {
-    // The Polish payoff (refresh 1 used Book Spell) does not depend on the dig,
-    // so an empty deck+discard must not hide the ability (it used to, reading
-    // as "Genie ability not working" whenever the M&M deck was in hand).
+  it("the Few's Wish is offered with NOTHING used in the Book (the dig is the ability)", () => {
+    const state = polishCombat("polish-book-genie-nothing-used");
+    const genie = state.combat!.units.unit_p1_griffins;
+    genie.abilities = ["genie-spell-draw-few"];
+    state.combat!.activeUnitId = genie.id;
+    state.players.p1.deck = ["stat.attack", CAST_A_SPELL_CARD_ID, "stat.power"];
+    state.players.p1.spellBookUsed = [];
+
+    const wish = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
+    );
+    expect(wish, "the dig no longer needs a used Book Spell").toBeTruthy();
+    expect(applyOk(state, wish!.action).players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+  });
+
+  it("CONTROL: with an empty deck AND discard the Wish is not offered (nothing to dig)", () => {
     const state = polishCombat("polish-book-genie-empty-deck");
     const genie = state.combat!.units.unit_p1_griffins;
     genie.abilities = ["genie-spell-draw-few"];
@@ -491,63 +537,17 @@ describe("Polish Spell Book lifecycle", () => {
     const wish = getLegalActions(state, "p1").find(
       (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
     );
-    expect(wish, "Wish offered with a used Book Spell and no deck to dig").toBeTruthy();
-    const resolved = applyOk(state, wish!.action);
-    expect(resolved.players.p1.spellBook).toContain("spell.haste");
-    expect(resolved.players.p1.spellBookUsed).not.toContain("spell.haste");
+    expect(wish, "no cards to dig — and there is no refresh payoff any more").toBeFalsy();
   });
 
-  it("CONTROL: the Few's Wish is not offered with nothing used in the Book", () => {
-    const state = polishCombat("polish-book-genie-nothing-used");
-    const genie = state.combat!.units.unit_p1_griffins;
-    genie.abilities = ["genie-spell-draw-few"];
-    state.combat!.activeUnitId = genie.id;
-    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
-    state.players.p1.spellBookUsed = [];
-
-    const wish = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "USE_GENIE_DECK_DRAW" && legal.action.unitId === genie.id
-    );
-    expect(wish, "nothing to refresh — the whole-activation Wish would be a blank").toBeFalsy();
-  });
-
-  it("the Pack's on-attack Wish skips the dig entirely when nothing is used (no pointless deck burn)", () => {
-    const state = polishCombat("polish-book-genie-pack-skip");
-    const attacker = state.combat!.units.unit_p1_marksmen;
-    attacker.abilities = ["genie-spell-draw-pack"];
-    attacker.position = 1;
-    const target = state.combat!.units.unit_p2_skeletons;
-    target.position = 13; // non-adjacent → ranged, no retaliation
-    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
-    state.players.p1.spellBookUsed = [];
-    state.combat!.dice.scriptedRolls = [0];
-
-    const next = passAll(
-      applyOk(state, {
-        type: "ATTACK_UNIT",
-        playerId: "p1",
-        attackerId: attacker.id,
-        defenderId: target.id
-      })
-    );
-    // The attack resolved, but the Wish neither dug the deck nor logged a dig.
-    expect(next.players.p1.deck).toEqual(["stat.attack", "stat.defense", "stat.power"]);
-    expect(next.players.p1.discard).toEqual([]);
-    expect(
-      next.eventLog.some(
-        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "genie-spell-draw-pack"
-      )
-    ).toBe(false);
-  });
-
-  it("the Pack's on-attack Wish still digs and refreshes when a used Book Spell exists", () => {
+  it("the Pack's on-attack Wish digs and takes the Cast a Spell, Book untouched", () => {
     const state = polishCombat("polish-book-genie-pack-refresh");
     const attacker = state.combat!.units.unit_p1_marksmen;
     attacker.abilities = ["genie-spell-draw-pack"];
     attacker.position = 1;
     const target = state.combat!.units.unit_p2_skeletons;
-    target.position = 13;
-    state.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"];
+    target.position = 13; // non-adjacent → ranged, no retaliation
+    state.players.p1.deck = ["stat.attack", CAST_A_SPELL_CARD_ID, "stat.power"];
     state.players.p1.spellBookUsed = ["spell.haste"];
     state.combat!.dice.scriptedRolls = [0];
 
@@ -560,11 +560,10 @@ describe("Polish Spell Book lifecycle", () => {
       })
     );
     expect(next.players.p1.deck).toEqual([]);
-    expect(next.players.p1.discard).toEqual(
-      expect.arrayContaining(["stat.attack", "stat.defense", "stat.power"])
-    );
-    expect(next.players.p1.spellBook).toContain("spell.haste");
-    expect(next.players.p1.spellBookUsed).not.toContain("spell.haste");
+    expect(next.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(next.players.p1.discard).toEqual(expect.arrayContaining(["stat.attack", "stat.power"]));
+    expect(next.players.p1.spellBookUsed).toEqual(["spell.haste"]);
+    expect(next.players.p1.spellBook).not.toContain("spell.haste");
   });
 
   it("Crown of Dragontooth removes a refreshed or used Book Spell before Search 2", () => {
@@ -1339,5 +1338,231 @@ describe("Basic X Magic +3 up-front cast — Polish Spell Book surface", () => {
     expect(fetchExpert, "no crown → no up-front +3 Book cast").toBeFalsy();
     // The plain Book cast is still available.
     expect(castAtSkeletons(state, "spell.magic_arrow")).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "In effect" — the third Book section (user ruling 2026-08-04)
+// ---------------------------------------------------------------------------
+
+function polishMapGame(seed: string): GameState {
+  let state = createAdventureGameState({
+    seed,
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    houseRules: { "polish-spell-book": true }
+  });
+  if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+  }
+  return state;
+}
+
+function resolveMapBoostNow(state: GameState): GameState {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost") {
+    return state;
+  }
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: choice.id,
+    optionIndex: choice.mapSpellBoost?.offers.length ?? choice.options.length - 1
+  });
+}
+
+/** Casts an ongoing map Spell out of the Polish Book; returns the settled state. */
+function castOngoingBookSpell(state: GameState, spellId: string): GameState {
+  state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+  state.players.p1.spellBook = [spellId];
+  state.players.p1.spellBookUsed = [];
+  const play = getLegalActions(state, "p1").find(
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === spellId &&
+      legal.action.fromSpellBook === true
+  );
+  expect(play, `${spellId} should be castable from the Polish Book`).toBeTruthy();
+  return resolveMapBoostNow(applyOk(state, play!.action));
+}
+
+function effectLive(state: GameState, cardId: string): boolean {
+  return state.activeEffects.some(
+    (effect) => effect.source.type === "card" && effect.source.cardId === cardId
+  );
+}
+
+describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
+  it("the round-start refresh leaves a live Water Walk used, and refreshes it once the effect ends", () => {
+    let state = polishMapGame("polish-book-in-effect-round-refresh");
+    state = castOngoingBookSpell(state, "spell.water_walk");
+
+    // Cast: the Book Spell is used and its "this turn" effect is live.
+    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
+    expect(effectLive(state, "spell.water_walk")).toBe(true);
+
+    // Round wrap while the effect still lasts: NOT refreshed (the old rule pushed
+    // it straight back into the refreshed Book — this assertion is the mutation
+    // control for the whole "in effect" section).
+    state.round = 2;
+    startAdventureRound(state);
+    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
+    expect(state.players.p1.spellBook).not.toContain("spell.water_walk");
+
+    // The effect ends at its caster's next turn start; from then it is an
+    // ordinary used Book Spell and the next round start refreshes it.
+    startPlayerTurn(state, "p1");
+    expect(effectLive(state, "spell.water_walk")).toBe(false);
+    state.round = 3;
+    startAdventureRound(state);
+    expect(state.players.p1.spellBook).toContain("spell.water_walk");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.water_walk");
+  });
+
+  it("CONTROL: an INSTANT Book Spell cast the same way still refreshes at the round start", () => {
+    const state = polishMapGame("polish-book-in-effect-control");
+    // View Air resolves at once (resources) and leaves no lasting effect.
+    let next = castOngoingBookSpell(state, "spell.view_air");
+    expect(next.players.p1.spellBookUsed).toContain("spell.view_air");
+    expect(effectLive(next, "spell.view_air")).toBe(false);
+    next.round = 2;
+    startAdventureRound(next);
+    expect(next.players.p1.spellBook).toContain("spell.view_air");
+    expect(next.players.p1.spellBookUsed).not.toContain("spell.view_air");
+  });
+
+  it("a live Book Spell is neither offered nor refreshable by discard-recovery; a used one is", () => {
+    let state = polishMapGame("polish-book-in-effect-recovery");
+    state = castOngoingBookSpell(state, "spell.water_walk");
+    // A second, plainly USED Book Spell for the control half of the same pick.
+    state.players.p1.spellBookUsed = [...(state.players.p1.spellBookUsed ?? []), "spell.haste"];
+    state.players.p1.discard = [];
+
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Polish Book refresh choice");
+    }
+    const offered = state.pendingChoice.discardPick?.cardIds ?? [];
+    expect(offered).toContain("spell.haste");
+    expect(offered, "a Spell in effect is not a refresh candidate").not.toContain("spell.water_walk");
+
+    const hasteIndex = offered.indexOf("spell.haste");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: hasteIndex
+    });
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
+  });
+
+  it("with ONLY an in-effect Spell used, a discard-recovery has nothing to recover", () => {
+    // The same read gates the recovery card's own playability offer, so it can
+    // never look playable while its only candidate is locked in effect.
+    let state = polishMapGame("polish-book-in-effect-recovery-empty");
+    state = castOngoingBookSpell(state, "spell.water_walk");
+    state.players.p1.discard = [];
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.water_walk"]);
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(false);
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.water_walk"]);
+  });
+
+  it("Mysticism cannot refresh a Book Spell whose combat effect is still live", () => {
+    // Haste leaves a combat-long effect: the Mysticism recall ("refresh the cast
+    // Spell") is refused while it lasts, and the Spell stays used.
+    let state = polishCombat("polish-book-in-effect-mysticism");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
+    state.players.p1.spellBook = ["spell.haste"];
+    state.players.p1.limits.expertUses = 0;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.haste" &&
+        legal.action.fromSpellBook === true
+    );
+    expect(cast, "Haste should be castable from the Polish Book").toBeTruthy();
+    let opened = applyOk(state, cast!.action);
+    const myst = getLegalActions(opened, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.mysticism"
+    );
+    expect(myst, "Mysticism is offered into the cast window").toBeTruthy();
+    const resolved = passAll(applyOk(opened, myst!.action));
+
+    expect(effectLive(resolved, "spell.haste")).toBe(true);
+    expect(resolved.players.p1.spellBookUsed).toContain("spell.haste");
+    expect(resolved.players.p1.spellBook).not.toContain("spell.haste");
+    // The enabler still comes back (that half of the recall is unaffected).
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-book (physical card) game: an ongoing spell mid-effect is unrecoverable
+// ---------------------------------------------------------------------------
+
+describe("Ongoing spells mid-effect stay in play (no Book)", () => {
+  function plainMapGame(seed: string): GameState {
+    let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    return state;
+  }
+
+  it("a live Water Walk sits in the Ongoing tray — never the discard, so nothing can recover it", () => {
+    let state = plainMapGame("plain-ongoing-water-walk");
+    state.players.p1.hand = ["spell.water_walk", "stat.knowledge"];
+    state.players.p1.discard = [];
+    state.players.p1.limits.expertUses = 0;
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.water_walk"
+    );
+    expect(play).toBeTruthy();
+    state = resolveMapBoostNow(applyOk(state, play!.action));
+
+    expect(effectLive(state, "spell.water_walk")).toBe(true);
+    expect(state.players.p1.ongoingCards?.some((entry) => entry.cardId === "spell.water_walk")).toBe(
+      true
+    );
+    expect(state.players.p1.discard).not.toContain("spell.water_walk");
+    expect(state.players.p1.hand).not.toContain("spell.water_walk");
+
+    // Knowledge only MARKS it to come back once the effect ends…
+    if (state.adventure?.pendingVisit) {
+      state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+      expect(
+        state.players.p1.ongoingCards?.find((entry) => entry.cardId === "spell.water_walk")?.returnTo
+      ).toBe("hand");
+      expect(state.players.p1.hand).not.toContain("spell.water_walk");
+    }
+
+    // …and a discard-recovery card sees nothing to recover while it is in play.
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(false);
+    expect(state.players.p1.hand).not.toContain("spell.water_walk");
+
+    // Only at the caster's next turn start does it leave play.
+    startPlayerTurn(state, "p1");
+    expect(effectLive(state, "spell.water_walk")).toBe(false);
+    expect(state.players.p1.ongoingCards ?? []).toEqual([]);
+  });
+
+  it("CONTROL: a resolved INSTANT spell is in the discard and IS recoverable at once", () => {
+    let state = plainMapGame("plain-instant-recoverable");
+    state.players.p1.hand = ["spell.view_air"];
+    state.players.p1.discard = [];
+
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "spell.view_air"
+    );
+    expect(play).toBeTruthy();
+    state = resolveMapBoostNow(applyOk(state, play!.action));
+
+    expect(state.players.p1.discard).toContain("spell.view_air");
+    expect(state.players.p1.ongoingCards ?? []).toEqual([]);
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
   });
 });

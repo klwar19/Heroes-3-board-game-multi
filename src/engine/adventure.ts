@@ -127,7 +127,9 @@ import {
   eventZoneMatches,
   gainOwnedCard,
   isOwnedSpellCard,
+  polishBookSpellEffectIsLive,
   polishSpellBookEnabled,
+  refreshablePolishUsedSpells,
   removeCardFromPlayerZone,
   type PolishCardZone
 } from "./polish-spell-book";
@@ -15196,22 +15198,33 @@ export function startAdventureRound(state: GameState): void {
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
-  if (houseRuleEnabled(state, "polish-spell-book")) {
-    for (const player of Object.values(state.players)) {
-      if (player.id === NEUTRAL_PLAYER_ID || !player.spellBookUsed?.length) {
-        continue;
-      }
-      player.spellBook.push(...player.spellBookUsed);
-      player.spellBookUsed = [];
-    }
-  }
-
   // Round-scoped effects ("until the end of the round") end here: Luck / Expert
   // Luck and Torosar's Ballista IV grant. The card a round-scoped ONGOING effect
   // came from leaves the Ongoing tray in the shared releaseEndedOngoingCards
   // pass that runs after every action.
   for (const expired of expireEffectsForGameRoundEnd(state)) {
     appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: expired.id, reason: "game-round-ended" });
+  }
+
+  // Polish Spell Book: the whole USED side refreshes — but a Spell whose cast's
+  // effect is STILL LIVE ("in effect", e.g. a Water Walk that lasts until its
+  // caster's turn starts) is untouchable and stays used until it ends. Runs AFTER
+  // the round-end expiry above so a round-scoped Book Spell refreshes in the same
+  // round start its effect ends in.
+  if (houseRuleEnabled(state, "polish-spell-book")) {
+    for (const player of Object.values(state.players)) {
+      if (player.id === NEUTRAL_PLAYER_ID || !player.spellBookUsed?.length) {
+        continue;
+      }
+      const refreshable = refreshablePolishUsedSpells(state, player);
+      if (refreshable.length === 0) {
+        continue;
+      }
+      player.spellBook.push(...refreshable);
+      player.spellBookUsed = (player.spellBookUsed ?? []).filter((cardId) =>
+        polishBookSpellEffectIsLive(state, player.id, cardId, player)
+      );
+    }
   }
 
   if (kind === "astrologers") {
