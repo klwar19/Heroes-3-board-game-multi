@@ -22,18 +22,15 @@ describe("statistic card faces", () => {
     expect(seen).toBeGreaterThanOrEqual(8); // 4 base + 4 empowered
   });
 
-  it("Defense and Knowledge empowered cards use a DISTINCT empowered face (not the base art)", () => {
+  it("EVERY empowered statistic uses its own DISTINCT empowered face (not the base art)", () => {
     const img = (id: string) => cardLibrary[id]?.assets?.cardImage;
-    expect(img("stat.defense.empowered")).toBe("/assets/statistics-defense-empowered.webp");
-    expect(img("stat.knowledge.empowered")).toBe("/assets/statistics-knowledge-empowered.webp");
-    // The whole point of the fix: the empowered face differs from the base face.
-    expect(img("stat.defense.empowered")).not.toBe(img("stat.defense"));
-    expect(img("stat.knowledge.empowered")).not.toBe(img("stat.knowledge"));
-  });
-
-  it("Attack and Power empowered reuse the base face (documented: no separate scan in the source set)", () => {
-    const img = (id: string) => cardLibrary[id]?.assets?.cardImage;
-    expect(img("stat.attack.empowered")).toBe(img("stat.attack"));
-    expect(img("stat.power.empowered")).toBe(img("stat.power"));
+    // All four printed "Empowered" scans now ship (the wiki serves one per stat),
+    // so no empowered statistic may fall back to its base face any more.
+    for (const stat of ["attack", "defense", "power", "knowledge"]) {
+      expect(img(`stat.${stat}.empowered`)).toBe(`/assets/statistics-${stat}-empowered.webp`);
+      // The whole point: the empowered face differs from the base face.
+      expect(img(`stat.${stat}.empowered`)).not.toBe(img(`stat.${stat}`));
+      expect(img(`stat.${stat}`)).toBe(`/assets/statistics-${stat}.webp`);
+    }
   });
 });
