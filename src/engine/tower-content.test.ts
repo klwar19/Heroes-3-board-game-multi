@@ -103,17 +103,13 @@ describe("Tower content", () => {
         expect(cardLibrary[specialtyId], `${heroId} specialty ${specialtyId}`).toBeDefined();
       }
     }
-    // The four art-backed heroes carry a Tower board scan and a cropped portrait.
-    for (const heroId of ["dracon", "iona", "josephine", "solmyr"]) {
+    // Every Tower hero now carries a Tower board scan and a cropped portrait —
+    // Cyra and Torosar (Regular Stretch Goals 2024) joined the other four when the
+    // fan wiki published their printed boards (scripts/fetch-hero-art-refresh.py).
+    for (const heroId of ["dracon", "iona", "josephine", "solmyr", "cyra", "torosar"]) {
       const hero = coreHeroDefinitions[heroId];
-      expect(hero.portrait).toBe(`/assets/hero_boardart-${heroId}.webp`);
-      expect(hero.boardScan).toContain("/assets/heroes-tower-");
-    }
-    // The two heroes whose boards are not on the wiki yet use a PC portrait.
-    for (const heroId of ["cyra", "torosar"]) {
-      const hero = coreHeroDefinitions[heroId];
-      expect(hero.portrait).toBe(`/assets/hero_portraits-${heroId}.webp`);
-      expect(hero.boardScan).toBeUndefined();
+      expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan, `${heroId} board scan`).toContain("/assets/heroes-tower-");
     }
 
     expect(faction.units).toEqual([

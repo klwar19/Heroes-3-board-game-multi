@@ -23,18 +23,18 @@ describe("CardFrame — art-less specialties render the native card in the tray"
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
   });
 
-  it("draws the native card (with its symbol) for an art-less hero whose scan is absent (Torosar)", () => {
-    // Torosar has no printed scan, but is given the Ballista war-machine icon
-    // (Ballista specialist) — the same dedicated icon specialty-card.test.tsx
-    // pins, NOT the generic Artillery emblem.
-    expect(cardLibrary["specialty.torosar.6"]?.assets?.cardImage).toBeUndefined();
-    const { container } = render(<CardFrame cardId="specialty.torosar.6" className="fanCardImage" />);
+  it("draws the native card (with its symbol) for an art-less hero whose scan is absent (Glacius)", () => {
+    // Torosar used to stand in here; the 2026-08 wiki art refresh gave him (and the
+    // whole Regular-Stretch-Goals group) a printed face, so the art-less case is now
+    // a Bulwark hero: Glacius has no board-game scan and carries the Frost Ring icon.
+    expect(cardLibrary["specialty.torosar.6"]?.assets?.cardImage).toBe("/assets/hero_specialties-torosar-6.webp");
+    expect(cardLibrary["specialty.glacius.6"]?.assets?.cardImage).toBeUndefined();
+    const { container } = render(<CardFrame cardId="specialty.glacius.6" className="fanCardImage" />);
     expect(container.querySelector(".scWrap")).toBeTruthy();
     expect(container.querySelector(".cardFaceFallback")).toBeNull();
     expect(container.querySelector(".scIconBox")).toBeTruthy();
     const iconSrc = (container.querySelector(".scIcon") as HTMLImageElement | null)?.getAttribute("src") ?? "";
-    expect(iconSrc).toContain("icon-ballista.webp");
-    expect(iconSrc).not.toContain("abilities-artillery");
+    expect(iconSrc).toContain("icon-frost_ring.webp");
   });
 
   it("still renders the scanned <img> for a baked-art specialty (Sandro)", () => {
