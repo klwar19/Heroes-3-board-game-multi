@@ -156,7 +156,8 @@ import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/w
 import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experience";
 import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
-import { actionKey, cardName, formatCost, isEmpoweredStatisticCard, titleCase } from "@/components/table/utils";
+import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "@/components/table/utils";
+import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
@@ -6719,17 +6720,25 @@ export function AdventureOwnDeck({
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
-  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
+  onShowPile: (
+    title: string,
+    cardIds: string[],
+    kind: "cards" | "units" | "astrologers" | "events",
+    empoweredAbilities?: string[]
+  ) => void;
 }) {
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
   }
 
-  // Top of the discard is face-up — show the actual card graphic (not a bare count).
+  // Top of the discard is face-up — show the actual card graphic (not a bare
+  // count); an Empowered ability shows its printed Empowered face.
   const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
   const topDiscard = topDiscardId ? cardLibrary[topDiscardId] : undefined;
-  const topImage = topDiscard?.assets?.cardImage;
+  const topImage =
+    cardFaceImage(topDiscardId, cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)) ??
+    topDiscard?.assets?.cardImage;
 
   return (
     <div className="ownDeckPile" aria-label="Your deck and discard">
@@ -6745,7 +6754,7 @@ export function AdventureOwnDeck({
       <button
         className={`ownDiscardSpot${topDiscardId ? " hasCard" : ""}`}
         data-fx-anchor={`discard:${viewerPlayerId}`}
-        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards")}
+        onClick={() => onShowPile(`${player.name} — discard pile`, player.discard, "cards", player.empoweredAbilities)}
         title={
           topDiscard
             ? `Discard top: ${topDiscard.name} (${player.discard.length} total) — click to browse`
@@ -6782,7 +6791,13 @@ export function AdventureDecksPanel({
 }: {
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
-  onShowPile: (title: string, cardIds: string[], kind: "cards" | "units" | "astrologers" | "events") => void;
+  /** Shared-deck piles have no owner, so no empoweredAbilities is ever passed here. */
+  onShowPile: (
+    title: string,
+    cardIds: string[],
+    kind: "cards" | "units" | "astrologers" | "events",
+    empoweredAbilities?: string[]
+  ) => void;
   onAction?: (action: GameAction) => void;
   /** Deck ids the active player's Rogues may scout this turn. */
   scoutableDeckIds?: Set<string>;
@@ -7001,11 +7016,14 @@ export function PileModal({
   title,
   cardIds,
   kind,
+  empoweredAbilities,
   onClose
 }: {
   title: string;
   cardIds: string[];
   kind: "cards" | "units" | "astrologers" | "events";
+  /** The pile OWNER's empowered ability card ids (absent for shared decks). */
+  empoweredAbilities?: string[];
   onClose: () => void;
 }) {
   return (
@@ -7023,13 +7041,21 @@ export function PileModal({
             Discarded proclamations are shown newest first. The top card is the last resolved Astrologers event.
           </small>
         ) : null}
-        <PileModalCards cardIds={cardIds} kind={kind} />
+        <PileModalCards cardIds={cardIds} kind={kind} empoweredAbilities={empoweredAbilities} />
       </div>
     </div>
   );
 }
 
-function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" }) {
+function PileModalCards({
+  cardIds,
+  kind,
+  empoweredAbilities
+}: {
+  cardIds: string[];
+  kind: "cards" | "units" | "astrologers" | "events";
+  empoweredAbilities?: string[];
+}) {
   const { zoomCard, zoomContent } = useCardZoom();
 
   return (
@@ -7039,14 +7065,20 @@ function PileModalCards({ cardIds, kind }: { cardIds: string[]; kind: "cards" | 
         const unit = kind === "units" ? coreUnitDefinitions[cardId] : undefined;
         const astro = kind === "astrologers" ? astrologersCardDefinitions[cardId] : undefined;
         const eventCard = kind === "events" ? eventCardDefinitions[cardId] : undefined;
-        const image = card?.assets?.cardImage ?? unit?.neutral?.cardImage ?? astro?.image ?? eventCard?.image;
-        // Empowered Statistics are intrinsic, so a pile browse can flag them
-        // from the card alone; Empowered abilities are per-owner and shown where
-        // the owner is known (hand fan, trays, discard tops).
-        const empowered = kind === "cards" && isEmpoweredStatisticCard(cardId);
+        // Empowered Statistics are intrinsic (flagged from the card alone);
+        // Empowered ABILITIES are per-owner — the pile producers pass the
+        // owner's empoweredAbilities so a browsed pile shows the printed
+        // Empowered face too (shared decks pass nothing: nobody owns those).
+        const empowered = kind === "cards" && cardIsEmpoweredFor(cardId, empoweredAbilities);
+        const image =
+          (kind === "cards" ? cardFaceImage(cardId, empowered) : undefined) ??
+          card?.assets?.cardImage ??
+          unit?.neutral?.cardImage ??
+          astro?.image ??
+          eventCard?.image;
         const zoom = () =>
           card
-            ? zoomCard(cardId)
+            ? zoomCard(cardId, empowered)
             : zoomContent({
                 title: eventCard?.name ?? astro?.name ?? unit?.name ?? cardId,
                 image,

@@ -828,7 +828,13 @@ export default function Home() {
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [leftRailExpanded]);
-  const [pile, setPile] = useState<{ title: string; cardIds: string[]; kind: "cards" | "units" | "astrologers" | "events" } | null>(null);
+  const [pile, setPile] = useState<{
+    title: string;
+    cardIds: string[];
+    kind: "cards" | "units" | "astrologers" | "events";
+    /** The pile owner's Empowered ability ids (absent for shared decks). */
+    empoweredAbilities?: string[];
+  } | null>(null);
   const [dice, setDice] = useState<{ current: DiceCue | null; queue: DiceCue[] }>({
     current: null,
     queue: []
@@ -5915,7 +5921,7 @@ export default function Home() {
           <div className="advDecksBottom">
             <AdventureDecksPanel
               onAction={submitAction}
-              onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+              onShowPile={(title, cardIds, kind, empoweredAbilities) => setPile({ title, cardIds, kind, empoweredAbilities })}
               scoutableDeckIds={
                 new Set(
                   legalActions.flatMap((legal) =>
@@ -5968,7 +5974,7 @@ export default function Home() {
               <div className="ownDeckColumn" aria-label="Your deck, discard, and Spell Book">
                 <div className="ownDeckToolsRow">
                   <AdventureOwnDeck
-                    onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                    onShowPile={(title, cardIds, kind, empoweredAbilities) => setPile({ title, cardIds, kind, empoweredAbilities })}
                     view={playerView}
                     viewerPlayerId={viewerPlayerId}
                   />
@@ -6929,7 +6935,7 @@ export default function Home() {
           {isSeated ? (
             <div className="tableSeatRow">
               <PlayerDock
-                onShowPile={(title, cardIds, kind) => setPile({ title, cardIds, kind })}
+                onShowPile={(title, cardIds, kind, empoweredAbilities) => setPile({ title, cardIds, kind, empoweredAbilities })}
                 state={state}
                 view={playerView}
                 viewerPlayerId={viewerPlayerId}
