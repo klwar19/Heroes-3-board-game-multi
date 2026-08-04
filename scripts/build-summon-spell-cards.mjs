@@ -7,6 +7,13 @@
  * from an existing Expert spell in the same school. Generated, text-free art
  * is then combined with deterministic typography so rules text is never left
  * to an image model.
+ *
+ * !! STALE AS OF 2026-08-04 — DO NOT RE-RUN BLINDLY !!
+ * en.homm3bg.wiki now publishes the GENUINE printed scans for all four Summon
+ * Elemental spells, and those real scans are what is committed in
+ * public/assets today. Re-running this script would OVERWRITE the printed cards
+ * with these generated originals. If you ever do, restore them with:
+ *   py scripts/fetch-spell-art-refresh.py
  */
 
 import { mkdir, rename, rm } from "node:fs/promises";

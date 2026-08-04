@@ -19,13 +19,15 @@ Confirmed available on the wiki (real 743x1040 RGBA card scans):
       filename (artifacts_minor-torso_of_legion.webp); the project plays Torso
       as a house-rule Major, so we save the same scan under the major name.
 
-NOT on the wiki (it shows the deck-back placeholder for these, so they cannot be
-downloaded). The requested spells now have approved original replacements built
-by scripts/build-missing-spell-cards.mjs; only Sacrifice remains routed through
-SCANLESS_SPELLS:
+HISTORICAL NOTE (updated 2026-08-04): the list below used to name the spells the
+wiki showed only a deck-back placeholder for —
   spells-{summon_air,summon_earth,summon_fire,summon_water}_elemental.webp,
   spells-magic_mirror.webp, spells-water_walk.webp, spells-air_shield.webp,
   spells-protection_from_{air,earth,fire,water}.webp, spells-sacrifice.webp
+The wiki has SINCE published genuine printed scans for them (plus Quicksand,
+Force Field, Clone, Land Mine and the Interference Ability). Those real scans are
+fetched by scripts/fetch-spell-art-refresh.py, which is now the live importer for
+that set; this script keeps only its original four spells + the Torso artifact.
 """
 import io
 import os
