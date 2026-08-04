@@ -46,6 +46,19 @@ function onDisk(assetPath: string): string {
   return fileURLToPath(new URL(`../../../public${assetPath}`, import.meta.url));
 }
 
+// 2026-08 wiki refresh: all twelve faces below (4 summon Few + 4 summon Pack +
+// 4 Neutral guards) are now the REAL printed scans, pulled by
+// scripts/fetch-unit-art-refresh.py. The wiki names the two card sets apart —
+// `units-summoned-bronze-<slug>-few|pack.webp` (printed "Air Elementals",
+// CONFLUX 075/080, "# FEW"/"# PACK", no cost band) versus
+// `units-neutral-<tier>-<slug singular>_elemental.webp` (printed "Air
+// Elemental", STRETCH GOALS 076/197, gold cost). HONEST LIMIT: no test here
+// reads the printed pixels, so what is pinned is the path mapping, the size
+// floor, and that the three faces per creature are pairwise distinct FILES —
+// a cross-assignment (summon scan written to the neutral name) would still have
+// to be caught by eye. Re-running scripts/build-elemental-cards.mjs would
+// overwrite these scans with the composited fall-backs; its reproducibility is
+// still pinned here.
 describe("summoned Elemental card faces", () => {
   it("matches every Few, Pack, and Neutral wiki column", () => {
     for (const [slug, expected] of Object.entries(EXPECTED)) {
@@ -92,6 +105,11 @@ describe("summoned Elemental card faces", () => {
         expect(existsSync(file), `${asset} must exist`).toBe(true);
         expect(statSync(file).size, `${asset} must contain real art`).toBeGreaterThan(100_000);
       }
+
+      // The three faces must be three DIFFERENT files on disk, not one scan
+      // copied under three names (the cheapest form of the summon/neutral mix-up).
+      const bytes = faces.map((asset) => readFileSync(onDisk(asset!)).toString("base64"));
+      expect(new Set(bytes).size, `${slug} faces must be distinct images`).toBe(3);
     }
   });
 

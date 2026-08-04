@@ -4,12 +4,18 @@ import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { DISPLAY_ONLY_ABILITIES } from "@/data/units/abilities";
 
-// The 25 single-sided Neutral guards whose wiki faces are blank. Each one now
-// ships a dedicated `units-neutral-<tier>-<slug>.webp` composed by
-// scripts/build-placeholder-neutral-cards.mjs from the exact faction creature
-// illustration inside the matching Neutral tier frame — NOT the faction Few/Pack
-// art. Mapping is asserted explicitly so a wrong tier/slug (e.g. a gold unit
-// pointed at a bronze frame) fails here.
+// The 25 single-sided Neutral guards that once had blank wiki faces. Each one
+// ships a dedicated `units-neutral-<tier>-<slug>.webp`. Mapping is asserted
+// explicitly so a wrong tier/slug (e.g. a gold unit pointed at a bronze frame)
+// fails here.
+//
+// 2026-08 wiki refresh: the fan wiki now publishes REAL printed scans for every
+// one of these 25 guards, and scripts/fetch-unit-art-refresh.py replaced the
+// files with them (verified card-by-card against the stats/costs below). The
+// composited fall-backs from scripts/build-placeholder-neutral-cards.mjs are no
+// longer what ships — so re-running THAT builder would clobber the real scans.
+// Its reproducibility (slug table + legend glyph sources) is still pinned at the
+// bottom of this file so the fall-back path cannot rot.
 const EXPECTED = {
   "neutral.leprechaun": "/assets/units-neutral-bronze-leprechaun.webp",
   "neutral.satyrs": "/assets/units-neutral-silver-satyrs.webp",
@@ -113,10 +119,13 @@ describe("blank-wiki neutral card faces", () => {
       expect(isWebp(file), `${id} must be a valid WebP`).toBe(true);
       const size = statSync(file).size;
       // Lower bound proves a rendered card (not a stray/empty file); upper bound
-      // proves the compression pass actually ran (a quality-94 encode of these
-      // frames lands ~160-310 KB).
+      // proves the compression pass actually ran — a LOSSLESS re-encode of these
+      // frames lands at 600 KB-1.1 MB, so the ceiling is what catches that
+      // regression. Band widened 220_000 -> 260_000 for the 2026-08 wiki refresh:
+      // the real printed scans encode at q94 to ~186-220 KB (the composited
+      // fall-backs they replaced were ~90-190 KB), which left no headroom.
       expect(size, `${id} must contain a rendered card`).toBeGreaterThan(40_000);
-      expect(size, `${id} must stay compressed`).toBeLessThan(220_000);
+      expect(size, `${id} must stay compressed`).toBeLessThan(260_000);
     }
   });
 
