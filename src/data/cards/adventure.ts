@@ -796,15 +796,38 @@ function fireMagicSpecialty(level: 1 | 6, amount: number): CardLibrary[string] {
 
 /**
  * Strips the `assets.cardImage` reference from a specialty built by a shared
- * helper. The "Regular Stretch Goals 2024" heroes whose fan-wiki page is still a
- * placeholder (Valeska, Ingham, Lorelei, Septienna) have no printed specialty
- * card faces to ship, so — exactly like Cyra/Torosar — their cards carry no
- * cardImage (the UI renders the text side, never a broken image link).
+ * helper, so the UI renders the native art-less card instead of a broken image
+ * link. Its original customers (the "Regular Stretch Goals 2024" heroes) all got
+ * printed faces in the 2026-08 wiki art refresh and use withSpecialtyArt now; it
+ * still serves the factions whose specialty cards genuinely do not exist as
+ * board-game scans — Bulwark, Factory and the anime towns.
  */
 function withoutArt(card: CardLibrary[string]): CardLibrary[string] {
   const next = { ...card };
   delete next.assets;
   return next;
+}
+
+/**
+ * Attach the PRINTED specialty card face to a definition whose scan now ships in
+ * /public/assets (the fan wiki published the full "Regular Stretch Goals 2024" /
+ * Cove hero art pack — see scripts/fetch-hero-art-refresh.py). The file name is
+ * derived from the card id through specialtyCardImage(), so it can never drift
+ * from the convention, and the card stops rendering through the native
+ * art-less renderer (canRenderSpecialtyCard) the moment its face exists.
+ */
+function withSpecialtyArt(card: CardLibrary[string]): CardLibrary[string] {
+  const parsed = /^specialty\.(.+)\.(1|4|6)$/u.exec(card.id);
+  if (!parsed) {
+    throw new Error(`withSpecialtyArt: not a hero-specialty card id: ${card.id}`);
+  }
+  return {
+    ...card,
+    assets: {
+      cardImage: specialtyCardImage(parsed[1], Number(parsed[2]) as 1 | 4 | 6),
+      imageAlt: `${card.name} specialty card`
+    }
+  };
 }
 
 const ROMAN: Record<1 | 4 | 6, string> = { 1: "I", 4: "IV", 6: "VI" };
@@ -1797,15 +1820,15 @@ export const adventureCards: CardLibrary = {
   // Moandor (Necropolis Death Knight): the Liches specialist. I/IV are the
   // shared might/health specialties doubled for Liches; VI is his signature —
   // make the Liches deal elemental damage, OR a flat +2 attack.
-  // Art-less: the moandor specialty scans (hero_specialties-moandor-*.webp) were
-  // never shipped, so the native renderer draws these with the Power Lich portrait
-  // symbol (SPECIALTY_ICON_BY_HERO.moandor) instead of a broken <img> link.
-  "specialty.moandor.1": withoutArt(mightSpecialtyOne("moandor", "Liches", "Liches")),
-  "specialty.moandor.4": withoutArt(unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches")),
+  // The moandor specialty scans (hero_specialties-moandor-*.webp) ship since the
+  // 2026-08 wiki art refresh (scripts/fetch-hero-art-refresh.py), so these draw the
+  // printed face; SPECIALTY_ICON_BY_HERO.moandor is only the load-failure fallback.
+  "specialty.moandor.1": withSpecialtyArt(mightSpecialtyOne("moandor", "Liches", "Liches")),
+  "specialty.moandor.4": withSpecialtyArt(unitHealthSpecialty("moandor", "Liches", 4, 1, "Liches")),
   // Moandor VI is a CHOICE (— OR —), re-confirmed against the owner's physical
   // card 2026-06: the fan wiki renders the two clauses with no "OR" (looking like
   // a combined AND), but the printed card is choose-one. Do not "fix" it to AND.
-  "specialty.moandor.6": {
+  "specialty.moandor.6": withSpecialtyArt({
     id: "specialty.moandor.6",
     name: "Liches VI",
     kind: "hero-specialty",
@@ -1845,10 +1868,9 @@ export const adventureCards: CardLibrary = {
         }
       ]
     },
-    // Art-less (see specialty.moandor.1/4): no shipped scan — rendered natively.
     implementationStatus: "implemented",
     source: heroSource("moandor")
-  },
+  }),
   // Gelu (Ranger): the Sharpshooters specialist. His +1 attack/defence (I) and
   // +2 initiative (VI) double for BOTH the Elves and Sharpshooters units (wiki).
   "specialty.gelu.1": mightSpecialtyOne("gelu", "Sharpshooters", "Elves and Sharpshooters"),
@@ -2557,7 +2579,7 @@ export const adventureCards: CardLibrary = {
   // only (basic/small battlefield does NOT raise Combat movement). IV/VI add
   // the initiative-comparison conditionals. House rule ("combat-move-initiative"):
   // also +1 Combat movement; house-rule alternative: draw 1 card instead.
-  "specialty.cyra.1": {
+  "specialty.cyra.1": withSpecialtyArt({
     id: "specialty.cyra.1",
     name: "Haste I",
     kind: "hero-specialty",
@@ -2600,10 +2622,10 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("cyra")
-  },
+  }),
   // IV: +1 attack on your unit's attack, doubled when the attacked unit is
   // faster (a strictly higher Initiative) — played as an attack reaction.
-  "specialty.cyra.4": {
+  "specialty.cyra.4": withSpecialtyArt({
     id: "specialty.cyra.4",
     name: "Haste IV",
     kind: "hero-specialty",
@@ -2620,10 +2642,10 @@ export const adventureCards: CardLibrary = {
     effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, doubleIfDefenderInitiativeHigher: true },
     implementationStatus: "implemented",
     source: heroSource("cyra")
-  },
+  }),
   // VI: wiki = +3 initiative this combat plus +1 defense against slower attackers.
   // House rule: also +1 Combat movement (gated in getUnitMoveRange).
-  "specialty.cyra.6": {
+  "specialty.cyra.6": withSpecialtyArt({
     id: "specialty.cyra.6",
     name: "Haste VI",
     kind: "hero-specialty",
@@ -2655,7 +2677,7 @@ export const adventureCards: CardLibrary = {
     },
     implementationStatus: "implemented",
     source: heroSource("cyra")
-  },
+  }),
   // Solmyr (Wizard): the Chain Lightning specialist. I/VI fork lightning into
   // the units closest to the selected one; IV digs his own deck for a card.
   "specialty.solmyr.1": {
@@ -2725,7 +2747,7 @@ export const adventureCards: CardLibrary = {
   // through the end of the current game round. They may be committed on the map
   // before a Combat; when played during Combat, IV activates this Ballista plus
   // one other and VI activates every Ballista immediately.
-  "specialty.torosar.1": {
+  "specialty.torosar.1": withSpecialtyArt({
     id: "specialty.torosar.1",
     name: "Ballista I",
     kind: "hero-specialty",
@@ -2741,8 +2763,8 @@ export const adventureCards: CardLibrary = {
     effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
-  },
-  "specialty.torosar.4": {
+  }),
+  "specialty.torosar.4": withSpecialtyArt({
     id: "specialty.torosar.4",
     name: "Ballista IV",
     kind: "hero-specialty",
@@ -2758,8 +2780,8 @@ export const adventureCards: CardLibrary = {
     effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "up-to-two" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
-  },
-  "specialty.torosar.6": {
+  }),
+  "specialty.torosar.6": withSpecialtyArt({
     id: "specialty.torosar.6",
     name: "Ballista VI",
     kind: "hero-specialty",
@@ -2775,7 +2797,7 @@ export const adventureCards: CardLibrary = {
     effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "all" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
-  },
+  }),
 
   // ---- Conflux heroes (unit-specialist Planeswalkers) --------------------
   // Erdamon: the Magma Elementals specialist (wiki — "The effect doubles for
@@ -3899,25 +3921,25 @@ export const adventureCards: CardLibrary = {
   // Valeska (Castle): the Marksmen specialist. I = +1 HP; IV = +1 A/D (both
   // doubled for a Marksmen unit); VI = re-fire a ranged unit (even if already
   // activated) or draw 2.
-  "specialty.valeska.1": withoutArt(towerHealthSpecialty("valeska", "Marksmen", 1, 1, "Marksmen")),
-  "specialty.valeska.4": withoutArt(towerAttackOrDefenseSpecialty("valeska", "Marksmen", 4, "Marksmen")),
-  "specialty.valeska.6": withoutArt(activateRangedOrDrawSpecialty("valeska", "Marksmen", 6, 2)),
+  "specialty.valeska.1": withSpecialtyArt(towerHealthSpecialty("valeska", "Marksmen", 1, 1, "Marksmen")),
+  "specialty.valeska.4": withSpecialtyArt(towerAttackOrDefenseSpecialty("valeska", "Marksmen", 4, "Marksmen")),
+  "specialty.valeska.6": withSpecialtyArt(activateRangedOrDrawSpecialty("valeska", "Marksmen", 6, 2)),
   // Ingham (Castle): the Zealots specialist. I = +1 A/D; IV = +1 HP (both
   // doubled for a Zealots unit); VI = your selected unit ignores Defense, or draw 1.
-  "specialty.ingham.1": withoutArt(towerAttackOrDefenseSpecialty("ingham", "Zealots", 1, "Zealots")),
-  "specialty.ingham.4": withoutArt(towerHealthSpecialty("ingham", "Zealots", 4, 1, "Zealots")),
-  "specialty.ingham.6": withoutArt(ignoreDefenseOrDrawSpecialty("ingham", "Zealots", 6, 1)),
+  "specialty.ingham.1": withSpecialtyArt(towerAttackOrDefenseSpecialty("ingham", "Zealots", 1, "Zealots")),
+  "specialty.ingham.4": withSpecialtyArt(towerHealthSpecialty("ingham", "Zealots", 4, 1, "Zealots")),
+  "specialty.ingham.6": withSpecialtyArt(ignoreDefenseOrDrawSpecialty("ingham", "Zealots", 6, 1)),
   // Lorelei (Dungeon): the Harpies specialist. I = +1 A/D; IV = +1 HP; VI = +2
   // attack on your attack — all doubled for a Harpies unit.
-  "specialty.lorelei.1": withoutArt(towerAttackOrDefenseSpecialty("lorelei", "Harpies", 1, "Harpies")),
-  "specialty.lorelei.4": withoutArt(towerHealthSpecialty("lorelei", "Harpies", 4, 1, "Harpies")),
-  "specialty.lorelei.6": withoutArt(attackInstantSpecialty("lorelei", "Harpies", 6, 2, "Harpies")),
+  "specialty.lorelei.1": withSpecialtyArt(towerAttackOrDefenseSpecialty("lorelei", "Harpies", 1, "Harpies")),
+  "specialty.lorelei.4": withSpecialtyArt(towerHealthSpecialty("lorelei", "Harpies", 4, 1, "Harpies")),
+  "specialty.lorelei.6": withSpecialtyArt(attackInstantSpecialty("lorelei", "Harpies", 6, 2, "Harpies")),
   // Septienna (Necropolis): the Death Ripple specialist. Each grade tier of
   // enemy units takes damage (I bronze, IV silver, VI golden+azure), or +Power
   // on a Spell you are casting.
-  "specialty.septienna.1": withoutArt(deathRippleSpecialty(1, ["bronze"], 1, 1)),
-  "specialty.septienna.4": withoutArt(deathRippleSpecialty(4, ["silver"], 1, 1)),
-  "specialty.septienna.6": withoutArt(deathRippleSpecialty(6, ["gold", "azure"], 2, 2)),
+  "specialty.septienna.1": withSpecialtyArt(deathRippleSpecialty(1, ["bronze"], 1, 1)),
+  "specialty.septienna.4": withSpecialtyArt(deathRippleSpecialty(4, ["silver"], 1, 1)),
+  "specialty.septienna.6": withSpecialtyArt(deathRippleSpecialty(6, ["gold", "azure"], 2, 2)),
   // Lord Haart (Necropolis): the Dread Knights specialist. I/VI reduce enemy
   // retaliation damage by 1/2 (doubled for Dread Knights); IV makes enemy
   // Retaliation Attacks against the chosen unit roll at disadvantage.
@@ -3981,15 +4003,15 @@ export const adventureCards: CardLibrary = {
 
   // Ivor (Rampart, Ranger): the Elves specialist who bends the dice.
   // I: set all dice of the next attack roll (either side's) to "0".
-  "specialty.ivor.1": withoutArt(
+  "specialty.ivor.1": withSpecialtyArt(
     forceAttackRollSpecialty("ivor", "Elves", 1, 0, "any", "Set all dice of the next attack roll to \"0\".")
   ),
   // IV: +1 attack OR +1 defense, doubled for a ranged unit (NEW doubleForUnitType).
-  "specialty.ivor.4": withoutArt(attackOrDefenseByTypeSpecialty("ivor", "Elves", 4, "ranged", "a ranged unit")),
+  "specialty.ivor.4": withSpecialtyArt(attackOrDefenseByTypeSpecialty("ivor", "Elves", 4, "ranged", "a ranged unit")),
   // VI: +2 HP for the Combat (selected unit) — OR — set all dice of your own
   // attack roll to "+1" (the only value that maximises an attack, so the engine
   // realises "the values of your choice").
-  "specialty.ivor.6": withoutArt({
+  "specialty.ivor.6": withSpecialtyArt({
     id: "specialty.ivor.6",
     name: "Elves VI",
     kind: "hero-specialty",
@@ -4024,7 +4046,7 @@ export const adventureCards: CardLibrary = {
 
   // Tarnum (Castle, Knight): the Ballista specialist (one of six Tarnum variants).
   // I: pay 5 gold to gain a Ballista (map) — OR — activate your Ballista (combat).
-  "specialty.tarnum_castle.1": withoutArt({
+  "specialty.tarnum_castle.1": withSpecialtyArt({
     id: "specialty.tarnum_castle.1",
     name: "Ballista I",
     kind: "hero-specialty",
@@ -4056,7 +4078,7 @@ export const adventureCards: CardLibrary = {
     source: heroSource("tarnum_castle")
   }),
   // IV: gain an extra Ballista for this Combat (discarded afterwards) — OR — draw 1.
-  "specialty.tarnum_castle.4": withoutArt({
+  "specialty.tarnum_castle.4": withSpecialtyArt({
     id: "specialty.tarnum_castle.4",
     name: "Ballista IV",
     kind: "hero-specialty",
@@ -4087,7 +4109,7 @@ export const adventureCards: CardLibrary = {
     source: heroSource("tarnum_castle")
   }),
   // VI: choose 2 enemy units; each suffers 2 damage (NEW DAMAGE_CHOSEN_ENEMIES).
-  "specialty.tarnum_castle.6": withoutArt({
+  "specialty.tarnum_castle.6": withSpecialtyArt({
     id: "specialty.tarnum_castle.6",
     name: "Ballista VI",
     kind: "hero-specialty",
@@ -4109,7 +4131,7 @@ export const adventureCards: CardLibrary = {
   // Merist (Fortress, Witch): the Stone Skin specialist — a defensive magic hero.
   // I: defense reaction — +1 defense to the attacked unit, +1 more if it is
   // orthogonally adjacent to the attacker (NEW extraIfAdjacentToAttacker).
-  "specialty.merist.1": withoutArt({
+  "specialty.merist.1": withSpecialtyArt({
     id: "specialty.merist.1",
     name: "Stone Skin I",
     kind: "hero-specialty",
@@ -4128,7 +4150,7 @@ export const adventureCards: CardLibrary = {
     source: heroSource("merist")
   }),
   // IV: all your units gain a Defense token (NEW GRANT_DEFENSE_TOKENS).
-  "specialty.merist.4": withoutArt({
+  "specialty.merist.4": withSpecialtyArt({
     id: "specialty.merist.4",
     name: "Stone Skin IV",
     kind: "hero-specialty",
@@ -4142,7 +4164,7 @@ export const adventureCards: CardLibrary = {
   }),
   // VI: place a Defense token on all your units and, for this Combat, your
   // Defense tokens pay out on a "0" as well as a "+1" roll (NEW STONE_SKIN_AURA).
-  "specialty.merist.6": withoutArt({
+  "specialty.merist.6": withSpecialtyArt({
     id: "specialty.merist.6",
     name: "Stone Skin VI",
     kind: "hero-specialty",
@@ -4163,15 +4185,17 @@ export const adventureCards: CardLibrary = {
 
   // ---- Additional heroes, batch 5 ---------------------------------------
   // Eight "Regular Stretch Goals 2024" heroes that complete every already-playable
-  // Town's roster on the fan wiki. Their pages show only the deck-back placeholder
-  // (no board scan, no specialty faces), so — like batch 3/4 — they ship the classic
-  // PC portrait and face-less specialty cards (withoutArt). Every I/IV/VI specialty
-  // runs in the engine and is mutation-checked (extra-heroes-batch5-specialties.test.ts).
+  // Town's roster on the fan wiki. Their pages used to show only the deck-back
+  // placeholder, so they shipped a PC portrait and face-less cards; the 2026-08 wiki
+  // art refresh (scripts/fetch-hero-art-refresh.py) published their real boards AND
+  // specialty faces, so — like batch 3/4 — they now carry both (withSpecialtyArt).
+  // Every I/IV/VI specialty runs in the engine and is mutation-checked
+  // (extra-heroes-batch5-specialties.test.ts).
 
   // Ash (Inferno, Heretic): the Bloodlust specialist — pumps a ground/flying unit's
   // attack but "places a Black cube" on it (it spends its Retaliation). I/VI are
   // instants on your declared attack; IV is an ongoing +2 attack / +1 initiative.
-  "specialty.ash.1": withoutArt({
+  "specialty.ash.1": withSpecialtyArt({
     id: "specialty.ash.1",
     name: "Bloodlust I",
     kind: "hero-specialty",
@@ -4195,7 +4219,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("ash")
   }),
-  "specialty.ash.4": withoutArt({
+  "specialty.ash.4": withSpecialtyArt({
     id: "specialty.ash.4",
     name: "Bloodlust IV",
     kind: "hero-specialty",
@@ -4227,7 +4251,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("ash")
   }),
-  "specialty.ash.6": withoutArt({
+  "specialty.ash.6": withSpecialtyArt({
     id: "specialty.ash.6",
     name: "Bloodlust VI",
     kind: "hero-specialty",
@@ -4261,7 +4285,7 @@ export const adventureCards: CardLibrary = {
   // own turn it may be played off-turn when an enemy unit's activation starts or
   // when it finishes its move. The free 1 damage (IV) and the ongoing aim (VI)
   // stay on your own turn only.
-  "specialty.gerwulf.1": withoutArt({
+  "specialty.gerwulf.1": withSpecialtyArt({
     id: "specialty.gerwulf.1",
     name: "Ballista I",
     kind: "hero-specialty",
@@ -4292,7 +4316,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("gerwulf")
   }),
-  "specialty.gerwulf.4": withoutArt({
+  "specialty.gerwulf.4": withSpecialtyArt({
     id: "specialty.gerwulf.4",
     name: "Ballista IV",
     kind: "hero-specialty",
@@ -4326,7 +4350,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("gerwulf")
   }),
-  "specialty.gerwulf.6": withoutArt({
+  "specialty.gerwulf.6": withSpecialtyArt({
     id: "specialty.gerwulf.6",
     name: "Ballista VI",
     kind: "hero-specialty",
@@ -4375,8 +4399,8 @@ export const adventureCards: CardLibrary = {
   // specialty (doubles for Dragons, like Mutare). IV damages a whole vertical
   // line of 5 spaces (NEW DAMAGE_BATTLEFIELD_LINE). VI toggles a Dragons unit's
   // Black cube (NEW TOGGLE_RETALIATION_MARKER) or grants +2 attack on an attack.
-  "specialty.tarnum_dungeon.1": withoutArt(mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit")),
-  "specialty.tarnum_dungeon.4": withoutArt({
+  "specialty.tarnum_dungeon.1": withSpecialtyArt(mightSpecialtyOne("tarnum_dungeon", "Dragons", "a Dragons unit")),
+  "specialty.tarnum_dungeon.4": withSpecialtyArt({
     id: "specialty.tarnum_dungeon.4",
     name: "Dragons IV",
     kind: "hero-specialty",
@@ -4404,7 +4428,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("tarnum_dungeon")
   }),
-  "specialty.tarnum_dungeon.6": withoutArt({
+  "specialty.tarnum_dungeon.6": withSpecialtyArt({
     id: "specialty.tarnum_dungeon.6",
     name: "Dragons VI",
     kind: "hero-specialty",
@@ -4444,7 +4468,7 @@ export const adventureCards: CardLibrary = {
   // with an instant alternative. The wiki notes the gain "can be improved by spell
   // power"; the engine has no map-phase hero Power, so the printed flat amounts run
   // (the note is not modeled).
-  "specialty.sephinroth.1": withoutArt({
+  "specialty.sephinroth.1": withSpecialtyArt({
     id: "specialty.sephinroth.1",
     name: "Valuables I",
     kind: "hero-specialty",
@@ -4474,7 +4498,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("sephinroth")
   }),
-  "specialty.sephinroth.4": withoutArt({
+  "specialty.sephinroth.4": withSpecialtyArt({
     id: "specialty.sephinroth.4",
     name: "Valuables IV",
     kind: "hero-specialty",
@@ -4505,7 +4529,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("sephinroth")
   }),
-  "specialty.sephinroth.6": withoutArt({
+  "specialty.sephinroth.6": withSpecialtyArt({
     id: "specialty.sephinroth.6",
     name: "Valuables VI",
     kind: "hero-specialty",
@@ -4540,9 +4564,10 @@ export const adventureCards: CardLibrary = {
   // The four remaining fan-wiki heroes (minus Tarnum Conflux) that complete every
   // playable Town's roster: Octavia (Inferno) & Melodia (Rampart) — economic
   // Resource-die / Fortune specialists — plus the Rampart & Fortress Tarnum
-  // variants. Placeholder-art wiki heroes → PC portraits + face-less specialty
-  // cards (withoutArt), like batches 4–5. Every specialty runs in the engine
-  // (extra-heroes-batch6-specialties.test.ts).
+  // variants. They shipped PC portraits + face-less specialty cards until the
+  // 2026-08 wiki art refresh published their printed boards AND specialty faces,
+  // so they now carry the real scans (withSpecialtyArt), like batches 4-5. Every
+  // specialty runs in the engine (extra-heroes-batch6-specialties.test.ts).
 
   // Octavia (Inferno, Demoniac, A2 D2 P1 K1, Scholar): the "Gold" Resource-die
   // specialist. I's signature half is a REACTION offered the moment a Resource
@@ -4551,7 +4576,7 @@ export const adventureCards: CardLibrary = {
   // card". IV/VI roll Resource dice on the map (RESOURCE_FORTUNE_PLAY) — VI rolls
   // 2 and resolves one through the existing roll-resource CHOOSE_ONE — each with a
   // combat / draw alternative.
-  "specialty.octavia.1": withoutArt({
+  "specialty.octavia.1": withSpecialtyArt({
     id: "specialty.octavia.1",
     name: "Gold I",
     kind: "hero-specialty",
@@ -4574,7 +4599,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("octavia")
   }),
-  "specialty.octavia.4": withoutArt({
+  "specialty.octavia.4": withSpecialtyArt({
     id: "specialty.octavia.4",
     name: "Gold IV",
     kind: "hero-specialty",
@@ -4605,7 +4630,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("octavia")
   }),
-  "specialty.octavia.6": withoutArt({
+  "specialty.octavia.6": withSpecialtyArt({
     id: "specialty.octavia.6",
     name: "Gold VI",
     kind: "hero-specialty",
@@ -4641,7 +4666,7 @@ export const adventureCards: CardLibrary = {
   // 1 gold; IV rolls 2 Resource dice and resolves one + 1 gold; VI is a
   // current-turn buff (LOCATION_DICE_BONUS) raising the dice rolled & resolved at
   // locations by 1 + 1 gold. All routed through RESOURCE_FORTUNE_PLAY.
-  "specialty.melodia.1": withoutArt({
+  "specialty.melodia.1": withSpecialtyArt({
     id: "specialty.melodia.1",
     name: "Fortune I",
     kind: "hero-specialty",
@@ -4661,7 +4686,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("melodia")
   }),
-  "specialty.melodia.4": withoutArt({
+  "specialty.melodia.4": withSpecialtyArt({
     id: "specialty.melodia.4",
     name: "Fortune IV",
     kind: "hero-specialty",
@@ -4687,7 +4712,7 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("melodia")
   }),
-  "specialty.melodia.6": withoutArt({
+  "specialty.melodia.6": withSpecialtyArt({
     id: "specialty.melodia.6",
     name: "Fortune VI",
     kind: "hero-specialty",
@@ -4722,9 +4747,9 @@ export const adventureCards: CardLibrary = {
   //       regardless of the roll (forceAbilityRolls → forceAbilityRollsThisAttack),
   //       with NO attack bonus (amount 0).
   //   B — the buffed attack gains +2 attack (and does NOT force any ability roll).
-  "specialty.tarnum_fortress.1": withoutArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
-  "specialty.tarnum_fortress.4": withoutArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
-  "specialty.tarnum_fortress.6": withoutArt({
+  "specialty.tarnum_fortress.1": withSpecialtyArt(mightSpecialtyOne("tarnum_fortress", "Basilisks", "Basilisks")),
+  "specialty.tarnum_fortress.4": withSpecialtyArt(unitHealthSpecialty("tarnum_fortress", "Basilisks", 4, 1, "Basilisks")),
+  "specialty.tarnum_fortress.6": withSpecialtyArt({
     id: "specialty.tarnum_fortress.6",
     name: "Basilisks VI",
     kind: "hero-specialty",
@@ -4769,13 +4794,13 @@ export const adventureCards: CardLibrary = {
   // unit (the multi-unit descriptor unitMatchesSpecialtyName splits on "or"). VI is
   // a CHOOSE_ONE: borrow a Sharpshooters from the silver Neutral deck for this
   // Combat (BORROW_NEUTRAL_UNIT, gated to combat round 1) — OR — draw a card.
-  "specialty.tarnum_rampart.1": withoutArt(
+  "specialty.tarnum_rampart.1": withSpecialtyArt(
     mightSpecialtyOne("tarnum_rampart", "Sharpshooters", "Elves or Sharpshooters")
   ),
-  "specialty.tarnum_rampart.4": withoutArt(
+  "specialty.tarnum_rampart.4": withSpecialtyArt(
     unitInitiativeSpecialty("tarnum_rampart", "Sharpshooters", 4, 1, "Elves or Sharpshooters")
   ),
-  "specialty.tarnum_rampart.6": withoutArt({
+  "specialty.tarnum_rampart.6": withSpecialtyArt({
     id: "specialty.tarnum_rampart.6",
     name: "Sharpshooters VI",
     kind: "hero-specialty",
@@ -4826,9 +4851,9 @@ export const adventureCards: CardLibrary = {
   // Cannon (requiresWarMachine) so it can never fire without one, and never
   // spending an expert use because it is a separate specialty play (so it does
   // not count against the Cannon's once-per-round limit).
-  // Jeremy I specialty face was not in the new-art pack (only IV/VI + board) —
-  // remains withoutArt until that scan is uploaded.
-  "specialty.jeremy.1": withoutArt({
+  // Jeremy I's specialty face was missing from the first Cove art pack (only IV/VI
+  // shipped); the 2026-08 wiki refresh added it, so all three now carry the scan.
+  "specialty.jeremy.1": withSpecialtyArt({
     id: "specialty.jeremy.1",
     name: "Cannon I",
     kind: "hero-specialty",

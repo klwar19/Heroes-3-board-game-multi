@@ -67,29 +67,37 @@ function lastAttackRolled(
 // Roster + art wiring (CLAUDE.md rule #2: data states exactly what runs)
 // ===========================================================================
 
-describe("batch-4 heroes are registered with PC-portrait art and implemented specialties", () => {
+describe("batch-4 heroes are registered with printed board art and implemented specialties", () => {
   const heroes: Array<[string, keyof typeof coreFactionDefinitions]> = [
     ["ivor", "rampart"],
     ["tarnum_castle", "castle"],
     ["merist", "fortress"]
   ];
 
-  it("each carries a real PC portrait, NO board scan, and 3 implemented, face-less specialties", () => {
+  // They shipped PC portraits and art-less specialty cards until the fan wiki
+  // published the "Regular Stretch Goals 2024" art pack; each now carries the
+  // printed board scan, the portrait cropped from it, and all three printed
+  // specialty faces (scripts/fetch-hero-art-refresh.py).
+  it("each carries a real board scan, a cropped portrait, and 3 implemented specialties with printed faces", () => {
     for (const [heroId, factionId] of heroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, `${heroId} should be defined`).toBeTruthy();
       expect(coreFactionDefinitions[factionId].heroes, `${factionId} roster`).toContain(heroId);
-      expect(hero.portrait, `${heroId} portrait path`).toMatch(/^\/assets\/hero_portraits-/);
-      expect(hero.boardScan, `${heroId} has no board scan`).toBeUndefined();
+      expect(hero.portrait, `${heroId} portrait path`).toBe(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan, `${heroId} board scan`).toBe(
+        `/assets/heroes-${factionId}-${hero.type}-${heroId}.webp`
+      );
       expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file on disk`).toBe(true);
+      expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board file on disk`).toBe(true);
       for (const level of [1, 4, 6] as const) {
         const card = adventureCards[hero.specialtyCardIds![level]];
         expect(card, `${hero.specialtyCardIds![level]} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${card.id} implemented`).toBe("implemented");
         expect(card.tags, `${card.id} not flagged needs-implementation`).not.toContain("needs-implementation");
-        // No printed specialty face exists for these heroes (placeholder art), so
-        // — like Cyra/Torosar/batch-3 — the card must not reference a missing file.
-        expect(card.assets?.cardImage, `${card.id} omits a missing image`).toBeUndefined();
+        // The printed face ships now, so the card must point at it and the file
+        // must exist (never a broken <img>).
+        expect(card.assets?.cardImage, `${card.id} art`).toBe(`/assets/hero_specialties-${heroId}-${level}.webp`);
+        expect(existsSync(assetPath(card.assets!.cardImage!)), `${card.id} face on disk`).toBe(true);
       }
     }
   });

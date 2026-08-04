@@ -15,6 +15,14 @@ import { coreHeroDefinitions } from "@/data/factions/core";
  * given a faithful symbol below: a creature's own transparent portrait for the
  * unit specialists (matching the printed card, like the Bulwark heroes), and
  * the matching secondary-skill / war-machine icon for the rest.
+ *
+ * HONEST LIMIT after the 2026-08 wiki art refresh (scripts/fetch-hero-art-refresh.py):
+ * many entries below are now FALLBACK-ONLY. Every "Regular Stretch Goals 2024",
+ * Cove, Conflux and Stronghold hero ships its printed specialty face, so
+ * canRenderSpecialtyCard() is false for them and the native card never draws —
+ * their symbol is only reached by the hero-board slot when an image fails to load.
+ * They are kept deliberately (a scan can 404 on the CDN); only the Bulwark,
+ * Factory and anime heroes still render natively.
  */
 export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // --- Unit specialists: the creature the specialty names ------------------

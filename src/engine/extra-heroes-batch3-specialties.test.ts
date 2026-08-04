@@ -128,29 +128,35 @@ function attackThenReact(
 // ===========================================================================
 
 describe("batch-3 heroes are registered with art and implemented specialties", () => {
-  const pcPortraitHeroes: Array<[string, FactionId]> = [
-    ["valeska", "castle"],
-    ["ingham", "castle"],
-    ["lorelei", "dungeon"],
-    ["septienna", "necropolis"]
+  // These four used to ship a PC portrait and art-less specialty cards; the fan
+  // wiki published the whole "Regular Stretch Goals 2024" art pack, so they now
+  // carry the printed board scan, the portrait cropped from it and all three
+  // printed specialty faces (scripts/fetch-hero-art-refresh.py).
+  const stretchGoalHeroes: Array<[string, FactionId, "might" | "magic"]> = [
+    ["valeska", "castle", "might"],
+    ["ingham", "castle", "magic"],
+    ["lorelei", "dungeon", "might"],
+    ["septienna", "necropolis", "magic"]
   ];
 
-  it("the placeholder-art heroes carry a real PC portrait, NO board scan, and 3 implemented specialties", () => {
-    for (const [heroId, factionId] of pcPortraitHeroes) {
+  it("the stretch-goal heroes carry a real board scan, cropped portrait and 3 implemented specialties with printed faces", () => {
+    for (const [heroId, factionId, kind] of stretchGoalHeroes) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero, `${heroId} should be defined`).toBeTruthy();
       expect(coreFactionDefinitions[factionId].heroes, `${factionId} roster`).toContain(heroId);
-      expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_portraits-${heroId}.webp`);
-      expect(hero.boardScan, `${heroId} has no board scan`).toBeUndefined();
+      expect(hero.portrait, `${heroId} portrait`).toBe(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan, `${heroId} board scan`).toBe(`/assets/heroes-${factionId}-${kind}-${heroId}.webp`);
       expect(existsSync(assetPath(hero.portrait!)), `${heroId} portrait file on disk`).toBe(true);
+      expect(existsSync(assetPath(hero.boardScan!)), `${heroId} board file on disk`).toBe(true);
       for (const level of [1, 4, 6] as const) {
         const card = adventureCards[hero.specialtyCardIds![level]];
         expect(card, `${hero.specialtyCardIds![level]} should exist`).toBeTruthy();
         expect(card.implementationStatus, `${card.id} implemented`).toBe("implemented");
         expect(card.tags, `${card.id} not flagged needs-implementation`).not.toContain("needs-implementation");
-        // No printed specialty face exists for these heroes, so (like Cyra/Torosar)
-        // the card must NOT reference a missing image file.
-        expect(card.assets?.cardImage, `${card.id} omits a missing image`).toBeUndefined();
+        // The printed face now ships, so the card must reference it AND the file
+        // must exist (never a broken <img>).
+        expect(card.assets?.cardImage, `${card.id} art`).toBe(`/assets/hero_specialties-${heroId}-${level}.webp`);
+        expect(existsSync(assetPath(card.assets!.cardImage!)), `${card.id} face on disk`).toBe(true);
       }
     }
   });

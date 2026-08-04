@@ -83,33 +83,21 @@ function wikiBoardHeroSource(pageSlug: string) {
   };
 }
 
-/**
- * Source for the two Tower heroes whose printed boards are not on the fan wiki
- * yet (only placeholder art): stats follow the verified Wizard/Alchemist board
- * pattern and the portrait is the classic PC hero portrait (heroes.thelazy.net,
- * upscaled, hosted locally), exactly like Moandor.
- */
-function towerPcPortraitHeroSource(slug: string, pcName: string) {
-  return {
-    product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
-    credit:
-      "Hero roster, class and specialty from the fan wiki Tower town page. The printed board is not on the wiki yet, so the starting statistics follow the verified Wizard/Alchemist board pattern and the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
-    url: `https://heroes.thelazy.net/index.php/${pcName}`
-  };
-}
+// (The Tower PC-portrait hero source is gone: Cyra and Torosar ship their real
+// printed board scans since the 2026-08 art refresh, so they use towerHeroSource.)
 
 /**
  * Source for the Conflux heroes: the fan wiki Conflux hero pages carry the full
  * printed board data (class, statistics, starting ability and the I/IV/VI
- * specialty rules), but no card/board scan yet — only placeholder art — so the
- * portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled,
- * hosted locally), exactly like Moandor and the two PC-portrait Tower heroes.
+ * specialty rules) AND — since the 2026-08 art refresh
+ * (scripts/fetch-hero-art-refresh.py) — the printed board scan, so the portrait is
+ * the board-game art cropped from it (the older PC-portrait note was stale).
  */
 function confluxHeroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Conflux Expansion)",
     credit:
-      "Hero class, statistics, starting ability and the I/IV/VI specialty rules transcribed from the fan wiki Conflux hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
+      "Hero class, statistics, starting ability and the I/IV/VI specialty rules transcribed from the fan wiki Conflux hero page; board scan from the same wiki with the portrait cropped from it (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
@@ -130,33 +118,21 @@ function factoryHeroSource(slug: string) {
   };
 }
 
-/**
- * Source for the "Regular Stretch Goals 2024" heroes whose fan-wiki page still
- * shows only the deck-back placeholder (no printed board scan or specialty card
- * faces yet): stats, class, starting ability and the I/IV/VI specialty rules are
- * transcribed from that page, and the portrait is the classic PC hero portrait
- * from heroes.thelazy.net (upscaled, hosted locally), exactly like Moandor.
- */
-function stretchGoalPcPortraitHeroSource(slug: string, pcName: string) {
-  return {
-    product: "Heroes of Might and Magic III: The Board Game (Regular Stretch Goals 2024)",
-    credit:
-      `Hero roster, class, statistics, starting ability and specialty rules from the fan wiki hero page. The printed board is not on the wiki yet (placeholder art), so the portrait is the classic PC hero portrait from heroes.thelazy.net/index.php/${pcName} (upscaled, hosted locally). Verify against official components before final release.`,
-    url: `https://en.homm3bg.wiki/heroes/${slug}/`
-  };
-}
+// (The "Regular Stretch Goals 2024" PC-portrait hero source is gone: the fan wiki
+// published the whole group's printed boards AND specialty faces in the 2026-08
+// art refresh, so every one of those heroes now uses stretchGoalHeroSource.)
 
 /**
  * Source for the Cove heroes. The fan wiki Cove pages carry the hero roster,
- * class, statistics, starting ability and the I/IV/VI specialty rules, but no
- * printed board art yet, so the portrait is the classic PC hero portrait from
- * heroes.thelazy.net (hosted locally), exactly like the Tower PC-portrait heroes.
+ * class, statistics, starting ability and the I/IV/VI specialty rules, and (as of
+ * the 2026-08 art refresh — scripts/fetch-hero-art-refresh.py) the printed board
+ * scans too, so the portrait is the board-game art cropped from that scan.
  */
 function coveHeroSource(slug: string) {
   return {
     product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
     credit:
-      "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. The printed board is not on the wiki yet, so the portrait is the classic PC hero portrait from heroes.thelazy.net (hosted locally). Verify against official components before final release.",
+      "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages; board scan from the same wiki and the portrait cropped from it (hosted locally). Verify against official components before final release.",
     url: `https://en.homm3bg.wiki/heroes/${slug}/`
   };
 }
@@ -1405,16 +1381,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.moandor.4",
       6: "specialty.moandor.6"
     },
-    // Moandor's printed hero board is not on the fan wiki, so there is no board
-    // scan to crop. The portrait is the classic PC hero portrait from
-    // heroes.thelazy.net (upscaled, hosted locally).
-    portrait: "/assets/hero_portraits-moandor.webp",
-    source: {
-      product: "Heroes of Might and Magic III: The Board Game (Core Game)",
-      credit:
-        "Hero board data from the fan wiki; the printed board is not on the wiki, so the portrait is the classic PC hero portrait from heroes.thelazy.net (upscaled, hosted locally). Verify against official components before final release.",
-      url: "https://heroes.thelazy.net/index.php/Moandor"
-    }
+    portrait: "/assets/hero_boardart-moandor.webp",
+    boardScan: "/assets/heroes-necropolis-might-moandor.webp",
+    source: stretchGoalHeroSource("moandor")
   },
   gelu: {
     id: "gelu",
@@ -1739,8 +1708,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.cyra.4",
       6: "specialty.cyra.6"
     },
-    portrait: "/assets/hero_portraits-cyra.webp",
-    source: towerPcPortraitHeroSource("cyra", "Cyra")
+    portrait: "/assets/hero_boardart-cyra.webp",
+    boardScan: "/assets/heroes-tower-magic-cyra.webp",
+    source: towerHeroSource("cyra")
   },
   torosar: {
     id: "torosar",
@@ -1755,8 +1725,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.torosar.4",
       6: "specialty.torosar.6"
     },
-    portrait: "/assets/hero_portraits-torosar.webp",
-    source: towerPcPortraitHeroSource("torosar", "Torosar")
+    portrait: "/assets/hero_boardart-torosar.webp",
+    boardScan: "/assets/heroes-tower-might-torosar.webp",
+    source: towerHeroSource("torosar")
   },
 
   // ---- Conflux (expansion) -----------------------------------------------
@@ -2084,10 +2055,11 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Additional heroes, batch 3 ---------------------------------------
-  // Four "Regular Stretch Goals 2024" heroes whose fan-wiki pages still show the
-  // deck-back placeholder, so they ship the classic PC portrait (heroes.thelazy.net,
-  // like Moandor/Cyra/Torosar). Lord Haart (Necropolis) IS on the wiki with his
-  // real printed board + specialty faces. Every I/IV/VI specialty runs in the
+  // Four "Regular Stretch Goals 2024" heroes whose fan-wiki pages used to show only
+  // the deck-back placeholder (they shipped a classic PC portrait then); since the
+  // 2026-08 art refresh (scripts/fetch-hero-art-refresh.py) each carries its printed
+  // board scan, the portrait cropped from it and all three specialty faces — like
+  // Lord Haart (Necropolis), who was on the wiki first. Every I/IV/VI specialty runs in the
   // engine and is mutation-checked (extra-heroes-batch3-specialties.test.ts).
   valeska: {
     id: "valeska",
@@ -2102,8 +2074,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.valeska.4",
       6: "specialty.valeska.6"
     },
-    portrait: "/assets/hero_portraits-valeska.webp",
-    source: stretchGoalPcPortraitHeroSource("valeska", "Valeska")
+    portrait: "/assets/hero_boardart-valeska.webp",
+    boardScan: "/assets/heroes-castle-might-valeska.webp",
+    source: stretchGoalHeroSource("valeska")
   },
   ingham: {
     id: "ingham",
@@ -2118,8 +2091,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.ingham.4",
       6: "specialty.ingham.6"
     },
-    portrait: "/assets/hero_portraits-ingham.webp",
-    source: stretchGoalPcPortraitHeroSource("ingham", "Ingham")
+    portrait: "/assets/hero_boardart-ingham.webp",
+    boardScan: "/assets/heroes-castle-magic-ingham.webp",
+    source: stretchGoalHeroSource("ingham")
   },
   lorelei: {
     id: "lorelei",
@@ -2134,8 +2108,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.lorelei.4",
       6: "specialty.lorelei.6"
     },
-    portrait: "/assets/hero_portraits-lorelei.webp",
-    source: stretchGoalPcPortraitHeroSource("lorelei", "Lorelei")
+    portrait: "/assets/hero_boardart-lorelei.webp",
+    boardScan: "/assets/heroes-dungeon-might-lorelei.webp",
+    source: stretchGoalHeroSource("lorelei")
   },
   septienna: {
     id: "septienna",
@@ -2150,8 +2125,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.septienna.4",
       6: "specialty.septienna.6"
     },
-    portrait: "/assets/hero_portraits-septienna.webp",
-    source: stretchGoalPcPortraitHeroSource("septienna", "Septienna")
+    portrait: "/assets/hero_boardart-septienna.webp",
+    boardScan: "/assets/heroes-necropolis-magic-septienna.webp",
+    source: stretchGoalHeroSource("septienna")
   },
   // Lord Haart (Necropolis): the undead Death Knight version of Lord Haart, a
   // separate hero from the Castle Knight (id `lord_haart`). His real printed board
@@ -2175,10 +2151,10 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   },
 
   // ---- Additional heroes, batch 4 ---------------------------------------
-  // Three "Regular Stretch Goals 2024" heroes whose fan-wiki pages still show the
-  // deck-back placeholder, so (like Valeska/Ingham/Lorelei/Septienna) they ship
-  // the classic PC portrait from heroes.thelazy.net — no board scan, no specialty
-  // card faces. Every I/IV/VI specialty runs in the engine and is mutation-checked
+  // Three "Regular Stretch Goals 2024" heroes who shipped a classic PC portrait and
+  // face-less specialty cards until the 2026-08 art refresh; like Valeska/Ingham/
+  // Lorelei/Septienna they now carry the printed board scan, the portrait cropped
+  // from it and all three specialty faces. Every I/IV/VI specialty runs in the engine and is mutation-checked
   // (extra-heroes-batch4-specialties.test.ts); each introduces a new mechanic.
   ivor: {
     id: "ivor",
@@ -2193,8 +2169,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.ivor.4",
       6: "specialty.ivor.6"
     },
-    portrait: "/assets/hero_portraits-ivor.webp",
-    source: stretchGoalPcPortraitHeroSource("ivor", "Ivor")
+    portrait: "/assets/hero_boardart-ivor.webp",
+    boardScan: "/assets/heroes-rampart-might-ivor.webp",
+    source: stretchGoalHeroSource("ivor")
   },
   // Tarnum (Castle): the Knight variant of Tarnum. The board game ships six Tarnum
   // heroes (one per Town); this is the Castle Ballista specialist. All six share
@@ -2212,8 +2189,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tarnum_castle.4",
       6: "specialty.tarnum_castle.6"
     },
-    portrait: "/assets/hero_portraits-tarnum.webp",
-    source: stretchGoalPcPortraitHeroSource("tarnum_castle", "Tarnum")
+    portrait: "/assets/hero_boardart-tarnum_castle.webp",
+    boardScan: "/assets/heroes-castle-might-tarnum_castle.webp",
+    source: stretchGoalHeroSource("tarnum_castle")
   },
   merist: {
     id: "merist",
@@ -2228,16 +2206,17 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.merist.4",
       6: "specialty.merist.6"
     },
-    portrait: "/assets/hero_portraits-merist.webp",
-    source: stretchGoalPcPortraitHeroSource("merist", "Merist")
+    portrait: "/assets/hero_boardart-merist.webp",
+    boardScan: "/assets/heroes-fortress-magic-merist.webp",
+    source: stretchGoalHeroSource("merist")
   },
 
   // ---- Additional heroes, batch 5 ---------------------------------------
   // Eight "Regular Stretch Goals 2024" heroes that complete the roster of every
   // already-playable Town to match the fan wiki's hero list. Each fan-wiki page
-  // shows only the deck-back placeholder (no printed board scan, no specialty card
-  // faces), so — like Valeska/Ingham/batch-3/batch-4 — they ship the classic PC
-  // hero portrait from heroes.thelazy.net and face-less specialty cards. Stats
+  // showed only the deck-back placeholder until the 2026-08 art refresh, so — like
+  // Valeska/Ingham/batch-3/batch-4 — they now ship the printed board scan, the
+  // portrait cropped from it and all three specialty faces. Stats
   // follow the verified per-class board pattern; class, starting ability and the
   // I/IV/VI specialty rules are transcribed from each hero's wiki page. Every
   // specialty runs in the engine (extra-heroes-batch5-specialties.test.ts).
@@ -2254,8 +2233,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.ash.4",
       6: "specialty.ash.6"
     },
-    portrait: "/assets/hero_portraits-ash.webp",
-    source: stretchGoalPcPortraitHeroSource("ash", "Ash")
+    portrait: "/assets/hero_boardart-ash.webp",
+    boardScan: "/assets/heroes-inferno-magic-ash.webp",
+    source: stretchGoalHeroSource("ash")
   },
   gerwulf: {
     id: "gerwulf",
@@ -2270,8 +2250,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.gerwulf.4",
       6: "specialty.gerwulf.6"
     },
-    portrait: "/assets/hero_portraits-gerwulf.webp",
-    source: stretchGoalPcPortraitHeroSource("gerwulf", "Gerwulf")
+    portrait: "/assets/hero_boardart-gerwulf.webp",
+    boardScan: "/assets/heroes-fortress-might-gerwulf.webp",
+    source: stretchGoalHeroSource("gerwulf")
   },
   // Tarnum (Dungeon): the Overlord variant of Tarnum, the Dragons specialist. Its
   // own class portrait (heroes.thelazy.net Tarnum (Overlord)).
@@ -2288,8 +2269,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tarnum_dungeon.4",
       6: "specialty.tarnum_dungeon.6"
     },
-    portrait: "/assets/hero_portraits-tarnum_overlord.webp",
-    source: stretchGoalPcPortraitHeroSource("tarnum_dungeon", "Tarnum (Overlord)")
+    portrait: "/assets/hero_boardart-tarnum_dungeon.webp",
+    boardScan: "/assets/heroes-dungeon-might-tarnum_dungeon.webp",
+    source: stretchGoalHeroSource("tarnum_dungeon")
   },
   sephinroth: {
     id: "sephinroth",
@@ -2304,15 +2286,17 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.sephinroth.4",
       6: "specialty.sephinroth.6"
     },
-    portrait: "/assets/hero_portraits-sephinroth.webp",
-    source: stretchGoalPcPortraitHeroSource("sephinroth", "Sephinroth")
+    portrait: "/assets/hero_boardart-sephinroth.webp",
+    boardScan: "/assets/heroes-dungeon-magic-sephinroth.webp",
+    source: stretchGoalHeroSource("sephinroth")
   },
 
   // ---- Additional heroes, batch 6 ---------------------------------------
   // The remaining fan-wiki heroes (minus Tarnum Conflux): Octavia (Inferno) and
   // Melodia (Rampart) are economic Resource-die / Fortune specialists; the
-  // Rampart & Fortress Tarnum variants follow below. Placeholder-art wiki heroes,
-  // so each ships its classic PC portrait and face-less specialty cards. Every
+  // Rampart & Fortress Tarnum variants follow below. They were placeholder-art wiki
+  // heroes until the 2026-08 art refresh; each now ships its printed board scan, the
+  // portrait cropped from it and all three specialty faces. Every
   // I/IV/VI specialty runs in the engine (extra-heroes-batch6-specialties.test.ts).
   octavia: {
     id: "octavia",
@@ -2327,8 +2311,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.octavia.4",
       6: "specialty.octavia.6"
     },
-    portrait: "/assets/hero_portraits-octavia.webp",
-    source: stretchGoalPcPortraitHeroSource("octavia", "Octavia")
+    portrait: "/assets/hero_boardart-octavia.webp",
+    boardScan: "/assets/heroes-inferno-might-octavia.webp",
+    source: stretchGoalHeroSource("octavia")
   },
   melodia: {
     id: "melodia",
@@ -2343,8 +2328,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.melodia.4",
       6: "specialty.melodia.6"
     },
-    portrait: "/assets/hero_portraits-melodia.webp",
-    source: stretchGoalPcPortraitHeroSource("melodia", "Melodia")
+    portrait: "/assets/hero_boardart-melodia.webp",
+    boardScan: "/assets/heroes-rampart-magic-melodia.webp",
+    source: stretchGoalHeroSource("melodia")
   },
   // Tarnum (Rampart): the Ranger variant — the Sharpshooters specialist. Its own
   // class portrait (heroes.thelazy.net Tarnum (Ranger)).
@@ -2361,8 +2347,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tarnum_rampart.4",
       6: "specialty.tarnum_rampart.6"
     },
-    portrait: "/assets/hero_portraits-tarnum_ranger.webp",
-    source: stretchGoalPcPortraitHeroSource("tarnum_rampart", "Tarnum (Ranger)")
+    portrait: "/assets/hero_boardart-tarnum_rampart.webp",
+    boardScan: "/assets/heroes-rampart-might-tarnum_rampart.webp",
+    source: stretchGoalHeroSource("tarnum_rampart")
   },
   // Tarnum (Fortress): the Beastmaster variant — the Basilisks specialist. Its own
   // class portrait (heroes.thelazy.net Tarnum (Beastmaster)).
@@ -2379,16 +2366,18 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
       4: "specialty.tarnum_fortress.4",
       6: "specialty.tarnum_fortress.6"
     },
-    portrait: "/assets/hero_portraits-tarnum_beastmaster.webp",
-    source: stretchGoalPcPortraitHeroSource("tarnum_fortress", "Tarnum (Beastmaster)")
+    portrait: "/assets/hero_boardart-tarnum_fortress.webp",
+    boardScan: "/assets/heroes-fortress-might-tarnum_fortress.webp",
+    source: stretchGoalHeroSource("tarnum_fortress")
   },
 
   // ---- Cove (expansion) --------------------------------------------------
   // Roster, classes, starting stats and specialties from the fan wiki Cove hero
-  // pages (Navigator = magic, Captain = might). No printed board art on the wiki
-  // yet, so each hero uses its classic PC portrait (added by the Cove art
-  // fetch script). Which specialties are engine-wired vs honestly deferred is
-  // tracked in cove-content.test.ts and the content tracker.
+  // pages (Navigator = magic, Captain = might). All six now ship their printed
+  // board scan with the portrait cropped from it (scripts/fetch-hero-art-refresh.py),
+  // replacing the classic PC portraits they used before. Which specialties are
+  // engine-wired vs honestly deferred is tracked in cove-content.test.ts and the
+  // content tracker.
   astra: {
     id: "astra",
     name: "Astra",
@@ -2398,7 +2387,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
     startingAbilityCardId: "ability.luck",
     specialtyCardIds: { 1: "specialty.astra.1", 4: "specialty.astra.4", 6: "specialty.astra.6" },
-    portrait: "/assets/hero_portraits-astra.webp",
+    portrait: "/assets/hero_boardart-astra.webp",
+    boardScan: "/assets/heroes-cove-magic-astra.webp",
     source: coveHeroSource("astra")
   },
   cassiopeia: {
@@ -2410,7 +2400,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.tactics",
     specialtyCardIds: { 1: "specialty.cassiopeia.1", 4: "specialty.cassiopeia.4", 6: "specialty.cassiopeia.6" },
-    portrait: "/assets/hero_portraits-cassiopeia.webp",
+    portrait: "/assets/hero_boardart-cassiopeia.webp",
+    boardScan: "/assets/heroes-cove-might-cassiopeia.webp",
     source: coveHeroSource("cassiopeia")
   },
   // Jeremy — the Cannon specialist. Buys the Cove Cannon war machine (already in
@@ -2425,7 +2416,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.offense",
     specialtyCardIds: { 1: "specialty.jeremy.1", 4: "specialty.jeremy.4", 6: "specialty.jeremy.6" },
-    portrait: "/assets/hero_portraits-jeremy.webp",
+    portrait: "/assets/hero_boardart-jeremy.webp",
+    boardScan: "/assets/heroes-cove-might-jeremy.webp",
     source: coveHeroSource("jeremy")
   },
   // Zilare — the Forgetfulness specialist. Reuses the engine's FORGETFULNESS
@@ -2441,7 +2433,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
     startingAbilityCardId: "ability.interference",
     specialtyCardIds: { 1: "specialty.zilare.1", 4: "specialty.zilare.4", 6: "specialty.zilare.6" },
-    portrait: "/assets/hero_portraits-zilare.webp",
+    portrait: "/assets/hero_boardart-zilare.webp",
+    boardScan: "/assets/heroes-cove-magic-zilare.webp",
     source: coveHeroSource("zilare")
   },
   // Miriam — the Scouting specialist. Reuses REMOVE_HAND_CARD_THEN_SEARCH: remove
@@ -2457,7 +2450,8 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 3, defense: 0, power: 2, knowledge: 1 },
     startingAbilityCardId: "ability.logistics",
     specialtyCardIds: { 1: "specialty.miriam.1", 4: "specialty.miriam.4", 6: "specialty.miriam.6" },
-    portrait: "/assets/hero_portraits-miriam.webp",
+    portrait: "/assets/hero_boardart-miriam.webp",
+    boardScan: "/assets/heroes-cove-might-miriam.webp",
     source: coveHeroSource("miriam")
   },
   // Casmetra (Navigator, magic, A2 D0 P1 K2, Wisdom): the Sorceresses specialist.
@@ -2475,13 +2469,9 @@ export const coreHeroDefinitions: Record<string, HeroDefinition> = {
     startingStats: { attack: 2, defense: 0, power: 1, knowledge: 2 },
     startingAbilityCardId: "ability.wisdom",
     specialtyCardIds: { 1: "specialty.casmetra.1", 4: "specialty.casmetra.4", 6: "specialty.casmetra.6" },
-    portrait: "/assets/hero_portraits-casmetra.webp",
-    source: {
-      product: "Heroes of Might and Magic III: The Board Game (Cove Expansion)",
-      credit:
-        "Hero roster, class, statistics, starting ability and specialty rules from the fan wiki Cove pages. Portrait is the classic PC hero portrait from heroes.thelazy.net (hosted locally via scripts/fetch-cove-art.py), like the other five Cove heroes. Verify against official components before final release.",
-      url: "https://en.homm3bg.wiki/heroes/casmetra/"
-    }
+    portrait: "/assets/hero_boardart-casmetra.webp",
+    boardScan: "/assets/heroes-cove-magic-casmetra.webp",
+    source: coveHeroSource("casmetra")
   },
   // ---- Bulwark heroes (expansion; fan faction, placeholder portraits) -----
   // Two Chieftains (Might) and two Elders (Magic). Dhuin/Creyle are unit

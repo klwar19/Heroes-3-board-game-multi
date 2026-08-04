@@ -23,15 +23,18 @@ describe("canRenderSpecialtyCard", () => {
   it("is true for EVERY art-less specialty (icon optional), false for baked-art + non-specialties", () => {
     expect(canRenderSpecialtyCard("specialty.kriv.1")).toBe(true); // Bulwark rune specialist (has icon)
     expect(canRenderSpecialtyCard("specialty.dhuin.4")).toBe(true); // Bulwark unit specialist (has icon)
-    // Art-less heroes WITHOUT a mapped icon must now render too (the frame,
-    // portrait, name and effect draw; the icon slot is just empty).
-    expect(canRenderSpecialtyCard("specialty.ash.1")).toBe(true); // inferno, no scan, no icon
-    expect(canRenderSpecialtyCard("specialty.torosar.6")).toBe(true); // tower, no scan, no icon
-    expect(canRenderSpecialtyCard("specialty.jeremy.1")).toBe(true); // cove — Cannon I scan not in the art pack
+    expect(canRenderSpecialtyCard("specialty.henrietta.1")).toBe(true); // Factory unit specialist
+    expect(canRenderSpecialtyCard("specialty.miku.6")).toBe(true); // anime, no board-game scan exists
     // A baked-art specialty keeps its scan and is NOT drawn natively.
     expect(canRenderSpecialtyCard("specialty.sandro.1")).toBe(false); // has a printed cardImage
     expect(canRenderSpecialtyCard("specialty.catherine.6")).toBe(false); // has a printed cardImage
     expect(canRenderSpecialtyCard("specialty.cassiopeia.4")).toBe(false); // cove — now ships a board-game scan
+    // The 2026-08 wiki art refresh gave the whole "Regular Stretch Goals 2024"
+    // group (and Jeremy's missing Cannon I) their printed faces, so they left the
+    // native renderer for the real scan (scripts/fetch-hero-art-refresh.py).
+    expect(canRenderSpecialtyCard("specialty.ash.1")).toBe(false);
+    expect(canRenderSpecialtyCard("specialty.torosar.6")).toBe(false);
+    expect(canRenderSpecialtyCard("specialty.jeremy.1")).toBe(false);
     expect(canRenderSpecialtyCard("spell.teleport")).toBe(false);
     expect(canRenderSpecialtyCard(undefined)).toBe(false);
   });

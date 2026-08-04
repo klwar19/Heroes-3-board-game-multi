@@ -229,10 +229,13 @@ describe("Cove heroes", () => {
       expect(hero.type).toBe(type);
       expect(cardLibrary[hero.startingAbilityCardId], `${heroId} ability ${ability}`).toBeDefined();
       expect(hero.startingAbilityCardId).toBe(ability);
-      // PC portrait is hosted locally (scripts/fetch-cove-art.py); no board scan yet.
-      expect(hero.portrait).toBe(`/assets/hero_portraits-${heroId}.webp`);
-      expect(hero.boardScan).toBeUndefined();
+      // All six Cove heroes now ship their printed board scan with the portrait
+      // cropped from it (scripts/fetch-hero-art-refresh.py) — they used the classic
+      // PC portrait until the wiki published the Cove hero boards.
+      expect(hero.portrait).toBe(`/assets/hero_boardart-${heroId}.webp`);
+      expect(hero.boardScan).toBe(`/assets/heroes-cove-${type}-${heroId}.webp`);
       expect(existsSync(fileURLToPath(new URL(`../../public${hero.portrait}`, import.meta.url))), `${heroId} portrait file`).toBe(true);
+      expect(existsSync(fileURLToPath(new URL(`../../public${hero.boardScan}`, import.meta.url))), `${heroId} board file`).toBe(true);
       for (const specialtyId of Object.values(hero.specialtyCardIds!)) {
         const card = cardLibrary[specialtyId];
         expect(card, specialtyId).toBeDefined();
