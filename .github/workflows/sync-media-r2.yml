@@ -133,7 +133,17 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CLOUDFLARE_API_TOKEN}" ] || [ -z "${CLOUDFLARE_ZONE_ID}" ]; then
-            echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID not set — skipping cache purge (replaced files refresh within the browser/edge TTLs)."
+            # A replaced file keeps its URL, so WITHOUT a purge the Cloudflare
+            # edge keeps serving the OLD bytes for up to the 7-day TTL even
+            # though R2 already holds the new ones (this bit us 2026-08-04:
+            # refreshed wiki spell scans were "invisible" for days). Make the
+            # skip LOUD when this push actually replaced media.
+            media_changed=$(git diff --name-only "${EVENT_BEFORE:-${GITHUB_SHA}^}" "${GITHUB_SHA}" 2>/dev/null | grep -cE '^public/(assets|sounds|fonts)/' || true)
+            if [ "${media_changed:-0}" -gt 0 ]; then
+              echo "::warning::${media_changed} media file(s) replaced but CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID secrets are NOT set — the CDN edge keeps serving the OLD bytes for up to 7 days. Add the two secrets (token needs Zone → Cache Purge) or purge manually in the Cloudflare dashboard."
+            else
+              echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID not set — skipping cache purge (no media replaced in this push anyway)."
+            fi
             exit 0
           fi
           # Which media URLs changed? Two sources, both mapped public/… → CDN URL:
