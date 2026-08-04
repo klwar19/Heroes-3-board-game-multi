@@ -9609,6 +9609,27 @@ export function setOnMapTileRevealHook(
  * sacrifices the entrance hex on the freshly revealed tile and links the two
  * halves so the hero can then cross.
  */
+/**
+ * True when ENTERING this field would still fire the Subterranean Gate's free
+ * cross-layer discovery — i.e. the field is a gate whose partner tile is still
+ * face-down. This is the exact condition {@link resolveSubterraneanGate} acts
+ * on, so the two can never disagree: with the partner already discovered the
+ * gate is genuinely "just an empty field" (crossing it later is ordinary
+ * movement through the linked halves, never a travel-vs-stay offer), and with
+ * the partner face-down entering it opens the reveal/rotation chain.
+ *
+ * Read by the end-of-turn "adjacent EMPTY field" step (Logistics basic /
+ * Nomads): the gate's location category is "empty", but an UNVISITED gate can
+ * still trigger, so it is not an empty field for that rule.
+ */
+export function subterraneanGateEntryRevealsTile(state: GameState, field: MapFieldState): boolean {
+  if (field.location !== "subterranean_gate" || !field.gateToTileId) {
+    return false;
+  }
+  const farTile = state.adventure?.tiles[field.gateToTileId];
+  return Boolean(farTile?.faceDown);
+}
+
 function resolveSubterraneanGate(state: GameState, visit: PendingVisit): void {
   const adventure = state.adventure;
   const field = adventure?.fields[visit.fieldId];
