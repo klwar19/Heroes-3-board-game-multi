@@ -81,15 +81,21 @@ export interface AssetRedirect {
 
 export function assetRedirects(
   baseUrl: string,
-  includeFonts: boolean = CDN_SERVES_FONTS
+  includeFonts: boolean = CDN_SERVES_FONTS,
+  // Media version for cache-busting (see src/lib/asset-media-version.ts):
+  // appended as ?v= to the redirect destination so the globals.css url()
+  // refs — which cannot call assetUrl() — land on the SAME versioned cache
+  // keys the runtime helper emits. Empty = unversioned destinations.
+  version = ""
 ): AssetRedirect[] {
   if (!baseUrl) {
     return [];
   }
   const base = baseUrl.replace(/\/+$/, "");
+  const suffix = version ? `?v=${version}` : "";
   return cdnPathPrefixes(includeFonts).map((prefix) => ({
     source: `/${prefix}/:path*`,
-    destination: `${base}/${prefix}/:path*`,
+    destination: `${base}/${prefix}/:path*${suffix}`,
     permanent: false
   }));
 }

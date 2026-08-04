@@ -115,6 +115,21 @@ Cloudflare R2 CDN at `https://cdn.hamthefirt.xyz` (runbook + live status:
   `.github/workflows/sync-media-r2.yml` auto-uploads on every push (branches:
   new keys only, so previews work; `main`: full sync + cache purge). Never
   hand-edit the bucket; manual fallback is `npm run sync:assets`.
+- **Replaced media busts the CDN edge cache AUTOMATICALLY via `?v=` versioning**
+  (2026-08-04): every CDN asset URL carries `?v=<media version>` — a build-time
+  hash of every media file's path+size (`src/lib/asset-media-version.ts`, set as
+  `NEXT_PUBLIC_ASSET_VERSION` in next.config.ts, appended by `assetUrl()` AND
+  the globals.css redirect destinations). Any art change → new URLs on the next
+  Vercel deploy → fresh bytes everywhere, with NO Cloudflare purge token.
+  Background: replaced files keep their URL, and without the (never-configured)
+  `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ZONE_ID` purge secrets the edge served
+  OLD bytes for up to 7 days — whichever URLs happened to be edge-cached at
+  upload time stayed stale while the rest looked fine (the 2026-08-04 "spell
+  scans still old but other art works" report). LIMITS: a same-size byte-level
+  replacement does not move the version (nil in practice for webp/mp3), and a
+  media change invalidates EVERY media URL at once (one-time cold edge per art
+  deploy — deliberate). The rclone `NotImplemented` ERROR lines in the sync
+  logs are retry noise, not upload failures.
 - Code referencing media MUST go through `assetUrl()` (`src/lib/asset-url.ts`)
   — a raw `/assets/…` literal in a consumption position fails
   `src/lib/asset-url-coverage.test.ts`. `globals.css` url() refs are covered
