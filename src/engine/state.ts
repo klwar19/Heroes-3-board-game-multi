@@ -3532,6 +3532,8 @@ export type GameAction =
       type: "USE_UNIT_DIE_IGNORE";
       playerId: PlayerId;
       defenderUnitId: UnitId;
+      /** The controller chooses which card pays the printed discard cost. */
+      discardCardId: CardId;
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }

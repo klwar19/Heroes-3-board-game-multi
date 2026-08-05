@@ -1248,7 +1248,10 @@ export function scoreCardAction(
           marginal = 1_060;
         }
       }
-      const score = marginal - Math.round(averageKeep * 0.35);
+      const discardKeep = action.discardCardId
+        ? cardKeepValue(action.discardCardId, observation)
+        : averageKeep;
+      const score = marginal - Math.round(discardKeep * 0.35);
       return { score, policy: "combat.discard-to-ignore-positive-die" };
     }
     case "USE_SCHOOL_FETCH_EXPERT":

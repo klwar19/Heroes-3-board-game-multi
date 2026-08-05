@@ -14277,23 +14277,21 @@ function applyUnitDieIgnore(
     !getDiscardToIgnoreAttackDieAbility(defender) ||
     pendingAttack.modifiers.attackDieCancelled ||
     window.triggerEvent.roll <= 0 ||
-    player.hand.length === 0
+    !player.hand.includes(action.discardCardId)
   ) {
     throw new Error("That unit cannot ignore the Attack die now.");
   }
 
   // Pay the cost (one card discarded from hand), then treat the settled die as
   // ignored (0) — the same arm Shield of the Dwarven Lords uses.
-  const discarded = discardRandomCardFromHand(state, action.playerId);
+  discardNamedCardFromHand(state, action.playerId, action.discardCardId);
   pendingAttack.modifiers.attackDieCancelled = true;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: defender.id,
     abilityId: "halberdier-die-ignore",
     targetUnitId: defender.id,
-    message: discarded
-      ? `${defender.cardName} discards a card to ignore the Attack die.`
-      : `${defender.cardName} ignores the Attack die.`
+    message: `${defender.cardName} discards ${cards[action.discardCardId]?.name ?? action.discardCardId} to ignore the Attack die.`
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);

@@ -6148,10 +6148,12 @@ function getDieCancelReactions(
   // controller still holds a card to pay the discard cost. Not a card play, so
   // it is pushed as a plain unit-ability reaction (like the Archangels' save).
   if (roll > 0 && player.hand.length > 0 && getDiscardToIgnoreAttackDieAbility(defender)) {
-    reactions.push({
-      label: `${defender.cardName}: discard a card to ignore the Attack die`,
-      action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id }
-    });
+    for (const discardCardId of new Set(player.hand)) {
+      reactions.push({
+        label: `${defender.cardName}: discard ${cards[discardCardId]?.name ?? discardCardId} to ignore the Attack die`,
+        action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id, discardCardId }
+      });
+    }
   }
 
   return reactions.length > 0 ? { [playerId]: reactions } : {};
