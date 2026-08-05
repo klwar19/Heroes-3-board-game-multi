@@ -127,6 +127,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "initiative-specialty-draw",
+    label: "Initiative specialties: draw alternative",
+    description:
+      "Initiative-only specialty cards, including Gelu VI, may be discarded to draw 1 card instead of granting their combat Initiative bonus.",
+    category: "abilities",
+    default: true,
+    legacyDefault: false
+  },
+  {
     id: "dracon-few-magi-trade",
     label: "Dracon IV Few-of-Magi trade",
     description:

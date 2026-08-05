@@ -63,6 +63,9 @@ export type HouseRuleId =
   | "estates-nerf"
   | "sandro-skeleton-hp"
   | "gelu-sharpshooter-buff"
+  // Initiative-only specialty cards (including Gelu VI) may use their BINH
+  // alternative to draw 1 card instead of applying the combat buff.
+  | "initiative-specialty-draw"
   // Initiative buffs (Haste, Slow AND the initiative-only hero specialties) also
   // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
   // Off: they change only Initiative, never movement (the standard/wiki rule).

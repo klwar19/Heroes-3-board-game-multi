@@ -335,6 +335,7 @@ function unitInitiativeSpecialty(
         },
         {
           label: "Draw 1 card",
+          requiresHouseRule: "initiative-specialty-draw",
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
@@ -2616,6 +2617,7 @@ export const adventureCards: CardLibrary = {
         },
         {
           label: "Draw 1 card",
+          requiresHouseRule: "initiative-specialty-draw",
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
