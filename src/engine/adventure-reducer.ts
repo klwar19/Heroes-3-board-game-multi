@@ -16452,7 +16452,12 @@ export function openDiscardPickChoice(
   // taken from the discard); when the pick mixes discard cards and Book refreshes,
   // name both.
   const usedCount = entries.filter((entry) => entry.source === "polish-used").length;
-  const remainingSuffix = pick.count > 1 ? ` (${pick.count} left)` : "";
+  // Polish recovery always refreshes ONE Book Spell. Crown of Dragontooth's
+  // printed count 2 belongs to its classic discard-to-hand arm; carrying that
+  // count into the Polish adaptation incorrectly reopened this picker and let
+  // the Crown refresh two used Book Spells.
+  const selectionCount = polishRecovery ? 1 : pick.count;
+  const remainingSuffix = selectionCount > 1 ? ` (${selectionCount} left)` : "";
   const prompt =
     usedCount === entries.length
       ? `Refresh a Spell in your Spell Book${remainingSuffix}`
@@ -16477,7 +16482,7 @@ export function openDiscardPickChoice(
       cardIds: entries.map((entry) => entry.cardId),
       destinations: entries.map((entry) => entry.destination),
       sources: entries.map((entry) => entry.source),
-      remaining: pick.count,
+      remaining: selectionCount,
       filter: pick.filter,
       fromTop: pick.fromTop,
       shuffleRestIntoDeck: pick.shuffleRestIntoDeck
