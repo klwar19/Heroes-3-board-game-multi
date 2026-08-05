@@ -8856,7 +8856,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         }
         const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
         actions.push({
-          label: `Add Stack to ${unitName}`,
+          label: `Add Stack to ${unitName} (${formatResourceCost(cost)})`,
           action: {
             type: "POPULATION_ACTION",
             playerId,

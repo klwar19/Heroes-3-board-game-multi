@@ -139,6 +139,11 @@ describe("Polish Unit Stacks — cost, eligibility, and purchase", () => {
     const beforeGold = state.players.p1.resources.gold;
     const beforeValuables = state.players.p1.resources.valuables;
 
+    const offered = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "POPULATION_ACTION" && legal.action.purchases[0]?.kind === "stack"
+    );
+    expect(offered?.label).toContain("33 gold + 2 valuables");
+
     state = applyOk(state, {
       type: "POPULATION_ACTION",
       playerId: "p1",

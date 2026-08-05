@@ -456,6 +456,7 @@ function UnitStackPurchaseControls({
   const goldCost = stackCost.gold ?? 0;
   const valuablesCost = stackCost.valuables ?? 0;
   const costLabel = valuablesCost > 0 ? `${goldCost} gold + ${valuablesCost} valuables` : `${goldCost} gold`;
+  const shortCostLabel = valuablesCost > 0 ? `${goldCost}g + ${valuablesCost}v` : `${goldCost}g`;
 
   return (
     <div className="stackPurchasePanel" role="group" aria-label={`Unit Stacks for ${unitName}`}>
@@ -518,12 +519,12 @@ function UnitStackPurchaseControls({
               : !canReinforce
                 ? "Build the Citadel to buy Unit Stacks"
                 : !affordable
-                  ? `Need ${goldCost} gold for this Unit Stack`
-                  : `Add one full-health Stack layer · ${goldCost} gold`
+                  ? `Need ${costLabel} for this Unit Stack`
+                  : `Add one full-health Stack layer · ${costLabel}`
           }
           type="button"
         >
-          {stackAtCap ? `Max ${stackCap}` : `Add Stack · ${goldCost}g`}
+          {stackAtCap ? `Max ${stackCap}` : `Add Stack · ${shortCostLabel}`}
         </button>
       )}
     </div>
