@@ -142,6 +142,28 @@ describe("canBeatGuardedField (Quick-Combat grounded engagement)", () => {
     );
   });
 
+  it("does not use an earned hero level to throw a rebuilt two-unit army into a high guard", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    hero.level = 5;
+    const bronze = Object.values(coreUnitDefinitions).find(
+      (definition) => definition.tier === "bronze",
+    )!;
+    state.players.p2.army = [
+      { id: "survivor-a", unitDefId: bronze.id, side: "few" },
+      { id: "survivor-b", unitDefId: bronze.id, side: "few" },
+    ];
+    const guard = state.adventure!.fields[MINE];
+    guard.difficulty = 5;
+
+    expect(canBeatGuardedField(state, hero, guard)).toBe(false);
+
+    // A strict level advantage is still a guaranteed Quick Combat and remains
+    // safe regardless of the depleted army.
+    guard.difficulty = 4;
+    expect(canBeatGuardedField(state, hero, guard)).toBe(true);
+  });
+
   it("lets a secondary take free Quick Combat, but requires Silver for a real cleanup fight", () => {
     const state = game();
     const main = p2Hero(state);

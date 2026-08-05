@@ -478,6 +478,24 @@ export function armyTierCoversGuardField(
 }
 
 /**
+ * Whether the army that is alive right now can sustain a real guard fight.
+ * Unlike `armyTierCoversGuardField`, this includes bronze: it is a safety floor,
+ * not an extension above the hero-level gate. A wiped high-level hero therefore
+ * cannot keep entering high-level fights on level alone, while a strict
+ * hero-level advantage still Quick-Combat wins before this check is needed.
+ */
+export function currentArmyCoversGuardField(
+  state: GameState,
+  playerId: PlayerId,
+  fieldDifficulty: number,
+): boolean {
+  if (fieldDifficulty <= 0) return false;
+  const tier = armyEngagementTier(state, playerId);
+  if (!tier) return false;
+  return fieldDifficulty <= armyTierGuardCap(neutralArmyDifficulty(state), tier);
+}
+
+/**
  * Assault an enemy-flagged Town/Settlement (garrison prompt may open). Uses the
  * same army-strength gate as hero fights — the owner may pay 8 gold and defend
  * with their unit deck, so their army is the right proxy.

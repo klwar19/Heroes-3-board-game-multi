@@ -31,6 +31,7 @@ import type {
 } from "../state";
 import {
   armyCoversPremiumEconomyGuard,
+  currentArmyCoversGuardField,
   armyTierCoversGuardField,
   canBeatCreatureBank,
   isPremiumEconomyField,
@@ -500,9 +501,6 @@ export function canBeatGuardedField(
   if (difficulty <= 0) {
     return false;
   }
-  if (neutralBattleLevel(state, hero) >= difficulty) {
-    return true;
-  }
   // Premium settlement / gold / valuables: scenario-difficulty Pack-core rush
   // (hard: 3 bronze Packs alone; impossible: Packs + 1 silver). Losses OK.
   if (
@@ -511,7 +509,11 @@ export function canBeatGuardedField(
   ) {
     return true;
   }
-  return armyTierCoversGuardField(state, hero.controllerId, difficulty);
+  // A real fight must be covered by the army that still exists, not by a hero
+  // level earned before that army was destroyed. This includes the ordinary
+  // equal-level case; strict level advantage returned above as a no-risk Quick
+  // Combat win.
+  return currentArmyCoversGuardField(state, hero.controllerId, difficulty);
 }
 
 /**

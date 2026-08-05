@@ -48,6 +48,11 @@ function combatIsHopeless(
   if (enemies.length === 0) return false;
   const ownThreat = own.reduce((sum, u) => sum + unitThreatValue(u), 0);
   const enemyThreat = enemies.reduce((sum, u) => sum + unitThreatValue(u), 0);
+  // Once only one or two attackers remain, do not buy another combat round
+  // against a materially stronger neutral force. The previous check required
+  // both survivors to be almost dead, so a depleted army kept continuing and
+  // was then wiped (notably against Mummies).
+  if (own.length <= 2 && enemyThreat >= ownThreat * 1.35) return true;
   // Hopeless when out-bulked by more than 2× and we have at most one unit left,
   // or total threat is tiny vs the opposition.
   if (own.length <= 1 && enemyThreat >= ownThreat * 2.5) return true;
