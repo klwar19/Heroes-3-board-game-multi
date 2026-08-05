@@ -3245,6 +3245,17 @@ function addOptionPlays(
     if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
       continue;
     }
+    // An ongoing effect can be offered on the map only when its modifier has a
+    // map use. This prevents combat-scoped effects such as Golden Bow from
+    // entering play before a combat, while retaining map Instants such as
+    // Scouting and all of the draw-only exceptions handled by addTurnCardActions.
+    if (
+      context === "map" &&
+      option.effect.type === "CREATE_ACTIVE_EFFECT" &&
+      !isMapPlayableEffect(state, playerId, card, option.effect)
+    ) {
+      continue;
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context, cardId)) {
       continue;
     }
