@@ -83,8 +83,11 @@ describe("Battle Test free setup", () => {
     });
     expect(state.combatSandboxSetup!.playMode).toBe("tournament");
     expect(state.ruleset, "Tournament uses the legacy ruleset").toBe("legacy");
-    expect(state.decks["spells-expert"], "Tournament drops the BINH split Expert deck").toBeUndefined();
-    expect(state.decks.artifacts, "Tournament uses a single Artifact deck").toBeTruthy();
+    expect(state.decks["spells-expert"], "Tournament keeps the split Expert spell deck").toBeTruthy();
+    expect(state.decks["artifacts-minor"], "Tournament splits Artifacts by tier").toBeTruthy();
+    expect(state.decks["artifacts-major"]).toBeTruthy();
+    expect(state.decks["artifacts-relic"]).toBeTruthy();
+    expect(state.decks.artifacts, "Tournament has no combined Artifact deck").toBeUndefined();
     expect(state.decks.abilities?.drawPile ?? [], "Diplomacy is banned in Tournament").not.toContain(
       "ability.diplomacy"
     );
@@ -106,7 +109,9 @@ describe("Battle Test free setup", () => {
     });
     state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
     expect(state.ruleset).toBe("legacy");
-    expect(state.decks.artifacts).toBeTruthy();
+    expect(state.decks["spells-expert"]).toBeTruthy();
+    expect(state.decks["artifacts-minor"]).toBeTruthy();
+    expect(state.decks.artifacts).toBeUndefined();
   });
 
   it("Begin battle opens PvP-style unit deployment (combat-setup), not an auto-started fight", () => {

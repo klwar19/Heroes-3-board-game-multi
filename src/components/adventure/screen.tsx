@@ -8554,7 +8554,7 @@ const SETUP_MODE_CARDS: {
     id: "tournament",
     label: "Tournament",
     blurb: "Competitive preset",
-    hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
+    hint: "Tier-split Spell/Artifact decks, other house rules off, tournament bans on, Hard difficulty, human-controlled Neutrals.",
     iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
   },
   {
@@ -8642,7 +8642,7 @@ function GameModeSection({
       anime: { ...anime, enabled: false }
     });
     setModeNotice(
-      "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
+      "Tournament mode applied: Spell/Artifact decks split by tier, other house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
         "Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust."
     );
   };

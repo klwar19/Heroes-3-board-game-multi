@@ -669,7 +669,7 @@ export function CombatSandboxSetupScreen({
         </div>
         <p className="sandboxHint">
           {playMode === "tournament"
-            ? "Tournament: legacy decks, Diplomacy and Hourglass banned, printed unit values. "
+            ? "Tournament: tier-split Spell/Artifact decks, Diplomacy and Hourglass banned, printed unit values. "
             : "BINH: split Spell/Artifact decks and house-rule unit tweaks. "}
           With Commanders on, each side deploys at most {unitLimit} army units (the commander is the
           extra body). Default armies are Catherine (Castle) vs Sandro (Necropolis).

@@ -6,6 +6,7 @@
  */
 import {
   DRAFT_FORMAT_LABELS,
+  HOUSE_RULES,
   defaultGameSetupOptions,
   resolveHouseRules,
   scenarioDefinitions,
@@ -113,6 +114,9 @@ export const MODE_PRESET_PAYLOADS: Record<Exclude<SetupModeId, "custom">, Partia
   tournament: {
     customMode: false,
     ruleset: "legacy",
+    houseRules: Object.fromEntries(
+      HOUSE_RULES.map((rule) => [rule.id, rule.id === "split-decks"])
+    ) as NonNullable<GameSetupOptions["houseRules"]>,
     spellBook: false,
     tournamentMode: true,
     tournamentBanDiplomacy: true,

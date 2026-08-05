@@ -21,10 +21,9 @@ import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra
 import {
   artifactDeckBinhMajor,
   artifactDeckBinhMinor,
-  artifactDeckBinhRelic,
-  artifactDeckLegacy
+  artifactDeckBinhRelic
 } from "@/data/cards/artifacts";
-import { spellDeckBinhBasic, spellDeckBinhExpert, spellDeckLegacy } from "@/data/cards/spells";
+import { spellDeckBinhBasic, spellDeckBinhExpert } from "@/data/cards/spells";
 import { EXPERT_USES_BY_LEVEL, HAND_LIMIT_BY_LEVEL } from "./adventure";
 import {
   TOURNAMENT_REMOVED_ABILITY_ID,
@@ -98,11 +97,15 @@ function without(cardIds: string[], bannedId: string, ban: boolean): string[] {
 
 function makeSandboxDecks(seed: string, mode: CombatSandboxPlayMode): Record<string, DeckState> {
   if (mode === "tournament") {
-    // Legacy single decks + tournament Diplomacy / Hourglass bans.
+    // Tournament keeps printed combat rules but adopts the competitive setup's
+    // tier-split Spell / Artifact decks, with its Diplomacy / Hourglass bans.
     const lists: Record<string, string[]> = {
-      spells: spellDeckLegacy,
+      spells: spellDeckBinhBasic,
+      "spells-expert": spellDeckBinhExpert,
       abilities: without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, true),
-      artifacts: without(artifactDeckLegacy, TOURNAMENT_REMOVED_ARTIFACT_ID, true)
+      "artifacts-minor": without(artifactDeckBinhMinor, TOURNAMENT_REMOVED_ARTIFACT_ID, true),
+      "artifacts-major": artifactDeckBinhMajor,
+      "artifacts-relic": artifactDeckBinhRelic
     };
     return Object.fromEntries(
       Object.entries(lists).map(([id, cardIds]) => [id, makeSharedDeck(id, cardIds, seed)])
