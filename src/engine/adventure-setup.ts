@@ -6,6 +6,7 @@ import {
   artifactDeckBinhMinor,
   artifactDeckBinhRelic,
   artifactDeckLegacy,
+  EVERSMOKING_RING_OF_SULFUR_ID,
   TORSO_OF_LEGION_ID
 } from "@/data/cards/artifacts";
 import {
@@ -831,7 +832,8 @@ function makeSharedDecks(
   wogArtifacts = false,
   wogCommanderArtifacts = false,
   animeEquipment = false,
-  torsoOfLegionMajor = true
+  torsoOfLegionMajor = true,
+  eversmokingRingOfSulfurMajor = false
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -842,10 +844,16 @@ function makeSharedDecks(
   // are untouched (byte-identical). The legacy single Artifact deck is one pile,
   // so its membership never changes — only the per-card tier READ (via
   // `effectiveArtifactTier`) does, which is handled at each read site.
-  const binhMinor = torsoOfLegionMajor ? artifactDeckBinhMinor : [...artifactDeckBinhMinor, TORSO_OF_LEGION_ID];
-  const binhMajor = torsoOfLegionMajor
-    ? artifactDeckBinhMajor
-    : artifactDeckBinhMajor.filter((id) => id !== TORSO_OF_LEGION_ID);
+  const binhMinor = [
+    ...artifactDeckBinhMinor,
+    ...(torsoOfLegionMajor ? [] : [TORSO_OF_LEGION_ID]),
+    ...(eversmokingRingOfSulfurMajor ? [] : [EVERSMOKING_RING_OF_SULFUR_ID])
+  ];
+  const binhMajor = artifactDeckBinhMajor.filter(
+    (id) =>
+      (torsoOfLegionMajor || id !== TORSO_OF_LEGION_ID) &&
+      (eversmokingRingOfSulfurMajor || id !== EVERSMOKING_RING_OF_SULFUR_ID)
+  );
 
   // Anime Pháp Bảo artifacts (§5.10) join the shared Artifact deck(s) ONLY when
   // the module is on; default OFF ⇒ these arrays are empty and the decks are
@@ -3086,7 +3094,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         wog.enabled && wog.artifacts,
         wog.enabled && wog.artifacts && wog.commanders,
         animeModuleEnabled({ anime }, "equipment"),
-        houseRules["torso-of-legion-major"]
+        houseRules["torso-of-legion-major"],
+        houseRules["eversmoking-ring-of-sulfur-major"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),

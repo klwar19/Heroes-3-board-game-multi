@@ -1,6 +1,6 @@
 import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
-import { TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
+import { EVERSMOKING_RING_OF_SULFUR_ID, TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
@@ -397,6 +397,12 @@ export function effectiveArtifactTier(
 ): "minor" | "major" | "relic" | undefined {
   if (cardId === TORSO_OF_LEGION_ID && !houseRuleEnabled(state, "torso-of-legion-major")) {
     return "minor";
+  }
+  if (
+    cardId === EVERSMOKING_RING_OF_SULFUR_ID &&
+    houseRuleEnabled(state, "eversmoking-ring-of-sulfur-major")
+  ) {
+    return "major";
   }
   return cardLibrary[cardId]?.artifactTier;
 }

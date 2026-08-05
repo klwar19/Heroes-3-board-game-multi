@@ -67,6 +67,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: true
   },
   {
+    id: "eversmoking-ring-of-sulfur-major",
+    label: "Eversmoking Ring of Sulfur plays as Major",
+    description:
+      "BINH house rule: Eversmoking Ring of Sulfur (printed Minor) is sorted and priced as a Major artifact. Untick to use its printed Minor tier.",
+    category: "decks",
+    default: true,
+    legacyDefault: false
+  },
+  {
     id: "griffin-buff",
     label: "Griffin buff",
     description: "Few Griffins fight at 3 Attack (printed 2) and Pack Griffins at 1 Defense (printed 0).",

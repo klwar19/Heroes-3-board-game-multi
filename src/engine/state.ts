@@ -175,6 +175,9 @@ export type HouseRuleId =
   // chokepoint (deck placement, black-market/junk/event prices, Polish tier
   // gates, deck return). See `effectiveArtifactTier` (ruleset.ts).
   | "torso-of-legion-major"
+  // BINH-only re-tier: Eversmoking Ring of Sulfur is treated as Major while
+  // this rule is enabled; Legacy and disabled BINH games retain printed Minor.
+  | "eversmoking-ring-of-sulfur-major"
   // Global map rule (default OFF in BOTH modes): every fought-out neutral guard
   // fight on a MINE field (all resource types) fields ONE EXTRA random neutral
   // BRONZE creature on top of the normal guard army. The extra bronze is a plain

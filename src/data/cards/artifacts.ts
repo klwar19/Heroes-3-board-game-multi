@@ -3139,6 +3139,7 @@ export const artifactDeckLegacy: string[] = [
  * (adventure-setup.ts) moves it from the Major deck to the Minor deck.
  */
 export const TORSO_OF_LEGION_ID = "artifact.torso_of_legion";
+export const EVERSMOKING_RING_OF_SULFUR_ID = "artifact.eversmoking_ring_of_sulfur";
 
 export const artifactDeckBinhMinor: string[] = [
   "artifact.armor_of_wonder",
@@ -3146,7 +3147,6 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
   "artifact.dragon_wing_tabard",
-  "artifact.eversmoking_ring_of_sulfur",
   "artifact.hourglass_of_the_evil_hour",
   "artifact.inexhaustible_cart_of_lumber",
   "artifact.inexhaustible_cart_of_ore",
@@ -3183,6 +3183,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.torso_of_legion",
+  "artifact.eversmoking_ring_of_sulfur",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
   "artifact.vial_of_lifeblood",
