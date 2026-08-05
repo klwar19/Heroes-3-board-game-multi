@@ -225,11 +225,11 @@ describe("Ⅶ designation — face-down center slot", () => {
       difficulty: "normal",
       rollFirstPlayer: false,
       victoryMode: "grail",
-      // C1 prints a Dragon Utopia — pinning it proves the "grail" override BEATS
-      // the printed field, and keeps a single materialized objective field.
+      // C5 has a Random Town level-VII objective, so it is eligible for a
+      // forced Grail without reinterpreting a printed Dragon Utopia.
       customMap: [
         ...startPlans(),
-        { row: CENTER.row, col: CENTER.col, group: "center", faceDown: true, tileDefId: "C1", ...(viiField ? { viiField } : {}) }
+        { row: CENTER.row, col: CENTER.col, group: "center", faceDown: true, tileDefId: "C5", ...(viiField ? { viiField } : {}) }
       ]
     });
     clearHandGate(state);
@@ -238,7 +238,9 @@ describe("Ⅶ designation — face-down center slot", () => {
   }
 
   function centerTile(state: GameState): MapTileState {
-    return Object.values(state.adventure!.tiles).find((tile) => tile.tileDefId === "C1")!;
+    return Object.values(state.adventure!.tiles).find(
+      (tile) => tile.centerRow === CENTER.row && tile.centerCol === CENTER.col
+    )!;
   }
 
   /** Simulate the reveal: flip the tile face-up and materialize its fields. */
@@ -273,6 +275,47 @@ describe("Ⅶ designation — face-down center slot", () => {
     hero.spaceId = o2.spaceId;
     beginFieldVisit(state, hero.id, o2.spaceId, false);
     expect(canDigGrail(state, "p1")).toBe(true);
+  });
+
+  it("never reinterprets a printed Dragon Utopia as a forced Grail", () => {
+    const state = createAdventureGameState({
+      seed: "vii-identity-locked-utopia",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMap: [
+        ...startPlans(),
+        { row: CENTER.row, col: CENTER.col, group: "center", faceDown: true, tileDefId: "C1", viiField: "grail" }
+      ]
+    });
+    const tile = Object.values(state.adventure!.tiles).find((entry) => entry.tileDefId === "C1")!;
+    tile.faceDown = false;
+    materializeTileFields(state.adventure!, tile);
+
+    const objective = Object.values(state.adventure!.fields).find(
+      (field) => field.tileInstanceId === tile.id && field.difficulty === 7
+    );
+    expect(objective?.location).toBe("dragon_utopia");
+  });
+
+  it("allows a forced Dragon Utopia to replace a printed Grail as a real Utopia", () => {
+    const state = createAdventureGameState({
+      seed: "vii-identity-grail-to-utopia",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      customMap: [
+        ...startPlans(),
+        { row: CENTER.row, col: CENTER.col, group: "center", faceDown: true, tileDefId: "C4", viiField: "dragon_utopia" }
+      ]
+    });
+    const tile = Object.values(state.adventure!.tiles).find((entry) => entry.tileDefId === "C4")!;
+    tile.faceDown = false;
+    materializeTileFields(state.adventure!, tile);
+
+    const objective = Object.values(state.adventure!.fields).find(
+      (field) => field.tileInstanceId === tile.id && field.difficulty === 7
+    );
+    expect(objective?.location).toBe("dragon_utopia");
+    expect(objective?.grailDiggable).toBeUndefined();
   });
 
   it("masks a face-down center slot's Ⅶ designation in another player's view until reveal", () => {

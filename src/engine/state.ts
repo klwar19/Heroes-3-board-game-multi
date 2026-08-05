@@ -3430,6 +3430,14 @@ export type GameAction =
       cardId: CardId;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /**
+       * An Instant with a printed draw rider used outside the primary effect's
+       * trigger (for example Offense during a spell window). Only the card-draw
+       * rider resolves; the attack/defense/Power/heal effect deliberately fizzles.
+       */
+      drawOnly?: true;
+      /** Utility card gain that may join an existing window but does not open one by itself. */
+      utilityOnly?: true;
       costCardIds?: CardId[];
       /**
        * Parallel to costCardIds: when paying a Power-value cost (Sorrow, Alamar's
@@ -9196,6 +9204,13 @@ export type VisitStep =
        * (getVisiblePendingVisit masks every other seat's visit steps to []).
        */
       teleport?: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 };
+      /** Private Obelisk Grail-tile reveal shown only after the visitor selects it. */
+      grailTileScry?: { tileInstanceId: string };
+    }
+  | {
+      /** Obelisk clue: privately show this selected face-down tile, then re-hide it. */
+      type: "GRAIL_TILE_SCRY";
+      tileInstanceId: string;
     }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }

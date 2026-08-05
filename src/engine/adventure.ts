@@ -877,12 +877,11 @@ export const VII_FIELD_LOCATION: Record<
  * the six ring fields turn). The ring hexes are the same six map hexes at every
  * rotation; only WHICH slot's contents land on each is what changes.
  *
- * A center-tile {@link MapTileState.viiField} designation FORCES the tile's
- * difficulty-7 objective field to the designated location (Grail / Dragon Utopia
- * / Random Town / Random Settlement), whatever the printed tile carries there —
- * the difficulty-7 guard is kept and every other property (resource / faction /
- * amount) of the original objective is dropped, since a Grail/Utopia/town field
- * has none. A designation that already matches the printed field is a no-op
+ * A center-tile {@link MapTileState.viiField} designation may replace a neutral
+ * difficulty-7 objective field with the designated location (Grail / Dragon
+ * Utopia / Random Town / Random Settlement). A printed Dragon Utopia cannot be
+ * reinterpreted as a Grail; other explicit designation behavior is preserved.
+ * A designation that already matches the printed field is a no-op
  * (the field is left untouched, so a CONTROL deep-equals the undesignated field).
  */
 export function materializeTileFields(
@@ -902,17 +901,34 @@ export function materializeTileFields(
     // Designer Ⅶ-field override: the difficulty-7 objective field becomes the
     // designated location (a clean objective field, terrain preserved). Only the
     // difficulty-7 field is touched, and only when the location actually changes.
-    if (viiOverride && fieldDef.difficulty === 7 && fieldDef.location !== viiOverride) {
+    if (
+      viiOverride &&
+      fieldDef.difficulty === 7 &&
+      fieldDef.location !== viiOverride &&
+      !(fieldDef.location === "dragon_utopia" && viiOverride === "grail")
+    ) {
       fieldDef = {
         location: viiOverride,
         difficulty: 7,
         ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
       };
     }
-    // A hidden Grail tile may materialize only after another Grail guard was
-    // beaten. The special field package makes every OTHER Grail an Utopia at
-    // that moment, including fields that did not exist in `adventure.fields`
-    // yet because their tile was face-down or still in the Far supply.
+    // A map configured as "Grail always as Utopia" materializes a REAL Utopia,
+    // never a Grail field borrowing Utopia guards. This covers face-down tiles
+    // and newly restored map state before any encounter can inspect the field.
+    if (
+      adventure.mapPreset?.objectives?.grailAsUtopia === "always" &&
+      fieldDef.difficulty === 7 &&
+      fieldDef.location === "grail"
+    ) {
+      fieldDef = {
+        location: "dragon_utopia",
+        difficulty: 7,
+        ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
+      };
+    }
+    // Polish conversion is a real location conversion. A later-revealed Grail
+    // must therefore materialize as a true Dragon Utopia, not a hybrid.
     if (
       adventure.grailFieldCleared &&
       fieldDef.difficulty === 7 &&
@@ -5221,6 +5237,22 @@ export function obeliskRoleIsMonolith(state: GameState): boolean {
 }
 
 /**
+ * Legacy saves can already hold a materialized Grail field when their map
+ * preset says `grailAsUtopia: "always"`. Normalize it before guard or visit
+ * routing so it is a real Dragon Utopia with only Utopia mechanics.
+ */
+function normalizeAlwaysGrailAsUtopia(state: GameState, field: MapFieldState | undefined): void {
+  if (field?.location !== "grail" || grailAsUtopiaMode(state) !== "always") {
+    return;
+  }
+  field.location = "dragon_utopia";
+  delete field.grailDiggable;
+  if (!field.difficulty) {
+    field.difficulty = 7;
+  }
+}
+
+/**
  * Grail field visit. In Holy Grail the first visit (after the guards fall)
  * arms the dig; a later revisit for 1 MP collects the single Grail Token
  * once the digger has visited {@link GRAIL_OBELISKS_REQUIRED} Obelisks, which
@@ -5253,7 +5285,7 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
       field.grailDiggable = true;
     }
     if (specialRules) {
-      // The conversion happens when the fight is won, before anyone digs.
+      // The Polish rule changes other Grail fields into real Utopias on clear.
       adventure.grailFieldCleared = true;
       applyPolishGrailFightConversion(state, field.spaceId);
     }
@@ -5281,7 +5313,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
-    // After dig: convert OTHER undug Grail fields (utopia or empty).
+    // Preserve explicit designer after-dig transformations (real Utopia/empty
+    // locations), which are distinct from the former `always` hybrid.
     if (!specialRules) {
       applyGrailAfterDigConversion(state, field.spaceId);
     }
@@ -5293,15 +5326,7 @@ function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSp
   const adventure = state.adventure;
   if (!adventure) return;
   for (const field of Object.values(adventure.fields)) {
-    // Only convert OTHER Grail sites that have not yet been fought. A Grail
-    // whose guards already fell (`blackCube`) is a spent dig site — a second
-    // Grail materialising later (its tile was face-down at this fight) must not
-    // resurrect it into a fresh, fightable Dragon Utopia with a full reward.
-    if (
-      field.spaceId === clearedFieldId ||
-      field.location !== "grail" ||
-      field.blackCube
-    ) {
+    if (field.spaceId === clearedFieldId || field.location !== "grail" || field.blackCube) {
       continue;
     }
     field.location = "dragon_utopia";
@@ -5313,11 +5338,7 @@ function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSp
   }
 }
 
-/**
- * When the Grail is dug, optionally convert every OTHER still-undug Grail
- * field: become a Dragon Utopia (`after-dig-utopia`) or empty (`after-dig-empty`).
- * The dug field itself stays a spent dig site (black cube, no diggable flag).
- */
+/** Convert other undug Grail fields after the configured dig result. */
 function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId): void {
   const mode = grailAsUtopiaMode(state);
   if (mode !== "after-dig-utopia" && mode !== "after-dig-empty") {
@@ -5326,18 +5347,14 @@ function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId):
   const adventure = state.adventure;
   if (!adventure) return;
   for (const field of Object.values(adventure.fields)) {
-    if (field.spaceId === dugFieldId) continue;
-    if (field.location !== "grail") continue;
+    if (field.spaceId === dugFieldId || field.location !== "grail") continue;
     if (mode === "after-dig-utopia") {
       field.location = "dragon_utopia";
-      // Fresh Utopia fight: clear dig flag / cube so it fights as a normal Utopia.
       delete field.grailDiggable;
       field.blackCube = false;
       field.everFlagged = false;
       field.flagOwnerId = null;
-      if (!field.difficulty) {
-        field.difficulty = 7;
-      }
+      if (!field.difficulty) field.difficulty = 7;
       eventNote(state, "A second Grail site transforms into a Dragon Utopia.");
     } else {
       field.location = "empty_field";
@@ -5654,6 +5671,83 @@ function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): Vi
 }
 
 /**
+ * A face-down tile is a Grail clue candidate only when its authoritative face
+ * can still contain the Grail. Printed Grail/Utopia fields are identity-locked,
+ * so a designer override cannot make a printed Utopia eligible as a Grail.
+ */
+function isFaceDownGrailClueCandidate(adventure: AdventureState, tile: MapTileState): boolean {
+  if (!tile.faceDown || adventure.mapPreset?.objectives?.grailAsUtopia === "always") {
+    return false;
+  }
+  const def = allTileDefinitions[tile.tileDefId];
+  if (!def) {
+    return false;
+  }
+  const printedObjective = def.fields.find(
+    (field) => field.difficulty === 7 && (field.location === "grail" || field.location === "dragon_utopia")
+  );
+  // Match materializeTileFields exactly: Dragon Utopia is never overridden,
+  // while a single explicit designation can turn a printed Grail into Utopia.
+  if (printedObjective?.location === "dragon_utopia") return false;
+  if (tile.viiField) {
+    return tile.viiField === "grail";
+  }
+  if (tile.viiFields?.includes("grail")) {
+    return true;
+  }
+  return def.fields.some((field) => field.difficulty === 7 && field.location === "grail");
+}
+
+/** Build the private, positional Obelisk clue picker when a face-down Grail exists. */
+function grailClueStep(adventure: AdventureState): VisitStep | null {
+  // The rule exists only if a hidden Grail is really on this map. The choice
+  // list itself MUST stay neutral: filtering it to Grail tiles would disclose
+  // every Grail position before the visitor chooses one.
+  if (!Object.values(adventure.tiles).some((tile) => isFaceDownGrailClueCandidate(adventure, tile))) {
+    return null;
+  }
+  const candidates = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
+  return {
+    type: "CHOOSE_ONE",
+    prompt: "Obelisk — choose one face-down tile to inspect for a Grail clue",
+    options: [
+      ...candidates.map((tile) => ({
+        label: `Tile at row ${tile.centerRow}, col ${tile.centerCol}`,
+        steps: [{ type: "GRAIL_TILE_SCRY", tileInstanceId: tile.id }]
+      })),
+      { label: "Do not inspect a tile", steps: [] }
+    ]
+  };
+}
+
+/**
+ * Add the optional Grail clue after the Obelisk's ordinary role effect. The
+ * entire pending visit is private to its owner in player-view.ts, so tile
+ * identities never cross the server boundary to other players.
+ */
+function queueGrailClue(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  const step = grailClueStep(adventure);
+  if (!step) {
+    return;
+  }
+  if (adventure.pendingVisit) {
+    adventure.pendingVisit.steps.push(step);
+    return;
+  }
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId: hero.controllerId,
+    fieldId: field.spaceId,
+    steps: [step]
+  };
+  processPendingVisit(state);
+}
+
+/**
  * Obelisk visit. Obelisks are flaggable (every visitor keeps a cube).
  *
  * House rule (`obelisk-rewards`, BINH default ON): the FIRST hero to visit a
@@ -5747,6 +5841,11 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
     };
     processPendingVisit(state);
   }
+
+  // The map clue is independent of the Obelisk's role/reward and is available
+  // on every entry that reaches this visit seam. It is appended after the
+  // regular visit effect, preserving legacy reward and teleport ordering.
+  queueGrailClue(state, hero, field);
 }
 
 /**
@@ -6524,6 +6623,8 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     return;
   }
 
+  normalizeAlwaysGrailAsUtopia(state, field);
+
   const playerId = hero.controllerId;
   const player = state.players[playerId];
   const pendingWogDice = player?.pendingWogResourceDice ?? 0;
@@ -6934,6 +7035,23 @@ export function processPendingVisit(state: GameState): void {
     visit.steps.shift();
 
     switch (step.type) {
+      case "GRAIL_TILE_SCRY": {
+        const tile = adventure.tiles[step.tileInstanceId];
+        // Raw actions cannot reveal arbitrary map information: the selected
+        // tile must still be placed and face-down. Grail candidacy gates the
+        // OFFER, not the selected position, to avoid leaking the Grail.
+        if (!tile || !tile.faceDown) {
+          break;
+        }
+        const locations = allTileDefinitions[tile.tileDefId]?.fields.map((field) => field.location).join(", ") ?? "";
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Grail clue — tile at row ${tile.centerRow}, col ${tile.centerCol} is ${tile.tileDefId} (${locations}). Memorize it, then hide it again.`,
+          options: [{ label: "Hide tile again", steps: [] }],
+          grailTileScry: { tileInstanceId: tile.id }
+        });
+        break;
+      }
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
         break;
@@ -13615,6 +13733,7 @@ function mineGuardReinforcementDraws(state: GameState, field: MapFieldState | un
 }
 
 export function drawGuardArmy(state: GameState, field: MapFieldState | undefined, difficulty: number): NeutralDraw[] {
+  normalizeAlwaysGrailAsUtopia(state, field);
   // Global "mine guards +1 bronze" house rule composes with EVERY base branch
   // below (level draw, designer exact / level, Random Town, etc.) — it appends
   // one extra bronze on a mine field, or nothing when the rule is off / the field
@@ -13672,14 +13791,6 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
       ...drawNeutralArmy(state, difficulty),
       { unitDefId: "neutral.black_dragons", tier: "gold" as const, bankGuard: true }
     ];
-  }
-
-  // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).
-  if (
-    field?.location === "grail" &&
-    grailAsUtopiaMode(state) === "always"
-  ) {
-    return drawDragonUtopiaArmy(state, difficulty);
   }
 
   if (field?.location === "dragon_utopia") {

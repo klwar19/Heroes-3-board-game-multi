@@ -657,7 +657,7 @@ export function grailBuildReward(state: GameState): CustomMapObjectivesConfig["g
   return polishGrailUtopiaEnabled(state) ? { ...authored, freeBuilding: true } : authored;
 }
 
-/** How a second / Grail dig site may convert after dig (or always-as-utopia). */
+/** How a Grail site changes after digging, or behaves as a true Utopia. */
 export function grailAsUtopiaMode(
   state: GameState
 ): NonNullable<CustomMapObjectivesConfig["grailAsUtopia"]> | undefined {

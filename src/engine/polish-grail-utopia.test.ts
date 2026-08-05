@@ -257,6 +257,66 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     const choice = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
     expect(choice?.kind === "visit-steps" && choice.steps[0]?.type).toBe("CHOOSE_ONE");
   });
+
+  it("preserves both explicit after-dig Grail conversions", () => {
+    for (const [mode, expected] of [
+      ["after-dig-utopia", "dragon_utopia"],
+      ["after-dig-empty", "empty_field"]
+    ] as const) {
+      const state = createAdventureGameState({
+        seed: `grail-after-dig-${mode}`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        players: PLAYERS.slice(0, 2),
+        victoryMode: "grail",
+        customMapPreset: { objectives: { grailAsUtopia: mode } }
+      });
+      const hero = getMainHero(state, "p1")!;
+      const first = field("grail", `first-${mode}`);
+      const second = field("grail", `second-${mode}`);
+      state.adventure!.fields[first.spaceId] = first;
+      state.adventure!.fields[second.spaceId] = second;
+      hero.spaceId = first.spaceId;
+
+      beginFieldVisit(state, hero.id, first.spaceId, false);
+      state.adventure!.grail!.obelisksVisited = { p1: ["obelisk-a", "obelisk-b"] };
+      beginFieldVisit(state, hero.id, first.spaceId, true);
+      expect(second.location).toBe(expected);
+    }
+  });
+
+  it("materializes grailAsUtopia=always as a real Utopia with Utopia guards and rewards", () => {
+    const state = createAdventureGameState({
+      seed: "grail-always-real-utopia",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: PLAYERS.slice(0, 2),
+      victoryMode: "grail",
+      customMapPreset: { objectives: { grailAsUtopia: "always", utopiaGuards: "four" } }
+    });
+    const hero = getMainHero(state, "p1")!;
+    const grail = field("grail", "42,42");
+    state.adventure!.fields[grail.spaceId] = grail;
+    hero.spaceId = grail.spaceId;
+    const goldBefore = state.players.p1.resources.gold;
+
+    const guards = drawGuardArmy(state, grail, 7);
+    expect(grail.location).toBe("dragon_utopia");
+    // The configured four-dragon Utopia party is the fixed four-card army;
+    // it is intentionally not the separate Black-Dragon bonus used by the
+    // editor-authored Utopia guard package.
+    expect(guards).toHaveLength(4);
+
+    beginFieldVisit(state, hero.id, grail.spaceId, false);
+    expect(grail.grailDiggable).toBeUndefined();
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(state.adventure!.grail?.status).toBe("uncollected");
+    expect(
+      state.adventure!.rewardQueue
+        .filter((reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts")
+        .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0))
+    ).toEqual([3, 5, 5]);
+  });
 });
 
 describe("Map Editor hidden Grail / Dragon Utopia rules", () => {

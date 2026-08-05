@@ -5094,6 +5094,12 @@ function rewardArtFromVisitSteps(
     if (!step || typeof step !== "object") {
       continue;
     }
+    // Obelisk Grail clues must not use the generic tile-art branch below: the
+    // initial picker deliberately lists every face-down tile, so previewing an
+    // option here would reveal all of their hidden faces before selection.
+    if (step.type === "GRAIL_TILE_SCRY") {
+      continue;
+    }
     // Legion recruit-discount: the step carries the ARTIFACT as `cardId`, but the
     // option is choosing WHICH UNIT the discount applies to — the tile must show
     // that unit's portrait, not the artifact card. This MUST precede the generic
@@ -5897,6 +5903,21 @@ export function PromptTray({
     startingBonusStep?.type === "CHOOSE_ONE" &&
     typeof startingBonusStep.prompt === "string" &&
     /^Starting bonus/i.test(startingBonusStep.prompt);
+  // The selected Obelisk clue is deliberately carried on the PRIVATE pending
+  // visit, rather than on the initial pick options. That lets its owner see the
+  // chosen tile's real face only after committing to that position.
+  const grailScryTileId =
+    startingBonusStep?.type === "CHOOSE_ONE" ? startingBonusStep.grailTileScry?.tileInstanceId : undefined;
+  const grailScryTile = grailScryTileId ? state.adventure?.tiles[grailScryTileId] : undefined;
+  const grailScryDef = grailScryTile ? allTileDefinitions[grailScryTile.tileDefId] : undefined;
+  const grailScryArt: VisitRewardArt | null = grailScryTile
+    ? {
+        image: grailScryDef?.assets?.tileImage,
+        name: grailScryDef?.id ?? grailScryTile.tileDefId,
+        tileRotation: grailScryTile.rotation,
+        caption: grailScryDef?.id ?? grailScryTile.tileDefId
+      }
+    : null;
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -5910,6 +5931,7 @@ export function PromptTray({
               : undefined;
           const art =
             rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps) ??
+            grailScryArt ??
             (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
           return { legal, art };
         })
