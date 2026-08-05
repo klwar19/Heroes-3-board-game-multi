@@ -16725,10 +16725,11 @@ function resolveEagleEyeDig(
   school?: Exclude<SpellSchool, "any">
 ): void {
   const wantedLevel = mode === "expert" ? "expert" : "basic";
-  // A Tome's School dig (option A) always reads the shared/basic Spell deck; the
-  // level-based Eagle Eye dig may switch to the BINH Expert Spell deck.
+  // With split decks, the selected Basic/Expert mode determines which physical
+  // Spell deck every dig reads. This also applies to a Tome's School-filtered
+  // dig; otherwise its two legal choices both searched the Basic deck.
   const deckId =
-    !school && houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
+    houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
   const deck = state.decks[deckId];

@@ -3380,8 +3380,14 @@ function addOptionPlays(
 
     for (const mode of modes) {
       for (const target of targets) {
+        const modeLabel =
+          option.effect.type === "EAGLE_EYE_DIG" && houseRuleEnabled(state, "split-decks")
+            ? ` (${mode === "expert" ? "Expert" : "Basic"} Spell deck)`
+            : mode === "expert" && !option.expertOnly
+              ? " (expert)"
+              : "";
         actions.push({
-          label: `${card.name}: ${option.label}${mode === "expert" && !option.expertOnly ? " (expert)" : ""}${
+          label: `${card.name}: ${option.label}${modeLabel}${
             fromSpellBook ? " (Spell Book)" : ""
           }`,
           action: {
