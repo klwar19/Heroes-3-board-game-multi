@@ -14370,7 +14370,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         count: pick.remaining - 1,
         filter: pick.filter,
         fromTop: pick.fromTop,
-        shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+        shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
+        excludeCardIds: pick.excludeCardIds
       });
       pumpAdventureQueues(state);
     }
@@ -16330,6 +16331,7 @@ export function openDiscardPickChoice(
     filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
     fromTop?: number;
     shuffleRestIntoDeck?: boolean;
+    excludeCardIds?: CardId[];
   }
 ): boolean {
   const player = state.players[playerId];
@@ -16389,7 +16391,19 @@ export function openDiscardPickChoice(
     }
   }
 
-  const pool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const rawPool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const excludedCounts = new Map<CardId, number>();
+  for (const cardId of pick.excludeCardIds ?? []) {
+    excludedCounts.set(cardId, (excludedCounts.get(cardId) ?? 0) + 1);
+  }
+  const pool = rawPool.filter((cardId) => {
+    const remaining = excludedCounts.get(cardId) ?? 0;
+    if (remaining <= 0) {
+      return true;
+    }
+    excludedCounts.set(cardId, remaining - 1);
+    return false;
+  });
   const candidates: { cardId: CardId; source: "discard" | "polish-used" }[] = [
     ...pool
       .filter((cardId) => matchesFilter(cardId) && !(polishRecovery && cardLibrary[cardId]?.kind === "spell"))
@@ -16485,7 +16499,8 @@ export function openDiscardPickChoice(
       remaining: selectionCount,
       filter: pick.filter,
       fromTop: pick.fromTop,
-      shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+      shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
+      excludeCardIds: pick.excludeCardIds
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
@@ -16739,7 +16754,8 @@ export function pumpAdventureQueues(state: GameState): void {
           count: reward.count,
           filter: reward.filter,
           fromTop: reward.fromTop,
-          shuffleRestIntoDeck: reward.shuffleRestIntoDeck
+          shuffleRestIntoDeck: reward.shuffleRestIntoDeck,
+          excludeCardIds: reward.excludeCardIds
         })
       ) {
         return;

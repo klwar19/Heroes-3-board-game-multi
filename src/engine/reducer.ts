@@ -394,6 +394,7 @@ import {
   getLegalReactionsForTrigger,
   getOffTurnCombatReactions,
   healDrawOnlyRider,
+  instantDrawOnlyRider,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
@@ -2042,16 +2043,17 @@ function castInFlightCardIds(
 
 function stackInFlightCardIds(
   state: GameState,
-  stackItem: ResolutionStackItem | undefined
+  stackItem: ResolutionStackItem | undefined,
+  playerId: PlayerId
 ): CardId[] {
   if (!stackItem) {
     return [];
   }
   return [
-    ...(stackItem.action.type === "CAST_SPELL"
+    ...(stackItem.action.type === "CAST_SPELL" && stackItem.action.playerId === playerId
       ? castInFlightCardIds(state, stackItem.action)
       : []),
-    ...stackItem.modifiers.playedCardIds
+    ...(stackItem.modifiers.playedCardIdsByPlayer?.[playerId] ?? [])
   ];
 }
 
@@ -12223,6 +12225,7 @@ function applyReactionPlayCore(
     cardId: string;
     mode?: "basic" | "expert";
     optionIndex?: number;
+    drawOnly?: true;
     costCardIds?: CardId[];
     /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
     costCardModes?: CardPlayMode[];
@@ -12539,18 +12542,20 @@ function applyReactionPlayCore(
     }
   }
 
-  const reactionInFlightCardIds: CardId[] = [
-    ...stackInFlightCardIds(state, stackItem),
-    ...(!play.fromScroll && !play.tarnumReturn
-      ? play.fromSpellBook && polishSpellBookEnabled(state)
-        ? play.castEnablerCardId
-          ? [play.castEnablerCardId]
-          : []
-        : !option?.cost?.removeSelf
-          ? [play.cardId]
-          : []
-      : [])
-  ];
+  const currentReactionInFlightCardIds: CardId[] = !play.fromScroll && !play.tarnumReturn
+    ? play.fromSpellBook && polishSpellBookEnabled(state)
+      ? play.castEnablerCardId
+        ? [play.castEnablerCardId]
+        : []
+      : !option?.cost?.removeSelf
+        ? [play.cardId]
+        : []
+    : [];
+  if (stackItem && currentReactionInFlightCardIds.length > 0) {
+    const byPlayer = (stackItem.modifiers.playedCardIdsByPlayer ??= {});
+    byPlayer[playerId] = [...(byPlayer[playerId] ?? []), ...currentReactionInFlightCardIds];
+  }
+  const reactionInFlightCardIds = stackInFlightCardIds(state, stackItem, playerId);
 
   if (card.kind === "spell" && state.combat && player) {
     // A Tarnum VI over-limit reaction and a Spell Scroll instant are free: they
@@ -12624,6 +12629,48 @@ function applyReactionPlayCore(
     optionLabel,
     ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
   });
+
+  // An Instant draw-rider used outside the primary effect's printed trigger:
+  // spend the card/cost normally, draw, and deliberately skip the stat, Power,
+  // heal, movement, morale, or Rune effect that has no valid target here.
+  if (play.drawOnly) {
+    const drawAmount = instantDrawOnlyRider(effect, mode);
+    if (drawAmount <= 0) {
+      throw new Error(`${card.name} has no unconditional card-draw rider.`);
+    }
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+    drawCardsForPlayer(state, playerId, drawAmount, {
+      inFlightCardIds: reactionInFlightCardIds
+    });
+    return { windowEnded: false };
+  }
+
+  // Deemer IV's trigger-free Instant utility is also legal inside a reaction
+  // window. Resolve the full printed operation: shuffle the prior discard back,
+  // keep this just-played card out, then draw.
+  if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    const reactingPlayer = state.players[playerId];
+    if (reactingPlayer) {
+      const playedIndex = reactingPlayer.discard.lastIndexOf(play.cardId);
+      const playedCard = playedIndex >= 0 ? [reactingPlayer.discard[playedIndex]] : [];
+      const toShuffle =
+        playedIndex >= 0
+          ? [...reactingPlayer.discard.slice(0, playedIndex), ...reactingPlayer.discard.slice(playedIndex + 1)]
+          : [...reactingPlayer.discard];
+      if (toShuffle.length > 0) {
+        reactingPlayer.deck = shuffleCards(
+          [...reactingPlayer.deck, ...toShuffle],
+          `${state.seed}#reaction-reshuffle-draw#${playerId}#${eventSeedNumber(state)}`
+        );
+      }
+      reactingPlayer.discard = playedCard;
+      drawCardsForPlayer(state, playerId, effect.drawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
+    }
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+    return { windowEnded: false };
+  }
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
@@ -13046,7 +13093,8 @@ function applyReactionPlayCore(
       count: effect.count,
       filter: effect.filter,
       fromTop: effect.fromTop,
-      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      excludeCardIds: reactionInFlightCardIds
     });
   }
 
@@ -13853,7 +13901,7 @@ function playReaction(
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
-    if (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER") {
+    if (!action.drawOnly && (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER")) {
       const stackItem = state.stack.at(-1);
       const attackOwner =
         stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
@@ -14997,6 +15045,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     });
   }
 
+  if (action.drawOnly) {
+    const drawAmount = instantDrawOnlyRider(effect, mode);
+    if (drawAmount <= 0) {
+      throw new Error(`${card.name} has no unconditional card-draw rider.`);
+    }
+    drawCardsForPlayer(state, action.playerId, drawAmount, {
+      inFlightCardIds: playInFlightCardIds
+    });
+    return;
+  }
+
   // Ongoing rule snapshot: lasting effects created below keep the card in
   // play until they end ("remove" plays went to `removed` and stay there).
   const effectCountBeforePlay = state.activeEffects.length;
@@ -15905,7 +15964,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       count: effect.count,
       filter: effect.filter,
       fromTop: effect.fromTop,
-      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      excludeCardIds: playInFlightCardIds
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
     // a queued discard-pick would not surface until the fight ended. A mid-Combat

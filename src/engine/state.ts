@@ -3200,6 +3200,8 @@ export type GameAction =
       target?: TargetRef;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /** Resolve only an unconditional card-draw rider; the primary effect has no valid map context. */
+      drawOnly?: true;
       /** Cards from hand paying the option's printed discard/remove cost. */
       costCardIds?: CardId[];
       /**
@@ -6770,6 +6772,8 @@ export type ResolutionStackItem = {
      */
     isPreemptiveRetaliation?: boolean;
     playedCardIds: CardId[];
+    /** Cards still resolving on this stack item, separated by their owner. */
+    playedCardIdsByPlayer?: Partial<Record<PlayerId, CardId[]>>;
   };
 };
 
@@ -9094,6 +9098,8 @@ export type AdventureReward =
       filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
+      /** One protected occurrence per id is still resolving and cannot be recovered yet. */
+      excludeCardIds?: CardId[];
     }
   | {
       /** Generic queued interaction resolved through the visit-step machinery. */
@@ -13601,6 +13607,8 @@ export type PendingChoice =
         filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
+        /** One protected occurrence per id is still resolving and cannot be recovered yet. */
+        excludeCardIds?: CardId[];
       };
       /** Found shared-deck Spell waiting for its take-or-discard decision. */
       eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };
