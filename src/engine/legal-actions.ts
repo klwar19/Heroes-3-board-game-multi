@@ -5792,6 +5792,24 @@ function getLegalActionsCore(
     return [];
   }
 
+  // The opening roll is an actual table boundary, not only a visual overlay.
+  // Until a human closes it, nobody may act and the computer runner must wait.
+  if (state.adventure?.openingFirstPlayerRollPending) {
+    if (
+      state.players[playerId] &&
+      !state.players[playerId].eliminated &&
+      !isComputerPlayer(state, playerId)
+    ) {
+      return [
+        {
+          label: "Begin the adventure",
+          action: { type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL", playerId },
+        },
+      ];
+    }
+    return [];
+  }
+
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
       // Parallel turns: bystanders keep their quiet actions while another

@@ -69,6 +69,12 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     return null;
   }
 
+  // The first-player result must be read before the winning seat begins. This
+  // gate is released only by a human dismissing the opening ceremony.
+  if (state.adventure?.openingFirstPlayerRollPending) {
+    return null;
+  }
+
   if (state.pendingChoice) {
     return computer(state, state.pendingChoice.playerId);
   }

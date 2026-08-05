@@ -20940,6 +20940,22 @@ function advanceComputerStep(
   });
 }
 
+function acknowledgeFirstPlayerRoll(
+  state: GameState,
+  action: Extract<GameAction, { type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL" }>,
+): void {
+  if (!state.adventure?.openingFirstPlayerRollPending) {
+    throw new Error("There is no first-player ceremony to dismiss.");
+  }
+  if (!state.players[action.playerId] || state.players[action.playerId].eliminated) {
+    throw new Error("Only a live player may dismiss the first-player ceremony.");
+  }
+  if (isComputerPlayer(state, action.playerId)) {
+    throw new Error("A human must dismiss the first-player ceremony.");
+  }
+  state.adventure.openingFirstPlayerRollPending = false;
+}
+
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
@@ -21334,6 +21350,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ACKNOWLEDGE_COMBAT_END":
         acknowledgeCombatEnd(nextState, action);
+        break;
+      case "ACKNOWLEDGE_FIRST_PLAYER_ROLL":
+        acknowledgeFirstPlayerRoll(nextState, action);
         break;
       case "SKIP_NECROMANCY":
         skipNecromancy(nextState, action);

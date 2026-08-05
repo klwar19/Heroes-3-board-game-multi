@@ -509,6 +509,7 @@ describe("computer map turns", () => {
     // letting the runner settle all computer work between each step, until the
     // human's round-2 turn is open.
     const humanPriority: GameAction["type"][] = [
+      "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
       "SET_TILE_ROTATION",
       "CHOOSE_OPTION",
       "CHOOSE_ABILITY_TARGET",
@@ -612,6 +613,7 @@ describe("computer map fights", () => {
       unit.side = "pack";
     }
     const humanPriority: GameAction["type"][] = [
+      "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
       "SET_TILE_ROTATION",
       "CHOOSE_OPTION",
       "CHOOSE_ABILITY_TARGET",
@@ -873,6 +875,7 @@ describe("server-pumped computer map steps (ADVANCE_COMPUTER recovery)", () => {
     while (!computerDecisionOwner(state) && guard++ < 50) {
       const offers = getLegalActions(state, "p1");
       const pick =
+        offers.find((legal) => legal.action.type === "ACKNOWLEDGE_FIRST_PLAYER_ROLL") ??
         offers.find((legal) => legal.action.type === "SET_TILE_ROTATION") ??
         offers.find((legal) => legal.action.type === "REFRESH_HAND") ??
         offers.find((legal) => legal.action.type === "END_TURN") ??
@@ -1104,6 +1107,7 @@ describe("paced computer visible steps (live single-player)", () => {
     while (!computerDecisionOwner(state) && guard++ < 40) {
       const offers = getLegalActions(state, "p1");
       const pick =
+        offers.find((legal) => legal.action.type === "ACKNOWLEDGE_FIRST_PLAYER_ROLL") ??
         offers.find((legal) => legal.action.type === "SET_TILE_ROTATION") ??
         offers.find((legal) => legal.action.type === "REFRESH_HAND") ??
         offers.find((legal) => legal.action.type === "END_TURN");

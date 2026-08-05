@@ -848,6 +848,7 @@ export default function Home() {
     queue: []
   });
   const [firstRoll, setFirstRoll] = useState<FirstPlayerRollCue | null>(null);
+  const firstRollAckInFlightRef = useRef(false);
   const [newDay, setNewDay] = useState<{ current: NewDayCue | null; queue: NewDayCue[] }>({
     current: null,
     queue: []
@@ -1427,6 +1428,36 @@ export default function Home() {
       setMapNotice({ current: null, queue: [] });
       setMoraleCue({ current: null, queue: [] });
       setFirstRoll(null);
+      // Reconnecting during the opening boundary must restore its ceremony.
+      // The event is deliberately marked seen above, so rebuild from the live
+      // pending state instead of replaying any historical presentation event.
+      if (
+        nextState.adventure?.openingFirstPlayerRollPending &&
+        nextState.adventure.firstPlayerRoll
+      ) {
+        const event = [...presentationEvents]
+          .reverse()
+          .find(
+            (candidate): candidate is Extract<GameEvent, { type: "FIRST_PLAYER_ROLLED" }> =>
+              candidate.type === "FIRST_PLAYER_ROLLED",
+          );
+        const roll = nextState.adventure.firstPlayerRoll;
+        if (event) {
+          setFirstRoll({
+            id: event.id,
+            attempts: roll.attempts,
+            winnerPlayerId: roll.winnerPlayerId,
+            winnerName:
+              nextState.players[roll.winnerPlayerId]?.name ?? roll.winnerPlayerId,
+            order: nextState.turnOrder
+              .filter((id) => id !== NEUTRAL_PLAYER_ID)
+              .map((id) => ({
+                playerId: id,
+                name: nextState.players[id]?.name ?? id,
+              })),
+          });
+        }
+      }
       setNewDay({ current: null, queue: [] });
       setAstrologerCue(null);
       setEventCue(null);
@@ -3697,7 +3728,7 @@ export default function Home() {
   // Closing the first-player ceremony releases the opening deal: the deck->hand
   // flights stashed at game start fly now, and the freshly dealt hand reveals as
   // they land — the roll having led, the cards draw after.
-  const dismissFirstRoll = useCallback(() => {
+  const finishFirstRollPresentation = useCallback(() => {
     const deferred = deferredStartDrawRef.current;
     deferredStartDrawRef.current = null;
     if (deferred) {
@@ -3713,6 +3744,39 @@ export default function Home() {
     }
     setFirstRoll(null);
   }, []);
+
+  const dismissFirstRoll = useCallback(() => {
+    const current = stateRef.current;
+    if (!current?.adventure?.openingFirstPlayerRollPending) {
+      finishFirstRollPresentation();
+      return;
+    }
+    const connection = connectionRef.current;
+    const playerId = viewerRef.current;
+    if (
+      !connection ||
+      !current.players[playerId] ||
+      firstRollAckInFlightRef.current
+    ) {
+      return;
+    }
+    firstRollAckInFlightRef.current = true;
+    void connection
+      .submitAction({ type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL", playerId })
+      .then((payload) => {
+        if (payload.errors.length > 0) {
+          setErrors(payload.errors.map((error) => error.message));
+          return;
+        }
+        finishFirstRollPresentation();
+      })
+      .catch(() => {
+        setErrors(["Could not begin the adventure. Try closing the roll again."]);
+      })
+      .finally(() => {
+        firstRollAckInFlightRef.current = false;
+      });
+  }, [finishFirstRollPresentation]);
 
   // The yellow/Resource die reads first: once the last map die clears the
   // screen, release the visit toasts (the calculation and notice) held behind
@@ -3768,7 +3832,11 @@ export default function Home() {
     setDice({ current: null, queue: [] });
     setMapDice({ current: null, queue: [] });
     setMapNotice({ current: null, queue: [] });
-    setFirstRoll(null);
+    if (firstRoll) {
+      dismissFirstRoll();
+    } else {
+      setFirstRoll(null);
+    }
     setNewDay({ current: null, queue: [] });
     setMoraleCue({ current: null, queue: [] });
     setAstrologerCue(null);
@@ -3790,7 +3858,7 @@ export default function Home() {
     for (const timer of damageRevealTimersRef.current) window.clearTimeout(timer);
     damageRevealTimersRef.current = [];
     presentationStartedAtRef.current = null;
-  }, []);
+  }, [dismissFirstRoll, firstRoll]);
 
   const presentationActive = Boolean(
     dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||

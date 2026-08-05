@@ -3908,6 +3908,11 @@ export type GameAction =
       playerId: PlayerId;
     }
   | {
+      /** Dismiss the opening first-player roll and release round-one play. */
+      type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL";
+      playerId: PlayerId;
+    }
+  | {
       /**
        * Resolve the atomic after-combat Necromancy window. Any selected
        * Necromancy/Legion/gold bonuses and reinforcements are final; unused
@@ -10902,6 +10907,12 @@ export type AdventureState = {
   farTileScriptedDraws?: string[];
   /** Start-of-game first-player roll, shown to every seat. */
   firstPlayerRoll?: FirstPlayerRollState | null;
+  /**
+   * Hard opening gate: a human must dismiss the first-player ceremony before
+   * round-one actions (including server-driven computer actions) may begin.
+   * Absent on older saves and games created with the roll disabled.
+   */
+  openingFirstPlayerRollPending?: boolean;
   /**
    * Server-baked seed for the delayed opening roll. Hidden from player views
    * and cleared as soon as the ceremony is committed.

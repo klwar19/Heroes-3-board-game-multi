@@ -90,6 +90,19 @@ export function commitFirstPlayerRoll(state: GameState): FirstPlayerRollState | 
   }
 
   state.adventure.firstPlayerRoll = roll;
+  // The roll is presentation with a mechanical boundary: do not let a server-
+  // driven computer winner start moving behind it. One human dismissal releases
+  // the table. Fully automated fixtures have nobody to dismiss, so do not gate.
+  const winnerIsComputer =
+    state.controllers?.[roll.winnerPlayerId]?.kind === "computer";
+  state.adventure.openingFirstPlayerRollPending =
+    winnerIsComputer &&
+    Object.keys(state.players).some(
+      (playerId) =>
+        playerId !== NEUTRAL_PLAYER_ID &&
+        state.controllers?.[playerId]?.kind !== "computer" &&
+        !state.players[playerId]?.eliminated,
+    );
   state.adventure.openingFirstPlayerSeed = undefined;
   // Rotate the FULL seat order to the winner, then keep only still-live seats:
   // when the winner was eliminated during the bonus phase, the next live seat
