@@ -3,6 +3,8 @@ import {
   applyAction,
   createAdventureGameState,
   createInitialGameState,
+  getActivationOrder,
+  getActivationStep,
   getLegalActions,
   CREATURE_BANK_ATTACKER_CELLS,
   CREATURE_BANK_GUARD_CORNERS,
@@ -533,6 +535,28 @@ describe("Creature Bank battlefield formation", () => {
     return state;
   }
 
+  /** Starts the reported size-III Shipwreck opening with a Pack of Orcs. */
+  function startShipwreckInitiativeTie(): GameState {
+    let state = createAdventureGameState({
+      seed: "bank-ammo-cart-opening",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-bank-sizes": true }
+    });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    state.players.p1.army = [{ id: "orcs", unitDefId: "stronghold.orcs", side: "pack" }];
+    state.players.p1.permanents = ["war_machine.ammo_cart"];
+    placeBankUnderHero(state, "shipwreck", 7);
+    state.adventure!.fields["bank-field"].bankSize = 3;
+
+    startNeutralEncounter(state, getMainHero(state, "p1")!, state.adventure!.fields["bank-field"]);
+    const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    state = apply(state, place!.action);
+    return apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  }
+
   it("pins the four guardians to the four board corners (not a backline/frontline)", () => {
     let state = startBankCombat("bank-corners", "naga_bank");
 
@@ -546,6 +570,41 @@ describe("Creature Bank battlefield formation", () => {
       .map((unit) => unit.position)
       .sort((left, right) => left - right);
     expect(guardPositions).toEqual([...CREATURE_BANK_GUARD_CORNERS].sort((left, right) => left - right));
+  });
+
+  it("gives Ammo-Cart-boosted Orcs attacker priority over a tied initiative-Stacked bank Wraith", () => {
+    const state = startShipwreckInitiativeTie();
+
+    const orcs = Object.values(state.combat!.units).find((unit) => unit.armyUnitId === "orcs");
+    const wraith = Object.values(state.combat!.units).find(
+      (unit) => unit.unitDefId === "neutral.wraiths" && unit.stackToken === "initiative"
+    );
+    expect(state.combat?.context.kind === "neutral" ? state.combat.context.bankStackCount : undefined).toBe(3);
+    expect(orcs?.initiative).toBe(7); // Pack 5 + Ammo Cart 2.
+    expect(wraith?.initiative).toBe(7); // Wraith 5 + its +2 Initiative Stack Token.
+    expect(getActivationOrder(state.combat!, state.activeEffects)[0]?.id).toBe(orcs?.id);
+    expect(state.combat!.activeUnitId).toBe(orcs?.id);
+  });
+
+  it("CONTROL: the same initiative-Stacked Wraith starts when the Orcs have no Ammo Cart", () => {
+    const state = startShipwreckInitiativeTie();
+    const orcs = Object.values(state.combat!.units).find((unit) => unit.armyUnitId === "orcs");
+    const wraith = Object.values(state.combat!.units).find(
+      (unit) => unit.unitDefId === "neutral.wraiths" && unit.stackToken === "initiative"
+    );
+    // Ammo Cart's startup adjustment is deliberately direct on ranged units;
+    // remove it here to isolate the same bank opening's no-Cart ordering.
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => !(effect.source.type === "card" && effect.source.cardId === "war_machine.ammo_cart")
+    );
+    orcs!.initiative -= 2;
+    orcs!.activationInitiative = undefined;
+    state.combat!.activeUnitId = null;
+
+    expect(orcs?.initiative).toBe(5);
+    expect(wraith?.initiative).toBe(7);
+    expect(getActivationOrder(state.combat!, state.activeEffects)[0]?.id).toBe(wraith?.id);
+    expect(getActivationStep(state.combat!, state.activeEffects)?.candidates[0]?.id).toBe(wraith?.id);
   });
 
   it.each([
