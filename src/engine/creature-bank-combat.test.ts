@@ -474,6 +474,22 @@ describe("Creature Bank defenders", () => {
     }
   });
 
+  it("never gives more than two bank defenders the same Stack Token statistic", () => {
+    for (let trial = 0; trial < 250; trial += 1) {
+      const state = createAdventureGameState({
+        seed: `bank-token-cap-${trial}`,
+        difficulty: "impossible",
+        rollFirstPlayer: false
+      });
+      const { units } = buildCreatureBankCombatUnits(state, "crypt");
+      const counts = new Map<string, number>();
+      for (const token of units.map((unit) => unit.stackToken).filter(Boolean)) {
+        counts.set(token!, (counts.get(token!) ?? 0) + 1);
+      }
+      expect(Math.max(...counts.values()), `seed ${trial}`).toBeLessThanOrEqual(2);
+    }
+  });
+
   it("BINH house rule rolls each token at ~80%, so Impossible can have fewer than four", () => {
     // Run a wide sample at Impossible (4 rolls). A fixed-count implementation
     // would always return 4; the probabilistic one spreads across 0..4 and

@@ -14023,6 +14023,7 @@ export function buildCreatureBankCombatUnits(
     [order[i], order[j]] = [order[j], order[i]];
   }
   let stackedCount = 0;
+  const tokenCounts: Partial<Record<StackTokenStat, number>> = {};
   for (let i = 0; i < tokenRolls; i += 1) {
     // Official and Polish-sized paths place every token. Only the explicit
     // BINH house rule rolls the 80% placement chance.
@@ -14030,7 +14031,15 @@ export function buildCreatureBankCombatUnits(
       continue;
     }
     const unit = units[order[i]];
-    unit.stackToken = rollStackTokenStat(random);
+    let stackToken = rollStackTokenStat(random);
+    // A bank may field four Stacked defenders, but no one statistic token may
+    // occur more than twice in that combat. Re-roll only exhausted token types;
+    // with four types and at most four placements an eligible type always exists.
+    while ((tokenCounts[stackToken] ?? 0) >= 2) {
+      stackToken = rollStackTokenStat(random);
+    }
+    tokenCounts[stackToken] = (tokenCounts[stackToken] ?? 0) + 1;
+    unit.stackToken = stackToken;
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;
