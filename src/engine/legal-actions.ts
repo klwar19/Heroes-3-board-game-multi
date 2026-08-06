@@ -184,8 +184,8 @@ import { SHARED_DECK_IDS } from "./decks";
 import {
   CAST_A_SPELL_CARD_ID,
   isCastASpellCard,
-  polishSpellBookEnabled,
-  refreshablePolishUsedSpells
+  midRoundRefreshablePolishUsedSpells,
+  polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
   abilityExpertIsCrownFree,
@@ -2811,9 +2811,10 @@ function isOptionEffectPlayable(
       // of a discard pile that can no longer contain owned Spells. Preserve any
       // non-Spell half of a mixed filter (Scholar's specialty recovery).
       if (polishSpellBookEnabled(state)) {
-        // A Book Spell still IN EFFECT can never be refreshed, so it must not
-        // make a recovery card look playable (the pick would offer nothing).
-        const used = player ? refreshablePolishUsedSpells(state, player) : [];
+        // A Book Spell still IN EFFECT — or already refreshed once this round —
+        // can never be refreshed, so it must not make a recovery card look
+        // playable (the pick would offer nothing).
+        const used = player ? midRoundRefreshablePolishUsedSpells(state, player) : [];
         if (effect.filter === "spell" && used.length > 0) {
           return true;
         }
@@ -8367,9 +8368,10 @@ export function isEffectLegalForTrigger(
     const inFlight = recoveryInFlightCardIds(state, playerId);
     const availableDiscard = excludeInFlightOccurrences(player.discard, inFlight);
     // The Polish used-Book pool is filtered by the SAME in-flight read — a Book
-    // Spell whose cast is still resolving must not count as recoverable.
+    // Spell whose cast is still resolving must not count as recoverable — and by
+    // the shared refresh gate (in effect / already refreshed once this round).
     const availableBookUsed = polishSpellBookEnabled(state)
-      ? excludeInFlightOccurrences(player.spellBookUsed ?? [], inFlight)
+      ? excludeInFlightOccurrences(midRoundRefreshablePolishUsedSpells(state, player), inFlight)
       : [];
     return availableDiscard.some(matches) || availableBookUsed.some(matches);
   }

@@ -266,7 +266,8 @@ import {
   CAST_A_SPELL_CARD_ID,
   gainOwnedCard,
   isCastASpellCard,
-  polishBookSpellEffectIsLive,
+  markPolishSpellRefreshedThisRound,
+  polishBookSpellRefreshBlocked,
   polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
@@ -11312,9 +11313,14 @@ function returnSpellFromDiscardToHand(
 
 /**
  * Refresh one used Polish Book Spell without exposing it to the hand/discard.
- * A Spell still "in effect" (its cast left a live lasting effect) is untouchable
- * — no refresh source may return it to the refreshed side until that effect ends
- * (`polishBookSpellEffectIsLive` is the ONE read every path shares).
+ * Two shared gates, both read through `polishBookSpellRefreshBlocked` so every
+ * mid-round refresh source agrees with its own offer:
+ *   - "in effect": a Spell whose cast left a live lasting effect is untouchable
+ *     until that effect ends;
+ *   - once per round: a Spell already refreshed this game round by a mid-round
+ *     source stays used until the round-start whole-side refresh.
+ * Either refusal still lets the rest of the caller run (Mysticism, for instance,
+ * hands the "Cast a Spell" enabler back regardless).
  */
 function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
   const player = state.players[playerId];
@@ -11322,16 +11328,21 @@ function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: Ca
   if (!player || usedIndex === -1) {
     return false;
   }
-  if (polishBookSpellEffectIsLive(state, playerId, cardId, player)) {
+  const blocked = polishBookSpellRefreshBlocked(state, playerId, cardId, player);
+  if (blocked) {
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `${cardLibrary[cardId]?.name ?? cardId} is still in effect and cannot be refreshed yet.`
+      message:
+        blocked === "in-effect"
+          ? `${cardLibrary[cardId]?.name ?? cardId} is still in effect and cannot be refreshed yet.`
+          : `${cardLibrary[cardId]?.name ?? cardId} has already been refreshed this round.`
     });
     return false;
   }
   player.spellBookUsed!.splice(usedIndex, 1);
   player.spellBook.push(cardId);
+  markPolishSpellRefreshedThisRound(player, cardId);
   appendEvent(state, {
     type: "SPELL_RETURNED_TO_HAND",
     playerId,

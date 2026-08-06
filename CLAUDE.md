@@ -4122,7 +4122,60 @@ is NOT done:
   sits in `ongoingCards`, never the discard, so no recall/recovery path can reach
   it (Knowledge only MARKS its `returnTo`) — `polish-spell-book.test.ts` ("Ongoing
   spells mid-effect stay in play (no Book)", with a resolved-instant CONTROL that
-  IS recoverable). The Mage
+  IS recoverable).
+- **ONCE PER ROUND — a single Book Spell may be refreshed only once per game
+  round** (user rule 2026-08-07). Part of the Polish Spell Book MODE itself, NOT a
+  separate house-rule toggle: with the mode on, every MID-ROUND refresh source may
+  return a given Book Spell to the refreshed side at most once per game round.
+  State is `player.polishSpellsRefreshedThisRound?: CardId[]` (optional — absent on
+  legacy snapshots = nothing blocked; NOT masked in player views, and nothing to
+  mask: a refresh moves a card off the public face-up `spellBookUsed` side and
+  already appends a public `SPELL_RETURNED_TO_HAND` event). ONE shared read beside
+  the "in effect" gate — `polishBookSpellRefreshBlocked` (`polish-spell-book.ts`,
+  returning `"in-effect" | "already-refreshed" | null`) plus the candidate helper
+  `midRoundRefreshablePolishUsedSpells` — so offers and resolution can never
+  disagree. Gated sources (the complete mid-round set; every other used→refreshed
+  transition in the repo belongs to a classic/stash Book, not the Polish one):
+  `refreshPolishUsedSpell` (reducer.ts — Mysticism at cast resolution, the
+  attack-window deferred recall, the cast-window instant recall, the Clone refund
+  and the spell-cancel path, all five through that one helper) and the
+  discard-recovery "Refresh a Spell in your Spell Book" pick (Crown of
+  Dragontooth's recover arm, Helm of the Alabaster Unicorn, Rib Cage, Crown of the
+  Five Seas, Thunder Helmet, Ciele I's Magic-Arrow filter — candidate filter in
+  `openDiscardPick`, playability gates in `legal-actions.ts`, and a resolution
+  backstop with a feed note in the `discard-pick` `CHOOSE_OPTION` branch).
+  Leading with what it deliberately does NOT do:
+  - **The ROUND-START whole-used-side refresh is exempt** — it IS the round
+    mechanism: it reads the marker-free `refreshablePolishUsedSpells` and, only
+    AFTER refreshing, clears every player's markers (the order matters; clearing
+    first would make the exemption structurally true and untestable).
+  - **Mysticism's OFFER is not withheld** — exactly like the in-effect gate, only
+    the refresh HALF is refused (with a feed note); the recall still hands the
+    "Cast a Spell" enabler back, which is why the reaction stays playable.
+  - **A recovery card whose every used Book Spell is spent is not playable at
+    all** (its playability gate reads the same filtered pool) — the pre-existing
+    reading for an all-in-effect Book, kept consistent.
+  - **Counted per physical COPY**: the marker list keeps multiplicity and the
+    budget is how many copies of that Spell the Book holds, so a player genuinely
+    holding two copies refreshes each once. LIMIT: a Spell UNINSCRIBED mid-round
+    (Rolling Spells / Crown option B) and re-acquired the same round keeps the
+    old copy's spent marker — conservative, unpinned, effectively unreachable
+    since a newly gained Spell enters the REFRESHED side.
+  - **Knowledge is unaffected** (it returns only the Cast a Spell enabler, never
+    the Spell), and so is the MAP recall path (`offerMapSpellKnowledgeRecall`
+    under Polish never refreshes a Book Spell). Rolling Spells is a paid REMOVAL,
+    not a refresh, and still ignores both gates.
+  - **Non-Polish games are untouched** (no Book, no markers) — CONTROL-pinned.
+  Pinned in `polish-spell-book.test.ts` ("a Spell can be refreshed only ONCE per
+  round", 8 cases): the Mysticism refresh-then-refuse round trip, the recovery
+  offer dropping the spent Spell while a DIFFERENT one stays offered, the stale-
+  pick resolution backstop, the round-start exemption + marker clear + a fresh
+  next-round refresh, the cross-source Mysticism→Dragontooth refusal, the
+  nothing-left playability gate with a cleared-marker CONTROL, the two-copies
+  case, and a rule-OFF CONTROL. Mutation-checked: deleting the `already-refreshed`
+  branch fails 7, deleting the discard-pick marker write fails 4, deleting
+  `refreshPolishUsedSpell`'s marker write fails 1, deleting the round-start clear
+  fails 1, and subjecting the round-start refresh to the limit fails 1. The Mage
   Guild searches 3, may grant/buy Cast cards, grants Cast at levels V/VII when
   built, and offers once-per-round 3-gold Rolling Spells (return one owned Spell,
   Search 2). The Spell deck remains merged even when Artifact decks split. The

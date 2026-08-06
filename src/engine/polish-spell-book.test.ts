@@ -1568,3 +1568,275 @@ describe("Ongoing spells mid-effect stay in play (no Book)", () => {
     expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Once per round 窶・part of the Polish Spell Book mode itself (user rule
+// 2026-08-07: "a single spell can be refreshed only once per round")
+// ---------------------------------------------------------------------------
+
+function refreshMarkers(state: GameState): string[] {
+  return state.players.p1.polishSpellsRefreshedThisRound ?? [];
+}
+
+function feedSays(state: GameState, fragment: string): boolean {
+  return state.eventLog.some(
+    (event) => event.type === "EVENT_NOTE" && event.message.includes(fragment)
+  );
+}
+
+/** Opens the shared Polish discard-recovery pick and returns the offered card ids. */
+function openRecoveryOffers(state: GameState): string[] {
+  if (!openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })) {
+    return [];
+  }
+  if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+    throw new Error("expected the Polish Book refresh choice");
+  }
+  return [...(state.pendingChoice.discardPick?.cardIds ?? [])];
+}
+
+describe("Polish Spell Book 窶・a Spell can be refreshed only ONCE per round", () => {
+  it("Mysticism refreshes a Book Spell once; the SAME Spell is refused a second time that round", () => {
+    const state = polishCombat("polish-book-once-per-round-mysticism");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism", "ability.mysticism"];
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p1.limits.expertUses = 0;
+
+    // First cast + Mysticism: the Spell really flips back to the refreshed side窶ｦ
+    const firstOpen = applyOk(state, castAtSkeletons(state, "spell.lightning_bolt").action);
+    const firstMyst = getLegalActions(firstOpen, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.mysticism"
+    );
+    expect(firstMyst, "Mysticism is offered into the cast window").toBeTruthy();
+    const next = passAll(applyOk(firstOpen, firstMyst!.action));
+    expect(next.players.p1.spellBook).toContain("spell.lightning_bolt");
+    expect(next.players.p1.spellBookUsed).not.toContain("spell.lightning_bolt");
+    // 窶ｦand the once-per-round budget for that Spell is now spent.
+    expect(refreshMarkers(next)).toEqual(["spell.lightning_bolt"]);
+    expect(next.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+
+    // A later COMBAT round inside the SAME game round (the marker only clears at
+    // a game-round start): cast it again and answer with the second Mysticism.
+    next.players.p1.combatStats.spellsCastThisRound = 0;
+    const secondOpen = applyOk(next, castAtSkeletons(next, "spell.lightning_bolt").action);
+    const secondMyst = getLegalActions(secondOpen, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.mysticism"
+    );
+    expect(secondMyst, "Mysticism stays a legal reaction 窶・only the refresh half is gated").toBeTruthy();
+    const resolved = passAll(applyOk(secondOpen, secondMyst!.action));
+
+    expect(resolved.players.p1.spellBookUsed).toContain("spell.lightning_bolt");
+    expect(resolved.players.p1.spellBook).not.toContain("spell.lightning_bolt");
+    expect(resolved.players.p1.hand).not.toContain("spell.lightning_bolt");
+    expect(feedSays(resolved, "has already been refreshed this round")).toBe(true);
+    // The enabler still comes back (that half of the recall is unaffected).
+    expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    // No second marker for a refresh that never happened.
+    expect(refreshMarkers(resolved)).toEqual(["spell.lightning_bolt"]);
+  });
+
+  it("the discard-recovery pick drops an already-refreshed Spell but still offers a DIFFERENT one", () => {
+    let state = polishMapGame("polish-book-once-per-round-recovery");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow"];
+    state.players.p1.discard = [];
+
+    // First recovery: refresh Haste for real.
+    const first = openRecoveryOffers(state);
+    expect(first).toEqual(expect.arrayContaining(["spell.haste", "spell.slow"]));
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: first.indexOf("spell.haste")
+    });
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(refreshMarkers(state)).toEqual(["spell.haste"]);
+
+    // Haste is cast again inside the same game round, so it is used once more 窶・    // but its once-per-round refresh is spent, so it is NOT a candidate now.
+    state.players.p1.spellBook = state.players.p1.spellBook.filter((id) => id !== "spell.haste");
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow"];
+    const second = openRecoveryOffers(state);
+    expect(second, "an already-refreshed Spell is not offered again this round").not.toContain(
+      "spell.haste"
+    );
+    // CONTROL: the untouched Slow is still refreshable the very same round.
+    expect(second).toContain("spell.slow");
+  });
+
+  it("a STALE pick naming an already-refreshed Spell is refused at resolution", () => {
+    // The offer filter hides it, so the only way to reach the resolution backstop
+    // is a pick opened before the Spell was refreshed (or a forged one): open the
+    // pick, let another source spend Haste's budget, then answer with Haste.
+    let state = polishMapGame("polish-book-once-per-round-stale-pick");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow"];
+    state.players.p1.discard = [];
+
+    const offers = openRecoveryOffers(state);
+    expect(offers).toContain("spell.haste");
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: offers.indexOf("spell.haste")
+    });
+    expect(state.players.p1.spellBookUsed).toContain("spell.haste");
+    expect(state.players.p1.spellBook).not.toContain("spell.haste");
+    expect(state.players.p1.hand).not.toContain("spell.haste");
+    expect(feedSays(state, "has already been refreshed this round")).toBe(true);
+    // Slow was never touched by the refused pick.
+    expect(state.players.p1.spellBookUsed).toContain("spell.slow");
+  });
+
+  it("the ROUND-START refresh ignores the marker, clears it, and a fresh mid-round refresh works again", () => {
+    let state = polishMapGame("polish-book-once-per-round-round-start");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.discard = [];
+
+    const offers = openRecoveryOffers(state);
+    expect(offers).toContain("spell.haste");
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: offers.indexOf("spell.haste")
+    });
+    expect(refreshMarkers(state)).toEqual(["spell.haste"]);
+
+    // Cast again inside the same game round 竊・used, and still blocked.
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    expect(openRecoveryOffers(state)).not.toContain("spell.haste");
+    state.pendingChoice = null;
+
+    // Round start: the whole USED side refreshes 窶・the marker never blocks the
+    // round mechanism itself 窶・and every marker is cleared.
+    state.round = 2;
+    startAdventureRound(state);
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.haste");
+    expect(refreshMarkers(state)).toEqual([]);
+
+    // A fresh mid-round refresh of the same Spell is legal again next round.
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    expect(openRecoveryOffers(state)).toContain("spell.haste");
+  });
+
+  it("cross-source: a Mysticism-refreshed Spell is refused by Crown of Dragontooth the same round", () => {
+    let state = createAdventureGameState({
+      startingBuildings: [],
+      seed: "polish-book-once-per-round-cross-source",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.hand = ["artifact.crown_of_dragontooth"];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.slow"];
+    state.players.p1.discard = [CAST_A_SPELL_CARD_ID];
+    // Haste's once-per-round refresh was already spent by a Mysticism recall.
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+
+    const recover = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.crown_of_dragontooth" &&
+        legal.action.optionIndex === 0
+    );
+    expect(recover, "the Crown is still playable 窶・Slow can be refreshed").toBeTruthy();
+    state = applyOk(state, recover!.action);
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the used-Spell refresh choice");
+    }
+    const offered = state.pendingChoice.discardPick?.cardIds ?? [];
+    expect(offered, "Haste already used its refresh this round").not.toContain("spell.haste");
+    expect(offered).toEqual(["spell.slow"]);
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice.id,
+      optionIndex: 0
+    });
+    expect(state.players.p1.spellBook).toEqual(["spell.slow"]);
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.haste"]);
+    expect(refreshMarkers(state)).toEqual(["spell.haste", "spell.slow"]);
+  });
+
+  it("with EVERY used Spell already refreshed, a recovery card is not playable at all", () => {
+    const state = polishMapGame("polish-book-once-per-round-nothing-left");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.discard = [];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(false);
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.haste"]);
+
+    // CONTROL: clear the marker and the very same card opens its pick.
+    state.players.p1.polishSpellsRefreshedThisRound = [];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
+  });
+
+  it("two genuine copies of one Spell each get their own refresh that round", () => {
+    let state = polishMapGame("polish-book-once-per-round-two-copies");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.haste"];
+    state.players.p1.discard = [];
+
+    for (let copy = 0; copy < 2; copy += 1) {
+      const offers = openRecoveryOffers(state);
+      expect(offers, `copy ${copy + 1} should still be refreshable`).toContain("spell.haste");
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice!.id,
+        optionIndex: offers.indexOf("spell.haste")
+      });
+    }
+    expect(state.players.p1.spellBook).toEqual(["spell.haste", "spell.haste"]);
+    expect(refreshMarkers(state)).toEqual(["spell.haste", "spell.haste"]);
+
+    // Both copies are spent: cast them again and neither may be refreshed.
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste", "spell.haste"];
+    expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(false);
+  });
+
+  it("CONTROL: with the Polish Book OFF, the same Spell may be recovered twice in one round", () => {
+    let state = createAdventureGameState({
+      seed: "polish-book-once-per-round-control-off",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.hand = [];
+    state.players.p1.discard = ["spell.haste"];
+
+    for (let take = 0; take < 2; take += 1) {
+      expect(openDiscardPickChoice(state, "p1", { count: 1, filter: "spell" })).toBe(true);
+      if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+        throw new Error("expected the classic discard pick");
+      }
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice.id,
+        optionIndex: 0
+      });
+      expect(state.players.p1.hand).toContain("spell.haste");
+      // Put it back for the second pass: a classic game keeps no refresh marker.
+      state.players.p1.hand = state.players.p1.hand.filter((id) => id !== "spell.haste");
+      state.players.p1.discard = ["spell.haste"];
+      expect(state.players.p1.polishSpellsRefreshedThisRound ?? []).toEqual([]);
+    }
+  });
+});
