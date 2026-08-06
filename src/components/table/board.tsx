@@ -40,6 +40,7 @@ import {
   tokenDefenseDelta,
   neutralFormationCellsForGuard,
   playerSpellCastsIgnoreLimit,
+  spellCastRestrictionNotices,
   unitHasUnlimitedRetaliationEffect,
   unitFlipSidePreview,
   unitIsBerserk,
@@ -2452,6 +2453,10 @@ export function CommandDock({
     (candidate) => candidate.controllerId === shownPlayerId && candidate.kind === "main"
   );
   const whose = watching ? `${player?.name ?? shownPlayerId}'s` : "your";
+  // Why the cast button is missing: the SAME predicates that strip the CAST_SPELL
+  // offers, spelled out in plain words next to the Spell counter (engine
+  // derivation — see spellCastRestrictionNotices; nothing is re-derived here).
+  const spellNotices = state.combat && !outcome ? spellCastRestrictionNotices(state, shownPlayerId) : [];
 
   return (
     <div className="commandDock" aria-label="Commands">
@@ -2494,6 +2499,18 @@ export function CommandDock({
               value={shownHero.movementPoints}
             />
           ) : null}
+        </div>
+      ) : null}
+      {spellNotices.length > 0 ? (
+        <div
+          aria-label={watching ? `${player?.name ?? shownPlayerId} spell restrictions` : "Spell restrictions"}
+          className="dockSpellNotices"
+        >
+          {spellNotices.map((notice) => (
+            <div className="drawWarning" key={notice.id}>
+              {notice.blocking ? "⛔" : "⚠"} {notice.text}
+            </div>
+          ))}
         </div>
       ) : null}
       {commands.map((legal) => (

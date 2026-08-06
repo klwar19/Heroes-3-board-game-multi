@@ -776,6 +776,8 @@ export {
   standingSpellPower
 } from "./legal-actions";
 export type { ActivationStep, PendingReactionPower } from "./legal-actions";
+export { spellCastRestrictionNotices } from "./spell-cast-restrictions";
+export type { SpellCastRestrictionNotice } from "./spell-cast-restrictions";
 export {
   getPostAttackAbilityDamageEffects,
   getUnitAbilityDefinitions,

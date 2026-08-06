@@ -120,6 +120,7 @@ export function SpellBookModal({
   onShortcut,
   onClose,
   subtitle,
+  restrictionNotices = [],
   emptyHint,
   castLabel
 }: {
@@ -143,6 +144,10 @@ export function SpellBookModal({
   onClose: () => void;
   /** Left-page blurb override (the combat Book explains combat timing). */
   subtitle?: string;
+  /** Engine-derived reasons this player currently cannot (or must pay to) cast.
+      The caller supplies them from `spellCastRestrictionNotices` — the modal
+      never derives a restriction itself. */
+  restrictionNotices?: readonly string[];
   /** Why the selected Spell has no cast right now, in the caller's terms. */
   emptyHint?: (cardId: string) => string;
   /** Cast-button label override (combat appends the concrete target). */
@@ -226,6 +231,15 @@ export function SpellBookModal({
               : subtitle ??
               "Spells set aside for later. Cast one on your turn or in combat (the normal Spell limit still applies), or stash more from your hand with a card's 📖 button."}
           </p>
+          {restrictionNotices.length > 0 ? (
+            <div aria-label="Spell restrictions" className="dockSpellNotices">
+              {restrictionNotices.map((text) => (
+                <div className="drawWarning" key={text}>
+                  ⚠ {text}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {allCardIds.length === 0 ? (
             <p className="spellBookEmpty">
               The pages are blank. Stash a hand Spell with its 📖 button to inscribe it here.
