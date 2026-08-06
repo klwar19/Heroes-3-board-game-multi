@@ -147,7 +147,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(cells).toEqual([...CREATURE_BANK_ATTACKER_CELLS].sort((a, b) => a - b));
   });
 
-  it("clears for XP only, converts other Grails immediately, then digs for 1 MP/20 gold and a 3-VP token", () => {
+  it("clears for XP only, then digs for 1 MP/20 gold and a 3-VP token — converting other Grails AT THE DIG", () => {
     const state = game("polish-grail-flow");
     const hero = getMainHero(state, "p1")!;
     const first = field("grail", "30,30");
@@ -160,10 +160,15 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     beginFieldVisit(state, hero.id, first.spaceId, false);
     expect(state.players.p1.resources.gold, "fight itself has no field payout").toBe(goldBefore);
     expect(first.grailDiggable).toBe(true);
-    expect(second.location).toBe("dragon_utopia");
+    // USER RULE 2026-08-07: beating the GUARDS converts nothing — an extra Grail
+    // only turns once a Grail has been TAKEN (see grail-converted-utopia.test.ts).
+    expect(second.location, "not yet — no Grail has been taken").toBe("grail");
     expect(canDigGrail(state, "p1")).toBe(true);
 
     beginFieldVisit(state, hero.id, first.spaceId, true);
+    expect(second.location, "the dig is the conversion trigger").toBe("dragon_utopia");
+    expect(second.grailConverted, "…and the converted site pays no Utopia reward").toBe(true);
+    expect(first.location, "the DUG site itself never turns").toBe("grail");
     expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: hero.id });
     expect(grailPossessionVp(state)).toBe(3);
@@ -174,12 +179,12 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(scored?.rows.find((row) => row.label === "Possessing the Grail")?.vp).toBe(3);
   });
 
-  it("does NOT resurrect an already-fought Grail when a later Grail is cleared", () => {
-    // Repro of the face-down-timing bug: the 2nd Grail's tile is still
-    // face-down (not in adventure.fields) when the 1st Grail is fought+dug, so
-    // it escapes the 1st fight's conversion. When the 2nd Grail is later
-    // revealed and fought, its conversion pass must SKIP the spent 1st Grail,
-    // not rewrite it into a fresh, fightable Dragon Utopia with a full reward.
+  it("never resurrects the DUG Grail, whatever happens on a later Grail field", () => {
+    // Face-down-timing case: the 2nd Grail's tile is still face-down (not in
+    // adventure.fields) when the 1st Grail is fought+dug, so it escapes the dig's
+    // conversion sweep. Whatever it later does, the SPENT dug site must stay a
+    // spent Grail — never a fresh, fightable Dragon Utopia (USER RULE 2026-08-07:
+    // "THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET: WONT TURN").
     const state = game("polish-grail-reconvert");
     const hero = getMainHero(state, "p1")!;
     const first = field("grail", "30,30");
@@ -193,18 +198,20 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     // Spent dig site: still a Grail field, guards fallen, no longer diggable.
     expect(first.location).toBe("grail");
     expect(first.blackCube).toBe(true);
+    expect(state.adventure!.grailTakenFieldId).toBe(first.spaceId);
 
-    // The 2nd Grail tile is revealed later and fought.
+    // The 2nd Grail field appears later (its tile was face-down) and is fought.
     const second = field("grail", "31,31");
     state.adventure!.fields[second.spaceId] = second;
     hero.spaceId = second.spaceId;
     beginFieldVisit(state, hero.id, second.spaceId, false);
 
-    // CONTROL: without the `blackCube` skip, the spent first Grail is converted
-    // back into a fresh difficulty-7 Dragon Utopia (blackCube cleared).
+    // CONTROL: drop the `grailTakenFieldId` / `blackCube` skips and the spent
+    // first Grail comes back as a fresh difficulty-7 Dragon Utopia (cube cleared).
     expect(first.location, "spent Grail must stay a spent Grail, not become a Utopia").toBe("grail");
     expect(first.blackCube).toBe(true);
     expect(first.grailDiggable ?? false).toBe(false);
+    expect(first.grailConverted ?? false).toBe(false);
   });
 
   it("builds at a controlled Town for free and opens the free-building picker", () => {
@@ -258,10 +265,12 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(choice?.kind === "visit-steps" && choice.steps[0]?.type).toBe("CHOOSE_ONE");
   });
 
-  it("preserves both explicit after-dig Grail conversions", () => {
+  it("preserves both explicit after-dig Grail conversions (and 'always' as their alias)", () => {
     for (const [mode, expected] of [
       ["after-dig-utopia", "dragon_utopia"],
-      ["after-dig-empty", "empty_field"]
+      ["after-dig-empty", "empty_field"],
+      // USER RULE 2026-08-07: "always" is now a legacy alias of after-dig-utopia.
+      ["always", "dragon_utopia"]
     ] as const) {
       const state = createAdventureGameState({
         seed: `grail-after-dig-${mode}`,
@@ -285,11 +294,11 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     }
   });
 
-  it("grailAsUtopia=always fights Utopia dragons but STILL digs (the documented hybrid)", () => {
-    // The type doc (state.ts) prints the contract verbatim: `"always": every
-    // Grail field fights Utopia dragons (and still digs).` Converting the field
-    // into a REAL Utopia would delete the map's only dig site and make a Grail
-    // victory unwinnable — so the identity must stay "grail".
+  it("grailAsUtopia=always keeps a Grail field a plain Grail until a Grail is TAKEN", () => {
+    // SUPERSEDED (USER RULE 2026-08-07 "only act like utopia AFTER A GRAIL IS
+    // TAKEN"): "always" used to be a hybrid — every Grail field fought the Utopia
+    // dragon party from round 1 while still digging. It is now a legacy alias of
+    // after-dig-utopia, so before the dig NOTHING about the field is Utopia-ish.
     const state = createAdventureGameState({
       seed: "grail-always-real-utopia",
       difficulty: "normal",
@@ -303,14 +312,14 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     state.adventure!.fields[grail.spaceId] = grail;
     hero.spaceId = grail.spaceId;
 
-    // The FIGHT half: the guard draw is the Utopia party ("four" mode = the
-    // fixed four-dragon army), not a plain level draw.
+    // The FIGHT: a plain level-Ⅶ Grail draw. CONTROL for the old reading — the
+    // "four" mode's fixed four-dragon party would be exactly 4 azure/gold bodies.
     const guards = drawGuardArmy(state, grail, 7);
-    expect(guards).toHaveLength(4);
-    // The DIG half: the field keeps its Grail identity...
+    expect(guards).not.toHaveLength(4);
+    expect(guards.some((draw) => draw.unitDefId === "neutral.azure_dragons")).toBe(false);
     expect(grail.location).toBe("grail");
 
-    // ...and visiting it arms the dig instead of paying the Utopia rewards.
+    // Visiting it arms the dig instead of paying any Utopia reward.
     beginFieldVisit(state, hero.id, grail.spaceId, false);
     expect(grail.grailDiggable).toBe(true);
     expect(
@@ -321,6 +330,9 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     state.adventure!.grail!.obelisksVisited = { p1: ["obelisk-a", "obelisk-b"] };
     beginFieldVisit(state, hero.id, grail.spaceId, true);
     expect(state.adventure!.grail?.status).not.toBe("uncollected");
+    // …and the dug field is NEVER the one that turns.
+    expect(grail.location).toBe("grail");
+    expect(grail.grailConverted ?? false).toBe(false);
   });
 });
 
@@ -345,23 +357,37 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
     }
   });
 
-  it("converts a second Grail that was still face-down when the first guard fell", () => {
+  it("converts a second Grail revealed after the DIG — not after a mere guard clear", () => {
     const state = editorGame("hidden-second-grail");
     const hero = getMainHero(state, "p1")!;
     const first = field("grail", "32,32");
     state.adventure!.fields[first.spaceId] = first;
-    const hiddenSecond = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);
     hero.spaceId = first.spaceId;
 
+    // CONTROL (USER RULE 2026-08-07): guards down, Grail NOT yet taken — a Grail
+    // tile revealed now stays a Grail dig site.
     beginFieldVisit(state, hero.id, first.spaceId, false);
-    expect(state.adventure!.grailFieldCleared).toBe(true);
+    expect(state.adventure!.grailTakenFieldId).toBeUndefined();
+    const early = instantiateTile(state.adventure!, "C2", { row: 40, col: 40 }, 0, true);
+    early.faceDown = false;
+    materializeTileFields(state.adventure!, early);
+    expect(
+      Object.values(state.adventure!.fields).find(
+        (candidate) => candidate.tileInstanceId === early.id && candidate.difficulty === 7
+      )?.location
+    ).toBe("grail");
 
+    // Now TAKE the Grail; a later reveal converts to a reward-free Utopia.
+    beginFieldVisit(state, hero.id, first.spaceId, true);
+    expect(state.adventure!.grailTakenFieldId).toBe(first.spaceId);
+    const hiddenSecond = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);
     hiddenSecond.faceDown = false;
     materializeTileFields(state.adventure!, hiddenSecond);
     const revealedObjective = Object.values(state.adventure!.fields).find(
       (candidate) => candidate.tileInstanceId === hiddenSecond.id && candidate.difficulty === 7
     );
     expect(revealedObjective?.location).toBe("dragon_utopia");
+    expect(revealedObjective?.grailConverted).toBe(true);
   });
 
   it("uses the exact editor reward bundle without the legacy Utopia gold bonus", () => {

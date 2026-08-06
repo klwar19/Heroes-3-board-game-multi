@@ -1247,14 +1247,30 @@ export function MapPresetEditor({
             </div>
           </div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail as Utopia">
-            <span className="mapPresetObjectiveLabel">Grail as Utopia</span>
+            <span className="mapPresetObjectiveLabel">Extra Grail site after the dig</span>
             <div className="mapPresetChipRow">
               {(
                 [
-                  { id: undefined, label: "Off" },
-                  { id: "always" as const, label: "Always" },
-                  { id: "after-dig-utopia" as const, label: "After dig → Utopia" },
-                  { id: "after-dig-empty" as const, label: "After dig → empty" }
+                  {
+                    id: undefined,
+                    label: "Off",
+                    hint: "Extra Grail sites stay (spent) dig sites."
+                  },
+                  {
+                    id: "after-dig-utopia" as const,
+                    label: "→ Utopia (no reward)",
+                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site fights as a Dragon Utopia. It pays NO Utopia reward — no gold, no Artifact Searches, no token pick. The dug site itself never turns."
+                  },
+                  {
+                    id: "after-dig-empty" as const,
+                    label: "→ empty",
+                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site becomes an empty field. The dug site itself never turns."
+                  },
+                  {
+                    id: "always" as const,
+                    label: "Always (legacy)",
+                    hint: "Legacy alias of \"→ Utopia (no reward)\". It used to make every Grail field fight Utopia dragons from round 1; a Grail only acts like a Utopia AFTER a Grail is taken now."
+                  }
                 ] as const
               ).map((opt) => (
                 <button
@@ -1267,6 +1283,7 @@ export function MapPresetEditor({
                     else next.grailAsUtopia = opt.id;
                     patchObjectives(next);
                   }}
+                  title={opt.hint}
                   type="button"
                 >
                   {opt.label}
@@ -1462,35 +1479,37 @@ export function MapPresetEditor({
             </div>
           </div>
           <div className="mapPresetObjectiveRow" role="group" aria-label="Grail as Utopia">
-            <span className="mapPresetObjectiveLabel">Grail dig site as Utopia</span>
+            <span className="mapPresetObjectiveLabel">Extra Grail site after the dig</span>
             <div className="mapPresetChipRow">
-              {([{ id: undefined, label: "Off" }, { id: "always" as const, label: "Always" }] as const).map((opt) => (
-                <button
-                  aria-pressed={objectives.grailAsUtopia === opt.id}
-                  className={`mapPresetChip${objectives.grailAsUtopia === opt.id ? " active" : ""}`}
-                  key={String(opt.id)}
-                  onClick={() => {
-                    const next = { ...objectives };
-                    if (opt.id === undefined) delete next.grailAsUtopia;
-                    else next.grailAsUtopia = opt.id;
-                    patchObjectives(next);
-                  }}
-                  type="button"
-                >
-                  {opt.label}
-                </button>
-              ))}
-              {objectives.grailAsUtopia === "after-dig-utopia" || objectives.grailAsUtopia === "after-dig-empty" ? (
-                <button className="mapPresetChip" disabled title="After-dig conversion is ignored under the hidden rules." type="button">
-                  After dig (inactive)
-                </button>
-              ) : null}
+              <button
+                aria-pressed
+                className="mapPresetChip active"
+                disabled
+                title="Once a Grail is taken, every OTHER still-unfought Grail site fights as a Dragon Utopia that pays NO reward. The dug site itself never turns. Pick 'empty' below to remove them instead."
+                type="button"
+              >
+                → Utopia (no reward)
+              </button>
+              <button
+                aria-pressed={objectives.grailAsUtopia === "after-dig-empty"}
+                className={`mapPresetChip${objectives.grailAsUtopia === "after-dig-empty" ? " active" : ""}`}
+                onClick={() => {
+                  const next = { ...objectives };
+                  if (objectives.grailAsUtopia === "after-dig-empty") delete next.grailAsUtopia;
+                  else next.grailAsUtopia = "after-dig-empty";
+                  patchObjectives(next);
+                }}
+                title="Override: extra Grail sites become empty fields instead of reward-free Utopias."
+                type="button"
+              >
+                → empty instead
+              </button>
             </div>
           </div>
           <small className="mapPresetHint">
             Hidden rules fix the rest: dig costs 1 MP and grants 20 gold plus the 3-VP Grail token; the Grail builds at
-            both a Town and a Settlement with a free building; there is no after-dig conversion. Turn the hidden package
-            off to tune those knobs individually.
+            both a Town and a Settlement with a free building. Turn the hidden package off to tune those knobs
+            individually.
           </small>
         </section>
       ) : null}

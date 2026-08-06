@@ -240,6 +240,41 @@ describe("Dragon Utopia objective", () => {
     expect(state.players.p1.necromancyWindow).toBe(false);
   });
 
+  it("a CONVERTED extra Grail site never wins Dragon Hunt (the post-combat fast path)", () => {
+    // USER RULE 2026-08-07: an extra Grail field that turned into a Utopia after
+    // the Grail was taken "behaves like utopia, but [does] not give extra
+    // rewards" — and an instant win is the biggest reward of all. This is the
+    // seam that decides it under the Grail/Utopia field package: the reducer's
+    // post-combat fast path (handleDragonUtopiaVisit returns earlier there).
+    const state = makeGame("dragon-hunt");
+    state.adventure!.houseRules = {
+      ...(state.adventure!.houseRules ?? {}),
+      "polish-grail-utopia": true
+    };
+    const converted = injectField(state, "dragon_utopia", "conv,1");
+    converted.grailConverted = true;
+    const heroId = placeHeroOn(state, "p1", converted.spaceId);
+    stageNeutralWin(state, heroId, converted.spaceId);
+
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure!.winnerPlayerId ?? null).toBeNull();
+    expect(state.phase).not.toBe("game-over");
+    expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).not.toContain(
+      converted.spaceId
+    );
+
+    // CONTROL: the same map, same path, a REAL Utopia — wins outright and is
+    // credited in the VP ledger. (Removing the `!field.grailConverted` guard
+    // makes the converted case above win too, and this stays green.)
+    const real = injectField(state, "dragon_utopia", "real,1");
+    placeHeroOn(state, "p1", real.spaceId);
+    stageNeutralWin(state, heroId, real.spaceId);
+    finalizeAdventureCombat(state);
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).toContain(real.spaceId);
+  });
+
   it("is only a creature bank in Grail Hunt — defeating it does NOT win", () => {
     const state = makeGame("grail");
     const field = injectField(state, "dragon_utopia");
