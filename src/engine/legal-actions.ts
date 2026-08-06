@@ -257,6 +257,7 @@ import {
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
+  hasSpellCastHandTax,
   hasSpellCastLock,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
@@ -1814,7 +1815,7 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
 }
 
 /** True while combat is running and no attack, reaction or choice is resolving. */
-function isCombatCardWindowOpen(state: GameState): boolean {
+export function isCombatCardWindowOpen(state: GameState): boolean {
   return Boolean(
     state.combat &&
       !state.combat.outcome &&
@@ -1827,7 +1828,7 @@ function isCombatCardWindowOpen(state: GameState): boolean {
   );
 }
 
-function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
+export function isCombatParticipant(state: GameState, playerId: PlayerId): boolean {
   return Boolean(
     state.combat && (state.combat.attackerPlayerId === playerId || state.combat.defenderPlayerId === playerId)
   );
@@ -1896,13 +1897,33 @@ export function isHandLockedInCombat(state: GameState, playerId: PlayerId): bool
  * Neutral Pegasi "Mystic Toll": a living enemy Pegasi forces this player to pay
  * (discard) one extra Power card whenever they cast a Spell. Combat-only.
  */
-export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId): boolean {
+export function combatEnemyPowerTaxUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat) {
-    return false;
+    return undefined;
   }
-  return Object.values(combat.units).some(
+  return Object.values(combat.units).find(
     (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastPowerTax(unit)
+  );
+}
+
+export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId): boolean {
+  return Boolean(combatEnemyPowerTaxUnit(state, casterId));
+}
+
+/**
+ * Neutral Familiars "Mana Leech": a living enemy Familiars taxes every Spell the
+ * caster plays FROM HAND with an extra chosen hand discard. The single read the
+ * reducer's toll (`continueSpellCastAfterPowerTax`) and the player-facing notice
+ * both use, so the warning and the toll can never disagree about who taxes whom.
+ */
+export function combatEnemyHandTaxUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
+  const combat = state.combat;
+  if (!combat) {
+    return undefined;
+  }
+  return Object.values(combat.units).find(
+    (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
   );
 }
 
@@ -1912,14 +1933,18 @@ export function combatEnemyImposesPowerTax(state: GameState, casterId: PlayerId)
  * Combat-only; the Stacked gate lives in `getUnitAbilityDefinitions`, so the
  * lock lifts the moment the Faerie Dragons lose their Stack Token.
  */
-export function combatEnemyLocksSpells(state: GameState, casterId: PlayerId): boolean {
+export function combatEnemySpellLockUnit(state: GameState, casterId: PlayerId): CombatUnitState | undefined {
   const combat = state.combat;
   if (!combat) {
-    return false;
+    return undefined;
   }
-  return Object.values(combat.units).some(
+  return Object.values(combat.units).find(
     (unit) => unit.controllerId !== casterId && isUnitAlive(unit) && hasSpellCastLock(unit)
   );
+}
+
+export function combatEnemyLocksSpells(state: GameState, casterId: PlayerId): boolean {
+  return Boolean(combatEnemySpellLockUnit(state, casterId));
 }
 
 /**
@@ -1968,6 +1993,28 @@ function cardEnablesSpellDeckCast(card: CardDefinition | undefined): boolean {
   );
 }
 
+/**
+ * Whether an ACTIVATION-timing Spell (Magic Arrow, Fireball, Haste…) may be cast
+ * by this player right now: one of their own units is active and has not yet
+ * attacked — or they hold Intelligence, which lifts the timing gate entirely.
+ *
+ * The SINGLE read `addSpellActions`' offer gate and the player-facing
+ * "no unit of yours is active" notice share, so the warning and the offer can
+ * never disagree about whether the activation window is open.
+ */
+export function playerActivationSpellWindowOpen(state: GameState, playerId: PlayerId): boolean {
+  const combat = state.combat;
+  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  return (
+    Boolean(
+      activeUnit &&
+        activeUnit.controllerId === playerId &&
+        !activeUnit.activatedThisRound &&
+        !activeUnit.attackedThisActivation
+    ) || playerHasSpellTimingFreedom(state, playerId)
+  );
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -2007,17 +2054,10 @@ function addSpellActions(
   const powerTaxed = combatEnemyImposesPowerTax(state, playerId);
 
   const combat = state.combat;
-  const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
   // Intelligence lifts the activation-timing gate: its holder may cast an
   // activation spell at any open moment of the combat, even off-turn, without
-  // one of their own units being active.
-  const ownActivationOpen =
-    Boolean(
-      activeUnit &&
-        activeUnit.controllerId === playerId &&
-        !activeUnit.activatedThisRound &&
-        !activeUnit.attackedThisActivation
-    ) || playerHasSpellTimingFreedom(state, playerId);
+  // one of their own units being active. (Shared read — see the helper.)
+  const ownActivationOpen = playerActivationSpellWindowOpen(state, playerId);
 
   // Tarnum (Conflux) VI: spells Searched this combat are cast for free OVER the
   // per-round limit (a bonus), and they never go to the caster's own discard —

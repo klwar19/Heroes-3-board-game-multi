@@ -9840,6 +9840,19 @@ button.hbSlot:disabled { cursor: default; }
   color: #ffc879;
 }
 
+/* Why no cast button: the engine-derived spell-restriction warnings, stacked
+   under the battle metrics. Reuses the `.drawWarning` amber chip; this rule only
+   stacks them (in flow — phone mode inherits it unchanged). */
+.dockSpellNotices {
+  display: grid;
+  gap: 4px;
+  font-size: 11.5px;
+}
+
+.dockSpellNotices .drawWarning {
+  display: block;
+}
+
 .handButtons {
   display: flex;
   align-items: center;

@@ -401,6 +401,7 @@ import {
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
+  combatEnemyHandTaxUnit,
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
@@ -507,7 +508,6 @@ import {
   hasIgnoreOwnAttackDie,
   hasImmuneToSpecialtyDamage,
   hasRetaliationAgainstDisadvantage,
-  hasSpellCastHandTax,
   hasSpellCastPowerTax,
   hasUnitAbilityEffect,
   isUndeadUnit,
@@ -11606,13 +11606,9 @@ function continueSpellCastAfterPowerTax(
     !action.fromOwnDiscard &&
     !action.fromSpellBook &&
     !action.tarnumReturn;
-  const combat = state.combat;
-  const familiar =
-    normalHandCast && combat
-      ? Object.values(combat.units).find(
-          (unit) => unit.controllerId !== action.playerId && isUnitAlive(unit) && hasSpellCastHandTax(unit)
-        )
-      : undefined;
+  // Shared read with the player-facing "Mana Leech" notice (see
+  // `combatEnemyHandTaxUnit`), so the warning and the real toll never disagree.
+  const familiar = normalHandCast ? combatEnemyHandTaxUnit(state, action.playerId) : undefined;
   const caster = state.players[action.playerId];
   if (!familiar || !caster) {
     performSpellCast(state, action, cards);

@@ -21,6 +21,7 @@ import {
   polishSpellBookEnabled,
   seatPickSummary,
   spellBookRuleEnabled,
+  spellCastRestrictionNotices,
   type GameAction,
   type GameState,
   type LegalAction,
@@ -740,6 +741,7 @@ export function HandFan({
                     return `Cast${expert}${targetLabel}`;
                   }}
                   emptyHint={(spellId) => timingHint(spellId)}
+                  restrictionNotices={spellCastRestrictionNotices(state, viewerPlayerId).map((notice) => notice.text)}
                   onCast={(legal) => {
                     onAction(legal.action);
                     setShelfOpen(null);
