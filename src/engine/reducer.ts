@@ -13774,6 +13774,35 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
     return;
   }
 
+  // A reaction play that opens a nested pendingChoice — today only Scholar's
+  // TAKE_FROM_DISCARD pick (openDiscardPickChoice) — PAUSES the window: the
+  // parked attack/cast must NOT resolve under a choice nobody has answered yet.
+  // Without this, Scholar played as the LAST card in hand re-derived ZERO
+  // legal reactions (the hand is empty until the pick lands), so the window
+  // closed "all-pass" and the exchange resolved before the recovered card ever
+  // reached the hand (reported 2026-08-06). A pendingChoice is exclusive in
+  // getLegalActions, so one open here can only be the choice this play just
+  // created. The CHOOSE_OPTION tail calls back into this function once the pick
+  // resolves, so the very same refresh / close / keep-priority rules then run
+  // against the settled hand — a card just taken from the discard is offered in
+  // this same window, and only when nothing is playable does it advance.
+  //
+  // Scoped to OPTION_CHOICE on purpose — that is the ONLY shape reachable here
+  // today (openDiscardPickChoice; the two REDIRECT_SPELL / Magic Mirror choices
+  // close the window themselves and return windowEnded, so they never arrive)
+  // and the ONLY one whose resolution path re-advances the window. Pausing on a
+  // type resolved elsewhere — a COMBAT_HAND_DISCARD answered by
+  // RESOLVE_COMBAT_DISCARD, which has no such tail — would leave the window
+  // paused forever. A future choice type reaching this seam therefore keeps the
+  // old close-and-resolve behaviour rather than freezing the table; give it a
+  // resume tail before adding it here.
+  if (state.pendingChoice?.type === "OPTION_CHOICE") {
+    state.reactionWindow.passedPlayerIds = [];
+    state.reactionWindow.priorityPlayerId = playerId;
+    state.priorityPlayerId = playerId;
+    return;
+  }
+
   // A fresh play clears everyone's earlier pass so opponents get a new chance
   // to respond once this player is finished.
   state.reactionWindow.passedPlayerIds = [];
@@ -21636,14 +21665,17 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         } else {
           chooseOption(nextState, action);
         }
-        // Some reaction plays (notably Scholar) open a nested option choice.
-        // Once that choice resolves, the newly acquired card must be visible
-        // to the still-open reaction window before priority can continue.
+        // Some reaction plays (notably Scholar) open a nested option choice,
+        // which PAUSES the window (advanceReactionWindowAfterPlay). Once that
+        // choice resolves, the newly acquired card must be visible to the
+        // still-open reaction window before priority can continue — and the
+        // window must then follow the SAME advance rules as any other play, so
+        // a player left with nothing playable no longer strands the parked
+        // attack in an offer-less window (the frozen-table shape). Hence the
+        // shared advanceReactionWindowAfterPlay rather than a bare refresh.
         if (nextState.reactionWindow && !nextState.pendingChoice) {
-          nextState.reactionWindow.passedPlayerIds = [];
-          nextState.reactionWindow.priorityPlayerId = action.playerId;
           nextState.phase = "reaction";
-          refreshReactionWindowLegalReactions(nextState, cards);
+          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
         }
         break;
       case "RESOLVE_COMBAT_DISCARD":

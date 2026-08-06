@@ -110,8 +110,14 @@ function ownsPendingInput(state: GameState, playerId: PlayerId): boolean {
  */
 export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAction | null {
   // A reaction window where the kicked seat holds priority: pass. (Passing is
-  // always legal for the priority holder.)
-  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId) {
+  // always legal for the priority holder — EXCEPT while a pendingChoice is
+  // open, which is exclusive in getLegalActions: a reaction play that opened a
+  // nested pick, e.g. Scholar's TAKE_FROM_DISCARD, PAUSES the window with the
+  // choice still owed. Passing there is illegal, so the driver would re-emit a
+  // rejected PASS_REACTION forever and never advance the drop. Fall through to
+  // the pending-input branch below, which answers the pick, and pass on the
+  // next call once the window is live again.)
+  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId && !state.pendingChoice) {
     return { type: "PASS_REACTION", playerId };
   }
 
@@ -185,7 +191,10 @@ export function nextAfkDropAction(state: GameState, playerId: PlayerId): GameAct
  * eliminating the seat (see resolveTurnTimeout in adventure-reducer.ts).
  */
 export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): GameAction | null {
-  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId) {
+  // Same pendingChoice guard as nextAfkDropAction: a reaction play that opened
+  // a nested pick pauses the window, and PASS_REACTION is illegal until the
+  // pick is answered. Keep the two drivers in lockstep.
+  if (state.reactionWindow && state.reactionWindow.priorityPlayerId === playerId && !state.pendingChoice) {
     return { type: "PASS_REACTION", playerId };
   }
 

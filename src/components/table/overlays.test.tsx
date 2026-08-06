@@ -2276,3 +2276,95 @@ describe("ReactionTray — anime Hero Grade reaction skill is reachable (§3.11)
     });
   });
 });
+
+describe("ReactionTray — a PAUSED window (Scholar's discard pick) yields to the choice prompt", () => {
+  // Reported bug tail: Scholar played as the last card in hand pauses the
+  // window while its TAKE_FROM_DISCARD pick is owed. getLegalActions then offers
+  // ONLY the pick, so the tray would render "No playable instants — pass to
+  // continue." next to a Pass button the engine REJECTS.
+  function scholarPausedState(): GameState {
+    const state = createInitialGameState("tray-scholar-paused");
+    state.players.p1.hand = ["ability.scholar"];
+    state.players.p1.discard = ["ability.offense"];
+    state.players.p2.hand = [];
+    const units = state.combat!.units;
+    units.unit_p1_crusaders.position = 14;
+    const attacker = units.unit_p2_skeletons;
+    attacker.position = 13;
+    attacker.activatedThisRound = false;
+    attacker.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    expect(declared.errors).toEqual([]);
+    const offer = getLegalActions(declared.state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.scholar"
+    );
+    const played = applyAction(declared.state, offer!.action);
+    expect(played.errors).toEqual([]);
+    return played.state;
+  }
+
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("renders nothing while the pick is owed, then comes back with the taken card", () => {
+    const paused = scholarPausedState();
+    expect(paused.pendingChoice?.playerId, "p1 owes the discard pick").toBe("p1");
+    expect(paused.reactionWindow?.priorityPlayerId, "the window is paused with p1").toBe("p1");
+
+    const { unmount } = render(tray(paused));
+    expect(screen.queryByText(/Instant window/i), "no tray while the pick is owed").toBeNull();
+    expect(screen.queryByText(/No playable instants/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Pass$/i })).toBeNull();
+    unmount();
+    cleanup();
+
+    // Answer the pick (take Offense back): the tray returns with the RE-DERIVED
+    // offers, including the just-recovered card.
+    const choice = paused.pendingChoice!;
+    const optionIndex =
+      choice.type === "OPTION_CHOICE"
+        ? choice.options.findIndex((option) => option.label.toLowerCase().includes("offense"))
+        : -1;
+    expect(optionIndex).toBeGreaterThanOrEqual(0);
+    const taken = applyAction(paused, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex
+    });
+    expect(taken.errors).toEqual([]);
+    expect(taken.state.pendingChoice).toBeFalsy();
+
+    render(tray(taken.state));
+    expect(screen.getByText(/Instant window/i), "the tray is back").toBeTruthy();
+    // The just-recovered Offense really is offered in the SAME window (it joins
+    // as a draw-only reaction on the defender side), so the keep-playing flow
+    // has a real button — not merely an empty tray.
+    expect(
+      getLegalActions(taken.state, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.offense"
+      ),
+      "the engine offers the recovered card in this window"
+    ).toBe(true);
+    expect(screen.queryByText(/No playable instants/i), "the recovered card has a tile").toBeNull();
+  });
+});
