@@ -6236,12 +6236,14 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
 
-## Reinforcement discounts unified: stacking Legion + banked Necromancy/Hill Fort (2026-07-27) — what runs vs. limits
+## Reinforcement discounts unified: stacking Legion + banked Necromancy (2026-07-27) — what runs vs. limits
 
 Legion vouchers, the Necromancy half-cost and the Hill Fort −3 used to be RIVAL
 sources resolved by "take the single biggest"; Necromancy and the Hill Fort also
 forced a blocking pick-and-pay prompt on the spot. They are now ONE additive
-pipeline. The OLD behaviour is preserved behind the new house rule
+pipeline. (The Hill Fort's own prompt CAME BACK on 2026-08-06 — as the default,
+rule-independently — because banking it was invisible; see its section below.
+Everything about the additive PRICING here still applies to it.) The OLD behaviour is preserved behind the new house rule
 `immediate-reinforcement-prompts` (registry `src/engine/house-rules.ts`,
 category `abilities`, **default OFF in BOTH binh and legacy** — so an untouched
 table plays the NEW reading; the lobby row renders from the registry and is
@@ -6275,18 +6277,18 @@ Leading with what does NOT work / the deliberate limits:
   2026-07-28 the after-combat window is an ATOMIC transaction (see that
   section): the withheld reward lands only on the explicit Resolve, and a bank
   this window created and did NOT redeem EXPIRES there. So a Necromancy bank is
-  still effectively use-it-now; only a Hill Fort bank survives to later turns
-  (until a hero moves).
-- **Two things the old-behaviour toggle does NOT restore** (stated in the rule's
-  own lobby description): the Hill Fort prices through the shared
-  `reinforceCostFor(…, flatGoldDiscount = 3)` seam in BOTH readings, so a Legion
-  voucher reserved for that unit applies there too (the old bespoke
+  still effectively use-it-now. (The Hill Fort bank that used to survive to
+  later turns is GONE — 2026-08-06, its own section below.)
+- **Three things the old-behaviour toggle does NOT restore** (stated in the
+  rule's own lobby description): the HILL FORT always opens its own
+  pick-and-pay window and never banks (2026-08-06, below); it prices through
+  the shared `reinforceCostFor(…, flatGoldDiscount = 3)` seam in BOTH readings,
+  so a Legion voucher reserved for that unit applies there too (the old bespoke
   `hillFortCost` helper ignored vouchers and has been deleted — it was left
   wired to nothing); and a half-ALL source (Isra) still halves the non-gold
   resources even when the flat discount wins the gold.
 - **The AI has no bank strategy** — see the single-player section: it redeems
-  when it can afford to, and may simply walk and lose an unredeemed HILL FORT
-  bank. The one place it is deliberately ordered is the atomic Necromancy
+  when it can afford to. The one place it is deliberately ordered is the atomic Necromancy
   window, where the redeem is scored between the card play and the Resolve
   (1_135/1_130 vs 1_140/1_120) because resolving expires the offer — without
   that repricing the AI threw its Necromancy card away after every win.
@@ -6302,21 +6304,99 @@ What runs (each mutation-checked):
   a half source (Necromancy floor / settlement ceil / Isra), then subtracts the
   flat total (Hill Fort / Cove Pub / Champions' Stables / every Legion voucher)
   from what remains. Toggle ON restores the "cheaper of half vs flat wins" read.
-- **Necromancy and the Hill Fort BANK instead of prompting**
+- **Necromancy BANKS instead of prompting**
   (`player.reinforcementDiscounts: ReinforcementDiscountBank[]`, a new optional
   PlayerState field — absent on legacy snapshots = old behaviour, nothing to
-  mask in player views since a played card is public). The Hill Fort visit
-  offers "Bank … (-3 gold; expires when you move)" or Skip; Necromancy banks a
-  half-gold-round-down offer (basic bronze/silver, expert any tier incl. azure,
-  `allowStack` for a Polish Unit-Stack layer). Redeeming is the new
+  mask in player views since a played card is public): a half-gold-round-down
+  offer (basic bronze/silver, expert any tier incl. azure, `allowStack` for a
+  Polish Unit-Stack layer). Redeeming is the new
   `REDEEM_REINFORCEMENT_DISCOUNT` action, offered per army card from the map
-  Army panel with the real charged price in the label.
+  Army panel with the real charged price in the label. **The HILL FORT no
+  longer banks at all (2026-08-06)** — it opens its own window instead; see
+  "The Hill Fort opens its own reinforce window" below. The `"hill-fort"` bank
+  `source` and its redeem path stay wired for in-flight legacy snapshots.
 - **`REDEEM_REINFORCEMENT_DISCOUNT` is handler-validated**, so its handler is
   the only gate: it refuses during combat AND off-turn
   (`hasOpenAdventureTurn`) — without the turn gate a forged action could flip a
   Few to a Pack in the middle of an opponent's turn, e.g. as an enemy hero walks
   onto a mine you are about to defend (pinned with a forged-off-turn rejection +
   an own-turn CONTROL in `legion-artifacts.test.ts`).
+
+## The Hill Fort opens its own reinforce window (2026-08-06) — what runs vs. limits
+
+Reported: "Fort on the Hill didn't do anything. It should give a pop up similar
+to Necromancy allowing to choose the unit you reinforce or skip." DIAGNOSIS: the
+engine was not broken — the SURFACE was invisible. With
+`immediate-reinforcement-prompts` OFF (the default) the visit offered ONE opaque
+option, "Bank Hill Fort reinforcement discount (-3 gold; expires when you move)",
+which created a `ReinforcementDiscountBank` and emitted **no event at all**: the
+visit closed, the feed said nothing, the board looked identical. Spending it
+meant noticing that a per-card reinforce button had appeared inside the map Army
+panel, and the bank was wiped the moment ANY of that player's heroes took a step
+(`performHeroStep`). Verified by probe before the change: the bank WAS created and
+`addBankedReinforcementActions` DID offer "Hill Fort: reinforce Halberdiers
+(free)" / "… Crusaders (7 gold)".
+
+Now: `HILL_FORT` always resolves through `resolveHillFort`
+(adventure-reducer.ts), and its `legal-actions.ts` branch always builds one
+priced option per eligible bronze/silver Few card — `Reinforce <unit> (<cost>) —
+Hill Fort −3 gold` — plus Skip. Paying runs the normal
+`reinforceArmyUnit` path, so the card flips Few→Pack at once, resources are
+spent, a reserved Legion voucher is consumed, and `RESOURCES_SPENT` +
+`UNIT_RECRUITED` land in the feed. Pricing is UNCHANGED (the same
+`reinforceCostFor(…, flatGoldDiscount = 3)` seam: −3 first, then every flat
+Legion voucher), so a table's economics do not move — only the timing and the
+visibility.
+
+Leading with what does NOT work / deliberate limits:
+- **The Hill Fort is now-or-never.** There is no bank to carry to a Town or a
+  later turn, in EITHER reading of `immediate-reinforcement-prompts` (the toggle
+  no longer touches the Hill Fort at all — its lobby description says so). A card
+  you cannot afford standing on the hex is a card you do not get.
+- **The Hill Fort is a one-use `visitable` field** (black cube on the visit), so
+  there is no 1-MP Revisit re-open; what re-opens the window is a CLEARED cube
+  (the designer `clear_tile_cubes` timed event / a re-opened field), pinned as
+  such.
+- **Nothing was made cheaper or dearer**, and the bank machinery is untouched:
+  Necromancy's atomic after-combat window still banks, and a legacy `hill-fort`
+  bank sitting in an in-flight snapshot is still redeemable from the Army panel
+  (`ReinforcementDiscountBank.source` keeps the `"hill-fort"` member).
+- **No new UI code.** The window renders through the existing pendingVisit
+  prompt tray, whose fallback title is already "Hill Fort: choose"; the map
+  Army-panel redeem button simply stops appearing for Hill Fort banks.
+- **The AI is not re-scored.** `resolveVisitStepScore`'s existing `HILL_FORT`
+  branch (1_130, minus optionIndex) already ranked this exact window shape, and
+  legal-actions still gates affordability, so a computer seat reinforces the
+  first eligible card it can pay for and takes the Skip exit otherwise. Net
+  behaviour is close to the old bank→redeem pair (which scored 1_130 then 820),
+  so no bespoke policy and no "hold it for a better card" planning.
+
+What runs (pinned in `src/engine/hill-fort-window.test.ts`, each case naming the
+line whose removal fails it; the PRICING half stays in
+`map-tile-effects-audit.test.ts`):
+- the window's offer shape (per-unit priced options + Skip, gold tier never
+  offered, no bank offer, nothing banked);
+- paying flips the CHOSEN card (an un-chosen decoy stays a Few), spends printed
+  gold − 3, and emits `UNIT_RECRUITED` + `RESOURCES_SPENT`;
+- a reserved Legion voucher folds on top (Crusaders 10 − 3 − 4 = 3), with a
+  no-voucher CONTROL at 7 gold;
+- Skip pays nothing, flips nothing, banks nothing, and still cubes the field;
+- an unaffordable card is never offered and the lone Skip explains itself
+  ("Skip (no bronze or silver Few unit you can afford to reinforce)"), with an
+  afford-it CONTROL that gets the offer and the plain "Skip";
+- the window is IDENTICAL with the house rule ON (loop over both readings);
+- a cleared cube re-opens it;
+- a computer seat reinforces rather than skipping, and a BROKE computer seat plus
+  the shared forced-resolution driver (`nextTurnTimeoutAction`, the AFK-kick /
+  10-minute-timeout path) both take the Skip exit — so the window can never
+  strand an automated seat. HONEST LIMIT on that last pair: the "reinforces"
+  case does not discriminate the dedicated `HILL_FORT` AI score branch (deleting
+  it leaves the generic 1_090+ visit-pick tail, still above the 1_050 decline) —
+  the branch only fixes the pick ORDER; it IS discriminated by reverting the
+  window itself.
+- Parallel turns / eliminations needed no new wiring: the window is an ordinary
+  `pendingVisit` step, so the bystander gates and `eliminatePlayer`'s
+  pendingVisit cleanup already cover it (verified by reading, not re-pinned).
 
 ## Legion vouchers on NEUTRAL-Unit recruits (2026-08-03) — what runs vs. limits
 

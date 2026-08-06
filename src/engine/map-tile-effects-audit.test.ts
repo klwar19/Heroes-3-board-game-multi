@@ -668,7 +668,12 @@ describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
     expect(reinforceCostFor(state, "p1", unit.id, true, false, false)?.gold).toBe(5);
   });
 
-  it("new default banks the Hill Fort, keeps the unit unchanged, then applies Hill Fort before Legion", () => {
+  // 2026-08-06: the Hill Fort NO LONGER banks by default — it opens its own
+  // pick-and-pay window (see hill-fort-window.test.ts for the full new-reading
+  // coverage). What this case still pins is the PRICING pipeline through that
+  // window: the Hill Fort's own −3 gold applies FIRST and the reserved Legion
+  // voucher is subtracted from what remains (additive, not competing).
+  it("prices the Hill Fort window's own -3 gold BEFORE a reserved Legion voucher", () => {
     const state = makeGame("hill-fort-adjustable");
     const player = state.players.p1;
     player.canMulligan = false;
@@ -685,25 +690,30 @@ describe("Hill Fort discounts ONLY bronze/silver reinforcements", () => {
     ];
 
     visit(state, "p1", injectField(state, "hill_fort"));
-    const bank = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Bank Hill Fort/i.test(legal.label)
-    );
-    expect(bank).toBeTruthy();
-    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
-
-    expect(player.army[0]?.side).toBe("few");
-    expect(player.reinforcementDiscounts).toHaveLength(1);
-    const redeem = getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" && legal.action.armyUnitId === unit.id
+    // No bank offer any more: the window prices the reinforce directly.
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Bank Hill Fort/i.test(legal.label)
+      )
+    ).toBe(false);
+    const offer = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Reinforce Crusaders/.test(legal.label)
     );
     // Crusaders 10 − Hill Fort 3 first − Legs 4 = 3.
-    expect(redeem?.label).toContain("3 gold");
-    const result = applyAction(state, redeem!.action);
+    expect(offer?.label).toContain("3 gold");
+    const result = applyAction(state, offer!.action);
     expect(result.errors).toEqual([]);
     expect(result.state.players.p1.army[0]?.side).toBe("pack");
     expect(result.state.players.p1.resources.gold).toBe(47);
+    // The voucher was consumed by the flip, and nothing was banked for later.
+    expect(result.state.players.p1.recruitDiscounts).toHaveLength(0);
+    expect(result.state.players.p1.reinforcementDiscounts ?? []).toHaveLength(0);
   });
 
+  // These two keep the `immediate-reinforcement-prompts` flip ON deliberately:
+  // since 2026-08-06 the Hill Fort window is rule-INDEPENDENT, so they are the
+  // regression that the OLD-reading table still gets the identical window (the
+  // default-off path is pinned in hill-fort-window.test.ts).
   it("offers bronze and silver Few units but never a gold-tier one", () => {
     const state = makeGame("hill-fort");
     state.adventure!.houseRules = {
