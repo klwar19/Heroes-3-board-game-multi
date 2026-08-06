@@ -8835,15 +8835,10 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
   }
 
   if (step.type === "HILL_FORT") {
-    if (!houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
-      actions.push({
-        label: "Bank Hill Fort reinforcement discount (-3 gold; expires when you move)",
-        action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: 0 }
-      });
-      actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
-      return;
-    }
-
+    // Necromancy-style pick-and-pay window, in BOTH readings of
+    // `immediate-reinforcement-prompts` (see the reducer's HILL_FORT case): one
+    // priced option per eligible bronze/silver Few card plus Skip. optionIndex
+    // indexes the UNFILTERED `fewUnits` list so it lines up with resolveHillFort.
     const fewUnits = player.army.filter((unit) => {
       if (unit.side !== "few" || !getUnitSide(unit.unitDefId, "pack")) {
         return false;
@@ -8851,16 +8846,26 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
       const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
       return tier === "bronze" || tier === "silver";
     });
+    let offered = 0;
     fewUnits.forEach((unit, index) => {
       const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, 3);
       if (cost && hasRecruitResources(state, playerId, cost)) {
+        offered += 1;
         actions.push({
-          label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${formatResourceCost(cost)})`,
+          label: `Reinforce ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${formatResourceCost(cost)}) — Hill Fort −3 gold`,
           action: { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: index }
         });
       }
     });
-    actions.push({ label: "Skip", action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true } });
+    // With nothing affordable the window would be a lone unexplained "Skip" —
+    // exactly the "didn't do anything" reading this rewrite fixes — so say why.
+    actions.push({
+      label:
+        offered > 0
+          ? "Skip"
+          : "Skip (no bronze or silver Few unit you can afford to reinforce)",
+      action: { type: "RESOLVE_VISIT_STEP", playerId, decline: true }
+    });
     return;
   }
 

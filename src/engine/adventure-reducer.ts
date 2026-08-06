@@ -42,7 +42,6 @@ import {
   adventurePvpTroopLoss,
   adventureVictoryMode,
   armyHasMapEffect,
-  bankReinforcementDiscount,
   beginFieldVisit,
   beginNextPendingStartTileRotation,
   canDigGrail,
@@ -4318,16 +4317,18 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
       break;
     }
     case "HILL_FORT": {
+      // The Hill Fort ALWAYS opens its own pick-and-pay window (both readings of
+      // `immediate-reinforcement-prompts`) — USER RULE 2026-08-06: "Fort on the
+      // Hill didn't do anything. It should give a pop up similar to Necromancy
+      // allowing to choose the unit you reinforce or skip." It used to BANK the
+      // −3-gold offer by default, which emitted no event at all: the visit closed
+      // with nothing visibly changed, and the only way to spend it was an
+      // easily-missed reinforce button in the map Army panel that silently
+      // expired on the hero's next step. The bank machinery itself is untouched
+      // (Necromancy's after-combat window still banks, and a legacy `hill-fort`
+      // bank in an in-flight snapshot is still redeemable).
       if (!action.decline) {
-        if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
-          resolveHillFort(state, action);
-        } else {
-          bankReinforcementDiscount(state, action.playerId, "hill-fort", {
-            sourceName: "Hill Fort",
-            allowedTiers: ["bronze", "silver"],
-            flatGoldDiscount: 3
-          });
-        }
+        resolveHillFort(state, action);
       }
       visit.steps.shift();
       break;
