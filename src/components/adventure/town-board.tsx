@@ -33,6 +33,7 @@ import {
   BuildingDetailPanel,
   HireHeroesSection,
   TownRecruitSection,
+  buildingPanelReachable,
   hasBuildingEffectPanel
 } from "@/components/adventure/town-sections";
 import { TownPanel } from "@/components/adventure/screen";
@@ -475,6 +476,15 @@ export function TownBoardView({
   const mageGuild = faction.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "MAGE_GUILD");
+  // The Spell Book panel hosts the guild's live purchase offers whenever the
+  // engine has any — built, or waived by the Astrologers' Mages card ("you can
+  // use it even if you do not have a Mage Guild built"). ONE shared read with
+  // the classic Buildings view, so the town can never hide an offer the engine
+  // makes (the reported bug: in town it looked like the guild had to be built,
+  // while the same free purchase was clickable from the PvP prep panel).
+  const spellPanelLive = Boolean(
+    mageGuild && buildingPanelReachable(state, viewerPlayerId, legalActions, mageGuild)
+  );
 
   const tokenStates: Record<"build" | "population" | "spellBook", { spent: boolean; note: string }> = {
     build: {
@@ -496,7 +506,9 @@ export function TownBoardView({
       note: player.townTokens.spellBook
         ? mageGuild && built(mageGuild.id)
           ? `Spell Book token ready — buy spells at the ${mageGuild.name}.`
-          : `Spell Book token ready — build the ${mageGuild?.name ?? "Mage Guild"} to buy spells.`
+          : spellPanelLive
+            ? `Spell Book token ready — usable this round with no ${mageGuild?.name ?? "Mage Guild"} built.`
+            : `Spell Book token ready — build the ${mageGuild?.name ?? "Mage Guild"} to buy spells.`
         : "Spell Book token spent — it refreshes next round."
     }
   };
@@ -630,11 +642,25 @@ export function TownBoardView({
             if (!building) {
               return null;
             }
+            // An unbuilt building normally shows its build row + rules text —
+            // unless the engine is offering one of its actions anyway (a waived
+            // requirement), in which case the live use panel comes FIRST so the
+            // offer is never hidden behind "build it first".
             if (!built(buildingId)) {
+              const live = buildingPanelReachable(state, viewerPlayerId, legalActions, building);
               return (
                 <div className="tbPanelSection" key={buildingId}>
+                  {live ? (
+                    <BuildingDetailPanel
+                      building={building}
+                      legalActions={legalActions}
+                      onAction={onAction}
+                      state={state}
+                      viewerPlayerId={viewerPlayerId}
+                    />
+                  ) : null}
                   {buildingRow(buildingId)}
-                  <p className="buildingDetailText">{describeBuildingEffect(building)}</p>
+                  {live ? null : <p className="buildingDetailText">{describeBuildingEffect(building)}</p>}
                 </div>
               );
             }
@@ -694,7 +720,7 @@ export function TownBoardView({
     if (openPanel.kind === "spell") {
       return (
         <PanelShell onClose={closePanel} title={`Spell Book — ${mageGuild?.name ?? "Mage Guild"}`}>
-          {mageGuild && built(mageGuild.id) ? (
+          {mageGuild && spellPanelLive ? (
             <BuildingDetailPanel
               building={mageGuild}
               legalActions={legalActions}

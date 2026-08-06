@@ -15,6 +15,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
+  freeSpellBookActive,
   houseRuleEnabled,
   inCombatPrep,
   legionVoucherDiscount,
@@ -97,6 +98,37 @@ export function hasBuildingEffectPanel(building: TownBuildingDefinition): boolea
   );
 }
 
+/**
+ * Whether one building's in-place effect / use panel must be REACHABLE right
+ * now — the ONE read both town views take, so neither can hide an action the
+ * engine is offering.
+ *
+ * A BUILT building always earns its panel. An UNBUILT one earns it as soon as
+ * the engine offers an action that belongs to it: the reported bug was the
+ * Astrologers' "Mages" proclamation, which waives the Mage Guild for the Spell
+ * Book token ("you can use it even if you do not have a Mage Guild built") — the
+ * engine offered the free purchase, but both town views only ever hosted the
+ * Spell Book buttons on a BUILT Mage Guild, so in town the card looked inert
+ * while the same offer was clickable from the PvP prep panel. Keyed off the live
+ * legal actions rather than the proclamation, so any future building waiver is
+ * surfaced by construction.
+ */
+export function buildingPanelReachable(
+  state: GameState,
+  viewerPlayerId: PlayerId,
+  legalActions: LegalAction[],
+  building: TownBuildingDefinition
+): boolean {
+  if (!hasBuildingEffectPanel(building)) {
+    return false;
+  }
+  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId);
+  if (town?.buildings.includes(building.id)) {
+    return true;
+  }
+  return activeBuildingActions(state, viewerPlayerId, legalActions, building.id).length > 0;
+}
+
 /** Live status / where-to-use note shown under a built building's effect text. */
 export function buildingPanelNote(
   state: GameState,
@@ -108,6 +140,17 @@ export function buildingPanelNote(
   const effect = building.effect;
   if (!effect) {
     return null;
+  }
+  // An UNBUILT building whose panel is open is only ever reachable because an
+  // effect waived its requirement (today: the Astrologers' Mages card on the
+  // Mage Guild). Say so, so nobody reads the live buttons as "already built".
+  if (!town.buildings.includes(building.id)) {
+    if (!hasActions) {
+      return null;
+    }
+    return effect.type === "MAGE_GUILD" && freeSpellBookActive(state)
+      ? "Not built — the Astrologers' Mages card lets you use the Spell Book token for free this round, with no Mage Guild."
+      : "Not built — usable right now because an effect waives the building.";
   }
   const usedThisRound = (player.buildingUsedRound?.[building.id] ?? 0) === state.round;
   switch (effect.type) {
@@ -205,6 +248,7 @@ export function BuildingDetailPanel({
     <div className="townActions townBuildingDetail" aria-label={`${building.name} effect`}>
       <h4>
         {building.name}
+        {town.buildings.includes(building.id) ? null : <small className="buildingDetailUnbuilt">not built</small>}
         {timing ? <small>{timing}</small> : null}
       </h4>
       <p className="buildingDetailText">{describeBuildingEffect(building)}</p>

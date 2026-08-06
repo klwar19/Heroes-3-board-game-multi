@@ -171,7 +171,8 @@ import {
   TownRecruitSection,
   UnitSideCards,
   hasBuildingEffectPanel,
-  activeBuildingActions
+  activeBuildingActions,
+  buildingPanelReachable
 } from "@/components/adventure/town-sections";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
@@ -4913,8 +4914,14 @@ export function TownPanel({
   const clearBuildingTip = (buildingId: string) =>
     setBuildingTip((current) => (current?.buildingId === buildingId ? null : current));
 
+  // A building's use panel opens when it is BUILT — or, unbuilt, while the engine
+  // offers an action that belongs to it (the Mages proclamation waiving the Mage
+  // Guild for the Spell Book token). ONE shared read with the board view.
+  const openCandidate = openBuildingId ? coreBuildingDefinitions[openBuildingId] : null;
   const openBuilding =
-    openBuildingId && town.buildings.includes(openBuildingId) ? coreBuildingDefinitions[openBuildingId] : null;
+    openCandidate && buildingPanelReachable(state, viewerPlayerId, legalActions, openCandidate)
+      ? openCandidate
+      : null;
 
   return (
     <section className="townPanel" aria-label={`${faction.name} town`}>
@@ -4936,7 +4943,7 @@ export function TownPanel({
             (legal) => legal.action.type === "BUILD_STRUCTURE" && legal.action.buildingId === buildingId
           );
           const cubes = town.factionCubes?.[buildingId] ?? 0;
-          const effectPanel = built && hasBuildingEffectPanel(building);
+          const effectPanel = buildingPanelReachable(state, viewerPlayerId, legalActions, building);
           const open = openBuildingId === buildingId;
           const actionable = effectPanel && activeBuildingActions(state, viewerPlayerId, legalActions, buildingId).length > 0;
           return (
