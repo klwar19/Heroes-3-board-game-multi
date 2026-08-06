@@ -1190,6 +1190,15 @@ export type EffectDefinition =
       /** Rion's Battlefield Medic: "then draw N card(s)" after the heal. */
       drawCards?: number;
       /**
+       * Rion's Battlefield Medic VI: "… then draw 2 cards AND discard 1 card
+       * from your hand." The printed order puts the DRAW first, so this is a
+       * post-draw rider, NOT an up-front `cost.discardCards` — the drawn cards
+       * may pay it, and the play is legal with the specialty as the only hand
+       * card. Mirrors `DRAW_CARDS.thenDiscard`, resolved through the same
+       * `openHandDiscardChoice` picker.
+       */
+      thenDiscard?: number;
+      /**
        * Rion's Battlefield Medic IV/VI: "Remove … damage or paralysis …" — also
        * clears the target's Paralysis token (a heal of 0 still clears it).
        */
@@ -1207,6 +1216,8 @@ export type EffectDefinition =
       removeParalysis?: boolean;
       /** Astra's Cure I: "… then draw N card(s)" after the cleanse. */
       drawCards?: number;
+      /** Post-draw "and discard N card(s) from your hand" — see HEAL_DAMAGE.thenDiscard. */
+      thenDiscard?: number;
     }
   | {
       type: "CANCEL_SPELL";

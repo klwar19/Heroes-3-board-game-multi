@@ -395,6 +395,7 @@ import {
   reactionOfferOpensWindow,
   getOffTurnCombatReactions,
   healDrawOnlyRider,
+  drawRiderThenDiscard,
   instantDrawOnlyRider,
   isAdjacent,
   isHandLockedInCombat,
@@ -12646,6 +12647,11 @@ function applyReactionPlayCore(
     drawCardsForPlayer(state, playerId, drawAmount, {
       inFlightCardIds: reactionInFlightCardIds
     });
+    // Rion VI and clones: "… then draw 2 cards AND discard 1" — the discard runs
+    // AFTER the draw, so the drawn cards are candidates. The nested choice
+    // resolves inside the still-open window (the Scholar precedent; the
+    // CHOOSE_OPTION dispatcher re-derives the window's offers afterwards).
+    applyDrawRiderThenDiscard(state, playerId, effect, card.name);
     return { windowEnded: false };
   }
 
@@ -13715,6 +13721,9 @@ function applyReactionPlayCore(
           inFlightCardIds: reactionInFlightCardIds
         });
       }
+      // Rion VI and clones: the printed discard follows the draw, so the just
+      // drawn cards may pay it (see drawRiderThenDiscard).
+      applyDrawRiderThenDiscard(state, playerId, effect, card.name);
     }
   }
 
@@ -14690,6 +14699,31 @@ function openHandDiscardChoice(
   state.priorityPlayerId = playerId;
 }
 
+/**
+ * A draw rider's printed "…, then discard N card(s) from your hand" — Rion's
+ * Battlefield Medic VI and its rethemed clones. It runs AFTER the draw (that is
+ * the printed order), so the cards just drawn are legal candidates and the play
+ * is legal even when the specialty was the last card in hand. Any hand card
+ * qualifies ("from your hand", not "of them"), and an empty hand forgives it
+ * (openHandDiscardChoice no-ops on zero candidates).
+ *
+ * Called at EVERY seam that resolves such a rider — the reaction heal, the
+ * reaction draw-only join, the combat/map unit-targeted play and the target-less
+ * map draw-only play — so no surface can resolve the draw without the discard.
+ */
+function applyDrawRiderThenDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  effect: EffectDefinition,
+  cardName: string
+): void {
+  const amount = drawRiderThenDiscard(effect);
+  if (amount <= 0) {
+    return;
+  }
+  openHandDiscardChoice(state, playerId, amount, [...(state.players[playerId]?.hand ?? [])], false, cardName);
+}
+
 /** Every Artifact deck id, Legacy ("artifacts") and BINH split, in draw order. */
 const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"] as const;
 const ARTIFACT_DECK_LABELS: Record<string, string> = {
@@ -15086,6 +15120,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     drawCardsForPlayer(state, action.playerId, drawAmount, {
       inFlightCardIds: playInFlightCardIds
     });
+    // Post-draw discard parity. UNREACHABLE TODAY (so unpinned): the only faces
+    // carrying `thenDiscard` are the medic VI heals, and a HEAL_DAMAGE face is
+    // deliberately excluded from the draw-only PLAY_CARD twin in legal-actions
+    // (it gets the target-less map offer instead). Kept so a future `thenDiscard`
+    // face cannot silently lose its discard on this path.
+    applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
     return;
   }
 
@@ -15129,6 +15169,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         inFlightCardIds: playInFlightCardIds
       });
     }
+    // Rion VI and clones: "… then draw 2 cards AND discard 1" — after the draw.
+    applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
   }
 
   if (effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" && nonDamageTarget) {
@@ -15152,6 +15194,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         inFlightCardIds: playInFlightCardIds
       });
     }
+    // Post-draw discard parity. UNREACHABLE TODAY (so unpinned): no shipped
+    // HEAL_DAMAGE_AND_REMOVE_EFFECTS face prints a discard after its draw. Kept so
+    // a future one cannot silently lose it on this path.
+    applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
   }
 
   // Medic heal instants (Rion's Battlefield Medic, Astra's Cure I and their
@@ -15165,6 +15211,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     drawCardsForPlayer(state, action.playerId, healDrawOnlyRider(effect), {
       inFlightCardIds: playInFlightCardIds
     });
+    // Rion VI and clones on the map: the draw resolves, then its printed discard.
+    applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {

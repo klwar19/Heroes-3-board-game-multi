@@ -5904,10 +5904,11 @@ a CONTROL).
   Aid, Rion/Astra/Gem and all their clones, Vial of Lifeblood, Pendant of Second
   Sight, Shaman's Puppet) through a real declared attack and asserts each is
   offered in the window, so a NEW heal card joins the invariant automatically.
-  Nothing was stranded. NOTE: Rion VI and its clones need a spare hand card —
-  their printed `discardCards: 1` cost is affordability-gated, so with the
-  specialty as the ONLY card in hand there is no reaction offer (correct, not a
-  bug). (b) Draw riders: the ONLY other combat-only instants carrying one are
+  Nothing was stranded. NOTE (SUPERSEDED 2026-08-06 — see the draw-then-discard
+  section below): Rion VI used to need a spare hand card, because its printed
+  discard was an up-front `cost.discardCards`; it is now a post-draw
+  `thenDiscard` rider, so VI is offered and playable as the LAST card in hand.
+  (b) Draw riders: the ONLY other combat-only instants carrying one are
   Offense / Armorer / Sorcery + Armor of Wonder / Scales / Tunic
   (`ADD_COMBAT_STAT` / `ADD_SPELL_POWER` — already map draw-only), Shield of
   Naval Glory (`GAIN_HERO_MOVEMENT`, already map-playable), Deemer IV
@@ -5929,6 +5930,69 @@ a CONTROL).
   ~590-610 map economy/search families) so a Rion/Aoko/Sirius/Molian seat never
   dumps the specialty it wants for a combat heal — a real in-combat heal still
   outranks it (CONTROL).
+
+## Medic VI draws BEFORE it discards · draw riders join open windows (2026-08-06)
+
+User ruling: "Battle medic speciality I IV VI — first you draw cards, then
+discards, and should work as reaction even when there is no need to heal, only
+for card drawing effects. Check for other drawing cards too, they dont need
+effects." Behaviour pinned in `src/engine/medic-specialty-heal-draw.test.ts`
+(every claim mutation-checked, with CONTROLs) + the recast Rion VI cases in
+`hero-specialty-levels.test.ts`.
+
+Leading with what does NOT change / the deliberate limits:
+- **A draw rider still NEVER OPENS a reaction window of its own**
+  (`reactionOfferOpensWindow`, unchanged): the medic joins an ALREADY-open
+  window. With nothing wounded AND no other reaction at the table the attack
+  resolves un-paused and the card stays in hand — otherwise a held medic would
+  interrupt every enemy attack. Pinned as a CONTROL.
+- **No duplicate look-alike offer.** The draw-only twin is `utilityOnly`, so the
+  shared trap-twin dedupe removes it whenever the REAL face is offered in the
+  same window (a wounded unit ⇒ exactly ONE medic offer, the targeted heal; a
+  pairable spell ⇒ exactly the real Sorcery Power plays). Both directions pinned.
+- **Kriv's trap-twin suppression is untouched**: a card with a side that REALLY
+  matches the window's printed trigger still gets no trigger-free utility joins.
+  Only the CONDITIONAL "+Power crosses into an attack window" pseudo-match no
+  longer counts as such a match (`powerCrossOverOnly`) — it was suppressing the
+  OTHER side's draw on Deemer IV / Zydar I, which then offered nothing at all.
+- **Two `applyDrawRiderThenDiscard` call sites are UNREACHABLE today and so
+  unpinned** (kept, and commented as such, so a future `thenDiscard` face cannot
+  silently lose its discard): `playCard`'s generic `drawOnly` branch (a
+  HEAL_DAMAGE face is excluded from the draw-only PLAY_CARD twin) and the
+  `HEAL_DAMAGE_AND_REMOVE_EFFECTS` branch (no shipped Cure face prints a
+  post-draw discard). The `hasPairableSpell` `!drawOnly` clause is likewise an
+  unpinned safety guard (no spell-kind card carries a draw rider today).
+- The AI is unchanged: both the map/combat `PLAY_CARD` and the in-window
+  `PLAY_REACTION` draw-only plays already scored a flat **300**
+  (`card.draw-rider-only`), below every real play — now pinned for the reaction.
+
+What runs (each with a failing-if-removed test):
+- **Rion VI (and the Aoko / Sirius / Molian clones) draws FIRST, then discards.**
+  The printed "… then draw 2 cards and discard 1 card from your hand" is now a
+  post-draw rider — `HEAL_DAMAGE.thenDiscard` (`state.ts`), read by the ONE
+  shared `drawRiderThenDiscard` (`legal-actions.ts`) and resolved through the
+  existing `openHandDiscardChoice` picker at every seam (reaction heal, reaction
+  draw-only join, combat/map unit-targeted play, target-less map draw-only play)
+  — NOT the up-front `cost.discardCards` it used to be. Consequences: the two
+  cards it DRAWS are legal candidates for the pitch, and the specialty is
+  offered and playable as the **LAST card in hand** (an affordability-gated cost
+  made it dead there — the reported bug). The nested picker resolves inside a
+  still-open reaction window (the Scholar precedent) and the window survives.
+  A library invariant fails if a NEW face gates a draw RIDER behind an up-front
+  discard cost; Charm of Mana's "**Discard** 2, then draw 3" (the draw is the
+  whole effect, and the printed order really is discard-first) keeps its cost.
+- **Every implemented draw-rider Instant can join an already-open window** — a
+  library-derived sweep over all 83 of them (Bulwark holder, so Kriv's
+  rune reaction is live), so a new one joins automatically. Two gaps it caught
+  and fixed: Deemer IV / Zydar I (the Power pseudo-match above) and Sorcery /
+  Scales of the Greater Basilisk / Tunic of the Cyclops King, whose "+Power" half
+  is withheld in an attack window unless a pairable spell instant is held — which
+  used to hide the printed DRAW with it. Those three now offer a basic-only
+  "(draw only)" join straight into `reactions`, deduped away again as soon as the
+  real Power play lands.
+- **The paralysis-cleanse / reaction-heal behaviour from 2026-08-04 is unchanged**
+  and still pinned (the heal lands before the counter-attack, a full-health
+  PARALYSED unit is a legal cleanse target, the map draw-only play).
 
 ## Combat draw-only abilities, Knowledge recall & value-based Power costs (BINH house rules) — what runs
 
