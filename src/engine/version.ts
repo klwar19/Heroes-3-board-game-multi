@@ -90,7 +90,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // catalogs the fingerprint hashes, so the explicit bump makes a skewed
 // edge/client show the version banner instead of silently dropping the new
 // rules or rejecting the new actions.
-export const ENGINE_PROTOCOL_VERSION = 19;
+// v20: Grail → Utopia conversion re-timed and de-rewarded (USER RULE
+// 2026-08-07). New persisted state a stale room server neither writes nor
+// understands: `adventure.grailTakenFieldId` / `grailTakenConversion` (the
+// conversion now fires at the DIG, not when a Grail's guards fall, and the dug
+// field is excluded by id) and `MapFieldState.grailConverted` (a converted extra
+// Grail pays NO Utopia reward and is not a Dragon-Hunt / VP Utopia). A v19 edge
+// would convert on the guard clear and pay the full 20 gold + Search 3/5/5 +
+// token pick on a converted site — a silent rules divergence between the two
+// halves, which is exactly what the version banner exists to surface. It also
+// drops the `grailAsUtopia: "always"` pre-dig Utopia-dragon guard swap (a v19
+// server deals a different guard army for the same field).
+export const ENGINE_PROTOCOL_VERSION = 20;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

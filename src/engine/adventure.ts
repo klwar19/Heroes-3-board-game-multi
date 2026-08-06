@@ -896,9 +896,18 @@ export function materializeTileFields(
   }
 
   const viiOverride = tile.viiField ? VII_FIELD_LOCATION[tile.viiField] : undefined;
+  // USER RULE 2026-08-07: extra Grail fields convert only once a Grail has been
+  // TAKEN. A Grail site whose tile was still face-down / in the Far supply at
+  // dig time takes the SAME conversion the dig froze (legacy snapshots only ever
+  // had the package's Dragon Utopia).
+  const grailConversion = grailConversionActive(adventure)
+    ? adventure.grailTakenConversion ?? "dragon_utopia"
+    : null;
   const cells = tileFootprint({ row: tile.centerRow, col: tile.centerCol }, tile.rotation);
   for (let slot = options.onlyRing ? 1 : 0; slot < cells.length; slot += 1) {
     let fieldDef = def.fields[slot];
+    const spaceId = hexSpaceId(cells[slot]);
+    let convertedFromGrail = false;
     // Designer Ⅶ-field override: the difficulty-7 objective field becomes the
     // designated location (a clean objective field, terrain preserved). Only the
     // difficulty-7 field is touched, and only when the location actually changes.
@@ -909,22 +918,30 @@ export function materializeTileFields(
         ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
       };
     }
-    // A hidden Grail tile may materialize only after another Grail guard was
-    // beaten. The special field package makes every OTHER Grail an Utopia at
-    // that moment, including fields that did not exist in `adventure.fields`
-    // yet because their tile was face-down or still in the Far supply.
+    // An EXTRA Grail site revealed after the Grail was taken converts here, so a
+    // face-down / Far-supply site cannot evade the map-wide conversion. The field
+    // the Grail was DUG from is excluded by id — it never turns, even if its tile
+    // is re-materialized (e.g. a rotation).
     if (
-      adventure.grailFieldCleared &&
+      grailConversion &&
       fieldDef.difficulty === 7 &&
-      fieldDef.location === "grail"
+      fieldDef.location === "grail" &&
+      spaceId !== adventure.grailTakenFieldId
     ) {
-      fieldDef = {
-        location: "dragon_utopia",
-        difficulty: 7,
-        ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
-      };
+      if (grailConversion === "dragon_utopia") {
+        convertedFromGrail = true;
+        fieldDef = {
+          location: "dragon_utopia",
+          difficulty: 7,
+          ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
+        };
+      } else {
+        fieldDef = {
+          location: "empty_field",
+          ...(fieldDef.terrain ? { terrain: fieldDef.terrain } : {})
+        };
+      }
     }
-    const spaceId = hexSpaceId(cells[slot]);
     const field: MapFieldState = {
       spaceId,
       tileInstanceId: tile.id,
@@ -935,6 +952,10 @@ export function materializeTileFields(
       everFlagged: false,
       settlementResource: null
     };
+    if (convertedFromGrail) {
+      // Reward-free Utopia (see MapFieldState.grailConverted).
+      field.grailConverted = true;
+    }
     if (fieldDef.difficulty) {
       field.difficulty = fieldDef.difficulty;
     }
@@ -1018,7 +1039,6 @@ export function materializeTileFields(
       if (perTile?.winCondition) {
         field.designerWinCondition = true;
       }
-      // Grail-as-utopia "always": a Grail dig site also fights Utopia dragons.
     } else if (field.location === "mine") {
       const mines = adventure.mapPreset?.mines;
       const perTile = tile.objectPlans?.mine;
@@ -5252,11 +5272,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (grail.status === "uncollected") {
       field.grailDiggable = true;
     }
-    if (specialRules) {
-      // The Polish rule changes other Grail fields into real Utopias on clear.
-      adventure.grailFieldCleared = true;
-      applyPolishGrailFightConversion(state, field.spaceId);
-    }
+    // USER RULE 2026-08-07: beating a Grail's GUARDS converts NOTHING — an
+    // extra Grail field only starts behaving like a Utopia once a Grail has
+    // actually been TAKEN (the dig below). Until then every Grail field on the
+    // map is a plain Grail dig site in every mode.
     return;
   }
 
@@ -5281,63 +5300,106 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
-    // Preserve explicit designer after-dig transformations (real Utopia/empty
-    // locations), which are distinct from the former `always` hybrid.
-    if (!specialRules) {
-      applyGrailAfterDigConversion(state, field.spaceId);
-    }
-  }
-}
-
-/** Polish rule: clearing one Grail fight turns every other Grail field into Utopia. */
-function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSpaceId): void {
-  const adventure = state.adventure;
-  if (!adventure) return;
-  for (const field of Object.values(adventure.fields)) {
-    // Only convert OTHER Grail sites that have not yet been fought. A Grail
-    // whose guards already fell (`blackCube`) is a spent dig site — a second
-    // Grail materialising later (its tile was face-down at this fight) must not
-    // resurrect it into a fresh, fightable Dragon Utopia with a full reward.
-    if (field.spaceId === clearedFieldId || field.location !== "grail" || field.blackCube) {
-      continue;
-    }
-    field.location = "dragon_utopia";
-    delete field.grailDiggable;
-    field.blackCube = false;
-    field.everFlagged = false;
-    field.flagOwnerId = null;
-    field.difficulty = 7;
+    // USER RULE 2026-08-07: the Grail has been TAKEN — this is the ONE moment
+    // any extra Grail field may convert, and this field is the one that never
+    // does. `grailTakenFieldId` records both facts for every later reveal.
+    adventure.grailTakenFieldId = field.spaceId;
+    // Legacy mirror only (see AdventureState.grailFieldCleared).
+    adventure.grailFieldCleared = true;
+    applyGrailTakenConversion(state, field.spaceId);
   }
 }
 
 /**
- * When the Grail is dug, optionally convert every OTHER still-undug Grail
- * field: become a Dragon Utopia (`after-dig-utopia`) or empty (`after-dig-empty`).
- * The dug field itself stays a spent dig site (black cube, no diggable flag).
+ * Which conversion an EXTRA Grail field takes once a Grail has been TAKEN.
+ * `null` = classic (an extra Grail stays a dig site).
+ *
+ * USER RULE 2026-08-07 ("if grail is taken, other grail should turn to behave
+ * like utopia … only act like utopia AFTER A GRAIL IS TAKEN"): both the Grail /
+ * Dragon Utopia field package (the `polish-grail-utopia` house rule AND the
+ * map-editor `hiddenGrailUtopia` flag) and the designer `grailAsUtopia` knob
+ * resolve here, so the two surfaces cannot drift. "always" is a deprecated alias
+ * of "after-dig-utopia" — its old pre-dig "fights Utopia dragons while still
+ * digging" hybrid is exactly what the rule forbids.
  */
-function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId): void {
+function grailTakenConversionTarget(state: GameState): "dragon_utopia" | "empty_field" | null {
   const mode = grailAsUtopiaMode(state);
-  if (mode !== "after-dig-utopia" && mode !== "after-dig-empty") {
-    return;
+  if (mode === "after-dig-empty") {
+    return "empty_field";
   }
+  if (mode === "after-dig-utopia" || mode === "always" || grailUtopiaFieldRulesEnabled(state)) {
+    return "dragon_utopia";
+  }
+  return null;
+}
+
+/**
+ * Whether extra Grail fields convert from now on — i.e. whether a Grail has been
+ * TAKEN. Read by {@link materializeTileFields} so a Grail site revealed AFTER
+ * the dig converts too (its tile was face-down / still in the Far supply at dig
+ * time, so the field-sweep below could not reach it).
+ *
+ * Legacy fallback: snapshots written before `grailTakenFieldId` existed set
+ * `grailFieldCleared` when the GUARDS fell, so it only counts once the Grail
+ * status proves the token was actually collected.
+ */
+export function grailConversionActive(adventure: AdventureState): boolean {
+  if (adventure.grailTakenFieldId) {
+    return true;
+  }
+  return (
+    Boolean(adventure.grailFieldCleared) &&
+    (adventure.grail?.status ?? "uncollected") !== "uncollected"
+  );
+}
+
+/**
+ * Convert every OTHER still-undug Grail field the moment the Grail is TAKEN:
+ * a reward-free Dragon Utopia (`grailConverted`) or an empty field.
+ *
+ * Two fields are deliberately skipped:
+ *   - `dugFieldId`, the site the Grail came from (USER RULE: "THE ORIGINAL GRAIL
+ *     FIELD THAT PLAYER DIG TO GET: WONT TURN"). It stays a spent dig site.
+ *   - any Grail whose guards already fell (`blackCube`): a spent site is never
+ *     resurrected into a fresh fightable field.
+ */
+function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): void {
+  const target = grailTakenConversionTarget(state);
   const adventure = state.adventure;
   if (!adventure) return;
+  // Only ONE Grail Token exists, so no other Grail site can ever be dug again.
+  // Drop their armed dig flags in EVERY mode (classic included) — a stale
+  // `grailDiggable` otherwise sells a 1-MP Revisit that resolves to nothing.
   for (const field of Object.values(adventure.fields)) {
-    if (field.spaceId === dugFieldId || field.location !== "grail") continue;
-    if (mode === "after-dig-utopia") {
+    if (field.spaceId !== dugFieldId && field.location === "grail") {
+      delete field.grailDiggable;
+    }
+  }
+  if (!target) {
+    return;
+  }
+  adventure.grailTakenConversion = target;
+  for (const field of Object.values(adventure.fields)) {
+    if (field.spaceId === dugFieldId || field.location !== "grail" || field.blackCube) {
+      continue;
+    }
+    if (target === "dragon_utopia") {
       field.location = "dragon_utopia";
+      // The conversion marker IS the "pays nothing" rule (see
+      // MapFieldState.grailConverted / handleDragonUtopiaVisit).
+      field.grailConverted = true;
       delete field.grailDiggable;
       field.blackCube = false;
       field.everFlagged = false;
       field.flagOwnerId = null;
       if (!field.difficulty) field.difficulty = 7;
-      eventNote(state, "A second Grail site transforms into a Dragon Utopia.");
+      eventNote(state, "An extra Grail site now fights as a Dragon Utopia (no reward).");
     } else {
       field.location = "empty_field";
       delete field.grailDiggable;
       delete field.difficulty;
       field.blackCube = false;
-      eventNote(state, "A second Grail site crumbles into an empty field.");
+      eventNote(state, "An extra Grail site crumbles into an empty field.");
     }
   }
 }
@@ -5407,6 +5469,22 @@ function queueDragonUtopiaArtifactSearches(
  */
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
+
+  // USER RULE 2026-08-07: a CONVERTED extra Grail site "behaves like a Utopia,
+  // but does NOT give extra rewards, which is terrible". It was a real Ⅶ fight
+  // (its guards came from the Utopia draw) and beating it clears the hex — and
+  // that is ALL it pays. No gold, no Search 3/5/5 ladder, no bonus Search, no
+  // Morale / Ability-Empower pick, and (a reward too) no Dragon-Hunt win, no
+  // Dragon-Conqueror capture and no `defeat-dragon-utopia` VP / win credit.
+  // Designer-authored rewards on the hex are explicit map content and were
+  // already paid by grantCenterHexBonus / the hex event before this call.
+  if (field.grailConverted) {
+    if (!field.blackCube) {
+      field.blackCube = true;
+      eventNote(state, "The converted Grail site is cleared — a fight only, with no Utopia reward.");
+    }
+    return;
+  }
 
   // Victory Points: record the defeater for the defeat-dragon-utopia objective.
   // A defeated Utopia otherwise leaves only an owner-less black cube, so this is
@@ -5651,8 +5729,8 @@ function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): Vi
  * can still contain the Grail. This mirrors materializeTileFields exactly: a
  * designation FORCES the Ⅶ objective whatever the tile prints, so the
  * designation is checked FIRST and the printed field only decides when no
- * designation exists. (Under `grailAsUtopia: "always"` a Grail field still
- * digs — it merely fights Utopia dragons — so it stays a real clue target.)
+ * designation exists. Every `grailAsUtopia` mode leaves a Grail field a real
+ * dig site until a Grail is TAKEN, so it stays a real clue target.
  */
 function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
   if (!tile.faceDown) {
@@ -10683,6 +10761,7 @@ export function carveColoredGateField(
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   delete field.gateToTileId;
   delete field.gateLinkSpaceId;
   delete field.bankId;
@@ -10963,6 +11042,7 @@ export function carveOnewayField(
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   delete field.gateToTileId;
   delete field.gateLinkSpaceId;
   delete field.bankId;
@@ -11070,6 +11150,7 @@ export function carveMapTokenField(
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   delete field.gateToTileId;
   delete field.gateLinkSpaceId;
   delete field.bankId;
@@ -11447,6 +11528,7 @@ function carveGateField(adventure: AdventureState, spaceId: MapSpaceId, toTileId
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   return field;
 }
 
@@ -13784,11 +13866,11 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
     ];
   }
 
-  // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).
-  if (field?.location === "grail" && grailAsUtopiaMode(state) === "always") {
-    return drawDragonUtopiaArmy(state, difficulty);
-  }
-
+  // NOTE (USER RULE 2026-08-07): `grailAsUtopia: "always"` used to make a Grail
+  // dig site fight Utopia dragons from round 1 (while still digging). "Only act
+  // like utopia AFTER A GRAIL IS TAKEN" removed that pre-dig hybrid: a Grail
+  // field draws its normal Grail guards, and only an EXTRA Grail field CONVERTED
+  // after the dig (location "dragon_utopia") reaches the Utopia draw below.
   if (field?.location === "dragon_utopia") {
     return drawDragonUtopiaArmy(state, difficulty);
   }
@@ -14088,6 +14170,7 @@ export function placeCreatureBank(
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
 
   appendEvent(state, {
     type: "CREATURE_BANK_PLACED",
@@ -15175,6 +15258,7 @@ export function placeCalamityGate(state: GameState, spaceId: MapSpaceId): MapFie
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   config.gateFieldId = spaceId;
   appendEvent(state, {
     type: "CALAMITY_GATE_PLACED",
@@ -15231,6 +15315,7 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
+  delete field.grailConverted;
   adventure.dungeonSite.fieldId = spaceId;
   const floorCap = dungeonFloorCapOf(state);
   appendEvent(state, {

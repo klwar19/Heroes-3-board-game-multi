@@ -2468,7 +2468,10 @@ Audit reverts / fixes on top of the branch (each mutation-checked):
   the Utopia dragons (`drawGuardArmyBase` → `drawDragonUtopiaArmy`); a
   designated `viiField:"grail"` still BEATS a printed Dragon Utopia (pinned in
   `vii-field-designation.test.ts` + `polish-grail-utopia.test.ts` — the dig
-  completes, no shared-deck-search rewards leak).
+  completes, no shared-deck-search rewards leak). **The "always" guard-swap half
+  is itself SUPERSEDED (2026-08-07)** — see "Grail → Utopia conversion" below:
+  "always" is now a legacy alias of `after-dig-utopia` and swaps NO guards
+  before a Grail is taken. The Ⅶ-field-identity-lock revert stands.
 - **The tournament combat SANDBOX split-deck change was REVERTED** to legacy
   single decks: the sandbox's rules layer reads legacy defaults with
   `adventure: null`, so split decks were unreachable by every search there —
@@ -2731,6 +2734,90 @@ roster entry, so a "last bronze" reading fails it —, the not-in-play + determi
 controller's pick actually minting their unit, and the eliminated-controller
 auto-resolve) plus the composition pin in `creature-bank-guards.test.ts`.
 
+## Grail → Utopia conversion: at the DIG, never the dug field, and reward-free (2026-08-07)
+
+USER RULE, verbatim: "so if grail is taken, other grail should turn to behave
+like utopia, but not give extra rewards, which is terrible, only act like utopia
+AFTER A GRAIL IS TAKEN, AND THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET:
+WONT TURN, ONLY THE OTHER EXTRA GRAIL FIELD." Three rules, applied to BOTH
+surfaces (the `polish-grail-utopia` house rule AND the map-editor
+`objectives.hiddenGrailUtopia` package) and to the designer `grailAsUtopia` knob.
+Protocol bumped to **v20** (new persisted state + changed rules — a stale
+PartyKit edge shows the out-of-date banner; `npm run deploy:partykit` required).
+Engine: `applyGrailTakenConversion` / `grailTakenConversionTarget` /
+`grailConversionActive` + the `materializeTileFields` reveal branch
+(`src/engine/adventure.ts`), the Dragon-Hunt fast path in `adventure-reducer.ts`.
+Pinned in `src/engine/grail-converted-utopia.test.ts` (every claim
+mutation-checked, both surfaces + the knob + classic) plus the reworked cases in
+`polish-grail-utopia.test.ts` and the Dragon-Hunt case in `grail-mode.test.ts`.
+
+Leading with what CHANGED / the deliberate limits:
+- **`grailAsUtopia: "always"` is now a LEGACY ALIAS of `after-dig-utopia`** and
+  its pre-dig hybrid is GONE. It used to make EVERY Grail field fight the Utopia
+  dragon party from round 1 while still digging (the 2026-08-06 audit reading, one
+  section above); "only act like utopia AFTER A GRAIL IS TAKEN" forbids exactly
+  that, so the `drawGuardArmyBase` guard swap was deleted — an undug Grail field
+  draws its normal Grail guards in every mode. Saved maps still load (the id is
+  kept and resolves to the after-dig conversion). No shipped scenario/map sets it.
+- **A CONVERTED extra Grail pays NOTHING built-in.** `field.grailConverted`
+  gates one early return at the top of `handleDragonUtopiaVisit`: no gold (the
+  Polish 20 / plain 10), no fixed Search 3/5/5 artifact ladder, no
+  `utopiaBonusSearch`, no Morale/Ability-Empower token pick. Beating it sets the
+  black cube and that is all. Designer-authored rewards on that hex still pay —
+  the centre-hex reward/VP and hidden hex events resolve in `beginFieldVisit`
+  BEFORE this handler and are explicit map content.
+- **A converted site is NOT a Utopia for victory purposes** (a win is the biggest
+  reward of all): no `recordVpUtopiaDefeat` credit, so it never feeds the
+  `defeat-dragon-utopia` VP objective or custom win condition; no Dragon-Hunt
+  instant win (guarded at BOTH seams — the visit handler and the reducer's
+  post-combat fast path, which is the one that decides it under the package); no
+  Dragon-Conqueror capture/flag, so it can never become a hold-to-win stronghold
+  or a garrison/siege site. DELIBERATE: on a map whose ONLY Utopias are converted
+  Grails, a Dragon-Hunt / Dragon-Conqueror victory is unreachable and the game
+  ends by conquest / last-faction-standing instead. (The package seeds real
+  Utopias alongside its Grails, so this is a hand-built-map edge.)
+- **The DUG field never turns**, enforced by id (`adventure.grailTakenFieldId`)
+  at BOTH conversion seams — the field sweep and the tile-reveal branch — so even
+  a re-materialize of its tile (a rotation) leaves it a spent Grail dig site
+  (black cube, no `grailDiggable`, no `grailConverted`).
+- **A spent (black-cubed) extra Grail is not resurrected either.** Both old
+  functions disagreed about this (the Polish one skipped, the after-dig one
+  rewrote); they are unified on SKIP. With the payout gone there is nothing to
+  re-fight for, so a spent site simply stays an inert Grail.
+- **Legacy snapshots**: `grailFieldCleared` is now only a legacy MIRROR (it used
+  to be the pre-dig trigger). `grailConversionActive` honours it only once
+  `grail.status` proves the Token was really taken, so a mid-game v19 snapshot
+  that cleared a guard but has not dug stops converting on reveal. Fields that
+  ALREADY converted in such a game keep their `dragon_utopia` location and, having
+  no `grailConverted` marker, still pay the old reward — that game keeps its old
+  reading, by design.
+- One extra tidy-up, unconditional in every mode: taking the Grail clears
+  `grailDiggable` from every OTHER Grail field. Only one Token exists, so an
+  armed flag there was selling a 1-MP Revisit that resolved to nothing.
+
+What runs (each with a failing-if-removed test):
+- The conversion trigger is the DIG (`handleGrailVisit`'s revisit branch), never
+  the guard clear. `grailTakenConversionTarget` is the ONE place the package and
+  the knob resolve, so the two surfaces cannot drift: `after-dig-empty` →
+  `empty_field`; `after-dig-utopia` / `always` / either package flag →
+  reward-free `dragon_utopia`; nothing set → classic (an extra Grail stays a
+  Grail dig site, byte-identical to before).
+- A converted field is a REAL fight: `difficulty 7`, black cube cleared, and its
+  guards come from the Utopia draw (the package's table row + one Black Dragon;
+  `drawDragonUtopiaArmy` on a plain map). Pre-dig the same field draws Grail
+  guards — the tests discriminate on the Black Dragon / the four-dragon party.
+- A Grail site whose tile was still face-down / in the Far supply at dig time
+  converts on REVEAL (`materializeTileFields`, using the conversion frozen at the
+  dig in `adventure.grailTakenConversion`), and a reveal BEFORE any dig does not.
+- Hygiene: every carve that rewrites a hex's identity (teleport tokens, gates,
+  banks, the Calamity Gate, the Dungeon, Field Overrides) drops `grailConverted`
+  with the rest of the old identity.
+- UI honesty: the map-editor row is now "Extra Grail site after the dig" with
+  "→ Utopia (no reward)" / "→ empty" / "Always (legacy)" chips and per-chip
+  tooltips; the lobby/designer banner line reads "After the Grail is taken, other
+  Grail tiles fight as Utopia (no reward)". The hidden-package section no longer
+  claims "there is no after-dig conversion" (it always had one).
+
 ## Diplomacy's skip costs a crown · Dragon Utopia guards use the table (2026-07-27)
 
 Two shipped readings replaced by the printed card / the Field Difficulty table.
@@ -2883,11 +2970,13 @@ Leading with the deliberate LIMITS of the warning:
   pays no comparable built-in reward). The `map-preset-editor` summary still
   takes the preset alone (no tiles), so the stack line appears in the designer's
   alert panel and the lobby banner, not in that collapsible summary.
-- NOT changed, and NOT a double-pay: `applyGrailAfterDigConversion` still
-  converts an already-CLEARED (black-cubed) second Grail site into a fresh
-  fightable Utopia, unlike its `applyPolishGrailFightConversion` sibling which
-  skips one. The player must beat fresh Ⅶ guards for that second payout and the
-  designer reward stays latched, so it is a re-fight, not a double reward.
+- SUPERSEDED (2026-08-07): the two conversion functions
+  (`applyGrailAfterDigConversion` / `applyPolishGrailFightConversion`) are gone,
+  replaced by ONE `applyGrailTakenConversion` that skips a black-cubed site. A
+  converted extra Grail can therefore never be a second Utopia payday at all —
+  it pays NOTHING (see "Grail → Utopia conversion" below), so it no longer
+  appears in this stacking matrix. Only a REAL printed / designated Ⅶ Utopia
+  does.
 
 ## Atomic Necromancy window · Luck lasts the round · printed Treasure dice (2026-07-28)
 

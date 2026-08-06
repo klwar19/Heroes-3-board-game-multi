@@ -129,7 +129,7 @@ describe("Obelisk house rule", () => {
     resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: skipIndex });
     expect(state.adventure!.pendingVisit).toBeNull();
   });
-  it("still offers the clue under grailAsUtopia=always (the field fights as a Utopia but STILL digs)", () => {
+  it("still offers the clue under grailAsUtopia=always (every mode leaves an undug Grail a real dig site)", () => {
     const state = makeGame();
     state.adventure!.mapPreset = { obelisks: { role: "victory-only" }, objectives: { grailAsUtopia: "always" } };
     instantiateTile(state.adventure!, "C4", { row: 91, col: 91 }, 0, true);

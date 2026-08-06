@@ -8820,6 +8820,17 @@ export type MapFieldState = {
    */
   grailDiggable?: boolean;
   /**
+   * USER RULE 2026-08-07: this Ⅶ `dragon_utopia` field is a CONVERTED extra
+   * Grail site, not a real Dragon Utopia. It is fought exactly like a Utopia
+   * (Ⅶ guards per the map's guard mode) but pays NONE of the Utopia's built-in
+   * rewards — no gold, no Search 3/5/5 artifact ladder, no bonus Search, no
+   * Morale/Ability-Empower token pick — and is not a Dragon-Hunt /
+   * Dragon-Conqueror win objective nor a `defeat-dragon-utopia` VP/win credit.
+   * Designer-authored rewards on that hex (centre-hex reward/VP, hex events)
+   * are explicit map content and still pay. Absent on every real Utopia.
+   */
+  grailConverted?: boolean;
+  /**
    * Raid Bosses (§6.5): the boss INSTANCE lairing on this field (the key into
    * `adventure.raidBosses`). Set when the field converts to a Rift Lair;
    * removed on the kill (the field is then black-cubed empty).
@@ -11310,11 +11321,33 @@ export type AdventureState = {
     obelisksVisited?: Record<PlayerId, MapSpaceId[]>;
   };
   /**
-   * A special-rules Grail guard has already been defeated. Any Grail field
-   * materialized later from a still-hidden tile becomes a Dragon Utopia, so a
-   * face-down second site cannot evade the map-wide conversion.
+   * LEGACY MIRROR (2026-08-07). Historically set the moment a special-rules
+   * Grail GUARD fell, which was the old (wrong) conversion trigger. It is now
+   * set at the DIG, together with {@link grailTakenFieldId}, and is only read as
+   * a fallback for snapshots written before that field existed — and then only
+   * once `grail.status` proves the Grail was really taken. New code must read
+   * `grailConversionActive` / `grailTakenFieldId`, never this flag.
    */
   grailFieldCleared?: boolean;
+  /**
+   * USER RULE 2026-08-07: the field the single Grail Token was DUG from. Two
+   * jobs, both scoped to that one field id:
+   *   - it is the conversion TRIGGER — extra Grail fields only start behaving
+   *     like a Dragon Utopia once a Grail has actually been TAKEN (never merely
+   *     when a Grail's guards fell), and
+   *   - the dug field itself NEVER converts: it stays a spent Grail dig site
+   *     (black cube, no `grailDiggable`) for the rest of the game.
+   * Absent = no Grail has been dug yet (every legacy snapshot).
+   */
+  grailTakenFieldId?: MapSpaceId;
+  /**
+   * The conversion extra Grail fields take, frozen at the dig (so a Grail tile
+   * revealed LATER converts the same way the field sweep did, without
+   * re-resolving house rules / preset in the tile-materialize path). Absent on
+   * legacy snapshots, where the only conversion that ever fired was the
+   * package's Dragon Utopia.
+   */
+  grailTakenConversion?: "dragon_utopia" | "empty_field";
   /**
    * Grail Hunt / Dragon Hunt: distinct enemy players each player has beaten in
    * hero combat at least once (the "defeat every enemy hero" win path).
@@ -11962,13 +11995,17 @@ export type CustomMapPreset = {
     utopiaGuards?: DragonUtopiaGuards;
     utopiaBonusSearch?: 1 | 2 | 3;
     /**
-     * How a Grail dig site may ALSO act as (or convert into) a Dragon Utopia:
-     *   - "always": every Grail field fights Utopia dragons (and still digs).
-     *   - "after-dig-utopia": after the Grail is dug, OTHER undug Grail fields
-     *     become Dragon Utopia (when Utopia is in the victory mode / map).
-     *   - "after-dig-empty": after the Grail is dug, OTHER undug Grail fields
-     *     become empty (map-maker "no second dig site").
-     * Absent = classic (Grail is dig-only; second Grail stays a dig site).
+     * How an EXTRA Grail field converts once a Grail has been TAKEN (dug). The
+     * dug field itself never converts (see {@link AdventureState.grailTakenFieldId}).
+     *   - "after-dig-utopia": other still-undug Grail fields become Dragon
+     *     Utopia — fightable Ⅶ guards, but NO Utopia reward (`grailConverted`).
+     *   - "after-dig-empty": other still-undug Grail fields become empty
+     *     (map-maker "no second dig site").
+     *   - "always": DEPRECATED ALIAS of "after-dig-utopia" (USER RULE
+     *     2026-08-07: "only act like utopia AFTER A GRAIL IS TAKEN"). It used to
+     *     make every Grail field fight Utopia dragons from round 1 while still
+     *     digging; that pre-dig hybrid is gone. Kept so saved maps still load.
+     * Absent = classic (Grail is dig-only; an extra Grail stays a dig site).
      */
     grailAsUtopia?: "always" | "after-dig-utopia" | "after-dig-empty";
     /** Movement points to dig the Grail (0 free / 1 classic / 2 costly). */
