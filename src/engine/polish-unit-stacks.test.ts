@@ -425,6 +425,11 @@ describe("Polish Unit Stacks — combat layers", () => {
 
   it("lets Rebirth fire before spending a Stack", () => {
     const state = makeState(true, "polish-stacks-rebirth");
+    // Pack Rebirth is a BINH-ONLY house rule and this fixture is a Legacy table
+    // (which plays the printed Pack: no Rebirth). Opt in explicitly — the claim
+    // under test is the ORDER (Rebirth resolves before a Stack layer is spent),
+    // not which mode grants a Pack Phoenix its Rebirth.
+    state.adventure!.houseRules!["phoenix-pack-rebirth"] = true;
     const unit = makeCombatUnitFromArmy(
       { id: "phoenix", unitDefId: "conflux.phoenixes", side: "pack", stacks: 1 },
       "p1",

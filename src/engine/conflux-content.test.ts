@@ -215,8 +215,9 @@ describe("Conflux content", () => {
     expect(coreUnitDefinitions["conflux.sprites"].few?.abilities).toEqual([]);
     expect(coreUnitDefinitions["conflux.sprites"].pack?.abilities).toEqual(["ignores-retaliation"]);
     // Phoenix Few = rebirth + fire immunity; Pack = line attack + fire immunity
-    // only (printed/wiki). Pack Rebirth is the `phoenix-pack-rebirth` house rule
-    // injected at mint — not printed on the Pack definition.
+    // only (printed/wiki, and what the BASE GAME plays). Pack Rebirth is the
+    // BINH-only `phoenix-pack-rebirth` house rule injected at mint — never
+    // printed on the Pack definition, and OFF in Legacy.
     expect(coreUnitDefinitions["conflux.phoenixes"].few?.abilities).toEqual([
       "phoenix-rebirth",
       "phoenix-fire-immunity"

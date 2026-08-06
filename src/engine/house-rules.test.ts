@@ -45,6 +45,20 @@ function binhWith(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "hou
   });
 }
 
+/** A LEGACY (base game) adventure with the given explicit overrides frozen in. */
+function legacyWith(houseRules: Partial<Record<HouseRuleId, boolean>>, seed = "house-rules"): GameState {
+  return createAdventureGameState({
+    seed,
+    ruleset: "legacy",
+    rollFirstPlayer: false,
+    houseRules,
+    players: [
+      { id: "p1", name: "Gelu", factionId: "rampart", heroDefId: "gelu" },
+      { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+    ]
+  });
+}
+
 // ===========================================================================
 // Registry + resolver
 // ===========================================================================
@@ -206,24 +220,64 @@ describe("griffin-buff toggle", () => {
 describe("phoenix-pack-rebirth toggle", () => {
   const packPhoenix = { id: "ph", unitDefId: "conflux.phoenixes", side: "pack" as const };
   const fewPhoenix = { id: "phf", unitDefId: "conflux.phoenixes", side: "few" as const };
+  const neutralPhoenix = { id: "phn", unitDefId: "neutral.phoenixes", side: "neutral" as const };
+
+  /** Mint through the real path: the mode's resolved overrides drive the gate. */
+  function packAbilities(state: GameState): string[] {
+    const unit = makeCombatUnitFromArmy(
+      packPhoenix,
+      "p1",
+      "u1",
+      0,
+      state.ruleset ?? "legacy",
+      unitSideRuleOverrides(state)
+    )!;
+    return unit.abilities;
+  }
 
   it("ON: Pack Phoenixes carry phoenix-rebirth (house rule)", () => {
-    const state = binhWith({ "phoenix-pack-rebirth": true });
-    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
-    expect(unit.abilities).toContain("phoenix-rebirth");
+    expect(packAbilities(binhWith({ "phoenix-pack-rebirth": true }))).toContain("phoenix-rebirth");
   });
 
   it("OFF: Pack Phoenixes have NO rebirth — only line attack + fire immunity (control)", () => {
-    const state = binhWith({ "phoenix-pack-rebirth": false });
-    const unit = makeCombatUnitFromArmy(packPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(state))!;
-    expect(unit.abilities).not.toContain("phoenix-rebirth");
-    expect(unit.abilities).toEqual(["dragon-line-attack-2", "phoenix-fire-immunity"]);
+    const abilities = packAbilities(binhWith({ "phoenix-pack-rebirth": false }));
+    expect(abilities).not.toContain("phoenix-rebirth");
+    expect(abilities).toEqual(["dragon-line-attack-2", "phoenix-fire-immunity"]);
   });
 
-  it("Few Phoenixes always have Rebirth regardless of the Pack toggle", () => {
-    const off = binhWith({ "phoenix-pack-rebirth": false });
-    const few = makeCombatUnitFromArmy(fewPhoenix, "p1", "u1", 0, "binh", unitSideRuleOverrides(off))!;
-    expect(few.abilities).toContain("phoenix-rebirth");
+  it("BINH default (no explicit flag) is ON", () => {
+    expect(packAbilities(binhWith({}))).toContain("phoenix-rebirth");
+  });
+
+  // The BASE GAME plays the printed card: Pack Rebirth is a BINH-ONLY house rule,
+  // so a Legacy table with no explicit flag gets the printed Pack. (The observable
+  // combat outcome — the killing blow flips it to Few instead of leaving it at 1
+  // Health — is pinned in neutral-decorative-abilities.test.ts.)
+  it("BASE GAME (Legacy default): Pack Phoenixes have NO rebirth", () => {
+    const abilities = packAbilities(legacyWith({}));
+    expect(abilities).not.toContain("phoenix-rebirth");
+    expect(abilities).toEqual(["dragon-line-attack-2", "phoenix-fire-immunity"]);
+  });
+
+  it("Legacy may still opt IN explicitly (soft-Legacy override)", () => {
+    expect(packAbilities(legacyWith({ "phoenix-pack-rebirth": true }))).toContain("phoenix-rebirth");
+  });
+
+  it("Few Phoenixes and the Neutral azure Phoenix keep Rebirth in EVERY mode", () => {
+    for (const state of [
+      binhWith({ "phoenix-pack-rebirth": false }),
+      legacyWith({}),
+      legacyWith({ "phoenix-pack-rebirth": true })
+    ]) {
+      const ruleset = state.ruleset ?? "legacy";
+      const overrides = unitSideRuleOverrides(state);
+      expect(makeCombatUnitFromArmy(fewPhoenix, "p1", "u1", 0, ruleset, overrides)!.abilities).toContain(
+        "phoenix-rebirth"
+      );
+      expect(makeCombatUnitFromArmy(neutralPhoenix, "p1", "u2", 1, ruleset, overrides)!.abilities).toContain(
+        "phoenix-rebirth"
+      );
+    }
   });
 });
 
