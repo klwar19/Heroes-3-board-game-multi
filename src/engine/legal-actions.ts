@@ -3483,6 +3483,26 @@ export function healDrawOnlyRider(effect: EffectDefinition): number {
   return 0;
 }
 
+/**
+ * The "and discard N card(s) from your hand" a face resolves AFTER its draw
+ * rider, or 0 — Rion's Battlefield Medic VI and its clones, the ONLY faces in
+ * the whole card library whose printed text puts a draw BEFORE a discard
+ * (verified by a library sweep in medic-specialty-heal-draw.test.ts, which fails
+ * if a new such face ships without joining this read).
+ *
+ * Why it is a rider and not a `cost.discardCards`: an up-front cost is
+ * affordability-gated, so the specialty was unplayable as the last card in hand
+ * even though the cards it draws can pay the discard. ONE read shared by every
+ * resolution seam (reaction heal, reaction draw-only, combat/map play,
+ * target-less map draw-only) so they cannot disagree about the order.
+ */
+export function drawRiderThenDiscard(effect: EffectDefinition): number {
+  if (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+    return effect.thenDiscard ?? 0;
+  }
+  return 0;
+}
+
 /** Unconditional card-draw rider that remains useful when an Instant's primary effect cannot apply. */
 export function instantDrawOnlyRider(effect: EffectDefinition, mode: CardPlayMode = "basic"): number {
   switch (effect.type) {
@@ -6935,8 +6955,20 @@ export function getLegalReactionsForTrigger(
       // (Kriv I: "React to an enemy attack: gain 1 Rune and draw" vs the
       // trigger-free "gain 1 Rune and draw" side, whose drawOnly join would
       // fizzle the rune in the very window the printed side covers).
-      const cardHasPrintedTriggerMatch = getCardPlayVariants(card).some((sibling) =>
-        variantMatchesTrigger(sibling, triggerEvent, player.id, false)
+      // A "+Power" side crosses into an ATTACK window only CONDITIONALLY — it is
+      // withheld altogether unless this player also holds a pairable spell
+      // instant (the powerReactions gate below). Counting that conditional
+      // cross-over as a real printed match suppressed the card's OTHER sides'
+      // draw/utility joins, so cards whose other side is a plain "draw" —
+      // Deemer IV ("shuffle your discard into your deck, then draw 1") and
+      // Zydar I ("draw 1 card") — offered NOTHING in an attack window. A REAL
+      // event match (Kriv I's printed "React to an enemy attack") still counts.
+      const powerCrossOverOnly = (sibling: CardPlayVariant): boolean =>
+        isAttackWindow &&
+        sibling.effect.type === "ADD_SPELL_POWER" &&
+        sibling.trigger?.event === "SPELL_CAST_STARTED";
+      const cardHasPrintedTriggerMatch = getCardPlayVariants(card).some(
+        (sibling) => variantMatchesTrigger(sibling, triggerEvent, player.id, false) && !powerCrossOverOnly(sibling)
       );
 
       for (const variant of getCardPlayVariants(card)) {
@@ -7060,6 +7092,38 @@ export function getLegalReactionsForTrigger(
               })
             );
           }
+        }
+
+        // A "+Power, THEN draw a card" face in an ATTACK window (Sorcery, Scales
+        // of the Greater Basilisk, Tunic of the Cyclops King): the Power half is
+        // withheld unless this player also holds a pairable spell instant (the
+        // powerReactions gate below), which used to hide the printed DRAW along
+        // with it. Offer the draw as its OWN non-window-opening join, straight
+        // into `reactions` so the Power gate cannot swallow it. When the real
+        // Power play DOES land in this window the shared trap-twin dedupe (the
+        // `utilityOnly` sweep at the end of this function) removes this twin
+        // again, so the two are never both on the menu. Basic only — a fizzled
+        // Power must never cost a crown.
+        if (
+          isAttackWindow &&
+          isPowerPlay &&
+          matchesPrintedTrigger &&
+          !variant.expertOnly &&
+          !card.permanent &&
+          instantDrawOnlyRider(variant.effect, "basic") > 0
+        ) {
+          reactions.push(
+            makeReactionAction(`${variantName} (draw only)${fromSpellBook ? " (Spell Book)" : ""}`, {
+              type: "PLAY_REACTION",
+              playerId: player.id,
+              cardId,
+              mode: "basic",
+              ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+              drawOnly: true as const,
+              utilityOnly: true as const,
+              ...(fromSpellBook ? { fromSpellBook: true } : {})
+            })
+          );
         }
 
         if (
@@ -7457,6 +7521,9 @@ export function getLegalReactionsForTrigger(
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         !legal.action.asPowerBoost &&
+        // A draw-rider-only play never CASTS its spell (only the draw resolves),
+        // so it can never be the spell a Power play pays into.
+        !legal.action.drawOnly &&
         cards[legal.action.cardId]?.kind === "spell"
     );
     // …or while a Power-scaling spell this player already cast into the attack

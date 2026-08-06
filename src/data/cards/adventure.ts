@@ -1682,8 +1682,11 @@ export const adventureCards: CardLibrary = {
     source: heroSource("rion")
   },
   // Rion's Battlefield Medic VI: removes up to 2 damage (or paralysis), then
-  // draws 2 and discards 1. The discard is the option's printed cost (the
-  // chosen pitch comes from the current hand before the two cards are drawn).
+  // draws 2 and discards 1. The printed order is DRAW THEN DISCARD, so the
+  // discard is a post-draw rider (`thenDiscard`), NOT an up-front
+  // `cost.discardCards`: the two drawn cards may pay it, and the card is
+  // therefore playable with the specialty as the ONLY card in hand (an up-front
+  // cost made it unplayable there — the reported bug).
   "specialty.rion.6": {
     id: "specialty.rion.6",
     name: "Battlefield Medic VI",
@@ -1703,13 +1706,11 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Remove up to 2 damage, then draw 2 and discard 1",
-          cost: { discardCards: 1 },
-          effect: { type: "HEAL_DAMAGE", amount: 2, drawCards: 2 }
+          effect: { type: "HEAL_DAMAGE", amount: 2, drawCards: 2, thenDiscard: 1 }
         },
         {
           label: "Remove paralysis, then draw 2 and discard 1",
-          cost: { discardCards: 1 },
-          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 2 }
+          effect: { type: "HEAL_DAMAGE", amount: 0, removeParalysis: true, drawCards: 2, thenDiscard: 1 }
         }
       ]
     },

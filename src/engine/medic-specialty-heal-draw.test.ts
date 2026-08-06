@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
-import { healDrawOnlyRider } from "./legal-actions";
+import { drawRiderThenDiscard, healDrawOnlyRider, instantDrawOnlyRider } from "./legal-actions";
 import { placeCombatToken } from "./tokens";
 import { cardLibrary } from "../data/cards/library";
 import type { CardId, GameAction, GameState, PlayerVisibleState, UnitId } from "./state";
@@ -32,6 +32,28 @@ function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
   expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
   return result.state;
+}
+
+/**
+ * The open "…: discard N card(s)" picker's option labels. Rion VI's printed
+ * discard is a POST-DRAW rider, so this list is the observable proof of order:
+ * it can only contain the just-drawn cards if the draw already happened.
+ */
+function discardPick(state: GameState): string[] {
+  const choice = state.pendingChoice;
+  expect(choice?.type === "OPTION_CHOICE" ? choice.context : null, "a hand-discard picker is open").toBe(
+    "hand-discard"
+  );
+  return choice?.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
+}
+
+/** The engine-offered CHOOSE_OPTION whose label matches, so the choiceId is real. */
+function chooseOptionAction(state: GameState, playerId: "p1" | "p2", label: string): GameAction {
+  const offer = getLegalActions(state, playerId).find(
+    (legal) => legal.action.type === "CHOOSE_OPTION" && legal.label === label
+  );
+  expect(offer, `"${label}" is offered`).toBeTruthy();
+  return offer!.action;
 }
 
 // ===========================================================================
@@ -256,7 +278,7 @@ describe("medic specialty on the adventure map — the draw rider alone", () => 
     expect(state.combat, "no combat was started").toBeFalsy();
   });
 
-  it("Rion IV/VI offer one draw-only play per printed side (VI paying its discard cost)", () => {
+  it("Rion IV/VI offer one draw-only play per printed side (VI draws FIRST, then discards)", () => {
     let state = mapHand(["specialty.rion.4", "specialty.rion.6", "ability.luck"]);
     state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
 
@@ -264,15 +286,47 @@ describe("medic specialty on the adventure map — the draw rider alone", () => 
     const sixSides = mapPlays(state, "specialty.rion.6");
     expect(sixSides.length, "both Rion VI sides carry a draw rider").toBe(2);
 
-    const handBefore = state.players.p1.hand.length;
-    // The offer is a template; the payment (this side's printed "discard 1") is
-    // the player's own pick, exactly like every other cost-bearing option.
-    state = applyOk(state, { ...sixSides[0], costCardIds: ["ability.luck" as CardId] });
-    // VI: pay the discard-1 cost, spend the card itself, draw 2 → hand is level.
-    expect(state.players.p1.hand.length, "discard 1 + spend the card + draw 2 leaves the hand level").toBe(
-      handBefore - 1 - 1 + 2
-    );
-    expect(state.players.p1.discard, "the paid card went to the discard").toContain("ability.luck");
+    // No `costCardIds`: the printed discard is NOT an up-front cost any more.
+    state = applyOk(state, sixSides[0]);
+    // The two cards just DRAWN are candidates for the printed discard — the
+    // observable proof that the draw ran first (an up-front cost could only ever
+    // have offered `ability.luck`, the one card that was already in hand).
+    const pick = discardPick(state);
+    expect(pick.map((label) => label.replace("Discard ", "")).sort(), "the drawn cards are discardable").toEqual([
+      "Battlefield Medic IV",
+      "Curse",
+      "Haste",
+      "Luck"
+    ]);
+    state = applyOk(state, chooseOptionAction(state, "p1", "Discard Haste"));
+    // OBSERVABLE OUTCOME: spend the specialty, draw 2, discard the pick.
+    expect([...state.players.p1.hand].sort()).toEqual(["ability.luck", "specialty.rion.4", "spell.curse"]);
+    expect(state.players.p1.discard, "the specialty and the pitched draw are in the discard").toEqual([
+      "specialty.rion.6",
+      "spell.haste"
+    ]);
+  });
+
+  it("Rion VI is playable as the LAST card in hand — the cards it draws pay its discard", () => {
+    // The reported bug: the printed discard used to be an up-front COST, so with
+    // the specialty as the only card in hand the play was not offered at all.
+    let state = mapHand(["specialty.rion.6"]);
+    state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
+    const sides = mapPlays(state, "specialty.rion.6");
+    expect(sides.length, "both sides are offered with an otherwise empty hand").toBe(2);
+
+    state = applyOk(state, sides[0]);
+    expect([...state.players.p1.hand].sort(), "drew 2 with nothing else in hand").toEqual([
+      "spell.curse",
+      "spell.haste"
+    ]);
+    expect(discardPick(state).sort(), "one of the two DRAWN cards pays the discard").toEqual([
+      "Discard Curse",
+      "Discard Haste"
+    ]);
+    state = applyOk(state, chooseOptionAction(state, "p1", "Discard Curse"));
+    expect(state.players.p1.hand, "net: -card +2 -1").toEqual(["spell.haste"]);
+    expect(state.players.p1.discard).toEqual(["specialty.rion.6", "spell.curse"]);
   });
 
   it("Astra's Cure I (the HEAL_DAMAGE_AND_REMOVE_EFFECTS medic face) also gains the map draw", () => {
@@ -327,6 +381,224 @@ describe("medic specialty on the adventure map — the draw rider alone", () => 
 });
 
 // ===========================================================================
+// 2b. Rion VI as a REACTION with the specialty as the LAST card in hand
+// ===========================================================================
+
+describe("Rion VI as a reaction — the printed discard follows the draw", () => {
+  it("is offered with nothing else in hand, saves the unit, then discards a DRAWN card", () => {
+    const base = lethalRetaliationState(["specialty.rion.6"]);
+    base.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
+    const declared = applyOk(base, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_skeletons"
+    });
+    // Under the old up-front `cost.discardCards` this offer did NOT exist: the
+    // specialty was the only hand card, so the cost was unaffordable.
+    const offer = healOffer(declared, "p1", "specialty.rion.6");
+    expect(offer, "the medic Instant is offered as the last card in hand").toBeTruthy();
+
+    let healed = applyOk(declared, offer!.action);
+    // The draw ran BEFORE the discard, so the drawn cards are the candidates.
+    expect(discardPick(healed).sort(), "the two just-drawn cards pay the discard").toEqual([
+      "Discard Curse",
+      "Discard Haste"
+    ]);
+    healed = applyOk(healed, chooseOptionAction(healed, "p1", "Discard Curse"));
+    expect(healed.players.p1.hand, "kept the other drawn card").toEqual(["spell.haste"]);
+    expect(healed.players.p1.discard).toEqual(["specialty.rion.6", "spell.curse"]);
+
+    healed = passOutOfReactionWindows(healed);
+    // OBSERVABLE OUTCOME: the heal still landed, so the counter-attack did not
+    // flip the Pack down.
+    expect(
+      packIntact(healed, "unit_p1_crusaders" as UnitId),
+      "the healed Pack survived the counter-attack"
+    ).toBe(true);
+  });
+
+  it("the ordinary COMBAT play (own activation, wounded unit) mends, draws, THEN discards", () => {
+    let state = createInitialGameState("medic-combat-play");
+    state.players.p1.hand = ["specialty.rion.6" as CardId];
+    state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
+    const crusaders = state.combat!.units.unit_p1_crusaders;
+    crusaders.maxHealth = 30;
+    crusaders.damage = 4;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_crusaders";
+    crusaders.activatedThisRound = false;
+    crusaders.attackedThisActivation = false;
+
+    const play = getLegalActions(state, "p1")
+      .map((legal) => legal.action)
+      .find(
+        (action): action is Extract<GameAction, { type: "PLAY_CARD" }> =>
+          action.type === "PLAY_CARD" &&
+          action.cardId === "specialty.rion.6" &&
+          action.target?.type === "unit" &&
+          action.target.unitId === "unit_p1_crusaders"
+      );
+    // Under the old up-front cost this offer was withheld (nothing to pitch).
+    expect(play, "offered on the wounded unit with the specialty as the only hand card").toBeTruthy();
+
+    state = applyOk(state, play!);
+    // OBSERVABLE OUTCOME: 2 damage mended AND both cards drawn before the pitch.
+    expect(state.combat!.units.unit_p1_crusaders.damage, "healed 2").toBe(2);
+    expect(discardPick(state).sort(), "the drawn cards pay the printed discard").toEqual([
+      "Discard Curse",
+      "Discard Haste"
+    ]);
+    state = applyOk(state, chooseOptionAction(state, "p1", "Discard Haste"));
+    expect(state.players.p1.hand).toEqual(["spell.curse"]);
+    expect(state.players.p1.discard).toEqual(["specialty.rion.6", "spell.haste"]);
+  });
+});
+
+// ===========================================================================
+// 2c. Reaction window with NOTHING to heal — the draw rider alone
+// ===========================================================================
+
+/**
+ * p2's Skeletons attack p1's Crusaders while EVERY p1 unit is at full health and
+ * unparalysed, and p2 holds an Offense so a real reaction OPENS the window. p2
+ * passes, leaving p1 on priority inside an already-open window.
+ */
+function openWindowNoWounds(hand: string[], damage = 0): GameState {
+  const state = createInitialGameState("medic-draw-join");
+  state.players.p1.hand = [...hand] as CardId[];
+  state.players.p2.hand = ["ability.offense" as CardId];
+  state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
+  const units = state.combat!.units;
+  for (const unit of Object.values(units)) {
+    if (unit.controllerId === "p1") {
+      unit.damage = 0;
+    }
+  }
+  units.unit_p1_crusaders.position = 14;
+  units.unit_p1_crusaders.maxHealth = 30;
+  units.unit_p1_crusaders.damage = damage;
+  units.unit_p2_skeletons.position = 13;
+  units.unit_p2_skeletons.activatedThisRound = false;
+  units.unit_p2_skeletons.attackedThisActivation = false;
+  state.activePlayerId = "p2";
+  state.combat!.activeUnitId = "unit_p2_skeletons";
+  state.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+  state.combat!.dice.rollCount = 0;
+
+  let next = applyOk(state, {
+    type: "ATTACK_UNIT",
+    playerId: "p2",
+    attackerId: "unit_p2_skeletons",
+    defenderId: "unit_p1_crusaders"
+  });
+  const pass = getLegalActions(next, "p2").find((legal) => legal.action.type === "PASS_REACTION");
+  if (pass) {
+    next = applyOk(next, pass.action);
+  }
+  return next;
+}
+
+describe("medic specialty as a DRAW-ONLY reaction — nothing needs healing", () => {
+  it("Rion I joins an open window for its draw alone: draws 1, heals nobody", () => {
+    let state = openWindowNoWounds(["specialty.rion.1"]);
+    expect(Boolean(state.reactionWindow), "the window is open (p2's Offense opened it)").toBe(true);
+    const offer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.rion.1" &&
+        legal.action.drawOnly === true
+    );
+    expect(offer, "the medic Instant joins the open window as a draw-only reaction").toBeTruthy();
+
+    const healthBefore = Object.fromEntries(
+      Object.values(state.combat!.units).map((unit) => [unit.id, unit.damage])
+    );
+    state = applyOk(state, offer!.action);
+    // OBSERVABLE OUTCOME: a card was drawn and not one point of damage moved.
+    expect(state.players.p1.hand, "the printed draw resolved").toEqual(["spell.curse"]);
+    expect(state.players.p1.discard).toEqual(["specialty.rion.1"]);
+    expect(
+      Object.fromEntries(Object.values(state.combat!.units).map((unit) => [unit.id, unit.damage])),
+      "the heal fizzled — nobody was mended"
+    ).toEqual(healthBefore);
+    expect(
+      state.eventLog.some((event) => event.type === "DAMAGE_HEALED"),
+      "no heal event"
+    ).toBe(false);
+  });
+
+  it("Rion VI joins for the draw too, then still pays its printed discard", () => {
+    let state = openWindowNoWounds(["specialty.rion.6"]);
+    const offer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "specialty.rion.6" &&
+        legal.action.drawOnly === true
+    );
+    expect(offer, "the last-card-in-hand VI joins as a draw-only reaction").toBeTruthy();
+    state = applyOk(state, offer!.action);
+    expect([...state.players.p1.hand].sort(), "drew 2").toEqual(["spell.curse", "spell.haste"]);
+    expect(discardPick(state).sort(), "the discard is collected AFTER the draw").toEqual([
+      "Discard Curse",
+      "Discard Haste"
+    ]);
+    state = applyOk(state, chooseOptionAction(state, "p1", "Discard Haste"));
+    expect(state.players.p1.hand).toEqual(["spell.curse"]);
+    expect(state.players.p1.discard).toEqual(["specialty.rion.6", "spell.haste"]);
+    expect(Boolean(state.reactionWindow), "the window survives the nested discard pick").toBe(true);
+  });
+
+  it("CONTROL: with a WOUNDED unit the REAL heal is offered and there is no look-alike twin", () => {
+    const state = openWindowNoWounds(["specialty.rion.1"], 5);
+    const offers = getLegalActions(state, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.rion.1"
+    );
+    expect(offers.length, "exactly ONE offer — the real heal, no draw-only trap twin").toBe(1);
+    const only = offers[0].action as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(only.drawOnly, "it is the real heal").toBeUndefined();
+    expect(only.target, "aimed at the wounded unit").toEqual({ type: "unit", unitId: "unit_p1_crusaders" });
+  });
+
+  it("CONTROL: a lone medic card never OPENS a window of its own", () => {
+    // Same board, but nobody holds a window-OPENING reaction: a draw rider must
+    // never pause an attack (reactionOfferOpensWindow). Without this the medic
+    // would interrupt every enemy attack at the table.
+    const state = createInitialGameState("medic-no-open");
+    state.players.p1.hand = ["specialty.rion.1" as CardId];
+    state.players.p2.hand = [];
+    state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId];
+    const units = state.combat!.units;
+    for (const unit of Object.values(units)) {
+      if (unit.controllerId === "p1") {
+        unit.damage = 0;
+      }
+    }
+    units.unit_p1_crusaders.position = 14;
+    units.unit_p1_crusaders.maxHealth = 30;
+    units.unit_p2_skeletons.position = 13;
+    units.unit_p2_skeletons.activatedThisRound = false;
+    units.unit_p2_skeletons.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+    state.combat!.dice.rollCount = 0;
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    expect(
+      getLegalActions(declared, "p1").some((legal) => legal.action.type === "PLAY_REACTION"),
+      "no window was opened for the draw rider alone"
+    ).toBe(false);
+    expect(declared.players.p1.hand, "the card is still in hand").toEqual(["specialty.rion.1"]);
+  });
+});
+
+// ===========================================================================
 // 3. SWEEP INVARIANT — no heal card is missing from the pre-hit window
 // ===========================================================================
 
@@ -375,6 +647,177 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
       }
     }
     expect(missing, "no heal card is stranded outside the pre-hit reaction window").toEqual([]);
+  });
+
+  it("EVERY implemented Instant with a draw rider can be played into an ALREADY-OPEN window", () => {
+    // The user's "check for other drawing cards too, they dont need effects":
+    // derived from the library, so a new draw-rider Instant joins automatically.
+    // The board has NOTHING to heal / buff usefully and p1 holds nothing but the
+    // card under test, so an offer can only come from the draw rider itself (or
+    // the card's own printed trigger). p2's Offense is what OPENS the window —
+    // a draw rider deliberately never opens one (pinned above).
+    const drawRiderIds = Object.values(cardLibrary)
+      .filter((card) => {
+        if (card.implementationStatus !== "implemented") {
+          return false;
+        }
+        if (card.timing !== "instant" && card.timing !== "reaction") {
+          return false;
+        }
+        const faces =
+          card.effect.type === "CHOOSE_ONE" ? card.effect.options.map((option) => option.effect) : [card.effect];
+        return faces.some(
+          (face) => instantDrawOnlyRider(face, "basic") > 0 || instantDrawOnlyRider(face, "expert") > 0
+        );
+      })
+      .map((card) => card.id);
+    expect(drawRiderIds.length, "the library really has draw-rider Instants to sweep").toBeGreaterThan(60);
+
+    const missing: string[] = [];
+    for (const cardId of drawRiderIds) {
+      let state = createInitialGameState(`sweep-draw-${cardId}`);
+      state.players.p1.hand = [cardId as CardId];
+      // Kriv's Runes reaction is Bulwark-only (gainRunes is a no-op otherwise),
+      // so the sweep holder is a Bulwark seat — every other card is unaffected.
+      state.players.p1.factionId = "bulwark";
+      state.players.p2.hand = ["ability.offense" as CardId];
+      state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
+      const units = state.combat!.units;
+      for (const unit of Object.values(units)) {
+        if (unit.controllerId === "p1") {
+          unit.damage = 0;
+        }
+      }
+      units.unit_p1_crusaders.position = 14;
+      units.unit_p1_crusaders.maxHealth = 30;
+      units.unit_p2_skeletons.position = 13;
+      units.unit_p2_skeletons.activatedThisRound = false;
+      units.unit_p2_skeletons.attackedThisActivation = false;
+      state.activePlayerId = "p2";
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      state.combat!.dice.rollCount = 0;
+
+      state = applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_crusaders"
+      });
+      const pass = getLegalActions(state, "p2").find((legal) => legal.action.type === "PASS_REACTION");
+      if (pass) {
+        state = applyOk(state, pass.action);
+      }
+      if (!healOffer(state, "p1", cardId)) {
+        missing.push(cardId);
+      }
+    }
+    expect(missing, "no draw-rider Instant is stranded outside an open reaction window").toEqual([]);
+  });
+
+  it("a '+Power, then draw' Instant offers the DRAW alone with no spell to pay into — and no twin once there is one", () => {
+    // Sorcery's Power half is withheld in an attack window unless the holder also
+    // has a pairable spell instant, which used to hide its printed draw too.
+    // p1 ATTACKS (Sorcery's Power is the attacker's), p2's Armorer opens the
+    // window so the non-opening draw rider has somewhere to join.
+    const board = (hand: string[]): GameState => {
+      const state = createInitialGameState("sorcery-attacker");
+      state.players.p1.hand = [...hand] as CardId[];
+      state.players.p2.hand = ["ability.armorer" as CardId];
+      state.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId];
+      const units = state.combat!.units;
+      for (const unit of Object.values(units)) {
+        if (unit.controllerId === "p1") {
+          unit.damage = 0;
+        }
+      }
+      units.unit_p1_crusaders.position = 14;
+      units.unit_p1_crusaders.maxHealth = 30;
+      units.unit_p1_crusaders.activatedThisRound = false;
+      units.unit_p1_crusaders.attackedThisActivation = false;
+      units.unit_p2_skeletons.position = 13;
+      units.unit_p2_skeletons.maxHealth = 40;
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_crusaders";
+      state.combat!.dice.scriptedRolls = [1, 1, 1, 1];
+      state.combat!.dice.rollCount = 0;
+      return applyOk(state, {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_crusaders",
+        defenderId: "unit_p2_skeletons"
+      });
+    };
+    const sorceryOffers = (state: GameState) =>
+      getLegalActions(state, "p1").filter(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.sorcery"
+      );
+
+    // No spell in hand: the ONLY Sorcery offer is the draw-only one.
+    let alone = board(["ability.sorcery"]);
+    const lonely = sorceryOffers(alone);
+    expect(lonely.length, "exactly one offer — the draw").toBe(1);
+    expect((lonely[0].action as Extract<GameAction, { type: "PLAY_REACTION" }>).drawOnly).toBe(true);
+    alone = applyOk(alone, lonely[0].action);
+    expect(alone.players.p1.hand, "the printed draw resolved").toEqual(["spell.haste"]);
+
+    // CONTROL: with a pairable spell instant in hand the REAL Power plays are
+    // back and the draw-only twin is deduped away — never two look-alike buttons.
+    const paired = sorceryOffers(board(["ability.sorcery", "spell.bloodlust"]));
+    expect(paired.map((legal) => legal.label).sort(), "real Power plays only").toEqual([
+      "Play Sorcery",
+      "Play Sorcery expert (expert)"
+    ]);
+    expect(
+      paired.every((legal) => !(legal.action as Extract<GameAction, { type: "PLAY_REACTION" }>).drawOnly),
+      "no draw-only trap twin beside the real Power plays"
+    ).toBe(true);
+  });
+
+  it("no library face hides a draw RIDER behind an up-front discard COST", () => {
+    // The order invariant: a face whose printed text puts a draw BEFORE a discard
+    // ("… then draw N cards and discard M") must encode the discard as the
+    // post-draw `thenDiscard` rider, never as `cost.discardCards` — an up-front
+    // cost is affordability-gated and made the face unplayable as the last card
+    // in hand (the reported Rion VI bug). Fails if a new such face ships with a
+    // cost. Scoped to draw RIDERS (a "then draw" on some other primary effect):
+    // a face whose primary effect IS the draw may legitimately print the discard
+    // FIRST — Charm of Mana option A, "Discard 2 cards, then draw 3" — and keeps
+    // its up-front cost.
+    const offenders: string[] = [];
+    for (const card of Object.values(cardLibrary)) {
+      if (card.implementationStatus !== "implemented") {
+        continue;
+      }
+      const options =
+        card.effect.type === "CHOOSE_ONE"
+          ? card.effect.options.map((option) => ({ effect: option.effect, cost: option.cost }))
+          : [{ effect: card.effect, cost: undefined }];
+      for (const option of options) {
+        if (option.effect.type === "DRAW_CARDS") {
+          continue;
+        }
+        const rides =
+          instantDrawOnlyRider(option.effect, "basic") > 0 || instantDrawOnlyRider(option.effect, "expert") > 0;
+        if (rides && (option.cost?.discardCards ?? 0) > 0) {
+          offenders.push(card.id);
+        }
+      }
+    }
+    expect(offenders, "every draw-RIDER face pays its discard AFTER drawing").toEqual([]);
+  });
+
+  it("Rion VI and its clones carry the post-draw discard rider, not a cost", () => {
+    for (const cardId of ["specialty.rion.6", "specialty.aoko.6", "specialty.sirius.6", "specialty.molian.6"]) {
+      const effect = cardLibrary[cardId as CardId].effect;
+      expect(effect.type, `${cardId} is a CHOOSE_ONE`).toBe("CHOOSE_ONE");
+      const options = effect.type === "CHOOSE_ONE" ? effect.options : [];
+      expect(options.length).toBe(2);
+      for (const option of options) {
+        expect(drawRiderThenDiscard(option.effect), `${cardId}: printed "discard 1" after the draw`).toBe(1);
+        expect(option.cost?.discardCards, `${cardId}: no up-front discard cost`).toBeUndefined();
+      }
+    }
   });
 });
 
@@ -505,5 +948,32 @@ describe("computer policy — the map draw-only medic play", () => {
       { ...play, target: { type: "unit", unitId: "U" as UnitId } }
     );
     expect(inCombat!.score, "a real in-combat heal still outranks the map cycle").toBeGreaterThan(onMap!.score);
+  });
+
+  it("scores the draw-only REACTION at the same flat rider score, below a real heal", () => {
+    // The AI must never dump the specialty into an open window for the rider when
+    // it could heal instead. Both the map/combat PLAY_CARD and the in-window
+    // PLAY_REACTION run through the one `card.draw-rider-only` branch.
+    const context = {
+      playerId: "p1" as const,
+      state: {
+        seed: "medic-ai",
+        round: 1,
+        eventCounter: 0,
+        combat: { id: "c1", units: {} },
+        players: { p1: { id: "p1", hand: ["specialty.rion.1"], resources: { gold: 5 }, army: [] } }
+      } as unknown as PlayerVisibleState,
+      legalActions: []
+    };
+    const reaction = scoreCardAction(context, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "specialty.rion.1" as CardId,
+      mode: "basic",
+      drawOnly: true
+    });
+    expect(reaction, "the draw-only reaction is scored").toBeTruthy();
+    expect(reaction!.policy).toBe("card.draw-rider-only");
+    expect(reaction!.score, "the deliberate low flat rider score").toBe(300);
   });
 });

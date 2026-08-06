@@ -337,7 +337,9 @@ describe("Rion's Battlefield Medic IV/VI", () => {
     expect(next.players.p1.hand).toEqual(["stat.attack"]);
   });
 
-  it("VI heals up to 2, discards 1 (the cost) and draws 2 — a net +1 card", () => {
+  it("VI heals up to 2, draws 2, and only THEN discards 1 — a net +1 card", () => {
+    // Printed order: "… then draw 2 cards AND discard 1 card from your hand."
+    // The discard is a post-draw rider, so the drawn cards are candidates.
     const state = createInitialGameState("rion-vi");
     state.players.p1.hand = ["specialty.rion.6", "stat.power"];
     state.players.p1.deck = ["stat.attack", "stat.defense"];
@@ -352,25 +354,40 @@ describe("Rion's Battlefield Medic IV/VI", () => {
         legal.action.target.unitId === "unit_p1_crusaders"
     );
     expect(play, "Rion VI heal option should be playable").toBeTruthy();
-    const next = applyOk(state, {
-      type: "PLAY_CARD",
-      playerId: "p1",
-      cardId: "specialty.rion.6",
-      mode: "basic",
-      optionIndex: 0,
-      target: { type: "unit", unitId: "unit_p1_crusaders" },
-      costCardIds: ["stat.power"]
-    });
-    expect(next.combat!.units.unit_p1_crusaders.damage).toBe(0);
-    // Discarded the cost card, drew the two deck cards: hand holds those two.
-    expect(next.players.p1.hand.sort()).toEqual(["stat.attack", "stat.defense"]);
-    expect(next.players.p1.discard).toContain("stat.power");
+    // No `costCardIds`: the discard is no longer an up-front cost.
+    const drawn = applyOk(state, play!.action);
+    expect(drawn.combat!.units.unit_p1_crusaders.damage).toBe(0);
+    // Both deck cards are in hand BEFORE anything is pitched.
+    expect([...drawn.players.p1.hand].sort()).toEqual(["stat.attack", "stat.defense", "stat.power"]);
+    const pick = drawn.pendingChoice;
+    expect(pick?.type === "OPTION_CHOICE" ? pick.context : null, "the discard picker is open").toBe(
+      "hand-discard"
+    );
+    const discardAction = getLegalActions(drawn, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_OPTION" && legal.label === "Discard Attack"
+    );
+    expect(discardAction, "a just-DRAWN card can pay the discard").toBeTruthy();
+    const next = applyOk(drawn, discardAction!.action);
+    expect([...next.players.p1.hand].sort()).toEqual(["stat.defense", "stat.power"]);
+    expect(next.players.p1.discard).toContain("stat.attack");
   });
 
-  it("VI cannot be played without a card to pay the discard", () => {
+  it("VI IS playable with nothing else in hand — the cards it draws pay the discard", () => {
+    // CONTROL of the fix: under the old up-front `cost.discardCards` this play
+    // was withheld entirely (nothing to pitch), so the specialty was dead as the
+    // last card in hand.
     const state = createInitialGameState("rion-vi-nocost");
     state.players.p1.hand = ["specialty.rion.6"];
-    expect(findPlay(state, "specialty.rion.6", 0)).toBeFalsy();
+    state.players.p1.deck = ["stat.attack", "stat.defense"];
+    state.combat!.units.unit_p1_crusaders.damage = 2;
+    const play = findPlay(state, "specialty.rion.6", 0, "unit_p1_crusaders" as UnitId);
+    expect(play, "offered as the only card in hand").toBeTruthy();
+    const next = applyOk(state, play!.action);
+    expect(next.combat!.units.unit_p1_crusaders.damage, "healed 2").toBe(0);
+    expect([...next.players.p1.hand].sort(), "drew 2 with an otherwise empty hand").toEqual([
+      "stat.attack",
+      "stat.defense"
+    ]);
   });
 });
 
