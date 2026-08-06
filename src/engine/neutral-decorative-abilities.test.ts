@@ -6,8 +6,10 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
+  makeCombatUnitFromArmy,
   NEUTRAL_PLAYER_ID
 } from "./index";
+import { unitSideRuleOverrides } from "./ruleset";
 import {
   getOnAttackSelfHeal,
   getSpellDamageReduction,
@@ -413,6 +415,85 @@ describe("Phoenix Rebirth", () => {
     const phoenix = next.combat!.units.unit_p2_skeletons;
     expect(phoenix.variant).toBe("few"); // no Rebirth left → the Pack→Few flip runs
     expect(removedUnitIds(next)).not.toContain("unit_p2_skeletons");
+  });
+
+  // -------------------------------------------------------------------------
+  // Pack Rebirth is a BINH HOUSE RULE ONLY: the base game (Legacy) plays the
+  // printed Pack, which has NO Rebirth. Both halves below mint the phoenix
+  // through the REAL path — the mode's resolved `unitSideRuleOverrides` fed to
+  // `makeCombatUnitFromArmy` — and then land the SAME lethal blow, so the only
+  // difference is the rule read in ruleset.ts.
+  // -------------------------------------------------------------------------
+
+  function adventureFor(ruleset: "binh" | "legacy", houseRules?: Record<string, boolean>): GameState {
+    return createAdventureGameState({
+      seed: "phoenix-mode",
+      ruleset,
+      rollFirstPlayer: false,
+      houseRules: houseRules as never,
+      players: [
+        { id: "p1", name: "Gelu", factionId: "rampart", heroDefId: "gelu" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+  }
+
+  /** Mint a Pack Phoenix under `rulesState`'s rules, then kill it once. */
+  function lethalBlowOnMintedPackPhoenix(rulesState: GameState): GameState {
+    const state = createInitialGameState();
+    state.ruleset = rulesState.ruleset ?? "legacy";
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.abilities = [];
+    attacker.attack = 10;
+    attacker.position = 1;
+
+    const minted = makeCombatUnitFromArmy(
+      { id: "army-phoenix", unitDefId: "conflux.phoenixes", side: "pack" },
+      "p2",
+      "unit_p2_skeletons",
+      13,
+      rulesState.ruleset ?? "legacy",
+      unitSideRuleOverrides(rulesState)
+    )!;
+    minted.defense = 0; // clean ranged kill, no Defend die in the way
+    state.combat!.units.unit_p2_skeletons = minted;
+
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    script(state, [1]); // +1 → 11 damage vs 8 Pack Health, lethal
+    setActive(state, "p1", "unit_p1_marksmen");
+    return settle(
+      applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_marksmen", defenderId: "unit_p2_skeletons" })
+    );
+  }
+
+  it("BASE GAME (Legacy): a Pack Phoenix has no Rebirth — the killing blow flips it to Few", () => {
+    const next = lethalBlowOnMintedPackPhoenix(adventureFor("legacy"));
+    const phoenix = next.combat!.units.unit_p2_skeletons;
+    expect(phoenix.variant).toBe("few"); // no Rebirth → the Pack→Few flip runs
+    expect(phoenix.usedRebirthThisCombat).toBeFalsy();
+    expect(abilityEventIds(next)).not.toContain("phoenix-rebirth");
+  });
+
+  it("BINH (house rule ON by default): the same blow leaves it alive at 1 Health, still a Pack", () => {
+    const next = lethalBlowOnMintedPackPhoenix(adventureFor("binh"));
+    const phoenix = next.combat!.units.unit_p2_skeletons;
+    expect(phoenix.variant).toBe("pack");
+    expect(phoenix.damage).toBe(phoenix.maxHealth - 1);
+    expect(phoenix.usedRebirthThisCombat).toBe(true);
+    expect(abilityEventIds(next)).toContain("phoenix-rebirth");
+  });
+
+  it("a Legacy table may still opt IN to the house rule (soft-Legacy override)", () => {
+    const next = lethalBlowOnMintedPackPhoenix(adventureFor("legacy", { "phoenix-pack-rebirth": true }));
+    const phoenix = next.combat!.units.unit_p2_skeletons;
+    expect(phoenix.variant).toBe("pack");
+    expect(phoenix.usedRebirthThisCombat).toBe(true);
+  });
+
+  it("a BINH table may opt OUT — the printed Pack again (control)", () => {
+    const next = lethalBlowOnMintedPackPhoenix(adventureFor("binh", { "phoenix-pack-rebirth": false }));
+    expect(next.combat!.units.unit_p2_skeletons.variant).toBe("few");
   });
 });
 
