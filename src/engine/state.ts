@@ -8307,6 +8307,40 @@ export type CombatState = {
     powerCardIds?: CardId[];
   } | null;
   /**
+   * Cast-window reaction Spell recall: a SPELL played as a reaction INTO an
+   * enemy's spell cast (Magic Mirror's redirect, Protection from X's cancel)
+   * closes that cast window on resolution, so — like a Sorrow, and unlike an
+   * attack instant — there is no still-open window to play Knowledge/Mysticism
+   * into. When the reacting player holds a recall card and the reaction Spell
+   * left a card to take back, a recall-ONLY window is held open (Protection) or
+   * re-opened after the redirect target is picked (Magic Mirror) with this
+   * record set. While it is set the cast window offers ONLY that player's
+   * Knowledge/Mysticism. Cleared when the window closes (recall played, or
+   * passed) — and a still-parked cast then resolves as usual.
+   */
+  pendingCastReactionRecall?: {
+    cardId: CardId;
+    playerId: PlayerId;
+    /**
+     * The SPELL_CAST_STARTED event this record belongs to. Every read matches it
+     * against the open window's own trigger, so a record left behind by an
+     * abandoned redirect choice (e.g. the reacting player is eliminated mid-pick)
+     * can never suppress the offers of a LATER, unrelated cast window.
+     */
+    triggerEventId: string;
+    /** Cast from a Spell Book (the old stash Book returns there; Polish refreshes the used side). */
+    fromSpellBook: boolean;
+    /** Polish Spell Book: the generic hand card consumed to enable this Spell. */
+    castEnablerCardId?: CardId;
+    /**
+     * Power-source ("pow") cards discarded to pay the reaction's printed cost
+     * (Magic Mirror's silver/gold grades). Mysticism's EXPERT side — "also take
+     * back all other cards played together with it" — sweeps these back to hand;
+     * basic Mysticism and Knowledge leave them in the discard.
+     */
+    powerCardIds?: CardId[];
+  } | null;
+  /**
    * Round-start war machine triggers still waiting to resolve, in owner
    * order (attacker first). The Catapult parks its first chosen target here
    * while the second target choice is open.

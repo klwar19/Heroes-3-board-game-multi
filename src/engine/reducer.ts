@@ -9751,6 +9751,27 @@ function resumeAttackWindowAfterRedirect(
 }
 
 /**
+ * After Magic Mirror re-points a still-pending CAST, re-open that cast's window
+ * (found via the parked stack item's SPELL_CAST_STARTED trigger) so the Mirror's
+ * caster may play Knowledge/Mysticism on the Spell they just cast. While
+ * combat.pendingCastReactionRecall is set the window offers ONLY that recall, so
+ * nobody gets a second bite at the already-redirected spell. Returns false when
+ * no window could open (no trigger event, or the offers evaporated) — the caller
+ * then resolves the cast immediately, exactly as before this feature.
+ */
+function resumeCastWindowForRecall(
+  state: GameState,
+  stackItem: ResolutionStackItem,
+  cards: CardLibrary
+): boolean {
+  const triggerEvent = castTriggerEventOf(state, stackItem);
+  if (!triggerEvent || state.combat?.pendingCastReactionRecall?.triggerEventId !== triggerEvent.id) {
+    return false;
+  }
+  return openReactionWindowForTrigger(state, stackItem, triggerEvent, cards);
+}
+
+/**
  * Rampart Pegasi (Pack) "Magic Damper": every living enemy Pegasi shaves Power
  * off the Spells the caster casts. Summed across all opposing auras; the caller
  * floors the resulting Power at 0.
@@ -11362,6 +11383,12 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
   if (state.combat?.pendingActivationSkipRecall) {
     state.combat.pendingActivationSkipRecall = null;
   }
+  // Same for the cast-window take-back (Magic Mirror / Protection from X). The
+  // Magic Mirror path deliberately ARMS it right AFTER this close (the redirect
+  // target choice sits in between), so keep the clear here and the arm there.
+  if (state.combat?.pendingCastReactionRecall) {
+    state.combat.pendingCastReactionRecall = null;
+  }
 }
 
 /**
@@ -12219,6 +12246,100 @@ function getChosenOption(card: CardDefinition, optionIndex?: number): CardOption
 }
 
 /**
+ * Whether a reaction SPELL that closes its own window should have that window
+ * HELD OPEN for its caster's Knowledge/Mysticism take-back: the play must have
+ * left a card to recall (a Scroll cast, a Tarnum over-limit return and a
+ * `removeSelf` option all leave none) and the caster must actually hold a
+ * playable RECALL_SPELL card — otherwise the window would be kept open with zero
+ * legal offers and nobody able to close it. Shared by the Sorrow
+ * (activation-skip) and the cast-window (Magic Mirror / Protection from X)
+ * shapes so the two can never disagree about who is offered a recall.
+ */
+function heldOpenRecallEligible(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  play: { cardId: string; fromScroll?: string; tarnumReturn?: "deck-top" | "discard" },
+  option: CardOptionDefinition | undefined,
+  cards: CardLibrary
+): boolean {
+  if (card.kind !== "spell" || play.fromScroll || play.tarnumReturn || option?.cost?.removeSelf) {
+    return false;
+  }
+  const player = state.players[playerId];
+  if (!state.combat || !player) {
+    return false;
+  }
+  return player.hand.some((heldId) => {
+    const held = cards[heldId];
+    return (
+      held?.effect.type === "RECALL_SPELL" &&
+      held.implementationStatus === "implemented" &&
+      (held.timing === "reaction" || held.timing === "instant")
+    );
+  });
+}
+
+/**
+ * The take-back record for a reaction Spell played into an enemy CAST window
+ * (Magic Mirror / Protection from X). Captures the Book source and the printed
+ * cost cards, so expert Mysticism ("also take back all other cards played
+ * together with it") can sweep the Power sources a silver/gold Magic Mirror ate.
+ */
+function castReactionRecallRecord(
+  playerId: PlayerId,
+  triggerEventId: string,
+  play: { cardId: string; fromSpellBook?: boolean; castEnablerCardId?: CardId; costCardIds?: CardId[] }
+) {
+  const powerCardIds = play.costCardIds && play.costCardIds.length > 0 ? [...play.costCardIds] : undefined;
+  return {
+    cardId: play.cardId as CardId,
+    playerId,
+    triggerEventId,
+    fromSpellBook: Boolean(play.fromSpellBook),
+    ...(play.castEnablerCardId ? { castEnablerCardId: play.castEnablerCardId } : {}),
+    ...(powerCardIds ? { powerCardIds } : {})
+  };
+}
+
+/**
+ * Hold the ALREADY-OPEN cast window for the reacting player's Knowledge /
+ * Mysticism alone (the Protection-from-X shape: its cancel took the cast off the
+ * stack, so there is nothing left to answer). Priority is handed back to them
+ * here as well as by advanceReactionWindowAfterPlay, so the window never briefly
+ * reads empty.
+ */
+function startCastReactionRecallWindow(
+  state: GameState,
+  playerId: PlayerId,
+  play: { cardId: string; fromSpellBook?: boolean; castEnablerCardId?: CardId; costCardIds?: CardId[] },
+  cards: CardLibrary
+): void {
+  if (!state.combat || !state.reactionWindow) {
+    return;
+  }
+  state.combat.pendingCastReactionRecall = castReactionRecallRecord(
+    playerId,
+    state.reactionWindow.triggerEvent.id,
+    play
+  );
+  state.reactionWindow.passedPlayerIds = [];
+  refreshReactionWindowLegalReactions(state, cards);
+}
+
+/** The SPELL_CAST_STARTED event that opened a parked cast's reaction window. */
+function castTriggerEventOf(
+  state: GameState,
+  stackItem: ResolutionStackItem
+): Extract<GameEvent, { type: "SPELL_CAST_STARTED" }> | undefined {
+  return stackItem.triggerEventIds
+    .map((eventId) => state.eventLog.find((event) => event.id === eventId))
+    .find(
+      (event): event is Extract<GameEvent, { type: "SPELL_CAST_STARTED" }> => event?.type === "SPELL_CAST_STARTED"
+    );
+}
+
+/**
  * Applies one instant card inside the open reaction window: pays costs,
  * discards the card, and applies the effect to the pending stack item.
  * Returns whether the play ended the window (spell-cancel).
@@ -12752,6 +12873,19 @@ function applyReactionPlayCore(
     }
     state.stack.pop();
 
+    // Knowledge / Mysticism on the COUNTER itself: a Protection-from-X (a real
+    // Spell card) closes its own cast window, so — exactly like a Sorrow — hold
+    // it OPEN for the reacting player alone to take that Spell back. The cancel
+    // has already applied and the cast is off the stack, so nothing can be
+    // re-answered; getHeldOpenSpellRecallReactions offers ONLY the recall.
+    // Resistance / the Boots / Surcoat are abilities and artifacts, not Spells,
+    // so heldOpenRecallEligible keeps them out (Mysticism takes back "the Spell
+    // card").
+    if (heldOpenRecallEligible(state, playerId, card, play, option, cards) && state.combat && state.reactionWindow) {
+      startCastReactionRecallWindow(state, playerId, play, cards);
+      return { windowEnded: false };
+    }
+
     closeReactionWindow(state, "reaction-played");
     if (!finishCombatIfNeeded(state)) {
       state.phase = "combat";
@@ -12849,7 +12983,20 @@ function applyReactionPlayCore(
       message: `${card.name}: choose where to bounce ${castCard?.name ?? "the spell"}.`
     });
 
+    // Knowledge / Mysticism on the Magic Mirror itself ("play immediately after
+    // casting a spell"): this window closes for the target pick, so ARM the
+    // take-back now and re-open a recall-only cast window once the new target is
+    // chosen (chooseAbilityTarget's spell-redirect branch), BEFORE the bounced
+    // spell resolves — the same declare-then-resolve order the ordinary
+    // cast-window recall has. Armed AFTER closeReactionWindow, which clears the
+    // record by design so a passed/declined window never leaves it dangling.
+    const armRecallTriggerId = heldOpenRecallEligible(state, playerId, card, play, option, cards)
+      ? castTriggerEventOf(state, stackItem)?.id
+      : undefined;
     closeReactionWindow(state, "reaction-played");
+    if (armRecallTriggerId && state.combat) {
+      state.combat.pendingCastReactionRecall = castReactionRecallRecord(playerId, armRecallTriggerId, play);
+    }
     state.phase = "choice";
     state.priorityPlayerId = playerId;
     return { windowEnded: true };
@@ -12936,22 +13083,8 @@ function applyReactionPlayCore(
     // pendingActivationSkipRecall) returns the card straight away. Only when the
     // caster holds a recall card and the Sorrow was a recallable own spell (not
     // a scroll / Tarnum-return / removeSelf play, which leave no card to take
-    // back). getActivationSkipRecallReactions then offers ONLY that recall.
-    const holdsRecall =
-      card.kind === "spell" &&
-      !play.fromScroll &&
-      !play.tarnumReturn &&
-      !option?.cost?.removeSelf &&
-      Boolean(state.combat) &&
-      Boolean(player) &&
-      (player?.hand ?? []).some((heldId) => {
-        const held = cards[heldId];
-        return (
-          held?.effect.type === "RECALL_SPELL" &&
-          held.implementationStatus === "implemented" &&
-          (held.timing === "reaction" || held.timing === "instant")
-        );
-      });
+    // back). getHeldOpenSpellRecallReactions then offers ONLY that recall.
+    const holdsRecall = heldOpenRecallEligible(state, playerId, card, play, option, cards);
     if (holdsRecall && state.combat && state.reactionWindow) {
       // Capture the power-source ("pow") cards spent on a silver/gold Sorrow's
       // cost. They were just discarded by payOptionCardCost above; expert
@@ -13018,6 +13151,67 @@ function applyReactionPlayCore(
     if (!finishCombatIfNeeded(state)) {
       state.phase = "combat";
     }
+    return { windowEnded: true };
+  }
+
+  // Cast-window take-back: the reacting player plays Knowledge / Mysticism into
+  // the held-open (Protection from X) or re-opened (Magic Mirror) cast window to
+  // take back the reaction SPELL they just cast — "play immediately after casting
+  // a spell; take the Spell card back into your hand instead of discarding it".
+  // The reaction's own effect has already applied (the cast is cancelled, or
+  // re-pointed and about to resolve), so the card comes back straight away.
+  // MUST precede the generic CAST_SPELL recall branch below: for Magic Mirror the
+  // parked stack item is the ENEMY's cast, and that branch would arm a recall of
+  // THEIR spell into THEIR hand.
+  if (
+    effect.type === "RECALL_SPELL" &&
+    state.combat?.pendingCastReactionRecall?.playerId === playerId &&
+    state.combat.pendingCastReactionRecall.triggerEventId === state.reactionWindow?.triggerEvent.id
+  ) {
+    const recall = state.combat.pendingCastReactionRecall;
+    const caster = state.players[playerId];
+    caster.combatStats.spellLimitBonusThisRound += effect.basicSpellLimitBonus ?? 0;
+    if (mode === "expert") {
+      caster.combatStats.spellLimitBonusThisRound += effect.expertSpellLimitBonus ?? 0;
+    }
+
+    // Three Book modes, matching the attack-window reading verbatim: a hand cast
+    // returns to hand; an old stash-Book cast returns to the Book; a POLISH Book
+    // cast leaves the Spell on the used side (Knowledge) or refreshes it
+    // (Mysticism), and either way hands the "Cast a Spell" enabler back.
+    const polishBookInstant = polishSpellBookEnabled(state) && recall.fromSpellBook;
+    const isPolishMysticism =
+      polishBookInstant && !effect.basicSpellLimitBonus && !effect.expertSpellLimitBonus;
+    if (polishBookInstant) {
+      if (isPolishMysticism) {
+        refreshPolishUsedSpell(state, playerId, recall.cardId);
+      }
+      if (recall.castEnablerCardId) {
+        returnSpellFromDiscardToHand(state, playerId, recall.castEnablerCardId);
+      }
+    } else {
+      returnSpellFromDiscardToHand(state, playerId, recall.cardId, recall.fromSpellBook);
+    }
+
+    // Mysticism EXPERT: "also take back all other cards played together with it" —
+    // the Power sources a silver/gold Magic Mirror ate. They came from hand, so
+    // each returns from the discard to the hand.
+    if (mode === "expert" && effect.expertRecallPlayedCards) {
+      for (const powerCardId of recall.powerCardIds ?? []) {
+        const index = caster.discard.lastIndexOf(powerCardId);
+        if (index !== -1) {
+          caster.discard.splice(index, 1);
+          caster.hand.push(powerCardId);
+        }
+      }
+    }
+
+    state.combat.pendingCastReactionRecall = null;
+    closeReactionWindow(state, "reaction-played");
+    // Magic Mirror parks the re-pointed cast on the stack — resolve it now that
+    // the recall is settled. Protection from X already popped it (empty stack →
+    // resolveTopStack just restores the combat phase).
+    resolveTopStack(state, cards);
     return { windowEnded: true };
   }
 
@@ -18679,6 +18873,16 @@ function chooseAbilityTarget(
         fromTarget,
         toTarget: top.action.target
       });
+      // The Magic Mirror is a Spell its caster just cast: if they armed a
+      // Knowledge/Mysticism take-back when they played it, re-open the cast
+      // window for that recall ALONE before the bounced spell resolves (the
+      // spell stays parked, so the window's all-pass / recall tail resolves it
+      // exactly as before). Nothing armed — or nobody left able to react — falls
+      // straight through to the old immediate resolution.
+      if (combat.pendingCastReactionRecall && resumeCastWindowForRecall(state, top, cards)) {
+        return;
+      }
+      combat.pendingCastReactionRecall = null;
       resolveTopStack(state, cards);
     }
     return;
