@@ -602,6 +602,17 @@ export function ReactionTray({
     );
   }
 
+  // A reaction play that opened a nested pick — Scholar's discard recovery —
+  // PAUSES the window, and getLegalActions then offers the picker ONLY that
+  // choice's options. Rendering the tray here would show "No playable instants
+  // — pass to continue." beside a Pass button the engine rejects (a pendingChoice
+  // is exclusive), so yield the surface to the choice prompt. The tray returns
+  // with the RE-DERIVED offers the moment the pick resolves — including the card
+  // just taken from the discard pile.
+  if (state.pendingChoice) {
+    return null;
+  }
+
   // Group the viewer's legal reactions by card + option (+1-Power discards
   // are their own group), then expose one selectable tile per copy in hand.
   const groupsByCard = new Map<string, TrayGroup[]>();
