@@ -512,21 +512,30 @@ export function playerHoldsTentFlag(
 }
 
 /**
- * Teleport-ARRIVAL auto-win: a hero who arrives THROUGH a teleport network
- * (Monolith / colored Gate — including a reveal-travel) or crosses OUT through
- * a linked Subterranean Gate onto a hex whose designed guard still stands
- * sweeps that guard aside — an automatic victory with no fight, no experience
- * and no reward ("you fight to get IN; a monster at the EXIT is auto-won").
- * A no-op on unguarded destinations.
+ * Crossing OUT through a linked Subterranean Gate onto a hex whose designed
+ * guard still stands: the traveller SLIPS PAST — no fight, no experience, no
+ * reward and (deliberately) no visit of the guarded field. The pass is a
+ * per-travel bonus, NOT a victory: the guard is left exactly as it stood, so
+ * anyone who later ENTERS that hex the ordinary way — the same hero stepping
+ * off and walking back on, or any other hero — fights it normally.
+ *
+ * (It used to `clearCustomGuard` the exit, which destroyed a designer guard
+ * for the whole table on the first crossing.)
+ *
+ * A no-op on unguarded destinations; only ever called from the gate-travel
+ * arrival branch, which has already established the guard.
  */
-export function autoWinArrivalGuard(state: GameState, playerId: PlayerId, field: MapFieldState | undefined): void {
+export function noteGateTravelSlipsPastGuard(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState | undefined
+): void {
   if (!field || !isFieldGuarded(field) || !field.difficulty) {
     return;
   }
-  clearCustomGuard(field);
   eventNote(
     state,
-    `The guards at the ${locationDefinitionName(field.location)} are swept aside by the arrival — automatic victory (no experience).`,
+    `The hero slips past the guards at the ${locationDefinitionName(field.location)} on the way out of the tunnel — no Combat, and the guards remain.`,
     playerId
   );
 }

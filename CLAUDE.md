@@ -2886,6 +2886,73 @@ What runs (each with a failing-if-removed test):
   Grail tiles fight as Utopia (no reward)". The hidden-package section no longer
   claims "there is no after-dig conversion" (it always had one).
 
+## A Subterranean Gate crossing SLIPS PAST the far guard — it never clears it (2026-08-07)
+
+USER RULE, verbatim: "when you choose option 'travel through the gate', there
+should be no combat on the other side -> true, but it's a one time bonus. If you
+stay and then enter later (or someone else) there is a fight." THE BUG: crossing
+OUT through a linked Subterranean Gate ran `autoWinArrivalGuard` (adventure.ts),
+which `clearCustomGuard`-ed the far half and logged "swept aside … automatic
+victory" — so the FIRST traveller destroyed a designer gate guard permanently,
+for the whole table. Fixed at ONE seam: `performHeroStep` no longer sweeps; it
+passes a `gateTravel` flag into `resolveHeroArrival`, whose guarded-field arm
+returns early with a note (`noteGateTravelSlipsPastGuard`) instead of calling
+`startNeutralEncounter`. The guard object is untouched, so `isFieldGuarded`
+stays true and every later arrival takes the normal path. Pinned in
+`src/engine/designed-gate-links.test.ts` ("designed gate links — guarded
+halves", 8 cases).
+
+Leading with what does NOT change / deliberate limits:
+- **The pass is PER TRAVEL, not once-ever.** A hero may cross the tunnel back
+  and forth (the crossing is the free 0-MP "one Field" step) and never fight;
+  it also never gains anything, because the guarded hex is not visited. The
+  alternative "strictly one free pass, fight from the second" reading was
+  considered and rejected — the user's "one time bonus" is glossed by their own
+  next sentence ("if you STAY and then ENTER later … there is a fight"), i.e.
+  the bonus belongs to the travel, not to the field.
+- **Teleport NETWORK arrivals are UNCHANGED and still FIGHT** (Monolith /
+  Teleport Gate / Whirlpool / one-way, `RESOLVE_TELEPORT_ARRIVAL`, the
+  2026-07-24 rule). Only the linked-gate WALK slips past. Note the user's phrase
+  "option 'travel through the gate'" is literally the colored-Gate travel label
+  (adventure.ts:10645); the subterranean gate has no such menu. The fix was
+  scoped to the subterranean gate because that is the ONLY place where "no
+  combat on the other side" was ever true.
+- **No visit either**: a guarded field is never visited on arrival, so the pass
+  does not collect the gate's own `SUBTERRANEAN_GATE` step (the free other-layer
+  tile reveal — which the traveller has already seen, having come from there),
+  and `lastVisitedField` stays at the ORIGIN half, so a retreat from a later
+  fight on that hex bounces back down the tunnel.
+- **A hero may PARK on a live-guarded gate hex.** That is the documented
+  `clear_tile_cubes` precedent (a re-armed guard under a stationary hero): the
+  gate's location category is `empty`, so no Resolve/Revisit is offered, moving
+  off and END_TURN both work, and the hero must step off and back on to fight.
+- **AI limit (not a stall)**: a beatable guarded gate exit is a `"guard"`
+  objective, and a computer hero whose march ENDS with the gate crossing arrives
+  without fighting and then sits at objective distance 0 — the potential field
+  scores every step away as negative, so it ends its turn rather than
+  oscillating (`objectiveDistanceField` is strictly decreasing). It fights the
+  guard only when it approaches from the same layer. Guarded gate halves exist
+  only on designer maps, so this is a niche park, never a freeze; the full
+  `computer/` + single-player suites are green.
+- **UI/doc honesty**: the designer's ⚔ Guards tooltip on a gate link now says
+  the crossing slips past and the guard stays. Two neighbouring designer hints
+  and two `state.ts` doc comments that still promised a teleport-network
+  "auto-win" were stale since 2026-07-24 and were corrected in the same pass
+  (text only, no behaviour).
+
+What runs (each case fails if the wiring is removed): (a) crossing out arrives
+with `combat === null`, `field.difficulty` still 4 and a "slips past" note (no
+"swept aside"); (b) the same hero stepping off and back on opens the neutral
+fight; (c) another player's hero walking in opens it; (d) a second crossing is
+fight-free again and the guard is still live; (e) CONTROL — an unguarded far
+half is byte-identical to before (free 0-MP crossing, no note); (f) the guarded
+exit emits no `FIELD_VISITED` and does not move `lastVisitedField`, with an
+unguarded crossing as the in-test control that DOES; plus the own-layer
+approach still fighting, and a no-stall case (no REVISIT offer, MOVE_HERO
+offered, END_TURN accepted). MUTATION-CHECKED: restoring `clearCustomGuard`
+fails 4; dropping the early `return` so the pass falls into the visit fails 5
+(including (f)).
+
 ## Diplomacy's skip costs a crown · Dragon Utopia guards use the table (2026-07-27)
 
 Two shipped readings replaced by the printed card / the Field Difficulty table.
@@ -4522,9 +4589,10 @@ What runs (each pinned by a test that fails if the wiring is removed):
   destination now occupied by an ENEMY hero is OFFERED and travelling there
   starts a normal PvP battle (the walk-onto-enemy flow — parallel stop, defense
   prompts); an OWN-hero destination stays skipped. **Scope guard:** stepping OUT
-  through a linked SUBTERRANEAN GATE keeps the old auto-win sweep
-  (`autoWinArrivalGuard` in `performHeroStep` — that is walking, not the
-  network). Pinned in `teleport-arrival-rule.test.ts` (guarded-arrival fight +
+  through a linked SUBTERRANEAN GATE is a WALK, not the network, and instead
+  SLIPS PAST the guard without clearing it (2026-08-07 — see "A Subterranean
+  Gate crossing slips past the far guard" below). Pinned in
+  `teleport-arrival-rule.test.ts` (guarded-arrival fight +
   win-clears + retreat-bounces + PvP + own-hero-skip, each with a CONTROL) and
   the updated `map-objects.test.ts` / `map-tokens.test.ts` / `obelisk-roles.test.ts`.
 - **3a. Every teleport travel offers "Stay here"** (2026-07-24 rule): entering
