@@ -23,7 +23,8 @@ import {
   getPendingReactionPower,
   getSpellDamageAmount,
   getSpellDiceRollCount,
-  RESOURCE_DIE_FACES,
+  PRINTED_RESOURCE_DIE_FACES,
+  resourceDieFaces,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCastPowerBounds,
@@ -2413,14 +2414,18 @@ const MAP_CUBE_FINAL = [
   "rotateX(82deg) rotateY(0deg)"
 ];
 
+type ResourceDieLayout = readonly { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[];
+
 /**
- * The Resource die faces rendered on the cube — derived from the engine's
- * RESOURCE_DIE_FACES so the visual always matches the actual die (incl. the
- * house rule that reduced the "2 valuables" face to 1, giving 2/4 materials,
- * 1/1 valuables, 3/6 gold).
+ * Fallback Resource-die layout for a caller that passes no game state: the
+ * PRINTED die (2/4 materials, 1/2 valuables, 3/6 gold). The live table passes
+ * `resourceDieFaces(state)` instead, so the cube shows the house-rule die
+ * (valuables capped at 1) whenever `resource-die-single-valuables` is on.
  */
-const RESOURCE_DIE_LAYOUT: { resource: "buildingMaterials" | "valuables" | "gold"; amount: number }[] =
-  RESOURCE_DIE_FACES.map((face) => ({ resource: face.resource, amount: face.amount }));
+const RESOURCE_DIE_LAYOUT: ResourceDieLayout = PRINTED_RESOURCE_DIE_FACES.map((face) => ({
+  resource: face.resource,
+  amount: face.amount
+}));
 
 // The Resource die cube faces use the same real board-game resource art as the
 // resource bar (shared RESOURCE_ICONS registry) — the coin stack, stone pile
@@ -2458,16 +2463,18 @@ function MapDieCube({
   kind,
   faceIndex,
   rolling,
-  dimmed
+  dimmed,
+  resourceLayout = RESOURCE_DIE_LAYOUT
 }: {
   kind: MapDiceCue["dice"];
   faceIndex: number;
   rolling: boolean;
   dimmed: boolean;
+  resourceLayout?: ResourceDieLayout;
 }) {
   const faceContent = (index: number) => {
     if (kind === "resource") {
-      const face = RESOURCE_DIE_LAYOUT[index];
+      const face = resourceLayout[index];
       return (
         <>
           {/* The source art is a resource on a leather tile; the wrapper crops
@@ -2508,12 +2515,12 @@ function MapDieCube({
 }
 
 /** Face index a structured roll lands on, for the settle rotation. */
-function mapDiceFaceIndexes(cue: MapDiceCue): number[] {
+function mapDiceFaceIndexes(cue: MapDiceCue, resourceLayout: ResourceDieLayout = RESOURCE_DIE_LAYOUT): number[] {
   if (cue.dice === "resource" && cue.resourceRolls?.length) {
     return cue.resourceRolls.map((roll) =>
       Math.max(
         0,
-        RESOURCE_DIE_LAYOUT.findIndex((face) => face.resource === roll.resource && face.amount === roll.amount)
+        resourceLayout.findIndex((face) => face.resource === roll.resource && face.amount === roll.amount)
       )
     );
   }
@@ -2536,10 +2543,23 @@ const MAP_DICE_TITLES: Record<MapDiceCue["dice"], string> = {
  * Adventure-map die roll, staged exactly like the combat attack roll: the
  * physical cube tumbles, settles on the rolled face, and the outcome reads
  * out underneath. Rendered with key={cue.id} so each roll mounts fresh.
+ *
+ * `resourceLayout` is the six faces of the Resource die THIS table rolls
+ * (`resourceDieFaces(state)`): the printed die, or the house-rule die whose
+ * "2 valuables" face is capped at 1. Omitted, the cube falls back to the
+ * printed die.
  */
-export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () => void }) {
+export function MapDiceOverlay({
+  cue,
+  onDone,
+  resourceLayout = RESOURCE_DIE_LAYOUT
+}: {
+  cue: MapDiceCue;
+  onDone: () => void;
+  resourceLayout?: ResourceDieLayout;
+}) {
   const [phase, setPhase] = useState<"rolling" | "settled">("rolling");
-  const faceIndexes = mapDiceFaceIndexes(cue);
+  const faceIndexes = mapDiceFaceIndexes(cue, resourceLayout);
   const dieCount = faceIndexes.length;
 
   useEffect(() => {
@@ -2581,7 +2601,14 @@ export function MapDiceOverlay({ cue, onDone }: { cue: MapDiceCue; onDone: () =>
         </header>
         <div className="diceRow">
           {faceIndexes.map((faceIndex, index) => (
-            <MapDieCube dimmed={false} faceIndex={faceIndex} key={index} kind={cue.dice} rolling={rolling} />
+            <MapDieCube
+              dimmed={false}
+              faceIndex={faceIndex}
+              key={index}
+              kind={cue.dice}
+              resourceLayout={resourceLayout}
+              rolling={rolling}
+            />
           ))}
         </div>
         <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>

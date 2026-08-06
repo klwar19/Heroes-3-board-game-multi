@@ -2452,6 +2452,48 @@ seam, with the CONTROL behaviour pinned.
   `ignoreKeyCards` Mage-Guild strictness only means anything while the house rule
   is ON.
 
+## The Resource die's "2 valuables" face is a BINH house rule now (2026-08-07)
+
+USER RULE, verbatim: "the 2 valuables result removed from the resource die
+completely: MUST MAKE IT BINH HOUSE RULE ONLY, MAKE BASE GAME STILL BE ABLE TO
+ROLL THE 2 VALUABLE RESULT." The engine had HARDCODED the printed "2 valuables"
+face down to 1 for EVERY mode (a comment in `RESOURCE_DIE_FACES` called it a
+house rule, but no toggle existed). It is now the BINH-only house rule
+`resource-die-single-valuables` (`house-rules.ts`, category `global`, **`default:
+true` in BINH, no `legacyDefault` ⇒ OFF in Legacy / the base game**; editable in
+either mode). Behaviour pinned in `src/engine/resource-die-valuables.test.ts`
+(each claim mutation-checked with a toggle CONTROL) plus the cube in
+`src/components/table/overlays.test.tsx`.
+
+ONE seam: `resourceDieFaces(state)` (adventure.ts) returns
+`SINGLE_VALUABLES_RESOURCE_DIE_FACES` (2/4 materials, **1/1** valuables, 3/6 gold)
+with the rule on, else `PRINTED_RESOURCE_DIE_FACES` (…, **1/2** valuables, …).
+Face ORDER is identical between the two, so die-cube face indexes line up. The
+old `RESOURCE_DIE_FACES` const is GONE on purpose — a stale reader fails to
+compile instead of silently rolling the wrong die. Every consumer takes the
+state-aware read: `rollResourceDice`, `setResourceDieOptions` (the
+Cards-of-Prophecy "set the die" picks), the Pandora Income permanent die, and the
+three Event dice (Mischievous Leprechaun pool + roll, Withered Hermit gamble +
+pay). The UI cube takes the faces as the new `MapDiceOverlay.resourceLayout` prop
+(page.tsx passes `resourceDieFaces(state)`; the default is the printed die).
+
+Leading with the consequences / limits:
+- **A LEGACY snapshot with no frozen flag now rolls the PRINTED die** — that is
+  the user-demanded behaviour change, and it applies to in-flight legacy games
+  (the frozen `adventure.houseRules` of a game started before this rule has no
+  entry, so the mode default decides). A BINH game is unchanged (default ON).
+- **"Set the Resource die" offers ONE pick per DISTINCT face**, so the picks are
+  5 on the capped die (the two 1-valuables faces dedupe) and 6 on the printed die
+  (the distinct "2 valuables" is a real, separately pickable option).
+- **The Polish reduced-starting-bonus high-face reroll is LIVE on valuables
+  again.** `isHighResourceDieFace` is a pure FACE predicate (6 gold / 4 materials
+  / 2 valuables); its valuables clause was dead while the table hardcoded the cap
+  and is now active on the printed die — a rolled 2-valuables is rerolled away,
+  while 1 valuables is kept (the reroll targets the AMOUNT, not the resource).
+  Bounded on both dice (2 materials / 1 valuables / 3 gold always remain).
+- **The AI is not re-scored** — no computer policy reads the die table; a seat
+  simply gains what it rolls.
+
 ## Recent-gameplay-fixes batch (2026-08-06): 15 commits, audited — what runs vs. limits
 
 Fifteen codex commits landed together after a full audit (protocol bumped to

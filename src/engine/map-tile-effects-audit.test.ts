@@ -6,7 +6,7 @@ import {
   createSecondaryHero,
   getMainHero,
   reinforceCostFor,
-  RESOURCE_DIE_FACES
+  resourceDieFaces
 } from "./adventure";
 import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
@@ -150,12 +150,18 @@ describe("Cyclops Stockpile rolls 4 Resource dice (not Treasure dice)", () => {
 // "OR" choices resolve EXACTLY ONE branch (mutual exclusivity)
 // ---------------------------------------------------------------------------
 describe("Resource die house rule", () => {
-  it("never grants more than 1 valuable (the 2-valuables face was reduced to 1)", () => {
-    const valuableFaces = RESOURCE_DIE_FACES.filter((face) => face.resource === "valuables");
+  // The valuables cap is the BINH house rule `resource-die-single-valuables`;
+  // the printed die (base game / Legacy) keeps its "2 valuables" face. Both
+  // sides — and every consumer — are pinned in resource-die-valuables.test.ts.
+  it("caps valuables at 1 under BINH, and keeps the printed 2 in Legacy", () => {
+    const binh = { ruleset: "binh", adventure: null } as unknown as GameState;
+    const legacy = { ruleset: "legacy", adventure: null } as unknown as GameState;
+    const valuableFaces = resourceDieFaces(binh).filter((face) => face.resource === "valuables");
     // There are still two valuables faces, but neither yields more than 1.
     expect(valuableFaces.length).toBeGreaterThan(0);
     expect(Math.max(...valuableFaces.map((face) => face.amount))).toBe(1);
-    expect(RESOURCE_DIE_FACES.some((face) => face.resource === "valuables" && face.amount >= 2)).toBe(false);
+    expect(resourceDieFaces(binh).some((face) => face.resource === "valuables" && face.amount >= 2)).toBe(false);
+    expect(resourceDieFaces(legacy).some((face) => face.resource === "valuables" && face.amount === 2)).toBe(true);
   });
 });
 

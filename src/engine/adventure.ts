@@ -540,16 +540,44 @@ export function noteGateTravelSlipsPastGuard(
   );
 }
 
-export const RESOURCE_DIE_FACES: { resource: ResourceKind; amount: number }[] = [
+export type ResourceDieFace = { resource: ResourceKind; amount: number };
+
+/**
+ * The PRINTED Resource die: 2/4 building materials, 1/2 valuables, 3/6 gold.
+ * This is what the BASE GAME (and any table with the
+ * `resource-die-single-valuables` house rule off) rolls.
+ */
+export const PRINTED_RESOURCE_DIE_FACES: readonly ResourceDieFace[] = [
   { resource: "buildingMaterials", amount: 2 },
   { resource: "buildingMaterials", amount: 4 },
   { resource: "valuables", amount: 1 },
-  // HOUSE RULE: the "2 valuables" face is reduced to 1 valuable, so no Resource
-  // die roll ever grants more than 1 valuable (both valuables faces give 1).
-  { resource: "valuables", amount: 1 },
+  { resource: "valuables", amount: 2 },
   { resource: "gold", amount: 3 },
   { resource: "gold", amount: 6 }
 ];
+
+/**
+ * The BINH house-rule die (`resource-die-single-valuables`): the printed
+ * "2 valuables" face is reduced to 1, so no Resource-die roll ever grants more
+ * than 1 valuable (both valuables faces give 1). Face ORDER is otherwise
+ * identical to the printed die, so the die-cube face indexes line up.
+ */
+export const SINGLE_VALUABLES_RESOURCE_DIE_FACES: readonly ResourceDieFace[] = PRINTED_RESOURCE_DIE_FACES.map(
+  (face) => ({ resource: face.resource, amount: face.resource === "valuables" ? 1 : face.amount })
+);
+
+/**
+ * The Resource die THIS table rolls — the ONE seam every roll site, "set the
+ * die" option builder and die-face display reads. Never read a static table in
+ * a gameplay path: the printed die and the house-rule die differ on one face.
+ */
+export function resourceDieFaces(
+  state: Pick<GameState, "ruleset" | "adventure">
+): readonly ResourceDieFace[] {
+  return houseRuleEnabled(state, "resource-die-single-valuables")
+    ? SINGLE_VALUABLES_RESOURCE_DIE_FACES
+    : PRINTED_RESOURCE_DIE_FACES;
+}
 
 export type TreasureDieFace = "experience" | "artifact-search" | "resource-die" | "double-resource-die";
 export const TREASURE_DIE_FACES: TreasureDieFace[] = [
@@ -12402,14 +12430,16 @@ function diceResultCombinations<T>(items: readonly T[], choose: number): T[][] {
 }
 
 function setResourceDieOptions(
+  state: Pick<GameState, "ruleset" | "adventure">,
   setEffect: ActiveEffectState,
   companionGroups: readonly ResourceDieRoll[][] = [[]]
 ): { label: string; steps: VisitStep[] }[] {
-  // Offer one option per DISTINCT face. The house-rule die has two "1 valuable"
-  // faces, so dedupe (like the Treasure-die "set" options) to avoid two identical
-  // picks.
+  // Offer one option per DISTINCT face of the die THIS table rolls. The
+  // house-rule die has two "1 valuable" faces, so dedupe (like the Treasure-die
+  // "set" options) to avoid two identical picks; the printed die's distinct
+  // "2 valuables" face is a real, separately pickable option.
   const seen = new Set<string>();
-  const distinctFaces = RESOURCE_DIE_FACES.filter((face) => {
+  const distinctFaces = resourceDieFaces(state).filter((face) => {
     const key = `${face.resource}:${face.amount}`;
     if (seen.has(key)) {
       return false;
@@ -12586,9 +12616,12 @@ function resourceDieLabel(roll: { resource: ResourceKind; amount: number }): str
 
 /**
  * A Resource-die face the Polish reduced starting bonus rerolls away: the three
- * "high value" faces (6 gold / 4 building materials / 2 valuables). The current
- * RESOURCE_DIE_FACES table already caps valuables at 1, so the valuables clause
- * is future-proofing rather than active — the reroll fires on 6-gold / 4-materials.
+ * "high value" faces (6 gold / 4 building materials / 2 valuables). A pure face
+ * predicate — it reads the FACE, never the die table, so it is correct for both
+ * dice. On the PRINTED die (house rule `resource-die-single-valuables` off) the
+ * valuables clause is LIVE and rerolls the 2-valuables face away; on the
+ * house-rule die (valuables capped at 1) it can never fire and the reroll hits
+ * 6-gold / 4-materials only.
  */
 function isHighResourceDieFace(face: { resource: ResourceKind; amount: number }): boolean {
   if (face.resource === "gold") return face.amount >= 6;
@@ -12606,13 +12639,14 @@ function rollResourceDice(
   requestedResolveCount = 1
 ): void {
   const random = adventureRandom(state, "resource-die");
+  const faces = resourceDieFaces(state);
   const rollFace = () => {
-    let face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+    let face = faces[random.nextInt(0, faces.length - 1)];
     if (capHighValues) {
       // Reroll high faces; bounded because the low faces (2 materials, 1
-      // valuables ×2, 3 gold) always exist, so this terminates.
+      // valuables, 3 gold) always exist on BOTH dice, so this terminates.
       for (let guard = 0; guard < 64 && isHighResourceDieFace(face); guard += 1) {
-        face = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+        face = faces[random.nextInt(0, faces.length - 1)];
       }
     }
     return face;
@@ -12670,7 +12704,7 @@ function rollResourceDice(
   // Cards of Prophecy: ignore the roll and set the Resource die to a face of
   // your choice (the whole die-set effect is spent on the chosen option).
   if (setEffect) {
-    options.push(...setResourceDieOptions(setEffect, companionGroups));
+    options.push(...setResourceDieOptions(state, setEffect, companionGroups));
   }
   // Octavia's Gold I: discard it to set one rolled Resource die to "6 gold".
   options.push(...octaviaOptions);
@@ -13008,7 +13042,8 @@ export function rollPandoraIncomePermanentDie(state: GameState, playerId: Player
     return;
   }
   const random = adventureRandom(state, "pandora-income-die");
-  const roll = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+  const pandoraFaces = resourceDieFaces(state);
+  const roll = pandoraFaces[random.nextInt(0, pandoraFaces.length - 1)];
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
     playerId,
@@ -19248,13 +19283,14 @@ function resolveEventCard(state: GameState, card: EventCardDefinition, order: Pl
       break;
     case "MISCHIEVOUS_LEPRECHAUN": {
       const random = adventureRandom(state, "event-leprechaun-pool");
+      const poolFaces = resourceDieFaces(state);
       const treasureRolls = Array.from(
         { length: 2 },
         () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]
       );
       const resourceRolls = Array.from(
         { length: 2 },
-        () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]
+        () => poolFaces[random.nextInt(0, poolFaces.length - 1)]
       );
       events.dicePool = [
         ...treasureRolls.map((face) => ({ kind: "treasure", face }) as EventDiePoolEntry),
@@ -20035,9 +20071,10 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_HERMIT_GAMBLE": {
       const random = adventureRandom(state, "event-hermit-gamble");
+      const gambleFaces = resourceDieFaces(state);
       const rolls = Array.from(
         { length: 3 },
-        () => RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)]
+        () => gambleFaces[random.nextInt(0, gambleFaces.length - 1)]
       );
       appendEvent(state, {
         type: "ADVENTURE_DICE_ROLLED",
@@ -20065,7 +20102,8 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
     }
     case "EVENT_HERMIT_PAY_SEARCH": {
       const random = adventureRandom(state, "event-hermit-pay");
-      const roll = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      const payFaces = resourceDieFaces(state);
+      const roll = payFaces[random.nextInt(0, payFaces.length - 1)];
       appendEvent(state, {
         type: "ADVENTURE_DICE_ROLLED",
         playerId: visit.playerId,
@@ -20435,8 +20473,9 @@ function applyEventVisitStep(state: GameState, visit: PendingVisit, step: VisitS
         break;
       }
       const random = adventureRandom(state, "event-leprechaun-roll");
+      const leprechaunFaces = resourceDieFaces(state);
       const treasure = TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)];
-      const resource = RESOURCE_DIE_FACES[random.nextInt(0, RESOURCE_DIE_FACES.length - 1)];
+      const resource = leprechaunFaces[random.nextInt(0, leprechaunFaces.length - 1)];
       appendEvent(state, {
         type: "ADVENTURE_DICE_ROLLED",
         playerId: visit.playerId,

@@ -345,6 +345,17 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     default: true
   },
   {
+    id: "resource-die-single-valuables",
+    label: "Resource die: valuables capped at 1",
+    description:
+      "On (BINH house rule): the Resource die's \"2 valuables\" face is reduced to 1, so no Resource-die roll ever grants more than 1 valuable (the die reads 2/4 materials, 1/1 valuables, 3/6 gold). Off (printed die, and the BASE GAME default): the die keeps its printed \"2 valuables\" face (2/4 materials, 1/2 valuables, 3/6 gold), so a roll — or a Cards-of-Prophecy \"set the die\" pick — can grant 2 valuables.",
+    category: "global",
+    // BINH-only: ON by default under BINH (preserving the behaviour this engine
+    // has always had), OFF in Legacy (no `legacyDefault`), so the base game
+    // rolls the PRINTED die. Either mode may flip it explicitly.
+    default: true
+  },
+  {
     id: "mine-guard-reinforcement",
     label: "Mine guards: +1 bronze",
     description:

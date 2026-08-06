@@ -25,6 +25,7 @@ import {
   isResetVoteApproved,
   polishSpellBookEnabled,
   resetVoteRequired,
+  resourceDieFaces,
   rulesetCardNote,
   spellBookPowerAvailable,
   spellPowerValueOfCard,
@@ -6859,7 +6860,12 @@ export default function Home() {
             <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
           ) : null}
           {mapDice.current ? (
-            <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
+            <MapDiceOverlay
+              cue={mapDice.current}
+              key={mapDice.current.id}
+              onDone={dismissMapDice}
+              resourceLayout={resourceDieFaces(state)}
+            />
           ) : null}
           {firstRoll && !mapDice.current && !mapNotice.current ? (
             <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />
@@ -7266,7 +7272,12 @@ export default function Home() {
         <MapNoticeOverlay cue={mapNotice.current} key={mapNotice.current.id} onDone={dismissMapNotice} />
       ) : null}
       {!dice.current && mapDice.current ? (
-        <MapDiceOverlay cue={mapDice.current} key={mapDice.current.id} onDone={dismissMapDice} />
+        <MapDiceOverlay
+          cue={mapDice.current}
+          key={mapDice.current.id}
+          onDone={dismissMapDice}
+          resourceLayout={resourceDieFaces(state)}
+        />
       ) : null}
       {firstRoll && !dice.current && !mapDice.current && !mapNotice.current ? (
         <FirstPlayerRollOverlay cue={firstRoll} key={firstRoll.id} onDone={dismissFirstRoll} />

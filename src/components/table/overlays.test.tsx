@@ -200,6 +200,56 @@ describe("MapDiceOverlay — Treasure result is visibly staged before Resource d
     expect(screen.getByText("STEP 2 · RESOURCE DICE FROM TREASURE")).toBeTruthy();
     expect(screen.getByText(/Adrienne rolls the Resource die/i)).toBeTruthy();
   });
+
+  // The Resource die's "2 valuables" face is the BINH house rule
+  // `resource-die-single-valuables` (capped to 1) vs. the printed die. The cube
+  // must paint the die THIS table rolls, so the caller passes the six faces.
+  const dieFaceAmounts = (container: HTMLElement): string[] =>
+    Array.from(container.querySelectorAll(".mapDieFace-resource b")).map((node) => node.textContent ?? "");
+
+  it("paints the six faces of the die the table actually rolls", () => {
+    vi.useFakeTimers();
+    const cue = {
+      id: "die-layout",
+      playerName: "Adrienne",
+      dice: "resource" as const,
+      results: ["2 valuables"],
+      resourceRolls: [{ resource: "valuables" as const, amount: 2 }]
+    };
+    const printed = render(
+      <MapDiceOverlay
+        cue={cue}
+        onDone={vi.fn()}
+        resourceLayout={[
+          { resource: "buildingMaterials", amount: 2 },
+          { resource: "buildingMaterials", amount: 4 },
+          { resource: "valuables", amount: 1 },
+          { resource: "valuables", amount: 2 },
+          { resource: "gold", amount: 3 },
+          { resource: "gold", amount: 6 }
+        ]}
+      />
+    );
+    expect(dieFaceAmounts(printed.container)).toEqual(["2", "4", "1", "2", "3", "6"]);
+    printed.unmount();
+
+    // CONTROL: the house-rule die shows 1 on BOTH valuables faces.
+    const capped = render(
+      <MapDiceOverlay
+        cue={cue}
+        onDone={vi.fn()}
+        resourceLayout={[
+          { resource: "buildingMaterials", amount: 2 },
+          { resource: "buildingMaterials", amount: 4 },
+          { resource: "valuables", amount: 1 },
+          { resource: "valuables", amount: 1 },
+          { resource: "gold", amount: 3 },
+          { resource: "gold", amount: 6 }
+        ]}
+      />
+    );
+    expect(dieFaceAmounts(capped.container)).toEqual(["2", "4", "1", "1", "3", "6"]);
+  });
 });
 
 describe("ReactionTray — Adrienne's pending damage is explicit and resolves", () => {

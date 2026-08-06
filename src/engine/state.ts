@@ -170,6 +170,12 @@ export type HouseRuleId =
   // Phoenix clings to life at its Pack side. Off (wiki/printed Pack): Pack has
   // only the line attack + Fire immunity — Rebirth is Few-only (and Neutral).
   | "phoenix-pack-rebirth"
+  // Resource die valuables cap (BINH house rule): the printed die's "2 valuables"
+  // face is reduced to 1, so no Resource-die roll (nor a Cards-of-Prophecy "set
+  // the die" pick) ever grants more than 1 valuable. Off (printed die, the BASE
+  // GAME default): the "2 valuables" face is live. See `resourceDieFaces`
+  // (adventure.ts) — the ONE read every roll/label/UI site goes through.
+  | "resource-die-single-valuables"
   // Torso of Legion re-tier (BINH house rule): Torso of Legion is PRINTED Minor
   // but BINH plays/sorts it as a MAJOR artifact. Default ON in BOTH modes (it
   // predates this toggle — every existing binh AND legacy game already treats it
