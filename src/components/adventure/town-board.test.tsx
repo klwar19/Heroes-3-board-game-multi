@@ -21,7 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 import { TownBoardView, TownWindow } from "./town-board";
-import { AdventureHud, PreBattlePanel, TownHeroDock } from "./screen";
+import { AdventureHud, PreBattlePanel, TownHeroDock, TownPanel } from "./screen";
 import { CardZoomProvider } from "@/components/table/zoom";
 import { createAdventureGameState, getLegalActions } from "@/engine";
 import { coreBuildingDefinitions } from "@/data/factions/core";
@@ -52,6 +52,27 @@ function strongholdState(): GameState {
     ]
   });
   state.players.p1.resources = { gold: 200, buildingMaterials: 100, valuables: 100 };
+  return state;
+}
+
+/**
+ * The reported bug's exact state (2026-08): the Astrologers' "Mages" card face
+ * up on its even round — "using the Spell Book token is free. You can use it
+ * even if you do not have a Mage Guild built" — with a town that has NO Mage
+ * Guild. The engine offers the free purchase here; the town window used to hide
+ * it (both views only hosted the Spell Book buttons on a BUILT Mage Guild),
+ * while the same offer was clickable from the PvP prep panel.
+ */
+function magesState(): GameState {
+  const state = freshState();
+  state.round = 2;
+  state.adventure!.astrologers = {
+    activeCardId: "astrologers.mages",
+    nextResourceModifiers: { gold: 0, valuables: 0 },
+    crazyWizardUsedBy: [],
+    swiftWeaselUsedBy: []
+  };
+  state.players.p1.resources = { ...state.players.p1.resources, gold: 0 }; // prove it is free
   return state;
 }
 
@@ -299,12 +320,24 @@ describe("TownBoardView — token wells", () => {
 
   it("population well opens the recruit basket; spell well explains the missing Mage Guild", () => {
     const state = freshState();
-    const { container } = render(viewFor(state));
+    const legalActions = getLegalActions(state, "p1");
+    // CONTROL for the Mages cases below: with no waiver the engine offers
+    // nothing, so the panel must stay a build prompt with no purchase button.
+    expect(legalActions.some((legal) => legal.action.type === "SPELL_BOOK_ACTION")).toBe(false);
+    const { container } = render(
+      <TownBoardView legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
     fireEvent.click(container.querySelector(".tbToken.population") as HTMLElement);
     expect((container.querySelector(".tbPanel") as HTMLElement).textContent).toMatch(/recruit & reinforce/i);
 
     fireEvent.click(container.querySelector(".tbToken.spellBook") as HTMLElement);
-    expect((container.querySelector(".tbPanel") as HTMLElement).textContent).toMatch(/build the Mage Guild/i);
+    const panel = container.querySelector(".tbPanel") as HTMLElement;
+    expect(panel.textContent).toMatch(/build the Mage Guild/i);
+    expect(
+      within(panel)
+        .getAllByRole("button")
+        .filter((button) => /buy spell/i.test(button.textContent ?? ""))
+    ).toHaveLength(0);
   });
 
   it("spell well offers the Mage Guild spell purchase once built", () => {
@@ -325,6 +358,80 @@ describe("TownBoardView — token wells", () => {
     expect(spellButton).toBeTruthy();
     fireEvent.click(spellButton!);
     expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "SPELL_BOOK_ACTION", playerId: "p1" }));
+  });
+
+  // -------------------------------------------------------------------------
+  // Reported bug: "This astro card seems to do nothing: Mages … going into town
+  // it seemed like I had to build the mage guild." The engine offered the free
+  // purchase; the town window had no host for it without a built Mage Guild.
+  // -------------------------------------------------------------------------
+
+  it("spell well offers the FREE Mages purchase with NO Mage Guild built (reported bug)", () => {
+    const state = magesState();
+    expect(state.towns.town_p1.buildings).not.toContain("castle.mage_guild");
+    const legalActions = getLegalActions(state, "p1");
+    // The engine's side of the card (pinned in astrologers-combat-cards.test.ts).
+    expect(
+      legalActions.find((legal) => legal.action.type === "SPELL_BOOK_ACTION")?.label
+    ).toMatch(/^0 gold: Buy spell/);
+
+    const onAction = vi.fn();
+    const { container } = render(
+      <TownBoardView legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    // The well itself must stop telling the player to build the guild.
+    const well = container.querySelector(".tbToken.spellBook") as HTMLElement;
+    expect(well.getAttribute("title")).toMatch(/with no Mage Guild built/i);
+    expect(well.getAttribute("title")).not.toMatch(/build the Mage Guild/i);
+
+    fireEvent.click(well);
+    const panel = container.querySelector(".tbPanel") as HTMLElement;
+    // ...and the panel hosts the live purchase, honestly marked "not built".
+    expect(panel.querySelector(".buildingDetailUnbuilt")?.textContent).toMatch(/not built/i);
+    const buy = within(panel)
+      .getAllByRole("button")
+      .find((button) => /0 gold: Buy spell/i.test(button.textContent ?? ""));
+    expect(buy).toBeTruthy();
+    fireEvent.click(buy!);
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "SPELL_BOOK_ACTION", playerId: "p1" }));
+  });
+
+  it("the Mage Guild's own BAR panel offers the free Mages purchase too", () => {
+    const state = magesState();
+    const onAction = vi.fn();
+    const { container } = render(
+      <TownBoardView legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    // Castle bar 7 (index 6) = the Mage Guild.
+    fireEvent.click(container.querySelectorAll(".tbBarHit")[6]);
+    const panel = container.querySelector(".tbPanel") as HTMLElement;
+    const buy = within(panel)
+      .getAllByRole("button")
+      .find((button) => /0 gold: Buy spell/i.test(button.textContent ?? ""));
+    expect(buy).toBeTruthy();
+    fireEvent.click(buy!);
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "SPELL_BOOK_ACTION", playerId: "p1" }));
+    // The build row stays on show — the guild is still worth building later
+    // (this fixture holds 0 gold, so it reads "not enough resources").
+    expect(panel.querySelectorAll(".tbBuildRow").length).toBe(1);
+  });
+
+  it("CONTROL: on the following (odd) round the waiver is gone and so is the town offer", () => {
+    const state = magesState();
+    state.round = 3; // Mages still face up, but "during this round" has passed
+    const legalActions = getLegalActions(state, "p1");
+    expect(legalActions.some((legal) => legal.action.type === "SPELL_BOOK_ACTION")).toBe(false);
+    const { container } = render(
+      <TownBoardView legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    fireEvent.click(container.querySelector(".tbToken.spellBook") as HTMLElement);
+    const panel = container.querySelector(".tbPanel") as HTMLElement;
+    expect(panel.textContent).toMatch(/build the Mage Guild/i);
+    expect(
+      within(panel)
+        .getAllByRole("button")
+        .filter((button) => /buy spell/i.test(button.textContent ?? ""))
+    ).toHaveLength(0);
   });
 
   it("marks a spent token red (and its panel explains it refreshes next round)", () => {
@@ -389,6 +496,51 @@ describe("TownWindow — view toggle", () => {
     // Income tags so build costs can be weighed against upcoming income.
     expect(strip?.textContent).toMatch(/\+10/);
     expect(strip?.getAttribute("aria-label")).toMatch(/resources/i);
+  });
+
+  it("the classic Buildings view opens the UNBUILT Mage Guild's use panel under Mages", () => {
+    // The second town surface of the reported bug: the classic PC-art list only
+    // ever showed an "Effect / Use" button on a BUILT building, and its open
+    // panel additionally required the building to be in town.buildings.
+    const state = magesState();
+    const onAction = vi.fn();
+    const { container } = render(
+      <TownPanel legalActions={getLegalActions(state, "p1")} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    const guildRow = [...container.querySelectorAll(".townBuilding")].find((row) =>
+      /Mage Guild/.test(row.textContent ?? "")
+    ) as HTMLElement;
+    expect(guildRow).toBeTruthy();
+    expect(guildRow.classList.contains("built")).toBe(false);
+    // The "Use ▾" affordance is there because the engine has an offer for it.
+    const use = within(guildRow)
+      .getAllByRole("button")
+      .find((button) => /Use/.test(button.textContent ?? ""));
+    expect(use).toBeTruthy();
+    fireEvent.click(use!);
+    const panel = container.querySelector(".townBuildingDetail") as HTMLElement;
+    expect(panel.querySelector(".buildingDetailUnbuilt")?.textContent).toMatch(/not built/i);
+    const buy = within(panel)
+      .getAllByRole("button")
+      .find((button) => /0 gold: Buy spell/i.test(button.textContent ?? ""));
+    expect(buy).toBeTruthy();
+    fireEvent.click(buy!);
+    expect(onAction).toHaveBeenCalledWith(expect.objectContaining({ type: "SPELL_BOOK_ACTION", playerId: "p1" }));
+  });
+
+  it("CONTROL: without Mages the unbuilt Mage Guild offers only Build in the Buildings view", () => {
+    const state = freshState();
+    const { container } = render(
+      <TownPanel legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    const guildRow = [...container.querySelectorAll(".townBuilding")].find((row) =>
+      /Mage Guild/.test(row.textContent ?? "")
+    ) as HTMLElement;
+    const buttons = within(guildRow)
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+    expect(buttons.some((label) => /Build/.test(label))).toBe(true);
+    expect(buttons.some((label) => /Use|Effect/.test(label))).toBe(false);
   });
 
   it("surfaces rules errors INSIDE the window (the page banner is hidden behind the modal)", () => {

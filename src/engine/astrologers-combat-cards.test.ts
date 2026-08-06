@@ -10,8 +10,15 @@ import {
   NEUTRAL_DECK_IDS,
   seaStepHalts
 } from "./adventure";
-import { finalizeAdventureCombat, spellBookAction, startNeutralEncounter } from "./adventure-reducer";
+import {
+  finalizeAdventureCombat,
+  inCombatPrep,
+  spellBookAction,
+  startNeutralEncounter,
+  startPlayerCombat
+} from "./adventure-reducer";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { cardLibrary } from "@/data/cards/library";
 
 /**
  * Five more expansion Astrologers proclamations, engine-enforced end to end
@@ -348,5 +355,61 @@ describe("Astrologers — Mages (free Spell Book, no Mage Guild)", () => {
   it("CONTROL: 'during this round' — the waiver lifts on the following (odd) Resource round", () => {
     const state = magesGame(3); // Mages face up but the round is odd → no waiver
     expect(() => spellBookAction(state, { type: "SPELL_BOOK_ACTION", playerId: "p1" })).toThrow(/Mage Guild/);
+  });
+
+  // -------------------------------------------------------------------------
+  // Reported bug (2026-08): "it let me use the token for free when attacking an
+  // enemy hero, but going into town it seemed like I had to build the mage
+  // guild." The engine half is pinned END TO END here — the offer taken from
+  // getLegalActions and applied through the real pipeline must actually SEARCH
+  // the Spell deck and put a Spell in hand with NO Mage Guild — and the
+  // combat-prep half (which was correct) is locked so it cannot regress.
+  // -------------------------------------------------------------------------
+
+  it("the offer, applied through the real pipeline, really buys a Spell with NO Mage Guild", () => {
+    let state = magesGame(2);
+    // Clear the round-1 face-up seed so the Search opens straight onto its reveal.
+    state.decks.spells!.discardPile = [];
+    const handBefore = state.players.p1.hand.length;
+
+    const offer = getLegalActions(state, "p1").find((legal) => legal.action.type === "SPELL_BOOK_ACTION");
+    expect(offer?.label).toMatch(/^0 gold: Buy spell/);
+    state = apply(state, offer!.action);
+
+    // The Search really opened on the SPELL deck (not merely a queued reward).
+    const search = state.pendingChoice;
+    expect(search?.type).toBe("DECK_SEARCH");
+    expect(search && "deckId" in search ? search.deckId : null).toBe("spells");
+    state = apply(state, {
+      type: "RESOLVE_DECK_SEARCH",
+      playerId: "p1",
+      choiceId: search!.id,
+      pick: { kind: "revealed", index: 0 }
+    });
+
+    // Observable outcome: a Spell card in hand, the token spent, 0 gold paid.
+    expect(state.players.p1.hand.length).toBe(handBefore + 1);
+    const gained = state.players.p1.hand[state.players.p1.hand.length - 1];
+    expect(cardLibrary[gained]?.kind).toBe("spell");
+    expect(state.players.p1.townTokens.spellBook).toBe(false);
+    expect(state.players.p1.resources.gold).toBe(0);
+  });
+
+  it("is offered (and works) inside a PvP pre-battle prep window — the reported 'attacking a hero' case", () => {
+    // This half of the report was CORRECT behaviour: the Spell Book is a TOWN
+    // TOKEN action, and a prep-window participant may still spend the round's
+    // town actions. Pinned so the fix to the town UI cannot "fix" it away.
+    let state = magesGame(2);
+    state.decks.spells!.discardPile = [];
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    startPlayerCombat(state, attacker, defender, defender.spaceId ?? "0,0");
+    expect(inCombatPrep(state, "p1")).toBe(true);
+
+    const offer = getLegalActions(state, "p1").find((legal) => legal.action.type === "SPELL_BOOK_ACTION");
+    expect(offer?.label).toMatch(/^0 gold: Buy spell/);
+    state = apply(state, offer!.action);
+    expect(state.players.p1.townTokens.spellBook).toBe(false);
+    expect(state.players.p1.resources.gold).toBe(0);
   });
 });

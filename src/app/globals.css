@@ -17614,6 +17614,14 @@ img.cardBack {
   font-size: 0.68rem;
 }
 
+/* A building whose use panel is open although it is NOT built (an effect waived
+   its requirement — the Astrologers' Mages card on the Mage Guild). */
+.townBuildingDetail h4 small.buildingDetailUnbuilt {
+  color: #d8a04a;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .coverPicker {
   display: flex;
   flex-direction: column;

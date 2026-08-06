@@ -608,6 +608,7 @@ export {
   effectiveHandLimit,
   ensureUniqueArmyUnitIds,
   fieldLayer,
+  freeSpellBookActive,
   gainExperience,
   requiredHeroDefeats,
   gateFieldsLinked,
