@@ -6480,18 +6480,21 @@ function spellRecallReactionOffers(
 }
 
 /**
- * Sorrow (activation-skip) recall window: a Sorrow closes its own window, so the
- * reducer keeps it OPEN for the caster alone (recording combat.pendingActivation
- * SkipRecall) to take the just-played Sorrow back. While that record is set this
- * window offers ONLY the caster's Knowledge/Mysticism recall — no second Sorrow
- * or other interrupt, which would assume a fresh activation of the already-
- * skipped unit.
+ * HELD-OPEN recall window: a reaction Spell that closes its OWN window leaves no
+ * window to play Knowledge/Mysticism into, so the reducer instead keeps one open
+ * (or re-opens it) for that caster alone, recording who may recall what:
+ *   - Sorrow in the pre-activation window (combat.pendingActivationSkipRecall);
+ *   - Magic Mirror / Protection from X in an enemy CAST window
+ *     (combat.pendingCastReactionRecall).
+ * While such a record is set the window offers ONLY that player's recall — no
+ * second Sorrow / Mirror / counter, which would assume a fresh activation or a
+ * cast that is already redirected or cancelled.
  */
-function getActivationSkipRecallReactions(
+function getHeldOpenSpellRecallReactions(
   state: GameState,
-  cards: CardLibrary
+  cards: CardLibrary,
+  recall: { playerId: PlayerId } | null | undefined
 ): Record<PlayerId, LegalAction[]> {
-  const recall = state.combat?.pendingActivationSkipRecall;
   const player = recall ? state.players[recall.playerId] : undefined;
   if (!recall || !player || isHandLockedInCombat(state, recall.playerId)) {
     return {};
@@ -6869,7 +6872,18 @@ export function getLegalReactionsForTrigger(
   // caster's Knowledge/Mysticism recall, offer ONLY that recall (see the reducer's
   // SKIP_ACTIVATION handler) — nothing else on the already-skipped unit.
   if (triggerEvent.type === "UNIT_ACTIVATION_STARTED" && state.combat?.pendingActivationSkipRecall) {
-    return getActivationSkipRecallReactions(state, cards);
+    return getHeldOpenSpellRecallReactions(state, cards, state.combat.pendingActivationSkipRecall);
+  }
+
+  // Cast-window reaction-Spell take-back: while a cast window is held open (or
+  // re-opened after a Magic Mirror redirect) for the reacting player's
+  // Knowledge/Mysticism, offer ONLY that recall — the pending cast has already
+  // been redirected or cancelled, so no further counter belongs here.
+  if (
+    triggerEvent.type === "SPELL_CAST_STARTED" &&
+    state.combat?.pendingCastReactionRecall?.triggerEventId === triggerEvent.id
+  ) {
+    return getHeldOpenSpellRecallReactions(state, cards, state.combat.pendingCastReactionRecall);
   }
 
   for (const player of Object.values(state.players)) {
