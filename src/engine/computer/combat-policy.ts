@@ -48,6 +48,23 @@ function combatIsHopeless(
   if (enemies.length === 0) return false;
   const ownThreat = own.reduce((sum, u) => sum + unitThreatValue(u), 0);
   const enemyThreat = enemies.reduce((sum, u) => sum + unitThreatValue(u), 0);
+  // Once only one or two attackers remain, do not buy another combat round
+  // against a materially stronger neutral force. The previous check required
+  // both survivors to be almost dead, so a depleted army kept continuing and
+  // was then wiped (notably against Mummies). The threshold is TIERED on a
+  // real wound having landed: a healthy 2-card army the MAP gate cleared for
+  // this fight retreats only when SEVERELY out-bulked (2×) — at a mild
+  // mismatch, retreating unwounded at the FIRST continue window makes the map
+  // policy immediately send it back in, an enter→retreat loop that bleeds the
+  // army in one-round chunks and loses each fight anyway.
+  const ownWounded = own.some((u) => u.damage > 0);
+  const ownCasualties = Object.values(combat.units).some(
+    (unit) => unit.controllerId === observation.playerId && unitRemainingHealth(unit) <= 0,
+  );
+  const hopelessRatio = ownWounded || ownCasualties ? 1.35 : 2;
+  if (own.length <= 2 && enemyThreat >= ownThreat * hopelessRatio) {
+    return true;
+  }
   // Hopeless when out-bulked by more than 2× and we have at most one unit left,
   // or total threat is tiny vs the opposition.
   if (own.length <= 1 && enemyThreat >= ownThreat * 2.5) return true;
@@ -65,6 +82,7 @@ function combatIsHopeless(
 const ATTACK_BASE = 620;
 const ATTACK_FLOOR = 560;
 const ATTACK_CEIL = 880;
+const SPENT_RETALIATION_BONUS = 18;
 // A pure suicide — zero expected damage AND a lethal retaliation invited —
 // drops below the high-value Defend band (550+) so the unit is not thrown
 // away, while still beating the plain defend/end exits (≤530/400): a unit with
@@ -293,6 +311,17 @@ function attackScore(
           return BAD_TRADE_ATTACK_SCORE;
         }
       }
+    } else if (
+      defender.retaliatedThisRound &&
+      !attacker.abilities?.includes("ignores-retaliation") &&
+      (attacker.type !== "ranged" ||
+        isAdjacent(attackFromPosition, defender.position))
+    ) {
+      // A melee target that already counter-attacked is a brief, concrete
+      // opening. Make that safe hit matter even when another target is a little
+      // more attractive on raw stats; lethal and major threat differences can
+      // still outweigh it.
+      quality += SPENT_RETALIATION_BONUS;
     }
   }
 
@@ -512,6 +541,56 @@ function placeScore(
     score += Math.min(8, Math.round((side.attack * 3 + side.health) / 8));
   }
   return score;
+}
+
+/**
+ * Neutral-control placement is a SORT, not initial deployment: every legal
+ * move remains available after it is made. Score only strict improvements to
+ * the whole guard formation so the computer converges and then chooses Ready
+ * instead of endlessly swapping the same units.
+ */
+function neutralPlacementScore(
+  observation: ComputerObservation,
+  action: Extract<GameAction, { type: "PLACE_NEUTRAL_GUARD" }>,
+): number {
+  const combat = observation.state.combat;
+  if (!combat) return 870;
+  const guard = combat.units[action.unitId];
+  if (!guard) return 870;
+
+  const guards = Object.values(combat.units).filter(
+    (unit) =>
+      unit.controllerId === guard.controllerId && unitRemainingHealth(unit) > 0,
+  );
+  const occupant = guards.find(
+    (unit) => unit.id !== guard.id && unit.position === action.position,
+  );
+
+  const formationScore = (candidate: CombatState): number =>
+    guards.reduce((sum, original) => {
+      const unit = candidate.units[original.id];
+      return (
+        sum +
+        formationFitScore(
+          candidate,
+          guard.controllerId,
+          unitRole(unit),
+          unit.position,
+          unit.id,
+          unit.maxHealth + unit.defense,
+        )
+      );
+    }, 0);
+
+  const before = formationScore(combat);
+  const units = { ...combat.units };
+  units[guard.id] = { ...guard, position: action.position };
+  if (occupant) {
+    units[occupant.id] = { ...occupant, position: guard.position };
+  }
+  const after = formationScore({ ...combat, units });
+  const gain = after - before;
+  return gain > 0 ? 905 + Math.min(40, gain) : 870;
 }
 
 /**
@@ -782,6 +861,11 @@ export function scoreCombatAction(
         score: placeScore(observation, action),
         policy: "combat.place-formation",
       };
+    case "PLACE_NEUTRAL_GUARD":
+      return {
+        score: neutralPlacementScore(observation, action),
+        policy: "combat.place-neutral-formation",
+      };
     case "SWAP_COMBAT_UNITS":
       return {
         score: swapScore(observation, action),
@@ -803,7 +887,10 @@ export function scoreCombatAction(
       return {
         score: attackScore(
           combat,
-          observation.playerId,
+          // In player-controlled-neutrals mode the decision owner is a player,
+          // but the acting guard remains controlled by the neutral side.
+          // Score allies, enemies and retaliation from the unit's actual side.
+          attacker.controllerId,
           attacker,
           defender,
           attackFrom,

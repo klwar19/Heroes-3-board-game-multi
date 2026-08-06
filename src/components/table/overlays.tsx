@@ -63,6 +63,14 @@ type TrayGroup = {
   batchable: boolean;
   /** "Discard {card}: +1 Power" alternative play of a Spell card. */
   asPowerBoost?: boolean;
+  /**
+   * Draw-rider-only play: the engine resolves ONLY the "then draw" rider and
+   * deliberately fizzles the primary effect. Dropping this flag from the
+   * dispatched action would resolve the FULL effect instead — a different play.
+   */
+  drawOnly?: boolean;
+  /** Trigger-free card-gain utility joining an already-open window. */
+  utilityOnly?: boolean;
   /** Bowstring: the friendly ranged unit this play activates out of order. */
   target?: ReactionLegal["target"];
   /** Cards from hand this option demands as payment. */
@@ -75,6 +83,9 @@ type TraySelection = {
   optionIndex?: number;
   mode: CardPlayMode;
   asPowerBoost?: boolean;
+  /** See TrayGroup.drawOnly — must ride the dispatched PLAY_REACTION(S). */
+  drawOnly?: boolean;
+  utilityOnly?: boolean;
   /** Window-ending play (Magic Mirror's paid redirect): always selected solo. */
   nonBatchable?: boolean;
   costCards?: { exact?: number; upTo?: number; powerCost?: number; filter?: "spell" | "power-source" };
@@ -565,6 +576,14 @@ export function ReactionTray({
     (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
   );
 
+  // Halberdiers' Parry (USE_UNIT_DIE_IGNORE): discard a chosen hand card to
+  // ignore the just-rolled Attack die. A standalone legal action (one offer per
+  // discardable card, worded by the engine), so the card-tile path never
+  // surfaces it — without these tiles only the AI could ever Parry.
+  const dieCancelReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE"
+  );
+
   if (!window) {
     return null;
   }
@@ -590,7 +609,11 @@ export function ReactionTray({
     // A per-unit target (Bowstring) makes otherwise-identical plays distinct, so
     // it joins the group key — each ranged unit gets its own tile button.
     const targetKey = action.target?.type === "unit" ? `#${action.target.unitId}` : "";
-    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}`;
+    // A draw-rider-only offer is a DIFFERENT play than the real triggered face
+    // of the same option — collapsing them into one tile would silently
+    // dispatch the wrong one.
+    const drawOnlyKey = action.drawOnly ? "#drawOnly" : "";
+    const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}`;
     const card = cardLibrary[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = action.asPowerBoost
@@ -624,7 +647,11 @@ export function ReactionTray({
     const cardGroups = groupsByCard.get(action.cardId) ?? [];
     const existing = cardGroups.find((group) => {
       const groupTargetKey = group.target?.type === "unit" ? `#${group.target.unitId}` : "";
-      return `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}` === key;
+      const groupDrawOnlyKey = group.drawOnly ? "#drawOnly" : "";
+      return (
+        `${group.cardId}#${group.optionIndex ?? -1}#${group.asPowerBoost ? "boost" : "play"}${groupTargetKey}${groupDrawOnlyKey}` ===
+        key
+      );
     });
 
     if (existing) {
@@ -639,7 +666,11 @@ export function ReactionTray({
           ? "Discard for +1 Power"
           : action.target?.type === "unit"
             ? `Activate ${unitName(state, action.target.unitId)}`
-            : option?.label,
+            : action.drawOnly
+              ? `${option?.label ?? card?.name ?? action.cardId} (draw only)`
+              : option?.label,
+        drawOnly: action.drawOnly,
+        utilityOnly: action.utilityOnly,
         modes: [action.mode ?? "basic"],
         batchable,
         asPowerBoost: action.asPowerBoost,
@@ -693,7 +724,8 @@ export function ReactionTray({
       if (
         existing &&
         existing.optionIndex === group.optionIndex &&
-        Boolean(existing.asPowerBoost) === Boolean(group.asPowerBoost)
+        Boolean(existing.asPowerBoost) === Boolean(group.asPowerBoost) &&
+        Boolean(existing.drawOnly) === Boolean(group.drawOnly)
       ) {
         return current.filter((selection) => selection.handIndex !== handIndex);
       }
@@ -704,6 +736,8 @@ export function ReactionTray({
         optionIndex: group.optionIndex,
         mode: "basic",
         asPowerBoost: group.asPowerBoost,
+        drawOnly: group.drawOnly,
+        utilityOnly: group.utilityOnly,
         nonBatchable: group.batchable === false,
         costCards: group.costCards,
         costHandIndexes: [],
@@ -912,6 +946,11 @@ export function ReactionTray({
         mode: selection.mode,
         ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
         ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
+        // Dropping these flags would resolve the FULL primary effect instead of
+        // the draw rider the button promised (Runes granted mid-window, a full
+        // reshuffle, a target-less heal throw).
+        ...(selection.drawOnly ? { drawOnly: true as const } : {}),
+        ...(selection.utilityOnly ? { utilityOnly: true as const } : {}),
         ...(costCardIds.length > 0 ? { costCardIds } : {}),
         ...(costCardModes.some((mode) => mode === "expert") ? { costCardModes } : {})
       };
@@ -1040,6 +1079,7 @@ export function ReactionTray({
         heroSkillReactions.length === 0 &&
         schoolFetchExpertReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
+        dieCancelReactions.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
@@ -1108,6 +1148,20 @@ export function ReactionTray({
             </div>
           </div>
         ))}
+        {dieCancelReactions.map((legal) => {
+          const cardId = legal.action.type === "USE_UNIT_DIE_IGNORE" ? legal.action.discardCardId : "";
+          return (
+            <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+              {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
+              <div className="trayTileBody">
+                <strong>Parry</strong>
+                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                  {legal.label}
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {buildingBoosts.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

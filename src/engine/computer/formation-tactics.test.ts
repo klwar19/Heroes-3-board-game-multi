@@ -140,6 +140,64 @@ describe("placement multi-unit formation", () => {
   });
 });
 
+describe("computer-controlled neutral formation", () => {
+  it("fixes a reversed guard line, then finishes instead of swapping back", () => {
+    const ranged = unit({
+      id: "NR",
+      controllerId: "neutral",
+      type: "ranged",
+      position: 5,
+    });
+    const melee = unit({
+      id: "NM",
+      controllerId: "neutral",
+      type: "ground",
+      position: 1,
+      maxHealth: 8,
+      defense: 4,
+    });
+    const finish: LegalAction = {
+      label: "ready",
+      action: { type: "FINISH_NEUTRAL_PLACEMENT", playerId: "p2" } as GameAction,
+    };
+    const fix: LegalAction = {
+      label: "swap",
+      action: {
+        type: "PLACE_NEUTRAL_GUARD",
+        playerId: "p2",
+        unitId: "NR",
+        position: 1,
+      } as GameAction,
+    };
+    const extras = {
+      attackerPlayerId: "p1",
+      defenderPlayerId: "neutral",
+      pendingNeutralPlacement: "p2",
+    } as Partial<CombatState>;
+
+    const decision = chooseComputerAction(
+      observation([ranged, melee], [fix, finish], extras),
+    );
+    expect(decision?.action.type).toBe("PLACE_NEUTRAL_GUARD");
+
+    const fixedRanged = unit({ ...ranged, position: 1 });
+    const fixedMelee = unit({ ...melee, position: 5 });
+    const undo: LegalAction = {
+      label: "swap back",
+      action: {
+        type: "PLACE_NEUTRAL_GUARD",
+        playerId: "p2",
+        unitId: "NR",
+        position: 5,
+      } as GameAction,
+    };
+    const settled = chooseComputerAction(
+      observation([fixedRanged, fixedMelee], [undo, finish], extras),
+    );
+    expect(settled?.action.type).toBe("FINISH_NEUTRAL_PLACEMENT");
+  });
+});
+
 describe("tactics swaps", () => {
   it("swaps a misplaced ranged into the backline when that improves fit", () => {
     // Ranged stuck on front (13), melee on back (17) — swap improves both.
@@ -237,5 +295,51 @@ describe("focus fire", () => {
       observation([attacker, ally, e1, e2], legal),
     );
     expect((decision!.action as { defenderId: string }).defenderId).toBe("E1");
+  });
+});
+
+describe("computer-controlled neutral attacks", () => {
+  it("uses the opening against an enemy that already retaliated", () => {
+    const guard = unit({
+      id: "N",
+      controllerId: "neutral",
+      attack: 6,
+      position: 5,
+    });
+    const ready = unit({
+      id: "READY",
+      controllerId: "p1",
+      attack: 6,
+      defense: 3,
+      maxHealth: 9,
+      position: 6,
+      retaliatedThisRound: false,
+    });
+    const spent = unit({
+      id: "SPENT",
+      controllerId: "p1",
+      attack: 6,
+      defense: 3,
+      maxHealth: 9,
+      position: 9,
+      retaliatedThisRound: true,
+    });
+    const legal: LegalAction[] = [ready, spent].map((target) => ({
+      label: target.id,
+      action: {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "N",
+        defenderId: target.id,
+      } as GameAction,
+    }));
+    const decision = chooseComputerAction(
+      observation([guard, ready, spent], legal, {
+        attackerPlayerId: "p1",
+        defenderPlayerId: "neutral",
+        activeUnitId: "N",
+      }),
+    );
+    expect((decision?.action as { defenderId: string }).defenderId).toBe("SPENT");
   });
 });

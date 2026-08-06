@@ -1,4 +1,5 @@
 import { getDraftPhase } from "../adventure-setup";
+import { firstPlayerCeremonyPending } from "../first-player";
 import { combatUnitDecisionOwnerId } from "../neutral-control";
 import {
   isRoundStartEventBarrierActive,
@@ -66,6 +67,14 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
       !state.combat.endAcknowledged,
   );
   if (state.phase === "game-over" && !combatAwaitingAck) {
+    return null;
+  }
+
+  // The first-player result must be read before the winning seat begins. This
+  // gate is released only by a human dismissing the opening ceremony — read
+  // through the SAME dynamic predicate legal-actions uses (a stale sticky flag
+  // with no live human left must not park the pump forever).
+  if (firstPlayerCeremonyPending(state)) {
     return null;
   }
 

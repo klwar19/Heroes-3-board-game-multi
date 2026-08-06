@@ -151,7 +151,10 @@ describe("card policy — combat reactions", () => {
         type: "USE_UNIT_DIE_IGNORE",
         playerId: "p2",
         defenderUnitId: "D",
-      } as GameAction,
+        // The real action shape: the engine enumerates one offer per hand
+        // card — a fixture without it would exercise a dead fallback branch.
+        discardCardId: "stat.attack",
+      },
     };
     const observed = observation(
       [attacker, defender],

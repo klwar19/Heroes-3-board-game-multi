@@ -83,6 +83,12 @@ function parryOffer(state: GameState) {
   );
 }
 
+function parryOfferDiscarding(state: GameState, cardId: string) {
+  return (state.reactionWindow?.legalReactions.p2 ?? []).find(
+    (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE" && legal.action.discardCardId === cardId
+  );
+}
+
 function halberdierDamage(state: GameState): number {
   return state.combat!.units.unit_p2_skeletons.damage;
 }
@@ -111,6 +117,58 @@ describe("Halberdiers Parry — discard a card to ignore the Attack die", () => 
     expect(
       after.eventLog.some((event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "halberdier-die-ignore")
     ).toBe(true);
+  });
+
+  it("lets the Halberdiers' controller choose which card pays the discard cost", () => {
+    const atDie = passToDieSettledWindow(
+      declareAttack("halberdier-chosen-discard", [1, 0, 0], {
+        p2Hand: ["stat.attack", "stat.defense"]
+      })
+    );
+    expect(parryOfferDiscarding(atDie, "stat.attack")?.label).toContain("Attack");
+    const discardDefense = parryOfferDiscarding(atDie, "stat.defense");
+    expect(discardDefense?.label).toContain("Defense");
+
+    const after = settle(applyOk(atDie, discardDefense!.action));
+    expect(after.players.p2.hand).toEqual(["stat.attack"]);
+    expect(after.players.p2.discard).toContain("stat.defense");
+    expect(halberdierDamage(after)).toBe(4);
+  });
+
+  it("rejects a forged parry: the legacy no-discardCardId shape and a card not in hand", () => {
+    const atDie = passToDieSettledWindow(declareAttack("halberdier-forged", [1, 0, 0]));
+    expect(parryOffer(atDie)).toBeTruthy();
+
+    // The old auto-discard shape (no discardCardId) must no longer resolve —
+    // otherwise a revert to the random discard passes this suite silently.
+    const legacyShape = applyAction(atDie, {
+      type: "USE_UNIT_DIE_IGNORE",
+      playerId: "p2",
+      defenderUnitId: "unit_p2_skeletons"
+    } as GameAction);
+    expect(legacyShape.errors.length).toBeGreaterThan(0);
+
+    // A named card the controller does not hold is refused too.
+    const notInHand = applyAction(atDie, {
+      type: "USE_UNIT_DIE_IGNORE",
+      playerId: "p2",
+      defenderUnitId: "unit_p2_skeletons",
+      discardCardId: "stat.defense"
+    });
+    expect(notInHand.errors.length).toBeGreaterThan(0);
+  });
+
+  it("offers ONE parry per distinct card — duplicate copies do not duplicate buttons", () => {
+    const atDie = passToDieSettledWindow(
+      declareAttack("halberdier-dupes", [1, 0, 0], { p2Hand: ["stat.attack", "stat.attack"] })
+    );
+    const offers = (atDie.reactionWindow?.legalReactions.p2 ?? []).filter(
+      (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE"
+    );
+    expect(offers).toHaveLength(1);
+    // Paying with the copy still spends exactly ONE of the two.
+    const after = settle(applyOk(atDie, offers[0]!.action));
+    expect(after.players.p2.hand).toEqual(["stat.attack"]);
   });
 
   it("is NOT offered on a non-'+1' face, with no card to discard, or without the ability (controls)", () => {

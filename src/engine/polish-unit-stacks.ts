@@ -33,8 +33,11 @@ export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "
  * - Neutral: Neutral printed gold + same surcharge, plus the Neutral's printed valuables
  * The valuables fee is exactly the side's printed valuables — the same valuables
  * paid to reinforce that unit Few→Pack (a Pack that costs no valuables adds none).
- * Building materials, recruit discounts, and Freelancer's Guild gold substitution
- * never apply.
+ * Building materials never join the cost. This is the BASE price only: the town
+ * Population purchase still folds a reserved {kind:"stack"} Legion voucher via
+ * applyRecruitGoldDiscount and pays through spendRecruitResources, where the
+ * Freelancer's Guild may substitute for missing gold (see BUY_UNIT_STACK in
+ * adventure-reducer.ts).
  */
 export function polishUnitStackCost(
   unitDefId: string,

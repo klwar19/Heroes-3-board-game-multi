@@ -45,6 +45,10 @@ import {
 // ---------------------------------------------------------------------------
 
 const HUMAN_SCRIPT: GameAction["type"][] = [
+  // A computer-won opening roll parks the whole table behind the ceremony
+  // until a human acknowledges it — the script must dismiss it or the drive
+  // loop throws "no scripted human action" on those seeds.
+  "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
   "SET_TILE_ROTATION",
   "REFRESH_HAND",
   "END_TURN",

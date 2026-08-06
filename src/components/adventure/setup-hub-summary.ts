@@ -6,6 +6,7 @@
  */
 import {
   DRAFT_FORMAT_LABELS,
+  HOUSE_RULES,
   defaultGameSetupOptions,
   resolveHouseRules,
   scenarioDefinitions,
@@ -113,6 +114,14 @@ export const MODE_PRESET_PAYLOADS: Record<Exclude<SetupModeId, "custom">, Partia
   tournament: {
     customMode: false,
     ruleset: "legacy",
+    // Every rule at its LEGACY default (a blanket `false` would silently flip
+    // default-ON legacy rules — e.g. `torso-of-legion-major`, whose registry
+    // comment explains why defaulting it OFF re-tiers/re-prices the card),
+    // plus the tournament headline: tier-split Spell / Artifact decks.
+    houseRules: resolveHouseRules({
+      ruleset: "legacy",
+      houseRules: { "split-decks": true }
+    }) as NonNullable<GameSetupOptions["houseRules"]>,
     spellBook: false,
     tournamentMode: true,
     tournamentBanDiplomacy: true,

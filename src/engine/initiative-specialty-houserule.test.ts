@@ -93,7 +93,16 @@ describe("Initiative-only specialties are now CHOOSE_ONE buff-or-draw (structure
       }
       // Display must not claim movement as the basic-game wiki rule alone.
       expect(card.tags.join(" "), `${id} tags mention house rule for movement`).toMatch(/House rule/i);
+      // The DRAW side is likewise a house rule — a Legacy/Tournament table
+      // (rule OFF) must not read an unconditional "Draw 1 card" promise on the
+      // face while the option never appears.
+      expect(card.tags.join(" "), `${id} tags label the draw side a house rule`).toMatch(
+        /House rule: draw 1 card/i
+      );
       expect(draw.effect, `${id} option B draws 1 card`).toMatchObject({ type: "DRAW_CARDS", amount: 1 });
+      expect(draw.requiresHouseRule, `${id} draw alternative is an actual house rule`).toBe(
+        "initiative-specialty-draw"
+      );
     }
   });
 });
@@ -152,6 +161,29 @@ describe("Initiative specialty option A — buff lands AND raises movement", () 
 });
 
 describe("Initiative specialty option B — draw a card instead of buffing", () => {
+  it("Gelu VI draws exactly one card when the house rule is enabled", () => {
+    const state = createInitialGameState("gelu-vi-house-rule-draw");
+    state.adventure = { houseRules: { "initiative-specialty-draw": true } } as GameState["adventure"];
+    state.players.p1.hand = ["specialty.gelu.6"];
+    state.players.p1.deck = ["spell.haste"];
+
+    const draw = findOption(state, "specialty.gelu.6", 1);
+    expect(draw, "Gelu VI draw alternative should be offered").toBeTruthy();
+    const after = applyOk(state, draw!.action);
+    expect(after.players.p1.hand).toContain("spell.haste");
+    expect(after.players.p1.deck).toHaveLength(0);
+  });
+
+  it("hides Gelu VI's draw alternative when the house rule is disabled", () => {
+    const state = createInitialGameState("gelu-vi-house-rule-off");
+    state.adventure = { houseRules: { "initiative-specialty-draw": false } } as GameState["adventure"];
+    state.players.p1.hand = ["specialty.gelu.6"];
+    state.players.p1.deck = ["spell.haste"];
+
+    expect(findOption(state, "specialty.gelu.6", 1)).toBeUndefined();
+    expect(findOption(state, "specialty.gelu.6", 0, "unit_p1_griffins")).toBeTruthy();
+  });
+
   it("is also offered on the adventure map (not combat-only)", () => {
     let state = createAdventureGameState({
       seed: "init-hr-map-draw",

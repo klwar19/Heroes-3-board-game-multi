@@ -5094,6 +5094,12 @@ function rewardArtFromVisitSteps(
     if (!step || typeof step !== "object") {
       continue;
     }
+    // Obelisk Grail clues must not use the generic tile-art branch below: the
+    // initial picker deliberately lists every face-down tile, so previewing an
+    // option here would reveal all of their hidden faces before selection.
+    if (step.type === "GRAIL_TILE_SCRY") {
+      continue;
+    }
     // Legion recruit-discount: the step carries the ARTIFACT as `cardId`, but the
     // option is choosing WHICH UNIT the discount applies to — the tile must show
     // that unit's portrait, not the artifact card. This MUST precede the generic
@@ -5897,6 +5903,26 @@ export function PromptTray({
     startingBonusStep?.type === "CHOOSE_ONE" &&
     typeof startingBonusStep.prompt === "string" &&
     /^Starting bonus/i.test(startingBonusStep.prompt);
+  // The selected Obelisk clue is deliberately carried on the PRIVATE pending
+  // visit, rather than on the initial pick options. That lets its owner see the
+  // chosen tile's real face only after committing to that position.
+  const grailScry = startingBonusStep?.type === "CHOOSE_ONE" ? startingBonusStep.grailTileScry : undefined;
+  // The revealed identity comes from the STEP payload, never from
+  // state.adventure.tiles: the owner renders a PLAYER VIEW in which every
+  // face-down tile is masked to tileDefId "hidden" (the step is owner-only, so
+  // this reveals nothing to other seats). The state read is only a fallback
+  // for a legacy in-flight step minted before the payload carried the id.
+  const grailScryTile = grailScry ? state.adventure?.tiles[grailScry.tileInstanceId] : undefined;
+  const grailScryDefId = grailScry?.tileDefId ?? grailScryTile?.tileDefId;
+  const grailScryDef = grailScryDefId ? allTileDefinitions[grailScryDefId] : undefined;
+  const grailScryArt: VisitRewardArt | null = grailScry
+    ? {
+        image: grailScryDef?.assets?.tileImage,
+        name: grailScryDef?.id ?? grailScryDefId ?? "hidden",
+        tileRotation: grailScry.tileRotation ?? grailScryTile?.rotation,
+        caption: grailScryDef?.id ?? grailScryDefId ?? "hidden"
+      }
+    : null;
   const rewardOptions =
     chooseOneOptions && !teleport
       ? body.map((legal) => {
@@ -5910,6 +5936,7 @@ export function PromptTray({
               : undefined;
           const art =
             rewardArtFromVisitSteps(state, viewerPlayerId, option?.steps) ??
+            grailScryArt ??
             (startingBonusChoice ? startingBonusOptionArt(option?.steps) : null);
           return { legal, art };
         })
@@ -8554,7 +8581,7 @@ const SETUP_MODE_CARDS: {
     id: "tournament",
     label: "Tournament",
     blurb: "Competitive preset",
-    hint: "House rules off, tournament bans on, Hard difficulty, human-controlled Neutrals, Diplomacy banned.",
+    hint: "Tier-split Spell/Artifact decks, other house rules off, tournament bans on, Hard difficulty, human-controlled Neutrals.",
     iconSrc: "/assets/ui/mode-tournament-crest-clear.webp"
   },
   {
@@ -8642,7 +8669,7 @@ function GameModeSection({
       anime: { ...anime, enabled: false }
     });
     setModeNotice(
-      "Tournament mode applied: house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
+      "Tournament mode applied: Spell/Artifact decks split by tier, other house rules off, Diplomacy + Hourglass banned, second player +1 morale, " +
         "Hard difficulty, and Neutrals under human control (next player clockwise). Toggles below stay free if you need to adjust."
     );
   };
@@ -8685,7 +8712,7 @@ function GameModeSection({
             : activeSetupMode === "legacy"
             ? RULESET_DESCRIPTIONS.legacy
             : activeSetupMode === "tournament"
-            ? "Competitive preset: rulebook baseline + tournament deck bans + Hard difficulty + human-controlled Neutrals."
+            ? "Competitive preset: rulebook baseline + tournament deck bans + tier-split Spell/Artifact decks + Hard difficulty + human-controlled Neutrals."
             : RULESET_DESCRIPTIONS.binh}
         </small>
       </div>

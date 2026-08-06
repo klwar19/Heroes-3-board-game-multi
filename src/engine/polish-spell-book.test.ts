@@ -652,6 +652,8 @@ describe("Polish Spell Book lifecycle", () => {
     });
     expect(state.players.p1.spellBook).toContain("spell.haste");
     expect(state.players.p1.spellBookUsed).not.toContain("spell.haste");
+    expect(state.players.p1.spellBookUsed).toContain("spell.slow");
+    expect(state.pendingChoice, "Crown refreshes exactly one Spell and closes the picker").toBeNull();
     // The refreshed Book spell went to the Book, never to the hand — the only
     // "spell"-kind card the recover ever put in hand is the Cast a Spell enabler.
     expect(state.players.p1.hand).not.toContain("spell.haste");

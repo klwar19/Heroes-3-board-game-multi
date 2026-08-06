@@ -137,8 +137,13 @@ describe("Crown of the Five Seas", () => {
 
     const opened = applyOk(state, play!);
     const labels = choiceLabels(opened);
-    // Top three after the Crown is discarded: stat.defense, stat.power, the Crown.
-    expect(labels.length).toBe(3);
+    // Top three counted from the pile as it stands (Crown on top): the Crown,
+    // stat.power, stat.defense — but since the 2026-08 instant-lifecycle batch
+    // a played card can never pick ITSELF out of its own window (the Scholar
+    // self-exclusion rule, instant-card-gain-legality.test.ts), so two
+    // candidates remain.
+    expect(labels.length).toBe(2);
+    expect(labels.some((label) => label.includes("Crown"))).toBe(false);
     expect(labels.some((label) => label.includes("Haste"))).toBe(false);
     expect(labels.some((label) => label.includes("Bless"))).toBe(false);
 

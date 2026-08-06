@@ -230,9 +230,14 @@ describe("Mystic Orb of Mana artifact", () => {
     const choice = opened.pendingChoice!;
     const labels = choice.type === "OPTION_CHOICE" ? choice.options.map((option) => option.label) : [];
     expect(labels.some((label) => label.includes("Haste"))).toBe(false);
-    // Four candidates; the Spell among them (Bless) also gets a "→ Spell Book"
-    // route (house rule, default ON), so five options in all.
-    expect(labels.length).toBe(5);
+    // Top four counted from the pile as it stands (the Orb on top): the Orb,
+    // Bless, stat.power, stat.defense — but since the 2026-08 instant-lifecycle
+    // batch a played card can never pick ITSELF out of its own window (the
+    // Scholar self-exclusion rule, instant-card-gain-legality.test.ts). Three
+    // candidates; the Spell among them (Bless) also gets a "→ Spell Book" route
+    // (house rule, default ON), so four options in all.
+    expect(labels.length).toBe(4);
+    expect(labels.some((label) => label.includes("Mystic Orb"))).toBe(false);
     expect(labels.some((label) => label.includes("Spell Book"))).toBe(true);
 
     const choiceId = choice.id;

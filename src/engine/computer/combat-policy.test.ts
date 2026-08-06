@@ -68,6 +68,43 @@ const defend = (unitId: string): LegalAction => ({
   label: "defend",
 });
 
+const continueNeutral: LegalAction = {
+  action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId: "p2" },
+  label: "Continue combat",
+};
+
+const retreatNeutral: LegalAction = {
+  action: { type: "RETREAT_FROM_COMBAT", playerId: "p2" },
+  label: "Retreat",
+};
+
+describe("combat policy — neutral continue risk", () => {
+  it("retreats instead of spending another round with only two outmatched attackers", () => {
+    const ownA = unit({ id: "A", controllerId: "p2", attack: 2, defense: 1, maxHealth: 3 });
+    const ownB = unit({ id: "B", controllerId: "p2", attack: 2, defense: 1, maxHealth: 3 });
+    const mummyA = unit({ id: "M1", attack: 7, defense: 5, maxHealth: 8, grade: "silver" });
+    const mummyB = unit({ id: "M2", attack: 7, defense: 5, maxHealth: 8, grade: "silver" });
+
+    const decision = chooseComputerAction(
+      observation([ownA, ownB, mummyA, mummyB], [continueNeutral, retreatNeutral]),
+    );
+    expect(decision?.action.type).toBe("RETREAT_FROM_COMBAT");
+    expect(decision?.policy).toBe("combat.retreat-hopeless");
+  });
+
+  it("continues when two survivors still clearly overpower the neutral side", () => {
+    const ownA = unit({ id: "A", controllerId: "p2", attack: 9, defense: 6, maxHealth: 9, grade: "gold" });
+    const ownB = unit({ id: "B", controllerId: "p2", attack: 8, defense: 6, maxHealth: 9, grade: "gold" });
+    const enemy = unit({ id: "E", attack: 2, defense: 1, maxHealth: 3 });
+
+    expect(
+      chooseComputerAction(
+        observation([ownA, ownB, enemy], [continueNeutral, retreatNeutral]),
+      )?.action.type,
+    ).toBe("CONTINUE_NEUTRAL_COMBAT");
+  });
+});
+
 describe("combat policy — attack target selection", () => {
   it("uses physical damage on the lower-Defense target", () => {
     const attacker = unit({

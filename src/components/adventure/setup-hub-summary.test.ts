@@ -5,7 +5,7 @@
  * derivation lied (e.g. a map-owned change must NOT read as "Customized").
  */
 import { describe, expect, it } from "vitest";
-import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, scenarioDefinitions } from "@/engine";
+import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, HOUSE_RULES, scenarioDefinitions } from "@/engine";
 import type { GameSetupOptions } from "@/engine";
 import {
   advancedSettingsChanged,
@@ -44,6 +44,19 @@ describe("deriveActiveSetupMode", () => {
 
     // Custom wins over everything (it is a whole saved setup file).
     expect(deriveActiveSetupMode({ ...tournament, customMode: true })).toBe("custom");
+  });
+
+  it("Tournament = every rule at its LEGACY default, plus split decks", () => {
+    const tournamentRules = MODE_PRESET_PAYLOADS.tournament.houseRules;
+    expect(tournamentRules?.["split-decks"]).toBe(true);
+    for (const rule of HOUSE_RULES) {
+      if (rule.id === "split-decks") continue;
+      // A blanket `false` here would silently flip default-ON legacy rules —
+      // torso-of-legion-major is the canary (legacyDefault: true, and turning
+      // it off re-tiers/re-prices the card in every Tournament game).
+      expect(tournamentRules?.[rule.id], rule.id).toBe(rule.legacyDefault ?? false);
+    }
+    expect(tournamentRules?.["torso-of-legion-major"]).toBe(true);
   });
 });
 

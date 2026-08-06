@@ -6,7 +6,7 @@ import {
   getLegalActions,
   getMainHero
 } from "./index";
-import { effectiveInitiative } from "./active-effects";
+import { effectiveInitiative, expireEffectsForCombatEnd } from "./active-effects";
 import type { GameAction, GameEvent, GameState, UnitId } from "./state";
 
 /**
@@ -491,6 +491,14 @@ describe("Golden Bow", () => {
     });
   }
 
+  it("cannot be played on the adventure map", () => {
+    const state = mapState("bow-map-timing");
+    state.players.p1.hand = ["artifact.golden_bow"];
+
+    expect(findPlay(state, "artifact.golden_bow", 0)).toBeUndefined();
+    expect(findPlay(state, "artifact.golden_bow", 1)).toBeUndefined();
+  });
+
   it("control: a ranged unit's melee attack rolls at disadvantage (keeps the -1)", () => {
     const resolved = passAllReactions(declareMarksmenMelee(rangedMelee("bow-control")));
     expect(lastHitBy(resolved, "unit_p1_marksmen")?.attackValue).toBe(4); // 5 + (-1)
@@ -510,6 +518,28 @@ describe("Golden Bow", () => {
     const resolved = passAllReactions(declareMarksmenMelee(inPlay));
     // Penalty lifted → normal roll keeps the first die (+1): 5 + 1 = 6.
     expect(lastHitBy(resolved, "unit_p1_marksmen")?.attackValue).toBe(6);
+  });
+
+  it("option 0 expires when that combat ends, so it cannot leak into another combat", () => {
+    const state = rangedMelee("bow-combat-expiry");
+    state.players.p1.hand = ["artifact.golden_bow"];
+    const play = findPlay(state, "artifact.golden_bow", 0);
+    expect(play).toBeTruthy();
+    const inPlay = applyOk(state, play!.action);
+
+    expect(
+      inPlay.activeEffects.some((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTY")
+      )
+    ).toBe(true);
+
+    expireEffectsForCombatEnd(inPlay);
+
+    expect(
+      inPlay.activeEffects.some((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_IGNORE_PENALTY")
+      )
+    ).toBe(false);
   });
 
   it("option 1 grants +2 attack to a ranged attacker", () => {

@@ -83,8 +83,12 @@ describe("Battle Test free setup", () => {
     });
     expect(state.combatSandboxSetup!.playMode).toBe("tournament");
     expect(state.ruleset, "Tournament uses the legacy ruleset").toBe("legacy");
-    expect(state.decks["spells-expert"], "Tournament drops the BINH split Expert deck").toBeUndefined();
-    expect(state.decks.artifacts, "Tournament uses a single Artifact deck").toBeTruthy();
+    // The SANDBOX keeps legacy single decks: it has no adventure state to
+    // freeze `split-decks` onto, so its tier gates read the legacy default and
+    // split decks would be unreachable (dead searches). The REAL tournament
+    // game splits decks — pinned in adventure-setup tests.
+    expect(state.decks["spells-expert"], "Tournament sandbox drops the BINH split Expert deck").toBeUndefined();
+    expect(state.decks.artifacts, "Tournament sandbox uses a single Artifact deck").toBeTruthy();
     expect(state.decks.abilities?.drawPile ?? [], "Diplomacy is banned in Tournament").not.toContain(
       "ability.diplomacy"
     );

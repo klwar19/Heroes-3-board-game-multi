@@ -703,12 +703,21 @@ export const artifactCards: CardLibrary = {
     name: "Eversmoking Ring of Sulfur",
     kind: "artifact",
     timing: "ongoing",
-    artifactTier: "minor",
+    // House rule `eversmoking-ring-of-sulfur-major` (default ON in BINH):
+    // printed Minor, but BINH plays/sorts it as a MAJOR artifact — the exact
+    // Torso-of-Legion pattern. This static tier IS the default (rule-ON)
+    // reading; with the rule OFF the engine treats it as Minor via
+    // `effectiveArtifactTier` (ruleset.ts) at every tier chokepoint, and
+    // `makeSharedDecks` deals it into the Minor deck. Keeping the base "major"
+    // here keeps the reads NOT routed through the helper (AI card valuation,
+    // the tier chip) in agreement with the default deck placement — and keeps
+    // the deck-coverage invariant (printed tier == BINH deck) intact.
+    artifactTier: "major",
     permanent: true,
     permanentEffect: { resourceRoundGain: { resource: "valuables", amount: 1 } },
     tags: [
       "artifact",
-      "minor",
+      "major",
       "permanent",
       "income",
       "At the beginning of each Resources round, gain 1 valuables. — OR — Remove this card, then gain 2 valuables."
@@ -727,6 +736,9 @@ export const artifactCards: CardLibrary = {
         }
       ]
     },
+    // The card FACE stays the printed Minor scan — only the tier reading and
+    // deck placement flip with the house rule (the disk file is
+    // artifacts_minor-eversmoking_ring_of_sulfur.webp).
     assets: artifactAssets("minor", "eversmoking_ring_of_sulfur", "Eversmoking Ring of Sulfur"),
     implementationStatus: "implemented",
     source: artifactSource("eversmoking_ring_of_sulfur")
@@ -1322,6 +1334,9 @@ export const artifactCards: CardLibrary = {
       options: [
         {
           label: "Your ranged units ignore the combat penalty this combat",
+          // "During this Combat" — playable only inside a combat, like every
+          // sibling combat-scoped artifact option (Orbs, Necklace of Swiftness).
+          combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
@@ -1521,6 +1536,10 @@ export const artifactCards: CardLibrary = {
         },
         {
           label: "Cast 2 spells per combat round this combat",
+          // "During this Combat" — same combat-only scope as Golden Bow's
+          // penalty waiver; played on the map the effect expired before any
+          // combat could use it.
+          combatOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
@@ -3139,6 +3158,7 @@ export const artifactDeckLegacy: string[] = [
  * (adventure-setup.ts) moves it from the Major deck to the Minor deck.
  */
 export const TORSO_OF_LEGION_ID = "artifact.torso_of_legion";
+export const EVERSMOKING_RING_OF_SULFUR_ID = "artifact.eversmoking_ring_of_sulfur";
 
 export const artifactDeckBinhMinor: string[] = [
   "artifact.armor_of_wonder",
@@ -3146,7 +3166,6 @@ export const artifactDeckBinhMinor: string[] = [
   "artifact.buckler_of_the_gnoll_king",
   "artifact.centaurs_axe",
   "artifact.dragon_wing_tabard",
-  "artifact.eversmoking_ring_of_sulfur",
   "artifact.hourglass_of_the_evil_hour",
   "artifact.inexhaustible_cart_of_lumber",
   "artifact.inexhaustible_cart_of_ore",
@@ -3183,6 +3202,7 @@ export const artifactDeckBinhMajor: string[] = [
   "artifact.arms_of_legion",
   "artifact.head_of_legion",
   "artifact.torso_of_legion",
+  "artifact.eversmoking_ring_of_sulfur",
   "artifact.ogres_club_of_havoc",
   "artifact.tunic_of_the_cyclops_king",
   "artifact.vial_of_lifeblood",

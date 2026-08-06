@@ -45,7 +45,19 @@ function nextHumanMapAction(state: GameState): GameAction {
     offers.find((entry) => entry.action.type === "END_TURN") ??
     offers.find((entry) => entry.action.type !== "ADVANCE_COMPUTER");
   if (!legal) {
-    throw new Error(`no campaign human action among: ${offers.map((entry) => entry.action.type).join(", ")}`);
+    const debug = {
+      phase: state.phase,
+      active: state.activePlayerId,
+      ceremony: state.adventure?.openingFirstPlayerRollPending,
+      pendingChoice: state.pendingChoice ? { type: state.pendingChoice.type, playerId: state.pendingChoice.playerId } : null,
+      pendingVisit: state.adventure?.pendingVisit ? { playerId: state.adventure.pendingVisit.playerId, step: state.adventure.pendingVisit.steps[0]?.type } : null,
+      pendingNecromancy: state.adventure?.pendingNecromancy?.playerId ?? null,
+      combat: Boolean(state.combat),
+      eventResolution: Boolean(state.adventure?.eventResolution),
+      rewardQueueHead: state.adventure?.rewardQueue[0] ? { playerId: state.adventure.rewardQueue[0].playerId, kind: state.adventure.rewardQueue[0].kind } : null,
+      turn: state.turn
+    };
+    throw new Error(`no campaign human action among: ${offers.map((entry) => entry.action.type).join(", ")} | ${JSON.stringify(debug)}`);
   }
   if (legal.action.type !== "REFRESH_HAND") return legal.action;
   const player = state.players.p1!;
@@ -197,17 +209,31 @@ describe("campaign setup injection", () => {
       drainComputerPumpSync(roomId);
 
       const initial = getRoomSnapshot(roomId).state;
-      const enemyHero = Object.values(initial.heroes).find(
-        (hero) => hero.controllerId === "p2" && hero.kind === "main",
-      )!;
+      const computerSeats = Object.keys(initial.players).filter(
+        (playerId) => initial.controllers?.[playerId]?.kind === "computer",
+      );
+      const startingSpaces = new Map(
+        Object.values(initial.heroes)
+          .filter((hero) => computerSeats.includes(hero.controllerId))
+          .map((hero) => [hero.id, hero.spaceId]),
+      );
       const eventCount = initial.eventLog.length;
       let moved = false;
       let computerTurns = 0;
       let guard = 0;
-      // The opening turn can legitimately be spent resolving income/hand gates.
-      // Across three real campaign turns the opponent must perform map movement.
-      while (!moved && computerTurns < 3 && guard++ < 180) {
-        while (computerDecisionOwner(getRoomSnapshot(roomId).state) !== "p2" && guard++ < 180) {
+      // The opening turns can legitimately be spent resolving income/hand gates,
+      // tile rotations and builds — and on some seeds a boxed-in seat waits
+      // several rounds for a beatable objective. Across five real campaign
+      // rounds SOME computer hero must perform map movement (any-computer,
+      // any-hero: this guards the "AI turns run at all" regression class, not
+      // one seat's per-map pathing luck — the room id, and so the game seed,
+      // differs every run).
+      while (!moved && computerTurns < 5 && guard++ < 300) {
+        // Drive p1 until ANY computer seat owes the next decision. A computer
+        // may WIN the opening first-player roll (the ceremony ack is one of the
+        // human actions below), which rotates the turn order — so the first
+        // computer owner can be p3, never assume p2 leads.
+        while (computerDecisionOwner(getRoomSnapshot(roomId).state) === null && guard++ < 300) {
           const outcome = submitRoomAction(
             roomId,
             nextHumanMapAction(getRoomSnapshot(roomId).state),
@@ -215,16 +241,28 @@ describe("campaign setup injection", () => {
           );
           expect(outcome.result.errors, chapterId).toEqual([]);
         }
-        expect(computerDecisionOwner(getRoomSnapshot(roomId).state), chapterId).toBe("p2");
+        expect(computerDecisionOwner(getRoomSnapshot(roomId).state), chapterId).not.toBeNull();
         drainComputerPumpSync(roomId);
         computerTurns += 1;
         const current = getRoomSnapshot(roomId).state;
-        moved = current.eventLog.slice(eventCount).some(
-          (event) => event.type === "HERO_MOVED" && event.playerId === "p2",
-        ) || current.heroes[enemyHero.id]?.spaceId !== enemyHero.spaceId;
+        moved =
+          current.eventLog
+            .slice(eventCount)
+            .some(
+              (event) =>
+                event.type === "HERO_MOVED" &&
+                "playerId" in event &&
+                computerSeats.includes(event.playerId as string),
+            ) ||
+          Object.values(current.heroes).some(
+            (hero) =>
+              computerSeats.includes(hero.controllerId) &&
+              startingSpaces.has(hero.id) &&
+              hero.spaceId !== startingSpaces.get(hero.id),
+          );
         expect(computerDecisionOwner(current), chapterId).toBeNull();
       }
-      expect(moved, `${chapterId}: campaign AI completed turns but never moved its hero`).toBe(true);
+      expect(moved, `${chapterId}: campaign AI completed turns but never moved any hero`).toBe(true);
       cancelComputerPump(roomId);
     }
   });

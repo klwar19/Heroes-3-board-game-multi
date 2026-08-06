@@ -1564,6 +1564,87 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p1_crusaders.usedLethalSaveThisCombat).toBe(true);
   });
+
+  /**
+   * Halberdiers' Parry (USE_UNIT_DIE_IGNORE): a standalone legal action like
+   * the resurrection save — without its own tile the engine offer existed but
+   * a human saw only "Pass" and could never Parry.
+   */
+  function parryWindow(): GameState {
+    const state = createInitialGameState("tray-parry-seed");
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.type = "ground";
+    attacker.position = 9;
+    attacker.attack = 5;
+    attacker.abilities = [];
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.position = 13;
+    defender.defense = 1;
+    defender.maxHealth = 40;
+    defender.abilities = ["halberdier-die-ignore"];
+    state.players.p1.hand = [];
+    state.players.p2.hand = ["stat.attack"];
+    state.combat!.dice.scriptedRolls = [1, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    let result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.errors).toEqual([]);
+    let safety = 12;
+    while (
+      safety-- > 0 &&
+      result.state.reactionWindow &&
+      result.state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED"
+    ) {
+      result = applyAction(result.state, {
+        type: "PASS_REACTION",
+        playerId: result.state.reactionWindow.priorityPlayerId
+      });
+      expect(result.errors).toEqual([]);
+    }
+    return result.state;
+  }
+
+  it("renders a Parry tile that fires USE_UNIT_DIE_IGNORE with the chosen discard", () => {
+    const state = parryWindow();
+    expect(state.reactionWindow?.triggerEvent.type).toBe("ATTACK_DIE_SETTLED");
+    expect(
+      getLegalActions(state, "p2").some((legal) => legal.action.type === "USE_UNIT_DIE_IGNORE")
+    ).toBe(true);
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p2")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p2")}
+          viewerPlayerId="p2"
+        />
+      </CardZoomProvider>
+    );
+
+    const parryButton = screen.getByRole("button", { name: /ignore the attack die/i });
+    act(() => fireEvent.click(parryButton));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "USE_UNIT_DIE_IGNORE",
+      playerId: "p2",
+      defenderUnitId: "unit_p2_skeletons",
+      discardCardId: "stat.attack"
+    });
+
+    // The fired action resolves cleanly in the engine (end-to-end sanity).
+    const applied = applyAction(state, onAction.mock.calls[0][0] as GameAction);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.players.p2.hand).toHaveLength(0);
+  });
 });
 
 describe("ReactionTray — First Aid Tent heal is reachable as an instant reaction", () => {

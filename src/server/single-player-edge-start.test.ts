@@ -94,7 +94,15 @@ function makeRealisticEdgeRoom(roomId: string) {
   };
 }
 
-const HUMAN_SCRIPT: GameAction["type"][] = ["SET_TILE_ROTATION", "REFRESH_HAND", "END_TURN"];
+// ACKNOWLEDGE_FIRST_PLAYER_ROLL first: a computer-won opening roll gates the
+// table until the human dismisses the ceremony (nextHumanAction returning null
+// would otherwise silently stall the whole-game drive on those seeds).
+const HUMAN_SCRIPT: GameAction["type"][] = [
+  "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
+  "SET_TILE_ROTATION",
+  "REFRESH_HAND",
+  "END_TURN",
+];
 
 function nextHumanAction(state: GameState): GameAction | null {
   const offers = getLegalActions(state, "p1");

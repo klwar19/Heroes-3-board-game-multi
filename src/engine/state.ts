@@ -63,6 +63,9 @@ export type HouseRuleId =
   | "estates-nerf"
   | "sandro-skeleton-hp"
   | "gelu-sharpshooter-buff"
+  // Initiative-only specialty cards (including Gelu VI) may use their BINH
+  // alternative to draw 1 card instead of applying the combat buff.
+  | "initiative-specialty-draw"
   // Initiative buffs (Haste, Slow AND the initiative-only hero specialties) also
   // shift a unit's Combat movement by ±1 (the "Battlefield Expansion" reading).
   // Off: they change only Initiative, never movement (the standard/wiki rule).
@@ -175,6 +178,9 @@ export type HouseRuleId =
   // chokepoint (deck placement, black-market/junk/event prices, Polish tier
   // gates, deck return). See `effectiveArtifactTier` (ruleset.ts).
   | "torso-of-legion-major"
+  // BINH-only re-tier: Eversmoking Ring of Sulfur is treated as Major while
+  // this rule is enabled; Legacy and disabled BINH games retain printed Minor.
+  | "eversmoking-ring-of-sulfur-major"
   // Global map rule (default OFF in BOTH modes): every fought-out neutral guard
   // fight on a MINE field (all resource types) fields ONE EXTRA random neutral
   // BRONZE creature on top of the normal guard army. The extra bronze is a plain
@@ -3096,6 +3102,14 @@ export type ReactionPlay = {
   costCardModes?: CardPlayMode[];
   /** Play this Spell card for its alternative "+1 Power" bottom effect. */
   asPowerBoost?: boolean;
+  /**
+   * Draw-rider-only play (see PLAY_REACTION.drawOnly): only the card-draw rider
+   * resolves; the primary effect deliberately fizzles. Must ride the batch too,
+   * or a batched draw-only pick would resolve the full effect.
+   */
+  drawOnly?: true;
+  /** Utility card gain that joins an existing window but never opens one. */
+  utilityOnly?: true;
 };
 
 export type DeckSearchPick = {
@@ -3194,6 +3208,8 @@ export type GameAction =
       target?: TargetRef;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /** Resolve only an unconditional card-draw rider; the primary effect has no valid map context. */
+      drawOnly?: true;
       /** Cards from hand paying the option's printed discard/remove cost. */
       costCardIds?: CardId[];
       /**
@@ -3427,6 +3443,14 @@ export type GameAction =
       cardId: CardId;
       mode?: CardPlayMode;
       optionIndex?: number;
+      /**
+       * An Instant with a printed draw rider used outside the primary effect's
+       * trigger (for example Offense during a spell window). Only the card-draw
+       * rider resolves; the attack/defense/Power/heal effect deliberately fizzles.
+       */
+      drawOnly?: true;
+      /** Utility card gain that may join an existing window but does not open one by itself. */
+      utilityOnly?: true;
       costCardIds?: CardId[];
       /**
        * Parallel to costCardIds: when paying a Power-value cost (Sorrow, Alamar's
@@ -3521,6 +3545,8 @@ export type GameAction =
       type: "USE_UNIT_DIE_IGNORE";
       playerId: PlayerId;
       defenderUnitId: UnitId;
+      /** The controller chooses which card pays the printed discard cost. */
+      discardCardId: CardId;
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }
@@ -3887,6 +3913,11 @@ export type GameAction =
        * (experience, unit flips, the field visit) and returns to the map.
        */
       type: "ACKNOWLEDGE_COMBAT_END";
+      playerId: PlayerId;
+    }
+  | {
+      /** Dismiss the opening first-player roll and release round-one play. */
+      type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL";
       playerId: PlayerId;
     }
   | {
@@ -6754,6 +6785,8 @@ export type ResolutionStackItem = {
      */
     isPreemptiveRetaliation?: boolean;
     playedCardIds: CardId[];
+    /** Cards still resolving on this stack item, separated by their owner. */
+    playedCardIdsByPlayer?: Partial<Record<PlayerId, CardId[]>>;
   };
 };
 
@@ -9078,6 +9111,8 @@ export type AdventureReward =
       filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
+      /** One protected occurrence per id is still resolving and cannot be recovered yet. */
+      excludeCardIds?: CardId[];
     }
   | {
       /** Generic queued interaction resolved through the visit-step machinery. */
@@ -9193,6 +9228,18 @@ export type VisitStep =
        * (getVisiblePendingVisit masks every other seat's visit steps to []).
        */
       teleport?: { kind: "monolith" | "whirlpool" | "gate" | "oneway"; pair?: 1 | 2 | 3 | 4 };
+      /**
+       * Private Obelisk Grail-tile reveal shown only after the visitor selects
+       * it. Carries the revealed identity itself because the visitor's PLAYER
+       * VIEW masks every face-down tile to `tileDefId: "hidden"` — the step
+       * rides the owner-only pendingVisit, so this leaks to nobody else.
+       */
+      grailTileScry?: { tileInstanceId: string; tileDefId?: string; tileRotation?: number };
+    }
+  | {
+      /** Obelisk clue: privately show this selected face-down tile, then re-hide it. */
+      type: "GRAIL_TILE_SCRY";
+      tileInstanceId: string;
     }
   | { type: "PAY_TO"; prompt: string; costOptions: ResourceCost[]; steps: VisitStep[] }
   | { type: "GAIN_RESOURCES"; gold?: number; buildingMaterials?: number; valuables?: number }
@@ -10873,6 +10920,12 @@ export type AdventureState = {
   farTileScriptedDraws?: string[];
   /** Start-of-game first-player roll, shown to every seat. */
   firstPlayerRoll?: FirstPlayerRollState | null;
+  /**
+   * Hard opening gate: a human must dismiss the first-player ceremony before
+   * round-one actions (including server-driven computer actions) may begin.
+   * Absent on older saves and games created with the roll disabled.
+   */
+  openingFirstPlayerRollPending?: boolean;
   /**
    * Server-baked seed for the delayed opening roll. Hidden from player views
    * and cleared as soon as the ceremony is committed.
@@ -13578,6 +13631,8 @@ export type PendingChoice =
         filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
+        /** One protected occurrence per id is still resolving and cannot be recovered yet. */
+        excludeCardIds?: CardId[];
       };
       /** Found shared-deck Spell waiting for its take-or-discard decision. */
       eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };

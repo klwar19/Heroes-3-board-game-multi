@@ -170,15 +170,21 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     expect(window!.allowedPlayerIds).not.toContain("p2");
     // p2 is offered nothing in p1's fight.
     expect(getLegalActions(state, "p2")).toHaveLength(0);
-    // p1 is offered the Armorer defense — but NOT Offense I's trigger-free
-    // "Draw 1 card": a card-draw is never a reaction to an enemy's attack.
+    // p1 is offered the Armorer defense. Since the 2026-08 instant-lifecycle
+    // batch, Offense I's trigger-free "Draw 1 card" ALSO joins the window the
+    // Armorer trigger opened — but only as a flagged utility join that can
+    // never OPEN a window of its own (the companion test below pins that half).
     const p1Offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "PLAY_REACTION");
     expect(p1Offers.some((legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.armorer")).toBe(true);
+    const offenseJoin = p1Offers.find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tarnum_stronghold.1"
+    );
+    expect(offenseJoin, "the draw face joins the EXISTING window").toBeTruthy();
     expect(
-      p1Offers.some(
-        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tarnum_stronghold.1"
-      )
-    ).toBe(false);
+      offenseJoin!.action.type === "PLAY_REACTION" &&
+        Boolean(offenseJoin!.action.utilityOnly || offenseJoin!.action.drawOnly),
+      "…but only flagged so it can never open a window itself"
+    ).toBe(true);
   });
 
   it("a trigger-free 'Draw a card' instant never forces a reaction window open", () => {

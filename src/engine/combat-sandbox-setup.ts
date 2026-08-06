@@ -98,7 +98,13 @@ function without(cardIds: string[], bannedId: string, ban: boolean): string[] {
 
 function makeSandboxDecks(seed: string, mode: CombatSandboxPlayMode): Record<string, DeckState> {
   if (mode === "tournament") {
-    // Legacy single decks + tournament Diplomacy / Hourglass bans.
+    // Legacy single decks + tournament Diplomacy / Hourglass bans. The REAL
+    // tournament game (the lobby preset / master toggle) splits its decks via
+    // the `split-decks` house rule — but the sandbox has NO adventure state to
+    // freeze that rule onto, so `houseRuleEnabled` reads the legacy default
+    // (OFF) and every tier gate (`eligibleArtifactDecks` …) would name decks
+    // that do not exist, silently killing card searches (Surcoat, Tomes, …).
+    // The sandbox therefore keeps the single decks its rules layer expects.
     const lists: Record<string, string[]> = {
       spells: spellDeckLegacy,
       abilities: without(abilityDeckLegacy, TOURNAMENT_REMOVED_ABILITY_ID, true),

@@ -219,6 +219,19 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     });
   });
 
+  it("shows a Stack's valuables cost directly on the Add Stack button", () => {
+    const state = recruitReadyState();
+    state.adventure!.houseRules!["polish-unit-stacks"] = true;
+    state.players.p1.army = [{ id: "army_archangel", unitDefId: "castle.archangels", side: "pack", stacks: 0 }];
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.buildings.push("castle.dwelling_gold");
+    renderRecruit(state);
+
+    expect(
+      screen.getByRole("button", { name: /Buy Stack for Archangels for 33 gold \+ 2 valuables/i }).textContent
+    ).toMatch(/Add Stack.*33g \+ 2v/i);
+  });
+
   it("clicking the thumbnail opens the enlarged unit view instead of buying", () => {
     const { onAction } = renderRecruit(recruitReadyState());
     const thumb = document.querySelector(".recruitThumb") as HTMLElement;

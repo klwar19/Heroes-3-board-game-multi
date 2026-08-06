@@ -14370,7 +14370,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         count: pick.remaining - 1,
         filter: pick.filter,
         fromTop: pick.fromTop,
-        shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+        shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
+        excludeCardIds: pick.excludeCardIds
       });
       pumpAdventureQueues(state);
     }
@@ -16330,6 +16331,7 @@ export function openDiscardPickChoice(
     filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
     fromTop?: number;
     shuffleRestIntoDeck?: boolean;
+    excludeCardIds?: CardId[];
   }
 ): boolean {
   const player = state.players[playerId];
@@ -16389,7 +16391,19 @@ export function openDiscardPickChoice(
     }
   }
 
-  const pool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const rawPool = pick.fromTop ? player.discard.slice(-pick.fromTop) : [...player.discard];
+  const excludedCounts = new Map<CardId, number>();
+  for (const cardId of pick.excludeCardIds ?? []) {
+    excludedCounts.set(cardId, (excludedCounts.get(cardId) ?? 0) + 1);
+  }
+  const pool = rawPool.filter((cardId) => {
+    const remaining = excludedCounts.get(cardId) ?? 0;
+    if (remaining <= 0) {
+      return true;
+    }
+    excludedCounts.set(cardId, remaining - 1);
+    return false;
+  });
   const candidates: { cardId: CardId; source: "discard" | "polish-used" }[] = [
     ...pool
       .filter((cardId) => matchesFilter(cardId) && !(polishRecovery && cardLibrary[cardId]?.kind === "spell"))
@@ -16397,10 +16411,14 @@ export function openDiscardPickChoice(
     ...(polishRecovery
       ? (player.spellBookUsed ?? [])
           // A Book Spell still "in effect" is untouchable — never offer a refresh
-          // that the shared live-effect gate would then refuse.
+          // that the shared live-effect gate would then refuse. A Book Spell
+          // whose CAST is still resolving on the stack (excludeCardIds) is
+          // likewise mid-flight and must not be refreshed under it.
           .filter(
             (cardId) =>
-              matchesFilter(cardId) && !polishBookSpellEffectIsLive(state, playerId, cardId, player)
+              matchesFilter(cardId) &&
+              !polishBookSpellEffectIsLive(state, playerId, cardId, player) &&
+              !(pick.excludeCardIds ?? []).includes(cardId)
           )
           .map((cardId) => ({ cardId, source: "polish-used" as const }))
       : [])
@@ -16452,7 +16470,12 @@ export function openDiscardPickChoice(
   // taken from the discard); when the pick mixes discard cards and Book refreshes,
   // name both.
   const usedCount = entries.filter((entry) => entry.source === "polish-used").length;
-  const remainingSuffix = pick.count > 1 ? ` (${pick.count} left)` : "";
+  // Polish recovery always refreshes ONE Book Spell. Crown of Dragontooth's
+  // printed count 2 belongs to its classic discard-to-hand arm; carrying that
+  // count into the Polish adaptation incorrectly reopened this picker and let
+  // the Crown refresh two used Book Spells.
+  const selectionCount = polishRecovery ? 1 : pick.count;
+  const remainingSuffix = selectionCount > 1 ? ` (${selectionCount} left)` : "";
   const prompt =
     usedCount === entries.length
       ? `Refresh a Spell in your Spell Book${remainingSuffix}`
@@ -16477,10 +16500,11 @@ export function openDiscardPickChoice(
       cardIds: entries.map((entry) => entry.cardId),
       destinations: entries.map((entry) => entry.destination),
       sources: entries.map((entry) => entry.source),
-      remaining: pick.count,
+      remaining: selectionCount,
       filter: pick.filter,
       fromTop: pick.fromTop,
-      shuffleRestIntoDeck: pick.shuffleRestIntoDeck
+      shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
+      excludeCardIds: pick.excludeCardIds
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
@@ -16734,7 +16758,8 @@ export function pumpAdventureQueues(state: GameState): void {
           count: reward.count,
           filter: reward.filter,
           fromTop: reward.fromTop,
-          shuffleRestIntoDeck: reward.shuffleRestIntoDeck
+          shuffleRestIntoDeck: reward.shuffleRestIntoDeck,
+          excludeCardIds: reward.excludeCardIds
         })
       ) {
         return;
