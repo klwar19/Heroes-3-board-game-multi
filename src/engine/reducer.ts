@@ -21411,6 +21411,25 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // Likewise for any other card played on the quiet map turn.
         assertStartOfTurnDrawTaken(nextState, action.playerId);
         playCard(nextState, action, cards);
+        // An "Instant (any time during Combat)" card played INSIDE a reaction
+        // window (Gerwulf's Ballista discard, Deemer's Meteor Shower — see
+        // combatAnytimeInstantWindowJoins) keeps that window open, exactly like
+        // the First Aid Tent's USE_ACTIVE_EFFECT twin below: clear stale passes,
+        // re-derive the offers (the card is spent now, so its own offer drops out
+        // and cannot be replayed), and hand priority back so the player may keep
+        // reacting or pass — then the parked attack/cast resumes. Without this the
+        // window kept a STALE offer list naming a card no longer in hand.
+        //
+        // Gated on PRIORITY: only the priority player's PLAY_CARD can be a
+        // reaction in this window (that is the only offer list getLegalActions
+        // serves). Without the gate, any other card play that ever coexists with
+        // an open window — a parallel-turns bystander's quiet action today, some
+        // future seam tomorrow — would reset the window's passes and hand
+        // priority to a NON-participant, stranding the parked attack.
+        if (nextState.reactionWindow && nextState.reactionWindow.priorityPlayerId === action.playerId) {
+          nextState.phase = "reaction";
+          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+        }
         break;
       case "ATTACK_UNIT":
         attackUnit(nextState, asNeutralSeatCommand(nextState, action), cards);

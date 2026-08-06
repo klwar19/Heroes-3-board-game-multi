@@ -4597,6 +4597,18 @@ export type LegalAction = {
   action: GameAction;
   label: string;
   reason?: string;
+  /**
+   * "I JOIN an open reaction window but never OPEN one." The action-type-agnostic
+   * twin of the `utilityOnly` / `drawOnly` PLAY_REACTION flags (which say the same
+   * thing for card reactions): a flagged offer is listed inside a window somebody
+   * else opened, yet its mere presence must not pause the table. Read by the ONE
+   * shared predicate `reactionOfferOpensWindow` (legal-actions.ts), so both the
+   * offer-side strip and `openReactionWindowForTrigger` agree. Used by the
+   * "Instant (any time during Combat)" joins — a held Meteor Shower must not stop
+   * every spell cast at the table, and only the side about to be HIT may open an
+   * attack window with one.
+   */
+  windowJoinOnly?: boolean;
 };
 
 export type RulesError = {

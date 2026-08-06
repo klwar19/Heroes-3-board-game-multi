@@ -1,0 +1,593 @@
+import { describe, expect, it } from "vitest";
+import { applyAction, createInitialGameState, getLegalActions, getPlayerView } from "./index";
+import { combatAnytimeInstantWindowJoins, getOffTurnCombatReactions } from "./legal-actions";
+import { chooseComputerAction } from "./computer/policy";
+import { nextAfkDropAction } from "./afk-drop";
+import { cardLibrary } from "@/data/cards/library";
+import type { CardId, GameAction, GameState, LegalAction, PlayerId } from "./state";
+
+/**
+ * "Instant (any time during Combat)" cards inside an OPEN reaction window —
+ * the 2026-08-06 report: "I should be able to use the card ballista (all
+ * speciality, ability...) before counter attack as reaction window. Actually,
+ * all instant effects should be able to be used as reaction window like that."
+ *
+ * THE BUG. Off-turn, with no window open, the engine already offers every
+ * printed `combatAnytime` face (Gerwulf's discard-the-Ballista damage, Adelaide's
+ * / Glacius' Frost Ring, Deemer's Meteor Shower, Tarnum-Dungeon's row blast) —
+ * `getOffTurnCombatReactions` → the combat branch. But `getLegalActions` returns
+ * ONLY the window's own offer list once a reaction window is open, and
+ * `isCombatCardWindowOpen` switches the whole off-turn card pass off while a
+ * window/stack is live. So those instants were unreachable in a window, and —
+ * with nothing else window-opening in hand — no window opened at all: the blow,
+ * the Retaliation Attack and its damage all resolved inside ONE action, leaving
+ * literally no moment to fire the Ballista before the counter-attack.
+ *
+ * THE RULE. A `combatAnytime` face JOINS every reaction window, for both
+ * fighters. Only the side about to be HIT may OPEN an attack window with one
+ * (`LegalAction.windowJoinOnly` for everyone else) — the same reading Artillery
+ * and the pre-hit heals already use, and the same "only pre-roll moment"
+ * justification the bare morale token uses for the retaliation window. In a
+ * Retaliation Attack the side about to be hit IS the original attacker, which is
+ * exactly the reported case.
+ *
+ * Every claim below is mutation-checked; the reverting line is named per test.
+ * Board: 4 rows × 5 cols, getOrthogonalNeighbors(9) = {5, 8, 10, 13}.
+ */
+
+function applyOk(state: GameState, action: GameAction): GameState {
+  const result = applyAction(state, action);
+  expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+  return result.state;
+}
+
+/**
+ * p1's Marksmen (melee-ified, Attack 1) are about to hit p2's Skeletons at 13.
+ * The Skeletons survive with a big Attack, so a Retaliation Attack is coming —
+ * the moment the report is about. Scripted "+0" dice keep the maths exact.
+ */
+function aboutToAttack(
+  hand: CardId[],
+  options: { permanents?: CardId[]; skeletonHealth?: number } = {}
+): GameState {
+  const state = createInitialGameState("instant-window-seed");
+  state.players.p1.hand = [...hand];
+  state.players.p1.permanents = [...(options.permanents ?? [])];
+  state.players.p2.hand = [];
+
+  const units = state.combat!.units;
+  const attacker = units.unit_p1_marksmen;
+  attacker.position = 14;
+  attacker.type = "ground"; // a melee blow, so the Skeletons may retaliate
+  attacker.attack = 1;
+  attacker.defense = 0;
+  attacker.maxHealth = 20;
+  attacker.abilities = [];
+  attacker.activatedThisRound = false;
+  attacker.attackedThisActivation = false;
+
+  const target = units.unit_p2_skeletons;
+  target.position = 13; // adjacent to 14
+  target.initiative = 1; // the slowest enemy → Artillery's forced target
+  target.maxHealth = options.skeletonHealth ?? 30;
+  target.attack = 6; // a counter-attack that is clearly visible when it lands
+  target.defense = 0;
+  target.variant = "few";
+  target.abilities = [];
+
+  units.unit_p2_vampires.position = 10;
+  units.unit_p2_vampires.initiative = 9;
+  units.unit_p2_dread_knights.position = 9;
+  units.unit_p2_dread_knights.initiative = 9;
+  units.unit_p1_griffins.position = 0;
+  units.unit_p1_crusaders.position = 1;
+
+  state.activePlayerId = "p1";
+  state.combat!.activeUnitId = attacker.id;
+  state.combat!.dice.scriptedRolls = [0, 0, 0, 0, 0, 0];
+  state.combat!.dice.rollCount = 0;
+  return state;
+}
+
+const declareAttack: GameAction = {
+  type: "ATTACK_UNIT",
+  playerId: "p1",
+  attackerId: "unit_p1_marksmen",
+  defenderId: "unit_p2_skeletons"
+};
+
+function cardPlay(state: GameState, playerId: PlayerId, cardId: CardId, unitId?: string) {
+  return getLegalActions(state, playerId).find(
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === cardId &&
+      (unitId === undefined ||
+        (legal.action.target?.type === "unit" && legal.action.target.unitId === unitId))
+  );
+}
+
+function retaliationWindow(state: GameState) {
+  const window = state.reactionWindow;
+  return window?.triggerEvent.type === "UNIT_ATTACK_DECLARED" && window.triggerEvent.isRetaliation
+    ? window
+    : null;
+}
+
+// ===========================================================================
+// The reported case: the Ballista fires BEFORE the counter-attack
+// ===========================================================================
+
+describe("the Ballista discard is playable before the counter-attack", () => {
+  it("opens the retaliation window and offers it; with the join removed the whole exchange resolves at once (CONTROL)", () => {
+    // Fails if the combatAnytimeInstantWindowJoins block is removed from
+    // getLegalReactionsForTrigger, or if its offers are flagged windowJoinOnly
+    // for the attacked side too (then nothing opens the retaliation window).
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
+      declareAttack
+    );
+    const window = retaliationWindow(declared);
+    expect(window, "the incoming Retaliation Attack opened a window for its target's owner").toBeTruthy();
+    expect(window!.allowedPlayerIds).toContain("p1");
+    expect(
+      cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons"),
+      "Gerwulf's 'discard your Ballista: 3 damage' is offered in that window"
+    ).toBeTruthy();
+
+    // CONTROL: the same board with NO Ballista in play (the card's own
+    // prerequisite) has nothing window-opening — the blow, the retaliation and
+    // its damage all land inside the single ATTACK_UNIT action, which is exactly
+    // what the report described.
+    const noBallista = applyOk(aboutToAttack(["specialty.gerwulf.6"]), declareAttack);
+    expect(noBallista.reactionWindow).toBeNull();
+    expect(noBallista.combat!.units.unit_p1_marksmen.damage, "the counter-attack already landed").toBeGreaterThan(0);
+  });
+
+  it("firing it removes the retaliator, so the counter-attack never lands", () => {
+    // Fails if the join is not offered, or if the reducer stops treating a
+    // window PLAY_CARD as a reaction play (the parked retaliation would then
+    // resolve from a corpse — the "no attack from beyond the grave" guard).
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 3 }),
+      declareAttack
+    );
+    const skeleton = declared.combat!.units.unit_p2_skeletons;
+    expect(skeleton.damage, "the Marksmen's own blow dealt 1").toBe(1);
+    expect(skeleton.damage, "the retaliator is still standing").toBeLessThan(skeleton.maxHealth);
+
+    const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons")!.action);
+
+    expect(fired.combat!.units.unit_p2_skeletons.damage, "1 + the Ballista's 3 removed it").toBe(4);
+    expect(fired.combat!.units.unit_p1_marksmen.damage, "the dead retaliator's counter-attack is cancelled").toBe(0);
+    expect(fired.stack, "the parked retaliation was dropped, not left stuck").toEqual([]);
+    expect(fired.reactionWindow).toBeNull();
+    // The Ballista really left play (the printed price of the shot).
+    expect(fired.players.p1.permanents ?? []).not.toContain("war_machine.ballista");
+  });
+
+  it("a retaliator that survives the shot still counters — and the shot landed first", () => {
+    // Fails if the join is removed (no window ⇒ no shot at all) — the assertion
+    // is on the ORDER, so it also fails if the shot resolved after the counter.
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 30 }),
+      declareAttack
+    );
+    const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons")!.action);
+
+    expect(fired.combat!.units.unit_p2_skeletons.damage, "1 from the blow + 3 from the Ballista").toBe(4);
+    expect(fired.combat!.units.unit_p1_marksmen.damage, "the surviving retaliator's counter still lands").toBe(6);
+
+    const shotIdx = fired.eventLog.findIndex(
+      (event) =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p2_skeletons" &&
+        event.amount === 3
+    );
+    const counterIdx = fired.eventLog.findIndex(
+      (event) =>
+        event.type === "DAMAGE_ASSIGNED" &&
+        event.target.type === "unit" &&
+        event.target.unitId === "unit_p1_marksmen"
+    );
+    expect(shotIdx).toBeGreaterThanOrEqual(0);
+    expect(counterIdx, "the counter-attack resolved after the window closed").toBeGreaterThan(shotIdx);
+  });
+
+  it("the spent card drops out of the window's offers instead of leaving a stale menu", () => {
+    // Fails if the PLAY_CARD → advanceReactionWindowAfterPlay tail is removed
+    // from applyAction: the window would keep listing a card no longer in hand
+    // (and its Ballista no longer in play), so a second click would reject.
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6", "specialty.deemer.6"], {
+        permanents: ["war_machine.ballista"],
+        skeletonHealth: 30
+      }),
+      declareAttack
+    );
+    expect(retaliationWindow(declared)).toBeTruthy();
+    const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons")!.action);
+
+    expect(fired.reactionWindow, "a second instant is still in hand, so the window stays open").toBeTruthy();
+    expect(fired.reactionWindow!.priorityPlayerId).toBe("p1");
+    const offers = getLegalActions(fired, "p1");
+    expect(
+      offers.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.6"),
+      "the spent Ballista card is gone from the refreshed offers"
+    ).toBe(false);
+    expect(
+      offers.some((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"),
+      "the OTHER held instant is still offered — 'keep playing' in the same window"
+    ).toBe(true);
+    // Every offer the window lists must actually execute (no dead buttons).
+    for (const offer of offers) {
+      expect(applyAction(fired, offer.action).errors).toEqual([]);
+    }
+  });
+
+  it("a cost-bearing instant joins as a payable template: the enriched play is legal", () => {
+    // Adelaide's Frost Ring VI prints "discard 2 cards", so the OFFER is a
+    // template the client enriches with `costCardIds` (the shared submit path's
+    // cost picker). `normalizeActionForMatch` ignores costCardIds for PLAY_CARD,
+    // so the enriched play matches the offered template — this pins that
+    // contract, i.e. the join is reachable and not a dead button.
+    // Fails if the join block is removed (no offer at all) or if the payment
+    // stops matching the offer.
+    // The two payment cards are Power statistics: with no pairable spell instant
+    // in hand a "+Power" face is withheld from an attack window, so the Frost Ring
+    // itself is what opens this window (nothing else can).
+    const declared = applyOk(
+      aboutToAttack(["specialty.adelaide.6", "stat.power", "stat.power"]),
+      declareAttack
+    );
+    expect(retaliationWindow(declared)).toBeTruthy();
+    const ring = getLegalActions(declared, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.adelaide.6"
+    );
+    expect(ring, "the Frost Ring joins the retaliation window").toBeTruthy();
+
+    // The bare template cannot resolve — the printed price is unpaid.
+    expect(applyAction(declared, ring!.action).errors.map((error) => error.message)).toEqual([
+      "Frost Ring VI needs exactly 2 cards as payment."
+    ]);
+    // …and with the payment attached it resolves for real.
+    const paid = applyOk(declared, {
+      ...(ring!.action as Extract<GameAction, { type: "PLAY_CARD" }>),
+      costCardIds: ["stat.power", "stat.power"]
+    });
+    expect(paid.players.p1.hand, "the printed price really left the hand").toEqual([]);
+    expect(
+      paid.eventLog.some((event) => event.type === "CARD_PLAYED" && event.cardId === "specialty.adelaide.6"),
+      "the Frost Ring resolved inside the window"
+    ).toBe(true);
+  });
+
+  it("a war-machine-free instant specialty (Meteor Shower) is offered there too", () => {
+    // Fails with the join block removed. Deemer needs no permanent, so this
+    // pins that the family — not one bespoke card — reached the window.
+    const declared = applyOk(aboutToAttack(["specialty.deemer.6"]), declareAttack);
+    expect(retaliationWindow(declared), "a held Meteor Shower opens the retaliation window").toBeTruthy();
+    const meteor = cardPlay(declared, "p1", "specialty.deemer.6", "unit_p2_skeletons");
+    expect(meteor).toBeTruthy();
+    const fired = applyOk(declared, meteor!.action);
+    // Centre (the retaliator) + its neighbour at 14 — the attacking Marksmen —
+    // each take 1: the blast is friend-and-foe, exactly as printed.
+    expect(fired.combat!.units.unit_p2_skeletons.damage, "1 from the blow + 1 from the meteor").toBe(2);
+  });
+});
+
+// ===========================================================================
+// Artillery — the trigger-free ability instant, now on BOTH sides
+// ===========================================================================
+
+describe("Artillery joins the window for the attacking side as well", () => {
+  it("the attacker may fire it in a window opened by the defender", () => {
+    // Fails if the attackerArtillery block is removed from
+    // getLegalReactionsForTrigger's UNIT_ATTACK_DECLARED section.
+    // p2's Skeletons attack p1's Crusaders; p2 (the ATTACKER) holds Artillery,
+    // and p1's Misfortune-free defence opens the window with its own Artillery.
+    const state = aboutToAttack([]);
+    state.players.p1.hand = ["ability.artillery"];
+    state.players.p2.hand = ["ability.artillery"];
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.activatedThisRound = false;
+    skeletons.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = skeletons.id;
+    // p1's Marksmen are the slowest of p2's enemies → Artillery's forced target.
+    state.combat!.units.unit_p1_marksmen.initiative = 1;
+    state.combat!.units.unit_p1_griffins.initiative = 9;
+    state.combat!.units.unit_p1_crusaders.initiative = 9;
+
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_marksmen"
+    });
+    expect(declared.reactionWindow).toBeTruthy();
+    expect(declared.reactionWindow!.allowedPlayerIds, "the attacking side is in the window too").toContain("p2");
+    const attackerShot = declared.reactionWindow!.legalReactions.p2?.find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.artillery"
+    );
+    expect(attackerShot, "the ATTACKER may fire Artillery in the open window").toBeTruthy();
+    expect(attackerShot!.windowJoinOnly, "…but it never OPENS a window for them").toBe(true);
+  });
+
+  it("CONTROL: holding Artillery does not pause your OWN declared attack", () => {
+    // Fails if the attacker's Artillery join is not flagged windowJoinOnly.
+    const declared = applyOk(aboutToAttack(["ability.artillery"]), declareAttack);
+    const window = retaliationWindow(declared);
+    expect(window, "the RETALIATION window still opens (p1 is the side about to be hit)").toBeTruthy();
+    const declaredEvents = declared.eventLog.filter((event) => event.type === "REACTION_WINDOW_OPENED");
+    expect(declaredEvents, "exactly ONE window — the retaliation's, not the declaration's").toHaveLength(1);
+  });
+});
+
+// ===========================================================================
+// The deliberate non-opening scope (no new pause at the table)
+// ===========================================================================
+
+describe("an 'any time' instant JOINS other windows but never opens them", () => {
+  it("CONTROL: a Spell cast does not pause for a held Meteor Shower", () => {
+    // Fails if instantJoinOpenerId is widened past UNIT_ATTACK_DECLARED (or the
+    // windowJoinOnly flag is dropped): every cast at the table would stop.
+    const state = aboutToAttack(["specialty.deemer.6", "spell.magic_arrow"]);
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast, "Magic Arrow is castable on p1's own activation").toBeTruthy();
+    const casted = applyOk(state, {
+      ...cast!.action,
+      target: { type: "unit", unitId: "unit_p2_vampires" }
+    } as GameAction);
+    expect(casted.reactionWindow, "the cast resolved without a window").toBeNull();
+    expect(casted.players.p1.hand, "the cast really happened (the Spell left hand)").not.toContain(
+      "spell.magic_arrow"
+    );
+    expect(
+      casted.eventLog.some((event) => event.type === "SPELL_CAST_STARTED"),
+      "the cast really started (so a window COULD have opened here)"
+    ).toBe(true);
+    expect(
+      casted.eventLog.filter((event) => event.type === "REACTION_WINDOW_OPENED"),
+      "no window opened at all — the held instant is a join, never an opener on a cast"
+    ).toEqual([]);
+  });
+
+  it("but the join IS listed once such a window is open for another reason", () => {
+    // Fails if the join block is scoped to attack windows only.
+    // p2 casts Magic Arrow at p1's Marksmen; p1 holds Resistance (a real
+    // SPELL_CAST_STARTED reaction that opens the window) plus a Meteor Shower.
+    const state = aboutToAttack([]);
+    state.players.p1.hand = ["ability.resistance", "specialty.deemer.6"];
+    state.players.p2.hand = ["spell.magic_arrow"];
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.activatedThisRound = false;
+    skeletons.attackedThisActivation = false;
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = skeletons.id;
+
+    const cast = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast).toBeTruthy();
+    const casted = applyOk(state, {
+      ...cast!.action,
+      target: { type: "unit", unitId: "unit_p1_marksmen" }
+    } as GameAction);
+    expect(casted.reactionWindow?.triggerEvent.type, "Resistance opened the cast window").toBe("SPELL_CAST_STARTED");
+    expect(
+      (casted.reactionWindow!.legalReactions.p1 ?? []).some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
+      ),
+      "the held instant rides the open cast window"
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
+// Non-stalling: the drivers can always close the window
+// ===========================================================================
+
+describe("the new offers never strand a window", () => {
+  it("the AFK / turn-timeout driver closes it with a Pass", () => {
+    // Fails if a join ever became the ONLY offer (no Pass) — the driver would
+    // then have nothing to fire and the forced resolution would loop forever.
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
+      declareAttack
+    );
+    expect(retaliationWindow(declared)).toBeTruthy();
+    expect(nextAfkDropAction(declared, "p1")).toMatchObject({ type: "PASS_REACTION", playerId: "p1" });
+  });
+
+  it("a computer seat answers the window (it PASSES — the damage band sits below PASS_REACTION)", () => {
+    // Documented limit, pinned so it cannot silently become a stall: the AI's
+    // combat-damage band (640–860) is below PASS_REACTION (1_050), so a computer
+    // holding one of these instants passes rather than firing it in a window —
+    // the same behaviour it had before this change. What matters is that it
+    // ALWAYS answers: a null decision would freeze the table.
+    const declared = applyOk(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
+      declareAttack
+    );
+    const decision = chooseComputerAction({
+      playerId: "p1",
+      state: getPlayerView(declared, "p1"),
+      legalActions: getLegalActions(declared, "p1")
+    });
+    expect(decision, "the AI always has an answer in this window").toBeTruthy();
+    expect(decision!.action.type).toBe("PASS_REACTION");
+  });
+});
+
+// ===========================================================================
+// The invariant sweep + the documented exclusion registry
+// ===========================================================================
+
+/**
+ * Every printed "Instant (any time during Combat)" face in the library, as a
+ * conscious list: a NEW `combatAnytime` face fails this test until it is added
+ * here, forcing a decision about the window behaviour (registry hygiene, the
+ * DISPLAY_ONLY_ABILITIES pattern).
+ */
+const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
+  { cardId: "specialty.deemer.1", optionIndex: 0 },
+  { cardId: "specialty.deemer.6", optionIndex: 0 },
+  { cardId: "specialty.adelaide.1", optionIndex: 0 },
+  { cardId: "specialty.adelaide.6", optionIndex: 0 },
+  { cardId: "specialty.glacius.1", optionIndex: 0 },
+  { cardId: "specialty.glacius.6", optionIndex: 0 },
+  { cardId: "specialty.gerwulf.4", optionIndex: 1 },
+  { cardId: "specialty.gerwulf.6", optionIndex: 1 },
+  { cardId: "specialty.tarnum_dungeon.4", optionIndex: 0 },
+  { cardId: "specialty.tarnum_dungeon.6", optionIndex: 0 }
+];
+
+/**
+ * Combat card faces that deliberately do NOT join a reaction window, with the
+ * reason. This is the conscious exclusion registry the audit asked for — a
+ * reader must never have to reverse-engineer why something is missing.
+ *
+ * - `mapOnly` faces are an ABSOLUTE bar: a printed zone restriction must never
+ *   be overridden by a window join (pinned below).
+ * - A `combatOnly` face WITHOUT `combatAnytime` is a TURN play, not an instant:
+ *   Gerwulf I's "Activate your Ballista", Gerwulf IV's free 1 damage and
+ *   Gerwulf VI's ongoing "you aim the Ballista" all print no "any time" clause,
+ *   and the same card's instant side is the one that joins.
+ * - A face with a printed reaction TRIGGER is already a real reaction through
+ *   the ordinary variant loop (Tarnum-Dungeon VI's "+2 attack" on
+ *   UNIT_ATTACK_DECLARED) — it needs no join, and giving it one would be a
+ *   strictly-worse trap twin (the `cardHasPrintedTriggerMatch` rule).
+ * - Casting a SPELL off-turn stays gated behind Intelligence — a printed rule,
+ *   not an oversight; a window changes nothing about it.
+ * - Rolls that fire mid-resolution (the Dwarven resistance die, the defensive
+ *   soak, the Medusa gaze, the skip-activation check) cannot pause, so they get
+ *   no window at all.
+ */
+const DOCUMENTED_WINDOW_EXCLUSIONS: { cardId: CardId; optionIndex: number; reason: string }[] = [
+  { cardId: "specialty.gerwulf.1", optionIndex: 0, reason: "mapOnly: pay 5 gold to gain a Ballista" },
+  { cardId: "specialty.gerwulf.1", optionIndex: 1, reason: "turn play: 'Activate your Ballista' prints no instant clause" },
+  { cardId: "specialty.gerwulf.4", optionIndex: 0, reason: "turn play: the free 1 damage prints no instant clause" },
+  { cardId: "specialty.gerwulf.6", optionIndex: 0, reason: "turn play: the ongoing 'you aim the Ballista' effect" },
+  { cardId: "specialty.tarnum_dungeon.6", optionIndex: 1, reason: "printed UNIT_ATTACK_DECLARED trigger — already a real reaction" }
+];
+
+/** A live combat where p1 holds `hand` and it is p2's Skeletons' activation. */
+function offTurnHolder(hand: CardId[], permanents: CardId[] = []): GameState {
+  const state = aboutToAttack([]);
+  state.players.p1.hand = [...hand];
+  state.players.p1.permanents = [...permanents];
+  const skeletons = state.combat!.units.unit_p2_skeletons;
+  skeletons.activatedThisRound = false;
+  skeletons.attackedThisActivation = false;
+  state.activePlayerId = "p2";
+  state.combat!.activeUnitId = skeletons.id;
+  return state;
+}
+
+function playKeys(offers: LegalAction[], cardId: CardId): string[] {
+  return offers
+    .filter((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId)
+    .map((legal) => {
+      const action = legal.action as Extract<GameAction, { type: "PLAY_CARD" }>;
+      return `${action.optionIndex ?? "-"}:${JSON.stringify(action.target ?? null)}`;
+    })
+    .sort();
+}
+
+describe("invariant sweep — a window never swallows an 'any time' instant", () => {
+  it("the library's combatAnytime faces are exactly the registered list", () => {
+    const found: { cardId: CardId; optionIndex: number }[] = [];
+    for (const [cardId, card] of Object.entries(cardLibrary)) {
+      if (card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+        continue;
+      }
+      card.effect.options.forEach((option, optionIndex) => {
+        if (option.combatAnytime) {
+          found.push({ cardId, optionIndex });
+        }
+      });
+    }
+    const key = (entry: { cardId: CardId; optionIndex: number }) => `${entry.cardId}#${entry.optionIndex}`;
+    expect(found.map(key).sort()).toEqual(COMBAT_ANYTIME_FACES.map(key).sort());
+  });
+
+  it("EVERY combatAnytime face offered off-turn is also offered inside an open reaction window", () => {
+    // The invariant, one assertion for the whole family: whatever the printed
+    // prerequisites of a face are, if the engine lets you play it during the
+    // enemy's activation it must also let you play it while a reaction window
+    // is open. Fails for every face if the join block is removed.
+    let checked = 0;
+    for (const { cardId } of COMBAT_ANYTIME_FACES) {
+      // Generous prerequisites: a Ballista to discard, and spare cards to pay
+      // the printed discard costs (Frost Ring / Meteor Shower).
+      const hand: CardId[] = [cardId, "stat.attack", "stat.defense", "stat.attack"];
+      const permanents: CardId[] = ["war_machine.ballista"];
+      const offTurn = playKeys(getOffTurnCombatReactions(offTurnHolder(hand, permanents), "p1"), cardId);
+      if (offTurn.length === 0) {
+        // Not playable in this fixture either (a prerequisite this board cannot
+        // supply) — nothing for the window to swallow, so the invariant holds
+        // trivially. Never silently skipped: the registry test above still pins
+        // the face's existence.
+        continue;
+      }
+      const inWindow = playKeys(combatAnytimeInstantWindowJoins(offTurnHolder(hand, permanents), "p1"), cardId);
+      expect(inWindow, `${cardId} must join a reaction window with the same offers it has off-turn`).toEqual(
+        offTurn
+      );
+      checked += 1;
+    }
+    expect(checked, "the sweep really exercised the family").toBeGreaterThanOrEqual(8);
+  });
+
+  it("the documented exclusions are all real card faces, and none of them joins a window", () => {
+    for (const { cardId, optionIndex, reason } of DOCUMENTED_WINDOW_EXCLUSIONS) {
+      const card = cardLibrary[cardId];
+      expect(card, `${cardId} is registered`).toBeTruthy();
+      expect(card.effect.type).toBe("CHOOSE_ONE");
+      if (card.effect.type !== "CHOOSE_ONE") {
+        continue;
+      }
+      const option = card.effect.options[optionIndex];
+      expect(option, `${cardId} option ${optionIndex} exists (${reason})`).toBeTruthy();
+      expect(Boolean(option.combatAnytime), `${cardId}#${optionIndex} is not an instant: ${reason}`).toBe(false);
+
+      const joins = combatAnytimeInstantWindowJoins(
+        offTurnHolder([cardId, "stat.attack", "stat.defense"], ["war_machine.ballista"]),
+        "p1"
+      );
+      expect(
+        joins.some(
+          (legal) =>
+            legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId && legal.action.optionIndex === optionIndex
+        ),
+        `${cardId}#${optionIndex} must NOT join a window: ${reason}`
+      ).toBe(false);
+    }
+  });
+
+  it("CONTROL: a mapOnly face never joins a window even on a card whose other side does", () => {
+    // Gerwulf I prints [mapOnly "pay 5 gold for a Ballista", turn-only
+    // "Activate your Ballista"] — neither is an instant, so the whole card is
+    // absent from the window. Fails if the join filter stops reading
+    // `combatAnytime` and starts offering every combat face.
+    const joins = combatAnytimeInstantWindowJoins(
+      offTurnHolder(["specialty.gerwulf.1"], ["war_machine.ballista"]),
+      "p1"
+    );
+    expect(joins.filter((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.1")).toEqual(
+      []
+    );
+  });
+
+  it("CONTROL: a hand-locked defender (no hero in the fight) is offered no join", () => {
+    // Fails if the isHandLockedInCombat gate is removed from the new pass.
+    const state = offTurnHolder(["specialty.deemer.6"]);
+    // A heroless garrison-style defense: "You cannot use your Deck during this
+    // Combat" — units only, so no card may join a window either.
+    state.combat!.context = { kind: "player", attackerHeroId: null, defenderHeroId: null, fieldId: "0,0" } as never;
+    expect(combatAnytimeInstantWindowJoins(state, "p1")).toEqual([]);
+  });
+});

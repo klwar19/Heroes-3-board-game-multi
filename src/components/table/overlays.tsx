@@ -576,6 +576,25 @@ export function ReactionTray({
     (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "draw"
   );
 
+  // "Instant (any time during Combat)" cards joining this window — Gerwulf's
+  // "discard your Ballista: N damage", Deemer's Meteor Shower and kin (the engine
+  // side is combatAnytimeInstantWindowJoins). They are PLAY_CARD offers, not
+  // PLAY_REACTION, so the batch tray above never surfaces them; without these
+  // tiles the reported case ("use the ballista before the counter attack") had an
+  // engine offer and no button.
+  //
+  // ONE tile per offer whose target is a UNIT or absent — directly clickable. A
+  // printed discard cost is NOT paid here: the shared submit path opens the cost
+  // picker for any PLAY_CARD with a printed cost and no `costCardIds`, and the
+  // engine's legality match ignores `costCardIds`, so the enriched play is legal.
+  // DELIBERATE LIMIT: space-target joins (Adelaide's / Glacius' Frost Ring ring,
+  // Tarnum-Dungeon's row blast) are ~20 offers, one per board cell — the tray does
+  // not list twenty look-alike tiles; those keep the board's existing space-target
+  // arming as their pick surface.
+  const combatInstantJoins = legalActions.filter(
+    (legal) => legal.action.type === "PLAY_CARD" && legal.action.target?.type !== "space"
+  );
+
   // Halberdiers' Parry (USE_UNIT_DIE_IGNORE): discard a chosen hand card to
   // ignore the just-rolled Attack die. A standalone legal action (one offer per
   // discardable card, worded by the engine), so the card-tile path never
@@ -1091,9 +1110,33 @@ export function ReactionTray({
         schoolFetchExpertReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
+        combatInstantJoins.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {combatInstantJoins.map((legal) => {
+          const cardId = legal.action.type === "PLAY_CARD" ? legal.action.cardId : "";
+          // The engine label describes the EFFECT, not the target, so several
+          // per-unit offers of one card read identically ("…: 3 damage to an enemy
+          // unit" ×3). Name the target on the button so the player can tell the
+          // tiles apart.
+          const targetUnitId =
+            legal.action.type === "PLAY_CARD" && legal.action.target?.type === "unit"
+              ? legal.action.target.unitId
+              : null;
+          const targetName = targetUnitId ? state.combat?.units[targetUnitId]?.cardName : null;
+          return (
+            <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+              {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
+              <div className="trayTileBody">
+                <strong>Instant</strong>
+                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                  {targetName ? `${legal.label} → ${targetName}` : legal.label}
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {schoolFetchExpertReactions.map((legal) => {
           const cardId =
             legal.action.type === "USE_SCHOOL_FETCH_EXPERT"

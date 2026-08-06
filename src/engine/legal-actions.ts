@@ -2634,6 +2634,68 @@ function addCombatAnytimeSpecialtyPlays(
   }
 }
 
+/**
+ * The SAME "Instant (any time during Combat)" plays as `addCombatAnytimeSpecialtyPlays`,
+ * offered INSIDE an open reaction window — the gap the 2026-08-06 report named
+ * ("I should be able to use the card ballista … before counter attack as reaction
+ * window"). Off-turn, with no window open, the engine already offers these
+ * (getOffTurnCombatReactions → the combat branch); but the moment a reaction
+ * window opens, `getLegalActions` returns ONLY that window's offer list, and
+ * `isCombatCardWindowOpen` deliberately switches the whole off-turn card pass off
+ * while a window/stack is live. So a player holding Gerwulf's Ballista discard or
+ * Deemer's Meteor Shower could not fire it into a declared attack — and, with
+ * nothing else window-opening in hand, the whole exchange INCLUDING the enemy's
+ * Retaliation Attack resolved inside one action, leaving no moment at all.
+ *
+ * Two deliberate differences from the off-turn pass:
+ * - NO `ownActivationOpen` self-gate. That gate exists only to avoid
+ *   double-listing beside the on-turn card pass, which does not run inside a
+ *   window (the window's list is the entire menu), and it is exactly what hid the
+ *   offer from the ATTACKER in their own freshly declared attack window.
+ * - kind/timing agnostic: `combatAnytime` IS the printed "any time" marker, so a
+ *   future instant-anytime face on any card kind joins automatically. (The
+ *   off-turn pass filters to non-"instant" hero specialties only because
+ *   addPlayableCardActions already covers the rest there.)
+ *
+ * NOT widened beyond the printed flag: a `combatOnly` turn play (Gerwulf I's
+ * "Activate your Ballista", Gerwulf IV's free 1 damage, Gerwulf VI's ongoing aim)
+ * is not an instant and stays out — see the exclusion registry in
+ * combat-instant-reaction-windows.test.ts.
+ */
+export function combatAnytimeInstantWindowJoins(
+  state: GameState,
+  playerId: PlayerId,
+  cards: CardLibrary = cardLibrary
+): LegalAction[] {
+  const actions: LegalAction[] = [];
+  const combat = state.combat;
+  if (!combat || combat.outcome || combat.setup || !isCombatParticipant(state, playerId)) {
+    return actions;
+  }
+  if (isHandLockedInCombat(state, playerId)) {
+    return actions;
+  }
+  const player = state.players[playerId];
+  if (!player) {
+    return actions;
+  }
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (
+      !card ||
+      card.implementationStatus !== "implemented" ||
+      card.effect.type !== "CHOOSE_ONE" ||
+      !card.effect.options.some((option) => option.combatAnytime)
+    ) {
+      continue;
+    }
+    addOptionPlays(actions, state, playerId, card, cardId, "combat", cards, (option) =>
+      Boolean(option.combatAnytime)
+    );
+  }
+  return actions;
+}
+
 /** One occurrence of each of this player's cards still resolving on the combat stack. */
 function recoveryInFlightCardIds(state: GameState, playerId: PlayerId): CardId[] {
   return state.stack.flatMap((item) => [
@@ -7668,6 +7730,23 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    // …and the OTHER side of the exchange may fire it too, once the window is
+    // open — an instant "deal 1 damage to the slowest enemy" is not tied to being
+    // attacked, and softening the unit that is about to counter-attack is exactly
+    // the moment the 2026-08-06 report asked for. `windowJoinOnly` keeps the
+    // window-OPENING privilege with the side about to be HIT (unchanged
+    // behaviour: an attacker holding Artillery does not pause their own attack).
+    const attackerOwner = state.combat?.units[triggerEvent.attackerId]?.controllerId;
+    if (attackerOwner && attackerOwner !== defenderId) {
+      const attackerArtillery = artilleryCardReactions(state, attackerOwner).map((legal) => ({
+        ...legal,
+        windowJoinOnly: true
+      }));
+      if (attackerArtillery.length > 0) {
+        result[attackerOwner] = [...(result[attackerOwner] ?? []), ...attackerArtillery];
+      }
+    }
+
     // WOG Commanders: the defend buffs (Hierophant's Shield, Ogre Leader's Stone
     // Skin) are INSTANT REACTIONS — offered to the attacked unit's controller
     // before the hit's damage, buffing that unit's Defense. Once per combat round,
@@ -7737,6 +7816,30 @@ export function getLegalReactionsForTrigger(
     }
   }
 
+  // "Instant (any time during Combat)" plays (the printed `combatAnytime` sides:
+  // Gerwulf's discard-the-Ballista damage, Adelaide's / Glacius' Frost Ring,
+  // Deemer's Meteor Shower, Tarnum-Dungeon's …) join EVERY window, for both
+  // fighters — the 2026-08-06 report's "all instant effects should be usable as a
+  // reaction window like that". Only the side about to be HIT may OPEN an attack
+  // window with one (`windowJoinOnly` everywhere else), mirroring Artillery and
+  // the pre-hit heals: that is the printed instant's only pre-roll moment, while
+  // the other side had its whole activation to play the card. Never an opener on a
+  // cast / activation / die-settled window, so no spell or activation at the table
+  // pauses merely because someone holds a Meteor Shower.
+  const instantJoinOpenerId =
+    triggerEvent.type === "UNIT_ATTACK_DECLARED"
+      ? state.combat?.units[triggerEvent.defenderId]?.controllerId
+      : undefined;
+  for (const player of Object.values(state.players)) {
+    const joins = combatAnytimeInstantWindowJoins(state, player.id, cards);
+    if (joins.length === 0) {
+      continue;
+    }
+    const flagged =
+      player.id === instantJoinOpenerId ? joins : joins.map((legal) => ({ ...legal, windowJoinOnly: true }));
+    result[player.id] = [...(result[player.id] ?? []), ...flagged];
+  }
+
   // Card-gain utilities ride a window opened by a genuine response, but never
   // pause every attack/cast merely because somebody holds a draw/recovery card.
   // Once the window exists, refreshes keep exposing them so they can feed a
@@ -7793,8 +7896,14 @@ export function getLegalReactionsForTrigger(
  *   draw riders — "work during EXISTING reaction windows", never a pause of
  *   their own; without the drawOnly half a held Offense/Armorer would pause
  *   every enemy attack).
+ * - anything flagged `windowJoinOnly` (LegalAction) — the action-type-agnostic
+ *   form of the same rule, used by the "Instant (any time during Combat)" joins
+ *   for every side/window except the attacked side of an attack window.
  */
 export function reactionOfferOpensWindow(legal: LegalAction, triggerEvent: GameEvent): boolean {
+  if (legal.windowJoinOnly) {
+    return false;
+  }
   if (
     legal.action.type === "SPEND_MORALE" &&
     (legal.action.benefit === "draw" || legal.action.benefit === "redraw")
