@@ -124,6 +124,7 @@ import {
 } from "./polish-quick-combat";
 import {
   CAST_A_SPELL_CARD_ID,
+  clearPolishSpellRefreshMarkers,
   eventZoneMatches,
   gainOwnedCard,
   isOwnedSpellCard,
@@ -15549,19 +15550,28 @@ export function startAdventureRound(state: GameState): void {
   // caster's turn starts) is untouchable and stays used until it ends. Runs AFTER
   // the round-end expiry above so a round-scoped Book Spell refreshes in the same
   // round start its effect ends in.
+  //
+  // This whole-side refresh IS the round mechanism, so the once-per-round
+  // mid-round limit ("a single spell can be refreshed only once per round")
+  // neither blocks it nor is fed by it: it deliberately reads the marker-free
+  // `refreshablePolishUsedSpells` (never the mid-round twin), and only AFTER
+  // refreshing does it wipe every player's markers for the new round. The order
+  // matters — clearing first would make the exemption untestable.
   if (houseRuleEnabled(state, "polish-spell-book")) {
     for (const player of Object.values(state.players)) {
-      if (player.id === NEUTRAL_PLAYER_ID || !player.spellBookUsed?.length) {
+      if (player.id === NEUTRAL_PLAYER_ID) {
         continue;
       }
-      const refreshable = refreshablePolishUsedSpells(state, player);
-      if (refreshable.length === 0) {
-        continue;
+      const refreshable = player.spellBookUsed?.length
+        ? refreshablePolishUsedSpells(state, player)
+        : [];
+      if (refreshable.length > 0) {
+        player.spellBook.push(...refreshable);
+        player.spellBookUsed = (player.spellBookUsed ?? []).filter((cardId) =>
+          polishBookSpellEffectIsLive(state, player.id, cardId, player)
+        );
       }
-      player.spellBook.push(...refreshable);
-      player.spellBookUsed = (player.spellBookUsed ?? []).filter((cardId) =>
-        polishBookSpellEffectIsLive(state, player.id, cardId, player)
-      );
+      clearPolishSpellRefreshMarkers(player);
     }
   }
 

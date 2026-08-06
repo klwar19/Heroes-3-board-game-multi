@@ -359,7 +359,8 @@ import {
   gainOwnedCard,
   isCastASpellCard,
   isOwnedSpellCard,
-  polishBookSpellEffectIsLive,
+  markPolishSpellRefreshedThisRound,
+  polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
   returnOwnedSpellToSharedDiscard
 } from "./polish-spell-book";
@@ -14363,14 +14364,28 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const source = pick.sources?.[action.optionIndex] ?? "discard";
     const sourcePile = source === "polish-used" ? (player.spellBookUsed ??= []) : player.discard;
     const index = sourcePile.lastIndexOf(cardId);
-    // Backstop for a forged / stale pick: a Book Spell whose cast's effect is
-    // still live can never be refreshed (the shared "in effect" gate).
-    const lockedInEffect =
-      source === "polish-used" && polishBookSpellEffectIsLive(state, action.playerId, cardId, player);
-    if (index !== -1 && !lockedInEffect) {
+    // Backstop for a forged / stale pick: the shared refresh gate refuses a Book
+    // Spell whose cast's effect is still live AND one already refreshed once this
+    // round ("a single spell can be refreshed only once per round").
+    const refreshBlocked =
+      source === "polish-used" && index !== -1
+        ? polishBookSpellRefreshBlocked(state, action.playerId, cardId, player)
+        : null;
+    if (refreshBlocked) {
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId: action.playerId,
+        message:
+          refreshBlocked === "in-effect"
+            ? `${cardLibrary[cardId]?.name ?? cardId} is still in effect and cannot be refreshed yet.`
+            : `${cardLibrary[cardId]?.name ?? cardId} has already been refreshed this round.`
+      });
+    }
+    if (index !== -1 && !refreshBlocked) {
       sourcePile.splice(index, 1);
       if (source === "polish-used") {
         player.spellBook.push(cardId);
+        markPolishSpellRefreshedThisRound(player, cardId);
       } else if (destination === "spellBook" && spellCanEnterSpellBook(cardId)) {
         player.spellBook.push(cardId);
       } else {
@@ -16437,14 +16452,15 @@ export function openDiscardPickChoice(
       .map((cardId) => ({ cardId, source: "discard" as const })),
     ...(polishRecovery
       ? (player.spellBookUsed ?? [])
-          // A Book Spell still "in effect" is untouchable — never offer a refresh
-          // that the shared live-effect gate would then refuse. A Book Spell
+          // A Book Spell still "in effect" — or one already refreshed once this
+          // round — is untouchable: never offer a refresh the shared
+          // `polishBookSpellRefreshBlocked` gate would then refuse. A Book Spell
           // whose CAST is still resolving on the stack (excludeCardIds) is
           // likewise mid-flight and must not be refreshed under it.
           .filter(
             (cardId) =>
               matchesFilter(cardId) &&
-              !polishBookSpellEffectIsLive(state, playerId, cardId, player) &&
+              polishBookSpellRefreshBlocked(state, playerId, cardId, player) === null &&
               !(pick.excludeCardIds ?? []).includes(cardId)
           )
           .map((cardId) => ({ cardId, source: "polish-used" as const }))

@@ -7265,6 +7265,19 @@ export type PlayerState = {
    * Optional so legacy snapshots naturally treat it as empty.
    */
   spellBookUsed?: CardId[];
+  /**
+   * Polish Spell Book: Book Spells a MID-ROUND refresh source has already
+   * returned to the refreshed side THIS game round — "a single spell can be
+   * refreshed only once per round". One entry per physical copy refreshed
+   * (multiplicity preserved), so a player genuinely holding two copies of the
+   * same Spell may still refresh the second one. The ROUND-START whole-used-side
+   * refresh is the round mechanism itself: it neither reads nor writes this list
+   * and clears it for every player. Optional so legacy snapshots read as "nothing
+   * refreshed yet" (nothing blocked). Public: a refresh moves a card off the
+   * face-up `spellBookUsed` side and appends a public SPELL_RETURNED_TO_HAND
+   * event, so this list names nothing opponents could not already see.
+   */
+  polishSpellsRefreshedThisRound?: CardId[];
   /** Cards removed from the game entirely (the "remove" keyword). */
   removed: CardId[];
   /**

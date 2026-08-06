@@ -89,13 +89,87 @@ export function polishBookSpellEffectIsLive(
   return Boolean(player?.ongoingCards?.some((entry) => entry.cardId === cardId));
 }
 
-/** Used Book Spells eligible for a refresh right now (in-effect ones excluded). */
+/**
+ * Used Book Spells the ROUND-START whole-side refresh may return (only the
+ * "in effect" gate applies). The once-per-round limit below deliberately does
+ * NOT apply here: the round start IS the round mechanism.
+ */
 export function refreshablePolishUsedSpells(
   state: Pick<GameState, "activeEffects">,
   player: PlayerState
 ): CardId[] {
   return (player.spellBookUsed ?? []).filter(
     (cardId) => !polishBookSpellEffectIsLive(state, player.id, cardId, player)
+  );
+}
+
+/**
+ * "A single spell can be refreshed only once per round" (user rule 2026-08-07),
+ * part of the Polish Spell Book mode itself — not a separate toggle.
+ *
+ * A Book Spell a MID-ROUND source already returned to the refreshed side this
+ * game round may not be refreshed again until the next round start. Counted per
+ * physical COPY: a player holding two genuine copies of the same Spell may
+ * refresh each of them once (`polishSpellsRefreshedThisRound` keeps
+ * multiplicity, and the budget is how many copies the Book holds).
+ *
+ * The ROUND-START whole-used-side refresh is exempt (it is the round mechanism)
+ * and clears the markers for every player.
+ */
+export function polishSpellRefreshedThisRoundCount(player: PlayerState, cardId: CardId): number {
+  return (player.polishSpellsRefreshedThisRound ?? []).filter((entry) => entry === cardId).length;
+}
+
+/** How many copies of this Spell the player owns in the Book (either side). */
+function polishBookCopyCount(player: PlayerState, cardId: CardId): number {
+  const refreshed = player.spellBook.filter((entry) => entry === cardId).length;
+  const used = (player.spellBookUsed ?? []).filter((entry) => entry === cardId).length;
+  return refreshed + used;
+}
+
+/**
+ * The ONE read every MID-ROUND refresh path shares — offers and resolution
+ * backstops alike, so they can never disagree. Returns the reason a refresh is
+ * refused, or null when it may proceed.
+ */
+export function polishBookSpellRefreshBlocked(
+  state: Pick<GameState, "activeEffects">,
+  playerId: PlayerId,
+  cardId: CardId,
+  player: PlayerState
+): "in-effect" | "already-refreshed" | null {
+  if (polishBookSpellEffectIsLive(state, playerId, cardId, player)) {
+    return "in-effect";
+  }
+  const refreshed = polishSpellRefreshedThisRoundCount(player, cardId);
+  if (refreshed > 0 && refreshed >= Math.max(1, polishBookCopyCount(player, cardId))) {
+    return "already-refreshed";
+  }
+  return null;
+}
+
+/** Record one successful MID-ROUND refresh against the once-per-round limit. */
+export function markPolishSpellRefreshedThisRound(player: PlayerState, cardId: CardId): void {
+  (player.polishSpellsRefreshedThisRound ??= []).push(cardId);
+}
+
+/** Forget every mid-round refresh marker (called by the round-start refresh). */
+export function clearPolishSpellRefreshMarkers(player: PlayerState): void {
+  if (player.polishSpellsRefreshedThisRound?.length) {
+    player.polishSpellsRefreshedThisRound = [];
+  }
+}
+
+/**
+ * Used Book Spells a MID-ROUND source may refresh right now: in-effect Spells
+ * AND Spells already refreshed this round are both excluded.
+ */
+export function midRoundRefreshablePolishUsedSpells(
+  state: Pick<GameState, "activeEffects">,
+  player: PlayerState
+): CardId[] {
+  return (player.spellBookUsed ?? []).filter(
+    (cardId) => polishBookSpellRefreshBlocked(state, player.id, cardId, player) === null
   );
 }
 
