@@ -257,6 +257,71 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     const choice = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
     expect(choice?.kind === "visit-steps" && choice.steps[0]?.type).toBe("CHOOSE_ONE");
   });
+
+  it("preserves both explicit after-dig Grail conversions", () => {
+    for (const [mode, expected] of [
+      ["after-dig-utopia", "dragon_utopia"],
+      ["after-dig-empty", "empty_field"]
+    ] as const) {
+      const state = createAdventureGameState({
+        seed: `grail-after-dig-${mode}`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        players: PLAYERS.slice(0, 2),
+        victoryMode: "grail",
+        customMapPreset: { objectives: { grailAsUtopia: mode } }
+      });
+      const hero = getMainHero(state, "p1")!;
+      const first = field("grail", `first-${mode}`);
+      const second = field("grail", `second-${mode}`);
+      state.adventure!.fields[first.spaceId] = first;
+      state.adventure!.fields[second.spaceId] = second;
+      hero.spaceId = first.spaceId;
+
+      beginFieldVisit(state, hero.id, first.spaceId, false);
+      state.adventure!.grail!.obelisksVisited = { p1: ["obelisk-a", "obelisk-b"] };
+      beginFieldVisit(state, hero.id, first.spaceId, true);
+      expect(second.location).toBe(expected);
+    }
+  });
+
+  it("grailAsUtopia=always fights Utopia dragons but STILL digs (the documented hybrid)", () => {
+    // The type doc (state.ts) prints the contract verbatim: `"always": every
+    // Grail field fights Utopia dragons (and still digs).` Converting the field
+    // into a REAL Utopia would delete the map's only dig site and make a Grail
+    // victory unwinnable — so the identity must stay "grail".
+    const state = createAdventureGameState({
+      seed: "grail-always-real-utopia",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: PLAYERS.slice(0, 2),
+      victoryMode: "grail",
+      customMapPreset: { objectives: { grailAsUtopia: "always", utopiaGuards: "four" } }
+    });
+    const hero = getMainHero(state, "p1")!;
+    const grail = field("grail", "42,42");
+    state.adventure!.fields[grail.spaceId] = grail;
+    hero.spaceId = grail.spaceId;
+
+    // The FIGHT half: the guard draw is the Utopia party ("four" mode = the
+    // fixed four-dragon army), not a plain level draw.
+    const guards = drawGuardArmy(state, grail, 7);
+    expect(guards).toHaveLength(4);
+    // The DIG half: the field keeps its Grail identity...
+    expect(grail.location).toBe("grail");
+
+    // ...and visiting it arms the dig instead of paying the Utopia rewards.
+    beginFieldVisit(state, hero.id, grail.spaceId, false);
+    expect(grail.grailDiggable).toBe(true);
+    expect(
+      state.adventure!.rewardQueue.filter((reward) => reward.kind === "shared-deck-search")
+    ).toHaveLength(0);
+
+    // The dig itself still completes the Grail chain (2 obelisks + revisit).
+    state.adventure!.grail!.obelisksVisited = { p1: ["obelisk-a", "obelisk-b"] };
+    beginFieldVisit(state, hero.id, grail.spaceId, true);
+    expect(state.adventure!.grail?.status).not.toBe("uncollected");
+  });
 });
 
 describe("Map Editor hidden Grail / Dragon Utopia rules", () => {

@@ -308,7 +308,7 @@ function unitInitiativeSpecialty(
       // Wiki / basic battlefield: Initiative only (doubled on the signature unit).
       // House rule ("combat-move-initiative"): ALSO +1 Combat movement (flat, never
       // doubled). House rule alternative: draw 1 card instead of the buff (map or combat).
-      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}. (House rule: also +1 Combat movement.) — OR — Draw 1 card (map or combat).`
+      `Combat: give a friendly unit +${amount} Initiative this combat — doubled (+${amount * 2}) for ${doubledUnit}. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat).`
     ],
     // Option A targets a friendly unit (it inherits this card-level target);
     // option B (draw a card) needs no target.
@@ -335,6 +335,7 @@ function unitInitiativeSpecialty(
         },
         {
           label: "Draw 1 card",
+          requiresHouseRule: "initiative-specialty-draw",
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
@@ -2594,7 +2595,7 @@ export const adventureCards: CardLibrary = {
       "haste",
       // Wiki / basic: Initiative only. House rule adds +1 Combat movement (gated
       // in getUnitMoveRange) and the draw alternative (map or combat).
-      "For this Combat, your selected unit's Initiative is increased by 3. (House rule: also +1 Combat movement.) — OR — Draw 1 card (map or combat)."
+      "For this Combat, your selected unit's Initiative is increased by 3. (House rule: also +1 Combat movement.) — OR — House rule: draw 1 card instead (map or combat)."
     ],
     // Option A targets the friendly unit (inherited); option B (draw) needs none.
     target: { type: "friendly-unit" },
@@ -2616,6 +2617,7 @@ export const adventureCards: CardLibrary = {
         },
         {
           label: "Draw 1 card",
+          requiresHouseRule: "initiative-specialty-draw",
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]

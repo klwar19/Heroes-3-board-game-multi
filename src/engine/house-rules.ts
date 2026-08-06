@@ -67,6 +67,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: true
   },
   {
+    id: "eversmoking-ring-of-sulfur-major",
+    label: "Eversmoking Ring of Sulfur plays as Major",
+    description:
+      "BINH house rule: Eversmoking Ring of Sulfur (printed Minor) is sorted and priced as a Major artifact. Untick to use its printed Minor tier.",
+    category: "decks",
+    default: true,
+    legacyDefault: false
+  },
+  {
     id: "griffin-buff",
     label: "Griffin buff",
     description: "Few Griffins fight at 3 Attack (printed 2) and Pack Griffins at 1 Defense (printed 0).",
@@ -116,6 +125,17 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     description: "A Sharpshooters recruited via Gelu's level-IV specialty permanently carries +1 Attack in every combat.",
     category: "abilities",
     default: true
+  },
+  {
+    id: "initiative-specialty-draw",
+    // The card text labels the draw side "House rule: …" so a Legacy /
+    // Tournament table (rule OFF) is not promised an option it cannot use.
+    label: "Initiative specialties: draw alternative",
+    description:
+      "Initiative-only specialty cards, including Gelu VI, may be discarded to draw 1 card instead of granting their combat Initiative bonus. Off: only the printed Initiative buff — the cards have no draw alternative.",
+    category: "abilities",
+    default: true,
+    legacyDefault: false
   },
   {
     id: "dracon-few-magi-trade",
@@ -229,7 +249,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-unit-stacks",
     label: "Purchasable Unit Stacks",
     description:
-      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). Cost = that side’s gold + tier. Stacked units gain +1 Attack; each layer absorbs one full health bar.",
+      "Polish house rule: at a Citadel, Pack Groups and recruited Neutrals may buy Stack layers (bronze max 3 / silver 2 / gold 1). Cost = that side’s gold + tier, plus the side's printed valuables (the Few→Pack fee). Stacked units gain +1 Attack; each layer absorbs one full health bar.",
     category: "polish",
     default: false,
     legacyDefault: false

@@ -77,7 +77,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // fingerprint hashes, so the explicit bump makes a skewed edge/client show the
 // version banner instead of silently dropping these rules or rejecting a
 // `dimension-door-hero` click the new client offers.
-export const ENGINE_PROTOCOL_VERSION = 18;
+// v19: the 2026-08-06 gameplay-fixes batch — a new
+// `ACKNOWLEDGE_FIRST_PLAYER_ROLL` action + the `openingFirstPlayerRollPending`
+// opening gate (a stale edge would reject the dismiss click and strand the
+// table), the `GRAIL_TILE_SCRY` visit step (private Obelisk Grail clues),
+// `USE_UNIT_DIE_IGNORE` gaining a REQUIRED `discardCardId` (the Halberdier
+// Parry selectable discard — old/new payloads are mutually unintelligible),
+// the PLAY_CARD/PLAY_REACTION `drawOnly`/`utilityOnly` flags, per-owner
+// in-flight card tracking (`playedCardIdsByPlayer`) with recovery
+// `excludeCardIds`, and two new house rules (`initiative-specialty-draw`,
+// `eversmoking-ring-of-sulfur-major`). None touch the hero/faction/unit
+// catalogs the fingerprint hashes, so the explicit bump makes a skewed
+// edge/client show the version banner instead of silently dropping the new
+// rules or rejecting the new actions.
+export const ENGINE_PROTOCOL_VERSION = 19;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

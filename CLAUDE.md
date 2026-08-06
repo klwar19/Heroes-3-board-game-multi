@@ -2452,6 +2452,159 @@ seam, with the CONTROL behaviour pinned.
   `ignoreKeyCards` Mage-Guild strictness only means anything while the house rule
   is ON.
 
+## Recent-gameplay-fixes batch (2026-08-06): 15 commits, audited — what runs vs. limits
+
+Fifteen codex commits landed together after a full audit (protocol bumped to
+v19 — new actions/state below; a stale PartyKit edge shows the out-of-date
+banner, `npm run deploy:partykit` still required). Leading with what the audit
+REVERTED or fixed, then what each commit ships.
+
+Audit reverts / fixes on top of the branch (each mutation-checked):
+- **b9a0b7bc's Ⅶ-field identity lock and `grailAsUtopia:"always"` Grail→Utopia
+  conversion were REVERTED** — they DESTROYED the Grail dig (the "always" mode
+  converted the Grail FIELD to a Dragon Utopia, so the Grail victory was
+  unwinnable and legacy saves broke). The shipped reading: under
+  `grailAsUtopia:"always"` the field STAYS a diggable Grail but its guards are
+  the Utopia dragons (`drawGuardArmyBase` → `drawDragonUtopiaArmy`); a
+  designated `viiField:"grail"` still BEATS a printed Dragon Utopia (pinned in
+  `vii-field-designation.test.ts` + `polish-grail-utopia.test.ts` — the dig
+  completes, no shared-deck-search rewards leak).
+- **The tournament combat SANDBOX split-deck change was REVERTED** to legacy
+  single decks: the sandbox's rules layer reads legacy defaults with
+  `adventure: null`, so split decks were unreachable by every search there —
+  dead searches silently DESTROYED cards (`combat-sandbox-setup.test.ts`).
+  Real tournament GAMES do split (below).
+- **accc1900's blanket map gate on `CREATE_ACTIVE_EFFECT` options was
+  REVERTED** — it also killed legitimate map plays (Pathfinding, Crest of
+  Valor). The two genuinely combat-only faces are flagged individually.
+- The first-player ceremony gate, the Parry UI, the in-flight card contract
+  and the AI regressions each needed fixes — noted per commit below.
+
+What each commit ships:
+- **Golden Bow timing** (`accc1900`): Golden Bow's ignore-penalties+attack
+  side and Necklace of Dragonteeth's spell side are `combatOnly: true` — both
+  were offered on the map where their effect could never apply (trap plays).
+- **Ammo Cart tie** (`09884fcc`): test-only — pins the Ammo Cart reroll offer
+  on a Creature-Bank guard initiative tie.
+- **Ring of Sulfur re-tier** (`93ccc1cc`): house rule
+  `eversmoking-ring-of-sulfur-major` (decks; default ON in BINH, OFF in
+  Legacy) — the printed-Minor ring sorts/prices as a MAJOR artifact, the
+  Torso-of-Legion pattern verbatim (static `artifactTier: "major"` = the
+  rule-ON reading; `effectiveArtifactTier` returns the printed "minor" when
+  OFF). AUDIT FIX: the branch left the static tier/tags "minor", failing the
+  deck-coverage invariant. The card face stays the printed minor scan.
+- **Tournament split decks** (`84d766d4`): a Tournament game plays with the
+  BINH split Spell/Artifact decks. AUDIT FIXES: the `tournamentMode` MASTER
+  toggle now forces `houseRules["split-decks"] = true` at the
+  `setGameOptions` seam (the branch set it only in the setup-hub button
+  payload, so the Advanced-panel path missed it); an explicit houseRules
+  payload still wins; the preset no longer flips `torso-of-legion-major`.
+  Pinned end-to-end in `tournament-split-decks.test.ts` (built game carries
+  artifacts-minor/major/relic + spells-expert, no combined deck).
+- **Unit-Stack valuables** (`87f3379c`): a Polish Stack purchase charges AND
+  displays the side's printed valuables — folded into the Polish Unit Stacks
+  section above.
+- **Dragontooth one-spell** (`37a6b452`): the Crown of Dragontooth's Polish
+  Spell Book side refreshes exactly ONE used Book Spell, not the whole used
+  side (`polish-spell-book.test.ts`).
+- **Utopia identity + Obelisk Grail clues** (`b9a0b7bc`, largely reverted —
+  above): what SURVIVES is the **Obelisk Grail-clue offer** — in Grail
+  victory mode an Obelisk visit may inspect ONE face-down tile
+  (`GRAIL_TILE_SCRY` visit step): the owner privately sees the tile's real
+  face, then hides it again. ONCE per player per Obelisk (the anti-farm
+  latch rides the existing `alreadyHere` visit dedupe), never mid-combat and
+  only while the hero stands on the Obelisk (`queueGrailClue` guards); a
+  monolith-role Obelisk APPENDS its teleport step after the clue. The step
+  bakes `tileDefId`/`tileRotation` into its payload because the owner's
+  PLAYER VIEW masks every face-down tile to "hidden" — the art renders from
+  the step, and other seats' views render nothing
+  (`obelisk-house-rule.test.ts`, `obelisk-grail-clue-art.test.tsx`).
+- **Tome split-deck selection** (`5a094c7c`): a Tome's "take a Spell" on a
+  split-deck table opens a basic-vs-expert deck pick (the expert deck honours
+  the crown gate) instead of always digging basic (`tome-artifacts.test.ts`).
+- **Bank Stack-Token duplicate cap** (`f649035f`): the four bank defenders'
+  random Stack-Token stats reroll so no stat lands more than TWICE per bank
+  (bounded reroll loop, 64-iteration backstop — AUDIT FIX: the branch loop
+  could spin unbounded on a degenerate RNG). Pinned across 250 seeds in
+  `creature-bank-combat.test.ts` (per-trial count still 4; exact pairs occur).
+- **Halberdier Parry selectable discard** (`2b27ead9`):
+  `USE_UNIT_DIE_IGNORE` now REQUIRES `discardCardId` — the player picks WHICH
+  hand card pays the Parry (one offer per distinct card; a legacy
+  no-discardCardId or not-in-hand forgery is rejected —
+  `halberdier-parry.test.ts`). AUDIT FIX: the branch shipped NO UI surface —
+  the reaction tray now renders a Parry tile per distinct hand card
+  (CardFrame + "Parry", `overlays.test.tsx`).
+- **Gelu VI draw house rule** (`2949bb20`): house rule
+  `initiative-specialty-draw` (abilities; default ON in BINH, OFF in Legacy)
+  — initiative-only specialty cards (incl. Gelu VI) may be discarded to draw
+  1 card instead of the Initiative buff. The card TAGS label the draw side
+  "House rule: …" so a rule-off table is not promised an option it lacks
+  (`initiative-specialty-houserule.test.ts` sweeps the tags).
+- **AI avoids doomed neutral fights** (`518003f6`): `combatIsHopeless`
+  (computer/combat-policy.ts) retreats a clearly lost neutral fight instead
+  of feeding the whole army. AUDIT FIXES: the ≤2-unit clause's threat ratio
+  is TIERED on a real wound — 1.35× once wounded/with casualties, 2× while
+  still unwounded (an unwounded retreat at the first continue window makes
+  the map policy immediately send the army back in, an enter→retreat loop;
+  a severe 2× mismatch still retreats cold, which is the commit's own pinned
+  Mummies case); and the home-tile opening sweep keeps an equal-level home
+  guard engageable (`map-navigation.ts` — the Impossible bronze cap
+  otherwise refused the difficulty-2 home guard forever).
+- **Instant card gain/recovery lifecycle** (`3071a80c`, the largest): every
+  implemented instant draw/recovery face now works on the MAP (a draw-only
+  twin per printed side, skipping faces that are already real map plays —
+  DRAW_CARDS / RESHUFFLE / GAIN_HERO_MOVEMENT / mapOnly — and honouring
+  printed per-option conditions) AND joins an EXISTING open reaction window
+  as a `drawOnly`/`utilityOnly` reaction. Those flagged reactions NEVER open
+  a window of their own (`reactionOfferOpensWindow` — without it a held
+  Offense/Armorer would pause every enemy attack; the bare morale draw keeps
+  its retaliation-only exception); a printed `mapOnly` face stays an
+  ABSOLUTE bar for reaction joins (Shield of Naval Glory's sea side).
+  Scholar/recovery picks exclude cards still RESOLVING: per-player in-flight
+  ledgers (`recoveryInFlightCardIds` mirrors `castInFlightCardIds`;
+  `modifiers.playedCardIds` rides the stack) filter TAKE_FROM_DISCARD /
+  polish-used pools by OCCURRENCE (a genuine second copy stays takeable),
+  and the in-window RESHUFFLE branch holds in-flight discard entries OUT of
+  their own reshuffle. CONSEQUENCE (deliberate, Scholar-pinned): **a played
+  card can never pick ITSELF out of its own TAKE_FROM_DISCARD window** — the
+  Mystic Orb of Mana / Crown of the Five Seas take-back windows shrink by
+  one where the played artifact used to be its own candidate (their tests
+  updated to the new reading). AUDIT FIXES: three `stackInFlightCardIds`
+  call sites passed the wrong player; a card with ANY side genuinely
+  matching the window's printed trigger gets NO trigger-free utility joins
+  for its other sides (`cardHasPrintedTriggerMatch` — the join would be a
+  strictly-worse TRAP TWIN of the real reaction; Kriv I's rune-fizzling
+  drawOnly twin masked the printed attack reaction and lost the
+  softens-the-triggering-attack behaviour); GAIN_MORALE (Leadership) and
+  TAKE_FROM_DISCARD (Scholar) keep their HISTORICAL unflagged
+  window-OPENING status — a held Leadership must still be playable on an
+  attack with no other reaction at the table — while all other joins are
+  flagged non-opening (`reactionOfferOpensWindow`); the UI batch tray now
+  threads `drawOnly` through group keys/labels/dispatch; the AI scores a
+  drawOnly play at a flat 300 (`card.draw-rider-only`) so it never dumps a
+  real combat instant for its rider. This SUPERSEDES the medic "no combat
+  draw-only offer" limit, the Kriv I/IV exemption, AND the "Scholar/
+  Leadership are the ONLY trigger-free instants allowed into an open window"
+  scope (all recorded in place).
+- **Computer-controlled neutral tactics** (`12b69a8e`): a computer
+  PvP-Neutral-Control seat plays the guards with better target/landing
+  picks through the existing controller machinery (score-layer only).
+- **Computer winner ceremony pause** (`e25f6359`): when the opening
+  first-player roll is won by a COMPUTER seat, the table pauses behind the
+  ceremony overlay until a human dismisses it (`ACKNOWLEDGE_FIRST_PLAYER_ROLL`
+  / `adventure.openingFirstPlayerRollPending`) — the AI no longer starts
+  moving behind the announcement. AUDIT FIXES (the frozen-table class):
+  the gate is the ONE shared predicate `firstPlayerCeremonyPending`
+  (first-player.ts) re-deriving "a live human exists" — read by
+  legal-actions AND `computerDecisionOwner` (window.ts stays in lockstep),
+  so a table whose last human gives up before dismissing can never freeze;
+  the client dismiss picks a LIVE HUMAN seat (an observer or computer-seat
+  viewer could never clear it before); the reconnect restore no longer
+  depends on the bounded event log (a synthetic id stands in); and the
+  server drive scripts (`single-player-pump.test.ts` /
+  `single-player-edge-start.test.ts`) acknowledge the ceremony so
+  computer-won-roll seeds don't stall the harness.
+
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's DEFAULT defense army is now the printed Stretch-Goals card:
@@ -2772,8 +2925,11 @@ Two audited codex commits. Leading with what does NOT run / deliberate limits:
   pre-roll moment — both directions pinned in `morale-in-combat.test.ts`, one
   offer only, never a duplicate look-alike button).
 - **Scholar/Leadership are the ONLY trigger-free instants allowed into an open
-  window** (explicit id opt-in in `getLegalReactionsForTrigger`); Scholar's
-  discard-pick resolves inside the window and the CHOOSE_OPTION dispatch then
+  window** — SUPERSEDED 2026-08-06 by the instant-lifecycle batch (its own
+  section): every implemented instant draw/recovery face now JOINS an open
+  window as a flagged non-opening reaction, while Scholar/Leadership keep
+  their historical window-OPENING status. Scholar's
+  discard-pick still resolves inside the window and the CHOOSE_OPTION dispatch
   re-derives + re-opens the window offers (passed players get to react again).
 - **Familiars' "Mana Leech" is the CASTER'S chosen discard, paid BEFORE the held
   Spell casts** (`familiar-choose-discard` COMBAT_HAND_DISCARD with a deferred
@@ -3522,9 +3678,15 @@ is NOT done:
 - With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
   card — at its own Citadel may buy persistent Stack layers with the Population
   flow. One Stack costs that side's printed gold cost plus its tier number
-  (bronze +1 / silver +2 / gold +3; azure counted as gold); the side's other
-  resource icons, normal recruit/reinforce discounts, and the Freelancer's
-  Guild substitution do not apply. Caps are bronze 3 / silver 2 / gold 1
+  (bronze +1 / silver +2 / gold +3; azure counted as gold) **plus the side's
+  printed VALUABLES** (2026-08 — the same valuables fee a Few→Pack reinforce of
+  that unit pays; a side printing no valuables adds none, building materials
+  never join the cost; `polishUnitStackCost`, pinned per-tier in
+  `polish-unit-stacks.test.ts` and named in the town/army purchase labels).
+  Recruit/reinforce percentage discounts do not apply to the base price, but
+  the purchase still pays through the recruit path (Legion `{kind:"stack"}`
+  vouchers + Freelancer's Guild substitution — see the Stack COST extensions
+  bullet below). Caps are bronze 3 / silver 2 / gold 1
   (azure as gold → 1) — always the ARMY table, even for a unit whose bank-guard
   twin punches higher. Every layer keeps that side's stats and ability. While
   at least one layer remains the card has exactly +1 Attack; lethal damage
@@ -5749,17 +5911,20 @@ a CONTROL).
   Offense / Armorer / Sorcery + Armor of Wonder / Scales / Tunic
   (`ADD_COMBAT_STAT` / `ADD_SPELL_POWER` — already map draw-only), Shield of
   Naval Glory (`GAIN_HERO_MOVEMENT`, already map-playable), Deemer IV
-  (`RESHUFFLE_DISCARD_THEN_DRAW`, already map-playable) and **Kriv I/IV
-  (`GAIN_RUNES`), deliberately LEFT ALONE**: their rune sides are printed
-  `combatOnly: true` and Kriv IV already carries its own dedicated MAP side
-  ("become Rune-Empowered"), so a draw-only map play would contradict the card
-  and duplicate that side.
+  (`RESHUFFLE_DISCARD_THEN_DRAW`, already map-playable) and Kriv I/IV
+  (`GAIN_RUNES`) — **the Kriv exemption was SUPERSEDED by the instant-lifecycle
+  batch (2026-08, below)**: `instantDrawOnlyRider` now covers `GAIN_RUNES`, so
+  the rune sides ARE offered as draw-only map plays (the runes fizzle, the draw
+  resolves — Kriv IV's dedicated "become Rune-Empowered" MAP side stays its own
+  separate real play).
 - Deliberate LIMITS: the resolution gate is the TARGET-LESS play, never "no
   combat", so a Dwarf-negated or effect-ignoring combat play (both of which drop
   the resolved target while `action.target` still names a unit) keeps its
-  existing no-op behaviour and draws NOTHING; **no combat draw-only offer was
-  added** (with nothing wounded and nothing paralysed the card is still
-  unplayable mid-fight — only the map play was asked for); and the AI scores the
+  existing no-op behaviour and draws NOTHING; the old "no combat draw-only
+  offer" limit is likewise SUPERSEDED by the instant-lifecycle batch — a medic
+  draw rider now joins an EXISTING open reaction window as a `drawOnly`
+  reaction (it never opens a window of its own, `reactionOfferOpensWindow`);
+  and the AI scores the
   new map play at a deliberately low **300** (`card-policy.ts`, below the
   ~590-610 map economy/search families) so a Rion/Aoko/Sirius/Molian seat never
   dumps the specialty it wants for a combat heal — a real in-combat heal still

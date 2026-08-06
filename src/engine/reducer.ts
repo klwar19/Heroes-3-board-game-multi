@@ -392,8 +392,10 @@ import {
   combatEnemyLocksSpells,
   getActivationStep,
   getLegalReactionsForTrigger,
+  reactionOfferOpensWindow,
   getOffTurnCombatReactions,
   healDrawOnlyRider,
+  instantDrawOnlyRider,
   isAdjacent,
   isHandLockedInCombat,
   isUnitAlive,
@@ -2042,15 +2044,23 @@ function castInFlightCardIds(
 
 function stackInFlightCardIds(
   state: GameState,
-  stackItem: ResolutionStackItem | undefined
+  stackItem: ResolutionStackItem | undefined,
+  playerId: PlayerId
 ): CardId[] {
   if (!stackItem) {
     return [];
   }
   return [
-    ...(stackItem.action.type === "CAST_SPELL"
+    ...(stackItem.action.type === "CAST_SPELL" && stackItem.action.playerId === playerId
       ? castInFlightCardIds(state, stackItem.action)
       : []),
+    ...(stackItem.modifiers.playedCardIdsByPlayer?.[playerId] ?? []),
+    // The flat ledger too: several push sites return BEFORE the by-player map
+    // is stamped (the asPowerBoost "+1 Power" discard, USE_SCHOOL_FETCH_EXPERT's
+    // consumed permanent) — reading only the by-player map let those be dealt
+    // straight back mid-resolution. A card may appear in BOTH lists; the extra
+    // occurrence only over-protects (a genuine duplicate stays put once more),
+    // which is the safe direction — never a mid-resolution leak.
     ...stackItem.modifiers.playedCardIds
   ];
 }
@@ -5936,7 +5946,7 @@ function applyOnAttackDieDraw(
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
-      inFlightCardIds: stackInFlightCardIds(state, state.stack.at(-1))
+      inFlightCardIds: stackInFlightCardIds(state, state.stack.at(-1), attacker.controllerId)
     });
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -9678,15 +9688,11 @@ function openReactionWindowForTrigger(
   // CARDS' combat-bonus reaction (SPEND_MORALE benefit "combat-bonus") is a
   // real printed reaction and still opens its window
   // (morale-card-effects.test.ts "playable as an INSTANT-WINDOW REACTION").
-  const moraleOnlyMayOpen =
-    triggerEvent.type === "UNIT_ATTACK_DECLARED" && triggerEvent.isRetaliation;
+  // ONE shared predicate with getLegalReactionsForTrigger's utility-strip tail
+  // (reactionOfferOpensWindow, legal-actions.ts) — the two gates diverging is
+  // exactly how the "every attack pauses" class of bug happens.
   const opensWindow = allowedPlayerIds.some((playerId) =>
-    (legalReactions[playerId] ?? []).some(
-      (legal) =>
-        legal.action.type !== "SPEND_MORALE" ||
-        (legal.action.benefit !== "draw" && legal.action.benefit !== "redraw") ||
-        moraleOnlyMayOpen
-    )
+    (legalReactions[playerId] ?? []).some((legal) => reactionOfferOpensWindow(legal, triggerEvent))
   );
   if (!opensWindow) {
     return false;
@@ -10115,7 +10121,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     if (stackItem.modifiers.slayerDraw) {
       stackItem.modifiers.slayerDraw = false;
       drawCardsForPlayer(state, details.attacker.controllerId, 1, {
-        inFlightCardIds: stackInFlightCardIds(state, stackItem)
+        inFlightCardIds: stackInFlightCardIds(state, stackItem, details.attacker.controllerId)
       });
     }
     return;
@@ -10588,7 +10594,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
 
     if (card?.effect.type === "DRAW_CARDS") {
       drawCardsForPlayer(state, stackItem.action.playerId, getEffectAmount(card.effect, "basic"), {
-        inFlightCardIds: stackInFlightCardIds(state, stackItem)
+        inFlightCardIds: stackInFlightCardIds(state, stackItem, stackItem.action.playerId)
       });
     }
 
@@ -12223,6 +12229,7 @@ function applyReactionPlayCore(
     cardId: string;
     mode?: "basic" | "expert";
     optionIndex?: number;
+    drawOnly?: true;
     costCardIds?: CardId[];
     /** Index-aligned with costCardIds: "expert" values a Power source at expertAmount and spends a crown. */
     costCardModes?: CardPlayMode[];
@@ -12539,18 +12546,20 @@ function applyReactionPlayCore(
     }
   }
 
-  const reactionInFlightCardIds: CardId[] = [
-    ...stackInFlightCardIds(state, stackItem),
-    ...(!play.fromScroll && !play.tarnumReturn
-      ? play.fromSpellBook && polishSpellBookEnabled(state)
-        ? play.castEnablerCardId
-          ? [play.castEnablerCardId]
-          : []
-        : !option?.cost?.removeSelf
-          ? [play.cardId]
-          : []
-      : [])
-  ];
+  const currentReactionInFlightCardIds: CardId[] = !play.fromScroll && !play.tarnumReturn
+    ? play.fromSpellBook && polishSpellBookEnabled(state)
+      ? play.castEnablerCardId
+        ? [play.castEnablerCardId]
+        : []
+      : !option?.cost?.removeSelf
+        ? [play.cardId]
+        : []
+    : [];
+  if (stackItem && currentReactionInFlightCardIds.length > 0) {
+    const byPlayer = (stackItem.modifiers.playedCardIdsByPlayer ??= {});
+    byPlayer[playerId] = [...(byPlayer[playerId] ?? []), ...currentReactionInFlightCardIds];
+  }
+  const reactionInFlightCardIds = stackInFlightCardIds(state, stackItem, playerId);
 
   if (card.kind === "spell" && state.combat && player) {
     // A Tarnum VI over-limit reaction and a Spell Scroll instant are free: they
@@ -12624,6 +12633,77 @@ function applyReactionPlayCore(
     optionLabel,
     ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
   });
+
+  // An Instant draw-rider used outside the primary effect's printed trigger:
+  // spend the card/cost normally, draw, and deliberately skip the stat, Power,
+  // heal, movement, morale, or Rune effect that has no valid target here.
+  if (play.drawOnly) {
+    const drawAmount = instantDrawOnlyRider(effect, mode);
+    if (drawAmount <= 0) {
+      throw new Error(`${card.name} has no unconditional card-draw rider.`);
+    }
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+    drawCardsForPlayer(state, playerId, drawAmount, {
+      inFlightCardIds: reactionInFlightCardIds
+    });
+    return { windowEnded: false };
+  }
+
+  // Deemer IV's trigger-free Instant utility is also legal inside a reaction
+  // window. Resolve the full printed operation: shuffle the prior discard back,
+  // keep this just-played card out, then draw. UNLIKE the turn-play twin
+  // (which runs with an empty stack), a window can hold OTHER in-flight cards
+  // whose bookkeeping has not finished — a Bloodlust mid-resolution, a consumed
+  // school-fetch permanent, a +Power discard. Per the repo-wide in-flight
+  // contract those are held OUT of their own reshuffle: they STAY in the
+  // discard (so a later Knowledge/Mysticism recall still finds them) instead of
+  // being dealt back into the deck mid-resolution. One occurrence per in-flight
+  // entry; genuine duplicate copies still shuffle normally.
+  if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    const reactingPlayer = state.players[playerId];
+    if (reactingPlayer) {
+      const playedIndex = reactingPlayer.discard.lastIndexOf(play.cardId);
+      const playedCard = playedIndex >= 0 ? [reactingPlayer.discard[playedIndex]] : [];
+      const candidates =
+        playedIndex >= 0
+          ? [...reactingPlayer.discard.slice(0, playedIndex), ...reactingPlayer.discard.slice(playedIndex + 1)]
+          : [...reactingPlayer.discard];
+      const protectCounts = new Map<CardId, number>();
+      let ownEntrySkipped = false;
+      for (const id of reactionInFlightCardIds) {
+        // The played card's own in-flight entry is the copy already extracted
+        // above — skip exactly one so a genuine duplicate still shuffles.
+        if (id === play.cardId && !ownEntrySkipped) {
+          ownEntrySkipped = true;
+          continue;
+        }
+        protectCounts.set(id, (protectCounts.get(id) ?? 0) + 1);
+      }
+      const heldInFlight: CardId[] = [];
+      const toShuffle: CardId[] = [];
+      for (const id of candidates) {
+        const left = protectCounts.get(id) ?? 0;
+        if (left > 0) {
+          protectCounts.set(id, left - 1);
+          heldInFlight.push(id);
+        } else {
+          toShuffle.push(id);
+        }
+      }
+      if (toShuffle.length > 0) {
+        reactingPlayer.deck = shuffleCards(
+          [...reactingPlayer.deck, ...toShuffle],
+          `${state.seed}#reaction-reshuffle-draw#${playerId}#${eventSeedNumber(state)}`
+        );
+      }
+      reactingPlayer.discard = [...heldInFlight, ...playedCard];
+      drawCardsForPlayer(state, playerId, effect.drawCards, {
+        inFlightCardIds: reactionInFlightCardIds
+      });
+    }
+    stackItem?.modifiers.playedCardIds.push(play.cardId);
+    return { windowEnded: false };
+  }
 
   if (effect.type === "CANCEL_SPELL" && stackItem?.action.type === "CAST_SPELL") {
     // Boots of Polarity: a chance-based cancel. Roll its Attack dice; on a
@@ -13046,7 +13126,8 @@ function applyReactionPlayCore(
       count: effect.count,
       filter: effect.filter,
       fromTop: effect.fromTop,
-      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      excludeCardIds: reactionInFlightCardIds
     });
   }
 
@@ -13853,7 +13934,7 @@ function playReaction(
   if (state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED") {
     const card = cards[action.cardId];
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
-    if (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER") {
+    if (!action.drawOnly && (action.asPowerBoost || effect?.type === "ADD_SPELL_POWER")) {
       const stackItem = state.stack.at(-1);
       const attackOwner =
         stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT"
@@ -14277,23 +14358,21 @@ function applyUnitDieIgnore(
     !getDiscardToIgnoreAttackDieAbility(defender) ||
     pendingAttack.modifiers.attackDieCancelled ||
     window.triggerEvent.roll <= 0 ||
-    player.hand.length === 0
+    !player.hand.includes(action.discardCardId)
   ) {
     throw new Error("That unit cannot ignore the Attack die now.");
   }
 
   // Pay the cost (one card discarded from hand), then treat the settled die as
   // ignored (0) — the same arm Shield of the Dwarven Lords uses.
-  const discarded = discardRandomCardFromHand(state, action.playerId);
+  discardNamedCardFromHand(state, action.playerId, action.discardCardId);
   pendingAttack.modifiers.attackDieCancelled = true;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: defender.id,
     abilityId: "halberdier-die-ignore",
     targetUnitId: defender.id,
-    message: discarded
-      ? `${defender.cardName} discards a card to ignore the Attack die.`
-      : `${defender.cardName} ignores the Attack die.`
+    message: `${defender.cardName} discards ${cards[action.discardCardId]?.name ?? action.discardCardId} to ignore the Attack die.`
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
@@ -14997,6 +15076,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       effectAmount: getEffectAmount(effect, mode) || undefined,
       optionLabel
     });
+  }
+
+  if (action.drawOnly) {
+    const drawAmount = instantDrawOnlyRider(effect, mode);
+    if (drawAmount <= 0) {
+      throw new Error(`${card.name} has no unconditional card-draw rider.`);
+    }
+    drawCardsForPlayer(state, action.playerId, drawAmount, {
+      inFlightCardIds: playInFlightCardIds
+    });
+    return;
   }
 
   // Ongoing rule snapshot: lasting effects created below keep the card in
@@ -15907,7 +15997,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       count: effect.count,
       filter: effect.filter,
       fromTop: effect.fromTop,
-      shuffleRestIntoDeck: effect.shuffleRestIntoDeck
+      shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      excludeCardIds: playInFlightCardIds
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
     // a queued discard-pick would not surface until the fight ended. A mid-Combat
@@ -16725,10 +16816,11 @@ function resolveEagleEyeDig(
   school?: Exclude<SpellSchool, "any">
 ): void {
   const wantedLevel = mode === "expert" ? "expert" : "basic";
-  // A Tome's School dig (option A) always reads the shared/basic Spell deck; the
-  // level-based Eagle Eye dig may switch to the BINH Expert Spell deck.
+  // With split decks, the selected Basic/Expert mode determines which physical
+  // Spell deck every dig reads. This also applies to a Tome's School-filtered
+  // dig; otherwise its two legal choices both searched the Basic deck.
   const deckId =
-    !school && houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
+    houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
   const deck = state.decks[deckId];
@@ -20881,6 +20973,22 @@ function advanceComputerStep(
   });
 }
 
+function acknowledgeFirstPlayerRoll(
+  state: GameState,
+  action: Extract<GameAction, { type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL" }>,
+): void {
+  if (!state.adventure?.openingFirstPlayerRollPending) {
+    throw new Error("There is no first-player ceremony to dismiss.");
+  }
+  if (!state.players[action.playerId] || state.players[action.playerId].eliminated) {
+    throw new Error("Only a live player may dismiss the first-player ceremony.");
+  }
+  if (isComputerPlayer(state, action.playerId)) {
+    throw new Error("A human must dismiss the first-player ceremony.");
+  }
+  state.adventure.openingFirstPlayerRollPending = false;
+}
+
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
   const cards = options.cards ?? cardLibrary;
   const buildings = options.buildings ?? sampleBuildings;
@@ -21275,6 +21383,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "ACKNOWLEDGE_COMBAT_END":
         acknowledgeCombatEnd(nextState, action);
+        break;
+      case "ACKNOWLEDGE_FIRST_PLAYER_ROLL":
+        acknowledgeFirstPlayerRoll(nextState, action);
         break;
       case "SKIP_NECROMANCY":
         skipNecromancy(nextState, action);

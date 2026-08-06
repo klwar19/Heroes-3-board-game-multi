@@ -51,6 +51,7 @@ import {
   heroHasFreeGateStep
 } from "./adventure";
 import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
+import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
 import {
   placementCellsFor,
@@ -89,6 +90,7 @@ import {
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
+  getEffectAmount,
   getEffectiveCardEffect,
   heroMovementGrantOption,
   spellMinUsefulPower,
@@ -2632,6 +2634,46 @@ function addCombatAnytimeSpecialtyPlays(
   }
 }
 
+/** One occurrence of each of this player's cards still resolving on the combat stack. */
+function recoveryInFlightCardIds(state: GameState, playerId: PlayerId): CardId[] {
+  return state.stack.flatMap((item) => [
+    // The cast's own in-flight footprint. A scroll cast leaves nothing in the
+    // discard, but a Book cast's ENABLER and a hero-specialty deck cast's
+    // specialty card DO land there mid-resolution — those enablers must be
+    // unrecoverable while the cast resolves (they mirror castInFlightCardIds
+    // in reducer.ts).
+    ...(item.action.type === "CAST_SPELL" && item.action.playerId === playerId && !item.action.fromScroll
+      ? item.action.fromSpellDeck
+        ? cardLibrary[item.action.fromSpellDeck]?.kind === "hero-specialty"
+          ? [item.action.fromSpellDeck]
+          : []
+        : item.action.fromSpellBook
+          ? item.action.castEnablerCardId
+            ? [item.action.castEnablerCardId]
+            : []
+          : [item.action.cardId]
+      : []),
+    ...(item.modifiers.playedCardIdsByPlayer?.[playerId] ?? []),
+    // The flat ledger too — several push sites never reach the by-player map
+    // (asPowerBoost discards, USE_SCHOOL_FETCH_EXPERT). Over-inclusion only
+    // hides one extra occurrence of a duplicate, never leaks a resolving card.
+    ...item.modifiers.playedCardIds
+  ]);
+}
+
+function excludeInFlightOccurrences(pool: CardId[], inFlightCardIds: readonly CardId[]): CardId[] {
+  const excludedCounts = new Map<CardId, number>();
+  for (const cardId of inFlightCardIds) {
+    excludedCounts.set(cardId, (excludedCounts.get(cardId) ?? 0) + 1);
+  }
+  return pool.filter((cardId) => {
+    const remaining = excludedCounts.get(cardId) ?? 0;
+    if (remaining <= 0) return true;
+    excludedCounts.set(cardId, remaining - 1);
+    return false;
+  });
+}
+
 /** Effects an "OR" option may resolve directly in the given context. */
 function isOptionEffectPlayable(
   state: GameState,
@@ -2701,7 +2743,8 @@ function isOptionEffectPlayable(
         return false;
       }
       const player = state.players[playerId];
-      const pool = effect.fromTop ? (player?.discard.slice(-effect.fromTop) ?? []) : (player?.discard ?? []);
+      const rawPool = effect.fromTop ? (player?.discard.slice(-effect.fromTop) ?? []) : [...(player?.discard ?? [])];
+      const pool = excludeInFlightOccurrences(rawPool, recoveryInFlightCardIds(state, playerId));
       // Polish recovery effects read the face-up used side of the Book instead
       // of a discard pile that can no longer contain owned Spells. Preserve any
       // non-Spell half of a mixed filter (Scholar's specialty recovery).
@@ -3369,8 +3412,14 @@ function addOptionPlays(
 
     for (const mode of modes) {
       for (const target of targets) {
+        const modeLabel =
+          option.effect.type === "EAGLE_EYE_DIG" && houseRuleEnabled(state, "split-decks")
+            ? ` (${mode === "expert" ? "Expert" : "Basic"} Spell deck)`
+            : mode === "expert" && !option.expertOnly
+              ? " (expert)"
+              : "";
         actions.push({
-          label: `${card.name}: ${option.label}${mode === "expert" && !option.expertOnly ? " (expert)" : ""}${
+          label: `${card.name}: ${option.label}${modeLabel}${
             fromSpellBook ? " (Spell Book)" : ""
           }`,
           action: {
@@ -3432,6 +3481,36 @@ export function healDrawOnlyRider(effect: EffectDefinition): number {
     return effect.drawCards ?? 0;
   }
   return 0;
+}
+
+/** Unconditional card-draw rider that remains useful when an Instant's primary effect cannot apply. */
+export function instantDrawOnlyRider(effect: EffectDefinition, mode: CardPlayMode = "basic"): number {
+  switch (effect.type) {
+    case "DRAW_CARDS":
+      return getEffectAmount(effect, mode);
+    case "ADD_COMBAT_STAT":
+    case "ADD_SPELL_POWER":
+    case "HEAL_DAMAGE":
+    case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+    case "GAIN_RUNES":
+    case "GAIN_HERO_MOVEMENT":
+      return effect.drawCards ?? 0;
+    case "GAIN_MORALE":
+      return mode === "expert" ? (effect.expertDrawCards ?? 0) : 0;
+    case "RESHUFFLE_DISCARD_THEN_DRAW":
+      return effect.drawCards;
+    default:
+      return 0;
+  }
+}
+
+function isInstantReactionUtility(effect: ConcreteEffect): boolean {
+  return (
+    instantDrawOnlyRider(effect, "basic") > 0 ||
+    instantDrawOnlyRider(effect, "expert") > 0 ||
+    effect.type === "TAKE_FROM_DISCARD" ||
+    effect.type === "RESHUFFLE_DISCARD_THEN_DRAW"
+  );
 }
 
 /** Effects that do something useful when played on the adventure map. */
@@ -3618,6 +3697,98 @@ function addTurnCardActions(
     }
 
     if (card.effect.type === "CHOOSE_ONE") {
+      if (!fromSpellBook && card.timing === "instant") {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          const drawAmount = instantDrawOnlyRider(option.effect, "basic");
+          if (
+            drawAmount <= 0 ||
+            option.effect.type === "DRAW_CARDS" ||
+            option.effect.type === "ADD_COMBAT_STAT" ||
+            option.effect.type === "ADD_SPELL_POWER" ||
+            option.effect.type === "HEAL_DAMAGE" ||
+            option.effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
+            // A reshuffle-then-draw face (Deemer IV) is a REAL map play already —
+            // a draw-only twin would silently skip the reshuffle (a trap button).
+            option.effect.type === "RESHUFFLE_DISCARD_THEN_DRAW" ||
+            // A movement face (Shield of Naval Glory) is likewise a real map
+            // play wherever its printed condition holds — the twin would be a
+            // strictly-worse duplicate there and an illegal offer elsewhere.
+            option.effect.type === "GAIN_HERO_MOVEMENT" ||
+            // A printed map-side (mapOnly) face is offered by the normal option
+            // pass — never as a draw-only twin.
+            option.mapOnly ||
+            !canAffordCardCost(state, playerId, cardId, option.cost)
+          ) {
+            continue;
+          }
+          // Printed per-option conditions still gate the draw-only play.
+          if (option.requiresEmptyDiscard && player.discard.length > 0) {
+            continue;
+          }
+          if (option.requiresSeaTile) {
+            const hero = getMainHero(state, playerId);
+            if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+              continue;
+            }
+          }
+          actions.push({
+            label: `${card.name}: ${option.label} (draw ${drawAmount} only)`,
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: "basic",
+              optionIndex,
+              drawOnly: true,
+              target: { type: "none" }
+            }
+          });
+        }
+      }
+
+      // A printed Instant's direct draw/recovery face stays usable on the map
+      // even when its other text names a combat trigger. The trigger's primary
+      // context is irrelevant to the standalone card gain (Zydar I, Skull
+      // Helmet, and future cards discovered by the invariant test).
+      if (!fromSpellBook && card.timing === "instant") {
+        for (const [optionIndex, option] of card.effect.options.entries()) {
+          if (option.effect.type !== "DRAW_CARDS" && option.effect.type !== "TAKE_FROM_DISCARD") {
+            continue;
+          }
+          if (option.requiresEmptyDiscard && player.discard.length > 0) {
+            continue;
+          }
+          if (option.requiresSeaTile) {
+            const hero = getMainHero(state, playerId);
+            if (!hero?.spaceId || !isSeaField(state, hero.spaceId)) {
+              continue;
+            }
+          }
+          if (
+            !canAffordCardCost(state, playerId, cardId, option.cost) ||
+            !isOptionEffectPlayable(state, playerId, option.effect, "map", cardId)
+          ) {
+            continue;
+          }
+          // Trigger-free, non-combat-only faces are already added by the normal
+          // option pass below; only add the exception that it would skip.
+          if (!option.trigger && !option.combatOnly) {
+            continue;
+          }
+          actions.push({
+            label: `${card.name}: ${option.label}`,
+            action: {
+              type: "PLAY_CARD",
+              playerId,
+              cardId,
+              mode: option.expertOnly ? "expert" : "basic",
+              optionIndex,
+              target: { type: "none" }
+            }
+          });
+        }
+      }
+
       // The CHOOSE_ONE twin of the medic map draw-only play above: each printed
       // side that carries a "then draw N" rider is offered for its draw alone
       // (Rion IV/VI's two sides; the level-VI sides still pay their printed
@@ -5644,6 +5815,27 @@ function getLegalActionsCore(
     return [];
   }
 
+  // The opening roll is an actual table boundary, not only a visual overlay.
+  // Until a human closes it, nobody may act and the computer runner must wait.
+  // The SHARED dynamic predicate (firstPlayerCeremonyPending) keeps this gate
+  // and computerDecisionOwner in lockstep AND drops the gate the moment no
+  // live human seat remains (the sticky flag alone would freeze the table).
+  if (firstPlayerCeremonyPending(state)) {
+    if (
+      state.players[playerId] &&
+      !state.players[playerId].eliminated &&
+      !isComputerPlayer(state, playerId)
+    ) {
+      return [
+        {
+          label: "Begin the adventure",
+          action: { type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL", playerId },
+        },
+      ];
+    }
+    return [];
+  }
+
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
       // Parallel turns: bystanders keep their quiet actions while another
@@ -6131,10 +6323,12 @@ function getDieCancelReactions(
   // controller still holds a card to pay the discard cost. Not a card play, so
   // it is pushed as a plain unit-ability reaction (like the Archangels' save).
   if (roll > 0 && player.hand.length > 0 && getDiscardToIgnoreAttackDieAbility(defender)) {
-    reactions.push({
-      label: `${defender.cardName}: discard a card to ignore the Attack die`,
-      action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id }
-    });
+    for (const discardCardId of new Set(player.hand)) {
+      reactions.push({
+        label: `${defender.cardName}: discard ${cards[discardCardId]?.name ?? discardCardId} to ignore the Attack die`,
+        action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id, discardCardId }
+      });
+    }
   }
 
   return reactions.length > 0 ? { [playerId]: reactions } : {};
@@ -6720,10 +6914,10 @@ export function getLegalReactionsForTrigger(
       if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
         continue;
       }
-      // Leadership and Scholar are trigger-free Instants. They may be used
-      // inside an already-open reaction window so their morale/card gain can
-      // feed another reaction, but holding either card must not open a window.
-      const allowTriggerlessUtility = cardId === "ability.leadership" || cardId === "ability.scholar";
+      // Every implemented Instant whose face draws cards or recovers from the
+      // discard pile may join a reaction window. This is effect-based so new
+      // cards cannot silently regress behind a card-id whitelist.
+      const allowTriggerlessUtility = card.timing === "instant";
 
       // Spell instants (hand or Book) respect the one-Spell-per-combat-round limit.
       if (card.kind === "spell" && spellLimitLeft <= 0) {
@@ -6735,10 +6929,57 @@ export function getLegalReactionsForTrigger(
         continue;
       }
 
+      // When ANY side of this card genuinely matches this window's printed
+      // trigger, the card's OTHER sides never join as trigger-free utility —
+      // that join would be a strictly-worse TRAP TWIN of the real reaction
+      // (Kriv I: "React to an enemy attack: gain 1 Rune and draw" vs the
+      // trigger-free "gain 1 Rune and draw" side, whose drawOnly join would
+      // fizzle the rune in the very window the printed side covers).
+      const cardHasPrintedTriggerMatch = getCardPlayVariants(card).some((sibling) =>
+        variantMatchesTrigger(sibling, triggerEvent, player.id, false)
+      );
+
       for (const variant of getCardPlayVariants(card)) {
+        const matchesPrintedTrigger = variantMatchesTrigger(variant, triggerEvent, player.id, false);
+        const allowUtilityJoin = allowTriggerlessUtility && !cardHasPrintedTriggerMatch;
+        // GAIN_MORALE (Leadership) and TAKE_FROM_DISCARD (Scholar) are the
+        // HISTORICAL trigger-free opt-ins: they keep their unflagged,
+        // window-OPENING status (reactionOfferOpensWindow treats an unflagged
+        // offer as opening), exactly as before this batch — a held Leadership
+        // must still be playable on an attack with no other reaction at the
+        // table (pinned in unit-ability-interactions.test.ts).
+        const historicalWindowOpener =
+          variant.effect.type === "GAIN_MORALE" || variant.effect.type === "TAKE_FROM_DISCARD";
+        const utilityOnly =
+          !matchesPrintedTrigger &&
+          allowUtilityJoin &&
+          isInstantReactionUtility(variant.effect) &&
+          !historicalWindowOpener;
+        // 2026-08-06: draw riders resolve ALONE in open windows (medic heal
+        // faces included — this supersedes the earlier "no combat draw-only
+        // offer" medic scope; the CLAUDE.md medic section records the change).
+        // Only a plain DRAW_CARDS face (a full play, not a rider) and the
+        // reshuffle-then-draw face (skipping the reshuffle would be a trap)
+        // stay out.
+        const drawOnlyEligible =
+          variant.effect.type !== "DRAW_CARDS" &&
+          variant.effect.type !== "RESHUFFLE_DISCARD_THEN_DRAW";
+        const basicDrawOnly =
+          !matchesPrintedTrigger &&
+          allowUtilityJoin &&
+          instantDrawOnlyRider(variant.effect, "basic") > 0 &&
+          drawOnlyEligible;
+        const expertDrawOnly =
+          !matchesPrintedTrigger &&
+          allowUtilityJoin &&
+          instantDrawOnlyRider(variant.effect, "expert") > 0 &&
+          drawOnlyEligible;
+        // A printed map-only face is an ABSOLUTE bar here: utility joining must
+        // never override a printed zone restriction (Shield of Naval Glory's
+        // "On a Sea tile" side would otherwise become a combat reaction).
         if (
           variant.mapOnly ||
-          !variantMatchesTrigger(variant, triggerEvent, player.id, allowTriggerlessUtility)
+          !variantMatchesTrigger(variant, triggerEvent, player.id, allowUtilityJoin)
         ) {
           continue;
         }
@@ -6780,7 +7021,7 @@ export function getLegalReactionsForTrigger(
         if (
           !variant.expertOnly &&
           !card.permanent &&
-          isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic")
+          (basicDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic"))
         ) {
           if (variant.effect.type === "ACTIVATE_RANGED_UNIT" && triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
             // Bowstring of the Unicorn's Mane / Valeska's Marksmen VI: one play
@@ -6813,6 +7054,8 @@ export function getLegalReactionsForTrigger(
                 cardId,
                 mode: "basic",
                 ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+                ...(basicDrawOnly ? { drawOnly: true as const } : {}),
+                ...(utilityOnly ? { utilityOnly: true as const } : {}),
                 ...(fromSpellBook ? { fromSpellBook: true } : {})
               })
             );
@@ -6823,7 +7066,7 @@ export function getLegalReactionsForTrigger(
           (effectHasExpertMode(variant.effect) || variant.expertOnly) &&
           // An Empowered ability may take its Expert side without a crown.
           (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
-          isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert")
+          (expertDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert"))
         ) {
           push(
             makeReactionAction(`${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
@@ -6832,6 +7075,8 @@ export function getLegalReactionsForTrigger(
               cardId,
               mode: "expert",
               ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {}),
+              ...(expertDrawOnly ? { drawOnly: true as const } : {}),
+              ...(utilityOnly ? { utilityOnly: true as const } : {}),
               ...(fromSpellBook ? { fromSpellBook: true } : {})
             })
           );
@@ -7411,7 +7656,74 @@ export function getLegalReactionsForTrigger(
     }
   }
 
+  // Card-gain utilities ride a window opened by a genuine response, but never
+  // pause every attack/cast merely because somebody holds a draw/recovery card.
+  // Once the window exists, refreshes keep exposing them so they can feed a
+  // later reaction in the same exchange.
+  const matchingWindowOpen = state.reactionWindow?.triggerEvent.id === triggerEvent.id;
+  for (const [playerId, reactions] of Object.entries(result)) {
+    const realCardFaces = new Set(
+      reactions
+        .filter(
+          (legal): legal is LegalAction & { action: Extract<GameAction, { type: "PLAY_REACTION" }> } =>
+            legal.action.type === "PLAY_REACTION" && !legal.action.utilityOnly
+        )
+        .map((legal) => `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`)
+    );
+    result[playerId] = reactions.filter(
+      (legal) =>
+        legal.action.type !== "PLAY_REACTION" ||
+        !legal.action.utilityOnly ||
+        !realCardFaces.has(`${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`)
+    );
+  }
+  const hasWindowOpeningReaction = Object.values(result).some((reactions) =>
+    reactions.some((legal) => reactionOfferOpensWindow(legal, triggerEvent))
+  );
+  if (!matchingWindowOpen && !hasWindowOpeningReaction) {
+    for (const [playerId, reactions] of Object.entries(result)) {
+      const withoutUtilities = reactions.filter(
+        (legal) => legal.action.type !== "PLAY_REACTION" || !legal.action.utilityOnly
+      );
+      if (withoutUtilities.length > 0) {
+        result[playerId] = withoutUtilities;
+      } else {
+        delete result[playerId];
+      }
+    }
+  }
+
   return result;
+}
+
+/**
+ * The ONE reading of "does this offer justify OPENING a reaction window" —
+ * shared by getLegalReactionsForTrigger's utility-strip tail and by
+ * openReactionWindowForTrigger (reducer.ts). The two gates MUST agree: when
+ * they disagreed, a bare Morale token counted as an opener on one side while
+ * the surviving utility counted as an opener on the other, and EVERY attack at
+ * the table paused for a seat holding a token plus any draw instant.
+ *
+ * Non-opening (they only ever JOIN a window somebody else opened):
+ * - the bare positive-Morale TOKEN draw/redraw spends — EXCEPT on a
+ *   Retaliation Attack (the retaliating side's only pre-roll moment, pinned in
+ *   morale-in-combat.test.ts both directions);
+ * - `utilityOnly` / `drawOnly` PLAY_REACTIONs (trigger-free card-gain joins and
+ *   draw riders — "work during EXISTING reaction windows", never a pause of
+ *   their own; without the drawOnly half a held Offense/Armorer would pause
+ *   every enemy attack).
+ */
+export function reactionOfferOpensWindow(legal: LegalAction, triggerEvent: GameEvent): boolean {
+  if (
+    legal.action.type === "SPEND_MORALE" &&
+    (legal.action.benefit === "draw" || legal.action.benefit === "redraw")
+  ) {
+    return triggerEvent.type === "UNIT_ATTACK_DECLARED" && Boolean(triggerEvent.isRetaliation);
+  }
+  if (legal.action.type === "PLAY_REACTION" && (legal.action.utilityOnly || legal.action.drawOnly)) {
+    return false;
+  }
+  return true;
 }
 
 /** Whether a card's schools include `school` (or the school-agnostic "any"). */
@@ -7505,22 +7817,9 @@ function variantMatchesTrigger(
   playerId: PlayerId,
   allowTriggerlessUtility = false
 ): boolean {
+  const utilityFallback = allowTriggerlessUtility && isInstantReactionUtility(variant.effect);
   if (!variant.trigger) {
-    // A trigger-free "Draw a card" instant (the Breastplate of Petrified Wood's
-    // "Draw 1 card" arm, Offense/Armorer I's draw option, …) is NOT a response to
-    // any trigger — drawing a card has nothing to do with the spell/attack/
-    // activation that opened the window. It used to be offered in EVERY reaction
-    // window, which FORCED a reaction window to open (and dragged its holder into
-    // it) the instant ANY spell was cast / attack declared / unit activated — so
-    // merely *holding* such a card meant "suddenly you must use it / pass" on
-    // every opponent's action. That is the forced-use bug.
-    //
-    // These draws stay fully playable on the holder's OWN initiative — on their
-    // turn and off-turn via addPlayableCardActions — they just never force or
-    // join a reaction window. (A real triggered reaction, e.g. the breastplate's
-    // "+1 Power" on your own cast or Armorer's "+defense, then draw" on an
-    // incoming attack, still works: those carry a `trigger` and fall through.)
-    return allowTriggerlessUtility && (variant.effect.type === "GAIN_MORALE" || variant.effect.type === "TAKE_FROM_DISCARD");
+    return utilityFallback;
   }
 
   if (variant.trigger.event !== triggerEvent.type) {
@@ -7546,16 +7845,16 @@ function variantMatchesTrigger(
     ) {
       return triggerEvent.playerId !== playerId;
     }
-    return false;
+    return utilityFallback;
   }
 
   const isSelf = triggerEvent.playerId === playerId;
   if (variant.trigger.controller === "self" && !isSelf) {
-    return false;
+    return utilityFallback;
   }
 
   if (variant.trigger.controller === "opponent" && isSelf) {
-    return false;
+    return utilityFallback;
   }
 
   return true;
@@ -7829,10 +8128,18 @@ export function isEffectLegalForTrigger(
       if (effect.filter === "magic-arrow") return cardId === "spell.magic_arrow";
       return true;
     };
-    return (
-      player.discard.some(matches) ||
-      (polishSpellBookEnabled(state) && (player.spellBookUsed ?? []).some(matches))
-    );
+    const inFlight = recoveryInFlightCardIds(state, playerId);
+    const availableDiscard = excludeInFlightOccurrences(player.discard, inFlight);
+    // The Polish used-Book pool is filtered by the SAME in-flight read — a Book
+    // Spell whose cast is still resolving must not count as recoverable.
+    const availableBookUsed = polishSpellBookEnabled(state)
+      ? excludeInFlightOccurrences(player.spellBookUsed ?? [], inFlight)
+      : [];
+    return availableDiscard.some(matches) || availableBookUsed.some(matches);
+  }
+  if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
+    const player = state.players[playerId];
+    return Boolean(player && state.combat && player.deck.length + player.discard.length > 0);
   }
 
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent
@@ -8845,7 +9152,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         }
         const unitName = coreUnitDefinitions[target.unitDefId]?.name ?? target.unitDefId;
         actions.push({
-          label: `Add Stack to ${unitName}`,
+          label: `Add Stack to ${unitName} (${formatResourceCost(cost)})`,
           action: {
             type: "POPULATION_ACTION",
             playerId,

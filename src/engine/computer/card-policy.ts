@@ -1025,6 +1025,16 @@ export function scoreCardAction(
         };
       }
 
+      // A draw-rider-only play resolves NOTHING but "draw N": scoring it by the
+      // primary effect would value a medic's drawOnly as a save-tier heal (and
+      // a stat rider as a stat reaction), making the AI dump the card it wants
+      // for a real play later. Score it as the pure card-cycle it is — the same
+      // deliberately-low band as the medic map draw-only play (~300), so a real
+      // in-combat use always outranks it.
+      if ((action.type === "PLAY_CARD" || action.type === "PLAY_REACTION") && action.drawOnly) {
+        return { score: 300, policy: "card.draw-rider-only" };
+      }
+
       const mode = "mode" in action ? action.mode : undefined;
       const optionIndex = "optionIndex" in action ? action.optionIndex : undefined;
       const target = "target" in action ? action.target : undefined;
@@ -1248,7 +1258,10 @@ export function scoreCardAction(
           marginal = 1_060;
         }
       }
-      const score = marginal - Math.round(averageKeep * 0.35);
+      const discardKeep = action.discardCardId
+        ? cardKeepValue(action.discardCardId, observation)
+        : averageKeep;
+      const score = marginal - Math.round(discardKeep * 0.35);
       return { score, policy: "combat.discard-to-ignore-positive-die" };
     }
     case "USE_SCHOOL_FETCH_EXPERT":

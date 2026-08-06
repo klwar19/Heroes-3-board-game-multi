@@ -39,12 +39,19 @@ function passAllReactions(state: GameState): GameState {
   return current;
 }
 
-function findPlay(state: GameState, playerId: "p1" | "p2", cardId: string, optionIndex: number) {
+function findPlay(
+  state: GameState,
+  playerId: "p1" | "p2",
+  cardId: string,
+  optionIndex: number,
+  mode: "basic" | "expert" = "basic"
+) {
   return getLegalActions(state, playerId).find(
     (legal) =>
       legal.action.type === "PLAY_CARD" &&
       legal.action.cardId === cardId &&
-      legal.action.optionIndex === optionIndex
+      legal.action.optionIndex === optionIndex &&
+      (legal.action.mode ?? "basic") === mode
   );
 }
 
@@ -136,6 +143,48 @@ describe("Tome artifact definitions", () => {
 // ===========================================================================
 
 describe("Tome option A: School Spell-deck dig", () => {
+  it("labels and searches the selected Basic or Expert deck when decks are split", () => {
+    const makeState = (seed: string) => {
+      let state = createAdventureGameState({
+        seed,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        houseRules: { "split-decks": true }
+      });
+      state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+        ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+        : state;
+      state.activePlayerId = "p1";
+      state.players.p1.hand = [TOME_EARTH];
+      state.players.p1.limits.expertUses = 1;
+      state.decks.spells.drawPile = ["spell.stone_skin"];
+      state.decks.spells.discardPile = [];
+      state.decks["spells-expert"]!.drawPile = ["spell.implosion"];
+      state.decks["spells-expert"]!.discardPile = [];
+      return state;
+    };
+
+    const basicState = makeState("tome-split-basic");
+    const basic = findPlay(basicState, "p1", TOME_EARTH, 0, "basic");
+    const expert = findPlay(basicState, "p1", TOME_EARTH, 0, "expert");
+    expect(basic?.label).toContain("Basic Spell deck");
+    expect(expert?.label).toContain("Expert Spell deck");
+    expect(basic?.label).not.toBe(expert?.label);
+
+    const afterBasic = applyOk(basicState, basic!.action);
+    expect(afterBasic.pendingChoice?.type === "OPTION_CHOICE" ? afterBasic.pendingChoice.eagleEye : null).toMatchObject({
+      deckId: "spells",
+      cardId: "spell.stone_skin"
+    });
+
+    const expertState = makeState("tome-split-expert");
+    const afterExpert = applyOk(expertState, findPlay(expertState, "p1", TOME_EARTH, 0, "expert")!.action);
+    expect(afterExpert.pendingChoice?.type === "OPTION_CHOICE" ? afterExpert.pendingChoice.eagleEye : null).toMatchObject({
+      deckId: "spells-expert",
+      cardId: "spell.implosion"
+    });
+  });
+
   it("Tome of Fire finds the first Fire spell, skipping a non-Fire one on top", () => {
     let state = createAdventureGameState({ seed: "tome-dig", difficulty: "normal", rollFirstPlayer: false });
     state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) ? applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] }) : state;
@@ -222,6 +271,18 @@ describe("Tome option A: School Spell-deck dig", () => {
 // ===========================================================================
 
 describe("Tome option B: force maximum Power", () => {
+  it("keeps the School-dig side playable in combat and the max-Power side available while casting", () => {
+    const idle = combatWithTarget("tome-both-combat-sides");
+    idle.players.p1.hand = [TOME_AIR, "spell.lightning_bolt"];
+    idle.decks.spells.drawPile = ["spell.haste"];
+    idle.decks.spells.discardPile = [];
+    expect(findPlay(idle, "p1", TOME_AIR, 0)).toBeTruthy();
+
+    const cast = findCast(idle, "p1", "spell.lightning_bolt", "unit_p2_skeletons");
+    const casting = applyOk(idle, cast!.action);
+    expect(reactionAction(casting, "p1", TOME_AIR, 1)).toBeTruthy();
+  });
+
   it("control: Lightning Bolt cast with no Power deals its Power-0 damage (2)", () => {
     const state = combatWithTarget("tome-bolt-control");
     state.players.p1.hand = ["spell.lightning_bolt"];

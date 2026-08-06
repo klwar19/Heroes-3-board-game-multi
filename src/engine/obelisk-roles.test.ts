@@ -105,6 +105,16 @@ function commitTravel(state: GameState, playerId: PlayerId = "p1"): void {
   }
 }
 
+/** In Grail mode an Obelisk's first visit offers the private Grail clue BEFORE
+ *  any teleport — answer it with its LAST option ("Do not inspect a tile").
+ *  A no-op when no clue is pending, so non-Grail flows can call it safely. */
+function declineGrailClue(state: GameState, playerId: PlayerId = "p1"): void {
+  const step = state.adventure!.pendingVisit?.steps[0];
+  if (step?.type === "CHOOSE_ONE" && step.prompt?.includes("Grail clue")) {
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId, optionIndex: step.options.length - 1 });
+  }
+}
+
 /** Resolve any "choose a die result" prompts inside a pending visit. */
 function driveVisit(state: GameState, playerId: PlayerId): void {
   let guard = 0;
@@ -599,12 +609,17 @@ describe("Obelisk role — Holy-Grail invariant (dig progress is role-independen
     const hero = getMainHero(state, "p1")!;
 
     parkHero(state, "p1", O1);
-    beginFieldVisit(state, hero.id, O1, false); // credit O1, then offer the travel
+    beginFieldVisit(state, hero.id, O1, false); // credit O1, clue offer, then the travel
     expect(grailObelisksVisitedCount(state, "p1")).toBe(1);
+    // In Grail mode the first visit ALSO offers the private Grail clue, queued
+    // BEFORE the teleport so it resolves while the hero still stands here.
+    // Decline it (its LAST option), then the travel offer opens.
+    declineGrailClue(state);
     commitTravel(state); // travel to O2
     expect(hero.spaceId).toBe(O2);
 
-    beginFieldVisit(state, hero.id, O2, false); // now on O2 — credit O2, offer travel
+    beginFieldVisit(state, hero.id, O2, false); // now on O2 — credit O2, clue, travel
+    declineGrailClue(state);
     expect(grailObelisksVisitedCount(state, "p1")).toBe(GRAIL_OBELISKS_REQUIRED);
     expect(canDigGrail(state, "p1")).toBe(true);
   });

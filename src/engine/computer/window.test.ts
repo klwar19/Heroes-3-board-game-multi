@@ -1,10 +1,41 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "../reducer";
-import { createAdventureLobbyState } from "../adventure-setup";
+import { createAdventureGameState, createAdventureLobbyState } from "../adventure-setup";
+import { getLegalActions } from "../legal-actions";
 import { computerDecisionOwner } from "./window";
 import { NEUTRAL_PLAYER_ID } from "../state";
 
 describe("computer decision ownership", () => {
+  it("waits behind the first-player ceremony until a human dismisses it", () => {
+    const state = createAdventureGameState({
+      seed: "computer-first-roll-gate",
+      playerCount: 2,
+    });
+    state.sessionMode = "single-player";
+    state.controllers = {
+      p1: { kind: "human" },
+      p2: { kind: "computer", difficulty: "standard", policyVersion: 1 },
+    };
+    state.turnOrder = ["p2", "p1"];
+    state.activePlayerId = "p2";
+    state.adventure!.openingFirstPlayerRollPending = true;
+
+    expect(state.adventure?.openingFirstPlayerRollPending).toBe(true);
+    expect(computerDecisionOwner(state)).toBeNull();
+    expect(getLegalActions(state, "p2")).toEqual([]);
+    expect(getLegalActions(state, "p1").map((legal) => legal.action.type)).toEqual([
+      "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
+    ]);
+
+    const acknowledged = applyAction(state, {
+      type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL",
+      playerId: "p1",
+    });
+    expect(acknowledged.errors).toEqual([]);
+    expect(acknowledged.state.adventure?.openingFirstPlayerRollPending).toBe(false);
+    expect(computerDecisionOwner(acknowledged.state)).toBe("p2");
+  });
+
   function neutralControlCombat(pendingNeutralPlacement: string | null, activeUnitId?: string) {
     const state = createAdventureLobbyState({
       seed: "window-neutral-control",

@@ -9,6 +9,28 @@ type FirstPlayerCandidate = {
 };
 
 /**
+ * Whether the opening first-player ceremony still blocks round-one play — the
+ * ONE shared read for legal-actions' gate and computerDecisionOwner
+ * (window.ts): the two diverging is the frozen-table class.
+ *
+ * The flag itself is a sticky boolean stamped ONCE at commit time, so the LIVE
+ * human check must be re-derived here: if the last live human seat leaves
+ * (gives up) before dismissing, nobody could ever send the ack and the flag
+ * would freeze the table forever.
+ */
+export function firstPlayerCeremonyPending(state: GameState): boolean {
+  if (!state.adventure?.openingFirstPlayerRollPending) {
+    return false;
+  }
+  return Object.keys(state.players).some(
+    (playerId) =>
+      playerId !== NEUTRAL_PLAYER_ID &&
+      state.controllers?.[playerId]?.kind !== "computer" &&
+      !state.players[playerId]?.eliminated
+  );
+}
+
+/**
  * Pure, seeded preview of the opening Attack-die ceremony. Setup uses the
  * result to assign home positions by game order without publishing the roll;
  * the queue commits the same result only after every starting bonus resolves.
@@ -90,6 +112,19 @@ export function commitFirstPlayerRoll(state: GameState): FirstPlayerRollState | 
   }
 
   state.adventure.firstPlayerRoll = roll;
+  // The roll is presentation with a mechanical boundary: do not let a server-
+  // driven computer winner start moving behind it. One human dismissal releases
+  // the table. Fully automated fixtures have nobody to dismiss, so do not gate.
+  const winnerIsComputer =
+    state.controllers?.[roll.winnerPlayerId]?.kind === "computer";
+  state.adventure.openingFirstPlayerRollPending =
+    winnerIsComputer &&
+    Object.keys(state.players).some(
+      (playerId) =>
+        playerId !== NEUTRAL_PLAYER_ID &&
+        state.controllers?.[playerId]?.kind !== "computer" &&
+        !state.players[playerId]?.eliminated,
+    );
   state.adventure.openingFirstPlayerSeed = undefined;
   // Rotate the FULL seat order to the winner, then keep only still-live seats:
   // when the winner was eliminated during the bonus phase, the next live seat

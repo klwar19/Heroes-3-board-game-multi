@@ -848,6 +848,7 @@ export default function Home() {
     queue: []
   });
   const [firstRoll, setFirstRoll] = useState<FirstPlayerRollCue | null>(null);
+  const firstRollAckInFlightRef = useRef(false);
   const [newDay, setNewDay] = useState<{ current: NewDayCue | null; queue: NewDayCue[] }>({
     current: null,
     queue: []
@@ -1427,6 +1428,39 @@ export default function Home() {
       setMapNotice({ current: null, queue: [] });
       setMoraleCue({ current: null, queue: [] });
       setFirstRoll(null);
+      // Reconnecting during the opening boundary must restore its ceremony.
+      // The event is deliberately marked seen above, so rebuild from the live
+      // pending state instead of replaying any historical presentation event.
+      if (
+        nextState.adventure?.openingFirstPlayerRollPending &&
+        nextState.adventure.firstPlayerRoll
+      ) {
+        // The historical FIRST_PLAYER_ROLLED record is used only for its id —
+        // the bounded/rotated log may no longer hold it, and the ceremony
+        // gates the WHOLE table, so the overlay (and its dismiss button) must
+        // restore regardless; a stable synthetic id stands in when the event
+        // has rotated out.
+        const event = [...presentationEvents]
+          .reverse()
+          .find(
+            (candidate): candidate is Extract<GameEvent, { type: "FIRST_PLAYER_ROLLED" }> =>
+              candidate.type === "FIRST_PLAYER_ROLLED",
+          );
+        const roll = nextState.adventure.firstPlayerRoll;
+        setFirstRoll({
+          id: event?.id ?? `first-roll-${roll.winnerPlayerId}`,
+          attempts: roll.attempts,
+          winnerPlayerId: roll.winnerPlayerId,
+          winnerName:
+            nextState.players[roll.winnerPlayerId]?.name ?? roll.winnerPlayerId,
+          order: nextState.turnOrder
+            .filter((id) => id !== NEUTRAL_PLAYER_ID)
+            .map((id) => ({
+              playerId: id,
+              name: nextState.players[id]?.name ?? id,
+            })),
+        });
+      }
       setNewDay({ current: null, queue: [] });
       setAstrologerCue(null);
       setEventCue(null);
@@ -3697,7 +3731,7 @@ export default function Home() {
   // Closing the first-player ceremony releases the opening deal: the deck->hand
   // flights stashed at game start fly now, and the freshly dealt hand reveals as
   // they land — the roll having led, the cards draw after.
-  const dismissFirstRoll = useCallback(() => {
+  const finishFirstRollPresentation = useCallback(() => {
     const deferred = deferredStartDrawRef.current;
     deferredStartDrawRef.current = null;
     if (deferred) {
@@ -3713,6 +3747,46 @@ export default function Home() {
     }
     setFirstRoll(null);
   }, []);
+
+  const dismissFirstRoll = useCallback(() => {
+    const current = stateRef.current;
+    if (!current?.adventure?.openingFirstPlayerRollPending) {
+      finishFirstRollPresentation();
+      return;
+    }
+    const connection = connectionRef.current;
+    // The engine accepts the ack from a LIVE HUMAN seat only. The viewer may be
+    // the observer seat or (hot-seat switch) a computer seat — dismissing must
+    // still work, or the ceremony freezes the table until a reload. Prefer the
+    // viewer's own seat, else act as the first live human seat.
+    const liveHumanSeat = (candidate: string): boolean =>
+      candidate !== NEUTRAL_PLAYER_ID &&
+      Boolean(current.players[candidate]) &&
+      !current.players[candidate]?.eliminated &&
+      current.controllers?.[candidate]?.kind !== "computer";
+    const playerId = liveHumanSeat(viewerRef.current)
+      ? viewerRef.current
+      : Object.keys(current.players).find(liveHumanSeat);
+    if (!connection || !playerId || firstRollAckInFlightRef.current) {
+      return;
+    }
+    firstRollAckInFlightRef.current = true;
+    void connection
+      .submitAction({ type: "ACKNOWLEDGE_FIRST_PLAYER_ROLL", playerId })
+      .then((payload) => {
+        if (payload.errors.length > 0) {
+          setErrors(payload.errors.map((error) => error.message));
+          return;
+        }
+        finishFirstRollPresentation();
+      })
+      .catch(() => {
+        setErrors(["Could not begin the adventure. Try closing the roll again."]);
+      })
+      .finally(() => {
+        firstRollAckInFlightRef.current = false;
+      });
+  }, [finishFirstRollPresentation]);
 
   // The yellow/Resource die reads first: once the last map die clears the
   // screen, release the visit toasts (the calculation and notice) held behind
@@ -3768,7 +3842,11 @@ export default function Home() {
     setDice({ current: null, queue: [] });
     setMapDice({ current: null, queue: [] });
     setMapNotice({ current: null, queue: [] });
-    setFirstRoll(null);
+    if (firstRoll) {
+      dismissFirstRoll();
+    } else {
+      setFirstRoll(null);
+    }
     setNewDay({ current: null, queue: [] });
     setMoraleCue({ current: null, queue: [] });
     setAstrologerCue(null);
@@ -3790,7 +3868,7 @@ export default function Home() {
     for (const timer of damageRevealTimersRef.current) window.clearTimeout(timer);
     damageRevealTimersRef.current = [];
     presentationStartedAtRef.current = null;
-  }, []);
+  }, [dismissFirstRoll, firstRoll]);
 
   const presentationActive = Boolean(
     dice.current || mapDice.current || mapNotice.current || firstRoll || newDay.current || moraleCue.current ||

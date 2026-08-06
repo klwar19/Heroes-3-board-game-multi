@@ -989,6 +989,7 @@ describe("Game options — tabbed layout", () => {
           tournamentBanDiplomacy: true,
           tournamentBanHourglass: true,
           tournamentSecondPlayerMorale: true,
+          houseRules: expect.objectContaining({ "split-decks": true }),
           difficulty: "hard",
           pvpNeutralControl: true
         })

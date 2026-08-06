@@ -5253,7 +5253,7 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
       field.grailDiggable = true;
     }
     if (specialRules) {
-      // The conversion happens when the fight is won, before anyone digs.
+      // The Polish rule changes other Grail fields into real Utopias on clear.
       adventure.grailFieldCleared = true;
       applyPolishGrailFightConversion(state, field.spaceId);
     }
@@ -5281,7 +5281,8 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
-    // After dig: convert OTHER undug Grail fields (utopia or empty).
+    // Preserve explicit designer after-dig transformations (real Utopia/empty
+    // locations), which are distinct from the former `always` hybrid.
     if (!specialRules) {
       applyGrailAfterDigConversion(state, field.spaceId);
     }
@@ -5297,11 +5298,7 @@ function applyPolishGrailFightConversion(state: GameState, clearedFieldId: MapSp
     // whose guards already fell (`blackCube`) is a spent dig site — a second
     // Grail materialising later (its tile was face-down at this fight) must not
     // resurrect it into a fresh, fightable Dragon Utopia with a full reward.
-    if (
-      field.spaceId === clearedFieldId ||
-      field.location !== "grail" ||
-      field.blackCube
-    ) {
+    if (field.spaceId === clearedFieldId || field.location !== "grail" || field.blackCube) {
       continue;
     }
     field.location = "dragon_utopia";
@@ -5326,18 +5323,14 @@ function applyGrailAfterDigConversion(state: GameState, dugFieldId: MapSpaceId):
   const adventure = state.adventure;
   if (!adventure) return;
   for (const field of Object.values(adventure.fields)) {
-    if (field.spaceId === dugFieldId) continue;
-    if (field.location !== "grail") continue;
+    if (field.spaceId === dugFieldId || field.location !== "grail") continue;
     if (mode === "after-dig-utopia") {
       field.location = "dragon_utopia";
-      // Fresh Utopia fight: clear dig flag / cube so it fights as a normal Utopia.
       delete field.grailDiggable;
       field.blackCube = false;
       field.everFlagged = false;
       field.flagOwnerId = null;
-      if (!field.difficulty) {
-        field.difficulty = 7;
-      }
+      if (!field.difficulty) field.difficulty = 7;
       eventNote(state, "A second Grail site transforms into a Dragon Utopia.");
     } else {
       field.location = "empty_field";
@@ -5654,6 +5647,86 @@ function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): Vi
 }
 
 /**
+ * A face-down tile is a Grail clue candidate only when its authoritative face
+ * can still contain the Grail. This mirrors materializeTileFields exactly: a
+ * designation FORCES the Ⅶ objective whatever the tile prints, so the
+ * designation is checked FIRST and the printed field only decides when no
+ * designation exists. (Under `grailAsUtopia: "always"` a Grail field still
+ * digs — it merely fights Utopia dragons — so it stays a real clue target.)
+ */
+function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
+  if (!tile.faceDown) {
+    return false;
+  }
+  const def = allTileDefinitions[tile.tileDefId];
+  if (!def) {
+    return false;
+  }
+  if (tile.viiField) {
+    return tile.viiField === "grail";
+  }
+  // The hidden Grail & Dragon Utopia package: the tile MIGHT be the Grail.
+  if (tile.viiFields?.includes("grail")) {
+    return true;
+  }
+  return def.fields.some((field) => field.difficulty === 7 && field.location === "grail");
+}
+
+/** Build the private, positional Obelisk clue picker when a face-down Grail exists. */
+function grailClueStep(adventure: AdventureState): VisitStep | null {
+  // The rule exists only if a hidden Grail is really on this map. The choice
+  // list itself MUST stay neutral: filtering it to Grail tiles would disclose
+  // every Grail position before the visitor chooses one.
+  if (!Object.values(adventure.tiles).some((tile) => isFaceDownGrailClueCandidate(tile))) {
+    return null;
+  }
+  const candidates = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
+  return {
+    type: "CHOOSE_ONE",
+    prompt: "Obelisk — choose one face-down tile to inspect for a Grail clue",
+    options: [
+      ...candidates.map((tile) => ({
+        label: `Tile at row ${tile.centerRow}, col ${tile.centerCol}`,
+        steps: [{ type: "GRAIL_TILE_SCRY", tileInstanceId: tile.id } satisfies VisitStep]
+      })),
+      { label: "Do not inspect a tile", steps: [] }
+    ]
+  };
+}
+
+/**
+ * Add the optional Grail clue after the Obelisk's ordinary role effect. The
+ * entire pending visit is private to its owner in player-view.ts, so tile
+ * identities never cross the server boundary to other players.
+ */
+function queueGrailClue(state: GameState, hero: HeroState, field: MapFieldState): void {
+  const adventure = state.adventure;
+  if (!adventure) {
+    return;
+  }
+  // Defensive: never mint a clue window inside an open combat, or for a hero
+  // that is no longer standing on the Obelisk (a teleport already moved it).
+  if (state.combat || hero.spaceId !== field.spaceId) {
+    return;
+  }
+  const step = grailClueStep(adventure);
+  if (!step) {
+    return;
+  }
+  if (adventure.pendingVisit) {
+    adventure.pendingVisit.steps.push(step);
+    return;
+  }
+  adventure.pendingVisit = {
+    heroId: hero.id,
+    playerId: hero.controllerId,
+    fieldId: field.spaceId,
+    steps: [step]
+  };
+  processPendingVisit(state);
+}
+
+/**
  * Obelisk visit. Obelisks are flaggable (every visitor keeps a cube).
  *
  * House rule (`obelisk-rewards`, BINH default ON): the FIRST hero to visit a
@@ -5731,21 +5804,38 @@ function handleObeliskVisit(state: GameState, hero: HeroState, field: MapFieldSt
       );
     }
     // role === "monolith": no visit reward; the teleport below IS the effect.
+
+    // ONE private Grail clue per player per Obelisk, granted on this SAME
+    // first-visit seam as the dig credit (role-independent, like the credit).
+    // Tying it to `!alreadyHere` is the anti-farm latch: a Revisit / the
+    // monolith role's every-entry teleport can never earn a second clue.
+    // Queued BEFORE the monolith teleport below, so the clue always resolves
+    // while the hero still stands here — never after a teleport arrival that
+    // may have opened a fight elsewhere.
+    queueGrailClue(state, hero, field);
   }
 
   // Monolith role: entering (or Revisiting) teleports through the shared
   // Monolith network — every entry, even one that grants no fresh grail credit
   // — via the same TOKEN_TELEPORT step a Monolith token uses. The grail credit
   // above already fired on the first visit, matching the documented
-  // "register grail progress before the teleport" order.
+  // "register grail progress before the teleport" order. A pending clue (or
+  // bonus-role reward) keeps its visit: the teleport step is APPENDED, never
+  // clobbering the open steps.
   if (role === "monolith") {
-    adventure.pendingVisit = {
-      heroId: hero.id,
-      playerId,
-      fieldId: field.spaceId,
-      steps: [{ type: "TOKEN_TELEPORT", token: "monolith" }]
-    };
-    processPendingVisit(state);
+    const teleportStep: VisitStep = { type: "TOKEN_TELEPORT", token: "monolith" };
+    if (adventure.pendingVisit) {
+      adventure.pendingVisit.steps.push(teleportStep);
+      processPendingVisit(state);
+    } else {
+      adventure.pendingVisit = {
+        heroId: hero.id,
+        playerId,
+        fieldId: field.spaceId,
+        steps: [teleportStep]
+      };
+      processPendingVisit(state);
+    }
   }
 }
 
@@ -6934,6 +7024,26 @@ export function processPendingVisit(state: GameState): void {
     visit.steps.shift();
 
     switch (step.type) {
+      case "GRAIL_TILE_SCRY": {
+        const tile = adventure.tiles[step.tileInstanceId];
+        // Raw actions cannot reveal arbitrary map information: the selected
+        // tile must still be placed and face-down. Grail candidacy gates the
+        // OFFER, not the selected position, to avoid leaking the Grail.
+        if (!tile || !tile.faceDown) {
+          break;
+        }
+        const locations = allTileDefinitions[tile.tileDefId]?.fields.map((field) => field.location).join(", ") ?? "";
+        visit.steps.unshift({
+          type: "CHOOSE_ONE",
+          prompt: `Grail clue — tile at row ${tile.centerRow}, col ${tile.centerCol} is ${tile.tileDefId} (${locations}). Memorize it, then hide it again.`,
+          options: [{ label: "Hide tile again", steps: [] }],
+          // The identity rides the step itself: the owner's PLAYER VIEW masks
+          // every face-down tile to "hidden", so reading adventure.tiles on the
+          // client could never show the revealed face.
+          grailTileScry: { tileInstanceId: tile.id, tileDefId: tile.tileDefId, tileRotation: tile.rotation }
+        });
+        break;
+      }
       case "GAIN_RESOURCES":
         gainResources(state, visit.playerId, step, `visited ${fieldName(state, visit.fieldId)}`);
         break;
@@ -13675,10 +13785,7 @@ function drawGuardArmyBase(state: GameState, field: MapFieldState | undefined, d
   }
 
   // Grail dig site with "always as Utopia": fight Utopia dragons (still digs after).
-  if (
-    field?.location === "grail" &&
-    grailAsUtopiaMode(state) === "always"
-  ) {
+  if (field?.location === "grail" && grailAsUtopiaMode(state) === "always") {
     return drawDragonUtopiaArmy(state, difficulty);
   }
 
@@ -13912,6 +14019,7 @@ export function buildCreatureBankCombatUnits(
     [order[i], order[j]] = [order[j], order[i]];
   }
   let stackedCount = 0;
+  const tokenCounts: Partial<Record<StackTokenStat, number>> = {};
   for (let i = 0; i < tokenRolls; i += 1) {
     // Official and Polish-sized paths place every token. Only the explicit
     // BINH house rule rolls the 80% placement chance.
@@ -13919,7 +14027,21 @@ export function buildCreatureBankCombatUnits(
       continue;
     }
     const unit = units[order[i]];
-    unit.stackToken = rollStackTokenStat(random);
+    let stackToken = rollStackTokenStat(random);
+    // A bank may field four Stacked defenders, but no one statistic token may
+    // occur more than twice in that combat. Re-roll only exhausted token types;
+    // with four types and at most four placements an eligible type always
+    // exists TODAY — the hard guard below keeps a future >4-placement caller
+    // from spinning this rejection loop forever inside the reducer (the seeded
+    // stream is bank-local, so extra draws shift nothing else).
+    for (let guard = 0; (tokenCounts[stackToken] ?? 0) >= 2; guard += 1) {
+      if (guard >= 64) {
+        break;
+      }
+      stackToken = rollStackTokenStat(random);
+    }
+    tokenCounts[stackToken] = (tokenCounts[stackToken] ?? 0) + 1;
+    unit.stackToken = stackToken;
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;

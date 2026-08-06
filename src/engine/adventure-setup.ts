@@ -6,6 +6,7 @@ import {
   artifactDeckBinhMinor,
   artifactDeckBinhRelic,
   artifactDeckLegacy,
+  EVERSMOKING_RING_OF_SULFUR_ID,
   TORSO_OF_LEGION_ID
 } from "@/data/cards/artifacts";
 import {
@@ -308,7 +309,7 @@ export function secretFeatureFullLabel(feature: SecretTileFeature | undefined): 
 export function isSecretTileFeature(value: unknown): value is SecretTileFeature {
   return typeof value === "string" && SECRET_TILE_FEATURE_SET.has(value);
 }
-import { HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
+import { HOUSE_RULES, HOUSE_RULE_BY_ID, resolveHouseRules } from "./house-rules";
 
 /**
  * Applies the map designer's Monolith/Whirlpool/colored-Gate tile tokens to the
@@ -831,7 +832,10 @@ function makeSharedDecks(
   wogArtifacts = false,
   wogCommanderArtifacts = false,
   animeEquipment = false,
-  torsoOfLegionMajor = true
+  torsoOfLegionMajor = true,
+  // Mirrors torsoOfLegionMajor: the default matches the house rule's BINH
+  // default, so an argument-less call agrees with `effectiveArtifactTier`.
+  eversmokingRingOfSulfurMajor = true
 ): Record<string, DeckState> {
   const without = (cardIds: string[], removeId: string, ban: boolean): string[] =>
     ban ? cardIds.filter((id) => id !== removeId) : cardIds;
@@ -842,10 +846,16 @@ function makeSharedDecks(
   // are untouched (byte-identical). The legacy single Artifact deck is one pile,
   // so its membership never changes — only the per-card tier READ (via
   // `effectiveArtifactTier`) does, which is handled at each read site.
-  const binhMinor = torsoOfLegionMajor ? artifactDeckBinhMinor : [...artifactDeckBinhMinor, TORSO_OF_LEGION_ID];
-  const binhMajor = torsoOfLegionMajor
-    ? artifactDeckBinhMajor
-    : artifactDeckBinhMajor.filter((id) => id !== TORSO_OF_LEGION_ID);
+  const binhMinor = [
+    ...artifactDeckBinhMinor,
+    ...(torsoOfLegionMajor ? [] : [TORSO_OF_LEGION_ID]),
+    ...(eversmokingRingOfSulfurMajor ? [] : [EVERSMOKING_RING_OF_SULFUR_ID])
+  ];
+  const binhMajor = artifactDeckBinhMajor.filter(
+    (id) =>
+      (torsoOfLegionMajor || id !== TORSO_OF_LEGION_ID) &&
+      (eversmokingRingOfSulfurMajor || id !== EVERSMOKING_RING_OF_SULFUR_ID)
+  );
 
   // Anime Pháp Bảo artifacts (§5.10) join the shared Artifact deck(s) ONLY when
   // the module is on; default OFF ⇒ these arrays are empty and the decks are
@@ -3086,7 +3096,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         wog.enabled && wog.artifacts,
         wog.enabled && wog.artifacts && wog.commanders,
         animeModuleEnabled({ anime }, "equipment"),
-        houseRules["torso-of-legion-major"]
+        houseRules["torso-of-legion-major"],
+        houseRules["eversmoking-ring-of-sulfur-major"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),
@@ -4452,9 +4463,19 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.tournamentObservatoryRerotate === undefined) {
       lobby.options.tournamentObservatoryRerotate = on;
     }
+    // The Tournament preset splits the Spell / Artifact decks by tier. Turning
+    // the MASTER toggle on must force that at the engine seam too (not only in
+    // the hub preset payload), or a table ticking "Tournament Mode" in the
+    // options panel gets the bans but a single-deck game. Only when this same
+    // action carries no explicit houseRules payload (an explicit host choice
+    // always wins), and never touched on turning the mode OFF (the host may
+    // deliberately keep split decks).
+    if (on && next.houseRules === undefined) {
+      lobby.options.houseRules = { ...lobby.options.houseRules, "split-decks": true };
+    }
     changes.push(
       on
-        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Observatory re-rotate)"
+        ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Observatory re-rotate; tier-split decks)"
         : "Tournament Mode off"
     );
   }
@@ -4512,10 +4533,22 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     // Soft Legacy: individual overrides are allowed in every mode. A crafted
     // or multiplayer click after a Legacy preset can re-enable any rule.
     const merged: Partial<Record<HouseRuleId, boolean>> = { ...lobby.options.houseRules };
+    // A mode PRESET sends the whole registry at once — one summary clause
+    // instead of ~40 per-rule lines flooding the feed.
+    const wholeRegistry = Object.keys(next.houseRules).length >= HOUSE_RULES.length;
+    let houseRuleChanges = 0;
     for (const [id, value] of Object.entries(next.houseRules)) {
       const def = HOUSE_RULE_BY_ID[id as HouseRuleId];
+      if (merged[id as HouseRuleId] !== Boolean(value)) {
+        houseRuleChanges += 1;
+      }
       merged[id as HouseRuleId] = Boolean(value);
-      changes.push(`${def.label} ${value ? "on" : "off"}`);
+      if (!wholeRegistry) {
+        changes.push(`${def.label} ${value ? "on" : "off"}`);
+      }
+    }
+    if (wholeRegistry) {
+      changes.push(`house rules set to the chosen mode's package (${houseRuleChanges} changed)`);
     }
     lobby.options.houseRules = merged;
   }
