@@ -2684,6 +2684,74 @@ block fails 6, flagging the attacked side join-only fails 5, dropping the
 attacker-Artillery block fails 1, widening the opener past attack windows fails 1,
 widening the filter to `combatOnly` fails 3, and removing the tray tiles fails 1.
 
+## A printed FOLLOW-UP attack gives the ATTACKER a window too (2026-08-07)
+
+Reported: "Phoenix breath attack — it's a separate attack and you should be able
+to play instant cards before this attack (similar with other attacks of this
+second-attack type like dragon...). This sometimes works but sometimes not, very
+buggy." Leading with what was already right, then the one real hole.
+
+ALREADY CORRECT (verified, now pinned for the first time): every follow-up attack
+is declared through `declareAbilityAttack` → `declareAttack` →
+`openDeclaredAttackWindow`, exactly like a primary or Retaliation Attack. So the
+DEFENDING side's printed reactions (Armorer, Bless…) always got a real pre-hit
+window on the second hit, and so did the ATTACKER's printed attack buffs (Offense,
+Bloodlust — they match the `UNIT_ATTACK_DECLARED` trigger). No queue member
+resolved as bare damage.
+
+THE BUG: the attacker's TRIGGER-FREE instants. 31d6c866 flagged the attacking
+side's `combatAnytime` joins and Artillery `windowJoinOnly` — "the other side had
+its whole activation to play the card". That holds for a PRIMARY attack (the
+attacker chose to declare it, with the on-turn card pass open right up to that
+moment) but is FALSE for a follow-up, which the ENGINE declares mid-resolution
+with no moment in between. So a Phoenix/dragon owner could fire the Ballista
+discard / a Frost Ring / a Meteor Shower / Artillery before their FIRST hit but
+never before their SECOND — and in a NEUTRAL fight, where the guards never open a
+window, no window opened for the second attack at all. Holding Offense → a
+window; holding a Ballista → none. Exactly the reported intermittency.
+
+THE RULE (one seam): `followUpAttackInstantOpener` (legal-actions.ts) returns the
+ATTACKING side's controller for a `UNIT_ATTACK_DECLARED` event carrying
+`abilityAttack`; that side then joins the `instantJoinOpenerIds` set beside the
+attacked side, and its Artillery offers drop `windowJoinOnly`. Both call sites
+read the ONE predicate, so they cannot drift.
+
+Leading with what does NOT change / deliberate scope:
+- **A PRIMARY attack still never pauses for the attacker's own instant** and
+  neither does a Spell cast, a unit activation or a die-settled window
+  (CONTROL-pinned in both files).
+- **Effect damage is untouched**: the Chakra Burst / Full Barrage
+  `AFTER_ATTACK_SPLASH`, Magog splash, Automaton detonate and the Dreadnought
+  allocation are not attacks, declare no `UNIT_ATTACK_DECLARED`, and open no
+  window — CONTROL-pinned.
+- **Scoped to `abilityAttack`**, i.e. the printed "second attack" family the
+  report names: `SECOND_ATTACK_BEHIND_TARGET` (Phoenix `dragon-line-attack-2`,
+  Gold/Black Dragons `-3`, the commander's Dragon Eye Ring, Factory Mechanics),
+  the Lich Death Cloud, the Hydra/Ayssid extra strike, the attack-all queue
+  (Magic Elementals, Whirlwind Strike, Cerberi), Wolf Raiders'
+  after-retaliation strike and the Arachnotron's queued volleys. DELIBERATELY
+  OUT: the Marksmen/Elves ranged double-shot (`DOUBLE_ATTACK`) and the Factory
+  Sandworm's cube re-attack — neither carries `abilityAttack`; the double-shot
+  is one printed volley at the same target, and the Sandworm's repeat is a
+  fresh action its own player declares (so that player DID have the moment).
+- **A NEUTRAL attacker gains nothing** (the neutral seat has no PlayerState, so
+  the opener id matches no player) and the follow-up's own maths, ordering and
+  retaliation parking are unchanged.
+- **A computer seat still PASSES** rather than firing (its combat-damage band
+  sits below `PASS_REACTION` 1_050) — unchanged, pinned so it can never become a
+  stall; the AFK / turn-timeout driver closes the new window with Pass too.
+
+Pinned in `src/engine/follow-up-attack-reaction-windows.test.ts` (12 tests: the
+repro with a nobody-else-can-react CONTROL, the instant resolving BEFORE the
+second hit's damage, Artillery, a shot that removes the second target dropping
+the parked follow-up, the Gold Dragon `-3` twin, the Wolf Raiders family, the
+defender-side window really lowering the second hit with a pass-it CONTROL, the
+primary-attack / splash / cast scope CONTROLs, and the AI + AFK non-stall pair).
+Mutation-checked: neutering `followUpAttackInstantOpener` fails 7, reverting only
+the Artillery call site fails 4, reverting only the instant-join call site fails
+4, and dropping the `abilityAttack` scope fails 6 (including the primary-attack
+CONTROL).
+
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's DEFAULT defense army is now the printed Stretch-Goals card:

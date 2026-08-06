@@ -6889,6 +6889,43 @@ function tarnumSearchableDeckExists(state: GameState): boolean {
   );
 }
 
+/**
+ * A printed FOLLOW-UP attack — the "second attack" family: the Gold Dragon /
+ * Phoenix / Black Dragon line breath (`SECOND_ATTACK_BEHIND_TARGET`), the Lich
+ * Death Cloud, the Hydra's extra adjacent strike, the attack-all queue (Magic
+ * Elementals, the commander's Whirlwind Strike), Wolf Raiders' after-retaliation
+ * strike and the Arachnotron's queued volleys — carries `abilityAttack` on its
+ * UNIT_ATTACK_DECLARED event, and returns the ATTACKING side's controller.
+ *
+ * Why it exists (2026-08-07 report: "Phoenix breath attack — it's a separate
+ * attack and you should be able to play instant cards before this attack. This
+ * sometimes works but sometimes not"). 31d6c866 kept the window-OPENING
+ * privilege with the side about to be HIT because "the other side had its whole
+ * activation to play the card". That is true of a PRIMARY attack — the attacker
+ * chose to declare it, with the on-turn card pass open right up to that moment —
+ * but FALSE of a follow-up: the engine declares it mid-resolution, so the
+ * attacker gets no moment at all between the first hit and the second. Without
+ * this, an attacker holding only trigger-free "Instant (any time)" faces (the
+ * Ballista discard, a Frost Ring, a Meteor Shower) or Artillery could not pause
+ * their own second attack; in a NEUTRAL fight — where the guards never open a
+ * window — that meant never, while the same player holding a printed reaction
+ * (Offense, Bloodlust) did get a window. Exactly the reported intermittency.
+ *
+ * Returns undefined for anything else, so a primary attack, a Retaliation
+ * Attack, a Spell cast, an activation and a die-settled window are unchanged.
+ * DELIBERATE SCOPE: the Marksmen/Elves ranged double-shot (`DOUBLE_ATTACK`) and
+ * the Factory Sandworm's "spend a cube to attack again" carry no
+ * `abilityAttack` and stay out — the double-shot is one printed volley at the
+ * same target, and the Sandworm's repeat is a fresh action its own player
+ * declares (so that player DID have the on-turn moment).
+ */
+function followUpAttackInstantOpener(state: GameState, triggerEvent: GameEvent): PlayerId | undefined {
+  if (triggerEvent.type !== "UNIT_ATTACK_DECLARED" || !triggerEvent.abilityAttack) {
+    return undefined;
+  }
+  return state.combat?.units[triggerEvent.attackerId]?.controllerId;
+}
+
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
@@ -7735,13 +7772,15 @@ export function getLegalReactionsForTrigger(
     // attacked, and softening the unit that is about to counter-attack is exactly
     // the moment the 2026-08-06 report asked for. `windowJoinOnly` keeps the
     // window-OPENING privilege with the side about to be HIT (unchanged
-    // behaviour: an attacker holding Artillery does not pause their own attack).
+    // behaviour: an attacker holding Artillery does not pause their own attack)
+    // — EXCEPT on a printed FOLLOW-UP attack, where the attacker gets the
+    // opener too (see followUpAttackInstantOpener below).
     const attackerOwner = state.combat?.units[triggerEvent.attackerId]?.controllerId;
     if (attackerOwner && attackerOwner !== defenderId) {
-      const attackerArtillery = artilleryCardReactions(state, attackerOwner).map((legal) => ({
-        ...legal,
-        windowJoinOnly: true
-      }));
+      const followUpOpener = attackerOwner === followUpAttackInstantOpener(state, triggerEvent);
+      const attackerArtillery = artilleryCardReactions(state, attackerOwner).map((legal) =>
+        followUpOpener ? legal : { ...legal, windowJoinOnly: true }
+      );
       if (attackerArtillery.length > 0) {
         result[attackerOwner] = [...(result[attackerOwner] ?? []), ...attackerArtillery];
       }
@@ -7826,17 +7865,24 @@ export function getLegalReactionsForTrigger(
   // the other side had its whole activation to play the card. Never an opener on a
   // cast / activation / die-settled window, so no spell or activation at the table
   // pauses merely because someone holds a Meteor Shower.
-  const instantJoinOpenerId =
+  const instantJoinOpenerIds = new Set(
     triggerEvent.type === "UNIT_ATTACK_DECLARED"
-      ? state.combat?.units[triggerEvent.defenderId]?.controllerId
-      : undefined;
+      ? [
+          state.combat?.units[triggerEvent.defenderId]?.controllerId,
+          // A printed FOLLOW-UP attack gives its OWNER an opener too — the
+          // attacker never gets a moment between the first hit and this one.
+          followUpAttackInstantOpener(state, triggerEvent)
+        ].filter((playerId): playerId is PlayerId => Boolean(playerId))
+      : []
+  );
   for (const player of Object.values(state.players)) {
     const joins = combatAnytimeInstantWindowJoins(state, player.id, cards);
     if (joins.length === 0) {
       continue;
     }
-    const flagged =
-      player.id === instantJoinOpenerId ? joins : joins.map((legal) => ({ ...legal, windowJoinOnly: true }));
+    const flagged = instantJoinOpenerIds.has(player.id)
+      ? joins
+      : joins.map((legal) => ({ ...legal, windowJoinOnly: true }));
     result[player.id] = [...(result[player.id] ?? []), ...flagged];
   }
 
