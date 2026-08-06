@@ -1645,6 +1645,77 @@ describe("ReactionTray — Archangels' free lethal save is reachable in the UI",
     expect(applied.errors).toEqual([]);
     expect(applied.state.players.p2.hand).toHaveLength(0);
   });
+
+  /**
+   * "Instant (any time during Combat)" cards joining an open window (engine:
+   * combatAnytimeInstantWindowJoins) are PLAY_CARD offers, so the batch card tray
+   * never surfaces them — without their own tiles the reported case ("use the
+   * ballista before the counter attack") was an engine offer with no button.
+   * Fails if the `combatInstantJoins` tiles are removed from ReactionTray.
+   */
+  it("renders a tile per 'any time' instant joining the window, naming its target", () => {
+    const state = createInitialGameState("tray-instant-join-seed");
+    state.players.p1.hand = ["specialty.gerwulf.6"];
+    state.players.p1.permanents = ["war_machine.ballista"];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p1_marksmen;
+    attacker.type = "ground";
+    attacker.position = 14;
+    attacker.attack = 1;
+    attacker.abilities = [];
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.position = 13;
+    target.maxHealth = 30;
+    target.attack = 6;
+    target.defense = 0;
+    target.abilities = [];
+    state.combat!.units.unit_p2_vampires.position = 10;
+    state.combat!.units.unit_p2_dread_knights.position = 9;
+    state.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_marksmen",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    // The incoming Retaliation Attack's window — p1 is the side about to be hit.
+    expect(declared.state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(declared.state, "p1")}
+          onAction={onAction}
+          state={declared.state}
+          view={getPlayerView(declared.state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    // One tile per enemy target, each naming the unit it would hit.
+    const shot = screen.getByRole("button", { name: /Discard your Ballista.*→.*Skeletons/i });
+    act(() => fireEvent.click(shot));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.gerwulf.6",
+      optionIndex: 1,
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+
+    // The fired action resolves cleanly in the engine (end-to-end sanity).
+    const applied = applyAction(declared.state, onAction.mock.calls[0][0] as GameAction);
+    expect(applied.errors).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_skeletons.damage).toBe(4);
+  });
 });
 
 describe("ReactionTray — First Aid Tent heal is reachable as an instant reaction", () => {

@@ -2605,6 +2605,82 @@ What each commit ships:
   `single-player-edge-start.test.ts`) acknowledge the ceremony so
   computer-won-roll seeds don't stall the harness.
 
+## "Instant (any time)" cards inside a reaction window (2026-08-07)
+
+Reported: "I should be able to use the card ballista (all speciality, ability...)
+before counter attack as reaction window. Actually, all instant effects should be
+able to be used as reaction window like that." Leading with the limits.
+
+THE BUG (reproduced): off-turn with NO window open the engine already offered
+every printed `combatAnytime` face (Gerwulf's discard-the-Ballista damage,
+Adelaide's / Glacius' Frost Ring, Deemer's Meteor Shower, Tarnum-Dungeon's row
+blast) — `getOffTurnCombatReactions` → the combat branch. But `getLegalActions`
+returns ONLY the window's own list once a reaction window is open, and
+`isCombatCardWindowOpen` switches the whole off-turn card pass off while a
+window/stack is live. So those instants were unreachable in a window — and with
+nothing else window-opening in hand NO window opened at all: the blow, the
+Retaliation Attack and its damage all resolved inside ONE `ATTACK_UNIT` action,
+leaving literally no moment to fire the Ballista before the counter-attack.
+
+THE RULE (one seam): `combatAnytimeInstantWindowJoins` (legal-actions.ts) is
+appended to `getLegalReactionsForTrigger` for BOTH fighters in EVERY window. Only
+the side about to be HIT may OPEN an attack window with one — the new
+`LegalAction.windowJoinOnly` flag (the action-type-agnostic twin of
+`utilityOnly`/`drawOnly`, read first by the ONE shared `reactionOfferOpensWindow`
+predicate) marks every other side/window as join-only. In a Retaliation Attack the
+side about to be hit IS the original attacker, which is exactly the reported case;
+the justification is Artillery's and the pre-hit heals' ("the side about to be hit
+gets the window") plus the bare morale token's ("its only pre-roll moment"). The
+reducer's PLAY_CARD tail now runs `advanceReactionWindowAfterPlay` when the
+PRIORITY player plays in a window (the First Aid Tent `USE_ACTIVE_EFFECT`
+precedent), so the spent card drops out of the refreshed offers and the parked
+attack resumes; the priority gate keeps a parallel-turns bystander's quiet card
+play from ever resetting someone else's window. Artillery is now also offered to
+the ATTACKING side of an open window (join-only), so it can soften the unit about
+to counter-attack.
+
+Leading with what does NOT work / deliberate scope:
+- **Never an opener outside an attack window**: a held Meteor Shower does not
+  pause every Spell cast, unit activation or die-settled window at the table (it
+  only JOINS them). CONTROL-pinned in both directions.
+- **Not widened past the printed `combatAnytime` flag.** A `combatOnly` TURN play
+  is not an instant and stays out — Gerwulf I's "Activate your Ballista",
+  Gerwulf IV's free 1 damage, Gerwulf VI's ongoing "you aim the Ballista" — and a
+  face with a printed reaction trigger is already a real reaction through the
+  ordinary variant loop (Tarnum-Dungeon VI's "+2 attack"); giving it a join would
+  be a strictly-worse trap twin (`cardHasPrintedTriggerMatch`). Casting a SPELL
+  off-turn stays gated behind Intelligence (a printed rule). `mapOnly` remains an
+  ABSOLUTE bar. All of this is a conscious registry
+  (`DOCUMENTED_WINDOW_EXCLUSIONS` in the test), not silence.
+- **A cost-bearing join is a payable TEMPLATE, not a one-click play**: the engine
+  offers the Frost Ring with no `costCardIds`, and the shared submit path's cost
+  picker attaches the payment (`normalizeActionForMatch` ignores `costCardIds` for
+  PLAY_CARD, so the enriched play matches the offer). Pinned end-to-end.
+- **UI: the tray lists only unit-target / target-less joins.** Space-target joins
+  (Frost Ring's ring centre, the row blast) are ~20 offers, one per board cell;
+  the reaction tray does not render twenty look-alike tiles, so their in-window
+  pick surface stays the board's existing space-target arming — real-browser
+  territory, NOT verified here.
+- **A computer seat still PASSES rather than firing one** (its combat-damage band
+  640–860 sits below PASS_REACTION 1_050) — unchanged behaviour, pinned so it can
+  never become a stall; the AFK/turn-timeout driver closes the window with Pass.
+- **`specialty.tarnum_dungeon.6` opt 0 needs a "Dragons" unit on the board**, so
+  the sweep's fixture cannot offer it (0 offers off-turn AND in-window — the
+  invariant holds trivially); its existence is still pinned by the registry test.
+
+Pinned in `src/engine/combat-instant-reaction-windows.test.ts` (17 tests: the
+retaliation-window open + offer with a no-Ballista CONTROL where the whole
+exchange resolves at once, the shot REMOVING the retaliator so the counter never
+lands, the survive-and-counter event ORDER, the spent-card refresh with an
+"every offer executes" loop, the payable-template contract, the attacker-side
+Artillery join, both "does not pause" CONTROLs, the driver/AI non-stall pair, and
+the sweep + exclusion registry + mapOnly/hand-lock CONTROLs) and the tray tile in
+`src/components/table/overlays.test.tsx`. Mutation-checked: removing the join
+block fails 6, flagging the attacked side join-only fails 5, dropping the
+`windowJoinOnly` read fails 6, removing the reducer tail fails 3, removing the
+attacker-Artillery block fails 1, widening the opener past attack windows fails 1,
+widening the filter to `combatOnly` fails 3, and removing the tray tiles fails 1.
+
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's DEFAULT defense army is now the printed Stretch-Goals card:
