@@ -6671,7 +6671,7 @@ export function MapDesigner({
                                         onClick={() =>
                                           setGateGuardEditorIndex(gateGuardEditorIndex === linkIndex ? null : linkIndex)
                                         }
-                                        title="Guard either half of this gate — you fight to step onto a guarded half; coming out through the linked half auto-wins."
+                                        title="Guard either half of this gate — you fight to step onto a guarded half from its own layer. Coming OUT through the linked half slips past without a fight, but the guard stays: the next ordinary entry fights it."
                                         type="button"
                                       >
                                         ⚔ Guards
@@ -6975,7 +6975,7 @@ export function MapDesigner({
                   selectedObject.kind === "keymaster_tent" ||
                   selectedObject.kind === "oneway_entrance"
                     ? "The fight is bank-style: no Quick Combat, no experience, no round limit."
-                    : "A guard on this hex must be beaten to use it; arriving through a teleport network sweeps it aside (auto-win, no experience)."}
+                    : "A guard on this hex must be beaten to use it; arriving through a teleport network fights it too (bank-style: no Quick Combat, no experience, no round limit)."}
                 </small>
                 <GuardSpecEditor
                   guard={objectGuardDisplay(selectedObject)}
@@ -7288,7 +7288,7 @@ export function MapDesigner({
                 <small className="popoverHint">
                   {tokenPanelToken.kind === "oneway_entrance"
                     ? "The fight is bank-style: no Quick Combat, no experience, no round limit; winning teleports."
-                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network sweeps it aside (auto-win, no experience)."}
+                    : "A guard on this hex must be beaten to use the teleporter; arriving through the network fights it too (bank-style: no Quick Combat, no experience, no round limit)."}
                 </small>
                 <GuardSpecEditor
                   guard={tokenPanelToken.guard}

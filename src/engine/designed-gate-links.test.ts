@@ -4,6 +4,7 @@ import {
   canCrossEdge,
   createAdventureGameState,
   getReachableHeroPaths,
+  getLegalActions,
   getScenario,
   getTileFootprintSpaceIds,
   hexDistance,
@@ -22,7 +23,7 @@ import {
   type MapFieldState,
   type MapTileState
 } from "./index";
-import { fieldLayer, gateFieldsLinked, instantiateTile } from "./adventure";
+import { fieldLayer, gateFieldsLinked, instantiateTile, isFieldGuarded } from "./adventure";
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
@@ -708,7 +709,11 @@ describe("designed gate links — reveal opens NO pick-on-reveal choice", () => 
 
 // ---------------------------------------------------------------------------
 // Designer guards on the two gate halves: fight to step ON from your own layer,
-// auto-win when crossing OUT through the linked half.
+// SLIP PAST when crossing OUT through the linked half — a per-travel bonus that
+// leaves the guard standing (2026-08-07 user rule: "no combat on the other side
+// -> true, but it's a one time bonus. If you stay and then enter later (or
+// someone else) there is a fight"). It used to clearCustomGuard the exit, so
+// the first traveller destroyed a designer guard for the whole table forever.
 // ---------------------------------------------------------------------------
 
 describe("designed gate links — guarded halves", () => {
@@ -753,71 +758,216 @@ describe("designed gate links — guarded halves", () => {
     expect(entrance.difficulty).toBe(1); // one bronze body → Ⅰ
   });
 
-  it("crossing OUT through the linked half AUTO-WINS the far guard; stepping on from the own layer FIGHTS (control)", () => {
-    const { state, gate, entrance } = guardedGateGame();
-    // Clear the hand gates so MOVE_HERO is legal.
+  /** Clear the opening hand gates so MOVE_HERO is legal for `activeId`. */
+  function openTable(state: GameState, activeId: string): void {
     for (const player of Object.values(state.players)) {
       player.canMulligan = false;
       player.needsHandRefresh = false;
     }
-    state.activePlayerId = "p1";
+    state.activePlayerId = activeId as typeof state.activePlayerId;
+  }
 
-    // The hero stands on the CAVERN entrance half (its own guard beaten — the
-    // designer guard is on the field, so simulate the earlier win by clearing it).
-    const hero = state.heroes.hero_p1;
-    delete entrance.difficulty;
-    delete entrance.customGuardUnits;
-    hero.spaceId = entrance.spaceId;
-    hero.movementPoints = 4;
+  /** Park `heroId` on `spaceId` with a full stride, ready to step. */
+  function park(state: GameState, heroId: string, spaceId: string, movement = 4): void {
+    const hero = state.heroes[heroId]!;
+    hero.spaceId = spaceId as NonNullable<typeof hero.spaceId>;
+    hero.movementPoints = movement;
     hero.movementHaltedThisTurn = false;
+  }
 
-    const crossed = applyAction(state, {
+  function move(state: GameState, playerId: string, heroId: string, to: string): GameState {
+    const result = applyAction(state, {
       type: "MOVE_HERO",
-      playerId: "p1",
-      heroId: "hero_p1",
-      to: gate.spaceId
+      playerId: playerId as never,
+      heroId: heroId as never,
+      to: to as never
     });
-    expect(crossed.errors, crossed.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toHaveLength(0);
+    return result.state;
+  }
 
-    // The crossing swept the surface guard aside: hero arrived, no battle, no XP.
-    expect(crossed.state.heroes.hero_p1.spaceId).toBe(gate.spaceId);
-    expect(crossed.state.combat).toBeNull();
-    expect(crossed.state.adventure!.fields[gate.spaceId]?.difficulty).toBeUndefined();
-    expect(
-      crossed.state.eventLog.some(
-        (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
-      )
-    ).toBe(true);
-
-    // CONTROL: approaching the SAME guarded surface half from a plain surface
-    // hex fights it — find an adjacent same-layer field and walk on.
-    const { state: fresh, gate: freshGate } = guardedGateGame();
-    for (const player of Object.values(fresh.players)) {
-      player.canMulligan = false;
-      player.needsHandRefresh = false;
-    }
-    fresh.activePlayerId = "p1";
-    const freshHero = fresh.heroes.hero_p1;
-    const neighbor = getTileFootprintSpaceIds(
-      Object.values(adv(fresh).tiles).find((tile) => tile.id === freshGate.tileInstanceId)!
-    ).find((spaceId) => {
-      const field = adv(fresh).fields[spaceId];
+  /** An open, unguarded same-layer hex on the gate's own tile, adjacent to it. */
+  function approachHexFor(state: GameState, gateSpaceId: string): string {
+    const tile = Object.values(adv(state).tiles).find(
+      (candidate) => candidate.id === adv(state).fields[gateSpaceId]!.tileInstanceId
+    )!;
+    const neighbor = getTileFootprintSpaceIds(tile).find((spaceId) => {
+      const field = adv(state).fields[spaceId];
       return (
         field &&
-        spaceId !== freshGate.spaceId &&
+        spaceId !== gateSpaceId &&
         field.location === "empty_field" &&
         !field.difficulty &&
-        canCrossEdge(fresh, spaceId, freshGate.spaceId)
+        canCrossEdge(state, spaceId, gateSpaceId)
       );
     });
     expect(neighbor, "an open approach hex next to the gate").toBeTruthy();
-    freshHero.spaceId = neighbor!;
-    freshHero.movementPoints = 4;
-    freshHero.movementHaltedThisTurn = false;
-    const walked = applyAction(fresh, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: freshGate.spaceId });
-    expect(walked.errors, walked.errors.map((error) => error.message).join("; ")).toHaveLength(0);
-    expect(walked.state.combat?.context.kind).toBe("neutral");
-    expect(walked.state.adventure!.fields[freshGate.spaceId]?.difficulty).toBe(4);
+    return neighbor!;
+  }
+
+  function hasSweptAsideNote(state: GameState): boolean {
+    return state.eventLog.some(
+      (event) => event.type === "EVENT_NOTE" && /swept aside/i.test((event as { message?: string }).message ?? "")
+    );
+  }
+
+  function hasSlipsPastNote(state: GameState): boolean {
+    return state.eventLog.some(
+      (event) => event.type === "EVENT_NOTE" && /slips past the guards/i.test((event as { message?: string }).message ?? "")
+    );
+  }
+
+  function visitedEvents(state: GameState, fieldId: string): unknown[] {
+    return state.eventLog.filter(
+      (event) => event.type === "FIELD_VISITED" && (event as { fieldId?: string }).fieldId === fieldId
+    );
+  }
+
+  /**
+   * The hero stands on the CAVERN entrance half with its own designer guard
+   * already beaten (cleared by hand — the earlier win is not what is under
+   * test), ready to cross OUT onto the still-guarded surface half.
+   */
+  function readyToCross(): { state: GameState; gate: MapFieldState; entrance: MapFieldState } {
+    const { state, gate, entrance } = guardedGateGame();
+    openTable(state, "p1");
+    delete entrance.difficulty;
+    delete entrance.customGuardUnits;
+    park(state, "hero_p1", entrance.spaceId);
+    return { state, gate, entrance };
+  }
+
+  it("(a) crossing OUT slips past the far guard — no Combat, and the guard is STILL LIVE", () => {
+    const { state, gate } = readyToCross();
+
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+
+    // Arrived, no battle, no experience…
+    expect(crossed.heroes.hero_p1.spaceId).toBe(gate.spaceId);
+    expect(crossed.combat, "the pass opens no Combat").toBeNull();
+    // …and the guard is UNTOUCHED. This is the mutation control: restoring the
+    // clearCustomGuard sweep leaves difficulty undefined here.
+    const after = adv(crossed).fields[gate.spaceId]!;
+    expect(after.difficulty, "the designed guard survives the pass").toBe(4);
+    expect(isFieldGuarded(after)).toBe(true);
+    expect(hasSweptAsideNote(crossed), "no automatic-victory note any more").toBe(false);
+    expect(hasSlipsPastNote(crossed), "the pass announces itself").toBe(true);
+  });
+
+  it("(f) the guarded exit is NOT visited during the pass (an unguarded exit IS — control)", () => {
+    const { state, gate } = readyToCross();
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+    // A guarded field is never visited on arrival — the pass must not collect
+    // the gate's own visit either.
+    expect(visitedEvents(crossed, gate.spaceId), "no visit while the guard stands").toHaveLength(0);
+    expect(
+      adv(crossed).lastVisitedField.hero_p1,
+      "lastVisitedField stays at the origin, so a later retreat bounces there"
+    ).not.toBe(gate.spaceId);
+
+    // CONTROL: the SAME crossing onto an UNGUARDED far half visits normally.
+    const { state: open, gate: openGate } = readyToCross();
+    delete adv(open).fields[openGate.spaceId]!.difficulty;
+    delete adv(open).fields[openGate.spaceId]!.customGuardLevel;
+    const walked = move(open, "p1", "hero_p1", openGate.spaceId);
+    expect(walked.combat).toBeNull();
+    expect(visitedEvents(walked, openGate.spaceId), "an unguarded exit is visited").not.toHaveLength(0);
+    expect(adv(walked).lastVisitedField.hero_p1).toBe(openGate.spaceId);
+    expect(hasSlipsPastNote(walked), "nothing to slip past").toBe(false);
+  });
+
+  it("(b) the SAME hero stepping off and back on fights the guard it slipped past", () => {
+    const { state, gate } = readyToCross();
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+    expect(crossed.combat).toBeNull();
+
+    const approach = approachHexFor(crossed, gate.spaceId);
+    const off = move(crossed, "p1", "hero_p1", approach);
+    expect(off.heroes.hero_p1.spaceId).toBe(approach);
+    expect(off.combat, "walking away opens nothing").toBeNull();
+
+    const back = move(off, "p1", "hero_p1", gate.spaceId);
+    expect(back.combat?.context.kind, "re-entering the ordinary way FIGHTS").toBe("neutral");
+    if (back.combat?.context.kind === "neutral") {
+      expect(back.combat.context.fieldId).toBe(gate.spaceId);
+    }
+  });
+
+  it("(c) a DIFFERENT player's hero walking in fights the guard the traveller slipped past", () => {
+    const { state, gate } = readyToCross();
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+    expect(adv(crossed).fields[gate.spaceId]?.difficulty).toBe(4);
+
+    // p1's hero leaves the hex (otherwise p2 walking in is a PvP battle), then
+    // p2's hero walks onto the same still-guarded gate.
+    const approach = approachHexFor(crossed, gate.spaceId);
+    const cleared = move(crossed, "p1", "hero_p1", approach);
+    // Park p1 far away (back through the tunnel) so it neither blocks the hex
+    // nor occupies p2's approach.
+    park(cleared, "hero_p1", adv(cleared).fields[gate.spaceId]!.gateLinkSpaceId!);
+    openTable(cleared, "p2");
+    park(cleared, "hero_p2", approach);
+
+    const other = move(cleared, "p2", "hero_p2", gate.spaceId);
+    expect(other.combat?.context.kind, "someone else's entry FIGHTS").toBe("neutral");
+    if (other.combat?.context.kind === "neutral") {
+      expect(other.combat.context.fieldId).toBe(gate.spaceId);
+    }
+  });
+
+  it("(d) travelling through the gate AGAIN is fight-free again — the bonus is per travel, and never clears the guard", () => {
+    const { state, gate, entrance } = readyToCross();
+    const first = move(state, "p1", "hero_p1", gate.spaceId);
+    expect(first.combat).toBeNull();
+
+    // Back down the tunnel (the entrance's own guard was already beaten)…
+    const backDown = move(first, "p1", "hero_p1", entrance.spaceId);
+    expect(backDown.combat).toBeNull();
+    expect(backDown.heroes.hero_p1.spaceId).toBe(entrance.spaceId);
+
+    // …and out again: still no Combat, and the guard is still standing.
+    const secondPass = move(backDown, "p1", "hero_p1", gate.spaceId);
+    expect(secondPass.combat, "a second travel passes fight-free too").toBeNull();
+    expect(secondPass.heroes.hero_p1.spaceId).toBe(gate.spaceId);
+    expect(adv(secondPass).fields[gate.spaceId]?.difficulty, "and the guard is STILL there").toBe(4);
+    expect(isFieldGuarded(adv(secondPass).fields[gate.spaceId]!)).toBe(true);
+  });
+
+  it("(e) CONTROL: an UNGUARDED linked half behaves exactly as before — free 0-MP crossing, no note", () => {
+    const { state, gate } = readyToCross();
+    delete adv(state).fields[gate.spaceId]!.difficulty;
+    delete adv(state).fields[gate.spaceId]!.customGuardLevel;
+    const before = state.heroes.hero_p1.movementPoints;
+
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+    expect(crossed.heroes.hero_p1.spaceId).toBe(gate.spaceId);
+    expect(crossed.combat).toBeNull();
+    expect(crossed.heroes.hero_p1.movementPoints, "the crossing is still free (one Field)").toBe(before);
+    expect(hasSlipsPastNote(crossed)).toBe(false);
+    expect(hasSweptAsideNote(crossed)).toBe(false);
+  });
+
+  it("stepping ON the guarded half from the hero's OWN layer still FIGHTS (control)", () => {
+    const { state, gate } = guardedGateGame();
+    openTable(state, "p1");
+    park(state, "hero_p1", approachHexFor(state, gate.spaceId));
+    const walked = move(state, "p1", "hero_p1", gate.spaceId);
+    expect(walked.combat?.context.kind).toBe("neutral");
+    expect(adv(walked).fields[gate.spaceId]?.difficulty).toBe(4);
+  });
+
+  it("standing on the slipped-past guard strands nobody: the hero can still act and end the turn", () => {
+    const { state, gate } = readyToCross();
+    const crossed = move(state, "p1", "hero_p1", gate.spaceId);
+    const legal = getLegalActions(crossed, "p1");
+    // No Resolve/Revisit is offered for the guarded hex (that would hand out
+    // the field without the fight); a move away and END_TURN always are.
+    expect(legal.some((entry) => entry.action.type === "REVISIT_FIELD"), "no Resolve while the guard stands").toBe(
+      false
+    );
+    expect(legal.some((entry) => entry.action.type === "MOVE_HERO")).toBe(true);
+    const ended = applyAction(crossed, { type: "END_TURN", playerId: "p1" });
+    expect(ended.errors, ended.errors.map((error) => error.message).join("; ")).toHaveLength(0);
   });
 });
 

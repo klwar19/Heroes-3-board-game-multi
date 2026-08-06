@@ -9104,7 +9104,8 @@ export type SubterraneanGatePlan = {
    * Designer guards on the two halves (from {@link CustomMapGateLink.gateGuard}
    * / `entranceGuard`), stamped onto the carved gate fields: you fight to STEP
    * onto a guarded half from its own layer; crossing OUT through the linked
-   * half instead auto-wins (guard swept aside, no experience).
+   * half instead SLIPS PAST it — no Combat, no experience, no visit, and the
+   * guard is NOT cleared, so the next ordinary entry fights it.
    */
   gateGuard?: CustomGuardSpec;
   entranceGuard?: CustomGuardSpec;
@@ -12241,7 +12242,9 @@ export type CustomMapObjectPlacement =
  *   is the LEGACY level shape (1-7, folded to `{ level }` at sanitize); the
  *   {@link CustomGuardSpec} form adds "certain army" guards. Stepping on opens
  *   the standard neutral battle, and only a WIN resolves the object's teleport;
- *   arriving THROUGH a teleport network onto a still-guarded hex auto-wins.
+ *   arriving THROUGH a teleport network onto a still-guarded hex fights it too
+ *   (bank-style — the 2026-07-24 rule; only the linked Subterranean-Gate walk
+ *   slips past a guard).
  */
 export type CustomMapObject = {
   kind: CustomMapObjectKind;
@@ -12797,8 +12800,9 @@ export const MAX_CUSTOM_GUARD_UNITS = 6;
  * `guard` puts a designer guard on the carved token hex — stepping on fights
  * it (a normal guard fight: Quick Combat / experience follow the level; an
  * exact army is never skipped), and only a WIN resolves the teleport.
- * Arriving THROUGH the network onto a still-guarded token instead auto-wins
- * (the guard is swept aside, no experience).
+ * Arriving THROUGH the network onto a still-guarded token FIGHTS it too, bank-
+ * style (the 2026-07-24 rule; only the linked Subterranean-Gate walk slips past
+ * a guard, and even then the guard is left standing).
  */
 export type CustomMapTileToken = {
   kind: "monolith" | "whirlpool" | "gate" | "oneway_entrance" | "oneway_exit";
@@ -12939,8 +12943,9 @@ export type CustomMapGateLink = {
   /**
    * Designer guard on the SURFACE half ("gate down"): stepping onto the gate
    * hex fights it first; crossing INTO it from the linked cavern half instead
-   * auto-wins (the guard is swept aside, no experience) — you fight to get in,
-   * never to get out.
+   * SLIPS PAST it (no Combat, no experience, no visit) — you fight to get in,
+   * never to get out. The pass is per-travel: the guard STAYS on the field, so
+   * the same hero stepping off and back on, or anyone else walking in, fights.
    */
   gateGuard?: CustomGuardSpec;
   /** Designer guard on the CAVERN half ("path up") — same rules as {@link gateGuard}. */

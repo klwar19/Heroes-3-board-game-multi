@@ -111,7 +111,7 @@ import {
   tryDeliverGrail,
   applyMineFlag,
   applySettlementResource,
-  autoWinArrivalGuard,
+  noteGateTravelSlipsPastGuard,
   clearCustomGuard,
   setTeleportArrivalHook,
   flagField,
@@ -1279,13 +1279,14 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
   }
 
   // Crossing OUT through a linked Subterranean Gate: a designed guard still
-  // standing on the FAR half is swept aside (auto-win, no experience) — you
-  // fight to step onto a gate from its own layer, never to come out of it.
-  if (fromField && toField && throughGate) {
-    autoWinArrivalGuard(state, hero.controllerId, toField);
-  }
+  // standing on the FAR half is SLIPPED PAST (no Combat, no experience, no
+  // visit) — you fight to step onto a gate from its own layer, never to come
+  // out of it. It is a per-travel bonus, not a victory: the guard is NOT
+  // cleared, so a later ordinary entry (this hero stepping off and back on,
+  // or anyone else walking in) fights it. See resolveHeroArrival's gate arm.
+  const gateTravel = Boolean(fromField && toField && throughGate);
 
-  resolveHeroArrival(state, hero, to);
+  resolveHeroArrival(state, hero, to, gateTravel);
 }
 
 /**
@@ -1308,7 +1309,19 @@ function haltAfterSeaStep(state: GameState, hero: HeroState, from: MapSpaceId, t
  * decision, the Grail may be delivered home, otherwise the field is visited.
  * The hero's position is assumed to already be `to`.
  */
-function resolveHeroArrival(state: GameState, hero: HeroState, to: MapSpaceId): void {
+function resolveHeroArrival(
+  state: GameState,
+  hero: HeroState,
+  to: MapSpaceId,
+  /**
+   * True only for the FREE crossing between the two linked halves of a
+   * Subterranean Gate. A live designed guard on the far half is slipped past
+   * instead of fought — and, being still guarded, the field is not visited
+   * either. Every other arrival (a walk, a Dimension Door, a teleport network)
+   * leaves this false and fights the guard as usual.
+   */
+  gateTravel = false
+): void {
   const adventure = requireAdventure(state);
 
   const enemyHero = heroAtSpace(state, to, hero.id);
@@ -1323,6 +1336,12 @@ function resolveHeroArrival(state: GameState, hero: HeroState, to: MapSpaceId): 
   }
 
   if (isFieldGuarded(field) && field.flagOwnerId !== hero.controllerId) {
+    if (gateTravel) {
+      // Slip past: no Combat, no experience, no reward — and the guard STAYS,
+      // so this hex is still a guarded field for every later entry.
+      noteGateTravelSlipsPastGuard(state, hero.controllerId, field);
+      return;
+    }
     startNeutralEncounter(state, hero, field);
     return;
   }
