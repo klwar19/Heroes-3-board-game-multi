@@ -804,6 +804,22 @@ export function unitAttackRollDisadvantaged(state: GameState, unit: CombatUnitSt
 }
 
 /**
+ * The mirror of `unitAttackRollDisadvantaged`: whether `unit` currently holds an
+ * ATTACK_ROLL_ADVANTAGE effect, letting it roll two Attack dice and keep the
+ * HIGHER. Read through effectAppliesToUnit like every other unit buff (a Tower
+ * Titan/Gargoyle that ignores ongoing effects is unaffected). Today the only
+ * source is the Polish Set Artifacts "rolls 2 dice and resolves the higher
+ * result" tiers.
+ */
+export function unitAttackRollAdvantaged(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_ADVANTAGE")
+  );
+}
+
+/**
  * Spirit of Oppression (option A): whether a global NO_ATTACK_DIE_REROLL effect
  * is on the table right now. While it is, no Attack-die reroll source is offered
  * to either player (see buildRerollSources) — neither the positive morale token

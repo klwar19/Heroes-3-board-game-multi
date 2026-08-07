@@ -5080,6 +5080,10 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.equipmentIncomingAttackUsed = false;
       player.combatStats.equipmentFirstSpellPowerUsed = false;
       player.combatStats.equipmentStageCostumeUsed = false;
+      // Polish Set Artifacts: the once-per-COMBAT set-tier charges and the
+      // per-combat unit selections both refresh per COMBAT — clear them here.
+      player.combatStats.artifactSetUsesThisCombat = [];
+      player.combatStats.artifactSetSelections = {};
     }
   }
 
@@ -7562,6 +7566,42 @@ function finishVisionsScry(state: GameState, tier: NeutralTier, toReturn: CardId
   state.phase = "player-turn";
   state.priorityPlayerId = null;
   pumpAdventureQueues(state);
+}
+
+/**
+ * Polish Set Artifacts — answer the Diplomat's Cloak scry (CHOOSE_OPTION context
+ * "artifact-set-scry"). Option 0 leaves the card on top (a pure no-op: it was
+ * never lifted off the deck), option 1 moves it to the BOTTOM.
+ *
+ * The card id is re-checked against the CURRENT deck top, so if something drew
+ * it between the look and the answer this degrades to a clean no-op instead of
+ * banishing the wrong card. Because nothing is ever lifted, no card can be
+ * destroyed here and `eliminatePlayer` needs no return branch for this context.
+ */
+export function resolveArtifactSetScryChoice(state: GameState, playerId: PlayerId, optionIndex: number): void {
+  const choice = state.pendingChoice;
+  if (
+    !choice ||
+    choice.type !== "OPTION_CHOICE" ||
+    choice.context !== "artifact-set-scry" ||
+    !choice.artifactSetScry ||
+    choice.playerId !== playerId
+  ) {
+    throw new Error("There is no Set Artifact scry to resolve.");
+  }
+  const { neutralTier, cardId } = choice.artifactSetScry;
+  const deck = state.decks[NEUTRAL_DECK_IDS[neutralTier]];
+  if (optionIndex === 1 && deck && deck.drawPile[deck.drawPile.length - 1] === cardId) {
+    deck.drawPile.pop();
+    // drawPile is popped from the END, so index 0 is the BOTTOM of the deck.
+    deck.drawPile.unshift(cardId);
+  }
+  state.pendingChoice = null;
+  state.phase = state.combat ? "combat" : "player-turn";
+  state.priorityPlayerId = null;
+  if (!state.combat) {
+    pumpAdventureQueues(state);
+  }
 }
 
 /** Resolves the Visions tier choice (CHOOSE_OPTION context "visions-deck"). */
@@ -14668,6 +14708,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "visions-scry") {
     resolveVisionsScryChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "artifact-set-scry") {
+    resolveArtifactSetScryChoice(state, action.playerId, action.optionIndex);
     return;
   }
 

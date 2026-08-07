@@ -418,6 +418,20 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  it("wires the opt-in Set Artifacts rule through the shared registry UI (default OFF)", () => {
+    const onAction = openOptions();
+    expandPolishHouseRules();
+    const toggle = screen.getByRole("button", { name: /Set Artifacts/ }) as HTMLButtonElement;
+    // Default OFF in both modes, and it depends on nothing (never greyed out).
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "polish-set-artifacts": true } }
+    });
+  });
+
   it("selecting Polish Spell Book switches the standard Spell Book off", () => {
     const onAction = openOptions();
     expandPolishHouseRules();
@@ -532,7 +546,8 @@ describe("Game options — tabbed layout", () => {
       "polish-pandora-search": true,
       "polish-wait": true,
       "polish-quick-combat": true,
-      "polish-grail-utopia": true
+      "polish-grail-utopia": true,
+      "polish-set-artifacts": true
     };
     const onAction = openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
@@ -566,6 +581,7 @@ describe("Game options — tabbed layout", () => {
         "polish-wait": true,
         "polish-quick-combat": true,
         "polish-grail-utopia": true,
+        "polish-set-artifacts": true,
         "discovery-border-gate": true
       };
     });

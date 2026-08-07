@@ -327,6 +327,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false
   },
   {
+    id: "polish-set-artifacts",
+    label: "Set Artifacts",
+    description:
+      "Polish house rule: eleven Artifact SETS (Angelic Alliance, Power of the Dragon Father, Titan's Thunder, Ironfist of the Ogre, Armor of the Damned, Pendant of Reflection, Wizard's Well, Diplomat's Cloak, Cornucopia, Statue of Legion, Golden Goose). Your piece count for a set is how many DISTINCT member cards you still own anywhere — deck, hand, discard, and in-play permanents / ongoing cards (a member you PLAY still counts; only a card removed from the game stops counting). At 2 pieces the set's first listed effect switches on, at 3 the first two, and so on: extra initiative, once-per-combat unit buffs and zaps, spell wards, income, and a once-per-round recruit discount. Every player can see every player's set progress. Off: sets do nothing and no set state exists.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "multi-demon-summon",
     label: "Pit Lords: multiple Demons",
     description:

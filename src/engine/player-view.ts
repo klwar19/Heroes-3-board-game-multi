@@ -178,6 +178,22 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
     };
   }
 
+  // Diplomat's Cloak scry (Polish Set Artifacts): the Neutral card the holder is
+  // looking at is private to them; opponents see only that a scry is happening.
+  if (
+    choice.type === "OPTION_CHOICE" &&
+    choice.context === "artifact-set-scry" &&
+    choice.playerId !== viewerPlayerId
+  ) {
+    return {
+      ...cloneSerializable(choice),
+      options: choice.options.map(() => ({ label: "Hidden card" })),
+      artifactSetScry: choice.artifactSetScry
+        ? { ...choice.artifactSetScry, cardId: "hidden" }
+        : undefined
+    };
+  }
+
   // Pandora scry: the shared-deck cards lifted off the top are revealed only to
   // the scrying player; opponents just see that a scry is happening.
   if (choice.type === "OPTION_CHOICE" && choice.context === "pandora-scry" && choice.playerId !== viewerPlayerId) {
@@ -385,7 +401,14 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
                 ? { ...scroll, spellCardIds: [...scroll.spellCardIds] }
                 : { ...scroll, spellCardIds: scroll.spellCardIds.map(() => "hidden") }
             )
-          : undefined
+          : undefined,
+        // Polish Set Artifacts: MIRROR the real, engine-synced public status —
+        // never a recompute. A hosted client only ever holds a redacted frame
+        // with every opponent's deck/hand masked, so re-deriving here would read
+        // 0 for every opponent; passing the stored value through keeps the view
+        // correct on every surface. [] when the rule is off (nothing is synced).
+        // DESIGNED LEAK, see PlayerVisiblePlayerState.artifactSetStatus.
+        artifactSetStatus: [...(player.artifactSetStatus ?? [])]
       }
     ])
   );
@@ -585,6 +608,10 @@ export function redactStateForSeat(state: GameState, viewerPlayerId: PlayerId): 
   const players = Object.fromEntries(
     Object.entries(view.players).map(([playerId, player]) => {
       // Drop the visible-only count fields; rebuild the hidden arrays from them.
+      // NOTE: `artifactSetStatus` (Polish Set Artifacts) is deliberately NOT
+      // stripped here — unlike the counts it is REAL PlayerState the engine
+      // syncs, and a hosted client needs it to render an opponent's set progress
+      // it could never recompute from the masked zones.
       const { handCount, deckCount, spellBookCount, ...rest } = player;
       const isViewer = playerId === viewerPlayerId;
       return [

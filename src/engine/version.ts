@@ -101,7 +101,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // halves, which is exactly what the version banner exists to surface. It also
 // drops the `grailAsUtopia: "always"` pre-dig Utopia-dragon guard swap (a v19
 // server deals a different guard army for the same field).
-export const ENGINE_PROTOCOL_VERSION = 20;
+// v21: Polish Set Artifacts (`polish-set-artifacts`, default OFF). New ACTIONS a
+// stale room server would reject outright (`SELECT_ARTIFACT_SET_UNIT`,
+// `USE_ARTIFACT_SET_POWER`), a new OPTION_CHOICE context (`artifact-set-scry`)
+// with its own player-view masking, new persisted state
+// (`PlayerState.artifactSetRoundUses` / `artifactSetTiers`,
+// `combatStats.artifactSetUsesThisCombat` / `artifactSetSelections`), a new
+// active-effect modifier (`ATTACK_ROLL_ADVANTAGE`) and three new feed events.
+// With the rule OFF nothing is written or read, but a table that turns it ON
+// against a v20 edge would silently lose every set effect — the banner exists to
+// surface exactly that.
+export const ENGINE_PROTOCOL_VERSION = 21;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

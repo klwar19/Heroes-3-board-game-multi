@@ -109,6 +109,11 @@ import {
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
+  artifactSetIncome,
+  artifactSetRecruitGoldDiscount,
+  consumeArtifactSetRecruitDiscount
+} from "./artifact-sets";
+import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
   polishStackTier,
@@ -15583,6 +15588,22 @@ export function startAdventureRound(state: GameState): void {
 
   refreshRoundTokens(state);
   appendEvent(state, { type: "ROUND_STARTED", round: state.round, kind });
+
+  // Polish Set Artifacts — the EVERY-ROUND income rows (Golden Goose: +2 gold at
+  // 2 pieces, +2 more at 3). Placed here, above the `kind !== "resource"` return
+  // and above the Astrologers branch's own return, precisely because the printed
+  // text says "at the start of EACH round" — unlike Cornucopia's "at the start of
+  // the RESOURCE round", which is paid in the income loop below. No-op when the
+  // rule is off (`artifactSetIncome` returns {}).
+  for (const playerId of state.turnOrder) {
+    if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId]) {
+      continue;
+    }
+    const setIncome = artifactSetIncome(state, playerId, "every-round");
+    if (Object.keys(setIncome).length > 0) {
+      gainResources(state, playerId, setIncome, "Set Artifacts");
+    }
+  }
   // Per-settlement hold-to-win: each full round of continuous control counts once
   // (restarts on recapture). May end the game here when the threshold is met.
   tickSettlementHoldControl(state);
@@ -15737,6 +15758,15 @@ export function startAdventureRound(state: GameState): void {
     const equipGold = equipmentResourceRoundGold(state, playerId);
     if (equipGold) {
       gainResources(state, playerId, { gold: equipGold }, "Alchemist's Satchel");
+    }
+
+    // Polish Set Artifacts — the RESOURCE-ROUND income rows (Cornucopia: +2
+    // building materials at 2 pieces, +1 valuable at 3). The Golden Goose rows
+    // are paid at the top of startAdventureRound instead ("each round"). No-op
+    // when the rule is off.
+    const setResourceIncome = artifactSetIncome(state, playerId, "resource-round");
+    if (Object.keys(setResourceIncome).length > 0) {
+      gainResources(state, playerId, setResourceIncome, "Set Artifacts");
     }
 
     // Crystal Dragons (army map ability): gain the printed resource each
@@ -17815,7 +17845,18 @@ export function externalRecruitGoldDiscount(state: GameState, playerId: PlayerId
  * Pure read.
  */
 export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
-  return legionVoucherDiscount(state, playerId, purchase) + externalRecruitGoldDiscount(state, playerId, purchase);
+  return (
+    legionVoucherDiscount(state, playerId, purchase) +
+    externalRecruitGoldDiscount(state, playerId, purchase) +
+    // Polish Set Artifacts — Statue of Legion: ONE once-per-GAME-ROUND flat
+    // discount of (active tiers) gold on ANY recruit/reinforce, added at this
+    // shared seam so the affordability check, the offer label and the real spend
+    // can never disagree. It is not reserved for a unit (unlike a Legion
+    // voucher), so it applies to whichever purchase lands first this round and is
+    // spent by `consumeRecruitVoucherFor`. 0 when the rule is off / already
+    // spent this round.
+    artifactSetRecruitGoldDiscount(state, playerId)
+  );
 }
 
 /**
@@ -17846,6 +17887,11 @@ export function applyRecruitGoldDiscount(
  * not it was the winning discount. No-op when none is banked for that unit.
  */
 export function consumeRecruitVoucherFor(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): void {
+  // Polish Set Artifacts — Statue of Legion: this purchase used the set's
+  // once-per-round discount, so stamp it spent. Runs BEFORE the voucher filter
+  // (and unconditionally of it) because the set discount is not tied to a unit.
+  // No-op when the rule is off or the discount is already spent this round.
+  consumeArtifactSetRecruitDiscount(state, playerId);
   const player = state.players[playerId];
   if (!player?.recruitDiscounts?.length) {
     return;

@@ -162,6 +162,7 @@ import {
 import { sendTableReaction } from "./table-reactions";
 import { sendChat } from "./chat";
 import {
+  assertParallelInteractionFree,
   hasOpenAdventureTurn,
   isRoundStartEventBarrierActive,
   parallelInteractionBlocker,
@@ -169,6 +170,17 @@ import {
   parallelWaitMessage,
   roundStartEventResolver
 } from "./parallel-turns";
+import {
+  artifactSetDefinition,
+  artifactSetEnemySpellPowerDrain,
+  artifactSetSpellDamageReduction,
+  findArtifactSetOffer,
+  markArtifactSetSpellDrain,
+  markArtifactSetTierUse,
+  setArtifactSetSelection,
+  setArtifactsEnabled,
+  syncArtifactSetTiers
+} from "./artifact-sets";
 import {
   ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
@@ -1184,9 +1196,33 @@ function makeStackItem(state: GameState, action: GameAction): ResolutionStackIte
       spellPowerBonus: 0,
       attackBonus: 0,
       defenseBonus: 0,
-      playedCardIds: []
+      playedCardIds: [],
+      // Polish Set Artifacts — Pendant of Reflection: LOCK the enemy's drain onto
+      // THIS cast the moment it goes on the stack, and spend the charge here.
+      // Storing it (rather than re-deriving at every read) is what makes the
+      // preview, every in-window re-read and the final resolution agree: the
+      // charge is gone the instant the cast starts, so a live derivation would
+      // read 1 before and 0 after. `markArtifactSetSpellDrain` runs only when a
+      // drain actually applied, so an unaffected cast leaves the charge for the
+      // next enemy Spell. Absent/0 when the rule is off.
+      ...(action.type === "CAST_SPELL"
+        ? { artifactSetSpellDrain: lockArtifactSetSpellDrain(state, action.playerId) }
+        : {})
     }
   };
+}
+
+/**
+ * Read the enemy Pendant-of-Reflection drain that applies to a cast by
+ * `playerId` and spend the charge(s) that produced it. Returns 0 (spending
+ * nothing) when the rule is off or no enemy holds an unspent charge.
+ */
+function lockArtifactSetSpellDrain(state: GameState, playerId: PlayerId): number {
+  const drain = artifactSetEnemySpellPowerDrain(state, playerId);
+  if (drain > 0) {
+    markArtifactSetSpellDrain(state, playerId);
+  }
+  return drain;
 }
 
 function reactionPlayerOrder(
@@ -2405,6 +2441,13 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     return 0;
   }
   let total = getSpellDamageReduction(target);
+
+  // Polish Set Artifacts — Power of the Dragon Father tiers 4 (+7): "all of your
+  // units suffer 1 DM less from Spells", stacking to 2 at 7 pieces. Folded at
+  // this ONE spell-damage chokepoint so every path (direct, area, the Faerie
+  // Dragon bolt, and the Titan's Thunder zap, which is itself Spell damage) sees
+  // it. 0 when the rule is off / outside a combat.
+  total += artifactSetSpellDamageReduction(state, target.controllerId);
 
   // Lasting SPELL_DAMAGE_REDUCTION active effects (Clancy's Unicorns ward,
   // CREATE_SPELL_WARD specialties, …). Sum every such modifier on an effect
@@ -14954,6 +14997,332 @@ function applyDrawRiderThenDiscard(
   openHandDiscardChoice(state, playerId, amount, [...(state.players[playerId]?.hand ?? [])], false, cardName);
 }
 
+// ===========================================================================
+// POLISH SET ARTIFACTS (`polish-set-artifacts`) — the two activation handlers
+//
+// Both are HANDLER-VALIDATED and both re-derive `artifactSetPowerOffers`, the
+// SAME derivation `getLegalActions` renders, so a forged / stale action can
+// never resolve and the button can never promise something the handler refuses.
+// Neither opens a window on anyone (the Diplomat's Cloak scry opens a plain
+// two-option OPTION_CHOICE on the ACTING player alone), so no set tier can ever
+// stall a seat.
+// ===========================================================================
+
+/** Shared guards: the rule is on, the player exists, and it is a legal moment. */
+function assertArtifactSetActionLegal(state: GameState, playerId: PlayerId): void {
+  if (!setArtifactsEnabled(state)) {
+    throw new Error("Set Artifacts are off for this game.");
+  }
+  if (!state.players[playerId]) {
+    throw new Error("Unknown player.");
+  }
+  if (state.combat) {
+    // In a fight, only the two sides may act.
+    if (state.combat.attackerPlayerId !== playerId && state.combat.defenderPlayerId !== playerId) {
+      throw new Error("Only a fighter in this combat may use a Set Artifact power.");
+    }
+    return;
+  }
+  if (!hasOpenAdventureTurn(state, playerId)) {
+    throw new Error("Use that Set Artifact power on your own turn.");
+  }
+  assertParallelInteractionFree(state, playerId);
+}
+
+/**
+ * SELECT_ARTIFACT_SET_UNIT — the "at the beginning of the combat select 1 unit"
+ * tier. Stamps the pick for that set and lays a combat-duration INITIATIVE_BONUS
+ * on the chosen unit, so the shift is a real, live initiative change (the Haste /
+ * Cape of Velocity modifier) and the activation order really moves.
+ */
+function selectArtifactSetUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "SELECT_ARTIFACT_SET_UNIT" }>
+): void {
+  assertArtifactSetActionLegal(state, action.playerId);
+  const offer = findArtifactSetOffer(state, action.playerId, "select", action.setId, 2, action.unitId);
+  const set = artifactSetDefinition(action.setId);
+  if (!offer || !set || offer.tier.effect.kind !== "select-unit") {
+    throw new Error("That Set Artifact selection is not available.");
+  }
+  const unit = state.combat?.units[action.unitId];
+  if (!unit) {
+    throw new Error("That unit is not in this combat.");
+  }
+  setArtifactSetSelection(state, action.playerId, action.setId, action.unitId);
+  markArtifactSetTierUse(state, action.playerId, action.setId, offer.tier);
+  const amount = offer.tier.effect.initiative;
+  if (amount !== 0) {
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: `${set.name} (set)`,
+          duration: { type: "combat" },
+          scope: "unit",
+          modifiers: [{ type: "INITIATIVE_BONUS", amount }]
+        },
+        { type: "system" },
+        action.playerId,
+        { type: "unit", unitId: action.unitId }
+      )
+    );
+  }
+  appendEvent(state, {
+    type: "ARTIFACT_SET_UNIT_SELECTED",
+    playerId: action.playerId,
+    setId: set.id,
+    setName: set.name,
+    unitId: action.unitId
+  });
+}
+
+/** Emit the shared "a set tier fired" feed line. */
+function noteArtifactSetPower(
+  state: GameState,
+  playerId: PlayerId,
+  set: { id: string; name: string },
+  threshold: number,
+  message: string
+): void {
+  appendEvent(state, {
+    type: "ARTIFACT_SET_POWER_USED",
+    playerId,
+    setId: set.id,
+    setName: set.name,
+    tier: threshold,
+    message
+  });
+}
+
+/** Lay a combat-scoped unit effect for a set tier. */
+function pushArtifactSetUnitEffect(
+  state: GameState,
+  playerId: PlayerId,
+  setName: string,
+  unitId: string,
+  modifiers: ActiveEffectDefinition["modifiers"],
+  duration: ActiveEffectDefinition["duration"]
+): void {
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      { name: `${setName} (set)`, duration, scope: "unit", modifiers },
+      { type: "system" },
+      playerId,
+      { type: "unit", unitId }
+    )
+  );
+}
+
+/**
+ * USE_ARTIFACT_SET_POWER — activate one live set tier. Every branch here matches
+ * exactly one `ArtifactSetTierEffect` kind in the data module; a kind with no
+ * branch would be a decorative stub, which `artifact-sets.test.ts` forbids.
+ */
+function applyArtifactSetPower(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>
+): void {
+  assertArtifactSetActionLegal(state, action.playerId);
+  const offer = findArtifactSetOffer(
+    state,
+    action.playerId,
+    "use",
+    action.setId,
+    action.tier,
+    action.unitId,
+    action.neutralTier
+  );
+  const set = artifactSetDefinition(action.setId);
+  if (!offer || !set) {
+    throw new Error("That Set Artifact power is not available.");
+  }
+  const tier = offer.tier;
+  const effect = tier.effect;
+  const unit = action.unitId ? state.combat?.units[action.unitId] : undefined;
+
+  switch (effect.kind) {
+    case "attack-roll-advantage": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      pushArtifactSetUnitEffect(
+        state,
+        action.playerId,
+        set.name,
+        unit.id,
+        [{ type: "ATTACK_ROLL_ADVANTAGE" }],
+        { type: "combat" }
+      );
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} rolls 2 Attack dice and keeps the higher.`);
+      break;
+    }
+    case "attack-roll-disadvantage": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      // READING: "during an attack …" is applied as a CURRENT-COMBAT-ROUND
+      // debuff on the selected enemy — the closest existing duration to the
+      // printed once-per-combat, in-an-attack wording without adding a reaction
+      // window. Documented in CLAUDE.md.
+      pushArtifactSetUnitEffect(
+        state,
+        action.playerId,
+        set.name,
+        unit.id,
+        [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
+        { type: "current-combat-round" }
+      );
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} rolls 2 Attack dice and keeps the lower this round.`);
+      break;
+    }
+    case "defense-token": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      unit.defenseToken = true;
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} gains a Defense token.`);
+      break;
+    }
+    case "attack-bonus": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      // A POSITIVE amount ("your selected unit gains +1 AT") lasts the combat; a
+      // NEGATIVE one is the Armor of the Damned's "during an attack the selected
+      // enemy suffers -1 AT", read as the current combat round (see above).
+      pushArtifactSetUnitEffect(
+        state,
+        action.playerId,
+        set.name,
+        unit.id,
+        [{ type: "ATTACK_BONUS", amount: effect.amount }],
+        effect.amount >= 0 ? { type: "combat" } : { type: "current-combat-round" }
+      );
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} ${effect.amount >= 0 ? "gains" : "suffers"} ${effect.amount >= 0 ? "+" : ""}${effect.amount} Attack.`
+      );
+      break;
+    }
+    case "defense-bonus": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      pushArtifactSetUnitEffect(
+        state,
+        action.playerId,
+        set.name,
+        unit.id,
+        [{ type: "DEFENSE_BONUS", amount: effect.amount }],
+        { type: "combat" }
+      );
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} gains +${effect.amount} Defense.`);
+      break;
+    }
+    case "fire-shield": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      pushArtifactSetUnitEffect(
+        state,
+        action.playerId,
+        set.name,
+        unit.id,
+        [{ type: "FIRE_SHIELD", amount: effect.amount }],
+        { type: "current-combat-round" }
+      );
+      noteArtifactSetPower(
+        state,
+        action.playerId,
+        set,
+        tier.threshold,
+        `${unit.name} burns adjacent attackers for ${effect.amount} this round.`
+      );
+      break;
+    }
+    case "spell-zap": {
+      if (!unit) {
+        throw new Error("That Set Artifact power needs a unit target.");
+      }
+      // "Suffers 1 DM from Spells" — routed through the SAME reduction the
+      // spells use, so a Golem's "reduce spell damage" passive and a spell ward
+      // both apply, and then through the normal removal path (pack flip,
+      // Stack-Token absorb, rebirth, end-of-combat check).
+      const dealt = reducedSpellDamage(state, unit, effect.damage);
+      if (dealt > 0) {
+        unit.damage += dealt;
+        noteUnitDamagedForTokens(state, unit, dealt);
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "system" },
+          target: { type: "unit", unitId: unit.id },
+          amount: dealt,
+          damageKind: "spell"
+        });
+        markUnitRemovedIfNeeded(state, unit);
+      }
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `${unit.name} suffers ${dealt} Spell damage.`);
+      markArtifactSetTierUse(state, action.playerId, action.setId, tier);
+      finishCombatIfNeeded(state);
+      return;
+    }
+    case "draw-then-discard": {
+      const drawn = drawCardsForPlayer(state, action.playerId, effect.draw);
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `Draws ${drawn} card${drawn === 1 ? "" : "s"}, then discards ${effect.discard}.`);
+      markArtifactSetTierUse(state, action.playerId, action.setId, tier);
+      openHandDiscardChoice(
+        state,
+        action.playerId,
+        effect.discard,
+        [...(state.players[action.playerId]?.hand ?? [])],
+        false,
+        set.name
+      );
+      return;
+    }
+    case "neutral-scry": {
+      const neutralTier = action.neutralTier;
+      const deck = neutralTier ? state.decks[`neutral-${neutralTier}`] : undefined;
+      if (!neutralTier || !deck) {
+        throw new Error("That Set Artifact power needs a Neutral deck.");
+      }
+      // Reshuffle-on-empty FIRST (never a filtered pop — the draw pile must have
+      // a real top card to look at), then LOOK at it without lifting it: the card
+      // stays on the draw pile and only MOVES if the player says "bottom". So no
+      // card can be destroyed by this window and an elimination mid-choice needs
+      // no return branch.
+      reshuffleSharedDeckIfEmpty(state, `neutral-${neutralTier}`, `set-scry-${neutralTier}`);
+      const cardId = deck.drawPile[deck.drawPile.length - 1];
+      if (!cardId) {
+        throw new Error("That Neutral deck is empty.");
+      }
+      markArtifactSetTierUse(state, action.playerId, action.setId, tier);
+      noteArtifactSetPower(state, action.playerId, set, tier.threshold, `Looks at the top ${neutralTier} Neutral card.`);
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId: action.playerId,
+        prompt: `${set.name}: ${cardLibrary[cardId]?.name ?? cardId} is on top of the ${neutralTier} Neutral deck.`,
+        options: [{ label: "Leave it on top" }, { label: "Put it on the bottom" }],
+        context: "artifact-set-scry",
+        artifactSetScry: { setId: set.id, tier: tier.threshold, neutralTier, cardId },
+        returnPhase: state.combat ? "combat" : "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
+      return;
+    }
+    default:
+      throw new Error("That Set Artifact tier is not an activated power.");
+  }
+  markArtifactSetTierUse(state, action.playerId, action.setId, tier);
+}
+
 /** Every Artifact deck id, Legacy ("artifacts") and BINH split, in draw order. */
 const ARTIFACT_DECK_IDS = ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"] as const;
 const ARTIFACT_DECK_LABELS: Record<string, string> = {
@@ -21178,6 +21547,11 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
   // gold, once-per-turn, own army card) and touches only the actor's state.
   "DRILL_UNIT",
+  // Polish Set Artifacts: both handlers re-derive `artifactSetPowerOffers` (the
+  // same derivation legal-actions renders) and refuse anything not in it, so
+  // they are fully self-validating and touch only the actor's own state.
+  "SELECT_ARTIFACT_SET_UNIT",
+  "USE_ARTIFACT_SET_POWER",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -21721,6 +22095,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "DRILL_UNIT":
         drillUnit(nextState, action);
         break;
+      case "SELECT_ARTIFACT_SET_UNIT":
+        selectArtifactSetUnit(nextState, action);
+        break;
+      case "USE_ARTIFACT_SET_POWER":
+        applyArtifactSetPower(nextState, action);
+        break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);
         break;
@@ -21977,6 +22357,24 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // just added (a cast) or removed (Dispel, combat/round end) — before any
   // automation or future action reads the unit's abilities.
   syncAbilitySuppression(nextState);
+
+  // Polish Set Artifacts: re-derive every player's active-tier count and announce
+  // the ones that MOVED — a set's tiers change whenever a member card enters or
+  // leaves a player's pool, which can happen inside literally any action (a draw,
+  // a discard, a Search, a card removed from the game). Doing it at this shared
+  // tail is the only way to catch them all without touching 50 call sites. No-op
+  // when the rule is off (`syncArtifactSetTiers` returns [] without walking).
+  for (const change of syncArtifactSetTiers(nextState)) {
+    appendEvent(nextState, {
+      type: "ARTIFACT_SET_TIERS_CHANGED",
+      playerId: change.playerId,
+      setId: change.setId,
+      setName: artifactSetDefinition(change.setId)?.name ?? change.setId,
+      pieces: change.pieces,
+      tiers: change.tiers,
+      previousTiers: change.previousTiers
+    });
+  }
 
   try {
     runAdventureAutomations(nextState, cards);

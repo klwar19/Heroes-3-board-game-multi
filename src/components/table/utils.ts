@@ -564,6 +564,27 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     }
     case "HERO_TRAINED":
       return `${playerName(state, event.playerId)}'s hero trains, gaining Merit.`;
+    case "ARTIFACT_SET_TIERS_CHANGED": {
+      // Polish Set Artifacts: the set's piece count moved. Public by design.
+      const who = playerName(state, event.playerId);
+      const pieces = `${event.pieces} piece${event.pieces === 1 ? "" : "s"}`;
+      if (event.tiers > event.previousTiers) {
+        return `${who} holds ${pieces} of the ${event.setName} set — ${event.tiers} bonus${
+          event.tiers === 1 ? "" : "es"
+        } active.`;
+      }
+      return event.tiers === 0
+        ? `${who} loses the ${event.setName} set bonus (${pieces} left).`
+        : `${who} drops to ${pieces} of the ${event.setName} set — ${event.tiers} bonus${
+            event.tiers === 1 ? "" : "es"
+          } active.`;
+    }
+    case "ARTIFACT_SET_UNIT_SELECTED":
+      return `${playerName(state, event.playerId)} selects ${unitName(state, event.unitId)} for the ${
+        event.setName
+      } set.`;
+    case "ARTIFACT_SET_POWER_USED":
+      return `${playerName(state, event.playerId)} uses ${event.setName} (${event.tier} pieces): ${event.message}`;
     case "COMBAT_SCRIPT_TRIGGERED":
       // Forced Battle Events (Anime mod, §3.12): the announce line is a
       // self-contained "something happens" sentence built by the engine.
