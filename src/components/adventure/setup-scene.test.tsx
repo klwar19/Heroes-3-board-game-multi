@@ -12,7 +12,7 @@ describe("SetupSceneArt — setup video background", () => {
     expect(video).not.toBeNull();
     // The path must flow through assetUrl() so the CDN rewrite reaches it; in
     // the test env (no NEXT_PUBLIC_ASSET_BASE_URL) that leaves it root-relative.
-    expect(video?.getAttribute("src")).toBe("/assets/ui/setup/setup-scene-playlist-v2.mp4");
+    expect(video?.getAttribute("src")).toBe("/assets/ui/setup/setup-scene-playlist-v6.mp4");
     expect(video?.getAttribute("poster")).toBe(
       "/assets/ui/setup/setup-scene-attached-final.webp"
     );

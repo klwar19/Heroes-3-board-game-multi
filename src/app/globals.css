@@ -33782,6 +33782,22 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
+/* Phone: show the STATIC painted still, not the looping video — lighter, and
+   free of the object-fit: fill squash the desktop plate uses. */
+.phoneMode .setupSceneVideo {
+  display: none;
+}
+
+/* Phone: scale that still to its own aspect ratio (letterboxed on the dark
+   ground) instead of covering/stretching the whole screen — it need not fill.
+   Higher specificity + !important so it beats the narrow-width `cover` and the
+   desktop `100% 100%` rules, which are themselves !important. Only size and
+   position change; the image and #050403 fill come from those base rules. */
+.phoneMode.setupPhase .setupSceneIllustration {
+  background-size: contain !important;
+  background-position: center !important;
+}
+
 body:has(main.phoneMode) .setupHubBackdrop {
   padding: 0;
 }
