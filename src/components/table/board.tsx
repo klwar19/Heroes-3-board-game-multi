@@ -2178,7 +2178,16 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "SKIP_NECROMANCY",
   "BUILD_STRUCTURE",
   "MOVE_HERO",
-  "END_TURN"
+  "END_TURN",
+  // Polish Set Artifacts (`polish-set-artifacts`): the combat tiers. The round-1
+  // "select 1 of your / 1 enemy unit" pick and every once-per-combat buff /
+  // debuff / spell zap are ordinary optional legal actions with no window and no
+  // hex to click, so the command dock is their ONLY human surface — without
+  // these two entries the engine's offers would be unreachable (the Polish Wait
+  // / Surrender precedent). Both carry the engine's own naming label through
+  // `commandLabel`'s default branch.
+  "SELECT_ARTIFACT_SET_UNIT",
+  "USE_ARTIFACT_SET_POWER"
 ]);
 
 function commandLabel(legal: LegalAction): string {

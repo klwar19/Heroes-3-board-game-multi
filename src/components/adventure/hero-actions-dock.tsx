@@ -13,6 +13,11 @@ import type { GameAction, LegalAction } from "@/engine";
 //   - BUILD_GRAIL: build the carried Grail token at a Town/Settlement the Hero
 //     controls (map-maker `grailBuildAt` / the hidden Grail-Utopia package). The
 //     engine offers this, but without a button here it was unreachable in the UI.
+//   - USE_ARTIFACT_SET_POWER (Polish Set Artifacts): the two MAP tiers — the
+//     Wizard's Well draw-then-discard and the Diplomat's Cloak Neutral-deck
+//     scry, both once per round. Several may be offered at once (one per Neutral
+//     tier deck), so unlike the fixed hero actions these render one button per
+//     OFFER, labelled by the engine.
 //
 // Availability is READ from the legal-action list (never re-derived here), so a
 // button appears IFF `getLegalActions` currently offers that action to the
@@ -20,7 +25,7 @@ import type { GameAction, LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit" | "build";
+type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit" | "build" | "artifact-set";
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -48,8 +53,16 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "Build the Grail",
     vi: "",
     title: "Build the carried Grail at this Town or Settlement you control"
+  },
+  "artifact-set": {
+    en: "",
+    vi: "",
+    title: "Artifact set bonus — once per round"
   }
 };
+
+/** Keys whose button text is the ENGINE's label (several offers may co-exist). */
+const ENGINE_LABELLED_KEYS = new Set<HeroMapActionKey>(["revisit", "build", "artifact-set"]);
 
 /** Which hero map action a legal action is, or null when it is not one of them. */
 function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
@@ -64,6 +77,12 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   }
   if (action.type === "BUILD_GRAIL") {
     return "build";
+  }
+  // Polish Set Artifacts: only the MAP tiers reach a map legal-action list at
+  // all (the combat tiers live in the command dock), so no extra filtering is
+  // needed here — the engine decides which of the two, and for which deck.
+  if (action.type === "USE_ARTIFACT_SET_POWER") {
+    return "artifact-set";
   }
   // Forced March is the only map-active grade skill: it uses USE_HERO_SKILL with
   // no unitId (the combat War Cry / reactions carry a unitId).
@@ -100,7 +119,11 @@ export function HeroActionsDock({
         const reactKey =
           offer.action.type === "REVISIT_FIELD" || offer.action.type === "BUILD_GRAIL"
             ? `${offer.key}:${offer.action.heroId}`
-            : offer.key;
+            : offer.action.type === "USE_ARTIFACT_SET_POWER"
+              ? // One offer per set tier, and the Diplomat's Cloak scry is offered
+                // once per Neutral deck — so the set id alone is not unique.
+                `${offer.key}:${offer.action.setId}:${offer.action.tier}:${offer.action.neutralTier ?? ""}`
+              : offer.key;
         return (
           <button
             className="heroActionButton"
@@ -110,7 +133,7 @@ export function HeroActionsDock({
             type="button"
           >
             <span className="heroActionLabelEn">
-              {offer.key === "revisit" || offer.key === "build" ? offer.legalLabel : label.en}
+              {ENGINE_LABELLED_KEYS.has(offer.key) ? offer.legalLabel : label.en}
             </span>
             {label.vi ? <small className="heroActionLabelVi">{label.vi}</small> : null}
           </button>

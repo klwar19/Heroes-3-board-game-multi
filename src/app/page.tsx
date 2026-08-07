@@ -29,6 +29,7 @@ import {
   rulesetCardNote,
   spellBookPowerAvailable,
   spellPowerValueOfCard,
+  setArtifactsEnabled,
   NEUTRAL_PLAYER_ID,
   type GameAction,
   type GameEvent,
@@ -47,6 +48,8 @@ import {
   LogDrawer
 } from "@/components/table/board";
 import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
+import { ArtifactSetIconsProvider } from "@/components/table/artifact-set-badge";
+import { ArtifactSetPanel } from "@/components/adventure/artifact-set-panel";
 import { assetUrl } from "@/lib/asset-url";
 import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
 import { HeroBoard } from "@/components/hero-board";
@@ -5711,6 +5714,7 @@ export default function Home() {
     ];
 
     return (
+      <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
       <CardZoomProvider>
         <main
           className={`tableRoot adventureRoot${phoneUi ? " phoneMode" : ""}`}
@@ -6111,6 +6115,9 @@ export default function Home() {
                 ((uiState ?? state).players[viewerPlayerId]?.scrolls?.length ?? 0) === 0 ? (
                   <small className="trayBoxEmpty">No permanent, ongoing, or Spell Scroll effects in play.</small>
                 ) : null}
+                {/* Polish Set Artifacts: EVERY seat's active sets ride the same
+                    always-visible Ongoing tray (the piece count is public). */}
+                <ArtifactSetPanel state={uiState ?? state} viewerPlayerId={viewerPlayerId} />
               </div>
               <div className="handArea" aria-label="Your hand">
               <div className="handTopBar">
@@ -6919,6 +6926,7 @@ export default function Home() {
           ) : null}
         </main>
       </CardZoomProvider>
+      </ArtifactSetIconsProvider>
     );
   }
 
@@ -6952,6 +6960,7 @@ export default function Home() {
           .catch(() => setSyncStatus("room sync failed"));
       }}
     >
+    <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
     <CardZoomProvider>
     <main
       className={`tableRoot${phoneUi ? " phoneMode" : ""}`}
@@ -7033,6 +7042,9 @@ export default function Home() {
                 state={state}
                 viewerPlayerId={viewerPlayerId}
               />
+              {/* Polish Set Artifacts: the same always-visible set status the
+                  map shows, so a fight can be planned around the active tiers. */}
+              <ArtifactSetPanel compact state={state} viewerPlayerId={viewerPlayerId} />
               <div className="handColumn">
                 {/* The combat "View hand" pile-browser button was removed to
                     declutter the top strip: the HandFan below already shows every
@@ -7326,6 +7338,7 @@ export default function Home() {
       ) : null}
     </main>
     </CardZoomProvider>
+    </ArtifactSetIconsProvider>
     </TableErrorBoundary>
   );
 }
