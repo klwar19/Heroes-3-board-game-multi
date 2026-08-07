@@ -11711,6 +11711,22 @@ span.recruitThumb {
   animation: none;
 }
 
+.setupSceneVideo {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setupSceneVideo {
+    display: none;
+  }
+}
+
 .setupSceneTree,
 .setupSceneParty {
   display: none !important;
@@ -36336,6 +36352,12 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
     center / 100% 100% no-repeat !important;
 }
 
+/* Match the still scene's full-frame fit: keep all four decorative borders
+   and both lower corner buttons visible instead of cropping the video sides. */
+.setupPhase .setupSceneVideo {
+  object-fit: fill;
+}
+
 /* Remove the old Map-only radial overlay. Every generated plaque gets the
    same restrained warm edge light, with a stronger but still natural hover. */
 .setupPhase .setupScenePaintedFruit {
@@ -36361,14 +36383,21 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 /* Requested horizontal tuning against the four painted chains. */
 .setupPhase .setupHubBox--map {
   left: 12.8% !important;
+  top: 19% !important;
 }
 
 .setupPhase .setupHubBox--mode {
   left: 29.3% !important;
+  top: 21.5% !important;
+}
+
+.setupPhase .setupHubBox--heroes {
+  top: 16.5% !important;
 }
 
 .setupPhase .setupHubBox--advanced {
   left: 56.2% !important;
+  top: 16.5% !important;
 }
 
 /* The start/waiting action belongs directly beneath the painted campfire.
