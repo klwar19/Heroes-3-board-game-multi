@@ -3,9 +3,9 @@
 import { useRef } from "react";
 import { assetUrl } from "@/lib/asset-url";
 
-const SETUP_SCENE_PLAYLIST = "/assets/ui/setup/setup-scene-playlist.mp4";
+const SETUP_SCENE_PLAYLIST = "/assets/ui/setup/setup-scene-playlist-v2.mp4";
 /** Time at which the second animation is fully established after the crossfade. */
-const SECOND_ANIMATION_START_SECONDS = 3.44;
+const SECOND_ANIMATION_START_SECONDS = 7.29;
 
 const FRUIT = [
   { id: "mode", className: "setupSceneFruit--mode" },
