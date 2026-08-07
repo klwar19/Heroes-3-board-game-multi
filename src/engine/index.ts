@@ -886,7 +886,9 @@ export type { ArtifactSetOffer, ArtifactSetStatus } from "./artifact-sets";
 export {
   ARTIFACT_SET_BY_MEMBER,
   ARTIFACT_SET_MEMBER_IDS,
-  SET_ARTIFACT_MEMBERS_NOT_IN_GAME
+  SET_ARTIFACT_MEMBERS_NOT_IN_GAME,
+  artifactSetCardImage,
+  artifactSetIconImage
 } from "@/data/cards/artifact-sets";
 export type {
   ArtifactSetDefinition,

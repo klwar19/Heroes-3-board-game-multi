@@ -7532,7 +7532,7 @@ blanket physical-touch relaxation).
   printed inputs and a gold cushion, while non-Gold population/build spending
   is suppressed until that unit is recruited. Seeded premium-rush benchmarks
   assert actual `UNIT_RECRUITED` events, not merely the dwelling unlock.
-## Polish Set Artifacts (OPTIONAL house rule, default OFF) — ENGINE half (2026-08-07)
+## Polish Set Artifacts (OPTIONAL house rule, default OFF) — engine + UI (2026-08-07)
 
 Eleven Artifact SETS. A player's PIECE COUNT for a set is how many DISTINCT
 member cards they still own; at 2 pieces the set's first listed effect switches
@@ -7550,10 +7550,91 @@ deploy:partykit` is owed after this lands, or a stale edge rejects the two new
 actions. Behaviour pinned in `src/engine/artifact-sets.test.ts` (61 tests);
 **26 mutations applied, 26 killed.**
 
-**This pass is the ENGINE + DATA half only.** Deferred to the UI/art half: the
-11 set CARD faces and set ICONS (present in the mod author's asset folder, not
-imported), any set panel / progress chip / "ongoing" tray rendering, and buttons
-for the new offers. The engine exposes everything that half needs:
+### The ART + UI half (2026-08-07, the follow-up commit)
+
+Leading with what does NOT work / the deliberate limits:
+- **jsdom cannot compute CSS**, so NOTHING here proves a pixel. Every test below
+  asserts the DOM element, its image URL and its dispatch — never that the set
+  panel is visible, that the corner badge is unclipped, or that the command dock
+  is not overflowing. There is no e2e spec for this layout.
+- **The combat command dock can get CROWDED.** Every set offer is one button, and
+  the engine emits one per legal TARGET: a full Angelic Alliance with the pick
+  made is 5 buttons, and Titan's Thunder tier 4 is one per enemy unit. There is
+  no grouping / submenu — the dock is the surface, exactly as it is for
+  `USE_UNIT_ABILITY`.
+- **The set panel shows ACTIVE sets only** (pieces ≥ 2). A set at 1 piece grants
+  nothing, so showing it would advertise a bonus that does not exist — there is
+  no "1/6, keep collecting" progress row.
+- **The map buttons live in the `HeroActionsDock`**, whose header still reads
+  "Hero actions" though a set power is not a hero action; it is the map HUD's
+  only generic offer surface.
+- **Nothing new is added to the AI.** The dock/panel are presentation over the
+  existing offers; a computer seat still ignores every set tier (engine-half
+  limit, unchanged).
+- **The set icon is drawn by `CardFrame`, so it appears on EVERY member card
+  face everywhere** — hand, trays, piles, discard tops, opponent windows. That is
+  deliberate (a piece must be recognisable wherever it is seen), but it means the
+  badge also rides tiny 34–44px thumbnails where it is mostly a colour hint. A
+  card whose scan is MISSING (the `SpecialtyCard` / named-text fallback) returns
+  before the badge wrapper and wears none — theoretical today, since all 41
+  members are core Artifacts with real scans.
+
+What runs (each pinned by a test that fails if the wiring is removed;
+**8 mutations applied, 8 killed**):
+- **ART.** 11 set CARD faces at `public/assets/set-artifacts/cards/<setId>.webp`
+  (743×1040, the repo's Artifact card-face size, `fit: contain` so the printed
+  per-tier rules text at the bottom is never cropped) and 11 set ICONS at
+  `…/icons/<setId>.webp` (256×256, transparent). Both paths are DERIVED from the
+  set id (`artifactSetCardImage` / `artifactSetIconImage` in
+  `src/data/cards/artifact-sets.ts`), so a file and its set cannot drift; both
+  are wrapped in `assetUrl()` at every render site. Rebuild with
+  `node scripts/build-set-artifact-art.mjs --src <the author's asset drop>` —
+  the 2–3.5MB PNG masters are deliberately NOT committed, and that script's
+  `SOURCES` table records which raw file became which set. On-disk pins (format,
+  exact dimensions, alpha, a not-a-stub byte floor) in
+  `src/data/assets/set-artifact-images.test.ts`; `compress-media.mjs` prices the
+  family at q85 like every other text-bearing card face.
+  **Every icon→set match is PROVABLE, not guessed**: each icon is the artwork
+  inside its own set card's art window, verified by eye against all 11 cards. Two
+  raw filenames did not name their set and are now resolved: `Obraz4.png` (an
+  Office auto-export name) is **Titan's Thunder**, the lightning sword — NOT a
+  generic set badge; and `miasto-dobrobytu.png` ("city of prosperity") is
+  **Cornucopia**, the gem-filled horn — NOT Golden Goose, which has its own
+  golden-goose statue icon. `Pedant of Reflection.png` is the author's typo (the
+  card's own printed title reads "Pendant").
+- **SET STATUS DISPLAY** (`ArtifactSetPanel`,
+  `src/components/adventure/artifact-set-panel.tsx`): every seat's active sets as
+  their set CARD face with an `N/M` pieces badge, mounted beside the Ongoing /
+  Permanent tray on the MAP **and** the COMBAT screen ("to be seen all the time
+  for every player"). Clicking one zooms the full card through the existing
+  `zoomContent` overlay with a ✔/✖ line per printed tier. It renders EVERY
+  player's sets because the count is public engine state; it re-derives nothing
+  (the numbers come straight off `PlayerState.artifactSetStatus`).
+- **SET ICONS ON MEMBER CARDS**: `CardFrame` (`src/components/table/seats.tsx`)
+  wraps its `<img>` in `.cardSetFrame` and adds the corner `.cardSetIcon` when —
+  and only when — the card is a set member AND the rule is on. The rule reaches
+  it through `ArtifactSetIconsProvider`
+  (`src/components/table/artifact-set-badge.tsx`, default `false`), mounted on
+  both table screens; with no provider or the rule off, `CardFrame` returns
+  byte-identically the bare `<img>` it always did, so every other screen and
+  every isolated card-face test is untouched.
+- **ACTION SURFACES — no orphan offers.** Both engine action types are
+  clickable: `SELECT_ARTIFACT_SET_UNIT` and `USE_ARTIFACT_SET_POWER` joined
+  `COMMAND_ACTION_TYPES` (`board.tsx`), so the combat command dock renders each
+  offer with the ENGINE's own label and dispatches its exact payload; the two MAP
+  tiers (Wizard's Well draw-then-discard, Diplomat's Cloak scry — the latter once
+  per Neutral deck, each with its own React key) render in `HeroActionsDock`; and
+  the `artifact-set-scry` OPTION_CHOICE falls through to the GENERIC `PromptTray`
+  (it is excluded nowhere) — pinned by clicking both printed answers.
+- **Test files**: `src/components/table/artifact-set-ui.test.tsx` (17 — panel,
+  badge, both docks, the scry tray, plus a sweep asserting EVERY offer a
+  6-piece Angelic Alliance emits is a rendered clickable button),
+  `src/app/page-artifact-sets.test.tsx` (2 — the real `page.tsx` MOUNTS, which no
+  component test can catch: deleting either mount would hide the whole feature
+  with every other test still green) and `src/data/assets/set-artifact-images.test.ts`
+  (3). Every one carries a rule-OFF CONTROL.
+
+The engine half's contract, unchanged, is what all of the above reads:
 `PlayerState.artifactSetStatus` (public, per set: `pieces` / `activeTiers` /
 `memberCount`), mirrored onto every player view; the three feed events
 `ARTIFACT_SET_TIERS_CHANGED` / `ARTIFACT_SET_UNIT_SELECTED` /

@@ -15374,6 +15374,93 @@ button.setupHubNavItem:hover {
   width: 44px;
 }
 
+/* ---- Polish Set Artifacts (house rule `polish-set-artifacts`) ------------ */
+/* The set ICON badge worn in the corner of a member Artifact's card face.
+   CardFrame only emits this wrapper when the rule is ON and the card really is
+   a set member, so every other card keeps its bare <img> and its old layout. */
+.cardSetFrame {
+  position: relative;
+  display: inline-flex;
+  line-height: 0;
+}
+
+.cardSetIcon {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  width: 30%;
+  max-width: 34px;
+  min-width: 12px;
+  aspect-ratio: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%));
+}
+
+/* The always-on set status beside the Ongoing / Permanent tray. */
+.artifactSetPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.artifactSetSeat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artifactSetSeatName {
+  color: #cbb489;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.artifactSetTiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.artifactSetTile {
+  position: relative;
+  padding: 0;
+  border: 1px solid rgb(220 175 95 / 45%);
+  border-radius: 5px;
+  background: rgb(20 15 9 / 80%);
+  cursor: zoom-in;
+  line-height: 0;
+}
+
+.artifactSetTile:hover,
+.artifactSetTile:focus-visible {
+  border-color: #f0d69a;
+}
+
+.artifactSetCardImage {
+  width: 46px;
+  border-radius: 4px;
+  display: block;
+}
+
+.artifactSetPanel.compact .artifactSetCardImage {
+  width: 34px;
+}
+
+.artifactSetPieces {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  padding: 0 3px;
+  border: 1px solid rgb(220 175 95 / 70%);
+  border-radius: 4px;
+  background: rgb(14 10 6 / 92%);
+  color: #f4dfae;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
 .permanentCardMenu {
   position: absolute;
   z-index: 80;

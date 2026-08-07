@@ -512,3 +512,27 @@ export const ARTIFACT_SET_MEMBER_IDS: ReadonlySet<CardId> = new Set(Object.keys(
 export function artifactSetDefinition(setId: string): ArtifactSetDefinition | undefined {
   return ARTIFACT_SET_BY_ID[setId as ArtifactSetId];
 }
+
+/**
+ * The set's CARD face — the mod author's printed sheet listing every tier.
+ * 743×1040 like every other Artifact card face. DERIVED from the id rather than
+ * a lookup table so a file and its set can never drift apart; the on-disk pins
+ * live in `src/data/assets/set-artifact-images.test.ts`. Built by
+ * `scripts/build-set-artifact-art.mjs`.
+ *
+ * Plain data — a render site MUST wrap it in `assetUrl()`.
+ */
+export function artifactSetCardImage(setId: string): string {
+  return `/assets/set-artifacts/cards/${setId}.webp`;
+}
+
+/**
+ * The set's ICON — the artwork inside its card's art window, cut to a 256×256
+ * transparent badge and worn in the corner of every member Artifact card while
+ * the house rule is on.
+ *
+ * Plain data — a render site MUST wrap it in `assetUrl()`.
+ */
+export function artifactSetIconImage(setId: string): string {
+  return `/assets/set-artifacts/icons/${setId}.webp`;
+}
