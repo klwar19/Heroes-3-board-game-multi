@@ -7532,3 +7532,142 @@ blanket physical-touch relaxation).
   printed inputs and a gold cushion, while non-Gold population/build spending
   is suppressed until that unit is recruited. Seeded premium-rush benchmarks
   assert actual `UNIT_RECRUITED` events, not merely the dwelling unlock.
+## Polish Set Artifacts (OPTIONAL house rule, default OFF) — ENGINE half (2026-08-07)
+
+Eleven Artifact SETS. A player's PIECE COUNT for a set is how many DISTINCT
+member cards they still own; at 2 pieces the set's first listed effect switches
+on, at 3 the first two, and so on — cumulative and simultaneous, never a choice.
+House rule `polish-set-artifacts` (category `polish`, **default OFF in BOTH binh
+and legacy**; the lobby's Polish "Enable all" picks it up automatically because
+that button is derived from `category === "polish"`). Data
+`src/data/cards/artifact-sets.ts`, read layer `src/engine/artifact-sets.ts`
+(a LEAF module), wiring in `adventure.ts` (income + recruit discount),
+`legal-actions.ts` (offers, roll mode, spell power), `reducer.ts` (the two
+handlers, the spell-damage fold, the drain lock, the tier-change sync),
+`adventure-reducer.ts` (combat reset + the scry answer), `player-view.ts` (the
+public status + scry masking). Protocol bumped to **v21** — `npm run
+deploy:partykit` is owed after this lands, or a stale edge rejects the two new
+actions. Behaviour pinned in `src/engine/artifact-sets.test.ts` (61 tests);
+**26 mutations applied, 26 killed.**
+
+**This pass is the ENGINE + DATA half only.** Deferred to the UI/art half: the
+11 set CARD faces and set ICONS (present in the mod author's asset folder, not
+imported), any set panel / progress chip / "ongoing" tray rendering, and buttons
+for the new offers. The engine exposes everything that half needs:
+`PlayerState.artifactSetStatus` (public, per set: `pieces` / `activeTiers` /
+`memberCount`), mirrored onto every player view; the three feed events
+`ARTIFACT_SET_TIERS_CHANGED` / `ARTIFACT_SET_UNIT_SELECTED` /
+`ARTIFACT_SET_POWER_USED` (all with `formatEvent` lines); and every activation as
+an ordinary `getLegalActions` offer.
+
+Leading with what does NOT run / the deliberate readings:
+- **NO set member is missing.** All 41 members named by the mod sheet resolve to
+  real Artifact cards (Titan's Gladius and Ogre's Club of Havoc live in
+  `sample.ts`, the rest in `artifacts.ts`; both feed `cardLibrary`).
+  `SET_ARTIFACT_MEMBERS_NOT_IN_GAME` is therefore EMPTY — it exists so a FUTURE
+  member without a card is a conscious, reviewable entry rather than a silent
+  drop, and the registry-hygiene test pins that no id in it actually exists.
+- **"Whole Deck" is read as deck + hand + discard + IN-PLAY permanents + the
+  Ongoing tray.** Losing a set bonus by PLAYING one of its members (Eversmoking
+  Ring of Sulfur is both a Cornucopia piece and an income permanent) would be
+  absurd, and those two zones are exactly where a played artifact lives instead
+  of the discard. A card REMOVED from the game never counts. Only DISTINCT
+  members count (two copies of one card are one piece).
+- **The set status is PUBLIC — a designed leak.** Every seat sees every player's
+  piece count and active-tier count, per the user's "to be seen all the time for
+  every player". That reveals that N members sit SOMEWHERE in a player's pool,
+  including their private deck and hand; it never reveals WHICH zone, WHICH
+  members, or anything else about those zones. It rides REAL state
+  (`PlayerState.artifactSetStatus`, synced at the `applyAction` tail like
+  `syncAbilitySuppression`) rather than a view-time recompute, because a hosted
+  client only holds a redacted frame with the opponents' zones masked and could
+  never recompute it — `redactStateForSeat` deliberately does NOT strip it.
+- **No new engine WINDOW is ever opened by a set tier.** Every activation is an
+  OPTIONAL player-initiated action (`SELECT_ARTIFACT_SET_UNIT` /
+  `USE_ARTIFACT_SET_POWER`, both handler-validated), so a seat that ignores every
+  offer can never stall. The only pendingChoice the feature can create is the
+  Diplomat's Cloak two-option scry, owned by the ACTING seat and answered by the
+  ordinary `CHOOSE_OPTION` path — so `computerDecisionOwner`'s existing
+  pendingChoice gate, the AFK/turn-timeout driver's `RESOLVING_ACTION_TYPES` and
+  the generic OPTION_CHOICE scorer all already cover it with NO lockstep change
+  (pinned: a computer seat and `nextTurnTimeoutAction` both close it).
+- **The "at the beginning of the combat" selection is a round-1 activated
+  action**, not a combat-start window (the anti-freeze trade the task allowed).
+  It is offered only while `combat.round === 1`, once per combat per set, and
+  lays a real combat-duration `INITIATIVE_BONUS` — so the activation order
+  genuinely shifts (pinned by `getActivationOrder`, not by a field read).
+- **Power of the Dragon Father prints NO selection tier**, so its four "your
+  selected unit" tiers pick their target AT USE TIME (any own unit). Angelic
+  Alliance / Armor of the Damned bind to their own selection tier's pick and are
+  unusable until it is made; Ironfist tier 3 re-picks freely because its printed
+  text says "Select 1 of your units" again.
+- **"During an attack the selected enemy unit …" (Armor of the Damned 3 & 4) is
+  read as a CURRENT-COMBAT-ROUND debuff**, not a reaction inside the attack
+  window — the closest existing duration without adding a reaction seam. So a
+  cursed enemy that attacks twice in one round suffers it twice.
+- **Pendant of Reflection is AUTO-applied, not an optional pick** (the Magic
+  Mirror "auto-USE" precedent — draining an enemy cast is never worse). The
+  drain is LOCKED onto the cast's stack item in `makeStackItem` and the
+  once-per-combat charge is spent there, so the preview, every in-window re-read
+  and the resolution all subtract the same number. Unlike the Pegasi drain it
+  floors at the spell's WEAKEST useful effect (`spellMinUsefulPower`), per the
+  printed text.
+- **Titan's Thunder's zap is SPELL damage** routed through `reducedSpellDamage`
+  and the normal removal path, so a Golem's "reduce spell damage" passive or a
+  Dragon Father ward can cancel it. Its bronze / bronze-or-silver tiers use the
+  shared `gradeRankOfUnit`, under which a Creature-Bank defender and a WOG
+  commander are TIERLESS and therefore unreachable at tiers 2–3; tier 4 ("any
+  tier") does reach them.
+- **Statue of Legion is ONE flat once-per-GAME-ROUND gold discount of (active
+  tiers) on ANY recruit/reinforce**, added at the shared
+  `totalRecruitGoldDiscount` seam and spent by `consumeRecruitVoucherFor`. It is
+  NOT reserved for a unit, so it lands on whichever purchase comes first that
+  round. It STACKS with Legion vouchers by addition — deliberate: the set's
+  members ARE the Legion pieces, and playing one as a voucher leaves it in the
+  discard where it still counts toward the set.
+- **Cornucopia pays on the RESOURCE round; Golden Goose pays on EVERY round**
+  (including Astrologers rounds) — that wording difference is real and is the
+  reason the two income hooks sit at different points in `startAdventureRound`.
+- **The AI never seeks a set.** No map-policy or card-policy scoring reads set
+  membership, so a computer seat neither hoards members nor spends its
+  once-per-combat tiers; it only answers the scry window through the generic
+  scorer. Documented, not a bug.
+- **The Diplomat's Cloak scry NEVER lifts a card off the deck** — it looks at the
+  top card and only MOVES it (to the bottom) if the player says so, re-checking
+  the id first. So no card can be destroyed by the window and `eliminatePlayer`
+  needs no return branch for the new context (pinned).
+- **`ATTACK_ROLL_ADVANTAGE` is a NEW ActiveEffectModifier**, the mirror of
+  `ATTACK_ROLL_DISADVANTAGE`, read at the single `getAttackRollMode` chokepoint:
+  after the two FORCED disadvantages (Shaman's Puppet, Nightmare's Fear, which
+  still win) and BEFORE the ranged combat penalty, which it therefore overrides —
+  the same precedence the printed Halfling ability has.
+- **Default OFF ⇒ byte-identical.** Every export returns 0/[]/false, no state
+  field is written, no event is emitted and no action is legal (all pinned as
+  CONTROLs).
+
+What runs, set by set (each pinned by a named test that fails if the wiring is
+removed; the engine effect kind is named in `src/data/cards/artifact-sets.ts`):
+- **Angelic Alliance** (6): 2 select an own unit → +1 Initiative for the combat;
+  3 that unit rolls 2 Attack dice and keeps the higher; 4 it gains a Defense
+  token; 5 +1 Attack; 6 +1 Defense. Tiers 3–6 are bound to the tier-2 pick, each
+  once per combat.
+- **Power of the Dragon Father** (7): 2 advantage roll; 3 Defense token; 4 all
+  your units take 1 less Spell damage; 5 +1 Attack; 6 +1 Defense; 7 a SECOND
+  stacking −1 Spell damage (2 total). Targets are free-picked at use time.
+- **Titan's Thunder** (4): 2/3/4 once per combat each, 1 Spell damage to a
+  selected enemy of at most bronze / silver / any tier.
+- **Ironfist of the Ogre** (3): 2 select an own unit → +2 Initiative; 3 give a
+  freely-picked own unit a 1-damage Fire Shield for the combat round.
+- **Armor of the Damned** (4): 2 select an ENEMY unit → −1 Initiative; 3 that
+  enemy rolls with disadvantage this round; 4 that enemy attacks at −1 this
+  round.
+- **Pendant of Reflection** (2): the first enemy Spell each combat resolves at
+  −1 Spell Power (auto, floored at the spell's weakest effect).
+- **Wizard's Well** (2): once per round, draw 1 then discard 1 (a map action
+  using the shared `openHandDiscardChoice`).
+- **Diplomat's Cloak** (2): once per round, look at the top card of a Neutral
+  deck of your choice and leave it on top or send it to the bottom.
+- **Cornucopia** (3): +2 building materials each Resource round; +1 valuable at 3.
+- **Statue of Legion** (5): a once-per-round −1/−2/−3/−4 gold recruit or
+  reinforce discount.
+- **Golden Goose** (3): +2 gold at the start of EVERY round; +4 at 3 pieces.

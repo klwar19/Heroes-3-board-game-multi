@@ -83,6 +83,7 @@ import {
   getSpellCastRestriction,
   playerCannotSurrenderCombat,
   playerHasSpellTimingFreedom,
+  unitAttackRollAdvantaged,
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
   unitIsBerserk
@@ -207,6 +208,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import { artifactSetPowerOffers } from "./artifact-sets";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -1339,6 +1341,17 @@ export function getAttackRollMode(
   // the Crusaders' [unit_passive] "any attack" variant keeps the advantage even
   // when retaliating (handled inside unitHasAttackRollAdvantage).
   if (unitHasAttackRollAdvantage(attacker, isRetaliation)) {
+    return "advantage";
+  }
+
+  // Polish Set Artifacts ("rolls 2 dice and resolves the higher result"): the
+  // granted ATTACK_ROLL_ADVANTAGE effect is read on exactly the same terms as
+  // the printed ability above — after the two FORCED disadvantages (Shaman's
+  // Puppet / Nightmare's Fear, which still win) and BEFORE the ranged combat
+  // penalty, which it therefore overrides. Unlike the [unit_attack] printed
+  // variant it is NOT dropped on a retaliation: the printed set text says "rolls
+  // 2 dice", with no attack-only icon.
+  if (state && unitAttackRollAdvantaged(state, attacker)) {
     return "advantage";
   }
 
@@ -6337,9 +6350,45 @@ function getLegalActionsCore(
     // redraw here (the reroll use is offered by the attack-die reroll choice).
     addMoraleActions(actions, state, playerId);
     addAbilityEmpowerTokenActions(actions, state, playerId);
+    // Polish Set Artifacts: the combat tiers (the round-1 unit selection, the
+    // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
+    // forced, so ignoring every offer can never stall a seat. No-op when off.
+    addArtifactSetActions(actions, state, playerId);
   }
 
   return actions;
+}
+
+/**
+ * Polish Set Artifacts: render `artifactSetPowerOffers` — THE shared derivation
+ * the two reducer handlers re-derive to validate — as legal actions. Because
+ * both sides read the same function, a rendered button can never be refused and
+ * a refused action can never have been rendered.
+ */
+function addArtifactSetActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  for (const offer of artifactSetPowerOffers(state, playerId)) {
+    if (offer.kind === "select") {
+      if (!offer.unitId) {
+        continue;
+      }
+      actions.push({
+        label: offer.label,
+        action: { type: "SELECT_ARTIFACT_SET_UNIT", playerId, setId: offer.setId, unitId: offer.unitId }
+      });
+      continue;
+    }
+    actions.push({
+      label: offer.label,
+      action: {
+        type: "USE_ARTIFACT_SET_POWER",
+        playerId,
+        setId: offer.setId,
+        tier: offer.threshold,
+        ...(offer.unitId ? { unitId: offer.unitId } : {}),
+        ...(offer.neutralTier ? { neutralTier: offer.neutralTier } : {})
+      }
+    });
+  }
 }
 
 /**
@@ -8203,7 +8252,19 @@ export function resolvedSpellPowerForStackItem(
     // too, agreeing with the standingSpellPower preview above.
     equipmentSpellPowerBonus(state, playerId);
   const doubled = base * getSchoolPowerMultiplier(state, playerId, card);
-  return Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
+  const drained = Math.max(0, doubled - enemySpellPowerReductionFor(state, playerId));
+  // Polish Set Artifacts — Pendant of Reflection: an enemy holding the set drains
+  // this cast by 1 SP, but never below the spell's WEAKEST useful effect (the
+  // printed "to a minimum of its weakest effect"), unlike the Pegasi drain above
+  // which floors at 0. Auto-applied to the FIRST enemy cast each combat; the
+  // charge is spent once the cast resolves, so this read is stable across the
+  // preview and the resolve of one cast. 0 when the rule is off.
+  const setDrain = stackItem.modifiers.artifactSetSpellDrain ?? 0;
+  if (setDrain <= 0) {
+    return drained;
+  }
+  const floor = Math.min(drained, spellMinUsefulPower(card));
+  return Math.max(floor, drained - setDrain);
 }
 
 /**
@@ -10464,6 +10525,10 @@ function getCombatInteractionActions(
       // by the attack-die reroll choice instead.
       addMoraleActions(actions, state, playerId);
       addAbilityEmpowerTokenActions(actions, state, playerId);
+      // Polish Set Artifacts: the combat tiers (the round-1 unit selection, the
+      // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
+      // forced, so ignoring every offer can never stall a seat. No-op when off.
+      addArtifactSetActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
       // Give up (concede) is available throughout the fight, not just the
       // start-of-combat escape window.
@@ -10777,6 +10842,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       });
     }
   }
+  // Polish Set Artifacts: the MAP tiers (Wizard's Well's draw-then-discard and
+  // Diplomat's Cloak's Neutral scry, both once per round). Optional; no-op when
+  // the rule is off.
+  addArtifactSetActions(actions, state, playerId);
+
   for (const node of heroGradePickableNodes(state, playerId)) {
     actions.push({
       label: `Grade up: learn ${node.name.en} (${node.name.vi})`,

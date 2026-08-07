@@ -248,7 +248,15 @@ export type HouseRuleId =
   // Spells / Minor artifacts, near Ⅳ–Ⅴ = expert Spells / Major artifacts, centre
   // Ⅵ–Ⅶ = expert Spells / Relic artifacts (weaker tiers always allowed). See
   // `canDrawExpertSpells` / `artifactDeckAccess` (ruleset.ts).
-  | "deck-access-hero-level";
+  | "deck-access-hero-level"
+  // Polish house rule (default OFF in BOTH modes): eleven Artifact SETS. A
+  // player's piece count for a set is how many DISTINCT member cards they still
+  // own anywhere in their pool (deck + hand + discard + in-play permanents /
+  // ongoing cards; removed copies never count). At 2 pieces the set's first
+  // listed effect switches on, at 3 the first two, and so on — cumulative, never
+  // a choice. Data in `src/data/cards/artifact-sets.ts`, read layer in
+  // `src/engine/artifact-sets.ts`.
+  | "polish-set-artifacts";
 
 /** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
 export type PveEncounterTheme = "classic" | "doom" | "random";
@@ -1133,6 +1141,23 @@ export type ActiveEffectModifier =
        * effectAppliesToUnit, exactly like every other unit debuff.
        */
       type: "ATTACK_ROLL_DISADVANTAGE";
+    }
+  | {
+      /**
+       * The mirror of ATTACK_ROLL_DISADVANTAGE: the affected unit rolls two Attack
+       * dice and resolves the HIGHER result. Read in getAttackRollMode at the same
+       * chokepoint, on the same terms — so like the printed
+       * `ATTACK_ROLL_ADVANTAGE` unit ability it OVERRIDES the ranged combat
+       * penalty, and like every other unit buff it is skipped for a unit that
+       * ignores ongoing effects (Titans/Gargoyles) via effectAppliesToUnit. A
+       * FORCED disadvantage (Shaman's Puppet, the Nightmare's Fear) still beats
+       * it — both are resolved before this.
+       *
+       * Only source today: the Polish Set Artifacts "rolls 2 dice and resolves
+       * the higher result" tiers (Angelic Alliance 3 / Power of the Dragon
+       * Father 2).
+       */
+      type: "ATTACK_ROLL_ADVANTAGE";
     }
   | {
       /**
@@ -3379,6 +3404,36 @@ export type GameAction =
     }
   | {
       /**
+       * Polish Set Artifacts (`polish-set-artifacts`): the "at the beginning of
+       * the combat select 1 unit" tier (Angelic Alliance 2 / Ironfist of the Ogre
+       * 2 / Armor of the Damned 2). OPTIONAL, once per combat per set, and only
+       * during combat ROUND 1 (the printed "beginning of the combat"). Resolving
+       * it stamps the pick and lays a combat-duration INITIATIVE_BONUS on the
+       * chosen unit, so the activation order really shifts.
+       * Handler-validated (self-validating).
+       */
+      type: "SELECT_ARTIFACT_SET_UNIT";
+      playerId: PlayerId;
+      setId: string;
+      unitId: string;
+    }
+  | {
+      /**
+       * Polish Set Artifacts: activate one live set tier. `tier` is the tier's
+       * piece THRESHOLD (2, 3, …). `unitId` is required by the unit-targeting
+       * tiers, `neutralTier` by the Diplomat's Cloak scry. Every tier is OPTIONAL
+       * — nothing is ever forced and no window is opened by the engine, so this
+       * action can never stall a seat. Handler-validated (self-validating).
+       */
+      type: "USE_ARTIFACT_SET_POWER";
+      playerId: PlayerId;
+      setId: string;
+      tier: number;
+      unitId?: string;
+      neutralTier?: "bronze" | "silver" | "gold" | "azure";
+    }
+  | {
+      /**
        * Anime Hero Grades: spend one unspent grade point to pick a tree node
        * (one node per tier, tier ≤ current grade). Handler-validated
        * (self-validating; the node is baked into the action, so no window opens).
@@ -5616,6 +5671,44 @@ export type GameEvent =
       heroId: HeroId;
     }
   | {
+      /**
+       * Polish Set Artifacts: a player's active-tier count for a set MOVED (up on
+       * gaining a member, down on removing one from the game). Public — the whole
+       * set status is public by design — and the cue the UI half drives off.
+       */
+      id: string;
+      type: "ARTIFACT_SET_TIERS_CHANGED";
+      playerId: PlayerId;
+      setId: string;
+      setName: string;
+      /** Distinct member cards owned after the change. */
+      pieces: number;
+      /** Active tiers after the change. */
+      tiers: number;
+      /** Active tiers before it (so a UI can tell an unlock from a loss). */
+      previousTiers: number;
+    }
+  | {
+      /** Polish Set Artifacts: a set's "select 1 unit" tier picked its unit. */
+      id: string;
+      type: "ARTIFACT_SET_UNIT_SELECTED";
+      playerId: PlayerId;
+      setId: string;
+      setName: string;
+      unitId: string;
+    }
+  | {
+      /** Polish Set Artifacts: a set tier was activated. `message` states what ran. */
+      id: string;
+      type: "ARTIFACT_SET_POWER_USED";
+      playerId: PlayerId;
+      setId: string;
+      setName: string;
+      /** The tier's piece threshold (2, 3, …). */
+      tier: number;
+      message: string;
+    }
+  | {
       /** Anime Hero Grades (§3.11): a grade tree node was picked (point spent). */
       id: string;
       type: "HERO_GRADE_NODE_PICKED";
@@ -6531,6 +6624,14 @@ export type ResolutionStackItem = {
   triggerEventIds: string[];
   modifiers: {
     spellPowerBonus: number;
+    /**
+     * Polish Set Artifacts — Pendant of Reflection: the enemy Spell-Power drain
+     * LOCKED onto this cast when it went on the stack (and paid for there, so
+     * the once-per-combat charge is already spent). Stored rather than
+     * re-derived so the preview, every in-window re-read and the final
+     * resolution all subtract the same number. Absent/0 = no drain.
+     */
+    artifactSetSpellDrain?: number;
     /**
      * School of Magic permanent bonus on this cast, tracked apart from
      * spellPowerBonus so it neither blocks nor is blocked by Power cards.
@@ -7557,6 +7658,21 @@ export type PlayerState = {
      */
     heroSkillsUsedThisCombat?: string[];
     /**
+     * Polish Set Artifacts (`polish-set-artifacts`): the once-per-COMBAT set-tier
+     * charges this player has already spent, keyed `"<setId>:<threshold>"`. Reset
+     * to [] at combat start (makeCombatShell). Absent === none spent. Also holds
+     * the auto-applied Pendant of Reflection drain charge, so the first enemy
+     * Spell each combat is drained and later ones are not.
+     */
+    artifactSetUsesThisCombat?: string[];
+    /**
+     * Polish Set Artifacts: the unit each set's "select 1 unit" tier picked THIS
+     * COMBAT, keyed by set id. Reset to {} at combat start. A set whose printed
+     * text has no selection tier never appears here — its once-per-combat tiers
+     * pick their target at use time instead.
+     */
+    artifactSetSelections?: Record<string, string>;
+    /**
      * Anime Equipment (§3.13): true once this player's Iron-Blood Sword has
      * spent its "first declared attack +1 Attack" charge THIS COMBAT. Cleared
      * at combat start (makeCombatShell) — per COMBAT, not per round. Absent ===
@@ -7617,6 +7733,30 @@ export type PlayerState = {
    * March). `=== state.round` means already used this turn. Absent === never.
    */
   heroSkillUsedRound?: Record<string, number>;
+  /**
+   * Polish Set Artifacts (`polish-set-artifacts`): the game round each
+   * once-per-ROUND set-tier charge was last spent, keyed `"<setId>:<threshold>"`
+   * (the `unitDrillRound` stamp idiom — `=== state.round` means already used,
+   * absent === never). Covers Wizard's Well's draw, Diplomat's Cloak's scry and
+   * the Statue of Legion recruit discount (whose whole discount shares the
+   * tier-2 key).
+   */
+  artifactSetRoundUses?: Record<string, number>;
+  /**
+   * Polish Set Artifacts: this player's PUBLIC set status as of the end of the
+   * last action — one entry per set they hold at least one piece of. Re-derived
+   * from the real zones by `syncArtifactSetTiers` at the `applyAction` tail (the
+   * `syncAbilitySuppression` pattern), which also uses the previous value to
+   * emit a feed line only when a tier count really moves.
+   *
+   * It lives in REAL state, not only on the player view, precisely so it
+   * survives `redactStateForSeat`: a hosted client holds masked opponent
+   * decks/hands and could never recompute an opponent's count itself.
+   *
+   * Derived bookkeeping — never a rules input. Every engine read goes to the
+   * live zones through `artifactSetPieceCount`.
+   */
+  artifactSetStatus?: { setId: string; pieces: number; activeTiers: number; memberCount: number }[];
   /** Round the Blacksmith action was last used ("once per your turn"). */
   blacksmithUsedRound?: number;
   /** Round the Magic University deck-dig was last used ("once per round"). */
@@ -13448,6 +13588,7 @@ export type PendingChoice =
         | "visions-boost"
         | "visions-deck"
         | "visions-scry"
+        | "artifact-set-scry"
         | "visions-guard-cast"
         | "visions-guard-boost"
         | "visions-guard-swap"
@@ -13941,6 +14082,22 @@ export type PendingChoice =
         tier: "bronze" | "silver" | "gold" | "azure";
         remaining: CardId[];
         toReturn: CardId[];
+      };
+      /**
+       * artifact-set-scry (Polish Set Artifacts, Diplomat's Cloak tier 2): the
+       * Neutral deck whose TOP card the player is looking at, and that card's id.
+       *
+       * The card is deliberately NOT lifted out of the deck — it stays on the
+       * draw pile and is only MOVED (to the bottom) if the player says so. So no
+       * card can ever be destroyed by this window, and an elimination mid-choice
+       * needs no return branch at all. The identity is private to the scrying
+       * player (masked in player-view, the visions-scry precedent).
+       */
+      artifactSetScry?: {
+        setId: string;
+        tier: number;
+        neutralTier: "bronze" | "silver" | "gold" | "azure";
+        cardId: CardId;
       };
       /**
        * visions-guard-swap: casting Visions BEFORE a neutral guard battle to swap
@@ -14447,6 +14604,36 @@ export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck" | "spel
    */
   spellBook: CardId[];
   spellBookCount: number;
+  /**
+   * Polish Set Artifacts (`polish-set-artifacts`): the PUBLIC set status of this
+   * player — one entry per set they hold at least one piece of, with the piece
+   * count and how many tiers are live. Empty when the rule is off.
+   *
+   * Public BY DESIGN (the user's "put them on 'ongoing' effects to be seen all
+   * the time for every player"). DESIGNED LEAK: it tells every seat that N
+   * members of a set sit somewhere in this player's pool, including their
+   * private deck and hand. It never says WHICH zone, WHICH member cards, or
+   * anything else about those zones.
+   *
+   * Unlike `handCount`/`deckCount` this is NOT a view-only recompute — it
+   * MIRRORS the real `PlayerState.artifactSetStatus` the engine syncs at the
+   * `applyAction` tail. That is what makes it correct on a hosted table, where
+   * the client only ever holds a redacted frame with the opponents' zones masked
+   * and could not recompute the number itself.
+   */
+  artifactSetStatus: ArtifactSetStatusView[];
+};
+
+/**
+ * One set's public status on a player view. Structurally identical to the
+ * engine's `ArtifactSetStatus` (`src/engine/artifact-sets.ts`) — declared here
+ * so `state.ts` stays dependency-free.
+ */
+export type ArtifactSetStatusView = {
+  setId: string;
+  pieces: number;
+  activeTiers: number;
+  memberCount: number;
 };
 
 export type PlayerVisibleDeckState = Omit<DeckState, "drawPile"> & {

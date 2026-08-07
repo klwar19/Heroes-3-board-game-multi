@@ -861,6 +861,39 @@ export {
   equipmentGrantsCommanderRevive,
   equipEquipment
 } from "./anime-equipment";
+// Polish Set Artifacts (`polish-set-artifacts`) — the read layer + its data.
+export {
+  ARTIFACT_SETS,
+  ARTIFACT_SET_BY_ID,
+  activeArtifactSetTiers,
+  activeTiersForPieces,
+  artifactSetActiveTierCount,
+  artifactSetDefinition,
+  artifactSetEnemySpellPowerDrain,
+  artifactSetIncome,
+  artifactSetPieceCount,
+  artifactSetPowerOffers,
+  artifactSetRecruitGoldDiscount,
+  artifactSetSelectedUnitId,
+  artifactSetSpellDamageReduction,
+  artifactSetTierIsActive,
+  findArtifactSetOffer,
+  playerArtifactSetStatuses,
+  setArtifactsEnabled,
+  syncArtifactSetTiers
+} from "./artifact-sets";
+export type { ArtifactSetOffer, ArtifactSetStatus } from "./artifact-sets";
+export {
+  ARTIFACT_SET_BY_MEMBER,
+  ARTIFACT_SET_MEMBER_IDS,
+  SET_ARTIFACT_MEMBERS_NOT_IN_GAME
+} from "@/data/cards/artifact-sets";
+export type {
+  ArtifactSetDefinition,
+  ArtifactSetId,
+  ArtifactSetTier,
+  ArtifactSetTierEffect
+} from "@/data/cards/artifact-sets";
 export {
   ANIME_EQUIPMENT_DEFINITIONS,
   ANIME_EQUIPMENT_ART_PLACEHOLDERS,
