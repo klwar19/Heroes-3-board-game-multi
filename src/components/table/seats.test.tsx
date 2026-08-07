@@ -359,6 +359,90 @@ describe("HandFan — an instant artifact's 'take a card from discard' is usable
   });
 });
 
+describe("HandFan — Ciele IV surfaces its free discard-cast on the specialty card", () => {
+  // Reported bug: with a Magic Arrow in the discard pile, clicking Ciele's Magic
+  // Arrow IV showed NO option. The cast's `cardId` is spell.magic_arrow (sourced
+  // from the discard, not the hand) with `fromSpellDeck: specialty.ciele.4`, so it
+  // was orphaned — it matched no hand entry and rendered no button.
+  function cieleCombat(discard: string[]): GameState {
+    const state = createInitialGameState("ciele-iv-hand-ui");
+    state.players.p1.hand = ["specialty.ciele.4"];
+    state.players.p1.discard = discard;
+    state.players.p2.hand = [];
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.movedThisActivation = false;
+    griffins.attackedThisActivation = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return state;
+  }
+
+  it("arms the free Magic Arrow cast when the specialty card is clicked", () => {
+    const state = cieleCombat(["spell.magic_arrow"]);
+    // Sanity: the engine offers the free, limit-free discard cast.
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.fromSpellDeck === "specialty.ciele.4" &&
+        (legal.action as { fromOwnDiscard?: boolean }).fromOwnDiscard === true
+    );
+    expect(cast, "engine should offer the Ciele IV discard cast").toBeTruthy();
+
+    const onSelectCardAction = vi.fn();
+    const { container } = render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={onSelectCardAction}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const cardButton = container.querySelector(".fanCard");
+    expect(cardButton, "the Ciele IV card renders in hand").toBeTruthy();
+    // It must be playable (not greyed) — the fix attaches the cast to this entry.
+    expect(cardButton?.classList.contains("playable")).toBe(true);
+    // A single board-target selection arms targeting straight from the card click.
+    fireEvent.click(cardButton!);
+    expect(onSelectCardAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "CAST_SPELL",
+        cardId: "spell.magic_arrow",
+        fromSpellDeck: "specialty.ciele.4",
+        fromOwnDiscard: true
+      })
+    );
+  });
+
+  it("CONTROL: with no Magic Arrow in the discard the specialty is not playable", () => {
+    const state = cieleCombat([]);
+    const { container } = render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    const cardButton = container.querySelector(".fanCard");
+    expect(cardButton?.classList.contains("playable")).toBe(false);
+  });
+});
+
 describe("RuneTrack — Bulwark combat HUD", () => {
   function bulwarkCombat(buildings: string[], count: number): GameState {
     const state = createInitialGameState("rune-track-ui");

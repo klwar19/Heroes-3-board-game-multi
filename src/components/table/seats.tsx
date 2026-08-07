@@ -635,12 +635,26 @@ export function HandFan({
     // Spell present in several zones is never offered twice or routed to the
     // wrong source (cardSelectionKey, which drives board targeting, ignores the
     // source flag, so the hand must exclude the off-hand casts here).
-    const actionsForCard = cardActions.filter(
-      (legal) =>
-        legal.action.cardId === cardId &&
-        !("fromScroll" in legal.action && legal.action.fromScroll) &&
-        !legal.action.fromSpellBook
-    );
+    const actionsForCard = cardActions.filter((legal) => {
+      const action = legal.action;
+      if ("fromScroll" in action && action.fromScroll) {
+        return false;
+      }
+      if (action.fromSpellBook) {
+        return false;
+      }
+      // Enabler-driven discard casts (Ciele IV's Magic Arrow, the Helm of the
+      // Alabaster Unicorn's option B): the cast's `cardId` is the SPELL cast from
+      // a discard pile — which is NOT in hand — while `fromSpellDeck` names the
+      // enabling card that IS in hand. Attach the cast to the ENABLER's hand entry
+      // so it renders a button (never to a same-named hand Spell, which would
+      // duplicate the offer). Without this the specialty/artifact shows no option
+      // at all even with a valid target in the discard.
+      if (action.type === "CAST_SPELL" && action.fromSpellDeck) {
+        return action.fromSpellDeck === cardId;
+      }
+      return action.cardId === cardId;
+    });
     const boardSelections = Array.from(
       new Map(
         actionsForCard
