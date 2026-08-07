@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { assetUrl } from "@/lib/asset-url";
 
-const SETUP_SCENE_PLAYLIST = "/assets/ui/setup/setup-scene-playlist-v2.mp4";
+const SETUP_SCENE_PLAYLIST = "/assets/ui/setup/setup-scene-playlist-v6.mp4";
 /** Time at which the second animation is fully established after the crossfade. */
 const SECOND_ANIMATION_START_SECONDS = 7.29;
 
