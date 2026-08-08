@@ -15749,10 +15749,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     drawCardsForPlayer(state, action.playerId, drawAmount, {
       inFlightCardIds: playInFlightCardIds
     });
-    // Post-draw discard parity. UNREACHABLE TODAY (so unpinned): the only faces
-    // carrying `thenDiscard` are the medic VI heals, and a HEAL_DAMAGE face is
-    // deliberately excluded from the draw-only PLAY_CARD twin in legal-actions
-    // (it gets the target-less map offer instead). Kept so a future `thenDiscard`
+    // Post-draw discard parity. The `drawOnly` PLAY_CARD branch itself IS
+    // reachable for a medic face since 2026-08-08 (the on-turn combat draw-only
+    // twin — legal-actions' `healDrawOnlyRider` offer, pinned in
+    // instant-abilities-attack-windows.test.ts), but this DISCARD line stays
+    // UNREACHABLE (so unpinned): the only faces printing `thenDiscard` are the
+    // medic VI heals, which are CHOOSE_ONE cards whose options always have a
+    // target, so they never take the twin. Kept so a future plain `thenDiscard`
     // face cannot silently lose its discard on this path.
     applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
     return;

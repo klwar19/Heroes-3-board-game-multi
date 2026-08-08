@@ -187,26 +187,47 @@ describe("neutral combat — pre-activation reaction pause (Intelligence / insta
     ).toBe(true);
   });
 
-  it("a trigger-free 'Draw a card' instant never forces a reaction window open", () => {
-    // The forced-use bug: merely HOLDING a card whose only matching option is a
-    // trigger-free "Draw 1 card" (Offense I, the Breastplate of Petrified Wood)
-    // used to drag its holder into a reaction window — "suddenly you must use it
-    // / pass" — on every enemy attack or spell. A card-draw is not a reaction, so
-    // the enemy guard's shot must resolve with NO window forced on the holder.
+  it("a trigger-free 'Draw a card' instant now OPENS the guard's attack window (2026-08-08 ruling)", () => {
+    // FLIPPED EXPECTATION, justified — this WAS "a trigger-free 'Draw a card'
+    // instant never forces a reaction window open", written against the old
+    // "forced-use" complaint. The 2026-08-08 user ruling is the opposite one and
+    // names this exact fight: "instant abilities should be able to be played
+    // before counter attack, when attack and when defend, all of them" plus "I
+    // still can't use card like Rion speciality, not for heal, just for draw
+    // effect, choice never appear properly". In a NEUTRAL fight the guards open
+    // NO window of their own, so under the old reading a defender holding only a
+    // draw rider had no moment at all. The window stays OPTIONAL (Pass is always
+    // offered) and the card is never consumed unless played.
     let state = neutralFightWithGuard(rangedGuard);
     state.players.p1.hand = ["specialty.tarnum_stronghold.1"]; // Offense I: only a trigger-free draw applies here
 
     state = defendActivePlayerUnit(state);
     state = apply(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
 
-    // No reaction window was forced open by the held draw…
-    expect(state.reactionWindow).toBeNull();
-    // …and the guard's attack actually happened (the fight was not blocked).
+    // The guard's declared attack opened a window for the defending human...
+    expect(state.reactionWindow, "the guard's attack opens a window for the held instant").toBeTruthy();
+    expect(state.reactionWindow!.allowedPlayerIds).toEqual(["p1"]);
+    const offers = getLegalActions(state, "p1");
     expect(
-      state.eventLog.some((event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guardId(state))
+      offers.some(
+        (legal) =>
+          legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.tarnum_stronghold.1"
+      ),
+      "the draw rider is the offer"
     ).toBe(true);
-    // The draw stays in hand — it was never consumed or forced.
+    // ...and it is never forced: Pass is always there, the card is untouched.
+    const pass = offers.find((legal) => legal.action.type === "PASS_REACTION");
+    expect(pass, "passing is always possible - nothing is forced").toBeTruthy();
     expect(state.players.p1.hand).toContain("specialty.tarnum_stronghold.1");
+
+    // Passing resumes the guard's shot exactly as before.
+    const settled = apply(state, pass!.action);
+    expect(
+      settled.eventLog.some(
+        (event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === guardId(settled)
+      )
+    ).toBe(true);
+    expect(settled.players.p1.hand).toContain("specialty.tarnum_stronghold.1");
   });
 
   it("still pauses before every guard with nothing to react with, offering only the resume", () => {

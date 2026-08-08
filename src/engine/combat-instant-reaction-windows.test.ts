@@ -24,12 +24,19 @@ import type { CardId, GameAction, GameState, LegalAction, PlayerId } from "./sta
  * literally no moment to fire the Ballista before the counter-attack.
  *
  * THE RULE. A `combatAnytime` face JOINS every reaction window, for both
- * fighters. Only the side about to be HIT may OPEN an attack window with one
- * (`LegalAction.windowJoinOnly` for everyone else) — the same reading Artillery
- * and the pre-hit heals already use, and the same "only pre-roll moment"
- * justification the bare morale token uses for the retaliation window. In a
- * Retaliation Attack the side about to be hit IS the original attacker, which is
- * exactly the reported case.
+ * fighters.
+ *
+ * 2026-08-08 USER RULING — SUPERSEDES the original opener scope. It used to
+ * read "only the side about to be HIT may OPEN an attack window with one
+ * (`windowJoinOnly` for everyone else)", justified by "the other side had its
+ * whole activation to play the card". The user rejected that: "instant
+ * abilities should be able to be played before counter attack, when attack and
+ * when defend, all of them, FIX PROPERLY." So inside an ATTACK window
+ * (`UNIT_ATTACK_DECLARED` — primary, retaliation and printed follow-up alike)
+ * EITHER combat participant's playable instant opens it, and the tests below
+ * pass out of the attacker's own primary window on the way to the retaliation
+ * one (`declaredPastPrimary`). NOTHING changed for a Spell cast, a unit
+ * activation or a die-settled window — the CONTROLs for those are unchanged.
  *
  * Every claim below is mutation-checked; the reverting line is named per test.
  * Board: 4 rows × 5 cols, getOrthogonalNeighbors(9) = {5, 8, 10, 13}.
@@ -113,6 +120,30 @@ function retaliationWindow(state: GameState) {
     : null;
 }
 
+/**
+ * Declare p1's attack and pass out of the PRIMARY attack's own window.
+ *
+ * 2026-08-08 USER RULING ("instant abilities should be able to be played …
+ * when attack and when defend, all of them"): a held instant now opens an
+ * attack window for EITHER side, so a player about to attack while holding one
+ * is asked FIRST, on their own declaration. Every "reach the retaliation
+ * window" test below therefore needs one extra Pass that it did not before —
+ * the retaliation window itself is unchanged.
+ */
+function declaredPastPrimary(state: GameState): GameState {
+  let next = applyOk(state, declareAttack);
+  for (let guard = 0; guard < 6 && next.reactionWindow && !retaliationWindow(next); guard += 1) {
+    const pass = (["p1", "p2"] as const)
+      .flatMap((playerId) => getLegalActions(next, playerId))
+      .find((legal) => legal.action.type === "PASS_REACTION");
+    if (!pass) {
+      break;
+    }
+    next = applyOk(next, pass.action);
+  }
+  return next;
+}
+
 // ===========================================================================
 // The reported case: the Ballista fires BEFORE the counter-attack
 // ===========================================================================
@@ -122,9 +153,8 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     // Fails if the combatAnytimeInstantWindowJoins block is removed from
     // getLegalReactionsForTrigger, or if its offers are flagged windowJoinOnly
     // for the attacked side too (then nothing opens the retaliation window).
-    const declared = applyOk(
-      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] })
     );
     const window = retaliationWindow(declared);
     expect(window, "the incoming Retaliation Attack opened a window for its target's owner").toBeTruthy();
@@ -147,9 +177,8 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     // Fails if the join is not offered, or if the reducer stops treating a
     // window PLAY_CARD as a reaction play (the parked retaliation would then
     // resolve from a corpse — the "no attack from beyond the grave" guard).
-    const declared = applyOk(
-      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 3 }),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 3 })
     );
     const skeleton = declared.combat!.units.unit_p2_skeletons;
     expect(skeleton.damage, "the Marksmen's own blow dealt 1").toBe(1);
@@ -168,9 +197,8 @@ describe("the Ballista discard is playable before the counter-attack", () => {
   it("a retaliator that survives the shot still counters — and the shot landed first", () => {
     // Fails if the join is removed (no window ⇒ no shot at all) — the assertion
     // is on the ORDER, so it also fails if the shot resolved after the counter.
-    const declared = applyOk(
-      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 30 }),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"], skeletonHealth: 30 })
     );
     const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons")!.action);
 
@@ -198,12 +226,11 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     // Fails if the PLAY_CARD → advanceReactionWindowAfterPlay tail is removed
     // from applyAction: the window would keep listing a card no longer in hand
     // (and its Ballista no longer in play), so a second click would reject.
-    const declared = applyOk(
+    const declared = declaredPastPrimary(
       aboutToAttack(["specialty.gerwulf.6", "specialty.deemer.6"], {
         permanents: ["war_machine.ballista"],
         skeletonHealth: 30
-      }),
-      declareAttack
+      })
     );
     expect(retaliationWindow(declared)).toBeTruthy();
     const fired = applyOk(declared, cardPlay(declared, "p1", "specialty.gerwulf.6", "unit_p2_skeletons")!.action);
@@ -236,9 +263,8 @@ describe("the Ballista discard is playable before the counter-attack", () => {
     // The two payment cards are Power statistics: with no pairable spell instant
     // in hand a "+Power" face is withheld from an attack window, so the Frost Ring
     // itself is what opens this window (nothing else can).
-    const declared = applyOk(
-      aboutToAttack(["specialty.adelaide.6", "stat.power", "stat.power"]),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.adelaide.6", "stat.power", "stat.power"])
     );
     expect(retaliationWindow(declared)).toBeTruthy();
     const ring = getLegalActions(declared, "p1").find(
@@ -265,7 +291,7 @@ describe("the Ballista discard is playable before the counter-attack", () => {
   it("a war-machine-free instant specialty (Meteor Shower) is offered there too", () => {
     // Fails with the join block removed. Deemer needs no permanent, so this
     // pins that the family — not one bespoke card — reached the window.
-    const declared = applyOk(aboutToAttack(["specialty.deemer.6"]), declareAttack);
+    const declared = declaredPastPrimary(aboutToAttack(["specialty.deemer.6"]));
     expect(retaliationWindow(declared), "a held Meteor Shower opens the retaliation window").toBeTruthy();
     const meteor = cardPlay(declared, "p1", "specialty.deemer.6", "unit_p2_skeletons");
     expect(meteor).toBeTruthy();
@@ -311,16 +337,34 @@ describe("Artillery joins the window for the attacking side as well", () => {
       (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.artillery"
     );
     expect(attackerShot, "the ATTACKER may fire Artillery in the open window").toBeTruthy();
-    expect(attackerShot!.windowJoinOnly, "…but it never OPENS a window for them").toBe(true);
+    // The `windowJoinOnly` marker is still stamped (the trap-twin/labelling
+    // machinery reads it), but since 2026-08-08 it no longer withholds the
+    // OPENER inside an attack window — see the flipped case below.
+    expect(attackerShot!.windowJoinOnly).toBe(true);
   });
 
-  it("CONTROL: holding Artillery does not pause your OWN declared attack", () => {
-    // Fails if the attacker's Artillery join is not flagged windowJoinOnly.
+  it("holding Artillery now DOES pause your OWN declared attack (2026-08-08 ruling)", () => {
+    // FLIPPED EXPECTATION, justified: this used to be the CONTROL
+    // "holding Artillery does not pause your OWN declared attack", resting on
+    // "the attacker had their whole activation to play the card". The user's
+    // ruling — "when attack and when defend, all of them" — rejects that, so an
+    // attacker holding a playable instant is asked on their own declaration too.
+    // Fails if reactionOfferOpensWindow stops treating `windowJoinOnly` as an
+    // opener inside a UNIT_ATTACK_DECLARED window.
     const declared = applyOk(aboutToAttack(["ability.artillery"]), declareAttack);
-    const window = retaliationWindow(declared);
-    expect(window, "the RETALIATION window still opens (p1 is the side about to be hit)").toBeTruthy();
-    const declaredEvents = declared.eventLog.filter((event) => event.type === "REACTION_WINDOW_OPENED");
-    expect(declaredEvents, "exactly ONE window — the retaliation's, not the declaration's").toHaveLength(1);
+    const primary = declared.reactionWindow;
+    expect(primary?.triggerEvent.type, "the DECLARATION now opens a window").toBe("UNIT_ATTACK_DECLARED");
+    expect(
+      primary?.triggerEvent.type === "UNIT_ATTACK_DECLARED" ? primary.triggerEvent.isRetaliation : true,
+      "…and it is the primary attack's own window, not the retaliation's"
+    ).toBeFalsy();
+    expect(primary!.allowedPlayerIds, "the attacking side is the one being asked").toContain("p1");
+
+    // Passing it resumes the exchange exactly as before: the blow lands, the
+    // Retaliation Attack opens its own window, and nothing about the maths moved.
+    const past = declaredPastPrimary(aboutToAttack(["ability.artillery"]));
+    expect(retaliationWindow(past), "the RETALIATION window still opens after the Pass").toBeTruthy();
+    expect(past.combat!.units.unit_p2_skeletons.damage, "the primary blow resolved on the Pass").toBe(1);
   });
 });
 
@@ -394,9 +438,8 @@ describe("the new offers never strand a window", () => {
   it("the AFK / turn-timeout driver closes it with a Pass", () => {
     // Fails if a join ever became the ONLY offer (no Pass) — the driver would
     // then have nothing to fire and the forced resolution would loop forever.
-    const declared = applyOk(
-      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] })
     );
     expect(retaliationWindow(declared)).toBeTruthy();
     expect(nextAfkDropAction(declared, "p1")).toMatchObject({ type: "PASS_REACTION", playerId: "p1" });
@@ -408,9 +451,8 @@ describe("the new offers never strand a window", () => {
     // holding one of these instants passes rather than firing it in a window —
     // the same behaviour it had before this change. What matters is that it
     // ALWAYS answers: a null decision would freeze the table.
-    const declared = applyOk(
-      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] }),
-      declareAttack
+    const declared = declaredPastPrimary(
+      aboutToAttack(["specialty.gerwulf.6"], { permanents: ["war_machine.ballista"] })
     );
     const decision = chooseComputerAction({
       playerId: "p1",

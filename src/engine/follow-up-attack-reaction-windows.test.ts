@@ -32,9 +32,16 @@ import type { CardId, GameAction, GameState, PlayerId, UnitId } from "./state";
  * THE FIX. `followUpAttackInstantOpener` (legal-actions.ts) returns the
  * attacking side's controller for a UNIT_ATTACK_DECLARED event that carries
  * `abilityAttack`; that side then also gets the window-OPENING privilege for
- * its `combatAnytime` joins and Artillery. Nothing else moves: a primary attack,
- * a Retaliation Attack, a cast, an activation and an effect-damage splash are
- * unchanged.
+ * its `combatAnytime` joins and Artillery.
+ *
+ * 2026-08-08 USER RULING — the PRIMARY-attack half of the scope is SUPERSEDED.
+ * "Instant abilities should be able to be played before counter attack, when
+ * attack and when defend, all of them, FIX PROPERLY": every attack window now
+ * opens for either participant's playable instant, so a primary attack pauses
+ * too (the flipped case in the scope block below). `followUpAttackInstantOpener`
+ * remains as the narrower reading it always was and is now subsumed by it.
+ * Still unchanged, and still CONTROL-pinned: a Spell cast, a unit activation, a
+ * die-settled window and an effect-damage splash pause for nothing.
  *
  * Board: 5 rows × 4 cols, position = row*4 + col.
  * Attacker 12 → first target 13 → the space "behind" it 14 (one row, in line).
@@ -147,6 +154,24 @@ function reactionOffer(state: GameState, playerId: PlayerId, cardId: CardId, tar
   );
 }
 
+/**
+ * Declare and pass out of the PRIMARY attack's own window.
+ *
+ * 2026-08-08 USER RULING ("when attack and when defend, all of them"): a held
+ * instant now opens an attack window for EITHER side on EVERY attack, primary
+ * included, so the attacker is asked once on their own declaration before the
+ * follow-up's window is reached. Passing it lands the first hit and opens the
+ * follow-up window exactly as before — the follow-up behaviour these tests pin
+ * is unchanged, it is one Pass further along.
+ */
+function declaredPastPrimary(state: GameState): GameState {
+  let next = applyOk(state, DECLARE);
+  for (let guard = 0; guard < 6 && next.reactionWindow && windowAbility(next) === "primary"; guard += 1) {
+    next = applyOk(next, { type: "PASS_REACTION", playerId: next.reactionWindow.priorityPlayerId });
+  }
+  return next;
+}
+
 /** Pass every open window in turn and return the settled state. */
 function passAll(state: GameState): GameState {
   let cur = state;
@@ -174,14 +199,13 @@ describe("a printed follow-up attack opens a window for the ATTACKING side too",
     // Fails if followUpAttackInstantOpener is removed (or narrowed back to the
     // defender): with only a trigger-free `combatAnytime` face in hand and an
     // empty enemy hand, NO window opened for the second attack at all.
-    const declared = applyOk(
-      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" }),
-      DECLARE
+    const declared = declaredPastPrimary(
+      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" })
     );
 
-    // The PRIMARY attack still does not pause for it (31d6c866 unchanged): the
-    // attacker had the whole on-turn card pass before declaring.
-    expect(windowAbility(declared), "the first hit resolves without a window").toBe("dragon-line-attack-2");
+    // The PRIMARY attack's own window (new since 2026-08-08) has been passed;
+    // this is the SECOND attack's window, the one this suite is about.
+    expect(windowAbility(declared), "the open window is the line breath's").toBe("dragon-line-attack-2");
     expect(windowDefender(declared), "the open window is the SECOND attack's").toBe("unit_p2_vampires");
     expect(declared.combat!.units.unit_p2_skeletons.damage, "the first hit already landed").toBe(3);
     expect(declared.combat!.units.unit_p2_vampires.damage, "the second hit has NOT landed yet").toBe(0);
@@ -201,9 +225,8 @@ describe("a printed follow-up attack opens a window for the ATTACKING side too",
   it("the instant RESOLVES in that window, before the second hit's damage", () => {
     // Fails if the opener is removed (no window to play into) — and the ordering
     // assertion fails if the reaction were resolved after the parked attack.
-    const declared = applyOk(
-      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" }),
-      DECLARE
+    const declared = declaredPastPrimary(
+      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" })
     );
     const fired = applyOk(declared, reactionOffer(declared, "p1", "specialty.gerwulf.4", "unit_p2_vampires")!.action);
 
@@ -227,7 +250,7 @@ describe("a printed follow-up attack opens a window for the ATTACKING side too",
   it("Artillery too — the attacker's trigger-free ballista opens the follow-up window", () => {
     // Fails if the `followUpOpener` read is removed from the attackerArtillery
     // block (its offers would stay windowJoinOnly and open nothing).
-    const declared = applyOk(phoenixLineAttack({ hand1: ["ability.artillery"] }), DECLARE);
+    const declared = declaredPastPrimary(phoenixLineAttack({ hand1: ["ability.artillery"] }));
     expect(windowAbility(declared)).toBe("dragon-line-attack-2");
     const shot = reactionOffer(declared, "p1", "ability.artillery", "unit_p2_vampires");
     expect(shot, "Artillery is aimed at the slowest enemy — the unit about to be hit").toBeTruthy();
@@ -240,9 +263,8 @@ describe("a printed follow-up attack opens a window for the ATTACKING side too",
     // The Vampires sit at 1 remaining HP: the attacker's own Artillery shot
     // removes them inside the newly-opened window, so the line breath has
     // nothing left to hit. Fails if the opener is removed (no window at all).
-    const declared = applyOk(
-      phoenixLineAttack({ hand1: ["ability.artillery"], behindHealth: 1 }),
-      DECLARE
+    const declared = declaredPastPrimary(
+      phoenixLineAttack({ hand1: ["ability.artillery"], behindHealth: 1 })
     );
     const fired = applyOk(declared, reactionOffer(declared, "p1", "ability.artillery", "unit_p2_vampires")!.action);
 
@@ -261,9 +283,8 @@ describe("a printed follow-up attack opens a window for the ATTACKING side too",
 
 describe("every printed follow-up attack, not just the Phoenix", () => {
   it("Gold Dragons' dragon-line-attack-3 behaves identically", () => {
-    const declared = applyOk(
-      phoenixLineAttack({ ability: "dragon-line-attack-3", hand1: ["ability.artillery"] }),
-      DECLARE
+    const declared = declaredPastPrimary(
+      phoenixLineAttack({ ability: "dragon-line-attack-3", hand1: ["ability.artillery"] })
     );
     expect(windowAbility(declared)).toBe("dragon-line-attack-3");
     const fired = applyOk(declared, reactionOffer(declared, "p1", "ability.artillery", "unit_p2_vampires")!.action);
@@ -330,25 +351,26 @@ describe("the defending side's window on the second attack (unchanged, pinned)",
 // ===========================================================================
 
 describe("scope: only a printed follow-up ATTACK gained the attacker's opener", () => {
-  it("CONTROL: a PRIMARY attack still does not pause for the attacker's own instant", () => {
-    // Fails if followUpAttackInstantOpener stops requiring `abilityAttack`.
-    // The attacker carries NO follow-up ability, so the only attack is primary.
+  it("a PRIMARY attack now pauses for the attacker's own instant too (2026-08-08 ruling)", () => {
+    // FLIPPED EXPECTATION, justified: this was the CONTROL "a PRIMARY attack
+    // still does not pause for the attacker's own instant", which rested on
+    // "the attacker had the whole on-turn card pass before declaring". The
+    // user's ruling — "when attack and when defend, all of them" — rejects that
+    // reasoning, so the attacker is asked on every attack they declare.
+    // What is STILL scoped (the surviving CONTROLs below): a Spell cast, a unit
+    // activation, a die-settled window and effect damage pause for nothing.
+    // Fails if reactionOfferOpensWindow stops treating an attack window as an
+    // opener for windowJoinOnly / drawOnly / utilityOnly offers.
     const declared = applyOk(
       phoenixLineAttack({ ability: "phoenix-fire-immunity", hand1: ["ability.artillery"] }),
       DECLARE
     );
-    const openedOnOwnAttack = declared.eventLog.some(
-      (event) =>
-        event.type === "REACTION_WINDOW_OPENED" &&
-        declared.eventLog.some(
-          (trigger) =>
-            trigger.id === event.triggerEventId &&
-            trigger.type === "UNIT_ATTACK_DECLARED" &&
-            !trigger.isRetaliation
-        )
-    );
-    expect(openedOnOwnAttack, "the attacker's own primary attack never paused").toBe(false);
-    expect(declared.combat!.units.unit_p2_skeletons.damage, "the first hit landed straight away").toBe(3);
+    expect(windowAbility(declared), "the primary declaration opened its own window").toBe("primary");
+    expect(declared.combat!.units.unit_p2_skeletons.damage, "the hit is parked behind it").toBe(0);
+
+    // Passing resumes the exchange with the maths untouched.
+    const settled = passAll(declared);
+    expect(settled.combat!.units.unit_p2_skeletons.damage, "the hit landed on the Pass").toBe(3);
   });
 
   it("CONTROL: an effect-damage follow-up (Chakra Burst splash) opens NO window", () => {
@@ -401,7 +423,7 @@ describe("the follow-up window never stalls an automated seat", () => {
   it("a computer attacker closes its own follow-up window with PASS_REACTION", () => {
     const state = phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" });
     state.controllers = { p1: { kind: "computer", difficulty: "standard", policyVersion: 1 } };
-    const declared = applyOk(state, DECLARE);
+    const declared = declaredPastPrimary(state);
     expect(windowAbility(declared), "the window really opened for the computer seat").toBe(
       "dragon-line-attack-2"
     );
@@ -421,9 +443,8 @@ describe("the follow-up window never stalls an automated seat", () => {
   });
 
   it("the AFK / turn-timeout driver closes it too", () => {
-    const declared = applyOk(
-      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" }),
-      DECLARE
+    const declared = declaredPastPrimary(
+      phoenixLineAttack({ hand1: ["specialty.gerwulf.4"], ballista: "p1" })
     );
     expect(windowAbility(declared), "the window really opened for the dropped seat").toBe(
       "dragon-line-attack-2"
