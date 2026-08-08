@@ -144,6 +144,12 @@ export function MenuShell({
 
   return (
     <Root className={`menuShellRoot${className ? ` ${className}` : ""}`}>
+      {/* The still art slot always renders: on a video screen it sits UNDER the
+          video as the fallback that shows through whenever the video does not
+          paint — a slow/failed load, an unsupported codec, or reduced motion
+          (where CSS hides the video). It costs no extra request, being the same
+          file the video already fetches as its `poster`. */}
+      <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
       {videoBackdrop ? (
         <video
           aria-hidden
@@ -156,9 +162,7 @@ export function MenuShell({
           preload="auto"
           src={assetUrl(videoBackdrop)}
         />
-      ) : (
-        <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
-      )}
+      ) : null}
       {dragonBreath ? <MenuDragonBreath /> : null}
       {dragonBreath ? <MenuMotes /> : null}
       <div aria-hidden className="menuShellVignette" />

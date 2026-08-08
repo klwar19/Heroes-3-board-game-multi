@@ -6129,6 +6129,91 @@ Leading with what does NOT run / deliberate limits:
   never existed (a broken image on the Mulligan option row) — now the real
   `view_air.png`.
 
+## Cinematic main menu (2026-08-08) — what runs vs. limits
+
+`/menu` is a full-bleed looping video backdrop with the logo top-left and ONE
+compact stack of art buttons on the right, in three views: **main** (Single
+player · Multiplayer · Map Editor · Miscellaneous · Logout) → **multiplayer**
+(Skirmish · Battle Test · Co-op · Back) → **miscellaneous** (Hall of Fame ·
+Credits · Profile · Admin when the account is an admin · Back). `view` is local
+component state (`useState`), never routing — Back returns without a navigation.
+Pure presentation: no engine rule, no server call beyond the existing session
+fetch. Pinned in `src/app/menu/page.test.tsx`,
+`src/app/menu/main-menu-media.test.ts` and
+`src/app/menu/main-menu-video-motion.test.ts`.
+
+Leading with what does NOT work / deliberate limits:
+- **CO-OP IS A PLACEHOLDER, NOT A MODE.** There is no co-op anything in the
+  engine, and `/play/page.tsx` reads NO query params — it always renders the
+  ADVENTURE `RoomBrowser`. So `href="/play?mode=co-op"` lands on the very same
+  lobby **Skirmish** does and the query string is inert. The button is labelled
+  NOT IMPLEMENTED at its definition; the test asserts the href only so the
+  placeholder cannot rot into a broken route. Wiring a real co-op mode, or
+  dropping the button, is an open decision.
+- **Profile is no longer gated to signed-in accounts** (it was, before the
+  redesign — it is now a permanent entry in Miscellaneous so the submenu keeps
+  its five-button shape). `/profile` handles that itself: accounts OFF →
+  redirect to `/menu` (so for a guest the button visibly bounces straight
+  back), signed out with accounts ON → `/login`. Never a crash, but a guest can
+  click a button that returns them to where they were.
+- **Every button's label is BAKED INTO its art** — there is no text node, so the
+  accessible name is the element's `aria-label` and a dropped label leaves a
+  nameless control. `page.test.tsx` walks all three views (14 buttons, admin
+  included) asserting a non-empty `aria-label` plus `alt=""` + `aria-hidden` on
+  the art. A missing webp is likewise not a cosmetic gap but a BLANK button,
+  which is why the files are pinned on disk.
+- **jsdom cannot compute CSS**, so nothing here proves a pixel: the two
+  `.mainMenuShell` CSS blocks (one near the top of `globals.css`, one appended at
+  the very end) are unverified by any browser test, and the first block still
+  carries rules for classes the JSX no longer renders (`.menuNavIcon`,
+  `.menuNavText`, `.menuNavLabel`, `.menuNavHeroArt`, `.menuNavButtonHeroes`,
+  `.menuNavLogout`) plus three rules the end block overrides. Inert, not deleted.
+- **The end block sits AFTER the delimited PHONE UI MODE block**, breaking that
+  block's "last thing in the file" convention. Harmless today — every selector is
+  `.mainMenuShell`-scoped and the menu shell never carries `.phoneMode` — but a
+  future rule added there could beat a phone rule.
+- The site masthead and footer notice are hidden on this page
+  (`.appShell:has(.mainMenuShell) > .topBar/.footerNotice`), and the two stale
+  assertions in `tests/e2e/menu-flow.spec.ts` — a `toBeDisabled()` on Single
+  player (a `<Link>`, not a disabled button) and a `heading` named "Heroes III —
+  The Board Game" (the shell renders the wordmark IMAGE, no `<h1>`, since the
+  page passes no `title`) — predate this redesign and are unfixed. E2E does not
+  run in CI (only `deploy-partykit` / `sync-media-r2`), so they are inert.
+
+What runs (each with a failing-if-removed test, all mutation-checked):
+- **The loop autoplays MUTED** (`autoPlay muted loop playsInline`, `poster`,
+  `preload="auto"`): a missing `muted` means browsers block autoplay outright and
+  the backdrop silently dies. The mp4 carries NO audio track at all.
+- **The still art slot renders UNDER the video, always** (`MenuShell` used to
+  render one OR the other): it is the fallback that shows through on a slow or
+  failed video load, an unsupported codec, and under reduced motion. It costs no
+  extra request — it is the same file the video fetches as its `poster`.
+- **`prefers-reduced-motion: reduce` really hides the video** (revealing that
+  still). This was BROKEN as shipped: the reduced-motion rule sat near the top of
+  `globals.css` and the end block then set `display: block !important` on the
+  same selector, so the 20-second loop played for everyone. A media query carries
+  NO specificity, so the fix has two halves — no `!important` on any `display`
+  for the video, and the reduced-motion rule must come LAST in source order among
+  the video's `display` declarations. Both are pinned by a CSS-TEXT test
+  (`main-menu-video-motion.test.ts`), the only way to see a cascade tie in jsdom.
+  Do not move that rule earlier or re-add `!important`.
+- **MEDIA WEIGHT is capped by test.** The generated art shipped at ~22MB for one
+  cold visit (13 buttons at 1536×1024 / 114–311KB, backdrop 1920×1080 / 19.3MB);
+  it is now 768×512 webp q82 (26–65KB, 587KB for the set, all 13 eagerly
+  preloaded on mount) and a 4.1MB CRF-28 mp4. The buttons never paint wider than
+  ~310 CSS px (`.menuShellPanel.bare` is `clamp(230px, 24vw, 310px)` and
+  `.menuNavArt` is `contain`-fitted), so 768px is already ≥2× for retina.
+  `main-menu-media.test.ts` enforces webp + alpha + a 768px width ceiling + a
+  512px floor + per-file and whole-set byte ceilings, and for the mp4: a 6MB
+  ceiling, `moov` before `mdat` (faststart) and NO audio atom.
+- **RE-ENCODING THE LOOP: preserve the frames or the seamless loop breaks.** The
+  file is authored to meet itself (1920×1080, 24fps, 20.000s, 480 frames). Use
+  `ffmpeg -i <src> -an -c:v libx264 -preset slow -crf 28 -pix_fmt yuv420p
+  -fps_mode passthrough -movflags +faststart <out>` and re-verify frame count,
+  fps, duration and that the first packet is a keyframe against the SOURCE before
+  committing. `scripts/compress-media.mjs` deliberately skips mp4 — never point it
+  at this file.
+
 ## First-round rules, Cove City Hall & bank/opponent UI (BINH house rules) — what runs
 
 Six additions; each engine rule fails a named test if its wiring is removed.

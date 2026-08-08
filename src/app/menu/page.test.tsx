@@ -40,18 +40,89 @@ describe("/menu (main menu, guest-only build)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Multiplayer/i }));
     expect(screen.getByRole("link", { name: /Skirmish/i }).getAttribute("href")).toBe("/play");
     expect(screen.getByRole("link", { name: /Battle Test/i }).getAttribute("href")).toBe("/battle");
+    // CO-OP is a PLACEHOLDER, not a second mode: /play reads no query params, so
+    // this lands on the very same adventure lobby Skirmish does (see the
+    // NOT-IMPLEMENTED note at the button). Asserted only so the placeholder
+    // cannot quietly turn into a broken route.
     expect(screen.getByRole("link", { name: /Co-op/i }).getAttribute("href")).toBe("/play?mode=co-op");
     fireEvent.click(screen.getByRole("button", { name: /Back/i }));
+    // Back really returns to the main view — the submenu entries are gone again.
+    expect(screen.queryByRole("link", { name: /Skirmish/i })).toBeNull();
+    expect(screen.getByRole("link", { name: /Single player/i })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
     expect(screen.getByRole("link", { name: /Hall of Fame/i }).getAttribute("href")).toBe("/hall-of-fame");
     expect(screen.getByRole("link", { name: /Credits/i }).getAttribute("href")).toBe("/credits");
     expect(screen.getByRole("link", { name: /Profile/i }).getAttribute("href")).toBe("/profile");
+    // Admin stays gated on an admin ACCOUNT — never shown to a guest.
+    expect(screen.queryByRole("link", { name: /Admin/i })).toBeNull();
   });
 
-  it("shows Logout in guest mode and returns to login", () => {
+  it("every menu button in EVERY view carries an accessible name (the label is baked into the art)", async () => {
+    // The art IS the button — there is no text node — so a dropped `aria-label`
+    // leaves a nameless control that a screen reader (and every getByRole query)
+    // cannot address. Walks all three views, admin entry included, so a button
+    // added to a SUBMENU cannot skip the check.
+    process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED = "1";
+    vi.mocked(authClient.fetchSession).mockResolvedValue({ id: "u1", nickname: "Boss", role: "admin" } as never);
+    try {
+      render(<MenuPage />);
+      await waitFor(() => expect(screen.getByText(/Signed in as Boss/)).toBeTruthy());
+
+      let checked = 0;
+      const auditVisibleButtons = () => {
+        for (const el of Array.from(document.querySelectorAll(".menuNavButton"))) {
+          expect(el.getAttribute("aria-label")?.trim()).toBeTruthy();
+          // The art itself must stay out of the accessibility tree.
+          const art = el.querySelector("img");
+          expect(art?.getAttribute("alt")).toBe("");
+          expect(art?.getAttribute("aria-hidden")).toBe("true");
+          checked += 1;
+        }
+      };
+
+      auditVisibleButtons();
+      fireEvent.click(screen.getByRole("button", { name: /Multiplayer/i }));
+      auditVisibleButtons();
+      fireEvent.click(screen.getByRole("button", { name: /Back/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
+      auditVisibleButtons();
+
+      // Main 5 + multiplayer 4 + miscellaneous 5 (Admin included) = 14.
+      expect(checked).toBe(14);
+    } finally {
+      delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
+    }
+  });
+
+  it("plays the menu loop MUTED and keeps the still art behind it as the fallback", () => {
+    // Browsers BLOCK un-muted autoplay, so a missing `muted` silently kills the
+    // backdrop. The still <img> must also stay mounted underneath: it is what
+    // shows through on a slow/failed video load and under reduced motion (where
+    // CSS hides the video), instead of a bare black page.
+    render(<MenuPage />);
+    const video = document.querySelector("video.menuShellBackdropVideo") as HTMLVideoElement | null;
+    expect(video).toBeTruthy();
+    expect(video?.muted).toBe(true);
+    expect(video?.hasAttribute("autoplay")).toBe(true);
+    expect(video?.hasAttribute("loop")).toBe(true);
+    expect(video?.hasAttribute("playsinline")).toBe(true);
+    expect(video?.getAttribute("src")).toContain("/assets/ui/menu/main-menu-loop-v5.mp4");
+    expect(video?.getAttribute("poster")).toBeTruthy();
+
+    const still = document.querySelector("img.menuShellBackdrop");
+    expect(still).toBeTruthy();
+    // The still is BEHIND the video (earlier in document order = painted under).
+    expect(still?.compareDocumentPosition(video as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("Logout in guest mode CLEARS the guest flag and returns to login", () => {
+    window.localStorage.setItem("homm3bg.guest", "1");
     render(<MenuPage />);
     fireEvent.click(screen.getByRole("button", { name: /Logout/i }));
+    // The observable outcome, not just the navigation: the guest flag is gone,
+    // so /login does not wave the same stale guest straight back through.
+    expect(window.localStorage.getItem("homm3bg.guest")).toBeNull();
     expect(replace).toHaveBeenCalledWith("/login");
   });
 
@@ -109,5 +180,29 @@ describe("/menu (accounts enabled) — guest login temporarily disabled", () => 
     await waitFor(() => expect(screen.getByText(/Signed in as Boss/)).toBeTruthy());
     expect(screen.getByRole("button", { name: /Logout/i })).toBeTruthy();
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("a signed-in account's Logout ends the SESSION (not just the guest flag)", async () => {
+    vi.mocked(authClient.fetchSession).mockResolvedValue({ id: "u1", nickname: "Boss", role: "player" } as never);
+    render(<MenuPage />);
+    await waitFor(() => expect(screen.getByText(/Signed in as Boss/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Logout/i }));
+    await waitFor(() => expect(vi.mocked(authClient.logout)).toHaveBeenCalled());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+  });
+
+  it("Admin is offered to an admin under Miscellaneous — and NOT to a plain player (CONTROL)", async () => {
+    vi.mocked(authClient.fetchSession).mockResolvedValue({ id: "u1", nickname: "Boss", role: "admin" } as never);
+    render(<MenuPage />);
+    await waitFor(() => expect(screen.getByText(/Signed in as Boss/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
+    expect(screen.getByRole("link", { name: /Admin/i }).getAttribute("href")).toBe("/admin");
+
+    cleanup();
+    vi.mocked(authClient.fetchSession).mockResolvedValue({ id: "u2", nickname: "Rank", role: "player" } as never);
+    render(<MenuPage />);
+    await waitFor(() => expect(screen.getByText(/Signed in as Rank/)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
+    expect(screen.queryByRole("link", { name: /Admin/i })).toBeNull();
   });
 });

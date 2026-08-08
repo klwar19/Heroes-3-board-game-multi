@@ -14,7 +14,12 @@ import { clearGuestMode, getDisplayName, isGuestMode } from "@/lib/identity";
 
 type MenuView = "main" | "multiplayer" | "miscellaneous";
 
-const MENU_ART = {
+/**
+ * Each button's whole face — emblem, plaque and its own baked-in label — is the
+ * generated art; the clickable element adds no chrome of its own, so the
+ * accessible name comes from the element's `aria-label` (there is no text node).
+ */
+export const MENU_ART = {
   singlePlayer: "/assets/ui/menu/buttons/single-player.webp",
   multiplayer: "/assets/ui/menu/buttons/multiplayer.webp",
   mapEditor: "/assets/ui/menu/buttons/map-editor.webp",
@@ -142,6 +147,11 @@ export default function MenuPage() {
               <Link aria-label="BATTLE TEST" className="menuNavButton" href="/battle">
                 <MenuArt src={MENU_ART.battleTest} />
               </Link>
+              {/* NOT IMPLEMENTED: there is no co-op game mode in the engine, and
+                  /play reads no query params — it always renders the ADVENTURE
+                  room browser. So this button lands on the SAME lobby Skirmish
+                  does and `?mode=co-op` is inert; it is a placeholder for a mode
+                  that does not exist yet, not a second way to play. */}
               <Link aria-label="CO-OP" className="menuNavButton" href="/play?mode=co-op">
                 <MenuArt src={MENU_ART.coOp} />
               </Link>
