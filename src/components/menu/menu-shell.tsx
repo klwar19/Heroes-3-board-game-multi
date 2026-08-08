@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { useSyncExternalStore, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { uiArtSlot, type UiArtSlotId } from "@/data/ui-art";
 import { assetUrl } from "@/lib/asset-url";
 import { useBackgroundMusic } from "@/lib/music";
@@ -19,6 +19,64 @@ export function playMenuNavClickSound(event: ReactMouseEvent<HTMLElement>): void
   if (target?.closest?.(".menuNavButton")) {
     playLibrarySound("ui/button", 0.4);
   }
+}
+
+/**
+ * Viewports at or below this width never LOAD a `videoBackdrop` (see
+ * `useVideoBackdropAllowed`). Kept in lockstep with the `max-width: 820px` /
+ * `min-width: 821px` split the main-menu CSS already uses.
+ */
+const NARROW_BACKDROP_QUERY = "(max-width: 820px)";
+
+/**
+ * Whether a `videoBackdrop` may be MOUNTED on this viewport.
+ *
+ * Phones must never DOWNLOAD the multi-MB backdrop loop. CSS cannot achieve
+ * that: a `display: none` <video> with `preload="auto"` still fetches the whole
+ * file (the same lesson the setup-scene playlist learned). Only NOT MOUNTING the
+ * element stops the request.
+ *
+ * The SERVER snapshot is deliberately `false`. MenuShell is server-rendered and
+ * a server frame cannot know the viewport, so emitting the <video> into the SSR
+ * HTML would have the browser's preload scanner start a phone's download before
+ * React ever hydrates. `useSyncExternalStore` uses this same snapshot DURING
+ * hydration too, so the server frame and the hydrating render agree (no
+ * mismatch) and the loop appears on the re-render that follows. The still
+ * `.menuShellBackdrop` img is in that very first frame, so nothing is ever a
+ * blank hole; on a wide viewport the loop costs one extra render against a
+ * download that takes seconds anyway.
+ *
+ * Where `matchMedia` is unavailable we assume a wide viewport and keep the loop
+ * (the historical behaviour).
+ */
+function subscribeToBackdropWidth(onChange: () => void): () => void {
+  const query = window.matchMedia?.(NARROW_BACKDROP_QUERY);
+  if (!query) return () => {};
+  if (query.addEventListener) {
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }
+  // Safari < 14 only has the deprecated listener pair.
+  query.addListener?.(onChange);
+  return () => query.removeListener?.(onChange);
+}
+
+/** Live client read. Returns a primitive, so React can compare it with Object.is. */
+function readVideoBackdropAllowed(): boolean {
+  return !(window.matchMedia?.(NARROW_BACKDROP_QUERY)?.matches ?? false);
+}
+
+/** Server + hydration read: never emit the loop into HTML (see above). */
+function videoBackdropDisallowedOnServer(): boolean {
+  return false;
+}
+
+function useVideoBackdropAllowed(): boolean {
+  return useSyncExternalStore(
+    subscribeToBackdropWidth,
+    readVideoBackdropAllowed,
+    videoBackdropDisallowedOnServer
+  );
 }
 
 /** Jet sparks that ride the continuous stream (nth-child positions in CSS). */
@@ -145,16 +203,18 @@ export function MenuShell({
   const art = uiArtSlot(backdrop);
   const brand = uiArtSlot("game-logo");
   const stillBackdrop = videoFallback ?? art.src;
+  const videoAllowed = useVideoBackdropAllowed();
 
   return (
     <Root className={`menuShellRoot${className ? ` ${className}` : ""}`}>
-      {/* The still art slot always renders: on a video screen it sits UNDER the
-          video as the fallback that shows through whenever the video does not
-          paint — a slow/failed load, an unsupported codec, or reduced motion
-          (where CSS hides the video). It costs no extra request, being the same
-          file the video already fetches as its `poster`. */}
+      {/* The still always renders: on a video screen it sits UNDER the video as
+          the fallback that shows through whenever the video does not paint — a
+          slow/failed load, an unsupported codec, reduced motion (where CSS hides
+          the video), and a narrow viewport (where it is never mounted at all, so
+          the still IS the backdrop). It costs no extra request, being the same
+          file the video would fetch as its `poster`. */}
       <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(stillBackdrop)} />
-      {videoBackdrop ? (
+      {videoBackdrop && videoAllowed ? (
         <video
           aria-hidden
           autoPlay

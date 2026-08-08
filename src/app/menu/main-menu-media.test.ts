@@ -43,6 +43,16 @@ const MAX_BUTTON_SET_BYTES = 900 * 1024;
 const VIDEO_URL = "/assets/ui/menu/main-menu-loop-v6.mp4";
 const MAX_VIDEO_BYTES = 6 * 1024 * 1024;
 
+/**
+ * The loop's poster AND the still that paints under it — so it is fetched on
+ * EVERY visit, and on a narrow viewport (where MenuShell never mounts the video
+ * at all) it is the whole backdrop. It shipped as a 401KB master; the ceiling
+ * below is set just above the repo-standard scenery re-encode (q80 +
+ * smartSubsample, dimensions unchanged) so dropping the master back in fails.
+ */
+const FALLBACK_URL = "/assets/ui/menu/main-menu-fallback.webp";
+const MAX_FALLBACK_BYTES = 340 * 1024;
+
 describe("main-menu button art", () => {
   it("ships a real webp for every MENU_ART entry, at display resolution", async () => {
     const entries = Object.entries(MENU_ART);
@@ -103,5 +113,22 @@ describe("main-menu backdrop loop", () => {
     expect(header.includes("mp4a"), "backdrop loop still carries an audio track").toBe(false);
     expect(header.includes("soun"), "backdrop loop still carries an audio track").toBe(false);
     expect(header.includes("vide"), "backdrop loop has no video track?").toBe(true);
+  });
+
+  it("ships a light, full-bleed still as the poster / no-video backdrop", async () => {
+    const file = toFile(FALLBACK_URL);
+    expect(existsSync(file), `missing main-menu fallback still: ${file}`).toBe(true);
+
+    const meta = await sharp(file).metadata();
+    expect(meta.format).toBe("webp");
+    // Full-bleed with a 1.07 ken-burns zoom, so it must stay a real backdrop
+    // plate — never downscaled to a thumbnail — while never exceeding 1080p-ish
+    // width, which is already beyond the 1280x720 loop it stands in for.
+    expect(meta.width ?? 0).toBeGreaterThanOrEqual(1280);
+    expect(meta.width ?? 0).toBeLessThanOrEqual(1920);
+
+    const bytes = statSync(file).size;
+    expect(bytes, `fallback still is ${Math.round(bytes / 1024)}KB`).toBeLessThanOrEqual(MAX_FALLBACK_BYTES);
+    expect(bytes, "fallback still looks like a stub").toBeGreaterThan(32 * 1024);
   });
 });
