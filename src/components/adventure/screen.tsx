@@ -157,6 +157,11 @@ import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experienc
 import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
 import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "@/components/table/utils";
+// Polish Set Artifacts: the ONE badge pair every card-face surface shares — a
+// wrapper for a face in normal flow, a bare corner badge for a face that fills
+// an already-positioned tile. Both render NOTHING with the rule off / a
+// non-member card, so a default table keeps its exact DOM.
+import { CardSetCornerBadge, CardSetFrame } from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
@@ -5053,6 +5058,13 @@ export function TownPanel({
 type VisitRewardArt = {
   image?: string;
   name: string;
+  /**
+   * The card whose printed face this art IS, when the option really shows one —
+   * so the tile can wear its Polish Set Artifacts badge. Deliberately unset for
+   * unit portraits, tile scans, resource glyphs and the Legion "which unit"
+   * options (whose step carries an artifact `cardId` that is NOT what is drawn).
+   */
+  cardId?: string;
   /** Compact resource-symbol option rather than a card scan. */
   resource?: boolean;
   /** Map-tile options (Disruption): rotation in 60° turns, for the thumb. */
@@ -5212,7 +5224,7 @@ function startingBonusOptionArt(
 function rewardArtForId(cardId: string): VisitRewardArt {
   const card = cardLibrary[cardId];
   if (card) {
-    return { image: card.assets?.cardImage, name: card.name, caption: card.name };
+    return { image: card.assets?.cardImage, name: card.name, caption: card.name, cardId };
   }
   const unit = coreUnitDefinitions[cardId];
   if (unit) {
@@ -5810,13 +5822,15 @@ export function PromptTray({
       preview = (
         <div className="auctionLotPreview" data-testid="auction-lot">
           {auctionLotCard?.assets?.cardImage ? (
-            <img
-              alt={auctionLotCard.name}
-              className="auctionLotCard"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-              src={assetUrl(auctionLotCard.assets.cardImage)}
-            />
+            <CardSetFrame cardId={auctionLotCard.id}>
+              <img
+                alt={auctionLotCard.name}
+                className="auctionLotCard"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                src={assetUrl(auctionLotCard.assets.cardImage)}
+              />
+            </CardSetFrame>
           ) : null}
           <span>{auctionLotCard?.name ?? "Unknown artifact"}</span>
         </div>
@@ -5854,7 +5868,9 @@ export function PromptTray({
               return (
                 <div className="eventPoolCard" key={`${entry.cardId}-${index}`}>
                   {art.image ? (
-                    <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                    <CardSetFrame cardId={entry.cardId}>
+                      <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                    </CardSetFrame>
                   ) : (
                     <span className="marketCardFallback">{art.name}</span>
                   )}
@@ -6027,7 +6043,8 @@ export function PromptTray({
               ? {
                   name: card?.name ?? cardId,
                   image: card?.assets?.cardImage,
-                  caption: legal.label
+                  caption: legal.label,
+                  cardId
                 }
               : null;
             return { legal, art };
@@ -6236,14 +6253,15 @@ export function PromptTray({
               {kept.map((cardId, index) => {
                 const card = cardLibrary[cardId];
                 return card?.assets?.cardImage ? (
-                  <img
-                    alt={card.name}
-                    key={`${cardId}-${index}`}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    src={assetUrl(card.assets.cardImage)}
-                    title={card.name}
-                  />
+                  <CardSetFrame cardId={cardId} key={`${cardId}-${index}`}>
+                    <img
+                      alt={card.name}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(card.assets.cardImage)}
+                      title={card.name}
+                    />
+                  </CardSetFrame>
                 ) : (
                   <span className="marketCardFallback" key={`${cardId}-${index}`}>
                     {card?.name ?? cardId}
@@ -6267,14 +6285,16 @@ export function PromptTray({
                     title={card?.name ?? tile.cardId}
                     type="button"
                   >
-                    <img
-                      alt=""
-                      aria-hidden="true"
-                      draggable={false}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      src={assetUrl(image)}
-                    />
+                    <CardSetFrame cardId={tile.cardId}>
+                      <img
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                        src={assetUrl(image)}
+                      />
+                    </CardSetFrame>
                   </button>
                 ) : (
                   <span className="marketCardFallback">{card?.name ?? tile.cardId}</span>
@@ -6530,14 +6550,16 @@ export function PromptTray({
                       : undefined
                   }
                 >
-                  <img
-                    alt=""
-                    aria-hidden="true"
-                    draggable={false}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    src={assetUrl(art.image)}
-                  />
+                  <CardSetFrame cardId={art.cardId}>
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(art.image)}
+                    />
+                  </CardSetFrame>
                 </span>
               ) : (
                 <span className="marketCardFallback">{art.name}</span>
@@ -6833,6 +6855,11 @@ export function MarketPanel({
                   ) : (
                     <span className="marketCardFallback">{card?.name ?? cardId}</span>
                   )}
+                  {/* `.marketSellCard img` is `width: 100%`, so a content-sized
+                      wrapper would blow the face up to its intrinsic size — the
+                      button carries the badge instead (it is `position:
+                      relative` for exactly this). */}
+                  <CardSetCornerBadge cardId={cardId} />
                   <small>Sell → 1 🪙</small>
                 </button>
               );
@@ -7046,6 +7073,9 @@ export function AdventureOwnDeck({
         ) : (
           <span className="ownDeckCount">0</span>
         )}
+        {/* The face is `position: absolute; inset: 0`, so the badge rides the
+            already-relative button beside the count — never a wrapper. */}
+        <CardSetCornerBadge cardId={topDiscardId} />
         <span className="ownDiscardBadge">{player.discard.length}</span>
         <small>Discard</small>
       </button>
@@ -7145,6 +7175,10 @@ export function AdventureDecksPanel({
               ) : (
                 <span>{deckState.discardPile.length}</span>
               )}
+              {/* The Artifact deck's own discard top — the most-seen set-member
+                  face on the map. The face fills the relative button, so this is
+                  the bare corner badge. */}
+              <CardSetCornerBadge cardId={topId} />
               {topId ? <span className="advDiscardBadge">{deckState.discardPile.length}</span> : null}
               <small>Discard</small>
             </button>
@@ -7380,6 +7414,10 @@ function PileModalCards({
                   <Sparkles aria-hidden="true" size={9} /> Empowered
                 </span>
               ) : null}
+              {/* Same positioned button as the Empowered overlay above, so the
+                  set badge rides it too (browsing a discard pile must show which
+                  cards are set pieces). */}
+              <CardSetCornerBadge cardId={kind === "cards" ? cardId : undefined} />
               <small>
                 {index === 0 ? "top · " : ""}
                 {astro?.name ?? card?.name ?? unit?.name ?? cardId}

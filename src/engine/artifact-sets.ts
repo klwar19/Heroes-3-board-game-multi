@@ -33,6 +33,7 @@ import {
   type ArtifactSetTier
 } from "@/data/cards/artifact-sets";
 import { houseRuleEnabled } from "./house-rules";
+import { HIDDEN_CARD_ID } from "./state";
 import type { CardId, GameState, PlayerId, PlayerState, ResourceKind } from "./state";
 
 export type { ArtifactSetId, ArtifactSetDefinition, ArtifactSetTier };
@@ -81,6 +82,30 @@ function ownedCardIds(player: PlayerState): CardId[] {
 /**
  * How many DISTINCT members of `setId` the player owns. 0 when the rule is off,
  * the player is unknown, or the set id is unknown.
+ *
+ * MASKED ZONES (the 2026-08-08 "Angelic Alliance does not work during combat"
+ * bug). On a HOSTED table — every single-player room and every closed
+ * multiplayer table — the client holds a per-seat REDACTED state in which even
+ * the VIEWER'S OWN deck is a row of `HIDDEN_CARD_ID` placeholders (deck order is
+ * secret from everyone, `redactStateForSeat`). The zone scan above therefore
+ * under-counted client-side: a player holding all 6 Angelic Alliance pieces with
+ * 4 of them still in the deck read as 2 pieces in the browser, so the client
+ * activated only the first tier and `artifactSetPowerOffers` rendered NO buttons
+ * for tiers 3-6 that the server would happily have accepted — the set status
+ * panel meanwhile showed the true "6/6 · 5 effects", because that panel reads the
+ * synced `artifactSetStatus` instead.
+ *
+ * So: whenever an owned zone is masked, take the server-synced
+ * `player.artifactSetStatus` (real PlayerState, deliberately NOT stripped by
+ * `redactStateForSeat`) as the count when it is HIGHER than what the visible
+ * zones prove. `>` not `??`, so a status that has not caught up yet can never
+ * LOWER a count the visible cards already justify.
+ *
+ * An UNMASKED read — every server-side call, and an open (unredacted) table — is
+ * byte-identical to before: no placeholder is present, so the branch is skipped
+ * and the zone scan alone decides. The count is never inflated beyond the
+ * server's own derivation, so a client can still only ever offer what the
+ * reducer's re-derivation accepts.
  */
 export function artifactSetPieceCount(state: GameState, playerId: PlayerId, setId: string): number {
   if (!setArtifactsEnabled(state)) {
@@ -91,8 +116,14 @@ export function artifactSetPieceCount(state: GameState, playerId: PlayerId, setI
   if (!set || !player) {
     return 0;
   }
-  const owned = new Set(ownedCardIds(player));
-  return set.members.reduce((total, member) => total + (owned.has(member) ? 1 : 0), 0);
+  const ownedIds = ownedCardIds(player);
+  const owned = new Set(ownedIds);
+  const visible = set.members.reduce((total, member) => total + (owned.has(member) ? 1 : 0), 0);
+  if (!owned.has(HIDDEN_CARD_ID)) {
+    return visible;
+  }
+  const synced = player.artifactSetStatus?.find((entry) => entry.setId === set.id)?.pieces ?? 0;
+  return Math.max(visible, Math.min(synced, set.members.length));
 }
 
 /** How many tiers `pieces` activates for a set (pure — no state). */

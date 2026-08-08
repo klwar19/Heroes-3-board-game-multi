@@ -7957,6 +7957,95 @@ What runs (each pinned by a test that fails if the wiring is removed;
   restored → 3 fail; the menu removed → 6; the board target lookup neutered → 3;
   the zoom badge dropped → 1; the stat-token rail renamed → 1).
 
+### A HOSTED client under-counted its own pieces (2026-08-08 bugfix)
+
+Reported: "For Angelic Alliance — for now not working during combat." REPRODUCED
+in a real neutral fight: the server offered the 4 bound Angelic Alliance tiers,
+the browser offered ZERO. Root cause — `artifactSetPieceCount` derives the count
+from the player's card ZONES, but on a HOSTED table (every single-player room and
+every CLOSED multiplayer table; `redactSnapshotForViewer` gates on `room.hosted`)
+the client holds a per-seat REDACTED frame in which even the VIEWER'S OWN `deck`
+is a row of `HIDDEN_CARD_ID` placeholders — deck ORDER is secret from everyone,
+including its owner. A player holding all 6 pieces with 4 still in the deck read
+as **2** pieces in the browser, so the client activated only tier 2 and rendered
+no buttons at all for tiers 3-6 — while the status panel kept showing the true
+"6/6 · 5 effects", because IT reads the synced `artifactSetStatus`.
+
+ONE seam: when an owned zone contains `HIDDEN_CARD_ID`, `artifactSetPieceCount`
+takes `player.artifactSetStatus` (real PlayerState, deliberately NOT stripped by
+`redactStateForSeat`) when it is HIGHER than the visible zones prove — `max`, not
+`??`, so a status that has not caught up can never LOWER a count the visible cards
+already justify; capped at the set's member count. `HIDDEN_CARD_ID` moved to
+`state.ts` (the types leaf) so `artifact-sets.ts` can stay a leaf; `player-view.ts`
+re-exports it.
+
+Leading with the limits / why it is safe:
+- **An UNMASKED read is byte-identical**: no placeholder ⇒ the branch is skipped
+  and the zone scan alone decides. So the SERVER (and an OPEN, unredacted table)
+  is untouched, `syncArtifactSetTiers` cannot drift, and the client can still only
+  offer what the reducer's own re-derivation accepts.
+- **Same fix covers the MAP tiers** (Wizard's Well / Diplomat's Cloak), which had
+  the identical hole on a hosted table.
+- **The round-1 window is unchanged and still a real trap**: the printed "at the
+  beginning of the combat" selection is offered in combat ROUND 1 only, and tiers
+  3-6 are bound to it — miss round 1 and the set does nothing for that fight.
+  Deliberate, documented, not the bug.
+- WHY THE EXISTING TESTS WERE GREEN: `artifact-sets.test.ts` built its combats
+  in-process and read `artifactSetPowerOffers` / `getLegalActions` off the FULL
+  server state — never off a redacted seat frame — so the whole hosted path was
+  unexercised. Closed by a new describe block that derives the offers from
+  `redactStateForSeat(state, "p1")` (what the browser does) and applies them to
+  the server state. Pinned in `artifact-sets.test.ts` ("a hosted (redacted) client
+  offers what the server accepts", 5 cases) + `page-artifact-sets.test.tsx`
+  ("a hosted (redacted) battle table still shows the set powers button" — the real
+  page, the real dock). Mutation-checked: restoring the plain zone scan fails 3,
+  dropping the visible-count floor fails 1.
+
+### The badge on EVERY card-face surface (2026-08-08 bugfix)
+
+Reported: "No icon on this sword in small window, check all for set icon
+attached." The badge was drawn by exactly TWO components — `CardFrame` and the
+zoom reader — so the many surfaces that paint a card face with a RAW `<img>`
+showed a set member bare. Fixed by routing them all through ONE shared pair in
+`artifact-set-badge.tsx` (never per-surface badge markup): **`CardSetFrame`**
+wraps a face that sits in normal flow (`.cardSetFrame` is `position: relative;
+display: inline-flex`, so it sizes to the face), and **`CardSetCornerBadge`**
+hangs the badge on an already-positioned tile whose face FILLS it — the
+`.empoweredBadgeOverlay` precedent — because a content-sized wrapper would break a
+`position: absolute; inset: 0` or `width: 100%` face. `CardFrame` and
+`ZoomCardVisual` now use `CardSetFrame` too, so there is one implementation.
+
+Fixed surfaces (all `screen.tsx`): the shared **Artifact deck's discard top** and
+the player's **own discard top** (corner badge — the face is `inset: 0`), the
+**pile browser** (corner badge), the **market's sell-from-hand** tiles (corner
+badge; `.marketSellCard` gained `position: relative` for it — the face is
+`width: 100%`), the **Pandora card row** + its kept strip, the **visit-reward /
+discard-pick tiles** (`VisitRewardArt` gained an optional `cardId`, set only where
+the art really IS a card's face — never for unit portraits, tile scans, resource
+glyphs or the Legion "which unit" options), the **Shady Auction lot** and the
+**face-up event pool** (all four wrapped).
+
+Leading with what is NOT badged / limits:
+- **`fx.tsx`'s card-FLIGHT face** (`makeCardFaceElement`) builds its `<img>` with
+  `document.createElement`, outside React, so it can never read the context gate
+  and stays unbadged BY DESIGN (a ~600ms animation, not a readable card).
+- **`CardFrame`'s art-less fallbacks** (`cardFaceFallback` / the native
+  `SpecialtyCard`) return before the wrapper. Theoretical only — all 41 members
+  are core Artifacts with real scans.
+- **The set PANEL's own card art is deliberately unbadged** (it shows the SET
+  card, not a member face), and so are surfaces a core Artifact can never reach:
+  hero-board equipment icons (anime equipment only), the commander-artifact bag,
+  morale cards, the Spell Book page, unit/tile thumbs.
+- **A bare `zoomContent({ image })` call still cannot badge** — only
+  `zoomCard()` / `cardZoomContent()` set `content.cardId`.
+- jsdom cannot compute CSS, so WHERE each badge lands (unclipped, over the art,
+  clear of a count chip) is a real-browser concern; only the DOM contract is
+  pinned, in `src/components/adventure/artifact-set-card-surfaces.test.tsx`
+  (19 cases, every EFFECT with a rule-OFF control that asserts the same face is
+  still rendered). Mutation-checked: removing the four `CardSetCornerBadge` calls
+  fails 4, neutering `CardSetFrame` inside screen.tsx fails 4, dropping `cardId`
+  from `rewardArtForId` fails 1.
+
 The engine half's contract, unchanged, is what all of the above reads:
 `PlayerState.artifactSetStatus` (public, per set: `pieces` / `activeTiers` /
 `memberCount`), mirrored onto every player view; the three feed events

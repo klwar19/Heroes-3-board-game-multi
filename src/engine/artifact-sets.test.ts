@@ -1268,3 +1268,133 @@ describe("Set Artifacts — feed events and rule-OFF inertness", () => {
     }
   });
 });
+
+// ===========================================================================
+// 14. A HOSTED (redacted) client must offer EXACTLY what the server accepts
+//
+// The 2026-08-08 live bug: "Angelic Alliance — for now not working during
+// combat." On a hosted table (every single-player room and every CLOSED
+// multiplayer table) the browser holds a per-seat REDACTED state in which even
+// the viewer's OWN deck is a row of `hidden` placeholders. The piece count is
+// derived from the card zones, so the client under-counted, activated fewer
+// tiers, and rendered NO buttons for tiers the server would have accepted —
+// while the status panel (which reads the synced `artifactSetStatus`) kept
+// showing the true "6/6 · 5 effects".
+//
+// The whole class is pinned here by deriving the offers from the REDACTED state
+// (what the browser does) and applying them to the SERVER state.
+// ===========================================================================
+
+describe("Set Artifacts — a hosted (redacted) client offers what the server accepts", () => {
+  /** The live shape: 2 pieces in hand, the other 4 still in the (masked) deck. */
+  function hostedCombat(seed: string): GameState {
+    const state = makeState(true, seed);
+    ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);
+    state.players.p1.deck = [AA_MEMBERS[2], AA_MEMBERS[3], AA_MEMBERS[4], AA_MEMBERS[5]];
+    // What the applyAction tail stamps on the real server before the snapshot
+    // goes out — the only piece information that survives redaction.
+    state.players.p1.artifactSetStatus = playerArtifactSetStatuses(state, "p1");
+    stageCombat(
+      state,
+      [{ unitDefId: "castle.halberdiers", side: "few" }],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    return state;
+  }
+
+  function setActions(state: GameState): string[] {
+    return getLegalActions(state, "p1")
+      .filter(
+        (entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT" || entry.action.type === "USE_ARTIFACT_SET_POWER"
+      )
+      .map((entry) => entry.label);
+  }
+
+  it("counts the pieces hidden in the viewer's OWN masked deck", () => {
+    const state = hostedCombat("sets-hosted-count");
+    expect(artifactSetPieceCount(state, "p1", AA)).toBe(6);
+
+    const seat = redactStateForSeat(state, "p1");
+    // The masking really happened (the CONTROL that keeps this test honest):
+    // only the 2 hand members are visible, the deck is placeholders.
+    expect(seat.players.p1.deck).toEqual(["hidden", "hidden", "hidden", "hidden"]);
+    expect(seat.players.p1.hand).toEqual([AA_MEMBERS[0], AA_MEMBERS[1]]);
+    // …and the client still reads all SIX pieces / five live tiers.
+    expect(artifactSetPieceCount(seat, "p1", AA)).toBe(6);
+    expect(artifactSetActiveTierCount(seat, "p1", AA)).toBe(5);
+  });
+
+  it("EFFECT: the client offers the tier 3-6 combat powers, and the server accepts every one", () => {
+    let state = hostedCombat("sets-hosted-offers");
+    // Round 1 — the client (redacted) must see the selection offer.
+    const seatBefore = redactStateForSeat(state, "p1");
+    const select = getLegalActions(seatBefore, "p1").find(
+      (entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT"
+    );
+    expect(select, `no selection offer — saw ${setActions(seatBefore).join(" | ")}`).toBeTruthy();
+    state = applyOk(state, select!.action);
+
+    // With the pick made, the four bound tiers are live. THIS is what the live
+    // report was about: before the fix the redacted client offered NONE of them.
+    const seat = redactStateForSeat(state, "p1");
+    const clientOffers = setActions(seat);
+    expect(clientOffers.length).toBe(4);
+    for (const threshold of [3, 4, 5, 6]) {
+      expect(
+        clientOffers.some((label) => label.startsWith(`Angelic Alliance (${threshold})`)),
+        `tier ${threshold} missing — saw ${clientOffers.join(" | ")}`
+      ).toBe(true);
+    }
+    // The client and the SERVER agree exactly, so nothing is offered that the
+    // reducer's own re-derivation would refuse — and nothing is withheld.
+    expect(clientOffers).toEqual(setActions(state));
+    for (const entry of getLegalActions(seat, "p1").filter(
+      (candidate) => candidate.action.type === "USE_ARTIFACT_SET_POWER"
+    )) {
+      const result = applyAction(state, entry.action);
+      expect(result.errors, `${entry.label}: ${result.errors.map((error) => error.message).join("; ")}`).toEqual([]);
+    }
+  });
+
+  it("EFFECT: the MAP tiers survive redaction too (deck-only pieces)", () => {
+    const state = makeState(true, "sets-hosted-map");
+    ownOnly(state, []);
+    // Every piece of BOTH map sets sits in the deck — nothing visible at all.
+    state.players.p1.deck = [...WW_MEMBERS, ...DC_MEMBERS];
+    state.players.p1.artifactSetStatus = playerArtifactSetStatuses(state, "p1");
+    const seat = redactStateForSeat(state, "p1");
+    expect(seat.players.p1.hand).toEqual([]);
+    const labels = getLegalActions(seat, "p1")
+      .filter((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER")
+      .map((entry) => entry.label);
+    expect(labels.some((label) => label.startsWith("Wizard's Well"))).toBe(true);
+    expect(labels.some((label) => label.startsWith("Diplomat's Cloak"))).toBe(true);
+  });
+
+  it("CONTROL: an UNMASKED state is untouched — the zone scan alone decides", () => {
+    const state = hostedCombat("sets-hosted-control");
+    // A stale-HIGH status can never inflate an open table's count…
+    state.players.p1.deck = [];
+    state.players.p1.artifactSetStatus = [
+      { setId: AA, pieces: 6, activeTiers: 5, memberCount: AA_MEMBERS.length }
+    ];
+    expect(artifactSetPieceCount(state, "p1", AA)).toBe(2);
+    expect(artifactSetActiveTierCount(state, "p1", AA)).toBe(1);
+    // …and owning nothing at all still reads 0 behind a masked deck.
+    ownOnly(state, []);
+    state.players.p1.deck = ["hidden", "hidden"];
+    state.players.p1.artifactSetStatus = [];
+    expect(artifactSetPieceCount(state, "p1", AA)).toBe(0);
+  });
+
+  it("CONTROL: a masked read never LOWERS a count the visible cards already prove", () => {
+    const state = makeState(true, "sets-hosted-floor");
+    ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1], AA_MEMBERS[2]]);
+    state.players.p1.deck = ["hidden"];
+    // A status that has not caught up (2) must not overrule three visible pieces.
+    state.players.p1.artifactSetStatus = [
+      { setId: AA, pieces: 2, activeTiers: 1, memberCount: AA_MEMBERS.length }
+    ];
+    expect(artifactSetPieceCount(state, "p1", AA)).toBe(3);
+  });
+});
