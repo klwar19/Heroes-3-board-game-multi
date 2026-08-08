@@ -288,6 +288,23 @@ collapsed in phone mode (and collapses once when the mode flips to phone);
 safe-area insets; the site header/footer collapse under `.phoneMode` via
 `:has` (graceful no-op on old browsers).
 
+**Phone mode never LOADS the game-preparation scene video** (2026-08-08): the
+map-setup lobby's `SetupSceneArt` (`src/components/adventure/setup-scene.tsx`)
+does not MOUNT its `<video>` (`setup-scene-playlist-v6.mp4`, ~2MB) in phone mode
+— a `display: none` video with `preload="auto"` still downloads, so CSS could not
+fix this. The painted still `.setupSceneIllustration` (the video's own poster art,
+same inset/z-index) is already underneath, so the scene is never a blank hole.
+The gate reads the LIVE preference (`useUiModePreference`), so the in-game
+📱/💻 toggle unmounts/remounts it mid-session, PLUS a synchronous
+`getUiModePreference()` seed for the first render (the hook hydrates in an effect,
+and one mounted frame is enough to start the fetch; safe because the lobby only
+ever renders client-side — `page.tsx`'s `state` starts null). Computer mode and an
+UNSET preference are byte-identical to before. Pinned in
+`src/components/adventure/setup-scene.test.tsx` ("phone mode never loads the
+video": no `<video>` at all + still art present, the mid-session toggle both ways,
+the first-render pass via `renderToStaticMarkup`, and a computer/unset CONTROL).
+The MAIN MENU video is a different file and deliberately unchanged.
+
 Leading with what does NOT run / deliberate limits:
 - **jsdom cannot compute CSS**, so the wiring (class/attribute/tab bar, prompt
   precedence, pinch camera) is pinned in `src/app/page-phone-mode.test.tsx`,
