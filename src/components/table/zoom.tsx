@@ -19,12 +19,20 @@ import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils"
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 import { CommanderCardFace, CommanderStatsPanel } from "@/components/commander-card";
+import { ArtifactSetBadge, useCardArtifactSetId } from "./artifact-set-badge";
 import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
 export type ZoomContent = {
   title: string;
   image?: string;
+  /**
+   * The card this view is of, when it is a real library card. Only used to wear
+   * the Polish Set Artifacts set badge (same gating and same icon as the small
+   * `CardFrame` faces) — the enlarged reader is where a player actually studies
+   * a card, so the set mark has to survive the zoom.
+   */
+  cardId?: string;
   /** Art-less specialty: render the native SpecialtyCard instead of an image. */
   specialtyCardId?: string;
   /**
@@ -73,7 +81,7 @@ export function useOptionalCardZoom(): CardZoomContextValue | null {
 export function cardZoomContent(cardId: string, empowered?: boolean): ZoomContent {
   const card = cardLibrary[cardId];
   if (!card) {
-    return { title: cardId, lines: [], empowered: Boolean(empowered) };
+    return { title: cardId, cardId, lines: [], empowered: Boolean(empowered) };
   }
 
   const lines: string[] = [describeCardEffect(card)];
@@ -85,6 +93,7 @@ export function cardZoomContent(cardId: string, empowered?: boolean): ZoomConten
   const showEmpowered = isEmpoweredStatisticCard(cardId) || Boolean(empowered);
   return {
     title: card.name,
+    cardId,
     // Empowered abilities have their own printed "Empowered" face; the read view
     // shows it (with the ring on top) instead of the base scan.
     image: cardFaceImage(cardId, showEmpowered),
@@ -143,6 +152,61 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
 }
 
 /**
+ * The enlarged card itself. Extracted so it can call `useCardArtifactSetId` —
+ * with the Polish Set Artifacts rule on, a member card wears its set icon here
+ * exactly as it does on the small `CardFrame` faces (same context gate, same
+ * 256x256 asset). With the rule off, a non-member, or no provider at all, the
+ * wrapper is not emitted and this renders the byte-identical old DOM.
+ */
+function ZoomCardVisual({
+  content,
+  failedImageSrc,
+  onImageError
+}: {
+  content: ZoomContent;
+  failedImageSrc: string | null;
+  onImageError: () => void;
+}) {
+  const setId = useCardArtifactSetId(content.cardId);
+  const visual = content.commanderFace ? (
+    <div className="zoomCardImage" style={{ background: "transparent", boxShadow: "none" }}>
+      <CommanderCardFace
+        slug={content.commanderFace.slug}
+        grades={content.commanderFace.grades}
+        statValues={content.commanderFace.statValues}
+        dead={content.commanderFace.dead}
+      />
+    </div>
+  ) : content.specialtyCardId ? (
+    <div className="zoomNativeCard">
+      <SpecialtyCard cardId={content.specialtyCardId} />
+    </div>
+  ) : content.image && failedImageSrc !== content.image ? (
+    <img
+      alt={content.empowered ? `${content.title} (empowered)` : content.title}
+      className={`zoomCardImage${content.empowered ? " empoweredCard" : ""}`}
+      decoding="async"
+      loading="eager"
+      onError={onImageError}
+      referrerPolicy="no-referrer"
+      src={assetUrl(content.image)}
+    />
+  ) : (
+    <div className={`zoomCardImage cardFaceFallback${content.empowered ? " empoweredCard" : ""}`}>{content.title}</div>
+  );
+
+  if (!setId) {
+    return visual;
+  }
+  return (
+    <span className="cardSetFrame zoomSetFrame">
+      {visual}
+      <ArtifactSetBadge setId={setId} />
+    </span>
+  );
+}
+
+/**
  * Table-wide card magnifier: any component can call useCardZoom() to open a
  * readable, full-size view of a card or unit. Click anywhere (or Escape) to
  * put the card back down.
@@ -184,34 +248,11 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
       {content ? (
         <div aria-label={`${content.title} enlarged`} className="zoomBackdrop" onClick={close} role="dialog">
           <div className="zoomCardStage">
-            {content.commanderFace ? (
-              <div className="zoomCardImage" style={{ background: "transparent", boxShadow: "none" }}>
-                <CommanderCardFace
-                  slug={content.commanderFace.slug}
-                  grades={content.commanderFace.grades}
-                  statValues={content.commanderFace.statValues}
-                  dead={content.commanderFace.dead}
-                />
-              </div>
-            ) : content.specialtyCardId ? (
-              <div className="zoomNativeCard">
-                <SpecialtyCard cardId={content.specialtyCardId} />
-              </div>
-            ) : content.image && failedImageSrc !== content.image ? (
-              <img
-                alt={content.empowered ? `${content.title} (empowered)` : content.title}
-                className={`zoomCardImage${content.empowered ? " empoweredCard" : ""}`}
-                decoding="async"
-                loading="eager"
-                onError={() => setFailedImageSrc(content.image ?? null)}
-                referrerPolicy="no-referrer"
-                src={assetUrl(content.image)}
-              />
-            ) : (
-              <div className={`zoomCardImage cardFaceFallback${content.empowered ? " empoweredCard" : ""}`}>
-                {content.title}
-              </div>
-            )}
+            <ZoomCardVisual
+              content={content}
+              failedImageSrc={failedImageSrc}
+              onImageError={() => setFailedImageSrc(content.image ?? null)}
+            />
             <div className="zoomCardBody">
               <strong>{content.title}</strong>
               {content.empowered ? (

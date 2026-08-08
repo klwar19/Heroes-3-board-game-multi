@@ -7625,11 +7625,11 @@ Leading with what does NOT work / the deliberate limits:
   asserts the DOM element, its image URL and its dispatch — never that the set
   panel is visible, that the corner badge is unclipped, or that the command dock
   is not overflowing. There is no e2e spec for this layout.
-- **The combat command dock can get CROWDED.** Every set offer is one button, and
-  the engine emits one per legal TARGET: a full Angelic Alliance with the pick
-  made is 5 buttons, and Titan's Thunder tier 4 is one per enemy unit. There is
-  no grouping / submenu — the dock is the surface, exactly as it is for
-  `USE_UNIT_ABILITY`.
+- **SUPERSEDED (2026-08-08) — the dock no longer floods with one button per
+  (power × target).** That WAS the shipped reading ("a full Angelic Alliance with
+  the pick made is 5 buttons") and the user reported it as "too many boxes"; the
+  combat surface is now ONE entry button + a window + board aiming (see the
+  "combat set-powers window" entry below). The two MAP tiers are unchanged.
 - **The set panel shows ACTIVE sets only** (pieces ≥ 2). A set at 1 piece grants
   nothing, so showing it would advertise a bonus that does not exist — there is
   no "1/6, keep collecting" progress row.
@@ -7686,21 +7686,61 @@ What runs (each pinned by a test that fails if the wiring is removed;
   both table screens; with no provider or the rule off, `CardFrame` returns
   byte-identically the bare `<img>` it always did, so every other screen and
   every isolated card-face test is untouched.
-- **ACTION SURFACES — no orphan offers.** Both engine action types are
-  clickable: `SELECT_ARTIFACT_SET_UNIT` and `USE_ARTIFACT_SET_POWER` joined
-  `COMMAND_ACTION_TYPES` (`board.tsx`), so the combat command dock renders each
-  offer with the ENGINE's own label and dispatches its exact payload; the two MAP
-  tiers (Wizard's Well draw-then-discard, Diplomat's Cloak scry — the latter once
-  per Neutral deck, each with its own React key) render in `HeroActionsDock`; and
-  the `artifact-set-scry` OPTION_CHOICE falls through to the GENERIC `PromptTray`
-  (it is excluded nowhere) — pinned by clicking both printed answers.
-- **Test files**: `src/components/table/artifact-set-ui.test.tsx` (17 — panel,
-  badge, both docks, the scry tray, plus a sweep asserting EVERY offer a
-  6-piece Angelic Alliance emits is a rendered clickable button),
-  `src/app/page-artifact-sets.test.tsx` (2 — the real `page.tsx` MOUNTS, which no
-  component test can catch: deleting either mount would hide the whole feature
-  with every other test still green) and `src/data/assets/set-artifact-images.test.ts`
-  (3). Every one carries a rule-OFF CONTROL.
+- **ACTION SURFACES — no orphan offers.** The two MAP tiers (Wizard's Well
+  draw-then-discard, Diplomat's Cloak scry — the latter once per Neutral deck,
+  each with its own React key) render in `HeroActionsDock`; the
+  `artifact-set-scry` OPTION_CHOICE falls through to the GENERIC `PromptTray`
+  (it is excluded nowhere) — pinned by clicking both printed answers. The COMBAT
+  tiers go through the window below (they are deliberately NOT in
+  `COMMAND_ACTION_TYPES` any more; a test asserts that, because re-adding them
+  re-floods the dock).
+- **THE COMBAT SET-POWERS WINDOW (2026-08-08, the user's "too many boxes"
+  report).** `src/components/table/artifact-set-powers.tsx`: the pure
+  `artifactSetPowerGroups(legalActions)` groups the engine's offers by the POWER
+  they activate (key `select:<setId>` / `use:<setId>:<tier>[:<neutralTier>]`),
+  every offer landing in exactly one group. `ArtifactSetPowerMenu` renders ONE
+  `Set powers (N)` button at the bottom of the command dock (nothing at all when
+  the engine offers no set activation), opening a `heroSystemModal`-shell window
+  (portalled to `<body>`) with ONE row per power — set icon, set name, printed
+  tier text, piece threshold. A row whose group has ≤1 target dispatches that
+  offer and closes; a row with several targets ARMS the board instead: the window
+  closes, `.battleCell.artifactSetTarget` glows on exactly that power's legal
+  units, an aim banner appears, and clicking a unit dispatches THAT unit's own
+  engine offer. Escape / the banner's Cancel / the dock's `Cancel <set>` button
+  disarm, and the board auto-disarms the moment the armed power stops being
+  offered. The armed value is only the group KEY, so the board always dispatches
+  the offer the engine is making in the current render — never a frozen payload.
+  The round-1 "at the beginning of the combat select 1 unit" tiers ride this same
+  flow, which is the user's "pop-up, then choose the unit on the battlefield".
+  Arming is shared by ONE context, `ArtifactSetArmingProvider`, mounted inside
+  `ArtifactSetIconsProvider` (so `page.tsx` keeps its single mount and the dock
+  and the board can never disagree); with no provider each component falls back
+  to a local slot, which is why a test that drives dock→board must wrap both.
+- **SET ICON ON THE ENLARGED CARD (2026-08-08).** `ZoomCardVisual` (`zoom.tsx`)
+  wraps the zoomed face in `.cardSetFrame.zoomSetFrame` and adds the SAME
+  `ArtifactSetBadge` when `useCardArtifactSetId(content.cardId)` resolves —
+  identical context gate, identical asset, just sized up. `ZoomContent` gained an
+  optional `cardId` (set by `cardZoomContent`), so a `zoomContent` call with a
+  hand-built image (the set panel's own card view, unit zooms) carries no badge.
+  Rule off / non-member / no provider ⇒ no wrapper, byte-identical old DOM.
+- **STAT TOKENS ON THE CARD EDGE (2026-08-08).** Beside the four chevrons inside
+  the HUD pill, a `.boardCardStatTokens` rail on the card's OUTER edge shows one
+  signed chip per changed stat (`+2` Attack, `-1` Defense, `+2` Initiative, the
+  HP delta), from the SAME `attackDelta` / `defenseDelta` / `healthDelta` /
+  `initiativeDelta` values the chevrons use — nothing re-derived. It sits outside
+  the card art, so it cannot cover the printed stat rail, the name plate or the
+  HUD (whose 76% cap stays a contract, `board-card-hud-width.test.ts`).
+- **Test files**: `src/components/table/artifact-set-ui.test.tsx` (23 — panel,
+  badge, the zoom badge, both docks, the scry tray, the one-entry dock, the
+  grouped window, single-click vs board aiming, Cancel, plus a sweep driving
+  EVERY offer a 6-piece / two-own-unit Angelic Alliance emits through the real
+  window/board flow), `src/components/table/board.test.tsx` (the edge stat-token
+  rail with a no-effect CONTROL), `src/app/page-artifact-sets.test.tsx` (2 — the
+  real `page.tsx` MOUNTS, which no component test can catch) and
+  `src/data/assets/set-artifact-images.test.ts` (3). Every one carries a
+  rule-OFF CONTROL. **5 further mutations applied, 5 killed** (flat dock types
+  restored → 3 fail; the menu removed → 6; the board target lookup neutered → 3;
+  the zoom badge dropped → 1; the stat-token rail renamed → 1).
 
 The engine half's contract, unchanged, is what all of the above reads:
 `PlayerState.artifactSetStatus` (public, per set: `pieces` / `activeTiers` /

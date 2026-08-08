@@ -71,6 +71,7 @@ import {
   type CardBoardAction
 } from "./utils";
 import { useCardZoom } from "./zoom";
+import { ArtifactSetPowerMenu, artifactSetPowerGroups, useArtifactSetArming } from "./artifact-set-powers";
 import { BattleMetric, signedMorale } from "./battle-metrics";
 
 /** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
@@ -712,7 +713,38 @@ export function BattlefieldBoard({
   // time (the `routePlan.unitId === activeMover.id` guard below), so no reset
   // effect is needed.
   const [routePlan, setRoutePlan] = useState<{ unitId: string; path: number[] } | null>(null);
+  // Polish Set Artifacts: a set power aimed from the set-powers window. The dock
+  // stores only the power's GROUP KEY (never a frozen action list), so the cells
+  // below always dispatch the offer the engine is making right now.
+  const setPowerArming = useArtifactSetArming();
+  const setPowerGroups = useMemo(() => artifactSetPowerGroups(legalActions), [legalActions]);
+  const armedSetPower = setPowerArming.armedKey
+    ? setPowerGroups.find((group) => group.key === setPowerArming.armedKey) ?? null
+    : null;
   const activeUnitId = combat?.activeUnitId ?? null;
+  // Auto-disarm the moment the armed power stops being offered (it was used, the
+  // combat round rolled on, the fight ended) so no stale glow is ever left.
+  const armedKey = setPowerArming.armedKey;
+  const armedStillOffered = Boolean(armedSetPower);
+  const disarmSetPower = setPowerArming.disarm;
+  useEffect(() => {
+    if (armedKey && !armedStillOffered) {
+      disarmSetPower();
+    }
+  }, [armedKey, armedStillOffered, disarmSetPower]);
+  // Escape cancels the aim, like every other armed board mode.
+  useEffect(() => {
+    if (!armedKey) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        disarmSetPower();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [armedKey, disarmSetPower]);
   useEffect(() => {
     if (flashCells.length === 0) {
       return;
@@ -1036,6 +1068,16 @@ export function BattlefieldBoard({
           </button>
         </div>
       ) : null}
+      {armedSetPower ? (
+        <div className="tacticsExpertBanner artifactSetAimBanner" role="group" aria-label="Set power aiming">
+          <span>
+            {armedSetPower.setName}: {armedSetPower.text} — click one of the highlighted units.
+          </span>
+          <button className="commandButton" onClick={setPowerArming.disarm} type="button">
+            Cancel
+          </button>
+        </div>
+      ) : null}
       {expertSwapAvailable ? (
         <div className="tacticsExpertBanner" role="group" aria-label="Expert Tactics">
           {expertSwapArmed ? (
@@ -1199,6 +1241,9 @@ export function BattlefieldBoard({
           // First Aid Tent heal: only a click-to-heal when nothing else is being
           // targeted (a selected spell/ability keeps priority over the mend).
           const healAction = unit && !selectedCardAction ? healActionsByTarget.get(unit.id) : undefined;
+          // Polish Set Artifacts: while a multi-target set power is armed from
+          // the set-powers window, its legal units glow and a click uses it.
+          const setPowerAction = unit ? armedSetPower?.targets.get(unit.id) : undefined;
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           // Deployment: empty own-row cells only. Formation sort: empty cells OR
@@ -1234,7 +1279,7 @@ export function BattlefieldBoard({
             isObstacle ? "obstacle" : ""
           } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
-          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
+          } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${setPowerAction ? "artifactSetTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
           } ${isSwapTarget ? "swapTarget" : ""} ${isSwapSelected ? "swapSelected" : ""} ${
             isRepositionSource ? "repositionSource" : ""
@@ -1427,6 +1472,63 @@ export function BattlefieldBoard({
                   </span>
                 ) : null}
               </div>
+              {attackDelta || defenseDelta || healthDelta || initiativeDelta ? (
+                // A readable "what changed" token rail on the card's OUTER edge
+                // (the initiative rail's treatment), beside the small chevrons
+                // inside the HUD pill — same four deltas, nothing re-derived. It
+                // sits outside the card art, so it can never cover the printed
+                // stat rail, the name plate or the HUD (which keeps its 76% cap).
+                <span aria-label={`${unit.cardName} stat tokens`} className="boardCardStatTokens">
+                  {attackDelta ? (
+                    <span
+                      className={`boardStatToken attack ${attackDelta > 0 ? "up" : "down"}`}
+                      title={`Attack ${attackTotal} (${attackDelta > 0 ? "+" : ""}${attackDelta} from tokens, cards and effects)`}
+                    >
+                      <Swords aria-hidden="true" size={8} />
+                      <b>
+                        {attackDelta > 0 ? "+" : ""}
+                        {attackDelta}
+                      </b>
+                    </span>
+                  ) : null}
+                  {defenseDelta ? (
+                    <span
+                      className={`boardStatToken defense ${defenseDelta > 0 ? "up" : "down"}`}
+                      title={`Defense ${defenseTotal} (${defenseDelta > 0 ? "+" : ""}${defenseDelta} from tokens, cards and effects)`}
+                    >
+                      <Shield aria-hidden="true" size={8} />
+                      <b>
+                        {defenseDelta > 0 ? "+" : ""}
+                        {defenseDelta}
+                      </b>
+                    </span>
+                  ) : null}
+                  {initiativeDelta ? (
+                    <span
+                      className={`boardStatToken speed ${initiativeDelta > 0 ? "up" : "down"}`}
+                      title={`Initiative ${initiativeTotal} (${initiativeDelta > 0 ? "+" : ""}${initiativeDelta} from tokens, cards and effects)`}
+                    >
+                      <Hourglass aria-hidden="true" size={8} />
+                      <b>
+                        {initiativeDelta > 0 ? "+" : ""}
+                        {initiativeDelta}
+                      </b>
+                    </span>
+                  ) : null}
+                  {healthDelta ? (
+                    <span
+                      className={`boardStatToken health ${healthDelta > 0 ? "up" : "down"}`}
+                      title={`Health ${health}/${unit.maxHealth} (${healthDelta > 0 ? "+" : ""}${healthDelta})`}
+                    >
+                      <Plus aria-hidden="true" size={8} />
+                      <b>
+                        {healthDelta > 0 ? "+" : ""}
+                        {healthDelta}
+                      </b>
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
               <span
                 className={`unitActivationBadge ${
                   isActive
@@ -1568,6 +1670,33 @@ export function BattlefieldBoard({
                 }
               }
             : {};
+
+          // Polish Set Artifacts: an armed set power is a deliberate, explicit
+          // aim opened from the set-powers window, so its targets outrank every
+          // other click on this cell. The dispatched action is the engine's own
+          // offer, looked up fresh this render.
+          if (unit && setPowerAction && armedSetPower) {
+            const setPowerLabel = `${armedSetPower.setName}: use on ${unit.name}`;
+            return (
+              <button
+                aria-label={setPowerLabel}
+                className={className}
+                data-fx-cell={index}
+                data-fx-unit={unit.id}
+                key={index}
+                onClick={() => {
+                  setPowerArming.disarm();
+                  onAction(setPowerAction);
+                }}
+                onMouseEnter={() => onInspect(unit.id)}
+                style={cellStyle}
+                title={`${setPowerLabel} — ${armedSetPower.text}`}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
 
           // Tactics swap (start-of-combat window): click a unit to select it,
           // then click an ally to switch them. Clicking the selected unit again
@@ -2178,16 +2307,14 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "SKIP_NECROMANCY",
   "BUILD_STRUCTURE",
   "MOVE_HERO",
-  "END_TURN",
-  // Polish Set Artifacts (`polish-set-artifacts`): the combat tiers. The round-1
-  // "select 1 of your / 1 enemy unit" pick and every once-per-combat buff /
-  // debuff / spell zap are ordinary optional legal actions with no window and no
-  // hex to click, so the command dock is their ONLY human surface — without
-  // these two entries the engine's offers would be unreachable (the Polish Wait
-  // / Surrender precedent). Both carry the engine's own naming label through
-  // `commandLabel`'s default branch.
-  "SELECT_ARTIFACT_SET_UNIT",
-  "USE_ARTIFACT_SET_POWER"
+  "END_TURN"
+  // NOT here on purpose: Polish Set Artifacts' SELECT_ARTIFACT_SET_UNIT /
+  // USE_ARTIFACT_SET_POWER. The engine emits one offer per (power x target
+  // unit), so rendering them flat here buried the dock under a wall of
+  // look-alike buttons. They are instead collapsed behind ONE entry button
+  // (`ArtifactSetPowerMenu`, rendered at the bottom of this dock) whose window
+  // lists each power once and aims multi-target powers on the battlefield —
+  // every offer stays dispatchable, just not as N dock buttons.
 ]);
 
 function commandLabel(legal: LegalAction): string {
@@ -2546,6 +2673,9 @@ export function CommandDock({
           <Plus aria-hidden="true" size={12} /> {legal.label}
         </button>
       ))}
+      {/* Polish Set Artifacts: ONE entry into the set-powers window (renders
+          nothing when the engine offers no set activation). */}
+      {inBattlePrep ? null : <ArtifactSetPowerMenu legalActions={legalActions} onAction={onAction} />}
       {state.combat?.context.kind === "sandbox" ? (
         <SandboxCardPicker onAction={onAction} viewerPlayerId={viewerPlayerId} />
       ) : null}

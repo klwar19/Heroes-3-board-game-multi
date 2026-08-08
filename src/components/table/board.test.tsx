@@ -1362,6 +1362,60 @@ describe("InspectPanel — Attack/Defense reflect lasting buffs immediately (Bul
     expect(container.querySelector(".boardCardHp")?.textContent).toMatch(/\d+\/\d+ HP/);
   });
 
+  it("also puts a signed stat TOKEN rail on the card edge, outside the HUD plate", () => {
+    const state = createInitialGameState("board-stat-tokens");
+    const unit = state.combat!.units.unit_p1_crusaders;
+    // A unit with NOTHING on it — the in-test CONTROL below.
+    const plain = state.combat!.units.unit_p1_marksmen;
+    placeCombatToken(state, unit, "attack", 2, "Bloodlust token");
+    placeCombatToken(state, unit, "corrosion", 1, "Acid token");
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Test speed buff",
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "positive",
+          modifiers: [{ type: "INITIATIVE_BONUS", amount: 2 }]
+        },
+        { type: "system" },
+        unit.controllerId,
+        { type: "unit", unitId: unit.id }
+      )
+    );
+
+    const { container } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={[]}
+          selectedCardAction={null}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const buffedCell = container.querySelector(`.battleCell[data-fx-unit="${unit.id}"]`)!;
+    const rail = buffedCell.querySelector(".boardCardStatTokens")!;
+    expect(rail, "a unit with live stat changes must wear the edge token rail").toBeTruthy();
+    // The signed amounts, not just a direction: +2 Attack, -1 Defense, +2 speed.
+    expect(rail.querySelector(".boardStatToken.attack.up")?.textContent).toContain("+2");
+    expect(rail.querySelector(".boardStatToken.defense.down")?.textContent).toContain("-1");
+    expect(rail.querySelector(".boardStatToken.speed.up")?.textContent).toContain("+2");
+    // OUTSIDE the HUD plate (whose 76% width cap is a contract — see
+    // board-card-hud-width.test.ts) and outside the card art, so it can never
+    // cover the printed stat rail or the name plate.
+    expect(buffedCell.querySelector(".boardCardHud .boardCardStatTokens")).toBeNull();
+    expect(buffedCell.querySelector(".boardCardImage .boardCardStatTokens")).toBeNull();
+    expect(rail.parentElement?.classList.contains("boardCard")).toBe(true);
+    // CONTROL: an untouched unit on the same board wears no rail at all.
+    const plainCell = container.querySelector(`.battleCell[data-fx-unit="${plain.id}"]`)!;
+    expect(plainCell.querySelector(".boardCardStatTokens")).toBeNull();
+  });
+
 describe("BattlefieldBoard — siege fortification art", () => {
   function siegeState(seed = "board-siege-art"): GameState {
     const state = createInitialGameState(seed);
