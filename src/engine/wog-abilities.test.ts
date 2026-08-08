@@ -317,10 +317,18 @@ describe("WOG abilities in two-player combat", () => {
     expect(coreUnitDefinitions["wog.lava_sharpshooter"].neutral!.abilities).toContain("wog-attack-when-attacking-1");
   });
 
-  it("Fire Shield burns only when the shielded unit is ATTACKED, never on its own Retaliation", () => {
-    // Scenario A: a Hell Steed ATTACKS an enemy, which strikes back. The enemy's
-    // Retaliation Attack must NOT trip the Steed's Fire Shield — you burn
-    // attackers, not retaliators.
+  it("Fire Shield burns every adjacent attacker — a Retaliation Attack included", () => {
+    // 2026-08-08 RULE CORRECTION (was: "never on its own Retaliation").
+    // This case used to assert that a retaliator does NOT burn. That was a
+    // misreading introduced by 512e4963 and reported as a live PvP bug ("Fire
+    // Shield on Minotaurs did nothing on the counter attack"). `wog-fire-shield-1`
+    // prints "[unit_passive] An adjacent attacker takes 1 damage after attacking
+    // this unit" — no retaliation exemption — and a Retaliation Attack is a real
+    // declared attack in this engine, so the retaliator IS an adjacent unit
+    // attacking the shielded one. Scenario A is therefore inverted; the CONTROL
+    // below (a primary attack burns) is unchanged.
+    // Scenario A: a Hell Steed ATTACKS an enemy, which strikes back. That
+    // Retaliation Attack strikes the Steed, so it DOES trip the Steed's shield.
     let atk = createInitialGameState("wog-fire-shield-retaliation");
     const steed = installWogUnit(atk, "unit_p1_marksmen", "wog.hell_steed");
     const enemy = atk.combat!.units.unit_p2_skeletons;
@@ -339,18 +347,28 @@ describe("WOG abilities in two-player combat", () => {
     activate(atk, "p1", steed.id);
     atk = passReactions(applyOk(atk, { type: "ATTACK_UNIT", playerId: "p1", attackerId: steed.id, defenderId: enemy.id }));
 
-    // The enemy really did retaliate (so "no Fire Shield" is meaningful)...
+    // The enemy really did retaliate (so "burned" is meaningful)...
     expect(
       atk.eventLog.some(
         (event) => event.type === "ATTACK_ROLLED" && event.attackerId === enemy.id && event.isRetaliation === true
       )
     ).toBe(true);
-    // ...but no Fire Shield burn ever landed on it.
+    // ...and the Steed's shield burned it. OBSERVABLE: a 1-damage "effect" hit
+    // on the retaliator, distinct from the Steed's own attack damage.
     expect(
       atk.eventLog.some(
         (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "fire-shield" && event.targetUnitId === enemy.id
       )
-    ).toBe(false);
+    ).toBe(true);
+    expect(
+      atk.eventLog.filter(
+        (event) =>
+          event.type === "DAMAGE_ASSIGNED" &&
+          event.target.type === "unit" &&
+          event.target.unitId === enemy.id &&
+          event.damageKind === "effect"
+      )
+    ).toMatchObject([{ amount: 1 }]);
 
     // CONTROL: when that enemy instead ATTACKS the Steed (a primary attack), the
     // Fire Shield DOES burn it — for exactly 1.

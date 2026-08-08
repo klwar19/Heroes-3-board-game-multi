@@ -5134,7 +5134,10 @@ function finishResolvedAttack(
     );
   }
   applyOnAttackFireWall(state, details.attacker, details.defender, details.isRetaliation);
-  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind, details.isRetaliation);
+  // Fire Shield burns whoever STRUCK the shielded unit — a Retaliation Attack
+  // counts (the retaliator is an adjacent unit attacking it), so no isRetaliation
+  // gate here. See applyFireShieldDamage.
+  applyFireShieldDamage(state, details.attacker, details.defender, details.attackKind);
   // Vampires: drain life back to themselves after their own attack.
   applyOnAttackSelfHeal(state, details.attacker, details.isRetaliation);
   // Heavenly Demon Palace "Blood Siphon": heal 1 after its OWN attack DEALS
@@ -5693,21 +5696,29 @@ function applyDendroidBindFx(
  * Fire Shield: when an adjacent (melee) attack resolves against a shielded
  * unit, the attacker takes the shield's damage before anything else follows.
  *
- * The burn (and the "fire-shield" ability event that animates it) fires ONLY
- * when the shielded unit is genuinely ATTACKED — never as a byproduct of its own
- * Retaliation Attack. So an enemy that strikes a Lava Sharpshooter / Hell Steed
- * burns; but if the shielded unit attacks first and the enemy strikes back, the
- * enemy's retaliation does NOT trip the shield. (`isRetaliation` is the CURRENT
- * blow: true means the shielded `defender` is only being retaliated against.)
+ * EVERY adjacent unit that STRIKES the shielded `defender` burns — a Retaliation
+ * Attack included. None of the four printed sources carries a retaliation
+ * exemption: the spell reads "when the targeted unit is attacked by an adjacent
+ * unit … the attacking unit takes …", and `wog-fire-shield-1` /
+ * `commander-fire-shield` / Ironfist of the Ogre tier 3 read "[unit_passive] An
+ * adjacent attacker takes N damage after attacking this unit." A Retaliation
+ * Attack is a real declared attack in this engine, so the retaliator IS an
+ * adjacent unit attacking the shielded one. (2026-08-08: 512e4963 had gated this
+ * on `!isRetaliation`, so a shielded unit that swung first was never protected
+ * against the counter-blow — the live "Fire Shield on Minotaurs did nothing on
+ * the counter attack vs Efreets" report.)
+ *
+ * NOTE this reads the shield off `defender` — the unit being STRUCK by the
+ * current blow — so the shielded unit's own attack can never burn itself, and
+ * two shielded units trading blows each burn the other exactly once.
  */
 function applyFireShieldDamage(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  attackKind: "melee" | "ranged",
-  isRetaliation: boolean
+  attackKind: "melee" | "ranged"
 ): void {
-  if (isRetaliation || attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
+  if (attackKind !== "melee" || !state.combat || !isUnitAlive(attacker)) {
     return;
   }
   // An invulnerable Factory Couatl that strikes a Fire-Shielded unit takes no
