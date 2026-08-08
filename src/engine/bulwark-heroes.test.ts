@@ -244,7 +244,18 @@ describe("Bulwark hero — Kriv reacts to an enemy attack (receives the buff ear
       defenderId: "unit_p1_crusaders"
     });
     const onP1 = passUntil(declared, "p1");
-    expect(findReaction(onP1, "specialty.kriv.1"), "a non-Bulwark holder is never offered the rune reaction").toBeFalsy();
+    // The printed RUNE reaction is Bulwark-only and stays withheld. Since the
+    // 2026-08-08 ruling ("instant abilities … when attack and when defend, all
+    // of them") the card's trigger-free "…and draw 1 card" rider does join the
+    // window as a flagged DRAW-ONLY play — that join fizzles the rune half, so
+    // the faction gate is intact; the assertion is refined, not dropped.
+    const kriv = getLegalActions(onP1, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.kriv.1"
+    );
+    expect(
+      kriv.filter((legal) => legal.action.type === "PLAY_REACTION" && !legal.action.drawOnly),
+      "a non-Bulwark holder is never offered the real rune reaction"
+    ).toEqual([]);
   });
 });
 

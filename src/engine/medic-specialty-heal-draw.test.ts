@@ -119,6 +119,36 @@ function packIntact(state: GameState, unitId: UnitId): boolean {
   return Boolean(unit && unit.variant === "pack" && !unit.flippedDownThisCombat && unit.damage < unit.maxHealth);
 }
 
+/**
+ * Declare p1's Crusaders' attack and pass out of the PRIMARY attack's own
+ * window.
+ *
+ * 2026-08-08 USER RULING ("instant abilities should be able to be played …
+ * when attack and when defend, all of them"): a held instant now opens an
+ * attack window for EITHER combat participant, so p1's own declaration is
+ * answered first. The RETALIATION window these tests are about is one Pass
+ * further along and otherwise unchanged.
+ */
+function declareAndReachRetaliation(state: GameState): GameState {
+  let next = applyOk(state, {
+    type: "ATTACK_UNIT",
+    playerId: "p1",
+    attackerId: "unit_p1_crusaders",
+    defenderId: "unit_p2_skeletons"
+  } as GameAction);
+  for (let guard = 0; guard < 6; guard += 1) {
+    const window = next.reactionWindow;
+    if (!window) {
+      break;
+    }
+    if (window.triggerEvent.type === "UNIT_ATTACK_DECLARED" && window.triggerEvent.isRetaliation) {
+      break;
+    }
+    next = applyOk(next, { type: "PASS_REACTION", playerId: window.priorityPlayerId });
+  }
+  return next;
+}
+
 function healOffer(state: GameState, playerId: "p1" | "p2", cardId: string) {
   return getLegalActions(state, playerId).find(
     (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
@@ -127,12 +157,7 @@ function healOffer(state: GameState, playerId: "p1" | "p2", cardId: string) {
 
 describe("medic specialty as a reaction — the heal lands before the COUNTER-ATTACK", () => {
   it("Rion I heals into the retaliation window and saves the unit; no card = it dies (CONTROL)", () => {
-    const declared = applyOk(lethalRetaliationState(["specialty.rion.1"]), {
-      type: "ATTACK_UNIT",
-      playerId: "p1",
-      attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_skeletons"
-    });
+    const declared = declareAndReachRetaliation(lethalRetaliationState(["specialty.rion.1"]));
     const window = declared.reactionWindow;
     expect(window, "the retaliation opens a reaction window").toBeTruthy();
     expect(
@@ -198,12 +223,7 @@ describe("medic specialty as a reaction — the heal lands before the COUNTER-AT
     }
     base.combat!.units.unit_p1_crusaders.maxHealth = 40;
 
-    const declared = applyOk(base, {
-      type: "ATTACK_UNIT",
-      playerId: "p1",
-      attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_skeletons"
-    });
+    const declared = declareAndReachRetaliation(base);
     const cleanse = getLegalActions(declared, "p1").find(
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
@@ -219,8 +239,11 @@ describe("medic specialty as a reaction — the heal lands before the COUNTER-AT
       "the Paralysis token is gone"
     ).toBe(false);
 
-    // CONTROL: with no Paralysis token anywhere and nothing damaged, the card is
-    // not offered in the window at all (the damage gate still applies).
+    // CONTROL: with no Paralysis token anywhere and nothing damaged, NO
+    // unit-targeted cleanse/heal is offered — the damage/paralysis gate still
+    // applies. (Since the 2026-08-08 ruling the card is still offered as a
+    // target-less DRAW-ONLY join, which is the point of that ruling; what this
+    // CONTROL pins is that it can never be aimed at a unit with nothing to fix.)
     const clean = lethalRetaliationState(["specialty.rion.4"]);
     for (const unit of Object.values(clean.combat!.units)) {
       if (unit.controllerId === "p1") {
@@ -228,16 +251,22 @@ describe("medic specialty as a reaction — the heal lands before the COUNTER-AT
       }
     }
     clean.combat!.units.unit_p1_crusaders.maxHealth = 40;
-    const declaredClean = applyOk(clean, {
-      type: "ATTACK_UNIT",
-      playerId: "p1",
-      attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_skeletons"
-    });
+    const declaredClean = declareAndReachRetaliation(clean);
+    const cleanOffers = getLegalActions(declaredClean, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.rion.4"
+    );
     expect(
-      healOffer(declaredClean, "p1", "specialty.rion.4"),
-      "nothing wounded and nothing paralysed → no medic offer"
-    ).toBeUndefined();
+      cleanOffers.filter(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.target?.type === "unit"
+      ),
+      "nothing wounded and nothing paralysed → no unit-targeted medic offer"
+    ).toEqual([]);
+    expect(
+      cleanOffers.every(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.drawOnly === true
+      ),
+      "…only the draw-only join remains"
+    ).toBe(true);
   });
 });
 
@@ -388,12 +417,7 @@ describe("Rion VI as a reaction — the printed discard follows the draw", () =>
   it("is offered with nothing else in hand, saves the unit, then discards a DRAWN card", () => {
     const base = lethalRetaliationState(["specialty.rion.6"]);
     base.players.p1.deck = ["spell.bless" as CardId, "spell.haste" as CardId, "spell.curse" as CardId];
-    const declared = applyOk(base, {
-      type: "ATTACK_UNIT",
-      playerId: "p1",
-      attackerId: "unit_p1_crusaders",
-      defenderId: "unit_p2_skeletons"
-    });
+    const declared = declareAndReachRetaliation(base);
     // Under the old up-front `cost.discardCards` this offer did NOT exist: the
     // specialty was the only hand card, so the cost was unaffordable.
     const offer = healOffer(declared, "p1", "specialty.rion.6");
@@ -560,10 +584,18 @@ describe("medic specialty as a DRAW-ONLY reaction — nothing needs healing", ()
     expect(only.target, "aimed at the wounded unit").toEqual({ type: "unit", unitId: "unit_p1_crusaders" });
   });
 
-  it("CONTROL: a lone medic card never OPENS a window of its own", () => {
-    // Same board, but nobody holds a window-OPENING reaction: a draw rider must
-    // never pause an attack (reactionOfferOpensWindow). Without this the medic
-    // would interrupt every enemy attack at the table.
+  it("a lone medic card DOES open the window now — the reported bug (2026-08-08 ruling)", () => {
+    // FLIPPED EXPECTATION, justified: this was the CONTROL "a lone medic card
+    // never OPENS a window of its own", on the reasoning that a draw rider must
+    // never pause an attack. THAT IS THE EXACT BUG THE USER REPORTED — "I still
+    // can't use card like Rion speciality, not for heal, just for draw effect,
+    // choice never appear properly": in a NEUTRAL fight the guards open no
+    // window either, so a defender holding only a medic never got a moment at
+    // all. reactionOfferOpensWindow now treats a drawOnly/utilityOnly offer as
+    // an opener inside an ATTACK window; a Spell cast / activation / die-settled
+    // window is unchanged (CONTROLs elsewhere in this file and in
+    // combat-instant-reaction-windows.test.ts).
+    // Fails if that widening is reverted.
     const state = createInitialGameState("medic-no-open");
     state.players.p1.hand = ["specialty.rion.1" as CardId];
     state.players.p2.hand = [];
@@ -590,11 +622,25 @@ describe("medic specialty as a DRAW-ONLY reaction — nothing needs healing", ()
       attackerId: "unit_p2_skeletons",
       defenderId: "unit_p1_crusaders"
     });
+    const offers = getLegalActions(declared, "p1").filter(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "specialty.rion.1"
+    );
+    expect(offers.length, "the draw rider alone opened the window and is offered").toBe(1);
     expect(
-      getLegalActions(declared, "p1").some((legal) => legal.action.type === "PLAY_REACTION"),
-      "no window was opened for the draw rider alone"
-    ).toBe(false);
-    expect(declared.players.p1.hand, "the card is still in hand").toEqual(["specialty.rion.1"]);
+      (offers[0].action as Extract<GameAction, { type: "PLAY_REACTION" }>).drawOnly,
+      "…as a draw-only join (nothing is wounded, so the heal fizzles)"
+    ).toBe(true);
+    expect(declared.players.p1.hand, "and it is still in hand until played").toEqual(["specialty.rion.1"]);
+
+    // …and playing it really draws, then the parked attack resumes on the Pass.
+    const drawn = applyOk(declared, offers[0].action);
+    expect(drawn.players.p1.hand, "the printed rider drew a card").toEqual(["spell.haste"]);
+    const settled = passOutOfReactionWindows(drawn);
+    expect(settled.reactionWindow, "the window closed").toBeNull();
+    expect(
+      settled.combat!.units.unit_p1_crusaders.damage,
+      "the parked attack resolved exactly as before"
+    ).toBeGreaterThan(0);
   });
 });
 

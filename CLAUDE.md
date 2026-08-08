@@ -2688,14 +2688,15 @@ Retaliation Attack and its damage all resolved inside ONE `ATTACK_UNIT` action,
 leaving literally no moment to fire the Ballista before the counter-attack.
 
 THE RULE (one seam): `combatAnytimeInstantWindowJoins` (legal-actions.ts) is
-appended to `getLegalReactionsForTrigger` for BOTH fighters in EVERY window. Only
-the side about to be HIT may OPEN an attack window with one — the new
-`LegalAction.windowJoinOnly` flag (the action-type-agnostic twin of
-`utilityOnly`/`drawOnly`, read first by the ONE shared `reactionOfferOpensWindow`
-predicate) marks every other side/window as join-only. In a Retaliation Attack the
-side about to be hit IS the original attacker, which is exactly the reported case;
-the justification is Artillery's and the pre-hit heals' ("the side about to be hit
-gets the window") plus the bare morale token's ("its only pre-roll moment"). The
+appended to `getLegalReactionsForTrigger` for BOTH fighters in EVERY window.
+**SUPERSEDED 2026-08-08 — the OPENER half only** (see "Every instant OPENS an
+attack window" below): it used to read "only the side about to be HIT may OPEN
+an attack window with one", with the `LegalAction.windowJoinOnly` flag (the
+action-type-agnostic twin of `utilityOnly`/`drawOnly`, read by the ONE shared
+`reactionOfferOpensWindow` predicate) marking every other side/window as
+join-only. Inside an ATTACK window EITHER participant now opens it; outside one
+(a cast / activation / die-settled window) the flags still withhold the opener
+exactly as described here, and every other claim in this section stands. The
 reducer's PLAY_CARD tail now runs `advanceReactionWindowAfterPlay` when the
 PRIORITY player plays in a window (the First Aid Tent `USE_ACTIVE_EFFECT`
 precedent), so the spent card drops out of the refreshed offers and the parked
@@ -2707,7 +2708,8 @@ to counter-attack.
 Leading with what does NOT work / deliberate scope:
 - **Never an opener outside an attack window**: a held Meteor Shower does not
   pause every Spell cast, unit activation or die-settled window at the table (it
-  only JOINS them). CONTROL-pinned in both directions.
+  only JOINS them). CONTROL-pinned in both directions. (Still true after the
+  2026-08-08 widening — that widening is scoped to `UNIT_ATTACK_DECLARED`.)
 - **Not widened past the printed `combatAnytime` flag.** A `combatOnly` TURN play
   is not an instant and stays out — Gerwulf I's "Activate your Ballista",
   Gerwulf IV's free 1 damage, Gerwulf VI's ongoing "you aim the Ballista" — and a
@@ -2776,12 +2778,17 @@ THE RULE (one seam): `followUpAttackInstantOpener` (legal-actions.ts) returns th
 ATTACKING side's controller for a `UNIT_ATTACK_DECLARED` event carrying
 `abilityAttack`; that side then joins the `instantJoinOpenerIds` set beside the
 attacked side, and its Artillery offers drop `windowJoinOnly`. Both call sites
-read the ONE predicate, so they cannot drift.
+read the ONE predicate, so they cannot drift. **SUPERSEDED 2026-08-08** by the
+broader "Every instant OPENS an attack window" rule below — this narrower
+predicate is still wired and still correct, but every attack window now opens
+for either participant's playable instant, so it no longer decides anything on
+its own.
 
 Leading with what does NOT change / deliberate scope:
-- **A PRIMARY attack still never pauses for the attacker's own instant** and
-  neither does a Spell cast, a unit activation or a die-settled window
-  (CONTROL-pinned in both files).
+- ~~**A PRIMARY attack still never pauses for the attacker's own instant**~~ —
+  SUPERSEDED 2026-08-08: it does now (the user ruling "when attack and when
+  defend, all of them"). A Spell cast, a unit activation and a die-settled
+  window still pause for nothing, CONTROL-pinned in both files.
 - **Effect damage is untouched**: the Chakra Burst / Full Barrage
   `AFTER_ATTACK_SPLASH`, Magog splash, Automaton detonate and the Dreadnought
   allocation are not attacks, declare no `UNIT_ATTACK_DECLARED`, and open no
@@ -2812,7 +2819,98 @@ primary-attack / splash / cast scope CONTROLs, and the AI + AFK non-stall pair).
 Mutation-checked: neutering `followUpAttackInstantOpener` fails 7, reverting only
 the Artillery call site fails 4, reverting only the instant-join call site fails
 4, and dropping the `abilityAttack` scope fails 6 (including the primary-attack
-CONTROL).
+CONTROL). NOTE: the primary-attack CONTROL was FLIPPED on 2026-08-08 (below), so
+that last mutation count no longer holds.
+
+## Every instant OPENS an attack window · medic draw play on your own turn (2026-08-08)
+
+USER RULING, verbatim: "instant abilities should be able to be played before
+counter attack, when attack and when defend, all of them, FIX PROPERLY. and now
+I still can't use card like Rion speciality, not for heal, just for draw effect,
+choice never appear properly." Two gaps, both reproduced before the fix.
+
+**GAP A — nothing opened the window.** The 2026-08-06/07 batches let a
+trigger-free instant JOIN a reaction window but never OPEN one: the flagged
+`drawOnly` / `utilityOnly` joins (Rion and every other draw rider) and, for the
+"wrong" side, the `combatAnytime` instants and Artillery
+(`LegalAction.windowJoinOnly`). The justification was "the other side had its
+whole activation to play the card". In a NEUTRAL fight the guards hold no cards
+and open nothing either, so with only such an instant in hand NO window opened
+at all — the blow, the Retaliation Attack and every point of damage resolved
+inside ONE `ATTACK_UNIT` action. Reproduced: a guard's shot at a defender holding
+only Rion I, with nothing wounded, left the medic unplayable for the whole fight.
+
+**GAP B — the medic had no own-turn combat play.** On your own activation the
+draw-only PLAY_CARD twin (the Offense/Armorer/Sorcery path) deliberately excluded
+`HEAL_DAMAGE`. Rion I / Astra I print a `damagedOnly` target, so with nothing
+wounded they yielded ZERO offers — unplayable in combat, full stop. Reproduced.
+
+**THE RULE — ONE seam per gap:**
+- `reactionOfferOpensWindow` (legal-actions.ts) now returns TRUE for
+  `windowJoinOnly` / `drawOnly` / `utilityOnly` offers when the trigger is
+  `UNIT_ATTACK_DECLARED` — primary, Retaliation Attack and printed follow-up
+  alike, for EITHER combat participant. Both gates that read this predicate
+  (the utility-strip tail in `getLegalReactionsForTrigger` and
+  `openReactionWindowForTrigger` in reducer.ts) move together, which is what
+  keeps them from disagreeing. `followUpAttackInstantOpener` and the per-side
+  `instantJoinOpenerIds` set are still wired and still correct; they are simply
+  subsumed by the broader rule.
+- `addPlayableCardActions` (legal-actions.ts) offers a target-less
+  `drawOnly: true` PLAY_CARD twin for a plain medic face whose real play yielded
+  NO targets, on the owner's own activation — the `healDrawOnlyRider` read the
+  map offer already used. Resolution rides `playCard`'s existing `action.drawOnly`
+  branch (`instantDrawOnlyRider` already covers `HEAL_DAMAGE`).
+
+Leading with what does NOT work / deliberate scope:
+- **ONLY attack windows changed.** A held Meteor Shower / Rion / Offense still
+  never pauses a Spell cast, a unit ACTIVATION or a die-settled window — those
+  offers stay pure joins there. CONTROL-pinned in three files.
+- **The bare positive-Morale TOKEN is NOT widened.** The ruling names instant
+  ABILITY CARDS, and a token is held by nearly every seat nearly always, so it
+  keeps its Retaliation-Attack-only opener. CONTROL-pinned.
+- **MORE PAUSES, by design.** Attacking or defending while holding any playable
+  instant now stops the exchange for a confirm/Pass — including on your OWN
+  primary attack. That is the ruling; it is the cost of "all of them". The
+  window still opens ONLY when the holder has at least one genuinely playable
+  offer (an empty hand is CONTROL-pinned to open nothing), and Pass resumes the
+  parked attack byte-identically (attack maths, ordering and retaliation parking
+  are untouched).
+- **The own-turn medic twin is withheld when a real heal target exists** — a
+  heal draws too, so a draw-only twin beside it would be a strictly-worse trap
+  button. CONTROL-pinned.
+- **No per-CHOOSE_ONE-option medic twin.** Every shipped CHOOSE_ONE medic (Rion
+  IV/VI and clones) targets ANY friendly unit, and a friendly body must stand for
+  your activation to be open at all, so such a twin could never be reached;
+  unreachable offer code is what this repo's rules forbid. A future `damagedOnly`
+  CHOOSE_ONE face needs it added WITH a test (noted at the offer site).
+- **The AI still PASSES** in every one of these windows (its combat-damage and
+  `card.draw-rider-only` bands sit below `PASS_REACTION` 1_050) and prices the
+  new own-turn medic play at the flat **300** — so a computer seat never dumps a
+  heal for a draw and can never stall. The AFK / turn-timeout driver closes the
+  new windows with Pass. Both pinned, plus a full AI-vs-AI exchange with both
+  seats holding instants driven to settlement.
+
+Pinned in `src/engine/instant-abilities-attack-windows.test.ts` (17 tests: both
+repros, the empty-hand no-pause CONTROL, the attacker's own primary window, both
+sides in one window, the retaliation window, a follow-up window, an END-TO-END
+real NEUTRAL guard fight, the own-turn medic draw play + its wounded-unit and
+CHOOSE_ONE CONTROLs + the AI score, the three non-stall cases and the three
+scope CONTROLs). Mutation-checked: reverting the `reactionOfferOpensWindow`
+widening fails 10 tests across 5 files; removing the `healDrawOnlyRider` twin
+fails 2.
+
+FLIPPED EXPECTATIONS elsewhere (each justified in place, in its test comment):
+`combat-instant-reaction-windows.test.ts` ("holding Artillery does not pause your
+OWN declared attack" → it does now; the rest reach the retaliation window through
+a new `declaredPastPrimary` helper), `follow-up-attack-reaction-windows.test.ts`
+("a PRIMARY attack still does not pause…" → it does now),
+`medic-specialty-heal-draw.test.ts` ("a lone medic card never OPENS a window of
+its own" → it does now — that WAS the reported bug; and the Rion IV
+nothing-to-fix CONTROL now asserts no unit-TARGETED offer rather than no offer at
+all), `neutral-reaction-pause.test.ts` ("a trigger-free 'Draw a card' instant
+never forces a reaction window open" → it opens one now, optionally, with Pass
+always offered) and `bulwark-heroes.test.ts` (the non-Bulwark holder is still
+never offered the real RUNE reaction; its draw-only twin now joins).
 
 ## Random Town defenders match the printed card (2026-08-04)
 
@@ -6354,10 +6452,13 @@ a CONTROL).
   combat", so a Dwarf-negated or effect-ignoring combat play (both of which drop
   the resolved target while `action.target` still names a unit) keeps its
   existing no-op behaviour and draws NOTHING; the old "no combat draw-only
-  offer" limit is likewise SUPERSEDED by the instant-lifecycle batch — a medic
-  draw rider now joins an EXISTING open reaction window as a `drawOnly`
-  reaction (it never opens a window of its own, `reactionOfferOpensWindow`);
-  and the AI scores the
+  offer" limit is likewise SUPERSEDED — first by the instant-lifecycle batch (a
+  medic draw rider joins an EXISTING open reaction window as a `drawOnly`
+  reaction) and then, **2026-08-08, twice more**: that join now also OPENS an
+  attack window (see "Every instant OPENS an attack window" below), and a medic
+  face whose printed heal has NO target is offered as a target-less draw-only
+  play on the owner's OWN combat activation too (`healDrawOnlyRider` twin in
+  `addPlayableCardActions`); and the AI scores the
   new map play at a deliberately low **300** (`card-policy.ts`, below the
   ~590-610 map economy/search families) so a Rion/Aoko/Sirius/Molian seat never
   dumps the specialty it wants for a combat heal — a real in-combat heal still
@@ -6373,11 +6474,14 @@ effects." Behaviour pinned in `src/engine/medic-specialty-heal-draw.test.ts`
 `hero-specialty-levels.test.ts`.
 
 Leading with what does NOT change / the deliberate limits:
-- **A draw rider still NEVER OPENS a reaction window of its own**
-  (`reactionOfferOpensWindow`, unchanged): the medic joins an ALREADY-open
-  window. With nothing wounded AND no other reaction at the table the attack
-  resolves un-paused and the card stays in hand — otherwise a held medic would
-  interrupt every enemy attack. Pinned as a CONTROL.
+- ~~**A draw rider still NEVER OPENS a reaction window of its own**~~ —
+  **SUPERSEDED 2026-08-08** (see "Every instant OPENS an attack window" below).
+  It used to read: the medic joins an ALREADY-open window; with nothing wounded
+  and no other reaction at the table the attack resolves un-paused. That WAS the
+  bug the user re-reported ("choice never appear properly") — in a neutral fight
+  nothing else opens a window either. A draw rider now opens an ATTACK window
+  (only an attack window; a cast / activation / die-settled window is
+  unchanged).
 - **No duplicate look-alike offer.** The draw-only twin is `utilityOnly`, so the
   shared trap-twin dedupe removes it whenever the REAL face is offered in the
   same window (a wounded unit ⇒ exactly ONE medic offer, the targeted heal; a
@@ -6389,11 +6493,14 @@ Leading with what does NOT change / the deliberate limits:
   OTHER side's draw on Deemer IV / Zydar I, which then offered nothing at all.
 - **Two `applyDrawRiderThenDiscard` call sites are UNREACHABLE today and so
   unpinned** (kept, and commented as such, so a future `thenDiscard` face cannot
-  silently lose its discard): `playCard`'s generic `drawOnly` branch (a
-  HEAL_DAMAGE face is excluded from the draw-only PLAY_CARD twin) and the
+  silently lose its discard): `playCard`'s generic `drawOnly` branch and the
   `HEAL_DAMAGE_AND_REMOVE_EFFECTS` branch (no shipped Cure face prints a
-  post-draw discard). The `hasPairableSpell` `!drawOnly` clause is likewise an
-  unpinned safety guard (no spell-kind card carries a draw rider today).
+  post-draw discard). NOTE 2026-08-08: the `drawOnly` PLAY_CARD BRANCH itself is
+  now reachable for a medic face (the new own-turn combat draw-only twin), but
+  its DISCARD line still is not — every `thenDiscard` face is a CHOOSE_ONE medic
+  whose options always have a target, so it never takes the twin. The
+  `hasPairableSpell` `!drawOnly` clause is likewise an unpinned safety guard (no
+  spell-kind card carries a draw rider today).
 - The AI is unchanged: both the map/combat `PLAY_CARD` and the in-window
   `PLAY_REACTION` draw-only plays already scored a flat **300**
   (`card.draw-rider-only`), below every real play — now pinned for the reaction.
@@ -6439,7 +6546,13 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `legal-actions.ts` (basic only — a fizzled stat wastes no crown); the draw
   fires in `playCard` when `!state.reactionWindow && state.stack.length === 0`.
   Pinned in `sorcery-draw-rider.test.ts` ("Combat draw-only …", with an
-  off-turn CONTROL and the stat-fizzles assertion).
+  off-turn CONTROL and the stat-fizzles assertion). **EXTENDED 2026-08-08 to
+  medic heal faces**: a `HEAL_DAMAGE` face with a printed draw rider whose real
+  play has NO legal target (Rion I / Astra I print `damagedOnly`, so nothing
+  wounded = no target) is offered on the same own-activation terms as a
+  target-less `drawOnly` twin — see "Every instant OPENS an attack window"
+  above. It is WITHHELD whenever a real heal target exists (a heal draws too, so
+  the twin would be a strictly-worse duplicate).
 - **Sorcery banks +Power for the next spell if the unit has not moved.** A
   draw-only Sorcery played before the active unit has moved
   (`!movedThisActivation`) banks its Power on

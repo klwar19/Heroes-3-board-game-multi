@@ -2558,6 +2558,14 @@ function addPlayableCardActions(
       // Options with a trigger wait for their reaction window; the rest play
       // directly when their effect makes sense in combat.
       addOptionPlays(actions, state, playerId, card, cardId, "combat", cards);
+      // NOTE (2026-08-08): the medic draw-only twin below is deliberately NOT
+      // mirrored per CHOOSE_ONE option. Every shipped CHOOSE_ONE medic face
+      // (Rion IV/VI and their clones) targets ANY friendly unit, so its options
+      // are always offerable while a friendly body stands — and a friendly body
+      // must stand for the owner's activation to be open at all. A twin there
+      // could therefore never be reached, and unreachable offer code is exactly
+      // what this repo's rules forbid. A future `damagedOnly` CHOOSE_ONE face
+      // needs the twin added here WITH a test.
       continue;
     }
 
@@ -2576,6 +2584,7 @@ function addPlayableCardActions(
       continue;
     }
 
+    const offersBeforeTargets = actions.length;
     for (const mode of getPlayableModesForCard(state, playerId, card)) {
       for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
         actions.push({
@@ -2589,6 +2598,33 @@ function addPlayableCardActions(
           }
         });
       }
+    }
+    // 2026-08-08: the medic twin of the Offense/Armorer/Sorcery draw-only play
+    // above ("I still can't use card like Rion speciality, not for heal, just
+    // for draw effect"). Rion I / Astra I and their clones print
+    // `damagedOnly` targets, so with NOTHING wounded the loop above yields ZERO
+    // offers and the card was simply unplayable in combat — even though its
+    // printed "…, then draw N cards" rider is exactly what the holder wants.
+    // Offered ONLY when the real play has no target at all, so it can never be
+    // a strictly-worse trap twin of a heal (a heal draws too). This SUPERSEDES
+    // the earlier "a HEAL_DAMAGE face is deliberately excluded from the
+    // draw-only PLAY_CARD twin" scope note.
+    if (
+      ownActivationOpen &&
+      actions.length === offersBeforeTargets &&
+      healDrawOnlyRider(card.effect) > 0
+    ) {
+      actions.push({
+        label: `Play ${card.name} (draw ${healDrawOnlyRider(card.effect)}, no unit to heal)`,
+        action: {
+          type: "PLAY_CARD",
+          playerId,
+          cardId,
+          mode: "basic",
+          drawOnly: true,
+          target: { type: "none" }
+        }
+      });
     }
   }
 }
@@ -8024,30 +8060,49 @@ export function getLegalReactionsForTrigger(
  * the surviving utility counted as an opener on the other, and EVERY attack at
  * the table paused for a seat holding a token plus any draw instant.
  *
- * Non-opening (they only ever JOIN a window somebody else opened):
- * - the bare positive-Morale TOKEN draw/redraw spends — EXCEPT on a
- *   Retaliation Attack (the retaliating side's only pre-roll moment, pinned in
- *   morale-in-combat.test.ts both directions);
+ * 2026-08-08 USER RULING ("instant abilities should be able to be played before
+ * counter attack, when attack and when defend, ALL of them"): inside an ATTACK
+ * window — `UNIT_ATTACK_DECLARED`, i.e. a primary attack, a Retaliation Attack
+ * and a printed follow-up/ability attack alike — EVERY playable instant offer a
+ * combat participant holds now OPENS the window, on BOTH sides. That
+ * SUPERSEDES the previous readings that only the side about to be HIT (plus a
+ * follow-up attack's owner) could open with a `combatAnytime` instant or
+ * Artillery, and that a `drawOnly` / `utilityOnly` join could never open one.
+ * The reported symptom: in a NEUTRAL fight the guards open nothing, so a
+ * defender holding ONLY a medic draw-rider (Rion) or a Meteor Shower got no
+ * window at all — "the choice never appears".
+ *
+ * The `windowJoinOnly` / `drawOnly` / `utilityOnly` flags therefore still carry
+ * their OTHER meanings (trap-twin dedupe, resolution semantics) but no longer
+ * withhold the opener inside an attack window. Outside one they are unchanged:
+ *
+ * Non-opening on a NON-attack window (a Spell cast, a unit activation, a
+ * die-settled window) — they only JOIN one somebody else opened, so a held
+ * Meteor Shower / Rion / Offense still never pauses a cast or an activation:
  * - `utilityOnly` / `drawOnly` PLAY_REACTIONs (trigger-free card-gain joins and
- *   draw riders — "work during EXISTING reaction windows", never a pause of
- *   their own; without the drawOnly half a held Offense/Armorer would pause
- *   every enemy attack).
+ *   draw riders — "work during EXISTING reaction windows");
  * - anything flagged `windowJoinOnly` (LegalAction) — the action-type-agnostic
- *   form of the same rule, used by the "Instant (any time during Combat)" joins
- *   for every side/window except the attacked side of an attack window.
+ *   form of the same rule.
+ *
+ * DELIBERATE SCOPE: the bare positive-Morale TOKEN draw/redraw spends are NOT
+ * widened — the ruling names instant ABILITY CARDS, and a token is held by
+ * nearly every seat nearly always, so it keeps its Retaliation-Attack-only
+ * opener (the retaliating side's only pre-roll moment, pinned in
+ * morale-in-combat.test.ts both directions).
  */
 export function reactionOfferOpensWindow(legal: LegalAction, triggerEvent: GameEvent): boolean {
-  if (legal.windowJoinOnly) {
-    return false;
-  }
+  const attackWindow = triggerEvent.type === "UNIT_ATTACK_DECLARED";
   if (
     legal.action.type === "SPEND_MORALE" &&
     (legal.action.benefit === "draw" || legal.action.benefit === "redraw")
   ) {
-    return triggerEvent.type === "UNIT_ATTACK_DECLARED" && Boolean(triggerEvent.isRetaliation);
+    return !legal.windowJoinOnly && attackWindow && Boolean(triggerEvent.isRetaliation);
+  }
+  if (legal.windowJoinOnly) {
+    return attackWindow;
   }
   if (legal.action.type === "PLAY_REACTION" && (legal.action.utilityOnly || legal.action.drawOnly)) {
-    return false;
+    return attackWindow;
   }
   return true;
 }
