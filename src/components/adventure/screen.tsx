@@ -163,7 +163,7 @@ import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/co
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
 import { HeroBoard } from "@/components/hero-board";
 import { UnitExperienceWindow, armyUnitPrintedSide } from "@/components/adventure/unit-experience-window";
-import { useCardZoom } from "@/components/table/zoom";
+import { cardZoomContent, useCardZoom, useOptionalCardZoom } from "@/components/table/zoom";
 import {
   BuildingDetailPanel,
   HeroPortrait,
@@ -5278,6 +5278,50 @@ function teleportOptionArt(
   return { image, ring, badge, faceDown, label: option.label };
 }
 
+// ---------------------------------------------------------------------------
+// Pandora card decisions: show the CARD, not its name
+// ---------------------------------------------------------------------------
+
+/**
+ * ONE tile of the Pandora card row: the card whose face is shown, plus every
+ * engine offer attached to it. The `legal` action is dispatched VERBATIM — the
+ * tray never rebuilds a payload, so a click here is byte-identical to the old
+ * text button (that equality is what the tests pin).
+ */
+type PandoraCardTile = {
+  cardId: string;
+  actions: { legal: LegalAction; label: string; primary?: boolean }[];
+};
+
+/**
+ * Polish Pandora Search ("choose 1 card to keep"): each option's
+ * RESOLVE_PANDORA_SEARCH step carries the drawn Pandora cards plus WHICH of them
+ * that option keeps, so the option can show that Pandora card's real face
+ * instead of the word-only "Keep <name>". Returns null for any other step shape,
+ * which is what keeps every unrelated CHOOSE_ONE on the generic path.
+ */
+function pandoraSearchKeptCardId(steps: { type: string; [key: string]: unknown }[] | undefined): string | null {
+  for (const step of steps ?? []) {
+    if (!step || step.type !== "RESOLVE_PANDORA_SEARCH") {
+      continue;
+    }
+    const drawn = step.drawn;
+    const keepIndexes = step.keepIndexes;
+    if (!Array.isArray(drawn) || !Array.isArray(keepIndexes)) {
+      continue;
+    }
+    const index = keepIndexes[0];
+    if (typeof index !== "number") {
+      continue;
+    }
+    const cardId = drawn[index];
+    if (typeof cardId === "string" && cardId) {
+      return cardId;
+    }
+  }
+  return null;
+}
+
 export function PromptTray({
   state,
   viewerPlayerId,
@@ -5297,6 +5341,9 @@ export function PromptTray({
    */
   onSwitchSeat?: (seat: PlayerId) => void;
 }) {
+  // Optional so the tray still renders (un-zoomable) outside a CardZoomProvider —
+  // both real mount points in page.tsx are inside one; unit tests are not.
+  const zoom = useOptionalCardZoom();
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
   // A Shady Auction: the open lot (an Artifact card) the viewer is bidding on.
@@ -6038,6 +6085,69 @@ export function PromptTray({
   const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
   const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
+  // ---- Pandora card decisions: the CARD FACE decides, never its name ----
+  // Both Pandora surfaces below used to be word-only lists ("Put <name> back on
+  // top" / "Discard <name>" / "Keep <name>"), and both are decided by what each
+  // card DOES — so they get one shared card row (horizontally scrollable, because
+  // late game a Search can put four cards on the table at once).
+  //
+  // HIDDEN INFO: the scry's revealed identities are masked to "hidden" for every
+  // other viewer in player-view.ts, so this is gated on the OWNER. A masked id
+  // resolves to no card in the library and therefore renders no face at all.
+  const pandoraScry =
+    choice?.type === "OPTION_CHOICE" && choice.context === "pandora-scry" && choice.playerId === viewerPlayerId
+      ? (choice.pandoraScry ?? null)
+      : null;
+  const pandoraScryChoiceId = pandoraScry && choice?.type === "OPTION_CHOICE" ? choice.id : null;
+  const pandoraScryTiles: PandoraCardTile[] | null =
+    pandoraScry && pandoraScryChoiceId
+      ? pandoraScry.remaining.map((cardId, index) => {
+          // The engine's option order is [keep r0…rN] then [discard r0…rN]
+          // (the discard half only while discards remain), so each card's two
+          // offers are found by index — never rebuilt.
+          const optionFor = (optionIndex: number) =>
+            optionActions.find(
+              (legal) =>
+                legal.action.type === "CHOOSE_OPTION" &&
+                legal.action.choiceId === pandoraScryChoiceId &&
+                legal.action.optionIndex === optionIndex
+            );
+          const keep = optionFor(index);
+          const discard = optionFor(pandoraScry.remaining.length + index);
+          const actions: PandoraCardTile["actions"] = [];
+          if (keep) {
+            actions.push({ legal: keep, label: "Put back on top", primary: true });
+          }
+          if (discard) {
+            actions.push({ legal: discard, label: "Discard" });
+          }
+          return { cardId, actions };
+        })
+      : null;
+  // Polish Pandora Search: every option keeps one of the drawn Pandora cards, so
+  // the row only takes over when EVERY offer resolved to a card (a mixed or
+  // unrelated CHOOSE_ONE keeps the generic path).
+  const pandoraSearchTiles: PandoraCardTile[] | null = (() => {
+    if (!chooseOneOptions || teleport) {
+      return null;
+    }
+    const tiles: PandoraCardTile[] = [];
+    for (const legal of body) {
+      const optionIndex =
+        legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
+          ? legal.action.optionIndex
+          : undefined;
+      const option = optionIndex !== undefined ? chooseOneOptions[optionIndex] : undefined;
+      const cardId = pandoraSearchKeptCardId(option?.steps);
+      if (!cardId) {
+        return null;
+      }
+      tiles.push({ cardId, actions: [{ legal, label: "Keep this card", primary: true }] });
+    }
+    return tiles.length > 0 ? tiles : null;
+  })();
+  const pandoraCardTiles = pandoraScryTiles ?? pandoraSearchTiles;
+
   // Teleport destination cards: token art + a human "where" label + a Whirlpool
   // number / Gate pair badge, keyed to each option's RESOLVE_VISIT_STEP so a
   // click dispatches exactly what the map hex does.
@@ -6101,6 +6211,96 @@ export function PromptTray({
         );
       }
     }
+  }
+
+  // Pandora card row: one tile per card on the table — its real face, its name,
+  // and that card's OWN engine offers as buttons. The row scrolls SIDEWAYS
+  // (never wrapping the page wider) because a late-game Pandora Search can put
+  // four cards up at once. Returning here is also what excludes both Pandora
+  // contexts from the generic text-button path below (the Rule 111 precedent).
+  if (pandoraCardTiles) {
+    const isScry = Boolean(pandoraScryTiles);
+    const kept = pandoraScry?.toReturn ?? [];
+    return (
+      <div className="promptTray pandoraCardTray" role="dialog" aria-label={title}>
+        <strong>{title}</strong>
+        <small className="pandoraCardHint">
+          {isScry
+            ? "Read each card, then put it back on top of the deck or discard it. Click a card to enlarge it; the row scrolls sideways."
+            : "Pick the Pandora card you want to keep. Click a card to enlarge it; the row scrolls sideways."}
+        </small>
+        {kept.length > 0 ? (
+          <div className="pandoraKeptStrip" data-testid="pandora-kept-strip">
+            <small className="pandoraKeptHead">Going back on top (first is drawn next)</small>
+            <div className="pandoraKeptCards">
+              {kept.map((cardId, index) => {
+                const card = cardLibrary[cardId];
+                return card?.assets?.cardImage ? (
+                  <img
+                    alt={card.name}
+                    key={`${cardId}-${index}`}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    src={assetUrl(card.assets.cardImage)}
+                    title={card.name}
+                  />
+                ) : (
+                  <span className="marketCardFallback" key={`${cardId}-${index}`}>
+                    {card?.name ?? cardId}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        <div className="promptOptions pandoraCardRow" data-testid="pandora-card-row">
+          {pandoraCardTiles.map((tile, index) => {
+            const card = cardLibrary[tile.cardId];
+            const image = card?.assets?.cardImage;
+            return (
+              <div className="pandoraCardTile" data-testid="pandora-card-tile" key={`${tile.cardId}-${index}`}>
+                {image ? (
+                  <button
+                    aria-label={`Enlarge ${card?.name ?? tile.cardId}`}
+                    className="pandoraCardArt"
+                    onClick={() => zoom?.zoomContent(cardZoomContent(tile.cardId))}
+                    title={card?.name ?? tile.cardId}
+                    type="button"
+                  >
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      draggable={false}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      src={assetUrl(image)}
+                    />
+                  </button>
+                ) : (
+                  <span className="marketCardFallback">{card?.name ?? tile.cardId}</span>
+                )}
+                <small className="pandoraCardName">{card?.name ?? tile.cardId}</small>
+                <div className="pandoraCardActions">
+                  {tile.actions.map((entry) => (
+                    <button
+                      // The engine's own label is the accessible name, so a click
+                      // here is provably the same offer the text button carried.
+                      aria-label={entry.legal.label}
+                      className={`commandButton${entry.primary ? " primary" : ""}`}
+                      key={actionKey(entry.legal.action)}
+                      onClick={() => onAction(entry.legal.action)}
+                      type="button"
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   if (teleportOptions) {
