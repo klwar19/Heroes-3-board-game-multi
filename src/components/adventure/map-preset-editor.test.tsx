@@ -1062,6 +1062,41 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(screen.queryByRole("group", { name: "Ⅱ–Ⅲ Settlement reroll map preset" })).toBeNull();
   });
 
+  it("Map settings: the Ⅱ–Ⅲ tile type-choice chips write the toggle and the allowed-kind list", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(<MapPresetEditor preset={{ victoryMode: "grail" }} onChange={onChange} />);
+    // Turn the rule ON — the unrelated victoryMode must survive (no clobber).
+    fireEvent.click(within(section("Ⅱ–Ⅲ tile type choice")).getByRole("button", { name: "On" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ victoryMode: "grail", farTileTypeChoice: true })
+    );
+
+    // Restricting the menu: pick two kinds ("crystal or gold").
+    rerender(<MapPresetEditor preset={{ farTileTypeChoices: ["gold"] }} onChange={onChange} />);
+    fireEvent.click(
+      within(section("Allowed Ⅱ–Ⅲ tile kinds")).getByRole("button", { name: "CRYSTAL (valuables) mine" })
+    );
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ farTileTypeChoices: ["gold", "valuables"] })
+    );
+
+    // Un-picking the last kind DROPS the field (absent = every kind allowed);
+    // with nothing else set, the whole preset collapses to "no conditions".
+    rerender(<MapPresetEditor preset={{ farTileTypeChoices: ["gold"] }} onChange={onChange} />);
+    fireEvent.click(within(section("Allowed Ⅱ–Ⅲ tile kinds")).getByRole("button", { name: "GOLD mine" }));
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+    // …and with a sibling field present, only the kind list goes.
+    rerender(
+      <MapPresetEditor preset={{ victoryMode: "grail", farTileTypeChoices: ["gold"] }} onChange={onChange} />
+    );
+    fireEvent.click(within(section("Allowed Ⅱ–Ⅲ tile kinds")).getByRole("button", { name: "GOLD mine" }));
+    expect(onChange).toHaveBeenLastCalledWith({ victoryMode: "grail" });
+
+    // CONTROL: with the rule explicitly OFF the kind row is hidden entirely.
+    rerender(<MapPresetEditor preset={{ farTileTypeChoice: false }} onChange={onChange} />);
+    expect(screen.queryByRole("group", { name: "Allowed Ⅱ–Ⅲ tile kinds" })).toBeNull();
+  });
+
   // The collapsible section GROUPS (re-parented ordering layer over the leaf
   // sections). `groupByTitle` reads the visible title span rather than the
   // group's role/name, because the inner "Timed events" section label shares

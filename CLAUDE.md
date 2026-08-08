@@ -7548,6 +7548,38 @@ standard games are byte-identical. Pinned + mutation-checked both ways in
 touch-only-one CONTROL, and the same-color-hole CONTROL that fails under a
 blanket physical-touch relaxation).
 
+## Ⅱ–Ⅲ hand-tile TYPE choice (OPTIONAL, lobby + map preset, default OFF) — 2026-08-08
+
+`GameSetupOptions.farTileTypeChoice` (Game options row, default OFF ⇒
+byte-identical, exact-equality CONTROL pinned) + `CustomMapPreset.
+farTileTypeChoice`/`farTileTypeChoices` (designer soft-default seeding the
+lobby like `farTileOpening`, with an optional RESTRICTED kind list — e.g.
+["crystal","gold"]). With it ON, placing a HELD Ⅱ–Ⅲ supply tile opens a TYPE
+menu instead of a blind draw: gold mine / stone (ore) mine / crystal
+(valuables) mine / settlement / "No preference" — the engine then draws a
+seeded-random pool tile OF that kind. Vocabulary + classification live in ONE
+leaf module `src/engine/far-tile-types.ts` (the three landmark predicates
+MOVED there and are re-exported from `adventure-reducer.ts`, so the menu can
+never classify a tile differently from the Settlement guarantee / Ore-Mine
+reroll). Rides the existing `pendingFarTileFlip` machine as `offerMode:
+"type-choice"` (persisted `typeOptions` map so menu and resolution cannot
+drift); protocol v22. Behaviour pinned in `far-tile-type-choice.test.ts`
+(20 tests, 13 mutations killed) + the UI rows in `game-options-tabs.test.tsx`
+/ `map-preset-editor.test.tsx` + the registry round-trip.
+
+Leading with what does NOT run / deliberate limits:
+- **The menu leaks pool AVAILABILITY to the whole table** (an exhausted kind
+  drops out; every seat can read that) — accepted, matches the sibling blind
+  menu; never WHICH tiles or their order.
+- **Composes with (never replaces) `far-tile-rerolls`** — on a default BINH
+  table a chosen STONE tile still opens the keep-or-reroll window after the
+  draw; all kinds exhausted ⇒ classic random draw with a
+  `MAP_SECRET_FEATURE_FALLBACK` note.
+- **Supply-path only**: discovering a face-down Ⅱ–Ⅲ tile already on the map
+  keeps its printed identity (pinned through real DISCOVER_TILE).
+- **No new AI policy** (the existing far-tile-flip label scorer picks
+  settlement > mine); the AFK/timeout driver answers "No preference".
+
 ## Far-tile rerolls and single-player AI (2026-07-31)
 
 - **Ⅱ–Ⅲ tile replacement is one BINH house rule**:

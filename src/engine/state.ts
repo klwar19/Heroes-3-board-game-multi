@@ -11024,6 +11024,16 @@ export const MAX_FAR_TILES_PER_PLAYER = 6;
  * reroll retargets that one instance to a fresh draw while the rerolled-away def
  * returns to the pool.
  */
+/**
+ * A Ⅱ–Ⅲ (Far) tile KIND a player may ask for under the optional Ⅱ–Ⅲ tile type
+ * choice ({@link GameSetupOptions.farTileTypeChoice}). The three mine kinds use
+ * the engine's own resource vocabulary; the board game's words (crystal, stone)
+ * appear only in the player-facing labels. Classification lives in ONE place,
+ * `engine/far-tile-types.ts` (`farTileTypeMatches`), which delegates to the same
+ * predicates the Settlement guarantee and the Ore-Mine reroll already use.
+ */
+export type FarTileType = "gold" | "valuables" | "buildingMaterials" | "settlement";
+
 export type PendingFarTileFlip = {
   playerId: PlayerId;
   /** The placing hero (for PLACE_TILE; the rotation must keep a doorway it can cross). */
@@ -11065,8 +11075,19 @@ export type PendingFarTileFlip = {
    *  - "blind":      [No preference, Prefer a GOLD mine, Prefer a VALUABLES
    *                  mine] — the blind Ⅱ–Ⅲ choice asked BEFORE the draw
    *                  (candidate is still ""); resolving it draws the tile.
+   *  - "type-choice": [No preference, …one per AVAILABLE allowed kind] — the
+   *                  optional Ⅱ–Ⅲ tile TYPE choice asked BEFORE the draw
+   *                  (candidate is still ""); {@link typeOptions} carries the
+   *                  index→kind mapping and resolving it draws the tile.
    */
-  offerMode: "settlement" | "mine" | "pick" | "blind";
+  offerMode: "settlement" | "mine" | "pick" | "blind" | "type-choice";
+  /**
+   * "type-choice" only: the kind each offered option stands for, index-aligned
+   * with the OPTION_CHOICE options (`null` = "no preference — draw any tile").
+   * Persisted so the menu that was shown and the draw that resolves it can
+   * never drift; deleted once the draw happens.
+   */
+  typeOptions?: (FarTileType | null)[];
 };
 
 export type AdventureState = {
@@ -11124,6 +11145,20 @@ export type AdventureState = {
    * immediate, exactly as before.
    */
   farTileBlindChoice?: boolean;
+  /**
+   * Ⅱ–Ⅲ TILE TYPE CHOICE (GameSetupOptions.farTileTypeChoice, default OFF): the
+   * undecided Ⅱ–Ⅲ tile in a player's hand works like a hidden tile — on placing
+   * it the opener CHOOSES the kind (gold mine / crystal-valuables mine /
+   * stone-ore mine / Settlement) and a random tile OF THAT KIND is drawn from
+   * the pool. Absent/false = the classic blind draw, byte-identical.
+   */
+  farTileTypeChoice?: boolean;
+  /**
+   * The map DESIGNER's restriction on that menu (`preset.farTileTypeChoices`,
+   * e.g. `["valuables","gold"]` = "crystal or gold"). Absent/empty = all four
+   * kinds. Only read while {@link farTileTypeChoice} is on.
+   */
+  farTileTypeChoices?: FarTileType[];
   /**
    * How many Ⅱ–Ⅲ tiles each player has already opened (placed). Drives the
    * "the 2nd tile each player opens is the settlement-guaranteed one" rule.
@@ -11788,6 +11823,20 @@ export type GameSetupOptions = {
    * `adventure.farTileBlindChoice` at setup.
    */
   farTileBlindChoice?: boolean;
+  /**
+   * OPTIONAL Ⅱ–Ⅲ TILE TYPE CHOICE (default OFF). With it ON, the face-down Ⅱ–Ⅲ
+   * tile in a player's hand behaves like a hidden tile whose identity they get
+   * to name: placing it first asks WHICH KIND of tile they want — a GOLD mine,
+   * a CRYSTAL (valuables) mine, a STONE (ore) mine or a SETTLEMENT — and the
+   * engine then draws a random tile of that kind from the Ⅱ–Ⅲ pool. Only kinds
+   * still present in the pool are offered; with none left the draw is random
+   * with a public note. A designed map may narrow the list
+   * (`CustomMapPreset.farTileTypeChoices`). Supersedes the older
+   * {@link farTileBlindChoice} menu while on. Revealing a face-down Ⅱ–Ⅲ tile
+   * already on the map never asks (its identity is fixed). Frozen onto
+   * `adventure.farTileTypeChoice` at setup.
+   */
+  farTileTypeChoice?: boolean;
   difficulty: GameDifficulty;
   startingResources: { gold: number; buildingMaterials: number; valuables: number };
   startingProduction: { gold: number; buildingMaterials: number; valuables: number };
@@ -11880,6 +11929,19 @@ export type CustomMapPreset = {
   difficulty?: GameDifficulty;
   farTileOpening?: boolean;
   farTilesPerPlayer?: number;
+  /**
+   * Ⅱ–Ⅲ TILE TYPE CHOICE (optional rule). `farTileTypeChoice` seeds the lobby
+   * toggle exactly like `farTileOpening` (apply-once soft default, forced key
+   * `farTileTypeChoice`). `farTileTypeChoices` is MAP CONTENT, not a lobby
+   * option: it narrows the kinds a player may ask for (e.g. `["valuables",
+   * "gold"]` = "crystal or gold"); absent/empty = all four. A non-empty list
+   * also IMPLIES the rule for the lobby seed unless `farTileTypeChoice` is
+   * explicitly false, so a designer only has to set one control. Sanitized by
+   * `sanitizeCustomMapPreset` (unknown entries dropped, deduped, capped at
+   * {@link FAR_TILE_TYPES}.length).
+   */
+  farTileTypeChoice?: boolean;
+  farTileTypeChoices?: FarTileType[];
   /**
    * Calamity Waves designer overrides (module `monsterWaves`): `cadence`
    * overrides the lobby wave rhythm for this map; `waves` maps a wave NUMBER

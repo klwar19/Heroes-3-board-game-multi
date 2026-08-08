@@ -111,7 +111,16 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // With the rule OFF nothing is written or read, but a table that turns it ON
 // against a v20 edge would silently lose every set effect — the banner exists to
 // surface exactly that.
-export const ENGINE_PROTOCOL_VERSION = 21;
+// v22: Ⅱ–Ⅲ tile TYPE CHOICE (`GameSetupOptions.farTileTypeChoice`, default
+// OFF). New persisted state a stale room server neither writes nor understands:
+// `adventure.farTileTypeChoice` / `farTileTypeChoices`, a new
+// `pendingFarTileFlip.offerMode` value ("type-choice") with its index→kind
+// `typeOptions` map, and the `CustomMapPreset.farTileTypeChoice` /
+// `farTileTypeChoices` designer fields (which also seed the lobby). With the
+// rule OFF nothing is written or read, but a v21 edge handed a "type-choice"
+// flip would fall through its keep/reroll switch and misread the chosen index —
+// the banner exists to surface exactly that.
+export const ENGINE_PROTOCOL_VERSION = 22;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

@@ -621,6 +621,13 @@ export type AdventureSetupOptions = {
   farTilesPerPlayer?: number;
   /** Blind Ⅱ–Ⅲ tile choice (default off): pick gold/valuables/no-preference BEFORE the supply draw. */
   farTileBlindChoice?: boolean;
+  /**
+   * Ⅱ–Ⅲ tile TYPE choice (default off): the undecided Ⅱ–Ⅲ tile in a player's
+   * hand works like a hidden tile — placing it first asks WHICH KIND (gold /
+   * crystal / stone mine, or a Settlement) and the draw is restricted to it.
+   * Supersedes {@link AdventureSetupOptions.farTileBlindChoice} while on.
+   */
+  farTileTypeChoice?: boolean;
   difficulty?: GameDifficulty;
   scenarioId?: string;
   players?: AdventurePlayerConfig[];
@@ -709,6 +716,7 @@ export function defaultGameSetupOptions(scenario: ScenarioDefinition): GameSetup
     farTileOpening: true,
     farTilesPerPlayer: scenario.farTiles.perPlayer,
     farTileBlindChoice: false,
+    farTileTypeChoice: false,
     difficulty: "impossible",
     startingResources: { ...scenario.startingResources },
     startingProduction: { ...scenario.startingProduction },
@@ -2583,6 +2591,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     ...(options.farTileOpening !== undefined ? { farTileOpening: options.farTileOpening } : {}),
     ...(options.farTilesPerPlayer !== undefined ? { farTilesPerPlayer: options.farTilesPerPlayer } : {}),
     ...(options.farTileBlindChoice !== undefined ? { farTileBlindChoice: options.farTileBlindChoice } : {}),
+    ...(options.farTileTypeChoice !== undefined ? { farTileTypeChoice: options.farTileTypeChoice } : {}),
     ...(options.customMap !== undefined ? { customMap: options.customMap } : {}),
     ...(options.customMapPreset !== undefined ? { customMapPreset: options.customMapPreset } : {})
   };
@@ -2597,6 +2606,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       ...(options.difficulty !== undefined ? (["difficulty"] as const) : []),
       ...(options.farTileOpening !== undefined ? (["farTileOpening"] as const) : []),
       ...(options.farTilesPerPlayer !== undefined ? (["farTilesPerPlayer"] as const) : []),
+      ...(options.farTileTypeChoice !== undefined ? (["farTileTypeChoice"] as const) : []),
       ...(options.startingResources !== undefined ? (["startingResources"] as const) : []),
       ...(options.startingProduction !== undefined ? (["startingProduction"] as const) : []),
       ...(options.startingBuildings !== undefined ? (["startingBuildings"] as const) : []),
@@ -2911,6 +2921,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Blind Ⅱ–Ⅲ tile choice (default OFF): a supply opening first asks for a
     // blind gold/valuables/no-preference pick that filters the random draw.
     ...(setupOptions.farTileBlindChoice ? { farTileBlindChoice: true } : {}),
+    // Ⅱ–Ⅲ tile TYPE choice (default OFF): a supply opening first asks WHICH
+    // KIND of tile to draw. The designer's allowed-kind list is map CONTENT
+    // (not a lobby option), so it is frozen straight from the preset — absent
+    // or empty = all four kinds — and only read while the rule itself is on.
+    ...(setupOptions.farTileTypeChoice ? { farTileTypeChoice: true } : {}),
+    ...(setupOptions.farTileTypeChoice &&
+    (setupOptions.customMapPreset?.farTileTypeChoices?.length ?? 0) > 0
+      ? { farTileTypeChoices: [...(setupOptions.customMapPreset?.farTileTypeChoices ?? [])] }
+      : {}),
     farTilesOpenedByPlayer: {},
     pendingFarTileFlip: null,
     // Setup: the war machine cards sit face up in a shared supply pile.
@@ -4101,6 +4120,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   if (options.farTileBlindChoice !== undefined) {
     setupOptions.farTileBlindChoice = options.farTileBlindChoice;
   }
+  if (options.farTileTypeChoice !== undefined) {
+    setupOptions.farTileTypeChoice = options.farTileTypeChoice;
+  }
   if (options.pvpNeutralControlMustAttack !== undefined) {
     setupOptions.pvpNeutralControlMustAttack = options.pvpNeutralControlMustAttack;
   }
@@ -4652,6 +4674,11 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.farTileBlindChoice !== undefined) {
     lobby.options.farTileBlindChoice = Boolean(next.farTileBlindChoice);
     changes.push(`blind Ⅱ–Ⅲ tile choice ${lobby.options.farTileBlindChoice ? "on" : "off"}`);
+  }
+
+  if (next.farTileTypeChoice !== undefined) {
+    lobby.options.farTileTypeChoice = Boolean(next.farTileTypeChoice);
+    changes.push(`Ⅱ–Ⅲ tile type choice ${lobby.options.farTileTypeChoice ? "on" : "off"}`);
   }
 
   if (next.scenarioId !== undefined) {
@@ -6009,6 +6036,7 @@ function buildAdventureFromLobby(state: GameState): void {
     farTileOpening: lobby.options.farTileOpening,
     farTilesPerPlayer: lobby.options.farTilesPerPlayer,
     farTileBlindChoice: lobby.options.farTileBlindChoice,
+    farTileTypeChoice: lobby.options.farTileTypeChoice,
     difficulty: lobby.options.difficulty,
     startingResources: lobby.options.startingResources,
     startingProduction: lobby.options.startingProduction,

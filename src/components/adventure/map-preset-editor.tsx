@@ -27,6 +27,8 @@ import {
   describeVictoryPointsConfig,
   describeTimedMapEffect,
   describeTimedEventSchedule,
+  FAR_TILE_TYPES,
+  FAR_TILE_TYPE_LABELS,
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_OBELISK_BONUSES,
   MAX_TIMED_EVENTS,
@@ -661,6 +663,10 @@ export function MapPresetEditor({
       value.farTilesPerPlayer !== undefined
         ? 1
         : 0) +
+      (value.farTileTypeChoice !== undefined ||
+      (value.farTileTypeChoices && value.farTileTypeChoices.length > 0)
+        ? 1
+        : 0) +
       Object.keys(value.houseRules ?? {}).length,
     startingPosition:
       (value.startingResources ? 1 : 0) +
@@ -875,6 +881,71 @@ export function MapPresetEditor({
           Whether players may open their own Ⅱ–Ⅲ Far tiles mid-game, and how many each may add (0–6). Only the
           count of tiles is set here — the Ⅱ–Ⅲ supply pool itself stays the engine default. Ore / Settlement tile
           replacement is a BINH house rule, not a map-preset setting. Seeds the lobby on pick.
+        </small>
+      </section>
+
+      <section className="mapPresetSection">
+        <div className="mapPresetSectionLabel">Ⅱ–Ⅲ tile type choice (preset)</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Ⅱ–Ⅲ tile type choice">
+          {(
+            [
+              { id: "default", label: "Default" },
+              { id: "on", label: "On" },
+              { id: "off", label: "Off" }
+            ] as const
+          ).map((opt) => {
+            const active =
+              opt.id === "default"
+                ? value.farTileTypeChoice === undefined
+                : opt.id === "on"
+                  ? value.farTileTypeChoice === true
+                  : value.farTileTypeChoice === false;
+            return (
+              <button
+                aria-pressed={active}
+                className={`mapPresetChip${active ? " active" : ""}`}
+                key={opt.id}
+                onClick={() =>
+                  patch({ farTileTypeChoice: opt.id === "default" ? undefined : opt.id === "on" })
+                }
+                type="button"
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {value.farTileTypeChoice !== false ? (
+          <div className="mapPresetChipRow" role="group" aria-label="Allowed Ⅱ–Ⅲ tile kinds">
+            {FAR_TILE_TYPES.map((kind) => {
+              const picked = value.farTileTypeChoices ?? [];
+              const active = picked.includes(kind);
+              return (
+                <button
+                  aria-pressed={active}
+                  className={`mapPresetChip${active ? " active" : ""}`}
+                  key={kind}
+                  onClick={() => {
+                    // Toggle the kind, keeping the canonical order; an empty
+                    // result drops the field (absent = every kind allowed).
+                    const next = FAR_TILE_TYPES.filter((entry) =>
+                      entry === kind ? !active : picked.includes(entry)
+                    );
+                    patch({ farTileTypeChoices: next.length > 0 ? [...next] : undefined });
+                  }}
+                  type="button"
+                >
+                  {FAR_TILE_TYPE_LABELS[kind]}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <small className="mapPresetHint">
+          Optional rule: placing a Ⅱ–Ⅲ tile from your hand asks WHICH KIND you want, and a random tile of that
+          kind is drawn. Pick kinds above to RESTRICT the menu (e.g. crystal or gold); pick none and every kind is
+          offered. Choosing kinds also turns the rule on when the map is picked — the host can still switch it off
+          in Match settings. Only kinds still left in the Ⅱ–Ⅲ supply are ever offered.
         </small>
       </section>
 
