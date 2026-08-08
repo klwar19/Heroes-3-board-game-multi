@@ -113,7 +113,7 @@ describe("/menu (main menu, guest-only build)", () => {
     const still = document.querySelector("img.menuShellBackdrop");
     expect(still).toBeTruthy();
     // The still is BEHIND the video (earlier in document order = painted under).
-    expect(still?.compareDocumentPosition(video as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((still as Element).compareDocumentPosition(video as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("Logout in guest mode CLEARS the guest flag and returns to login", () => {
