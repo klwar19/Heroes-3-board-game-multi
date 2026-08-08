@@ -22,7 +22,13 @@ import {
   startAdventureRound,
   startPlayerTurn
 } from "./adventure";
-import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
+import {
+  CAST_A_SPELL_CARD_ID,
+  midRoundRefreshablePolishUsedSpells,
+  partitionPolishBookAtRoundStart,
+  polishBookSpellEffectIsLive,
+  polishBookSpellRefreshBlocked
+} from "./polish-spell-book";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 
 function ownedCount(player: ReturnType<typeof createAdventureGameState>["players"][string], cardId: string): number {
@@ -1360,32 +1366,60 @@ function polishMapGame(seed: string): GameState {
   return state;
 }
 
-function resolveMapBoostNow(state: GameState): GameState {
+function resolveMapBoostNow(state: GameState, playerId = "p1"): GameState {
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost") {
     return state;
   }
   return applyOk(state, {
     type: "CHOOSE_OPTION",
-    playerId: "p1",
+    playerId,
     choiceId: choice.id,
     optionIndex: choice.mapSpellBoost?.offers.length ?? choice.options.length - 1
   });
 }
 
 /** Casts an ongoing map Spell out of the Polish Book; returns the settled state. */
-function castOngoingBookSpell(state: GameState, spellId: string): GameState {
-  state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
-  state.players.p1.spellBook = [spellId];
-  state.players.p1.spellBookUsed = [];
-  const play = getLegalActions(state, "p1").find(
+function castOngoingBookSpell(state: GameState, spellId: string, playerId = "p1"): GameState {
+  state.players[playerId]!.hand = [CAST_A_SPELL_CARD_ID];
+  state.players[playerId]!.spellBook = [spellId];
+  state.players[playerId]!.spellBookUsed = [];
+  const play = getLegalActions(state, playerId).find(
     (legal) =>
       legal.action.type === "PLAY_CARD" &&
       legal.action.cardId === spellId &&
       legal.action.fromSpellBook === true
   );
   expect(play, `${spellId} should be castable from the Polish Book`).toBeTruthy();
-  return resolveMapBoostNow(applyOk(state, play!.action));
+  return resolveMapBoostNow(applyOk(state, play!.action), playerId);
+}
+
+/**
+ * Drives the REAL round wrap: every live seat takes its start-of-turn hand step
+ * and then ENDs its turn, so `startAdventureRound` and `startPlayerTurn` run in
+ * the same action chain the live game uses (hand-poking `state.round` and
+ * calling `startAdventureRound` alone cannot see the ordering bug this pins).
+ */
+function playOutRound(state: GameState): GameState {
+  let current = state;
+  const startRound = current.round;
+  for (let guard = 0; guard < 12 && current.round === startRound; guard += 1) {
+    const playerId = current.activePlayerId;
+    for (let hand = 0; hand < 4; hand += 1) {
+      const refresh = getLegalActions(current, playerId).find(
+        (legal) => legal.action.type === "REFRESH_HAND"
+      );
+      if (!refresh) {
+        break;
+      }
+      current = applyOk(current, { type: "REFRESH_HAND", playerId, discardCardIds: [] });
+    }
+    const end = getLegalActions(current, playerId).find((legal) => legal.action.type === "END_TURN");
+    expect(end, `${playerId} should be able to end its turn`).toBeTruthy();
+    current = applyOk(current, end!.action);
+  }
+  expect(current.round, "the round should have wrapped").toBe(startRound + 1);
+  return current;
 }
 
 function effectLive(state: GameState, cardId: string): boolean {
@@ -1395,30 +1429,29 @@ function effectLive(state: GameState, cardId: string): boolean {
 }
 
 describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
-  it("the round-start refresh leaves a live Water Walk used, and refreshes it once the effect ends", () => {
-    let state = polishMapGame("polish-book-in-effect-round-refresh");
+  it("a live Water Walk is NOT refreshable while its caster's turn is still running", () => {
+    // The mid-round reading (the one every refresh SOURCE consults) is strict:
+    // while the "this turn" effect is up, the Spell is in effect and untouchable.
+    // Removing the in-effect gate makes this pass a refresh straight through.
+    let state = polishMapGame("polish-book-in-effect-mid-round");
     state = castOngoingBookSpell(state, "spell.water_walk");
 
-    // Cast: the Book Spell is used and its "this turn" effect is live.
     expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
     expect(effectLive(state, "spell.water_walk")).toBe(true);
+    expect(midRoundRefreshablePolishUsedSpells(state, state.players.p1)).not.toContain(
+      "spell.water_walk"
+    );
+    expect(
+      polishBookSpellRefreshBlocked(state, "p1", "spell.water_walk", state.players.p1)
+    ).toBe("in-effect");
 
-    // Round wrap while the effect still lasts: NOT refreshed (the old rule pushed
-    // it straight back into the refreshed Book — this assertion is the mutation
-    // control for the whole "in effect" section).
-    state.round = 2;
-    startAdventureRound(state);
-    expect(state.players.p1.spellBookUsed).toContain("spell.water_walk");
-    expect(state.players.p1.spellBook).not.toContain("spell.water_walk");
-
-    // The effect ends at its caster's next turn start; from then it is an
-    // ordinary used Book Spell and the next round start refreshes it.
+    // Once the effect ends (the caster's next turn starts) it is an ordinary
+    // used Book Spell again and every source may refresh it.
     startPlayerTurn(state, "p1");
     expect(effectLive(state, "spell.water_walk")).toBe(false);
-    state.round = 3;
-    startAdventureRound(state);
-    expect(state.players.p1.spellBook).toContain("spell.water_walk");
-    expect(state.players.p1.spellBookUsed).not.toContain("spell.water_walk");
+    expect(midRoundRefreshablePolishUsedSpells(state, state.players.p1)).toContain(
+      "spell.water_walk"
+    );
   });
 
   it("CONTROL: an INSTANT Book Spell cast the same way still refreshes at the round start", () => {
@@ -1498,6 +1531,175 @@ describe("Polish Spell Book — a Spell IN EFFECT cannot be refreshed", () => {
     expect(resolved.players.p1.spellBook).not.toContain("spell.haste");
     // The enabler still comes back (that half of the recall is unaffected).
     expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reported bug (2026-08-09): "Water walk not refreshed next round"
+//
+// A "this turn" map Spell (Water Walk / Fly) is spent for the rest of its
+// caster's turn and MUST be castable again next round. The round wrap runs
+// `startAdventureRound` (the Book refresh) and only THEN `startPlayerTurn`,
+// which is where `expireEffectsForTurnEnd` drops the effect — so the refresh
+// used to see a still-"live" effect, withhold the Spell for the whole new
+// round, and only hand it back one round late. Every case here drives the REAL
+// END_TURN wrap; hand-poking `state.round` cannot see the ordering at all.
+// ---------------------------------------------------------------------------
+
+describe("Polish Spell Book — a 'this turn' Spell refreshes at the NEXT round start", () => {
+  for (const spellId of ["spell.water_walk", "spell.fly"]) {
+    it(`${spellId} cast in round 1 is refreshed and castable again in round 2`, () => {
+      let state = polishMapGame(`polish-book-this-turn-${spellId}`);
+      state = castOngoingBookSpell(state, spellId);
+      expect(state.players.p1.spellBookUsed).toContain(spellId);
+      expect(effectLive(state, spellId)).toBe(true);
+
+      state = playOutRound(state);
+
+      expect(state.round).toBe(2);
+      // The effect really is over…
+      expect(effectLive(state, spellId)).toBe(false);
+      // …so the Spell is back on the refreshed side (this is the reported bug:
+      // it used to still sit in `spellBookUsed` for the whole of round 2).
+      expect(state.players.p1.spellBook).toContain(spellId);
+      expect(state.players.p1.spellBookUsed ?? []).not.toContain(spellId);
+
+      // And it is genuinely castable again — a refreshed-side entry nobody can
+      // cast would be a data check, not the effect. (Round 2 opens with p1's
+      // mandatory start-of-turn hand step; take it first.)
+      for (let hand = 0; hand < 4; hand += 1) {
+        const refresh = getLegalActions(state, "p1").find(
+          (legal) => legal.action.type === "REFRESH_HAND"
+        );
+        if (!refresh) {
+          break;
+        }
+        state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      }
+      state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+      const recast = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === spellId &&
+          legal.action.fromSpellBook === true
+      );
+      expect(recast, `${spellId} should be castable again in round 2`).toBeTruthy();
+    });
+  }
+
+  it("a LAST-seat caster's Water Walk refreshes in the same round wrap", () => {
+    // Seat order decides how much of the round runs between the cast and the
+    // wrap; the last seat casts immediately before `startAdventureRound`, which
+    // is the tightest case for the ordering.
+    let state = polishMapGame("polish-book-this-turn-last-seat");
+    // p1 (first seat) simply ends its turn so p2 (last seat) may act.
+    for (let hand = 0; hand < 4; hand += 1) {
+      const refresh = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "REFRESH_HAND"
+      );
+      if (!refresh) {
+        break;
+      }
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    const endP1 = getLegalActions(state, "p1").find((legal) => legal.action.type === "END_TURN");
+    expect(endP1).toBeTruthy();
+    state = applyOk(state, endP1!.action);
+    expect(state.activePlayerId).toBe("p2");
+
+    for (let hand = 0; hand < 4; hand += 1) {
+      const refresh = getLegalActions(state, "p2").find(
+        (legal) => legal.action.type === "REFRESH_HAND"
+      );
+      if (!refresh) {
+        break;
+      }
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
+    }
+    state = castOngoingBookSpell(state, "spell.water_walk", "p2");
+    expect(state.players.p2.spellBookUsed).toContain("spell.water_walk");
+
+    const endP2 = getLegalActions(state, "p2").find((legal) => legal.action.type === "END_TURN");
+    expect(endP2).toBeTruthy();
+    state = applyOk(state, endP2!.action);
+
+    expect(state.round).toBe(2);
+    expect(state.players.p2.spellBook).toContain("spell.water_walk");
+    expect(state.players.p2.spellBookUsed ?? []).not.toContain("spell.water_walk");
+  });
+
+  it("CONTROL: the round-start read still blocks a live effect that is NOT turn-scoped", () => {
+    // The discount is scoped to `expiresAtTurnEndPlayerId === the Book owner` —
+    // a combat-long Haste effect carries no such stamp, so the round-start read
+    // keeps calling it live and the partition keeps it used. Widening the
+    // discount to every live effect fails this.
+    let state = polishCombat("polish-book-round-start-live-control");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.spellBook = ["spell.haste"];
+    state.players.p1.limits.expertUses = 0;
+
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.haste" &&
+        legal.action.fromSpellBook === true
+    );
+    expect(cast, "Haste should be castable from the Polish Book").toBeTruthy();
+    state = passAll(applyOk(state, cast!.action));
+
+    const live = state.activeEffects.find(
+      (effect) => effect.source.type === "card" && effect.source.cardId === "spell.haste"
+    );
+    expect(live, "Haste leaves a live combat effect").toBeTruthy();
+    expect(live!.expiresAtTurnEndPlayerId, "…that is not turn-scoped").toBeUndefined();
+    expect(state.players.p1.spellBookUsed).toContain("spell.haste");
+
+    expect(
+      polishBookSpellEffectIsLive(state, "p1", "spell.haste", state.players.p1, {
+        atRoundStart: true
+      })
+    ).toBe(true);
+    const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
+    expect(partition.stillInEffect).toContain("spell.haste");
+    expect(partition.refresh).not.toContain("spell.haste");
+  });
+
+  it("the round-start partition discounts ONLY the Book owner's own turn-scoped effect", () => {
+    // A real Water Walk cast: live for the mid-round read, discounted for the
+    // round-start read. Both halves of the partition agree.
+    let state = polishMapGame("polish-book-round-start-partition");
+    state = castOngoingBookSpell(state, "spell.water_walk");
+
+    expect(polishBookSpellEffectIsLive(state, "p1", "spell.water_walk", state.players.p1)).toBe(
+      true
+    );
+    expect(
+      polishBookSpellEffectIsLive(state, "p1", "spell.water_walk", state.players.p1, {
+        atRoundStart: true
+      })
+    ).toBe(false);
+
+    const partition = partitionPolishBookAtRoundStart(state, state.players.p1);
+    expect(partition.refresh).toContain("spell.water_walk");
+    expect(partition.stillInEffect).not.toContain("spell.water_walk");
+  });
+
+  it("CONTROL: the mid-round once-per-round limit is untouched by the round-start reading", () => {
+    // The round-start refresh is exempt from the marker AND clears it; a Spell
+    // already refreshed mid-round is still blocked from a SECOND mid-round
+    // refresh in the same round.
+    let state = polishMapGame("polish-book-round-start-marker");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+
+    expect(polishBookSpellRefreshBlocked(state, "p1", "spell.haste", state.players.p1)).toBe(
+      "already-refreshed"
+    );
+    // The round start ignores the marker, refreshes, and then wipes it.
+    state = playOutRound(state);
+    expect(state.players.p1.spellBook).toContain("spell.haste");
+    expect(state.players.p1.polishSpellsRefreshedThisRound ?? []).toEqual([]);
   });
 });
 

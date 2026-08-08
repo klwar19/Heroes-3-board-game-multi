@@ -133,9 +133,8 @@ import {
   eventZoneMatches,
   gainOwnedCard,
   isOwnedSpellCard,
-  polishBookSpellEffectIsLive,
+  partitionPolishBookAtRoundStart,
   polishSpellBookEnabled,
-  refreshablePolishUsedSpells,
   removeCardFromPlayerZone,
   type PolishCardZone
 } from "./polish-spell-book";
@@ -15579,15 +15578,20 @@ export function startAdventureRound(state: GameState): void {
   }
 
   // Polish Spell Book: the whole USED side refreshes — but a Spell whose cast's
-  // effect is STILL LIVE ("in effect", e.g. a Water Walk that lasts until its
-  // caster's turn starts) is untouchable and stays used until it ends. Runs AFTER
+  // effect is STILL LIVE ("in effect", e.g. a combat-long Haste that somehow
+  // outlived its fight) is untouchable and stays used until it ends. Runs AFTER
   // the round-end expiry above so a round-scoped Book Spell refreshes in the same
   // round start its effect ends in.
+  //
+  // A "this turn" effect (Water Walk / Fly) is NOT live for this read even though
+  // `expireEffectsForTurnEnd` has not run yet — see
+  // `polishBookSpellEffectIsLive`'s `atRoundStart` note. Without that the Spell
+  // stayed used for the whole new round and only came back one round late.
   //
   // This whole-side refresh IS the round mechanism, so the once-per-round
   // mid-round limit ("a single spell can be refreshed only once per round")
   // neither blocks it nor is fed by it: it deliberately reads the marker-free
-  // `refreshablePolishUsedSpells` (never the mid-round twin), and only AFTER
+  // `partitionPolishBookAtRoundStart` (never the mid-round twin), and only AFTER
   // refreshing does it wipe every player's markers for the new round. The order
   // matters — clearing first would make the exemption untestable.
   if (houseRuleEnabled(state, "polish-spell-book")) {
@@ -15595,14 +15599,12 @@ export function startAdventureRound(state: GameState): void {
       if (player.id === NEUTRAL_PLAYER_ID) {
         continue;
       }
-      const refreshable = player.spellBookUsed?.length
-        ? refreshablePolishUsedSpells(state, player)
-        : [];
-      if (refreshable.length > 0) {
-        player.spellBook.push(...refreshable);
-        player.spellBookUsed = (player.spellBookUsed ?? []).filter((cardId) =>
-          polishBookSpellEffectIsLive(state, player.id, cardId, player)
-        );
+      if (player.spellBookUsed?.length) {
+        const { refresh, stillInEffect } = partitionPolishBookAtRoundStart(state, player);
+        if (refresh.length > 0) {
+          player.spellBook.push(...refresh);
+          player.spellBookUsed = stillInEffect;
+        }
       }
       clearPolishSpellRefreshMarkers(player);
     }
