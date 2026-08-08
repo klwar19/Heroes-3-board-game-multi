@@ -11,7 +11,7 @@
  * the whole feature must render NOTHING on a default table.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import {
   applyAction,
   artifactSetPowerOffers,
@@ -30,7 +30,9 @@ import {
 } from "@/engine";
 import { CardFrame } from "./seats";
 import { ArtifactSetIconsProvider } from "./artifact-set-badge";
-import { CommandDock, COMMAND_ACTION_TYPES } from "./board";
+import { artifactSetPowerGroups } from "./artifact-set-powers";
+import { BattlefieldBoard, CommandDock, COMMAND_ACTION_TYPES } from "./board";
+import { CardZoomProvider, useCardZoom } from "./zoom";
 import { ArtifactSetPanel, artifactSetPanelSeats } from "@/components/adventure/artifact-set-panel";
 import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
 import { PromptTray } from "@/components/adventure/screen";
@@ -81,9 +83,20 @@ function ownOnly(state: GameState, cards: CardId[], playerId = "p1"): GameState 
 }
 
 /** Stage a real p1-vs-neutral combat so the combat tiers become offers. */
-function stageCombat(state: GameState): CombatState {
+function stageCombat(state: GameState, ownUnitCount = 1): CombatState {
   const overrides = unitSideRuleOverrides(state);
   const units: CombatState["units"] = {};
+  for (let index = 1; index < ownUnitCount; index += 1) {
+    const extra = makeCombatUnitFromArmy(
+      { id: `own_${index}`, unitDefId: "castle.marksmen", side: "few" },
+      "p1",
+      `u_own_${index}`,
+      index,
+      "legacy",
+      overrides
+    )!;
+    units[extra.id] = extra;
+  }
   const mine = makeCombatUnitFromArmy(
     { id: "own_0", unitDefId: "castle.halberdiers", side: "few" },
     "p1",
@@ -229,6 +242,60 @@ describe("Set Artifacts UI — the set icon on member cards", () => {
 });
 
 // ===========================================================================
+// 2b. SET ICON on the ENLARGED (zoom) card — where a card is actually studied
+// ===========================================================================
+
+describe("Set Artifacts UI — the set icon on the enlarged card", () => {
+  /** A one-button harness that zooms `cardId` through the real provider. */
+  function ZoomOpener({ cardId }: { cardId: string }) {
+    const zoom = useCardZoom();
+    return (
+      <button onClick={() => zoom.zoomCard(cardId)} type="button">
+        open
+      </button>
+    );
+  }
+
+  function renderZoom(enabled: boolean, cardId: string) {
+    const view = render(
+      <ArtifactSetIconsProvider enabled={enabled}>
+        <CardZoomProvider>
+          <ZoomOpener cardId={cardId} />
+        </CardZoomProvider>
+      </ArtifactSetIconsProvider>
+    );
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    return view;
+  }
+
+  it("wears the set icon on the zoomed card face while the rule is on", () => {
+    const { container } = renderZoom(true, AA_MEMBERS[0]);
+    // The enlarged reader really opened…
+    expect(container.querySelector(".zoomCardStage")).toBeTruthy();
+    const badge = container.querySelector<HTMLImageElement>(".zoomSetFrame .cardSetIcon");
+    expect(badge, "the enlarged member card must wear its set icon").toBeTruthy();
+    expect(badge!.getAttribute("data-set-id")).toBe("angelic_alliance");
+    expect(badge!.getAttribute("src")).toContain("/assets/set-artifacts/icons/angelic_alliance.webp");
+    // …and the card face itself is untouched.
+    expect(container.querySelector("img.zoomCardImage")).toBeTruthy();
+  });
+
+  it("CONTROL: rule OFF ⇒ the same zoomed card has no badge and no wrapper", () => {
+    const { container } = renderZoom(false, AA_MEMBERS[0]);
+    expect(container.querySelector(".zoomCardStage")).toBeTruthy();
+    expect(container.querySelector(".cardSetIcon")).toBeNull();
+    expect(container.querySelector(".zoomSetFrame")).toBeNull();
+    expect(container.querySelector("img.zoomCardImage")).toBeTruthy();
+  });
+
+  it("CONTROL: a NON-member artifact zooms without a badge even with the rule on", () => {
+    const { container } = renderZoom(true, "artifact.angel_wings");
+    expect(container.querySelector(".zoomCardStage")).toBeTruthy();
+    expect(container.querySelector(".cardSetIcon")).toBeNull();
+  });
+});
+
+// ===========================================================================
 // 3. ACTION SURFACES — every offer the engine makes must be clickable
 // ===========================================================================
 
@@ -289,49 +356,158 @@ describe("Set Artifacts UI — MAP offers reach the hero actions dock", () => {
   });
 });
 
-describe("Set Artifacts UI — COMBAT offers reach the command dock", () => {
-  it("renders the round-1 unit selection as a command button and dispatches it", () => {
-    let state = makeState(true, "set-ui-combat-select");
-    state = ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);
-    stageCombat(state);
+describe("Set Artifacts UI — COMBAT offers reach ONE dock entry, then the board", () => {
+  /** Dock + battlefield under the SAME arming provider, exactly as page.tsx. */
+  function renderTable(state: GameState, legalActions: LegalAction[], onAction: (action: GameAction) => void) {
+    return render(
+      <ArtifactSetIconsProvider enabled>
+        <CardZoomProvider>
+          <CommandDock legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />
+          <BattlefieldBoard
+            legalActions={legalActions}
+            onAction={onAction}
+            onInspect={() => {}}
+            selectedCardAction={null}
+            state={state}
+            viewerPlayerId="p1"
+          />
+        </CardZoomProvider>
+      </ArtifactSetIconsProvider>
+    );
+  }
+
+  it("collapses every set offer behind ONE entry button — no flat per-target buttons", () => {
+    let state = makeState(true, "set-ui-combat-entry");
+    state = ownOnly(state, [...AA_MEMBERS]);
+    stageCombat(state, 2);
 
     const legalActions = getLegalActions(state, "p1");
-    const select = legalActions.find((entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT");
-    expect(select, "the engine must offer the Angelic Alliance selection in round 1").toBeTruthy();
-    // The dock is the ONLY surface — an offer type it does not carry is an
-    // orphan (the Polish Wait / Surrender precedent).
-    expect(COMMAND_ACTION_TYPES.has(select!.action.type)).toBe(true);
+    const setOffers = legalActions.filter(
+      (entry) =>
+        entry.action.type === "SELECT_ARTIFACT_SET_UNIT" || entry.action.type === "USE_ARTIFACT_SET_POWER"
+    );
+    expect(setOffers.length, "two own units ⇒ the selection tier alone is 2 offers").toBeGreaterThan(1);
 
-    const onAction = vi.fn();
-    render(<CommandDock legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />);
-    fireEvent.click(screen.getByRole("button", { name: /Angelic Alliance: select/i }));
-    expect(onAction).toHaveBeenCalledWith(select!.action);
+    render(<CommandDock legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+
+    // ONE entry, and NOT one look-alike button per (power x target) any more.
+    expect(screen.getByRole("button", { name: /Set powers \(\d+\)/ })).toBeTruthy();
+    for (const offer of setOffers) {
+      expect(screen.queryByRole("button", { name: offer.label }), `${offer.label} must not be a flat dock button`).toBeNull();
+    }
+    // The dock's own filter must not carry the two types back (that IS the
+    // regression: re-adding them re-floods the dock).
+    expect(COMMAND_ACTION_TYPES.has("SELECT_ARTIFACT_SET_UNIT")).toBe(false);
+    expect(COMMAND_ACTION_TYPES.has("USE_ARTIFACT_SET_POWER")).toBe(false);
   });
 
-  it("renders a once-per-combat tier power as a command button and dispatches it", () => {
-    let state = makeState(true, "set-ui-combat-power");
-    // Power of the Dragon Father prints no selection tier, so its tier-2
-    // advantage roll is offered straight away against a freely-picked own unit.
+  it("the window lists each distinct POWER once, not once per target unit", () => {
+    let state = makeState(true, "set-ui-combat-window");
+    state = ownOnly(state, [...AA_MEMBERS]);
+    const combat = stageCombat(state, 2);
+    state.players.p1.combatStats = {
+      ...(state.players.p1.combatStats ?? {}),
+      artifactSetSelections: { angelic_alliance: "u_own_0" }
+    } as never;
+    combat.round = 1;
+
+    const legalActions = getLegalActions(state, "p1");
+    const groups = artifactSetPowerGroups(legalActions);
+    const setOffers = legalActions.filter(
+      (entry) =>
+        entry.action.type === "SELECT_ARTIFACT_SET_UNIT" || entry.action.type === "USE_ARTIFACT_SET_POWER"
+    );
+    // The whole point: many offers, few POWERS.
+    expect(setOffers.length).toBeGreaterThan(groups.length);
+    expect(groups.every((group) => group.offers.length >= 1)).toBe(true);
+    // Nothing is dropped by the grouping.
+    expect(groups.reduce((sum, group) => sum + group.offers.length, 0)).toBe(setOffers.length);
+
+    render(<CommandDock legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+    const rows = document.querySelectorAll(".setPowerWindow .setPowerRow");
+    expect(rows).toHaveLength(groups.length);
+    for (const group of groups) {
+      expect(document.querySelector(`.setPowerRow[data-power-key="${group.key}"]`)).toBeTruthy();
+    }
+  });
+
+  it("a SINGLE-target power resolves with one click, dispatching the exact engine action", () => {
+    let state = makeState(true, "set-ui-combat-single");
+    // Power of the Dragon Father prints no selection tier; with ONE own unit its
+    // tier-2 advantage roll has exactly one legal target.
     state = ownOnly(state, membersOf("power_of_the_dragon_father").slice(0, 2));
     stageCombat(state);
 
     const legalActions = getLegalActions(state, "p1");
-    const use = legalActions.find((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER");
-    expect(use, "the engine must offer the PofDF tier-2 power").toBeTruthy();
-    expect(COMMAND_ACTION_TYPES.has(use!.action.type)).toBe(true);
+    const use = legalActions.find((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER")!;
+    expect(use).toBeTruthy();
 
     const onAction = vi.fn();
     render(<CommandDock legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />);
-    fireEvent.click(screen.getByRole("button", { name: /Power of the Dragon Father/i }));
-    expect(onAction).toHaveBeenCalledWith(use!.action);
+    fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: use.label }));
+    expect(onAction).toHaveBeenCalledWith(use.action);
+    // …and the window closed behind it.
+    expect(document.querySelector(".setPowerWindow")).toBeNull();
   });
 
-  it("EVERY combat offer the engine makes is a rendered, clickable button (no orphans)", () => {
+  it("a MULTI-target power ARMS the board: the legal units glow and a click uses that unit's own offer", () => {
+    let state = makeState(true, "set-ui-combat-arm");
+    state = ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);
+    stageCombat(state, 2);
+
+    const legalActions = getLegalActions(state, "p1");
+    const selects = legalActions.filter((entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT");
+    expect(selects.length, "two own units ⇒ two selection offers").toBe(2);
+
+    const onAction = vi.fn();
+    const { container } = renderTable(state, legalActions, onAction);
+
+    // Nothing glows before arming.
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /choose one of 2 units on the battlefield/i }));
+    // The window steps out of the way so the board can be read and clicked.
+    expect(document.querySelector(".setPowerWindow")).toBeNull();
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(2);
+    expect(screen.getByLabelText("Set power aiming")).toBeTruthy();
+
+    // Click the SECOND unit — the dispatched payload must be that unit's offer.
+    const second = selects.find(
+      (entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT" && entry.action.unitId === "u_own_1"
+    )!;
+    fireEvent.click(container.querySelector('.battleCell.artifactSetTarget[data-fx-unit="u_own_1"]')!);
+    expect(onAction).toHaveBeenCalledWith(second.action);
+    // The aim is spent — the glow is gone.
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(0);
+  });
+
+  it("Cancel disarms the aim without dispatching anything", () => {
+    let state = makeState(true, "set-ui-combat-cancel");
+    state = ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);
+    stageCombat(state, 2);
+
+    const legalActions = getLegalActions(state, "p1");
+    const onAction = vi.fn();
+    const { container } = renderTable(state, legalActions, onAction);
+
+    fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /choose one of 2 units on the battlefield/i }));
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(2);
+
+    fireEvent.click(within(screen.getByLabelText("Set power aiming")).getByRole("button", { name: "Cancel" }));
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(0);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("EVERY combat offer the engine makes stays reachable (no orphans)", () => {
     let state = makeState(true, "set-ui-combat-sweep");
-    // Full Angelic Alliance: the selection tier plus four bound tiers.
+    // Full Angelic Alliance, the pick already made, TWO own units — so the sweep
+    // covers both action types, single-target rows AND multi-target aiming.
     state = ownOnly(state, [...AA_MEMBERS]);
-    const combat = stageCombat(state);
-    // Make the tier-2 pick so the "selected-own" tiers 3-6 also become offers.
+    const combat = stageCombat(state, 2);
     state.players.p1.combatStats = {
       ...(state.players.p1.combatStats ?? {}),
       artifactSetSelections: { angelic_alliance: "u_own_0" }
@@ -343,27 +519,39 @@ describe("Set Artifacts UI — COMBAT offers reach the command dock", () => {
       (entry) =>
         entry.action.type === "SELECT_ARTIFACT_SET_UNIT" || entry.action.type === "USE_ARTIFACT_SET_POWER"
     );
-    // A full 6-piece Angelic Alliance with the pick already made offers the
-    // round-1 selection PLUS the four bound tiers (3-6) — so this really sweeps
-    // both action types and both offer shapes, not just one button.
-    expect(setOffers.length, "fixture must produce the selection plus 4 bound tiers").toBe(5);
+    expect(setOffers.length, "fixture must produce the 2 selection offers plus the bound tiers").toBe(6);
     // Cross-check against the shared derivation the reducer validates with.
     expect(artifactSetPowerOffers(state, "p1").length).toBe(setOffers.length);
 
-    const onAction = vi.fn();
-    render(<CommandDock legalActions={legalActions} onAction={onAction} state={state} viewerPlayerId="p1" />);
+    const dispatched: GameAction[] = [];
     for (const offer of setOffers) {
-      const button = screen.getByRole("button", { name: offer.label });
-      fireEvent.click(button);
+      cleanup();
+      const onAction = vi.fn((action: GameAction) => void dispatched.push(action));
+      const { container } = renderTable(state, legalActions, onAction);
+      fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+      const group = artifactSetPowerGroups(legalActions).find((entry) => entry.offers.includes(offer))!;
+      const row = document.querySelector<HTMLElement>(`.setPowerRow[data-power-key="${group.key}"]`)!;
+      expect(row, `${offer.label} has no power row`).toBeTruthy();
+      fireEvent.click(row);
+      if (group.targets.size > 1) {
+        // Aimed on the board: click THIS offer's own unit.
+        const unitId =
+          offer.action.type === "SELECT_ARTIFACT_SET_UNIT" || offer.action.type === "USE_ARTIFACT_SET_POWER"
+            ? offer.action.unitId
+            : undefined;
+        const cell = container.querySelector(`.battleCell.artifactSetTarget[data-fx-unit="${unitId}"]`);
+        expect(cell, `${offer.label} is not clickable on the board`).toBeTruthy();
+        fireEvent.click(cell!);
+      }
       expect(onAction).toHaveBeenLastCalledWith(offer.action);
     }
-    expect(onAction).toHaveBeenCalledTimes(setOffers.length);
+    expect(dispatched).toHaveLength(setOffers.length);
   });
 
-  it("CONTROL: rule OFF ⇒ the same combat offers nothing and the dock shows no set button", () => {
+  it("CONTROL: rule OFF ⇒ the same combat offers nothing and the dock shows no set entry", () => {
     let state = makeState(false, "set-ui-combat-off");
     state = ownOnly(state, [...AA_MEMBERS]);
-    stageCombat(state);
+    stageCombat(state, 2);
 
     const legalActions = getLegalActions(state, "p1");
     expect(
@@ -373,6 +561,7 @@ describe("Set Artifacts UI — COMBAT offers reach the command dock", () => {
       )
     ).toBe(false);
     render(<CommandDock legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+    expect(screen.queryByRole("button", { name: /Set powers/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Angelic Alliance/i })).toBeNull();
   });
 });
@@ -411,14 +600,11 @@ describe("Set Artifacts UI — the Diplomat's Cloak scry window", () => {
 /** Reachability sweep: the two action types have a surface on their own screen. */
 describe("Set Artifacts UI — no orphan action types", () => {
   it("both engine action types are covered by a rendered surface", () => {
-    const surfaced: Record<string, string> = {
-      SELECT_ARTIFACT_SET_UNIT: "combat command dock",
-      USE_ARTIFACT_SET_POWER: "combat command dock + map hero-actions dock"
-    };
-    // Combat half: COMMAND_ACTION_TYPES is the dock's only filter.
-    for (const type of Object.keys(surfaced)) {
-      expect(COMMAND_ACTION_TYPES.has(type as GameAction["type"]), `${type} has no dock entry`).toBe(true);
-    }
+    // Combat half: BOTH types are deliberately OUT of the dock's flat filter —
+    // they reach the player through the set-powers window / board aiming, which
+    // the sweep above exercises offer-by-offer.
+    expect(COMMAND_ACTION_TYPES.has("SELECT_ARTIFACT_SET_UNIT")).toBe(false);
+    expect(COMMAND_ACTION_TYPES.has("USE_ARTIFACT_SET_POWER")).toBe(false);
     // Map half: only USE_ARTIFACT_SET_POWER ever reaches a map action list, and
     // the dock renders it (asserted for real above).
     const mapOnly: LegalAction[] = [

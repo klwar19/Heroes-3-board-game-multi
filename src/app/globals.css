@@ -1538,6 +1538,29 @@ button.battleCell {
   outline-offset: -3px;
 }
 
+/* Polish Set Artifacts: the legal units of an ARMED set power (aimed from the
+   set-powers window instead of one dock button per unit). Gold, so it reads as
+   an artifact effect rather than a spell (purple) or a mend (green). */
+.battleCell.artifactSetTarget::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 2px solid rgb(233 190 104 / 94%);
+  border-radius: 4px;
+  box-shadow:
+    inset 0 0 18px rgb(233 190 104 / 32%),
+    0 0 18px rgb(233 190 104 / 46%);
+  pointer-events: none;
+  animation: pulseTarget 1.2s ease-in-out infinite;
+}
+
+.battleCell.artifactSetTarget:hover,
+.battleCell.artifactSetTarget:focus-visible {
+  background: rgb(233 190 104 / 14%);
+  outline: 3px solid rgb(247 216 150 / 62%);
+  outline-offset: -3px;
+}
+
 /* Deployment drop zones while dragging units from the placement panel. */
 .battleCell.dropTarget {
   background: rgb(124 186 110 / 9%);
@@ -1772,6 +1795,45 @@ button.battleCell {
 .boardStatChange.defense { color: #6ba7ff; }
 .boardStatChange.health { color: #ffd65c; }
 .boardStatChange.speed { color: #65d487; }
+
+/* "What changed" tokens on the card's OUTER edge — the initiative rail's
+   treatment, so a live stat swing reads at a glance without opening the
+   inspector. Deliberately OUTSIDE the card art (right of the card, inside the
+   cell's own slack): it can never cover the printed stat rail on the card's
+   left edge, the name plate, or the HUD pill (whose 76% cap is a contract). */
+.boardCardStatTokens {
+  position: absolute;
+  left: 100%;
+  top: 4%;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 2px;
+  pointer-events: none;
+}
+
+.boardStatToken {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 2px;
+  border: 1px solid rgb(0 0 0 / 65%);
+  border-radius: 4px;
+  background: rgb(12 11 9 / 92%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 55%);
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.boardStatToken svg { width: 8px; height: 8px; }
+.boardStatToken.attack { color: #ff695c; border-color: rgb(255 105 92 / 55%); }
+.boardStatToken.defense { color: #6ba7ff; border-color: rgb(107 167 255 / 55%); }
+.boardStatToken.health { color: #ffd65c; border-color: rgb(255 214 92 / 55%); }
+.boardStatToken.speed { color: #65d487; border-color: rgb(101 212 135 / 55%); }
+.boardStatToken.down { filter: saturate(0.75); }
 
 .unitActivationBadge {
   position: absolute;
@@ -15410,6 +15472,104 @@ button.setupHubNavItem:hover {
   aspect-ratio: 1;
   pointer-events: none;
   filter: drop-shadow(0 1px 2px rgb(0 0 0 / 85%));
+}
+
+/* The enlarged card reader wears the same badge, sized up for the big face. */
+.cardSetFrame.zoomSetFrame {
+  position: relative;
+  align-self: flex-start;
+  display: inline-flex;
+}
+
+.zoomSetFrame .cardSetIcon {
+  width: 18%;
+  max-width: 68px;
+}
+
+/* ---- the combat set-powers window (one entry button, one row per power) --- */
+.commandButton.setPowerButton,
+.commandButton.setPowerCancelButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.setPowerIcon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 75%));
+}
+
+/* Two classes on purpose: `.heroSystemModal` sets width later in this file, so
+   a lone `.setPowerWindow` would lose the cascade at equal specificity. */
+.heroSystemModal.setPowerWindow {
+  width: min(620px, 94vw);
+}
+
+.setPowerHint {
+  margin: 0;
+  padding: 14px 28px 0;
+  color: #cdbb94;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.setPowerList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 28px 24px;
+}
+
+.setPowerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--mod-line);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 26%);
+  color: #ece2cc;
+  text-align: left;
+  cursor: pointer;
+}
+
+.setPowerRow:hover,
+.setPowerRow:focus-visible {
+  border-color: rgb(233 190 104 / 80%);
+  background: rgb(233 190 104 / 12%);
+}
+
+.setPowerRow .setPowerIcon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+
+.setPowerRowText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setPowerRowText strong {
+  font-size: 14px;
+  color: #f3e2b6;
+}
+
+.setPowerRowEffect {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.setPowerRowMeta {
+  color: #b7a582;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 /* The always-on set status beside the Ongoing / Permanent tray. */

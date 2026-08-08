@@ -3,6 +3,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { ARTIFACT_SET_BY_MEMBER, artifactSetDefinition, artifactSetIconImage } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
+import { ArtifactSetArmingProvider } from "./artifact-set-powers";
 
 // ---------------------------------------------------------------------------
 // Polish Set Artifacts — the set ICON worn in the corner of every member
@@ -18,9 +19,21 @@ import { assetUrl } from "@/lib/asset-url";
 
 const ArtifactSetIconsContext = createContext(false);
 
-/** Publish "the Polish Set Artifacts rule is on" to every card face below. */
+/**
+ * Publish "the Polish Set Artifacts rule is on" to every card face below — and,
+ * in the same wrapper, the ONE board-arming slot the combat command dock and the
+ * battlefield share (a set power with several unit targets is aimed on the
+ * board, not listed as one button per unit). Both table screens already mount
+ * this provider around their whole tree, so folding the arming slot in here
+ * keeps a single mount point and cannot leave one surface armed and the other
+ * unaware.
+ */
 export function ArtifactSetIconsProvider({ children, enabled }: { children: ReactNode; enabled: boolean }) {
-  return <ArtifactSetIconsContext.Provider value={enabled}>{children}</ArtifactSetIconsContext.Provider>;
+  return (
+    <ArtifactSetIconsContext.Provider value={enabled}>
+      <ArtifactSetArmingProvider>{children}</ArtifactSetArmingProvider>
+    </ArtifactSetIconsContext.Provider>
+  );
 }
 
 export function useArtifactSetIconsEnabled(): boolean {
