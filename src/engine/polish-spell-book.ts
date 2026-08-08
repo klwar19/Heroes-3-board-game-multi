@@ -74,14 +74,27 @@ export function polishBookSpellEffectIsLive(
   state: Pick<GameState, "activeEffects">,
   playerId: PlayerId,
   cardId: CardId,
-  player?: PlayerState
+  player?: PlayerState,
+  options?: { atRoundStart?: boolean }
 ): boolean {
+  // ROUND-START reading (`atRoundStart`): a `current-turn` effect of THIS
+  // player is already over. The round only wraps once every seat's turn has
+  // ended, and the wrap runs `startAdventureRound` (this refresh) and THEN
+  // `startPlayerTurn`, which is where `expireEffectsForTurnEnd` actually drops
+  // the effect — so at this exact moment a spent Water Walk / Fly still reads
+  // "live" although its owner can never benefit from it again. Counting it
+  // withheld the refresh for the WHOLE new round (the Spell only came back one
+  // round late, at the NEXT round start). Only an effect stamped to expire at
+  // the BOOK OWNER's own turn end is discounted; a foreign-owned or
+  // longer-lived effect still blocks, exactly as before.
+  const turnScopedIsOver = options?.atRoundStart === true;
   if (
     state.activeEffects.some(
       (effect) =>
         effect.source.type === "card" &&
         effect.source.cardId === cardId &&
-        (effect.source.controllerId === playerId || effect.controllerId === playerId)
+        (effect.source.controllerId === playerId || effect.controllerId === playerId) &&
+        !(turnScopedIsOver && effect.expiresAtTurnEndPlayerId === playerId)
     )
   ) {
     return true;
@@ -90,17 +103,28 @@ export function polishBookSpellEffectIsLive(
 }
 
 /**
- * Used Book Spells the ROUND-START whole-side refresh may return (only the
- * "in effect" gate applies). The once-per-round limit below deliberately does
- * NOT apply here: the round start IS the round mechanism.
+ * The ROUND-START whole-used-side refresh, as ONE partition: which used Book
+ * Spells go back to the refreshed side ("only the in-effect gate applies" — the
+ * once-per-round mid-round limit deliberately does NOT, the round start IS the
+ * round mechanism) and which stay used. Both halves come from a single
+ * `polishBookSpellEffectIsLive(..., { atRoundStart: true })` read, so the
+ * refresh and the leftover list can never disagree (they used to be two
+ * independent filters at the call site).
  */
-export function refreshablePolishUsedSpells(
+export function partitionPolishBookAtRoundStart(
   state: Pick<GameState, "activeEffects">,
   player: PlayerState
-): CardId[] {
-  return (player.spellBookUsed ?? []).filter(
-    (cardId) => !polishBookSpellEffectIsLive(state, player.id, cardId, player)
-  );
+): { refresh: CardId[]; stillInEffect: CardId[] } {
+  const refresh: CardId[] = [];
+  const stillInEffect: CardId[] = [];
+  for (const cardId of player.spellBookUsed ?? []) {
+    if (polishBookSpellEffectIsLive(state, player.id, cardId, player, { atRoundStart: true })) {
+      stillInEffect.push(cardId);
+    } else {
+      refresh.push(cardId);
+    }
+  }
+  return { refresh, stillInEffect };
 }
 
 /**
