@@ -108,6 +108,7 @@ export function MenuShell({
   frameless = false,
   dragonBreath = false,
   videoBackdrop,
+  videoFallback,
   className,
   as: Root = "main",
   footer
@@ -132,6 +133,8 @@ export function MenuShell({
   dragonBreath?: boolean;
   /** Optional full-bleed looping video used instead of the still art slot. */
   videoBackdrop?: string;
+  /** Still shown while the video loads and whenever motion is disabled. */
+  videoFallback?: string;
   /** Page-specific layout hook without changing the shared shell defaults. */
   className?: string;
   as?: "main" | "div";
@@ -141,6 +144,7 @@ export function MenuShell({
   useBackgroundMusic("menu");
   const art = uiArtSlot(backdrop);
   const brand = uiArtSlot("game-logo");
+  const stillBackdrop = videoFallback ?? art.src;
 
   return (
     <Root className={`menuShellRoot${className ? ` ${className}` : ""}`}>
@@ -149,7 +153,7 @@ export function MenuShell({
           paint — a slow/failed load, an unsupported codec, or reduced motion
           (where CSS hides the video). It costs no extra request, being the same
           file the video already fetches as its `poster`. */}
-      <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
+      <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(stillBackdrop)} />
       {videoBackdrop ? (
         <video
           aria-hidden
@@ -158,7 +162,7 @@ export function MenuShell({
           loop
           muted
           playsInline
-          poster={assetUrl(art.src)}
+          poster={assetUrl(stillBackdrop)}
           preload="auto"
           src={assetUrl(videoBackdrop)}
         />

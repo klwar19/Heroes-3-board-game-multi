@@ -107,11 +107,12 @@ describe("/menu (main menu, guest-only build)", () => {
     expect(video?.hasAttribute("autoplay")).toBe(true);
     expect(video?.hasAttribute("loop")).toBe(true);
     expect(video?.hasAttribute("playsinline")).toBe(true);
-    expect(video?.getAttribute("src")).toContain("/assets/ui/menu/main-menu-loop-v5.mp4");
-    expect(video?.getAttribute("poster")).toBeTruthy();
+    expect(video?.getAttribute("src")).toContain("/assets/ui/menu/main-menu-loop-v6.mp4");
+    expect(video?.getAttribute("poster")).toContain("/assets/ui/menu/main-menu-fallback.webp");
 
     const still = document.querySelector("img.menuShellBackdrop");
     expect(still).toBeTruthy();
+    expect(still?.getAttribute("src")).toContain("/assets/ui/menu/main-menu-fallback.webp");
     // The still is BEHIND the video (earlier in document order = painted under).
     expect((still as Element).compareDocumentPosition(video as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

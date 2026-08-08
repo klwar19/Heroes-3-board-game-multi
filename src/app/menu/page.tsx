@@ -104,7 +104,8 @@ export default function MenuPage() {
         }
         frameless
         logo
-        videoBackdrop="/assets/ui/menu/main-menu-loop-v5.mp4"
+        videoBackdrop="/assets/ui/menu/main-menu-loop-v6.mp4"
+        videoFallback="/assets/ui/menu/main-menu-fallback.webp"
       >
         <nav aria-label={view === "main" ? "Main menu" : `${view} menu`} className={`menuNav menuNav-${view}`}>
           {view === "main" ? (

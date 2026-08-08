@@ -40,7 +40,7 @@ const MAX_BUTTON_BYTES = 96 * 1024;
 /** Whole-set ceiling — all 13 are eagerly preloaded on mount. */
 const MAX_BUTTON_SET_BYTES = 900 * 1024;
 
-const VIDEO_URL = "/assets/ui/menu/main-menu-loop-v5.mp4";
+const VIDEO_URL = "/assets/ui/menu/main-menu-loop-v6.mp4";
 const MAX_VIDEO_BYTES = 6 * 1024 * 1024;
 
 describe("main-menu button art", () => {
