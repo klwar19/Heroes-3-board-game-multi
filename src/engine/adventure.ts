@@ -14892,11 +14892,39 @@ export function refreshRoundTokens(state: GameState): void {
  *
  * The lock is therefore ORDER-SENSITIVE, and the PvP pre-battle prep window is
  * the one place a purchase lands on the wrong side of it (the attacker has
- * already moved, the defender has not moved at all) — so `populationAction`
- * commits the window itself when a purchase is made with a combat open.
+ * already moved, the defender has not moved at all) — so the prep window closes
+ * the Population window itself, at the moment the shopping ends
+ * (`commitPopulationAfterCombatPrep`), NOT on the first purchase.
  */
 export function commitPopulationOnMove(state: GameState, controllerId: PlayerId): void {
-  const owner = state.players[controllerId];
+  commitPopulationWindow(state, controllerId);
+}
+
+/**
+ * Commits a player's Population action because their PvP pre-battle preparation
+ * SHOPPING WINDOW has closed — they pressed ACCEPT_COMBAT, or the fight ended
+ * (escape straight out of prep, AFK drop, give-up) without them accepting.
+ *
+ * This is the prep window's stand-in for the movement lock, which can never fire
+ * there: the ATTACKER already walked onto the enemy BEFORE buying (the move saw
+ * no purchase yet) and the DEFENDER is dragged into the fight on someone else's
+ * turn without moving at all. Without it, the round's Population action leaked
+ * PAST the battle and stayed spendable (the "I recruited right before the battle
+ * and still had the token" bug).
+ *
+ * It deliberately fires at the END of prep, not on the first purchase: while the
+ * window is open a participant may keep recruiting and reinforcing exactly like
+ * on a normal map turn (the BINH house rule). Committing on the purchase instead
+ * cut the defender off after a single buy — the "can't buy troops or reinforce
+ * after buying once when attacked" bug. See population-token-combat-prep.test.ts.
+ */
+export function commitPopulationAfterCombatPrep(state: GameState, playerId: PlayerId): void {
+  commitPopulationWindow(state, playerId);
+}
+
+/** Shared body: close the Population window iff this round already bought. */
+function commitPopulationWindow(state: GameState, playerId: PlayerId): void {
+  const owner = state.players[playerId];
   if (owner?.populationPurchasedThisRound) {
     owner.townTokens.population = false;
   }
