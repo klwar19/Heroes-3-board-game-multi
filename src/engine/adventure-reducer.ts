@@ -72,6 +72,7 @@ import {
   markAbilityEmpowered,
   classifyHeroStep,
   commitPopulationOnMove,
+  commitPopulationAfterCombatPrep,
   consumeRecruitVoucherFor,
   neutralRecruitCost,
   heldRecruitDiscountCards,
@@ -9165,6 +9166,12 @@ export function acceptCombat(state: GameState, action: Extract<GameAction, { typ
 
   combat.prep.accepted.push(action.playerId);
   appendEvent(state, { type: "COMBAT_PREP_ACCEPTED", playerId: action.playerId });
+  // Readying up ENDS this participant's shopping: `inCombatPrep` is false for
+  // them from here on, so no further town action is offered. Close the Population
+  // window now if they bought this round — in prep the movement lock can never do
+  // it (see commitPopulationAfterCombatPrep), and without this the round's
+  // Population action would leak past the battle.
+  commitPopulationAfterCombatPrep(state, action.playerId);
 
   if (!combatPrepParticipants(combat).every((id) => combat.prep!.accepted.includes(id))) {
     // Still waiting on the other participant — keep the prep window open.
@@ -11039,6 +11046,17 @@ export function finalizeAdventureCombat(state: GameState): void {
   const context = combat.context;
   const outcome = combat.outcome;
 
+  // The battle is over, so every participant's PvP prep shopping window is too:
+  // commit each side's Population action if they bought this round. ACCEPT_COMBAT
+  // already does this for a side that readied up; this is the backstop for a fight
+  // that ended straight out of the prep window (Retreat / Surrender / give-up /
+  // AFK drop), where nobody accepted. Idempotent, and a no-op for a player who
+  // bought nothing or whose window is already spent.
+  if (context.kind === "player") {
+    commitPopulationAfterCombatPrep(state, combat.attackerPlayerId);
+    commitPopulationAfterCombatPrep(state, combat.defenderPlayerId);
+  }
+
   // Single-player smoothing cleanup: the computer's temporary Empowered
   // Attack/Defense cards are removed from the game before ANY outcome branch
   // (win, retreat, surrender) — they are never kept past the battle.
@@ -12746,21 +12764,17 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
   // the movement lock — the next time one of this player's heroes moves, the
   // Population window closes (see commitPopulationOnMove).
   player.populationPurchasedThisRound = true;
-  // …with ONE exception: a purchase made inside the PvP pre-battle preparation
-  // window commits the Population window AT ONCE. The movement lock cannot close
-  // it there, because the purchase lands on the wrong side of the move — the
-  // ATTACKER already walked onto the enemy before buying (commitPopulationOnMove
-  // has been and gone, having seen no purchase yet) and the DEFENDER is dragged
-  // into the fight on someone else's turn without moving at all. Without this the
-  // round's Population action leaked PAST the battle and stayed spendable (the
-  // reported "I recruited right before the battle and still had the token" bug).
-  // Combat is the definitive end of shopping: the hero is in a battle, not at
-  // home in its town. The combat guard above already restricts a purchase with
-  // `state.combat` set to a prep-window participant, so no other window can
-  // reach this. See population-token-combat-prep.test.ts.
-  if (state.combat) {
-    player.townTokens.population = false;
-  }
+  // A purchase inside the PvP pre-battle preparation window does NOT close the
+  // window either: that window is the participant's shopping window and it stays
+  // open for unlimited recruiting/reinforcing, exactly like a normal map turn.
+  // (Committing here instead cut a defender off after a single buy — the reported
+  // "when player gets attacked, can't buy troops or reinforce after buying once".)
+  // The movement lock cannot fire in prep — the ATTACKER already walked onto the
+  // enemy before buying and the DEFENDER never moved at all — so the window is
+  // committed when the SHOPPING ENDS instead: on ACCEPT_COMBAT, and as a backstop
+  // when the fight ends without accepting (`commitPopulationAfterCombatPrep`).
+  // That is what keeps the round's Population action from leaking past the battle.
+  // See population-token-combat-prep.test.ts.
 
   for (let index = 0; index < action.purchases.length; index += 1) {
     const purchase = action.purchases[index];
