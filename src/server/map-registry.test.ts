@@ -320,6 +320,35 @@ describe("sanitizeSharedMap", () => {
     });
   });
 
+  it("round-trips the Ⅱ–Ⅲ tile type-choice preset through save/load (garbage kinds dropped)", () => {
+    const record = sanitizeSharedMap(
+      {
+        id: "m",
+        tiles: [{ row: 1, col: 1, group: "near", faceDown: true }],
+        preset: {
+          farTileTypeChoice: true,
+          // Designer order + a duplicate + a bogus kind: only the two real kinds
+          // survive, deduped and in the canonical order.
+          farTileTypeChoices: ["valuables", "not-a-kind", "gold", "valuables"]
+        }
+      } as unknown as Parameters<typeof sanitizeSharedMap>[0],
+      1
+    );
+    expect(record!.preset?.farTileTypeChoice).toBe(true);
+    expect(record!.preset?.farTileTypeChoices).toEqual(["gold", "valuables"]);
+
+    // CONTROL: a preset with only bogus kinds keeps no list at all.
+    const bogus = sanitizeSharedMap(
+      {
+        id: "m2",
+        tiles: [{ row: 1, col: 1, group: "near", faceDown: true }],
+        preset: { farTileTypeChoices: ["crystal", 3] }
+      } as unknown as Parameters<typeof sanitizeSharedMap>[0],
+      1
+    );
+    expect(bogus!.preset?.farTileTypeChoices).toBeUndefined();
+  });
+
   it("preserves a map preset (resources, timed events, victory) through sanitization", () => {
     const record = sanitizeSharedMap(
       {

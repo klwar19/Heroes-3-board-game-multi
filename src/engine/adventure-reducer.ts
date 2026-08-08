@@ -37,6 +37,17 @@ import {
 import { planExcludedSecretFeatures, tilePassesSecretFilters } from "./map-preset";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
+  availableFarTileTypes,
+  FAR_TILE_TYPES,
+  FAR_TILE_TYPE_FALLBACK_FEATURE,
+  FAR_TILE_TYPE_LABELS,
+  farTileTypeMatches,
+  tileDefHasOreMine,
+  tileDefHasResourceMine,
+  tileDefHasSettlement,
+  type FarTileType
+} from "./far-tile-types";
+import {
   addArmyUnit,
   applyAstrologersHeroEmpower,
   adventurePvpTroopLoss,
@@ -3298,33 +3309,12 @@ export function canHeroImmediatelyAccessAdjacentTile(
 // independent of how many tiles any other player has opened.
 // ---------------------------------------------------------------------------
 
-/** A Ⅱ–Ⅲ tile definition that carries a Settlement field. */
-export function tileDefHasSettlement(tileDefId: string): boolean {
-  return Boolean(allTileDefinitions[tileDefId]?.fields.some((field) => field.location === "settlement"));
-}
-
-/**
- * A Ⅱ–Ⅲ tile definition that carries an ORE Mine — a `location: "mine"` field
- * whose resource is `buildingMaterials` (ore). Gold Mines and Valuables Mines do
- * NOT count: the one-time "reroll if you get a Mine tile" guarantee applies only
- * to ore Mines, never a gold or valuables Mine.
- */
-export function tileDefHasOreMine(tileDefId: string): boolean {
-  return Boolean(
-    allTileDefinitions[tileDefId]?.fields.some(
-      (field) => field.location === "mine" && field.resource === "buildingMaterials"
-    )
-  );
-}
-
-/** A Ⅱ–Ⅲ tile definition that carries a Mine of the given resource. */
-export function tileDefHasResourceMine(tileDefId: string, resource: "gold" | "valuables"): boolean {
-  return Boolean(
-    allTileDefinitions[tileDefId]?.fields.some(
-      (field) => field.location === "mine" && field.resource === resource
-    )
-  );
-}
+// The three Ⅱ–Ⅲ landmark predicates now live in the LEAF module
+// `far-tile-types.ts` so the optional Ⅱ–Ⅲ TYPE CHOICE rule classifies tiles
+// with exactly the same reads the Settlement guarantee and the Ore-Mine reroll
+// use. Re-exported here under their historical names — every import site (and
+// every existing test) is unchanged.
+export { tileDefHasSettlement, tileDefHasOreMine, tileDefHasResourceMine };
 
 /** Whether any tile still in the undrawn Ⅱ–Ⅲ pool carries a Settlement. */
 function farTilePoolHasSettlement(state: GameState): boolean {
@@ -3338,7 +3328,7 @@ function farTilePoolHasSettlement(state: GameState): boolean {
  * sequence (mirrors combat dice `scriptedRolls`). Returns undefined if the pool
  * is empty.
  */
-function drawFarTileFromPool(state: GameState, prefer?: "gold" | "valuables"): string | undefined {
+function drawFarTileFromPool(state: GameState, prefer?: FarTileType): string | undefined {
   const adventure = requireAdventure(state);
   const pool = adventure.farTilePool ?? (adventure.farTilePool = []);
   const scripted = adventure.farTileScriptedDraws;
@@ -3353,13 +3343,16 @@ function drawFarTileFromPool(state: GameState, prefer?: "gold" | "valuables"): s
   if (pool.length === 0) {
     return undefined;
   }
-  // Blind Ⅱ–Ⅲ choice: restrict the random draw to tiles carrying the preferred
-  // Mine. When none is left the draw falls back to the whole pool, with a
-  // public note — the guarantee soft-fails, it never blocks the opening.
+  // Blind Ⅱ–Ⅲ choice / Ⅱ–Ⅲ type choice: restrict the random draw to tiles
+  // carrying the requested landmark (classified by the SHARED
+  // `farTileTypeMatches`). When none is left the draw falls back to the whole
+  // pool, with a public note — the guarantee soft-fails, it never blocks the
+  // opening. (The type-choice menu only ever offers AVAILABLE types, so this
+  // fallback is reachable there only if the pool changed under an open menu.)
   if (prefer) {
     const matching = pool
       .map((id, index) => ({ id, index }))
-      .filter((entry) => tileDefHasResourceMine(entry.id, prefer));
+      .filter((entry) => farTileTypeMatches(entry.id, prefer));
     if (matching.length > 0) {
       const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
       const picked = matching[random.nextInt(0, matching.length - 1)];
@@ -3368,9 +3361,9 @@ function drawFarTileFromPool(state: GameState, prefer?: "gold" | "valuables"): s
     }
     appendEvent(state, {
       type: "MAP_SECRET_FEATURE_FALLBACK",
-      feature: prefer === "gold" ? "gold_mine" : "valuables_mine",
+      feature: FAR_TILE_TYPE_FALLBACK_FEATURE[prefer],
       group: "far",
-      message: `No Ⅱ–Ⅲ tile with a ${prefer === "gold" ? "gold" : "valuables"} Mine is left in the pool — drew a random tile instead.`
+      message: `No Ⅱ–Ⅲ tile with a ${FAR_TILE_TYPE_LABELS[prefer]} is left in the pool — drew a random tile instead.`
     });
   }
   const random = createSeededRandom(`${state.seed}#far-tile-open#${eventSeedNumber(state)}#${pool.length}`);
@@ -3598,6 +3591,68 @@ function beginFarTileFlip(
   const supply = adventure.playerFarTiles[ctx.playerId] ?? [];
   if (supply[ctx.supplyIndex] !== UNOPENED_FAR_TILE) {
     throw new Error("That Ⅱ–Ⅲ tile is not in your supply.");
+  }
+
+  // Ⅱ–Ⅲ TILE TYPE CHOICE (optional rule, `GameSetupOptions.farTileTypeChoice`,
+  // default OFF): the tile in your hand is undecided, so BEFORE any draw the
+  // opener names the KIND they want — gold mine / crystal (valuables) mine /
+  // stone (ore) mine / Settlement — and the draw is restricted to that kind. A
+  // designed map may narrow the allowed list (`preset.farTileTypeChoices`, e.g.
+  // "crystal or gold"). It SUPERSEDES the older blind gold/valuables pick when
+  // both are on (it offers a superset of that menu); with this rule off the
+  // blind rule below is byte-identical to before. The reveal-a-tile-already-on-
+  // the-map path never comes through here (its identity is fixed), and scripted
+  // test draws skip the stage so every legacy flip test keeps its sequence.
+  if (
+    adventure.farTileTypeChoice &&
+    (adventure.farTilePool?.length ?? 0) > 0 &&
+    (adventure.farTileScriptedDraws?.length ?? 0) === 0
+  ) {
+    const allowed =
+      adventure.farTileTypeChoices && adventure.farTileTypeChoices.length > 0
+        ? adventure.farTileTypeChoices
+        : FAR_TILE_TYPES;
+    const available = availableFarTileTypes(adventure.farTilePool ?? [], allowed);
+    if (available.length === 0) {
+      // Not one allowed kind is left in the pool: fall through to the classic
+      // draw (or, when the older blind rule is ALSO on, to its gold/valuables
+      // pick) rather than opening a menu whose every option would soft-fail.
+      appendEvent(state, {
+        type: "MAP_SECRET_FEATURE_FALLBACK",
+        feature: "far_tile_type_choice",
+        group: "far",
+        message:
+          "No Ⅱ–Ⅲ tile of any offered kind is left in the pool — the tile was drawn at random instead."
+      });
+    } else {
+      supply.splice(ctx.supplyIndex, 1);
+      const typeOptions: (FarTileType | null)[] = [null, ...available];
+      const flip: NonNullable<typeof adventure.pendingFarTileFlip> = {
+        playerId: ctx.playerId,
+        ...(ctx.heroId ? { heroId: ctx.heroId } : {}),
+        centerRow: ctx.centerRow,
+        centerCol: ctx.centerCol,
+        via: ctx.via,
+        ...(ctx.observatoryFieldId ? { observatoryFieldId: ctx.observatoryFieldId } : {}),
+        returnPhase: state.phase,
+        openingIndex: (adventure.farTilesOpenedByPlayer?.[ctx.playerId] ?? 0) + 1,
+        candidate: "",
+        lastNonSettlement: null,
+        mineRerollUsed: false,
+        offerMode: "type-choice",
+        typeOptions
+      };
+      adventure.pendingFarTileFlip = flip;
+      openFarTileFlipChoice(
+        state,
+        flip,
+        "Your Ⅱ–Ⅲ tile is undecided — choose what kind of tile to place. (Only kinds still left in the Ⅱ–Ⅲ supply are offered.)",
+        typeOptions.map((type) =>
+          type === null ? "No preference — draw any tile" : `Choose a ${FAR_TILE_TYPE_LABELS[type]} tile`
+        )
+      );
+      return;
+    }
   }
 
   // Blind Ⅱ–Ⅲ tile choice (optional rule): BEFORE any tile is drawn, the
@@ -4048,6 +4103,33 @@ export function resolveFarTileFlip(state: GameState, optionIndex: number): void 
   const flip = adventure.pendingFarTileFlip;
   if (!flip) {
     throw new Error("There is no Ⅱ–Ⅲ tile flip to resolve.");
+  }
+
+  if (flip.offerMode === "type-choice") {
+    // Ⅱ–Ⅲ tile TYPE choice: the offered kinds are persisted index-aligned on
+    // the flip (`typeOptions`, [0] = "no preference"), so the menu that was
+    // shown and the draw that resolves it can never drift apart. Only NOW is a
+    // tile drawn — restricted to the chosen kind — after which the flip runs the
+    // normal offer chain unchanged. INTERPLAY with the `far-tile-rerolls` house
+    // rule (deliberate): the type choice replaces only the BLIND draw; the
+    // 2nd-opening Settlement guarantee and the one-time Ore-Mine reroll still
+    // apply afterwards, so a player who asked for a STONE tile is still offered
+    // the "keep it, or reroll once?" Ore-Mine window and simply keeps it.
+    const chosen = flip.typeOptions?.[optionIndex] ?? null;
+    const candidate = drawFarTileFromPool(state, chosen ?? undefined);
+    if (!candidate) {
+      // Unreachable in practice (the pool was non-empty when the choice opened
+      // and no other draw can happen while it is), but never strand the choice.
+      throw new Error("There are no Ⅱ–Ⅲ tiles left to open.");
+    }
+    flip.candidate = candidate;
+    flip.offerMode = "settlement";
+    delete flip.typeOptions;
+    state.pendingChoice = null;
+    state.phase = flip.returnPhase;
+    state.priorityPlayerId = null;
+    presentFarTileOffersOrFinalize(state);
+    return;
   }
 
   if (flip.offerMode === "blind") {

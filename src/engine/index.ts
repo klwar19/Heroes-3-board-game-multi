@@ -473,6 +473,13 @@ export {
 } from "./map-preset";
 export type { SinglePlayerMapDeployment, ViiRewardStack, ViiRewardStackSource } from "./map-preset";
 export {
+  availableFarTileTypes,
+  FAR_TILE_TYPES,
+  FAR_TILE_TYPE_LABELS,
+  farTileTypeMatches,
+  isFarTileType
+} from "./far-tile-types";
+export {
   describeGuardArmyGrouped,
   expandGuardUnitGroups,
   groupGuardUnitEntries,

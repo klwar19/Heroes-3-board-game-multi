@@ -617,6 +617,31 @@ describe("Game options — tabbed layout", () => {
     expect(screen.queryByText("Blind Ⅱ–Ⅲ tile choice")).toBeNull();
   });
 
+  it("Map & Setup exposes the Ⅱ–Ⅲ tile type choice toggle, default OFF, wired to farTileTypeChoice", () => {
+    const onAction = openOptions();
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    const row = screen.getByText("Ⅱ–Ⅲ tile type choice").closest(".optionRow");
+    expect(row).toBeTruthy();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Off" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "On" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { farTileTypeChoice: true }
+    });
+
+    // CONTROL: with Ⅱ–Ⅲ tile opening OFF, the type-choice row is hidden (there
+    // is no hand tile to place, so there is nothing to choose a kind for).
+    cleanup();
+    openOptionsWith((state) => {
+      state.setupLobby!.options.farTileOpening = false;
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));
+    expect(screen.queryByText("Ⅱ–Ⅲ tile type choice")).toBeNull();
+  });
+
   it("keeps Ⅱ–Ⅲ tile replacement only in the BINH house-rule panel", () => {
     const onAction = openOptions();
     fireEvent.click(screen.getByRole("tab", { name: /Map & Setup/ }));

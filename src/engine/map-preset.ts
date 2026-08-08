@@ -23,6 +23,7 @@ import { seaTileBand, subterraneanTileBand, TILE_GROUP_BAND_LABELS, VII_FIELD_LO
 import { CUSTOM_BOSS_LIMITS, MAX_CUSTOM_RAID_BOSSES } from "./raid-bosses";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import { DEFAULT_OBELISK_BONUS, MAX_CUSTOM_GUARD_UNITS, MAX_FAR_TILES_PER_PLAYER } from "./state";
+import { FAR_TILE_TYPES, FAR_TILE_TYPE_LABELS } from "./far-tile-types";
 import {
   DEFAULT_VICTORY_CONDITION_VP,
   describeCustomWinCondition,
@@ -2065,6 +2066,20 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
       Math.min(MAX_FAR_TILES_PER_PLAYER, Math.floor(raw.farTilesPerPlayer))
     );
   }
+  if (typeof raw.farTileTypeChoice === "boolean") {
+    preset.farTileTypeChoice = raw.farTileTypeChoice;
+  }
+  if (Array.isArray(raw.farTileTypeChoices)) {
+    // Unknown entries dropped, duplicates collapsed, canonical FAR_TILE_TYPES
+    // order, capped at the four real kinds. An empty result drops the field
+    // (absent = every kind), never persisting a list nothing can satisfy.
+    const kinds = FAR_TILE_TYPES.filter((kind) =>
+      (raw.farTileTypeChoices as unknown[]).some((entry) => entry === kind)
+    );
+    if (kinds.length > 0) {
+      preset.farTileTypeChoices = kinds;
+    }
+  }
   if (raw.houseRules && typeof raw.houseRules === "object") {
     const houseRules: NonNullable<CustomMapPreset["houseRules"]> = {};
     for (const id of ["no-secondary-heroes", "free-neutral-combat-extend"] as const) {
@@ -2239,6 +2254,8 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
       preset.difficulty ||
       preset.farTileOpening !== undefined ||
       preset.farTilesPerPlayer !== undefined ||
+      preset.farTileTypeChoice !== undefined ||
+      (preset.farTileTypeChoices && preset.farTileTypeChoices.length > 0) ||
       Boolean(preset.houseRules && Object.keys(preset.houseRules).length > 0) ||
       preset.startingResources ||
       preset.computerStartingBonus ||
@@ -2691,6 +2708,21 @@ export function describeCustomMapPresetEntries(
           : "Additional Ⅱ–Ⅲ tiles: on"
     });
   }
+  if (
+    preset.farTileTypeChoice !== undefined ||
+    (preset.farTileTypeChoices && preset.farTileTypeChoices.length > 0)
+  ) {
+    const kinds = preset.farTileTypeChoices ?? [];
+    entries.push({
+      icon: "🀆",
+      text:
+        preset.farTileTypeChoice === false
+          ? "Ⅱ–Ⅲ tile type choice: off"
+          : kinds.length > 0
+            ? `Ⅱ–Ⅲ tile type choice: ${kinds.map((kind) => FAR_TILE_TYPE_LABELS[kind]).join(" or ")}`
+            : "Ⅱ–Ⅲ tile type choice: on (any kind)"
+    });
+  }
   if (preset.houseRules?.["no-secondary-heroes"] !== undefined) {
     entries.push({
       icon: "⚙️",
@@ -2903,6 +2935,7 @@ export type PresetForcedOptionKey =
   | "difficulty"
   | "farTileOpening"
   | "farTilesPerPlayer"
+  | "farTileTypeChoice"
   | "startingResources"
   | "startingProduction"
   | "startingBuildings"
@@ -2929,6 +2962,11 @@ export function presetForcedOptionKeys(
   }
   if (preset.farTilesPerPlayer !== undefined) {
     keys.push("farTilesPerPlayer");
+  }
+  // A designed allowed-kind LIST implies the rule (a designer setting "crystal
+  // or gold" wants the menu), unless they explicitly turned it off.
+  if (preset.farTileTypeChoice !== undefined || (preset.farTileTypeChoices?.length ?? 0) > 0) {
+    keys.push("farTileTypeChoice");
   }
   if (preset.startingResources) {
     keys.push("startingResources");
@@ -2981,6 +3019,21 @@ export function applyCustomMapPresetToOptions(
   if (preset.farTilesPerPlayer !== undefined && !skip?.has("farTilesPerPlayer")) {
     options.farTilesPerPlayer = preset.farTilesPerPlayer;
     changes.push(`Ⅱ–Ⅲ tiles per player ${preset.farTilesPerPlayer}`);
+  }
+  if (
+    (preset.farTileTypeChoice !== undefined || (preset.farTileTypeChoices?.length ?? 0) > 0) &&
+    !skip?.has("farTileTypeChoice")
+  ) {
+    const on = preset.farTileTypeChoice ?? true;
+    options.farTileTypeChoice = on;
+    const kinds = preset.farTileTypeChoices ?? [];
+    changes.push(
+      !on
+        ? "Ⅱ–Ⅲ tile type choice off"
+        : kinds.length > 0
+          ? `Ⅱ–Ⅲ tile type choice ${kinds.map((kind) => FAR_TILE_TYPE_LABELS[kind]).join(" or ")}`
+          : "Ⅱ–Ⅲ tile type choice on"
+    );
   }
   if (preset.startingResources && !skip?.has("startingResources")) {
     options.startingResources = { ...preset.startingResources };
@@ -3065,6 +3118,10 @@ export function revertCustomMapPresetOptions(
       case "farTilesPerPlayer":
         options.farTilesPerPlayer = defaults.farTilesPerPlayer;
         changes.push("Ⅱ–Ⅲ tiles per player back to the scenario default");
+        break;
+      case "farTileTypeChoice":
+        options.farTileTypeChoice = defaults.farTileTypeChoice;
+        changes.push("Ⅱ–Ⅲ tile type choice back to the scenario default");
         break;
       case "startingResources":
         options.startingResources = { ...defaults.startingResources };

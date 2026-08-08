@@ -10361,6 +10361,40 @@ function GameOptionsPanel({
         );
       })()}
 
+      {(() => {
+        const farTileOpeningOn = options.farTileOpening ?? true;
+        if (!farTileOpeningOn) {
+          return null;
+        }
+        const typeChoiceOn = options.farTileTypeChoice ?? false;
+        return (
+          <div className="optionRow">
+            <small title="Optional: the undecided Ⅱ–Ⅲ tile in a player's hand works like a hidden tile — placing it asks WHICH KIND of tile they want (gold mine, crystal mine, stone mine, Settlement) and a random tile of that kind is drawn">
+              Ⅱ–Ⅲ tile type choice
+            </small>
+            <div className="optionButtons">
+              {BOOLEAN_OPTION_ORDER.map((on) => (
+                <button
+                  aria-pressed={typeChoiceOn === on}
+                  className={typeChoiceOn === on ? "selected" : ""}
+                  key={String(on)}
+                  onClick={() => send({ farTileTypeChoice: on })}
+                  title={on ? "Choose the tile kind when placing" : "No type pick — draw straight away"}
+                  type="button"
+                >
+                  {on ? "On" : "Off"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              {typeChoiceOn
+                ? "Placing a Ⅱ–Ⅲ tile from your hand asks WHICH KIND you want — a GOLD mine, a CRYSTAL (valuables) mine, a STONE (ore) mine or a SETTLEMENT — and a random tile of that kind is drawn. Only kinds still left in the Ⅱ–Ⅲ supply are offered; with none left the tile is drawn at random with a note. A designed map may narrow the list (e.g. crystal or gold). Supersedes the blind choice above while on."
+                : "Off: opening a Ⅱ–Ⅲ tile draws straight from the pool at random, exactly as usual."}
+            </small>
+          </div>
+        );
+      })()}
+
       <SeatCountControl
         footer={<SameChoiceAsBoxNote box="heroes" boxLabel="Heroes & Draft" onOpenBox={onOpenBox} />}
         onAction={onAction}

@@ -189,6 +189,7 @@ const ADVANCED_OWNED_KEYS = [
   "farTileOpening",
   "farTilesPerPlayer",
   "farTileBlindChoice",
+  "farTileTypeChoice",
   "startingResources",
   "startingProduction",
   "startingUnitTiers",
