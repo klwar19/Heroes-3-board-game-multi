@@ -198,11 +198,10 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .mainMenuShell .menuShellBackdropVideo {
-    display: none;
-  }
-}
+/* NOTE: the reduced-motion rule for the video backdrop lives at the END of the
+   menu CSS (beside the second .mainMenuShell block), NOT here — a media query
+   adds no specificity, so an equally-specific declaration later in the file
+   would silently defeat it. See "reduced motion → the still poster art". */
 @font-face {
   font-family: "Liberation Serif";
   src: url("/fonts/LiberationSerif-Bold.ttf") format("truetype");
@@ -37215,9 +37214,20 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 }
 
 .mainMenuShell .menuShellBackdropVideo {
-  display: block !important;
   object-fit: cover;
   object-position: center center;
+}
+
+/* Reduced motion → the still poster art. MenuShell renders the still
+   `.menuShellBackdrop` img UNDERNEATH the video (same file as the poster, so no
+   extra download), so hiding the video here reveals a static backdrop instead of
+   the bare page colour — and covers a failed/slow video load the same way.
+   This rule MUST stay after every other `display` declaration on the video: a
+   media query carries no specificity, so source order is what makes it win. */
+@media (prefers-reduced-motion: reduce) {
+  .mainMenuShell .menuShellBackdropVideo {
+    display: none;
+  }
 }
 
 .mainMenuShell .menuShellVignette {
