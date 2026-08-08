@@ -703,6 +703,50 @@ describe("Game options — tabbed layout", () => {
     });
   });
 
+  /**
+   * The Tournament package's headline house rule — tier-split Spell / Artifact
+   * decks — used to be INVISIBLE in the Tournament panel: a table could be "on
+   * tournament rules" with one mixed Spell deck and nothing on screen said so.
+   * It is the SAME `split-decks` rule the BINH list ticks, so both rows read and
+   * write one setting.
+   */
+  it("Tournament rules list Divided Spell & Artifact decks as its own tick, wired to split-decks", () => {
+    const onAction = openOptions();
+    expandTournamentRules();
+
+    const row = screen.getByRole("button", { name: /Divided Spell & Artifact decks/i });
+    // BINH default: the rule is already on, so the tick reflects it.
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+    // It sits inside the Tournament rules panel, not the BINH list.
+    expect(row.closest(".tournamentRuleGrid")).toBeTruthy();
+
+    fireEvent.click(row);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "split-decks": false } }
+    });
+  });
+
+  it("the Tournament divided-decks tick reflects a Legacy table's OFF state (CONTROL)", () => {
+    // CONTROL for the row above: on Legacy the rule defaults OFF, so the same
+    // tick must read OFF and its click must turn it ON — proving the row reads
+    // the live house-rule value instead of hardcoding a state.
+    const onAction = openOptionsWith((state) => {
+      state.setupLobby!.options.ruleset = "legacy";
+    });
+    expandTournamentRules();
+
+    const row = screen.getByRole("button", { name: /Divided Spell & Artifact decks/i });
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(row);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "split-decks": true } }
+    });
+  });
+
   it("keeps every binary setting in one physical order: On left, Off right", () => {
     openOptions();
 

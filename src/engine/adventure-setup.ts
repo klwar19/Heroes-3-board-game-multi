@@ -4463,16 +4463,6 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (next.tournamentObservatoryRerotate === undefined) {
       lobby.options.tournamentObservatoryRerotate = on;
     }
-    // The Tournament preset splits the Spell / Artifact decks by tier. Turning
-    // the MASTER toggle on must force that at the engine seam too (not only in
-    // the hub preset payload), or a table ticking "Tournament Mode" in the
-    // options panel gets the bans but a single-deck game. Only when this same
-    // action carries no explicit houseRules payload (an explicit host choice
-    // always wins), and never touched on turning the mode OFF (the host may
-    // deliberately keep split decks).
-    if (on && next.houseRules === undefined) {
-      lobby.options.houseRules = { ...lobby.options.houseRules, "split-decks": true };
-    }
     changes.push(
       on
         ? "Tournament Mode on (remove Diplomacy + Hourglass; second player +1 morale; Observatory re-rotate; tier-split decks)"
@@ -4500,14 +4490,37 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       `Tournament Observatory re-rotate ${lobby.options.tournamentObservatoryRerotate ? "on" : "off"}`
     );
   }
-  // Keep the master flag in sync with the three granular rules for old readers.
+  // Keep the master flag in sync with the granular rules for old readers.
   if (
     next.tournamentMode !== undefined ||
     next.tournamentBanDiplomacy !== undefined ||
     next.tournamentBanHourglass !== undefined ||
-    next.tournamentSecondPlayerMorale !== undefined
+    next.tournamentSecondPlayerMorale !== undefined ||
+    next.tournamentObservatoryRerotate !== undefined
   ) {
     lobby.options.tournamentMode = tournamentRulesAllOn(lobby.options);
+    // The Tournament package's headline house rule is the tier-split Spell /
+    // Artifact decks — the SAME `split-decks` rule BINH ticks. EVERY path that
+    // turns the package on must force it at this one engine seam (not only in
+    // the hub preset payload): the master toggle, and — the gap this closes —
+    // ticking the granular rules one by one until they are all on. Otherwise a
+    // table that assembled Tournament rules from the collapsible panel got the
+    // bans and a SINGLE-deck game (no Basic/Expert Spell deck split, so an
+    // Eagle Eye / Search never picks a deck). Only when this same action
+    // carries no explicit houseRules payload (an explicit host choice always
+    // wins — including un-ticking the new split-decks row itself), and never on
+    // turning the package OFF (the host may deliberately keep split decks).
+    const packageOn = Boolean(next.tournamentMode) || lobby.options.tournamentMode;
+    if (packageOn && next.houseRules === undefined && lobby.options.houseRules?.["split-decks"] !== true) {
+      // Announce it only when the EFFECTIVE value moves (a BINH table already
+      // defaults the rule on — the explicit true is still written so a later
+      // ruleset switch to Legacy cannot silently drop it).
+      const wasOn = resolveHouseRules(lobby.options)["split-decks"];
+      lobby.options.houseRules = { ...lobby.options.houseRules, "split-decks": true };
+      if (!wasOn) {
+        changes.push("Divided Spell & Artifact decks on (Tournament rules)");
+      }
+    }
   }
 
   if (next.pvpNeutralControl !== undefined) {

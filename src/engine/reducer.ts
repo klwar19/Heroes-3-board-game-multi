@@ -17550,13 +17550,19 @@ function resolveEagleEyeDig(
     prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
     options: [
       { label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` },
-      ...(school ? [{ label: `Discard ${cards[foundCardId]?.name ?? foundCardId}` }] : [])
+      // The find may ALWAYS be discarded instead — the printed Eagle Eye card
+      // reads "…Take it into your hand OR DISCARD IT. Reshuffle the rest of the
+      // cards back to the Spell deck." on BOTH sides (scan:
+      // public/assets/abilities-eagle_eye.webp), exactly like a Tome's
+      // School-filtered dig. It used to be take-only, which forced a hero to
+      // accept a Spell they did not want.
+      { label: `Discard ${cards[foundCardId]?.name ?? foundCardId}` }
     ],
     context: "eagle-eye",
     eagleEye: {
       deckId,
       cardId: foundCardId,
-      ...(school ? { allowDiscard: true } : {})
+      allowDiscard: true
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
