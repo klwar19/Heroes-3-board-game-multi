@@ -235,6 +235,61 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
     });
   }
 
+  // REPORTED BUG 2026-08-09, verbatim: "3rd tile - Grail - this field was an
+  // empty grail field (but it should have changed to utopia after digging grail
+  // from 2nd tile)". The conversion used to SKIP any extra Grail whose guards had
+  // already fallen (`blackCube`), so whether the map's other Grail turned at all
+  // depended on the accident of having cleared it first — it just sat there as an
+  // inert Grail for the rest of the game. It converts now. What it does NOT do is
+  // resurrect itself into a fresh Ⅶ fight: the cube is kept, so the guards its
+  // owner already beat are not re-fought for a second helping of hero experience.
+  for (const [label, make] of [
+    ["Polish house rule", polishGame],
+    ["map-editor package", editorGame]
+  ] as const) {
+    it(`${label}: an extra Grail whose guards ALREADY fell converts too — and stays spent`, () => {
+      const state = make(`${label}-spent-extra`);
+      const { hero, dug, extra } = twoGrails(state, "spent");
+
+      // Clear BOTH Grails' guards first (both arm a dig — the package lets any
+      // Grail be dug), then take the Token from one of them.
+      hero.spaceId = extra.spaceId;
+      beginFieldVisit(state, hero.id, extra.spaceId, false);
+      expect(extra.blackCube, "its guards are down").toBe(true);
+      expect(extra.grailDiggable).toBe(true);
+
+      hero.spaceId = dug.spaceId;
+      fightAndDig(state, hero.id, dug.spaceId);
+      expect(state.adventure!.grail?.status).toBe("carried");
+
+      // It "changed to utopia" for every read…
+      expect(extra.location).toBe("dragon_utopia");
+      expect(extra.grailConverted).toBe(true);
+      expect(extra.grailDiggable ?? false).toBe(false);
+      // …but a beaten site is never resurrected: it stays cleared, so nobody
+      // re-fights it and it pays nothing on a later visit.
+      expect(extra.blackCube, "a spent site keeps its Black Cube").toBe(true);
+      const goldBefore = state.players.p1.resources.gold;
+      const searchesBefore = artifactSearches(state).length;
+      const choicesBefore = tokenChoices(state);
+      hero.spaceId = extra.spaceId;
+      beginFieldVisit(state, hero.id, extra.spaceId, false);
+      expect(state.players.p1.resources.gold).toBe(goldBefore);
+      expect(artifactSearches(state).length).toBe(searchesBefore);
+      expect(tokenChoices(state)).toBe(choicesBefore);
+
+      // CONTROL: on the same rule, an UNFOUGHT extra Grail converts into a real,
+      // still-fightable Utopia — so the cube above is the spent state travelling
+      // with the field, not the conversion refusing to fight.
+      const fresh = make(`${label}-fresh-extra`);
+      const freshParts = twoGrails(fresh, "fresh");
+      freshParts.hero.spaceId = freshParts.dug.spaceId;
+      fightAndDig(fresh, freshParts.hero.id, freshParts.dug.spaceId);
+      expect(freshParts.extra.location).toBe("dragon_utopia");
+      expect(freshParts.extra.blackCube).toBe(false);
+    });
+  }
+
   it("re-materializing the DUG field's own tile leaves it a spent Grail", () => {
     // Rule 2 is enforced by field id, so even a rotation-driven re-materialize of
     // the dug tile cannot turn the site the Grail came from into a Utopia.

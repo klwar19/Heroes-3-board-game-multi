@@ -3025,10 +3025,18 @@ Leading with what CHANGED / the deliberate limits:
   at BOTH conversion seams — the field sweep and the tile-reveal branch — so even
   a re-materialize of its tile (a rotation) leaves it a spent Grail dig site
   (black cube, no `grailDiggable`, no `grailConverted`).
-- **A spent (black-cubed) extra Grail is not resurrected either.** Both old
-  functions disagreed about this (the Polish one skipped, the after-dig one
-  rewrote); they are unified on SKIP. With the payout gone there is nothing to
-  re-fight for, so a spent site simply stays an inert Grail.
+- **A spent (black-cubed) extra Grail CONVERTS but is not resurrected**
+  (2026-08-09, USER REPORT "this field was an empty grail field (but it should
+  have changed to utopia after digging grail from 2nd tile)"). It used to be
+  SKIPPED, so whether the map's other Grail turned at all depended on the
+  accident of having cleared its guards first — a cleared one sat there as an
+  inert Grail for the rest of the game. It now takes the same conversion, and
+  KEEPS its Black Cube: a beaten site is never re-fought (that would re-pay hero
+  experience for guards already beaten, and the converted Utopia pays no reward,
+  so there would be nothing else to gain). Pinned in
+  `grail-converted-utopia.test.ts` ("an extra Grail whose guards ALREADY fell
+  converts too — and stays spent", with the unfought extra Grail as the CONTROL
+  that becomes a fresh, still-fightable Utopia).
 - **Legacy snapshots**: `grailFieldCleared` is now only a legacy MIRROR (it used
   to be the pre-dig trigger). `grailConversionActive` honours it only once
   `grail.status` proves the Token was really taken, so a mid-game v19 snapshot
@@ -3284,7 +3292,8 @@ Leading with the deliberate LIMITS of the warning:
   alert panel and the lobby banner, not in that collapsible summary.
 - SUPERSEDED (2026-08-07): the two conversion functions
   (`applyGrailAfterDigConversion` / `applyPolishGrailFightConversion`) are gone,
-  replaced by ONE `applyGrailTakenConversion` that skips a black-cubed site. A
+  replaced by ONE `applyGrailTakenConversion` (which, since 2026-08-09, converts
+  a black-cubed site too — keeping its cube, so it is never re-fought). A
   converted extra Grail can therefore never be a second Utopia payday at all —
   it pays NOTHING (see "Grail → Utopia conversion" below), so it no longer
   appears in this stacking matrix. Only a REAL printed / designated Ⅶ Utopia
@@ -7557,6 +7566,22 @@ What runs (each pinned by a test that fails if the wiring is removed):
   bonus (`CustomMapTilePlan.centerHex`) with or without a designation — see
   the "Designer guards, outposts & one-way monoliths" section.
   `vii-field-designation.test.ts`.
+  **An UNPINNED slot's Grail / Dragon Utopia designation now decides its TILE
+  DRAW too** (2026-08-09, USER REPORT "2nd tile - Grail - was mix of utopia and
+  grail"): such a slot used to pop an arbitrary centre tile, so the hidden
+  package regularly put a "grail" identity on C1 (which PRINTS a Dragon Utopia),
+  on C5 (a Random Town) or on &C1 (an Airship Yard) — `materializeTileFields`
+  forced the FIELD while the board kept showing the printed tile, so the hex
+  pictured one objective and played as another (the rotation preview, which draws
+  the printed field def, sided with the picture). `designationCenterTile`
+  (adventure-setup.ts) draws a tile that PRINTS the designation, making the FORCE
+  override a no-op. LIMITS: only `grail` / `dragon_utopia` are matched (`town` /
+  `settlement` are printed on many centre tiles); an EXPLICIT `tileDefId` / "one
+  of" pin is never swapped (an authored mismatch is the designer's choice — the
+  override still wins); a `playerViiPick` slot picks AFTER its tile was drawn, so
+  that pick can still mismatch the art; and an exhausted pool falls back to the
+  old random draw with the override forcing the field as before. FACE-UP slots
+  are out of scope — validation refuses one that names no tile.
 - **7. Victory Points** (`CustomMapPreset.victoryPoints`): a round-limit OR
   victory-completion end trigger scores the full rulebook VP table via an
   event-sourced ledger (heroes defeated, buildings, hero levels, flagged mines/

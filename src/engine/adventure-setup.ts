@@ -3359,6 +3359,38 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         : plan;
     };
 
+    /**
+     * The centre tile an UNPINNED Ⅶ Grail / Dragon Utopia designation should
+     * draw: one whose OWN printed Ⅶ objective already is that designation.
+     *
+     * REPORTED BUG 2026-08-09 ("2nd tile - Grail - was mix of utopia and grail"):
+     * a designated slot used to pop an arbitrary centre tile, so the hidden
+     * Grail & Dragon Utopia package regularly put a "grail" identity on C1 (which
+     * PRINTS a Dragon Utopia), on C5 (a Random Town) or on &C1 (an Airship Yard).
+     * `materializeTileFields` then forced the FIELD to the designation while the
+     * board kept showing the printed tile — the hex pictured one objective and
+     * played as another, and the rotation preview (which draws the printed field
+     * def) agreed with the picture, not the rules. Matching the tile makes the
+     * FORCE override a no-op, so art, printed field, guards and rewards agree.
+     *
+     * LIMITS, both deliberate: an EXPLICIT `tileDefId` / "one of" pin is never
+     * swapped (an authored mismatch is the designer's choice, and the override
+     * still wins), and only `grail` / `dragon_utopia` are matched — `town` and
+     * `settlement` designations are printed on many centre tiles and are left to
+     * the ordinary draw. When the pool holds no matching tile left the draw falls
+     * back to today's behaviour and the override forces the field as before.
+     */
+    const designationCenterTile = (plan: CustomMapTilePlan): string | undefined => {
+      if (plan.group !== "center" || effectiveExactTileDefId(plan)) {
+        return undefined;
+      }
+      const designation = plan.viiField;
+      if (designation !== "grail" && designation !== "dragon_utopia") {
+        return undefined;
+      }
+      return takeCenterTileWith(centerPool, designation);
+    };
+
     // "One of these tiles" (map designer): a slot may name a LIST of candidate
     // tile ids instead of one exact `tileDefId`. Every such slot is resolved to
     // one concrete id ONCE, up front, and then treated exactly like an exact pin
@@ -3552,9 +3584,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         } else if (plan.group === "subterranean") {
           tileDefId = popSubTile(plan.subBand);
         } else if (plan.group === "center") {
-          // Holy Grail fills up to two unpinned face-down Center slots with
-          // Grail dig sites; further Center slots stay a random draw.
-          tileDefId = forcedCenters[forcedCenterIndex++] ?? centerPool.pop();
+          // A Ⅶ Grail / Dragon Utopia designation must land on a tile that
+          // PRINTS that objective (see designationCenterTile) — the hidden
+          // package assigns identities to slots, the tile draw follows them.
+          // Holy Grail otherwise fills up to two unpinned face-down Center slots
+          // with Grail dig sites; further Center slots stay a random draw.
+          tileDefId =
+            designationCenterTile(effectiveViiPlan(plan)) ??
+            forcedCenters[forcedCenterIndex++] ??
+            centerPool.pop();
         } else if (
           (plan.group === "near" || plan.group === "far") &&
           grailNearFarIndex < grailNearFarOverflow.length
@@ -3594,6 +3632,10 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         }
       } else {
         // Face-up: an exact `tileDefId` or a resolved "one of" random pick.
+        // NOTE: a FACE-UP slot always names its tile — validateCustomMapPlan
+        // refuses one that does not ("pick a tile for the face-up slot") — and an
+        // explicit pin is deliberately never swapped for its Ⅶ designation, so
+        // the designation-matched draw below applies to face-DOWN slots only.
         let faceUpId = effectiveExactTileDefId(plan);
         if (!faceUpId && (plan.oneOfTileDefIds?.length ?? 0) > 0) {
           // Its whole "one of" list is already on the map (note emitted above).

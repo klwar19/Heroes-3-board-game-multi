@@ -5399,11 +5399,18 @@ export function grailConversionActive(adventure: AdventureState): boolean {
  * Convert every OTHER still-undug Grail field the moment the Grail is TAKEN:
  * a reward-free Dragon Utopia (`grailConverted`) or an empty field.
  *
- * Two fields are deliberately skipped:
- *   - `dugFieldId`, the site the Grail came from (USER RULE: "THE ORIGINAL GRAIL
- *     FIELD THAT PLAYER DIG TO GET: WONT TURN"). It stays a spent dig site.
- *   - any Grail whose guards already fell (`blackCube`): a spent site is never
- *     resurrected into a fresh fightable field.
+ * ONE field is deliberately skipped: `dugFieldId`, the site the Grail came from
+ * (USER RULE: "THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET: WONT TURN"). It
+ * stays a spent dig site.
+ *
+ * An extra Grail whose GUARDS ALREADY FELL converts too (USER REPORT 2026-08-09:
+ * "this field was an empty grail field (but it should have changed to utopia
+ * after digging grail from 2nd tile)") — it used to be skipped, so whether the
+ * map's other Grail turned at all depended on the accident of having cleared it
+ * first, and a cleared one sat there as an inert Grail for the rest of the game.
+ * It keeps its Black Cube, though: a beaten site is never resurrected into a
+ * fresh Ⅶ fight, which would re-pay hero experience for guards already beaten
+ * (the converted Utopia pays no reward, so there would be nothing else to gain).
  */
 function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): void {
   const target = grailTakenConversionTarget(state);
@@ -5422,20 +5429,28 @@ function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): vo
   }
   adventure.grailTakenConversion = target;
   for (const field of Object.values(adventure.fields)) {
-    if (field.spaceId === dugFieldId || field.location !== "grail" || field.blackCube) {
+    if (field.spaceId === dugFieldId || field.location !== "grail") {
       continue;
     }
+    // A site whose guards already fell stays SPENT — it changes identity without
+    // becoming a fresh fight (see the doc comment above).
+    const spent = field.blackCube;
     if (target === "dragon_utopia") {
       field.location = "dragon_utopia";
       // The conversion marker IS the "pays nothing" rule (see
       // MapFieldState.grailConverted / handleDragonUtopiaVisit).
       field.grailConverted = true;
       delete field.grailDiggable;
-      field.blackCube = false;
+      field.blackCube = spent;
       field.everFlagged = false;
       field.flagOwnerId = null;
       if (!field.difficulty) field.difficulty = 7;
-      eventNote(state, "An extra Grail site now fights as a Dragon Utopia (no reward).");
+      eventNote(
+        state,
+        spent
+          ? "A cleared extra Grail site is now a spent Dragon Utopia (no reward)."
+          : "An extra Grail site now fights as a Dragon Utopia (no reward)."
+      );
     } else {
       field.location = "empty_field";
       delete field.grailDiggable;
