@@ -14654,6 +14654,17 @@ export type ChatMessage = {
 /** Reserved player id that controls neutral armies during map combats. */
 export const NEUTRAL_PLAYER_ID: PlayerId = "neutrals";
 
+/**
+ * The placeholder card id a REDACTED state carries wherever a real card id is
+ * hidden from the reader — every player's deck (order is secret even from its
+ * owner) and another seat's hand / Spell Book (`redactStateForSeat`,
+ * player-view.ts). It lives here, in the types leaf, so a derivation that must
+ * tell "I am reading a masked zone" from "that zone is really empty" can import
+ * it without pulling player-view's whole dependency graph in (Set Artifacts'
+ * piece count does exactly that — see `artifactSetPieceCount`).
+ */
+export const HIDDEN_CARD_ID: CardId = "hidden";
+
 export type PlayerVisiblePlayerState = Omit<PlayerState, "hand" | "deck" | "spellBook"> & {
   hand: CardId[];
   handCount: number;

@@ -54,6 +54,55 @@ export function useCardArtifactSetId(cardId: string | undefined): string | null 
   return ARTIFACT_SET_BY_MEMBER[cardId] ?? null;
 }
 
+/**
+ * Wrap a card FACE so the badge can sit in its corner. Renders the children
+ * UNTOUCHED (no wrapper element at all) when the rule is off or the card is not
+ * a set member, so every ordinary card face keeps exactly the DOM it has always
+ * had. Use this where the face sits in normal flow.
+ *
+ * `.cardSetFrame` is `position: relative; display: inline-flex`, so it sizes to
+ * the face — safe wherever the face has an intrinsic or fixed width, and NOT
+ * usable where the face is `width: 100%` or `position: absolute` (a percentage
+ * would resolve against an indefinite box; an absolute face would re-anchor to
+ * the wrapper and collapse it). Those sites use `CardSetCornerBadge` instead.
+ */
+export function CardSetFrame({
+  cardId,
+  children,
+  className
+}: {
+  cardId?: string;
+  children: ReactNode;
+  /** Extra class on the wrapper (e.g. the zoom reader's larger badge sizing). */
+  className?: string;
+}) {
+  const setId = useCardArtifactSetId(cardId);
+  if (!setId) {
+    return <>{children}</>;
+  }
+  return (
+    <span className={className ? `cardSetFrame ${className}` : "cardSetFrame"}>
+      {children}
+      <ArtifactSetBadge setId={setId} />
+    </span>
+  );
+}
+
+/**
+ * The badge ALONE, for a card face whose parent is already a positioning context
+ * (a `position: relative` tile/button that also hosts other absolute overlays —
+ * the `.empoweredBadgeOverlay` precedent). Renders nothing when the rule is off
+ * or the card is not a member, so those tiles are untouched by default.
+ *
+ * Use this — never a second copy of the badge markup — for a face that fills its
+ * parent (`position: absolute; inset: 0`, or `width: 100%`), where wrapping the
+ * face would break its sizing.
+ */
+export function CardSetCornerBadge({ cardId }: { cardId?: string }) {
+  const setId = useCardArtifactSetId(cardId);
+  return setId ? <ArtifactSetBadge setId={setId} /> : null;
+}
+
 /** The corner badge itself: the set's own artwork, cut to a 256×256 webp. */
 export function ArtifactSetBadge({ setId }: { setId: string }) {
   const name = artifactSetDefinition(setId)?.name ?? setId;

@@ -15648,6 +15648,9 @@ button.setupHubNavItem:hover {
 }
 
 .marketSellCard {
+  /* Positioning context for the Polish Set Artifacts corner badge: the face is
+     `width: 100%`, so it cannot be wrapped in `.cardSetFrame`. */
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;

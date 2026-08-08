@@ -11,6 +11,7 @@ import type {
   PlayerVisibleState,
   ReactionWindow
 } from "./state";
+import { HIDDEN_CARD_ID } from "./state";
 import { refillSharedDeckDiscards } from "./decks";
 
 function cloneSerializable<T>(value: T): T {
@@ -579,8 +580,12 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
 /** Sentinel that replaces a room's password hash in any player-facing view. */
 export const PASSWORD_REDACTED = "__redacted__";
 
-/** The placeholder that stands in for a hidden card id on the wire. */
-const HIDDEN_CARD_ID: CardId = "hidden";
+/**
+ * The placeholder that stands in for a hidden card id on the wire. Defined in
+ * `state.ts` (the types leaf) so a leaf derivation can recognise a masked zone
+ * without importing this module; re-exported here for the historical name.
+ */
+export { HIDDEN_CARD_ID };
 
 /** Whom to render for a connection that holds no seat (a spectator). */
 export const OBSERVER_VIEWER_SEAT = "observer" as PlayerId;

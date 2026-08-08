@@ -42,7 +42,7 @@ import {
   type CardBoardAction
 } from "./utils";
 import { useCardZoom, ZoomButton } from "./zoom";
-import { ArtifactSetBadge, useCardArtifactSetId } from "./artifact-set-badge";
+import { CardSetFrame } from "./artifact-set-badge";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 import { SpellBookModal } from "@/components/adventure/spell-book-modal";
@@ -70,11 +70,6 @@ export function CardFrame({
   const card = cardId ? cardLibrary[cardId] : undefined;
   const alt = card?.assets?.imageAlt ?? card?.name ?? cardId ?? "card";
   const showEmpowered = Boolean(empowered) || isEmpoweredStatisticCard(cardId);
-  // Polish Set Artifacts: a member Artifact wears its set's icon in the corner
-  // while the rule is on. Null in every other case (rule off, non-member, no
-  // card), and the badge-free branch below returns exactly the DOM this
-  // component has always returned — so the default table is untouched.
-  const artifactSetId = useCardArtifactSetId(cardId);
   // An Empowered ability has its OWN printed face on the wiki (the "Empowered"
   // scan), so render that instead of the base face — the gold ring/badge below
   // stays on top of it. Falls back to the base face when no scan is registered.
@@ -127,15 +122,11 @@ export function CardFrame({
     />
   );
 
-  if (!artifactSetId) {
-    return face;
-  }
-  return (
-    <span className="cardSetFrame">
-      {face}
-      <ArtifactSetBadge setId={artifactSetId} />
-    </span>
-  );
+  // Polish Set Artifacts: a member Artifact wears its set's icon in the corner
+  // while the rule is on. `CardSetFrame` returns the face UNWRAPPED in every
+  // other case (rule off, non-member, no card), so the default table renders
+  // exactly the DOM this component has always returned.
+  return <CardSetFrame cardId={cardId}>{face}</CardSetFrame>;
 }
 
 /**

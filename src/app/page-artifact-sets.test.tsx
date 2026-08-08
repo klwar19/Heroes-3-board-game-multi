@@ -25,6 +25,8 @@ import {
   createAdventureGameState,
   getMainHero,
   makeCombatUnitFromArmy,
+  playerArtifactSetStatuses,
+  redactStateForSeat,
   unitSideRuleOverrides,
   NEUTRAL_PLAYER_ID,
   type CombatState,
@@ -203,6 +205,24 @@ describe("Polish Set Artifacts — page mounts (map screen)", () => {
   });
 });
 
+/**
+ * The LIVE table shape a hosted room really serves: a per-seat REDACTED frame in
+ * which even the viewer's OWN deck is `hidden` placeholders. Four of the six
+ * Angelic Alliance pieces sit in that masked deck and its round-1 selection has
+ * already been made, so the four bound combat tiers must be offered.
+ */
+function hostedRedactedCombatState(): GameState {
+  const state = combatStateWithSet(true);
+  const player = state.players.p1;
+  player.hand = [AA_MEMBERS[0], AA_MEMBERS[1]];
+  player.deck = [AA_MEMBERS[2], AA_MEMBERS[3], AA_MEMBERS[4], AA_MEMBERS[5]];
+  player.artifactSetStatus = playerArtifactSetStatuses(state, "p1");
+  // The tier-2 pick, as SELECT_ARTIFACT_SET_UNIT would have stamped it.
+  player.combatStats.artifactSetSelections = { angelic_alliance: "u_own_0" };
+  player.combatStats.artifactSetUsesThisCombat = ["angelic_alliance:2"];
+  return redactStateForSeat(state, "p1");
+}
+
 describe("Polish Set Artifacts — page mounts (combat screen)", () => {
   it("mounts the set status panel and the icon provider on the battle table too", async () => {
     serveRoom(combatStateWithSet(true));
@@ -229,5 +249,27 @@ describe("Polish Set Artifacts — page mounts (combat screen)", () => {
     expect(document.querySelector("main.adventureRoot")).toBeNull();
     expect(document.querySelector(".artifactSetPanel")).toBeNull();
     expect(document.querySelector(".cardSetIcon")).toBeNull();
+  });
+
+  /**
+   * The 2026-08-08 "Angelic Alliance does not work during combat" report. Every
+   * single-player room and every CLOSED multiplayer table is HOSTED, so the
+   * browser renders a REDACTED frame — and the set piece count used to be derived
+   * from the visible zones alone, which read 2 of 6 pieces there. The status panel
+   * (which reads the synced status) said "6/6 · 5 effects" while the combat dock
+   * offered nothing. This is the whole chain — redacted frame → engine offers →
+   * the dock's set-powers entry — in one pin.
+   */
+  it("EFFECT: a hosted (redacted) battle table still shows the set powers button", async () => {
+    serveRoom(hostedRedactedCombatState());
+    render(<Home />);
+    await settle();
+
+    // The panel still reports the true progress (it always did)…
+    expect(document.querySelector(".artifactSetPieces")?.textContent).toBe("6/6");
+    // …and now so does the dock: the 4 bound tiers are one entry button.
+    const button = document.querySelector<HTMLElement>(".setPowerButton");
+    expect(button, "the combat dock must offer the set powers on a hosted table").toBeTruthy();
+    expect(button!.textContent).toContain("Set powers (4)");
   });
 });

@@ -19,7 +19,7 @@ import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils"
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
 import { CommanderCardFace, CommanderStatsPanel } from "@/components/commander-card";
-import { ArtifactSetBadge, useCardArtifactSetId } from "./artifact-set-badge";
+import { CardSetFrame } from "./artifact-set-badge";
 import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
@@ -152,7 +152,7 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
 }
 
 /**
- * The enlarged card itself. Extracted so it can call `useCardArtifactSetId` —
+ * The enlarged card itself. Extracted so it can wrap in `CardSetFrame` —
  * with the Polish Set Artifacts rule on, a member card wears its set icon here
  * exactly as it does on the small `CardFrame` faces (same context gate, same
  * 256x256 asset). With the rule off, a non-member, or no provider at all, the
@@ -167,7 +167,6 @@ function ZoomCardVisual({
   failedImageSrc: string | null;
   onImageError: () => void;
 }) {
-  const setId = useCardArtifactSetId(content.cardId);
   const visual = content.commanderFace ? (
     <div className="zoomCardImage" style={{ background: "transparent", boxShadow: "none" }}>
       <CommanderCardFace
@@ -195,14 +194,10 @@ function ZoomCardVisual({
     <div className={`zoomCardImage cardFaceFallback${content.empowered ? " empoweredCard" : ""}`}>{content.title}</div>
   );
 
-  if (!setId) {
-    return visual;
-  }
   return (
-    <span className="cardSetFrame zoomSetFrame">
+    <CardSetFrame cardId={content.cardId} className="zoomSetFrame">
       {visual}
-      <ArtifactSetBadge setId={setId} />
-    </span>
+    </CardSetFrame>
   );
 }
 
