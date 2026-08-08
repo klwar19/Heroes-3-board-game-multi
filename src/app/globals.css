@@ -37347,8 +37347,11 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   object-position: center center;
 }
 
-/* Phones use the supplied still directly: no video decoding or old dragon
-   backdrop while the compact menu is on screen. */
+/* Phones use the supplied still directly. BELT-AND-BRACES ONLY: this rule stops
+   the loop DECODING, never its DOWNLOAD — a `display: none` video with
+   `preload="auto"` still fetches the whole file. The download is prevented in
+   MenuShell, which does not MOUNT the <video> at all at this width
+   (`useVideoBackdropAllowed`, same 820px split); keep the two in lockstep. */
 @media (max-width: 820px) {
   .mainMenuShell .menuShellBackdropVideo {
     display: none;

@@ -6203,8 +6203,35 @@ What runs (each with a failing-if-removed test, all mutation-checked):
   the backdrop silently dies. The mp4 carries NO audio track at all.
 - **The still art slot renders UNDER the video, always** (`MenuShell` used to
   render one OR the other): it is the fallback that shows through on a slow or
-  failed video load, an unsupported codec, and under reduced motion. It costs no
-  extra request — it is the same file the video fetches as its `poster`.
+  failed video load, an unsupported codec, under reduced motion, and on a narrow
+  viewport (below). It costs no extra request — it is the same file the video
+  fetches as its `poster`. On the main menu that file is the dedicated
+  `main-menu-fallback.webp` (1600×1069), passed via `MenuShell`'s `videoFallback`
+  prop; a screen that passes no `videoFallback` keeps its still ART SLOT.
+- **A NARROW viewport (≤820px) never MOUNTS the loop, so it never downloads it**
+  (`useVideoBackdropAllowed`, menu-shell.tsx). The branch shipped this as a
+  CSS-only `@media (max-width: 820px) { … display: none }` claiming "no video
+  decoding" — but this repo already learned (the setup-scene playlist) that a
+  `display: none` video with `preload="auto"` still fetches the WHOLE file, so
+  CSS could not fix it. The CSS rule is kept as belt-and-braces (it stops the
+  decode) with an honest comment; the gate is the unmounted element. It is a
+  `useSyncExternalStore` over `matchMedia` whose **server snapshot is `false`**,
+  because MenuShell IS server-rendered and a server frame cannot know the
+  viewport: emitting the `<video>` into the SSR HTML would let the preload
+  scanner start a phone's download before React ever hydrates. React uses that
+  same snapshot during HYDRATION, so the server frame and the hydrating render
+  agree (no mismatch) and a wide viewport gets the loop on the very next render —
+  one render against a download that takes seconds, with the still already
+  painted. The subscription mounts/unmounts it across the breakpoint, and a
+  missing `matchMedia` assumes a wide viewport (the historical behaviour). Do NOT
+  "simplify" this to `useState` + a setState-in-effect: that is the shape
+  `react-hooks/set-state-in-effect` rejects. Screens that pass no `videoBackdrop`
+  are untouched. Pinned in `menu-shell.test.tsx` ("a narrow viewport never loads
+  the backdrop video": no `<video>` at all + still art present, a wide CONTROL, a
+  `renderToStaticMarkup` server-frame case, the mid-session resize both ways,
+  listener cleanup, the no-matchMedia fallback, and a no-videoBackdrop CONTROL);
+  mutation-checked — dropping the gate fails 3, a `true` server snapshot fails
+  the server-frame case, a subscription that never listens fails 2.
 - **`prefers-reduced-motion: reduce` really hides the video** (revealing that
   still). This was BROKEN as shipped: the reduced-motion rule sat near the top of
   `globals.css` and the end block then set `display: block !important` on the
@@ -6217,14 +6244,22 @@ What runs (each with a failing-if-removed test, all mutation-checked):
 - **MEDIA WEIGHT is capped by test.** The generated art shipped at ~22MB for one
   cold visit (13 buttons at 1536×1024 / 114–311KB, backdrop 1920×1080 / 19.3MB);
   it is now 768×512 webp q82 (26–65KB, 587KB for the set, all 13 eagerly
-  preloaded on mount) and a 4.1MB CRF-28 mp4. The buttons never paint wider than
+  preloaded on mount) plus a 2.2MB CRF-28 mp4 and the 306KB fallback still — and
+  a narrow viewport skips the mp4 entirely. The buttons never paint wider than
   ~310 CSS px (`.menuShellPanel.bare` is `clamp(230px, 24vw, 310px)` and
   `.menuNavArt` is `contain`-fitted), so 768px is already ≥2× for retina.
   `main-menu-media.test.ts` enforces webp + alpha + a 768px width ceiling + a
-  512px floor + per-file and whole-set byte ceilings, and for the mp4: a 6MB
-  ceiling, `moov` before `mdat` (faststart) and NO audio atom.
+  512px floor + per-file and whole-set byte ceilings; for the mp4: a 6MB
+  ceiling, `moov` before `mdat` (faststart) and NO audio atom; and for
+  `main-menu-fallback.webp` a 340KB ceiling with a 1280–1920px width band (it is
+  fetched on EVERY visit as the poster, and IS the whole backdrop on a narrow
+  viewport). The still was re-encoded with the repo's own scenery standard —
+  sharp `{ quality: 80, effort: 6, smartSubsample: true }`, dimensions and alpha
+  unchanged (401KB → 306KB, SSIM 0.966); it is an already-lossy master, so a
+  bigger saving costs visible quality on a full-bleed, ken-burns-zoomed plate.
 - **RE-ENCODING THE LOOP: preserve the frames or the seamless loop breaks.** The
-  file is authored to meet itself (1920×1080, 24fps, 20.000s, 480 frames). Use
+  v6 file is authored to meet itself (1280×720, 24fps, 19.9167s, 478 frames,
+  ~2.2MB, silent). Use
   `ffmpeg -i <src> -an -c:v libx264 -preset slow -crf 28 -pix_fmt yuv420p
   -fps_mode passthrough -movflags +faststart <out>` and re-verify frame count,
   fps, duration and that the first packet is a keyframe against the SOURCE before

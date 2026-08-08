@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MenuShell } from "./menu-shell";
 import { UI_ART_SLOTS } from "@/data/ui-art";
@@ -153,5 +154,138 @@ describe("MenuShell", () => {
     vi.mocked(playLibrarySound).mockClear();
     fireEvent.click(screen.getByText("Plain"));
     expect(playLibrarySound).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A narrow viewport must never DOWNLOAD a multi-MB `videoBackdrop`. Hiding the
+ * element with CSS is not enough — a `display: none` <video> with
+ * `preload="auto"` still fetches the whole file — so the ELEMENT must not be
+ * mounted, exactly like the setup-scene playlist's phone gate. The still
+ * `.menuShellBackdrop` img stays, so the screen is never a blank hole.
+ */
+describe("MenuShell — a narrow viewport never loads the backdrop video", () => {
+  const LOOP = "/assets/ui/menu/loop.mp4";
+  const STILL = "/assets/ui/menu/still.webp";
+
+  /** matchMedia stub whose `change` listeners this test can fire by hand. */
+  function stubWidth(narrow: boolean) {
+    const listeners = new Set<() => void>();
+    const state = { narrow };
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        get matches() {
+          return query.includes("max-width: 820px") ? state.narrow : !state.narrow;
+        },
+        media: query,
+        addEventListener: (_: string, fn: () => void) => listeners.add(fn),
+        removeEventListener: (_: string, fn: () => void) => listeners.delete(fn)
+      }))
+    );
+    return {
+      /** Cross the breakpoint the way a resize/rotation does. */
+      resizeTo(nextNarrow: boolean) {
+        state.narrow = nextNarrow;
+        act(() => {
+          for (const fn of listeners) fn();
+        });
+      },
+      get listenerCount() {
+        return listeners.size;
+      }
+    };
+  }
+
+  const shell = () => (
+    <MenuShell videoBackdrop={LOOP} videoFallback={STILL}>
+      <p>menu</p>
+    </MenuShell>
+  );
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("mounts NO video at all on a narrow viewport, and keeps the still art", () => {
+    stubWidth(true);
+    const { container } = render(shell());
+
+    expect(container.querySelector("video")).toBeNull();
+    // Not merely hidden or src-less: nothing in the DOM references the loop, so
+    // no request for it can be made.
+    expect(container.innerHTML).not.toContain("loop.mp4");
+
+    // The backdrop still paints — the fallback still is the visible layer.
+    const still = container.querySelector("img.menuShellBackdrop");
+    expect(still).not.toBeNull();
+    expect(still?.getAttribute("src")).toContain("still.webp");
+  });
+
+  it("CONTROL: a wide viewport mounts the loop exactly as before", () => {
+    stubWidth(false);
+    const { container } = render(shell());
+
+    const video = container.querySelector("video.menuShellBackdropVideo");
+    expect(video).not.toBeNull();
+    expect(video?.getAttribute("src")).toContain("loop.mp4");
+    expect(video?.getAttribute("poster")).toContain("still.webp");
+  });
+
+  it("the SERVER frame carries no video, so a phone cannot start the download before hydration", () => {
+    // The preload scanner acts on the HTML, ahead of React. A server frame
+    // cannot know the viewport, so it must not emit the <video> at all.
+    const html = renderToStaticMarkup(shell());
+    expect(html).not.toContain("<video");
+    expect(html).not.toContain("loop.mp4");
+    // The still is in that very first frame, so the backdrop is never blank.
+    expect(html).toContain("still.webp");
+  });
+
+  it("crossing the breakpoint mid-session mounts and unmounts the loop", () => {
+    const media = stubWidth(true);
+    const { container } = render(shell());
+    expect(container.querySelector("video")).toBeNull();
+
+    media.resizeTo(false);
+    expect(container.querySelector("video")).not.toBeNull();
+
+    media.resizeTo(true);
+    expect(container.querySelector("video")).toBeNull();
+  });
+
+  it("unsubscribes the media listener on unmount", () => {
+    const media = stubWidth(false);
+    const { unmount } = render(shell());
+    expect(media.listenerCount).toBe(1);
+    unmount();
+    expect(media.listenerCount).toBe(0);
+  });
+
+  it("keeps the loop where matchMedia is unavailable (assume a wide viewport)", () => {
+    vi.stubGlobal("matchMedia", undefined);
+    const { container } = render(shell());
+    expect(container.querySelector("video.menuShellBackdropVideo")).not.toBeNull();
+  });
+
+  it("CONTROL: a shell with no videoBackdrop is untouched on either viewport", () => {
+    // Every other menu screen uses the still-art slot path; the gate must not
+    // add or remove anything there.
+    stubWidth(true);
+    const narrow = render(
+      <MenuShell>
+        <p>menu</p>
+      </MenuShell>
+    );
+    expect(narrow.container.querySelector("video")).toBeNull();
+    expect(narrow.container.querySelector("img.menuShellBackdrop")).not.toBeNull();
+    cleanup();
+
+    stubWidth(false);
+    const wide = render(
+      <MenuShell>
+        <p>menu</p>
+      </MenuShell>
+    );
+    expect(wide.container.querySelector("video")).toBeNull();
+    expect(wide.container.querySelector("img.menuShellBackdrop")).not.toBeNull();
   });
 });
