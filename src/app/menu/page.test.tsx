@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MenuPage from "./page";
 import * as authClient from "@/lib/auth-client";
@@ -25,7 +25,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("/menu (main menu, guest-only build)", () => {
-  it("links Single player, Multiplayer, Battle Test, Map Designer, Hall of Fame and Credits", () => {
+  it("shows the compact main choices and swaps in the requested submenus", () => {
     render(<MenuPage />);
 
     expect(screen.getByRole("link", { name: /Single player/i }).getAttribute("href")).toBe("/single-player");
@@ -34,17 +34,25 @@ describe("/menu (main menu, guest-only build)", () => {
     // no longer carries a direct /story entry.
     expect(screen.queryByRole("link", { name: /Story mode/i })).toBeNull();
 
-    expect(screen.getByRole("link", { name: /Multiplayer/i }).getAttribute("href")).toBe("/play");
-    // The shared Battle Test arenas and Map Designer are first-class menu destinations.
+    expect(screen.getByRole("link", { name: /Map Editor/i }).getAttribute("href")).toBe("/designer");
+    expect(screen.queryByRole("link", { name: /Battle Test/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Multiplayer/i }));
+    expect(screen.getByRole("link", { name: /Skirmish/i }).getAttribute("href")).toBe("/play");
     expect(screen.getByRole("link", { name: /Battle Test/i }).getAttribute("href")).toBe("/battle");
-    expect(screen.getByRole("link", { name: /Map Designer/i }).getAttribute("href")).toBe("/designer");
+    expect(screen.getByRole("link", { name: /Co-op/i }).getAttribute("href")).toBe("/play?mode=co-op");
+    fireEvent.click(screen.getByRole("button", { name: /Back/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Miscellaneous/i }));
     expect(screen.getByRole("link", { name: /Hall of Fame/i }).getAttribute("href")).toBe("/hall-of-fame");
     expect(screen.getByRole("link", { name: /Credits/i }).getAttribute("href")).toBe("/credits");
+    expect(screen.getByRole("link", { name: /Profile/i }).getAttribute("href")).toBe("/profile");
   });
 
-  it("hides Logout in guest mode (accounts are not built yet)", () => {
+  it("shows Logout in guest mode and returns to login", () => {
     render(<MenuPage />);
-    expect(screen.queryByText(/Logout/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Logout/i }));
+    expect(replace).toHaveBeenCalledWith("/login");
   });
 
   it("shows the persisted guest name with a change-name link to /login", () => {
