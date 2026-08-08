@@ -977,9 +977,18 @@ export function ReactionTray({
         mode: selection.mode,
         ...(selection.optionIndex !== undefined ? { optionIndex: selection.optionIndex } : {}),
         ...(selection.asPowerBoost ? { asPowerBoost: true } : {}),
-        // Dropping these flags would resolve the FULL primary effect instead of
-        // the draw rider the button promised (Runes granted mid-window, a full
-        // reshuffle, a target-less heal throw).
+        // `drawOnly` MUST ride the play: dropping it resolves the FULL primary
+        // effect instead of the draw rider the button promised (Runes granted
+        // mid-window, a target-less heal throw). It is also part of the engine's
+        // legality match, so a tile's flag must reach the action verbatim or the
+        // play is refused.
+        //
+        // `utilityOnly` is an offer-side marker only — the reducer never reads
+        // it (it drives reactionOfferOpensWindow's window-opening rule, the
+        // trap-twin dedupe and this tile's label). The one face that carries it
+        // WITHOUT `drawOnly` is Deemer IV's "shuffle your discard into your deck,
+        // then draw 1", whose full primary effect IS what its tile promises. It
+        // is forwarded anyway so the action stays a faithful copy of the offer.
         ...(selection.drawOnly ? { drawOnly: true as const } : {}),
         ...(selection.utilityOnly ? { utilityOnly: true as const } : {}),
         ...(costCardIds.length > 0 ? { costCardIds } : {}),

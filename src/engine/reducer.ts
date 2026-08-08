@@ -653,6 +653,18 @@ function normalizeActionForMatch(action: GameAction): GameAction {
   if (action.type === "PLAY_REACTION") {
     // costCardIds are the player's chosen payment — validated by the play
     // handler, not by the legality match.
+    //
+    // `drawOnly` MUST be matched: it changes RESOLUTION (applyReactionPlayCore
+    // returns early after the printed draw rider, fizzling the primary effect),
+    // so leaving it out let a forged `drawOnly: true` match the FULL-effect offer
+    // and execute a play the engine never offered. The reaction tray already
+    // keys its tiles on the flag, so a legitimate draw-only pick still matches
+    // its own offer.
+    //
+    // `utilityOnly` is deliberately NOT matched: the reducer never reads it (it
+    // is an offer-side window-opening / trap-twin-dedupe marker consumed by
+    // reactionOfferOpensWindow), and the tray's group key does not include it,
+    // so matching on it would reject plays that work today.
     return {
       type: "PLAY_REACTION",
       playerId: action.playerId,
@@ -660,6 +672,7 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       mode: action.mode ?? "basic",
       ...(action.optionIndex !== undefined ? { optionIndex: action.optionIndex } : {}),
       ...(action.target ? { target: action.target } : {}),
+      ...(action.drawOnly ? { drawOnly: true as const } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
       ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
       ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
@@ -768,12 +781,18 @@ function assertBatchReactionLegal(
   let powerOnlyPlays = 0;
 
   for (const play of action.plays) {
+    // Mirrors normalizeActionForMatch's PLAY_REACTION shape: `drawOnly` rides
+    // the comparison because it changes resolution (without it a forged
+    // draw-only entry matched the FULL-effect offer), while `utilityOnly` stays
+    // out for the same reason it does there. ReactionPlay carries no `target` at
+    // all, so a targeted offer is correctly unbatchable and simply fails to match.
     const singleAction: GameAction = {
       type: "PLAY_REACTION",
       playerId: action.playerId,
       cardId: play.cardId,
       mode: play.mode ?? "basic",
       ...(play.optionIndex !== undefined ? { optionIndex: play.optionIndex } : {}),
+      ...(play.drawOnly ? { drawOnly: true as const } : {}),
       ...(play.asPowerBoost ? { asPowerBoost: true } : {})
     };
 
