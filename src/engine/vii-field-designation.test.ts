@@ -415,6 +415,166 @@ describe("Ⅶ designation — face-down center slot", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 2b. An UNPINNED Ⅶ slot's designation must land on a tile that PRINTS it.
+//
+// REPORTED BUG 2026-08-09, verbatim: "2nd tile - Grail - was mix of utopia and
+// grail". The hidden Grail & Dragon Utopia package assigns a balanced 2 Grails +
+// 2 Utopias across the paired face-down centre slots, but each slot used to draw
+// an ARBITRARY centre tile: a "grail" slot could land on C1 (which PRINTS a
+// Dragon Utopia) or on &C1 (an Airship Yard). materializeTileFields then forced
+// the FIELD to the designation while the board still showed the printed tile —
+// the hex pictured a Dragon Utopia / Airship Yard and acted as a Grail, and the
+// rotation preview (which draws the printed field def) said the same. One tile,
+// two identities. A slot that carries the designation now draws a tile whose own
+// printed Ⅶ objective IS that designation whenever the pool still holds one, so
+// art, printed field, guards and rewards all agree.
+// ---------------------------------------------------------------------------
+describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its objective", () => {
+  /** The four centre slots of the reported map: 4 paired mystery Ⅶ objectives. */
+  const MYSTERY_CENTERS = [
+    { row: 9, col: 4 },
+    { row: 7, col: 6 },
+    { row: 11, col: 2 },
+    { row: 5, col: 8 }
+  ] as const;
+
+  function mysteryGame(seed: string): GameState {
+    return createAdventureGameState({
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        ...MYSTERY_CENTERS.map((center) => ({
+          row: center.row,
+          col: center.col,
+          group: "center" as const,
+          faceDown: true,
+          viiFields: ["grail", "dragon_utopia"] as CustomMapTilePlan["viiFields"]
+        }))
+      ],
+      customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+    });
+  }
+
+  /** The printed Ⅶ objective of a tile definition (every centre tile has one). */
+  function printedVii(tileDefId: string): string | undefined {
+    return allTileDefinitions[tileDefId]?.fields.find((field) => field.difficulty === 7)?.location;
+  }
+
+  it("the hidden package's 2 Grails + 2 Utopias each sit on a tile that prints that objective", () => {
+    for (const seed of ["mystery-a", "mystery-b", "mystery-c", "mystery-d"]) {
+      const state = mysteryGame(seed);
+      const centers = Object.values(state.adventure!.tiles).filter((tile) => tile.group === "center");
+      expect(centers).toHaveLength(4);
+      const designations = centers.map((tile) => tile.viiField);
+      // The balanced pool contract: four paired slots = 2 Grails + 2 Utopias.
+      expect(designations.filter((entry) => entry === "grail")).toHaveLength(2);
+      expect(designations.filter((entry) => entry === "dragon_utopia")).toHaveLength(2);
+
+      for (const tile of centers) {
+        expect(
+          printedVii(tile.tileDefId),
+          `${seed}: tile ${tile.tileDefId} designated ${tile.viiField} must PRINT that objective`
+        ).toBe(tile.viiField);
+        // …and materializing is then a pure no-op override: the live field agrees
+        // with both the designation and the printed tile.
+        tile.faceDown = false;
+        materializeTileFields(state.adventure!, tile);
+        const objective = Object.values(state.adventure!.fields).find(
+          (field) => field.tileInstanceId === tile.id && field.difficulty === 7
+        );
+        expect(objective?.location).toBe(tile.viiField);
+      }
+    }
+  });
+
+  it("a designated Grail really fights and pays as a Grail (no Utopia guards, no artifacts)", () => {
+    const state = mysteryGame("mystery-behaviour");
+    for (const tile of Object.values(state.adventure!.tiles)) {
+      if (tile.faceDown) {
+        tile.faceDown = false;
+        materializeTileFields(state.adventure!, tile);
+      }
+    }
+    const objectives = Object.values(state.adventure!.fields).filter((field) => field.difficulty === 7);
+    const grails = objectives.filter((field) => field.location === "grail");
+    const utopias = objectives.filter((field) => field.location === "dragon_utopia");
+    expect(grails).toHaveLength(2);
+    expect(utopias).toHaveLength(2);
+
+    const hero = getMainHero(state, "p1")!;
+    const artifactSearches = () =>
+      state.adventure!.rewardQueue.filter(
+        (reward) => reward.kind === "shared-deck-search" && String(reward.deckId).startsWith("artifact")
+      ).length;
+
+    // A Grail: plain Ⅶ neutral guards (the Utopia draw appends a Black Dragon),
+    // no artifact ladder, and the dig is armed.
+    const grail = grails[0];
+    expect(
+      drawGuardArmy(state, grail, 7).some((draw) => draw.unitDefId === "neutral.black_dragons")
+    ).toBe(false);
+    const searchesBefore = artifactSearches();
+    hero.spaceId = grail.spaceId;
+    beginFieldVisit(state, hero.id, grail.spaceId, false);
+    expect(artifactSearches(), "a Grail field pays NO artifacts").toBe(searchesBefore);
+    expect(grail.grailDiggable).toBe(true);
+
+    // CONTROL: the Utopia on the same map pays its full package and never digs.
+    const utopia = utopias[0];
+    expect(
+      drawGuardArmy(state, utopia, 7).some((draw) => draw.unitDefId === "neutral.black_dragons")
+    ).toBe(true);
+    hero.spaceId = utopia.spaceId;
+    beginFieldVisit(state, hero.id, utopia.spaceId, false);
+    expect(artifactSearches()).toBe(searchesBefore + 3);
+    expect(utopia.grailDiggable ?? false).toBe(false);
+  });
+
+  it("SCOPE: a FACE-UP slot always names its own tile, so nothing there is swapped", () => {
+    // The designation-matched draw is face-DOWN only. A face-up slot that names
+    // no tile is refused at validation, which is what keeps that branch honest.
+    const { problems } = validateCustomMapPlan(
+      [
+        ...startPlans(),
+        { row: CENTER.row, col: CENTER.col, group: "center", faceDown: false, viiField: "grail" }
+      ],
+      getScenario("skirmish")
+    );
+    expect(problems.join(" ")).toContain("pick a tile for the face-up slot");
+  });
+
+  it("CONTROL: an EXPLICIT tile pin keeps the designer's deliberate mismatch", () => {
+    // Pinning C1 (a printed Dragon Utopia) and designating it a Grail is an
+    // authored choice — the FORCE rule still wins, and the tile is not swapped.
+    const state = createAdventureGameState({
+      seed: "vii-pin-mismatch-kept",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        {
+          row: CENTER.row,
+          col: CENTER.col,
+          group: "center",
+          faceDown: true,
+          tileDefId: "C1",
+          viiField: "grail"
+        }
+      ]
+    });
+    const tile = Object.values(state.adventure!.tiles).find((entry) => entry.group === "center")!;
+    expect(tile.tileDefId, "an explicit pin is never swapped").toBe("C1");
+    tile.faceDown = false;
+    materializeTileFields(state.adventure!, tile);
+    expect(objectiveField(state)?.location).toBe("grail");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 3. "town" designation → the neutral Random Town (conquerable / flaggable).
 // ---------------------------------------------------------------------------
 describe("Ⅶ designation — town", () => {
