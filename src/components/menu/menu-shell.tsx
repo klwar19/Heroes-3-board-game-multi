@@ -107,6 +107,8 @@ export function MenuShell({
   logo = false,
   frameless = false,
   dragonBreath = false,
+  videoBackdrop,
+  className,
   as: Root = "main",
   footer
 }: {
@@ -128,6 +130,10 @@ export function MenuShell({
    * frame: the painted jet from the backdrop art surges in/out with embers.
    */
   dragonBreath?: boolean;
+  /** Optional full-bleed looping video used instead of the still art slot. */
+  videoBackdrop?: string;
+  /** Page-specific layout hook without changing the shared shell defaults. */
+  className?: string;
   as?: "main" | "div";
   /** Small line pinned under the panel (e.g. "Playing as …"). */
   footer?: ReactNode;
@@ -137,8 +143,22 @@ export function MenuShell({
   const brand = uiArtSlot("game-logo");
 
   return (
-    <Root className="menuShellRoot">
-      <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
+    <Root className={`menuShellRoot${className ? ` ${className}` : ""}`}>
+      {videoBackdrop ? (
+        <video
+          aria-hidden
+          autoPlay
+          className="menuShellBackdrop menuShellBackdropVideo"
+          loop
+          muted
+          playsInline
+          poster={assetUrl(art.src)}
+          preload="auto"
+          src={assetUrl(videoBackdrop)}
+        />
+      ) : (
+        <img alt="" aria-hidden className="menuShellBackdrop" src={assetUrl(art.src)} />
+      )}
       {dragonBreath ? <MenuDragonBreath /> : null}
       {dragonBreath ? <MenuMotes /> : null}
       <div aria-hidden className="menuShellVignette" />

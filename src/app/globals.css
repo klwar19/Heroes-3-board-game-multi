@@ -9,6 +9,200 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* -------------------------------------------------------------------------
+   2026 cinematic main menu: full-quality ping-pong video, logo on the left,
+   one compact stateful button stack on the right. Scoped so every other
+   MenuShell screen keeps its established layout and chrome.
+--------------------------------------------------------------------------- */
+
+.mainMenuShell .menuShellBackdropVideo {
+  filter: none;
+  animation: none;
+  transform: none;
+  object-position: center center;
+}
+
+.mainMenuShell .menuShellVignette {
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 8%) 0%, transparent 38%, transparent 64%, rgb(0 0 0 / 14%) 100%),
+    linear-gradient(180deg, rgb(0 0 0 / 8%), transparent 18%, transparent 82%, rgb(0 0 0 / 15%));
+}
+
+.mainMenuShell .menuShellContent {
+  width: 100%;
+  min-height: 0;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: clamp(22px, 5vw, 80px);
+  padding: clamp(22px, 4vw, 58px);
+  overflow: hidden;
+}
+
+.mainMenuShell .menuGameLogo {
+  flex: 0 1 52%;
+  width: min(690px, 48vw);
+  margin: 0;
+  filter: drop-shadow(0 7px 2px rgb(0 0 0 / 76%)) drop-shadow(0 0 22px rgb(255 211 105 / 36%));
+}
+
+.mainMenuShell .menuShellPanel.bare {
+  flex: 0 0 min(570px, 43vw);
+  width: min(570px, 43vw);
+  min-width: 390px;
+}
+
+.mainMenuShell .menuGameLogo {
+  position: absolute;
+  top: clamp(48px, 8vh, 72px);
+  left: clamp(30px, 4vw, 58px);
+  flex: 0 1 44%;
+  width: min(460px, 32vw);
+  max-width: 460px;
+  transform: none;
+}
+
+.mainMenuShell .menuNav {
+  width: 100%;
+  gap: clamp(6px, 0.85vh, 10px);
+}
+
+.mainMenuShell .menuNavButton,
+.mainMenuShell .menuNavButton:hover:not(:disabled),
+.mainMenuShell .menuNavButton:disabled {
+  isolation: isolate;
+  min-height: clamp(76px, 11.2vh, 102px);
+  overflow: hidden;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  box-shadow: 0 8px 15px rgb(0 0 0 / 48%);
+  transform: none;
+  transition: filter 150ms ease, transform 150ms ease;
+}
+
+.mainMenuShell .menuNavButton::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(90deg, transparent 5%, rgb(1 10 31 / 12%) 26%, rgb(1 8 26 / 42%) 50%, rgb(1 10 31 / 12%) 74%, transparent 95%);
+  pointer-events: none;
+}
+
+.mainMenuShell .menuNavButton:hover:not(:disabled),
+.mainMenuShell .menuNavButton:focus-visible {
+  filter: brightness(1.13) saturate(1.08);
+  transform: translateX(-5px) scale(1.012);
+}
+
+.mainMenuShell .menuNavIcon {
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: auto;
+  height: 132%;
+  opacity: 0.9;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 5px rgb(0 0 0 / 78%)) saturate(1.08);
+}
+
+.mainMenuShell .menuNavHeroArt {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.mainMenuShell .menuNavButtonHeroes::before {
+  background: linear-gradient(90deg, rgb(0 5 18 / 5%), rgb(0 5 18 / 50%) 50%, rgb(0 5 18 / 5%));
+}
+
+.mainMenuShell .menuNavText {
+  z-index: 3;
+}
+
+.mainMenuShell .menuNavLabel {
+  color: #ffe9a2;
+  background: linear-gradient(180deg, #fffbdc 0%, #ffe49a 26%, #e5ac42 62%, #9b5e19 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  font-family: var(--font-heroic), Georgia, "Times New Roman", serif;
+  font-size: clamp(22px, 2.2vw, 34px);
+  font-weight: 900;
+  letter-spacing: 0.075em;
+  line-height: 0.95;
+  -webkit-text-stroke: 0.45px #4b2707;
+  filter: drop-shadow(0 2px 0 #311600) drop-shadow(0 4px 5px #000) drop-shadow(0 0 7px #000);
+  white-space: nowrap;
+}
+
+.mainMenuShell .menuNavLogout {
+  min-height: clamp(64px, 8.8vh, 78px);
+}
+
+.mainMenuShell .menuShellFooter {
+  position: absolute;
+  right: 20px;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  left: 20px;
+  color: #f3deb1;
+  text-shadow: 0 2px 4px #000, 0 0 8px #000;
+}
+
+@media (max-width: 820px) {
+  .mainMenuShell .menuShellContent {
+    flex-direction: column;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 14px 34px;
+  }
+
+  .mainMenuShell .menuGameLogo {
+    flex: 0 0 auto;
+    width: min(390px, 78vw);
+    max-height: 23vh;
+    object-fit: contain;
+  }
+
+  .mainMenuShell .menuShellPanel.bare {
+    flex: 0 1 auto;
+    width: min(500px, 94vw);
+    min-width: 0;
+  }
+
+  .mainMenuShell .menuNavButton,
+  .mainMenuShell .menuNavButton:hover:not(:disabled),
+  .mainMenuShell .menuNavButton:disabled {
+    min-height: clamp(58px, 9.5vh, 76px);
+  }
+
+  .mainMenuShell .menuNavLabel {
+    font-size: clamp(19px, 5.8vw, 28px);
+  }
+}
+
+@media (max-height: 650px) and (min-width: 821px) {
+  .mainMenuShell .menuNavButton,
+  .mainMenuShell .menuNavButton:hover:not(:disabled),
+  .mainMenuShell .menuNavButton:disabled {
+    min-height: 72px;
+  }
+
+  .mainMenuShell .menuNavLabel {
+    font-size: 25px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mainMenuShell .menuShellBackdropVideo {
+    display: none;
+  }
+}
 @font-face {
   font-family: "Liberation Serif";
   src: url("/fonts/LiberationSerif-Bold.ttf") format("truetype");
@@ -36982,5 +37176,126 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   .setupPhase .setupWisp {
     width: 40px;
     height: 34px;
+  }
+}
+
+/* Transparent ImageGen menu buttons. Each generated asset contains its own
+   icon, decoration, and final text; the clickable element adds no plaque. */
+.mainMenuShell .menuShellPanel.bare {
+  flex: 0 0 clamp(230px, 24vw, 310px);
+  width: clamp(230px, 24vw, 310px);
+  min-width: 0;
+}
+
+@media (min-width: 821px) {
+  .mainMenuShell .menuShellPanel.bare {
+    margin-left: auto;
+  }
+}
+
+.mainMenuShell .menuNav {
+  width: 100%;
+  gap: clamp(34px, 4.5vh, 42px);
+}
+
+.mainMenuShell {
+  min-height: 0;
+  background: #050706;
+}
+
+.appShell:has(.mainMenuShell) {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.appShell:has(.mainMenuShell) > .topBar,
+.appShell:has(.mainMenuShell) > .footerNotice {
+  display: none;
+}
+
+.mainMenuShell .menuShellBackdropVideo {
+  display: block !important;
+  object-fit: cover;
+  object-position: center center;
+}
+
+.mainMenuShell .menuShellVignette {
+  background: none;
+}
+
+.mainMenuShell .menuNavButton,
+.mainMenuShell .menuNavButton:hover:not(:disabled),
+.mainMenuShell .menuNavButton:disabled {
+  min-height: clamp(90px, 12.5vh, 114px);
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.mainMenuShell .menuNavButton::before,
+.mainMenuShell .menuNavButton::after {
+  content: none;
+}
+
+.mainMenuShell .menuNavArt {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 150%;
+  height: 150%;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  filter: brightness(1.12) saturate(1.08) drop-shadow(0 5px 5px rgb(0 0 0 / 58%));
+  pointer-events: none;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+
+.mainMenuShell .menuNav-main .menuNavButton:first-child .menuNavArt {
+  width: 180%;
+  height: 180%;
+}
+
+.mainMenuShell .menuNavButton:hover:not(:disabled) .menuNavArt,
+.mainMenuShell .menuNavButton:focus-visible .menuNavArt {
+  filter: brightness(1.24) saturate(1.12) drop-shadow(0 0 11px rgb(255 220 121 / 62%)) drop-shadow(0 6px 5px rgb(0 0 0 / 62%));
+  transform: translate(-50%, -50%) scale(1.055);
+}
+
+@media (max-width: 820px) {
+  .mainMenuShell .menuGameLogo {
+    position: static;
+    flex: 0 0 auto;
+    width: min(340px, 72vw);
+    max-width: 340px;
+    transform: translateY(-1vh);
+  }
+
+  .mainMenuShell .menuShellPanel.bare {
+    width: clamp(210px, 66vw, 285px);
+  }
+
+  .mainMenuShell .menuNavButton,
+  .mainMenuShell .menuNavButton:hover:not(:disabled),
+  .mainMenuShell .menuNavButton:disabled {
+    min-height: clamp(66px, 9.4vh, 82px);
+  }
+
+  .mainMenuShell .menuNavArt {
+    width: 146%;
+    height: 146%;
+  }
+}
+
+@media (max-height: 650px) and (min-width: 821px) {
+  .mainMenuShell .menuNavButton,
+  .mainMenuShell .menuNavButton:hover:not(:disabled),
+  .mainMenuShell .menuNavButton:disabled {
+    min-height: 74px;
   }
 }

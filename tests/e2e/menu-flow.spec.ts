@@ -13,8 +13,7 @@ test("bare visit redirects to the main menu with Single player greyed out", asyn
   await expect(page).toHaveURL(/\/menu$/, { timeout: 15000 });
   await expect(page.getByRole("heading", { name: /Heroes III — The Board Game/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Single player/i })).toBeDisabled();
-  // Logout must not exist in guest mode (accounts ship in a later phase).
-  await expect(page.getByText(/Logout/i)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Logout/i })).toBeVisible();
 });
 
 test("guest flow: login name → menu → play (Erathia) → create room → setup lobby", async ({ page }) => {
@@ -29,7 +28,8 @@ test("guest flow: login name → menu → play (Erathia) → create room → set
   await expect(page.getByText(/Playing as E2E Guest/)).toBeVisible();
 
   // Menu → multiplayer room browser under the Erathia server badge.
-  await page.locator(".menuNav").getByRole("link", { name: /Multiplayer/i }).click();
+  await page.locator(".menuNav").getByRole("button", { name: /Multiplayer/i }).click();
+  await page.locator(".menuNav").getByRole("link", { name: /Skirmish/i }).click();
   await expect(page).toHaveURL(/\/play$/);
   await expect(page.locator(".serverBadge")).toContainText("Erathia");
 
