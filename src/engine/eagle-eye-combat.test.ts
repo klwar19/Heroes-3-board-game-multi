@@ -6,10 +6,10 @@ import type { GameAction, GameState } from "./state";
  * Eagle Eye in combat (CLAUDE.md rule #1 — engine-enforced + mutation-checked).
  *
  * Eagle Eye digs the shared Spell deck for the first Basic (basic play) or
- * Expert (expert play, crown) spell, takes it, and reshuffles the rest. Unlike
- * the elemental Tomes, printed Eagle Eye has no discard branch. It NEVER
- * touches a battlefield unit. Two things this
- * pins down, each with a control that fails if the wiring is removed:
+ * Expert (expert play, crown) spell, then — per the printed card, exactly like
+ * an elemental Tome's School dig — the player TAKES IT INTO HAND OR DISCARDS
+ * IT, and the rest reshuffle. It NEVER touches a battlefield unit. These pin
+ * down, each with a control that fails if the wiring is removed:
  *
  *  1. Played in combat it is self-targeted — it offers a `{type:"none"}` play
  *     and demands NO enemy-unit pick. (Before the fix it fell through to the
@@ -115,7 +115,17 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
     expect(taken.phase).toBe("combat");
   });
 
-  it("offers no discard branch: the found spell must go to hand", () => {
+  /**
+   * REPORTED BUG (2026-08-08): "Eagle eye did not propose to discard the card."
+   * The player was right. The printed card — scan at
+   * public/assets/abilities-eagle_eye.webp, both sides — reads "Draw cards from
+   * the Spell deck until you find a Basic/Expert Spell card. Take it into your
+   * hand OR DISCARD IT. Reshuffle the rest of the cards back to the Spell
+   * deck." The engine used to offer take-ONLY (a lone option, and the resolver
+   * threw "must be taken into your hand" on the discard index), so a hero was
+   * forced to accept a Spell they did not want.
+   */
+  it("offers the PRINTED discard branch: the find may be pitched to the Spell discard", () => {
     const state = combatWithEagle("eagle-basic-discard");
     state.decks.spells.drawPile = ["spell.haste"];
     state.decks.spells.discardPile = [];
@@ -123,18 +133,65 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
     const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
     const dug = applyOk(state, basic!);
     const choice = dug.pendingChoice as { id: string; options: { label: string }[] };
-    expect(choice.options).toHaveLength(1);
-    const refused = applyAction(dug, {
+    // Two printed answers, in printed order: take, or discard.
+    expect(choice.options.map((option) => option.label)).toEqual([
+      expect.stringMatching(/^Take Haste into/),
+      "Discard Haste"
+    ]);
+
+    const discarded = applyOk(dug, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: choice.id,
       optionIndex: 1
     });
-    expect(refused.errors[0]?.message).toMatch(/must be taken/i);
-    const done = applyOk(dug, { type: "CHOOSE_OPTION", playerId: "p1", choiceId: choice.id, optionIndex: 0 });
+    // The observable outcome: the Spell is in the shared deck's DISCARD pile —
+    // never destroyed, never forced into the hero's hand.
+    expect(discarded.decks.spells.discardPile).toContain("spell.haste");
+    expect(discarded.players.p1.hand).not.toContain("spell.haste");
+    expect(discarded.decks.spells.drawPile).not.toContain("spell.haste");
+    expect(discarded.pendingChoice).toBeNull();
+    expect(discarded.phase).toBe("combat");
+  });
 
-    expect(done.players.p1.hand).toContain("spell.haste");
-    expect(done.decks.spells.discardPile).not.toContain("spell.haste");
+  it("CONTROL: taking the same find puts it in HAND and leaves the discard pile empty", () => {
+    const state = combatWithEagle("eagle-basic-take");
+    state.decks.spells.drawPile = ["spell.haste"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    const dug = applyOk(state, basic!);
+    const choice = dug.pendingChoice as { id: string };
+    const taken = applyOk(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 0
+    });
+
+    expect(taken.players.p1.hand).toContain("spell.haste");
+    expect(taken.decks.spells.discardPile).not.toContain("spell.haste");
+  });
+
+  it("the EXPERT side carries the same printed discard branch", () => {
+    const state = combatWithEagle("eagle-expert-discard", 1);
+    state.decks["spells-expert"]!.drawPile = ["spell.implosion"];
+    state.decks["spells-expert"]!.discardPile = [];
+
+    const expert = eaglePlays(state, "p1").find((play) => play.mode === "expert");
+    const dug = applyOk(state, expert!);
+    const choice = dug.pendingChoice as { id: string; options: { label: string }[] };
+    expect(choice.options).toHaveLength(2);
+
+    const discarded = applyOk(dug, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 1
+    });
+    // A split-deck Expert find goes back to the EXPERT deck's discard pile.
+    expect(discarded.decks["spells-expert"]!.discardPile).toContain("spell.implosion");
+    expect(discarded.players.p1.hand).not.toContain("spell.implosion");
   });
 
   it("expert play reads the Expert spell pool, surfaces an Expert spell, and spends a crown", () => {

@@ -2538,14 +2538,34 @@ What each commit ships:
   rule-ON reading; `effectiveArtifactTier` returns the printed "minor" when
   OFF). AUDIT FIX: the branch left the static tier/tags "minor", failing the
   deck-coverage invariant. The card face stays the printed minor scan.
-- **Tournament split decks** (`84d766d4`): a Tournament game plays with the
-  BINH split Spell/Artifact decks. AUDIT FIXES: the `tournamentMode` MASTER
-  toggle now forces `houseRules["split-decks"] = true` at the
-  `setGameOptions` seam (the branch set it only in the setup-hub button
+- **Tournament split decks** (`84d766d4`, extended 2026-08-08): a Tournament
+  game plays with the BINH split Spell/Artifact decks. AUDIT FIXES: the
+  `tournamentMode` MASTER toggle forces `houseRules["split-decks"] = true` at
+  the `setGameOptions` seam (the branch set it only in the setup-hub button
   payload, so the Advanced-panel path missed it); an explicit houseRules
   payload still wins; the preset no longer flips `torso-of-legion-major`.
-  Pinned end-to-end in `tournament-split-decks.test.ts` (built game carries
-  artifacts-minor/major/relic + spells-expert, no combined deck).
+  **2026-08-08 — the GRANULAR path and the missing TICK**: the four tournament
+  rules are individually toggleable, and assembling the package that way (the
+  "Tournament rules" collapsible, no master click) reached tournamentMode
+  all-on with a SINGLE-deck game — the bans applied, the decks did not, and
+  nothing on screen said so. Both halves fixed: (a) the force MOVED to the
+  master-resync block in `setGameOptions` (which also now re-derives on
+  `tournamentObservatoryRerotate` — with the observatory ticked LAST the master
+  flag never re-derived at all), so ANY path that turns the full package on
+  applies it — master toggle, mode card, or the last granular tick; (b)
+  `split-decks` is now a fifth visible TICK in the Tournament rules panel
+  ("Divided Spell & Artifact decks", `screen.tsx`), the SAME house rule the
+  BINH list shows — both rows read/write one setting, and un-ticking it is a
+  plain houseRules payload the tournament seam never re-forces. Pinned in
+  `tournament-split-decks.test.ts` (built game carries
+  artifacts-minor/major/relic + spells-expert; granular all-four path; a
+  PARTIAL package CONTROL that stays single-deck; un-tick stays off) and
+  `game-options-tabs.test.tsx` (the row renders in `.tournamentRuleGrid` and
+  dispatches `houseRules: {"split-decks": …}`, with a Legacy-defaults-OFF
+  CONTROL). LIMIT: the force lives at the LOBBY seam only — a DIRECT
+  `createAdventureGameState({ tournamentMode: true })` with no `houseRules`
+  still builds one mixed Spell deck and one Artifact deck (no player path
+  reaches it; every UI/lobby route goes through `setGameOptions`).
 - **Unit-Stack valuables** (`87f3379c`): a Polish Stack purchase charges AND
   displays the side's printed valuables — folded into the Polish Unit Stacks
   section above.
@@ -3300,8 +3320,24 @@ Two audited codex commits. Leading with what does NOT run / deliberate limits:
   enter a deck in the first place). The five neutral guard faces (incl. Steel
   Golems) are now the real board scans (`elemental-card-images.test.ts`;
   the files sit in `compress-media.mjs`'s protected q94 exclude family).
-- **Eagle Eye's find MUST be taken into hand** (the "discard it" arm was not
-  printed; offer + resolver both enforce it).
+- ~~**Eagle Eye's find MUST be taken into hand** (the "discard it" arm was not
+  printed; offer + resolver both enforce it).~~ **WRONG — REVERTED 2026-08-08.**
+  The claim was a transcription error: the committed card scan
+  (`public/assets/abilities-eagle_eye.webp`) reads, on BOTH sides, "Draw cards
+  from the Spell deck until you find a Basic/Expert Spell card. **Take it into
+  your hand or discard it.** Reshuffle the rest of the cards back to the Spell
+  deck." (the wiki page agrees). The take-only reading forced a hero to accept
+  a Spell they did not want — the user-reported "Eagle Eye did not propose to
+  discard the card". `resolveEagleEyeDig` (reducer.ts) now always offers the
+  printed second option and sets `allowDiscard: true`, so the plain dig behaves
+  exactly like a Tome's School-filtered dig: the pitched Spell goes to that
+  DECK's discard pile (the split-deck Expert dig to `spells-expert`'s), never
+  to the hero's hand and never out of the game. Pinned in
+  `eagle-eye-combat.test.ts` ("offers the PRINTED discard branch" + the EXPERT
+  twin, each asserting the pile the card lands in, with a take-it CONTROL);
+  mutation-checked (restoring the school-gated `allowDiscard` fails 2).
+  Unchanged: the dedup rule still digs PAST a Spell the hero already owns, so
+  the discard arm is not a way to cycle a duplicate into view.
 - **Pandora's Gift: Income raises the real production track** while in play
   (`pandoraIncomeProductionBonus`, removed at EVERY permanent-exit path incl.
   the limit squeeze; legacy snapshots without the field keep the old flat

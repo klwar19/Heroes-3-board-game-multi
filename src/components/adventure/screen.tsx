@@ -9463,32 +9463,56 @@ function GameOptionsPanel({
       <SameChoiceAsBoxNote box="mode" boxLabel="Game mode" onOpenBox={onOpenBox} />
 
       {(() => {
-        const tournamentDefs = [
+        const tournamentDefs: {
+          key: string;
+          label: string;
+          on: boolean;
+          hint: string;
+          toggle: () => void;
+        }[] = [
           {
-            key: "tournamentBanDiplomacy" as const,
+            key: "tournamentBanDiplomacy",
             label: "Ban Diplomacy",
             on: tournamentRules.banDiplomacy,
-            hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy)."
+            hint: "Remove Diplomacy from the shared Ability deck (heroes keep a starting copy).",
+            toggle: () => send({ tournamentBanDiplomacy: !tournamentRules.banDiplomacy })
           },
           {
-            key: "tournamentBanHourglass" as const,
+            key: "tournamentBanHourglass",
             label: "Ban Hourglass",
             on: tournamentRules.banHourglass,
-            hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck."
+            hint: "Remove Hourglass of the Evil Hour from the shared Artifact deck.",
+            toggle: () => send({ tournamentBanHourglass: !tournamentRules.banHourglass })
           },
           {
-            key: "tournamentSecondPlayerMorale" as const,
+            key: "tournamentSecondPlayerMorale",
             label: "2nd player +1 morale",
             on: tournamentRules.secondPlayerMorale,
-            hint: "The second player gains 1 positive morale at game start."
+            hint: "The second player gains 1 positive morale at game start.",
+            toggle: () => send({ tournamentSecondPlayerMorale: !tournamentRules.secondPlayerMorale })
           },
           {
-            key: "tournamentObservatoryRerotate" as const,
+            key: "tournamentObservatoryRerotate",
             label: "Observatory re-rotates a nearby tile",
             on: tournamentRules.observatoryRerotate,
-            hint: "The Redwood Observatory may rotate one adjacent revealed tile with no Hero on it, then still discovers a face-down tile normally."
+            hint: "The Redwood Observatory may rotate one adjacent revealed tile with no Hero on it, then still discovers a face-down tile normally.",
+            toggle: () => send({ tournamentObservatoryRerotate: !tournamentRules.observatoryRerotate })
+          },
+          {
+            // The SAME `split-decks` house rule BINH ticks, shown here as a
+            // Tournament rule too: it is the package's headline (tier-split
+            // Spell / Artifact decks) and was previously invisible — a table
+            // could be "in Tournament rules" with one mixed deck and nothing on
+            // screen said so. Turning any full tournament package on forces it
+            // (adventure-setup's setGameOptions seam); this tick reflects and
+            // may override that.
+            key: "split-decks",
+            label: "Divided Spell & Artifact decks",
+            on: houseRules["split-decks"],
+            hint: "Tournament headline (and the BINH house rule of the same name): separate Basic/Expert Spell decks and Minor/Major/Relic Artifact decks instead of one mixed deck each.",
+            toggle: () => setHouseRule("split-decks", !houseRules["split-decks"])
           }
-        ] as const;
+        ];
         const tournamentOn = tournamentDefs.filter((rule) => rule.on).length;
         return (
           <HouseRuleCollapsible
@@ -9509,7 +9533,7 @@ function GameOptionsPanel({
                   aria-pressed={rule.on}
                   className={`tournamentRuleToggle ${rule.on ? "on" : "off"}`}
                   key={rule.key}
-                  onClick={() => send({ [rule.key]: !rule.on })}
+                  onClick={rule.toggle}
                   title={rule.hint}
                   type="button"
                 >
@@ -9526,7 +9550,8 @@ function GameOptionsPanel({
             </div>
             <small className="optionHint">
               Toggle each Tournament setup rule independently, or use the Tournament mode card above to apply the full
-              competitive package.
+              competitive package. “Divided Spell &amp; Artifact decks” is the same house rule the BINH list shows (both
+              ticks read and write one setting); turning the whole Tournament package on switches it on for you.
             </small>
           </HouseRuleCollapsible>
         );
