@@ -1190,6 +1190,34 @@ button {
   color: var(--muted);
 }
 
+/* Icon-only round form (the main menu's corner switch). */
+.musicToggle.compact {
+  gap: 0;
+  justify-content: center;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* Pinned to the main menu's top-right corner, over the cinematic backdrop.
+   `top` clears the Next DEV-TOOLS badge, which next.config.ts pins to the exact
+   top-right corner (dev-only, but it swallows clicks landing under it). */
+.mainMenuShell .menuMusicToggle {
+  position: fixed;
+  top: 54px;
+  right: 14px;
+  z-index: 30;
+  border-color: rgb(214 178 94 / 55%);
+  background: rgb(10 13 23 / 62%);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 45%);
+}
+
+.mainMenuShell .menuMusicToggle:hover {
+  border-color: rgb(240 206 120 / 90%);
+  filter: brightness(1.12);
+}
+
 /* ---------- combat card strip (top) ---------- */
 
 /* Everything card-related stacks here: each opponent's hand/deck/discard
