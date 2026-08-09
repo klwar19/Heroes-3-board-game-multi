@@ -23,35 +23,31 @@ export type TileBorderSegment = {
  *   (none exist in the core box; expansion tiles may declare them).
  *
  * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
- * is one exception. A bank can be walked INTO from within its own Tile and
- * only seals OUTWARD (you cannot cross a Tile edge to it — enforced in
- * canCrossEdge). By DEFAULT a bank field now draws NO printed borders at all —
- * the field reads as fully open, which is what most players want once a bank is
- * placed. Passing `showBankBorders: true` restores the classic bank outline:
- * just its OUTER arc, never the inner walls shared with the centre/ring
- * neighbours (so it never looks sealed off from within its own Tile). Field
- * Overrides passed as `borderlessSlots` permanently hide the replaced field's
- * printed ring/arc in the same way, while preserving designer-added borders.
+ * is one exception. A placed bank is always border-free. Field Overrides passed
+ * as `borderlessSlots` (including the Dungeon Gate) follow the same rule. The
+ * suppression covers printed arcs/rings AND designer-added borders on every edge
+ * touching the replaced hex; otherwise a designed edge can leave the yellow
+ * outline visible even though the runtime object is explicitly border-free.
  */
 const NO_BORDER_SLOTS: ReadonlySet<number> = new Set();
 
 export function getTileBorderSegments(
   def: TileDefinition,
   bankSlots: ReadonlySet<number> = NO_BORDER_SLOTS,
-  showBankBorders = false,
   options: {
     extraBorders?: readonly number[];
     borderEdges?: readonly number[];
     rotation?: number;
     /**
-     * Runtime objects that replace a printed field (Field Overrides) hide that
-     * field's printed arc/ring permanently. Designer-added borders remain.
+     * Runtime objects that replace a printed field hide every border touching
+     * that field, including designer-added arcs and per-edge lines.
      */
     borderlessSlots?: ReadonlySet<number>;
   } = {}
 ): TileBorderSegment[] {
   const segments = new Map<string, TileBorderSegment>();
   const borderlessSlots = options.borderlessSlots ?? NO_BORDER_SLOTS;
+  const suppressedSlots = new Set<number>([...bankSlots, ...borderlessSlots]);
   const add = (slot: number, edge: number) => {
     const normalized = ((edge % 6) + 6) % 6;
     segments.set(`${slot}:${normalized}`, { slot, edge: normalized });
@@ -65,7 +61,7 @@ export function getTileBorderSegments(
     const slot = direction + 1;
     // A border-free bank field draws none of its edges — including the tile's
     // own outer arc, which would otherwise still seal it visually.
-    if (borderlessSlots.has(slot) || (bankSlots.has(slot) && !showBankBorders)) {
+    if (suppressedSlots.has(slot)) {
       return;
     }
     add(slot, direction - 1);
@@ -73,28 +69,16 @@ export function getTileBorderSegments(
     add(slot, direction + 1);
   });
 
-  // Blocked fields are ringed completely — except a bank. By default a bank draws
-  // no borders at all; with `showBankBorders` it draws just its outer arc (open
-  // inward).
+  // Blocked fields are ringed completely — except a placed bank / carved object.
   def.fields.forEach((field, slot) => {
     if (field.location !== "blocked_field") {
       return;
     }
-    if (borderlessSlots.has(slot)) {
-      return;
-    }
-    const isBank = bankSlots.has(slot);
-
-    // Default: a Creature Bank field is border-free (toggle to bring them back).
-    if (isBank && !showBankBorders) {
+    if (suppressedSlots.has(slot)) {
       return;
     }
 
     if (slot === 0) {
-      // A centre bank is reachable from every ring neighbour: no walls at all.
-      if (isBank) {
-        return;
-      }
       for (let edge = 0; edge < 6; edge += 1) {
         add(0, edge);
       }
@@ -105,11 +89,6 @@ export function getTileBorderSegments(
     add(slot, direction - 1);
     add(slot, direction);
     add(slot, direction + 1);
-    // The three edges shared with the centre and both ring neighbours — drawn
-    // for a plain blocked field, but left OPEN for a bank you walk in through.
-    if (isBank) {
-      return;
-    }
     add(slot, direction + 3);
     add(slot, direction + 2);
     add(slot, direction + 4);
@@ -162,7 +141,37 @@ export function getTileBorderSegments(
     add(slot, edge);
   }
 
-  return [...segments.values()];
+  // A designer edge can be encoded from either of the two hexes it separates.
+  // Filter by physical adjacency, not only by the segment's owning slot, so a
+  // bank / Dungeon Gate truly loses all six surrounding lines.
+  return [...segments.values()].filter(
+    (segment) => !segmentTouchesSuppressedSlot(segment, suppressedSlots)
+  );
+}
+
+function segmentTouchesSuppressedSlot(
+  segment: TileBorderSegment,
+  suppressedSlots: ReadonlySet<number>
+): boolean {
+  if (suppressedSlots.has(segment.slot)) {
+    return true;
+  }
+  if (segment.slot === 0) {
+    return suppressedSlots.has(segment.edge + 1);
+  }
+
+  const direction = segment.slot - 1;
+  const edge = ((segment.edge % 6) + 6) % 6;
+  if (edge === (direction + 3) % 6) {
+    return suppressedSlots.has(0);
+  }
+  if (edge === (direction + 2) % 6) {
+    return suppressedSlots.has((segment.slot % 6) + 1);
+  }
+  if (edge === (direction + 4) % 6) {
+    return suppressedSlots.has(((segment.slot + 4) % 6) + 1);
+  }
+  return false;
 }
 
 /**

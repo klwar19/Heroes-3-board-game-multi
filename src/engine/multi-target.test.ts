@@ -500,18 +500,12 @@ describe("printed tile borders", () => {
     }
   });
 
-  it("with borders toggled on, a Creature Bank keeps only its outer arc (open inward)", () => {
-    // showBankBorders=true restores the classic outline: the three edges the bank
-    // shares with the centre/ring neighbours stay OPEN (you walk in from within
-    // the tile), while the outer arc that seals it from the adjacent tile stays.
+  it("a placed Creature Bank stays border-free with no outline-restoring mode", () => {
     const bankKeys = new Set(
-      getTileBorderSegments(coreTileDefinitions.S1, new Set([6]), true).map((s) => `${s.slot}:${s.edge}`)
+      getTileBorderSegments(coreTileDefinitions.S1, new Set([6])).map((s) => `${s.slot}:${s.edge}`)
     );
-    for (const inner of ["6:1", "6:2", "6:3"]) {
-      expect(bankKeys.has(inner), `inner edge ${inner} stays open`).toBe(false);
-    }
-    for (const outer of ["6:4", "6:5", "6:0"]) {
-      expect(bankKeys.has(outer), `outer arc ${outer} is drawn`).toBe(true);
+    for (const edge of ["6:0", "6:1", "6:2", "6:3", "6:4", "6:5"]) {
+      expect(bankKeys.has(edge), `bank edge ${edge} is absent`).toBe(false);
     }
   });
 

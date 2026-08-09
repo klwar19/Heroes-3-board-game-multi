@@ -117,17 +117,17 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     expect(d.assets?.attachFieldSymbols).toBe(true);
   });
 
-  it("a Field Override removes its printed ring even when bank borders are shown", () => {
-    const hidden = getTileBorderSegments(s4, new Set([2]), true, {
+  it("a Field Override removes every printed and designed edge touching its hex", () => {
+    const hidden = getTileBorderSegments(s4, new Set([2]), {
       borderlessSlots: new Set([2])
     });
     expect(hidden.filter((segment) => segment.slot === 2)).toEqual([]);
 
-    // Designer borders are map rules, not printed field art, so they stay.
-    const designed = getTileBorderSegments(s4, new Set(), false, {
+    // A runtime border-free carve wins over a designer edge too.
+    const designed = getTileBorderSegments(s4, new Set(), {
       borderlessSlots: new Set([2]),
       extraBorders: [1]
     });
-    expect(designed.filter((segment) => segment.slot === 2)).toHaveLength(3);
+    expect(designed.filter((segment) => segment.slot === 2)).toHaveLength(0);
   });
 });

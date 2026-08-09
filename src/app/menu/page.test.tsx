@@ -36,6 +36,7 @@ vi.mock("@/lib/auth-client", async (importOriginal) => {
 });
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/menu");
   window.localStorage.clear();
   push.mockClear();
   replace.mockClear();
@@ -47,6 +48,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("/menu (main menu, guest-only build)", () => {
+  it("opens the Single Player submenu when Campaign Back requests it", async () => {
+    window.history.replaceState({}, "", "/menu?view=singlePlayer");
+    render(<MenuPage />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Scenario/i })).toBeTruthy());
+    expect(screen.getByRole("link", { name: /Campaign/i }).getAttribute("href")).toBe("/story");
+    expect(screen.queryByRole("button", { name: /Single player/i })).toBeNull();
+  });
+
   it("shows the compact main choices and swaps in the requested submenus", () => {
     render(<MenuPage />);
 

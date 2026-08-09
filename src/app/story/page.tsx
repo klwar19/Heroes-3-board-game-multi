@@ -139,7 +139,7 @@ export default function StoryPage() {
           <p>{text(campaign.tagline, language)}</p>
         </header>
 
-        <Link className="campaignCornerButton campaignBack" href="/single-player">← {language === "en" ? "Back" : "Quay lại"}</Link>
+        <Link className="campaignCornerButton campaignBack" href="/menu?view=singlePlayer">← {language === "en" ? "Back" : "Quay lại"}</Link>
         <button className="campaignCornerButton campaignLanguage" onClick={toggleLanguage} type="button">
           {language === "en" ? "EN" : "VI"}
         </button>

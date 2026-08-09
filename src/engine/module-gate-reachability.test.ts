@@ -103,7 +103,7 @@ describe("PvE module Gates carved onto a Blocked Field are reachable and border-
   it("the printed ring + outer arc are not DRAWN on a carved Gate slot", () => {
     const def = allTileDefinitions[BLOCKED_SLOT_TILE];
     // What the board passes for a carved Gate hex: the slot is borderless.
-    const carved = getTileBorderSegments(def, new Set(), false, {
+    const carved = getTileBorderSegments(def, new Set(), {
       borderlessSlots: new Set([BLOCKED_SLOT])
     });
     expect(carved.filter((segment) => segment.slot === BLOCKED_SLOT)).toEqual([]);

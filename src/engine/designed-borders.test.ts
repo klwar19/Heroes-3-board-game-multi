@@ -506,7 +506,7 @@ describe("designer-placed yellow borders — rendering (getTileBorderSegments)",
     // No borders by default — the open tile draws nothing.
     expect(getTileBorderSegments(openDef)).toEqual([]);
 
-    const designed = getTileBorderSegments(openDef, undefined, false, { extraBorders: [D], rotation: 0 })
+    const designed = getTileBorderSegments(openDef, undefined, { extraBorders: [D], rotation: 0 })
       .map((segment) => `${segment.slot}:${segment.edge}`)
       .sort();
 
@@ -530,13 +530,13 @@ describe("designer-placed yellow borders — rendering (getTileBorderSegments)",
     const openDef = allTileDefinitions[OPEN_TILE];
     const D = 0; // absolute NE
     // rotation 0: local dir 0 -> slot 1, edges 5,0,1
-    const rot0 = getTileBorderSegments(openDef, undefined, false, { extraBorders: [D], rotation: 0 })
+    const rot0 = getTileBorderSegments(openDef, undefined, { extraBorders: [D], rotation: 0 })
       .map((s) => `${s.slot}:${s.edge}`)
       .sort();
     expect(rot0).toEqual(["1:0", "1:1", "1:5"]);
     // rotation 2: local dir (0-2+6)%6 = 4 -> slot 5, edges 3,4,5. The draw loop
     // re-adds rotation 2 to each edge -> absolute 5,0,1 on the ring[0] hex again.
-    const rot2 = getTileBorderSegments(openDef, undefined, false, { extraBorders: [D], rotation: 2 })
+    const rot2 = getTileBorderSegments(openDef, undefined, { extraBorders: [D], rotation: 2 })
       .map((s) => `${s.slot}:${s.edge}`)
       .sort();
     expect(rot2).toEqual(["5:3", "5:4", "5:5"]);
@@ -936,10 +936,10 @@ describe("per-edge designer borders — rendering (getTileBorderSegments)", () =
     expect(outer).toBe(13);
 
     // No borderEdges → nothing (default open tile still draws nothing).
-    expect(getTileBorderSegments(openDef, undefined, false, { borderEdges: [] })).toEqual([]);
+    expect(getTileBorderSegments(openDef, undefined, { borderEdges: [] })).toEqual([]);
 
     // rotation 0: centre code → slot 0 edge 0; outer (fp2) → slot 2 edge 1.
-    const rot0 = getTileBorderSegments(openDef, undefined, false, { borderEdges: [inner, outer], rotation: 0 }).map(
+    const rot0 = getTileBorderSegments(openDef, undefined, { borderEdges: [inner, outer], rotation: 0 }).map(
       (s) => `${s.slot}:${s.edge}`
     );
     expect(rot0).toContain("0:0");
@@ -948,7 +948,7 @@ describe("per-edge designer borders — rendering (getTileBorderSegments)", () =
     // rotation 2: the draw loop re-adds rotation, so the LOCAL slot/edge shift but
     // (edge+rotation)%6 lands back on the same ABSOLUTE edge. centre → slot 0 edge
     // (0-2+6)%6 = 4; outer fp2 → slot ((2-1-2+6)%6)+1 = 6, edge (1-2+6)%6 = 5.
-    const rot2 = getTileBorderSegments(openDef, undefined, false, { borderEdges: [inner, outer], rotation: 2 }).map(
+    const rot2 = getTileBorderSegments(openDef, undefined, { borderEdges: [inner, outer], rotation: 2 }).map(
       (s) => `${s.slot}:${s.edge}`
     );
     expect(rot2).toContain("0:4");

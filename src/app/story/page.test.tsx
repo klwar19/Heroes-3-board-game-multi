@@ -14,6 +14,13 @@ beforeEach(() => window.localStorage.clear());
 afterEach(() => { cleanup(); push.mockClear(); createSinglePlayerRoom.mockReset(); });
 
 describe("/story (Erathia campaign map)", () => {
+  it("returns to the main menu's Scenario/Campaign submenu", () => {
+    render(<StoryPage />);
+    expect(screen.getByRole("link", { name: /Back/i }).getAttribute("href")).toBe(
+      "/menu?view=singlePlayer",
+    );
+  });
+
   it("shows only Restoration of Erathia on the main map and keeps mods in the corner", () => {
     render(<StoryPage />);
     expect(screen.getByRole("heading", { name: "Restoration of Erathia" })).toBeTruthy();

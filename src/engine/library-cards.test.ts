@@ -92,15 +92,51 @@ describe("Chain Lightning spell", () => {
 
   it("scales with Power: at Power 4 deals 3 to the selected unit and 2/1 to the closest", () => {
     const state = chainState("chain-4");
+    // Make the follow-up targets unambiguously first- and second-closest. The
+    // board-game ruling lets the caster interchange the final 2 and 1.
+    state.combat!.units.unit_p2_dread_knights.position = 8; // distance 2
     const cast = findCast(state, "spell.chain_lightning", "unit_p2_skeletons");
     const casted = applyOk(state, cast!.action);
     // Stand in for paying 4 Power into the cast (Empower / Power statistics).
     casted.stack[0]!.modifiers.spellPowerBonus = 4;
-    const result = passAllReactions(casted);
+    let result = passAllReactions(casted);
     expect(result.combat!.units.unit_p2_skeletons.damage).toBe(3);
-    // The closest-by-tiebreak (dread_knights) takes the 2, vampires the 1.
+    expect(result.pendingChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    const choice = result.pendingChoice;
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    expect(choice.kind).toBe("chain-lightning");
+    expect(choice.amount).toBe(2);
+    expect(choice.candidateUnitIds.sort()).toEqual([
+      "unit_p2_dread_knights",
+      "unit_p2_vampires"
+    ]);
+    result = applyOk(result, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_dread_knights"
+    });
     expect(result.combat!.units.unit_p2_dread_knights.damage).toBe(2);
     expect(result.combat!.units.unit_p2_vampires.damage).toBe(1);
+    expect(result.pendingChoice).toBeNull();
+  });
+
+  it("is unavailable with only two living units and explains the three-unit requirement", () => {
+    const state = chainState("chain-needs-three");
+    for (const unitId of Object.keys(state.combat!.units)) {
+      if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
+        delete state.combat!.units[unitId];
+      }
+    }
+    expect(findCast(state, "spell.chain_lightning", "unit_p2_skeletons")).toBeUndefined();
+    const result = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.chain_lightning",
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    expect(result.errors.map((error) => error.message).join(" ")).toContain("requires 3 living units");
+    expect(result.state.players.p1.hand).toContain("spell.chain_lightning");
   });
 });
 

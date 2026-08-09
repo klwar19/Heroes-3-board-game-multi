@@ -237,6 +237,31 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p1_griffins")).toBe(0); // out of range
   });
 
+  it("I is disallowed when no unit has an adjacent target, with a clear requirement", () => {
+    const state = meteorState(["specialty.deemer.1"]);
+    const separated = [0, 3, 8, 11, 16, 19];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = separated[index];
+    });
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.1",
+      ),
+    ).toBe(false);
+    const result = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+    });
+    expect(result.errors.map((error) => error.message).join(" ")).toContain(
+      "requires the selected unit to have 1 living adjacent target",
+    );
+    expect(result.state.players.p1.hand).toContain("specialty.deemer.1");
+  });
+
   it("I scales with the Power brought: discard 2 power-source cards → 2 damage", () => {
     const state = meteorState(["specialty.deemer.1", "stat.power", "stat.power"]);
     const result = applyOk(state, {
@@ -458,6 +483,32 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p2_dread_knights")).toBe(1);
   });
 
+  it("VI is disallowed unless one centre has two adjacent living targets", () => {
+    const state = meteorState(["specialty.deemer.6"]);
+    const separated = [0, 3, 8, 11, 16, 19];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = separated[index];
+    });
+    state.combat!.units.unit_p2_vampires.position = 9;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6",
+      ),
+    ).toBe(false);
+    const result = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.6",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+    });
+    expect(result.errors.map((error) => error.message).join(" ")).toContain(
+      "requires the selected unit to have 2 living adjacent targets",
+    );
+    expect(result.state.players.p1.hand).toContain("specialty.deemer.6");
+  });
+
   it("VI lets the caster pick TWO when more than two are adjacent", () => {
     const state = meteorState(["specialty.deemer.6"]);
     // Three neighbours of 9: marksmen(8), vampires(10), dread_knights(13).
@@ -635,6 +686,33 @@ describe("Deemer is a registered Dungeon Warlock", () => {
 // ---------------------------------------------------------------------------
 
 describe("Fireball (2 adjacent spaces)", () => {
+  it("still works with no adjacent second unit", () => {
+    let state = createInitialGameState("fireball-one-target");
+    state.players.p1.hand = ["spell.fireball"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unitId of Object.keys(state.combat!.units)) {
+      if (unitId !== "unit_p1_griffins" && unitId !== "unit_p2_skeletons") {
+        delete state.combat!.units[unitId];
+      }
+    }
+    state.combat!.units.unit_p1_griffins.position = 0;
+    state.combat!.units.unit_p2_skeletons.position = 9;
+    state.combat!.units.unit_p2_skeletons.maxHealth = 20;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.fireball" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons",
+    );
+    expect(cast).toBeTruthy();
+    state = passAllReactions(applyOk(state, cast!.action));
+    expect(damage(state, "unit_p2_skeletons")).toBe(1);
+    expect(state.pendingChoice).toBeNull();
+  });
+
   it("centres on a unit (an occupied space) and splashes one adjacent unit", () => {
     let state = createInitialGameState("fireball-seed");
     state.players.p1.hand = ["spell.fireball"];

@@ -1764,7 +1764,45 @@ function getTargetsForCard(
     });
   }
 
+  // Chain Lightning always names three distinct living units: the selected
+  // primary plus the two closest units. With fewer than three bodies on the
+  // battlefield there is no legal cast/activation at all.
+  if (card?.effect.type === "CHAIN_LIGHTNING") {
+    const living = Object.values(state.combat?.units ?? {}).filter(
+      (unit) => isUnitAlive(unit) && unit.position >= 0,
+    );
+    if (living.length < 3) {
+      return [];
+    }
+    targets = targets.filter(
+      (target) =>
+        target.type !== "unit" ||
+        (state.combat?.units[target.unitId]?.position ?? -1) >= 0,
+    );
+  }
+
   return targets;
+}
+
+function targetHasAdjacentUnits(
+  state: GameState,
+  target: TargetRef,
+  required: number
+): boolean {
+  if (!state.combat || target.type !== "unit") {
+    return false;
+  }
+  const center = state.combat.units[target.unitId];
+  if (!center || center.position < 0 || !isUnitAlive(center)) {
+    return false;
+  }
+  return Object.values(state.combat.units).filter(
+    (unit) =>
+      unit.id !== center.id &&
+      unit.position >= 0 &&
+      isUnitAlive(unit) &&
+      isAdjacent(unit.position, center.position)
+  ).length >= required;
 }
 
 function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean {
@@ -3483,6 +3521,19 @@ function addOptionPlays(
     let targets = optionNeedsUnitTarget(option.effect)
       ? getTargetsForCard(state, playerId, cardId, cards, option.target)
       : [{ type: "none" } as TargetRef];
+
+    // Meteor Shower is an exact multi-target effect, not an "up to" blast. Its
+    // centre is legal only when all printed adjacent picks exist. This is scoped
+    // to Deemer's Meteor Shower; Frost Ring and Fireball keep their own rules.
+    if (
+      cardId.startsWith("specialty.deemer.") &&
+      option.effect.type === "AREA_DAMAGE_PICK_ADJACENT"
+    ) {
+      const adjacentPicks = option.effect.adjacentPicks;
+      targets = targets.filter((target) =>
+        targetHasAdjacentUnits(state, target, adjacentPicks)
+      );
+    }
 
     // Some options only land on a named unit (Moandor's elemental grant reads
     // "your Liches unit").

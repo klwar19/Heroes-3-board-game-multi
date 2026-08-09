@@ -736,6 +736,45 @@ function assertLegal(
     };
   }
 
+  if (action.type === "CAST_SPELL" || action.type === "PLAY_CARD") {
+    const card = cards[action.cardId];
+    const effect = card ? getEffectiveCardEffect(card, action.optionIndex) : null;
+    if (
+      effect?.type === "CHAIN_LIGHTNING" &&
+      Object.values(state.combat?.units ?? {}).filter(
+        (unit) => isUnitAlive(unit) && unit.position >= 0,
+      ).length < 3
+    ) {
+      return {
+        code: "ACTION_NOT_LEGAL",
+        message: "Chain Lightning requires 3 living units on the battlefield: select 1 unit and the 2 closest units."
+      };
+    }
+    if (
+      card?.id.startsWith("specialty.deemer.") &&
+      effect?.type === "AREA_DAMAGE_PICK_ADJACENT" &&
+      action.target?.type === "unit" &&
+      state.combat
+    ) {
+      const center = state.combat.units[action.target.unitId];
+      const adjacent = center && center.position >= 0
+        ? Object.values(state.combat.units).filter(
+            (unit) =>
+              unit.id !== center.id &&
+              unit.position >= 0 &&
+              isUnitAlive(unit) &&
+              isAdjacent(unit.position, center.position)
+          ).length
+        : 0;
+      if (adjacent < effect.adjacentPicks) {
+        return {
+          code: "ACTION_NOT_LEGAL",
+          message: `Meteor Shower requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`
+        };
+      }
+    }
+  }
+
   return {
     code: "ACTION_NOT_LEGAL",
     message: "That action is not legal in the current game state."
@@ -14843,7 +14882,7 @@ function chainLightningReachable(state: GameState, primaryId: UnitId): UnitId[] 
     return [];
   }
   const others = Object.values(combat.units)
-    .filter((unit) => unit.id !== primaryId && isUnitAlive(unit))
+    .filter((unit) => unit.id !== primaryId && isUnitAlive(unit) && unit.position >= 0)
     .map((unit) => ({ id: unit.id, distance: getBattlefieldDistance(primary.position, unit.position) }))
     .sort((left, right) => left.distance - right.distance || left.id.localeCompare(right.id));
   if (others.length <= 2) {
@@ -14900,9 +14939,15 @@ function advanceChainLightning(
       values.shift();
       continue;
     }
-    // A genuine choice only exists when more than one candidate could take this
-    // bolt and there are spare candidates beyond the bolts left to place.
-    if (candidates.length > 1 && candidates.length > values.length) {
+    // The final two damage instances are interchangeable. A choice therefore
+    // also exists when exactly two candidates remain but the remaining values
+    // differ (max-Power Spell 2/1, or Solmyr I's effective 1/0): the caster may
+    // put the larger/nonzero bolt on either closest unit.
+    const remainingValuesDiffer = new Set(values).size > 1;
+    if (
+      candidates.length > 1 &&
+      (candidates.length > values.length || remainingValuesDiffer)
+    ) {
       const choiceId = `choice_${nextEventNumber(state)}`;
       state.pendingChoice = {
         id: choiceId,
