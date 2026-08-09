@@ -9,21 +9,15 @@ import {
 import { createAdventureGameState } from "./adventure-setup";
 import type { GameState, MapFieldState } from "./state";
 
-// USER RULE 2026-08-07, verbatim: "so if grail is taken, other grail should turn
-// to behave like utopia, but not give extra rewards, which is terrible, only act
-// like utopia AFTER A GRAIL IS TAKEN, AND THE ORIGINAL GRAIL FIELD THAT PLAYER
-// DIG TO GET: WONT TURN, ONLY THE OTHER EXTRA GRAIL FIELD."
-//
-// Three rules, each pinned below on BOTH surfaces (the `polish-grail-utopia`
+// Grail-to-Utopia rules, pinned below on BOTH surfaces (the `polish-grail-utopia`
 // house rule and the map-editor `hiddenGrailUtopia` package) plus the designer
 // `grailAsUtopia` knob:
 //   1. conversion fires at the DIG, never when a Grail's guards merely fall;
 //   2. the dug field NEVER converts;
-//   3. a converted field is a real Ⅶ fight that pays NO built-in Utopia reward.
-// The CONTROL for rule 3 is a REAL Ⅶ Dragon Utopia on the same game, which must
-// still pay its full package (gold + the fixed Search 3/5/5 ladder + the token
-// pick). The Creature-Bank `dragon_utopia` TOKEN is a different code path and is
-// covered by creature-bank-guards / creature-banks tests.
+//   3. a converted field is a real Ⅶ fight paying the normal Utopia bundle;
+//   4. its Artifact payout is exactly three cards: Search 3, Search 5, Search 5.
+// The Creature-Bank `dragon_utopia` TOKEN is a different code path and is covered
+// by creature-bank-guards / creature-banks tests.
 
 const PLAYERS = [
   { id: "p1", name: "P1", factionId: "castle" as const, heroDefId: "catherine" },
@@ -166,8 +160,8 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       ).toHaveLength(1);
     });
 
-    it(`${label}: a converted extra Grail pays ZERO built-in Utopia reward`, () => {
-      const state = make(`${label}-no-reward`);
+    it(`${label}: a converted extra Grail pays exactly one Search 3 / 5 / 5 Utopia ladder`, () => {
+      const state = make(`${label}-exact-reward`);
       const { hero, dug, extra } = twoGrails(state, "reward");
       hero.spaceId = dug.spaceId;
       fightAndDig(state, hero.id, dug.spaceId);
@@ -180,25 +174,30 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       hero.spaceId = extra.spaceId;
       beginFieldVisit(state, hero.id, extra.spaceId, false);
 
-      // RULE 3: cleared, and that is all it pays.
+      // The converted field is a normal paying Utopia, and its built-in Artifact
+      // reward is exactly THREE cards — never the six reported in live play.
       expect(extra.blackCube, "the fight still clears the hex").toBe(true);
-      expect(state.players.p1.resources.gold, "no Utopia gold").toBe(goldBefore);
-      expect(artifactSearches(state).length, "no Search 3/5/5 ladder").toBe(searchesBefore);
-      expect(tokenChoices(state), "no Morale / Ability-Empower pick").toBe(choicesBefore);
-      // Not a Utopia for victory purposes either (no VP defeat credit, no flag).
+      expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 5, 5]);
+      expect(tokenChoices(state), "one Morale / Ability-Empower pick").toBe(choicesBefore + 1);
+      expect(state.players.p1.resources.gold).toBe(
+        goldBefore + (label === "Polish house rule" ? 20 : 0)
+      );
+      // Conversion-origin bookkeeping still keeps it out of original-objective
+      // credit; reward semantics and objective identity are separate concerns.
       expect(
         state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []
       ).not.toContain(extra.spaceId);
       expect(extra.flagOwnerId).toBeNull();
 
-      // CONTROL: a REAL Ⅶ Dragon Utopia on the SAME game still pays in full —
-      // so the suppression is the `grailConverted` marker, not a global nerf.
+      // CONTROL: an originally placed Ⅶ Utopia on the same game pays the same
+      // single ladder and does receive original-objective credit.
+      const realSearchesBefore = artifactSearches(state).length;
       const real = field("dragon_utopia", "real-utopia");
       state.adventure!.fields[real.spaceId] = real;
       hero.spaceId = real.spaceId;
       beginFieldVisit(state, hero.id, real.spaceId, false);
-      expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 5, 5]);
-      expect(tokenChoices(state)).toBe(choicesBefore + 1);
+      expect(artifactSearches(state).slice(realSearchesBefore)).toEqual([3, 5, 5]);
+      expect(tokenChoices(state)).toBe(choicesBefore + 2);
       expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).toContain(real.spaceId);
     });
 
@@ -231,7 +230,7 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
         (candidate) => candidate.tileInstanceId === hidden.id && candidate.difficulty === 7
       );
       expect(objective?.location).toBe("dragon_utopia");
-      expect(objective?.grailConverted, "a late reveal is reward-free too").toBe(true);
+      expect(objective?.grailConverted, "a late reveal keeps its conversion origin").toBe(true);
     });
   }
 
@@ -310,7 +309,7 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
     expect(after.grailConverted ?? false).toBe(false);
   });
 
-  it("designer knob: after-dig-utopia converts reward-free, after-dig-empty empties, both spare the dug site", () => {
+  it("designer knob: after-dig-utopia converts with one Utopia reward, after-dig-empty empties, both spare the dug site", () => {
     for (const [mode, expected] of [
       ["after-dig-utopia", "dragon_utopia"],
       ["after-dig-empty", "empty_field"]
@@ -324,14 +323,14 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       expect(dug.location, "the dug site never turns in either mode").toBe("grail");
       if (mode === "after-dig-utopia") {
         expect(extra.grailConverted).toBe(true);
-        // Reward-free on a plain map too (its guards come from the classic
-        // four-dragon / difficulty-table Utopia draw).
+        // A plain converted field uses the normal plain-Utopia bundle: 10 gold
+        // plus exactly the fixed three-Artifact ladder.
         const goldBefore = state.players.p1.resources.gold;
         const searches = artifactSearches(state).length;
         hero.spaceId = extra.spaceId;
         beginFieldVisit(state, hero.id, extra.spaceId, false);
-        expect(state.players.p1.resources.gold).toBe(goldBefore);
-        expect(artifactSearches(state).length).toBe(searches);
+        expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+        expect(artifactSearches(state).slice(searches)).toEqual([3, 5, 5]);
         expect(extra.blackCube).toBe(true);
       } else {
         expect(extra.grailConverted ?? false).toBe(false);
@@ -392,7 +391,7 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
     expect(dug.location).toBe("grail");
   });
 
-  // The Dragon-Hunt half of rule 3 (a converted site is not a win objective) is
+  // A converted site is still not an original Dragon-Hunt objective; that is
   // pinned in grail-mode.test.ts, on the reducer's post-combat fast path — the
   // only seam that declares that win under the Grail/Utopia field package.
 });

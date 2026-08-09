@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeft, Bot, ChevronRight, Crown, MapPinned, Shield, Swords } from "lucide-react";
+import { MapPinned } from "lucide-react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import { assetUrl } from "@/lib/asset-url";
@@ -12,8 +12,16 @@ import { createSinglePlayerRoom } from "@/lib/realtime";
 
 // `path` (not `src`) so the raw "/assets/…" literals at the call sites are not
 // flagged by the assetUrl() CDN-coverage guard — the path IS wrapped here.
-function SinglePlayerNavArt({ path }: { path: string }) {
-  return <img alt="" aria-hidden="true" className="singlePlayerNavArt" draggable={false} src={assetUrl(path)} />;
+function SinglePlayerMenuArt({ path }: { path: string }) {
+  return (
+    <img
+      alt=""
+      aria-hidden="true"
+      className="singlePlayerMenuArt"
+      draggable={false}
+      src={assetUrl(path)}
+    />
+  );
 }
 
 export default function SinglePlayerPage() {
@@ -30,65 +38,95 @@ export default function SinglePlayerPage() {
       const { roomId } = await createSinglePlayerRoom();
       router.push(`/?room=${encodeURIComponent(roomId)}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the game.");
+      setError(
+        cause instanceof Error ? cause.message : "Could not create the game.",
+      );
       setCreating(false);
     }
   };
 
   return (
     <MenuShell backdrop="lobby-backdrop" title="Single Player" wide>
-      <div className="singlePlayerHeroCopy">
-        <span>CHOOSE YOUR WAR</span>
-        <p className="singlePlayerLead">Fight a custom skirmish or command Queen Catherine through six authored campaign chapters.</p>
-        <div className="singlePlayerModeLegend" aria-label="Single-player mode benefits">
-          <span><Swords aria-hidden size={13} /> Board-first rules</span>
-          <span><Bot aria-hidden size={13} /> Objective-aware AI</span>
-          <span><Shield aria-hidden size={13} /> Private autosaves</span>
-        </div>
-      </div>
-      <nav className="menuNav singlePlayerModeNav" aria-label="Single player">
-        <button className="singlePlayerModeCard skirmish" onClick={() => setComputerOpen(true)} type="button">
-          <SinglePlayerNavArt path="/assets/ui/single-player/vs-computer.webp" />
-          <span className="singlePlayerModeVeil" />
-          <span className="singlePlayerModeIcon"><Swords aria-hidden size={28} /></span>
-          <span className="singlePlayerModeCopy">
-            <small><Bot aria-hidden size={13} /> CUSTOM MATCH</small>
-            <strong>VS Computer</strong>
-            <span>Pick a map; it sets your start, enemy positions, enemy count and any visible AI bonuses.</span>
-            <b>Start skirmish <ChevronRight aria-hidden size={16} /></b>
-          </span>
+      <nav className="menuNav singlePlayerArtNav" aria-label="Single player">
+        <button
+          aria-label="SCENARIO"
+          className="menuNavButton"
+          onClick={() => setComputerOpen(true)}
+          type="button"
+        >
+          <SinglePlayerMenuArt path="/assets/ui/menu/buttons/scenario.webp" />
         </button>
-        <Link className="singlePlayerModeCard campaign" href="/story">
-          <SinglePlayerNavArt path="/assets/story/erathia/campaign-map-rebuilt.webp" />
-          <span className="singlePlayerModeVeil" />
-          <span className="singlePlayerModeIcon"><Crown aria-hidden size={28} /></span>
-          <span className="singlePlayerModeCopy">
-            <small><Shield aria-hidden size={13} /> SIX-CHAPTER WAR</small>
-            <strong>Campaign</strong>
-            <span>Restore Erathia across new fixed maps, briefings, unlocks, and escalating objectives.</span>
-            <b>Open campaign map <ChevronRight aria-hidden size={16} /></b>
-          </span>
+        <Link aria-label="CAMPAIGN" className="menuNavButton" href="/story">
+          <SinglePlayerMenuArt path="/assets/ui/menu/buttons/campaign.webp" />
         </Link>
-        <Link className="singlePlayerBackButton" href="/menu">
-          <ArrowLeft aria-hidden size={17} /> Back to main menu
+        <Link aria-label="BACK" className="menuNavButton" href="/menu">
+          <SinglePlayerMenuArt path="/assets/ui/menu/buttons/back.webp" />
         </Link>
       </nav>
 
       {computerOpen ? (
-        <div className="singlePlayerDialogScrim" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setComputerOpen(false)}>
-          <section aria-label="VS Computer setup" aria-modal="true" className="singlePlayerDialog" role="dialog">
-            <button aria-label="Close VS Computer setup" className="campaignBriefingClose" onClick={() => setComputerOpen(false)} type="button">×</button>
+        <div
+          className="singlePlayerDialogScrim"
+          role="presentation"
+          onMouseDown={(event) =>
+            event.target === event.currentTarget && setComputerOpen(false)
+          }
+        >
+          <section
+            aria-label="VS Computer setup"
+            aria-modal="true"
+            className="singlePlayerDialog"
+            role="dialog"
+          >
+            <button
+              aria-label="Close VS Computer setup"
+              className="campaignBriefingClose"
+              onClick={() => setComputerOpen(false)}
+              type="button"
+            >
+              ×
+            </button>
             <div className="singlePlayerDialogHead">
-              <span className="singlePlayerDialogIcon"><MapPinned aria-hidden size={30} /></span>
-              <div><span>PRIVATE SKIRMISH</span><h2>VS Computer</h2><p>The map determines how many enemies you face and where everyone starts. You will choose the map, factions and heroes at the private table.</p></div>
+              <span className="singlePlayerDialogIcon">
+                <MapPinned aria-hidden size={30} />
+              </span>
+              <div>
+                <span>PRIVATE SKIRMISH</span>
+                <h2>VS Computer</h2>
+                <p>
+                  The map determines how many enemies you face and where
+                  everyone starts. You will choose the map, factions and heroes
+                  at the private table.
+                </p>
+              </div>
             </div>
-            <div className="singlePlayerOpponents" role="note" aria-label="Map-driven solo setup">
+            <div
+              className="singlePlayerOpponents"
+              role="note"
+              aria-label="Map-driven solo setup"
+            >
               <strong>Map-driven opponents</strong>
-              <small>No enemy-count picker is needed. Built-in maps use their solo deployment; designed maps can set your exact Town, each AI Town, and different starting war chests. Those solo settings never change multiplayer on the same map.</small>
+              <small>
+                No enemy-count picker is needed. Built-in maps use their solo
+                deployment; designed maps can set your exact Town, each AI Town,
+                and different starting war chests. Those solo settings never
+                change multiplayer on the same map.
+              </small>
             </div>
             <SinglePlayerSavePanel />
-            {error ? <p className="authError" role="alert">{error}</p> : null}
-            <button className="campaignPrimaryButton singlePlayerCreate" disabled={creating} onClick={() => void create()} type="button">{creating ? "Creating…" : "Create private skirmish"}</button>
+            {error ? (
+              <p className="authError" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button
+              className="campaignPrimaryButton singlePlayerCreate"
+              disabled={creating}
+              onClick={() => void create()}
+              type="button"
+            >
+              {creating ? "Creating…" : "Create private skirmish"}
+            </button>
           </section>
         </div>
       ) : null}

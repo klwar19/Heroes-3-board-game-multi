@@ -11515,9 +11515,9 @@ export function finalizeAdventureCombat(state: GameState): void {
       // Dragon Hunt: defeating the Utopia wins the Scenario IMMEDIATELY — never
       // defer behind Necromancy / First Aid / field-reward timing. (The visit
       // handler also declares the win for Quick Combat / Diplomacy paths.)
-      // A CONVERTED extra Grail site (`grailConverted`) is NOT a real Utopia and
-      // never wins / never counts (USER RULE 2026-08-07: it pays no reward, and a
-      // win is the biggest reward of all). Mirrors handleDragonUtopiaVisit.
+      // A CONVERTED extra Grail site (`grailConverted`) pays the normal Utopia
+      // field reward, but is not one of the map's original Dragon-Hunt targets.
+      // Mirrors the objective-credit guard in handleDragonUtopiaVisit.
       if (
         field.location === "dragon_utopia" &&
         !field.grailConverted &&
