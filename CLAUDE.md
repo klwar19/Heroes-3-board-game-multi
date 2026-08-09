@@ -2979,45 +2979,50 @@ roster entry, so a "last bronze" reading fails it —, the not-in-play + determi
 controller's pick actually minting their unit, and the eliminated-controller
 auto-resolve) plus the composition pin in `creature-bank-guards.test.ts`.
 
-## Grail → Utopia conversion: at the DIG, never the dug field, and reward-free (2026-08-07)
+## Grail → Utopia conversion: at the DIG, never the dug field, full reward (2026-08-09)
 
-USER RULE, verbatim: "so if grail is taken, other grail should turn to behave
-like utopia, but not give extra rewards, which is terrible, only act like utopia
-AFTER A GRAIL IS TAKEN, AND THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET:
-WONT TURN, ONLY THE OTHER EXTRA GRAIL FIELD." Three rules, applied to BOTH
-surfaces (the `polish-grail-utopia` house rule AND the map-editor
-`objectives.hiddenGrailUtopia` package) and to the designer `grailAsUtopia` knob.
-Protocol bumped to **v20** (new persisted state + changed rules — a stale
-PartyKit edge shows the out-of-date banner; `npm run deploy:partykit` required).
+Three rules, applied to BOTH surfaces (the `polish-grail-utopia` house rule AND
+the map-editor `objectives.hiddenGrailUtopia` package) and to the designer
+`grailAsUtopia` knob: the conversion fires when a Grail is TAKEN (dug), the dug
+field itself never turns, and — since 2026-08-09 (protocol **v23**; the earlier
+2026-08-07 reading made a converted site reward-FREE) — a converted extra Grail
+**pays the normal Utopia field reward** while staying excluded from
+original-objective credit. A stale PartyKit edge shows the out-of-date banner;
+`npm run deploy:partykit` required.
 Engine: `applyGrailTakenConversion` / `grailTakenConversionTarget` /
 `grailConversionActive` + the `materializeTileFields` reveal branch
 (`src/engine/adventure.ts`), the Dragon-Hunt fast path in `adventure-reducer.ts`.
 Pinned in `src/engine/grail-converted-utopia.test.ts` (every claim
 mutation-checked, both surfaces + the knob + classic) plus the reworked cases in
-`polish-grail-utopia.test.ts` and the Dragon-Hunt case in `grail-mode.test.ts`.
+`polish-grail-utopia.test.ts` and the converted-site cases in
+`grail-mode.test.ts`.
 
 Leading with what CHANGED / the deliberate limits:
-- **`grailAsUtopia: "always"` is now a LEGACY ALIAS of `after-dig-utopia`** and
+- **`grailAsUtopia: "always"` is a LEGACY ALIAS of `after-dig-utopia`** and
   its pre-dig hybrid is GONE. It used to make EVERY Grail field fight the Utopia
   dragon party from round 1 while still digging (the 2026-08-06 audit reading, one
   section above); "only act like utopia AFTER A GRAIL IS TAKEN" forbids exactly
   that, so the `drawGuardArmyBase` guard swap was deleted — an undug Grail field
   draws its normal Grail guards in every mode. Saved maps still load (the id is
   kept and resolves to the after-dig conversion). No shipped scenario/map sets it.
-- **A CONVERTED extra Grail pays NOTHING built-in.** `field.grailConverted`
-  gates one early return at the top of `handleDragonUtopiaVisit`: no gold (the
-  Polish 20 / plain 10), no fixed Search 3/5/5 artifact ladder, no
-  `utopiaBonusSearch`, no Morale/Ability-Empower token pick. Beating it sets the
-  black cube and that is all. Designer-authored rewards on that hex still pay —
-  the centre-hex reward/VP and hidden hex events resolve in `beginFieldVisit`
-  BEFORE this handler and are explicit map content.
-- **A converted site is NOT a Utopia for victory purposes** (a win is the biggest
-  reward of all): no `recordVpUtopiaDefeat` credit, so it never feeds the
+- **A CONVERTED extra Grail pays the NORMAL Utopia field bundle** (2026-08-09,
+  reversing the 2026-08-07 reward-free reading): the fixed Search 3 / 5 / 5
+  Artifact ladder plus the surface's own gold (Polish 20 / plain 10 / package 0)
+  and, under the field-rules package, the Morale / Ability-Empower token pick.
+  `field.grailConverted` stays purely an ORIGIN marker for objective
+  bookkeeping. Designer-authored rewards on that hex (centre-hex reward/VP, hex
+  events) still pay on top — they resolve in `beginFieldVisit` before the
+  handler, as always.
+- **A converted site is still NOT an ORIGINAL objective for victory purposes**:
+  no `recordVpUtopiaDefeat` credit, so it never feeds the
   `defeat-dragon-utopia` VP objective or custom win condition; no Dragon-Hunt
-  instant win (guarded at BOTH seams — the visit handler and the reducer's
-  post-combat fast path, which is the one that decides it under the package); no
-  Dragon-Conqueror capture/flag, so it can never become a hold-to-win stronghold
-  or a garrison/siege site. DELIBERATE: on a map whose ONLY Utopias are converted
+  instant win (guarded at BOTH seams — `handleDragonUtopiaVisit`'s mode branch
+  and the reducer's post-combat fast path); no Dragon-Conqueror capture/flag, so
+  it can never become a hold-to-win stronghold — under those two modes it falls
+  through to the plain reward branch instead (the visit-handler guards are
+  REACHABLE because the designer `grailAsUtopia` knob works WITHOUT the
+  field-rules package; pinned in `grail-mode.test.ts`, both modes with a
+  real-Utopia CONTROL). DELIBERATE: on a map whose ONLY Utopias are converted
   Grails, a Dragon-Hunt / Dragon-Conqueror victory is unreachable and the game
   ends by conquest / last-faction-standing instead. (The package seeds real
   Utopias alongside its Grails, so this is a hand-built-map edge.)
@@ -3032,8 +3037,7 @@ Leading with what CHANGED / the deliberate limits:
   accident of having cleared its guards first — a cleared one sat there as an
   inert Grail for the rest of the game. It now takes the same conversion, and
   KEEPS its Black Cube: a beaten site is never re-fought (that would re-pay hero
-  experience for guards already beaten, and the converted Utopia pays no reward,
-  so there would be nothing else to gain). Pinned in
+  experience — and now the Utopia reward — for guards already beaten). Pinned in
   `grail-converted-utopia.test.ts` ("an extra Grail whose guards ALREADY fell
   converts too — and stays spent", with the unfought extra Grail as the CONTROL
   that becomes a fresh, still-fightable Utopia).
@@ -3053,8 +3057,8 @@ What runs (each with a failing-if-removed test):
   the guard clear. `grailTakenConversionTarget` is the ONE place the package and
   the knob resolve, so the two surfaces cannot drift: `after-dig-empty` →
   `empty_field`; `after-dig-utopia` / `always` / either package flag →
-  reward-free `dragon_utopia`; nothing set → classic (an extra Grail stays a
-  Grail dig site, byte-identical to before).
+  a normally-rewarded `dragon_utopia`; nothing set → classic (an extra Grail
+  stays a Grail dig site, byte-identical to before).
 - A converted field is a REAL fight: `difficulty 7`, black cube cleared, and its
   guards come from the Utopia draw (the package's table row + one Black Dragon;
   `drawDragonUtopiaArmy` on a plain map). Pre-dig the same field draws Grail
@@ -3065,11 +3069,12 @@ What runs (each with a failing-if-removed test):
 - Hygiene: every carve that rewrites a hex's identity (teleport tokens, gates,
   banks, the Calamity Gate, the Dungeon, Field Overrides) drops `grailConverted`
   with the rest of the old identity.
-- UI honesty: the map-editor row is now "Extra Grail site after the dig" with
-  "→ Utopia (no reward)" / "→ empty" / "Always (legacy)" chips and per-chip
-  tooltips; the lobby/designer banner line reads "After the Grail is taken, other
-  Grail tiles fight as Utopia (no reward)". The hidden-package section no longer
-  claims "there is no after-dig conversion" (it always had one).
+- UI honesty: the map-editor row is "Extra Grail site after the dig" with
+  "→ Utopia" / "→ empty" / "Always (legacy)" chips and per-chip tooltips naming
+  the Search 3 / 5 / 5 payout; the lobby/designer banner line reads "After the
+  Grail is taken, other Grail tiles become Utopias (Search 3 / 5 / 5)". The
+  hidden-package section no longer claims "there is no after-dig conversion"
+  (it always had one).
 
 ## A Subterranean Gate crossing SLIPS PAST the far guard — it never clears it (2026-08-07)
 
@@ -3293,11 +3298,13 @@ Leading with the deliberate LIMITS of the warning:
 - SUPERSEDED (2026-08-07): the two conversion functions
   (`applyGrailAfterDigConversion` / `applyPolishGrailFightConversion`) are gone,
   replaced by ONE `applyGrailTakenConversion` (which, since 2026-08-09, converts
-  a black-cubed site too — keeping its cube, so it is never re-fought). A
-  converted extra Grail can therefore never be a second Utopia payday at all —
-  it pays NOTHING (see "Grail → Utopia conversion" below), so it no longer
-  appears in this stacking matrix. Only a REAL printed / designated Ⅶ Utopia
-  does.
+  a black-cubed site too — keeping its cube, so it is never re-fought). NOTE
+  (2026-08-09): a converted extra Grail pays the normal Utopia bundle again
+  (see "Grail → Utopia conversion" below), so a map with an extra Grail under
+  `grailAsUtopia`/the package CAN yield a second Utopia payday at runtime — but
+  the design-time stacking WARNING still reports only a REAL printed /
+  designated Ⅶ Utopia (whether an extra Grail ever converts depends on a dig
+  the designer cannot foresee).
 
 ## Atomic Necromancy window · Luck lasts the round · printed Treasure dice (2026-07-28)
 
@@ -6158,13 +6165,24 @@ Leading with what does NOT run / deliberate limits:
 ## Cinematic main menu (2026-08-08) — what runs vs. limits
 
 `/menu` is a full-bleed looping video backdrop with the logo top-left and ONE
-compact stack of art buttons on the right, in three views: **main** (Single
-player · Multiplayer · Map Editor · Miscellaneous · Logout) → **multiplayer**
-(Skirmish · Battle Test · Co-op · Back) → **miscellaneous** (Hall of Fame ·
-Credits · Profile · Admin when the account is an admin · Back). `view` is local
-component state (`useState`), never routing — Back returns without a navigation.
-Pure presentation: no engine rule, no server call beyond the existing session
-fetch. Pinned in `src/app/menu/page.test.tsx`,
+compact stack of art buttons on the right, in FOUR views (2026-08-09 —
+"village refresh" added the singlePlayer submenu): **main** (Single player ·
+Multiplayer · Map Editor · Miscellaneous · Logout) → **singlePlayer**
+(Scenario · Campaign · Back) → **multiplayer** (Skirmish · Battle Test · Co-op ·
+Back) → **miscellaneous** (Hall of Fame · Credits · Profile · Admin when the
+account is an admin · Back). `view` is local component state (`useState`),
+never routing — Back returns without a navigation. **Scenario mints the
+private `sp-` computer room straight from the menu** (`createSinglePlayerRoom`
+→ `/?room=…`, error surfaced in `.mainMenuScenarioError`); Campaign links to
+`/story`; the classic `/single-player` page still exists (its two mode cards
+were replaced by the same art buttons) and stays the Story-mode entry surface.
+A **compact icon-only `MusicToggle`** (`.menuMusicToggle`, 2026-08-09) is
+pinned near the top-right corner — `top: 54px` clears the Next DEV-TOOLS badge
+that next.config.ts pins to the exact corner — and drives the same
+localStorage-backed music store as the in-game table toggle (pinned in
+`page.test.tsx`: compact form + the store really flips). Otherwise pure
+presentation: no engine rule, no server call beyond the existing session
+fetch + the Scenario room mint. Pinned in `src/app/menu/page.test.tsx`,
 `src/app/menu/main-menu-media.test.ts` and
 `src/app/menu/main-menu-video-motion.test.ts`.
 
@@ -6184,7 +6202,7 @@ Leading with what does NOT work / deliberate limits:
   click a button that returns them to where they were.
 - **Every button's label is BAKED INTO its art** — there is no text node, so the
   accessible name is the element's `aria-label` and a dropped label leaves a
-  nameless control. `page.test.tsx` walks all three views (14 buttons, admin
+  nameless control. `page.test.tsx` walks all four views (17 buttons, admin
   included) asserting a non-empty `aria-label` plus `alt=""` + `aria-hidden` on
   the art. A missing webp is likewise not a cosmetic gap but a BLANK button,
   which is why the files are pinned on disk.
@@ -6252,8 +6270,11 @@ What runs (each with a failing-if-removed test, all mutation-checked):
   Do not move that rule earlier or re-add `!important`.
 - **MEDIA WEIGHT is capped by test.** The generated art shipped at ~22MB for one
   cold visit (13 buttons at 1536×1024 / 114–311KB, backdrop 1920×1080 / 19.3MB);
-  it is now 768×512 webp q82 (26–65KB, 587KB for the set, all 13 eagerly
-  preloaded on mount) plus a 2.2MB CRF-28 mp4 and the 306KB fallback still — and
+  it is now 768×512 webp q82 (26–74KB; the village-refresh additions —
+  scenario / campaign / battle-test-fire / co-op-tactics — were recompressed to
+  the same q82 standard on 2026-08-09, and the replaced battle-test / co-op /
+  vs-computer / single-player-campaign files were DELETED as unreferenced)
+  plus a 2.2MB CRF-28 mp4 and the 306KB fallback still — and
   a narrow viewport skips the mp4 entirely. The buttons never paint wider than
   ~310 CSS px (`.menuShellPanel.bare` is `clamp(230px, 24vw, 310px)` and
   `.menuNavArt` is `contain`-fitted), so 768px is already ≥2× for retina.

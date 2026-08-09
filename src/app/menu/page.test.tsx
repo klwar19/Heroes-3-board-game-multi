@@ -16,7 +16,12 @@ const { push, replace, createSinglePlayerRoom } = vi.hoisted(() => ({
   createSinglePlayerRoom: vi.fn(),
 }));
 
-vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
+// Keep the real mute store (the corner MusicToggle drives it); only the
+// playback hook is stubbed out — jsdom has no HTMLMediaElement.play().
+vi.mock("@/lib/music", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/music")>();
+  return { ...actual, useBackgroundMusic: vi.fn() };
+});
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, replace, prefetch: vi.fn() }),
 }));
@@ -156,6 +161,29 @@ describe("/menu (main menu, guest-only build)", () => {
     } finally {
       delete process.env.NEXT_PUBLIC_ACCOUNTS_ENABLED;
     }
+  });
+
+  it("carries the compact corner music switch, and clicking it really mutes the store", async () => {
+    const music = await import("@/lib/music");
+    music.__resetMusicForTests();
+    render(<MenuPage />);
+
+    // Icon-only compact form pinned by the `.menuMusicToggle` corner class.
+    const toggle = screen.getByRole("button", { name: /Turn the music off/i });
+    expect(toggle.className).toContain("musicToggle");
+    expect(toggle.className).toContain("compact");
+    expect(toggle.className).toContain("menuMusicToggle");
+    // No text node — the compact form is the icon alone.
+    expect(toggle.textContent).toBe("");
+
+    // The observable effect: the persisted music store actually flips.
+    expect(music.isMusicMuted()).toBe(false);
+    fireEvent.click(toggle);
+    expect(music.isMusicMuted()).toBe(true);
+    expect(window.localStorage.getItem("h3-music-muted")).toBe("1");
+    expect(screen.getByRole("button", { name: /Turn the music on/i })).toBe(toggle);
+    fireEvent.click(toggle);
+    expect(music.isMusicMuted()).toBe(false);
   });
 
   it("plays the menu loop MUTED and keeps the still art behind it as the fallback", () => {

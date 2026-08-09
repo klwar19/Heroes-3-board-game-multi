@@ -5577,14 +5577,19 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     return;
   }
 
-  if (mode === "dragon-hunt") {
+  // A CONVERTED extra Grail (`grailConverted`) is never an ORIGINAL objective:
+  // it must not win Dragon Hunt nor become a Dragon-Conqueror capture target —
+  // the designer `grailAsUtopia` knob works WITHOUT the field-rules package, so
+  // both mode branches are reachable for a converted field here. It falls
+  // through to the plain branch below and pays the normal field bundle instead.
+  if (mode === "dragon-hunt" && !field.grailConverted) {
     declareAdventureWinner(state, hero.controllerId, "defeated the Dragon Utopia", {
       viaVictoryCondition: true
     });
     return;
   }
 
-  if (mode === "dragon-conqueror") {
+  if (mode === "dragon-conqueror" && !field.grailConverted) {
     // Capture: flag the Utopia for the victor and keep neutrals from
     // respawning. Holding it at the start of a later turn wins.
     const firstCapture = !field.everFlagged;

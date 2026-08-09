@@ -273,6 +273,49 @@ describe("Dragon Utopia objective", () => {
     expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).toContain(real.spaceId);
   });
 
+  it("a CONVERTED extra Grail never wins Dragon Hunt via the VISIT handler either (knob without the package)", () => {
+    // The designer `grailAsUtopia` knob converts WITHOUT the field-rules package,
+    // so `handleDragonUtopiaVisit` reaches its mode branches for a converted
+    // field. It must fall through to the plain reward bundle, never the win.
+    const state = makeGame("dragon-hunt");
+    const converted = injectField(state, "dragon_utopia", "conv,2");
+    converted.grailConverted = true;
+    const heroId = placeHeroOn(state, "p1", converted.spaceId);
+    const goldBefore = state.players.p1.resources.gold;
+
+    beginFieldVisit(state, heroId, converted.spaceId, false);
+
+    expect(state.adventure!.winnerPlayerId ?? null).toBeNull();
+    expect(state.phase).not.toBe("game-over");
+    // …and it pays the normal plain-Utopia field bundle instead.
+    expect(converted.blackCube).toBe(true);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(
+      state.adventure!.rewardQueue
+        .filter((reward) => reward.kind === "shared-deck-search")
+        .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0))
+    ).toEqual([3, 5, 5]);
+  });
+
+  it("a CONVERTED extra Grail is never captured in Dragon Conqueror (not a hold-to-win target)", () => {
+    const state = makeGame("dragon-conqueror");
+    const converted = injectField(state, "dragon_utopia", "conv,3");
+    converted.grailConverted = true;
+    const heroId = placeHeroOn(state, "p1", converted.spaceId);
+
+    beginFieldVisit(state, heroId, converted.spaceId, false);
+
+    expect(converted.flagOwnerId, "no capture flag on a converted site").toBeNull();
+    expect(converted.everFlagged).toBe(false);
+    expect(converted.blackCube, "it pays the plain bundle and stays cleared").toBe(true);
+
+    // CONTROL: a REAL Utopia on the same game is captured (flagged) as before.
+    const real = injectField(state, "dragon_utopia", "real,3");
+    placeHeroOn(state, "p1", real.spaceId);
+    beginFieldVisit(state, heroId, real.spaceId, false);
+    expect(real.flagOwnerId).toBe("p1");
+  });
+
   it("is only a creature bank in Grail Hunt — defeating it does NOT win", () => {
     const state = makeGame("grail");
     const field = injectField(state, "dragon_utopia");

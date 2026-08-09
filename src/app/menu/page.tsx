@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { MenuShell } from "@/components/menu/menu-shell";
 import { WelcomeNotice } from "@/components/menu/welcome-notice";
+import { MusicToggle } from "@/components/music-toggle";
 import { UiModePrompt } from "@/components/table/ui-mode-prompt";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, logout, type SelfProfile } from "@/lib/auth-client";
@@ -126,6 +127,10 @@ export default function MenuPage() {
         videoBackdrop="/assets/ui/menu/main-menu-loop-v6.mp4"
         videoFallback="/assets/ui/menu/main-menu-fallback.webp"
       >
+        {/* Small corner switch for the menu theme MenuShell always plays —
+            icon-only, pinned top-right (`.menuMusicToggle`), persists like the
+            in-game table toggle (same localStorage-backed music store). */}
+        <MusicToggle className="menuMusicToggle" compact />
         <nav
           aria-label={view === "main" ? "Main menu" : `${view} menu`}
           className={`menuNav menuNav-${view}`}
