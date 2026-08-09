@@ -8979,14 +8979,11 @@ export type MapFieldState = {
    */
   grailDiggable?: boolean;
   /**
-   * USER RULE 2026-08-07: this Ⅶ `dragon_utopia` field is a CONVERTED extra
-   * Grail site, not a real Dragon Utopia. It is fought exactly like a Utopia
-   * (Ⅶ guards per the map's guard mode) but pays NONE of the Utopia's built-in
-   * rewards — no gold, no Search 3/5/5 artifact ladder, no bonus Search, no
-   * Morale/Ability-Empower token pick — and is not a Dragon-Hunt /
-   * Dragon-Conqueror win objective nor a `defeat-dragon-utopia` VP/win credit.
-   * Designer-authored rewards on that hex (centre-hex reward/VP, hex events)
-   * are explicit map content and still pay. Absent on every real Utopia.
+   * This Ⅶ `dragon_utopia` field originated as an extra Grail site and was
+   * converted after another Grail was taken. It fights and pays exactly like a
+   * Utopia, including the fixed Search 3 / 5 / 5 Artifact ladder, but remains
+   * distinguishable for objective bookkeeping: it is not an original
+   * Dragon-Hunt target or `defeat-dragon-utopia` VP/win target.
    */
   grailConverted?: boolean;
   /**
@@ -12220,7 +12217,7 @@ export type CustomMapPreset = {
      * How an EXTRA Grail field converts once a Grail has been TAKEN (dug). The
      * dug field itself never converts (see {@link AdventureState.grailTakenFieldId}).
      *   - "after-dig-utopia": other still-undug Grail fields become Dragon
-     *     Utopia — fightable Ⅶ guards, but NO Utopia reward (`grailConverted`).
+     *     Utopias with their normal field rewards (`grailConverted`).
      *   - "after-dig-empty": other still-undug Grail fields become empty
      *     (map-maker "no second dig site").
      *   - "always": DEPRECATED ALIAS of "after-dig-utopia" (USER RULE

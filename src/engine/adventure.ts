@@ -995,7 +995,8 @@ export function materializeTileFields(
       settlementResource: null
     };
     if (convertedFromGrail) {
-      // Reward-free Utopia (see MapFieldState.grailConverted).
+      // Preserve the conversion origin for objective bookkeeping. Reward
+      // resolution still treats this as a normal Utopia (Search 3 / 5 / 5).
       field.grailConverted = true;
     }
     if (fieldDef.difficulty) {
@@ -5397,7 +5398,7 @@ export function grailConversionActive(adventure: AdventureState): boolean {
 
 /**
  * Convert every OTHER still-undug Grail field the moment the Grail is TAKEN:
- * a reward-free Dragon Utopia (`grailConverted`) or an empty field.
+ * a Dragon Utopia (`grailConverted`) or an empty field.
  *
  * ONE field is deliberately skipped: `dugFieldId`, the site the Grail came from
  * (USER RULE: "THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET: WONT TURN"). It
@@ -5409,8 +5410,8 @@ export function grailConversionActive(adventure: AdventureState): boolean {
  * map's other Grail turned at all depended on the accident of having cleared it
  * first, and a cleared one sat there as an inert Grail for the rest of the game.
  * It keeps its Black Cube, though: a beaten site is never resurrected into a
- * fresh Ⅶ fight, which would re-pay hero experience for guards already beaten
- * (the converted Utopia pays no reward, so there would be nothing else to gain).
+ * fresh Ⅶ fight, which would re-pay hero experience and the Utopia reward for
+ * guards already beaten.
  */
 function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): void {
   const target = grailTakenConversionTarget(state);
@@ -5437,8 +5438,8 @@ function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): vo
     const spent = field.blackCube;
     if (target === "dragon_utopia") {
       field.location = "dragon_utopia";
-      // The conversion marker IS the "pays nothing" rule (see
-      // MapFieldState.grailConverted / handleDragonUtopiaVisit).
+      // Keep the origin marker for objective bookkeeping; this field otherwise
+      // fights and rewards exactly like the Utopia it has become.
       field.grailConverted = true;
       delete field.grailDiggable;
       field.blackCube = spent;
@@ -5448,8 +5449,8 @@ function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): vo
       eventNote(
         state,
         spent
-          ? "A cleared extra Grail site is now a spent Dragon Utopia (no reward)."
-          : "An extra Grail site now fights as a Dragon Utopia (no reward)."
+          ? "A cleared extra Grail site is now a spent Dragon Utopia."
+          : "An extra Grail site is now a Dragon Utopia."
       );
     } else {
       field.location = "empty_field";
@@ -5527,27 +5528,15 @@ function queueDragonUtopiaArtifactSearches(
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
 
-  // USER RULE 2026-08-07: a CONVERTED extra Grail site "behaves like a Utopia,
-  // but does NOT give extra rewards, which is terrible". It was a real Ⅶ fight
-  // (its guards came from the Utopia draw) and beating it clears the hex — and
-  // that is ALL it pays. No gold, no Search 3/5/5 ladder, no bonus Search, no
-  // Morale / Ability-Empower pick, and (a reward too) no Dragon-Hunt win, no
-  // Dragon-Conqueror capture and no `defeat-dragon-utopia` VP / win credit.
-  // Designer-authored rewards on the hex are explicit map content and were
-  // already paid by grantCenterHexBonus / the hex event before this call.
-  if (field.grailConverted) {
-    if (!field.blackCube) {
-      field.blackCube = true;
-      eventNote(state, "The converted Grail site is cleared — a fight only, with no Utopia reward.");
-    }
-    return;
-  }
-
   // Victory Points: record the defeater for the defeat-dragon-utopia objective.
   // A defeated Utopia otherwise leaves only an owner-less black cube, so this is
   // the only durable trace of WHO cleared it. Runs in every mode (the objective
-  // is meaningful outside Dragon Hunt, where the Utopia is a plain bank).
-  recordVpUtopiaDefeat(state, hero.controllerId, field.spaceId);
+  // is meaningful outside Dragon Hunt, where the Utopia is a plain bank). A
+  // converted Grail pays the full Utopia field reward below, but remains excluded
+  // from objective credit: it was not one of the map's original Utopia targets.
+  if (!field.grailConverted) {
+    recordVpUtopiaDefeat(state, hero.controllerId, field.spaceId);
+  }
 
   if (grailUtopiaFieldRulesEnabled(state)) {
     if (!field.blackCube) {

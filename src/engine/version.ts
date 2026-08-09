@@ -120,7 +120,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // rule OFF nothing is written or read, but a v21 edge handed a "type-choice"
 // flip would fall through its keep/reroll switch and misread the chosen index —
 // the banner exists to surface exactly that.
-export const ENGINE_PROTOCOL_VERSION = 22;
+// v23: corrected Grail-to-Utopia reward semantics. A converted extra Grail now
+// pays the same fixed Search 3 / 5 / 5 Artifact ladder (and normal field bundle)
+// as a Dragon Utopia instead of returning reward-free. A v22 room server would
+// silently award zero Artifacts for the same clear, so reducer compatibility
+// requires an explicit bump.
+export const ENGINE_PROTOCOL_VERSION = 23;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

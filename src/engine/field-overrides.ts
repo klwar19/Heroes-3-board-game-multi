@@ -309,8 +309,8 @@ export function carveFieldOverride(
   field.everFlagged = false;
   field.settlementResource = null;
   delete field.grailDiggable;
-  // The field is no longer a (converted) Ⅶ objective at all — drop the
-  // reward-free-Utopia marker with the rest of the old identity.
+  // The field is no longer a converted Ⅶ objective at all — drop its origin
+  // marker with the rest of the old identity.
   delete field.grailConverted;
   delete field.gateToTileId;
   delete field.gateLinkSpaceId;

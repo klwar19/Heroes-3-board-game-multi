@@ -167,7 +167,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
 
     beginFieldVisit(state, hero.id, first.spaceId, true);
     expect(second.location, "the dig is the conversion trigger").toBe("dragon_utopia");
-    expect(second.grailConverted, "…and the converted site pays no Utopia reward").toBe(true);
+    expect(second.grailConverted, "…and the converted origin is recorded").toBe(true);
     expect(first.location, "the DUG site itself never turns").toBe("grail");
     expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: hero.id });
@@ -377,7 +377,7 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
       )?.location
     ).toBe("grail");
 
-    // Now TAKE the Grail; a later reveal converts to a reward-free Utopia.
+    // Now TAKE the Grail; a later reveal converts to a normally rewarded Utopia.
     beginFieldVisit(state, hero.id, first.spaceId, true);
     expect(state.adventure!.grailTakenFieldId).toBe(first.spaceId);
     const hiddenSecond = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);

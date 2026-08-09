@@ -2449,13 +2449,12 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   if (config.utopiaBonusSearch) {
     entries.push({ icon: "🐉", text: `Dragon Utopia bonus: Search(${config.utopiaBonusSearch}) Artifacts` });
   }
-  // USER RULE 2026-08-07: "always" is a legacy alias of "after-dig-utopia", so
-  // both describe the SAME after-the-dig conversion, and the line says the
-  // converted site pays nothing (its whole point).
+  // "always" is a legacy alias of "after-dig-utopia": both describe the same
+  // post-dig conversion and the converted field gets the normal Utopia reward.
   if (config.grailAsUtopia === "always" || config.grailAsUtopia === "after-dig-utopia") {
     entries.push({
       icon: "🏆",
-      text: "After the Grail is taken, other Grail tiles fight as Utopia (no reward)"
+      text: "After the Grail is taken, other Grail tiles become Utopias (Search 3 / 5 / 5)"
     });
   } else if (config.grailAsUtopia === "after-dig-empty") {
     entries.push({ icon: "🏆", text: "After the Grail is taken, other Grail tiles become empty" });

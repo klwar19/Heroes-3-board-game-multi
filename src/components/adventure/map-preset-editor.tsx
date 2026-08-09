@@ -1329,8 +1329,8 @@ export function MapPresetEditor({
                   },
                   {
                     id: "after-dig-utopia" as const,
-                    label: "→ Utopia (no reward)",
-                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site fights as a Dragon Utopia. It pays NO Utopia reward — no gold, no Artifact Searches, no token pick. The dug site itself never turns."
+                    label: "→ Utopia",
+                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal reward, including exactly three Artifacts via Search (3), Search (5), Search (5). The dug site itself never turns."
                   },
                   {
                     id: "after-dig-empty" as const,
@@ -1340,7 +1340,7 @@ export function MapPresetEditor({
                   {
                     id: "always" as const,
                     label: "Always (legacy)",
-                    hint: "Legacy alias of \"→ Utopia (no reward)\". It used to make every Grail field fight Utopia dragons from round 1; a Grail only acts like a Utopia AFTER a Grail is taken now."
+                    hint: "Legacy alias of \"→ Utopia\". It used to make every Grail field fight Utopia dragons from round 1; a Grail only acts like a Utopia AFTER a Grail is taken now."
                   }
                 ] as const
               ).map((opt) => (
@@ -1556,10 +1556,10 @@ export function MapPresetEditor({
                 aria-pressed
                 className="mapPresetChip active"
                 disabled
-                title="Once a Grail is taken, every OTHER still-unfought Grail site fights as a Dragon Utopia that pays NO reward. The dug site itself never turns. Pick 'empty' below to remove them instead."
+                title="Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal reward: exactly three Artifacts via Search (3), Search (5), Search (5). The dug site itself never turns. Pick 'empty' below to remove them instead."
                 type="button"
               >
-                → Utopia (no reward)
+                → Utopia
               </button>
               <button
                 aria-pressed={objectives.grailAsUtopia === "after-dig-empty"}
@@ -1570,7 +1570,7 @@ export function MapPresetEditor({
                   else next.grailAsUtopia = "after-dig-empty";
                   patchObjectives(next);
                 }}
-                title="Override: extra Grail sites become empty fields instead of reward-free Utopias."
+                title="Override: extra Grail sites become empty fields instead of rewarded Utopias."
                 type="button"
               >
                 → empty instead

@@ -241,11 +241,9 @@ describe("Dragon Utopia objective", () => {
   });
 
   it("a CONVERTED extra Grail site never wins Dragon Hunt (the post-combat fast path)", () => {
-    // USER RULE 2026-08-07: an extra Grail field that turned into a Utopia after
-    // the Grail was taken "behaves like utopia, but [does] not give extra
-    // rewards" — and an instant win is the biggest reward of all. This is the
-    // seam that decides it under the Grail/Utopia field package: the reducer's
-    // post-combat fast path (handleDragonUtopiaVisit returns earlier there).
+    // A converted extra Grail pays the normal Utopia field bundle, but is not one
+    // of the map's original Dragon-Hunt objectives. This is the seam that decides
+    // objective victory under the reducer's post-combat fast path.
     const state = makeGame("dragon-hunt");
     state.adventure!.houseRules = {
       ...(state.adventure!.houseRules ?? {}),

@@ -11,8 +11,9 @@ import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, logout, type SelfProfile } from "@/lib/auth-client";
 import { authEnabled, GUEST_LOGIN_DISABLED } from "@/lib/auth-mode";
 import { clearGuestMode, getDisplayName, isGuestMode } from "@/lib/identity";
+import { createSinglePlayerRoom } from "@/lib/realtime";
 
-type MenuView = "main" | "multiplayer" | "miscellaneous";
+type MenuView = "main" | "singlePlayer" | "multiplayer" | "miscellaneous";
 
 /**
  * Each button's whole face — emblem, plaque and its own baked-in label — is the
@@ -21,22 +22,32 @@ type MenuView = "main" | "multiplayer" | "miscellaneous";
  */
 export const MENU_ART = {
   singlePlayer: "/assets/ui/menu/buttons/single-player.webp",
+  scenario: "/assets/ui/menu/buttons/scenario.webp",
+  campaign: "/assets/ui/menu/buttons/campaign.webp",
   multiplayer: "/assets/ui/menu/buttons/multiplayer.webp",
   mapEditor: "/assets/ui/menu/buttons/map-editor.webp",
   miscellaneous: "/assets/ui/menu/buttons/miscellaneous.webp",
   logout: "/assets/ui/menu/buttons/logout.webp",
   skirmish: "/assets/ui/menu/buttons/skirmish.webp",
-  battleTest: "/assets/ui/menu/buttons/battle-test.webp",
-  coOp: "/assets/ui/menu/buttons/co-op.webp",
+  battleTest: "/assets/ui/menu/buttons/battle-test-fire.webp",
+  coOp: "/assets/ui/menu/buttons/co-op-tactics.webp",
   back: "/assets/ui/menu/buttons/back.webp",
   hallOfFame: "/assets/ui/menu/buttons/hall-of-fame.webp",
   credits: "/assets/ui/menu/buttons/credits.webp",
   profile: "/assets/ui/menu/buttons/profile.webp",
-  admin: "/assets/ui/menu/buttons/admin.webp"
+  admin: "/assets/ui/menu/buttons/admin.webp",
 } as const;
 
 function MenuArt({ src }: { src: string }) {
-  return <img alt="" aria-hidden className="menuNavArt" draggable={false} src={assetUrl(src)} />;
+  return (
+    <img
+      alt=""
+      aria-hidden
+      className="menuNavArt"
+      draggable={false}
+      src={assetUrl(src)}
+    />
+  );
 }
 
 export default function MenuPage() {
@@ -44,6 +55,8 @@ export default function MenuPage() {
   const [displayName, setDisplayNameState] = useState("");
   const [account, setAccount] = useState<SelfProfile | null>(null);
   const [view, setView] = useState<MenuView>("main");
+  const [scenarioCreating, setScenarioCreating] = useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
   const started = useRef(false);
 
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -91,14 +104,20 @@ export default function MenuPage() {
               </span>
             ) : (
               <span className="menuIdentityLine" suppressHydrationWarning>
-                {displayName ? `Playing as guest: ${displayName} · ` : "Guest · "}
+                {displayName
+                  ? `Playing as guest: ${displayName} · `
+                  : "Guest · "}
                 <Link href="/login">Sign in or create an account</Link>
               </span>
             )
           ) : (
             <span className="menuIdentityLine" suppressHydrationWarning>
-              {displayName ? `Playing as ${displayName} · ` : "No player name set · "}
-              <Link href="/login">{displayName ? "Change name" : "Choose a name"}</Link>
+              {displayName
+                ? `Playing as ${displayName} · `
+                : "No player name set · "}
+              <Link href="/login">
+                {displayName ? "Change name" : "Choose a name"}
+              </Link>
             </span>
           )
         }
@@ -107,19 +126,41 @@ export default function MenuPage() {
         videoBackdrop="/assets/ui/menu/main-menu-loop-v6.mp4"
         videoFallback="/assets/ui/menu/main-menu-fallback.webp"
       >
-        <nav aria-label={view === "main" ? "Main menu" : `${view} menu`} className={`menuNav menuNav-${view}`}>
+        <nav
+          aria-label={view === "main" ? "Main menu" : `${view} menu`}
+          className={`menuNav menuNav-${view}`}
+        >
           {view === "main" ? (
             <>
-              <Link aria-label="SINGLE PLAYER" className="menuNavButton" href="/single-player">
+              <button
+                aria-label="SINGLE PLAYER"
+                className="menuNavButton"
+                onClick={() => setView("singlePlayer")}
+                type="button"
+              >
                 <MenuArt src={MENU_ART.singlePlayer} />
-              </Link>
-              <button aria-label="MULTIPLAYER" className="menuNavButton" onClick={() => setView("multiplayer")} type="button">
+              </button>
+              <button
+                aria-label="MULTIPLAYER"
+                className="menuNavButton"
+                onClick={() => setView("multiplayer")}
+                type="button"
+              >
                 <MenuArt src={MENU_ART.multiplayer} />
               </button>
-              <Link aria-label="MAP EDITOR" className="menuNavButton" href="/designer">
+              <Link
+                aria-label="MAP EDITOR"
+                className="menuNavButton"
+                href="/designer"
+              >
                 <MenuArt src={MENU_ART.mapEditor} />
               </Link>
-              <button aria-label="MISCELLANEOUS" className="menuNavButton" onClick={() => setView("miscellaneous")} type="button">
+              <button
+                aria-label="MISCELLANEOUS"
+                className="menuNavButton"
+                onClick={() => setView("miscellaneous")}
+                type="button"
+              >
                 <MenuArt src={MENU_ART.miscellaneous} />
               </button>
               <button
@@ -140,12 +181,64 @@ export default function MenuPage() {
             </>
           ) : null}
 
+          {view === "singlePlayer" ? (
+            <>
+              <button
+                aria-label="SCENARIO"
+                className="menuNavButton"
+                disabled={scenarioCreating}
+                onClick={async () => {
+                  if (scenarioCreating) return;
+                  setScenarioCreating(true);
+                  setScenarioError(null);
+                  try {
+                    const { roomId } = await createSinglePlayerRoom();
+                    router.push(`/?room=${encodeURIComponent(roomId)}`);
+                  } catch (cause) {
+                    setScenarioError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "Could not create the computer game.",
+                    );
+                    setScenarioCreating(false);
+                  }
+                }}
+                type="button"
+              >
+                <MenuArt src={MENU_ART.scenario} />
+              </button>
+              <Link
+                aria-label="CAMPAIGN"
+                className="menuNavButton"
+                href="/story"
+              >
+                <MenuArt src={MENU_ART.campaign} />
+              </Link>
+              <button
+                aria-label="BACK"
+                className="menuNavButton"
+                onClick={() => setView("main")}
+                type="button"
+              >
+                <MenuArt src={MENU_ART.back} />
+              </button>
+            </>
+          ) : null}
+
           {view === "multiplayer" ? (
             <>
-              <Link aria-label="SKIRMISH" className="menuNavButton" href="/play">
+              <Link
+                aria-label="SKIRMISH"
+                className="menuNavButton"
+                href="/play"
+              >
                 <MenuArt src={MENU_ART.skirmish} />
               </Link>
-              <Link aria-label="BATTLE TEST" className="menuNavButton" href="/battle">
+              <Link
+                aria-label="BATTLE TEST"
+                className="menuNavButton"
+                href="/battle"
+              >
                 <MenuArt src={MENU_ART.battleTest} />
               </Link>
               {/* NOT IMPLEMENTED: there is no co-op game mode in the engine, and
@@ -153,10 +246,19 @@ export default function MenuPage() {
                   room browser. So this button lands on the SAME lobby Skirmish
                   does and `?mode=co-op` is inert; it is a placeholder for a mode
                   that does not exist yet, not a second way to play. */}
-              <Link aria-label="CO-OP" className="menuNavButton" href="/play?mode=co-op">
+              <Link
+                aria-label="CO-OP"
+                className="menuNavButton"
+                href="/play?mode=co-op"
+              >
                 <MenuArt src={MENU_ART.coOp} />
               </Link>
-              <button aria-label="BACK" className="menuNavButton" onClick={() => setView("main")} type="button">
+              <button
+                aria-label="BACK"
+                className="menuNavButton"
+                onClick={() => setView("main")}
+                type="button"
+              >
                 <MenuArt src={MENU_ART.back} />
               </button>
             </>
@@ -164,26 +266,52 @@ export default function MenuPage() {
 
           {view === "miscellaneous" ? (
             <>
-              <Link aria-label="HALL OF FAME" className="menuNavButton" href="/hall-of-fame">
+              <Link
+                aria-label="HALL OF FAME"
+                className="menuNavButton"
+                href="/hall-of-fame"
+              >
                 <MenuArt src={MENU_ART.hallOfFame} />
               </Link>
-              <Link aria-label="CREDITS" className="menuNavButton" href="/credits">
+              <Link
+                aria-label="CREDITS"
+                className="menuNavButton"
+                href="/credits"
+              >
                 <MenuArt src={MENU_ART.credits} />
               </Link>
-              <Link aria-label="PROFILE" className="menuNavButton" href="/profile">
+              <Link
+                aria-label="PROFILE"
+                className="menuNavButton"
+                href="/profile"
+              >
                 <MenuArt src={MENU_ART.profile} />
               </Link>
               {accounts && account?.role === "admin" ? (
-                <Link aria-label="ADMIN" className="menuNavButton" href="/admin">
+                <Link
+                  aria-label="ADMIN"
+                  className="menuNavButton"
+                  href="/admin"
+                >
                   <MenuArt src={MENU_ART.admin} />
                 </Link>
               ) : null}
-              <button aria-label="BACK" className="menuNavButton" onClick={() => setView("main")} type="button">
+              <button
+                aria-label="BACK"
+                className="menuNavButton"
+                onClick={() => setView("main")}
+                type="button"
+              >
                 <MenuArt src={MENU_ART.back} />
               </button>
             </>
           ) : null}
         </nav>
+        {scenarioError ? (
+          <p className="mainMenuScenarioError" role="alert">
+            {scenarioError}
+          </p>
+        ) : null}
       </MenuShell>
     </>
   );
