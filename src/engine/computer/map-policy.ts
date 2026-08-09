@@ -2141,18 +2141,31 @@ export function scoreMapAction(
         score: 1_130,
         policy: "map.observatory-place-expansion-tile",
       };
-    case "MOVE_HERO":
+    case "MOVE_HERO": {
+      const enterHero = state.heroes[action.heroId];
+      const enterField = state.adventure?.fields[action.to];
       if (
         (state.round ?? 0) <= 3 &&
-        state.heroes[action.heroId]?.spaceId &&
-        state.adventure?.fields[state.heroes[action.heroId]!.spaceId!]?.tileInstanceId ===
+        enterHero?.spaceId &&
+        state.adventure?.fields[enterHero.spaceId]?.tileInstanceId ===
           homeTileInstanceId(state, observation.playerId) &&
-        state.adventure?.fields[action.to]?.tileInstanceId ===
-          latestPlacedTileId(state, observation.playerId)
+        enterField?.tileInstanceId === latestPlacedTileId(state, observation.playerId) &&
+        // The entry step must be SAFE: this boost bypasses moveScore's whole
+        // objective/can-beat read, so an unbeatable entry guard (or an enemy
+        // hero on the entry hex) would otherwise be attacked at 930 — and a
+        // beaten hero falls back to the home town, re-arming the same boost
+        // next turn (a bounded but real suicide loop). A guarded entry the
+        // hero cannot cover falls through to the normal objective scoring.
+        (!isFieldGuarded(enterField) || canBeatGuardedField(state, enterHero, enterField)) &&
+        !Object.values(state.heroes).some(
+          (other) =>
+            other.spaceId === action.to && other.controllerId !== observation.playerId,
+        )
       ) {
         return { score: 930, policy: "map.enter-first-opened-tile" };
       }
       return { score: moveScore(observation, action), policy: "map.move-to-objective" };
+    }
     case "REVISIT_FIELD": {
       // Revisits are optional luxuries — never outrank marching to new land or
       // a real objective (was 690 and pulled heroes back to known sites).

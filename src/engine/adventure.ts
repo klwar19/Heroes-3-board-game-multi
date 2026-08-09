@@ -1886,18 +1886,25 @@ export function isDesignedEdgeSealedBetween(
   if (!DESIGNER_BORDER_SEALING_ENABLED) {
     return false;
   }
+  // A runtime border-free hex — a Creature Bank / Calamity Gate / Dungeon Gate
+  // carve, or a Field Override — never wears borders, printed OR designer, so an
+  // edge TOUCHING one is never sealed by a designer border. This must be an
+  // edge-level early-out, not per-side gating: a tile-level inner edge's two
+  // encodings fold to ONE canonical code (`canonicalTileEdgeCode`), so a check
+  // run from the non-carve neighbour's frame would still match the stored code
+  // and seal the crossing — an invisible wall, since the board suppresses every
+  // drawn line touching such a hex (`getTileBorderSegments`' suppressed set).
+  if (fieldNeverWearsBorders(fromField) || fieldNeverWearsBorders(toField)) {
+    return false;
+  }
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
-  // Creature Banks never wear borders (printed OR designer): ignore every
-  // border contribution from a bank field so the bank cannot seal movement.
-  const fromIsBank = fromField.location === "creature_bank";
-  const toIsBank = toField.location === "creature_bank";
-  const fromHas = !fromIsBank && Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
-  const toHas = !toIsBank && Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
+  const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
+  const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
   // Field-level borders: a STANDALONE object hex carries its own edge list
-  // (it has no backing tile). Same seal, same both-direction rule — never a bank.
-  const fromFieldHas = !fromIsBank && Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
-  const toFieldHas = !toIsBank && Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  // (it has no backing tile). Same seal, same both-direction rule.
+  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
+  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
   if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
@@ -1981,6 +1988,18 @@ export const BLOCKED_FIELD_CARVE_LOCATIONS: readonly string[] = [
 /** Whether this field's location replaced a printed Blocked Field (see the list). */
 export function isBlockedFieldCarve(field: Pick<MapFieldState, "location">): boolean {
   return BLOCKED_FIELD_CARVE_LOCATIONS.includes(field.location);
+}
+
+/**
+ * Whether a placed field NEVER wears yellow borders at runtime: a Blocked-Field
+ * carve (Creature Bank / Calamity Gate / Dungeon Gate) or a carved Field
+ * Override hex. The board suppresses EVERY printed and designer line touching
+ * such a hex (`getTileBorderSegments`' suppressed set), so movement must agree
+ * ({@link isDesignedEdgeSealedBetween}'s early-out) — a hidden line that still
+ * sealed the crossing would be an invisible wall.
+ */
+export function fieldNeverWearsBorders(field: Pick<MapFieldState, "location">): boolean {
+  return isBlockedFieldCarve(field) || isFieldOverrideLocation(field.location);
 }
 
 /**

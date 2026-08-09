@@ -285,10 +285,16 @@ describe("interaction with Intelligence and reaction pauses", () => {
     // Neutral combat already pauses before each guard acts; we add nothing here.
     expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
     expect(state.combat!.pendingNeutralStep?.reactingPlayerId).toBe("p1");
-    // With a Meteor Shower in hand and NO Intelligence, it is offered in that pause.
-    state.players.p1.hand = ["specialty.deemer.6"];
+    // With a Meteor Shower in hand and NO Intelligence, it is offered in that
+    // pause. Meteor Shower I is an exact multi-target effect (the centre needs
+    // its 1 printed adjacent pick alive), so stand the two fighters adjacent —
+    // a lone guard vs a lone unit apart would make it genuinely unplayable.
+    state.players.p1.hand = ["specialty.deemer.1"];
+    const fighters = Object.values(state.combat!.units);
+    fighters[0].position = 9;
+    fighters[1].position = 10;
     const offered = getLegalActions(state, "p1").some(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.1"
     );
     expect(offered, "the instant specialty should be playable in the neutral guard pause").toBe(true);
   });
@@ -346,7 +352,9 @@ describe("interaction with Intelligence and reaction pauses", () => {
       outcome: null,
       dice: { faces: [...ATTACK_DIE_FACES], seed: "adv-instant-die", rollCount: 0 },
       units: {
-        u_p1: combatUnit("u_p1", "p1", 0),
+        // Meteor Shower VI needs a centre with TWO living adjacent picks:
+        // 13 and 10 are both neighbours of 9.
+        u_p1: combatUnit("u_p1", "p1", 13),
         u_p2: combatUnit("u_p2", "p2", 9),
         u_p2b: combatUnit("u_p2b", "p2", 10)
       }

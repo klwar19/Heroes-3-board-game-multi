@@ -680,6 +680,58 @@ sealingDescribe("per-edge designer borders — movement", () => {
   });
 });
 
+sealingDescribe("designer edges never seal a runtime border-free hex (invisible-wall guard)", () => {
+  // The board suppresses EVERY drawn line touching a carved Creature Bank /
+  // PvE Gate / Field Override hex (getTileBorderSegments' suppressed set), so
+  // MOVEMENT must ignore designer borders on those edges too — a hidden line
+  // that still sealed the crossing would be an invisible wall. The early-out
+  // in isDesignedEdgeSealedBetween must be EDGE-level, not per-side gating:
+  // an inner edge's two encodings fold to ONE canonical code, so a check run
+  // from the plain neighbour's frame would still match the stored code. The
+  // fixture deliberately encodes the edge from the NEIGHBOUR (centre) frame to
+  // pin exactly that trap.
+  function sealedInnerEdges(seed: string) {
+    const state = cleanState(seed);
+    const O: HexCoord = { row: 40, col: 30 };
+    const a = instantiateTile(adv(state), OPEN_TILE, O, 0, false);
+    // Seal centre↔ring[0] AND centre↔ring[1], both coded in the CENTRE frame.
+    a.borderEdges = normalizeDesignedBorderEdges([
+      canonicalTileEdgeCode(0, 0),
+      canonicalTileEdgeCode(0, 1)
+    ]);
+    return {
+      state,
+      centerId: hexSpaceId(O),
+      ring0Id: hexSpaceId(hexNeighbor(O, 0)),
+      ring1Id: hexSpaceId(hexNeighbor(O, 1))
+    };
+  }
+
+  const BORDER_FREE_LOCATIONS = [
+    "creature_bank", // Blocked-Field carve (movement comment long claimed this; it was dead for tile-level edges)
+    "dungeon_gate", // PvE carve — had NO movement exception at all
+    "calamity_gate", // PvE carve — had NO movement exception at all
+    "wog.emerald_tower" // a Field Override hex (registry location)
+  ] as const;
+
+  for (const location of BORDER_FREE_LOCATIONS) {
+    it(`${location}: a designer edge coded from the NEIGHBOUR frame no longer seals the crossing`, () => {
+      const { state, centerId, ring0Id, ring1Id } = sealedInnerEdges(`db-borderfree-${location}`);
+      // CONTROL first: on the plain field both designed edges seal the step.
+      expect(canCrossEdge(state, centerId, ring0Id, NONE)).toBe(false);
+      expect(canCrossEdge(state, centerId, ring1Id, NONE)).toBe(false);
+
+      adv(state).fields[ring0Id].location = location as MapFieldState["location"];
+      // The edge touching the border-free hex opens, in BOTH directions...
+      expect(canCrossEdge(state, centerId, ring0Id, NONE)).toBe(true);
+      expect(canCrossEdge(state, ring0Id, centerId, NONE)).toBe(true);
+      // ...while the sibling designed edge (not touching it) still seals — the
+      // early-out is scoped to edges touching the hex, never a tile-wide off.
+      expect(canCrossEdge(state, centerId, ring1Id, NONE)).toBe(false);
+    });
+  }
+});
+
 sealingDescribe("per-edge designer borders — absolute frame (rotation-independent)", () => {
   it("seals the SAME board edge whatever the tile's rotation (different slot each time)", () => {
     const state = cleanState("db-edge-rot");

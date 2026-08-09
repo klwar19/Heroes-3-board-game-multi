@@ -209,10 +209,16 @@ describe("single-player premium-economy rush benchmarks", () => {
     // draws, …) shifted the SEEDED combat trajectory — the gold-DWELLING rounds
     // moved too, some earlier. The SP-AI economy POLICY is unchanged (only
     // computer/window.ts moved in the whole computer/ tree), and the AI stays
-    // healthy (no stalls, gold dwelling built, armies 6–8). On Impossible the
-    // expensive Gold BODY is a stretch: goldUnit [-,-,-,-,R9,R13,-,R9] → 2/8 by
-    // R10, 3/8 by R13. Floors dropped one seed each (3→2, 4→3) to match.
-    expect(atMost(reports, 10, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(2);
+    // healthy (no stalls, gold dwelling built, armies 6–8).
+    // RE-MEASURED (2026-08-09 fix-ai-map-combat-rules): the DELIBERATE two-turn
+    // opening route (drain tile Ⅰ, open and ENTER the first Ⅱ–Ⅲ tile before any
+    // second discovery, rounds ≤3) trades the fast seeds' early economy for
+    // guaranteed expansion tempo — the expensive Gold BODY tail moved from
+    // [-,-,-,-,R9,R13,-,R9] to [R12,-,R12,-,-,-,-,R11]: 0/8 by R10, 3/8 by R13.
+    // The R13 floor holds unchanged; the fast-tail floor moves R10→R12 (2 of 8,
+    // one seed of drift below the measured 3). Every other floor above/below —
+    // attempts, captures, dwellings, roster, levels — is UNCHANGED and green.
+    expect(atMost(reports, 12, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(2);
     expect(atMost(reports, 13, (r) => r.goldUnitRound), info).toBeGreaterThanOrEqual(3);
     // The roster must never stall at the 3 starting cards: measured army size
     // at R14 [7,7,4,5,6,8,6,6] (6/8 at 5+); floors 6-of-8 at ≥4 and 5-of-8 at ≥5.

@@ -211,6 +211,9 @@ describe("pre-hit heals against Frost Ring / Meteor Shower specialty", () => {
     state.combat!.units.unit_p2_skeletons.position = 9;
     state.combat!.units.unit_p2_skeletons.damage = 2;
     state.combat!.units.unit_p2_vampires.position = 0; // out of blast
+    // Meteor Shower is an exact multi-target effect: the chosen centre needs its
+    // printed adjacent pick alive, so one more body stands in the blast.
+    state.combat!.units.unit_p2_dread_knights.position = 10;
     state.combat!.units.unit_p1_griffins.position = 4;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
@@ -314,6 +317,8 @@ describe("pre-hit heals against Frost Ring / Meteor Shower specialty", () => {
     state.combat!.units.unit_p2_skeletons.position = 9;
     state.combat!.units.unit_p2_skeletons.damage = 2;
     state.combat!.units.unit_p2_vampires.position = 0;
+    // The exact-adjacency rule: the centre needs its printed adjacent pick.
+    state.combat!.units.unit_p2_dread_knights.position = 10;
     state.combat!.units.unit_p1_griffins.position = 4;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";

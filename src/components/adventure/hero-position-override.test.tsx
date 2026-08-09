@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { HexMapBoard } from "./screen";
 import {
   createAdventureGameState,
@@ -71,5 +71,76 @@ describe("HexMapBoard hero-position override (computer-move replay)", () => {
     const before = pawnTransform(renderBoard(state), "hero_p1");
     const same = pawnTransform(renderBoard(state, { hero_p1: heroSpace }), "hero_p1");
     expect(same).toBe(before);
+  });
+});
+
+describe("hero pawn on a STANDALONE teleport-object hex (Monolith) is selectable", () => {
+  // Reported: "I can't interact with a hero standing on a monolith — you select
+  // the monolith instead of the hero." The standalone-hex pawn was hardcoded
+  // pointer-events:none with no onClick, so a click always fell through to the
+  // object hex underneath, whose click dispatches the Monolith revisit/travel.
+  // The pawn must take the SAME click-to-switch wiring the tile-hex pawn has.
+  function standaloneMonolithState(): GameState {
+    const state = createAdventureGameState({ seed: "standalone-pawn", rollFirstPlayer: false });
+    const main = state.heroes.hero_p1!;
+    const spaceId = "h:50:50";
+    state.adventure!.fields[spaceId] = {
+      spaceId,
+      tileInstanceId: `object:${spaceId}`,
+      slot: 0,
+      location: "monolith",
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null,
+      standalone: true,
+    } as never;
+    state.heroes.sec_p1 = { ...main, id: "sec_p1", kind: "secondary", spaceId };
+    return state;
+  }
+
+  it("the own pawn is click-enabled and clicking it switches the active hero", () => {
+    const state = standaloneMonolithState();
+    const onAction = vi.fn();
+    const { container } = render(
+      <HexMapBoard
+        legalActions={getLegalActions(state, "p1")}
+        moveCue={null}
+        onAction={onAction}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />,
+    );
+    const pawn = container.querySelector('[data-hero-id="sec_p1"]')!;
+    // The fix: the pawn accepts pointer events (it was "none" — click-through).
+    expect(pawn.getAttribute("style") ?? "").toContain("pointer-events: auto");
+
+    // Before the click the gold active ring sits on the MAIN hero's pawn.
+    expect(container.querySelector('[data-hero-id="sec_p1"] circle[stroke="#ffd34d"]')).toBeNull();
+    fireEvent.click(pawn);
+    // The click SELECTED the hero (ring moves) and never fired a map action —
+    // in particular not the Monolith's revisit/teleport underneath.
+    expect(container.querySelector('[data-hero-id="sec_p1"] circle[stroke="#ffd34d"]')).toBeTruthy();
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("CONTROL: an opponent's pawn on the same hex stays click-transparent", () => {
+    const state = standaloneMonolithState();
+    state.heroes.sec_p1!.controllerId = "p2";
+    const { container } = render(
+      <HexMapBoard
+        legalActions={getLegalActions(state, "p1")}
+        moveCue={null}
+        onAction={vi.fn()}
+        placement={null}
+        state={state}
+        view={getPlayerView(state, "p1")}
+        viewerPlayerId="p1"
+      />,
+    );
+    const pawn = container.querySelector('[data-hero-id="sec_p1"]')!;
+    expect(pawn.getAttribute("style") ?? "").toContain("pointer-events: none");
   });
 });

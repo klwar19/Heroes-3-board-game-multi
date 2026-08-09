@@ -125,7 +125,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // as a Dragon Utopia instead of returning reward-free. A v22 room server would
 // silently award zero Artifacts for the same clear, so reducer compatibility
 // requires an explicit bump.
-export const ENGINE_PROTOCOL_VERSION = 23;
+// v24: multi-target combat legality + border-free movement (the
+// fix-ai-map-combat-rules batch). Chain Lightning (spell + Solmyr I/VI) is now
+// illegal below 3 living placed units and its final two differing bolts open an
+// ABILITY_TARGET_CHOICE a v23 server never opens; Deemer's Meteor Shower needs
+// its exact printed adjacent picks at the chosen centre; and designer yellow
+// edges touching a Creature Bank / PvE Gate carve / Field Override hex no
+// longer seal MOVEMENT (`fieldNeverWearsBorders` in
+// `isDesignedEdgeSealedBetween`) — a v23 edge still seals them, so a new client
+// would offer steps a stale server rejects ("not legal" on every click, the
+// frozen-table symptom class the banner exists to surface).
+export const ENGINE_PROTOCOL_VERSION = 24;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

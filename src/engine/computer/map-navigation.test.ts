@@ -3597,3 +3597,106 @@ describe("fallback staging — the hero never just stands still when outmatched"
     expect(collectMapObjectives(state, secondary)).toEqual([]);
   });
 });
+
+describe("enter-first-opened-tile boost — safe entries only", () => {
+  /**
+   * The 930 `map.enter-first-opened-tile` boost bypasses moveScore's whole
+   * objective/can-beat read, so it must never point the opening hero at a
+   * fight it cannot cover: a beaten hero falls back to the home town, where
+   * the same boost re-arms next turn — a repeated-suicide loop for the whole
+   * rounds-≤3 window. An unsafe entry falls through to the normal scoring
+   * (which refuses an unbeatable guard below END_TURN).
+   */
+  function placedTileEntry(seed: string) {
+    const state = createAdventureGameState({
+      startingBuildings: [],
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+    });
+    const hero = p2Hero(state);
+    hero.level = 1;
+    hero.spaceId = TOWN; // on the home tile
+    const homeTile = state.adventure!.fields[TOWN].tileInstanceId;
+    const center = tileLatticeNeighbors(
+      parseHexSpaceId(
+        hexSpaceId({
+          row: state.adventure!.tiles[homeTile].centerRow,
+          col: state.adventure!.tiles[homeTile].centerCol,
+        }),
+      )!,
+    ).find(
+      (candidate) =>
+        !Object.values(state.adventure!.tiles).some(
+          (tile) => tile.centerRow === candidate.row && tile.centerCol === candidate.col,
+        ),
+    )!;
+    const placed = instantiateTile(state.adventure!, "F23", center, 0, false);
+    state.eventLog.push({
+      id: "evt_test_tile_placed",
+      type: "TILE_PLACED",
+      playerId: "p2",
+      tileInstanceId: placed.id,
+      tileDefId: placed.tileDefId,
+      centerRow: center.row,
+      centerCol: center.col,
+      rotation: 0,
+    } as GameState["eventLog"][number]);
+    const entry = hexSpaceId(center);
+    return { state, hero, entry };
+  }
+
+  it("boosts stepping into the freshly placed tile (unguarded entry)", () => {
+    const { state, hero, entry } = placedTileEntry("enter-opened-safe");
+    const scored = scoreMapAction(observe(state), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to: entry,
+    });
+    expect(scored?.policy).toBe("map.enter-first-opened-tile");
+    expect(scored?.score).toBe(930);
+  });
+
+  it("never boosts onto an entry guard the hero cannot beat (falls back to moveScore)", () => {
+    const { state, hero, entry } = placedTileEntry("enter-opened-guarded");
+    state.adventure!.fields[entry].difficulty = 5; // far above a level-1 hero
+    const scored = scoreMapAction(observe(state), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to: entry,
+    });
+    expect(scored?.policy).not.toBe("map.enter-first-opened-tile");
+    // The normal objective scoring refuses the unbeatable fight below END_TURN.
+    expect(scored!.score).toBeLessThan(300);
+  });
+
+  it("never boosts onto an enemy hero standing on the entry hex", () => {
+    const { state, hero, entry } = placedTileEntry("enter-opened-enemy");
+    const enemy = Object.values(state.heroes).find(
+      (candidate) => candidate.controllerId === "p1" && candidate.kind === "main",
+    )!;
+    enemy.spaceId = entry;
+    const scored = scoreMapAction(observe(state), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to: entry,
+    });
+    expect(scored?.policy).not.toBe("map.enter-first-opened-tile");
+  });
+
+  it("CONTROL: a BEATABLE entry guard keeps the boost", () => {
+    const { state, hero, entry } = placedTileEntry("enter-opened-beatable");
+    state.adventure!.fields[entry].difficulty = 1; // the level covers it
+    const scored = scoreMapAction(observe(state), {
+      type: "MOVE_HERO",
+      playerId: "p2",
+      heroId: hero.id,
+      to: entry,
+    });
+    expect(scored?.policy).toBe("map.enter-first-opened-tile");
+  });
+});

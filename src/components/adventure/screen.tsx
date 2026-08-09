@@ -2587,20 +2587,41 @@ export function HexMapBoard({
         </text>
       );
     }
-    // Compact hero pawn(s) standing on the standalone hex (non-interactive: map
-    // clicks fall through, exactly like a plain main-hero pawn).
+    // Compact hero pawn(s) standing on the standalone hex. Like the tile-hex
+    // pawn, a pawn the viewer may switch to is CLICKABLE (stopPropagation): the
+    // standalone hex underneath is a teleport object whose click fires its
+    // revisit/travel, so a pointer-events:none pawn made an own hero standing
+    // on a Monolith unselectable — every click "selected the monolith" instead.
     for (const [index, occupant] of (heroesBySpace.get(spaceId) ?? []).entries()) {
       const heroDef = occupant.heroDefId ? coreHeroDefinitions[occupant.heroDefId] : undefined;
       const portrait = heroDef?.portrait;
+      const isOwnHero = occupant.playerId === viewerPlayerId;
       const carriesGrail =
         adventure.grail?.status === "carried" &&
         adventure.grail.carrierHeroId === occupant.heroId;
+      const canSelectHero = isOwnHero && hasSecondaryHero && myTurn && !readOnly;
+      const isActiveHero = isOwnHero && hasSecondaryHero && myHero?.id === occupant.heroId;
       heroPawns.push(
         <g
           className="heroPawn"
           data-hero-id={occupant.heroId}
           key={`standalone-pawn-${occupant.heroId}`}
-          style={{ transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`, pointerEvents: "none" }}
+          onClick={
+            canSelectHero
+              ? (clickEvent) => {
+                  clickEvent.stopPropagation();
+                  if (suppressClickRef.current) {
+                    return;
+                  }
+                  setSelectedHeroId(occupant.heroId);
+                }
+              : undefined
+          }
+          style={{
+            transform: `translate(${x + index * 10 - 5}px, ${y - 4}px)`,
+            cursor: canSelectHero ? "pointer" : undefined,
+            pointerEvents: canSelectHero ? "auto" : "none"
+          }}
         >
           <circle className="heroPawnBase" r={12} />
           {portrait ? (
@@ -2623,6 +2644,7 @@ export function HexMapBoard({
             <circle fill={playerColor(state, occupant.playerId)} r={9} />
           )}
           <circle className="heroPawnRing" r={11} stroke={playerColor(state, occupant.playerId)} />
+          {isActiveHero ? <circle fill="none" r={13.5} stroke="#ffd34d" strokeWidth={2} /> : null}
           <line className="heroFlagPole" x1={0} x2={0} y1={-9} y2={-24} />
           <path d="M0 -23 L13 -19 L0 -15 Z" fill={playerColor(state, occupant.playerId)} stroke="#160d04" strokeWidth={0.8} />
           {carriesGrail ? (

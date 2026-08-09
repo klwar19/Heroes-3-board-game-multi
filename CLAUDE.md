@@ -2929,6 +2929,62 @@ never forces a reaction window open" → it opens one now, optionally, with Pass
 always offered) and `bulwark-heroes.test.ts` (the non-Bulwark holder is still
 never offered the real RUNE reaction; its draw-only twin now joins).
 
+## AI opening route · multi-target combat rules · border-free hexes (2026-08-09, protocol v24)
+
+The `fix-ai-map-combat-rules` batch + its audit (audit fixes marked). Protocol
+bumped to **v24** — `npm run deploy:partykit` owed, or a stale edge rejects the
+new movement/legality reads with "not legal" errors.
+
+- **Chain Lightning needs 3 living PLACED units** (the spell, Solmyr I/VI): the
+  cast names the selected unit + the 2 closest, so with fewer bodies no offer
+  exists and a forged play is rejected with the printed requirement
+  (`getTargetsForCard` + the `assertLegal` message; unplaced/removed units and
+  the −1-position Arrow Tower never count). The FINAL two differing bolts
+  (max-Power 2/1) now open the `chain-lightning` ABILITY_TARGET_CHOICE — the
+  caster may put the larger bolt on either closest unit
+  (`advanceChainLightning`'s `remainingValuesDiffer`). Helper coach explains
+  both. Pinned in `library-cards.test.ts` / `tower-hero-specialties.test.ts`.
+- **Deemer's Meteor Shower is an EXACT multi-target effect, not an "up to"
+  blast**: the chosen centre must have its printed count of living adjacent
+  picks (I = 1, VI = 2) or the play is not offered and a forged one is rejected
+  (`addOptionPlays` filter, scoped to `specialty.deemer.*` — Frost Ring /
+  Fireball / space-target cards keep their own rules; the reaction-window joins
+  route through the same seam). AUDIT: five pre-existing fixtures elsewhere
+  (pvp-reaction-stop, enemy-turn-instant-windows, pre-hit-heal-reactions) had
+  single-adjacent Deemer stagings and were updated to satisfy the printed
+  picks. Pinned in `frost-ring-meteor-shower.test.ts`.
+- **Catapult needs an adjacent PAIR**: the round-start fire offer was already
+  gated; `resolveWarMachineOption` now also throws before paying when no two
+  adjacent targets exist (stale/forged clients). `catapult-siege.test.ts`.
+- **Banks / PvE Gates / Field Override hexes are ALWAYS border-free — render
+  AND movement** (the `showBankBorders` toggle is REMOVED): see the reworked
+  Creature-Bank border bullet. AUDIT FIX (invisible walls): the branch hid the
+  designer lines but movement still sealed them — `fieldNeverWearsBorders` in
+  `isDesignedEdgeSealedBetween` is the edge-level early-out (per-side gating
+  was dead: an inner edge's two encodings fold to ONE canonical code).
+- **AI two-turn opening route** (`bestHomeOpeningObjective`,
+  map-navigation.ts): on tile Ⅰ the hero banks the two nearest of the three
+  stock payoffs (resource / treasure / mine) on turn 1, leaving the payoff that
+  is an open expansion DOORWAY for turn 2 — then opens a Ⅱ–Ⅲ tile and ENTERS it
+  before any second discovery (`map.finish-home-before-discover/place`,
+  `map.enter-opened-tile-before-more-discovery`, `map.enter-first-opened-tile`
+  930, all rounds ≤3). AUDIT FIX: the 930 entry boost bypasses moveScore's
+  can-beat read, so it is now gated on a SAFE entry (unguarded or
+  `canBeatGuardedField`, no enemy hero on the hex) — otherwise a beaten hero
+  fell back home and the boost re-armed, a repeated-suicide loop. Pinned in
+  `map-navigation.test.ts` ("enter-first-opened-tile boost — safe entries
+  only") + `single-player-opening.test.ts` (every faction: two payoffs turn 1,
+  all by turn 2, expansion entered by turn 3). CONSEQUENCE (measured, floors
+  re-based in `single-player-premium-rush.test.ts`): the Impossible gold-BODY
+  fast tail moved R10→R12; every other benchmark floor is unchanged.
+- **A hero on a STANDALONE Monolith is selectable again** (AUDIT, user
+  report): the standalone-hex pawn was hardcoded `pointer-events: none`, so
+  every click fell through to the teleport hex ("you select the monolith
+  instead of the hero") — it now takes the tile-pawn's click-to-switch wiring
+  (`hero-position-override.test.tsx`, with an opponent-pawn CONTROL).
+- Menu polish: `/story` Back returns to `/menu?view=singlePlayer` (the Single
+  Player submenu), not the obsolete standalone `/single-player` screen.
+
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's DEFAULT defense army is now the printed Stretch-Goals card:
@@ -3861,8 +3917,9 @@ What runs (each engine claim has a failing-if-removed test):
   `BLOCKED_FIELD_CARVE_LOCATIONS` / `isBlockedFieldCarve` (adventure.ts) — read
   by `canCrossEdge`, `heroFieldSealedForDiscovery` AND the board's
   `borderlessSlots` set, so a future carve cannot fix one surface and forget the
-  others. The bank keeps its own `showBankBorders` toggle path (the Gates have no
-  toggle — they are always border-free). Pinned in
+  others. (2026-08-09: the bank's `showBankBorders` toggle is REMOVED — banks,
+  Gates and Field Override hexes are ALWAYS border-free, see the Creature-Bank
+  border bullet.) Pinned in
   `module-gate-reachability.test.ts` (walk in / walk out / discover, per
   location, with a plain-Blocked-Field CONTROL that still walls off, and
   `isOuterEdgeSealed` asserted UNCHANGED) and `module-gate-board.test.tsx` (the
@@ -6343,14 +6400,24 @@ Six additions; each engine rule fails a named test if its wiring is removed.
   reservedBankId set before rotation with the pile intact; the placed bank EQUALS
   the reserved one on accept; decline leaves the pile intact; both clear the
   reservation).
-- **A Creature Bank field draws NO borders by default (toggleable).**
-  `getTileBorderSegments` (`borders.ts`) takes `showBankBorders` (default false):
-  a bank slot draws none of its edges — neither the blocked-field ring NOR the
-  tile's outer-impassable arc — so the field reads as fully open. A toolbar toggle
-  (`screen.tsx`, shown only when a bank is on the map) restores the classic
-  outline (outer arc only, inner open). Pure rendering — movement is unchanged
-  (`canCrossEdge`). Pinned in `multi-target.test.ts` ("draws NO borders … by
-  default" + a "borders toggled on … outer arc only" case).
+- **A Creature Bank field draws NO borders — ALWAYS (2026-08-09; the old
+  `showBankBorders` toolbar toggle is REMOVED).** `getTileBorderSegments`
+  (`borders.ts`) suppresses EVERY line touching a bank / Gate-carve / Field
+  Override hex — the printed ring/arc AND designer `extraBorders`/`borderEdges`,
+  whichever hex frame encoded them (`segmentTouchesSuppressedSlot` filters by
+  physical adjacency). MOVEMENT matches (the invisible-wall audit fix):
+  `fieldNeverWearsBorders` (adventure.ts — bank / `isBlockedFieldCarve` /
+  `isFieldOverrideLocation`) is an edge-level early-out in
+  `isDesignedEdgeSealedBetween`, because per-side gating was DEAD for tile-level
+  inner edges — the edge's two encodings fold to ONE canonical code, so the
+  plain neighbour's frame still matched and sealed a crossing the board no
+  longer drew. Pinned in `multi-target.test.ts` ("a placed Creature Bank stays
+  border-free"), `module-gate-board.test.tsx` (designer edges removed too) and
+  `designed-borders.test.ts` ("designer edges never seal a runtime border-free
+  hex" — bank/gates/FO open BOTH ways, a sibling designed edge still seals as
+  the scope CONTROL). CONSEQUENCE (deliberate): a designer yellow edge drawn
+  touching a hex that later carves into a bank/Gate/Field Override is INERT for
+  movement AND invisible — the designer wall gives way to the runtime object.
   - **The bank being border-free OPENS its outer edge for Tile discovery.** A
     bank replaces a Blocked Field whose slot usually keeps a sealed `outerImpassable`
     arc, which used to block a hero standing on the bank from flipping the

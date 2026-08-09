@@ -124,6 +124,14 @@ describe("PvP — a real stop before the enemy unit acts (off-turn reaction wind
       (() => {
         const s = pvpStage("pvp-stop-resolve");
         s.players.p1.hand = ["specialty.deemer.6"];
+        // Meteor Shower VI is an exact multi-target effect: its centre needs
+        // TWO living adjacent picks, so stand both other p2 units beside it —
+        // and EXACTLY two (the actor moves off 5, a neighbour of 9), so the
+        // blast resolves without a pick choice and the CONTINUE stays legal.
+        s.combat!.units[ACTOR_P1].position = 0;
+        s.combat!.units[ENEMY_P2].position = 9;
+        s.combat!.units.unit_p2_vampires.position = 10;
+        s.combat!.units.unit_p2_dread_knights.position = 13;
         return s;
       })()
     );
@@ -233,7 +241,9 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
 
   it("Deemer VI: pays the Power-source cost off-turn and deals the power-scaled damage", () => {
     const state = stageAround("offturn-deemer-power", ["specialty.deemer.6", "stat.power", "stat.power"], (s) => {
-      s.combat!.units.unit_p2_vampires.position = 10; // one unit adjacent to centre 9
+      // VI's exact rule needs BOTH printed adjacent picks alive at the centre.
+      s.combat!.units.unit_p2_vampires.position = 10;
+      s.combat!.units.unit_p2_dread_knights.position = 13;
     });
     expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
     // The single power-scaled Meteor Shower activation is offered in the window.
@@ -266,7 +276,9 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
       "offturn-deemer-sorcery",
       ["specialty.deemer.6", "ability.sorcery", "ability.sorcery"],
       (s) => {
+        // VI's exact rule needs BOTH printed adjacent picks alive at the centre.
         s.combat!.units.unit_p2_vampires.position = 10;
+        s.combat!.units.unit_p2_dread_knights.position = 13;
         s.players.p1.deck = ["stat.attack", "stat.defense", "stat.power"]; // refill to draw from
       }
     );
