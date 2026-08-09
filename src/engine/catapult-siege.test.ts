@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import { fortificationTargetId, makeArrowTowerUnit } from "./siege";
+import { resolveWarMachineOption } from "./permanents";
 import type { GameAction, GameState, PlayerId, SiegeState } from "./state";
 
 /**
@@ -176,6 +177,36 @@ describe("Catapult — bombarding the fortifications", () => {
 });
 
 describe("Catapult — no siege: only units are aimed at (no regression)", () => {
+  it("does not offer firing without an adjacent pair and rejects a forced attempt clearly", () => {
+    const state = createInitialGameState("catapult-needs-pair");
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["war_machine.catapult"];
+    state.players.p1.resources.buildingMaterials = 3;
+    state.combat!.siege = null;
+    const separated = [0, 3, 8, 11, 16, 19];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = separated[index];
+    });
+
+    const offered = endRound(state, "p1");
+    expect(
+      getLegalActions(offered, "p1").some((legal) => legal.label.includes("Fire the Catapult")),
+    ).toBe(false);
+    expect(offered.players.p1.resources.buildingMaterials).toBe(3);
+
+    // Defensive engine gate for stale/forged clients: even if a fire offer is
+    // injected, payment and target selection cannot begin without a pair.
+    state.combat!.warMachineRound = {
+      pending: [{ playerId: "p1", cardId: "war_machine.catapult" }],
+      firstTargetUnitId: null,
+    };
+    expect(() => resolveWarMachineOption(state, "p1", 0)).toThrow(
+      "Catapult requires two adjacent targets",
+    );
+    expect(state.players.p1.resources.buildingMaterials).toBe(3);
+  });
+
   it("offers no fortification pseudo-targets when there is no siege", () => {
     const state = createInitialGameState("catapult-no-siege");
     state.players.p1.hand = [];

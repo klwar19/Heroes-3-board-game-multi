@@ -1370,6 +1370,9 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     if (!player || !hasResources(player, roundStart.cost)) {
       throw new Error("Not enough resources to fire.");
     }
+    if (splashFirstTargets(state).length === 0) {
+      throw new Error("Catapult requires two adjacent targets (units, Walls, or the Gate).");
+    }
     spendResources(state, playerId, roundStart.cost, `${name} shot`);
     openWarMachineTargetChoice(
       state,

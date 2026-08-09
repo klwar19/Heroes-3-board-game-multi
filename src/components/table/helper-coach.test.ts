@@ -108,6 +108,27 @@ describe("cardUnplayableReason", () => {
     expect(reason.toLowerCase()).toMatch(/spell limit/);
   });
 
+  it("explains that Chain Lightning needs three battlefield units", () => {
+    const state = createInitialGameState("helper-coach-chain-three") as GameState;
+    for (const unitId of Object.keys(state.combat!.units)) {
+      if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
+        delete state.combat!.units[unitId];
+      }
+    }
+    const reason = cardUnplayableReason(state, "p1", "spell.chain_lightning");
+    expect(reason).toContain("requires 3 living units");
+  });
+
+  it("explains Meteor Shower's adjacent-target requirement", () => {
+    const state = createInitialGameState("helper-coach-meteor-adjacent") as GameState;
+    const separated = [0, 3, 8, 11, 16, 19];
+    Object.values(state.combat!.units).forEach((unit, index) => {
+      unit.position = separated[index];
+    });
+    const reason = cardUnplayableReason(state, "p1", "specialty.deemer.6");
+    expect(reason).toContain("2 living adjacent targets");
+  });
+
   it("Polish Cast a Spell: points at own unit activation, not a reaction Instant window", () => {
     const state = createInitialGameState("helper-coach-polish-cast") as GameState;
     const adventure = createAdventureGameState({

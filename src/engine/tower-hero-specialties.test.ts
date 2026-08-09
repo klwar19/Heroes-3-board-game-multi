@@ -97,6 +97,26 @@ describe("Solmyr's Chain Lightning", () => {
     expect(next.pendingChoice).toBeNull();
   });
 
+  it("I is unavailable with only two living units and explains the three-unit requirement", () => {
+    const state = chainState("solmyr-needs-three", "specialty.solmyr.1");
+    for (const unitId of Object.keys(state.combat!.units)) {
+      if (unitId !== "unit_p1_marksmen" && unitId !== "unit_p2_skeletons") {
+        delete state.combat!.units[unitId];
+      }
+    }
+    expect(findPlay(state, "specialty.solmyr.1", undefined, "unit_p2_skeletons")).toBeUndefined();
+    const result = applyAction(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.solmyr.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    expect(result.errors.map((error) => error.message).join(" ")).toContain("requires 3 living units");
+    expect(result.state.players.p1.hand).toContain("specialty.solmyr.1");
+  });
+
   it("VI deals 2 to the selected unit and 1 to each of the two closest (no choice when exactly two)", () => {
     const state = chainState("solmyr-vi", "specialty.solmyr.6");
     const play = findPlay(state, "specialty.solmyr.6", undefined, "unit_p2_skeletons");

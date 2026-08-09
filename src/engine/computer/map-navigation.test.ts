@@ -25,6 +25,7 @@ import {
   tileLatticeNeighbors
 } from "../hex";
 import { getLegalActions } from "../legal-actions";
+import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
 import type {
   ArmyUnitState,
   GameAction,
@@ -101,6 +102,21 @@ function observe(state: GameState): ComputerObservation {
     state: state as unknown as ComputerObservation["state"],
     legalActions: [],
   };
+}
+
+function parkAtOpenDiscoveryDoorway(state: GameState, hero: HeroState) {
+  const faceDown = Object.values(state.adventure!.tiles).filter((tile) => tile.faceDown);
+  for (const field of Object.values(state.adventure!.fields)) {
+    const probe = { ...hero, spaceId: field.spaceId };
+    const tile = faceDown.find((candidate) =>
+      canHeroImmediatelyAccessAdjacentTile(state, probe, candidate),
+    );
+    if (tile) {
+      hero.spaceId = field.spaceId;
+      return tile;
+    }
+  }
+  throw new Error("fixture should expose an open face-down-tile doorway");
 }
 
 function moveScoreTo(state: GameState, hero: HeroState, to: MapSpaceId): number {
@@ -344,9 +360,14 @@ describe("Far-tile opening and Bronze-rush tempo", () => {
   it("scores opening a II–III tile above an otherwise identical later tile", () => {
     const state = game();
     const hero = p2Hero(state);
-    const tile = Object.values(state.adventure!.tiles).find(
-      (candidate) => candidate.faceDown,
-    )!;
+    // Expansion priority is evaluated after the mandatory tile-I route.
+    state.adventure!.fields[MINE].flagOwnerId = "p2";
+    state.adventure!.fields[MINE].everFlagged = true;
+    delete state.adventure!.fields[MINE].difficulty;
+    state.adventure!.fields[TREASURE].blackCube = true;
+    delete state.adventure!.fields[TREASURE].difficulty;
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    const tile = parkAtOpenDiscoveryDoorway(state, hero);
     tile.group = "near";
     const later = scoreMapAction(observe(state), {
       type: "DISCOVER_TILE",
@@ -1140,8 +1161,8 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
     const hero = p2Hero(state);
     hero.level = 1;
     establishP2PackCore(state);
-    // Remove the distant conquest-town override so the adjacent guarded mine is
-    // the concrete primary payoff for this policy comparison.
+    // Remove the distant conquest-town override. The opening route deliberately
+    // takes the free Resource first, before either guarded payoff.
     state.adventure!.victoryMode = "dragon-hunt";
     const discoverTile = Object.values(state.adventure!.tiles).find(
       (tile) => tile.faceDown,
@@ -1158,12 +1179,12 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
         } as const,
       },
       {
-        label: "claim guarded mine",
+        label: "claim opening resource",
         action: {
           type: "MOVE_HERO",
           playerId: "p2",
           heroId: hero.id,
-          to: MINE,
+          to: RESOURCE,
         } as const,
       },
       {
@@ -1184,9 +1205,10 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
     const hero = p2Hero(state);
     hero.level = 1;
     establishP2PackCore(state);
+    state.adventure!.fields[RESOURCE].blackCube = true;
     // Entering the beatable guard outranks END_TURN (300) by a wide margin, so
     // the AI walks into the fight instead of turtling.
-    expect(moveScoreTo(state, hero, MINE)).toBeGreaterThan(700);
+    expect(moveScoreTo(state, hero, TREASURE)).toBeGreaterThan(700);
   });
 
   it("CONTROL: refuses to step onto a guard it cannot beat (below END_TURN)", () => {
@@ -1254,30 +1276,26 @@ describe("moveScore uses objectives (fixes wander + never-fights)", () => {
 });
 
 describe("sticky primary + explore objectives", () => {
-  it("opening home-tile sweep: a fresh army still takes the income mine / guarded treasure", () => {
-    // NEW opening philosophy (a strong human's tempo): the difficulty-1 guarded
-    // MINE (permanent income) and TREASURE on the OWN starting tile are opening
-    // plays, not fair fights to postpone for army development. The old policy
-    // grabbed only the unguarded RESOURCE here and marched off, abandoning both
-    // guards; the home-tile sweep lifts the readiness gate on tile Ⅰ so they win.
+  it("opening home-tile sweep starts the route at the free resource", () => {
+    // The route begins Resource → Treasure, leaving the open-edge Mine for
+    // turn two so the hero can take it, open land, and enter the new tile.
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt"; // drop the distant conquest-town override
 
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.kind).toBe("guard");
-    expect([MINE, TREASURE]).toContain(developing?.spaceId);
-    // All three home payoffs remain objectives — the resource is still swept,
-    // just after the income mine — so the whole tile drains, not just one hex.
+    expect(developing?.kind).toBe("visitable");
+    expect(developing?.spaceId).toBe(RESOURCE);
+    // All three home payoffs remain objectives, including both guarded fields.
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
 
-    // A ready army only reinforces the same pick.
+    // A ready army keeps the same tempo route.
     establishP2PackCore(state);
     const battleReady = primaryMapObjective(state, hero);
-    expect(battleReady?.kind).toBe("guard");
-    expect([MINE, TREASURE]).toContain(battleReady?.spaceId);
+    expect(battleReady?.kind).toBe("visitable");
+    expect(battleReady?.spaceId).toBe(RESOURCE);
   });
 
   it("home tile drains all three items even under conquest bronze-rush pressure", () => {
@@ -1326,8 +1344,8 @@ describe("sticky primary + explore objectives", () => {
     state.adventure!.victoryMode = "dragon-hunt";
     state.round = 4;
     const developing = primaryMapObjective(state, hero);
-    expect(developing?.kind).toBe("guard");
-    expect([MINE, TREASURE]).toContain(developing?.spaceId);
+    expect(developing?.kind).toBe("visitable");
+    expect(developing?.spaceId).toBe(RESOURCE);
     const objectives = collectMapObjectives(state, hero).map((o) => o.spaceId);
     expect(objectives).toEqual(expect.arrayContaining([MINE, TREASURE, RESOURCE]));
   });
@@ -1608,16 +1626,15 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     return arm;
   }
 
-  it("home tile: a fresh Few army marches ONTO the difficulty-1 income mine", () => {
+  it("after the free resource, a fresh Few army marches onto the planned guard", () => {
     const state = game();
     const hero = p2Hero(state);
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt";
-    // Weak Few-only army, hero on its home town (tile Ⅰ), opening round: stepping
-    // onto the guarded mine (a fight the level covers) scores as an objective
-    // ENTER, well above END_TURN (300). The stock policy left this fight to the
-    // Pack core and never walked in with a fresh army.
-    expect(moveScoreTo(state, hero, MINE)).toBeGreaterThan(700);
+    state.adventure!.fields[RESOURCE].blackCube = true;
+    // With the free Resource retired, the guarded Treasure is the next route
+    // stop and remains well above END_TURN even for the fresh Few-only army.
+    expect(moveScoreTo(state, hero, TREASURE)).toBeGreaterThan(700);
   });
 
   it("sweeps the home guards even with the guaranteed-win house rule EXHAUSTED", () => {
@@ -1631,6 +1648,7 @@ describe("opening home-tile sweep — development gate scoped to tile Ⅰ", () =
     hero.level = 1;
     state.adventure!.victoryMode = "dragon-hunt";
     state.computerGuaranteedWins = { p2: 2 }; // both slots used up (limit is 2)
+    state.adventure!.fields[RESOURCE].blackCube = true;
     const primary = primaryMapObjective(state, hero);
     expect(primary?.kind).toBe("guard");
     expect([MINE, TREASURE]).toContain(primary?.spaceId);
@@ -2135,11 +2153,11 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
   /** Neutralise the home-tile prizes so the fixture controls the payoff set. */
   function clearLocalPrizes(state: GameState): void {
     const fields = state.adventure!.fields;
-    for (const id of [MINE, TREASURE]) {
-      fields[id].flagOwnerId = "p2";
-      fields[id].everFlagged = true;
-      delete fields[id].difficulty;
-    }
+    fields[MINE].flagOwnerId = "p2";
+    fields[MINE].everFlagged = true;
+    delete fields[MINE].difficulty;
+    fields[TREASURE].blackCube = true;
+    delete fields[TREASURE].difficulty;
     fields[RESOURCE].blackCube = true;
   }
 
@@ -2239,7 +2257,7 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
 
     // Park the hero on a ring field and guard another ring field 2 steps away;
     // with 1 movement point left the payoff is out of reach this turn.
-    hero.spaceId = EMPTY; // h:9:7, ring field beside the town
+    const discoverTile = parkAtOpenDiscoveryDoorway(state, hero);
     hero.movementPoints = 1;
     const twoSteps = Object.values(state.adventure!.fields).find(
       (field) =>
@@ -2251,15 +2269,11 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
     expect(twoSteps, "fixture map should have a field 2 steps out").toBeDefined();
     twoSteps!.difficulty = 1;
 
-    const discoverTile = Object.values(state.adventure!.tiles).find(
-      (tile) => tile.faceDown,
-    );
-    expect(discoverTile).toBeDefined();
     const action = {
       type: "DISCOVER_TILE",
       playerId: "p2",
       heroId: hero.id,
-      tileInstanceId: discoverTile!.id,
+      tileInstanceId: discoverTile.id,
     } as const;
     const scored = scoreMapAction(observe(state), action);
     expect(scored!.score).toBeGreaterThan(710);

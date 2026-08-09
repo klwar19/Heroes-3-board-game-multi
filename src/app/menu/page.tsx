@@ -64,6 +64,12 @@ export default function MenuPage() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    // Campaign's Back button returns to this same main-menu presentation with
+    // its Single Player submenu already open (Scenario + Campaign), instead of
+    // the obsolete standalone /single-player screen.
+    if (new URLSearchParams(window.location.search).get("view") === "singlePlayer") {
+      setView("singlePlayer");
+    }
     if (authEnabled()) {
       void fetchSession().then((profile) => {
         if (profile) {

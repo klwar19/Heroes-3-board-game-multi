@@ -1048,6 +1048,11 @@ const SWEEPABLE_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
  */
 const HOME_TILE_SWEEP_MAX_DIFFICULTY = 2;
 const HOME_TILE_SWEEP_BONUS = 320;
+const HOME_OPENING_LOCATIONS: ReadonlySet<string> = new Set([
+  "mine",
+  "resource_symbol",
+  "treasure_symbol",
+]);
 
 /** The tile instance carrying this player's own faction town, if any. */
 export function homeTileInstanceId(
@@ -1085,6 +1090,19 @@ export function isHomeTileSweepObjective(
     ? state.adventure?.fields[hero.spaceId]?.tileInstanceId
     : undefined;
   return heroTile === homeTile && field?.tileInstanceId === homeTile;
+}
+
+/** The three stock tile-I objects governed by the two-turn opening route. */
+export function isHomeTileOpeningObjective(
+  state: GameState,
+  hero: HeroState,
+  objective: MapObjective,
+): boolean {
+  const field = state.adventure?.fields[objective.spaceId];
+  return (
+    isHomeTileSweepObjective(state, hero, objective, field) &&
+    Boolean(field && HOME_OPENING_LOCATIONS.has(field.location))
+  );
 }
 
 function objectiveStrategicValue(
@@ -1375,6 +1393,104 @@ function bestObjectiveOf(
   return best;
 }
 
+/** Small stable permutation helper; the home opening has at most 3 payoffs. */
+function objectiveOrders(items: ReadonlyArray<MapObjective>): MapObjective[][] {
+  if (items.length <= 1) return [items.slice()];
+  const orders: MapObjective[][] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const head = items[index];
+    const rest = [...items.slice(0, index), ...items.slice(index + 1)];
+    for (const tail of objectiveOrders(rest)) orders.push([head, ...tail]);
+  }
+  return orders;
+}
+
+function distanceBetweenHomeFields(
+  state: GameState,
+  hero: HeroState,
+  from: MapSpaceId,
+  to: MapSpaceId,
+): number | undefined {
+  return distanceFromHeroTo(state, { ...hero, spaceId: from }, to);
+}
+
+/** Whether a payoff field itself is an open doorway into revealed/new land. */
+function isImmediateExpansionDoorway(
+  state: GameState,
+  hero: HeroState,
+  spaceId: MapSpaceId,
+): boolean {
+  const probe = { ...hero, spaceId };
+  for (const tile of Object.values(state.adventure?.tiles ?? {})) {
+    if (tile.faceDown && canHeroImmediatelyAccessAdjacentTile(state, probe, tile)) {
+      return true;
+    }
+  }
+  return Boolean(
+    playerHasPlaceableFarTile(state, hero.controllerId) &&
+      farTilePlacementCenters(state, probe, undefined, {
+        requireImmediateAccess: true,
+      }).length > 0
+  );
+}
+
+/**
+ * Opening route on tile I. With three objects, choose a two-object first-turn
+ * path whose second stop is closest to the final object, and make that final
+ * object an open expansion doorway whenever the rotation permits it. Re-run
+ * after the first pickup so the same planned order survives each visit/combat.
+ */
+function bestHomeOpeningObjective(
+  state: GameState,
+  hero: HeroState,
+  remaining: ReadonlyArray<MapObjective>,
+): MapObjective | null {
+  if (remaining.length < 2 || remaining.length > 3 || !hero.spaceId) return null;
+  let best: MapObjective[] | null = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const order of objectiveOrders(remaining)) {
+    const firstDistance = distanceFromHeroTo(state, hero, order[0].spaceId);
+    if (firstDistance === undefined) continue;
+    const secondDistance = distanceBetweenHomeFields(
+      state,
+      hero,
+      order[0].spaceId,
+      order[1].spaceId,
+    );
+    if (secondDistance === undefined) continue;
+    // The three-object opening must be able to bank the first two this turn.
+    if (
+      remaining.length === 3 &&
+      firstDistance + secondDistance > Math.max(0, hero.movementPoints ?? 0)
+    ) {
+      continue;
+    }
+    const final = order[order.length - 1];
+    const finalIsDoorway = isImmediateExpansionDoorway(
+      state,
+      hero,
+      final.spaceId,
+    );
+    const futureDistance = remaining.length === 3
+      ? distanceBetweenHomeFields(state, hero, order[1].spaceId, final.spaceId)
+      : secondDistance;
+    if (futureDistance === undefined) continue;
+    const score =
+      (finalIsDoorway ? 10_000 : 0) -
+      futureDistance * 100 -
+      (firstDistance + secondDistance) * 5;
+    if (
+      !best ||
+      score > bestScore ||
+      (score === bestScore && order[0].spaceId.localeCompare(best[0].spaceId) < 0)
+    ) {
+      best = order;
+      bestScore = score;
+    }
+  }
+  return best?.[0] ?? null;
+}
+
 export function primaryMapObjective(
   state: GameState,
   hero: HeroState,
@@ -1391,6 +1507,13 @@ export function primaryMapObjective(
     isHomeTileSweepObjective(state, hero, objective),
   );
   const pool = homeRemaining.length > 0 ? homeRemaining : objectives;
+  const openingRemaining = homeRemaining.filter((objective) =>
+    isHomeTileOpeningObjective(state, hero, objective),
+  );
+  const openingObjective = openingRemaining.length === homeRemaining.length
+    ? bestHomeOpeningObjective(state, hero, openingRemaining)
+    : null;
+  if (openingObjective) return openingObjective;
 
   // "Can we fight anything at all?" — when no beatable guard / enemy hero is
   // listed, explore objectives get a boost so the hero opens new land instead

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Fence, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
@@ -572,9 +572,6 @@ export function HexMapBoard({
 
   const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
   const [showArt, setShowArt] = useState(true);
-  // Creature Bank fields are drawn border-free by default; this toggle brings the
-  // printed bank outline (its outer arc) back for players who want it.
-  const [showBankBorders, setShowBankBorders] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   // Wheel-zoom is OFF by default so scrolling the wheel pans the page (the map
   // lives inside a scrolling layout) instead of fighting it. The toolbar lock
@@ -589,13 +586,6 @@ export function HexMapBoard({
   // mouse only ever has one pointer, so none of this can affect mouse play.
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ aId: number; bId: number; start: PinchStart } | null>(null);
-
-  // Only surface the bank-border toggle once a Creature Bank is actually on the
-  // map (otherwise it toggles nothing).
-  const hasCreatureBank = useMemo(
-    () => Object.values(adventure?.fields ?? {}).some((field) => field.location === "creature_bank"),
-    [adventure]
-  );
 
   // A tap on a would-be move target while the MANDATORY start-of-turn draw is
   // still pending shows a brief, single, auto-fading "draw first" note anchored
@@ -1478,7 +1468,7 @@ export function HexMapBoard({
       // Designer yellow borders are absolute: pass the SAME `rotation` the draw
       // below re-applies so they stay put on the board as the preview spins.
       const borderSegments = tileDef
-        ? getTileBorderSegments(tileDef, previewBankSlots, showBankBorders, {
+        ? getTileBorderSegments(tileDef, previewBankSlots, {
             extraBorders: tile.extraBorders,
             borderEdges: tile.borderEdges,
             rotation
@@ -1681,9 +1671,8 @@ export function HexMapBoard({
     if (undergroundTile) {
       pushUndergroundTileOutline(overlays, tile.id, footprint, tile.rotation);
     }
-    // A Blocked Field carved into a Creature Bank is open inward (you walk in
-    // from within the Tile) — tell the border builder so it draws only the
-    // bank's outer arc, not a full ring that would look impassable.
+    // A placed Creature Bank is fully border-free: suppress every printed and
+    // designer line touching the carved hex.
     const bankSlots = new Set<number>();
     const borderlessOverrideSlots = new Set<number>();
     footprint.forEach((coord, slot) => {
@@ -1691,8 +1680,8 @@ export function HexMapBoard({
       if (location === "creature_bank") {
         bankSlots.add(slot);
       }
-      // The other Blocked-Field carves (Calamity Gate, Dungeon Gate) have no
-      // border toggle of their own: they are ALWAYS border-free, matching the
+      // The other Blocked-Field carves (Calamity Gate, Dungeon Gate) are also
+      // ALWAYS border-free, matching the
       // open-edge movement/discovery exception they share with the bank
       // (BLOCKED_FIELD_CARVE_LOCATIONS). Without this the printed ring stayed on
       // the hex and the Gate read as impassable.
@@ -1704,7 +1693,7 @@ export function HexMapBoard({
       }
     });
     const borderSegments = tileDef
-      ? getTileBorderSegments(tileDef, bankSlots, showBankBorders, {
+      ? getTileBorderSegments(tileDef, bankSlots, {
           extraBorders: tile.extraBorders,
           borderEdges: tile.borderEdges,
           rotation: tile.rotation,
@@ -3441,21 +3430,6 @@ export function HexMapBoard({
         >
           <ImageIcon size={13} />
         </button>
-        {hasCreatureBank ? (
-          <button
-            aria-pressed={showBankBorders}
-            className={showBankBorders ? "selected" : ""}
-            onClick={() => setShowBankBorders((value) => !value)}
-            title={
-              showBankBorders
-                ? "Creature Bank borders shown — click to hide them (default)"
-                : "Creature Bank fields are border-free — click to show their borders"
-            }
-            type="button"
-          >
-            <Fence size={13} />
-          </button>
-        ) : null}
       </div>
 
       {moveLockReason ? (

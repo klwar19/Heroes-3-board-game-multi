@@ -54,6 +54,8 @@ import {
   canBeatGuardedField,
   collectMapObjectives,
   freeSeizuresWithinReach,
+  isHomeTileOpeningObjective,
+  homeTileInstanceId,
   objectiveDistanceField,
   ownTownSpaceId,
   premiumEconomyResourceBonus,
@@ -80,6 +82,16 @@ export type ComputerActionScore = {
   score: number;
   policy: string;
 };
+
+function latestPlacedTileId(state: GameState, playerId: PlayerId): string | null {
+  for (let index = state.eventLog.length - 1; index >= 0; index -= 1) {
+    const event = state.eventLog[index];
+    if (event.type === "TILE_PLACED" && event.playerId === playerId) {
+      return event.tileInstanceId;
+    }
+  }
+  return null;
+}
 
 /** Keep a small gold cushion so the AI does not spend to 0 and stall next turn. */
 const GOLD_RESERVE = 5;
@@ -2040,6 +2052,26 @@ export function scoreMapAction(
         // cannot enter immediately; END_TURN (300) safely wins instead.
         return { score: 100, policy: "map.discover-inaccessible-skip" };
       }
+      if (
+        hero &&
+        collectMapObjectives(state, hero).some((objective) =>
+          isHomeTileOpeningObjective(state, hero, objective),
+        )
+      ) {
+        return { score: 100, policy: "map.finish-home-before-discover" };
+      }
+      if (
+        hero?.spaceId &&
+        (state.round ?? 0) <= 3 &&
+        state.adventure?.fields[hero.spaceId]?.tileInstanceId ===
+          homeTileInstanceId(state, hero.controllerId) &&
+        latestPlacedTileId(state, observation.playerId) !== null
+      ) {
+        // Once the opening route has placed its first Far tile, movement is
+        // reserved for stepping into it (this turn or the next). Do not expose
+        // a second adjacent tile while still standing on tile I.
+        return { score: 100, policy: "map.enter-opened-tile-before-more-discovery" };
+      }
       const farGroup =
         tile?.group === "far";
       // FAR-TILE HUNT: flipping a face-down Ⅱ–Ⅲ tile while the seat has no Far
@@ -2069,6 +2101,14 @@ export function scoreMapAction(
         !canHeroImmediatelyReachPlacementCenter(state, hero, placementCenter)
       ) {
         return { score: 100, policy: "map.place-inaccessible-skip" };
+      }
+      if (
+        hero &&
+        collectMapObjectives(state, hero).some((objective) =>
+          isHomeTileOpeningObjective(state, hero, objective),
+        )
+      ) {
+        return { score: 100, policy: "map.finish-home-before-place" };
       }
       const objectives = hero ? collectMapObjectives(state, hero) : [];
       const hasFight = objectives.some(
@@ -2102,6 +2142,16 @@ export function scoreMapAction(
         policy: "map.observatory-place-expansion-tile",
       };
     case "MOVE_HERO":
+      if (
+        (state.round ?? 0) <= 3 &&
+        state.heroes[action.heroId]?.spaceId &&
+        state.adventure?.fields[state.heroes[action.heroId]!.spaceId!]?.tileInstanceId ===
+          homeTileInstanceId(state, observation.playerId) &&
+        state.adventure?.fields[action.to]?.tileInstanceId ===
+          latestPlacedTileId(state, observation.playerId)
+      ) {
+        return { score: 930, policy: "map.enter-first-opened-tile" };
+      }
       return { score: moveScore(observation, action), policy: "map.move-to-objective" };
     case "REVISIT_FIELD": {
       // Revisits are optional luxuries — never outrank marching to new land or
