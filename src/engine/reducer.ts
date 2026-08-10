@@ -11981,13 +11981,27 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   });
   stackItem.triggerEventIds.push(spellStarted.id);
 
-  const legalReactions = getLegalReactionsForTrigger(state, spellStarted, cards);
-  if (reactionPlayerOrder(state, legalReactions, spellStarted).length === 0) {
+  // Resolve the cast the moment no window actually OPENS — read off
+  // openReactionWindowForTrigger's own return value, never off a separate probe.
+  // This used to pre-check `reactionPlayerOrder(...) === 0` and ignore the
+  // return, so the two gates could disagree: reactionPlayerOrder counts a player
+  // holding ANY legal reaction, while openReactionWindowForTrigger additionally
+  // requires an offer that PASSES `reactionOfferOpensWindow` (the bare
+  // positive-Morale token draw/redraw and every drawOnly / utilityOnly /
+  // windowJoinOnly instant are join-only outside an attack window). A caster
+  // whose only offer was join-only — a held Morale token is the everyday case —
+  // therefore skipped the resolve AND opened no window, stranding the cast on
+  // the stack with `status: "pending"` forever: the Spell was spent to the
+  // discard (moved there above, before the stack push) with NO effect, and the
+  // parked item then blocked every unit activation for the rest of the fight —
+  // the reported "cast it again, it discarded without dealing dmg, then nothing
+  // happened and I could not progress". Every other window-opening call site
+  // (openDeclaredAttackWindow, resumeAttackWindowAfterRedirect, the die-settled
+  // and lethal-save probes) already branches on the return value; this one now
+  // matches them, so the class cannot come back through a third reading.
+  if (!openReactionWindowForTrigger(state, stackItem, spellStarted, cards)) {
     resolveTopStack(state, cards);
-    return;
   }
-
-  openReactionWindowForTrigger(state, stackItem, spellStarted, cards);
 }
 
 /**

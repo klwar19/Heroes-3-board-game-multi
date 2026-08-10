@@ -3033,6 +3033,78 @@ never forces a reaction window open" → it opens one now, optionally, with Pass
 always offered) and `bulwark-heroes.test.ts` (the non-Bulwark holder is still
 never offered the real RUNE reaction; its draw-only twin now joins).
 
+## A cast whose only reactions are JOIN-ONLY froze the whole table (2026-08-10)
+
+Reported (game-breaking, run abandoned): "I buffed lightning bolt with 2 spells
+then returned it to my hand with empowered knowledge. then i cast lightning bolt
+again, **it discarded without dealing dmg**. when [the] enemy who was supposed to
+be dead … turn's started, **nothing happened. it failed to chose target for an
+attack. couldnt progress to the next game state** and had to abandon the run."
+Both halves are ONE cause. Pinned in
+`src/engine/spell-cast-window-freeze.test.ts` (5 cases, mutation-checked).
+
+**ROOT CAUSE — two gates that had to agree, and did not.** `performSpellCast`
+(reducer.ts) decided "does anyone react?" with its own probe,
+`reactionPlayerOrder(...) === 0`, and then called `openReactionWindowForTrigger`
+**ignoring its return value**. That function applies a SECOND gate: a window
+opens only if some offer passes `reactionOfferOpensWindow`, which — outside an
+`UNIT_ATTACK_DECLARED` window — is FALSE for the bare positive-Morale token
+draw/redraw spends and for every `drawOnly` / `utilityOnly` / `windowJoinOnly`
+instant (see the two sections above: they may JOIN a window, never open one). A
+caster whose only offers were join-only therefore satisfied BOTH "a reactor
+exists, do not resolve yet" AND "nothing opens a window", and the cast was left
+on the stack with `status: "pending"` forever:
+- the Spell had already been moved hand → discard (that happens BEFORE the stack
+  push), so it was SPENT and applied nothing — "it discarded without dealing dmg";
+- the parked stack item then blocked every unit activation for the rest of the
+  fight, `activeUnitId` went null and NO seat had a legal action — the frozen
+  table ("failed to chose target … couldnt progress").
+
+**HOW COMMON:** the everyday trigger is simply **holding a positive Morale
+token** with no cast-window card left in hand. An empirical fuzz (400 seeded
+real neutral fights, random legal actions) froze 2 tables pre-fix and 0 post-fix.
+Empowered Knowledge is not itself buggy — its `basicSpellLimitBonus` is what
+makes a SECOND cast legal in one combat round, and by then the window-opening
+cards (the "+1 Power" Spell discards, the Knowledge itself) are spent, which is
+why the reporter met it on the recast.
+
+**THE FIX (one seam):** `performSpellCast` branches on
+`openReactionWindowForTrigger`'s own return value — no window ⇒ `resolveTopStack`
+— exactly like every other window-opening call site (`openDeclaredAttackWindow`,
+`resumeAttackWindowAfterRedirect`, the die-settled and lethal-save probes, the
+Chain-Lightning opener). The divergent probe is gone, so the class cannot come
+back through a third reading. **When adding a new window-opening call site, read
+the return value; never re-probe with `reactionPlayerOrder`.**
+
+Leading with what does NOT change / deliberate limits:
+- **No rule changed.** The only altered behaviour is stranded ⇒ resolved. A cast
+  that opened a window still opens it (CONTROL-pinned: a `stat.power` in hand
+  still PAUSES the cast at `stack === 1`, and passing then resolves it), and a
+  cast with no reaction at all still resolves immediately (CONTROL-pinned).
+- **The join-only reading itself is untouched** — a held Morale token / draw-only
+  instant still does not pause a Spell cast, a unit activation or a die-settled
+  window; it just no longer strands one. Widening `reactionOfferOpensWindow`
+  instead would have re-introduced the "every cast pauses" bug those sections
+  exist to prevent.
+- **No protocol bump** (no action or state shape changed, `getLegalActions` is
+  untouched), but the fix is server-side: a stale PartyKit edge keeps freezing
+  until `npm run deploy:partykit` runs.
+- **Games already frozen are not repaired** — there is no migration that finds a
+  parked stack item in an old snapshot and resolves it.
+- The fuzz harness that found this is not shipped (it needs a mutable fixture and
+  ~40s); the invariant it proves is pinned instead by the CLASS case, which
+  sweeps the join-only offer sources and asserts non-vacuity (at least one hand
+  really produced offers that all refuse to open a window).
+
+Test names (`spell-cast-window-freeze.test.ts`): "REPRO: bolt + 2 Power discards
++ Empowered Knowledge recall, then the recast lands and the guard still acts"
+(the verbatim report in a real adventure neutral fight vs Wolf Raiders — asserts
+the recast's damage lands, the stack is empty, and the guard then declares an
+attack), "MINIMAL: a lone cast while holding only a positive Morale token
+resolves at once", the two CONTROLs above, and "CLASS: every join-only-offer hand
+resolves its cast". Mutation-checked: restoring the `reactionPlayerOrder` probe
+fails 3 of the 5 while BOTH CONTROLs keep passing.
+
 ## EVERY card-gain instant works on the map AND in an attack window (2026-08-10)
 
 Reported: "Solmyr 4 can't be used in map => STILL VERY BUGGY, I ALREADY TOLD U TO
