@@ -274,7 +274,14 @@ function SpellBookSaveTile({
       (player.combatStats.expertUseBonusThisRound ?? 0) -
       player.combatStats.expertUsesSpentThisRound
     : 0;
-  const crownsSelected = payModes.filter((mode) => mode === "expert").length;
+  // An EMPOWERED ability paid at its expert Power value costs no crown (the
+  // engine's payOptionCardCost counts it out of the budget), so it must not be
+  // counted here either or the tile would refuse a payment the engine accepts.
+  const crownsSelected = payIndexes.filter(
+    (handIndex, position) =>
+      (payModes[position] ?? "basic") === "expert" &&
+      !cardIsEmpoweredFor(hand[handIndex], view.players[viewerPlayerId]?.empoweredAbilities)
+  ).length;
   const crownsOver = crownsSelected > crownsAvailable;
   const bookPowerUsable = Boolean(
     spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
@@ -368,7 +375,13 @@ function SpellBookSaveTile({
                     {cardName(payCardId)}
                     {isPowerCost ? ` (+${powerValue})` : ""}
                   </button>
-                  {picked && canExpertPay && (isExpertPay || crownsAvailable - crownsSelected > 0) ? (
+                  {picked &&
+                  canExpertPay &&
+                  // An EMPOWERED source pays its expert value with no crown, so
+                  // the toggle stays offered at 0 crowns.
+                  (isExpertPay ||
+                    cardIsEmpoweredFor(payCardId, view.players[viewerPlayerId]?.empoweredAbilities) ||
+                    crownsAvailable - crownsSelected > 0) ? (
                     <button
                       aria-pressed={isExpertPay}
                       className={`trayExpert ${isExpertPay ? "picked" : ""}`}
@@ -734,9 +747,17 @@ export function ReactionTray({
         selection.mode === "expert" &&
         !cardIsEmpoweredFor(selection.cardId, view.players[viewerPlayerId]?.empoweredAbilities)
     ).length +
-    // Each Power source paid at its expert value spends one crown too.
+    // Each Power source paid at its expert value spends one crown too — unless
+    // that source is itself an EMPOWERED ability (payOptionCardCost counts it
+    // out of the crown budget, so counting it here would disable Confirm).
     selections.reduce(
-      (sum, selection) => sum + selection.costHandModes.filter((mode) => mode === "expert").length,
+      (sum, selection) =>
+        sum +
+        selection.costHandIndexes.filter(
+          (payIndex, position) =>
+            (selection.costHandModes[position] ?? "basic") === "expert" &&
+            !cardIsEmpoweredFor(hand[payIndex], view.players[viewerPlayerId]?.empoweredAbilities)
+        ).length,
       0
     );
 
@@ -1477,7 +1498,16 @@ export function ReactionTray({
                                     {cardName(payCardId)}
                                     {isPowerCost ? ` (+${powerValue})` : ""}
                                   </button>
-                                  {inThisPayment && canExpertPay && (isExpertPay || crownsAvailable - crownsSelected > 0) ? (
+                                  {inThisPayment &&
+                                  canExpertPay &&
+                                  // An EMPOWERED source pays its expert value
+                                  // crown-free, so the toggle survives 0 crowns.
+                                  (isExpertPay ||
+                                    cardIsEmpoweredFor(
+                                      payCardId,
+                                      view.players[viewerPlayerId]?.empoweredAbilities
+                                    ) ||
+                                    crownsAvailable - crownsSelected > 0) ? (
                                     <button
                                       aria-pressed={isExpertPay}
                                       className={`trayExpert ${isExpertPay ? "picked" : ""}`}

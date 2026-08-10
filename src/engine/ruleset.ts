@@ -890,6 +890,50 @@ export function canPlayExpertMode(player: PlayerState, cardId: string | undefine
   return expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, cardId);
 }
 
+/**
+ * Cards whose printed EXPERT side is a strict SUPERSET of their basic side —
+ * same card cost, same zone the card leaves to, and every basic outcome still
+ * reachable. For such a card, once the ability is EMPOWERED (its Expert side
+ * costs no crown) the basic option is a strictly-worse trap button, so the offer
+ * collapses to Expert alone.
+ *
+ * This is a deliberate PER-CARD registry, never a blanket rule, because for most
+ * abilities the basic side does something the expert side cannot:
+ *   - `ability.learning` — Expert REMOVES the card from the game, basic discards
+ *     it (the card can come back). Not a superset.
+ *   - `ability.pathfinding` — which half each side grants depends on the
+ *     `pathfinding-expert` house rule, so basic is the full card under BINH.
+ *   - `ability.eagle_eye` — Expert digs the EXPERT Spell deck instead of the
+ *     basic one; a hero may genuinely want a basic Spell.
+ *   - `ability.tactics` — basic is the pre-battle setup swap, expert the
+ *     mid-combat one; different windows, not tiers of one effect.
+ *   - Statistic / stat-buff abilities (Offense, Armorer, Sorcery, Leadership…)
+ *     — Expert is a bigger number, which IS a superset, but they are played in
+ *     reaction windows where the batch tray already shows both sides side by
+ *     side with their values; collapsing them would hide the printed card.
+ * The one entry today is Necromancy: basic reinforces a bronze/silver unit for
+ * half the gold, Expert reinforces ANY unit for half the gold — identical cost,
+ * identical discard, strictly wider target set.
+ */
+export const EXPERT_SUPERSEDES_BASIC_CARD_IDS: readonly string[] = ["ability.necromancy"];
+
+/**
+ * Whether the basic offer for `cardId` should be withheld: the card's Expert
+ * side supersedes it (registry above) AND this player has it Empowered, so the
+ * Expert side is free. A non-empowered holder still chooses (Expert costs a
+ * crown there, so basic is a real trade-off).
+ */
+export function empoweredExpertSupersedesBasic(
+  player: PlayerState,
+  cardId: string | undefined
+): boolean {
+  return (
+    Boolean(cardId) &&
+    EXPERT_SUPERSEDES_BASIC_CARD_IDS.includes(cardId as string) &&
+    abilityExpertIsCrownFree(player, cardId)
+  );
+}
+
 /** Whether a card id is a spell in the given library. */
 export function isSpellCard(cards: CardLibrary, cardId: string): boolean {
   return cards[cardId]?.kind === "spell";

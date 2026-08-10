@@ -14,7 +14,7 @@ import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
-import { expertUsesAvailable } from "./ruleset";
+import { abilityExpertIsCrownFree, canPlayExpertMode, expertUsesAvailable } from "./ruleset";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
@@ -1028,18 +1028,22 @@ export function playerCanUseArtilleryVolley(state: GameState, playerId: PlayerId
   return Boolean(
     player &&
       player.hand.includes(ARTILLERY_ABILITY_ID) &&
-      hasExpertUseLeft(state, playerId) &&
+      // An EMPOWERED Artillery plays its Expert volley with no crown, so it must
+      // be offered at 0 crowns too (canPlayExpertMode is the shared read).
+      canPlayExpertMode(player, ARTILLERY_ABILITY_ID) &&
       artilleryVolleyShots() > 1
   );
 }
 
-/** Pays the Artillery expert cost: spend a crown and play (discard) the card. */
+/** Pays the Artillery expert cost: spend a crown (unless Empowered) and play (discard) the card. */
 function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
     return;
   }
-  player.combatStats.expertUsesSpentThisRound += 1;
+  if (!abilityExpertIsCrownFree(player, ARTILLERY_ABILITY_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
   const handIndex = player.hand.indexOf(ARTILLERY_ABILITY_ID);
   if (handIndex !== -1) {
     player.hand.splice(handIndex, 1);
@@ -1080,18 +1084,21 @@ export function playerCanUseFirstAidVolley(state: GameState, playerId: PlayerId)
   return Boolean(
     player &&
       player.hand.includes(FIRST_AID_ABILITY_ID) &&
-      hasExpertUseLeft(state, playerId) &&
+      // An EMPOWERED First Aid plays its Expert volley with no crown.
+      canPlayExpertMode(player, FIRST_AID_ABILITY_ID) &&
       firstAidVolleyHeals() > 1
   );
 }
 
-/** Pays the First Aid expert cost: spend a crown and play (discard) the card. */
+/** Pays the First Aid expert cost: spend a crown (unless Empowered) and play (discard) the card. */
 export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
   if (!player) {
     return;
   }
-  player.combatStats.expertUsesSpentThisRound += 1;
+  if (!abilityExpertIsCrownFree(player, FIRST_AID_ABILITY_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
   const handIndex = player.hand.indexOf(FIRST_AID_ABILITY_ID);
   if (handIndex !== -1) {
     player.hand.splice(handIndex, 1);
@@ -1602,11 +1609,15 @@ export function discardSchoolPermanentForExpert(
 ): { cardId: CardId; expertPower: number } | null {
   const player = state.players[playerId];
   const match = player ? getPermanentSchoolBonus(state, playerId, spellCard) : null;
-  if (!player || !match || expertUsesAvailable(player) <= 0) {
+  // An EMPOWERED School of Magic ability discards for its expert bonus without a
+  // crown — the same waiver every other Expert side of an ability gets.
+  if (!player || !match || !canPlayExpertMode(player, match.card.id)) {
     return null;
   }
 
-  player.combatStats.expertUsesSpentThisRound += 1;
+  if (!abilityExpertIsCrownFree(player, match.card.id)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
   discardPermanentFromPlay(state, playerId, match.card.id);
   enforcePermanentLimit(state, playerId);
 

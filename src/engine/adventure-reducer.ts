@@ -6556,14 +6556,14 @@ function listMapSpellBoostOffers(
     }
   }
 
-  const crowns = mapSpellCrownsLeft(state, playerId);
-
   // School of Magic permanent expert: discard for +expert (basic already in
   // starting Power via standingSpellPower — only the extra is offered here).
   // Combat: useSchoolExpert on CAST_SPELL. Once per cast; needs a crown.
-  if (!flags.schoolPermanentExpertUsed && crowns > 0) {
+  // An EMPOWERED School of Magic ability pays no crown, so it is offered at 0
+  // crowns (canPlayExpertMode is the shared read, keyed off the School card).
+  if (!flags.schoolPermanentExpertUsed) {
     const school = getPermanentSchoolBonus(state, playerId, spell);
-    if (school) {
+    if (school && canPlayExpertMode(player, school.card.id)) {
       const extra = Math.max(0, school.expertPower - school.basicPower);
       if (extra > 0) {
         offers.push({
@@ -6580,14 +6580,16 @@ function listMapSpellBoostOffers(
   // Basic X Magic card held in hand. Using it consumes that source: the permanent
   // is discarded (combat parity: USE_SCHOOL_FETCH_EXPERT), the hand card is played
   // to the discard. One offer per source (first matching), like one expert use.
-  if (!flags.schoolFetchExpertUsed && crowns > 0) {
+  // An EMPOWERED Basic X Magic pays no crown, so each source is crown-gated
+  // per-card (canPlayExpertMode) rather than by one blanket `crowns > 0`.
+  if (!flags.schoolFetchExpertUsed) {
     const spellSchools = spell.spellSchools ?? [];
     const matchesSpell = (school: "air" | "earth" | "fire" | "water") =>
       spellSchools.includes(school) || spellSchools.includes("any");
 
     // From the in-play fetch permanent.
     for (const school of activeSchoolFetches(state, playerId)) {
-      if (matchesSpell(school)) {
+      if (matchesSpell(school) && canPlayExpertMode(player, `ability.basic_${school}_magic` as CardId)) {
         offers.push({
           kind: "school-fetch-expert",
           school,
@@ -6600,7 +6602,7 @@ function listMapSpellBoostOffers(
     // From a Basic X Magic card held in hand (its printed expert side).
     for (const cardId of player.hand) {
       const fetch = cardLibrary[cardId]?.permanentEffect?.schoolFetch;
-      if (fetch && matchesSpell(fetch)) {
+      if (fetch && matchesSpell(fetch) && canPlayExpertMode(player, cardId)) {
         offers.push({
           kind: "school-fetch-expert",
           school: fetch,
@@ -6829,7 +6831,10 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       inFlightCardIds: [...(nextFlags.inFlightCardIds ?? []), expert.cardId]
     };
   } else if (offer.kind === "school-fetch-expert") {
-    if (mapSpellCrownsLeft(state, playerId) <= 0) {
+    // An EMPOWERED Basic X Magic (hand copy or in-play permanent) pays no crown.
+    const fetchCardId = offer.fromHandCardId ?? (`ability.basic_${offer.school}_magic` as CardId);
+    const fetchCrownFree = abilityExpertIsCrownFree(player, fetchCardId);
+    if (!fetchCrownFree && mapSpellCrownsLeft(state, playerId) <= 0) {
       throw new Error("No crown left for Basic Magic expert Power.");
     }
     if (offer.fromHandCardId) {
@@ -6849,7 +6854,9 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       }
       discardPermanentFromPlay(state, playerId, `ability.basic_${offer.school}_magic` as CardId);
     }
-    player.combatStats.expertUsesSpentThisRound += 1;
+    if (!fetchCrownFree) {
+      player.combatStats.expertUsesSpentThisRound += 1;
+    }
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -7415,13 +7422,16 @@ function offerMapSpellKnowledgeRecall(
     // Knowledge's expert side only raises a combat spell limit, which has no
     // purpose on the map. Mysticism expert is meaningful: it also returns every
     // discardable support card played into this cast.
+    // An EMPOWERED Mysticism recalls at Expert with no crown, so the arm is
+    // offered at 0 crowns and its label says so.
+    const recallCrownFree = abilityExpertIsCrownFree(player, cardId);
     if (
       recallEffect.expertRecallPlayedCards &&
       playedWithCast.length > 0 &&
-      mapSpellCrownsLeft(state, playerId) > 0
+      (recallCrownFree || mapSpellCrownsLeft(state, playerId) > 0)
     ) {
       options.push({
-        label: `Use ${card.name} expert (1 crown): ${returnLabel} and recover the other cast cards`,
+        label: `Use ${card.name} expert (${recallCrownFree ? "Empowered — no crown" : "1 crown"}): ${returnLabel} and recover the other cast cards`,
         steps: [
           {
             type: "KNOWLEDGE_RECALL_MAP_SPELL",

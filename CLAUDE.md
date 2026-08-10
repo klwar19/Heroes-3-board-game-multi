@@ -3033,6 +3033,100 @@ never forces a reaction window open" → it opens one now, optionally, with Pass
 always offered) and `bulwark-heroes.test.ts` (the non-Bulwark holder is still
 never offered the real RUNE reaction; its draw-only twin now joins).
 
+## An EMPOWERED ability's Expert side never spends a crown — every seam (2026-08-10)
+
+USER REPORT: "empowered necromancy: STILL ASK TO CHOOSE BETWEEN BASIC AND
+EXPERT, AND EXPERT STILL COST CROWN => ALL EMPOWERED STATISTIC AND ABILITIES ARE
+VERY BUGGY, CHECK all properly."
+
+**LEADING WITH WHAT THE REPORT GOT WRONG, because it decides what was fixed.**
+The crown half was NOT reproducible for Necromancy: a probe through the real
+after-combat window (Necropolis hero, `ability.necromancy` in
+`empoweredAbilities`) showed `expertUsesSpentThisRound` staying 0 and the expert
+side offered at 0 crowns — `playCard`'s spend and `addNecromancyPlays`' offer
+both already read `abilityExpertIsCrownFree` / `canPlayExpertMode`. The
+basic-vs-expert half WAS real. The sweep the report demanded then found the
+crown bug in EIGHT OTHER seams, none of them Necromancy — those are the real
+fixes here.
+
+**THE PROMPT COLLAPSE IS PER-CARD, NOT A BLANKET RULE.** The printed Empower
+text is "use either side without spending a crown", so the choice legitimately
+stays for most cards; it collapses ONLY where the expert side strictly
+dominates. That decision lives in ONE reviewable registry,
+`EXPERT_SUPERSEDES_BASIC_CARD_IDS` (`ruleset.ts`), read through
+`empoweredExpertSupersedesBasic` at both mode-building seams
+(`addNecromancyPlays` and `getPlayableModesForCard`, kept in lockstep so a
+future entry cannot behave differently in the two). Its ONLY entry today is
+`ability.necromancy`: basic reinforces a bronze/silver unit at half gold, expert
+reinforces ANY unit at half gold — identical cost, identical discard, strictly
+wider target set. The audit of every other empowerable ability found a reason to
+KEEP the choice, recorded at the registry: `ability.learning`'s expert REMOVES
+the card from the game while basic discards it (pinned — an Empowered Learning
+still offers BOTH sides); `ability.pathfinding`'s halves depend on the
+`pathfinding-expert` house rule; `ability.eagle_eye`'s expert digs the EXPERT
+Spell deck, which a hero may not want; `ability.tactics`' two sides are
+different WINDOWS (pre-battle setup vs mid-combat), not tiers. The collapse in
+`getPlayableModesForCard` only fires when the expert mode really made the list,
+so it can never leave a card unplayable.
+
+**THE SWEEP — every seam that spends a crown for an Expert side.** Already
+correct (verified by reading AND now pinned by test): the ordinary map/combat
+`playCard` spend, `applyReactionPlayCore`, `assertBatchReactionLegal`'s batch
+budget, `getPlayableModesForCard` / the reaction-variant and spell-recall offer
+builders, Tactics, Wisdom, Learning, Scouting, the map-spell-boost HAND-card
+expert, and Diplomacy's skip (already pinned in `tactics-diplomacy.test.ts`).
+FIXED — each ignored the Empower waiver in its gate, its spend, or both:
+1. `playerCanUseArtilleryVolley` / `spendArtilleryExpert` (`permanents.ts`) —
+   `ability.artillery`.
+2. `playerCanUseFirstAidVolley` / `spendFirstAidExpert` — `ability.first_aid`.
+3. `discardSchoolPermanentForExpert` + its cast-time offer in
+   `addSpellActions` — `ability.<school>_magic`.
+4. `applySchoolFetchExpert` (reducer) + `getSchoolFetchExpertActions` + the
+   up-front `useSchoolFetchExpert` cast variant — `ability.basic_<school>_magic`.
+5. the map-spell-boost `school-permanent-expert` tile (offer).
+6. the map-spell-boost `school-fetch-expert` tile (offer AND spend).
+7. the map Mysticism expert recall (`offerMapSpellKnowledgeRecall` offer +
+   `KNOWLEDGE_RECALL_MAP_SPELL`'s `needsCrown`) — `ability.mysticism`.
+8. `payOptionCardCost`'s expert Power payment + `canAffordCardCost`'s greedy
+   crown assignment (a crown-free source now always takes its expert gain), plus
+   the three UI crown reads that mirrored it (`overlays.tsx`: the batch tray's
+   cost-mode count, the Spell-Book save tile's count, and both Crown toggles,
+   which hid themselves at 0 crowns for a payment the engine accepts).
+
+Leading with what does NOT change / deliberate limits:
+- **`empoweredAbilities` may hold STATISTIC ids too** (the computer combat boost,
+  designer rewards) — the user named them, and every seam above keys off the CARD
+  ID, not the kind, so a statistic gets the identical waiver. The Ability Empower
+  TOKEN itself is still hand-ABILITY-only (`handAbilityEmpowerCandidates`),
+  unchanged.
+- **The Cannon's expert shot (`permanents.ts`) is deliberately NOT waived**:
+  `war_machine.cannon` is not an ability and no shipped path can put it in
+  `empoweredAbilities`.
+- **jsdom cannot compute CSS**, so the `overlays.tsx` Crown-toggle changes are
+  pinned only as engine parity (the tray's count must match
+  `payOptionCardCost`); that the toggle is VISIBLE at 0 crowns is a
+  real-browser concern with no e2e spec.
+- **No protocol change** (no action or state shape moved), but the fixes are
+  server-side: a stale PartyKit edge keeps charging crowns until
+  `npm run deploy:partykit` runs.
+
+Pinned in `src/engine/empowered-expert-crown-free.test.ts` (32 tests): the
+Necromancy repro (expert-only offer, 0 crowns, no spend) with THREE CONTROLs (a
+non-empowered holder still chooses, still pays, and gets basic only at 0
+crowns); a LIBRARY-DERIVED sweep over every implemented ability / statistic /
+artifact / specialty with an expert side, driven through the REAL turn
+`PLAY_CARD` pipeline AND a REAL open `UNIT_ATTACK_DECLARED` reaction window —
+every 0-crown Empowered expert offer must apply cleanly and spend nothing, with
+a non-vacuity floor and a CONTROL that the same plays cost exactly one crown
+un-empowered and are not offered at all at 0 crowns; plus one behaviour test per
+special window (Artillery volley, First Aid volley, Basic X Magic +3 up-front
+cast, School-of-Magic cast discard, the three map-boost tiles, the Mysticism map
+recall, the lethal-save cost picker, Tactics, Learning, Wisdom), each with its
+own CONTROL. Mutation-checked: reverting the Necromancy collapse fails 2,
+the three `permanents.ts` waivers fail 4, `applySchoolFetchExpert` +
+`payOptionCardCost` fail 2, the two map-boost offers fail 2, and the
+Tactics/Learning/Wisdom waivers fail 3.
+
 ## A cast whose only reactions are JOIN-ONLY froze the whole table (2026-08-10)
 
 Reported (game-breaking, run abandoned): "I buffed lightning bolt with 2 spells

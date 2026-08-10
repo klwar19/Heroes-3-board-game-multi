@@ -195,6 +195,7 @@ import {
   canPlayExpertMode,
   deckDisplayName,
   discardPickAllowedInCombat,
+  empoweredExpertSupersedesBasic,
   instantSideAllowedInCombat,
   matchingSchoolFetchForCast,
   expertUsesAvailable,
@@ -507,23 +508,37 @@ function canAffordCardCost(
       player.combatStats.expertUsesSpentThisRound;
     // Greedy: assign available crowns to the sources that gain the most from
     // expert valuation, so one Expert Power (+2) alone can afford a Power-2 tier.
+    // An EMPOWERED ability's Expert Power value costs NO crown (payOptionCardCost
+    // counts it out of the budget), so it is marked crownFree and always takes
+    // its expert gain below — otherwise a 0-crown Empowered holder read as unable
+    // to pay a cost the engine happily accepts.
     const valued = eligible.map((id) => {
       const basic = spellPowerValueOfCard(cardLibrary[id], schools, "basic");
       const expert = spellPowerValueOfCard(cardLibrary[id], schools, "expert");
-      return { basic, expertGain: Math.max(0, expert - basic) };
+      return {
+        basic,
+        expertGain: Math.max(0, expert - basic),
+        crownFree: abilityExpertIsCrownFree(player, id)
+      };
     });
     if (!state.combat && card) {
       const school = getPermanentSchoolBonus(state, playerId, card);
       if (school) {
         valued.push({
           basic: 0,
-          expertGain: Math.max(0, school.expertPower - school.basicPower)
+          expertGain: Math.max(0, school.expertPower - school.basicPower),
+          crownFree: abilityExpertIsCrownFree(player, school.card.id)
         });
       }
       const matches = (schoolName: "air" | "earth" | "fire" | "water") =>
         schools.includes(schoolName) || schools.includes("any");
-      if (activeSchoolFetches(state, playerId).some(matches)) {
-        valued.push({ basic: 0, expertGain: 3 });
+      const fetchSchool = activeSchoolFetches(state, playerId).find(matches);
+      if (fetchSchool) {
+        valued.push({
+          basic: 0,
+          expertGain: 3,
+          crownFree: abilityExpertIsCrownFree(player, `ability.basic_${fetchSchool}_magic` as CardId)
+        });
       }
       // Polish Spell Book: the map boost window offers a SPARE "Cast a Spell"
       // for its printed +1 Power (cardCanBoostPower deliberately hides it from
@@ -535,7 +550,7 @@ function canAffordCardCost(
       if (polishSpellBookEnabled(state) && (player.spellBook ?? []).includes(cardId)) {
         const spare = rest.filter((id) => isCastASpellCard(id)).length - 1;
         for (let index = 0; index < spare; index += 1) {
-          valued.push({ basic: 1, expertGain: 0 });
+          valued.push({ basic: 1, expertGain: 0, crownFree: false });
         }
       }
     }
@@ -543,9 +558,13 @@ function canAffordCardCost(
     let crowns = crownsLeft;
     let fromCards = 0;
     for (const entry of valued) {
-      if (crowns > 0 && entry.expertGain > 0) {
+      // A crown-free (Empowered) source always takes its expert gain — it never
+      // draws on the crown budget.
+      if (entry.expertGain > 0 && (entry.crownFree || crowns > 0)) {
         fromCards += entry.basic + entry.expertGain;
-        crowns -= 1;
+        if (!entry.crownFree) {
+          crowns -= 1;
+        }
       } else {
         fromCards += entry.basic;
       }
@@ -1863,13 +1882,24 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
     modes.push("expert");
   }
 
-  return modes.filter((mode) => {
+  const usable = modes.filter((mode) => {
     if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
       return true;
     }
 
     return getAttackRerollsForMode(card, mode) > 0;
   });
+
+  // An EMPOWERED card whose Expert side is a strict superset of its basic side
+  // (EXPERT_SUPERSEDES_BASIC_CARD_IDS) drops the basic trap button — but only
+  // when the Expert side really made it into the list, so this can never leave a
+  // card unplayable. No shipped registry entry reaches this seam today
+  // (Necromancy is offered only in its own window, addNecromancyPlays); the rule
+  // lives in both places so a future entry cannot behave differently in the two.
+  if (player && empoweredExpertSupersedesBasic(player, card.id) && usable.includes("expert")) {
+    return ["expert"];
+  }
+  return usable;
 }
 
 /** True while combat is running and no attack, reaction or choice is resolving. */
@@ -2309,9 +2339,14 @@ function addSpellActions(
     // the choice is made up front — never as a prompt after the cast.
     // A Scroll/Spell-deck cast can't pair a School of Magic permanent; a Book
     // cast can (it casts like a hand cast), so it is offered the expert variant.
+    // An EMPOWERED School of Magic ability pays no crown, so the variant is
+    // offered at 0 crowns too — the permanent-school read comes first so the
+    // waiver can be keyed off the actual School card being discarded.
+    const schoolExpertCandidate =
+      !fromScroll && !fromSpellDeck && !tarnumReturn ? getPermanentSchoolBonus(state, playerId, card) : null;
     const schoolExpert =
-      !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
-        ? getPermanentSchoolBonus(state, playerId, card)
+      schoolExpertCandidate && canPlayExpertMode(player, schoolExpertCandidate.card.id)
+        ? schoolExpertCandidate
         : null;
 
     // Basic X Magic (Conflux fetch permanent) in play matching this spell, with an
@@ -2321,9 +2356,15 @@ function addSpellActions(
     // expert it CONSUMES its source — the permanent is discarded (user ruling)
     // — and a crown is spent; the label says so. Same scroll/Spell-deck/Tarnum
     // exclusions; a Book cast keeps its flag.
-    const fetchExpertSchool =
-      !fromScroll && !fromSpellDeck && !tarnumReturn && expertUsesAvailable(player) > 0
+    // An EMPOWERED Basic X Magic likewise folds its +3 with no crown.
+    const fetchExpertCandidate =
+      !fromScroll && !fromSpellDeck && !tarnumReturn
         ? matchingSchoolFetchForCast(state, playerId, card.spellSchools ?? [])
+        : null;
+    const fetchExpertSchool =
+      fetchExpertCandidate &&
+      canPlayExpertMode(player, `ability.basic_${fetchExpertCandidate}_magic` as CardId)
+        ? fetchExpertCandidate
         : null;
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
@@ -4345,7 +4386,15 @@ function addNecromancyPlays(actions: LegalAction[], state: GameState, playerId: 
         action: { type: "PLAY_CARD", playerId, cardId, mode: "basic", target: { type: "none" } }
       });
     } else {
-      const modes: CardPlayMode[] = canPlayExpertMode(player, cardId) ? ["basic", "expert"] : ["basic"];
+      // An EMPOWERED Necromancy plays its Expert side (any tier) for free, and
+      // the basic side (bronze/silver only, same cost, same discard) is then a
+      // strictly-worse trap button — so the choice collapses to Expert alone.
+      // See EXPERT_SUPERSEDES_BASIC_CARD_IDS for why this is a per-card registry.
+      const modes: CardPlayMode[] = empoweredExpertSupersedesBasic(player, cardId)
+        ? ["expert"]
+        : canPlayExpertMode(player, cardId)
+          ? ["basic", "expert"]
+          : ["basic"];
       for (const mode of modes) {
         actions.push({
           label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}`,
@@ -8269,7 +8318,7 @@ function getSchoolFetchExpertActions(
     return [];
   }
   const player = state.players[playerId];
-  if (!player || expertUsesAvailable(player) <= 0) {
+  if (!player) {
     return [];
   }
   const stackItem = triggerEvent.type === "UNIT_ATTACK_DECLARED" ? state.stack.at(-1) : getPendingStackItem(state, triggerEvent);
@@ -8279,6 +8328,11 @@ function getSchoolFetchExpertActions(
 
   const offers: LegalAction[] = [];
   for (const school of activeSchoolFetches(state, playerId)) {
+    // Per-school crown read: an EMPOWERED Basic X Magic is offered at 0 crowns
+    // (it pays none), a plain one still needs a spare crown.
+    if (!canPlayExpertMode(player, `ability.basic_${school}_magic` as CardId)) {
+      continue;
+    }
     let matches = false;
     if (stackItem.action.type === "CAST_SPELL") {
       if (stackItem.action.playerId === playerId && !stackItem.modifiers.scrollLocked) {

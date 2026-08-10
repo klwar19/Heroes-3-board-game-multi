@@ -97,6 +97,7 @@ import {
 export { playerPossessesGrail } from "./victory-points";
 import { playerOwnsWarMachine, removePermanentFromPlayToRemoved } from "./permanents";
 import {
+  abilityExpertIsCrownFree,
   applyUnitSideRules,
   canAcquireSharedDeckCard,
   effectiveArtifactTier,
@@ -7539,9 +7540,14 @@ export function processPendingVisit(state: GameState): void {
           : -1;
         const ongoing = player?.ongoingCards?.find((entry) => entry.cardId === step.spellCardId);
         const mode = step.mode ?? "basic";
-        // Expert spends a crown; Empowered / basic do not. Stale prompts that
-        // need a crown no longer available simply no-op.
-        const needsCrown = mode === "expert" && !effect?.basicSpellLimitBonus;
+        // Expert spends a crown; basic, an Empowered-Knowledge-style card whose
+        // BASIC side already carries the limit bonus, and an EMPOWERED ability
+        // (crown-free Expert side) do not. Stale prompts that need a crown no
+        // longer available simply no-op.
+        const needsCrown =
+          mode === "expert" &&
+          !effect?.basicSpellLimitBonus &&
+          !(player && abilityExpertIsCrownFree(player, step.knowledgeCardId));
         if (
           !player ||
           !effect ||

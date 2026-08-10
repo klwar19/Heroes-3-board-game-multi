@@ -259,6 +259,7 @@ import {
   abilityExpertIsCrownFree,
   activeSchoolFetches,
   canAcquireSharedDeckCard,
+  canPlayExpertMode,
   discardPickAllowedInCombat,
   estatesGold,
   matchingSchoolFetchForCast,
@@ -12285,7 +12286,12 @@ function payOptionCardCost(
     const mapBank = mapSpellPowerBankAvailable(state, playerId);
     const standing = standingSpellPower(state, playerId, playedCard) + mapBank;
     const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
-    const expertPays = payModes.filter((mode) => mode === "expert").length;
+    // An EMPOWERED ability paid at its Expert Power value costs no crown — the
+    // same waiver its ordinary Expert play gets, so it is counted out of the
+    // budget here AND out of the spend below.
+    const expertPays = paying.filter(
+      (cardId, index) => payModes[index] === "expert" && !abilityExpertIsCrownFree(player, cardId)
+    ).length;
     const crownsLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -14445,11 +14451,10 @@ function applySchoolFetchExpert(
     throw new Error("The Basic Magic +3 expert is already applied here.");
   }
 
-  const expertUsesLeft =
-    player.limits.expertUses +
-    (player.combatStats.expertUseBonusThisRound ?? 0) -
-    player.combatStats.expertUsesSpentThisRound;
-  if (expertUsesLeft <= 0) {
+  // An EMPOWERED Basic X Magic ability folds its +3 with no crown (and is
+  // therefore legal at 0 crowns) — the shared canPlayExpertMode read.
+  const fetchCardId = `ability.basic_${action.school}_magic` as CardId;
+  if (!canPlayExpertMode(player, fetchCardId)) {
     throw new Error("No expert uses are available this combat round.");
   }
 
@@ -14474,7 +14479,9 @@ function applySchoolFetchExpert(
   }
 
   usedBy.push(action.playerId);
-  player.combatStats.expertUsesSpentThisRound += 1;
+  if (!abilityExpertIsCrownFree(player, fetchCardId)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
   // The +3 CONSUMES the fetch permanent (user ruling — see the function doc):
   // the card goes to the owner's discard pile, never out of the game. A legacy
   // SPELL_SCHOOL_FETCH active-effect fetch carries no card — this is then a
