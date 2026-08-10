@@ -9,6 +9,7 @@ import { cardLibrary } from "@/data/cards/library";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import {
   describeCardEffect,
+  getInnateFlatAttackBonus,
   getUnitAbilityDefinitions,
   unitFlipSidePreview,
   type CombatUnitState,
@@ -115,6 +116,16 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
   // (The zoom is a pure card view with no GameState, so the mode defaults come
   // from `ruleset` — the caller passes the table's.)
   const flip = unitFlipSidePreview(unit, ruleset);
+  // The INNATE printed-ability flat Attack bonuses live on this card right now
+  // (Cove Haspids' "Vengeance" +2 once it was knocked down to its Few side, the
+  // WoG own-attack +1, the Black Dragons' Stacked +3). Read through the SAME
+  // helper the attack resolver folds in, so a flipped Haspid reads the Attack
+  // it will actually strike with instead of its bare printed Few value. The
+  // zoom has no GameState, so card-borne buffs (Bless/Bloodlust/Offense) and
+  // Attack tokens are still NOT folded here — the board card and the inspector
+  // are the live-total surfaces for those.
+  const innateAttackBonus = getInnateFlatAttackBonus(unit, false);
+  const liveAttack = unit.attack + innateAttackBonus;
 
   return {
     title: unit.cardName,
@@ -132,9 +143,11 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
       ? `commander (tierless) ${unit.type} · initiative ${unit.initiative}`
       : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
-      `Attack ${unit.attack} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
+      `Attack ${liveAttack}${innateAttackBonus !== 0 ? ` (base ${unit.attack})` : ""} · Defense ${unit.defense}${unit.defenseToken ? " (defending: rolls +1 for +1 Defense)" : ""} · HP ${health}/${unit.maxHealth}`,
       flip
-        ? `Lethal damage flips this card to its ${flip.cardName} side: Attack ${flip.attack} · Defense ${flip.defense} · HP ${flip.health} · initiative ${flip.initiative}${
+        ? `Lethal damage flips this card to its ${flip.cardName} side: Attack ${
+            flip.attack + flip.flippedAttackBonus
+          }${flip.flippedAttackBonus > 0 ? ` (printed ${flip.attack}, +${flip.flippedAttackBonus} for being flipped)` : ""} · Defense ${flip.defense} · HP ${flip.health} · initiative ${flip.initiative}${
             flip.type !== unit.type ? ` (fights as a ${flip.type} unit)` : ""
           }.`
         : "",

@@ -1483,7 +1483,7 @@ export function BattlefieldBoard({
                   {attackDelta ? (
                     <span
                       className={`boardStatToken attack ${attackDelta > 0 ? "up" : "down"}`}
-                      title={`Attack ${attackTotal} (${attackDelta > 0 ? "+" : ""}${attackDelta} from tokens, cards and effects)`}
+                      title={`Attack ${attackTotal} (${attackDelta > 0 ? "+" : ""}${attackDelta} from abilities, tokens, cards and effects)`}
                     >
                       <Swords aria-hidden="true" size={8} />
                       <b>
@@ -2040,17 +2040,26 @@ function UnitFlipSideNote({ state, unit }: { state: GameState; unit: CombatUnitS
     return null;
   }
   const typeChanged = flip.type !== unit.type;
+  // Cove Haspids' "Vengeance" is the one ability whose TRIGGER is this very
+  // flip, so the preview would understate the flipped card by showing only its
+  // printed Attack — show what it will really strike with, printed value noted.
+  const flippedAttack = flip.attack + flip.flippedAttackBonus;
   return (
     <div
       className="inspectFlipSide"
       title={`Lethal damage removes the Pack side and this card keeps fighting as ${flip.cardName}${
         typeChanged ? ` (and becomes a ${flip.type} unit)` : ""
-      }.`}
+      }.${
+        flip.flippedAttackBonus > 0
+          ? ` Being flipped grants it +${flip.flippedAttackBonus} Attack (printed ${flip.attack}).`
+          : ""
+      }`}
     >
       <span className="inspectFlipHead">Flips to {flip.cardName}</span>
       <span className="inspectFlipStats">
-        ⚔ {flip.attack} · <Shield aria-hidden="true" size={10} /> {flip.defense} · ♥ {flip.health} · init{" "}
-        {flip.initiative}
+        ⚔ {flippedAttack}
+        {flip.flippedAttackBonus > 0 ? ` (printed ${flip.attack})` : ""} ·{" "}
+        <Shield aria-hidden="true" size={10} /> {flip.defense} · ♥ {flip.health} · init {flip.initiative}
         {typeChanged ? ` · ${flip.type}` : ""}
       </span>
     </div>
@@ -2134,7 +2143,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
         </span>
         <small className="inspectTotalLegend">LIVE TOTALS · base card + buffs + combat tokens</small>
         <div className="inspectStats">
-          <span title={attackBonus !== 0 ? `Attack ${attack} (base ${unit.attack}, ${attackBonus > 0 ? "+" : ""}${attackBonus} from effects)` : "Attack"}>
+          <span title={attackBonus !== 0 ? `Attack ${attack} (base ${unit.attack}, ${attackBonus > 0 ? "+" : ""}${attackBonus} from abilities, effects and tokens)` : "Attack"}>
             ⚔ <span className={attackBonus > 0 ? "statUp" : attackBonus < 0 ? "statDown" : undefined}>{attack}</span>
             {attackBonus !== 0 ? ` (base ${unit.attack})` : ""}
           </span>

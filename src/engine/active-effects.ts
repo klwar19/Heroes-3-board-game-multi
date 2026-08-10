@@ -3,6 +3,7 @@ import { isAdjacent } from "./battlefield";
 import { appendEvent, nextEventNumber } from "./events";
 import { houseRuleEnabled } from "./house-rules";
 import {
+  getInnateFlatAttackBonus,
   getUnitAbilityDefinitions,
   hasAmplifyInitiativeIncrease,
   hasIgnoreOngoingEffects,
@@ -520,14 +521,24 @@ export function getActiveDefenseBonus(state: GameState, unit: CombatUnitState): 
 
 /**
  * The flat, unconditional Attack buff on a unit for DISPLAY (the unit inspector
- * / card chip): the sum of every plain ATTACK_BONUS an applicable active effect
- * grants it — the Bulwark Rune army-wide +Attack, Bless, Bloodlust, Offense, and
- * the like. Deliberately excludes the situational ranged/defender-conditional
- * bonuses (they depend on a specific target) and Attack tokens (surfaced as their
- * own chip), exactly as effectiveInitiative folds in only the lasting shifts.
+ * / card chip). Two halves:
+ *
+ *  • every plain ATTACK_BONUS an applicable active effect grants it — the
+ *    Bulwark Rune army-wide +Attack, Bless, Bloodlust, Offense, and the like;
+ *  • the INNATE printed-ability flat bonuses live on the unit right now
+ *    (`getInnateFlatAttackBonus`, own-attack reading) — Cove Haspids'
+ *    "Vengeance" +2 after the Pack was knocked down to its Few side, the WoG
+ *    own-attack +1, the Black Dragons' Stacked +3. These are read through the
+ *    SAME helper the attack resolver folds into every attack, so the displayed
+ *    number and the number the dice use cannot drift apart.
+ *
+ * Deliberately excludes the situational ranged/defender-conditional bonuses
+ * (they depend on a specific target) and Attack tokens (surfaced as their own
+ * chip), exactly as effectiveInitiative folds in only the lasting shifts. The
+ * innate helper's own doc-comment lists what it leaves out and why.
  */
 export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): number {
-  return state.activeEffects.reduce((total, effect) => {
+  const activeBonus = state.activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, unit)) {
       return total;
     }
@@ -539,6 +550,7 @@ export function getDisplayAttackBonus(state: GameState, unit: CombatUnitState): 
       )
     );
   }, 0);
+  return activeBonus + getInnateFlatAttackBonus(unit, false);
 }
 
 /** Ingham's Zealots VI: does this unit have a lasting "ignores Defense" effect? */

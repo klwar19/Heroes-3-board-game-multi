@@ -4378,7 +4378,10 @@ No engine change; every value shown is already public in player views.
   nothing renders) for a Few/Neutral side, a Creature-Bank / boss card, a Clone or
   a card under a specialty cover. Veteran-rank folds and Polish Stack layers are
   deliberately NOT applied — it is the printed card the player is about to see.
-  `unit-flip-side-preview.test.ts` + `board.test.tsx`.
+  `unit-flip-side-preview.test.ts` + `board.test.tsx`. **2026-08-10 exception:**
+  the preview also carries `flippedAttackBonus` (see the "Innate flat Attack
+  bonuses" section below) — the ONE ability whose trigger IS this flip, so
+  omitting it understated the flipped card.
 - **The opponent window adds public counts + the discard pile:** cards in hand,
   cards in deck, discard size, crowns left/total this combat round, and the main
   hero's movement points — plus the whole (public) discard pile browsable newest
@@ -4396,6 +4399,63 @@ No engine change; every value shown is already public in player views.
   spanned the card bottom and hid the bottom entry of the left stat rail —
   Initiative. Capped at 76% (right-anchored, name ellipsizes). jsdom cannot compute
   CSS, so the contract is pinned in `board-card-hud-width.test.ts`.
+
+## Innate flat Attack bonuses reach the card, not just the dice (2026-08-10)
+
+Reported: "Haspid when go from pack to few, not show the +2 attack in stats???
+only show the +1 attack from unit experience buff." **Leading with what was NOT
+broken:** the flip itself was always correct — `applyUnitCurrentSide` rebuilds
+the Few side, keeps `haspid-vengeance`, keeps the veteran rank fold, and
+`markUnitRemovedIfNeeded` sets `flippedDownThisCombat`; the resolver folded the
++2 into every attack roll. This was a pure DISPLAY gap: `getDisplayAttackBonus`
+summed only active-effect `ATTACK_BONUS` modifiers, so the player read Attack 6
+on a card that struck for 8.
+
+ONE shared seam now: `getInnateFlatAttackBonus(unit, isRetaliation)`
+(`unit-abilities.ts`) folds the INNATE, target-independent flat Attack bonuses
+live on a unit right now — `ATTACK_BONUS_IF_FLIPPED` (Haspids' Vengeance +2),
+`OWN_ATTACK_FLAT_BONUS` (WoG Battle Fury +1) and `FLAT_ATTACK_BONUS` (bank Black
+Dragons' Stacked +3, raid-boss Enrage +2). The attack resolver
+(`getAttackStackDetails`, which lost its three separate consts) AND every display
+read call it, so what a player reads and what the dice use cannot drift.
+Display sites: `getDisplayAttackBonus` (board card chevron + stat-token rail,
+inspector LIVE TOTALS), the enlarged-card reader (`zoom.tsx`, which has no
+GameState but the innate half is state-free), and the flip-side note.
+
+Leading with the deliberate LIMITS:
+- **Only that class is shown.** Still absent from the card, by design, because
+  "+N on every attack from now on" would be a lie: target-conditional bonuses
+  (Hatred's `ATTACK_BONUS_VS_UNIT_NAME`, Bounty Hunter `MARK_AND_HUNT`, the
+  commander Haste/Slow initiative riders), per-activation transients
+  (`ATTACK_BONUS_AFTER_MOVE` — Charge needs a move THIS activation), per-combat
+  one-shot charges (anime Equipment first-attack) and positional/board reads that
+  need the combat (Fleet Formation aura, Best Friends, Astrologers round frenzy,
+  the commander's live front-line +1). The resolver still applies all of them.
+- **The display shows the OWN-attack reading.** Vengeance and Battle Fury print
+  `[unit_attack]`, so they drop on a Retaliation Attack — the card's number is
+  right for the strike, one high for the counter-attack.
+- **The zoom reader still folds NO state-borne buff** (Bless/Bloodlust/Offense,
+  Attack tokens) — pre-existing; the board card and inspector are the live-total
+  surfaces.
+- **A Pack's flip PREVIEW keeps printing the printed Few Attack** in
+  `UnitFlipSide.attack`; the flip-triggered bonus rides the separate
+  `flippedAttackBonus` field (0 for every other unit) and the UI renders
+  "⚔ 7 (printed 5)". Rank folds / Polish layers stay out of the preview.
+- **Suppression is inherited, not re-implemented** — a Disrupting-Rayed unit
+  loses the bonus from the card and the dice together (`getUnitAbilityDefinitions`
+  is the one chokepoint), as do the `requiresStacked` / `requiresLayersAtMost`
+  gates.
+
+Pinned in `src/engine/innate-flat-attack-display.test.ts` (11: the repro as an
+OBSERVABLE equality — the displayed total equals the damage a scripted-die strike
+actually deals — plus rank-0, unflipped-Few, no-ability, retaliation, suppression
+and preview==reality CONTROLs, and a registry sweep so a FUTURE ability of the
+class cannot be dropped silently) and the DOM half in
+`src/components/table/haspid-flip-attack-display.test.tsx` (7: the board card's
+stat token/arrow, the inspector's `⚔ 8 (base 6)`, the flip-side note, each with a
+control). Mutation-checked: reverting the display fold fails 6, zeroing the
+preview bonus fails 2, dropping the retaliation gate fails 2, dropping
+`FLAT_ATTACK_BONUS` from the helper fails 3.
 
 ## Creature Banks (Naval Battles optional rule) — what runs vs. what is deferred
 

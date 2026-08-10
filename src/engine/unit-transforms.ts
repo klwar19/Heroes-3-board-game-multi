@@ -1,6 +1,7 @@
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
+import { attackBonusIfFlippedForAbilityIds } from "./unit-abilities";
 import { combatUnitRankFold, neutralStackRankFold, withRankAbilities } from "./unit-experience";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
@@ -102,6 +103,14 @@ export type UnitFlipSide = {
   initiative: number;
   type: CombatUnitState["type"];
   abilities: string[];
+  /**
+   * Cove Haspids' "Vengeance": the ATTACK_BONUS_IF_FLIPPED the Few side gains
+   * BECAUSE of this very flip. `attack` above stays the printed card value; this
+   * is the extra the unit will really strike with once the flip happens, so the
+   * preview does not understate the one bonus whose trigger IS the flip. 0 for
+   * every other unit.
+   */
+  flippedAttackBonus: number;
 };
 
 /**
@@ -131,6 +140,7 @@ export function unitFlipSidePreview(
     return null;
   }
   const side = applyUnitSideRules(ruleset, unit.unitDefId as string, "few", def.few, overrides);
+  const abilities = [...(side.abilities ?? [])];
   return {
     side: "few",
     cardName: printedCardName("few", def.name),
@@ -139,7 +149,8 @@ export function unitFlipSidePreview(
     health: side.health,
     initiative: side.initiative,
     type: side.type ?? def.type,
-    abilities: [...(side.abilities ?? [])]
+    abilities,
+    flippedAttackBonus: attackBonusIfFlippedForAbilityIds(abilities)
   };
 }
 

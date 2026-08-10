@@ -1352,6 +1352,41 @@ export function getOwnAttackFlatBonus(unit: CombatUnitState): number {
 }
 
 /**
+ * The INNATE flat Attack bonuses live on this unit RIGHT NOW — the class of
+ * printed-ability bonuses that apply to EVERY attack it makes from here on,
+ * derived from the unit's OWN persistent state and nothing else:
+ *
+ *   • ATTACK_BONUS_IF_FLIPPED — Cove Haspids "Vengeance" (+2 once the Pack has
+ *     been knocked down to its Few side this combat: `flippedDownThisCombat`).
+ *   • OWN_ATTACK_FLAT_BONUS — WoG Lava Sharpshooter / War Zealot "+N Attack
+ *     when this unit attacks".
+ *   • FLAT_ATTACK_BONUS — Creature Bank Dragon Utopia Black Dragons "+3 while
+ *     Stacked" (and the raid-boss Enrage arm); the Stacked / last-layer gates
+ *     live upstream in `getUnitAbilityDefinitions`.
+ *
+ * The first two carry the printed [unit_attack] icon (own declared attack
+ * only), so they drop on a Retaliation Attack; FLAT_ATTACK_BONUS applies to
+ * both. This is THE seam: the attack resolver folds it into every attack
+ * (`getAttackStackDetails`) and the card/inspector displays fold the
+ * `isRetaliation: false` reading, so the number a player reads and the number
+ * the dice use can never disagree.
+ *
+ * DELIBERATELY EXCLUDED (they are not "+N on every attack from now on", so a
+ * flat stat chip would lie): target-conditional bonuses (Hatred's
+ * ATTACK_BONUS_VS_UNIT_NAME, Bounty Hunter MARK_AND_HUNT, the commander
+ * Haste/Slow initiative riders), per-activation transients
+ * (ATTACK_BONUS_AFTER_MOVE — the Charge combo needs a move THIS activation),
+ * per-combat one-shot charges (the anime Equipment first-attack bonuses) and
+ * positional/board reads that need the combat (the Fleet Formation aura, Best
+ * Friends, the Astrologers round frenzy, the commander's live front-line
+ * bonus). Every one of those is still applied by the resolver.
+ */
+export function getInnateFlatAttackBonus(unit: CombatUnitState, isRetaliation: boolean): number {
+  const ownAttackOnly = isRetaliation ? 0 : getAttackBonusIfFlipped(unit) + getOwnAttackFlatBonus(unit);
+  return ownAttackOnly + getFlatAttackBonus(unit);
+}
+
+/**
  * Creature Bank Medusa Stores Medusas (while Stacked): the on-attack paralysis
  * inflicted by this unit's own attack, if any.
  */
@@ -1628,6 +1663,21 @@ export function getAttackBonusIfFlipped(unit: CombatUnitState): number {
     (total, ability) => total + (ability.effect?.type === "ATTACK_BONUS_IF_FLIPPED" ? ability.effect.amount : 0),
     0
   );
+}
+
+/**
+ * The ATTACK_BONUS_IF_FLIPPED amount printed on a bare list of ability ids —
+ * i.e. what a card WILL gain the moment it is knocked down to that side. Used
+ * by the Pack→Few flip PREVIEW (`unitFlipSidePreview`), which has no combat
+ * unit to read and must not claim the bonus is live yet. `getAttackBonusIfFlipped`
+ * stays the live read (gated on the unit's own `flippedDownThisCombat` flag);
+ * both resolve the same registry entry, so preview and reality cannot drift.
+ */
+export function attackBonusIfFlippedForAbilityIds(abilityIds: readonly string[]): number {
+  return abilityIds.reduce((total, abilityId) => {
+    const effect = unitAbilities[abilityId]?.effect;
+    return total + (effect?.type === "ATTACK_BONUS_IF_FLIPPED" ? effect.amount : 0);
+  }, 0);
 }
 
 /** Cove Seamen (Pack): the once-per-combat "gain N resource on a kill" reward. */

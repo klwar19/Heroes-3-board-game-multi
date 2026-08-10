@@ -476,9 +476,12 @@ export type UnitAbilityEffectDefinition =
       /**
        * Cove Haspids (Few): "+N Attack if, during this Combat, this unit was
        * flipped from the Pack to the Few side." A flat Attack bonus on every
-       * attack (and Retaliation Attack) the Few side makes, but only once the
-       * unit has actually been knocked down from its Pack side this combat
-       * (tracked by `flippedDownThisCombat`). A fresh-recruited Few gets nothing.
+       * OWN declared attack the Few side makes — the card prints the
+       * [unit_attack] icon, so it drops on a Retaliation Attack (the shared
+       * `getInnateFlatAttackBonus` encodes that split; pinned in
+       * unit-attack-retaliation-gating.test.ts) — and only once the unit has
+       * actually been knocked down from its Pack side this combat (tracked by
+       * `flippedDownThisCombat`). A fresh-recruited Few gets nothing.
        */
       type: "ATTACK_BONUS_IF_FLIPPED";
       amount: number;

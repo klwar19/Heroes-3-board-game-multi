@@ -436,7 +436,7 @@ import {
   getAfterRetaliationAttackAbility,
   getAttackBonusAfterMove,
   getAttackBonusWhenAllyNamePresent,
-  getAttackBonusIfFlipped,
+  getInnateFlatAttackBonus,
   getAttackBonusOnAttackDie,
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
@@ -459,8 +459,6 @@ import {
   getDeckDiscardTakeSpell,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
-  getFlatAttackBonus,
-  getOwnAttackFlatBonus,
   getInvulnerabilityActivation,
   isUnitDamageImmune,
   getSplashAllocationAttack,
@@ -3778,11 +3776,16 @@ function getAttackStackDetails(
   // ability bonus, added unclamped like Hatred (elemental clamps don't apply).
   const markAttackBonus = getAttackBonusVsMarked(attacker, defender);
 
-  // Cove Haspids (Few) "[unit_attack] Vengeance": +2 Attack once this unit has
-  // been flipped down from its Pack side this combat. An innate ability bonus, so
-  // (like Hatred) it is added unclamped even for elemental attackers — and, like
-  // Hatred, the attack trigger is own-attack-only, so it drops on retaliation.
-  const flippedAttackBonus = isRetaliation ? 0 : getAttackBonusIfFlipped(attacker);
+  // The INNATE, target-independent flat Attack bonuses live on the attacker
+  // right now — Cove Haspids' "[unit_attack] Vengeance" (+2 once the Pack has
+  // been knocked down to its Few side this combat), the WoG Lava Sharpshooter /
+  // War Zealot own-attack +1, and the Creature Bank Black Dragons' "+3 while
+  // Stacked". ONE shared read (`getInnateFlatAttackBonus`) so the card/inspector
+  // displays, which fold the same helper, can never disagree with the dice.
+  // Innate ability bonuses, so (like Hatred) they are added unclamped even for
+  // elemental attackers; the helper itself drops the two [unit_attack]-icon
+  // members on a Retaliation Attack.
+  const innateFlatAttackBonus = getInnateFlatAttackBonus(attacker, isRetaliation);
 
   // WOG commander Charge combo: +1 Attack when the commander attacks after
   // moving this activation. An innate ability bonus (unclamped, like Hatred);
@@ -3802,14 +3805,6 @@ function getAttackStackDetails(
   // Spell-borne like Bless, so it rides the elemental clamp with the card bonus.
   const initiativeConditionalAttackBonus = getConditionalAttackBonus(state, attacker, defender);
 
-  // Creature Bank Dragon Utopia Black Dragons: "+3 Attack while Stacked". A
-  // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
-  // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
-  const stackedAttackBonus = getFlatAttackBonus(attacker);
-  // WoG Lava Sharpshooter / War Zealot: "+1 Attack when this unit attacks." A
-  // flat innate bonus on the unit's OWN attack only — never its Retaliation
-  // Attack (added unclamped, like Hatred/the Stacked bonus).
-  const ownAttackFlatBonus = isRetaliation ? 0 : getOwnAttackFlatBonus(attacker);
   // Azur Lane "Fleet Formation" (kansen-fleet-formation): +1 Attack on the
   // unit's OWN declared attack per living friendly aura carrier it stands
   // adjacent to RIGHT NOW (live positional read, the commanderLiveAttackBonus
@@ -3869,11 +3864,9 @@ function getAttackStackDetails(
       attackDieResultBonus +
       hatredAttackBonus +
       markAttackBonus +
-      flippedAttackBonus +
+      innateFlatAttackBonus +
       chargeAttackBonus +
       commanderPositionalAttackBonus +
-      stackedAttackBonus +
-      ownAttackFlatBonus +
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
