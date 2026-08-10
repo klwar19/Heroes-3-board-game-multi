@@ -8399,11 +8399,54 @@ Leading with what does NOT run / the deliberate readings:
   pendingChoice gate, the AFK/turn-timeout driver's `RESOLVING_ACTION_TYPES` and
   the generic OPTION_CHOICE scorer all already cover it with NO lockstep change
   (pinned: a computer seat and `nextTurnTimeoutAction` both close it).
-- **The "at the beginning of the combat" selection is a round-1 activated
-  action**, not a combat-start window (the anti-freeze trade the task allowed).
-  It is offered only while `combat.round === 1`, once per combat per set, and
-  lays a real combat-duration `INITIATIVE_BONUS` — so the activation order
-  genuinely shifts (pinned by `getActivationOrder`, not by a field read).
+- **"At the beginning of the combat" now means BEFORE THE FIGHTING BEGINS —
+  `combat.round === 1` was NOT enough (2026-08-10 user report, REPRODUCED).**
+  The old gate was the round counter alone; but in this engine a default neutral
+  fight IS one round, extended a round at a time, so "round 1" was the WHOLE
+  battle. Verified before the fix: the selection was offered by `getLegalActions`
+  and ACCEPTED by the reducer after the player's own unit had already attacked,
+  and again at the continue-or-retreat window with the entire round resolved —
+  i.e. you picked "at the beginning of the combat" knowing exactly how the fight
+  had gone. It is now gated by `combatStartWindowOpen`
+  (`src/engine/combat-timing.ts`): combat round 1, no outcome, and NO unit has
+  activated / moved / attacked. That is the SAME `combatFightingHasBegun` read
+  `pvpEscapeWindowOpen` uses for the no-casualties PvP flee — extracted into that
+  leaf module so the two can never drift.
+  - The timing is **DECLARED IN THE DATA**, not inferred: `ArtifactSetTier.timing
+    = "combat-start"` on the three tiers whose printed line says "at the
+    beginning / at the start of the combat" (Angelic Alliance 2, Ironfist 2,
+    Armor of the Damned 2). The old gate keyed off `effect.kind ===
+    "select-unit"`, which happened to cover exactly those three but would have let
+    a FUTURE beginning-of-the-combat tier run all fight. An invariant test pins
+    the printed text ⇔ `timing` agreement in BOTH directions.
+  - **Not over-locked**: every tier printing "Once per combat" / "during an
+    attack" is untouched and still usable in round 4 with everyone bloodied
+    (CONTROL-pinned on Titan's Thunder's zap and on Angelic Alliance's bound
+    tier 5).
+  - **Reachability** (this is why the fix needed a second seam): in a neutral
+    fight the guards' pre-activation pause is often the only moment the human is
+    offered anything before the first swing, so `legal-actions.ts` surfaces
+    ONLY the `timing: "combat-start"` tiers in that pause
+    (`addArtifactSetActions(..., combatStartOnly)`). Pinned by driving a REAL
+    neutral encounter through placement into a guard-opened round 1. Deployment
+    itself is NOT a window — `combat.units` is still empty while `combat.setup`
+    is set, so there is no unit to select.
+  - **KNOWN LIMIT**: in a PvP fight where the opponent's unit is faster AND no
+    pre-activation pause opens (the off-turn side holds no reaction), the window
+    can close before that side clicks. Both sides DO get the offer in the frame
+    between placement finishing and the first act; there is no dedicated
+    combat-start prompt, and adding one would mean pausing every PvP fight.
+  Still true: once per combat per set, an OPTIONAL action that never opens a
+  window, and it lays a real combat-duration `INITIATIVE_BONUS` so the activation
+  order genuinely shifts (pinned by `getActivationOrder`, not by a field read).
+  All of it in `artifact-sets.test.ts` ("'at the beginning of the combat' closes
+  when the fighting starts", 11 cases incl. the two repros, the redacted-client
+  parity, the two-fights re-arm and the data invariant) plus the board
+  auto-disarm in `artifact-set-ui.test.tsx`. Mutation-checked: restoring the
+  round-only gate fails 5 across both files, dropping one tier's `timing` fails
+  8, removing the pause offer fails the reachability case, and neutering
+  `combatFightingHasBegun` fails 8 (4 of them in the PvP-escape suites — the
+  proof the predicate is genuinely shared).
 - **Power of the Dragon Father prints NO selection tier**, so its four "your
   selected unit" tiers pick their target AT USE TIME (any own unit). Angelic
   Alliance / Armor of the Damned bind to their own selection tier's pick and are

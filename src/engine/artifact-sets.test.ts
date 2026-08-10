@@ -31,7 +31,12 @@ import { standardComputerController } from "./computer/control";
 import { chooseComputerAction } from "./computer/policy";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { startNeutralEncounter } from "./adventure-reducer";
-import { artifactSetEnemySpellPowerDrain, markArtifactSetSpellDrain } from "./artifact-sets";
+import {
+  artifactSetCombatStartWindowOpen,
+  artifactSetEnemySpellPowerDrain,
+  markArtifactSetSpellDrain
+} from "./artifact-sets";
+import { COMBAT_START_TEXT_PATTERN } from "@/data/cards/artifact-sets";
 import { cardLibrary } from "@/data/cards/library";
 import type { CardId, CombatState, GameAction, GameState, PlayerId } from "./state";
 
@@ -1396,5 +1401,327 @@ describe("Set Artifacts — a hosted (redacted) client offers what the server ac
       { setId: AA, pieces: 2, activeTiers: 1, memberCount: AA_MEMBERS.length }
     ];
     expect(artifactSetPieceCount(state, "p1", AA)).toBe(3);
+  });
+});
+
+// ===========================================================================
+// 15. "AT THE BEGINNING OF THE COMBAT" really means BEFORE the fight begins
+//
+// The live report: "If an artifact set has feature that it works only at the
+// beginning of the combat it should be done properly so. So you cannot use it
+// later in a combat."
+//
+// REPRODUCED before the fix. The gate was `combat.round === 1` alone — but in
+// this engine a default neutral fight IS one round, extended a round at a time,
+// so "round 1" is the WHOLE battle: the selection was offered (and accepted)
+// after the player's own unit had already attacked, and again at the
+// continue-or-retreat window with the entire round resolved. The gate is now
+// `combatStartWindowOpen` (combat-timing.ts) — the SAME "has the fighting begun"
+// read `pvpEscapeWindowOpen` uses for the no-casualties PvP flee.
+// ===========================================================================
+
+describe("Set Artifacts — 'at the beginning of the combat' closes when the fighting starts", () => {
+  /** Two own units + one guard, no unit has acted (the window is open). */
+  function beginningCombat(seed: string): GameState {
+    const state = makeState(true, seed);
+    ownOnly(state, [...AA_MEMBERS]);
+    const combat = stageCombat(
+      state,
+      [
+        { unitDefId: "castle.halberdiers", side: "few" },
+        { unitDefId: "castle.griffins", side: "few" }
+      ],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    combat.units.u_own_0.initiative = 4;
+    combat.units.u_own_1.initiative = 5;
+    combat.units.u_foe_0.initiative = 1;
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+    return state;
+  }
+
+  function selectOffers(state: GameState) {
+    return artifactSetPowerOffers(state, "p1").filter((offer) => offer.kind === "select");
+  }
+
+  function selectLegalActions(state: GameState) {
+    return getLegalActions(state, "p1").filter((entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT");
+  }
+
+  const SELECT_AA: GameAction = {
+    type: "SELECT_ARTIFACT_SET_UNIT",
+    playerId: "p1",
+    setId: AA,
+    unitId: "u_own_0"
+  };
+
+  it("REPRO: once one of your units has fought this round the selection is gone — offer AND handler", () => {
+    const state = beginningCombat("sets-begin-repro");
+    // CONTROL first: nobody has acted, so the window is open on BOTH surfaces.
+    expect(selectOffers(state).length).toBeGreaterThan(0);
+    expect(selectLegalActions(state).length).toBeGreaterThan(0);
+
+    // The fast unit takes its turn; the slow one is still to act. This is the
+    // reported moment — the player now knows how round 1 went.
+    const combat = state.combat!;
+    combat.units.u_own_1.activatedThisRound = true;
+    combat.units.u_own_1.attackedThisActivation = true;
+    combat.activeUnitId = "u_own_0";
+
+    expect(selectOffers(state)).toEqual([]);
+    expect(selectLegalActions(state)).toEqual([]);
+
+    const forged = applyAction(state, SELECT_AA);
+    expect(forged.errors.map((error) => error.message)).toEqual([
+      "That Set Artifact selection is not available."
+    ]);
+    // EFFECT, not just the refusal: nothing was stamped and no initiative moved.
+    expect(forged.state.players.p1.combatStats.artifactSetSelections ?? {}).toEqual({});
+    expect(effectiveInitiative(forged.state.combat!.units.u_own_0, forged.state.activeEffects)).toBe(4);
+  });
+
+  it("REPRO: a MOVE alone (no attack yet) already closes the window", () => {
+    const state = beginningCombat("sets-begin-move");
+    state.combat!.units.u_own_1.movedThisActivation = true;
+    expect(selectOffers(state)).toEqual([]);
+    expect(applyAction(state, SELECT_AA).errors.length).toBeGreaterThan(0);
+  });
+
+  it("REPRO: the continue-or-retreat window — a whole round fought, still combat round 1", () => {
+    const state = beginningCombat("sets-begin-await");
+    const combat = state.combat!;
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = true;
+      unit.attackedThisActivation = true;
+    }
+    combat.awaitingContinue = true;
+    expect(combat.round, "the round counter has NOT moved — this is why round-1 was not enough").toBe(1);
+    expect(selectOffers(state)).toEqual([]);
+    const forged = applyAction(state, SELECT_AA);
+    expect(forged.errors.length).toBeGreaterThan(0);
+    expect(forged.state.players.p1.combatStats.artifactSetSelections ?? {}).toEqual({});
+  });
+
+  it("stays closed after a REAL round advance (CONTINUE_NEUTRAL_COMBAT)", () => {
+    const state = beginningCombat("sets-begin-round2");
+    const combat = state.combat!;
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = true;
+    }
+    combat.awaitingContinue = true;
+    state.heroes.hero_p1.movementPoints = 3;
+
+    const next = applyOk(state, { type: "CONTINUE_NEUTRAL_COMBAT", playerId: "p1" });
+    expect(next.combat!.round, "the real continue really advanced the round").toBe(2);
+    // The round reset clears activatedThisRound, so ONLY the round check can
+    // close the window here — both halves of the gate are load-bearing.
+    expect(Object.values(next.combat!.units).every((unit) => !unit.activatedThisRound)).toBe(true);
+    expect(selectOffers(next)).toEqual([]);
+    expect(applyAction(next, SELECT_AA).errors.length).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: a NON-round-gated tier still works after the fighting has begun", () => {
+    // "Once per combat" tiers must NOT be over-locked by this fix. Titan's
+    // Thunder prints no timing at all, so its zap stays legal all fight.
+    const state = makeState(true, "sets-begin-not-overlocked");
+    ownOnly(state, [TT_MEMBERS[0], TT_MEMBERS[1]]);
+    const combat = stageCombat(
+      state,
+      [{ unitDefId: "castle.halberdiers", side: "few" }],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    // The fight is well under way: everyone has fought, and it is combat round 3.
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = true;
+      unit.attackedThisActivation = true;
+    }
+    combat.round = 3;
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+
+    const zap = artifactSetPowerOffers(state, "p1").find(
+      (offer) => offer.setId === "titans_thunder" && offer.unitId === "u_foe_0"
+    );
+    expect(zap, "the once-per-combat zap must survive the combat-start gate").toBeTruthy();
+    const damageBefore = combat.units.u_foe_0.damage;
+    const next = applyOk(state, {
+      type: "USE_ARTIFACT_SET_POWER",
+      playerId: "p1",
+      setId: "titans_thunder",
+      tier: 2,
+      unitId: "u_foe_0"
+    });
+    expect(next.combat!.units.u_foe_0.damage).toBe(damageBefore + 1);
+  });
+
+  it("CONTROL: the 'selected unit' tiers are NOT round-gated either (they print 'Once per combat')", () => {
+    const state = beginningCombat("sets-begin-bound-tiers");
+    const picked = applyOk(state, SELECT_AA);
+    const combat = picked.combat!;
+    // Now play the fight out into round 4 with everyone having fought.
+    combat.round = 4;
+    for (const unit of Object.values(combat.units)) {
+      unit.activatedThisRound = true;
+      unit.attackedThisActivation = true;
+    }
+    const bound = applyOk(picked, {
+      type: "USE_ARTIFACT_SET_POWER",
+      playerId: "p1",
+      setId: AA,
+      tier: 5,
+      unitId: "u_own_0"
+    });
+    expect(
+      bound.activeEffects.some((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "ATTACK_BONUS" && modifier.amount === 1)
+      )
+    ).toBe(true);
+  });
+
+  it("is REACHABLE in a real neutral fight where a guard is faster than every own unit", () => {
+    // Without the pre-activation-pause offer this fix would make the power
+    // unusable in any fight the guards open — the pause is the only moment the
+    // human is offered anything before the first swing.
+    let state = makeState(true, "sets-begin-reachable");
+    ownOnly(state, [...AA_MEMBERS]);
+    const hero = state.heroes.hero_p1;
+    hero.level = 1;
+    hero.spaceId = "guard-field";
+    state.adventure!.fields["guard-field"] = {
+      spaceId: "guard-field",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      difficulty: 2,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as never;
+    startNeutralEncounter(state, hero, state.adventure!.fields["guard-field"]);
+
+    // Deploy through the real placement flow.
+    for (let step = 0; step < 40 && state.combat?.setup; step += 1) {
+      const legal = getLegalActions(state, "p1");
+      const next =
+        legal.find((entry) => entry.action.type === "PLACE_COMBAT_UNIT") ??
+        legal.find((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT");
+      if (!next) {
+        break;
+      }
+      state = applyOk(state, next.action);
+    }
+    expect(state.combat!.setup).toBeNull();
+    // A guard opened the fight, so the human's only surface is the pause.
+    expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
+    expect(state.combat!.units[state.combat!.activeUnitId!].controllerId).toBe(NEUTRAL_PLAYER_ID);
+    expect(
+      Object.values(state.combat!.units).some(
+        (unit) => unit.activatedThisRound || unit.movedThisActivation || Boolean(unit.attackedThisActivation)
+      ),
+      "nothing has acted yet — the window is genuinely still open"
+    ).toBe(false);
+
+    const offered = selectLegalActions(state);
+    expect(offered.length, "the selection must be reachable at the pre-activation pause").toBeGreaterThan(0);
+    const applied = applyOk(state, offered[0].action);
+    expect(Object.keys(applied.players.p1.combatStats.artifactSetSelections ?? {})).toContain(AA);
+    // …and the pause offers ONLY the combat-start tiers, never the
+    // once-per-combat ones (which belong to the holder's own activation).
+    expect(
+      getLegalActions(state, "p1").some((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER")
+    ).toBe(false);
+  });
+
+  it("a hosted (redacted) client sees the SAME closed window the server enforces", () => {
+    const state = beginningCombat("sets-begin-hosted");
+    state.players.p1.deck = [];
+    state.players.p1.artifactSetStatus = playerArtifactSetStatuses(state, "p1");
+    const combat = state.combat!;
+    combat.units.u_own_1.activatedThisRound = true;
+    combat.units.u_own_1.attackedThisActivation = true;
+
+    const seat = redactStateForSeat(state, "p1");
+    expect(getLegalActions(seat, "p1").filter((entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT")).toEqual(
+      []
+    );
+    // CONTROL: with the flags cleared the same redacted client DOES see it, so
+    // the emptiness above is the timing gate and not the redaction.
+    const open = beginningCombat("sets-begin-hosted-open");
+    open.players.p1.deck = [];
+    open.players.p1.artifactSetStatus = playerArtifactSetStatuses(open, "p1");
+    expect(
+      getLegalActions(redactStateForSeat(open, "p1"), "p1").filter(
+        (entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT"
+      ).length
+    ).toBeGreaterThan(0);
+  });
+
+  it("a SECOND fight re-opens the window that the first one closed", () => {
+    const state = makeState(true, "sets-begin-two-fights");
+    ownOnly(state, [...AA_MEMBERS]);
+    // Fight 1 is over and its window was spent AND closed.
+    state.players.p1.combatStats.artifactSetUsesThisCombat = ["angelic_alliance:2"];
+    state.players.p1.combatStats.artifactSetSelections = { angelic_alliance: "stale_unit" };
+
+    const hero = state.heroes.hero_p1;
+    hero.level = 1;
+    hero.spaceId = "guard-field-2";
+    state.adventure!.fields["guard-field-2"] = {
+      spaceId: "guard-field-2",
+      tileInstanceId: "t",
+      slot: 0,
+      location: "mine",
+      difficulty: 3,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as never;
+    startNeutralEncounter(state, hero, state.adventure!.fields["guard-field-2"]);
+
+    expect(state.players.p1.combatStats.artifactSetUsesThisCombat).toEqual([]);
+    expect(state.players.p1.combatStats.artifactSetSelections).toEqual({});
+    expect(state.combat!.round).toBe(1);
+    expect(
+      Object.values(state.combat!.units).some(
+        (unit) => unit.activatedThisRound || unit.movedThisActivation || Boolean(unit.attackedThisActivation)
+      )
+    ).toBe(false);
+    expect(artifactSetCombatStartWindowOpen(state)).toBe(true);
+  });
+
+  it("DATA: the printed text and the declared timing agree, in BOTH directions", () => {
+    // The gate used to key off `effect.kind === "select-unit"`, which happened to
+    // cover today's three tiers. This invariant is what stops a FUTURE
+    // beginning-of-the-combat tier from silently running all fight long.
+    let declared = 0;
+    for (const set of ARTIFACT_SETS) {
+      for (const tier of set.tiers) {
+        const printed = COMBAT_START_TEXT_PATTERN.test(tier.text);
+        expect(tier.timing === "combat-start", `${set.id}:${tier.threshold} — "${tier.text}"`).toBe(printed);
+        if (printed) {
+          declared += 1;
+        }
+        // Every `select-unit` effect IS a beginning-of-the-combat tier.
+        if (tier.effect.kind === "select-unit") {
+          expect(tier.timing, `${set.id}:${tier.threshold} select tier`).toBe("combat-start");
+        }
+      }
+    }
+    // Angelic Alliance, Ironfist of the Ogre, Armor of the Damned.
+    expect(declared).toBe(3);
+  });
+
+  it("RULE OFF / no combat: the window read is inert", () => {
+    const off = makeState(false, "sets-begin-off");
+    ownOnly(off, [...AA_MEMBERS]);
+    stageCombat(off, [{ unitDefId: "castle.halberdiers", side: "few" }], [{ unitDefId: "neutral.skeletons", side: "neutral" }]);
+    expect(artifactSetPowerOffers(off, "p1")).toEqual([]);
+    const mapOnly = makeState(true, "sets-begin-nocombat");
+    ownOnly(mapOnly, [...AA_MEMBERS]);
+    expect(artifactSetCombatStartWindowOpen(mapOnly)).toBe(false);
+    expect(artifactSetPowerOffers(mapOnly, "p1").some((offer) => offer.kind === "select")).toBe(false);
   });
 });

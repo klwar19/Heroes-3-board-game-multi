@@ -6453,8 +6453,23 @@ function getLegalActionsCore(
  * both sides read the same function, a rendered button can never be refused and
  * a refused action can never have been rendered.
  */
-function addArtifactSetActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addArtifactSetActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  /**
+   * Restrict to the tiers whose PRINTED timing is "at the beginning of the
+   * combat". Used by the neutral pre-activation pause, which is otherwise the
+   * only moment a human sees in a neutral fight before the first guard swings —
+   * without it the combat-start window would be unreachable whenever a guard is
+   * faster than every one of the player's units.
+   */
+  combatStartOnly = false
+): void {
   for (const offer of artifactSetPowerOffers(state, playerId)) {
+    if (combatStartOnly && offer.tier.timing !== "combat-start") {
+      continue;
+    }
     if (offer.kind === "select") {
       if (!offer.unitId) {
         continue;
@@ -10516,6 +10531,13 @@ function getCombatInteractionActions(
         // activation spells on the Intelligence freedom, so only the right
         // spells are offered off-turn.)
         actions.push(...getOffTurnCombatReactions(state, playerId, cards));
+        // Polish Set Artifacts: the "at the beginning of the combat" tiers close
+        // the instant the first unit acts, and in a neutral fight this pause is
+        // the ONLY moment the human is offered anything before a faster guard
+        // swings — so surface exactly those tiers here (never the once-per-combat
+        // ones, which stay on the holder's own activation). No-op when the rule
+        // is off or the window has already closed.
+        addArtifactSetActions(actions, state, playerId, true);
       }
       // Manual guard control: after this pause the FIGHTER commands the unit
       // (or delegates via the separate "Let … act (automatic)" button), so the

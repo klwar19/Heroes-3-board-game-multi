@@ -1,5 +1,6 @@
 import { expireEffectsForCombatEnd } from "./active-effects";
 import { getUnitSide } from "./adventure";
+import { combatFightingHasBegun } from "./combat-timing";
 import { appendEvent } from "./events";
 import { armyUnitStacksActive } from "./house-rules";
 import { getRuleset, unitSideRuleOverrides } from "./ruleset";
@@ -387,14 +388,12 @@ export function pvpEscapeWindowOpen(combat: CombatState): boolean {
   if (combat.outcome || combat.setup || combat.round !== 1) {
     return false;
   }
-  const fightingBegun = Object.values(combat.units).some(
-    (unit) =>
-      unit.activatedThisRound ||
-      unit.movedThisActivation ||
-      Boolean(unit.attackedThisActivation) ||
-      (unit.attacksThisActivation ?? 0) > 0
-  );
-  return !fightingBegun;
+  // `combatFightingHasBegun` is the SHARED read (combat-timing.ts) — the Polish
+  // Set Artifacts "at the beginning of the combat" tiers use the same one, so the
+  // two cannot drift apart about when a fight has started. The extra
+  // `combat.setup` exclusion above is this window's own: during deployment the
+  // placement screen owns the retreat control.
+  return !combatFightingHasBegun(combat);
 }
 
 export function livingControllerIds(combat: CombatState): Set<PlayerId> {

@@ -484,6 +484,52 @@ describe("Set Artifacts UI — COMBAT offers reach ONE dock entry, then the boar
     expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(0);
   });
 
+  it("AUTO-DISARMS when the armed power stops being offered (the combat-start window closed)", () => {
+    // The board stores only the power's GROUP KEY, so an aim left armed when the
+    // "at the beginning of the combat" window closes (a unit acted, the round
+    // rolled on) must drop its glow and its Cancel button instead of promising a
+    // click the engine would refuse.
+    let state = makeState(true, "set-ui-auto-disarm");
+    state = ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);
+    const combat = stageCombat(state, 2);
+
+    const legalActions = getLegalActions(state, "p1");
+    const onAction = vi.fn();
+    const { container, rerender } = renderTable(state, legalActions, onAction);
+    fireEvent.click(screen.getByRole("button", { name: /Set powers \(\d+\)/ }));
+    fireEvent.click(screen.getByRole("button", { name: /choose one of 2 units on the battlefield/i }));
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /^Cancel Angelic Alliance$/ })).toBeTruthy();
+
+    // The fighting begins — the engine now offers no selection at all.
+    combat.units.u_own_0.activatedThisRound = true;
+    combat.units.u_own_0.attackedThisActivation = true;
+    const closed = getLegalActions(state, "p1");
+    expect(closed.some((entry) => entry.action.type === "SELECT_ARTIFACT_SET_UNIT")).toBe(false);
+
+    rerender(
+      <ArtifactSetIconsProvider enabled>
+        <CardZoomProvider>
+          <CommandDock legalActions={closed} onAction={onAction} state={state} viewerPlayerId="p1" />
+          <BattlefieldBoard
+            legalActions={closed}
+            onAction={onAction}
+            onInspect={() => {}}
+            selectedCardAction={null}
+            state={state}
+            viewerPlayerId="p1"
+          />
+        </CardZoomProvider>
+      </ArtifactSetIconsProvider>
+    );
+
+    expect(container.querySelectorAll(".battleCell.artifactSetTarget")).toHaveLength(0);
+    expect(screen.queryByLabelText("Set power aiming")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Cancel Angelic Alliance$/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Set powers \(\d+\)/ })).toBeNull();
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
   it("Cancel disarms the aim without dispatching anything", () => {
     let state = makeState(true, "set-ui-combat-cancel");
     state = ownOnly(state, [AA_MEMBERS[0], AA_MEMBERS[1]]);

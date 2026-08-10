@@ -95,6 +95,24 @@ export type ArtifactSetTierEffect =
   /** "Reduce the Recruitment or Reinforcement cost of a unit by N gold." */
   | { kind: "recruit-discount"; gold: number };
 
+/**
+ * WHEN in a combat a tier may be activated — the tier's PRINTED timing, declared
+ * rather than inferred.
+ *  - `combat-start`: the printed "At the beginning / At the start of the combat".
+ *    Offered ONLY while the fight has not begun (combat round 1, deployment or
+ *    before the first unit moves/strikes — `combatStartWindowOpen`).
+ *  - absent: no timing restriction of its own beyond its `limit` ("Once per
+ *    combat", "during an attack", the map tiers' "once per round").
+ *
+ * This MUST match the tier's own `text`: `artifact-sets.test.ts` asserts, in BOTH
+ * directions, that a tier whose printed line says "beginning/start of the combat"
+ * declares `timing: "combat-start"` and that no other tier does. Before this
+ * field the gate keyed off `effect.kind === "select-unit"`, which happened to
+ * cover today's three tiers but would silently let a FUTURE
+ * beginning-of-the-combat tier run all fight long.
+ */
+export type ArtifactSetTierTiming = "combat-start";
+
 export type ArtifactSetTier = {
   /** Piece count at which this tier switches on (2 for the first tier, then 3, 4, …). */
   threshold: number;
@@ -102,8 +120,13 @@ export type ArtifactSetTier = {
   text: string;
   target: ArtifactSetTargetKind;
   limit: ArtifactSetUseLimit;
+  /** The printed activation window; absent = any time its `limit` allows. */
+  timing?: ArtifactSetTierTiming;
   effect: ArtifactSetTierEffect;
 };
+
+/** Printed lines that mean "before the fight begins" (the invariant test's oracle). */
+export const COMBAT_START_TEXT_PATTERN = /\b(?:beginning|start) of the combat\b/i;
 
 export type ArtifactSetDefinition = {
   id: ArtifactSetId;
@@ -150,6 +173,7 @@ export const ARTIFACT_SETS: readonly ArtifactSetDefinition[] = [
         text: "At the beginning of the combat select 1 of your units. For this combat it gains +1 initiative.",
         target: "own",
         limit: "combat",
+        timing: "combat-start",
         effect: { kind: "select-unit", side: "own", initiative: 1 }
       },
       {
@@ -293,6 +317,7 @@ export const ARTIFACT_SETS: readonly ArtifactSetDefinition[] = [
         text: "At the start of the combat select 1 of your units. For this combat it gains +2 initiative.",
         target: "own",
         limit: "combat",
+        timing: "combat-start",
         effect: { kind: "select-unit", side: "own", initiative: 2 }
       },
       {
@@ -322,6 +347,7 @@ export const ARTIFACT_SETS: readonly ArtifactSetDefinition[] = [
         text: "At the start of the combat select 1 enemy unit. For this combat it suffers -1 initiative.",
         target: "enemy",
         limit: "combat",
+        timing: "combat-start",
         effect: { kind: "select-unit", side: "enemy", initiative: -1 }
       },
       {

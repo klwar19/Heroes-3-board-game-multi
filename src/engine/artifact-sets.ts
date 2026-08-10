@@ -32,6 +32,7 @@ import {
   type ArtifactSetId,
   type ArtifactSetTier
 } from "@/data/cards/artifact-sets";
+import { combatStartWindowOpen } from "./combat-timing";
 import { houseRuleEnabled } from "./house-rules";
 import { HIDDEN_CARD_ID } from "./state";
 import type { CardId, GameState, PlayerId, PlayerState, ResourceKind } from "./state";
@@ -256,6 +257,24 @@ export function markArtifactSetRoundUse(
     ...(player.artifactSetRoundUses ?? {}),
     [artifactSetUseKey(setId, threshold)]: state.round
   };
+}
+
+/**
+ * The printed "At the beginning / At the start of the combat" window for one
+ * tier. THE gate for those tiers — offers and the two reducer handlers all reach
+ * it through `artifactSetPowerOffers`, so a stale client button and a forged
+ * action are refused by the same read.
+ *
+ * `combat.round === 1` alone is NOT that window (the bug the user reported): a
+ * default neutral fight IS one round, extended a round at a time, so a
+ * round-1-wide gate let a player pick "at the beginning of the combat" after
+ * every unit had attacked — including at the continue-or-retreat window, with
+ * the whole round already resolved. `combatStartWindowOpen` closes it the moment
+ * the first unit moves or strikes.
+ */
+export function artifactSetCombatStartWindowOpen(state: GameState): boolean {
+  const combat = state.combat;
+  return Boolean(combat && combatStartWindowOpen(combat));
 }
 
 /** Whether this tier's charge (per its `limit`) is available right now. */
@@ -533,11 +552,16 @@ export function artifactSetPowerOffers(state: GameState, playerId: PlayerId): Ar
       }
       const base = { setId: set.id, setName: set.name, threshold: tier.threshold, tier } as const;
 
+      // The PRINTED "at the beginning / at the start of the combat" timing,
+      // declared on the tier (never inferred from its effect kind): offered only
+      // while the fight has NOT begun — deployment, or before the first unit
+      // moves or strikes. Optional and skippable; nothing is ever forced.
+      if (tier.timing === "combat-start" && (!inCombat || !artifactSetCombatStartWindowOpen(state))) {
+        continue;
+      }
+
       if (tier.effect.kind === "select-unit") {
-        // "At the beginning of the combat" — offered in combat ROUND 1 only, so
-        // the granted Initiative genuinely shapes the whole fight instead of
-        // being picked after the board is read. Optional and skippable.
-        if (!inCombat || (combat?.round ?? 1) !== 1) {
+        if (!inCombat) {
           continue;
         }
         const candidates = tier.effect.side === "own" ? ownUnits : enemyUnits;
