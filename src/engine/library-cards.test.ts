@@ -489,9 +489,25 @@ describe("Shackles of War + PvP retreat/surrender", () => {
     // Retreat still goes through, ending the combat with the defender as loser.
     const retreated = applyOk(state, { type: "RETREAT_FROM_COMBAT", playerId: "p2" });
     expect(retreated.combat?.outcome).toMatchObject({ defeatedPlayerId: "p2", reason: "retreat" });
-    // The card was spent.
+    // The card was spent. FLIPPED EXPECTATION (ongoing-cards rule): Shackles
+    // creates a COMBAT-LONG "cannot surrender" effect, so the physical card now
+    // stays visible in the Ongoing tray while that lock is live instead of lying
+    // in the discard pile — and reaches the discard when the combat ends (see
+    // ongoing-cards-in-play.test.ts).
     expect(state.players.p1.hand).not.toContain("artifact.shackles_of_war");
-    expect(state.players.p1.discard).toContain("artifact.shackles_of_war");
+    expect(state.players.p1.discard).not.toContain("artifact.shackles_of_war");
+    expect(state.players.p1.ongoingCards?.map((held) => held.cardId)).toContain("artifact.shackles_of_war");
+    // The lock is still live while the beaten side has not acknowledged the end
+    // of the fight, so the card is still in play there; the combat's own teardown
+    // expires it and the shared release pass sends the card to the discard.
+    expect(retreated.players.p1.discard).not.toContain("artifact.shackles_of_war");
+    const acknowledge = getLegalActions(retreated, "p1").find(
+      (legal) => legal.action.type === "ACKNOWLEDGE_COMBAT_END"
+    );
+    expect(acknowledge, "the winner acknowledges the retreat").toBeTruthy();
+    const ended = applyOk(retreated, acknowledge!.action);
+    expect(ended.players.p1.ongoingCards ?? []).toHaveLength(0);
+    expect(ended.players.p1.discard).toContain("artifact.shackles_of_war");
   });
 
   it("keeping it leaves the defender free to Surrender in prep, card still in hand", () => {

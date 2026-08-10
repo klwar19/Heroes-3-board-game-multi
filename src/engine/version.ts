@@ -135,7 +135,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `isDesignedEdgeSealedBetween`) — a v23 edge still seals them, so a new client
 // would offer steps a stale server rejects ("not legal" on every click, the
 // frozen-table symptom class the banner exists to surface).
-export const ENGINE_PROTOCOL_VERSION = 24;
+// v25: ongoing cards are held in play whenever their effect is live. A shared
+// action-tail pass (`holdLiveOngoingCardsFromDiscard`) now pulls ANY card out of
+// its owner's discard pile while a lasting effect it created is still running —
+// closing the paths whose effect is only created LATER than the play action
+// (Fortune's map Power prompt, a Shackles of War played in the PvP prep window).
+// No new action and no new state field (the `ongoingCards` tray already exists),
+// but the same card sits in a DIFFERENT zone on a v24 edge, so discard-reading
+// offers a new client derives (a Scholar / recovery TAKE_FROM_DISCARD naming
+// that card) would be rejected by a stale server — the "not legal" symptom class
+// the banner exists to surface.
+export const ENGINE_PROTOCOL_VERSION = 25;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

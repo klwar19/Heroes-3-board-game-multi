@@ -3502,6 +3502,71 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## A live ongoing card is NEVER in the discard pile (2026-08-10, protocol v25)
+
+USER RULE: "when ongoing spells/abilities/artifacts are ongoing — like Luck,
+Water Walk, Pathfinding — show their cards in a window (with constant effects)
+and only when the effect is gone put them on a discard." Most of that already
+ran (`ongoingCards` + `releaseEndedOngoingCards`); the hole was the OTHER
+direction. Protocol bumped to **v25** — `npm run deploy:partykit` owed.
+
+Leading with what does NOT change / deliberate limits:
+- **The Ongoing tray is the window — NO new window was built.** The existing
+  "Permanents & Ongoing" tray already renders each held card's FACE on the map
+  AND combat screens, for every seat (a public zone; player views never mask
+  `ongoingCards`), with the full card (its printed effect text) one click away
+  via the shared zoom. Once the engine gap below was closed the user's ask is
+  satisfied by that surface; a second redundant window was deliberately NOT
+  added.
+- **Nothing new is mandatory**: the pass moves cards between two existing zones
+  at the shared action tail — no new action, no window, no AI/AFK surface.
+- **Combat-scoped holds live until the fight is ACKNOWLEDGED**, not the moment
+  the outcome is set (a retreat leaves the combat open, so a combat-long card is
+  still in play then — see the Shackles case below).
+- **The instant durations, permanents, removed cards and shared-deck casts are
+  untouched** (nothing to hold: an instant shows nothing, a permanent is already
+  a visible zone, a removed / Scroll / Helm-from-the-Spell-deck cast leaves no
+  card in the owner's discard).
+- **Legacy snapshots migrate silently**: a saved game whose card is in the
+  discard while its effect runs has it pulled into the tray on the next action.
+  Known cosmetic edge (documented, not fixed): if a card that created a live
+  effect was REMOVED from the game while a SECOND copy sits in the discard, the
+  pass holds that second copy instead — no card is created or destroyed, and it
+  returns to the discard when the effect ends.
+
+What runs (each mutation-checked in `src/engine/ongoing-cards-in-play.test.ts`;
+removing the wiring fails 5 engine tests + the Shackles case):
+- **ONE seam**: `holdLiveOngoingCardsFromDiscard` (active-effects.ts), called in
+  `applyAction`'s tail immediately before `releaseEndedOngoingCards` — the two
+  are now a pair (hold what is live, release what has ended). It pulls a card out
+  of its owner's discard whenever a LIVE, non-instant, card-sourced
+  `activeEffects` entry names it, skipping effect ids an Ongoing entry already
+  tracks (so a second copy is never swept up by the first copy's effect and a
+  Knowledge/Mysticism-marked `returnTo` is kept).
+- **The two paths it fixes** (both create their effect LATER than the play
+  action, so the per-play `holdOngoingCardIfEffectCreated` hooks could not see
+  it): **Fortune** played on the map with a power source in hand (its Power
+  prompt creates the reroll effect when ANSWERED), and **Shackles of War** played
+  in the PvP prep window (its combat-long "cannot Surrender" lock —
+  `library-cards.test.ts` carries the flipped expectation).
+- **A library-derived invariant** guards the class, not just those two: the test
+  gives p1 every implemented card in turn, plays EVERY offer the engine makes for
+  it on the map (≈250 plays) and in combat (≈835 plays), answers any follow-up
+  option prompt, and asserts no live card-sourced effect is ever represented by a
+  card lying in the discard. LIMIT: only cards those two fixtures make playable
+  are exercised (coverage floors are asserted so it cannot silently degenerate).
+- **Card-count conservation, the expiry seam and the voluntary end** are pinned
+  (exactly one copy at every step; the card reaches the discard once, when the
+  effect ends; `DISCARD_ONGOING_CARD` still ends a newly-held card and routes it
+  to its own zone), with CONTROLs: a Fortune with no power source (no prompt) was
+  ALREADY held by the old hook, and a plain instant (Estates) still goes straight
+  to the discard.
+- **Display pinned end-to-end** in `src/components/table/ongoing-tray.test.tsx`:
+  a real map play of Pathfinding shows the card face in the tray, opens full
+  size, is visible to another seat without that seat getting the owner's "end
+  this effect" control, and leaves the tray for the discard only once the effect
+  is gone.
+
 ## Specialties & combat reactions · summon/recruit elemental split (2026-07-31)
 
 Two audited codex commits. Leading with what does NOT run / deliberate limits:

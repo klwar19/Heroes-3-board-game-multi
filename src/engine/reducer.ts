@@ -330,6 +330,7 @@ import {
   hasActiveIgnoresDefense,
   hasActiveRetaliationDisadvantage,
   getSchoolPowerBonus,
+  holdLiveOngoingCardsFromDiscard,
   makeActiveEffect,
   playerHasSpellTimingFreedom,
   releaseEndedOngoingCards,
@@ -22496,8 +22497,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // before it acts. Runs after the neutral pump and war-machine round-starts.
   maybeOpenPlayerActivationChoice(nextState);
 
-  // Ongoing cards whose every effect has ended (expired, consumed, dispelled
-  // — whatever this action did) finally reach their discard pile or hand.
+  // Ongoing cards, both directions, at one shared tail:
+  //   - a card whose lasting effect only came into being LATER than its own play
+  //     action (a boost/Power prompt answered in a separate action) is pulled out
+  //     of the discard pile into the Ongoing tray, so a live effect is never
+  //     represented by a card lying in the discard;
+  //   - a card whose every effect has ended (expired, consumed, dispelled —
+  //     whatever this action did) finally reaches its discard pile or hand.
+  holdLiveOngoingCardsFromDiscard(nextState);
   releaseEndedOngoingCards(nextState);
 
   // Shared decks always show one card face-up on their discard pile. Refill

@@ -977,6 +977,70 @@ export function releaseEndedOngoingCards(state: GameState): void {
   }
 }
 
+/**
+ * The catch-all twin of `releaseEndedOngoingCards`: a card whose play left a
+ * LIVE lasting effect belongs in the Ongoing tray, never in the discard pile.
+ *
+ * The per-play `holdOngoingCardIfEffectCreated` hooks (spell cast, card play,
+ * reaction, map cast-then-boost) only see the effects created INSIDE their own
+ * action. An effect created LATER — a card that opens a Power/boost prompt and
+ * only creates its effect when that prompt is answered (Fortune's map play) —
+ * left its card sitting in the discard while the effect ran. This pass runs at
+ * the same shared action tail and holds any such card, so no play path has to
+ * know about the Ongoing tray.
+ *
+ * Deliberate scope:
+ *  - `source.type === "card"` only — unit- and system-sourced effects have no
+ *    physical card to hold, and a permanent in play / a removed or shared-deck
+ *    card is not in the owner's discard, so those are all no-ops.
+ *  - `instant` durations are skipped (nothing to show).
+ *  - an effect already tracked by an Ongoing entry is skipped, so a second copy
+ *    of the same card in the discard is never swept up by the first copy's
+ *    effect, and an entry whose `returnTo` was re-marked by a Knowledge /
+ *    Mysticism recall keeps it.
+ */
+export function holdLiveOngoingCardsFromDiscard(state: GameState): void {
+  const alreadyHeld = new Set<string>();
+  for (const player of Object.values(state.players)) {
+    for (const held of player.ongoingCards ?? []) {
+      for (const effectId of held.effectIds) {
+        alreadyHeld.add(effectId);
+      }
+    }
+  }
+
+  // One entry per (owner, card): a card that made several effects is held once
+  // and released only when the LAST of them ends, exactly like the play hooks.
+  const groups = new Map<string, { playerId: PlayerId; cardId: string; effectIds: string[] }>();
+  for (const effect of state.activeEffects) {
+    if (effect.source.type !== "card" || effect.duration.type === "instant" || alreadyHeld.has(effect.id)) {
+      continue;
+    }
+    const ownerId = effect.source.controllerId;
+    if (!state.players[ownerId]) {
+      continue;
+    }
+    const key = `${ownerId}#${effect.source.cardId}`;
+    const group = groups.get(key);
+    if (group) {
+      group.effectIds.push(effect.id);
+    } else {
+      groups.set(key, { playerId: ownerId, cardId: effect.source.cardId, effectIds: [effect.id] });
+    }
+  }
+
+  for (const group of groups.values()) {
+    const player = state.players[group.playerId];
+    const discardIndex = player.discard.lastIndexOf(group.cardId);
+    if (discardIndex === -1) {
+      continue;
+    }
+    player.discard.splice(discardIndex, 1);
+    player.ongoingCards = player.ongoingCards ?? [];
+    player.ongoingCards.push({ cardId: group.cardId, effectIds: group.effectIds, returnTo: "discard" });
+  }
+}
+
 /** Player-requested early end for a card held in the Ongoing tray. */
 export function discardOngoingCardVoluntarily(
   state: GameState,
