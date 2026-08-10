@@ -2601,6 +2601,20 @@ What each commit ships:
   PLAYER VIEW masks every face-down tile to "hidden" — the art renders from
   the step, and other seats' views render nothing
   (`obelisk-house-rule.test.ts`, `obelisk-grail-clue-art.test.tsx`).
+  **2026-08-10 (user rule, house rule / map design).** LIMITS FIRST: the pick
+  now DELIBERATELY leaks that every offered tile hosts a Ⅶ objective — only
+  face-down tiles whose resolved face can still be a **Grail OR a Dragon
+  Utopia** are choosable (designation first, else the printed difficulty-7
+  field; `isFaceDownGrailClueChoice`), so the scry only has to answer WHICH of
+  them is the Grail; a Utopia-only map still offers NO clue (the gate is
+  unchanged — a hidden Grail must really exist), so there is never a dead
+  prompt. The tile is picked BY CLICKING its glowing face-down hexes on the map
+  (`grailClueTargets` in screen.tsx, the Observatory pattern); the tray shows
+  only the hint + "Do not inspect a tile". No protocol change: the engine's
+  `options` stay index-aligned and labelled (AFK driver / AI scorer /
+  screen readers), the click dispatches the very same `RESOLVE_VISIT_STEP`, and
+  the picker is detected from its option STEPS. jsdom cannot compute CSS, so the
+  glow itself is unverified — only the class/click contract is pinned.
 - **Tome split-deck selection** (`5a094c7c`): a Tome's "take a Spell" on a
   split-deck table opens a basic-vs-expert deck pick (the expert deck honours
   the crown gate) instead of always digging basic (`tome-artifacts.test.ts`).

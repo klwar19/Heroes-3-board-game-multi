@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { GameState, MapFieldState, PlayerId } from "./state";
+import type { GameState, MapFieldState, PlayerId, VisitStep } from "./state";
 import { beginFieldVisit, classifyHeroStep, getMainHero, instantiateTile } from "./adventure";
 import { pumpAdventureQueues, resolveVisitStep } from "./adventure-reducer";
 import { createAdventureGameState } from "./index";
 import { getPlayerView } from "./player-view";
+import { allTileDefinitions } from "@/data/map/tiles";
 
 /**
  * Obelisk house rule `obelisk-rewards` (engine: handleObeliskVisit; BINH default
@@ -68,6 +69,24 @@ function parkHero(state: GameState, playerId: PlayerId, field: MapFieldState) {
   return hero;
 }
 
+/** Opens the Obelisk visit for p1 and returns the clue picker step (or null). */
+function openCluePicker(state: GameState): Extract<VisitStep, { type: "CHOOSE_ONE" }> | null {
+  const obelisk = injectObelisk(state);
+  const hero = getMainHero(state, "p1")!;
+  hero.spaceId = obelisk.spaceId;
+  beginFieldVisit(state, hero.id, obelisk.spaceId, false);
+  const step = state.adventure!.pendingVisit?.steps[0];
+  return step?.type === "CHOOSE_ONE" ? step : null;
+}
+
+/** The tile instance ids the picker offers to scry, in option order. */
+function scryTileIds(picker: Extract<VisitStep, { type: "CHOOSE_ONE" }>): string[] {
+  return picker.options
+    .map((option) => option.steps[0])
+    .filter((step): step is Extract<VisitStep, { type: "GRAIL_TILE_SCRY" }> => step?.type === "GRAIL_TILE_SCRY")
+    .map((step) => step.tileInstanceId);
+}
+
 describe("Obelisk house rule", () => {
   it("offers an optional, private Obelisk clue without disclosing which face-down tile hides the Grail", () => {
     const state = makeGame();
@@ -89,7 +108,9 @@ describe("Obelisk house rule", () => {
     );
     expect(chosenIndex).toBeGreaterThanOrEqual(0);
     expect(picker.options.some((option) => option.label === "Do not inspect a tile")).toBe(true);
-    // C1 is a non-Grail candidate, proving the list is not a Grail-position leak.
+    // C1 prints a Dragon Utopia, so it IS offered but is NOT the Grail: the
+    // filtered list still hides WHICH of the Ⅶ tiles hides the Grail, which is
+    // exactly what the scry then answers.
     expect(picker.options[chosenIndex]?.label).toContain(`row ${chosen.centerRow}, col ${chosen.centerCol}`);
     expect(picker.options.map((option) => option.label).join(" ")).not.toContain("C4");
 
@@ -113,6 +134,83 @@ describe("Obelisk house rule", () => {
     expect(chosen.faceDown).toBe(true);
     expect(getPlayerView(state, "p2").adventure!.tiles[chosen.id]?.tileDefId).toBe("hidden");
   });
+  // USER RULE (2026-08-10): "only tiles with Utopia/Grail can be chosen". The
+  // filter DELIBERATELY leaks that every offered tile hosts a Ⅶ objective —
+  // that is the point of the house rule; the scry still has to answer WHICH of
+  // them is the Grail.
+  it("offers ONLY face-down tiles that can host the Ⅶ objective (Grail or Dragon Utopia)", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };
+    const grail = instantiateTile(state.adventure!, "C4", { row: 70, col: 70 }, 0, true); // prints grail
+    const utopia = instantiateTile(state.adventure!, "C1", { row: 74, col: 74 }, 0, true); // prints dragon_utopia
+    const plainCenter = instantiateTile(state.adventure!, "C5", { row: 78, col: 78 }, 0, true); // random_town Ⅶ
+    const plainFar = instantiateTile(state.adventure!, "F2", { row: 82, col: 82 }, 0, true); // no Ⅶ objective
+
+    const picker = openCluePicker(state);
+    if (!picker) throw new Error("expected Grail clue picker");
+    const offered = scryTileIds(picker);
+
+    expect(offered).toContain(grail.id);
+    expect(offered).toContain(utopia.id);
+    // CONTROL: dropping the filter puts BOTH of these straight back in the list.
+    expect(offered).not.toContain(plainCenter.id);
+    expect(offered).not.toContain(plainFar.id);
+    // Whole-list invariant: every offered tile really prints (or is designated)
+    // a Grail / Dragon Utopia — this also covers the scenario's own tiles.
+    for (const tileId of offered) {
+      const tile = state.adventure!.tiles[tileId];
+      expect(tile?.faceDown, `${tileId} must still be face-down`).toBe(true);
+      const designation = tile!.viiField ?? tile!.viiFields?.[0];
+      const printed = allTileDefinitions[tile!.tileDefId]?.fields.some(
+        (field) => field.difficulty === 7 && (field.location === "grail" || field.location === "dragon_utopia")
+      );
+      expect(
+        designation === "grail" || designation === "dragon_utopia" || printed,
+        `${tileId} (${tile!.tileDefId}) is not a Grail / Dragon Utopia host`
+      ).toBe(true);
+    }
+    // The decline option stays reachable (the tray's only button).
+    expect(picker.options[picker.options.length - 1]?.label).toBe("Do not inspect a tile");
+  });
+
+  it("offers a DESIGNATED Grail / Dragon Utopia tile whose printed face is neither", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };
+    // A designation FORCES the Ⅶ objective whatever the tile prints (mirrors
+    // materializeTileFields), so a designated C5 is a real clue target.
+    const designatedGrail = instantiateTile(state.adventure!, "C5", { row: 60, col: 60 }, 0, true);
+    designatedGrail.viiField = "grail";
+    const designatedUtopia = instantiateTile(state.adventure!, "C5", { row: 64, col: 64 }, 0, true);
+    designatedUtopia.viiField = "dragon_utopia";
+    const undesignated = instantiateTile(state.adventure!, "C5", { row: 68, col: 68 }, 0, true);
+
+    const picker = openCluePicker(state);
+    if (!picker) throw new Error("expected Grail clue picker");
+    const offered = scryTileIds(picker);
+
+    expect(offered).toContain(designatedGrail.id);
+    expect(offered).toContain(designatedUtopia.id);
+    // CONTROL: the same printed tile without a designation is never offered.
+    expect(offered).not.toContain(undesignated.id);
+  });
+
+  it("offers no clue at all when no face-down tile can host the Grail (no dead prompt)", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };
+    // Utopia hosts alone are choosable but never worth a clue: nothing to find.
+    instantiateTile(state.adventure!, "C1", { row: 71, col: 71 }, 0, true);
+    instantiateTile(state.adventure!, "F2", { row: 75, col: 75 }, 0, true);
+
+    const obelisk = injectObelisk(state);
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = obelisk.spaceId;
+    beginFieldVisit(state, hero.id, obelisk.spaceId, false);
+
+    // No prompt at all — an AI seat / the AFK driver has nothing to answer.
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(state.pendingChoice).toBeNull();
+  });
+
   it("allows the visitor to decline the optional Obelisk clue", () => {
     const state = makeGame();
     state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };

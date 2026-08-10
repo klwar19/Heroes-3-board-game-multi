@@ -5795,14 +5795,13 @@ function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): Vi
 }
 
 /**
- * A face-down tile is a Grail clue candidate only when its authoritative face
- * can still contain the Grail. This mirrors materializeTileFields exactly: a
- * designation FORCES the Ⅶ objective whatever the tile prints, so the
- * designation is checked FIRST and the printed field only decides when no
- * designation exists. Every `grailAsUtopia` mode leaves a Grail field a real
- * dig site until a Grail is TAKEN, so it stays a real clue target.
+ * Whether a face-down tile's authoritative face can still resolve to one of the
+ * given Ⅶ objective kinds. Mirrors materializeTileFields exactly: a designation
+ * FORCES the Ⅶ objective whatever the tile prints, so the designation is checked
+ * FIRST and the printed field only decides when no designation exists. A
+ * multi-select (`viiFields`) tile MIGHT still become one of them, so it counts.
  */
-function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
+function faceDownViiObjectiveCandidate(tile: MapTileState, kinds: readonly string[]): boolean {
   if (!tile.faceDown) {
     return false;
   }
@@ -5811,27 +5810,60 @@ function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
     return false;
   }
   if (tile.viiField) {
-    return tile.viiField === "grail";
+    return kinds.includes(tile.viiField);
   }
-  // The hidden Grail & Dragon Utopia package: the tile MIGHT be the Grail.
-  if (tile.viiFields?.includes("grail")) {
+  // The hidden Grail & Dragon Utopia package: the tile MIGHT be one of them.
+  if (tile.viiFields?.some((kind) => kinds.includes(kind))) {
     return true;
   }
-  return def.fields.some((field) => field.difficulty === 7 && field.location === "grail");
+  return def.fields.some((field) => field.difficulty === 7 && kinds.includes(field.location));
+}
+
+/**
+ * A face-down tile that can still contain the Grail. Gates whether the clue is
+ * offered at ALL: no hidden Grail on the map, no clue. Every `grailAsUtopia`
+ * mode leaves a Grail field a real dig site until a Grail is TAKEN, so it stays
+ * a real clue target.
+ */
+function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
+  return faceDownViiObjectiveCandidate(tile, ["grail"]);
+}
+
+/**
+ * A face-down tile that is CHOOSABLE in the Obelisk clue picker — one that can
+ * still host the Ⅶ objective (Grail OR Dragon Utopia).
+ *
+ * USER RULE (house rule / map design, 2026-08-10): "only tiles with
+ * Utopia/Grail can be chosen". This DELIBERATELY leaks that every offered tile
+ * hosts a Ⅶ objective — the visitor learns where the centre objectives hide
+ * without learning WHICH of them is the Grail, which is exactly what the scry
+ * then answers. Filtering to Grail alone would make the pick pointless.
+ */
+function isFaceDownGrailClueChoice(tile: MapTileState): boolean {
+  return faceDownViiObjectiveCandidate(tile, ["grail", "dragon_utopia"]);
 }
 
 /** Build the private, positional Obelisk clue picker when a face-down Grail exists. */
 function grailClueStep(adventure: AdventureState): VisitStep | null {
-  // The rule exists only if a hidden Grail is really on this map. The choice
-  // list itself MUST stay neutral: filtering it to Grail tiles would disclose
-  // every Grail position before the visitor chooses one.
-  if (!Object.values(adventure.tiles).some((tile) => isFaceDownGrailClueCandidate(tile))) {
+  const tiles = Object.values(adventure.tiles);
+  // The rule exists only if a hidden Grail is really on this map.
+  if (!tiles.some((tile) => isFaceDownGrailClueCandidate(tile))) {
     return null;
   }
-  const candidates = Object.values(adventure.tiles).filter((tile) => tile.faceDown);
+  const candidates = tiles.filter((tile) => isFaceDownGrailClueChoice(tile));
+  // Defensive: a gate hit with no choosable tile must never open a dead prompt
+  // an AI seat / the AFK driver would have to answer with nothing to pick.
+  // (Unreachable today — every Grail candidate is also a Ⅶ objective candidate.)
+  if (candidates.length === 0) {
+    return null;
+  }
   return {
     type: "CHOOSE_ONE",
-    prompt: "Obelisk — choose one face-down tile to inspect for a Grail clue",
+    // Labels stay index-aligned and human-readable: the AFK driver, the AI
+    // option scorer and screen readers all read them. Only the prompt TRAY
+    // stops rendering one button per tile (the pick is a map click).
+    prompt:
+      "Obelisk — choose one face-down tile to inspect for a Grail clue (only Grail / Dragon Utopia tiles are offered)",
     options: [
       ...candidates.map((tile) => ({
         label: `Tile at row ${tile.centerRow}, col ${tile.centerCol}`,
@@ -7175,8 +7207,10 @@ export function processPendingVisit(state: GameState): void {
       case "GRAIL_TILE_SCRY": {
         const tile = adventure.tiles[step.tileInstanceId];
         // Raw actions cannot reveal arbitrary map information: the selected
-        // tile must still be placed and face-down. Grail candidacy gates the
-        // OFFER, not the selected position, to avoid leaking the Grail.
+        // tile must still be placed and face-down. The Ⅶ objective filter gates
+        // the OFFER (grailClueStep), which is the only place a scry step is
+        // minted — a RESOLVE_VISIT_STEP only names an option INDEX of that
+        // engine-built list, so no client can aim this at another tile.
         if (!tile || !tile.faceDown) {
           break;
         }

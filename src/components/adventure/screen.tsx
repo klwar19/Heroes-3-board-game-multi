@@ -1019,6 +1019,40 @@ export function HexMapBoard({
     return { revealByTile, placements };
   }, [rawAdventure, state, viewerPlayerId, legalActions, readOnly]);
 
+  // Obelisk Grail clue: the tile to inspect is picked BY CLICKING IT on the map
+  // (user request 2026-08-10 — "choose tiles from map view (much more
+  // intuitive)"), replacing the wall of "Tile at row X, col Y" buttons. The
+  // engine's option list stays index-aligned and labelled (the AFK driver, the
+  // AI scorer and screen readers read it); only the tray stops rendering the
+  // per-tile buttons. Detected from the option STEPS, so no protocol field and
+  // no new action type: the click dispatches the very RESOLVE_VISIT_STEP the
+  // button would have.
+  const grailClueTargets = useMemo(() => {
+    const byTile = new Map<string, GameAction>();
+    const visit = rawAdventure?.pendingVisit;
+    const step = visit?.steps[0];
+    if (readOnly || !visit || visit.playerId !== viewerPlayerId || step?.type !== "CHOOSE_ONE") {
+      return byTile;
+    }
+    const actionByOption = new Map<number, GameAction>();
+    for (const legal of legalActions) {
+      if (legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined) {
+        actionByOption.set(legal.action.optionIndex, legal.action);
+      }
+    }
+    step.options.forEach((option, optionIndex) => {
+      const inner = option.steps[0] as { type?: string; tileInstanceId?: string } | undefined;
+      if (inner?.type !== "GRAIL_TILE_SCRY" || typeof inner.tileInstanceId !== "string") {
+        return;
+      }
+      const action = actionByOption.get(optionIndex);
+      if (action) {
+        byTile.set(inner.tileInstanceId, action);
+      }
+    });
+    return byTile;
+  }, [rawAdventure, viewerPlayerId, legalActions, readOnly]);
+
   const legalRotations = useMemo(() => {
     const rotations = new Set<number>();
     for (const legal of legalActions) {
@@ -1178,6 +1212,10 @@ export function HexMapBoard({
       const normalDiscover = discoverByTile.get(tile.id);
       const observatoryDiscover = observatoryTargets.revealByTile.get(tile.id);
       const discover = normalDiscover ?? observatoryDiscover;
+      // Obelisk Grail clue pick (see grailClueTargets). Wins over `discover`
+      // because an open pendingVisit is exclusive — no movement/discovery offer
+      // can coexist with it — and a stray tap must resolve the OPEN prompt.
+      const grailClue = grailClueTargets.get(tile.id);
       // Face-down numeral is the tile's REAL guard band (Ⅳ–Ⅴ vs Ⅵ–Ⅶ). Sea and
       // underground used to hide the band behind a single Ⅳ–Ⅴ back + a combined
       // "Ⅳ–Ⅶ" hint — so a boss tile looked IV-V until opened, then sprung VII
@@ -1320,7 +1358,9 @@ export function HexMapBoard({
       // Gate" hint as a cavern. `data-underground` is the always-on layer cue
       // (present on every underground tile, absent on a plain Surface tile).
       const undergroundTile = tileLayer(tile) === "subterranean";
-      const cavernNeedsGate = undergroundTile && !discover && !readOnly;
+      // An open Grail-clue pick owns the tile's click, so it must not also wear
+      // the violet "needs a Gate" hint (an underground tile CAN be a candidate).
+      const cavernNeedsGate = undergroundTile && !discover && !grailClue && !readOnly;
       if (undergroundTile) {
         pushUndergroundTileOutline(overlays, tile.id, footprint, 0);
       }
@@ -1330,35 +1370,45 @@ export function HexMapBoard({
         cells.push(
           <g key={`${tile.id}-${slot}`}>
             <polygon
-              className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${cavernNeedsGate ? "needsGate" : ""}`}
+              className={`hexFaceDown ${discover && !readOnly ? "discoverable" : ""} ${
+                grailClue ? "grailClueTarget" : ""
+              } ${cavernNeedsGate ? "needsGate" : ""}`}
               data-tile-id={tile.id}
               data-underground={undergroundTile ? "true" : undefined}
               onClick={
-                discover && !readOnly
+                grailClue
                   ? () => {
                       if (!suppressClickRef.current) {
-                        onAction(discover);
+                        onAction(grailClue);
                       }
                     }
-                  : cavernNeedsGate
+                  : discover && !readOnly
                     ? () => {
                         if (!suppressClickRef.current) {
-                          remindGateAccess(hexSpaceId(coord));
+                          onAction(discover);
                         }
                       }
-                    : undefined
+                    : cavernNeedsGate
+                      ? () => {
+                          if (!suppressClickRef.current) {
+                            remindGateAccess(hexSpaceId(coord));
+                          }
+                        }
+                      : undefined
               }
               points={hexCorners(x, y, HEX_SIZE - 1.2)}
             >
               <title>
                 {`${
-                  discover
-                    ? normalDiscover
-                      ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
-                      : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
-                    : cavernNeedsGate
-                      ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
-                      : `Face-down tile ${backLabelDisplay}`
+                  grailClue
+                    ? `Obelisk Grail clue — click to inspect this ${backLabelDisplay} tile (it hosts a Grail or a Dragon Utopia)`
+                    : discover
+                      ? normalDiscover
+                        ? `Spend 1 movement point to discover this ${backLabelDisplay} tile`
+                        : `Reveal this adjacent ${backLabelDisplay} tile with the Observatory`
+                      : cavernNeedsGate
+                        ? `Underground tile (${backLabelDisplay}) — you can't discover it from the Surface. Enter a Subterranean Gate to open it.`
+                        : `Face-down tile ${backLabelDisplay}`
                 }${
                   faceDownPendingTokens.length > 0
                     ? ` — carries ${faceDownPendingTokens
@@ -1378,7 +1428,7 @@ export function HexMapBoard({
             </polygon>
           </g>
         );
-        if (slot === 0 && discover && !readOnly) {
+        if (slot === 0 && (grailClue || (discover && !readOnly))) {
           overlays.push(
             <text
               className="hexFaceDownLabel"
@@ -1387,7 +1437,11 @@ export function HexMapBoard({
               x={x}
               y={y + HEX_SIZE * 0.78}
             >
-              {normalDiscover ? "🐎 1 movement point: discover" : "Observatory: reveal this tile"}
+              {grailClue
+                ? "🔮 Grail clue: inspect this tile"
+                : normalDiscover
+                  ? "🐎 1 movement point: discover"
+                  : "Observatory: reveal this tile"}
             </text>
           );
         }
@@ -5678,6 +5732,46 @@ export function PromptTray({
           <div className="promptOptions">
             <button className="commandButton" onClick={() => onAction(cancel.action)} type="button">
               Cancel (no teleport)
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // Obelisk Grail clue — the tile is picked BY CLICKING IT on the map (see
+  // `grailClueTargets` in HexMapBoard). Only tiles that can still host the Ⅶ
+  // objective (Grail / Dragon Utopia) are offered, so this tray shows the hint
+  // plus the trailing decline; rendering the engine's per-tile labels here as
+  // well would bring back the wall of "Tile at row X, col Y" buttons the map
+  // pick replaces. Detected from the option STEPS — the follow-up REVEAL step
+  // carries no GRAIL_TILE_SCRY option, so it keeps its ordinary tile-art tray.
+  const grailCluePicker =
+    visit &&
+    visit.playerId === viewerPlayerId &&
+    visitStep?.type === "CHOOSE_ONE" &&
+    visitStep.options.some((option) => option.steps[0]?.type === "GRAIL_TILE_SCRY")
+      ? visitStep
+      : null;
+  if (grailCluePicker) {
+    const declineIndex = grailCluePicker.options.findIndex((option) => option.steps.length === 0);
+    const decline = visitActions.find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex === declineIndex
+    );
+    const tileCount = grailCluePicker.options.filter(
+      (option) => option.steps[0]?.type === "GRAIL_TILE_SCRY"
+    ).length;
+    return (
+      <div className="promptTray" role="dialog" aria-label="Obelisk Grail clue">
+        <strong>Obelisk — inspect one hidden Grail / Dragon Utopia tile</strong>
+        <small>
+          Click one of the {tileCount} glowing face-down tiles on the map to see its real face. Only tiles that can
+          still host the Grail or a Dragon Utopia are offered, and you get one look per Obelisk.
+        </small>
+        {decline ? (
+          <div className="promptOptions">
+            <button className="commandButton" onClick={() => onAction(decline.action)} type="button">
+              Do not inspect a tile
             </button>
           </div>
         ) : null}
