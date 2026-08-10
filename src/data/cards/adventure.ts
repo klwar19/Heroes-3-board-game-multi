@@ -1027,11 +1027,17 @@ function ignoreDefenseOrDrawSpecialty(
     id: `specialty.${heroSlug}.${level}`,
     name: `${specialtyName} ${towerRoman(level)}`,
     kind: "hero-specialty",
-    timing: "combat",
+    // An Instant with a combat phaseLimit, exactly like every other
+    // "<combat effect> — OR — Draw N" specialty (Catherine VI, Gelu VI, …).
+    // It shipped as `timing: "combat"`, which locked its printed DRAW side out
+    // of the adventure map and out of reaction windows (2026-08-10, the same
+    // class of bug as Solmyr's Chain Lightning IV); the combat side is still
+    // gated to the combat phase by phaseLimit.
+    timing: "instant",
     phaseLimit: ["combat"],
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       heroSlug,
       `For this Combat, your ${specialtyName} unit ignores its targets' Defense. — OR — Draw ${draw} card${draw === 1 ? "" : "s"}.`
     ],
@@ -2704,15 +2710,23 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("solmyr")
   },
+  // Chain Lightning IV is the odd level out: unlike I/VI it deals no damage and
+  // names no combat at all — its printed text is PURE card manipulation, the
+  // same shape as Jeddite's Mysterious Warlock dig (an INSTANT). It shipped as
+  // `timing: "combat"` + `phaseLimit: ["combat"]`, which made it unreachable on
+  // the adventure map (addTurnCardActions only admits instant/ongoing/map) and
+  // unreachable as a reaction-window join (allowTriggerlessUtility requires
+  // `timing === "instant"`) — the 2026-08-10 report "Solmyr 4 can't be used in
+  // map". As an Instant it is playable on the map, at any time during a Combat,
+  // and as a trigger-free join in an open window.
   "specialty.solmyr.4": {
     id: "specialty.solmyr.4",
     name: "Chain Lightning IV",
     kind: "hero-specialty",
-    timing: "combat",
-    phaseLimit: ["combat"],
+    timing: "instant",
     tags: [
       "hero-specialty",
-      "combat",
+      "instant",
       "solmyr",
       "Discard up to 3 cards from your Might and Magic deck and return 1 of them to your hand."
     ],

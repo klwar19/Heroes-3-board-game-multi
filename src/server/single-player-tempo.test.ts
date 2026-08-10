@@ -65,6 +65,16 @@ describe("single-player tempo benchmarks — opening economy floors", () => {
     // trips it, while a single seed drifting a round does not cause flakiness.
     // Silver is genuinely late in this board game (one town, trickle income); a
     // higher/earlier floor would be dishonest.
+    //
+    // RUNTIME (2026-08-10). This ran to round 10 on every seed even after the
+    // seed's silver round was already recorded — but once `silverRound` is set
+    // the remaining rounds cannot change that seed's contribution, so they were
+    // pure cost. The run now STOPS at the moment silver unlocks (`stopWhen`),
+    // which asserts exactly the same thing for a fraction of the work; a seed
+    // that never unlocks still plays out to round 10, which is what makes the
+    // "never within the run" rows above real. Measured before the change: 98s of
+    // CPU against this test's 120s cap, so any parallel/contended run blew the
+    // cap on wall time alone.
     const seeds = ["eco-0", "eco-1", "eco-2", "eco-3", "eco-4", "eco-5", "eco-6", "eco-7", "eco-8", "eco-9", "eco-10", "eco-11"];
     let reachedByRound9 = 0;
     const reachedRounds: Array<number | null> = [];
@@ -80,6 +90,7 @@ describe("single-player tempo benchmarks — opening economy floors", () => {
             silverRound = state.round;
           }
         },
+        stopWhen: () => silverRound !== null,
       });
       expect(result.stalled, `${seed}: ${result.reason}`).toBe(false);
       reachedRounds.push(silverRound);

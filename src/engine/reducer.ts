@@ -12459,6 +12459,214 @@ function castTriggerEventOf(
     );
 }
 
+// ===========================================================================
+// OWN-DECK CARD-GAIN INSTANTS — one resolution shared by the ordinary
+// `playCard` path and the reaction-window join (`applyReactionPlayCore`).
+//
+// 2026-08-10 ("Solmyr 4 can't be used in map => … ALL INSTANT CARDS LIKE THAT
+// CAN BE USED IN MAP AND AS REACTION WINDOW"): these four faces manipulate the
+// player's OWN deck / the shared Artifact deck and have no combat precondition
+// at all, so they belong in an open window exactly like Scholar's
+// TAKE_FROM_DISCARD recovery. Each either resolves synchronously or opens an
+// OPTION_CHOICE — the ONE nested shape `advanceReactionWindowAfterPlay` knows
+// how to pause, and whose CHOOSE_OPTION tail resumes the window. Do NOT extend
+// this family to CARD_DECK_SEARCH / EAGLE_EYE_DIG / REMOVE_HAND_CARD_THEN_SEARCH:
+// those open a shared-deck DECK_SEARCH choice whose RESOLVE_DECK_SEARCH handler
+// has no reaction-resume tail (see DOCUMENTED_WINDOW_EXCLUSIONS in
+// instant-card-gain-legality.test.ts).
+// ===========================================================================
+
+/** Solmyr's Chain Lightning IV: dig `count`, keep one (owner picks with 2+). */
+function resolveDeckDigKeepOne(
+  state: GameState,
+  playerId: PlayerId,
+  sourceCardId: CardId,
+  cardName: string,
+  count: number,
+  cards: CardLibrary,
+  inFlightCardIds: CardId[]
+): void {
+  // "Discard up to N cards from your deck and return 1 of them to your hand":
+  // an empty deck reshuffles the discard pile back in so the dig still reaches
+  // its printed count (digFromOwnDeckTop; the revealed cards are held here,
+  // never discarded mid-dig, so they can never be dealt twice).
+  const revealed = digFromOwnDeckTop(state, playerId, count, "deck-dig-keep-one", {
+    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
+  }).cardIds;
+  if (revealed.length === 1) {
+    // Polish Spell Book: owned Spells enter the Book, not hand.
+    gainOwnedCard(state, playerId, revealed[0], cards);
+  } else if (revealed.length > 1) {
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `${cardName}: keep one card; the rest go to your discard pile.`,
+      options: revealed.map((cardId) => ({ label: `Keep ${cards[cardId]?.name ?? cardId}` })),
+      context: "own-deck-pick",
+      ownDeckPick: { cardIds: revealed },
+      returnPhase: state.combat ? "combat" : "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+  }
+}
+
+/** Jeddite's Mysterious Warlock I/VI: dig `count`, keep every match (no choice). */
+function resolveDeckDigKeepMatching(
+  state: GameState,
+  playerId: PlayerId,
+  sourceCardId: CardId,
+  effect: Extract<ConcreteEffect, { type: "DECK_DIG_KEEP_MATCHING" }>,
+  cards: CardLibrary,
+  inFlightCardIds: CardId[]
+): void {
+  const digPlayer = state.players[playerId];
+  if (!digPlayer) {
+    return;
+  }
+  // "Draw up to N cards from your deck": a deck that runs out mid-dig
+  // reshuffles the discard pile back in (digFromOwnDeckTop), so the specialty
+  // still digs its printed count — and is playable at all with an empty deck.
+  // The whole dig runs BEFORE anything is routed: the rejects are held here
+  // and pushed to the discard pile only afterwards, so the reshuffle can never
+  // deal a card this same dig already rejected.
+  const dig = digFromOwnDeckTop(state, playerId, effect.count, "deck-dig-keep-matching", {
+    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
+  });
+  const kept: CardId[] = [];
+  const discarded: CardId[] = [];
+  for (const drawn of dig.cardIds) {
+    const drawnKind = cards[drawn]?.kind;
+    const matches =
+      effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
+    if (matches) {
+      kept.push(drawn);
+    } else {
+      discarded.push(drawn);
+    }
+  }
+  digPlayer.discard.push(...discarded);
+  for (const keptCardId of kept) {
+    // Polish: owned Spells → Book; specialties / Cast-a-Spell → hand.
+    gainOwnedCard(state, playerId, keptCardId, cards);
+  }
+  appendEvent(state, {
+    type: "CARDS_DRAWN",
+    playerId,
+    count: kept.length,
+    requested: effect.count,
+    reshuffledDiscard: dig.reshuffledDiscard
+  });
+}
+
+/** Tazar's War Hero VI: draw the top Artifact card (owner picks the deck with 2+). */
+function resolveDrawTopArtifactPlay(state: GameState, playerId: PlayerId, cardName: string): void {
+  // Legacy has one Artifact deck ("artifacts"); BINH splits Minor/Major/Relic —
+  // when more than one still holds cards the caster picks which to draw from.
+  // A deck whose draw pile is empty but whose discard pile still holds cards is
+  // still drawable — drawTopArtifact reshuffles it — so it stays on the menu.
+  const available = ARTIFACT_DECK_IDS.filter(
+    (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+  );
+  if (available.length === 1) {
+    drawTopArtifact(state, playerId, available[0]);
+  } else if (available.length > 1) {
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `${cardName}: draw the top card of which Artifact deck?`,
+      options: available.map((deckId) => ({ label: `Draw the top ${ARTIFACT_DECK_LABELS[deckId]} Artifact` })),
+      context: "artifact-deck-pick",
+      artifactDeckPick: { deckIds: available },
+      returnPhase: state.combat ? "combat" : "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+  }
+}
+
+/**
+ * Spellbinder's Hat (option A) / Miriam's Scouting: remove a card from hand,
+ * then Search (N) its own deck. The mid-Combat form opens the removal pick
+ * immediately (the adventure reward queue is parked during a live combat).
+ * Shared by the ordinary play and the reaction-window join.
+ */
+function openCombatRemoveThenSearchChoice(
+  state: GameState,
+  playerId: PlayerId,
+  cardName: string,
+  effect: Extract<ConcreteEffect, { type: "REMOVE_HAND_CARD_THEN_SEARCH" }>,
+  cards: CardLibrary
+): void {
+  const removable = removableHandCards(state, playerId, effect.filter ?? "removable");
+  if (removable.length === 0) {
+    return;
+  }
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${cardName}: remove a card to Search (${effect.count}) its deck`,
+    options: [
+      ...removable.map(({ cardId }) => ({ label: `Remove ${cards[cardId]?.name ?? cardId}` })),
+      { label: "Skip" }
+    ],
+    context: "combat-remove-then-search",
+    removeThenSearch: { cardIds: removable.map(({ cardId }) => cardId), searchCount: effect.count },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/** Adrienne's Fire Magic IV: Search your own deck, then reshuffle the discard back in. */
+function resolveSearchDeckThenReshuffle(
+  state: GameState,
+  playerId: PlayerId,
+  sourceCardId: CardId,
+  cardName: string,
+  count: number,
+  cards: CardLibrary,
+  inFlightCardIds: CardId[]
+): void {
+  const searchPlayer = state.players[playerId];
+  if (!searchPlayer) {
+    return;
+  }
+  // A deck that runs out mid-reveal reshuffles the discard pile back in, so a
+  // Search (N) really reveals N whenever the player owns that many cards (the
+  // revealed cards are held out of both piles, so none can be shown twice).
+  const revealed = digFromOwnDeckTop(state, playerId, count, "search-deck-then-reshuffle", {
+    inFlightCardIds: inFlightCardIds.length > 0 ? inFlightCardIds : [sourceCardId]
+  }).cardIds;
+  if (revealed.length > 1) {
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId,
+      prompt: `${cardName}: take one card into your hand (the rest go to your discard pile), then your discard pile shuffles into your deck.`,
+      options: revealed.map((cardId) => ({ label: `Take ${cards[cardId]?.name ?? cardId}` })),
+      context: "own-deck-pick",
+      ownDeckPick: { cardIds: revealed, thenReshuffleDiscard: true },
+      returnPhase: state.combat ? "combat" : "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = playerId;
+  } else {
+    // 0 or 1 revealed: keep the single card (if any), then reshuffle now.
+    if (revealed.length === 1) {
+      gainOwnedCard(state, playerId, revealed[0], cards);
+    }
+    searchPlayer.deck = shuffleCards(
+      [...searchPlayer.deck, ...searchPlayer.discard],
+      `${state.seed}#fire-magic-iv#${playerId}#${eventSeedNumber(state)}`
+    );
+    searchPlayer.discard = [];
+  }
+}
+
 /**
  * Applies one instant card inside the open reaction window: pays costs,
  * discards the card, and applies the effect to the pending stack item.
@@ -13451,6 +13659,51 @@ function applyReactionPlayCore(
     });
   }
 
+  // The own-deck card-gain family, resolved inside the still-open window on the
+  // SAME terms as Scholar's recovery above (2026-08-10 "ALL INSTANT CARDS LIKE
+  // THAT CAN BE USED IN MAP AND AS REACTION WINDOW"). Each shares its ONE
+  // resolution with the ordinary map/activation play, so a window join can
+  // never behave differently from the same card played on your turn, and each
+  // opens at most an OPTION_CHOICE — the nested shape
+  // advanceReactionWindowAfterPlay pauses on and the CHOOSE_OPTION tail resumes.
+  if (state.combat && !state.combat.prep) {
+    if (effect.type === "DECK_DIG_KEEP_ONE") {
+      resolveDeckDigKeepOne(state, playerId, play.cardId, card.name, effect.count, cards, reactionInFlightCardIds);
+    }
+    if (effect.type === "DECK_DIG_KEEP_MATCHING") {
+      resolveDeckDigKeepMatching(state, playerId, play.cardId, effect, cards, reactionInFlightCardIds);
+    }
+    if (effect.type === "DRAW_TOP_ARTIFACT") {
+      resolveDrawTopArtifactPlay(state, playerId, card.name);
+    }
+    if (effect.type === "SEARCH_DECK_THEN_RESHUFFLE") {
+      resolveSearchDeckThenReshuffle(
+        state,
+        playerId,
+        play.cardId,
+        card.name,
+        effect.count,
+        cards,
+        reactionInFlightCardIds
+      );
+    }
+    // Eagle Eye / a Tome's School dig opens its own take-or-discard
+    // OPTION_CHOICE — the paused shape again.
+    if (effect.type === "EAGLE_EYE_DIG") {
+      resolveEagleEyeDig(state, playerId, mode, cards, effect.school);
+    }
+    // The shared-deck Search family opens a DECK_SEARCH choice, which pauses the
+    // window too since 2026-08-10 (advanceReactionWindowAfterPlay + the
+    // RESOLVE_DECK_SEARCH resume tail). Same call the own-activation combat play
+    // makes, so the window join can never behave differently.
+    if (effect.type === "CARD_DECK_SEARCH") {
+      beginSharedDeckSearchNow(state, playerId, effect.deck, effect.count, Boolean(effect.allowRemove));
+    }
+    if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
+      openCombatRemoveThenSearchChoice(state, playerId, card.name, effect, cards);
+    }
+  }
+
   if (
     effect.type === "ADD_COMBAT_STAT" &&
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
@@ -14101,16 +14354,19 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   // against the settled hand — a card just taken from the discard is offered in
   // this same window, and only when nothing is playable does it advance.
   //
-  // Scoped to OPTION_CHOICE on purpose — that is the ONLY shape reachable here
-  // today (openDiscardPickChoice; the two REDIRECT_SPELL / Magic Mirror choices
-  // close the window themselves and return windowEnded, so they never arrive)
-  // and the ONLY one whose resolution path re-advances the window. Pausing on a
-  // type resolved elsewhere — a COMBAT_HAND_DISCARD answered by
-  // RESOLVE_COMBAT_DISCARD, which has no such tail — would leave the window
-  // paused forever. A future choice type reaching this seam therefore keeps the
-  // old close-and-resolve behaviour rather than freezing the table; give it a
-  // resume tail before adding it here.
-  if (state.pendingChoice?.type === "OPTION_CHOICE") {
+  // Scoped to the two shapes that HAVE a resume tail: OPTION_CHOICE (the
+  // CHOOSE_OPTION dispatcher's tail) and — since 2026-08-10 — DECK_SEARCH (the
+  // RESOLVE_DECK_SEARCH tail), which a shared-deck Search instant joining a
+  // window opens (Breastplate of Brimstone / Crown of Dragontooth / Royal Armor
+  // of Nix / Surcoat of Counterpoise, and the Spellbinder's-Hat / Miriam
+  // remove-then-Search chain whose OPTION_CHOICE resolves INTO one). The two
+  // REDIRECT_SPELL / Magic Mirror choices close the window themselves and
+  // return windowEnded, so they never arrive here. Pausing on a type resolved
+  // elsewhere — a COMBAT_HAND_DISCARD answered by RESOLVE_COMBAT_DISCARD, which
+  // has no such tail — would leave the window paused forever. A future choice
+  // type reaching this seam therefore keeps the old close-and-resolve behaviour
+  // rather than freezing the table; give it a resume tail before adding it here.
+  if (state.pendingChoice?.type === "OPTION_CHOICE" || state.pendingChoice?.type === "DECK_SEARCH") {
     state.reactionWindow.passedPlayerIds = [];
     state.reactionWindow.priorityPlayerId = playerId;
     state.priorityPlayerId = playerId;
@@ -16791,24 +17047,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // during a live combat) the removal opens immediately as a combat choice.
   if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
     if (state.combat && !state.combat.prep) {
-      const removable = removableHandCards(state, action.playerId, effect.filter ?? "removable");
-      if (removable.length > 0) {
-        state.pendingChoice = {
-          id: `choice_${nextEventNumber(state)}`,
-          type: "OPTION_CHOICE",
-          playerId: action.playerId,
-          prompt: `${card.name}: remove a card to Search (${effect.count}) its deck`,
-          options: [
-            ...removable.map(({ cardId }) => ({ label: `Remove ${cards[cardId]?.name ?? cardId}` })),
-            { label: "Skip" }
-          ],
-          context: "combat-remove-then-search",
-          removeThenSearch: { cardIds: removable.map(({ cardId }) => cardId), searchCount: effect.count },
-          returnPhase: "combat"
-        };
-        state.phase = "choice";
-        state.priorityPlayerId = action.playerId;
-      }
+      openCombatRemoveThenSearchChoice(state, action.playerId, card.name, effect, cards);
     } else {
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
@@ -17119,100 +17358,21 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // Solmyr's Chain Lightning IV: dig the top of your own deck, keep 1, discard
   // the rest. One revealed card is auto-kept; with several, the owner chooses.
   if (effect.type === "DECK_DIG_KEEP_ONE") {
-    // "Discard up to N cards from your deck and return 1 of them to your hand":
-    // an empty deck reshuffles the discard pile back in so the dig still reaches
-    // its printed count (digFromOwnDeckTop; the revealed cards are held here,
-    // never discarded mid-dig, so they can never be dealt twice).
-    const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-one", {
-      inFlightCardIds: [action.cardId]
-    }).cardIds;
-    if (revealed.length === 1) {
-      // Polish Spell Book: owned Spells enter the Book, not hand.
-      gainOwnedCard(state, action.playerId, revealed[0], cards);
-    } else if (revealed.length > 1) {
-      state.pendingChoice = {
-        id: `choice_${nextEventNumber(state)}`,
-        type: "OPTION_CHOICE",
-        playerId: action.playerId,
-        prompt: `${card.name}: keep one card; the rest go to your discard pile.`,
-        options: revealed.map((cardId) => ({ label: `Keep ${cards[cardId]?.name ?? cardId}` })),
-        context: "own-deck-pick",
-        ownDeckPick: { cardIds: revealed },
-        returnPhase: state.combat ? "combat" : "player-turn"
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = action.playerId;
-    }
+    resolveDeckDigKeepOne(state, action.playerId, action.cardId, card.name, effect.count, cards, [action.cardId]);
   }
 
   // Jeddite's Mysterious Warlock I/VI: dig the top `count` cards of your own
   // deck, keep every Spell and Specialty among them in your hand, discard the
   // rest. No choice — all matches are taken automatically.
   if (effect.type === "DECK_DIG_KEEP_MATCHING") {
-    const digPlayer = state.players[action.playerId];
-    // "Draw up to N cards from your deck": a deck that runs out mid-dig
-    // reshuffles the discard pile back in (digFromOwnDeckTop), so the specialty
-    // still digs its printed count — and is playable at all with an empty deck.
-    // The whole dig runs BEFORE anything is routed: the rejects are held here
-    // and pushed to the discard pile only afterwards, so the reshuffle can never
-    // deal a card this same dig already rejected.
-    const dig = digFromOwnDeckTop(state, action.playerId, effect.count, "deck-dig-keep-matching", {
-      inFlightCardIds: [action.cardId]
-    });
-    const kept: CardId[] = [];
-    const discarded: CardId[] = [];
-    for (const drawn of dig.cardIds) {
-      const drawnKind = cards[drawn]?.kind;
-      const matches =
-        effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
-      if (matches) {
-        kept.push(drawn);
-      } else {
-        discarded.push(drawn);
-      }
-    }
-    digPlayer.discard.push(...discarded);
-    for (const keptCardId of kept) {
-      // Polish: owned Spells → Book; specialties / Cast-a-Spell → hand.
-      gainOwnedCard(state, action.playerId, keptCardId, cards);
-    }
-    appendEvent(state, {
-      type: "CARDS_DRAWN",
-      playerId: action.playerId,
-      count: kept.length,
-      requested: effect.count,
-      reshuffledDiscard: dig.reshuffledDiscard
-    });
+    resolveDeckDigKeepMatching(state, action.playerId, action.cardId, effect, cards, [action.cardId]);
   }
 
   // Tazar's War Hero VI: draw the top card of the shared Artifact deck (the
   // Legacy "artifacts" deck, or the BINH Minor deck) straight to hand. The
   // option's `cost` already paid the printed price before we get here.
   if (effect.type === "DRAW_TOP_ARTIFACT") {
-    // Tazar's War Hero VI: draw the top of an Artifact deck of the player's
-    // choice. Legacy has one ("artifacts"); BINH splits Minor/Major/Relic — when
-    // more than one still holds cards the caster picks which to draw from.
-    // A deck whose draw pile is empty but whose discard pile still holds cards is
-    // still drawable — drawTopArtifact reshuffles it — so it stays on the menu.
-    const available = ARTIFACT_DECK_IDS.filter(
-      (deckId) => (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
-    );
-    if (available.length === 1) {
-      drawTopArtifact(state, action.playerId, available[0]);
-    } else if (available.length > 1) {
-      state.pendingChoice = {
-        id: `choice_${nextEventNumber(state)}`,
-        type: "OPTION_CHOICE",
-        playerId: action.playerId,
-        prompt: `${card.name}: draw the top card of which Artifact deck?`,
-        options: available.map((deckId) => ({ label: `Draw the top ${ARTIFACT_DECK_LABELS[deckId]} Artifact` })),
-        context: "artifact-deck-pick",
-        artifactDeckPick: { deckIds: available },
-        returnPhase: state.combat ? "combat" : "player-turn"
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = action.playerId;
-    }
+    resolveDrawTopArtifactPlay(state, action.playerId, card.name);
   }
 
   // Adrienne's Fire Magic IV: Search (`count`) your own deck (reveal the top
@@ -17220,37 +17380,15 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // into the deck. The reshuffle runs AFTER the pick (the own-deck-pick choice
   // carries `thenReshuffleDiscard`); a 0/1-card reveal reshuffles immediately.
   if (effect.type === "SEARCH_DECK_THEN_RESHUFFLE") {
-    const searchPlayer = state.players[action.playerId];
-    // A deck that runs out mid-reveal reshuffles the discard pile back in, so a
-    // Search (N) really reveals N whenever the player owns that many cards (the
-    // revealed cards are held out of both piles, so none can be shown twice).
-    const revealed = digFromOwnDeckTop(state, action.playerId, effect.count, "search-deck-then-reshuffle", {
-      inFlightCardIds: [action.cardId]
-    }).cardIds;
-    if (revealed.length > 1) {
-      state.pendingChoice = {
-        id: `choice_${nextEventNumber(state)}`,
-        type: "OPTION_CHOICE",
-        playerId: action.playerId,
-        prompt: `${card.name}: take one card into your hand (the rest go to your discard pile), then your discard pile shuffles into your deck.`,
-        options: revealed.map((cardId) => ({ label: `Take ${cards[cardId]?.name ?? cardId}` })),
-        context: "own-deck-pick",
-        ownDeckPick: { cardIds: revealed, thenReshuffleDiscard: true },
-        returnPhase: state.combat ? "combat" : "player-turn"
-      };
-      state.phase = "choice";
-      state.priorityPlayerId = action.playerId;
-    } else {
-      // 0 or 1 revealed: keep the single card (if any), then reshuffle now.
-      if (revealed.length === 1) {
-        gainOwnedCard(state, action.playerId, revealed[0], cards);
-      }
-      searchPlayer.deck = shuffleCards(
-        [...searchPlayer.deck, ...searchPlayer.discard],
-        `${state.seed}#fire-magic-iv#${action.playerId}#${eventSeedNumber(state)}`
-      );
-      searchPlayer.discard = [];
-    }
+    resolveSearchDeckThenReshuffle(
+      state,
+      action.playerId,
+      action.cardId,
+      card.name,
+      effect.count,
+      cards,
+      [action.cardId]
+    );
   }
 
   // Gem's First Aid: take the war machine from the catalog for free (Torosar's
@@ -22001,6 +22139,17 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "RESOLVE_DECK_SEARCH":
         resolveDeckSearch(nextState, action);
+        // The CHOOSE_OPTION twin of this tail (see its comment): a Search
+        // instant played INTO an open reaction window (2026-08-10) pauses that
+        // window while the shared-deck Search is answered. Once the Search
+        // settles — and only when it opened no further choice of its own — the
+        // window resumes under the SAME advance rules as any other play, so the
+        // card it just handed over is visible to the still-parked attack/cast
+        // and a player left with nothing playable no longer strands it.
+        if (nextState.reactionWindow && !nextState.pendingChoice) {
+          nextState.phase = "reaction";
+          advanceReactionWindowAfterPlay(nextState, action.playerId, cards);
+        }
         break;
       case "MOVE_HERO":
         if (nextState.mode === "adventure") {

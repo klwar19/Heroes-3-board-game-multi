@@ -3130,6 +3130,12 @@ function isOptionEffectPlayable(
       const player = state.players[playerId];
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
+    // Solmyr's Chain Lightning IV shares this gate: "Discard up to N cards from
+    // your Might and Magic deck and return 1 of them to your hand" is the same
+    // own-deck manipulation, with no combat clause of its own (2026-08-10
+    // report "Solmyr 4 can't be used in map" — the card had shipped as
+    // `timing: "combat"`, so no map path ever reached this).
+    case "DECK_DIG_KEEP_ONE":
     case "DECK_DIG_KEEP_MATCHING": {
       // Jeddite's Mysterious Warlock I/VI: dig your own deck, keeping Spells /
       // Specialties. A printed Instant's card manipulation is playable on the map
@@ -3728,12 +3734,42 @@ export function instantDrawOnlyRider(effect: EffectDefinition, mode: CardPlayMod
   }
 }
 
+/**
+ * The own-deck / own-Artifact-deck card-gain faces that may JOIN an open
+ * reaction window (2026-08-10: "ALL INSTANT CARDS LIKE THAT CAN BE USED IN MAP
+ * AND AS REACTION WINDOW"). Each resolves synchronously or opens an
+ * OPTION_CHOICE — the one nested shape advanceReactionWindowAfterPlay pauses on
+ * — and each shares its resolution with the ordinary play (the four
+ * `resolveDeckDigKeepOne` / `resolveDeckDigKeepMatching` /
+ * `resolveDrawTopArtifactPlay` / `resolveSearchDeckThenReshuffle` helpers in
+ * reducer.ts), so a window join can never behave differently from the same card
+ * played on your own turn.
+ *
+ * The shared-deck Search half (CARD_DECK_SEARCH / EAGLE_EYE_DIG /
+ * REMOVE_HAND_CARD_THEN_SEARCH) rides the SAME pause: a DECK_SEARCH choice now
+ * parks the window and the RESOLVE_DECK_SEARCH tail resumes it. A printed
+ * `mapOnly` face (the WOG Magic Wand) is still an ABSOLUTE bar — that check
+ * lives in the offer loop, not here.
+ */
+function isDeckGainReactionUtility(effect: ConcreteEffect): boolean {
+  return (
+    effect.type === "DECK_DIG_KEEP_ONE" ||
+    effect.type === "DECK_DIG_KEEP_MATCHING" ||
+    effect.type === "DRAW_TOP_ARTIFACT" ||
+    effect.type === "SEARCH_DECK_THEN_RESHUFFLE" ||
+    effect.type === "CARD_DECK_SEARCH" ||
+    effect.type === "EAGLE_EYE_DIG" ||
+    effect.type === "REMOVE_HAND_CARD_THEN_SEARCH"
+  );
+}
+
 function isInstantReactionUtility(effect: ConcreteEffect): boolean {
   return (
     instantDrawOnlyRider(effect, "basic") > 0 ||
     instantDrawOnlyRider(effect, "expert") > 0 ||
     effect.type === "TAKE_FROM_DISCARD" ||
-    effect.type === "RESHUFFLE_DISCARD_THEN_DRAW"
+    effect.type === "RESHUFFLE_DISCARD_THEN_DRAW" ||
+    isDeckGainReactionUtility(effect)
   );
 }
 
@@ -7359,7 +7395,7 @@ export function getLegalReactionsForTrigger(
         if (
           !variant.expertOnly &&
           !card.permanent &&
-          (basicDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic"))
+          (basicDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic", cardId))
         ) {
           if (variant.effect.type === "ACTIVATE_RANGED_UNIT" && triggerEvent.type === "UNIT_ACTIVATION_STARTED") {
             // Bowstring of the Unicorn's Mane / Valeska's Marksmen VI: one play
@@ -7436,7 +7472,7 @@ export function getLegalReactionsForTrigger(
           (effectHasExpertMode(variant.effect) || variant.expertOnly) &&
           // An Empowered ability may take its Expert side without a crown.
           (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId)) &&
-          (expertDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert"))
+          (expertDrawOnly || isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "expert", cardId))
         ) {
           push(
             makeReactionAction(`${variantName} expert${fromSpellBook ? " (Spell Book)" : ""}`, {
@@ -8566,7 +8602,14 @@ export function isEffectLegalForTrigger(
   playerId: PlayerId,
   effect: ConcreteEffect,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
-  mode: CardPlayMode
+  mode: CardPlayMode,
+  /**
+   * The card being played, excluded from "is there another card to remove"
+   * counts (Spellbinder's Hat is itself a removable artifact). Optional so the
+   * historical call shape keeps working; only the remove-then-Search gate
+   * reads it.
+   */
+  sourceCardId?: CardId
 ): boolean {
   // These two trigger-free utility cards are explicitly allowed only when a
   // window already exists (the caller opts them in by card id). Scholar also
@@ -8601,6 +8644,54 @@ export function isEffectLegalForTrigger(
   if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
     const player = state.players[playerId];
     return Boolean(player && state.combat && player.deck.length + player.discard.length > 0);
+  }
+
+  // The own-deck card-gain family joining an open window (2026-08-10). Gated on
+  // there actually being something to gain, so a join can never spend the card
+  // for an empty dig — the same "useful?" reads isOptionEffectPlayable applies
+  // to the map/activation play. A prep window is excluded: the reaction
+  // resolution (applyReactionPlayCore) only fires in a LIVE combat, so offering
+  // it during PvP prep would spend the card for nothing.
+  if (
+    effect.type === "DECK_DIG_KEEP_ONE" ||
+    effect.type === "DECK_DIG_KEEP_MATCHING" ||
+    effect.type === "SEARCH_DECK_THEN_RESHUFFLE"
+  ) {
+    const player = state.players[playerId];
+    return Boolean(
+      player && state.combat && !state.combat.prep && player.deck.length + player.discard.length > 0
+    );
+  }
+  if (effect.type === "DRAW_TOP_ARTIFACT") {
+    if (!state.combat || state.combat.prep) {
+      return false;
+    }
+    return ["artifacts", "artifacts-minor", "artifacts-major", "artifacts-relic"].some(
+      (deckId) =>
+        (state.decks[deckId]?.drawPile.length ?? 0) + (state.decks[deckId]?.discardPile.length ?? 0) > 0
+    );
+  }
+  // The shared-deck Search half. Both gates mirror what the own-activation
+  // combat play already accepts (isOptionEffectPlayable's "combat" branch), so a
+  // window join is offered exactly where the same card would be playable on your
+  // own activation — never more, never less.
+  if (effect.type === "CARD_DECK_SEARCH" || effect.type === "EAGLE_EYE_DIG") {
+    return Boolean(state.combat && !state.combat.prep);
+  }
+  if (effect.type === "REMOVE_HAND_CARD_THEN_SEARCH") {
+    // Needs a card OTHER than the one being played left to remove — otherwise
+    // the play opens no choice and the card is spent for nothing. The played
+    // card is still in hand while the offer is derived, so it is excluded by id
+    // (the Hat is itself removable and so needs a second; Miriam's specialty
+    // never matches the filter, so one card is enough) — exactly the count
+    // isOptionEffectPlayable applies to the map / own-activation play.
+    return Boolean(
+      state.combat &&
+        !state.combat.prep &&
+        removableHandCards(state, playerId, effect.filter ?? "removable").some(
+          (candidate) => candidate.cardId !== sourceCardId
+        )
+    );
   }
 
   // Sorrow: skip the about-to-activate unit. Offered to the unit's opponent

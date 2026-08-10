@@ -132,6 +132,15 @@ export type PlayUntilRoundOptions = {
   humanPlayerId?: PlayerId;
   /** Called after each fully-settled loop (for per-round tempo checkpoints). */
   onLoop?: (state: GameState, loop: number) => void;
+  /**
+   * Stop the run early, reporting a clean (non-stalled) finish, as soon as this
+   * returns true. For a benchmark whose question is already ANSWERED — "was the
+   * silver dwelling unlocked by round 9?" is settled the moment it unlocks — the
+   * remaining rounds cannot change the answer, so simulating them is pure cost.
+   * Checked after `onLoop`, so a checkpoint recorded this loop is always seen.
+   * Absent (every other caller) = the historical run-to-targetRound behaviour.
+   */
+  stopWhen?: (state: GameState, loop: number) => boolean;
 };
 
 /**
@@ -159,6 +168,10 @@ export function playUntilRound(
     state = run.state;
     violations.push(...invariantViolations(state, `loop ${loops}`));
     options.onLoop?.(state, loops);
+
+    if (options.stopWhen?.(state, loops)) {
+      return { state, stalled: false, loops, violations };
+    }
 
     if (state.phase === "game-over" && !state.combat) {
       return { state, stalled: false, loops, violations };

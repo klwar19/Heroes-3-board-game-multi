@@ -2943,6 +2943,93 @@ never forces a reaction window open" → it opens one now, optionally, with Pass
 always offered) and `bulwark-heroes.test.ts` (the non-Bulwark holder is still
 never offered the real RUNE reaction; its draw-only twin now joins).
 
+## EVERY card-gain instant works on the map AND in an attack window (2026-08-10)
+
+Reported: "Solmyr 4 can't be used in map => STILL VERY BUGGY, I ALREADY TOLD U TO
+MAKE ALL INSTANT CARDS LIKE THAT CAN BE USED IN MAP AND AS REACTION WINDOW, CHECK
+ALL." Leading with the limits.
+
+**WHY THE 2026-08-06/08 BATCHES MISSED IT.** Their sweep walked only
+`timing === "instant"` cards, and only the `DRAW_CARDS` / `TAKE_FROM_DISCARD`
+faces plus the "then draw N" riders. Two axes were invisible to it:
+- **TIMING.** `specialty.solmyr.4` ("Discard up to 3 cards from your Might and
+  Magic deck and return 1 of them to your hand" — pure card manipulation, no
+  combat clause at all) and `specialty.ingham.6` ("… — OR — Draw 1 card") both
+  shipped as `timing: "combat"` + `phaseLimit: ["combat"]`. That is exactly the
+  gate `addTurnCardActions` (map: instant/ongoing/map only) and
+  `allowTriggerlessUtility` (window join: `timing === "instant"`) key off, so
+  NEITHER card could be played on the map or in a window at all — the report.
+- **EFFECT KIND.** The deck DIG / SEARCH families had a map play but no window
+  join: `DECK_DIG_KEEP_ONE`, `DECK_DIG_KEEP_MATCHING`, `SEARCH_DECK_THEN_RESHUFFLE`,
+  `DRAW_TOP_ARTIFACT`, `CARD_DECK_SEARCH`, `EAGLE_EYE_DIG`,
+  `REMOVE_HAND_CARD_THEN_SEARCH` (22 faces).
+
+**THE FIX, in three parts.**
+1. **DATA (the two mis-timed cards).** `specialty.solmyr.4` is `timing:
+   "instant"` with NO phaseLimit (the Jeddite-dig shape); the shared
+   `ignoreDefenseOrDrawSpecialty` generator (Ingham VI) is `timing: "instant"`
+   KEEPING `phaseLimit: ["combat"]` — the shape every other
+   "<combat effect> — OR — Draw N" specialty already had (Catherine VI, Gelu VI…),
+   so its combat side stays combat-gated while its printed draw reaches the map.
+2. **ONE resolution per effect, shared by both paths.** Four helpers in
+   `reducer.ts` — `resolveDeckDigKeepOne` / `resolveDeckDigKeepMatching` /
+   `resolveDrawTopArtifactPlay` / `resolveSearchDeckThenReshuffle`, plus the
+   extracted `openCombatRemoveThenSearchChoice` — are called by `playCard` AND by
+   `applyReactionPlayCore`, so a window join can never behave differently from
+   the same card played on your own turn. `DECK_DIG_KEEP_ONE` also joined the
+   `DECK_DIG_KEEP_MATCHING` case of `isOptionEffectPlayable` (which is what
+   `isMapPlayableEffect` reads), and the seven kinds joined
+   `isDeckGainReactionUtility` → `isInstantReactionUtility` +
+   `isEffectLegalForTrigger` (each gated on there really being something to gain,
+   so a join can never spend the card for an empty dig).
+3. **DECK_SEARCH now parks a window** (new): `advanceReactionWindowAfterPlay`
+   pauses on a `DECK_SEARCH` pendingChoice as well as an `OPTION_CHOICE`, and the
+   `RESOLVE_DECK_SEARCH` dispatcher grew the CHOOSE_OPTION tail's twin. Without
+   BOTH halves a Search instant played as the LAST card in hand closed the window
+   "all-pass" and resolved the parked blow under an unanswered Search (the
+   2026-08-06 Scholar shape) — and without the tail alone the window is stranded
+   open forever. Keep them together.
+
+Leading with what does NOT work / deliberate limits:
+- **`wog.artifact.magic_wand` option 0 still never joins a window** — a printed
+  `mapOnly` face is an ABSOLUTE bar (the Shield-of-Naval-Glory rule). Its map
+  play works.
+- **A card whose OTHER side matches the open window's printed trigger still
+  offers nothing else there** — the shared trap-twin dedupe
+  (`cardHasPrintedTriggerMatch`). So Kriv VI's "draw 2" is withheld in an ATTACK
+  window (option 1 is a printed "React to an enemy attack") and the Surcoat of
+  Counterpoise's Search side is withheld in a CAST window (option 0 is its
+  printed spell-cancel). Both are correct: the printed reaction is what belongs
+  in that window.
+- **MORE PAUSES.** Holding any card-gain instant now stops an attack for a
+  confirm/Pass, and a Search/dig join parks the exchange until its choice is
+  answered. That is the ruling; Pass resumes the parked attack byte-identically.
+- **The AI never spends one**: a card-gain effect scores in the map-search band
+  (610), below `PASS_REACTION` (1_050), so a computer seat keeps the card — and
+  the AFK / turn-timeout driver closes the window with Pass. Both pinned so
+  neither can become a stall.
+- **`timing: "map"` and `timing: "town"` card-gain faces are out of scope** (a
+  printed Map card is map-only by definition; `ability.wisdom` is a town action).
+- **The one behaviour change beyond the offers**: Solmyr IV losing
+  `phaseLimit`/`timing: "combat"` means it no longer needs your own unit's
+  activation to be played mid-combat — it is an Instant, like Jeddite's dig.
+
+Pinned in `src/engine/instant-card-gain-legality.test.ts` (20 tests; the file's
+older sweeps are kept and still pass). The new half is a LIBRARY-DERIVED sweep
+over BOTH axes — every implemented non-map/town face carrying any of the ten
+card-gain effect kinds must have a map play AND a join in an open
+`UNIT_ATTACK_DECLARED` window — plus `DOCUMENTED_WINDOW_EXCLUSIONS`, a registry
+whose every entry is itself asserted to be genuinely withheld (no dead
+exclusions). Behaviour tests: Solmyr IV's map dig and its in-window dig with the
+parked blow landing only afterwards, Ingham VI's map draw with its combat-only
+side as the CONTROL, Jeddite/Tazar resolving in-window, the Search park/resume
+round trip, and the AI + AFK non-stall pair. Mutation-checked: reverting
+Solmyr IV's timing fails 6, reverting the Ingham generator fails 3, dropping
+`DECK_DIG_KEEP_ONE` from `isOptionEffectPlayable` fails 2, neutering the
+reaction-resolution block fails 4, dropping `isDeckGainReactionUtility` fails 7,
+reverting the `DECK_SEARCH` pause fails 1 and removing the `RESOLVE_DECK_SEARCH`
+resume tail fails 1.
+
 ## AI opening route · multi-target combat rules · border-free hexes (2026-08-09, protocol v24)
 
 The `fix-ai-map-combat-rules` batch + its audit (audit fixes marked). Protocol
