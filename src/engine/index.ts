@@ -99,6 +99,7 @@ export {
   expireEffectsForCombatRoundEnd,
   expireEffectsForGameRoundEnd,
   expireEffectsForTurnEnd,
+  effectAppliesToUnit,
   effectiveInitiative,
   getActiveAttackBonus,
   getActiveDefenseBonus,
@@ -106,6 +107,8 @@ export {
   getAttackRerollEffects,
   makeActiveEffect,
   playerSpellCastsIgnoreLimit,
+  unitAttackRollAdvantaged,
+  unitAttackRollDisadvantaged,
   unitDealsElementalDamage,
   unitHasUnlimitedRetaliationEffect,
   unitIsBerserk

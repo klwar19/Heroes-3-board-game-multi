@@ -1205,6 +1205,19 @@ export type ActiveEffectDefinition = {
    * checked in effectAppliesToUnit, so every stat getter honours it for free.
    */
   appliesOnlyToVariant?: CombatUnitState["variant"];
+  /**
+   * Polish Set Artifacts: WHICH set laid this effect (`ArtifactSetId`, kept as a
+   * plain string so this types leaf never imports the card data back).
+   *
+   * PRESENTATION METADATA ONLY — no rule reads it. It exists so the battlefield
+   * can draw the owning set's icon beside a unit that is carrying one of its
+   * bonuses ("Angelic Alliance — rolls 2 Attack dice, keeps the higher"), which
+   * the effect `name` alone could only guess at by string-matching.
+   *
+   * ABSENT on every non-set effect and on every legacy snapshot; the UI simply
+   * draws no set icon then, so an old save renders exactly as it always did.
+   */
+  artifactSetId?: string;
 };
 
 export type EffectDefinition =

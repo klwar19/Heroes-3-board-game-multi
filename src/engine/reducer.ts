@@ -15134,6 +15134,9 @@ function selectArtifactSetUnit(
         state,
         {
           name: `${set.name} (set)`,
+          // Presentation metadata (no rule reads it): lets the battlefield draw
+          // THIS set's icon beside the selected unit while the bonus is live.
+          artifactSetId: set.id,
           duration: { type: "combat" },
           scope: "unit",
           modifiers: [{ type: "INITIATIVE_BONUS", amount }]
@@ -15175,7 +15178,7 @@ function noteArtifactSetPower(
 function pushArtifactSetUnitEffect(
   state: GameState,
   playerId: PlayerId,
-  setName: string,
+  set: { id: string; name: string },
   unitId: string,
   modifiers: ActiveEffectDefinition["modifiers"],
   duration: ActiveEffectDefinition["duration"]
@@ -15183,7 +15186,10 @@ function pushArtifactSetUnitEffect(
   state.activeEffects.push(
     makeActiveEffect(
       state,
-      { name: `${setName} (set)`, duration, scope: "unit", modifiers },
+      // `artifactSetId` is presentation metadata (no rule reads it): it is what
+      // lets the battlefield draw the OWNING set's icon beside the unit while
+      // this bonus is live, instead of string-matching the effect name.
+      { name: `${set.name} (set)`, artifactSetId: set.id, duration, scope: "unit", modifiers },
       { type: "system" },
       playerId,
       { type: "unit", unitId }
@@ -15226,7 +15232,7 @@ function applyArtifactSetPower(
       pushArtifactSetUnitEffect(
         state,
         action.playerId,
-        set.name,
+        set,
         unit.id,
         [{ type: "ATTACK_ROLL_ADVANTAGE" }],
         { type: "combat" }
@@ -15245,7 +15251,7 @@ function applyArtifactSetPower(
       pushArtifactSetUnitEffect(
         state,
         action.playerId,
-        set.name,
+        set,
         unit.id,
         [{ type: "ATTACK_ROLL_DISADVANTAGE" }],
         { type: "current-combat-round" }
@@ -15271,7 +15277,7 @@ function applyArtifactSetPower(
       pushArtifactSetUnitEffect(
         state,
         action.playerId,
-        set.name,
+        set,
         unit.id,
         [{ type: "ATTACK_BONUS", amount: effect.amount }],
         effect.amount >= 0 ? { type: "combat" } : { type: "current-combat-round" }
@@ -15292,7 +15298,7 @@ function applyArtifactSetPower(
       pushArtifactSetUnitEffect(
         state,
         action.playerId,
-        set.name,
+        set,
         unit.id,
         [{ type: "DEFENSE_BONUS", amount: effect.amount }],
         { type: "combat" }
@@ -15307,7 +15313,7 @@ function applyArtifactSetPower(
       pushArtifactSetUnitEffect(
         state,
         action.playerId,
-        set.name,
+        set,
         unit.id,
         [{ type: "FIRE_SHIELD", amount: effect.amount }],
         { type: "current-combat-round" }

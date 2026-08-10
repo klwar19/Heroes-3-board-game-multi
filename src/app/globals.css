@@ -2149,6 +2149,65 @@ button.battleCell {
   filter: saturate(0.75);
 }
 
+/* LIVE-EFFECT icons on the card's OUTER LEFT edge — the mirror of the stat-token
+   rail above (which hangs off the outer RIGHT edge). `.boardCard` is
+   `width: min(150px, 66%)` inside a centred cell, so both rails sit in the
+   cell's own slack and neither can reach the printed stat rail, the name plate
+   or the HUD pill. `pointer-events: none` matches the sibling rail so the icons
+   can never swallow a click meant for the battlefield cell — which also means
+   the native `title` tooltip does not fire on hover (see the component's doc
+   comment: the icon is the signal, the inspector is the text surface). */
+.boardCardEffectIcons {
+  position: absolute;
+  right: 100%;
+  top: 4%;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: 2px;
+  pointer-events: none;
+}
+
+.boardEffectIcon {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgb(0 0 0 / 65%);
+  border-radius: 50%;
+  background: rgb(12 11 9 / 92%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 55%);
+  line-height: 0;
+}
+
+.boardEffectIcon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.boardEffectIcon svg {
+  width: 10px;
+  height: 10px;
+}
+
+.boardEffectIcon.defense-token {
+  border-color: rgb(107 167 255 / 62%);
+}
+.boardEffectIcon.artifact-set {
+  border-color: rgb(255 214 92 / 62%);
+}
+.boardEffectIcon.roll-advantage {
+  color: #65d487;
+  border-color: rgb(101 212 135 / 62%);
+}
+.boardEffectIcon.roll-disadvantage {
+  color: #ff695c;
+  border-color: rgb(255 105 92 / 62%);
+}
+
 .unitActivationBadge {
   position: absolute;
   left: 4px;

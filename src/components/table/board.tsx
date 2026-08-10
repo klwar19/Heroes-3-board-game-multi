@@ -72,6 +72,7 @@ import {
 } from "./utils";
 import { useCardZoom } from "./zoom";
 import { ArtifactSetPowerMenu, artifactSetPowerGroups, useArtifactSetArming } from "./artifact-set-powers";
+import { UnitEffectIcons } from "./unit-effect-icons";
 import { BattleMetric, signedMorale } from "./battle-metrics";
 
 /** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
@@ -1529,6 +1530,11 @@ export function BattlefieldBoard({
                   ) : null}
                 </span>
               ) : null}
+              {/* The mirror rail on the card's outer LEFT edge: which live
+                  effects this unit is carrying (a Defense token, a Set Artifact
+                  bonus, a non-set advantage/disadvantage roll). The right rail
+                  says how much a stat moved; this one says who did it. */}
+              <UnitEffectIcons state={state} unit={unit} />
               <span
                 className={`unitActivationBadge ${
                   isActive

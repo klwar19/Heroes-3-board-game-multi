@@ -8220,6 +8220,46 @@ What runs (each pinned by a test that fails if the wiring is removed;
   `initiativeDelta` values the chevrons use — nothing re-derived. It sits outside
   the card art, so it cannot cover the printed stat rail, the name plate or the
   HUD (whose 76% cap stays a contract, `board-card-hud-width.test.ts`).
+- **LIVE-EFFECT ICONS BESIDE THE CREATURE (2026-08-10).** The mirror rail on the
+  card's OUTER LEFT edge (`.boardCardEffectIcons`, `src/components/table/
+  unit-effect-icons.tsx`; the right rail says how much a stat moved, this one
+  says WHO granted it). Pure presentation over already-public state, re-derived
+  every render by `unitEffectIcons(state, unit)`, so an icon appears and vanishes
+  exactly with its source. What it draws: (a) the printed **Defense-token disc**
+  (`COMBAT_TOKEN_IMAGES.defense`) whenever `unit.defenseToken` is set, from ANY
+  source — a Defend action, a set tier, commander Defense grade II, an equipment
+  first-hit grant; (b) one **owning-set icon** (`artifactSetIconImage`) per live
+  Set-Artifact effect on that unit, tooltipped "Angelic Alliance (set) — rolls 2
+  Attack dice, keeps the higher"; (c) a **generic two-dice glyph** for an
+  advantage/disadvantage roll effect from a NON-set source (Shaman's Puppet, the
+  Nightmare's Fear), withheld when a set icon already carries that same modifier.
+  Enabled by ONE new field, `ActiveEffectDefinition.artifactSetId` (state.ts) —
+  presentation METADATA, no rule reads it — stamped at the two reducer sites that
+  create set effects (`selectArtifactSetUnit`, `pushArtifactSetUnitEffect`);
+  absent on every non-set effect and every legacy snapshot, which simply draws no
+  set icon. **WHAT ALREADY RENDERED before this**: combat TOKENS (Attack /
+  Weakness / Corrosion / Paralysis + poison cubes) as `TokenChips` on the card,
+  and stat SWINGS on the right rail — but a Defense token showed ONLY a shield on
+  the initiative rail plus inspector text, and a Set-Artifact bonus showed nothing
+  on the board at all. Leading with the LIMITS: **jsdom cannot compute CSS**, so
+  only the DOM contract is pinned — position, clipping and "clear of the printed
+  stat rail / name plate / HUD" are real-browser concerns with no e2e; the rail is
+  `pointer-events: none` like its sibling so it can never swallow a battlefield-cell
+  click, **which also means the native `title` tooltip does not fire on hover** (the
+  attribute is the accessible text and the tests' contract — the icon is the
+  at-a-glance signal, the unit inspector stays the text surface); a set bonus that
+  is purely a stat change shows TWICE (anonymous chip right, set icon left — by
+  design); PLAYER-scoped set passives (Dragon Father's spell-damage reduction) are
+  a fold, not a unit effect, so they get no icon (the set status panel is their
+  surface); and a printed `ATTACK_ROLL_ADVANTAGE` **ability** (Factory Halflings)
+  is not an active effect and draws nothing. Pinned in
+  `src/components/table/unit-effect-icons.test.tsx` (9 — the set-sourced advantage
+  with its exact tooltip, the selection tier's initiative bonus, two live effects =
+  two icons, a NON-participant seat seeing the same rail, effect-ended / legacy-
+  untagged / plain-unit / token-spent CONTROLs, the engine's own tier-4 Defense
+  token, and the non-set dice glyph). **4 mutations applied, 4 killed** (untag
+  `pushArtifactSetUnitEffect` → 2 fail; untag `selectArtifactSetUnit` → 1; drop the
+  board rail → 7; drop the defense-token branch → 2; drop the generic glyph → 1).
 - **Test files**: `src/components/table/artifact-set-ui.test.tsx` (23 — panel,
   badge, the zoom badge, both docks, the scry tray, the one-entry dock, the
   grouped window, single-click vs board aiming, Cancel, plus a sweep driving
