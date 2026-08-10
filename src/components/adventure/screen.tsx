@@ -5356,15 +5356,33 @@ type PandoraCardTile = {
 };
 
 /**
- * Polish Pandora Search ("choose 1 card to keep"): each option's
- * RESOLVE_PANDORA_SEARCH step carries the drawn Pandora cards plus WHICH of them
- * that option keeps, so the option can show that Pandora card's real face
- * instead of the word-only "Keep <name>". Returns null for any other step shape,
- * which is what keeps every unrelated CHOOSE_ONE on the generic path.
+ * The two "we drew N cards in front of you, keep one" resolution steps. BOTH
+ * carry the whole reveal inside their CHOOSE_ONE option (`drawn` +
+ * `keepIndexes`), so the option can show the kept card's REAL FACE instead of
+ * the word-only "Keep <name>":
+ *   - RESOLVE_PANDORA_SEARCH   — the Polish Pandora Search.
+ *   - RESOLVE_DRAW_CHOOSE_MINOR — the Polish reduced-starting-bonus
+ *     draw-2-Minor-Artifacts-and-choose-1 (the opening pick every player makes,
+ *     which was a pair of look-alike text buttons).
+ * The kind only picks the wording; the tile row and the dispatched action are
+ * identical for both.
  */
-function pandoraSearchKeptCardId(steps: { type: string; [key: string]: unknown }[] | undefined): string | null {
+const KEEP_ONE_DRAWN_STEP_KINDS: Record<string, "pandora" | "artifact"> = {
+  RESOLVE_PANDORA_SEARCH: "pandora",
+  RESOLVE_DRAW_CHOOSE_MINOR: "artifact"
+};
+
+/**
+ * The card ONE option of such a pick keeps, plus which pick it is. Returns null
+ * for any other step shape, which is what keeps every unrelated CHOOSE_ONE on
+ * the generic text path.
+ */
+function keepOneDrawnCard(
+  steps: { type: string; [key: string]: unknown }[] | undefined
+): { cardId: string; kind: "pandora" | "artifact" } | null {
   for (const step of steps ?? []) {
-    if (!step || step.type !== "RESOLVE_PANDORA_SEARCH") {
+    const kind = step ? KEEP_ONE_DRAWN_STEP_KINDS[step.type] : undefined;
+    if (!kind) {
       continue;
     }
     const drawn = step.drawn;
@@ -5378,7 +5396,7 @@ function pandoraSearchKeptCardId(steps: { type: string; [key: string]: unknown }
     }
     const cardId = drawn[index];
     if (typeof cardId === "string" && cardId) {
-      return cardId;
+      return { cardId, kind };
     }
   }
   return null;
@@ -6231,29 +6249,37 @@ export function PromptTray({
           return { cardId, actions };
         })
       : null;
-  // Polish Pandora Search: every option keeps one of the drawn Pandora cards, so
-  // the row only takes over when EVERY offer resolved to a card (a mixed or
-  // unrelated CHOOSE_ONE keeps the generic path).
-  const pandoraSearchTiles: PandoraCardTile[] | null = (() => {
+  // Keep-one-of-the-drawn picks (Polish Pandora Search / reduced-starting-bonus
+  // Minor Artifacts): every option keeps one of the cards already on the table,
+  // so the row only takes over when EVERY offer resolved to a card of the SAME
+  // kind (a mixed or unrelated CHOOSE_ONE keeps the generic text path).
+  const keepOneDrawn: { tiles: PandoraCardTile[]; kind: "pandora" | "artifact" } | null = (() => {
     if (!chooseOneOptions || teleport) {
       return null;
     }
     const tiles: PandoraCardTile[] = [];
+    let kind: "pandora" | "artifact" | null = null;
     for (const legal of body) {
       const optionIndex =
         legal.action.type === "RESOLVE_VISIT_STEP" && legal.action.optionIndex !== undefined
           ? legal.action.optionIndex
           : undefined;
       const option = optionIndex !== undefined ? chooseOneOptions[optionIndex] : undefined;
-      const cardId = pandoraSearchKeptCardId(option?.steps);
-      if (!cardId) {
+      const kept = keepOneDrawnCard(option?.steps);
+      if (!kept || (kind !== null && kept.kind !== kind)) {
         return null;
       }
-      tiles.push({ cardId, actions: [{ legal, label: "Keep this card", primary: true }] });
+      kind = kept.kind;
+      tiles.push({
+        cardId: kept.cardId,
+        actions: [
+          { legal, label: kept.kind === "artifact" ? "Keep this Artifact" : "Keep this card", primary: true }
+        ]
+      });
     }
-    return tiles.length > 0 ? tiles : null;
+    return tiles.length > 0 && kind ? { tiles, kind } : null;
   })();
-  const pandoraCardTiles = pandoraScryTiles ?? pandoraSearchTiles;
+  const pandoraCardTiles = pandoraScryTiles ?? keepOneDrawn?.tiles ?? null;
 
   // Teleport destination cards: token art + a human "where" label + a Whirlpool
   // number / Gate pair badge, keyed to each option's RESOLVE_VISIT_STEP so a
@@ -6328,13 +6354,16 @@ export function PromptTray({
   if (pandoraCardTiles) {
     const isScry = Boolean(pandoraScryTiles);
     const kept = pandoraScry?.toReturn ?? [];
+    const rowKind = isScry ? "pandora-scry" : (keepOneDrawn?.kind ?? "pandora");
     return (
       <div className="promptTray pandoraCardTray" role="dialog" aria-label={title}>
         <strong>{title}</strong>
         <small className="pandoraCardHint">
           {isScry
             ? "Read each card, then put it back on top of the deck or discard it. Click a card to enlarge it; the row scrolls sideways."
-            : "Pick the Pandora card you want to keep. Click a card to enlarge it; the row scrolls sideways."}
+            : rowKind === "artifact"
+              ? "Pick the Minor Artifact you want to keep — the other goes back under the Artifact deck. Click a card to enlarge it; the row scrolls sideways."
+              : "Pick the Pandora card you want to keep. Click a card to enlarge it; the row scrolls sideways."}
         </small>
         {kept.length > 0 ? (
           <div className="pandoraKeptStrip" data-testid="pandora-kept-strip">
@@ -6361,7 +6390,7 @@ export function PromptTray({
             </div>
           </div>
         ) : null}
-        <div className="promptOptions pandoraCardRow" data-testid="pandora-card-row">
+        <div className="promptOptions pandoraCardRow" data-row-kind={rowKind} data-testid="pandora-card-row">
           {pandoraCardTiles.map((tile, index) => {
             const card = cardLibrary[tile.cardId];
             const image = card?.assets?.cardImage;

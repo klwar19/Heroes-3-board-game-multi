@@ -4226,6 +4226,23 @@ is NOT done:
   still skip pending waiters (test mode, deliberate); the reduced starting
   bonus's Minor-Artifact draw returns skipped non-minors under the pile without
   a reshuffle.
+- **The reduced starting bonus's "keep 1 of 2 Minor Artifacts" pick shows the
+  CARD FACES** (2026-08-10, reported "please make artifacts with graphic - not
+  only text"): its `RESOLVE_DRAW_CHOOSE_MINOR` step already carried the whole
+  reveal (`drawn` + `keepIndexes`), so the tray reuses the Polish Pandora
+  Search's card row verbatim — `KEEP_ONE_DRAWN_STEP_KINDS` in
+  `PromptTray` (screen.tsx) maps BOTH resolution steps to that row, with only
+  the hint/button wording differing (`data-row-kind="artifact"`). PRESENTATION
+  ONLY: the engine is untouched, the click dispatches the SAME
+  `RESOLVE_VISIT_STEP` optionIndex the text button did, and the drawn ids stay
+  masked from other seats by the existing owner-only `pendingVisit.steps`
+  redaction. The OUTER "Starting bonus (Reduced)" prompt is unchanged (no cards
+  are on the table yet, so it keeps its artifact/resource glyph tiles), and the
+  reduced mode's other option (roll for resources) is not a card pick. jsdom
+  cannot compute CSS, so only the DOM contract is pinned
+  (`reduced-starting-bonus-artifact-choice.test.tsx`, 6 cases with masking +
+  outer-prompt + plain-CHOOSE_ONE CONTROLs); the row's sideways scrolling is a
+  real-browser concern.
 - **NO Quick Combat on Ⅵ/Ⅶ fields — EVER, either rule** (user rule 2026-08-03,
   fixing the recurring "there is STILL a Quick Combat option on VI/VII"
   complaint). A centre-band guard (difficulty 6–7) is ALWAYS fought out: neither
