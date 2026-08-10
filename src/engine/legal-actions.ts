@@ -38,6 +38,7 @@ import {
   hasResources as playerHasResources,
   humanPlayerIds,
   isFieldGuarded,
+  isOwnTownOrSettlementField,
   isSeaField,
   NEUTRAL_DECK_IDS,
   obeliskRoleIsMonolith,
@@ -9791,10 +9792,11 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
         );
         if (hero?.spaceId && state.adventure) {
           const here = hero.spaceId;
-          const isOwnHolding = (spaceId: string) =>
-            Object.values(state.towns).some((candidate) => candidate.fieldId === spaceId && candidate.controllerId === playerId) ||
-            (state.adventure?.fields[spaceId]?.location === "settlement" &&
-              state.adventure?.fields[spaceId]?.flagOwnerId === playerId);
+          // ONE shared read with the reducer's own guard (flag-first for Towns,
+          // so a CAPTURED Town is a legal origin AND destination while a Town
+          // captured from you is neither) — an inline copy here is exactly how
+          // the two drifted apart.
+          const isOwnHolding = (spaceId: string) => isOwnTownOrSettlementField(state, playerId, spaceId);
           if (isOwnHolding(here)) {
             for (const field of Object.values(state.adventure.fields)) {
               if (field.spaceId !== here && isOwnHolding(field.spaceId)) {

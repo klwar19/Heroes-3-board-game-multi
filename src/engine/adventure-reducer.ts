@@ -161,6 +161,7 @@ import {
   instantiateTile,
   isFieldGuarded,
   isOuterEdgeSealed,
+  isOwnTownOrSettlementField,
   isTeleportConnectorLocation,
   isTileSlotDesignedSealed,
   isSharedEventBookkeepingReward,
@@ -13186,18 +13187,6 @@ export function activateTownBuilding(state: GameState, action: Extract<GameActio
   }
 
   throw new Error("That building has no activated use.");
-}
-
-/** Whether the field is a town or settlement this player controls. */
-function isOwnTownOrSettlementField(state: GameState, playerId: PlayerId, spaceId: MapSpaceId): boolean {
-  const field = state.adventure?.fields[spaceId];
-  if (!field) {
-    return false;
-  }
-  if (Object.values(state.towns).some((town) => town.fieldId === spaceId && town.controllerId === playerId)) {
-    return true;
-  }
-  return field.location === "settlement" && field.flagOwnerId === playerId;
 }
 
 /**

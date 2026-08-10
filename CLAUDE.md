@@ -3213,6 +3213,37 @@ offered, END_TURN accepted). MUTATION-CHECKED: restoring `clearCustomGuard`
 fails 4; dropping the early `return` so the pass falls into the visit fails 5
 (including (f)).
 
+## Town teleports read ownership FLAG-first, so a CAPTURED Town works (2026-08-10)
+
+Reported: "cannot teleport via Castle Gate from captured opponents town to my
+settlement/town." Inferno's Castle Gate (both halves) AND the WOG Mirror of the
+Home-Way read a Town's ownership off `TownState.controllerId`, which the engine
+DELIBERATELY never flips on capture — control lives on `field.flagOwnerId`, and
+no engine path assigns `controllerId` after setup. So a Town you captured was
+neither a legal ORIGIN nor a legal DESTINATION, and a Town an enemy captured
+FROM you still counted as yours (a free teleport into enemy hands).
+
+ONE shared read now backs all three call sites: `isOwnTownOrSettlementField`
+(`adventure.ts` — the LEAF of the two modules, since `adventure-reducer` imports
+`adventure` and not the reverse), flag-first with `controllerId` as the
+fall-back for an UNFLAGGED field ONLY. That is the same reading
+`townPortalDestinations` uses. `legal-actions.ts`'s Castle Gate offer and the
+reducer's guard both call it instead of keeping their own inline copies — that
+duplicate is exactly how the two drifted apart.
+
+LIMITS: destination categories are UNCHANGED (a Town field backed by a
+TownState, or a flagged Settlement — never a Ⅶ Random Town), and neither
+teleport gained an occupancy check it did not already have (the Castle Gate has
+none; the Mirror keeps its own). NOTE for future fixtures: setup ALREADY flags
+each home Town's field for its owner, so `town.controllerId = "x"` alone no
+longer takes control away — move the field flag too (one pre-existing
+`wog-objects.test.ts` CONTROL relied on the buggy read and was corrected).
+Pinned in `src/engine/castle-gate-teleport.test.ts` (real capture path, both
+directions, plus still-enemy-Town / captured-from-you / classic own-Town
+CONTROLs) and `wog-objects.test.ts` ("Town ownership is flag-first"); each
+mutation-checked — reverting the reducer read fails 4, reverting only the
+legal-actions read fails 4, reverting only the Mirror read fails 2.
+
 ## Diplomacy's skip costs a crown · Dragon Utopia guards use the table (2026-07-27)
 
 Two shipped readings replaced by the printed card / the Field Difficulty table.

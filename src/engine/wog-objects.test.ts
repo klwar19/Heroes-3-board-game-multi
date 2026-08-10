@@ -388,8 +388,16 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
 
   it("CONTROL: no controlled Town/Settlement → the teleport arm is ABSENT (inert)", () => {
     const state = wogGame({ seed: "mirror-none" });
+    // p1 controls no town. Town ownership is FLAG-first (setup already flags
+    // each home Town's field for its owner), so taking control away means
+    // moving the FLAG as well as the Town Board — `controllerId` alone is not
+    // what the engine reads.
     for (const town of Object.values(state.towns)) {
-      town.controllerId = "p2"; // p1 controls no town
+      town.controllerId = "p2";
+      const field = town.fieldId ? state.adventure!.fields[town.fieldId] : undefined;
+      if (field) {
+        field.flagOwnerId = "p2";
+      }
     }
     injectField(state, "wog.mirror_home_way");
     visit(state);
@@ -410,6 +418,104 @@ describe("Mirror of the Home-Way (wog.mirror_home_way)", () => {
 
     expect(hero.spaceId).toBe(FIELD_ID); // stayed put
     expect(state.players.p1.resources.gold).toBe(10); // paid nothing
+  });
+
+  /**
+   * Town ownership is FLAG-FIRST (`isOwnTownOrSettlementField`, adventure.ts):
+   * capturing a Town flags its field while the Town Board's `controllerId`
+   * DELIBERATELY never flips. The Mirror used to read `controllerId` alone, the
+   * same bug reported against Inferno's Castle Gate — see
+   * `castle-gate-teleport.test.ts`.
+   */
+  describe("Town ownership is flag-first (captured Towns)", () => {
+    /** Opens the Mirror, pays the 2 gold, and returns the destination labels. */
+    function destinationLabels(state: GameState): string[] {
+      injectField(state, "wog.mirror_home_way");
+      state.players.p1.resources.gold = 10;
+      visit(state);
+      chooseByLabel(state, (l) => l.toLowerCase().includes("teleport"));
+      pay(state);
+      return menu(state).options.map((option) => option.label);
+    }
+
+    /** Flags `spaceId` for `ownerId` without touching any Town Board. */
+    function flagFor(state: GameState, spaceId: string, ownerId: string): void {
+      const field = state.adventure!.fields[spaceId];
+      if (!field) {
+        throw new Error(`no field at ${spaceId}`);
+      }
+      field.flagOwnerId = ownerId;
+      field.everFlagged = true;
+    }
+
+    it("a Town captured from an opponent IS a destination — the hero lands on it", () => {
+      const state = wogGame({ seed: "mirror-captured" });
+      const captured = state.towns.town_p2.fieldId!;
+      flagFor(state, captured, "p1");
+      state.heroes.hero_p2.spaceId = null; // the Mirror skips occupied hexes
+      const hero = getMainHero(state, "p1")!;
+
+      // The shape the bug lived in: p1 holds the flag, the Board still says p2.
+      expect(state.towns.town_p2.controllerId).toBe("p2");
+
+      const labels = destinationLabels(state);
+      const capturedIndex = labels.findIndex((label) => label.includes("necropolis"));
+      expect(capturedIndex, labels.join(" | ")).toBeGreaterThanOrEqual(0);
+
+      resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: capturedIndex });
+      expect(hero.spaceId).toBe(captured); // observably teleported onto the captured town
+      expect(state.players.p1.resources.gold).toBe(8);
+    });
+
+    it("CONTROL: a Town captured FROM you is NOT a destination (its Board still says yours)", () => {
+      const state = wogGame({ seed: "mirror-lost" });
+      const home = state.towns.town_p1.fieldId!;
+      // A flagged Settlement keeps the teleport arm alive, so the ABSENCE of the
+      // Town below is about ownership and not about the arm vanishing wholesale.
+      state.adventure!.fields["51,51"] = {
+        spaceId: "51,51",
+        tileInstanceId: "wog-loc-tile",
+        slot: 1,
+        location: "settlement",
+        blackCube: false,
+        flagOwnerId: "p1",
+        everFlagged: true,
+        settlementResource: "gold"
+      };
+      state.heroes.hero_p2.spaceId = null;
+      flagFor(state, home, "p2");
+      expect(state.towns.town_p1.controllerId).toBe("p1"); // Board untouched
+
+      const labels = destinationLabels(state);
+      expect(labels.some((label) => label.startsWith("Settlement"))).toBe(true);
+      expect(labels.some((label) => label.startsWith("Town"))).toBe(false);
+    });
+
+    it("CONTROL: your own never-captured home Town is still a destination", () => {
+      const state = wogGame({ seed: "mirror-home" });
+      state.heroes.hero_p2.spaceId = null;
+      // Setup already flags each home Town's field for its owner, so this is
+      // the ordinary shape — the flag-first branch, agreeing with the Board.
+      expect(state.adventure!.fields[state.towns.town_p1.fieldId!].flagOwnerId).toBe("p1");
+
+      const labels = destinationLabels(state);
+      expect(labels.some((label) => label.startsWith("Town"))).toBe(true);
+      // …and the opponent's un-captured Town is not on the list.
+      expect(labels.some((label) => label.includes("necropolis"))).toBe(false);
+    });
+
+    it("CONTROL: an UNFLAGGED Town field falls back to the Town Board's controllerId", () => {
+      const state = wogGame({ seed: "mirror-unflagged" });
+      state.heroes.hero_p2.spaceId = null;
+      // A legacy/hand-built snapshot with no flag on the home Town field: the
+      // fall-back keeps it yours, and keeps the opponent's out.
+      state.adventure!.fields[state.towns.town_p1.fieldId!].flagOwnerId = null;
+      state.adventure!.fields[state.towns.town_p2.fieldId!].flagOwnerId = null;
+
+      const labels = destinationLabels(state);
+      expect(labels.some((label) => label.startsWith("Town"))).toBe(true);
+      expect(labels.some((label) => label.includes("necropolis"))).toBe(false);
+    });
   });
 });
 

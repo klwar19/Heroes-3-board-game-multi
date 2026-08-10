@@ -4188,6 +4188,41 @@ function playerControlsHoldWithGrailTarget(
   }
 }
 
+/**
+ * Whether the field is a Town or Settlement this player controls — the ONE read
+ * behind every "teleport between your own holdings" offer AND its resolution
+ * guard (Inferno's Castle Gate, the WOG Mirror of the Home-Way), so no two of
+ * them can disagree about whose Town it is.
+ *
+ * Ownership of a TOWN is FLAG-FIRST, the same reading `townPortalDestinations`
+ * uses: capturing a Town flags its field while the Town Board's `controllerId`
+ * DELIBERATELY never flips (rulebook p.76 — no engine path assigns it after
+ * setup). Reading `controllerId` alone got BOTH directions wrong: a Town you
+ * captured was neither a legal origin nor a legal destination, and a Town an
+ * enemy captured FROM you still counted as yours. `controllerId` is the
+ * fall-back for an UNFLAGGED field only — exactly the home Town nobody has ever
+ * taken.
+ *
+ * Narrower than `playerControlsField` on purpose: a Town here must be backed by
+ * a TownState (so a Ⅶ Random Town is never a teleport destination, matching
+ * Town Portal), and the only other category is a flagged Settlement.
+ */
+export function isOwnTownOrSettlementField(
+  state: GameState,
+  playerId: PlayerId,
+  spaceId: MapSpaceId
+): boolean {
+  const field = state.adventure?.fields[spaceId];
+  if (!field) {
+    return false;
+  }
+  const town = Object.values(state.towns).find((candidate) => candidate.fieldId === spaceId);
+  if (town) {
+    return field.flagOwnerId ? field.flagOwnerId === playerId : town.controllerId === playerId;
+  }
+  return field.location === "settlement" && field.flagOwnerId === playerId;
+}
+
 /** True when the player currently controls this map field (flag or unflagged home town). */
 function playerControlsField(state: GameState, playerId: PlayerId, field: MapFieldState): boolean {
   if (field.flagOwnerId === playerId) {
@@ -6200,9 +6235,11 @@ function wogMirrorTownDestinations(
     Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
   const destinations: { label: string; spaceId: MapSpaceId }[] = [];
   for (const town of Object.values(state.towns)) {
+    // Flag-first Town ownership via the shared read — a Town captured from an
+    // opponent IS a destination, a Town captured FROM this player is not.
     if (
-      town.controllerId === playerId &&
       town.fieldId &&
+      isOwnTownOrSettlementField(state, playerId, town.fieldId) &&
       town.fieldId !== hero.spaceId &&
       !fieldHasOtherHero(town.fieldId)
     ) {
