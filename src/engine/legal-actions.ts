@@ -1367,6 +1367,12 @@ export function getAttackRollMode(
  * Whether a reroll source can fire against the current (latest) roll: it
  * needs uses left, and face-gated sources like the Crusaders' 'every "0"'
  * only while the die actually shows that face.
+ *
+ * `onlyOnRoll` is a WHEN gate ONLY. Every source — face-gated unit abilities
+ * included — spends one `remaining` per use, because an "[unit_attack]" icon
+ * ability activates once per attack (2026-08-10 rule). A fresh gated face after
+ * the reroll therefore offers nothing more in THAT attack; the next declared
+ * attack (a follow-up included) rebuilds the sources and re-arms it.
  */
 export function rerollSourceAvailableFor(source: AttackRerollSource, currentRoll: number): boolean {
   if (source.remaining <= 0) {

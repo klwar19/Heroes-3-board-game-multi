@@ -347,12 +347,22 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /**
+       * Every printed reroll ability is "[unit_attack]", so `rerollsPerAttack`
+       * is a HARD per-attack budget: the source depletes as it is spent and
+       * re-arms only on the NEXT declared attack (a printed follow-up counts as
+       * its own attack). Never make one of these unlimited.
+       */
       type: "ATTACK_DIE_REROLL";
       rerollsPerAttack: number;
       /**
-       * Crusaders: 'You can reroll every "0"' — the reroll is only offered
-       * while the die shows this face, and every new matching face may be
-       * rerolled again (the source never depletes).
+       * Face gate — Crusaders: 'You can reroll every "0"'; neutral Minotaurs:
+       * 'Reroll this unit's "-1" outcome'. The reroll is only offered while the
+       * die shows this face. It gates WHEN, never HOW OFTEN: rerolling into
+       * another matching face does NOT hand the unit a second use in the same
+       * attack (2026-08-10 rule — "[unit_attack] abilities activate only once
+       * per attack"). The Crusaders' printed "every" is read as "every die
+       * showing 0 in this one roll", which the whole-roll reroll already covers.
        */
       onlyOnRoll?: number;
       /**
@@ -1760,7 +1770,8 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "yukikaze-torpedo-run": {
     id: "yukikaze-torpedo-run",
     name: "Torpedo Run",
-    text: '[unit_attack] May reroll any "-1" result on this unit\'s Attack die.',
+    // "[unit_attack]" — once per attack, like the Minotaur/Crusader rerolls.
+    text: '[unit_attack] May reroll a "-1" result on this unit\'s Attack die (once per attack).',
     effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 },
     implementationStatus: "implemented"
   },
@@ -1921,7 +1932,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "attack-die-reroll": {
     id: "attack-die-reroll",
     name: "Attack Reroll",
-    text: 'May reroll every "0" on its Attack die — the new result replaces the old one. Stacks with Luck and other rerolls; Luck is always spent last.',
+    text: 'May reroll a "0" on its Attack die — the new result replaces the old one. Once per attack ([unit_attack]). Stacks with Luck and other rerolls; Luck is always spent last.',
     effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: 0 },
     implementationStatus: "implemented"
   },
@@ -2403,13 +2414,14 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "IMMUNE_TO_SPELL_SCHOOLS", schools: ["any"] },
     implementationStatus: "implemented"
   },
-  // Neutral Minotaurs: "Reroll this unit's '-1' outcome on the Attack die."
-  // Face-gated like the Crusaders' reroll — every fresh "-1" may be rerolled
-  // again and the source never depletes.
+  // Neutral Minotaurs: "[unit_attack] Reroll this unit's '-1' outcome on the
+  // Attack die." Face-gated (only while the die shows "-1") and — like every
+  // "[unit_attack]" icon ability — usable ONCE PER ATTACK: a reroll into a
+  // second "-1" stands. Re-arms on the unit's next declared attack.
   "minotaur-reroll": {
     id: "minotaur-reroll",
     name: "Minotaur Fury",
-    text: 'Reroll every "-1" on this unit\'s Attack die — the new result replaces the old one.',
+    text: 'Reroll a "-1" on this unit\'s Attack die — the new result replaces the old one. Once per attack.',
     effect: { type: "ATTACK_DIE_REROLL", rerollsPerAttack: 1, onlyOnRoll: -1 },
     implementationStatus: "implemented"
   },

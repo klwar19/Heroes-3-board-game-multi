@@ -1314,7 +1314,12 @@ describe("rules engine prototype", () => {
     expect(findEvent(first, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
   });
 
-  it("keeps offering the Crusader reroll on new 0s and only lets the latest roll be kept", () => {
+  // FLIPPED 2026-08-10 (was "keeps offering the Crusader reroll on new 0s"):
+  // an "[unit_attack]" icon ability activates ONCE PER ATTACK, so a reroll into
+  // a second gated face no longer re-opens the offer. The Crusaders' printed
+  // "every 0" is read as "every die showing 0 in this one roll" — which the
+  // whole-roll reroll already covers. See src/engine/attack-icon-once-per-attack.test.ts.
+  it("spends the Crusader reroll once per attack and only lets the latest roll be kept", () => {
     const state = createInitialGameState();
     if (!state.combat) {
       throw new Error("Expected combat setup.");
@@ -1343,32 +1348,33 @@ describe("rules engine prototype", () => {
       playerId: "p1",
       choiceId: pending.pendingChoice?.id ?? ""
     });
-    // 0 again — the gate stays open for another go.
-    expect(rerolledToZero.pendingChoice).toMatchObject({ remainingRerolls: 1 });
-
-    const rerolledAgain = applyOk(rerolledToZero, {
+    // 0 again — but the one per-attack use is spent, so the offer is gone and
+    // a forged second reroll is rejected.
+    expect(rerolledToZero.pendingChoice).toMatchObject({ remainingRerolls: 0 });
+    const refusedReroll = applyAction(rerolledToZero, {
       type: "REROLL_PENDING_CHOICE",
       playerId: "p1",
       choiceId: rerolledToZero.pendingChoice?.id ?? ""
     });
-    // -1 now shows: no more Crusader rerolls, only the latest roll may be kept.
-    expect(rerolledAgain.pendingChoice).toMatchObject({ remainingRerolls: 0 });
-    const refused = applyAction(rerolledAgain, {
+    expect(refusedReroll.errors).not.toEqual([]);
+
+    const refused = applyAction(rerolledToZero, {
       type: "CHOOSE_PENDING_ROLL",
       playerId: "p1",
-      choiceId: rerolledAgain.pendingChoice?.id ?? "",
+      choiceId: rerolledToZero.pendingChoice?.id ?? "",
       candidateIndex: 0
     });
     // Rejected at the legality gate: earlier candidates are no longer offered.
     expect(refused.errors).not.toEqual([]);
 
-    const resolved = applyOk(rerolledAgain, {
+    const resolved = applyOk(rerolledToZero, {
       type: "CHOOSE_PENDING_ROLL",
       playerId: "p1",
-      choiceId: rerolledAgain.pendingChoice?.id ?? "",
-      candidateIndex: 2
+      choiceId: rerolledToZero.pendingChoice?.id ?? "",
+      candidateIndex: 1
     });
-    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: -1 });
+    // The rerolled 0 stands — the third scripted die (-1) is never thrown.
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 0 });
   });
 
   it("rolls two dice and resolves the higher for advantage units (neutral Crusaders)", () => {

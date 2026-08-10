@@ -256,7 +256,7 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
   "azur_lane.yukikaze": {
     id: "azur_lane.yukikaze", name: "Yukikaze", faction: "azur_lane", tier: "silver", type: "ground",
     few: { attack: 3, defense: 2, health: 3, initiative: 7, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "The Great Yukikaze — luck of the invincible ship: always rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).", cardImage: azurCard("silver", "yukikaze", "few") },
-    pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "yukikaze-torpedo-run"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — can reroll any \"-1\" on this unit's Attack die.", cardImage: azurCard("silver", "yukikaze", "pack") },
+    pack: { attack: 4, defense: 2, health: 4, initiative: 8, cost: { gold: 11 }, abilities: ["commander-defense-token", "yukikaze-torpedo-run"], abilityText: "The Great Yukikaze — always rolls the Defend die when attacked; Torpedo Run — can reroll a \"-1\" on this unit's Attack die, once per attack.", cardImage: azurCard("silver", "yukikaze", "pack") },
     source
   },
   // --- GOLD (2) ------------------------------------------------------------

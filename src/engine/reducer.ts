@@ -4102,15 +4102,17 @@ function buildLuckyESources(player: PlayerState): AttackRerollSource[] {
   return sources;
 }
 
-/** Rerolls left to offer, given the roll currently showing. */
+/**
+ * Rerolls left to offer, given the roll currently showing. EVERY source
+ * depletes — including the face-gated unit abilities (neutral Minotaurs,
+ * Crusaders, Yukikaze): `onlyOnRoll` is a pure WHEN gate, never a licence to
+ * fire again (see rerollSourceAvailableFor).
+ */
 function countAvailableRerolls(sources: AttackRerollSource[], currentRoll: number): number {
-  return sources.reduce((total, source) => {
-    if (!rerollSourceAvailableFor(source, currentRoll)) {
-      return total;
-    }
-    // Face-gated sources never deplete — count them as one offer each.
-    return total + (source.onlyOnRoll !== undefined ? 1 : source.remaining);
-  }, 0);
+  return sources.reduce(
+    (total, source) => (rerollSourceAvailableFor(source, currentRoll) ? total + source.remaining : total),
+    0
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -18890,11 +18892,11 @@ function rerollPendingChoice(
     applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
   }
   choice.candidates.push(candidate);
-  // Face-gated sources (Crusaders' 'every "0"') never deplete; everything
-  // else spends one use.
-  if (source.onlyOnRoll === undefined) {
-    source.remaining -= 1;
-  }
+  // EVERY source spends one use — the face-gated unit abilities included. An
+  // "[unit_attack]" icon activates ONCE PER ATTACK, so a Minotaur/Crusader that
+  // rerolls into another gated face may NOT reroll again in the same attack;
+  // `onlyOnRoll` only says WHEN the one use may be taken.
+  source.remaining -= 1;
   source.used += 1;
   choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
 
@@ -19773,11 +19775,13 @@ function chooseAbilityTarget(
  * live fighter remains to steer it.
  */
 /**
- * A neutral attacker (Minotaurs, Champions) auto-resolves its own attack-die
- * reroll: it rerolls every "-1" its face-gated ability allows — never spending
- * a depleting source, which neutrals never have — then keeps the final roll and
- * resumes the attack. The neutral player makes no choices, so the adventure
- * pump drives this the moment such a choice opens.
+ * A neutral attacker (Minotaurs) auto-resolves its own attack-die reroll: it
+ * takes each face-gated ability reroll its printed "[unit_attack]" budget
+ * allows — ONE per source per attack, exactly like a human's window (2026-08-10
+ * report: "Minotaurs neutral can reroll -1 more than once, WHICH IS WRONG") —
+ * then keeps the final roll and resumes the attack. The neutral player makes no
+ * choices, so the adventure pump drives this the moment such a choice opens.
+ * `remaining` is what terminates the loop; the safety counter is a backstop.
  */
 function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
   const choice = state.pendingChoice;
@@ -19791,13 +19795,17 @@ function autoResolveNeutralReroll(state: GameState, cards: CardLibrary): void {
     safety -= 1;
     const currentRoll = choice.candidates.at(-1)?.roll ?? 0;
     const source = choice.rerollSources.find((candidate) => rerollSourceAvailableFor(candidate, currentRoll));
-    // Only face-gated ability rerolls (the Minotaur/Champion "-1") ever apply to
-    // a neutral; stop once the current face can no longer be rerolled.
+    // Only face-gated ability rerolls (the Minotaur "-1") ever apply to a
+    // neutral; stop once the current face can no longer be rerolled.
     if (!source || source.onlyOnRoll === undefined) {
       break;
     }
     const candidate = rollAttackCandidate(combat, choice.rollMode);
     choice.candidates.push(candidate);
+    // Spend the use, exactly as rerollPendingChoice does for a human — without
+    // this the neutral rerolls a fresh "-1" forever (the reported bug).
+    source.remaining -= 1;
+    source.used += 1;
     choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
     appendEvent(state, {
       type: "ATTACK_REROLLED",

@@ -13541,9 +13541,11 @@ export type AttackRerollSource = {
    */
   cardId?: CardId;
   /**
-   * Printed face gate (Crusaders: 'reroll every "0"'): the source is only
-   * usable while the current roll shows this face, and using it never
-   * depletes `remaining` — every new matching face may be rerolled again.
+   * Printed face gate (Crusaders 'every "0"', neutral Minotaurs '-1'): the
+   * source is only usable while the current roll shows this face. It is a WHEN
+   * gate ONLY — using it still spends one `remaining`, because these are all
+   * "[unit_attack]" icon abilities and such an ability activates ONCE PER
+   * ATTACK. Rerolling a "-1" into another "-1" therefore ends the offer.
    */
   onlyOnRoll?: number;
   /**

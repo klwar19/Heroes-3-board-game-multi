@@ -2853,6 +2853,72 @@ the Artillery call site fails 4, reverting only the instant-join call site fails
 CONTROL). NOTE: the primary-attack CONTROL was FLIPPED on 2026-08-08 (below), so
 that last mutation count no longer holds.
 
+## An "[unit_attack]" reroll ability fires ONCE PER ATTACK (2026-08-10)
+
+USER RULING, verbatim: "Minotaurs neutral can reroll -1 more than once, WHICH IS
+WRONG. ATTACK icon abilities activate only once per attack, FIX properly all."
+
+THE BUG (reproduced both ways): the four printed Attack-die reroll abilities are
+FACE-GATED (`onlyOnRoll`), and the engine read that gate as "the source never
+depletes" — so a neutral Minotaur that rerolled its "-1" into another "-1" was
+offered the reroll again, and again, until the die finally showed something else.
+The neutral seat's own auto-resolver (`autoResolveNeutralReroll`) did the same in
+a loop bounded only by a safety counter of 12, which is the shape the report saw.
+
+THE RULE: `onlyOnRoll` gates WHEN the ability may fire; `rerollsPerAttack` is a
+hard budget that EVERY use spends. Three seams, all in the reroll machinery:
+`countAvailableRerolls` (reducer.ts — now plain `source.remaining`),
+`rerollPendingChoice` (the human spend, no longer skipped for a face-gated
+source) and `autoResolveNeutralReroll` (the neutral spend, which is what
+terminates its loop). Pinned in `src/engine/attack-icon-once-per-attack.test.ts`
+(21 tests); mutation-checked — restoring the never-deplete guard fails 9,
+dropping the neutral spend fails 1, restoring the "face-gated counts as 1"
+special case fails 1.
+
+Leading with what does NOT change / the deliberate readings:
+- **The Crusaders' printed "every 0" is now read as "every die showing 0 in this
+  one roll"** — which the whole-roll reroll already covers — so their reroll is
+  ALSO one use per attack. That is the one judgement call in this change: the
+  card's word is "every", but its icon is `[unit_attack]` and the user rule is
+  general. The existing `reducer.test.ts` case that pinned the old behaviour was
+  FLIPPED (renamed "spends the Crusader reroll once per attack …") with the
+  justification in place. Yukikaze's Torpedo Run and Castle Champions' Charge
+  (already depleting) follow the same rule.
+- **THE VIOLATOR LIST IS EXACTLY THE `ATTACK_DIE_REROLL` FAMILY** —
+  `minotaur-reroll`, `attack-die-reroll` (Crusaders), `yukikaze-torpedo-run`
+  (all three face-gated, all three unbounded before) and `champion-move-reroll`
+  (already correct). Nothing else in the ability registry could fire twice in one
+  attack: every other `[unit_attack]` effect resolves once inside a single-pass
+  code path, the follow-up-attack queue declares each strike as its OWN attack,
+  and the post-attack ABILITY-roll window (`buildAbilityRerollSources` — Death
+  Stare & co.) carries no unit-ability sources at all, only depleting
+  artifact/morale ones.
+- **The budget re-arms PER ATTACK, not per activation** — `buildRerollSources`
+  runs per declared attack, so a printed follow-up (Gold Dragon / Phoenix line
+  breath, Piston Reach, the Lich Death Cloud …) gets a fresh use. Pinned.
+- **The `[unit_passive]` "Reroll this unit's ALL '-1' rolls"** (neutral
+  Champions, `REROLL_ALL_MINUS_ONE`) is UNCHANGED and still repeats: it is baked
+  into the roll itself and never opens a window, so the budget cannot reach it.
+  CONTROL-pinned. The advantage family (`attack-roll-advantage`) is a roll MODE,
+  not an activation — also untouched and CONTROL-pinned.
+- **Non-ability sources keep their own spend semantics** — Luck / Fortune /
+  Mirth, the positive morale token, the Positive Morale reroll card, the reroll
+  artifacts (Diplomat's Ring / Ambassador's Sash), Lucky E, the Ammo Cart and the
+  Cultivation Core Formation reroll all depleted already and are byte-identical.
+  A CONTROL pins that spending a Minotaur's ability leaves a held morale token
+  still offered in the SAME window.
+- **KNOWN LATENT GAP, found while probing and NOT fixed here** (recorded at the
+  CONTROL test): `REROLL_ALL_MINUS_ONE` is applied to an ATTACK die only inside
+  the `hasRollTwoDiceApplyBoth` branch (plus the Defend die). A unit carrying
+  `champion-reroll-minus` WITHOUT `champion-roll-two-dice` would get no
+  attack-die minus-reroll on a plain single roll. No shipped unit has that
+  shape — `neutral.champions` is the only carrier and always prints both — so it
+  is latent, not live.
+- **The AI/AFK path cannot stall**: the neutral auto-resolver now terminates on
+  the spent budget (the safety counter is only a backstop), and the shared
+  forced-resolution driver still answers a spent window with `CHOOSE_PENDING_ROLL`
+  (pinned). No AI scoring changed.
+
 ## Every instant OPENS an attack window · medic draw play on your own turn (2026-08-08)
 
 USER RULING, verbatim: "instant abilities should be able to be played before
