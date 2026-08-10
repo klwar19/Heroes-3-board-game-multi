@@ -29537,7 +29537,13 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 .commanderLevelUpBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 96;
+  /* The overlay PORTALS to <body> (commander-card.tsx) because it is rendered
+     from the left rail's `.leftRailDock`, a z-index: 20 stacking context that
+     trapped it under the fixed hand tray. Portaled, it needs its own slot in
+     the documented band: above the chat dock (200), setup-hub backdrop (210),
+     hero info (220) and mod windows (230), below the commander equipment
+     window (240/245), which opens on top of this one. */
+  z-index: 236;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -29549,9 +29555,20 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 
 .commanderLevelUpModal {
   width: min(440px, 96vw);
-  max-height: 92vh;
-  overflow-y: auto;
+  /* Three pinned-scroller-pinned rows: banner · scrolling body · the
+     Done/"Spend later" escape. The middle `minmax(0, 1fr)` is what lets the
+     body shrink below its content so `.commanderLevelUpScroll` scrolls instead
+     of the modal growing past the viewport — the six stat options plus the
+     commander face easily exceed a short window, and the last option (Speed)
+     was unreachable. `dvh` (with the vh fallback declared first, like
+     `.searchModal` / `.phoneMode .townWindow`) because a phone's 100vh is the
+     URL-bar-hidden LARGE viewport: a 92vh box centered in a shorter VISUAL
+     viewport hangs off both edges with nothing to scroll. */
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
   gap: 10px;
   padding: 14px;
   border-radius: 14px;
@@ -29576,11 +29593,33 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
 .commanderLevelUpModalBody {
   display: grid;
   gap: 12px;
+  align-content: start;
+}
+
+/* THE scroll region of the level-up popup (see .commanderLevelUpModal above).
+   `min-height: 0` is the load-bearing half — without it this grid row is sized
+   by its content and the box never scrolls. Keep both, and keep this class on
+   the element that holds the face + the six stat options. */
+.commanderLevelUpScroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
 
 .commanderLevelUpFace {
   width: min(230px, 62%);
   margin: 0 auto;
+}
+
+/* On a short window the card face would eat the whole scroller and push all six
+   options below the fold; shrink it so at least the first options are visible
+   before any scrolling. */
+@media (max-height: 780px) {
+  .commanderLevelUpFace {
+    width: min(150px, 42%);
+  }
 }
 
 .commanderLevelUpDone {
@@ -37091,6 +37130,29 @@ details.mapPresetGroup > summary::-webkit-details-marker {
   max-height: calc(100dvh - 88px - env(safe-area-inset-bottom, 0px));
 }
 
+/* Commander level-up popup on phone. It PORTALS to <body> (outside <main>), so
+   it takes the body:has(main.phoneMode) form — same :has() dependency as the
+   Setup-Hub windows below (graceful no-op on old browsers). It paints ABOVE the
+   tab bar (z 236 vs 90), so it does not need the search modal's bar clearance;
+   what it does need is the phone's real visual viewport (dvh) plus the bottom
+   safe-area inset, or the "Spend later" button and the last stat option sit off
+   the bottom edge with nothing to scroll. */
+body:has(main.phoneMode) .commanderLevelUpBackdrop {
+  padding: 10px max(10px, env(safe-area-inset-right, 0px))
+    calc(10px + env(safe-area-inset-bottom, 0px))
+    max(10px, env(safe-area-inset-left, 0px));
+}
+
+body:has(main.phoneMode) .commanderLevelUpModal {
+  width: min(440px, 100%);
+  max-height: calc(100vh - 20px);
+  max-height: calc(100dvh - 20px - env(safe-area-inset-bottom, 0px));
+}
+
+body:has(main.phoneMode) .commanderLevelUpFace {
+  width: min(150px, 42%);
+}
+
 /* The setup lobby mounts its own helper-coach prompt INSIDE .setupLobby, whose
    `z-index: 1` stacking context traps the prompt's fullscreen backdrop below
    the chat dock (z-index 200) — on a phone the dock then swallows the
@@ -39819,11 +39881,13 @@ button.armyExperienceBoard > small {
    panel itself. Their normal map z-index is intentionally lower than the full
    command window, which otherwise makes Town/Opponent/VP dialogs look as if
    their buttons did nothing. Commander and mod-system windows are included so
-   every conditional rail tool follows the same rule. */
+   every conditional rail tool follows the same rule.
+   The commander LEVEL-UP backdrop is deliberately NOT in this list: it now
+   portals to <body> at a flat z-index 236, and re-stating 230 here would only
+   LOWER it while the rail is expanded. */
 body:has(.leftRailExpanded) .townWindowBackdrop,
 body:has(.leftRailExpanded) .opponentInfoBackdrop,
 body:has(.leftRailExpanded) .vpStandingsBackdrop,
-body:has(.leftRailExpanded) .commanderLevelUpBackdrop,
 body:has(.leftRailExpanded) .heroSystemBackdrop,
 body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   z-index: 230;

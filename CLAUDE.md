@@ -1403,6 +1403,30 @@ Leading with what does NOT run / deliberate readings:
   clearer `CommanderLevelUpPicker`: one clearly-separated, per-stat-accent-
   coloured option showing the grade jump, the numeric value change and the
   benefit (render + click tested in `commander-card.test.tsx`).
+  **The popup PORTALS to `<body>` (2026-08-10 bugfix — "can't scroll down to
+  increase speed").** It is rendered from `TownHeroDock`, i.e. inside the left
+  rail's `.leftRailDock` (`position: relative; z-index: 20`) — a stacking
+  context, so the backdrop's own z-index was inert and the desktop HUD's fixed
+  hand tray (z 48) painted over the modal's bottom, hiding the LAST stat option
+  (Speed) and the "Spend later" button with nothing to scroll; in phone mode
+  `.phoneMode[data-phone-tab] .leftRail { display: none }` meant the popup did
+  not render at all outside the Army tab. Portaled, the backdrop takes a flat
+  `z-index: 236` (above chat 200 / hub 210 / hero info 220 / mod windows 230,
+  below the commander equipment window 240) and is deliberately OUT of the
+  `body:has(.leftRailExpanded)` 230 lift list, which would only lower it. The
+  modal is now three rows — `grid-template-rows: auto minmax(0, 1fr) auto` —
+  with the banner and the escape button PINNED and the middle
+  `.commanderLevelUpScroll` (`min-height: 0` + `overflow-y: auto`) as the only
+  scroller, capped at `92vh`→`92dvh` (phone: `100dvh` minus the bottom
+  safe-area, via `body:has(main.phoneMode)` since the portal sits outside
+  `<main>`). The slam-in animation is unchanged, and the dock card's own picker
+  remains the always-available fallback for spending later. LIMIT: **jsdom
+  cannot compute CSS**, so nothing here proves a pixel — the DOM contract
+  (portal target, all six options incl. Speed inside the scroll region, banner
+  and escape outside it) is pinned in `commander-card.test.tsx` and the
+  declarations in `commander-level-up-layout.test.ts` (static CSS-text, the
+  `battle-card-popover-layout` precedent); the visible scroll is a real-browser
+  concern with no e2e spec.
 - **Battlefield voices**: a commander has no unit definition, so its combat
   voice is keyed by slug in `commanderVoices` (`unit-sounds.ts`,
   `commanderSoundKey`); the table passes `commander:<slug>` as the voice id

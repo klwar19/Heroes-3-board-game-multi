@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 
 import { assetUrl } from "@/lib/asset-url";
@@ -1372,17 +1373,28 @@ export function CommanderLevelUpOverlay({
     playLibrarySound("effects/climax", 0.6);
   }, []);
 
-  if (!commanderDefinitions[slug]) {
+  // PORTAL to <body>. Rendered inline this overlay sits inside the left command
+  // rail's `.leftRailDock` (position: relative; z-index: 20), which is a
+  // stacking context — so the fixed backdrop's own z-index was meaningless and
+  // the desktop HUD's fixed hand tray (z 48) painted OVER the modal's bottom,
+  // hiding the LAST stat option (Speed) and the "Spend later" button with no
+  // way to scroll them clear. In phone mode it was worse: the rail is
+  // `display: none` on every tab but Army, so the popup did not render at all.
+  // Same fix OpponentInfoModal / HeroInfoModal already needed.
+  if (!commanderDefinitions[slug] || typeof document === "undefined") {
     return null;
   }
 
-  return (
+  return createPortal(
     <div className="commanderLevelUpBackdrop" role="dialog" aria-modal="true" aria-label="Commander level up">
       <div className="commanderLevelUpModal">
         <div className="commanderLevelUpBanner">
           ⭐ COMMANDER LEVEL UP{level ? ` — Level ${level}` : ""} ⭐
         </div>
-        <div className="commanderLevelUpModalBody">
+        {/* The banner and the Done/Spend-later escape stay pinned; THIS is the
+            scroll region (`.commanderLevelUpScroll`), so all six stat options —
+            Speed last — are reachable on a short viewport. */}
+        <div className="commanderLevelUpModalBody commanderLevelUpScroll">
           <div className="commanderLevelUpFace">
             <CommanderCardFace slug={slug} grades={grades} level={level} />
           </div>
@@ -1397,7 +1409,8 @@ export function CommanderLevelUpOverlay({
           {gradePoints > 0 ? "Spend later" : "Done"}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

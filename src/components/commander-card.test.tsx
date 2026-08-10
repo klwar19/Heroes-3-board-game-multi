@@ -172,15 +172,20 @@ describe("CommanderLevelUpPicker", () => {
 });
 
 // The level-up popup: a celebratory modal carrying the picker.
+// NOTE: it PORTALS to <body>, so `container` (the render root) is empty and the
+// assertions below read `baseElement` / document.body. That portal is the fix
+// for the reported "can't scroll down to Speed": rendered inline it lived in the
+// left rail's `.leftRailDock` stacking context (z-index 20) under the fixed hand
+// tray, and in phone mode inside a `display: none` rail on every non-Army tab.
 describe("CommanderLevelUpOverlay", () => {
   it("pops the banner, the commander face and the stat picker", () => {
-    const { getByText, container } = render(
+    const { getByText, baseElement } = render(
       <CommanderLevelUpOverlay slug="paladin" grades={{}} level={3} gradePoints={2} onGradeUp={() => undefined} onClose={() => undefined} />
     );
     expect(getByText(/COMMANDER LEVEL UP/i)).toBeTruthy();
-    expect(container.querySelector(".commanderLevelUpPicker")).toBeTruthy();
+    expect(baseElement.querySelector(".commanderLevelUpPicker")).toBeTruthy();
     // The face (with its rainbow spark) is shown inside the modal.
-    expect(container.querySelector('[data-testid="commander-rainbow-spark"]')).toBeTruthy();
+    expect(baseElement.querySelector('[data-testid="commander-rainbow-spark"]')).toBeTruthy();
   });
 
   it("closes via the Done / Spend-later button", () => {
@@ -190,5 +195,62 @@ describe("CommanderLevelUpOverlay", () => {
     );
     fireEvent.click(getByRole("button", { name: /done/i }));
     expect(closed).toBe(true);
+  });
+
+  // The reported bug: the last option (Speed) was unreachable. jsdom cannot
+  // compute CSS, so what is pinned here is the DOM contract the CSS fix relies
+  // on; the visible half (the box really scrolls) is a real-browser concern and
+  // the CSS declarations themselves are pinned in
+  // commander-level-up-layout.test.ts.
+  it("portals to <body> so no rail stacking context can bury it", () => {
+    const { container, baseElement } = render(
+      <CommanderLevelUpOverlay slug="paladin" grades={{}} level={3} gradePoints={1} onGradeUp={() => undefined} onClose={() => undefined} />
+    );
+    // Nothing is rendered in place — the whole overlay hangs off <body>.
+    expect(container.querySelector(".commanderLevelUpBackdrop")).toBeNull();
+    const backdrop = document.body.querySelector(".commanderLevelUpBackdrop");
+    expect(backdrop).toBeTruthy();
+    expect(backdrop?.parentElement).toBe(document.body);
+    expect(baseElement).toBe(document.body);
+  });
+
+  it("puts ALL SIX stat options — Speed last — inside the scroll region, and Speed is clickable", () => {
+    const picked: string[] = [];
+    render(
+      <CommanderLevelUpOverlay slug="paladin" grades={{}} level={5} gradePoints={1} onGradeUp={(stat) => picked.push(stat)} onClose={() => undefined} />
+    );
+    const scroll = document.body.querySelector(".commanderLevelUpScroll");
+    expect(scroll, "the scroll region carries .commanderLevelUpScroll").toBeTruthy();
+    const options = Array.from(scroll!.querySelectorAll("button.commanderPickStat"));
+    expect(options.map((option) => option.getAttribute("data-stat"))).toEqual([
+      "attack",
+      "defense",
+      "health",
+      "damage",
+      "magic",
+      "speed"
+    ]);
+    // The reported casualty: the LAST option must be reachable and live.
+    const speed = scroll!.querySelector('button.commanderPickStat[data-stat="speed"]') as HTMLButtonElement;
+    expect(speed.disabled).toBe(false);
+    fireEvent.click(speed);
+    expect(picked).toEqual(["speed"]);
+  });
+
+  it("keeps the banner and the escape button OUTSIDE the scroll region (never scrolled away)", () => {
+    render(
+      <CommanderLevelUpOverlay slug="paladin" grades={{}} level={3} gradePoints={2} onGradeUp={() => undefined} onClose={() => undefined} />
+    );
+    const modal = document.body.querySelector(".commanderLevelUpModal") as HTMLElement;
+    const scroll = modal.querySelector(".commanderLevelUpScroll") as HTMLElement;
+    const banner = modal.querySelector(".commanderLevelUpBanner") as HTMLElement;
+    const done = modal.querySelector(".commanderLevelUpDone") as HTMLElement;
+    // Three pinned-scroller-pinned rows: the CSS grid-template-rows contract.
+    expect(Array.from(modal.children)).toEqual([banner, scroll, done]);
+    expect(scroll.contains(banner)).toBe(false);
+    expect(scroll.contains(done)).toBe(false);
+    // The fall-back surface is always offered: points can be spent later from
+    // the commander dock card, so the popup can never hard-stick.
+    expect(done.textContent).toMatch(/spend later/i);
   });
 });
