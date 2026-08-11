@@ -388,6 +388,7 @@ import {
   getEffectiveCardEffect,
   getSpellDamageAmount,
   heroMovementGrantOption,
+  heroMovementTopUpHeroId,
   spellMinUsefulPower,
   spellPowerSourceDrawCards,
   spellPowerValueOfCard
@@ -15927,16 +15928,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (option?.expertOnly && mode !== "expert") {
     throw new Error(`${option.label} is the card's expert side.`);
   }
-  // A hero's +Movement card is map-only, but may be spent inside a neutral
-  // combat's continue-or-retreat window (see the awaitingContinue tail below) to
-  // top up the movement pool and buy another combat round — waive its map-only
-  // flag for exactly that window and exactly its movement side.
-  const continueMovementTopUp =
-    effect.type === "GAIN_HERO_MOVEMENT" &&
-    Boolean(state.combat?.awaitingContinue) &&
-    state.combat?.context.kind === "neutral" &&
-    state.combat?.attackerPlayerId === action.playerId;
-  if (option?.mapOnly && state.combat && !continueMovementTopUp) {
+  // A hero's +Movement card is map-only, but may be spent DURING a neutral
+  // combat this player is fighting — on their own unit's activation, in a
+  // pre-activation pause, or at the continue-or-retreat window — to top up the
+  // movement pool and buy another combat round (2026-08-11 user ruling). Waive
+  // the map-only flag for exactly that scope and exactly its movement side; the
+  // offer side (addOptionPlays / isOptionEffectPlayable) reads the SAME
+  // predicate, and PLAY_CARD is offer-validated, so this is the backstop.
+  const combatMovementTopUp =
+    effect.type === "GAIN_HERO_MOVEMENT" && heroMovementTopUpHeroId(state, action.playerId) !== null;
+  if (option?.mapOnly && state.combat && !combatMovementTopUp) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
   // Crown of the Five Seas' sea side: only while this player's main Hero stands
@@ -16858,7 +16859,19 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const heroes = Object.values(state.heroes).filter(
       (hero) => hero.controllerId === action.playerId && hero.spaceId !== null
     );
-    if (heroes.length <= 1) {
+    // Played DURING a combat (the 2026-08-11 top-up), the points go straight to
+    // the hero IN the fight — no "which Hero?" pick. Two reasons, both real: the
+    // pick is a `visit-steps` reward, and pumpAdventureQueues is FROZEN while a
+    // combat is open, so with a Secondary Hero also on the map the prompt could
+    // not be answered until the fight was over and the movement never arrived in
+    // time to buy a round (the top-up silently did nothing — this fixes it);
+    // and inside the fight only the fighting hero's pool can pay
+    // CONTINUE_NEUTRAL_COMBAT, so there is nothing to choose.
+    const topUpHeroId = heroMovementTopUpHeroId(state, action.playerId);
+    const topUpHero = topUpHeroId ? state.heroes[topUpHeroId] : undefined;
+    if (topUpHero) {
+      topUpHero.movementPoints += amount;
+    } else if (heroes.length <= 1) {
       const hero = heroes[0];
       if (hero) {
         hero.movementPoints += amount;

@@ -7037,6 +7037,95 @@ Two additions; each engine claim fails a named test if its wiring is removed.
   draw band-correct printed BACKS (sea/underground Ⅵ–Ⅶ never wear Ⅳ–Ⅴ art;
   `planBackArt`, `map-designer.test.tsx`).
 
+## A "+movement" card is playable DURING a neutral combat (2026-08-11)
+
+USER RULING, verbatim: "Boots of speed - you shoold be able to add '+1 movement'
+during the combat, Fix for all."
+
+**THE GAP (reproduced).** Every printed "+N movement" side in the game is
+`mapOnly`, and the engine had exactly ONE waiver for it: the neutral combat's
+continue-or-retreat window (the section below). So mid-fight — on the holder's
+OWN unit activation, and at every neutral pre-activation pause, both of which
+already offered that same card's OTHER side (Boots' "+1 initiative") — the
+movement side was simply absent from `getLegalActions`.
+
+**THE RULE — ONE shared read, three seams.** `heroMovementTopUpHeroId(state,
+playerId)` (effects.ts) returns the hero whose pool a mid-combat top-up feeds,
+or null. It is read by the OFFER (`isOptionEffectPlayable`'s
+`GAIN_HERO_MOVEMENT` case + the `mapOnly` skip in `addOptionPlays`), by the
+RESOLUTION backstop (`playCard`'s map-only waiver — PLAY_CARD is
+offer-validated, so this can only ever be a backstop) and by the GRANT itself,
+so the three can never disagree about when a top-up is legal or where the points
+land. Detection stays by EFFECT KIND, never a card-id list, so a future movement
+card joins automatically — the sweep test derives its subjects from the library.
+
+**SCOPE DECISION (deliberate, with CONTROLs).** NEUTRAL combats the player is
+fighting, for the hero actually in the fight — Creature Banks included (the BINH
+house rule gives them the same round limit + MP extension):
+- **NOT the Battle-Test sandbox**: it has no heroes at all, so the play would be
+  a dead button. The pre-existing CONTROL in
+  `neutral-combat-movement-extend.test.ts` pins that refusal, unmodified.
+- **NOT a PvP battle**: neither side can spend a movement point inside that
+  fight, so the printed map-only restriction is left standing where waiving it
+  buys nothing.
+- **NOT a reaction-window join, and it never OPENS a window** — the one place
+  this deliberately departs from the 2026-08-06/08/10 instant batches. A
+  "+movement" side cannot influence the attack being resolved (it touches the
+  hero's MAP pool only), and — unlike the medic/draw/card-gain instants those
+  batches rescued, whose whole justification was "in a neutral fight nothing
+  else opens a window either, so the card was unreachable" — this card IS
+  reachable in the same fight, at the two moments above. Waiving the reaction
+  loop's `mapOnly` ABSOLUTE bar would also mean a new `GAIN_HERO_MOVEMENT`
+  branch in `applyReactionPlayCore` for zero in-window benefit. Pinned with an
+  in-test control that the window really is open.
+
+Leading with what else does NOT change / limits:
+- **The continue-or-retreat window is byte-identical** (its predicate is a
+  strict SUBSET of the new one); its whole test file passes unmodified.
+- **A hand-locked fight is unchanged**: a heroless/Secondary-Hero-led garrison
+  defense still cannot use its deck mid-fight, so the top-up there stays
+  available only at the continue window (the old narrow exception in `playCard`
+  is untouched).
+- **Map SPELLS are out of scope.** Fly and Water Walk carry
+  `GAIN_HERO_MOVEMENT` too, but they are `kind: "spell"` cast through the
+  map-spell pipeline, which the combat card pass skips outright.
+- **More pauses, by design**: because `getOffTurnCombatReactions` is what opens
+  a neutral pre-activation pause, holding a movement card can now open a pause
+  that would not otherwise appear. That is the price of the card being offered.
+- **The AI is not re-scored** — `GAIN_HERO_MOVEMENT` already scores
+  (`card-policy.ts`: `base + 165` at 0 MP, 280 while flush), the offer is
+  bounded (playing it spends the card) and it sits below a real combat action;
+  the AFK / turn-timeout driver is untouched. Both pinned as non-stall.
+
+**BUG FIXED in the same seam (the top-up used to do NOTHING with a Secondary
+Hero on the map).** `GAIN_HERO_MOVEMENT` opens a "Which Hero gains +N movement?"
+pick when the player has two heroes on the map — a `visit-steps` reward — and
+`pumpAdventureQueues` is FROZEN while a combat is open. So that prompt could not
+be answered until the fight was over, and the movement never arrived in time to
+buy a round (true for the pre-existing continue-window play too). Played DURING
+a combat the points now go STRAIGHT to the fighting hero, no pick: inside the
+fight only that hero's pool can pay `CONTINUE_NEUTRAL_COMBAT`, so there is
+nothing to choose. The MAP play is unchanged and still opens the pick (CONTROL).
+
+Pinned in `src/engine/combat-hero-movement-topup.test.ts` (14 tests): the REPRO
+as the full observable chain (offered on the fighter's own activation → the pool
+really rises by the printed amount → that movement really pays
+`CONTINUE_NEUTRAL_COMBAT` into round 2) with an empty-hand CONTROL that cannot
+continue at 0 MP; the pre-activation-pause moment; a LIBRARY-DERIVED family
+sweep (every implemented map-only "+movement" face — 11 faces across 9 cards
+today, floors asserted — is offered mid-fight and applies its printed amount,
+with the removed/discard/Ongoing-tray zone asserted); printed-condition CONTROLs
+(the Logistics EXPERT side refused with no crown, Shield of Naval Glory's sea
+side refused on land and offered on water); a non-movement map-only side still
+refused (with the same card's movement side as the in-test control); the three
+scope CONTROLs (sandbox, PvP, non-fighter — each with a forged-play rejection);
+the two-hero fix with its map CONTROL; and the AI + AFK non-stall pair.
+Mutation-checked: neutering the `addOptionPlays` waiver fails 8, the
+`isOptionEffectPlayable` case fails 8, reverting `playCard`'s waiver to the
+old continue-window-only condition fails 5, and reverting the fighting-hero
+grant fails 1 — while `neutral-combat-movement-extend.test.ts` stays green
+through all four (the proof the old window is untouched).
+
 ## Neutral-combat & Sorrow refinements (BINH house rules) — what runs
 
 Three engine-enforced additions; each fails a named test if its wiring is removed.
@@ -7065,10 +7154,11 @@ Three engine-enforced additions; each fails a named test if its wiring is remove
   index 1 is caught exactly like Boots' at index 0; the offer lives in the
   awaitingContinue gate (legal-actions.ts, gated on the same expert-use / sea-tile
   conditions the reducer checks); playCard waives `mapOnly` ONLY for that exact
-  window (`continueMovementTopUp`) and keeps the window open afterwards. Pinned in
+  window and keeps the window open afterwards. Pinned in
   `neutral-combat-movement-extend.test.ts` (Boots, Equestrian's Gloves, and the
   expert-only Logistics sibling, with a normal-combat control that mapOnly still
-  holds) and the UI in `combat-round-over-prompt.test.tsx`.
+  holds) and the UI in `combat-round-over-prompt.test.tsx`. **The window is no
+  longer the only moment — see the section below.**
 
 - **The player picks a neutral's move destination.** When a neutral must MOVE to
   reach the target it will attack and several legal cells reach it, the attacking

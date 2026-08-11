@@ -4,6 +4,9 @@ import type {
   CardPlayMode,
   EffectDefinition,
   EffectDurationDefinition,
+  GameState,
+  HeroId,
+  PlayerId,
   SpellSchool
 } from "./state";
 import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
@@ -248,6 +251,53 @@ export function heroMovementGrantOption(card: CardDefinition | undefined):
     }
   }
   return null;
+}
+
+/**
+ * The hero whose movement pool a printed "+N movement" side tops up when it is
+ * played DURING a combat — or null when no such play is allowed here.
+ *
+ * USER RULING (2026-08-11), verbatim: "Boots of speed - you shoold be able to
+ * add '+1 movement' during the combat, Fix for all." Before this, the whole
+ * GAIN_HERO_MOVEMENT family (Boots of Speed, Equestrian's Gloves, the Logistics
+ * ability's expert side, Dessa's Logistics IV/VI, Angel Wings, Shield of Naval
+ * Glory's sea side, the WOG Gate Key, the anime Phong Hỏa Luân) was `mapOnly`
+ * with exactly ONE waiver: the neutral combat's continue-or-retreat window. So
+ * mid-fight — on the holder's own unit activation, and during every neutral
+ * pre-activation pause — only the card's OTHER side was offered.
+ *
+ * ONE read shared by the offer (`isOptionEffectPlayable` + the `mapOnly` skip in
+ * `addOptionPlays`), the resolution backstop (`playCard`'s map-only waiver) and
+ * the grant itself (which hero gains the points), so the three can never
+ * disagree about when a top-up is legal or where it lands.
+ *
+ * SCOPE — deliberately NEUTRAL combats the player is fighting, and only for the
+ * hero actually in the fight:
+ * - Neutral is where the points are SPENDABLE inside the fight (1 MP buys
+ *   another combat round via CONTINUE_NEUTRAL_COMBAT), which is the whole
+ *   observable chain the ruling asks for. Creature Banks count (the BINH house
+ *   rule gives them the same round limit + MP extension).
+ * - A PvP battle and the Battle-Test SANDBOX are excluded. Neither can spend a
+ *   movement point inside the fight (the sandbox has no heroes at all), so the
+ *   printed map-only restriction is left standing where waiving it would buy
+ *   nothing but a trap button. The pre-existing CONTROL in
+ *   `neutral-combat-movement-extend.test.ts` pins the sandbox refusal.
+ * - The continue-or-retreat window is a strict SUBSET of this predicate, so that
+ *   window's behaviour is unchanged.
+ */
+export function heroMovementTopUpHeroId(state: GameState, playerId: PlayerId): HeroId | null {
+  const combat = state.combat;
+  if (!combat || combat.outcome) {
+    return null;
+  }
+  if (combat.context.kind !== "neutral" || combat.attackerPlayerId !== playerId) {
+    return null;
+  }
+  const hero = state.heroes[combat.context.heroId];
+  if (!hero || hero.controllerId !== playerId) {
+    return null;
+  }
+  return hero.id;
 }
 
 /**

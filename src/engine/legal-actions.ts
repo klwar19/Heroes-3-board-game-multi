@@ -95,6 +95,7 @@ import {
   getEffectAmount,
   getEffectiveCardEffect,
   heroMovementGrantOption,
+  heroMovementTopUpHeroId,
   spellMinUsefulPower,
   spellPowerValueOfCard
 } from "./effects";
@@ -3044,8 +3045,17 @@ function isOptionEffectPlayable(
         Boolean(state.adventure) &&
         townPortalDestinations(state, playerId, effect.movementBonus ?? 0).length > 0
       );
-    case "DISCOVER_TILE_CARD":
     case "GAIN_HERO_MOVEMENT":
+      // A map play — AND (2026-08-11 user ruling "you shoold be able to add '+1
+      // movement' during the combat, Fix for all") a play inside a NEUTRAL
+      // combat this player is fighting, where the points buy another combat
+      // round. `heroMovementTopUpHeroId` is the ONE read of that scope; the
+      // printed `mapOnly` flag on these sides is waived at the matching seam in
+      // addOptionPlays and re-checked in playCard.
+      return context === "map"
+        ? Boolean(state.adventure)
+        : heroMovementTopUpHeroId(state, playerId) !== null;
+    case "DISCOVER_TILE_CARD":
     // Octavia "Gold" / Melodia "Fortune": Resource-die roll, morale/gold gain,
     // and the location-dice buff are all resolved through a queued map visit.
     case "RESOURCE_FORTUNE_PLAY":
@@ -3481,8 +3491,22 @@ function addOptionPlays(
     if (filter && !filter(option)) {
       continue;
     }
+    // A printed map-only side stays map-only — with ONE waiver (2026-08-11 user
+    // ruling): a "+N movement" side may be played DURING a neutral combat this
+    // player is fighting, to top up the pool that buys another combat round.
+    // Scoped by the shared `heroMovementTopUpHeroId` read, which the reducer's
+    // own map-only waiver and the grant both use, so an offer can never reject
+    // and the points can never land on the wrong hero. Every OTHER map-only side
+    // (Shield of Naval Glory's Search, the Logistics ongoing step, …) is
+    // untouched.
     if (option.mapOnly && context !== "map") {
-      continue;
+      const movementTopUp =
+        context === "combat" &&
+        option.effect.type === "GAIN_HERO_MOVEMENT" &&
+        heroMovementTopUpHeroId(state, playerId) !== null;
+      if (!movementTopUp) {
+        continue;
+      }
     }
     if (option.combatOnly && context !== "combat") {
       continue;
