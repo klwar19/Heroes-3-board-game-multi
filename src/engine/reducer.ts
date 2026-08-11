@@ -8268,7 +8268,10 @@ function refundInsufficientCloneCast(
   // Return the Clone card itself (a scroll cast removed the spell from the game,
   // so there is no card to return — only the Power, handled above).
   if (player && polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
-    refreshPolishUsedSpell(state, playerId, stackItem.action.cardId);
+    // `undoCast`: this is not a mid-round refresh, it is the cast being undone —
+    // so neither the "already refreshed this round" nor the "in effect" gate may
+    // swallow the card the notice below promises is coming back.
+    refreshPolishUsedSpell(state, playerId, stackItem.action.cardId, { undoCast: true });
     if (stackItem.action.castEnablerCardId) {
       returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
     }
@@ -11460,14 +11463,32 @@ function returnSpellFromDiscardToHand(
  *     source stays used until the round-start whole-side refresh.
  * Either refusal still lets the rest of the caller run (Mysticism, for instance,
  * hands the "Cast a Spell" enabler back regardless).
+ *
+ * `undoCast` marks the ONE caller that is not a mid-round refresh at all: the
+ * Clone REFUND (`refundInsufficientCloneCast`), where the cast is being undone
+ * wholesale — the Power cards come back, the spell counters roll back, the
+ * "Cast a Spell" enabler returns, and the printed notice tells the player the
+ * spell was returned. Putting the Book Spell back is part of that undo, so it
+ * neither answers to the two mid-round gates nor spends the round's
+ * once-per-Spell refresh budget. Without this an already-refreshed-this-round
+ * Spell was silently EATEN by its own refund while the notice claimed it came
+ * back. The round-start whole-side refresh is exempt for the same reason
+ * (see `partitionPolishBookAtRoundStart`).
  */
-function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+function refreshPolishUsedSpell(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  options: { undoCast?: boolean } = {}
+): boolean {
   const player = state.players[playerId];
   const usedIndex = player?.spellBookUsed?.lastIndexOf(cardId) ?? -1;
   if (!player || usedIndex === -1) {
     return false;
   }
-  const blocked = polishBookSpellRefreshBlocked(state, playerId, cardId, player);
+  const blocked = options.undoCast
+    ? null
+    : polishBookSpellRefreshBlocked(state, playerId, cardId, player);
   if (blocked) {
     appendEvent(state, {
       type: "EVENT_NOTE",
@@ -11481,12 +11502,14 @@ function refreshPolishUsedSpell(state: GameState, playerId: PlayerId, cardId: Ca
   }
   player.spellBookUsed!.splice(usedIndex, 1);
   player.spellBook.push(cardId);
-  markPolishSpellRefreshedThisRound(player, cardId);
+  if (!options.undoCast) {
+    markPolishSpellRefreshedThisRound(player, cardId);
+  }
   appendEvent(state, {
     type: "SPELL_RETURNED_TO_HAND",
     playerId,
     cardId,
-    reason: "Polish Spell Book refresh"
+    reason: options.undoCast ? "Polish Spell Book refund" : "Polish Spell Book refresh"
   });
   return true;
 }
