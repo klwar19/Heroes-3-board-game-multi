@@ -16,9 +16,11 @@ import {
   playerSpellCastsIgnoreLimit,
   polishSpellBookEnabled,
   remainingParallelPlayerIds,
+  type CardDefinition,
   type GameState,
   type LegalAction,
-  type PlayerId
+  type PlayerId,
+  type UnitType
 } from "@/engine";
 
 export type CoachTone = "go" | "wait" | "choice" | "info";
@@ -428,6 +430,74 @@ function crownsLeft(state: GameState, playerId: PlayerId): number {
 }
 
 /**
+ * The printed unit-TYPE restriction a card carries, and which side it must find
+ * such a body on. Two shapes ship today:
+ *
+ *  • a `target.unitTypes` gate — Ash's Bloodlust IV ("your selected [ground] or
+ *    [flying] unit"), the Bowstring of the Unicorn's Mane and Hourglass ("ranged");
+ *  • an `ADD_COMBAT_STAT` attack buff with `unitTypes` — the Bloodlust SPELL,
+ *    Ash's Bloodlust I/VI, Precision. Those land on the ATTACKING unit, so the
+ *    holder needs a body of that type of their OWN.
+ *
+ * Returning null means the card prints no type restriction (the vast majority).
+ */
+function printedUnitTypeGate(
+  card: CardDefinition
+): { unitTypes: readonly UnitType[]; side: "friendly" | "enemy" } | null {
+  const target = card.target;
+  if (target && "unitTypes" in target && target.unitTypes && target.unitTypes.length > 0) {
+    return { unitTypes: target.unitTypes, side: target.type === "enemy-unit" ? "enemy" : "friendly" };
+  }
+  if (
+    card.effect.type === "ADD_COMBAT_STAT" &&
+    card.effect.stat === "attack" &&
+    card.effect.amount >= 0 &&
+    card.effect.unitTypes &&
+    card.effect.unitTypes.length > 0
+  ) {
+    return { unitTypes: card.effect.unitTypes, side: "friendly" };
+  }
+  return null;
+}
+
+function unitTypeWords(types: readonly UnitType[]): string {
+  if (types.length <= 1) {
+    return types[0] ?? "";
+  }
+  return `${types.slice(0, -1).join(", ")} or ${types[types.length - 1]}`;
+}
+
+/**
+ * "Bloodlust only lands on a ground or flying unit of yours — you have none in
+ * this battle." Reported 2026-08-11 as "cannot play Ash speciality IV card": the
+ * printed ground-or-flying gate is real and correctly enforced, but every hint
+ * the table showed was the generic "No legal play right now (check targets or
+ * unit state)", which never names the restriction. Null when the card prints no
+ * type gate, or when a matching living body IS on the board (then the reason
+ * lies elsewhere and the later branches explain it).
+ */
+function unitTypeGateReason(state: GameState, viewerPlayerId: PlayerId, card: CardDefinition): string | null {
+  const gate = printedUnitTypeGate(card);
+  if (!gate || !state.combat) {
+    return null;
+  }
+  const matches = Object.values(state.combat.units).some(
+    (unit) =>
+      isUnitAlive(unit) &&
+      (gate.side === "friendly"
+        ? unit.controllerId === viewerPlayerId
+        : unit.controllerId !== viewerPlayerId) &&
+      gate.unitTypes.includes(unit.type)
+  );
+  if (matches) {
+    return null;
+  }
+  return `${card.name} only lands on a ${unitTypeWords(gate.unitTypes)} ${
+    gate.side === "friendly" ? "unit of yours" : "enemy unit"
+  } — there is none in this battle`;
+}
+
+/**
  * Why a hand card has no legal play right now — plain language for the UI.
  * Used when helper tips are on (title, popover, small badge).
  */
@@ -547,6 +617,15 @@ export function cardUnplayableReason(
       return "Instant spell — play into an attack or spell window (Power cards can empower it)";
     }
     return "Cast while one of your units is active, before it attacks";
+  }
+
+  // A printed unit-TYPE gate is checked ahead of the timing branches below: a
+  // holder with no ground/flying (or no ranged) body is never going to get a
+  // window, so "waits for an attack window" would send them hunting for a
+  // moment that cannot come.
+  const typeGateReason = unitTypeGateReason(state, viewerPlayerId, card);
+  if (typeGateReason) {
+    return typeGateReason;
   }
 
   if (card.trigger || card.timing === "instant" || card.timing === "reaction") {

@@ -148,4 +148,63 @@ describe("cardUnplayableReason", () => {
     expect(reason.toLowerCase()).toMatch(/own unit|activation|before it attacks/);
     expect(reason.toLowerCase()).not.toMatch(/instant spell|power cards can empower/);
   });
+
+  // REPORTED 2026-08-11: "cannot play Ash speciality IV card". The printed
+  // ground-or-flying gate is real and correctly enforced by the engine — but a
+  // holder whose whole line is RANGED (Inferno's Magogs, Tower's Gremlins) was
+  // only ever told "No legal play right now (check targets or unit state)",
+  // which reads as a broken card. The hint now names the printed restriction.
+  describe("printed unit-TYPE gates are named", () => {
+    function bloodlustState(seed: string, ownType: "ground" | "ranged"): GameState {
+      const state = createInitialGameState(seed) as GameState;
+      state.reactionWindow = null;
+      state.pendingChoice = null;
+      for (const unit of Object.values(state.combat!.units)) {
+        if (unit.controllerId === "p1") {
+          unit.type = ownType;
+        }
+      }
+      const active = state.combat!.activeUnitId ? state.combat!.units[state.combat!.activeUnitId] : undefined;
+      if (active) {
+        active.controllerId = "p1";
+        active.type = ownType;
+        active.activatedThisRound = false;
+        active.attackedThisActivation = false;
+      }
+      return state;
+    }
+
+    it("Bloodlust IV names the ground-or-flying restriction when every own unit is ranged", () => {
+      const state = bloodlustState("helper-coach-ash-iv-ranged", "ranged");
+      const reason = cardUnplayableReason(state, "p1", "specialty.ash.4");
+      expect(reason).toMatch(/ground.*flying/i);
+      expect(reason).toMatch(/unit of yours/i);
+    });
+
+    it("CONTROL: with a ground unit on the board the hint falls through to the generic reasons", () => {
+      const state = bloodlustState("helper-coach-ash-iv-ground", "ground");
+      // Make the active unit the OPPONENT's so the card is still unplayable —
+      // but for a timing reason, not a unit-type one.
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      const reason = cardUnplayableReason(state, "p1", "specialty.ash.4");
+      expect(reason).not.toMatch(/ground.*flying/i);
+      expect(reason.toLowerCase()).toMatch(/own unit's activation/);
+    });
+
+    it("the instant sides (Bloodlust I / VI) name it too instead of promising an attack window", () => {
+      const state = bloodlustState("helper-coach-ash-i-ranged", "ranged");
+      for (const cardId of ["specialty.ash.1", "specialty.ash.6"]) {
+        const reason = cardUnplayableReason(state, "p1", cardId);
+        expect(reason, cardId).toMatch(/ground.*flying/i);
+        expect(reason.toLowerCase(), cardId).not.toMatch(/waits for an attack/);
+      }
+    });
+
+    it("CONTROL: a card with no printed unit-type gate is unaffected", () => {
+      const state = bloodlustState("helper-coach-no-type-gate", "ranged");
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      const reason = cardUnplayableReason(state, "p1", "spell.bless");
+      expect(reason).not.toMatch(/only lands on/i);
+    });
+  });
 });
