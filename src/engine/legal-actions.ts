@@ -3743,12 +3743,7 @@ function addOptionPlays(
 
     for (const mode of modes) {
       for (const target of targets) {
-        const modeLabel =
-          option.effect.type === "EAGLE_EYE_DIG" && houseRuleEnabled(state, "split-decks")
-            ? ` (${mode === "expert" ? "Expert" : "Basic"} Spell deck)`
-            : mode === "expert" && !option.expertOnly
-              ? " (expert)"
-              : "";
+        const modeLabel = mode === "expert" && !option.expertOnly ? " (expert)" : "";
         actions.push({
           label: `${card.name}: ${option.label}${modeLabel}${
             fromSpellBook ? " (Spell Book)" : ""
@@ -3785,9 +3780,16 @@ function effectSupportsExpertOption(effect: ConcreteEffect): boolean {
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     return Boolean(effect.expertEffect);
   }
-  // Eagle Eye: the expert play digs for an Expert spell instead.
+  // A LEVEL dig (Eagle Eye) has a real Expert side: it digs for an Expert spell
+  // instead of a Basic one. A SCHOOL dig (the four Tome relics) does NOT — both
+  // modes find the same School-matching spell, so before 2026-08-11 the two
+  // plays were either an outright TRAP (single-deck tables: the "(expert)" play
+  // spent a crown to dig the very same deck for the very same card) or two
+  // look-alike buttons differing by a parenthetical. The Tome now offers ONE
+  // play whose deck is chosen afterwards, in the `spell-deck-pick` two-button
+  // choice that spends the crown (resolveEagleEyeDig).
   if (effect.type === "EAGLE_EYE_DIG") {
-    return true;
+    return effect.school === undefined;
   }
   return false;
 }

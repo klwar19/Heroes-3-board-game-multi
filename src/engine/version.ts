@@ -169,7 +169,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // state field; the LEGALITY narrowed, so a stale client's cast at the Tower is
 // rejected by a new server ("not legal"), the exact skew class the banner
 // exists to surface.
-export const ENGINE_PROTOCOL_VERSION = 27;
+// v28: the four Tome relics' School dig stopped enumerating a second, crown-
+// paying PLAY_CARD "(expert)" offer and now opens a new `spell-deck-pick`
+// OPTION_CHOICE — one description on the card, then two buttons (Basic Spells
+// deck / Expert Spells deck), the crown spent at the PICK instead of at the
+// play (2026-08-11 user ruling). Both halves of the skew break: a v27 edge still
+// offers the expert play (so a new client that no longer renders it can still be
+// handed one, and the v27 edge never opens the pick a new client's CHOOSE_OPTION
+// would answer), and a v27 CLIENT's "(expert)" click is rejected by a v28 server
+// as "not legal". The new `pendingChoice.spellDeckPick` payload is optional and
+// absent from every legacy snapshot, so old states read exactly as before. On a
+// SINGLE-deck table this also removes a pure trap button: the v27 "(expert)"
+// play spent a crown to dig the very same deck for the very same card.
+export const ENGINE_PROTOCOL_VERSION = 28;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

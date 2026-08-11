@@ -502,6 +502,22 @@ function scorePositionOption(
     return CHOICE_BASE + Math.min(CHOICE_BAND, cardKeepValue(cardId, observation));
   }
 
+  if (context === "spell-deck-pick" && choice.spellDeckPick) {
+    // The Tome's "which Spell deck?" pick. A computer seat has no model for what
+    // a CROWN is worth against an unseen Expert spell, so it never spends one
+    // here. But when the Expert deck costs nothing (an Empowered Tome) it is the
+    // strictly better pool, so take it. Every option scores, so the pick can
+    // never stall the runner.
+    const deckId = choice.spellDeckPick.deckIds[optionIndex];
+    if (!deckId) {
+      return CHOICE_BASE;
+    }
+    if (choice.spellDeckPick.crownDeckIds.includes(deckId)) {
+      return CHOICE_BASE + 5;
+    }
+    return deckId === "spells-expert" ? CHOICE_BASE + 30 : CHOICE_BASE + 20;
+  }
+
   if (context === "eagle-eye" && choice.eagleEye) {
     // Take a real spell; discard only if somehow junk (still take).
     const value = cardKeepValue(choice.eagleEye.cardId, observation);

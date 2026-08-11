@@ -143,7 +143,15 @@ describe("Tome artifact definitions", () => {
 // ===========================================================================
 
 describe("Tome option A: School Spell-deck dig", () => {
-  it("labels and searches the selected Basic or Expert deck when decks are split", () => {
+  // SHAPE CHANGED 2026-08-11 (user ruling "Tome of X-stupid, should work like 1
+  // description, then allow to choose basic or expert deck after wards with 2
+  // buttons"). This case used to assert TWO PLAY_CARD offers whose labels
+  // differed only by a "(Basic/Expert Spell deck)" suffix. There is now ONE
+  // play, and the deck is chosen afterwards in the `spell-deck-pick` two-button
+  // choice — which is also where the crown is spent. The OUTCOME half of the old
+  // case (basic ⇒ digs `spells`, expert ⇒ digs `spells-expert`) is unchanged and
+  // still asserted below; the full surface is pinned in tome-deck-pick.test.ts.
+  it("digs the deck chosen in the two-button pick when decks are split", () => {
     const makeState = (seed: string) => {
       let state = createAdventureGameState({
         seed,
@@ -164,21 +172,34 @@ describe("Tome option A: School Spell-deck dig", () => {
       return state;
     };
 
-    const basicState = makeState("tome-split-basic");
-    const basic = findPlay(basicState, "p1", TOME_EARTH, 0, "basic");
-    const expert = findPlay(basicState, "p1", TOME_EARTH, 0, "expert");
-    expect(basic?.label).toContain("Basic Spell deck");
-    expect(expert?.label).toContain("Expert Spell deck");
-    expect(basic?.label).not.toBe(expert?.label);
+    const answer = (state: GameState, optionIndex: number): GameAction => {
+      const offer = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex === optionIndex
+      );
+      expect(offer, `deck-pick option ${optionIndex}`).toBeTruthy();
+      return offer!.action;
+    };
 
-    const afterBasic = applyOk(basicState, basic!.action);
+    // ONE dig play, no expert twin, no deck-name suffix on the label.
+    const basicState = makeState("tome-split-basic");
+    expect(findPlay(basicState, "p1", TOME_EARTH, 0, "expert"), "no second, crown-paying play").toBeUndefined();
+    const play = findPlay(basicState, "p1", TOME_EARTH, 0, "basic");
+    expect(play?.label).not.toContain("Spell deck)");
+
+    const opened = applyOk(basicState, play!.action);
+    expect(opened.pendingChoice?.type === "OPTION_CHOICE" ? opened.pendingChoice.context : null).toBe(
+      "spell-deck-pick"
+    );
+
+    const afterBasic = applyOk(opened, answer(opened, 0));
     expect(afterBasic.pendingChoice?.type === "OPTION_CHOICE" ? afterBasic.pendingChoice.eagleEye : null).toMatchObject({
       deckId: "spells",
       cardId: "spell.stone_skin"
     });
 
     const expertState = makeState("tome-split-expert");
-    const afterExpert = applyOk(expertState, findPlay(expertState, "p1", TOME_EARTH, 0, "expert")!.action);
+    const expertOpened = applyOk(expertState, findPlay(expertState, "p1", TOME_EARTH, 0, "basic")!.action);
+    const afterExpert = applyOk(expertOpened, answer(expertOpened, 1));
     expect(afterExpert.pendingChoice?.type === "OPTION_CHOICE" ? afterExpert.pendingChoice.eagleEye : null).toMatchObject({
       deckId: "spells-expert",
       cardId: "spell.implosion"

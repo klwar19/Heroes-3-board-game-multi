@@ -167,7 +167,16 @@ describe("other instant artifacts' Search/dig sides mid-combat", () => {
 
     const play = findPlay(state, "p1", "artifact.tome_of_air", 0);
     expect(play, "the dig side should be offered during combat").toBeTruthy();
-    const played = applyOk(state, play!.action);
+    let played = applyOk(state, play!.action);
+    // SHAPE CHANGED 2026-08-11 (user ruling — see tome-deck-pick.test.ts): this
+    // fixture plays split Spell decks with a crown in hand, so the ONE dig play
+    // now first asks WHICH deck (`spell-deck-pick`, two buttons). Answering
+    // "Basic Spells deck" lands on the same take/discard choice as before.
+    if (played.pendingChoice?.type === "OPTION_CHOICE" && played.pendingChoice.context === "spell-deck-pick") {
+      const basic = getLegalActions(played, "p1").find((legal) => /Basic Spells deck/.test(legal.label));
+      expect(basic, "the Basic deck button").toBeTruthy();
+      played = applyOk(played, basic!.action);
+    }
     // The dig found the first Air spell and opened the take/discard choice.
     expect(played.pendingChoice?.type).toBe("OPTION_CHOICE");
     if (played.pendingChoice?.type === "OPTION_CHOICE") {

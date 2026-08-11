@@ -2640,8 +2640,11 @@ What each commit ships:
   the picker is detected from its option STEPS. jsdom cannot compute CSS, so the
   glow itself is unverified — only the class/click contract is pinned.
 - **Tome split-deck selection** (`5a094c7c`): a Tome's "take a Spell" on a
-  split-deck table opens a basic-vs-expert deck pick (the expert deck honours
-  the crown gate) instead of always digging basic (`tome-artifacts.test.ts`).
+  split-deck table could reach the Expert Spell deck instead of always digging
+  basic. LIMIT (the shape it shipped as): it did that by enumerating a SECOND
+  crown-paying PLAY_CARD offer, not a pick — SUPERSEDED 2026-08-11 by the real
+  two-button choice; see "A Tome's dig is ONE play, then a two-button deck
+  pick" below.
 - **Bank Stack-Token duplicate cap** (`f649035f`): the four bank defenders'
   random Stack-Token stats reroll so no stat lands more than TWICE per bank
   (bounded reroll loop, 64-iteration backstop — AUDIT FIX: the branch loop
@@ -3555,6 +3558,81 @@ approach still fighting, and a no-stall case (no REVISIT offer, MOVE_HERO
 offered, END_TURN accepted). MUTATION-CHECKED: restoring `clearCustomGuard`
 fails 4; dropping the early `return` so the pass falls into the visit fails 5
 (including (f)).
+
+## A Tome's dig is ONE play, then a two-button deck pick (2026-08-11, protocol v28)
+
+USER RULING, verbatim: "Tome of X-stupid, should work like 1 description, then
+allow to choose basic or expert deck after wards with 2 buttons."
+
+**WHAT THE PLAYER SAW (probed before any change).** The four Tome relics' School
+dig was enumerated as TWO near-identical `PLAY_CARD` offers, one per `mode`,
+differing only by a parenthetical: "Tome of Earth: Find the first Earth Magic
+spell in the Spell deck (take or discard), then reshuffle **(Basic Spell deck)**"
+and the same 96 characters ending **(Expert Spell deck)**. Worse, on a
+SINGLE-deck table (`split-decks` off) the second offer was a pure TRAP: it read
+"(expert)", SPENT A CROWN, and then dug the very same `spells` deck for the very
+same card — a School dig matches by School, never by spell level. Probed
+pre-fix: `crownsSpent: 1`, `deckId: "spells"`, identical `cardId`.
+
+**THE RULE.** ONE play offer carrying the card's one description. Where reading
+the Expert deck is a real, payable choice it then opens the new
+`spell-deck-pick` OPTION_CHOICE — two buttons, "Basic Spells deck" / "Expert
+Spells deck (1 crown)" — and the crown is spent at the PICK, not at the play.
+Two seams, both keyed off the SAME read (`tomeDigDeckOptions`, reducer.ts) so the
+offer and the spend can never disagree: `effectSupportsExpertOption` returns
+false for a school-filtered `EAGLE_EYE_DIG` (no expert mode ⇒ one play), and
+`resolveEagleEyeDig` branches on `school` to open the pick before digging.
+`resolveSpellDeckPick` (reducer.ts, beside the other combat-side option
+resolvers, since the dig lives there) spends the crown and then runs the very
+same `performSpellDig` a straight dig runs.
+
+SURFACE: the generic `PromptTray`, mirroring `artifact-deck-pick` (Tazar's War
+Hero VI) — the repo's existing "one play, then pick WHICH shared deck"
+precedent. Deliberately NOT `DeckSearchModeModal`, whose full-screen
+card-back/discard-face layout belongs to the SEARCH family (reveal N, keep one,
+or take the discard top); a dig reveals nothing to show.
+
+Leading with what does NOT change / the deliberate limits:
+- **No pick opens unless it is REAL**: `split-decks` on, a `spells-expert` deck
+  that actually HAS cards, and a crown to pay (or an Empowered Tome). Any one
+  missing ⇒ the dig goes straight to the Basic deck exactly as before. A
+  single-deck table and a crownless (level-1) hero are byte-identical to the
+  classic flow — which is also why most older Tome cases never meet the pick.
+- **The split-deck PILE is not the gate, the RULE is** — the tournament combat
+  SANDBOX carries a `spells-expert` pile while its rules layer reads LEGACY
+  defaults, and the dig there must read the one deck every other search reads.
+- **An Empowered Tome pays nothing** and the button says so ("Expert Spells
+  deck", no crown clause).
+- **The engine's `options` stay labelled and INDEX-ALIGNED** with `deckIds`, for
+  the AFK driver / AI scorer / screen readers (the Dimension Door and
+  Grail-clue precedent) — the UI just renders them as two buttons.
+- **The AI never pays a crown here** (it has no model for what a crown is worth
+  against an unseen Expert spell), but it DOES take the Expert deck when an
+  Empower makes it free. The AFK / turn-timeout driver takes the crown-free
+  deck. Neither can stall.
+- **Eagle Eye (the LEVEL dig) is untouched** — its two sides find genuinely
+  different cards (a Basic vs an Expert spell), so its choice is real and it
+  keeps both plays. Only a school-filtered dig collapsed, and the four Tomes are
+  the only cards in the library that carry one.
+- **MORE CLICKS on a default BINH table**: a hero with a crown now answers one
+  extra prompt per Tome dig. That is the ruling.
+- The map-cast `tome-max` Power-tray boost (the Tome's option B) is a different
+  effect (`SET_SPELL_POWER_MAX`) and is entirely unchanged.
+- **jsdom cannot compute CSS**, so the UI half pins the DOM contract only (two
+  buttons, their labels, and that each dispatches the engine's own action).
+
+Pinned in `src/engine/tome-deck-pick.test.ts` (19: the one-offer repro, the pick
+shape, both buttons' observable outcome — which deck was dug, which spell reached
+the hand, how many crowns were spent —, the Empowered crown-free path, the
+mid-combat and reaction-window-join paths, and CONTROLs for no-crown / legacy
+single deck / rule-off-with-the-pile-present / empty Expert deck / Eagle Eye's
+untouched modes, plus the staleness backstops and the AI + AFK pair) and
+`src/components/table/tome-deck-pick-ui.test.tsx` (3). Mutation-checked:
+restoring the expert dig mode fails 4, never opening the pick fails 13, dropping
+the crown spend fails 2, dropping the crown re-check backstop fails 1, removing
+the CHOOSE_OPTION dispatch branch fails 10, dropping the empty-Expert-deck gate
+fails 1, dropping the crown gate fails 6, dropping the split-decks gate fails 1,
+restoring the old label suffix fails 2, and removing the AI branch fails 1.
 
 ## Town teleports read ownership FLAG-first, so a CAPTURED Town works (2026-08-10)
 

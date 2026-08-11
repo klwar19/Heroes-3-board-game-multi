@@ -13645,6 +13645,7 @@ export type PendingChoice =
         | "eagle-eye"
         | "own-deck-pick"
         | "artifact-deck-pick"
+        | "spell-deck-pick"
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
@@ -13910,6 +13911,23 @@ export type PendingChoice =
       };
       /** artifact-deck-pick (Tazar's War Hero VI): the Artifact decks to draw from. */
       artifactDeckPick?: { deckIds: DeckId[] };
+      /**
+       * spell-deck-pick (the four Tome relics' School dig): WHICH physical Spell
+       * deck the dig reads. Opened only when that is a real choice — split decks
+       * on, an Expert Spell deck with cards in it, and a crown (or an Empower)
+       * to pay for it. The `crownDeckIds` entries cost one Expert use, spent at
+       * the pick (the play itself is a plain basic play), so the card can be
+       * played with ONE description and the deck chosen afterwards.
+       */
+      spellDeckPick?: {
+        deckIds: DeckId[];
+        /** Deck ids among `deckIds` whose pick spends an Expert use (crown). */
+        crownDeckIds: DeckId[];
+        /** The dig's School filter (a Tome's own School). */
+        school: Exclude<SpellSchool, "any">;
+        /** The card that opened the dig — its Empower waives the crown. */
+        cardId?: CardId;
+      };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };
       /** morale-positive-limit: held Positive Morale card ids, index-aligned with the discard options. */

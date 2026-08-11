@@ -553,6 +553,7 @@ import type {
   CardPlayMode,
   CombatState,
   CombatUnitState,
+  DeckId,
   EffectDefinition,
   EngineResult,
   GameAction,
@@ -13732,9 +13733,10 @@ function applyReactionPlayCore(
       );
     }
     // Eagle Eye / a Tome's School dig opens its own take-or-discard
-    // OPTION_CHOICE — the paused shape again.
+    // OPTION_CHOICE — the paused shape again. (A Tome's dig may first open the
+    // `spell-deck-pick`; same nested shape, same park/resume.)
     if (effect.type === "EAGLE_EYE_DIG") {
-      resolveEagleEyeDig(state, playerId, mode, cards, effect.school);
+      resolveEagleEyeDig(state, playerId, mode, cards, effect.school, play.cardId);
     }
     // The shared-deck Search family opens a DECK_SEARCH choice, which pauses the
     // window too since 2026-08-10 (advanceReactionWindowAfterPlay + the
@@ -17278,7 +17280,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "EAGLE_EYE_DIG") {
-    resolveEagleEyeDig(state, action.playerId, mode, cards, effect.school);
+    resolveEagleEyeDig(state, action.playerId, mode, cards, effect.school, action.cardId);
   }
 
   if (effect.type === "TELEPORT_HERO_TO_TOWN") {
@@ -17807,26 +17809,164 @@ function discardRandomEnemyCards(state: GameState, playerId: PlayerId, count: nu
 }
 
 /**
+ * The Spell decks a TOME's School dig may read, when reading the Expert one is
+ * a real, payable choice. ONE read shared by the pick that opens the choice and
+ * by the resolution that spends the crown, so the two can never disagree about
+ * whether the Expert deck was on the menu.
+ *
+ * Returns just `["spells"]` — i.e. NO choice, dig straight — unless every one of
+ * these holds: the table plays split Spell decks, a `spells-expert` deck really
+ * exists with cards on its draw pile (an empty deck could only spend a crown for
+ * nothing), and the player can pay the Expert use (a crown left, or the card is
+ * Empowered). Deck draw-pile SIZE is already public, so the filter leaks nothing.
+ */
+function tomeDigDeckOptions(state: GameState, playerId: PlayerId, cardId?: CardId): DeckId[] {
+  const player = state.players[playerId];
+  const expert = state.decks["spells-expert"];
+  if (
+    !player ||
+    !houseRuleEnabled(state, "split-decks") ||
+    !expert ||
+    expert.drawPile.length === 0 ||
+    !canPlayExpertMode(player, cardId)
+  ) {
+    return ["spells"];
+  }
+  return ["spells", "spells-expert"];
+}
+
+/**
  * Eagle Eye: dig the Spell deck from the top for the first Basic (basic play)
  * or Expert (expert play) spell, reshuffle the rest, then take the find into
  * hand. In BINH mode the split decks make the dig a plain top-card draw of the
  * matching deck.
+ *
+ * A TOME's School dig (`school` set) instead asks WHICH deck AFTER the card is
+ * played: the play is one description, and a two-button `spell-deck-pick` picks
+ * Basic vs Expert (2026-08-11 user ruling — "should work like 1 description,
+ * then allow to choose basic or expert deck afterwards with 2 buttons"). It is
+ * opened only when both decks are genuinely available (tomeDigDeckOptions), so a
+ * single-deck table and a crownless hero dig straight through as before.
  */
 function resolveEagleEyeDig(
   state: GameState,
   playerId: PlayerId,
   mode: CardPlayMode,
   cards: CardLibrary,
-  school?: Exclude<SpellSchool, "any">
+  school?: Exclude<SpellSchool, "any">,
+  cardId?: CardId
 ): void {
-  const wantedLevel = mode === "expert" ? "expert" : "basic";
+  if (school) {
+    const deckIds = tomeDigDeckOptions(state, playerId, cardId);
+    if (deckIds.length > 1) {
+      openTomeDigDeckPick(state, playerId, deckIds, school, cardId, cards);
+      return;
+    }
+    performSpellDig(state, playerId, "spells", cards, { school });
+    return;
+  }
   // With split decks, the selected Basic/Expert mode determines which physical
-  // Spell deck every dig reads. This also applies to a Tome's School-filtered
-  // dig; otherwise its two legal choices both searched the Basic deck.
+  // Spell deck the LEVEL dig (Eagle Eye) reads.
+  const wantedLevel = mode === "expert" ? "expert" : "basic";
   const deckId =
     houseRuleEnabled(state, "split-decks") && wantedLevel === "expert" && state.decks["spells-expert"]
       ? "spells-expert"
       : "spells";
+  performSpellDig(state, playerId, deckId, cards, { wantedLevel });
+}
+
+/** The Tome's "which Spell deck?" two-button pick (see resolveEagleEyeDig). */
+function openTomeDigDeckPick(
+  state: GameState,
+  playerId: PlayerId,
+  deckIds: DeckId[],
+  school: Exclude<SpellSchool, "any">,
+  cardId: CardId | undefined,
+  cards: CardLibrary
+): void {
+  const crownFree = abilityExpertIsCrownFree(state.players[playerId], cardId);
+  const schoolName = `${school.charAt(0).toUpperCase()}${school.slice(1)}`;
+  const cardName = cardId ? (cards[cardId]?.name ?? "The Tome") : "The Tome";
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${cardName}: find the first ${schoolName} Magic spell in which Spell deck?`,
+    options: deckIds.map((deckId) =>
+      deckId === "spells-expert"
+        ? { label: `Expert Spells deck${crownFree ? "" : " (1 crown)"}` }
+        : { label: "Basic Spells deck" }
+    ),
+    context: "spell-deck-pick",
+    spellDeckPick: {
+      deckIds,
+      // Only the Expert deck costs an Expert use, and an Empowered card waives
+      // even that — so the pick and the spend read the same list.
+      crownDeckIds: crownFree ? [] : deckIds.filter((deckId) => deckId === "spells-expert"),
+      school,
+      ...(cardId ? { cardId } : {})
+    },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+}
+
+/**
+ * CHOOSE_OPTION resolution for the Tome's `spell-deck-pick`: spend the Expert
+ * use the chosen deck costs, then run the very same dig the single-deck play
+ * runs (so a pick can never behave differently from a straight dig).
+ */
+function resolveSpellDeckPick(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "spell-deck-pick" ||
+    choice.id !== action.choiceId ||
+    choice.playerId !== action.playerId ||
+    !choice.spellDeckPick
+  ) {
+    // Same identity gate chooseOption applies (id + owner), so a stale client's
+    // answer to an already-resolved pick can never land on a later one.
+    throw new Error("There is no Spell deck pick to resolve.");
+  }
+  const pick = choice.spellDeckPick;
+  const deckId = pick.deckIds[action.optionIndex];
+  const player = state.players[action.playerId];
+  if (!deckId || !player || !state.decks[deckId]) {
+    throw new Error("Pick one of the offered Spell decks.");
+  }
+  // Backstop: the crown budget is re-checked at resolution, so a stale client
+  // (or a forged index) can never dig the Expert deck without paying.
+  if (pick.crownDeckIds.includes(deckId)) {
+    if (!hasExpertUseAvailable(state, action.playerId)) {
+      throw new Error("You have no Expert use (crown) left for the Expert Spell deck.");
+    }
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase;
+  state.priorityPlayerId = null;
+  // May open the take-or-discard choice of its own — the nested shape the
+  // CHOOSE_OPTION tail already parks/resumes a reaction window around.
+  performSpellDig(state, action.playerId, deckId, cards, { school: pick.school });
+}
+
+/** The dig itself: one deck, one filter (School for a Tome, level for Eagle Eye). */
+function performSpellDig(
+  state: GameState,
+  playerId: PlayerId,
+  deckId: DeckId,
+  cards: CardLibrary,
+  filter: { school?: Exclude<SpellSchool, "any">; wantedLevel?: "basic" | "expert" }
+): void {
+  const school = filter.school;
+  const wantedLevel = filter.wantedLevel ?? "basic";
   const deck = state.decks[deckId];
   if (!deck) {
     return;
@@ -22652,6 +22792,14 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice.context === "combat-activation-order"
         ) {
           resolveActivationOrderChoice(nextState, action);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          nextState.pendingChoice.context === "spell-deck-pick"
+        ) {
+          // The Tome's "which Spell deck?" pick — its resolver (and the dig it
+          // runs) live here beside resolveEagleEyeDig, not in the adventure
+          // reducer, exactly like the combat-side option choices above.
+          resolveSpellDeckPick(nextState, action, cards);
         } else {
           chooseOption(nextState, action);
         }
