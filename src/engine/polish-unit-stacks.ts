@@ -2,7 +2,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 
 import type { ArmyUnitState, ResourceCost, UnitGrade } from "./state";
 
-/** Printed Polish house-rule cap and gold surcharge for each faction tier. */
+/**
+ * Printed Polish house-rule cap and gold surcharge for each faction tier.
+ * The surcharge IS the "nr of tier" of the user ruling (bronze 1 / silver 2 /
+ * gold 3). AZURE has no row on purpose: it is priced (and capped) as gold, the
+ * same azure→gold convention the cap uses — a literal tier number would be 4,
+ * so changing it is a conscious decision, pinned in
+ * `polish-stack-reinforcement-price.test.ts`.
+ */
 export const POLISH_UNIT_STACK_RULES: Partial<Record<UnitGrade, { cap: number; goldSurcharge: number }>> = {
   bronze: { cap: 3, goldSurcharge: 1 },
   silver: { cap: 2, goldSurcharge: 2 },
@@ -28,12 +35,17 @@ export function polishUnitStackCap(unitDefId: string, _side: PolishStackSide = "
 }
 
 /**
- * Cost of one Stack:
- * - Pack: Pack printed gold + tier gold surcharge, plus the Pack's printed valuables
- * - Neutral: Neutral printed gold + same surcharge, plus the Neutral's printed valuables
- * The valuables fee is exactly the side's printed valuables — the same valuables
- * paid to reinforce that unit Few→Pack (a Pack that costs no valuables adds none).
- * Building materials never join the cost. This is the BASE price only: the town
+ * Cost of one Stack — the USER RULING (2026-08-12): "cost of reinforsment + nr
+ * of tier" (e.g. Tower Magi 11 + 2 = 13).
+ * - Pack: the Few→Pack REINFORCEMENT price (`reinforceCostFor` before any
+ *   discount = the printed Pack cost, valuables included) + the tier number in
+ *   gold. That equality is swept over the WHOLE unit catalog in
+ *   `polish-stack-reinforcement-price.test.ts` — keep the two in lockstep.
+ * - Neutral: a recruited Neutral card has NO Few→Pack reinforcement, so its own
+ *   printed (recruit) cost stands in as the base, + the same tier number.
+ * No printed Pack/Neutral side costs building materials today (asserted by that
+ * sweep), so the gold+valuables shape below is the complete reinforcement fee.
+ * This is the BASE price only: the town
  * Population purchase still folds a reserved {kind:"stack"} Legion voucher via
  * applyRecruitGoldDiscount and pays through spendRecruitResources, where the
  * Freelancer's Guild may substitute for missing gold (see BUY_UNIT_STACK in

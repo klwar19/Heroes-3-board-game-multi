@@ -5035,12 +5035,23 @@ is NOT done:
   `deck-search-mode-modal.test.tsx`.
 - With `polish-unit-stacks` ON, a faction Pack card — or a recruited NEUTRAL
   card — at its own Citadel may buy persistent Stack layers with the Population
-  flow. One Stack costs that side's printed gold cost plus its tier number
-  (bronze +1 / silver +2 / gold +3; azure counted as gold) **plus the side's
-  printed VALUABLES** (2026-08 — the same valuables fee a Few→Pack reinforce of
-  that unit pays; a side printing no valuables adds none, building materials
-  never join the cost; `polishUnitStackCost`, pinned per-tier in
-  `polish-unit-stacks.test.ts` and named in the town/army purchase labels).
+  flow. One Stack costs **the REINFORCEMENT price of that card plus its tier
+  number** (user ruling 2026-08-12: "cost of reinforsment + nr of tier … for
+  Magi: 11 + 2 = 13"). Concretely that is the side's printed gold + bronze 1 /
+  silver 2 / gold 3 (azure counted as gold) **plus the side's printed
+  VALUABLES** — the same fee a Few→Pack reinforce of that unit pays; a side
+  printing no valuables adds none, and no printed Pack/Neutral side costs
+  building materials. A recruited NEUTRAL card has no Few→Pack reinforcement, so
+  its own printed recruit cost is the base. `polishUnitStackCost` is the ONE
+  pricing function (town/army labels, every discounted offer, the AI). The
+  ruling is enforced as an INVARIANT against the engine's own
+  `reinforceCostFor` across the whole unit catalog in
+  `polish-stack-reinforcement-price.test.ts` (worked Magi example end-to-end:
+  reinforce charges 11, then a Stack charges 13), with per-tier literals in
+  `polish-unit-stacks.test.ts`. NOTE (2026-08-12): the report's "but now in game
+  is 6+1" did NOT reproduce — the Citadel price has been 13 for Magi since
+  2026-07-16; 6 is what the NECROMANCY half-price Stack sale (floor(13/2))
+  shows, and 6/11 are the Few/Pack card faces printed in the same town row.
   Recruit/reinforce percentage discounts do not apply to the base price, but
   the purchase still pays through the recruit path (Legion `{kind:"stack"}`
   vouchers + Freelancer's Guild substitution — see the Stack COST extensions

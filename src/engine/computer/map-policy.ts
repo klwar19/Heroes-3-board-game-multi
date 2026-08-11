@@ -39,7 +39,7 @@ import type {
 import { cardKeepValue } from "./card-policy";
 import { cardTier } from "./card-values";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
-import { polishUnitStackCost } from "../polish-unit-stacks";
+import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
@@ -465,8 +465,14 @@ function populationScore(
   const stackPurchase = action.purchases.find((purchase) => purchase.kind === "stack");
   if (stackPurchase?.kind === "stack") {
     const target = player?.army.find((unit) => unit.id === stackPurchase.armyUnitId);
-    const side = getUnitSide(stackPurchase.unitDefId, "pack");
-    const cost = polishUnitStackCost(stackPurchase.unitDefId)?.gold ?? Number.POSITIVE_INFINITY;
+    // Read the card's OWN side through the one shared pricing function: a
+    // recruited NEUTRAL card has no Pack side, so the old default-"pack" read
+    // priced it at +Infinity and the AI could never buy it a Stack.
+    const stackSide = target?.side === "neutral" ? "neutral" : "pack";
+    const side = getUnitSide(stackPurchase.unitDefId, stackSide);
+    const cost =
+      (target ? polishArmyUnitStackCost(target) : polishUnitStackCost(stackPurchase.unitDefId, stackSide))?.gold ??
+      Number.POSITIVE_INFINITY;
     const treasury = developmentResourceTargets(state, observation.playerId);
     const protectsPlan = Number.isFinite(cost) && gold - cost >= Math.max(GOLD_RESERVE, treasury.gold);
     if (!target || !side || development.phase !== "improve-army" || !protectsPlan) {

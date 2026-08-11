@@ -316,6 +316,39 @@ describe("computer long-horizon development plan", () => {
     expect(first.score).toBeGreaterThan(later.score);
   });
 
+  it("prices a recruited NEUTRAL card's Stack off its own printed side, not the (absent) Pack", () => {
+    // A recruited Neutral card has no Pack side at all, so the old default-"pack"
+    // price read returned null → +Infinity → the AI could never buy a Stack for
+    // one however rich it was. The score must respond to the NEUTRAL price
+    // (neutral.griffins: printed 7 gold + bronze tier 1 = 8) exactly like a Pack.
+    const state = game();
+    establishPacks(state);
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!;
+    town.buildings = [
+      buildingWith(state, (effect) => effect.type === "UNLOCK_REINFORCE"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "bronze"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "silver"),
+      buildingWith(state, (effect) => effect.type === "UNLOCK_RECRUIT_TIER" && effect.tier === "gold"),
+    ];
+    const neutral = { id: "army_neutral_griffins", unitDefId: "neutral.griffins", side: "neutral" as const };
+    state.players.p2.army.push(neutral);
+    expect(armyDevelopmentProfile(state, "p2").phase).toBe("improve-army");
+    const cost = polishUnitStackCost(neutral.unitDefId, "neutral")?.gold ?? 0;
+    expect(cost, "neutral.griffins Stack = 7 printed + bronze 1").toBe(8);
+    const target = developmentResourceTargets(state, "p2");
+    const buyStack: GameAction = {
+      type: "POPULATION_ACTION",
+      playerId: "p2",
+      purchases: [{ kind: "stack", unitDefId: neutral.unitDefId, armyUnitId: neutral.id }]
+    };
+
+    state.players.p2.resources.gold = Math.max(5, target.gold) + cost - 1;
+    expect(scoreMapAction(observation(state), buyStack)!.score, "one gold short of the plan").toBeLessThan(300);
+
+    state.players.p2.resources.gold = Math.max(5, target.gold) + cost;
+    expect(scoreMapAction(observation(state), buyStack)!.score, "affordable from surplus").toBeGreaterThan(300);
+  });
+
   it("buys Polish Cast supply when the Book outgrows it and rolls only weak Spells", () => {
     const state = game();
     establishPacks(state);
