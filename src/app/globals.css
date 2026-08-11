@@ -19802,6 +19802,27 @@ img.cardBack {
   outline: 2px solid #ffd766;
 }
 
+/* The Arrow Tower stands at position -1, so it has no battlefield cell to glow.
+   When the engine offers a unit-targeted action AT the Tower (an armed Magic
+   Arrow / Lightning Bolt / Slow, an ability-target pick, a First Aid mend, an
+   armed Set-Artifact power) the CARD itself becomes the click target and wears
+   the same ring the matching `.battleCell.<kind>` would. */
+.arrowTower.cardTarget,
+.arrowTower.abilityTarget,
+.arrowTower.activationOrderTarget,
+.arrowTower.artifactSetTarget {
+  outline: 2px solid rgb(85 127 153 / 92%);
+  outline-offset: 2px;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.5),
+    0 0 18px rgb(85 127 153 / 45%);
+}
+
+.arrowTower.healTarget {
+  outline: 2px solid rgb(126 196 126 / 90%);
+  outline-offset: 2px;
+}
+
 .arrowTowerBody {
   display: flex;
   flex-direction: column;
@@ -19812,6 +19833,19 @@ img.cardBack {
   color: #f3e7c8;
   cursor: pointer;
   font: inherit;
+}
+
+/* Sits AFTER the base `.arrowTowerBody` so the target cursor/ring reads as an
+   override of it (the `.towerTarget` class is added only while an action at the
+   Tower is offered). */
+.arrowTowerBody.towerTarget {
+  cursor: crosshair;
+}
+
+.arrowTowerBody.towerTarget:hover,
+.arrowTowerBody.towerTarget:focus-visible {
+  outline: 3px solid rgb(255 227 155 / 58%);
+  outline-offset: -3px;
 }
 
 .arrowTowerIcon {

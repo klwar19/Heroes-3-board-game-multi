@@ -520,17 +520,30 @@ function ArrowTowerArt() {
   );
 }
 
-/** The Arrow Tower card beside the board during sieges. */
+/**
+ * The Arrow Tower card beside the board during sieges.
+ *
+ * The Tower is a REAL combat unit, but it stands at position -1 — it has no
+ * battlefield cell — so the board's cell grid can never surface an action aimed
+ * at it. That is why an armed Magic Arrow / Lightning Bolt / Slow used to be
+ * unclickable on the Tower even though the engine offered the cast: the player
+ * armed the card, every cell lit up EXCEPT the Tower, and there was nowhere to
+ * click. `targetAction` is the Tower's share of the same per-unit maps the cells
+ * read (resolved by the parent, never re-derived here), so the Tower card itself
+ * becomes the click target — the exact affordance a cell would have given it.
+ */
 function ArrowTowerCard({
   state,
   tower,
   legalActions,
+  targetAction,
   onAction,
   onInspect
 }: {
   state: GameState;
   tower: CombatUnitState;
   legalActions: LegalAction[];
+  targetAction: { action: GameAction; label: string; kind: string } | null;
   onAction: (action: GameAction) => void;
   onInspect: (unitId: string) => void;
 }) {
@@ -542,10 +555,18 @@ function ArrowTowerCard({
     (legal) => legal.action.type === "ATTACK_FORTIFICATION" && legal.action.target.kind === "arrow-tower"
   );
   const isActive = state.combat?.activeUnitId === tower.id;
+  const towerTitle =
+    "Arrow Tower — shoots without positioning penalties; only ranged attacks and card effects can hit it; collapses when all Walls and the Gate fall.";
 
   return (
-    <div className={`arrowTower ${isActive ? "active" : ""}`} aria-label="Arrow Tower">
-      <button className="arrowTowerBody" onClick={() => onInspect(tower.id)} title="Arrow Tower — shoots without positioning penalties; only ranged attacks and card effects can hit it; collapses when all Walls and the Gate fall." type="button">
+    <div className={`arrowTower ${isActive ? "active" : ""} ${targetAction ? targetAction.kind : ""}`} aria-label="Arrow Tower">
+      <button
+        aria-label={targetAction ? targetAction.label : undefined}
+        className={`arrowTowerBody ${targetAction ? "towerTarget" : ""}`}
+        onClick={() => (targetAction ? onAction(targetAction.action) : onInspect(tower.id))}
+        title={targetAction ? targetAction.label : towerTitle}
+        type="button"
+      >
         {tower.assets?.cardImage ? (
           <img
             alt={tower.assets.imageAlt ?? "Arrow Tower card"}
@@ -911,6 +932,45 @@ export function BattlefieldBoard({
       }
     }
   }
+
+  // The Arrow Tower's share of the very same per-unit maps the cells read below.
+  // It stands at position -1 (no cell), so without this every unit-targeted
+  // offer aimed at it — an armed Magic Arrow / Lightning Bolt / Slow, an ability
+  // target pick, a First Aid mend, an armed Set-Artifact power — was enumerated
+  // by the engine and then had NO clickable surface at all. The precedence
+  // mirrors the cell's exactly (armed card first; the heal only when nothing is
+  // armed), so the Tower can never advertise a different action than a cell
+  // would for the same unit.
+  const arrowTowerTargetAction = (() => {
+    if (!arrowTower) {
+      return null;
+    }
+    const name = arrowTower.name;
+    const order = activationOrderActionsByUnit.get(arrowTower.id);
+    if (order) {
+      return { action: order, label: `Choose ${name} to activate first`, kind: "activationOrderTarget" };
+    }
+    const ability = abilityTargetActions.get(arrowTower.id);
+    if (ability) {
+      return { action: ability, label: `Ability target: ${name}`, kind: "abilityTarget" };
+    }
+    // Populated only while a matching card is armed (see the map build above),
+    // exactly like the cells'.
+    const card = cardActionsByTarget.get(arrowTower.id);
+    if (card) {
+      return { action: card, label: `Target ${name}`, kind: "cardTarget" };
+    }
+    // The mend, like a cell's, yields to anything armed.
+    const heal = selectedCardAction ? undefined : healActionsByTarget.get(arrowTower.id);
+    if (heal) {
+      return { action: heal, label: `First Aid Tent: heal ${name}`, kind: "healTarget" };
+    }
+    const setPower = armedSetPower?.targets.get(arrowTower.id);
+    if (setPower && armedSetPower) {
+      return { action: setPower, label: `${armedSetPower.setName}: use on ${name}`, kind: "artifactSetTarget" };
+    }
+    return null;
+  })();
 
   // Drag-and-drop deployment: while it is the viewer's turn to place, the
   // two own rows accept army-unit drops (fresh placements and repositions).
@@ -1921,6 +1981,7 @@ export function BattlefieldBoard({
           onAction={onAction}
           onInspect={onInspect}
           state={state}
+          targetAction={arrowTowerTargetAction}
           tower={arrowTower}
         />
       ) : null}

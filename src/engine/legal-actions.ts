@@ -153,7 +153,15 @@ import {
 } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
-import { defenderOnFortification, getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
+import {
+  arrowTowerRefusesEffect,
+  defenderOnFortification,
+  effectRelocatesUnitOnBoard,
+  getDemolishAbility,
+  isArrowTowerUnit,
+  parseFortificationTargetId,
+  siegeBlockedPositions
+} from "./siege";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -1809,7 +1817,32 @@ function getTargetsForCard(
     );
   }
 
+  // The Arrow Tower fights from BESIDE the board and is never dragged onto it:
+  // drop it from a relocation effect's targets (Teleport). The option-level twin
+  // lives in addOptionPlays (the Necklace of Swiftness's move arm); both read the
+  // SAME `arrowTowerRefusesEffect`, so the two can never disagree. Every other
+  // unit-targeted effect keeps the Tower as a legal target.
+  targets = dropArrowTowerFromRelocation(state, targets, card?.effect);
+
   return targets;
+}
+
+/**
+ * Removes the Arrow Tower from `targets` when `effect` would relocate it onto a
+ * battlefield cell. Shared by the card-level and option-level target builders.
+ */
+function dropArrowTowerFromRelocation(
+  state: GameState,
+  targets: TargetRef[],
+  effect: EffectDefinition | undefined
+): TargetRef[] {
+  if (!effectRelocatesUnitOnBoard(effect)) {
+    return targets;
+  }
+  return targets.filter(
+    (candidate) =>
+      candidate.type !== "unit" || !arrowTowerRefusesEffect(state.combat?.units[candidate.unitId], effect)
+  );
 }
 
 function targetHasAdjacentUnits(
@@ -3687,6 +3720,9 @@ function addOptionPlays(
         return Boolean(unit) && getOrthogonalNeighbors(unit!.position).some((position) => !blocked.has(position));
       });
     }
+    // The option-level twin of the card-level relocation filter in
+    // getTargetsForCard: the Arrow Tower is never stepped onto the board.
+    targets = dropArrowTowerFromRelocation(state, targets, option.effect);
     // Boots of Polarity (option B): only units that actually carry a removable
     // ongoing effect are legal targets, so the play is never a no-op.
     if (option.effect.type === "REMOVE_ACTIVE_EFFECT") {

@@ -3932,6 +3932,99 @@ fails 2, and restoring IV's invented `activate: "up-to-two"` fails 1. The
 level-IV round-expiry seam stays pinned directly against `startAdventureRound` in
 `tower-hero-specialties.test.ts`.
 
+## Aiming spells hit the Arrow Tower — and never MOVE it (2026-08-12, protocol v27)
+
+USER RULING, verbatim: "You should be able to cast aiming spells like magic
+arrow, lighining, slow etc. on Arrow Tower."
+
+**LEADING WITH WHAT WAS NOT BROKEN, because it decides where the fix went.** The
+ENGINE always offered those casts: the Arrow Tower is a real `CombatUnitState`
+(silver, ranged, ATK 4 / DEF 2 / HP 3 / init 9) sitting in `combat.units`, so
+`getTargetsForCard` enumerated it like any enemy, the damage landed, and a lethal
+cast removed it through the normal chokepoint (`markUnitRemovedIfNeeded` already
+clears `siege.arrowTowerUnitId`, `combat-units.ts`). Verified by probe before any
+change. **The bug was pure UI**: the Tower stands at position **-1** — it has no
+battlefield cell — and the board's targeting is driven by the cell grid
+(`cardActionsByTarget` is read per-cell). The Tower card beside the board only
+ever rendered "Shoot the tower" and the demolish button. So a player armed Magic
+Arrow, every cell lit up EXCEPT the Tower, and there was nowhere to click.
+
+**THE UI FIX (one seam).** `BattlefieldBoard` resolves `arrowTowerTargetAction`
+from the SAME per-unit maps the cells read — never re-derived — with the cells'
+own precedence (activation-order → ability target → armed card → First Aid mend,
+which yields to anything armed → armed Set-Artifact power) and passes it to
+`ArrowTowerCard`, whose body becomes the click target and dispatches that exact
+engine action. `globals.css` gives `.arrowTower.<kind>` the ring the matching
+`.battleCell.<kind>` would.
+
+**THE ENGINE FIX (the one real rules bug the probe found).** Two card effects
+whose whole job is to MOVE a unit onto a cell DID target the Tower and really
+dragged it onto the board: the **Teleport Spell** (`TELEPORT_UNIT`, landed it on
+A1) and the **Necklace of Swiftness's "move one space"** arm
+(`MOVE_UNIT_ADJACENT`, stepped it to cell 3) — a structure standing on a
+battlefield square, occupying it, becoming a melee target and taking the
+positioning penalties its printed card exempts it from. ONE shared read —
+`effectRelocatesUnitOnBoard` / `arrowTowerRefusesEffect` (`siege.ts`) — now drops
+the Tower from BOTH target builders (`getTargetsForCard` for the card-level
+target, `addOptionPlays` for the option-level one, via the shared
+`dropArrowTowerFromRelocation`).
+
+Leading with what does NOT change / the deliberate readings:
+- **No spell was made weaker or stronger.** Damage (Magic Arrow, Lightning Bolt,
+  Implosion, a Fireball centred on the Tower — which hits only the Tower, since
+  position -1 has no adjacency), Slow, Blind's Paralysis, Forgetfulness,
+  Disrupting Ray, Berserk, Dispel and the defender's own buffs (Haste, Air
+  Shield, Fire Shield, Cure, Anti-Magic, Counterstrike, Prayer) all behaved
+  correctly before and are untouched.
+- **Tier gates are UNCHANGED: the Tower is a real SILVER card**, not a gradeless
+  Creature-Bank guard. So Blind / Berserk / Disrupting Ray need the silver rung
+  and fizzle at Power 0 — pinned WITH a bronze-unit control so the fizzle is
+  visibly the gate, not "spells cannot reach the Tower".
+- **Every pre-existing exclusion stands, untouched**: Chain Lightning still
+  refuses it (its own `position >= 0` rule), the Catapult/Cannon still never aim
+  at it (`fortificationTargetId`'s documented reading), Clone still cannot copy
+  it (no adjacent empty space), and space-target blasts (Inferno / Frost Ring /
+  summons / Force Field / Fire Wall) never reach it because it is on no space.
+- **The two reducer backstops are UNREACHABLE defence-in-depth, not a pinned
+  rule.** `CAST_SPELL`/`PLAY_CARD` are offer-validated (`assertLegal`), so a
+  forged relocation is rejected before resolution; the guards live at the seam
+  that opens the destination pick so the rule is true where `unit.position` is
+  written. Said so at both sites. (They DO work: with the offer filters mutated
+  away the Tower still stays at -1, and mutating the backstops too moves it.)
+- **KNOWN LATENT GAP, found while fixing this and deliberately NOT fixed**:
+  position -1 has PHANTOM orthogonal neighbours — `getOrthogonalNeighbors(-1)`
+  returns `[3, 0]` (that is how the Necklace picked cell 3). The adjacency
+  PREDICATE is right (`isAdjacent(-1, 0)` is false both ways — verified: no melee
+  unit is offered an attack on the Tower, and a Fireball centred on it splashes
+  NOTHING onto cells 0/3), so the phantom list leaks only where
+  `getOrthogonalNeighbors(tower.position)` is called directly. Exactly two such
+  paths exist: `MOVE_UNIT_ADJACENT` (closed here) and the Ghost Dragons'
+  knock-back destinations — and that one is unreachable today, since only ranged
+  attacks may hit the Tower and the sole `KNOCKBACK_AFTER_ATTACK` carrier is a
+  flying (melee) unit. Recorded at `arrowTowerRefusesEffect` in `siege.ts`.
+- **jsdom cannot compute CSS**, so the component tests pin the DOM/dispatch
+  contract only — the ring itself is a real-browser concern with no e2e spec.
+- **The AI is not re-scored.** The Tower was already in its damage-spell target
+  list; this change only REMOVES offers, so the option set shrinks and cannot
+  stall (pinned: a computer besieger in a Tower siege picks an action that
+  applies cleanly).
+
+Pinned in `src/engine/arrow-tower-spell-targets.test.ts` (19: the offer repro,
+Magic-Arrow-vs-Lightning damage with a still-shooting assertion, the lethal cast
+clearing `arrowTowerUnitId` and silencing the Tower, Slow/Haste really MOVING it
+in `getActivationOrder`, Paralysis + its Power-0/bronze control, Forgetfulness
+silencing the shot, Disrupting Ray, Berserk binding it to one forced target that
+really resolves, both relocation refusals with their ordinary-unit CONTROLs, the
+forged-and-rejected pair, a library-derived registry sweep that a FUTURE
+relocation effect must join, the Chain-Lightning and Catapult CONTROLs, a
+no-siege CONTROL and the AI non-stall) and
+`src/components/table/arrow-tower-spell-target.test.tsx` (6: the repro click,
+Lightning/Slow, nothing-armed inspects, armed-at-another-unit, the untouched
+"Shoot the tower" button, and a collapsed Tower rendering nothing).
+Mutation-checked: dropping the card-level filter fails 1, the option-level filter
+fails 1, `targetAction={null}` fails 3, and neutering the Tower's click handler
+fails 2.
+
 ## A live ongoing card is NEVER in the discard pile (2026-08-10, protocol v25)
 
 USER RULE: "when ongoing spells/abilities/artifacts are ongoing — like Luck,

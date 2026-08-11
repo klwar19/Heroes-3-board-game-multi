@@ -40,6 +40,54 @@ export function getSiege(combat: CombatState | null): SiegeState | null {
   return combat?.siege ?? null;
 }
 
+/**
+ * THE single read of "this card effect would RELOCATE a unit onto a battlefield
+ * cell". Today exactly two shipped effects do that — the Teleport Spell
+ * (`TELEPORT_UNIT`) and the Necklace of Swiftness's "move one space" option
+ * (`MOVE_UNIT_ADJACENT`); both open a destination pick and then write
+ * `unit.position`.
+ *
+ * It exists so `arrowTowerRefusesEffect` below can be applied at BOTH the
+ * legal-action offer and the resolution backstop off ONE list — a future
+ * relocation effect only has to be added here.
+ */
+export function effectRelocatesUnitOnBoard(effect: { type: string } | undefined | null): boolean {
+  return effect?.type === "TELEPORT_UNIT" || effect?.type === "MOVE_UNIT_ADJACENT";
+}
+
+/**
+ * The Arrow Tower "fights from beside the board" (position -1) and "is not
+ * affected by anything related to its positioning" — so a card effect whose
+ * whole job is to MOVE a unit onto a cell can never target it. Without this a
+ * Teleport (or the Necklace of Swiftness) physically dragged the Tower onto the
+ * battlefield, where it would occupy a cell, become a melee target and take the
+ * ranged penalties the printed card exempts it from.
+ *
+ * Everything ELSE a card can do to a unit is deliberately left alone (the
+ * "aiming spells hit the Arrow Tower" ruling): damage, Paralysis, Slow,
+ * Forgetfulness, Disrupting Ray, Berserk, Dispel and the defender's own buffs
+ * all target it normally. Tier gates are likewise unchanged — the Tower is a
+ * real SILVER card, not a gradeless Creature-Bank guard.
+ *
+ * KNOWN LATENT GAP (found while fixing this, NOT fixed here): position -1 has
+ * PHANTOM orthogonal neighbours — `getOrthogonalNeighbors(-1)` returns
+ * `[3, 0]`, which is why the Necklace could step the Tower to cell 3. The
+ * adjacency PREDICATE is correct (`isAdjacent(-1, 0)` is false both ways, so no
+ * melee unit may attack the Tower and a Fireball centred on it splashes
+ * nothing), so the phantom list leaks only into code that calls
+ * `getOrthogonalNeighbors(tower.position)` directly. Two such paths exist:
+ * `MOVE_UNIT_ADJACENT` (closed here) and the Ghost Dragons' knock-back
+ * destinations — and that one is UNREACHABLE today, because only ranged attacks
+ * may hit the Tower and the sole `KNOCKBACK_AFTER_ATTACK` carrier is a flying
+ * (melee) unit. A future RANGED knock-back would need this guard too.
+ */
+export function arrowTowerRefusesEffect(
+  unit: CombatUnitState | undefined | null,
+  effect: { type: string } | undefined | null
+): boolean {
+  return Boolean(unit) && isArrowTowerUnit(unit!) && effectRelocatesUnitOnBoard(effect);
+}
+
 /** Fortification positions that still stand (walls plus gate). */
 export function intactFortificationPositions(siege: SiegeState): number[] {
   return [...siege.walls, ...(siege.gatePosition !== null ? [siege.gatePosition] : [])];

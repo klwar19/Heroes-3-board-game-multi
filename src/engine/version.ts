@@ -157,7 +157,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // still offers it pre-emptively (so a stale client's dock button would grant a
 // combat-long advantage the new engine refuses) — the exact skew class the
 // banner exists to surface.
-export const ENGINE_PROTOCOL_VERSION = 26;
+// v27: the Arrow Tower is never RELOCATED onto the battlefield. The two card
+// effects whose whole job is to move a unit onto a cell (`TELEPORT_UNIT` — the
+// Teleport Spell — and `MOVE_UNIT_ADJACENT` — the Necklace of Swiftness's "move
+// one space" arm) no longer offer the Tower as a target, and their resolution
+// refuses it as a backstop. A v26 edge happily drags the Tower from its
+// off-board position -1 onto a real cell (verified: Teleport landed it on A1,
+// the Necklace stepped it to cell 3), where it occupies a space, becomes a melee
+// target and takes the positioning penalties its printed card exempts it from —
+// a silent rules divergence between the two halves. No new action and no new
+// state field; the LEGALITY narrowed, so a stale client's cast at the Tower is
+// rejected by a new server ("not legal"), the exact skew class the banner
+// exists to surface.
+export const ENGINE_PROTOCOL_VERSION = 27;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

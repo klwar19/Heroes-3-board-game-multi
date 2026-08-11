@@ -295,6 +295,7 @@ import {
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import {
   destroyEnemyFortificationsInCells,
+  arrowTowerRefusesEffect,
   destroyFortification,
   enemyFortificationsInCells,
   fortificationTargetId,
@@ -11020,7 +11021,18 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      // The Arrow Tower fights from beside the board and is never relocated onto
+      // it. HONEST NOTE: CAST_SPELL is offer-validated (assertLegal), and
+      // getTargetsForCard already drops the Tower here, so today this line is
+      // defence-in-depth that no client action can reach — it is NOT
+      // independently pinned by a test. It lives at the seam that opens the
+      // destination pick so the rule is true where `unit.position` is written.
+      if (
+        target &&
+        maxGrade &&
+        gradeRankOfUnit(target) <= gradeRank(maxGrade) &&
+        !arrowTowerRefusesEffect(target, card.effect)
+      ) {
         openTeleportChoice(state, stackItem.action.playerId, target);
       }
     }
@@ -17335,7 +17347,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // own units may be moved; a unit hemmed in with no empty neighbour is a no-op.
   if (effect.type === "MOVE_UNIT_ADJACENT" && nonDamageTarget && state.combat) {
     const unit = state.combat.units[nonDamageTarget.unitId];
-    if (unit && unit.controllerId === action.playerId) {
+    // The Arrow Tower is never stepped onto the board. Same HONEST NOTE as the
+    // TELEPORT_UNIT branch: PLAY_CARD is offer-validated and addOptionPlays
+    // already drops the Tower, so this is unreachable defence-in-depth rather
+    // than a separately-pinned rule.
+    if (unit && unit.controllerId === action.playerId && !arrowTowerRefusesEffect(unit, effect)) {
       openUnitStepChoice(state, action.playerId, unit);
     }
   }

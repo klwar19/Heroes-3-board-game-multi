@@ -1108,7 +1108,9 @@ export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";
 export {
   ARROW_TOWER_POSITION,
   ARROW_TOWER_STATS,
+  arrowTowerRefusesEffect,
   destroyEnemyFortificationsInCells,
+  effectRelocatesUnitOnBoard,
   enemyFortificationsInCells,
   fortificationTargetId,
   getDemolishAbility,
