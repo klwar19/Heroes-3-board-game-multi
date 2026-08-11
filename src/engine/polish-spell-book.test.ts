@@ -256,7 +256,15 @@ describe("Polish Spell Book lifecycle", () => {
     expect(resolved.players.p1.discard).not.toContain(CAST_A_SPELL_CARD_ID);
   });
 
-  it("expert Mysticism adds +1 Spell Power to the very cast it answers", () => {
+  // FLIPPED (2026-08-11, user report "Expert Misticysm now - adds +1 SP to magic
+  // arrow - but it shouldnt"). This test used to assert the opposite — that the
+  // expert side lifted the cast to Power 3 — from b2d427bd's misreading of the
+  // Polish reference sheet. Mysticism prints no Power rider on either side, and
+  // docs/polish-house-rules-plan.md records the expert rider as "unchanged"; the
+  // +1 also never existed on the other two Mysticism paths (the attack-window
+  // instant recall and the cast-reaction recall). Full behaviour, with the Magic
+  // Arrow repro and the non-power class sweep, in mysticism-no-spell-power.test.ts.
+  it("expert Mysticism leaves the Power of the cast it answers alone", () => {
     // CONTROL half: basic Mysticism leaves the Lightning Bolt at its printed 2.
     const basicState = polishCombat("polish-book-mysticism-basic-power");
     basicState.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
@@ -268,7 +276,8 @@ describe("Polish Spell Book lifecycle", () => {
     const basicResolved = passAll(applyOk(basicOpened, basicMyst!.action));
     expect(basicResolved.combat!.units.unit_p2_skeletons.damage).toBe(2);
 
-    // Expert half: a crown pays the expert side and the cast lands at 2 + 1 = 3.
+    // Expert half: a crown pays the expert side and the cast STAYS at its
+    // printed 2 — the expert side buys the support-card sweep, not Power.
     const state = polishCombat("polish-book-mysticism-expert-power");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
     state.players.p1.spellBook = ["spell.lightning_bolt"];
@@ -284,7 +293,7 @@ describe("Polish Spell Book lifecycle", () => {
     );
     expect(expertMyst, "expert Mysticism should be offered with a crown available").toBeTruthy();
     const resolved = passAll(applyOk(opened, expertMyst!.action));
-    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(3);
+    expect(resolved.combat!.units.unit_p2_skeletons.damage).toBe(2);
     // Expert still refreshes the Spell and returns the enabler like basic.
     expect(resolved.players.p1.spellBook).toContain("spell.lightning_bolt");
     expect(resolved.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);

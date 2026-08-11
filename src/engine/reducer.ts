@@ -14132,12 +14132,18 @@ function applyReactionPlayCore(
       ...(polishBookCast ? { polishRecallEnabler: true } : {})
     };
 
-    // Polish Spell Book (reference sheet): Expert Mysticism adds "+Spell power" to
-    // the very cast it answers — modelled as +1 Power on the pending cast, folded
-    // into the spell's damage/effect exactly like a played Power source.
-    if (isPolishMysticism && mode === "expert") {
-      stackItem.modifiers.spellPowerBonus += 1;
-    }
+    // NO Power rider. Mysticism prints a RECALL on both sides — "Basic: … take
+    // the Spell card back into your hand instead of discarding it. Expert: also
+    // take back all other cards played together with it" — and the Polish Spell
+    // Book turns the basic half into a REFRESH (polishRefreshSpell above), which
+    // is the whole of what the rule changes. b2d427bd added a "+1 Spell Power"
+    // here citing the reference sheet; it was a misreading (the plan doc,
+    // docs/polish-house-rules-plan.md, records the expert rider as "unchanged")
+    // and the user reported it as a bug: expert Mysticism was silently lifting a
+    // Book Magic Arrow from Power 0 to Power 1, i.e. 1 damage to 2. It was also
+    // the odd one out among the three Mysticism paths — neither the attack-window
+    // instant recall nor the cast-reaction recall below ever granted Power.
+    // Pinned in mysticism-no-spell-power.test.ts.
 
     // Empowered Knowledge raises the limit on the basic play; the regular
     // card only on the expert play.
