@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { startAdventureRound } from "./adventure";
-import { countBallistas } from "./permanents";
 import type { GameAction, GameEvent, GameState, UnitId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -36,12 +35,6 @@ function attackBonusBy(state: GameState, attackerId: UnitId): number | undefined
       (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
         event.type === "ATTACK_ROLLED" && event.attackerId === attackerId
     )?.attackBonus;
-}
-
-function warMachineHits(state: GameState): Extract<GameEvent, { type: "WAR_MACHINE_TRIGGERED" }>[] {
-  return state.eventLog.filter(
-    (event): event is Extract<GameEvent, { type: "WAR_MACHINE_TRIGGERED" }> => event.type === "WAR_MACHINE_TRIGGERED"
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -285,78 +278,19 @@ describe("Cyra's Haste IV/VI", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Torosar — every level is a current-game-round Ballista grant and is playable
-// on the map. IV activates this + one other now; VI activates all.
+// Torosar — the Ballista specialist. The printed cards (2026-08-11 audit of the
+// committed scans) are: I = the SHARED "Ballista I" card (buy one for 5 gold on
+// the map — OR — activate one you own, in combat); IV = a MAP-only "until the
+// end of the round" grant with NO activation clause; VI = an Instant granting a
+// Ballista "For this Combat" and firing every Ballista now.
+//
+// The full behaviour — both of I's sides, IV's map-only-ness and round expiry,
+// VI's combat-scoped grant — lives in `torosar-ballista-specialty.test.ts`.
+// What stays here is the level-IV grant's game-round expiry seam, driven
+// directly through startAdventureRound.
 // ---------------------------------------------------------------------------
 
 describe("Torosar's Ballista specialty", () => {
-  function torosarMap(cardId = "specialty.torosar.1"): GameState {
-    const state = createAdventureGameState({
-      seed: "torosar-map",
-      rollFirstPlayer: false,
-      players: [
-        { id: "p1", name: "Torosar", factionId: "tower", heroDefId: "torosar" },
-        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
-      ]
-    });
-  for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
-    state.activePlayerId = "p1";
-    state.pendingChoice = null;
-    state.reactionWindow = null;
-    state.players.p1.hand = [cardId];
-    return state;
-  }
-
-  it.each([1, 4, 6] as const)("level %s is playable on the map and banks a game-round Ballista", (level) => {
-    const cardId = `specialty.torosar.${level}`;
-    const state = torosarMap(cardId);
-    const play = findPlay(state, cardId);
-    expect(play, `${cardId} should be offered on the map`).toBeTruthy();
-    const next = applyOk(state, play!.action);
-    expect(next.players.p1.hand).not.toContain(cardId);
-    expect(
-      next.activeEffects.some(
-        (effect) =>
-          effect.controllerId === "p1" &&
-          effect.duration.type === "current-game-round" &&
-          effect.modifiers.some((modifier) => modifier.type === "EXTRA_BALLISTA")
-      )
-    ).toBe(true);
-  });
-
-  it("I grants the temporary Ballista in combat without an immediate activation", () => {
-    const state = createInitialGameState("torosar-i-combat");
-    state.players.p1.hand = ["specialty.torosar.1"];
-    state.players.p1.permanents = [];
-    state.players.p2.hand = [];
-    const next = applyOk(state, findPlay(state, "specialty.torosar.1")!.action);
-    expect(warMachineHits(next)).toHaveLength(0);
-    expect(
-      next.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "EXTRA_BALLISTA"))
-    ).toBe(true);
-  });
-
-  it("IV grants one and activates at most two Ballistas immediately", () => {
-    const state = createInitialGameState("torosar-iv");
-    state.players.p1.hand = ["specialty.torosar.4"];
-    state.players.p1.permanents = ["war_machine.ballista"];
-    state.players.p2.hand = [];
-    for (const unit of Object.values(state.combat!.units)) {
-      if (unit.controllerId === "p2") {
-        unit.initiative = 5;
-      }
-    }
-    state.combat!.units.unit_p2_skeletons.initiative = 1;
-    const next = applyOk(state, findPlay(state, "specialty.torosar.4")!.action);
-    expect(countBallistas(next, "p1")).toBe(2);
-    expect(
-      next.activeEffects.some(
-        (effect) => effect.controllerId === "p1" && effect.modifiers.some((modifier) => modifier.type === "EXTRA_BALLISTA")
-      )
-    ).toBe(true);
-    expect(warMachineHits(next)).toHaveLength(2);
-  });
-
   it("IV's grant expires at the end of the game round (and survives within it)", () => {
     const state = createAdventureGameState({
       seed: "torosar-iv-expire",
@@ -397,34 +331,4 @@ describe("Torosar's Ballista specialty", () => {
     expect(hasGrant()).toBe(false);
   });
 
-  it("VI fields a game-round Ballista and fires every Ballista now", () => {
-    const state = createInitialGameState("torosar-vi");
-    state.players.p1.hand = ["specialty.torosar.6"];
-    state.players.p1.permanents = ["war_machine.ballista"]; // 1 permanent + the VI grant = 2
-    state.players.p2.hand = [];
-    state.combat!.units.unit_p2_skeletons.initiative = 1;
-    state.combat!.units.unit_p2_skeletons.maxHealth = 10;
-    state.combat!.units.unit_p2_vampires.initiative = 5;
-    state.combat!.units.unit_p2_dread_knights.initiative = 5;
-    const next = applyOk(state, findPlay(state, "specialty.torosar.6")!.action);
-    // Two Ballistas (permanent + grant) each fire once at the slowest enemy.
-    expect(warMachineHits(next)).toHaveLength(2);
-    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(2);
-    expect(
-      next.activeEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === "EXTRA_BALLISTA"))
-    ).toBe(true);
-  });
-
-  it("VI works with no permanent Ballista — the granted one alone fires", () => {
-    const state = createInitialGameState("torosar-vi-grant-only");
-    state.players.p1.hand = ["specialty.torosar.6"];
-    state.players.p1.permanents = [];
-    state.players.p2.hand = [];
-    state.combat!.units.unit_p2_skeletons.initiative = 1;
-    state.combat!.units.unit_p2_vampires.initiative = 5;
-    state.combat!.units.unit_p2_dread_knights.initiative = 5;
-    const next = applyOk(state, findPlay(state, "specialty.torosar.6")!.action);
-    expect(warMachineHits(next)).toHaveLength(1);
-    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(1);
-  });
 });

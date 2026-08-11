@@ -3845,6 +3845,93 @@ Reported-bug batch. Leading with what does NOT work / the deliberate limits:
   arrows per changed stat — the INSPECTOR keeps the numeric live totals,
   `board.test.tsx`).
 
+## Torosar's Ballista specialty is the PRINTED card again (2026-08-11)
+
+USER REPORT, verbatim: "Balista I for Torossar not workig properly, very buggy
+got added to ongoing? i told u to fix, u did something terrible."
+
+**LEADING WITH WHAT WAS NOT BROKEN, because it decides what was fixed.** The
+2026-08-10 Ongoing-tray hold (`holdLiveOngoingCardsFromDiscard`) is NOT the bug
+and is not reverted. Every mechanical path was probed end to end before anything
+changed — the grant fired at every combat round's start, survived across two
+fights in the same game round, expired at the round wrap, released its card to
+the discard exactly once, and card-count was conserved at every step. The bug was
+one level up: **the engine did not implement the printed cards.** The committed
+board-game scans are the truth (repo rule: read the card, not a wiki):
+
+- **I** (`/assets/hero_specialties-torosar-1.webp`, 031/197 TOW) prints
+  "[map] Pay 5 gold to gain a Ballista. — OR — [instant] Activate your Ballista
+  (if you have one)." — **word for word the same printed card as Tarnum (Castle) I
+  (061/197 CAS) and Gerwulf I (043/197 FOR)**, both of which the engine already
+  modelled correctly. Torosar's was instead an invented "until the end of the game
+  round, gain an additional Ballista" grant. So it created a lasting effect, its
+  card was (correctly, for a lasting effect) held in the public Ongoing tray by the
+  2026-08-10 pass, and **the player never got the Ballista they paid for** — which
+  is exactly the report, symptom included.
+- **IV** (032/197 TOW) prints the MAP icon and "Until the end of the round, gain an
+  additional Ballista during Combat. When played, this card counts as a Ballista."
+  The engine ALSO gave it "This and 1 other Ballista can be activated now" — a
+  clause that is not on the card — and offered it mid-combat, where a
+  round-start Ballista cannot shoot the round it arrives, so the card was spent for
+  nothing in a default one-round neutral fight.
+- **VI** (033/197 TOW) prints the INSTANT icon and "For this Combat, gain an
+  additional Ballista. You can activate all your Ballistas now." The engine scoped
+  the grant to the GAME ROUND, so a free Ballista leaked into every later fight of
+  that round.
+
+**THE FIX is data only** (`src/data/cards/adventure.ts`) — no engine rule, no new
+effect kind, no change to the hold/release passes: I becomes the shared
+buy-or-fire `CHOOSE_ONE` (byte-identical to its two siblings), IV drops the
+invented activation and takes `timing: "map"` (the printed globe icon, which the
+existing `addPlayableCardActions` timing gate already reads as "never in
+combat"), VI becomes `grant: "combat"`.
+
+What this means for the Ongoing tray, stated because it is the reported symptom:
+**level I no longer touches it at all** (no lasting effect ⇒ its card goes to the
+discard like any instant), while **IV and VI still sit there for the life of their
+grant — and that is the printed card**, which says in so many words "When played,
+this card counts as a Ballista", i.e. it stays in play. IV leaves for the discard
+at the game-round wrap, VI when the combat ends.
+
+Deliberate limits / knock-on effects (each pinned):
+- **Level I costs 5 gold now.** A hero with 4 gold is not offered the map side at
+  all, and a hero with no Ballista in play is not offered the combat side
+  ("if you have one") — both CONTROL-pinned. The old free grant was strictly
+  better; this is the card.
+- **Level IV is map-only and level VI is combat-only.** IV can no longer be dumped
+  mid-fight (it would have done nothing that round anyway) and VI can no longer be
+  banked on the map. VI needs no new gate: the map branch of
+  `isOptionEffectPlayable` accepts only a `game-round` grant.
+- **VI's "you CAN activate all your Ballistas now" auto-fires**, as it always has;
+  the permissive wording is not modelled as a decline option (firing is never
+  worse, and the printed card carries no "— OR —").
+- **The generic `DISCARD_ONGOING_CARD` offer still appears for a held IV/VI card**
+  ("Discard Ballista IV from play"), destroying your own grant for nothing. It is
+  the pre-existing rulebook voluntary-removal offer that every Ongoing/Permanent
+  card gets, it mirrors `DISCARD_PERMANENT`, and it is untouched here.
+- **No protocol bump** (no action or state shape moved), but the card library is
+  server-side: a stale PartyKit edge keeps serving the old Torosar until
+  `npm run deploy:partykit` runs.
+
+Pinned in `src/engine/torosar-ballista-specialty.test.ts` (16 tests): the REPRO as
+an observable chain (the map play spends exactly 5 gold, puts the real
+`war_machine.ballista` in hand, creates ZERO active effects, holds NOTHING in the
+tray, and leaves one copy of the specialty in the discard) with broke-hero and
+no-Ballista CONTROLs; I's combat side dealing real damage to the slowest enemy;
+IV banking a `current-game-round` grant that fires no shot immediately, is held in
+play, really shoots in combat rounds 1 AND 2 of a real neutral fight, and expires
+at the round wrap with the card reaching the discard exactly once; VI firing every
+Ballista at once and its grant DYING with the combat (the discriminating
+assertion — the old reading survived into the next fight); the two "never offered
+here" CONTROLs; and the invariant that would have caught this in the first place —
+**Torosar I, Tarnum-Castle I and Gerwulf I are one printed card, so their effects
+must be structurally identical**. Card-count conservation is asserted across every
+lifecycle. Mutation-checked: restoring I's fabricated grant fails 7 tests across 2
+files, restoring VI's game-round grant fails 5, restoring IV's `timing: "instant"`
+fails 2, and restoring IV's invented `activate: "up-to-two"` fails 1. The
+level-IV round-expiry seam stays pinned directly against `startAdventureRound` in
+`tower-hero-specialties.test.ts`.
+
 ## A live ongoing card is NEVER in the discard pile (2026-08-10, protocol v25)
 
 USER RULE: "when ongoing spells/abilities/artifacts are ongoing — like Luck,
@@ -3944,12 +4031,16 @@ Two audited codex commits. Leading with what does NOT run / deliberate limits:
 - **Expert Mysticism/Knowledge recall never returns the recall card itself**
   (`recallSpell.sourceCardId`; one occurrence skipped, a genuine second copy
   played as support still returns — `knowledge-recall-instants.test.ts`).
-- **Torosar I/IV/VI are all game-round Ballista grants** playable on the MAP
-  before a combat (banked `EXTRA_BALLISTA` active effect, `current-game-round`
-  duration): I grants only, IV also activates up to two, VI activates all —
-  the old "pay 5 gold / activate one" CHOOSE_ONE reading is gone (Tarnum-Castle
-  and Gerwulf keep it — theirs print it). Map-timing for EVERY war-machine
-  specialty is pinned in `war-machine-specialty-map-timing.test.ts`.
+- ~~**Torosar I/IV/VI are all game-round Ballista grants** playable on the MAP
+  before a combat … the old "pay 5 gold / activate one" CHOOSE_ONE reading is
+  gone (Tarnum-Castle and Gerwulf keep it — theirs print it).~~ **WRONG —
+  REVERTED 2026-08-11.** That reading did not come from the cards: the committed
+  scans show Torosar I printing the very same "Pay 5 gold to gain a Ballista —
+  OR — Activate your Ballista" text as Tarnum-Castle I and Gerwulf I, IV
+  printing no activation clause at all, and VI scoped "For this Combat". See
+  "Torosar's Ballista specialty is the PRINTED card again" above. Map-timing for
+  EVERY war-machine specialty is still pinned in
+  `war-machine-specialty-map-timing.test.ts`.
 - **Summon elementals are separate `summonOnly` definitions**
   (`conflux.{air,earth,fire,water}_elementals` carry the Few/Pack summon forms;
   `neutral.*_elementals` are single-sided recruitable guards): the Summon spells

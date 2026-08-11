@@ -44,9 +44,13 @@ function mapOptions(cardId: string): Array<number | undefined> {
 
 describe("war-machine hero specialties - map timing audit", () => {
   it.each([
-    ["specialty.torosar.1", [undefined]],
+    // Torosar I is the SHARED "Ballista I" card (identical scans for Tarnum
+    // Castle and Gerwulf), so only its printed MAP side — option 0, "pay 5 gold
+    // to gain a Ballista" — is offered here; its "activate your Ballista" side
+    // is combat-only. IV prints the map icon and is a single map play. VI is an
+    // Instant scoped "For this Combat" and belongs in the combat-only list below.
+    ["specialty.torosar.1", [0]],
     ["specialty.torosar.4", [undefined]],
-    ["specialty.torosar.6", [undefined]],
     ["specialty.gem.1", [undefined]],
     ["specialty.tarnum_castle.1", [0]],
     ["specialty.tarnum_castle.4", [1]],
@@ -61,6 +65,7 @@ describe("war-machine hero specialties - map timing audit", () => {
   it.each([
     "specialty.gem.4",
     "specialty.gem.6",
+    "specialty.torosar.6",
     "specialty.tarnum_castle.6",
     "specialty.gerwulf.4",
     "specialty.gerwulf.6"

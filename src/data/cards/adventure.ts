@@ -2760,10 +2760,23 @@ export const adventureCards: CardLibrary = {
     implementationStatus: "implemented",
     source: heroSource("solmyr")
   },
-  // Torosar (Tower, Alchemist): all three cards count as a temporary Ballista
-  // through the end of the current game round. They may be committed on the map
-  // before a Combat; when played during Combat, IV activates this Ballista plus
-  // one other and VI activates every Ballista immediately.
+  // Torosar (Tower, Alchemist): a Ballista specialist. Every clause below is
+  // transcribed from the committed board-game scans
+  // (/assets/hero_specialties-torosar-{1,4,6}.webp), which are the truth — an
+  // earlier reading made all three "until the end of the game round" grants and
+  // invented immediate activations for IV; both are gone.
+  //   I  (031/197 TOW) is the SHARED "Ballista I" card, word-for-word identical
+  //      to Tarnum (Castle) I (061/197 CAS) and Gerwulf I (043/197 FOR), so it
+  //      is modelled identically: a MAP side (globe icon) that buys the real
+  //      war-machine Ballista for 5 gold, or an INSTANT side (lightning icon)
+  //      that fires a Ballista you already own. It creates NO lasting effect.
+  //   IV (032/197 TOW) prints the MAP icon and no activation clause at all.
+  //   VI (033/197 TOW) prints the INSTANT icon and is scoped "For this Combat",
+  //      not to the game round.
+  // IV/VI both print "When played, this card counts as a Ballista", so their
+  // card stays in play (the Ongoing tray) for as long as the grant lasts and
+  // only then reaches the discard — which is exactly what the shared
+  // hold/release passes in active-effects.ts do.
   "specialty.torosar.1": withSpecialtyArt({
     id: "specialty.torosar.1",
     name: "Ballista I",
@@ -2774,30 +2787,53 @@ export const adventureCards: CardLibrary = {
       "instant",
       "torosar",
       "ballista",
-      "Until the end of the game round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
+      "Pay 5 gold to gain a Ballista. — OR — Activate your Ballista (if you have one)."
+    ],
+    target: { type: "none" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Pay 5 gold to gain a Ballista",
+          mapOnly: true,
+          effect: { type: "GAIN_WAR_MACHINE", warMachineCardId: "war_machine.ballista", goldCost: 5 }
+        },
+        {
+          label: "Activate your Ballista",
+          combatOnly: true,
+          effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
+        }
+      ]
+    },
+    implementationStatus: "implemented",
+    source: heroSource("torosar")
+  }),
+  // IV: printed with the MAP icon, so `timing: "map"` — it is committed on the
+  // adventure map BEFORE a fight and is never offered mid-combat (where its
+  // Ballista, which fires at a combat round's START, could not shoot this round
+  // and the card would be spent for nothing).
+  "specialty.torosar.4": withSpecialtyArt({
+    id: "specialty.torosar.4",
+    name: "Ballista IV",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "torosar",
+      "ballista",
+      "Until the end of the round, gain an additional Ballista during Combat. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
     effect: { type: "BALLISTA_SPECIALTY", grant: "game-round" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   }),
-  "specialty.torosar.4": withSpecialtyArt({
-    id: "specialty.torosar.4",
-    name: "Ballista IV",
-    kind: "hero-specialty",
-    timing: "instant",
-    tags: [
-      "hero-specialty",
-      "instant",
-      "torosar",
-      "ballista",
-      "Until the end of the game round, gain an additional Ballista during Combat. This and 1 other Ballista can be activated now. When played, this card counts as a Ballista."
-    ],
-    target: { type: "none" },
-    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "up-to-two" },
-    implementationStatus: "implemented",
-    source: heroSource("torosar")
-  }),
+  // VI: printed with the INSTANT icon and scoped to the fight — the grant is
+  // combat-duration (gone when the battle ends), and "you can activate all your
+  // Ballistas now" fires every one, the just-granted one included. It is map-
+  // illegal for free: the map branch of isOptionEffectPlayable accepts only a
+  // `game-round` grant.
   "specialty.torosar.6": withSpecialtyArt({
     id: "specialty.torosar.6",
     name: "Ballista VI",
@@ -2808,10 +2844,10 @@ export const adventureCards: CardLibrary = {
       "instant",
       "torosar",
       "ballista",
-      "Until the end of the game round, gain an additional Ballista during Combat. This and all other Ballistas can be activated now. When played, this card counts as a Ballista."
+      "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
-    effect: { type: "BALLISTA_SPECIALTY", grant: "game-round", activate: "all" },
+    effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   }),
