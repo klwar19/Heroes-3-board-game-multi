@@ -252,7 +252,13 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, pvpNeutralControllerId } from "./neutral-control";
-import { DEFAULT_OBELISK_BONUS, GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
+import {
+  DEFAULT_OBELISK_BONUS,
+  GRAIL_OBELISKS_REQUIRED,
+  HIDDEN_CARD_ID,
+  NEUTRAL_PLAYER_ID,
+  UNOPENED_FAR_TILE
+} from "./state";
 import type { CustomMapObeliskBonus, CustomMapObeliskConfig } from "./state";
 import { awardCommanderGradePoints, commandersModuleEnabled, wogNewObjectsEnabled } from "./commanders";
 import { WOG_FIELD_OVERRIDE_LOCATION_IDS } from "@/data/wog/field-overrides";
@@ -13356,7 +13362,23 @@ export function openPandoraSilverRefresh(state: GameState, playerId: PlayerId): 
   };
 }
 
-/** Whether a copy of `unitDefId` is still in tier `tier`'s Neutral Units deck. */
+/**
+ * Whether a copy of `unitDefId` is still in tier `tier`'s Neutral Units deck.
+ *
+ * HOSTED (REDACTED) FRAMES: a shared deck's DRAW PILE is masked to
+ * `HIDDEN_CARD_ID` placeholders for every seat (deck ORDER is secret from
+ * everyone — `redactStateForSeat`), so a plain `drawPile.includes(...)` reads
+ * FALSE on the browser's own frame even when the card is really there. That is
+ * what made Tarnum (Conflux) IV / Dracon IV / Gelu IV offer only their "Draw a
+ * card" half, and Tarnum (Rampart) VI only its draw, in EVERY single-player and
+ * CLOSED multiplayer game (the artifact-sets 2026-08-08 precedent). With the
+ * pile masked the answer is UNKNOWN, so this returns true unless the copy is
+ * PROVABLY elsewhere — visibly recruited into some player's army, which is
+ * public state a redacted client can read. The SERVER always holds the real
+ * pile, so its own gate (and the resolver's re-check) stays the arbiter: a
+ * client that offers a fetch the server refuses gets the play rejected and
+ * KEEPS the card, never a silently spent one.
+ */
 export function neutralDeckHas(
   state: GameState,
   tier: "bronze" | "silver" | "gold" | "azure",
@@ -13366,7 +13388,19 @@ export function neutralDeckHas(
     return false;
   }
   const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-  return Boolean(deck) && (deck!.drawPile.includes(unitDefId) || deck!.discardPile.includes(unitDefId));
+  if (!deck) {
+    return false;
+  }
+  if (deck.drawPile.includes(unitDefId) || deck.discardPile.includes(unitDefId)) {
+    return true;
+  }
+  if (!deck.drawPile.includes(HIDDEN_CARD_ID)) {
+    // A real, unmasked pile: absence is proof of absence.
+    return false;
+  }
+  return !Object.values(state.players).some((player) =>
+    player.army.some((unit) => unit.unitDefId === unitDefId)
+  );
 }
 
 /**

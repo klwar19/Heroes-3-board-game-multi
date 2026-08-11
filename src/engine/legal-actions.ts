@@ -41,6 +41,7 @@ import {
   isOwnTownOrSettlementField,
   isSeaField,
   NEUTRAL_DECK_IDS,
+  neutralDeckHas,
   obeliskRoleIsMonolith,
   RESOURCE_GAIN_LEVEL_AMOUNTS,
   currentSurrenderGoldCost,
@@ -3206,6 +3207,18 @@ function isOptionEffectPlayable(
       const player = state.players[playerId];
       return Boolean(player && player.deck.length + player.discard.length > 0);
     }
+    case "TARNUM_OVERLIMIT_SEARCH":
+      // Tarnum (Conflux) VI: "Search(1) Spell twice." The Searches ARE a
+      // card-gain instant, so — per the 2026-08-10 "every card-gain instant works
+      // on the MAP and in an attack window" rule — the card is playable on your
+      // own map turn too (the reported "Tarnum 6 can't be played on a map
+      // screen"; openTarnumSearch already carries a "player-turn" returnPhase, so
+      // only this OFFER gate was missing). On the map only the two Searches
+      // resolve: the printed "cast one or both over the per-Combat-round limit"
+      // rider has no combat to spend itself in, and the over-limit flag those
+      // taken cards carry is cleared at the next combat start — so a map play is
+      // deliberately Search-only, exactly as it reads outside a fight.
+      return Boolean(context === "combat" ? state.combat : state.adventure) && tarnumSearchableDeckExists(state);
     case "SEARCH_DECK_THEN_RESHUFFLE": {
       // Adrienne's Fire Magic IV: Search your own deck + reshuffle the discard. A
       // printed Instant's card manipulation is playable on the map AND mid-Combat
@@ -3253,13 +3266,14 @@ function isOptionEffectPlayable(
       // Tarnum (Rampart) Sharpshooters VI: "Play at the start of Combat" — only on
       // combat round 1, and only while the unit is still available to borrow from
       // its tier's Neutral deck (draw or discard pile).
+      // Deck membership goes through the SHARED neutralDeckHas, which stays
+      // honest on a hosted (redacted) client whose draw piles are masked — see
+      // its doc comment; a hand-rolled `drawPile.includes` here read FALSE in
+      // every hosted game and hid the borrow behind the plain draw.
       if (context !== "combat" || !state.combat || state.combat.round !== 1) {
         return false;
       }
-      const deck = state.decks[NEUTRAL_DECK_IDS[effect.tier]];
-      return Boolean(
-        deck && (deck.drawPile.includes(effect.unitDefId) || deck.discardPile.includes(effect.unitDefId))
-      );
+      return neutralDeckHas(state, effect.tier, effect.unitDefId);
     }
     case "DOUBLE_FIRST_AID_TENT":
       // Gem's First Aid VI only does something with a First Aid Tent in play.
@@ -3279,8 +3293,7 @@ function isOptionEffectPlayable(
         return false;
       }
       const player = state.players[playerId];
-      const deck = state.decks[NEUTRAL_DECK_IDS[effect.toTier]];
-      if (!player || !deck) {
+      if (!player) {
         return false;
       }
       // Tarnum (Conflux) IV pays gold instead of trading in a unit, so the
@@ -3293,8 +3306,9 @@ function isOptionEffectPlayable(
       const canPayGold = !effect.goldCost || player.resources.gold >= effect.goldCost;
       const blockedByUnique =
         Boolean(effect.unique) && player.army.some((unit) => unit.unitDefId === effect.toUnitDefId);
-      const deckHasTarget =
-        deck.drawPile.includes(effect.toUnitDefId) || deck.discardPile.includes(effect.toUnitDefId);
+      // SHARED neutralDeckHas — hosted-client-safe (masked draw piles), so the
+      // fetch half is no longer hidden in every single-player / closed game.
+      const deckHasTarget = neutralDeckHas(state, effect.toTier, effect.toUnitDefId);
       return hasFrom && canPayGold && !blockedByUnique && deckHasTarget;
     }
     case "SIEGE_DEMOLISH": {

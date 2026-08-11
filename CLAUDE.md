@@ -7635,6 +7635,86 @@ Five additions; each engine rule fails a named test if its wiring is removed.
   `overlays.test.tsx` (the Crown toggle emits `costCardModes` and the engine
   accepts it, with a no-crown CONTROL that hides the toggle).
 
+## A hosted client hid every Neutral-deck FETCH · Tarnum VI on the map (2026-08-11)
+
+Reported: "Tarnum 4 does not let me recruit enchanters, only draw a card. Tarnum 6
+can't be played on a map screen. => check all tarnum speciality." Tarnum is SIX
+heroes (Castle Ballista · Conflux Enchanters · Dungeon Dragons · Fortress
+Basilisks · Rampart Sharpshooters · Stronghold Offense) and NONE of them is Tower
+— the reporter said "Tower Tarnum" because the Enchanters recruit belongs to the
+CONFLUX Tarnum (whose VI is the other report) while the Tower faction's OWN
+Enchanters specialist is **Dracon**, whose IV prints the same fetch. Both cards
+had the identical bug, so the attribution does not matter: the fix is the shared
+seam and every affected card is pinned. Behaviour in
+`src/engine/tarnum-specialties-audit.test.ts` (19 tests; 6 mutations applied,
+6 killed).
+
+**BUG 1 — the FETCH half was invisible in every hosted game (a whole CLASS).**
+The "search the Neutral Unit deck for X and add it to your Unit deck" halves gate
+on the target card still sitting in that tier deck, read straight off
+`drawPile`. On a HOSTED table — every single-player room and every CLOSED
+multiplayer table — the browser renders from a per-seat REDACTED frame whose
+shared-deck draw piles are `HIDDEN_CARD_ID` placeholders (deck ORDER is secret
+from everyone, `redactStateForSeat`), so that read was FALSE and the client
+filtered the fetch out of its OWN offers, leaving only "Draw a card". The server
+offered both all along — the artifact-sets 2026-08-08 shape exactly. Reproduced
+by deriving the offers from `redactStateForSeat(state, "p1")`, which is what the
+older tests never did (they read the full server state). Affected FOUR cards on
+two effects: `CONVERT_ARMY_UNIT` — Tarnum (Conflux) IV, **Dracon IV (Tower, the
+other Enchanters specialist)** and Gelu IV — and `BORROW_NEUTRAL_UNIT` — Tarnum
+(Rampart) VI.
+ONE seam: `neutralDeckHas` (adventure.ts) is now masked-frame aware — a pile
+containing `HIDDEN_CARD_ID` means UNKNOWN, so it answers true unless the copy is
+PROVABLY elsewhere (visibly in some player's army — armies are public). Both
+`legal-actions.ts` reads (`CONVERT_ARMY_UNIT`, `BORROW_NEUTRAL_UNIT`) now CALL
+that helper instead of hand-rolling `drawPile.includes` — the divergence is what
+let them rot. **When a legality gate must read a shared deck's CONTENTS, go
+through `neutralDeckHas` (or copy its masked-pile reading); a bare
+`drawPile.includes` is FALSE on every hosted client.** Length-only reads
+(`VISIONS_SCRY`, `tarnumSearchableDeckExists`) are masking-safe and untouched.
+DELIBERATE LIMIT: with the pile masked and the card not visibly in an army the
+client cannot prove absence, so it still renders the fetch; the SERVER (which
+holds the real pile) then refuses the play and the specialty card is KEPT — the
+safe failure direction, pinned as its own case. Only a WRONG offer can result,
+never a spent card or a corrupt state.
+
+**BUG 2 — Tarnum (Conflux) VI had no map play.** Its whole printed effect is
+"Search(1) Spell twice", i.e. a card-gain instant — the class the 2026-08-10
+ruling made map-playable — but `TARNUM_OVERLIMIT_SEARCH` had no
+`isOptionEffectPlayable` case, so `isMapPlayableEffect` returned false and no map
+offer existed (the Solmyr IV shape). Fixed with that one case; `openTarnumSearch`
+already carried a `"player-turn"` returnPhase, so nothing else was needed. Its
+`timing`/`phaseLimit` are unchanged (the map loop does not read `phaseLimit`).
+LIMITS: on the map only the two Searches resolve — the printed "cast one or both
+over the per-Combat-round limit" rider has no fight to spend itself in and the
+over-limit flag on the taken cards is cleared at the next combat start, so a map
+play is deliberately Search-only. Its combat play and its single attack-window
+Search reaction are byte-identical (CONTROL-pinned, incl. "exactly ONE window
+offer" so no duplicate arrives from the generic card-gain utility strip). The AI
+already prices `TARNUM_OVERLIMIT_SEARCH` in its card-search band and
+`CHOOSE_OPTION` is in the forced-resolution driver's `RESOLVING_ACTION_TYPES`, so
+neither can stall on the new offer (both pinned).
+
+**Audit of the other 15 Tarnum cards: no third bug.** A family sweep drives all
+18 through a map turn, the holder's own combat activation and an open attack
+window, asserts each is reachable in at least one printed situation (none is
+decorative), and applies EVERY offer the engine makes (no offer it cannot
+execute). Coverage gap closed: **Tarnum (Stronghold)'s Offense I/IV/VI — the only
+consumers of the `offenseSpecialty*` generators — had no EFFECT test** (a registry
+row, plus Offense I used as a prop in `neutral-reaction-pause.test.ts`, which
+asserts only that its offer exists), so its three levels are now pinned by
+observable damage — I's +1 and VI's +3 raise the damage a scripted-die attack
+deals by exactly 1 and 3, IV's +1 lasts the combat, and I's draw half really
+draws on the map. Castle/Dungeon/Fortress/Rampart keep their existing suites
+(`extra-heroes-batch4/5/6`, `war-machine-specialty-map-timing`,
+`initiative-specialty-houserule`). UNVERIFIED (stated, not changed): Tarnum
+(Conflux) I ships `timing: "map"`, so it is map-only like every printed Map card
+— its printed timing icon was not re-checked against the card scan.
+
+No protocol change (no action or state shape moved), but both fixes are
+server-side reads: a stale PartyKit edge keeps refusing the map play until
+`npm run deploy:partykit` runs.
+
 ## Reinforcement discounts unified: stacking Legion + banked Necromancy (2026-07-27) — what runs vs. limits
 
 Legion vouchers, the Necromancy half-cost and the Hill Fort −3 used to be RIVAL
