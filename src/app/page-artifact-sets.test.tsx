@@ -267,9 +267,10 @@ describe("Polish Set Artifacts — page mounts (combat screen)", () => {
 
     // The panel still reports the true progress (it always did)…
     expect(document.querySelector(".artifactSetPieces")?.textContent).toBe("6/6");
-    // …and now so does the dock: the 4 bound tiers are one entry button.
+    // …and now so does the dock: the 3 bound DOCK tiers are one entry button
+    // (tier 3 is the roll-the-higher instant — it pops up in the attack window).
     const button = document.querySelector<HTMLElement>(".setPowerButton");
     expect(button, "the combat dock must offer the set powers on a hosted table").toBeTruthy();
-    expect(button!.textContent).toContain("Set powers (4)");
+    expect(button!.textContent).toContain("Set powers (3)");
   });
 });

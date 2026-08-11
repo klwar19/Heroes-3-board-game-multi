@@ -101,17 +101,27 @@ export type ArtifactSetTierEffect =
  *  - `combat-start`: the printed "At the beginning / At the start of the combat".
  *    Offered ONLY while the fight has not begun (combat round 1, deployment or
  *    before the first unit moves/strikes — `combatStartWindowOpen`).
+ *  - `attack-window`: the printed "rolls 2 dice and resolves the higher RESULT"
+ *    (singular). NOT a pre-emptive power at all: it is an INSTANT offered as a
+ *    pop-up inside the open `UNIT_ATTACK_DECLARED` window of the qualifying unit
+ *    that is about to roll, and it lifts THAT ONE roll (a stack-item modifier,
+ *    the Precision `ignoreRangedPenalty` precedent) — never the rest of the
+ *    fight. 2026-08-11 USER RULING on Angelic Alliance's 3-piece effect: "This
+ *    feature should work only once — it is an instant, so work as pop up window."
  *  - absent: no timing restriction of its own beyond its `limit` ("Once per
  *    combat", "during an attack", the map tiers' "once per round").
  *
  * This MUST match the tier's own `text`: `artifact-sets.test.ts` asserts, in BOTH
  * directions, that a tier whose printed line says "beginning/start of the combat"
- * declares `timing: "combat-start"` and that no other tier does. Before this
- * field the gate keyed off `effect.kind === "select-unit"`, which happened to
- * cover today's three tiers but would silently let a FUTURE
- * beginning-of-the-combat tier run all fight long.
+ * declares `timing: "combat-start"`, that a tier printing the roll-the-higher
+ * line declares `timing: "attack-window"`, and that no other tier declares
+ * either. Before this field the combat-start gate keyed off
+ * `effect.kind === "select-unit"`, which happened to cover today's three tiers
+ * but would silently let a FUTURE beginning-of-the-combat tier run all fight
+ * long; the same invariant is what keeps a future "resolve the higher" tier from
+ * silently becoming a combat-long buff again.
  */
-export type ArtifactSetTierTiming = "combat-start";
+export type ArtifactSetTierTiming = "combat-start" | "attack-window";
 
 export type ArtifactSetTier = {
   /** Piece count at which this tier switches on (2 for the first tier, then 3, 4, …). */
@@ -127,6 +137,19 @@ export type ArtifactSetTier = {
 
 /** Printed lines that mean "before the fight begins" (the invariant test's oracle). */
 export const COMBAT_START_TEXT_PATTERN = /\b(?:beginning|start) of the combat\b/i;
+
+/**
+ * Printed lines that mean "ONE attack roll, when it happens" — the pop-up
+ * instant tiers (the invariant test's oracle for `timing: "attack-window"`).
+ * Angelic Alliance 3 and Power of the Dragon Father 2 print this line verbatim;
+ * both are therefore the same instant, per CLAUDE.md rule #1a habit 3
+ * (cross-check siblings that share a mechanic).
+ *
+ * DELIBERATELY NOT the mirror "resolves the LOWER result" line (Armor of the
+ * Damned 3): that is an enemy debuff whose printed "during an attack" is read as
+ * a current-combat-round curse, documented in CLAUDE.md and unchanged here.
+ */
+export const ATTACK_ROLL_HIGHER_TEXT_PATTERN = /rolls 2 dice and resolves the higher result/i;
 
 export type ArtifactSetDefinition = {
   id: ArtifactSetId;
@@ -177,10 +200,14 @@ export const ARTIFACT_SETS: readonly ArtifactSetDefinition[] = [
         effect: { kind: "select-unit", side: "own", initiative: 1 }
       },
       {
+        // The printed "resolves the higher RESULT" is ONE roll, so this is an
+        // instant offered in that roll's own attack window — see
+        // `ArtifactSetTierTiming`. It stays BOUND to the tier-2 selection.
         threshold: 3,
         text: "Once per combat: your selected unit rolls 2 dice and resolves the higher result.",
         target: "selected-own",
         limit: "combat",
+        timing: "attack-window",
         effect: { kind: "attack-roll-advantage" }
       },
       {
@@ -225,10 +252,16 @@ export const ARTIFACT_SETS: readonly ArtifactSetDefinition[] = [
       // documented in CLAUDE.md. Angelic Alliance / Ironfist / Armor of the
       // Damned, which DO print a selection tier, instead bind to that pick.
       {
+        // Prints the SAME line as Angelic Alliance 3, so it is the same instant:
+        // offered in the attack window of the own unit that is about to roll, for
+        // that one roll (`timing: "attack-window"`). Its target stays a free pick
+        // (this set prints no selection tier), so any of the holder's units
+        // qualifies when it is the one attacking.
         threshold: 2,
         text: "Once per combat: your selected unit rolls 2 dice and resolves the higher result.",
         target: "own",
         limit: "combat",
+        timing: "attack-window",
         effect: { kind: "attack-roll-advantage" }
       },
       {

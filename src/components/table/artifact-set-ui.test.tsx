@@ -18,6 +18,7 @@ import {
   createAdventureGameState,
   getLegalActions,
   getMainHero,
+  getPlayerView,
   makeCombatUnitFromArmy,
   unitSideRuleOverrides,
   ARTIFACT_SETS,
@@ -32,6 +33,7 @@ import { CardFrame } from "./seats";
 import { ArtifactSetIconsProvider } from "./artifact-set-badge";
 import { artifactSetPowerGroups } from "./artifact-set-powers";
 import { BattlefieldBoard, CommandDock, COMMAND_ACTION_TYPES } from "./board";
+import { ReactionTray } from "./overlays";
 import { CardZoomProvider, useCardZoom } from "./zoom";
 import { ArtifactSetPanel, artifactSetPanelSeats } from "@/components/adventure/artifact-set-panel";
 import { HeroActionsDock } from "@/components/adventure/hero-actions-dock";
@@ -436,7 +438,10 @@ describe("Set Artifacts UI — COMBAT offers reach ONE dock entry, then the boar
     let state = makeState(true, "set-ui-combat-single");
     // Power of the Dragon Father prints no selection tier; with ONE own unit its
     // tier-2 advantage roll has exactly one legal target.
-    state = ownOnly(state, membersOf("power_of_the_dragon_father").slice(0, 2));
+    // (3 pieces, not 2: this set's tier 2 is the roll-the-higher INSTANT, which
+    // lives in the attack window and is deliberately not a dock power. Tier 3 —
+    // the Defense token — is the single-target dock offer here.)
+    state = ownOnly(state, membersOf("power_of_the_dragon_father").slice(0, 3));
     stageCombat(state);
 
     const legalActions = getLegalActions(state, "p1");
@@ -565,7 +570,7 @@ describe("Set Artifacts UI — COMBAT offers reach ONE dock entry, then the boar
       (entry) =>
         entry.action.type === "SELECT_ARTIFACT_SET_UNIT" || entry.action.type === "USE_ARTIFACT_SET_POWER"
     );
-    expect(setOffers.length, "fixture must produce the 2 selection offers plus the bound tiers").toBe(6);
+    expect(setOffers.length, "fixture must produce the 2 selection offers plus the bound tiers").toBe(5);
     // Cross-check against the shared derivation the reducer validates with.
     expect(artifactSetPowerOffers(state, "p1").length).toBe(setOffers.length);
 
@@ -640,6 +645,135 @@ describe("Set Artifacts UI — the Diplomat's Cloak scry window", () => {
       fireEvent.click(screen.getByRole("button", { name: option.label }));
       expect(onAction).toHaveBeenLastCalledWith(option.action);
     }
+  });
+});
+
+// ===========================================================================
+// 6. THE POP-UP INSTANT (2026-08-11 ruling) — the REACTION TRAY, not the dock
+//
+// "Rolls 2 dice and resolves the higher result" (Angelic Alliance 3, Power of the
+// Dragon Father 2) is an instant offered inside the attacking unit's own attack
+// window. Its surface is the instant window's tray; the command dock's Set-powers
+// menu must NOT show a second, duplicate button for it.
+// ===========================================================================
+
+describe("Set Artifacts UI — the roll-the-higher pop-up lives in the instant window", () => {
+  /** p1's Halberdiers adjacent to a guard, 3 AA pieces in the (masked-safe) deck. */
+  function popupWindow(seed: string): GameState {
+    let state = makeState(true, seed);
+    state = ownOnly(state, []);
+    state.players.p1.deck = [...AA_MEMBERS.slice(0, 3)];
+    const combat = stageCombat(state);
+    combat.units.u_own_0.position = 5;
+    combat.units.u_foe_0.position = 6;
+    combat.units.u_foe_0.maxHealth = 40;
+    combat.units.u_foe_0.defense = 0;
+    combat.dice = { faces: [-1, -1, 0, 0, 1, 1], seed: `${seed}-dice`, rollCount: 0, scriptedRolls: [-1, 1, -1, 1] };
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+    let next = applyOk(state, { type: "SELECT_ARTIFACT_SET_UNIT", playerId: "p1", setId: "angelic_alliance", unitId: "u_own_0" });
+    next = applyOk(next, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "u_own_0", defenderId: "u_foe_0" });
+    expect(next.reactionWindow?.triggerEvent.type, "the engine must have opened the pop-up window").toBe(
+      "UNIT_ATTACK_DECLARED"
+    );
+    return next;
+  }
+
+  it("renders a tray tile that dispatches the exact engine action", () => {
+    const state = popupWindow("set-ui-popup-tray");
+    const legalActions = getLegalActions(state, "p1");
+    const offer = legalActions.find((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER")!;
+    expect(offer, "the engine offer is the premise of this test").toBeTruthy();
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={legalActions}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    // The tray must not read "No playable instants" — that WAS the shape of an
+    // engine offer with no button.
+    expect(document.querySelector(".trayEmpty")).toBeNull();
+    const button = screen.getByRole("button", { name: offer.label });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith(offer.action);
+    // …and the dispatched action really resolves (end-to-end sanity).
+    expect(applyAction(state, offer.action).errors).toEqual([]);
+  });
+
+  it("the tile wears the owning set's icon", () => {
+    const state = popupWindow("set-ui-popup-icon");
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    const icon = document.querySelector<HTMLElement>('.reactionTray img[data-set-id="angelic_alliance"]');
+    expect(icon).toBeTruthy();
+    expect(icon!.getAttribute("src")).toContain("/assets/set-artifacts/icons/angelic_alliance.webp");
+  });
+
+  it("the command dock shows NO duplicate button for it (the grouping drops it)", () => {
+    const state = popupWindow("set-ui-popup-no-dock");
+    const legalActions = getLegalActions(state, "p1");
+    // The grouping — the ONE derivation both dock surfaces read — drops it.
+    expect(artifactSetPowerGroups(legalActions)).toEqual([]);
+
+    const { container } = render(
+      <ArtifactSetIconsProvider enabled>
+        <CardZoomProvider>
+          <CommandDock legalActions={legalActions} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+        </CardZoomProvider>
+      </ArtifactSetIconsProvider>
+    );
+    expect(container.querySelector(".setPowerButton"), "no Set-powers entry while only the instant is offered").toBeNull();
+
+    // CONTROL: the same grouping DOES keep an ordinary dock tier, so the empty
+    // result above is the attack-window exclusion and not a broken grouping.
+    const dockOffer: LegalAction[] = [
+      {
+        action: { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: "angelic_alliance", tier: 5, unitId: "u_own_0" },
+        label: "Angelic Alliance (5): +1 AT — Halberdiers"
+      }
+    ];
+    expect(artifactSetPowerGroups(dockOffer)).toHaveLength(1);
+  });
+
+  it("the MAP hero-actions dock shows no button for it either", () => {
+    // Defensive: however the two table screens are mounted, the map dock must
+    // never grow a duplicate button for a window-only instant.
+    const windowOffer: LegalAction[] = [
+      {
+        action: { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: "angelic_alliance", tier: 3, unitId: "u_own_0" },
+        label: "Angelic Alliance (3): Halberdiers rolls 2 Attack dice and keeps the higher on THIS attack"
+      }
+    ];
+    const { container } = render(<HeroActionsDock legalActions={windowOffer} onAction={vi.fn()} />);
+    expect(container.querySelectorAll(".heroActionButton")).toHaveLength(0);
+
+    // CONTROL: a real MAP tier still renders (so the emptiness is the filter).
+    cleanup();
+    const mapOffer: LegalAction[] = [
+      {
+        action: { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: "wizards_well", tier: 2 },
+        label: "Wizard's Well: draw 1 then discard 1"
+      }
+    ];
+    const map = render(<HeroActionsDock legalActions={mapOffer} onAction={vi.fn()} />);
+    expect(map.container.querySelectorAll(".heroActionButton")).toHaveLength(1);
   });
 });
 

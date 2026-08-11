@@ -17,6 +17,7 @@ import {
   TURN_TIME_LIMIT_MS,
   turnClockPausedFor,
   turnClockRunningSeats,
+  artifactSetIconImage,
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
@@ -609,6 +610,17 @@ export function ReactionTray({
     (legal) => legal.action.type === "PLAY_CARD" && legal.action.target?.type !== "space"
   );
 
+  // Polish Set Artifacts, the pop-up instants ("rolls 2 dice and resolves the
+  // higher result" — Angelic Alliance 3, Power of the Dragon Father 2). The
+  // engine offers them as USE_ARTIFACT_SET_POWER inside the attack window of the
+  // unit about to roll; they are not PLAY_REACTION cards, so the batch tray never
+  // surfaces them, and (being window-only) they are deliberately kept OUT of the
+  // command dock's Set-powers menu. Without these tiles the 2026-08-11 ruling's
+  // pop-up would have an engine offer and no button.
+  const artifactSetReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_ARTIFACT_SET_POWER"
+  );
+
   // Halberdiers' Parry (USE_UNIT_DIE_IGNORE): discard a chosen hand card to
   // ignore the just-rolled Attack die. A standalone legal action (one offer per
   // discardable card, worded by the engine), so the card-tile path never
@@ -1139,6 +1151,7 @@ export function ReactionTray({
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
         schoolFetchExpertReactions.length === 0 &&
+        artifactSetReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
         combatInstantJoins.length === 0 &&
@@ -1179,6 +1192,30 @@ export function ReactionTray({
               <div className="trayTileBody">
                 <strong>
                   <Plus aria-hidden="true" size={15} /> Basic Magic
+                </strong>
+                <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                  {legal.label}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {artifactSetReactions.map((legal) => {
+          const setId = legal.action.type === "USE_ARTIFACT_SET_POWER" ? legal.action.setId : "";
+          return (
+            <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+              <div className="trayTileBody">
+                <strong>
+                  {setId ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="setPowerIcon"
+                      data-set-id={setId}
+                      src={assetUrl(artifactSetIconImage(setId))}
+                    />
+                  ) : null}{" "}
+                  Set power
                 </strong>
                 <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}

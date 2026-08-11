@@ -1,6 +1,6 @@
 "use client";
 
-import type { GameAction, LegalAction } from "@/engine";
+import { artifactSetTierAt, type GameAction, type LegalAction } from "@/engine";
 
 // ---------------------------------------------------------------------------
 // Hero actions dock — the human click surface for MAP actions that have no
@@ -79,10 +79,14 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
     return "build";
   }
   // Polish Set Artifacts: only the MAP tiers reach a map legal-action list at
-  // all (the combat tiers live in the command dock), so no extra filtering is
-  // needed here — the engine decides which of the two, and for which deck.
+  // all (the combat tiers live in the command dock) — the engine decides which of
+  // the two, and for which deck. The one shape that must be filtered is the
+  // 2026-08-11 pop-up INSTANT ("rolls 2 dice and resolves the higher result"),
+  // whose only surface is the open attack window's reaction tray: dropping it
+  // here keeps this dock from ever growing a duplicate button for it, however the
+  // two table screens are mounted.
   if (action.type === "USE_ARTIFACT_SET_POWER") {
-    return "artifact-set";
+    return artifactSetTierAt(action.setId, action.tier)?.timing === "attack-window" ? null : "artifact-set";
   }
   // Forced March is the only map-active grade skill: it uses USE_HERO_SKILL with
   // no unitId (the combat War Cry / reactions carry a unitId).

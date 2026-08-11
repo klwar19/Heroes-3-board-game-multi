@@ -32,11 +32,12 @@ import { chooseComputerAction } from "./computer/policy";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { startNeutralEncounter } from "./adventure-reducer";
 import {
+  artifactSetAttackWindowOffers,
   artifactSetCombatStartWindowOpen,
   artifactSetEnemySpellPowerDrain,
   markArtifactSetSpellDrain
 } from "./artifact-sets";
-import { COMBAT_START_TEXT_PATTERN } from "@/data/cards/artifact-sets";
+import { ATTACK_ROLL_HIGHER_TEXT_PATTERN, COMBAT_START_TEXT_PATTERN } from "@/data/cards/artifact-sets";
 import { cardLibrary } from "@/data/cards/library";
 import type { CardId, CombatState, GameAction, GameState, PlayerId } from "./state";
 
@@ -613,15 +614,30 @@ describe("Set Artifacts — once-per-combat unit powers", () => {
     });
   }
 
-  it("tier 3: the SELECTED unit really rolls with advantage (2 dice, keep the higher)", () => {
-    let state = aaCombat("sets-aa-adv", 3);
-    const attacker = state.combat!.units.u_own_0;
-    const defender = state.combat!.units.u_foe_0;
-    expect(getAttackRollMode(attacker, defender, state, false)).toBe("normal");
-
+  it("tier 3 is NOT a pre-emptive power any more — it never reaches the activation offers", () => {
+    // 2026-08-11 ruling: "rolls 2 dice and resolves the higher result" is an
+    // INSTANT with a pop-up, so it must not sit in the activation/dock list at
+    // all. Its own behaviour lives in the attack-window suite below; the other
+    // "once per combat" tiers are untouched (they ARE still offered here).
+    let state = aaCombat("sets-aa-adv-not-preemptive", 6);
     state = applyOk(state, { type: "SELECT_ARTIFACT_SET_UNIT", playerId: "p1", setId: AA, unitId: "u_own_0" });
-    state = useAa(state, 3);
-    expect(getAttackRollMode(state.combat!.units.u_own_0, state.combat!.units.u_foe_0, state, false)).toBe("advantage");
+    const thresholds = artifactSetPowerOffers(state, "p1").map((entry) => entry.threshold);
+    expect(thresholds).not.toContain(3);
+    expect(thresholds).toEqual(expect.arrayContaining([4, 5, 6]));
+    // …and a client that still holds the old button is refused, laying nothing.
+    const forged = applyAction(state, {
+      type: "USE_ARTIFACT_SET_POWER",
+      playerId: "p1",
+      setId: AA,
+      tier: 3,
+      unitId: "u_own_0"
+    });
+    expect(forged.errors.map((error) => error.message)).toEqual([
+      "No attack window is open for that Set Artifact power."
+    ]);
+    expect(getAttackRollMode(forged.state.combat!.units.u_own_0, forged.state.combat!.units.u_foe_0, forged.state, false)).toBe(
+      "normal"
+    );
   });
 
   it("CONTROL: at 2 pieces tier 3 is not offered, and a forged use is refused", () => {
@@ -716,7 +732,9 @@ describe("Set Artifacts — once-per-combat unit powers", () => {
 
   it("Power of the Dragon Father picks its target at USE time (it prints no selection tier)", () => {
     const state = makeState(true, "sets-podf-free-target");
-    ownOnly(state, PODF_MEMBERS.slice(0, 2));
+    // Tier 3 (the Defense token), because this set's tier 2 is the pop-up
+    // instant and is deliberately not in the activation offers any more.
+    ownOnly(state, PODF_MEMBERS.slice(0, 3));
     stageCombat(
       state,
       [
@@ -726,7 +744,7 @@ describe("Set Artifacts — once-per-combat unit powers", () => {
       [{ unitDefId: "neutral.skeletons", side: "neutral" }]
     );
     const targets = artifactSetPowerOffers(state, "p1")
-      .filter((entry) => entry.setId === "power_of_the_dragon_father" && entry.threshold === 2)
+      .filter((entry) => entry.setId === "power_of_the_dragon_father" && entry.threshold === 3)
       .map((entry) => entry.unitId)
       .sort();
     expect(targets).toEqual(["u_own_0", "u_own_1"]);
@@ -1341,10 +1359,12 @@ describe("Set Artifacts — a hosted (redacted) client offers what the server ac
 
     // With the pick made, the four bound tiers are live. THIS is what the live
     // report was about: before the fix the redacted client offered NONE of them.
+    // (Tier 3 is the pop-up instant and belongs to the attack window, not here —
+    // its own redacted-client parity is pinned in the attack-window suite.)
     const seat = redactStateForSeat(state, "p1");
     const clientOffers = setActions(seat);
-    expect(clientOffers.length).toBe(4);
-    for (const threshold of [3, 4, 5, 6]) {
+    expect(clientOffers.length).toBe(3);
+    for (const threshold of [4, 5, 6]) {
       expect(
         clientOffers.some((label) => label.startsWith(`Angelic Alliance (${threshold})`)),
         `tier ${threshold} missing — saw ${clientOffers.join(" | ")}`
@@ -1692,6 +1712,32 @@ describe("Set Artifacts — 'at the beginning of the combat' closes when the fig
     expect(artifactSetCombatStartWindowOpen(state)).toBe(true);
   });
 
+  it("DATA: the attack-window timing is declared exactly on the roll-the-higher tiers", () => {
+    // The other half of the timing invariant: a tier printing "rolls 2 dice and
+    // resolves the higher result" is the pop-up INSTANT, and nothing else is.
+    // Without this a future roll-the-higher tier could silently ship as a
+    // pre-emptive combat-long buff again — the bug this ruling fixed.
+    let declared = 0;
+    for (const set of ARTIFACT_SETS) {
+      for (const tier of set.tiers) {
+        const printed = ATTACK_ROLL_HIGHER_TEXT_PATTERN.test(tier.text);
+        expect(tier.timing === "attack-window", `${set.id}:${tier.threshold} — "${tier.text}"`).toBe(printed);
+        if (printed) {
+          declared += 1;
+          expect(tier.effect.kind, `${set.id}:${tier.threshold}`).toBe("attack-roll-advantage");
+        }
+      }
+    }
+    // Angelic Alliance 3 and Power of the Dragon Father 2 — the same printed line.
+    expect(declared).toBe(2);
+    // The MIRROR line (Armor of the Damned's "resolves the lower result") is a
+    // deliberate scope exclusion: it stays a current-combat-round enemy curse.
+    const mirror = ARTIFACT_SETS.find((set) => set.id === "armor_of_the_damned")!.tiers.find(
+      (tier) => tier.effect.kind === "attack-roll-disadvantage"
+    )!;
+    expect(mirror.timing).toBeUndefined();
+  });
+
   it("DATA: the printed text and the declared timing agree, in BOTH directions", () => {
     // The gate used to key off `effect.kind === "select-unit"`, which happened to
     // cover today's three tiers. This invariant is what stops a FUTURE
@@ -1723,5 +1769,414 @@ describe("Set Artifacts — 'at the beginning of the combat' closes when the fig
     ownOnly(mapOnly, [...AA_MEMBERS]);
     expect(artifactSetCombatStartWindowOpen(mapOnly)).toBe(false);
     expect(artifactSetPowerOffers(mapOnly, "p1").some((offer) => offer.kind === "select")).toBe(false);
+  });
+});
+
+// ===========================================================================
+// 16. THE POP-UP INSTANT: "rolls 2 dice and resolves the higher result"
+//
+// 2026-08-11 USER RULING on Angelic Alliance's 3-piece effect: "This feature
+// should work only once — it is an instant, so work as pop up window."
+//
+// REPRODUCED before the fix, both halves:
+//  - it was a PRE-EMPTIVE dock power that laid a `{ type: "combat" }`
+//    ATTACK_ROLL_ADVANTAGE effect, so EVERY attack the selected unit made for
+//    the rest of the fight rolled 2 dice — not the printed singular "result";
+//  - and its only surface was the Set-powers window, fired ahead of time, so
+//    there was never a pop-up at the moment it mattered.
+//
+// Now it is an INSTANT offered inside the open `UNIT_ATTACK_DECLARED` window of
+// the unit that is about to roll, and it lifts THAT ONE roll (a stack-item
+// modifier — the Precision `ignoreRangedPenalty` precedent).
+//
+// SCOPE (deliberate, pinned by the DATA invariant above): Power of the Dragon
+// Father's 2-piece tier prints the SAME line and is therefore the SAME instant.
+// Armor of the Damned's mirror "resolves the LOWER result" is NOT touched.
+// ===========================================================================
+
+describe("Set Artifacts — the roll-the-higher tier is an INSTANT with a pop-up", () => {
+  const PODF = "power_of_the_dragon_father";
+
+  /**
+   * A real melee exchange: p1's Halberdiers adjacent to a guard, the set pieces
+   * in the (server-visible) DECK and the HAND EMPTY — so the ONLY thing that can
+   * open a reaction window on p1's own attack is the set instant, which is what
+   * makes every "no window at all" CONTROL below honest.
+   *
+   * The dice are SCRIPTED [-1, +1, …]: a normal roll takes one die and keeps −1,
+   * an advantage roll takes two and keeps +1. The defender's Defense is 0, so the
+   * whole ±2 swing lands as damage — the roll mode is visible in the resolved
+   * attack's own numbers, not merely in a state flag.
+   */
+  function popupCombat(seed: string, pieces = 3, setMembers: readonly CardId[] = AA_MEMBERS): GameState {
+    const state = makeState(true, seed);
+    ownOnly(state, []);
+    state.players.p1.deck = setMembers.slice(0, pieces);
+    const combat = stageCombat(
+      state,
+      [{ unitDefId: "castle.halberdiers", side: "few" }],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    combat.units.u_own_0.position = 5;
+    combat.units.u_own_0.maxHealth = 40;
+    combat.units.u_foe_0.position = 6;
+    // Big enough that no exchange can end the fight mid-test, and undefended so
+    // the die swing shows up as damage 1:1.
+    combat.units.u_foe_0.maxHealth = 40;
+    combat.units.u_foe_0.defense = 0;
+    combat.dice = {
+      faces: [-1, -1, 0, 0, 1, 1],
+      seed: `${seed}-dice`,
+      rollCount: 0,
+      scriptedRolls: [-1, 1, -1, 1, -1, 1, -1, 1]
+    };
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+    return state;
+  }
+
+  const ATTACK: GameAction = {
+    type: "ATTACK_UNIT",
+    playerId: "p1",
+    attackerId: "u_own_0",
+    defenderId: "u_foe_0"
+  };
+
+  function selectAa(state: GameState): GameState {
+    return applyOk(state, { type: "SELECT_ARTIFACT_SET_UNIT", playerId: "p1", setId: AA, unitId: "u_own_0" });
+  }
+
+  function popupOffers(state: GameState, playerId: PlayerId = "p1") {
+    return getLegalActions(state, playerId).filter((entry) => entry.action.type === "USE_ARTIFACT_SET_POWER");
+  }
+
+  /** The last resolved attack made by `attackerId`, as the engine reported it. */
+  function lastRoll(state: GameState, attackerId = "u_own_0") {
+    const found = [...state.eventLog]
+      .reverse()
+      .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === attackerId);
+    return found?.type === "ATTACK_ROLLED" ? found : undefined;
+  }
+
+  /** Re-arm the attacker so it can declare a SECOND attack this same combat. */
+  function readyToAttackAgain(state: GameState): void {
+    const combat = state.combat!;
+    const unit = combat.units.u_own_0;
+    unit.activatedThisRound = false;
+    unit.attackedThisActivation = false;
+    unit.movedThisActivation = false;
+    combat.activeUnitId = unit.id;
+    combat.pendingNeutralStep = null;
+    combat.awaitingContinue = false;
+    state.phase = "combat";
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+  }
+
+  it("REPRO (pop-up): declaring the selected unit's attack OPENS a window offering the tier", () => {
+    let state = selectAa(popupCombat("sets-popup-open"));
+    // Nothing is offered before the attack — it is not a pre-emptive power.
+    expect(popupOffers(state)).toEqual([]);
+
+    state = applyOk(state, ATTACK);
+
+    // The pop-up: a real reaction window, owned by the attacker's controller,
+    // with the tier as its offer. Before the fix NO window opened here at all
+    // (the hand is empty and the guards hold no cards), so the whole exchange —
+    // blow, damage, retaliation — resolved inside the one ATTACK_UNIT action.
+    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    const offers = popupOffers(state);
+    expect(offers).toHaveLength(1);
+    expect(offers[0].label).toContain("Angelic Alliance (3)");
+    // …and the attack really is still parked, unresolved.
+    expect(lastRoll(state)).toBeUndefined();
+  });
+
+  it("EFFECT: taking it makes THAT roll advantage — 2 dice, the higher kept, more damage", () => {
+    let state = selectAa(popupCombat("sets-popup-effect"));
+    state = applyOk(state, ATTACK);
+    state = applyOk(state, popupOffers(state)[0].action);
+
+    const rolled = lastRoll(state)!;
+    expect(rolled.rollMode).toBe("advantage");
+    expect(rolled.rolls, "two dice were thrown").toEqual([-1, 1]);
+    expect(rolled.roll, "the HIGHER face is the one resolved").toBe(1);
+
+    // CONTROL: the identical fight with the identical scripted dice, one piece
+    // short of the tier — one die, the −1 kept, and 2 less damage lands.
+    let plain = selectAa(popupCombat("sets-popup-effect", 2));
+    plain = applyOk(plain, ATTACK);
+    expect(plain.reactionWindow, "2 pieces ⇒ no tier, so nothing opens a window").toBeNull();
+    const plainRoll = lastRoll(plain)!;
+    expect(plainRoll.rollMode).toBe("normal");
+    expect(plainRoll.rolls).toEqual([-1]);
+    expect(rolled.damage - plainRoll.damage).toBe(2);
+  });
+
+  it("EFFECT: the SECOND attack this combat rolls plain — 'once' really means once", () => {
+    let state = selectAa(popupCombat("sets-popup-once"));
+    state = applyOk(state, ATTACK);
+    state = applyOk(state, popupOffers(state)[0].action);
+    expect(lastRoll(state)!.rollMode).toBe("advantage");
+
+    // Same unit, same combat, a fresh attack (the shape a new combat round or a
+    // Wait re-activation produces). THIS is the reported bug: under the old
+    // combat-duration effect the second roll was advantage too.
+    readyToAttackAgain(state);
+    const before = state.eventLog.length;
+    state = applyOk(state, ATTACK);
+    expect(state.reactionWindow, "the charge is spent, so nothing opens a window").toBeNull();
+    expect(popupOffers(state)).toEqual([]);
+    const second = state.eventLog
+      .slice(before)
+      .find((event) => event.type === "ATTACK_ROLLED" && event.attackerId === "u_own_0");
+    expect(second?.type === "ATTACK_ROLLED" && second.rollMode).toBe("normal");
+    expect(second?.type === "ATTACK_ROLLED" && second.rolls.length).toBe(1);
+  });
+
+  it("PASSING does not spend the charge — a later attack is offered it again", () => {
+    let state = selectAa(popupCombat("sets-popup-pass"));
+    state = applyOk(state, ATTACK);
+    expect(popupOffers(state)).toHaveLength(1);
+
+    state = applyOk(state, { type: "PASS_REACTION", playerId: "p1" });
+    expect(lastRoll(state)!.rollMode, "the passed attack rolled plain").toBe("normal");
+    expect(state.players.p1.combatStats.artifactSetUsesThisCombat ?? []).not.toContain("angelic_alliance:3");
+
+    readyToAttackAgain(state);
+    state = applyOk(state, ATTACK);
+    expect(popupOffers(state), "the unspent charge is offered on the next attack").toHaveLength(1);
+    state = applyOk(state, popupOffers(state)[0].action);
+    expect(lastRoll(state)!.rollMode).toBe("advantage");
+  });
+
+  it("a RETALIATION Attack is a roll too — offered to the retaliator, never to the unit being hit", () => {
+    // The printed line says plainly "rolls 2 dice", with no [unit_attack] icon to
+    // drop it on a counter-attack — the reading `getAttackRollMode` already
+    // documented for this modifier. So: a PvP exchange where p2 swings first and
+    // p1's bound unit answers.
+    const state = makeState(true, "sets-popup-retaliation");
+    ownOnly(state, []);
+    state.players.p1.deck = [...AA_MEMBERS.slice(0, 3)];
+    state.players.p2.hand = [];
+    state.players.p2.deck = [];
+    const combat = stageCombat(
+      state,
+      [{ unitDefId: "castle.halberdiers", side: "few" }],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    // Re-point the second body at p2 so both sides are real players.
+    const foe = combat.units.u_foe_0;
+    foe.controllerId = "p2";
+    foe.position = 6;
+    foe.maxHealth = 40;
+    foe.defense = 0;
+    combat.units.u_own_0.position = 5;
+    combat.units.u_own_0.maxHealth = 40;
+    combat.defenderPlayerId = "p1";
+    combat.attackerPlayerId = "p2";
+    combat.activeUnitId = foe.id;
+    combat.dice = {
+      faces: [-1, -1, 0, 0, 1, 1],
+      seed: "retal-dice",
+      rollCount: 0,
+      scriptedRolls: [-1, 1, -1, 1, -1, 1]
+    };
+    combat.context = {
+      kind: "player",
+      attackerHeroId: state.heroes.hero_p2.id,
+      defenderHeroId: state.heroes.hero_p1.id,
+      fieldId: state.heroes.hero_p1.spaceId ?? "field"
+    } as never;
+    state.activePlayerId = "p2";
+    state.priorityPlayerId = "p2";
+
+    let next = applyOk(state, { type: "SELECT_ARTIFACT_SET_UNIT", playerId: "p1", setId: AA, unitId: "u_own_0" });
+    // CONTROL at the derivation itself: only the unit that ROLLS is ever offered
+    // the buff — never the unit merely being hit, and never an enemy body.
+    expect(artifactSetAttackWindowOffers(next, "p1", foe.id)).toEqual([]);
+    expect(artifactSetAttackWindowOffers(next, "p1", "u_own_0")).toHaveLength(1);
+
+    next = applyOk(next, { type: "ATTACK_UNIT", playerId: "p2", attackerId: foe.id, defenderId: "u_own_0" });
+
+    // p1's unit is now the one ROLLING (its Retaliation Attack), so the pop-up is
+    // its controller's and really lifts that counter-attack's die.
+    expect(
+      next.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED" && next.reactionWindow.triggerEvent.isRetaliation,
+      "the open window is the RETALIATION's"
+    ).toBe(true);
+    const retaliationOffer = popupOffers(next, "p1");
+    expect(retaliationOffer).toHaveLength(1);
+    next = applyOk(next, retaliationOffer[0].action);
+    expect(lastRoll(next, "u_own_0")!.rollMode).toBe("advantage");
+    expect(lastRoll(next, "u_own_0")!.isRetaliation).toBe(true);
+  });
+
+  it("CONTROL: an UNSELECTED unit's attack is offered nothing (the tier stays bound to the pick)", () => {
+    const state = makeState(true, "sets-popup-unselected");
+    ownOnly(state, []);
+    state.players.p1.deck = [...AA_MEMBERS.slice(0, 3)];
+    const combat = stageCombat(
+      state,
+      [
+        { unitDefId: "castle.halberdiers", side: "few" },
+        { unitDefId: "castle.griffins", side: "few" }
+      ],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    combat.units.u_own_0.position = 5;
+    combat.units.u_own_1.position = 0;
+    combat.units.u_foe_0.position = 6;
+    combat.units.u_foe_0.maxHealth = 40;
+    combat.units.u_foe_0.defense = 0;
+    combat.dice = { faces: [-1, -1, 0, 0, 1, 1], seed: "unsel", rollCount: 0, scriptedRolls: [-1, 1, -1, 1] };
+    state.activePlayerId = "p1";
+    state.priorityPlayerId = "p1";
+
+    // Pick the OTHER unit, then attack with the one that was not picked.
+    let next = applyOk(state, { type: "SELECT_ARTIFACT_SET_UNIT", playerId: "p1", setId: AA, unitId: "u_own_1" });
+    expect(artifactSetAttackWindowOffers(next, "p1", "u_own_0")).toEqual([]);
+    next = applyOk(next, ATTACK);
+    expect(next.reactionWindow, "an unbound attacker opens no set window").toBeNull();
+    expect(lastRoll(next)!.rollMode).toBe("normal");
+  });
+
+  it("CONTROL: with NO selection made at all the tier is never offered", () => {
+    let state = popupCombat("sets-popup-no-selection");
+    state = applyOk(state, ATTACK);
+    expect(state.reactionWindow).toBeNull();
+    expect(lastRoll(state)!.rollMode).toBe("normal");
+  });
+
+  it("CONTROL: rule OFF ⇒ no window, no offer, a plain roll", () => {
+    const off = makeState(false, "sets-popup-rule-off");
+    ownOnly(off, []);
+    off.players.p1.deck = [...AA_MEMBERS];
+    const combat = stageCombat(
+      off,
+      [{ unitDefId: "castle.halberdiers", side: "few" }],
+      [{ unitDefId: "neutral.skeletons", side: "neutral" }]
+    );
+    combat.units.u_own_0.position = 5;
+    combat.units.u_foe_0.position = 6;
+    combat.units.u_foe_0.maxHealth = 40;
+    combat.units.u_foe_0.defense = 0;
+    combat.dice = { faces: [-1, -1, 0, 0, 1, 1], seed: "off-dice", rollCount: 0, scriptedRolls: [-1, 1, -1, 1] };
+    off.activePlayerId = "p1";
+    off.priorityPlayerId = "p1";
+
+    const next = applyOk(off, ATTACK);
+    expect(next.reactionWindow).toBeNull();
+    expect(popupOffers(next)).toEqual([]);
+    expect(lastRoll(next)!.rollMode).toBe("normal");
+  });
+
+  it("Power of the Dragon Father's 2-piece tier is the SAME instant (it prints the same line)", () => {
+    // It prints no selection tier, so ANY of the holder's units qualifies while
+    // it is the one rolling — but it is still one roll, once per combat.
+    let state = popupCombat("sets-popup-podf", 2, PODF_MEMBERS);
+    expect(artifactSetPowerOffers(state, "p1"), "and it is not a dock power either").toEqual([]);
+
+    state = applyOk(state, ATTACK);
+    const offers = popupOffers(state);
+    expect(offers).toHaveLength(1);
+    expect(offers[0].label).toContain("Power of the Dragon Father (2)");
+    state = applyOk(state, offers[0].action);
+    expect(lastRoll(state)!.rollMode).toBe("advantage");
+    expect(state.players.p1.combatStats.artifactSetUsesThisCombat).toContain(`${PODF}:2`);
+  });
+
+  it("a NEW combat re-arms the charge, so the pop-up returns next fight", () => {
+    let state = selectAa(popupCombat("sets-popup-rearm"));
+    state = applyOk(state, ATTACK);
+    state = applyOk(state, popupOffers(state)[0].action);
+    expect(state.players.p1.combatStats.artifactSetUsesThisCombat).toContain("angelic_alliance:3");
+
+    // The per-combat ledger is cleared by makeCombatShell at every real combat
+    // start (pinned in the once-per-combat suite above); a fresh fight is that
+    // same shape, so the instant is on offer again.
+    const second = popupCombat("sets-popup-rearm-2");
+    expect(second.players.p1.combatStats.artifactSetUsesThisCombat ?? []).toEqual([]);
+    const armed = applyOk(selectAa(second), ATTACK);
+    expect(popupOffers(armed)).toHaveLength(1);
+  });
+
+  it("a hosted (redacted) client offers the pop-up the server accepts (deck-only pieces)", () => {
+    // The 2026-08-08 masked-deck trap on the window surface: every piece sits in
+    // the viewer's OWN deck, which redaction masks to placeholders.
+    let state = selectAa(popupCombat("sets-popup-hosted"));
+    state = applyOk(state, ATTACK);
+    state.players.p1.artifactSetStatus = playerArtifactSetStatuses(state, "p1");
+
+    const seat = redactStateForSeat(state, "p1");
+    expect(
+      seat.players.p1.deck.every((cardId) => cardId === "hidden"),
+      "the deck really is masked"
+    ).toBe(true);
+    // The window carries the server's own offer list, so this is the parity
+    // claim; the re-derivation below is the real masked-zone read.
+    expect(popupOffers(seat)).toHaveLength(1);
+    expect(artifactSetAttackWindowOffers(seat, "p1", "u_own_0")).toHaveLength(1);
+    // What the browser offers, the server accepts — and it really lands.
+    const applied = applyOk(state, popupOffers(seat)[0].action);
+    expect(lastRoll(applied)!.rollMode).toBe("advantage");
+  });
+
+  it("neither a computer seat nor the AFK driver stalls on the pop-up — both PASS", () => {
+    let state = selectAa(popupCombat("sets-popup-drivers"));
+    state = applyOk(state, ATTACK);
+    expect(popupOffers(state)).toHaveLength(1);
+
+    const asComputer = { ...state, controllers: { p1: standardComputerController() } } as GameState;
+    expect(computerDecisionOwner(asComputer)).toBe("p1");
+    const aiPick = chooseComputerAction({
+      playerId: "p1",
+      state: getPlayerView(asComputer, "p1"),
+      legalActions: getLegalActions(asComputer, "p1")
+    });
+    expect(aiPick?.action.type, "the set instant scores below PASS_REACTION (1_050)").toBe("PASS_REACTION");
+    expect(nextTurnTimeoutAction(state, "p1")?.type).toBe("PASS_REACTION");
+    // …and passing really settles the exchange rather than leaving it parked.
+    const settled = applyOk(state, aiPick!.action);
+    expect(settled.reactionWindow).toBeNull();
+    expect(lastRoll(settled)!.rollMode).toBe("normal");
+  });
+
+  it("a forged use OUTSIDE any window is refused, and lays no lasting advantage", () => {
+    const state = selectAa(popupCombat("sets-popup-forged"));
+    const forged = applyAction(state, {
+      type: "USE_ARTIFACT_SET_POWER",
+      playerId: "p1",
+      setId: AA,
+      tier: 3,
+      unitId: "u_own_0"
+    });
+    expect(forged.errors.map((error) => error.message)).toEqual([
+      "No attack window is open for that Set Artifact power."
+    ]);
+    // The old bug in one line: no combat-long ATTACK_ROLL_ADVANTAGE is ever laid.
+    expect(
+      forged.state.activeEffects.some((effect) =>
+        effect.modifiers.some((modifier) => modifier.type === "ATTACK_ROLL_ADVANTAGE")
+      )
+    ).toBe(false);
+    expect(
+      getAttackRollMode(forged.state.combat!.units.u_own_0, forged.state.combat!.units.u_foe_0, forged.state, false)
+    ).toBe("normal");
+  });
+
+  it("a forged use aimed at a unit OTHER than the one rolling is refused", () => {
+    let state = selectAa(popupCombat("sets-popup-forged-target"));
+    state = applyOk(state, ATTACK);
+    const forged = applyAction(state, {
+      type: "USE_ARTIFACT_SET_POWER",
+      playerId: "p1",
+      setId: AA,
+      tier: 3,
+      unitId: "u_foe_0"
+    });
+    expect(forged.errors.length).toBeGreaterThan(0);
+    expect(forged.state.reactionWindow, "the window is untouched by the refusal").toBeTruthy();
   });
 });

@@ -174,6 +174,9 @@ import {
   artifactSetDefinition,
   artifactSetEnemySpellPowerDrain,
   artifactSetSpellDamageReduction,
+  artifactSetTierAt,
+  artifactSetTierIsAttackWindowInstant,
+  findArtifactSetAttackWindowOffer,
   findArtifactSetOffer,
   markArtifactSetSpellDrain,
   markArtifactSetTierUse,
@@ -3672,6 +3675,19 @@ function getAttackStackDetails(
       ))
   ) {
     rollMode = "normal";
+  }
+
+  // Polish Set Artifacts, the "rolls 2 dice and resolves the higher result"
+  // instants: the holder played the tier INSIDE this attack's own reaction
+  // window, after `rollMode` had already been baked onto the declaration event —
+  // so the advantage must be re-asserted here or the pop-up would change nothing.
+  // It rides the stack item, hence exactly ONE roll (the printed singular
+  // "result"). Placed AFTER the ranged-penalty waiver (the advantage overrides
+  // the penalty, the documented reading) and BEFORE the two FORCED disadvantages
+  // below, so Shaman's Puppet / the Nightmare's Fear still beat it — the same
+  // precedence `getAttackRollMode` applies to the modifier form.
+  if (stackItem.modifiers.artifactSetAttackAdvantage) {
+    rollMode = "advantage";
   }
 
   // Shaman's Puppet (option A) forces the attacker to roll two dice and keep the
@@ -15349,12 +15365,16 @@ function applyDrawRiderThenDiscard(
 // ===========================================================================
 // POLISH SET ARTIFACTS (`polish-set-artifacts`) — the two activation handlers
 //
-// Both are HANDLER-VALIDATED and both re-derive `artifactSetPowerOffers`, the
-// SAME derivation `getLegalActions` renders, so a forged / stale action can
-// never resolve and the button can never promise something the handler refuses.
+// Both are HANDLER-VALIDATED and both re-derive the SAME derivation
+// `getLegalActions` renders — `artifactSetPowerOffers` for the pre-emptive
+// activations, and (since the 2026-08-11 pop-up ruling)
+// `artifactSetAttackWindowOffers` for the `timing: "attack-window"` instants —
+// so a forged / stale action can never resolve and a rendered button can never
+// promise something the handler refuses.
 // Neither opens a window on anyone (the Diplomat's Cloak scry opens a plain
 // two-option OPTION_CHOICE on the ACTING player alone), so no set tier can ever
-// stall a seat.
+// stall a seat. The pop-up instants are OFFERED inside an attack window somebody
+// declared; they never create one out of nothing, and Pass always answers them.
 // ===========================================================================
 
 /** Shared guards: the rule is on, the player exists, and it is a legal moment. */
@@ -15471,15 +15491,78 @@ function pushArtifactSetUnitEffect(
 }
 
 /**
+ * USE_ARTIFACT_SET_POWER for a `timing: "attack-window"` tier — the pop-up
+ * instant ("rolls 2 dice and resolves the higher result", Angelic Alliance 3 /
+ * Power of the Dragon Father 2). 2026-08-11 ruling: it is an INSTANT, offered
+ * inside the open attack window of the unit about to roll, and it lifts THAT ONE
+ * roll.
+ *
+ * The advantage rides the parked attack's stack item (`artifactSetAttackAdvantage`
+ * — the Precision `ignoreRangedPenalty` precedent) rather than an active effect,
+ * because the printed "result" is singular: a combat-duration effect was the
+ * reported bug ("should work only once"). It vanishes with the stack item, so a
+ * later attack in the same combat rolls plain with no expiry code, and the
+ * once-per-combat charge stops a second use anyway.
+ */
+function applyArtifactSetAttackWindowPower(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No attack window is open for that Set Artifact power.");
+  }
+  const attackerId = window.triggerEvent.attackerId;
+  // The offer names the rolling unit, so a forged action aimed anywhere else is
+  // refused by the re-derivation below rather than silently buffing the attacker.
+  if (action.unitId !== attackerId) {
+    throw new Error("That Set Artifact power aims at the unit making this attack.");
+  }
+  const offer = findArtifactSetAttackWindowOffer(state, action.playerId, attackerId, action.setId, action.tier);
+  const set = artifactSetDefinition(action.setId);
+  if (!offer || !set) {
+    throw new Error("That Set Artifact power is not available.");
+  }
+  // The parked attack this window belongs to (`applyReactionPlayCore`'s own
+  // `state.stack.at(-1)` convention). Its trigger event must be this window's, or
+  // the flag would ride some other attack.
+  const stackItem = state.stack.at(-1);
+  if (!stackItem || !stackItem.triggerEventIds.includes(window.triggerEvent.id)) {
+    throw new Error("That attack is no longer waiting for a reaction.");
+  }
+  stackItem.modifiers.artifactSetAttackAdvantage = true;
+  markArtifactSetTierUse(state, action.playerId, set.id, offer.tier);
+  const attackerName = state.combat?.units[attackerId]?.name ?? "The unit";
+  noteArtifactSetPower(
+    state,
+    action.playerId,
+    set,
+    offer.tier.threshold,
+    `${attackerName} rolls 2 Attack dice and keeps the higher on this attack.`
+  );
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+/**
  * USE_ARTIFACT_SET_POWER — activate one live set tier. Every branch here matches
  * exactly one `ArtifactSetTierEffect` kind in the data module; a kind with no
  * branch would be a decorative stub, which `artifact-sets.test.ts` forbids.
  */
 function applyArtifactSetPower(
   state: GameState,
-  action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>
+  action: Extract<GameAction, { type: "USE_ARTIFACT_SET_POWER" }>,
+  cards: CardLibrary
 ): void {
   assertArtifactSetActionLegal(state, action.playerId);
+  // A pop-up instant tier is never a pre-emptive activation: route it to the
+  // window handler, whose own re-derivation refuses it outside an attack window
+  // (so a stale dock button from an older client cannot resolve it early).
+  const declaredTier = artifactSetTierAt(action.setId, action.tier);
+  if (declaredTier && artifactSetTierIsAttackWindowInstant(declaredTier)) {
+    applyArtifactSetAttackWindowPower(state, action, cards);
+    return;
+  }
   const offer = findArtifactSetOffer(
     state,
     action.playerId,
@@ -22374,7 +22457,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         selectArtifactSetUnit(nextState, action);
         break;
       case "USE_ARTIFACT_SET_POWER":
-        applyArtifactSetPower(nextState, action);
+        applyArtifactSetPower(nextState, action, cards);
         break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);

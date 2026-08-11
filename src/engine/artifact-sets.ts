@@ -277,6 +277,26 @@ export function artifactSetCombatStartWindowOpen(state: GameState): boolean {
   return Boolean(combat && combatStartWindowOpen(combat));
 }
 
+/**
+ * The tier that switches on at `threshold` pieces of `setId`, or undefined.
+ * Data-only lookup (no state), so the reducer can ask "is this action's tier one
+ * of the pop-up instants?" before it decides which validation path to take.
+ */
+export function artifactSetTierAt(setId: string, threshold: number): ArtifactSetTier | undefined {
+  return artifactSetDefinition(setId)?.tiers.find((tier) => tier.threshold === threshold);
+}
+
+/**
+ * Whether this tier is one of the printed "rolls 2 dice and resolves the higher
+ * result" instants — the pop-up half of the 2026-08-11 ruling. Such a tier is
+ * NEVER a pre-emptive activation: `artifactSetPowerOffers` skips it, and the only
+ * place it is offered is the open attack window of the unit about to roll
+ * (`artifactSetAttackWindowOffers`).
+ */
+export function artifactSetTierIsAttackWindowInstant(tier: ArtifactSetTier): boolean {
+  return tier.timing === "attack-window";
+}
+
 /** Whether this tier's charge (per its `limit`) is available right now. */
 export function artifactSetTierUseAvailable(
   state: GameState,
@@ -552,6 +572,16 @@ export function artifactSetPowerOffers(state: GameState, playerId: PlayerId): Ar
       }
       const base = { setId: set.id, setName: set.name, threshold: tier.threshold, tier } as const;
 
+      // The printed "rolls 2 dice and resolves the higher result" instants are
+      // NOT pre-emptive powers (2026-08-11 ruling): they are offered as a pop-up
+      // inside the attack window of the unit that is about to roll, by
+      // `artifactSetAttackWindowOffers`. Skipping them here is what keeps them out
+      // of the command dock AND out of the reducer's pre-emptive validation path,
+      // so a stale client button is refused by the same read that hides it.
+      if (artifactSetTierIsAttackWindowInstant(tier)) {
+        continue;
+      }
+
       // The PRINTED "at the beginning / at the start of the combat" timing,
       // declared on the tier (never inferred from its effect kind): offered only
       // while the fight has NOT begun — deployment, or before the first unit
@@ -662,6 +692,86 @@ function combatTargetsFor(
 /** Local liveness read (keeps this module a leaf — mirrors `isUnitAlive`). */
 function isAliveUnit(unit: { damage: number; maxHealth: number }): boolean {
   return unit.damage < unit.maxHealth;
+}
+
+/**
+ * The pop-up instants ("rolls 2 dice and resolves the higher result") `playerId`
+ * may fire into the OPEN attack window of `attackerUnitId`.
+ *
+ * THE one derivation for that surface: `getLegalReactionsForTrigger` renders
+ * these as `USE_ARTIFACT_SET_POWER` reactions and the reducer re-derives the very
+ * same list to validate, so — exactly like `artifactSetPowerOffers` — a rendered
+ * button can never be refused and a forged/stale action can never resolve.
+ *
+ * The unit must be the one ROLLING (the window's attacker) and must be the
+ * holder's own: the printed line buffs a roll, and only the attacker of a
+ * declared attack rolls. A RETALIATION Attack qualifies — the retaliator is the
+ * attacker of its own `UNIT_ATTACK_DECLARED` window, and the printed set line
+ * says plainly "rolls 2 dice" with no `[unit_attack]` icon to drop it (the same
+ * reading `getAttackRollMode` already documented for this modifier).
+ */
+export function artifactSetAttackWindowOffers(
+  state: GameState,
+  playerId: PlayerId,
+  attackerUnitId: string
+): ArtifactSetOffer[] {
+  if (!setArtifactsEnabled(state)) {
+    return [];
+  }
+  const combat = state.combat;
+  if (!combat || !playerFightsCurrentCombat(state, playerId)) {
+    return [];
+  }
+  const attacker = combat.units[attackerUnitId];
+  if (!attacker || !isAliveUnit(attacker) || attacker.controllerId !== playerId) {
+    return [];
+  }
+  const offers: ArtifactSetOffer[] = [];
+  for (const set of ARTIFACT_SETS) {
+    for (const tier of activeArtifactSetTiers(state, playerId, set.id)) {
+      if (
+        !artifactSetTierIsAttackWindowInstant(tier) ||
+        !artifactSetTierUseAvailable(state, playerId, set.id, tier)
+      ) {
+        continue;
+      }
+      // Bound to this set's OWN selection tier where it prints one (Angelic
+      // Alliance): only the selected unit's roll may be lifted. A set with no
+      // selection tier (Power of the Dragon Father) reads "your selected unit" as
+      // a free pick, so its own attacking unit always qualifies. An `enemy` /
+      // `selected-enemy` / `none` target has no meaning for "the unit that rolls",
+      // so it is never offered here (there is no such tier today).
+      if (tier.target === "selected-own" && artifactSetSelectedUnitId(state, playerId, set.id) !== attacker.id) {
+        continue;
+      }
+      if (tier.target !== "own" && tier.target !== "selected-own") {
+        continue;
+      }
+      offers.push({
+        setId: set.id,
+        setName: set.name,
+        threshold: tier.threshold,
+        tier,
+        kind: "use",
+        label: `${set.name} (${tier.threshold}): ${attacker.name} rolls 2 Attack dice and keeps the higher on THIS attack`,
+        unitId: attacker.id
+      });
+    }
+  }
+  return offers;
+}
+
+/** Find the attack-window instant matching an incoming action, else undefined. */
+export function findArtifactSetAttackWindowOffer(
+  state: GameState,
+  playerId: PlayerId,
+  attackerUnitId: string,
+  setId: string,
+  threshold: number
+): ArtifactSetOffer | undefined {
+  return artifactSetAttackWindowOffers(state, playerId, attackerUnitId).find(
+    (offer) => offer.setId === setId && offer.threshold === threshold
+  );
 }
 
 /** Find the offer matching an incoming action, or undefined if it is illegal. */

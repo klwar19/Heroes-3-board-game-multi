@@ -163,19 +163,28 @@ function aaCombatWithSelection(seed: string): GameState {
 // ===========================================================================
 
 describe("battlefield effect icons — Set Artifact bonuses", () => {
-  it("a unit carrying a set-sourced advantage roll wears that set's icon with a naming tooltip", () => {
-    // Tier 2 (the selection) already lays a tagged INITIATIVE_BONUS; tier 3 is
-    // the user's own example, "better of 2 dice".
+  it("a unit carrying a set-sourced bonus wears that set's icon with a naming tooltip", () => {
+    // Tier 2 (the selection) already lays a tagged INITIATIVE_BONUS; tier 6 is
+    // the +1 Defense buff.
+    //
+    // NOTE (2026-08-11): this used to use tier 3, "the better of 2 dice". That
+    // tier is now an INSTANT played inside the attacking unit's own reaction
+    // window and lifts exactly one roll through a stack-item modifier, so it lays
+    // NO active effect and has nothing to hang an icon on — there is no board
+    // frame in which a player could read it (the attack resolves in the same
+    // action that closes the window). No set tier creates an ATTACK_ROLL_ADVANTAGE
+    // effect any more; the set-sourced roll-mode icon path is still exercised by
+    // Armor of the Damned's disadvantage curse.
     let state = aaCombatWithSelection("effect-icons-adv");
-    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 3, unitId: "u_own_0" });
+    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 6, unitId: "u_own_0" });
 
-    // The pure derivation first: the advantage really is attributed to the set.
+    // The pure derivation first: the bonus really is attributed to the set.
     const icons = unitEffectIcons(state, state.combat!.units.u_own_0);
-    const advantage = icons.find((icon) => icon.label.includes("keeps the higher"));
-    expect(advantage?.kind).toBe("artifact-set");
-    expect(advantage?.setId).toBe(AA);
-    expect(advantage?.label).toBe("Angelic Alliance (set) — rolls 2 Attack dice, keeps the higher");
-    // …and a GENERIC dice icon is NOT added on top of it (one effect, one icon).
+    const defense = icons.find((icon) => icon.label.includes("+1 Defense"));
+    expect(defense?.kind).toBe("artifact-set");
+    expect(defense?.setId).toBe(AA);
+    expect(defense?.label).toBe("Angelic Alliance (set) — +1 Defense");
+    // …and no generic dice icon is invented on top of it.
     expect(icons.filter((icon) => icon.kind === "roll-advantage")).toHaveLength(0);
 
     const { container } = renderBoard(state);
@@ -187,7 +196,7 @@ describe("battlefield effect icons — Set Artifact bonuses", () => {
       "/assets/set-artifacts/icons/angelic_alliance.webp"
     );
     expect(
-      rail!.querySelector('[title="Angelic Alliance (set) — rolls 2 Attack dice, keeps the higher"]'),
+      rail!.querySelector('[title="Angelic Alliance (set) — +1 Defense"]'),
       "the tooltip must name the set AND what it does"
     ).toBeTruthy();
   });
@@ -208,7 +217,7 @@ describe("battlefield effect icons — Set Artifact bonuses", () => {
 
   it("the icons are public: a NON-participant seat's board shows the same rail", () => {
     let state = aaCombatWithSelection("effect-icons-public");
-    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 3, unitId: "u_own_0" });
+    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 6, unitId: "u_own_0" });
 
     const { container } = renderBoard(state, "p2");
     expect(container.querySelector(`.boardEffectIcon.artifact-set[data-set-id="${AA}"]`)).toBeTruthy();
@@ -216,7 +225,7 @@ describe("battlefield effect icons — Set Artifact bonuses", () => {
 
   it("CONTROL: the icon is GONE once the effect ends", () => {
     let state = aaCombatWithSelection("effect-icons-expiry");
-    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 3, unitId: "u_own_0" });
+    state = applyOk(state, { type: "USE_ARTIFACT_SET_POWER", playerId: "p1", setId: AA, tier: 6, unitId: "u_own_0" });
     expect(container_setIcons(renderBoard(state).container)).toBeGreaterThan(0);
     cleanup();
 

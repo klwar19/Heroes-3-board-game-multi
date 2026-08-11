@@ -211,7 +211,7 @@ import {
   wisdomSearchCount
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
-import { artifactSetPowerOffers } from "./artifact-sets";
+import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -8114,6 +8114,36 @@ export function getLegalReactionsForTrigger(
               playerId: owner,
               commanderUnitId: commander.id,
               targetUnitId: defenderUnit.id
+            }
+          }
+        ];
+      }
+    }
+
+    // Polish Set Artifacts, the pop-up instants ("rolls 2 dice and resolves the
+    // higher result" — Angelic Alliance 3, Power of the Dragon Father 2): offered
+    // to the controller of the unit that is ABOUT TO ROLL, i.e. this window's
+    // attacker (a Retaliation Attack included — the retaliator is the attacker of
+    // its own window). 2026-08-11 ruling: the printed singular "result" is ONE
+    // roll, so the tier is an instant with a pop-up, never a pre-emptive
+    // combat-long buff. NOT flagged `windowJoinOnly`: it must be able to OPEN the
+    // window, since in a neutral fight the guards open nothing and this would
+    // otherwise be unreachable (the 2026-08-08 "the choice never appears" class).
+    // Passing costs nothing — the charge is spent only by using it.
+    const rollingUnit = state.combat?.units[triggerEvent.attackerId];
+    if (rollingUnit) {
+      const rollOwner = rollingUnit.controllerId;
+      for (const offer of artifactSetAttackWindowOffers(state, rollOwner, rollingUnit.id)) {
+        result[rollOwner] = [
+          ...(result[rollOwner] ?? []),
+          {
+            label: offer.label,
+            action: {
+              type: "USE_ARTIFACT_SET_POWER",
+              playerId: rollOwner,
+              setId: offer.setId,
+              tier: offer.threshold,
+              unitId: rollingUnit.id
             }
           }
         ];

@@ -8593,13 +8593,17 @@ and legacy**; the lobby's Polish "Enable all" picks it up automatically because
 that button is derived from `category === "polish"`). Data
 `src/data/cards/artifact-sets.ts`, read layer `src/engine/artifact-sets.ts`
 (a LEAF module), wiring in `adventure.ts` (income + recruit discount),
-`legal-actions.ts` (offers, roll mode, spell power), `reducer.ts` (the two
-handlers, the spell-damage fold, the drain lock, the tier-change sync),
+`legal-actions.ts` (offers, the attack-window pop-up offer, roll mode, spell
+power), `reducer.ts` (the two handlers — the `USE_ARTIFACT_SET_POWER` one forking
+to a window path for the pop-up tiers — the spell-damage fold, the drain lock,
+the tier-change sync),
 `adventure-reducer.ts` (combat reset + the scry answer), `player-view.ts` (the
-public status + scry masking). Protocol bumped to **v21** — `npm run
-deploy:partykit` is owed after this lands, or a stale edge rejects the two new
-actions. Behaviour pinned in `src/engine/artifact-sets.test.ts` (61 tests);
-**26 mutations applied, 26 killed.**
+public status + scry masking). Protocol bumped to **v21** — and again to **v26**
+by the 2026-08-11 pop-up ruling below — so `npm run deploy:partykit` is owed
+after either lands, or a stale edge rejects the two actions (or, for v26, rejects
+the pop-up the new client offers). Behaviour pinned in
+`src/engine/artifact-sets.test.ts` (92 tests); **26 mutations applied, 26 killed**
+(+ 9 more for the pop-up, all killed).
 
 ### The ART + UI half (2026-08-07, the follow-up commit)
 
@@ -8681,7 +8685,10 @@ What runs (each pinned by a test that fails if the wiring is removed;
   report).** `src/components/table/artifact-set-powers.tsx`: the pure
   `artifactSetPowerGroups(legalActions)` groups the engine's offers by the POWER
   they activate (key `select:<setId>` / `use:<setId>:<tier>[:<neutralTier>]`),
-  every offer landing in exactly one group. `ArtifactSetPowerMenu` renders ONE
+  every offer landing in exactly one group — EXCEPT a `timing: "attack-window"`
+  tier, which the grouping skips (2026-08-11: that tier is an instant whose only
+  surface is the reaction tray, so grouping it here would be a duplicate button).
+  `ArtifactSetPowerMenu` renders ONE
   `Set powers (N)` button at the bottom of the command dock (nothing at all when
   the engine offers no set activation), opening a `heroSystemModal`-shell window
   (portalled to `<body>`) with ONE row per power — set icon, set name, printed
@@ -8722,8 +8729,10 @@ What runs (each pinned by a test that fails if the wiring is removed;
   (`COMBAT_TOKEN_IMAGES.defense`) whenever `unit.defenseToken` is set, from ANY
   source — a Defend action, a set tier, commander Defense grade II, an equipment
   first-hit grant; (b) one **owning-set icon** (`artifactSetIconImage`) per live
-  Set-Artifact effect on that unit, tooltipped "Angelic Alliance (set) — rolls 2
-  Attack dice, keeps the higher"; (c) a **generic two-dice glyph** for an
+  Set-Artifact effect on that unit, tooltipped "Angelic Alliance (set) — +1
+  Defense" (the roll-the-higher example this line used to name became a
+  one-attack stack modifier on 2026-08-11 and lays no effect to draw); (c) a
+  **generic two-dice glyph** for an
   advantage/disadvantage roll effect from a NON-set source (Shaman's Puppet, the
   Nightmare's Fear), withheld when a set icon already carries that same modifier.
   Enabled by ONE new field, `ActiveEffectDefinition.artifactSetId` (state.ts) —
@@ -8940,8 +8949,78 @@ Leading with what does NOT run / the deliberate readings:
   8, removing the pause offer fails the reachability case, and neutering
   `combatFightingHasBegun` fails 8 (4 of them in the PvP-escape suites — the
   proof the predicate is genuinely shared).
-- **Power of the Dragon Father prints NO selection tier**, so its four "your
-  selected unit" tiers pick their target AT USE TIME (any own unit). Angelic
+- **"Rolls 2 dice and resolves the higher RESULT" is ONE roll, offered as a
+  POP-UP (2026-08-11 user ruling on Angelic Alliance's 3-piece effect: "This
+  feature should work only once — it is an instant, so work as pop up window").**
+  REPRODUCED both halves: it was a PRE-EMPTIVE dock power that laid a
+  `{ type: "combat" }` ATTACK_ROLL_ADVANTAGE effect, so EVERY attack the selected
+  unit made for the rest of the fight rolled 2 dice, and it could only be fired
+  ahead of time from the Set-powers window. It is now an INSTANT offered inside
+  the open `UNIT_ATTACK_DECLARED` window of the unit that is ABOUT TO ROLL, and it
+  lifts exactly that one roll.
+  - The timing is **DECLARED IN THE DATA** like the combat-start one:
+    `ArtifactSetTier.timing = "attack-window"`, pinned in BOTH directions against
+    the printed line (`ATTACK_ROLL_HIGHER_TEXT_PATTERN`) so a FUTURE
+    roll-the-higher tier cannot silently ship as a combat-long buff again.
+  - **SCOPE — it is TWO tiers, not one**: Angelic Alliance 3 and **Power of the
+    Dragon Father 2** print the identical line, so they are the identical instant
+    (CLAUDE.md rule #1a habit 3, cross-check siblings). AA stays BOUND to its
+    tier-2 selection; PofDF prints no selection tier, so any of its holder's units
+    qualifies while it is the one rolling. Armor of the Damned's MIRROR line
+    ("resolves the LOWER result") is deliberately NOT touched — it keeps its
+    current-combat-round enemy-curse reading, CONTROL-pinned.
+  - The advantage rides the parked attack's stack item
+    (`ResolutionStackItemModifiers.artifactSetAttackAdvantage`, the Precision
+    `ignoreRangedPenalty` precedent) and is re-asserted in `getAttackStackDetails`
+    AFTER the declaration-time `rollMode` (which was baked before the player
+    answered) and BEFORE the two FORCED disadvantages, so Shaman's Puppet / the
+    Nightmare's Fear still beat it and the ranged penalty still loses to it. It
+    vanishes with the stack item, so a later attack rolls plain with no expiry
+    code, and a Retaliation Attack is its own stack item so it never bleeds.
+  - **A RETALIATION Attack qualifies** (the retaliator is the attacker of its own
+    window; the printed line carries no `[unit_attack]` icon to drop it — the
+    reading `getAttackRollMode` already documented). The unit merely being HIT is
+    never offered it, CONTROL-pinned at the derivation.
+  - **MORE PAUSES, by design**: an unspent charge OPENS the attack window (it is
+    not `windowJoinOnly`) — otherwise, in a neutral fight where the guards open
+    nothing and the hand is empty, it would be unreachable, the 2026-08-08 "the
+    choice never appears" class. Passing costs nothing and keeps the charge.
+  - **Its surface is the instant window's TRAY, never the dock**: the tier is
+    skipped by `artifactSetPowerOffers` AND by the UI `artifactSetPowerGroups`, so
+    the Set-powers menu shows no duplicate button and the board can never arm it.
+    CONSEQUENCE: no set tier lays an ATTACK_ROLL_ADVANTAGE active effect any more,
+    so the battlefield's live-effect rail has no advantage icon to draw (there is
+    no frame in which to read one — the attack resolves in the same action that
+    closes the window). The set-sourced roll-mode icon path stays exercised by
+    Armor of the Damned's disadvantage.
+  - **A PvP-Neutral-Control seat gets nothing for a controlled GUARD's attack**
+    (the roll owner is the NEUTRAL seat, which holds no set): the printed line
+    says "YOUR selected unit".
+  - **KNOWN LIMIT (a small trap, unguarded)**: a holder of BOTH roll-the-higher
+    sets (3 Angelic Alliance pieces AND 2 Power of the Dragon Father pieces) is
+    offered both instants on the same roll, and using the second one after the
+    first burns its once-per-combat charge for nothing (advantage does not stack).
+    The offer derivation could read the stack flag and withhold it; it does not
+    today. Nothing is corrupted — one charge is wasted.
+  - **The AI never uses it** (`USE_ARTIFACT_SET_POWER` scores 0, below
+    `PASS_REACTION` 1_050) and the AFK / turn-timeout driver closes the window with
+    Pass — both pinned so the pop-up can never become a stall.
+  - Pinned in `artifact-sets.test.ts` ("the roll-the-higher tier is an INSTANT
+    with a pop-up", 14 cases: the pop-up repro, the scripted-dice EFFECT with its
+    one-piece-short CONTROL, the second attack rolling plain, pass-keeps-the-
+    charge, the retaliation, unselected / no-selection / rule-off CONTROLs, PofDF,
+    the next-combat re-arm, redacted-client parity, the AI+AFK pair and two forged
+    uses) + `artifact-set-ui.test.tsx` (4 cases: the tray tile, its set icon, the
+    no-duplicate-dock-button claim and the map hero-dock's own filter).
+    **10 mutations applied, 10 killed**: dropping AA's `timing` fails 18, dropping
+    PofDF's fails 2, neutering the resolver read fails 6, removing the window
+    offer fails 13, un-skipping the dock derivation fails 7, un-skipping the UI
+    grouping fails 1, removing the tray tile fails 2, removing
+    `advanceReactionWindowAfterPlay` fails 6, removing the
+    aims-at-the-rolling-unit guard fails 1, and un-filtering the map hero-dock
+    fails 1.
+- **Power of the Dragon Father prints NO selection tier**, so its "your selected
+  unit" tiers pick their target AT USE TIME (any own unit). Angelic
   Alliance / Armor of the Damned bind to their own selection tier's pick and are
   unusable until it is made; Ironfist tier 3 re-picks freely because its printed
   text says "Select 1 of your units" again.
@@ -8992,12 +9071,14 @@ Leading with what does NOT run / the deliberate readings:
 What runs, set by set (each pinned by a named test that fails if the wiring is
 removed; the engine effect kind is named in `src/data/cards/artifact-sets.ts`):
 - **Angelic Alliance** (6): 2 select an own unit → +1 Initiative for the combat;
-  3 that unit rolls 2 Attack dice and keeps the higher; 4 it gains a Defense
-  token; 5 +1 Attack; 6 +1 Defense. Tiers 3–6 are bound to the tier-2 pick, each
-  once per combat.
-- **Power of the Dragon Father** (7): 2 advantage roll; 3 Defense token; 4 all
-  your units take 1 less Spell damage; 5 +1 Attack; 6 +1 Defense; 7 a SECOND
-  stacking −1 Spell damage (2 total). Targets are free-picked at use time.
+  3 a POP-UP instant in that unit's own attack window — ONE roll of 2 dice,
+  keeping the higher (see the pop-up bullet above); 4 it gains a Defense token;
+  5 +1 Attack; 6 +1 Defense. Tiers 3–6 are bound to the tier-2 pick, each once
+  per combat.
+- **Power of the Dragon Father** (7): 2 the same POP-UP one-roll advantage
+  instant; 3 Defense token; 4 all your units take 1 less Spell damage; 5 +1
+  Attack; 6 +1 Defense; 7 a SECOND stacking −1 Spell damage (2 total). Targets
+  are free-picked at use time.
 - **Titan's Thunder** (4): 2/3/4 once per combat each, 1 Spell damage to a
   selected enemy of at most bronze / silver / any tier.
 - **Ironfist of the Ogre** (3): 2 select an own unit → +2 Initiative; 3 give a

@@ -145,7 +145,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // offers a new client derives (a Scholar / recovery TAKE_FROM_DISCARD naming
 // that card) would be rejected by a stale server — the "not legal" symptom class
 // the banner exists to surface.
-export const ENGINE_PROTOCOL_VERSION = 25;
+// v26: the Polish Set Artifacts "rolls 2 dice and resolves the higher result"
+// tiers (Angelic Alliance 3, Power of the Dragon Father 2) stopped being
+// pre-emptive dock powers and became INSTANTS offered inside the attacking
+// unit's own `UNIT_ATTACK_DECLARED` reaction window, lifting exactly that one
+// roll (a new OPTIONAL `artifactSetAttackAdvantage` stack-item modifier instead
+// of a combat-duration ATTACK_ROLL_ADVANTAGE effect — absent on every legacy
+// snapshot, so old states read exactly as before). No new action type, but the
+// LEGALITY moved: a v25 edge does not offer the tier in
+// a window (so the new client's pop-up button is rejected as "not legal") and
+// still offers it pre-emptively (so a stale client's dock button would grant a
+// combat-long advantage the new engine refuses) — the exact skew class the
+// banner exists to surface.
+export const ENGINE_PROTOCOL_VERSION = 26;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

@@ -6725,6 +6725,18 @@ export type ResolutionStackItem = {
     /** Precision: this shot ignores the ranged back-row penalty. */
     ignoreRangedPenalty?: boolean;
     /**
+     * Polish Set Artifacts, the "rolls 2 dice and resolves the higher result"
+     * tiers (Angelic Alliance 3, Power of the Dragon Father 2): the holder played
+     * the tier as an INSTANT inside THIS attack's own reaction window, so the
+     * advantage rides the attack itself and covers exactly this ONE roll — the
+     * printed singular "result" (2026-08-11 ruling: "it is an instant … should
+     * work only once"). The `ignoreRangedPenalty` / `redirectedInstants`
+     * precedent: it vanishes with the stack item, so a later attack in the same
+     * combat rolls plain with no expiry code. A Retaliation Attack is its own
+     * stack item, so the flag never bleeds across the exchange.
+     */
+    artifactSetAttackAdvantage?: boolean;
+    /**
      * Spell instants played into this attack that the OTHER side may still
      * cancel with Resistance (Curse/Weakness/Bloodlust/Precision/Bless/Slayer).
      * Each entry is the casting player; the spell's effect on the attack is

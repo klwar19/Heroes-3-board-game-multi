@@ -18,7 +18,9 @@ import { assetUrl } from "@/lib/asset-url";
 // Polish Set Artifacts — the COMBAT activation surface.
 //
 // The engine emits ONE offer per (power x legal target unit): a 6-piece Angelic
-// Alliance with its pick made is 5 offers, and a Titan's Thunder zap is one per
+// Alliance with its pick made is 4 dock offers (its 3-piece roll-the-higher tier
+// is an INSTANT that lives in the attack window's tray instead — 2026-08-11 — and
+// is skipped below), and a Titan's Thunder zap is one per
 // enemy unit. Rendered flat in the command dock that was a wall of look-alike
 // buttons ("now too many boxes"), so the dock collapses every set offer behind
 // ONE entry button that opens a window listing each distinct POWER once; a power
@@ -73,6 +75,17 @@ export function artifactSetPowerGroups(legalActions: readonly LegalAction[]): Ar
       unitId = action.unitId;
       key = `select:${setId}`;
     } else if (action.type === "USE_ARTIFACT_SET_POWER") {
+      // A `timing: "attack-window"` tier ("rolls 2 dice and resolves the higher
+      // result") is an INSTANT, not a dock power: the engine offers it only
+      // inside an open attack window and the reaction tray is its surface. Skip
+      // it here so the dock menu never shows a second, duplicate button for it
+      // (and so the board can never arm it).
+      if (
+        artifactSetDefinition(action.setId)?.tiers.find((entry) => entry.threshold === action.tier)?.timing ===
+        "attack-window"
+      ) {
+        continue;
+      }
       setId = action.setId;
       threshold = action.tier;
       unitId = action.unitId;
