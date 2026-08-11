@@ -7646,7 +7646,9 @@ export type PlayerState = {
      * activation): banked Power for the NEXT spell this player casts. Wiki:
      * "Sorcery may be played to first draw a card. A spell drawn in this way
      * may then be played immediately … and receive the spell power bonus."
-     * Cleared when consumed by a cast, or when the combat round ends.
+     * Cleared when consumed by a cast, when the combat round ends, and at the
+     * start of every combat (makeCombatShell) so an unspent bank can never leak
+     * out of the fight it was banked in.
      */
     pendingDrawRiderSpellPower?: number;
     /**

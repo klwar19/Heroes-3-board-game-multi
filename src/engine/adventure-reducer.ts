@@ -5152,6 +5152,13 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
       // fresh combat.
       player.combatStats.tarnumOverlimitCards = [];
+      // Sorcery / Scales draw-only bank ("+Power, then draw" played on your own
+      // activation): same-activation intent, so it must never survive the fight
+      // it was banked in. advanceCombatRound already drops it between rounds,
+      // but a combat that ENDS in the round it was banked (the one-round neutral
+      // fight is the everyday case) used to leave it standing — an invisible
+      // phantom +1 on the FIRST cast of a LATER battle.
+      player.combatStats.pendingDrawRiderSpellPower = 0;
       // Anime Cultivation Core Formation reroll (§5.6): the one free Attack-die
       // reroll refreshes per COMBAT (not per round) — clear the spent flag here.
       player.combatStats.cultivationRerollUsed = false;
