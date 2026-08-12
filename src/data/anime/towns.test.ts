@@ -12,7 +12,7 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs, townIconUrl } from "@/data/towns/boards";
 import { unitAbilities } from "@/data/units/abilities";
 
-const MOD_FACTIONS = ["fuyuki", "azure_breeze", "hidden_leaf", "azur_lane"] as const;
+const MOD_FACTIONS = ["fuyuki", "azure_breeze", "hidden_leaf", "azur_lane", "little_busters"] as const;
 
 describe("playable Anime Realms towns", () => {
   it.each(MOD_FACTIONS)("registers a complete playable %s faction", (factionId) => {
@@ -33,6 +33,11 @@ describe("playable Anime Realms towns", () => {
         expect.arrayContaining(["enterprise", "bismarck", "nagato", "akashi", "sirius"])
       );
       expect(faction.heroes).toHaveLength(5);
+    } else if (factionId === "little_busters") {
+      expect(faction.heroes).toEqual(expect.arrayContaining([
+        "sasami_sasasegawa", "riki_naoe", "rin_natsume", "yuiko_kurugaya", "kudryavka_noumi", "komari_kamikita"
+      ]));
+      expect(faction.heroes).toHaveLength(6);
     } else {
       expect(faction.heroes).toHaveLength(2);
     }
@@ -83,6 +88,8 @@ describe("playable Anime Realms towns", () => {
             ? "hidden-leaf"
             : factionId === "azur_lane"
               ? "azur-lane"
+              : factionId === "little_busters"
+                ? "little-busters"
               : factionId;
       expect(building?.assets?.image, `${buildingId} needs real strip art`).toMatch(
         new RegExp(`/assets/town-board/${stripPrefix}-bar-[1-7]\\.webp$`)
@@ -114,6 +121,9 @@ describe("playable Anime Realms towns", () => {
     expect(isPlayableFaction("azur_lane", { enabled: false, isekaiTowns: true })).toBe(false);
     expect(isPlayableFaction("azur_lane", { enabled: true, isekaiTowns: false })).toBe(false);
     expect(isPlayableFaction("azur_lane", { enabled: true, isekaiTowns: true })).toBe(true);
+    expect(isPlayableFaction("little_busters")).toBe(false);
+    expect(isPlayableFaction("little_busters", { enabled: true, isekaiTowns: false })).toBe(false);
+    expect(isPlayableFaction("little_busters", { enabled: true, isekaiTowns: true })).toBe(true);
     // CONTROL: the xianxia flag alone never unlocks an isekai town.
     expect(isPlayableFaction("azur_lane", { enabled: true, xianxiaTowns: true })).toBe(false);
     expect(isPlayableFaction("castle", { enabled: false })).toBe(true);

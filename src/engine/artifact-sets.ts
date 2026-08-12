@@ -489,12 +489,12 @@ export type ArtifactSetOffer = {
 
 const NEUTRAL_DECK_TIERS: readonly NeutralDeckTier[] = ["bronze", "silver", "gold", "azure"];
 
-function gradeRankOf(unit: { grade?: string; bankUnit?: boolean; commanderSlug?: string }): number {
+function gradeRankOf(unit: { grade?: string; bankUnit?: boolean; commanderSlug?: string; heroUnit?: boolean }): number {
   // Mirrors legal-actions' / reducer's `gradeRankOfUnit`: a Creature Bank
   // defender and a WOG commander are TIERLESS, so they rank above every grade
   // and can never be reached by a tier-gated effect (Titan's Thunder tiers 2-3).
   // Tier 4 ("any tier") has no ceiling and DOES reach them.
-  if (unit.bankUnit || unit.commanderSlug) {
+  if (unit.bankUnit || unit.commanderSlug || unit.heroUnit) {
     return Number.POSITIVE_INFINITY;
   }
   return unit.grade === "bronze" ? 0 : unit.grade === "silver" ? 1 : unit.grade === "gold" ? 2 : 3;
@@ -603,11 +603,11 @@ function combatTargetsFor(
   playerId: PlayerId,
   setId: string,
   tier: ArtifactSetTier,
-  ownUnits: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string }[],
-  enemyUnits: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string }[]
+  ownUnits: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string; heroUnit?: boolean }[],
+  enemyUnits: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string; heroUnit?: boolean }[]
 ): { id: string; name: string }[] {
   const selectedId = artifactSetSelectedUnitId(state, playerId, setId);
-  let pool: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string }[];
+  let pool: { id: string; name: string; grade?: string; bankUnit?: boolean; commanderSlug?: string; heroUnit?: boolean }[];
   switch (tier.target) {
     case "own":
       pool = ownUnits;

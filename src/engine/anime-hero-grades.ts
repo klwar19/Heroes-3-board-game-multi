@@ -30,6 +30,7 @@ import {
   HERO_GRADE_NODES,
   HERO_GRADE_NODE_IDS,
   HERO_GRADE_PICKS_PER_TIER,
+  HERO_GRADE_REGISTER_NODES,
   HERO_GRADE_REGISTERS,
   factionGradeRegister,
   type GradeLabel,
@@ -243,9 +244,27 @@ export function gainGradeProgress(state: GameState, playerId: PlayerId, amount: 
 // Tree picking
 // ===========================================================================
 
-/** Look up a node definition (undefined for an unknown id). */
+/** Shared nodes plus additions owned by one grade-name register. */
+export function heroGradeNodesForRegister(register: GradeRegisterKey): HeroGradeNode[] {
+  const shared = Object.values(HERO_GRADE_NODES);
+  const sharedIds = new Set(shared.map((node) => node.id));
+  const additions = (HERO_GRADE_REGISTER_NODES[register] ?? []).filter((node) => !sharedIds.has(node.id));
+  return [...shared, ...additions];
+}
+
+/** Look up any known node definition (undefined for an unknown id). */
 export function heroGradeNode(nodeId: string): HeroGradeNode | undefined {
-  return HERO_GRADE_NODES[nodeId];
+  const shared = HERO_GRADE_NODES[nodeId];
+  if (shared) {
+    return shared;
+  }
+  for (const additions of Object.values(HERO_GRADE_REGISTER_NODES)) {
+    const node = additions?.find((candidate) => candidate.id === nodeId);
+    if (node) {
+      return node;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -258,7 +277,7 @@ export function heroGradePickableNodes(state: GameState, playerId: PlayerId): He
     return [];
   }
   return pickableNodesFrom(
-    Object.values(HERO_GRADE_NODES),
+    heroGradeNodesForRegister(heroGradeRegisterKey(state, playerId)),
     heroGradeOf(state, playerId),
     heroGradeNodesOf(state, playerId)
   );

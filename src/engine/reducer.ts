@@ -50,6 +50,7 @@ import {
   finalizeAdventureCombat,
   finishCombatPlacement,
   acceptCombat,
+  inCombatPrep,
   finishTactics,
   giveUpAdventure,
   hallOfValhallaBoost,
@@ -110,11 +111,15 @@ import {
   beginHeavenlyTribulation,
   heroTrain,
   drillUnit,
+  assignMgqUnitJob,
+  setMgqSpirit,
+  resolveCompanionRecruitment,
   heroGradePick,
   equipHeroItem,
   unequipHeroItem,
   resolveCommanderFirstAid,
   commanderSetStance,
+  commanderSetBond,
   spellBookAction,
   spendMorale,
   drawTopArtifact,
@@ -247,6 +252,11 @@ import {
   markEquipmentAttackResolved,
   markEquipmentFirstSpellCast
 } from "./anime-equipment";
+import {
+  markMgqGranberiaAttackResolved,
+  mgqGranberiaFirstAttackAvailable
+} from "./mgq-hero-specialties";
+import { ensureMgqGoldContractSetupChoice } from "./mgq-contracts";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
@@ -307,6 +317,7 @@ import {
   noteUnitDamagedForTokens,
   placeCombatToken,
   removeToken,
+  tokenCount,
   tokenAttackBonus,
   tokenDefenseDelta
 } from "./tokens";
@@ -338,6 +349,7 @@ import {
   unitDealsElementalDamage,
   unitHasUnlimitedRetaliationEffect,
   unitIgnoresCardNonDamage,
+  specialtyImmunityActive,
   unitImmuneToParalysis
 } from "./active-effects";
 import {
@@ -366,6 +378,7 @@ import {
   commanderDefenseReactionUnit,
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
+  sonyaBondDefenseBonus,
   commanderRunePool
 } from "./commanders";
 import {
@@ -433,13 +446,16 @@ import {
   getActivationDamageSpellAbility,
   getActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
+  getRandomOtherEnemySecondAttackAbility,
   getAttackBonusAfterMove,
   getAttackBonusWhenAllyNamePresent,
   getAttackBonusIfFlipped,
   getAttackBonusOnAttackDie,
+  getAttackBonusVsTargetTokens,
   getAttackBonusVsDefenderName,
   getAttackBonusVsMarked,
   getAttackDefenseReductionAbility,
+  getAttackDieDefenseReductionAbility,
   getMightDiceCount,
   mightDiceAttackBonus,
   getDamageCapPerAttack,
@@ -458,6 +474,7 @@ import {
   getDeckDiscardTakeSpell,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
+  getDevourAbility,
   getFlatAttackBonus,
   getOwnAttackFlatBonus,
   getInvulnerabilityActivation,
@@ -472,6 +489,7 @@ import {
   getMinimumAttackDie,
   getOnAttackFireWallDamage,
   getOnKillHealthHarvest,
+  getLethalHitHealthGrowth,
   getOnKillWeakCopy,
   isMechanicalUnit,
   getOnAttackEnemyDiscard,
@@ -509,6 +527,7 @@ import {
   getSpellDamageReduction,
   getSpellSchoolDamageReduction,
   getSpellDamageReductionAura,
+  getSpellAndSpecialtyDamageReductionAura,
   getTriggeredAttackDieBonusAbilities,
   getUnitAbilityDefinitions,
   getUnitAttackRerollSources,
@@ -1612,7 +1631,7 @@ function gradeRank(grade: CombatUnitState["grade"]): number {
 function gradeRankOfUnit(unit: CombatUnitState): number {
   // Creature Bank defenders and WOG commanders carry no tier in play, so they
   // sit above every grade gate (a tier-gated cast at them always fizzles).
-  return unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  return unit.bankUnit || unit.commanderSlug || unit.heroUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
 }
 
 /** Highest grade unlocked by the paid power (e.g. {0:bronze,2:silver,4:gold}). */
@@ -1967,6 +1986,15 @@ export function unitMatchesSpecialtyName(unitName: string | undefined, target: s
   }
   if (unitName === target) {
     return true;
+  }
+  // MGQ prints the companion's species-title while its army card keeps the
+  // character's proper name. Keep those specialist labels honest and make the
+  // corresponding real roster families live (plus the classic Dragons family).
+  if (target.toLowerCase() === "slime girl") {
+    return /slime|slimy/i.test(unitName) || unitName === "Ooma";
+  }
+  if (target.toLowerCase() === "dragon girl") {
+    return unitName === "Giga" || unitName.toLowerCase().endsWith("dragons");
   }
   // Family descriptors like "a Dragons unit": strip the "a … unit" wrapper and
   // match any unit whose name ends with the remaining creature family word.
@@ -2539,13 +2567,16 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
     // Aura sources (Rampart Unicorns Pack) shield themselves and adjacent
     // friendly units — sum every friendly aura on or beside the target.
     for (const unit of Object.values(combat.units)) {
-      if (!isUnitAlive(unit) || unit.controllerId !== target.controllerId) {
+      if (!isUnitAlive(unit)) {
         continue;
       }
       if (unit.id !== target.id && !isAdjacent(unit.position, target.position)) {
         continue;
       }
-      total += getSpellDamageReductionAura(unit);
+      if (unit.controllerId === target.controllerId) {
+        total += getSpellDamageReductionAura(unit);
+      }
+      total += getSpellAndSpecialtyDamageReductionAura(unit);
     }
   }
   return total;
@@ -2587,7 +2618,7 @@ function unitIgnoresCardDamage(state: GameState, unit: CombatUnitState, card: Ca
     return true;
   }
   if (card.kind === "hero-specialty") {
-    return hasImmuneToSpecialtyDamage(unit);
+    return hasImmuneToSpecialtyDamage(unit) || specialtyImmunityActive(state, unit);
   }
   if (card.kind === "spell") {
     // Pendant of Negativity (option B): an artifact-granted school immunity also
@@ -2738,9 +2769,24 @@ function reducedCardDamage(
   if (unitIgnoresCardDamage(state, unit, card)) {
     return 0;
   }
+  const spellAndSpecialtyAuraReduction = (): number => {
+    const combat = state.combat;
+    if (!combat) {
+      return 0;
+    }
+    return Object.values(combat.units).reduce((total, source) => {
+      if (
+        !isUnitAlive(source) ||
+        (source.id !== unit.id && !isAdjacent(source.position, unit.position))
+      ) {
+        return total;
+      }
+      return total + getSpellAndSpecialtyDamageReductionAura(source);
+    }, 0);
+  };
   const reduction =
     card?.kind === "hero-specialty"
-      ? getSpecialtyDamageReduction(unit)
+      ? getSpecialtyDamageReduction(unit) + spellAndSpecialtyAuraReduction()
       : card?.kind === "spell"
         ? // Spell-kind: include the Rampart Unicorns' adjacency aura and any
           // WOG Messenger protection matching this spell's school.
@@ -3010,7 +3056,7 @@ function grantDefenseTokensToAll(
     if (
       unit.controllerId === playerId &&
       isUnitAlive(unit) &&
-      !unitIgnoresCardNonDamage(unit, sourceCard)
+      !unitIgnoresCardNonDamage(unit, sourceCard, state)
     ) {
       unit.defenseToken = true;
     }
@@ -3344,6 +3390,7 @@ function applyAttackDamageFromCandidate(
   // Seamen's "removes a unit from Combat" reward can tell a real kill from a
   // Pack→Few flip (which leaves the unit alive) below.
   const defenderWasAlive = isUnitAlive(defender);
+  const defeatedSideOrLayer = damage > 0 && defender.damage + damage >= defender.maxHealth;
 
   // Damage is not capped at the pack's health: the rulebook carries any
   // excess over onto the Few side when the pack flips.
@@ -3415,6 +3462,34 @@ function applyAttackDamageFromCandidate(
 
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
+
+  // MGQ Lisa gains Health when she drives ANY physical side/layer to 0 HP,
+  // including Pack -> Few flips and Polish stack-layer losses. The bonus lives
+  // on the army card, so it follows Lisa through later flips and combats.
+  if (defeatedSideOrLayer && isUnitAlive(attacker)) {
+    const growth = getLethalHitHealthGrowth(attacker);
+    if (growth) {
+      const current = attacker.permanentHealthBonus ?? 0;
+      const gained = Math.min(growth.amount, Math.max(0, growth.maxBonus - current));
+      if (gained > 0) {
+        attacker.permanentHealthBonus = current + gained;
+        attacker.maxHealth += gained;
+        const armyUnit = state.players[attacker.controllerId]?.army.find(
+          (candidate) => candidate.id === attacker.armyUnitId
+        );
+        if (armyUnit) {
+          armyUnit.permanentHealthBonus = attacker.permanentHealthBonus;
+        }
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: attacker.id,
+          abilityId: growth.abilityId,
+          targetUnitId: defender.id,
+          message: `${attacker.cardName} grows from the defeated layer and permanently gains +${gained} Health.`
+        });
+      }
+    }
+  }
 
   // Clone Spell: "If the Clone takes at least 1 damage from any source, OR is
   // attacked (even if that attack inflicts 0 damage), destroy the Clone." Any
@@ -3735,6 +3810,7 @@ function getAttackStackDetails(
     // holds (combat rounds 1-2 only). Folds into the commander-defender's
     // printed/buffed Defense before the reduction-ability clamp.
     commanderLiveDefenseBonus(state, defender) +
+    sonyaBondDefenseBonus(state, defender) +
     // Forced Battle Events (Anime mod, §3.12): a fought field's environment-stat
     // script targeting the DEFENDER's Defense (e.g. "the Neutral side +1 Defense").
     // Folds into the printed/buffed Defense before the reduction-ability clamp.
@@ -3805,6 +3881,9 @@ function getAttackStackDetails(
   // flat innate bonus (added unclamped, like Hatred/Vengeance); the Stacked gate
   // is enforced upstream, so it is 0 the moment the Stack Token is discarded.
   const stackedAttackBonus = getFlatAttackBonus(attacker);
+  // MGQ Reaper Scythe: a live target-status read. The bonus is innate and
+  // unclamped, just like the other printed conditional Attack bonuses.
+  const targetStatusAttackBonus = getAttackBonusVsTargetTokens(attacker, defender);
   // WoG Lava Sharpshooter / War Zealot: "+1 Attack when this unit attacks." A
   // flat innate bonus on the unit's OWN attack only — never its Retaliation
   // Attack (added unclamped, like Hatred/the Stacked bonus).
@@ -3872,6 +3951,7 @@ function getAttackStackDetails(
       chargeAttackBonus +
       commanderPositionalAttackBonus +
       stackedAttackBonus +
+      targetStatusAttackBonus +
       ownAttackFlatBonus +
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
@@ -4685,7 +4765,13 @@ function getAfterRetaliationAttack(
   }
 
   const ability = getAfterRetaliationAttackAbility(attacker);
-  return ability ? { ...ability, targetUnitId: defender.id } : undefined;
+  return ability
+    ? {
+        ...ability,
+        targetUnitId: defender.id,
+        baseAttack: ability.baseAttack ?? Math.max(0, attacker.attack + (ability.attackModifier ?? 0))
+      }
+    : undefined;
 }
 
 /**
@@ -4933,6 +5019,29 @@ function finishResolvedAttack(
     resolvedCandidate = { ...resolvedCandidate, modifierNotes: rollNotes };
   }
 
+  // MGQ Hunter Job: a low own-attack die exposes a gap in the target's armor.
+  // Subtracting from the aggregate Defense bonus here makes the lethal preview
+  // and final damage calculation read the exact same one-point pierce.
+  const hunterPierce = !details.isRetaliation && !details.abilityAttack
+    ? getAttackDieDefenseReductionAbility(details.attacker, resolvedCandidate.roll)
+    : null;
+  if (hunterPierce) {
+    details.defenseBonus -= Math.min(
+      hunterPierce.amount,
+      Math.max(0, details.defender.defense + details.defenseBonus)
+    );
+    if (!stackItem.modifiers.mgqHunterPierceAnnounced) {
+      stackItem.modifiers.mgqHunterPierceAnnounced = true;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: details.attacker.id,
+        abilityId: hunterPierce.abilityId,
+        targetUnitId: details.defender.id,
+        message: `${details.attacker.cardName} finds an opening and ignores ${hunterPierce.amount} Defense.`
+      });
+    }
+  }
+
   // Resurrection saves: before a normal attack reaches 0 HP, pause once and ask
   // the defender's controller whether to cancel it (only if they can). The
   // rolled die is stashed so the resumed attack uses the same outcome. A Clone is
@@ -5095,6 +5204,12 @@ function finishResolvedAttack(
     details.attackBonus += getActiveAttackBonus(state, runeContext) - attackBonusBeforeRune;
   }
 
+  // MGQ Devour reads the victim's status BEFORE damage: damage normally clears
+  // Paralysis, and a lethal Pack-to-Few flip may replace the side's live state.
+  const devour = !details.isRetaliation
+    ? getDevourAbility(details.attacker, details.defender)
+    : null;
+  const devourTargetVariant = details.defender.variant;
   const attackResult = applyAttackDamageFromCandidate(
     state,
     details.attacker,
@@ -5142,7 +5257,42 @@ function finishResolvedAttack(
     return;
   }
 
-  applyOnAttackTokens(state, details.attacker, details.defender, details.isRetaliation);
+  if (
+    devour &&
+    attackResult.damage > 0 &&
+    (!isUnitAlive(details.defender) ||
+      (devourTargetVariant === "pack" && details.defender.variant === "few")) &&
+    isUnitAlive(details.attacker) &&
+    details.attacker.damage > 0
+  ) {
+    const healed = details.attacker.damage;
+    details.attacker.damage = 0;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: devour.abilityId,
+      targetUnitId: details.defender.id,
+      message: `${details.attacker.cardName} devours the defeated side of ${details.defender.cardName} and heals to full.`
+    });
+    appendEvent(state, {
+      type: "DAMAGE_HEALED",
+      source: {
+        type: "unit",
+        unitId: details.attacker.id,
+        controllerId: details.attacker.controllerId
+      },
+      target: { type: "unit", unitId: details.attacker.id },
+      amount: healed
+    });
+  }
+
+  applyOnAttackTokens(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+    attackResult.damage
+  );
   // Miku Voice of Angel IV (and any future HEAL_AFTER_ATTACKED sources): after a
   // resolved attack (not cancelled), heal the defender if the owner's ongoing
   // effect is active. Runs for declared attacks AND retaliations.
@@ -5150,7 +5300,13 @@ function finishResolvedAttack(
   // Stage Costume: first attack against the owner's unit this combat → Defense token.
   applyEquipmentStageCostumeDefenseToken(state, details.defender);
   // Great Shamans' Freezing Shot: their attack also slows the target next round.
-  applyOnAttackInitiativeDebuff(state, details.attacker, details.defender, details.isRetaliation);
+  applyOnAttackInitiativeDebuff(
+    state,
+    details.attacker,
+    details.defender,
+    details.isRetaliation,
+    attackResult.damage
+  );
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
   // (Bulwark "Runes" are credited above, BEFORE the blow's damage, so a strike
   // that crosses a Rune threshold buffs THIS very hit — see gainRunesForAttack
@@ -5209,6 +5365,7 @@ function finishResolvedAttack(
   // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
   // this FIRST qualifying declared attack got the +1 / −1. Retaliations no-op.
   markEquipmentAttackResolved(state, details.attacker, details.defender, details.isRetaliation);
+  markMgqGranberiaAttackResolved(state, details.attacker, details.isRetaliation);
 
   if (details.isRetaliation) {
     details.attacker.retaliatedThisRound = true;
@@ -5447,7 +5604,9 @@ function runPostAttackFollowUps(
     // 15 — Doom Arachnotron's fixed Attack 2, then Attack 1 against the same
     // target. Appended so every serialized ability-roll resume index above stays
     // stable.
-    () => queueSameTargetAttackFollowUps(state, attacker, defender, cards)
+    () => queueSameTargetAttackFollowUps(state, attacker, defender, cards),
+    // 16 — Kudryavka's seeded-random separate attack against another enemy.
+    () => declareRandomOtherEnemyFollowUp(state, attacker, defender, cards)
   ];
 
   for (let step = Math.max(0, fromStep); step < steps.length; step += 1) {
@@ -5468,7 +5627,8 @@ function applyOnAttackInitiativeDebuff(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  damageDealt: number
 ): void {
   if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
     return;
@@ -5477,13 +5637,16 @@ function applyOnAttackInitiativeDebuff(
     if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_INITIATIVE_DEBUFF") {
       continue;
     }
+    if (ability.effect.requiresDamageDealt && damageDealt <= 0) {
+      continue;
+    }
     createActiveEffect(
       state,
       {
         name: ability.name,
         scope: "unit",
         modifiers: [{ type: "INITIATIVE_BONUS", amount: ability.effect.amount }],
-        duration: { type: "next-combat-round" },
+        duration: ability.effect.duration ?? { type: "next-combat-round" },
         polarity: "negative",
         removable: true
       },
@@ -5505,14 +5668,23 @@ function applyOnAttackTokens(
   state: GameState,
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  isRetaliation: boolean
+  isRetaliation: boolean,
+  damageDealt: number
 ): void {
-  if (isRetaliation || !state.combat || !isUnitAlive(defender)) {
+  if (!state.combat || !isUnitAlive(defender)) {
     return;
   }
 
   for (const ability of getUnitAbilityDefinitions(attacker)) {
     if (ability.implementationStatus !== "implemented" || ability.effect?.type !== "ON_ATTACK_TOKEN") {
+      continue;
+    }
+
+    const trigger = ability.effect.trigger ?? "own-attack";
+    if ((trigger === "retaliation") !== isRetaliation) {
+      continue;
+    }
+    if (ability.effect.requiresDamageDealt && damageDealt <= 0) {
       continue;
     }
 
@@ -5522,7 +5694,7 @@ function applyOnAttackTokens(
       unitId: attacker.id,
       abilityId: ability.id,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} marks ${defender.cardName} with a ${ability.name}.`
+      message: `${attacker.cardName} marks ${defender.cardName} with ${ability.name}.`
     });
   }
 }
@@ -6022,16 +6194,23 @@ function applyOnAttackDieTokens(
   }
   for (const token of getOnAttackDieTokens(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the token regardless of the face.
-    if (!forceRoll && attackRoll !== token.onRoll) {
+    const matchesExact = token.onRoll !== undefined && attackRoll === token.onRoll;
+    const matchesRange =
+      token.onRoll === undefined &&
+      attackRoll >= (token.minRoll ?? Number.NEGATIVE_INFINITY) &&
+      attackRoll <= (token.maxRoll ?? Number.POSITIVE_INFINITY);
+    if (!forceRoll && !matchesExact && !matchesRange) {
       continue;
     }
-    placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
+    for (let index = 0; index < token.count; index += 1) {
+      placeCombatToken(state, defender, token.token, token.amount, token.abilityName);
+    }
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: attacker.id,
       abilityId: token.abilityId,
       targetUnitId: defender.id,
-      message: `${attacker.cardName} corrodes ${defender.cardName} with ${token.abilityName}.`
+      message: `${attacker.cardName} marks ${defender.cardName} with ${token.abilityName}${token.count > 1 ? ` (${token.count} tokens)` : ""}.`
     });
   }
 }
@@ -8510,6 +8689,41 @@ function openSecondAttackFollowUp(
   return true;
 }
 
+/** Kudryavka: choose one other living enemy by the authoritative random stream. */
+function declareRandomOtherEnemyFollowUp(
+  state: GameState,
+  attacker: CombatUnitState,
+  originalDefender: CombatUnitState,
+  cards: CardLibrary
+): boolean {
+  const combat = state.combat;
+  const ability = getRandomOtherEnemySecondAttackAbility(attacker);
+  if (!combat || !ability || !isUnitAlive(attacker) || (attacker.attacksThisActivation ?? 0) !== 1) {
+    return false;
+  }
+  const candidates = Object.values(combat.units).filter(
+    (unit) =>
+      unit.id !== originalDefender.id &&
+      unit.controllerId !== attacker.controllerId &&
+      isUnitAlive(unit)
+  );
+  if (candidates.length === 0) {
+    return false;
+  }
+  const random = createSeededRandom(
+    `${state.seed}#${ability.abilityId}#${attacker.id}#${eventSeedNumber(state)}`
+  );
+  const target = candidates[random.nextInt(0, candidates.length - 1)];
+  declareAbilityAttack(
+    state,
+    attacker,
+    target.id,
+    { ...ability, baseAttack: attacker.attack },
+    cards
+  );
+  return true;
+}
+
 function declareAbilityAttack(
   state: GameState,
   attacker: CombatUnitState,
@@ -8580,7 +8794,7 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // Sticky initiative band for cross-side alternation (see selectActivationStep):
   // capture NOW, before a mid-activation Pack→Few flip or effect expiry can
   // change effectiveInitiative and drop this unit out of its speed tier.
-  activeUnit.activationInitiative = effectiveInitiative(activeUnit, state.activeEffects);
+  activeUnit.activationInitiative = effectiveInitiative(activeUnit, state.activeEffects, state.combat);
 
   // Polish Wait: this activation is the unit's deferred RE-activation, not a
   // fresh one. The unit already went through its start-of-activation package
@@ -8590,6 +8804,25 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // skip check, a second "[activation]" ability use). Only the Paralysis skip
   // still applies: a token gained while waiting eats the re-activation.
   const waitedReactivation = Boolean(state.combat.waitPhase && activeUnit?.waitPending);
+
+  // MGQ Temptation: one marker is pressure only; two consume this activation
+  // through the same state transition as Paralysis, then BOTH markers clear.
+  // Ownership/controller fields are deliberately untouched — Temptation never
+  // changes sides or creates a temporary controller.
+  if (tokenCount(activeUnit, "temptation") >= 2) {
+    while (removeToken(state, activeUnit, "temptation", "activation-skipped")) {
+      // Remove every independently displayed marker (the stack is capped at 2).
+    }
+    markActivatedThisRound(activeUnit);
+    appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, activeUnit.id), "activation-ended");
+    appendEvent(state, {
+      type: "UNIT_ACTIVATION_ENDED",
+      playerId: activeUnit.controllerId,
+      unitId: activeUnit.id
+    });
+    advanceActiveUnit(state);
+    return;
+  }
 
   // Paralysis: "If a unit would activate with a Paralysis Token on it, skip
   // its activation and remove the Token instead."
@@ -8977,13 +9210,13 @@ function maybeStealActivationAfterInitiativeShift(state: GameState, casterId: Pl
   ) {
     return;
   }
-  const activeInitiative = effectiveInitiative(active, state.activeEffects);
+  const activeInitiative = effectiveInitiative(active, state.activeEffects, combat);
   const fasterFreshUnitExists = Object.values(combat.units).some(
     (unit) =>
       unit.id !== active.id &&
       isUnitAlive(unit) &&
       !unit.activatedThisRound &&
-      effectiveInitiative(unit, state.activeEffects) > activeInitiative
+      effectiveInitiative(unit, state.activeEffects, combat) > activeInitiative
   );
   if (!fasterFreshUnitExists) {
     return;
@@ -10541,7 +10774,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
       state.combat && stackItem.action.target.type === "unit"
         ? state.combat.units[stackItem.action.target.unitId]
         : undefined;
-    const targetIgnoresNonDamage = Boolean(targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card));
+    const targetIgnoresNonDamage = Boolean(targetedUnit && unitIgnoresCardNonDamage(targetedUnit, card, state));
     // Snapshot for the ongoing rule: effects created below mark this card as
     // staying in play until they end.
     const effectCountBeforeCast = state.activeEffects.length;
@@ -10930,7 +11163,7 @@ function resolveTopStack(state: GameState, cards: CardLibrary): void {
         const target = state.combat.units[stackItem.action.target.unitId];
         if (
           target &&
-          !unitIgnoresCardNonDamage(target, card) &&
+          !unitIgnoresCardNonDamage(target, card, state) &&
           maxGrade &&
           gradeRankOfUnit(target) <= gradeRank(maxGrade)
         ) {
@@ -13458,6 +13691,20 @@ function applyReactionPlayCore(
     const defender = state.combat?.units[stackItem.action.defenderId];
     const affectedUnit = effect.stat === "attack" ? attacker : defender;
 
+    if (
+      effect.firstOwnAttackOnly &&
+      attacker &&
+      !mgqGranberiaFirstAttackAvailable(
+        state,
+        attacker,
+        state.reactionWindow?.triggerEvent.type === "UNIT_ATTACK_DECLARED"
+          ? state.reactionWindow.triggerEvent.isRetaliation
+          : false
+      )
+    ) {
+      throw new Error(`${card.name} can be used only on Granberia's first own attack this combat.`);
+    }
+
     // Bloodlust/Precision/Golden Bow restrict which unit types benefit.
     if (effect.unitTypes && affectedUnit && !effect.unitTypes.includes(affectedUnit.type)) {
       throw new Error(`${card.name} only affects ${effect.unitTypes.join("/")} units.`);
@@ -13504,14 +13751,16 @@ function applyReactionPlayCore(
       Boolean(effect.doubleIfDefenderInitiativeHigher) &&
       Boolean(attacker) &&
       Boolean(defender) &&
-      effectiveInitiative(defender!, state.activeEffects) > effectiveInitiative(attacker!, state.activeEffects);
+      effectiveInitiative(defender!, state.activeEffects, state.combat) >
+      effectiveInitiative(attacker!, state.activeEffects, state.combat);
     // Gundula IV: doubles when YOUR (attacking) unit is strictly faster than the
     // attacked unit — the mirror of Cyra's defender-faster condition.
     const attackerIsFaster =
       Boolean(effect.doubleIfAttackerInitiativeHigher) &&
       Boolean(attacker) &&
       Boolean(defender) &&
-      effectiveInitiative(attacker!, state.activeEffects) > effectiveInitiative(defender!, state.activeEffects);
+      effectiveInitiative(attacker!, state.activeEffects, state.combat) >
+      effectiveInitiative(defender!, state.activeEffects, state.combat);
     const matchesDoubledType = Boolean(effect.doubleForUnitType) && affectedUnit?.type === effect.doubleForUnitType;
     const doubleFactor =
       unitMatchesSpecialtyName(affectedUnit?.name, effect.doubleForUnitName) ||
@@ -15535,7 +15784,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       mode: "basic",
       optionLabel: getChosenOption(card, action.optionIndex)?.label
     });
-    if (state.phase === "combat" || state.combat) {
+    // A permanent played while an enemy-hero battle is still awaiting both
+    // Accepts belongs to the preparation window. Keep the map-side setup phase
+    // open; changing it to `combat` here makes clients/automation believe the
+    // battle has started even though deployment is still locked.
+    if (state.combat?.prep) {
+      state.phase = "combat-setup";
+    } else if (state.phase === "combat" || state.combat) {
       state.phase = "combat";
     }
     state.priorityPlayerId = null;
@@ -15657,7 +15912,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     Boolean(state.combat?.awaitingContinue) &&
     state.combat?.context.kind === "neutral" &&
     state.combat?.attackerPlayerId === action.playerId;
-  if (option?.mapOnly && state.combat && !continueMovementTopUp) {
+  // PvP preparation deliberately exposes the same non-movement map-side card
+  // plays as a normal map turn (Legion recruit vouchers are the key case).
+  // Legal-actions already removes movement/teleport plays that could break the
+  // pending fight, so the resolver must not reject the safe offer merely
+  // because the combat shell was created before both players accepted.
+  const combatPrepMapPlay = inCombatPrep(state, action.playerId);
+  if (option?.mapOnly && state.combat && !continueMovementTopUp && !combatPrepMapPlay) {
     throw new Error(`${option.label} cannot be used during combat.`);
   }
   // Crown of the Five Seas' sea side: only while this player's main Hero stands
@@ -15819,7 +16080,26 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     card.kind === "hero-specialty" && negatesCardOnDwarfRoll(state, action.target, card.name, action.playerId);
   const target = negatedByDwarf ? undefined : action.target?.type === "unit" ? action.target : undefined;
   const targetUnit = target && state.combat ? state.combat.units[target.unitId] : undefined;
-  const nonDamageTarget = targetUnit && unitIgnoresCardNonDamage(targetUnit, card) ? undefined : target;
+  const nonDamageTarget = targetUnit && unitIgnoresCardNonDamage(targetUnit, card, state) ? undefined : target;
+
+  // Direct-play damage options on Specialty/Artifact cards do not use the Spell
+  // stack. Resolve them here through the same immunity, token and removal seams.
+  if (effect.type === "DEAL_DAMAGE" && targetUnit && target) {
+    const amount = unitIgnoresCardDamage(state, targetUnit, card)
+      ? 0
+      : getEffectDamageAmount(effect, card.power ?? 0);
+    targetUnit.damage += amount;
+    noteUnitDamagedForTokens(state, targetUnit, amount);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "card", cardId: card.id, controllerId: action.playerId },
+      target,
+      amount,
+      damageKind: effect.damageKind
+    });
+    markUnitRemovedIfNeeded(state, targetUnit);
+    finishCombatIfNeeded(state);
+  }
 
   if (effect.type === "HEAL_DAMAGE" && nonDamageTarget) {
     healUnitDamage(
@@ -17362,6 +17642,99 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
   }
 
+  if (effect.type === "MGQ_DRAW_AND_SPECIALTY_IMMUNITY" && nonDamageTarget) {
+    drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      inFlightCardIds: playInFlightCardIds
+    });
+    createActiveEffect(
+      state,
+      {
+        name: card.name,
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPECIALTY_IMMUNITY" }]
+      },
+      { type: "card", cardId: card.id, controllerId: action.playerId },
+      action.playerId,
+      nonDamageTarget
+    );
+  }
+
+  if (effect.type === "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS" && target && state.combat) {
+    const destroyed = state.combat.units[target.unitId];
+    if (
+      destroyed &&
+      !unitIgnoresCardDamage(state, destroyed, card) &&
+      !unitIgnoresCardNonDamage(destroyed, card, state)
+    ) {
+      // "Destroy" defeats the entire battlefield piece, not merely its current
+      // Pack/stack layer, and therefore bypasses Rebirth-style lethal saves.
+      destroyed.usedRebirthThisCombat = true;
+      destroyed.damage = Number.MAX_SAFE_INTEGER;
+      markUnitRemovedIfNeeded(state, destroyed);
+      createActiveEffect(
+        state,
+        {
+          name: `${card.name} Spell Matrix`,
+          scope: "player",
+          duration: { type: "combat" },
+          polarity: "positive",
+          removable: false,
+          modifiers: [{ type: "SPELL_POWER_BONUS", amount: effect.powerBonus }]
+        },
+        { type: "card", cardId: card.id, controllerId: action.playerId },
+        action.playerId
+      );
+      finishCombatIfNeeded(state);
+    }
+  }
+
+  if (effect.type === "MGQ_GRANT_FREE_COMPANION_SEAL") {
+    const player = state.players[action.playerId];
+    if (player) {
+      player.mgqFreeCompanionSeals = (player.mgqFreeCompanionSeals ?? 0) + Math.max(0, effect.amount);
+    }
+  }
+
+  if (effect.type === "MGQ_MAD_SCIENCE") {
+    const player = state.players[action.playerId];
+    const bronzeFew = (player?.army ?? []).filter(
+      (unit) => unit.side === "few" && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+    );
+    const silver = (player?.army ?? []).filter(
+      (unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver"
+    );
+    const pairs = bronzeFew.flatMap((sacrifice) =>
+      silver.map((targetUnit) => ({
+        sacrificeArmyUnitId: sacrifice.id,
+        targetArmyUnitId: targetUnit.id
+      }))
+    );
+    if (!player || pairs.length === 0) {
+      throw new Error(`${card.name} needs one bronze Few and one silver army card.`);
+    }
+    state.pendingChoice = {
+      id: `choice_${nextEventNumber(state)}`,
+      type: "OPTION_CHOICE",
+      playerId: action.playerId,
+      prompt: `${card.name}: remove a bronze Few, then give a silver card +${effect.attackBonus} permanent Attack.`,
+      options: pairs.map((pair) => {
+        const sacrifice = player.army.find((unit) => unit.id === pair.sacrificeArmyUnitId)!;
+        const targetUnit = player.army.find((unit) => unit.id === pair.targetArmyUnitId)!;
+        return {
+          label: `Remove ${coreUnitDefinitions[sacrifice.unitDefId]?.name ?? sacrifice.unitDefId} → +${effect.attackBonus} Attack on ${coreUnitDefinitions[targetUnit.unitDefId]?.name ?? targetUnit.unitDefId}`
+        };
+      }),
+      context: "mgq-mad-science",
+      mgqMadScience: { pairs, attackBonus: effect.attackBonus },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = action.playerId;
+  }
+
   // Tarnum (Conflux) VI: "Search(1) Spell twice." Open the per-search deck
   // choice — the caster picks ONE Spell deck (basic or expert) to Search 1 card
   // from, `count` times. Each taken card is flagged for a free over-limit cast
@@ -17485,7 +17858,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     return;
   }
 
-  if (state.phase === "combat" || state.combat) {
+  // Card plays during the simultaneous PvP preparation window return to that
+  // window, not to an already-started combat. Deployment remains locked until
+  // both participants explicitly accept.
+  if (state.combat?.prep) {
+    state.phase = "combat-setup";
+  } else if (state.phase === "combat" || state.combat) {
     state.phase = "combat";
   }
   state.priorityPlayerId = null;
@@ -17715,6 +18093,128 @@ function applyUnitAbilityAction(
     throw new Error("That unit ability cannot be used now.");
   }
 
+  // MGQ Pochi: dig one adjacent empty cell into a normal Combat obstacle and
+  // consume the activation. Resolution repeats every occupancy check so a
+  // stale or forged legal action cannot overwrite a unit, trap, or siege part.
+  if (ability.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION") {
+    if (
+      unit.attackedThisActivation ||
+      action.target.type !== "space" ||
+      !isBattlefieldPosition(action.target.position) ||
+      !getOrthogonalNeighbors(unit.position).includes(action.target.position)
+    ) {
+      throw new Error("That obstacle cannot be placed there.");
+    }
+    const blocked = getBlockedSpaces(combat);
+    for (const token of combat.battlefieldTokens ?? []) {
+      blocked.add(token.position);
+    }
+    if (combat.siege) {
+      for (const position of intactFortificationPositions(combat.siege)) {
+        blocked.add(position);
+      }
+    }
+    if (blocked.has(action.target.position)) {
+      throw new Error("That obstacle cannot be placed there.");
+    }
+    combat.obstacles = [...(combat.obstacles ?? []), action.target.position];
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: ability.id,
+      message: `${unit.cardName} digs an obstacle at ${getBattlefieldLabel(action.target.position)}.`
+    });
+    markActivatedThisRound(unit);
+    advanceActiveUnit(state);
+    return;
+  }
+
+  // MGQ Sofia: White Magic spends the activation on one OTHER adjacent ally.
+  // The mode is carried by the concrete legal action so healing and empowering
+  // remain a real player choice even while a wounded ally is present.
+  if (ability.effect?.type === "MGQ_WHITE_MAGIC_ACTION") {
+    const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    if (
+      unit.attackedThisActivation ||
+      !target ||
+      !isUnitAlive(target) ||
+      isArrowTowerUnit(target) ||
+      target.id === unit.id ||
+      target.controllerId !== unit.controllerId ||
+      !isAdjacent(unit.position, target.position) ||
+      (action.mode !== "heal" && action.mode !== "attack") ||
+      (action.mode === "attack" && ability.effect.attackBonus <= 0)
+    ) {
+      throw new Error("That White Magic target or mode is not legal.");
+    }
+
+    if (action.mode === "heal") {
+      if (target.damage <= 0) {
+        throw new Error("White Magic cannot heal an undamaged unit.");
+      }
+      healUnitDamage(
+        state,
+        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        { type: "unit", unitId: target.id },
+        ability.effect.healAmount
+      );
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.id,
+        targetUnitId: target.id,
+        message: `${unit.name} uses ${ability.name} to heal exactly ${ability.effect.healAmount} damage from ${target.name}.`
+      });
+    } else {
+      createActiveEffect(
+        state,
+        {
+          name: ability.name,
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "ATTACK_BONUS", amount: ability.effect.attackBonus }]
+        },
+        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        unit.controllerId,
+        { type: "unit", unitId: target.id }
+      );
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: ability.id,
+        targetUnitId: target.id,
+        message: `${unit.name} uses ${ability.name} to give ${target.name} +${ability.effect.attackBonus} Attack this round.`
+      });
+    }
+
+    markActivatedThisRound(unit);
+    advanceActiveUnit(state);
+    return;
+  }
+
+  // MGQ Mage Job: one free pre-movement Magic Arrow per combat. It does not
+  // consume the activation, so the Mage may still move and attack afterward.
+  if (ability.effect?.type === "MGQ_MAGE_MAGIC_ARROW_ACTION") {
+    const target = action.target.type === "unit" ? combat.units[action.target.unitId] : undefined;
+    if (
+      unit.movedThisActivation ||
+      unit.attackedThisActivation ||
+      unit.usedMgqMageMagicArrowThisCombat ||
+      !target ||
+      !isUnitAlive(target) ||
+      isArrowTowerUnit(target) ||
+      target.controllerId === unit.controllerId
+    ) {
+      throw new Error("That Magic Arrow target or timing is not legal.");
+    }
+    unit.usedMgqMageMagicArrowThisCombat = true;
+    applyFlatAbilityDamage(state, unit, target.id, ability.id, ability.name, ability.effect.amount);
+    finishCombatIfNeeded(state);
+    return;
+  }
+
   // Token "other action" (Ogres' Attack/"Bloodlust" token, Few Sorceresses'
   // Weakness token): used instead of attacking. The player picks the recipient
   // by clicking a unit on the board, so this opens an ABILITY_TARGET_CHOICE over
@@ -17733,6 +18233,7 @@ function applyUnitAbilityAction(
           sideOk &&
           isUnitAlive(candidate) &&
           !isArrowTowerUnit(candidate) &&
+          (!effect.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(candidate.type))
         );
       })
@@ -19405,6 +19906,15 @@ function chooseAbilityTarget(
     const target = combat.units[action.targetUnitId];
     if (target && isUnitAlive(target)) {
       placeCombatToken(state, target, choice.tokenKind, choice.amount ?? 0, choice.abilityName, choice.tokenRounds);
+      const placingAbility = getUnitAbilityDefinitions(placer).find(
+        (ability) => ability.id === choice.abilityId
+      );
+      if (
+        placingAbility?.effect?.type === "PLACE_TOKEN_ACTION" &&
+        placingAbility.effect.sourceDefenseToken
+      ) {
+        placer.defenseToken = true;
+      }
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: placer.id,
@@ -19749,6 +20259,23 @@ function autoResolveNeutralReaction(state: GameState, cards: CardLibrary): boole
   return true;
 }
 
+/** Masato's automatic, once-per-combat interception for an adjacent ally. */
+function adjacentBodyguardFor(combat: CombatState, defender: CombatUnitState): CombatUnitState | null {
+  return (
+    Object.values(combat.units)
+      .filter(
+        (unit) =>
+          unit.id !== defender.id &&
+          unit.controllerId === defender.controllerId &&
+          isUnitAlive(unit) &&
+          !unit.usedBodyguardInterceptThisCombat &&
+          isAdjacent(unit.position, defender.position) &&
+          hasUnitAbilityEffect(unit, "INTERCEPT_ADJACENT_ATTACK_ONCE")
+      )
+      .sort((left, right) => left.id.localeCompare(right.id))[0] ?? null
+  );
+}
+
 function declareAttack(
   state: GameState,
   action: Extract<GameAction, { type: "ATTACK_UNIT" | "MOVE_AND_ATTACK_UNIT" }>,
@@ -19766,8 +20293,8 @@ function declareAttack(
 
   const abilityAttack = action.type === "ATTACK_UNIT" ? action.abilityAttack : undefined;
   const attacker = combat.units[action.attackerId];
-  const defender = combat.units[action.defenderId];
-  if (!attacker || !defender) {
+  const selectedDefender = combat.units[action.defenderId];
+  if (!attacker || !selectedDefender) {
     throw new Error("That unit cannot attack the selected target.");
   }
 
@@ -19775,11 +20302,33 @@ function declareAttack(
   // friendly units or the attacker itself, so the regular target rules do
   // not apply to them.
   if (abilityAttack) {
-    if (!isUnitAlive(attacker) || !isUnitAlive(defender)) {
+    if (!isUnitAlive(attacker) || !isUnitAlive(selectedDefender)) {
       throw new Error("That unit cannot attack the selected target.");
     }
-  } else if (!canUnitAttack(combat, attacker, defender, state.activeEffects)) {
+  } else if (!canUnitAttack(combat, attacker, selectedDefender, state.activeEffects)) {
     throw new Error("That unit cannot attack the selected target.");
+  }
+
+  let defender = selectedDefender;
+  let resolvedAction = action;
+  // Bodyguard protects only a normal declared attack. It never recursively
+  // hijacks Retaliation or printed follow-up attacks, and spending it happens
+  // at declaration so reaction cards and the attack stack see Masato as the
+  // real defender from the beginning.
+  if (!isRetaliation && !abilityAttack && !isInternalFollowUp) {
+    const bodyguard = adjacentBodyguardFor(combat, selectedDefender);
+    if (bodyguard) {
+      bodyguard.usedBodyguardInterceptThisCombat = true;
+      defender = bodyguard;
+      resolvedAction = { ...action, defenderId: bodyguard.id };
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: bodyguard.id,
+        abilityId: "masato-bodyguard-intercept",
+        targetUnitId: selectedDefender.id,
+        message: `${bodyguard.cardName} intercepts the attack aimed at ${selectedDefender.cardName}.`
+      });
+    }
   }
 
   // Doom Revenant: its activation mark lands on the chosen target immediately
@@ -19825,7 +20374,7 @@ function declareAttack(
     });
   }
 
-  const stackItem = makeStackItem(state, action);
+  const stackItem = makeStackItem(state, resolvedAction);
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(attacker, defender);
@@ -19835,7 +20384,7 @@ function declareAttack(
   const rollMode = getAttackRollMode(attacker, defender, state, isRetaliation);
   const attackDeclared = appendEvent(state, {
     type: "UNIT_ATTACK_DECLARED",
-    playerId: action.playerId,
+    playerId: resolvedAction.playerId,
     attackerId: attacker.id,
     defenderId: defender.id,
     isRetaliation,
@@ -21624,6 +22173,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "REVIVE_COMMANDER",
   "COMMANDER_FIRST_AID",
   "COMMANDER_SET_STANCE",
+  "COMMANDER_SET_BOND",
   "HERO_TRAIN",
   "HERO_GRADE_PICK",
   "EQUIP_HERO_ITEM",
@@ -21631,6 +22181,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
   // gold, once-per-turn, own army card) and touches only the actor's state.
   "DRILL_UNIT",
+  "ASSIGN_UNIT_JOB",
+  "SET_MGQ_SPIRIT",
+  "RESOLVE_COMPANION_RECRUITMENT",
   // Polish Set Artifacts: both handlers re-derive `artifactSetPowerOffers` (the
   // same derivation legal-actions renders) and refuse anything not in it, so
   // they are fully self-validating and touch only the actor's own state.
@@ -22179,6 +22732,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "DRILL_UNIT":
         drillUnit(nextState, action);
         break;
+      case "ASSIGN_UNIT_JOB":
+        assignMgqUnitJob(nextState, action);
+        break;
+      case "SET_MGQ_SPIRIT":
+        setMgqSpirit(nextState, action);
+        break;
+      case "RESOLVE_COMPANION_RECRUITMENT":
+        resolveCompanionRecruitment(nextState, action);
+        break;
       case "SELECT_ARTIFACT_SET_UNIT":
         selectArtifactSetUnit(nextState, action);
         break;
@@ -22196,6 +22758,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "COMMANDER_SET_STANCE":
         commanderSetStance(nextState, action);
+        break;
+      case "COMMANDER_SET_BOND":
+        commanderSetBond(nextState, action);
         break;
       case "PLACE_COMBAT_UNIT":
         placeCombatUnit(nextState, action);
@@ -22471,6 +23036,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           : "The action could not complete its automatic follow-up."
     });
   }
+
+  // A valid save serializes this pending setup choice. The recovery call also
+  // repairs a restored state whose setup-required marker survived but whose
+  // pending window did not, without changing legacy snapshots (marker absent).
+  ensureMgqGoldContractSetupChoice(nextState);
 
   // Custom win conditions (map-designer / lobby authored): the first live player
   // to satisfy any active condition wins immediately. Runs here — after the

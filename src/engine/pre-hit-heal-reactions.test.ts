@@ -210,7 +210,7 @@ describe("pre-hit heals against Frost Ring / Meteor Shower specialty", () => {
     }
     state.combat!.units.unit_p2_skeletons.position = 9;
     state.combat!.units.unit_p2_skeletons.damage = 2;
-    state.combat!.units.unit_p2_vampires.position = 0; // out of blast
+    state.combat!.units.unit_p2_vampires.position = 10; // valid adjacent splash target
     state.combat!.units.unit_p1_griffins.position = 4;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";
@@ -313,7 +313,7 @@ describe("pre-hit heals against Frost Ring / Meteor Shower specialty", () => {
     }
     state.combat!.units.unit_p2_skeletons.position = 9;
     state.combat!.units.unit_p2_skeletons.damage = 2;
-    state.combat!.units.unit_p2_vampires.position = 0;
+    state.combat!.units.unit_p2_vampires.position = 10;
     state.combat!.units.unit_p1_griffins.position = 4;
     state.activePlayerId = "p1";
     state.combat!.activeUnitId = "unit_p1_griffins";

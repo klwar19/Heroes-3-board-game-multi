@@ -7,6 +7,8 @@ import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
 import { UNIT_RANK_NAMES, unitRankBadgeImage } from "@/data/units/experience";
 import { cardLibrary } from "@/data/cards/library";
+import { coreHeroDefinitions } from "@/data/factions/core";
+import { factionGradeRegister, HERO_GRADE_REGISTERS } from "@/data/anime/hero-grades";
 import { getFxSheet } from "@/data/fx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -35,6 +37,7 @@ import {
   placementCellsFor,
   neutralFormationCellsFor,
   commanderDeploymentCellsFor,
+  commanderIntegratedDeploymentSortAvailable,
   commanderUnitId,
   tokenAttackBonus,
   tokenDefenseDelta,
@@ -81,6 +84,62 @@ const STACK_TOKEN_LABELS: Record<NonNullable<CombatUnitState["stackToken"]>, str
   health: "+1 HP",
   initiative: "+2 INI"
 };
+
+/**
+ * The physical card that actually sits in a battlefield cell for a Little
+ * Busters hero. This is deliberately separate from both the Hero Board info
+ * window and the large zoom card: the battlefield piece must visibly read as
+ * a complete card even before the player opens either information surface.
+ */
+export function BattlefieldHeroUnitFace({
+  unit,
+  attack,
+  defense,
+  initiative
+}: {
+  unit: CombatUnitState;
+  attack: number;
+  defense: number;
+  initiative: number;
+}) {
+  const hero = unit.heroDefId ? coreHeroDefinitions[unit.heroDefId] : undefined;
+  if (!hero || hero.faction !== "little_busters") {
+    return null;
+  }
+  const level = Math.max(1, Math.min(7, unit.heroLevel ?? 1));
+  const grade = Math.max(0, Math.min(3, unit.heroGrade ?? 0));
+  const gradeLabel = HERO_GRADE_REGISTERS[factionGradeRegister(hero.faction)]?.[grade]?.en ?? `Grade ${grade}`;
+
+  return (
+    <div
+      aria-label={`${hero.name} battlefield hero card, level ${level}, ${gradeLabel}`}
+      className="boardCardImage battlefieldHeroUnitFace"
+    >
+      <header>
+        <strong>{hero.name}</strong>
+        <span>LV {level} · {gradeLabel}</span>
+      </header>
+      <div className="battlefieldHeroUnitMain">
+        <div aria-label={`${hero.name} battlefield stats`} className="battlefieldHeroStats">
+          <span><small>ATK</small><b>{attack}</b></span>
+          <span><small>DEF</small><b>{defense}</b></span>
+          <span><small>HP</small><b>{unit.maxHealth}</b></span>
+          <span><small>INI</small><b>{initiative}</b></span>
+        </div>
+        <div className="battlefieldHeroUnitArt">
+          {hero.portrait ? <img alt={hero.name} draggable={false} src={assetUrl(hero.portrait)} /> : null}
+          <span className={`battlefieldHeroTypeBadge ${unit.type}`}>
+            {unit.type === "ranged" ? "RANGED" : unit.type === "flying" ? "FLYING" : "GROUND"}
+          </span>
+        </div>
+      </div>
+      <footer>
+        <span>PASSIVE</span>
+        <strong>{unit.heroPassiveName ?? "Heroic Presence"}</strong>
+      </footer>
+    </div>
+  );
+}
 
 /**
  * Where a unit stands with its once-per-round Retaliation — the same reading the
@@ -234,7 +293,7 @@ export function battlefieldCellPlacement(
  */
 const TOKEN_VIEW: Record<
   CombatTokenState["kind"],
-  { image: string; showAmount: boolean; describe: (token: CombatTokenState) => string }
+  { image: string; showAmount: boolean; shortLabel?: string; describe: (token: CombatTokenState) => string }
 > = {
   attack: {
     image: COMBAT_TOKEN_IMAGES.attack,
@@ -255,11 +314,17 @@ const TOKEN_VIEW: Record<
     image: COMBAT_TOKEN_IMAGES.paralysis,
     showAmount: false,
     describe: (token) => `Paralysis: skips its next activation; removed when it takes damage (${token.sourceName})`
+  },
+  temptation: {
+    image: COMBAT_TOKEN_IMAGES.temptation,
+    showAmount: false,
+    shortLabel: "T",
+    describe: (token) => `Temptation: 2 tokens skip the next activation, then both clear (${token.sourceName})`
   }
 };
 
-/** Token chips drawn on a unit card (attack/weakness/corrosion/paralysis, poison cubes). */
-function TokenChips({ unit }: { unit: CombatUnitState }) {
+/** Token chips drawn on a unit card (including MGQ Temptation and poison cubes). */
+export function TokenChips({ unit }: { unit: CombatUnitState }) {
   const tokens = getUnitTokens(unit);
   const poisonCubes = unit.poisonCubes ?? 0;
   if (tokens.length === 0 && poisonCubes <= 0) {
@@ -271,14 +336,14 @@ function TokenChips({ unit }: { unit: CombatUnitState }) {
       {tokens.map((token) => {
         const view = TOKEN_VIEW[token.kind];
         return (
-          <span className={`tokenChip ${token.kind}`} key={token.id} title={view.describe(token)}>
+          <span aria-label={view.describe(token)} className={`tokenChip ${token.kind}`} key={token.id} title={view.describe(token)}>
             <img alt="" aria-hidden="true" className="tokenChipArt" draggable={false} src={assetUrl(view.image)} />
             {view.showAmount ? (
               <b className="tokenChipAmount">
                 {token.amount > 0 ? "+" : ""}
                 {token.amount}
               </b>
-            ) : null}
+            ) : view.shortLabel ? <b className="tokenChipStatus">{view.shortLabel}</b> : null}
           </span>
         );
       })}
@@ -918,15 +983,19 @@ export function BattlefieldBoard({
   // advertise drop targets yet.
   const setup = combat?.setup;
   const placing = Boolean(setup && !combat?.prep && setup.pendingPlayerIds[0] === viewerPlayerId);
+  const integratedCommanderSorting = Boolean(
+    placing &&
+      combat?.integratedCommanderDeploymentPlayerIds?.includes(viewerPlayerId) &&
+      commanderIntegratedDeploymentSortAvailable(state, viewerPlayerId)
+  );
   // PvP Neutral Control: the controller SORTS the revealed Neutral formation
   // before battle — the guards are draggable within their formation zone
   // (any cell on the defender's two rows on a field, four corners on a Creature
   // Bank), exactly like a defender repositioning their own line.
 
   const sorting = Boolean(combat && combat.pendingNeutralPlacement === viewerPlayerId);
-  // WOG Commanders pre-combat sort: the head owner may drag their own commander
-  // to any empty cell of its deployment zone (or swap it with one of their own
-  // units), exactly like a deployment reposition, then press "Ready for battle".
+  // WOG Commanders pre-combat sort: arrange the commander together with every
+  // allied unit in the deployment zone, then press "Ready for battle".
   const commanderSorting = Boolean(combat && combat.pendingCommanderPlacement?.[0] === viewerPlayerId);
   // Manual guard control restricts a shooter to the back row: while such a guard
   // is being dragged, narrow the droppable cells to that guard's legal set so the
@@ -1258,11 +1327,11 @@ export function BattlefieldBoard({
               (sorting &&
                 unit.controllerId === NEUTRAL_PLAYER_ID &&
                 !isArrowTowerUnit(unit)) ||
+              // Integrated Vanguard deployment: hero, commander and troops all
+              // swap inside the same ordinary placement grid.
+              (integratedCommanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)) ||
               // Commander sort: an own (non-commander) unit is a swap target.
-              (commanderSorting &&
-                unit.controllerId === viewerPlayerId &&
-                unit.id !== commanderUnitId(viewerPlayerId) &&
-                isUnitAlive(unit)));
+              (commanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)));
           // Tactics swap roles for this cell's unit (only during the setup window).
           const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
           const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));
@@ -1291,7 +1360,7 @@ export function BattlefieldBoard({
           const health = unit ? Math.max(0, unit.maxHealth - shownDamage(unit)) : 0;
           const attackTotal = unit ? unit.attack + getDisplayAttackBonus(state, unit) + tokenAttackBonus(unit) : 0;
           const defenseTotal = unit ? unit.defense + getActiveDefenseBonus(state, unit) + tokenDefenseDelta(unit) : 0;
-          const initiativeTotal = unit ? effectiveInitiative(unit, state.activeEffects) : 0;
+          const initiativeTotal = unit ? effectiveInitiative(unit, state.activeEffects, state.combat) : 0;
           const attackDelta = unit ? attackTotal - unit.attack : 0;
           const defenseDelta = unit ? defenseTotal - unit.defense : 0;
           const healthDelta = unit ? health - unit.maxHealth : 0;
@@ -1412,11 +1481,18 @@ export function BattlefieldBoard({
           const retaliationSpent = Boolean(unit && retaliationStatus(state, unit) === "used");
           const content = unit ? (
             <article
-              className={`boardCard ${unit.controllerId} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
+              className={`boardCard ${unit.controllerId} ${unit.heroUnit ? "heroBattleCardPiece" : ""} ${isFlipping ? "flipping" : ""} ${tint ? `fxTint-${tint}` : ""} ${
                 isClone ? "cloneCard" : ""
               }`}
             >
-              {unit.assets?.cardImage ? (
+              {unit.heroUnit && unit.heroDefId ? (
+                <BattlefieldHeroUnitFace
+                  attack={attackTotal}
+                  defense={defenseTotal}
+                  initiative={initiativeTotal}
+                  unit={unit}
+                />
+              ) : unit.assets?.cardImage ? (
                 <img
                   alt={unit.assets?.imageAlt ?? unit.cardName}
                   className="boardCardImage"
@@ -1637,13 +1713,18 @@ export function BattlefieldBoard({
           // Pointer-based so it works on touch devices, not just a mouse. Under
           // PvP Neutral Control the controller likewise drags the Neutral guards
           // to sort the formation (dropping onto another guard swaps them).
-          const deployDraggable = Boolean(placing && unit && unit.controllerId === viewerPlayerId && unit.armyUnitId);
+          const deployDraggable = Boolean(
+            placing &&
+              unit &&
+              unit.controllerId === viewerPlayerId &&
+              (unit.armyUnitId || (integratedCommanderSorting && ownRows.has(unit.position)))
+          );
           const sortDraggable = Boolean(
             sorting && unit && unit.controllerId === NEUTRAL_PLAYER_ID && !isArrowTowerUnit(unit)
           );
-          // Commander sort: the viewer's own commander is the draggable body.
+          // Commander formation sort: every own in-zone unit is draggable.
           const commanderDraggable = Boolean(
-            commanderSorting && unit && unit.id === commanderUnitId(viewerPlayerId) && unit.controllerId === viewerPlayerId
+            commanderSorting && unit && unit.controllerId === viewerPlayerId && ownRows.has(unit.position)
           );
           const placedUnitDraggable = deployDraggable || sortDraggable || commanderDraggable;
           const dragProps = placedUnitDraggable
@@ -1657,8 +1738,13 @@ export function BattlefieldBoard({
                       onAction(
                         sortDraggable
                           ? { type: "PLACE_NEUTRAL_GUARD", playerId: viewerPlayerId, unitId: unit!.id, position }
-                          : commanderDraggable
-                            ? { type: "PLACE_COMMANDER", playerId: viewerPlayerId, position }
+                          : commanderDraggable || (integratedCommanderSorting && !unit!.armyUnitId)
+                            ? {
+                                type: "PLACE_COMMANDER",
+                                playerId: viewerPlayerId,
+                                ...(unit!.id === commanderUnitId(viewerPlayerId) ? {} : { unitId: unit!.id }),
+                                position
+                              }
                             : {
                                 type: "PLACE_COMBAT_UNIT",
                                 playerId: viewerPlayerId,
@@ -1965,7 +2051,7 @@ export function InitiativeRail({ state }: { state: GameState }) {
         // badge shows the *effective* initiative (what actually sorts this rail)
         // rather than the printed base. A shift flags the badge so the table can
         // see at a glance that a spell sped a unit up or slowed it down.
-        const init = effectiveInitiative(unit, state.activeEffects);
+        const init = effectiveInitiative(unit, state.activeEffects, state.combat);
         const delta = init - unit.initiative;
         // A Waited unit is NOT "done" — getActivationOrder re-queues it later
         // this round, so it stays ungreyed and wears an hourglass here.
@@ -2067,7 +2153,7 @@ export function InspectPanel({ state, unitId }: { state: GameState; unitId: stri
   const abilities = getUnitAbilityDefinitions(unit);
   // Effective initiative folds in Haste/Slow and other lasting shifts; show that
   // (with the base noted) so the inspector matches the initiative rail.
-  const init = effectiveInitiative(unit, state.activeEffects);
+  const init = effectiveInitiative(unit, state.activeEffects, state.combat);
   const initDelta = init - unit.initiative;
   // Effective Attack/Defense fold in the army-wide Bulwark Rune buffs (and Bless /
   // Bloodlust / Offense and the like) the same way, so a unit visibly reflects a

@@ -48,7 +48,9 @@ export const COMMANDER_SLUGS = [
   "paladin", "hierophant", "temple_guardian", "succubus", "brute",
   "soul_eater", "ogre_leader", "shaman", "astral_spirit",
   "corsair", "factory", "bulwark", "ruler", "sword_saint", "might_guy", "belfast",
-  "demon_ancestor"
+  "demon_ancestor",
+  "kyousuke_natsume",
+  "sonya"
 ] as const;
 
 export type CommanderSlug = (typeof COMMANDER_SLUGS)[number];
@@ -483,7 +485,8 @@ export interface CommanderSpecialtyDefinition {
     | "vanguard-marshal"
     | "elemental-scourge"
     | "tinkerer"
-    | "rune-ritual";
+    | "rune-ritual"
+    | "unbreakable-bond";
   name: string;
   text: string;
 }
@@ -739,7 +742,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Vanguard Marshal",
-      text: "At combat setup you may reposition the commander within your deployment zone. While it stands on your FRONT LINE (the row of your deployment zone nearest the enemy), the commander has +1 Attack — a live positional bonus, so moving on or off the front line during combat changes it."
+      text: "At combat setup you may sort the commander together with allied units in your deployment zone. While the commander stands on your FRONT LINE (the row nearest the enemy), it has +1 Attack; moving on or off that line changes the bonus immediately."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },
@@ -813,7 +816,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Unbroken Contract",
-      text: "At combat setup you may reposition the Regent in your deployment zone. On the front line, the Regent has +1 Attack."
+      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. While the Regent stands on your front line, it has +1 Attack."
     },
     cardImage: "/assets/units-commander-ruler.webp"
   },
@@ -921,6 +924,51 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       text: "The commander's demon-forged corpse is beyond fear: it can never gain a Paralysis token."
     },
     cardImage: "/assets/units-commander-demon_ancestor.webp"
+  },
+  kyousuke_natsume: {
+    slug: "kyousuke_natsume", name: "Kyousuke Natsume", faction: "Little Busters Campus", original: true,
+    cast: {
+      abilityId: "commander-cast-hierophant",
+      name: "Mission Start",
+      icon: "/assets/anime/icons/little-busters/rank-shared.webp",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "defense-buff", amountByPower: [1, 2, 3], vs: "melee" },
+      tierText: [
+        "Instant reaction: when a teammate is attacked in melee, it gains +1 Defense this round.",
+        "Instant reaction: when a teammate is attacked in melee, it gains +2 Defense this round.",
+        "Instant reaction: when a teammate is attacked in melee, it gains +3 Defense this round."
+      ]
+    },
+    specialty: {
+      id: "vanguard-marshal",
+      name: "Team Captain",
+      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. While he stands on your front line, he has +1 Attack."
+    },
+    cardImage: "/assets/units-commander-kyousuke_natsume.webp"
+  },
+  sonya: {
+    slug: "sonya",
+    name: "Sonya",
+    faction: "Monster Girl Quest: Paradox",
+    original: true,
+    cast: {
+      abilityId: "commander-cast-shaman",
+      name: "Cheer",
+      icon: "/assets/spell-icons/haste.png",
+      targeting: { side: "friendly", canTargetSelf: false },
+      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      tierText: [
+        "A friend gains +2 Initiative and +1 Attack against slower units this round.",
+        "A friend gains +3 Initiative and +1 Attack against slower units this round.",
+        "A friend gains +4 Initiative and +1 Attack against slower units this round."
+      ]
+    },
+    specialty: {
+      id: "unbreakable-bond",
+      name: "Unbreakable Bond",
+      text: "Outside combat, choose one army card. While Sonya lives, that unit has +1 Defense; the first time it would die each combat, Sonya takes 1 damage instead."
+    },
+    cardImage: "/assets/units-commander-sonya.webp"
   }
 };
 
@@ -942,7 +990,9 @@ export const COMMANDER_SLUG_BY_FACTION: Record<string, CommanderSlug> = {
   azure_breeze: "sword_saint",
   hidden_leaf: "might_guy",
   azur_lane: "belfast",
-  heavenly_demon: "demon_ancestor"
+  heavenly_demon: "demon_ancestor",
+  little_busters: "kyousuke_natsume",
+  mgq: "sonya"
 };
 
 export function commanderCastTierIndex(power: number): 0 | 1 | 2 {

@@ -4,6 +4,10 @@ export type UnitAbilityEffectDefinition =
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
+  | {
+      /** Masato the Wall: intercept one normal attack on an adjacent ally per combat. */
+      type: "INTERCEPT_ADJACENT_ATTACK_ONCE";
+    }
   // Ranged combat-penalty waivers. A ranged attack rolls at disadvantage in two
   // distinct cases: (1) striking an ADJACENT unit (the "combat penalty against
   // adjacent units"), and (2) shooting from the back row across to the opposite
@@ -72,6 +76,20 @@ export type UnitAbilityEffectDefinition =
       targetTypes?: UnitType[];
       /** Combat rounds the token lasts (omit = until end of combat). */
       rounds?: number;
+      /** MGQ Web the Field: only orthogonally adjacent units may be chosen. */
+      adjacentOnly?: boolean;
+      /** MGQ Web the Field: the source also readies its Defend die. */
+      sourceDefenseToken?: boolean;
+    }
+  | {
+      /** MGQ Pochi: use the activation to dig an obstacle in an adjacent empty cell. */
+      type: "PLACE_ADJACENT_OBSTACLE_ACTION";
+    }
+  | {
+      /** MGQ Sofia: spend this activation to heal or empower one adjacent ally. */
+      type: "MGQ_WHITE_MAGIC_ACTION";
+      healAmount: number;
+      attackBonus: number;
     }
   | {
       /**
@@ -82,6 +100,10 @@ export type UnitAbilityEffectDefinition =
       token: CombatTokenKind;
       amount: number;
       rounds?: number;
+      /** Existing abilities default to firing even on a fully defended hit. */
+      requiresDamageDealt?: boolean;
+      /** Existing abilities default to the unit's own declared attack. */
+      trigger?: "own-attack" | "retaliation";
     }
   | {
       /**
@@ -117,6 +139,12 @@ export type UnitAbilityEffectDefinition =
       maxBonus: number;
       requiresNonUndead?: boolean;
     }
+  | {
+      /** MGQ Lisa: every defeated side/stack layer permanently raises this army card's max Health. */
+      type: "ON_LETHAL_HIT_GAIN_PERMANENT_HEALTH";
+      amount: number;
+      maxBonus: number;
+    }
   | { type: "ON_KILL_SUMMON_WEAK_COPY"; statPenalty: number; oncePerCombat: boolean }
   | { type: "ON_ATTACK_PLACE_FIRE_WALL"; damage: number }
   | { type: "REDUCE_ATTACK_DAMAGE_ON_DEFENSE_DIE"; onRoll: number; amount: number }
@@ -129,6 +157,15 @@ export type UnitAbilityEffectDefinition =
        * Initiative drops by `amount` (negative) through its next combat round.
        */
       type: "ON_ATTACK_INITIATIVE_DEBUFF";
+      amount: number;
+      /** Existing Freezing Shot behavior stays unconditional when omitted. */
+      requiresDamageDealt?: boolean;
+      /** Existing Freezing Shot defaults to the target's next combat round. */
+      duration?: EffectDurationDefinition;
+    }
+  | {
+      /** MGQ Lisa: living adjacent enemies suffer the signed Initiative shift. */
+      type: "ADJACENT_ENEMY_INITIATIVE_AURA";
       amount: number;
     }
   | {
@@ -318,6 +355,17 @@ export type UnitAbilityEffectDefinition =
       type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION";
       /** Fixed Attack value for the follow-up; omitted uses the attacker's live Attack. */
       baseAttack?: number;
+      /** Signed adjustment to the attacker's live Attack when no fixed value is supplied. */
+      attackModifier?: number;
+    }
+  | {
+      /**
+       * Kudryavka Noumi: after the primary attack, make one full separate
+       * attack against a seeded-random living enemy other than the original
+       * target. The follow-up rolls its own die, opens reaction windows, and
+       * cannot retaliate or chain another follow-up.
+       */
+      type: "SECOND_ATTACK_RANDOM_OTHER_ENEMY";
     }
   | {
       /** Doom Arachnotron: three attacks against the same target at fixed values. */
@@ -582,6 +630,15 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Disciplinary Committee Pack: at combat start its controller chooses one
+       * living enemy. That target gets the Attack delta through round 1 only.
+       */
+      type: "ON_COMBAT_START_ENEMY_ATTACK_PENALTY";
+      amount: number;
+      rounds: number;
+    }
+  | {
+      /**
        * Enchanters: "[activation] Remove up to `healAmount` damage from a
        * friendly unit. Otherwise, gain +`attackBonus` Attack." Per the wiki Note
        * the heal is MANDATORY whenever it is possible ("the healing effect can
@@ -718,11 +775,28 @@ export type UnitAbilityEffectDefinition =
        * resolved die equals `onRoll`, place the token on the target (a
        * Corrosion token lasts the whole combat and is capped so Defense never
        * drops below 0).
-       */
+      */
       type: "ON_ATTACK_DIE_TOKEN";
-      onRoll: number;
+      /** One exact triggering face. Legacy Rust Dragon/Halfling form. */
+      onRoll?: number;
+      /** Inclusive triggering range. Used when more than one adjacent face triggers. */
+      minRoll?: number;
+      maxRoll?: number;
       token: CombatTokenKind;
       amount: number;
+      /** Number of identical tokens placed by one trigger (default 1). */
+      count?: number;
+    }
+  | {
+      /** MGQ status payoff: flat Attack while the target carries any listed token. */
+      type: "ATTACK_BONUS_VS_TARGET_TOKENS";
+      amount: number;
+      tokens: CombatTokenKind[];
+    }
+  | {
+      /** MGQ Devour: removing a status-marked target side restores all damage. */
+      type: "ON_KILL_HEAL_FULL_IF_TARGET_TOKEN";
+      tokens: CombatTokenKind[];
     }
   | {
       /**
@@ -821,6 +895,33 @@ export type UnitAbilityEffectDefinition =
        * (from any source) would remove the unit, leaving it alive at 1 Health.
        */
       type: "SELF_REBIRTH_ONCE";
+    }
+  | {
+      /** MGQ Hero Job: one death-save roll per combat; succeeds at or below maxRoll. */
+      type: "SELF_REBIRTH_ROLL_ONCE";
+      maxRoll: number;
+    }
+  | {
+      /** MGQ Gadabout Job: extra veteran XP after this unit survives a won combat. */
+      type: "BONUS_UNIT_EXPERIENCE";
+      amount: number;
+    }
+  | {
+      /** MGQ Maid Job: live, non-sticky Initiative aura for adjacent friendly units. */
+      type: "FRIENDLY_ADJACENT_INITIATIVE_AURA";
+      amount: number;
+    }
+  | {
+      /** MGQ Mage Job: once-per-combat targeted damage before moving. */
+      type: "MGQ_MAGE_MAGIC_ARROW_ACTION";
+      amount: number;
+    }
+  | {
+      /** MGQ Hunter Job: pierce Defense when the own Attack die is in range. */
+      type: "DEFENSE_REDUCTION_ON_ATTACK_DIE";
+      minRoll: number;
+      maxRoll: number;
+      amount: number;
     }
   | {
       /**
@@ -968,6 +1069,14 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Komari Kamikita: reduce spell and Hero-Specialty damage dealt to this
+       * unit and every adjacent unit, regardless of controller.
+       */
+      type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA";
+      amount: number;
+    }
+  | {
+      /**
        * Rampart Dendroids (Pack): "[unit_passive] Enemy units that start their
        * activation adjacent to this unit cannot move." A Bind aura, evaluated at
        * the start of each enemy activation; a bound unit may still attack.
@@ -1041,6 +1150,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "FLAT_ATTACK_BONUS";
       amount: number;
+      /** MGQ Wild Hair: the bonus is live only after this side has taken damage. */
+      requiresDamaged?: boolean;
     }
   | {
       /**
@@ -1063,6 +1174,17 @@ export type UnitAbilityEffectDefinition =
        * the card is Stacked.
        */
       type: "SELF_DEFENSE_TOKEN";
+    }
+  | {
+      /** MGQ Emily: grant the controller positive Morale at combat setup. */
+      type: "ON_COMBAT_START_GAIN_MORALE";
+      amount: number;
+    }
+  | {
+      /** Printed maximum-Health multiplier, folded when a combat side is built/rebuilt. */
+      type: "MAX_HEALTH_MULTIPLIER";
+      numerator: number;
+      denominator: number;
     }
   | {
       /**
@@ -1278,6 +1400,23 @@ export type UnitAbilityDefinition = {
 };
 
 export const unitAbilities: Record<string, UnitAbilityDefinition> = {
+  "mgq-undine-heal-1": {
+    id: "mgq-undine-heal-1", name: "Healing Water",
+    text: "[activation] Before moving, heal another friendly unit for 1 Health.",
+    effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 1, attackBonus: 0 },
+    implementationStatus: "implemented"
+  },
+  "mgq-undine-heal-2": {
+    id: "mgq-undine-heal-2", name: "Greater Healing Water",
+    text: "[activation] Before moving, heal another friendly unit for 2 Health.",
+    effect: { type: "ON_ACTIVATION_HEAL_FRIENDLY_OR_BUFF_SELF", healAmount: 2, attackBonus: 0 },
+    implementationStatus: "implemented"
+  },
+  "mgq-sylph-speed-aura": {
+    id: "mgq-sylph-speed-aura", name: "Wind's Blessing",
+    text: "[unit_passive] All your other troops gain +1 Initiative.",
+    implementationStatus: "implemented"
+  },
   "doom-demon-retaliation-attack": {
     id: "doom-demon-retaliation-attack",
     name: "Savage Retaliation",
@@ -2357,6 +2496,295 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "CANCEL_LETHAL_UNIT_ABILITY" },
     implementationStatus: "implemented"
   },
+  "softball-power-pitch": {
+    id: "softball-power-pitch",
+    name: "Power Pitch",
+    text: "[unit_attack] When this unit's own Attack die is -1 or 0, deal 1 additional attack damage to the target.",
+    effect: { type: "EXTRA_RANGED_DAMAGE_ON_LOW_ROLL", maxRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "haruka-prank-backfire": {
+    id: "haruka-prank-backfire",
+    name: "Prank Backfire",
+    text: "[unit_attack] When this unit's own Attack die is -1, Paralyze the target after the attack.",
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "own", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "disciplinary-sanction": {
+    id: "disciplinary-sanction",
+    name: "Disciplinary Sanction",
+    text: "[unit_passive] At the start of Combat, choose 1 enemy unit. It gets -1 Attack during round 1.",
+    effect: { type: "ON_COMBAT_START_ENEMY_ATTACK_PENALTY", amount: -1, rounds: 1 },
+    implementationStatus: "implemented"
+  },
+  "saya-infiltration": {
+    id: "saya-infiltration",
+    name: "Infiltration",
+    text: "[unit_move] As a move, place this unit on any empty Combat space.",
+    effect: { type: "MOVE_ANYWHERE" },
+    implementationStatus: "implemented"
+  },
+  "saya-armor-break": {
+    id: "saya-armor-break",
+    name: "Armor Break",
+    text: '[unit_attack] On a "0" or "+1" on this unit\'s Attack die, place a Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: 0, maxRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  // Save compatibility: a combat saved before Armor Break replaced Double Tap
+  // can still carry the old id. It resolves the NEW mechanic after loading.
+  "saya-double-tap": {
+    id: "saya-double-tap",
+    name: "Armor Break",
+    text: '[unit_attack] On a "0" or "+1" on this unit\'s Attack die, place a Corrosion token on the target: -1 Defense (minimum 0) for the rest of Combat.',
+    effect: { type: "ON_ATTACK_DIE_TOKEN", minRoll: 0, maxRoll: 1, token: "corrosion", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "masato-bodyguard-intercept": {
+    id: "masato-bodyguard-intercept",
+    name: "Bodyguard",
+    text: "[unit_passive] Once per Combat, when an adjacent friendly unit is attacked, redirect that attack to this unit.",
+    effect: { type: "INTERCEPT_ADJACENT_ATTACK_ONCE" },
+    implementationStatus: "implemented"
+  },
+  "mgq-pack-dig": {
+    id: "mgq-pack-dig",
+    name: "Pack Dig",
+    text: "[activation] Instead of attacking, place an Obstacle in an adjacent empty Combat space.",
+    effect: { type: "PLACE_ADJACENT_OBSTACLE_ACTION" },
+    implementationStatus: "implemented"
+  },
+  "mgq-trance-pollen": {
+    id: "mgq-trance-pollen",
+    name: "Trance Pollen",
+    text: "[unit_attack] On a +1 Attack die result, place a Temptation token on the target.",
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "temptation", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-white-magic": {
+    id: "mgq-white-magic",
+    name: "White Magic",
+    text: "[activation] Choose an adjacent ally: heal exactly 1 damage or give that ally +1 Attack this round.",
+    effect: {
+      type: "MGQ_WHITE_MAGIC_ACTION",
+      healAmount: 1,
+      attackBonus: 1
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-job-heal-adjacent": {
+    id: "mgq-job-heal-adjacent",
+    name: "Healer's Aid",
+    text: "[activation] Choose a wounded adjacent ally and heal exactly 1 damage. This cannot target the healer.",
+    effect: {
+      type: "MGQ_WHITE_MAGIC_ACTION",
+      healAmount: 1,
+      attackBonus: 0
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-noble-income": {
+    id: "mgq-noble-income",
+    name: "Noble Stipend",
+    text: "[map] At the beginning of each Resource round, gain 1 gold.",
+    mapEffect: { type: "MAP_RESOURCE_ROUND_GAIN", resource: "gold", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-hero-rebirth": {
+    id: "mgq-hero-rebirth",
+    name: "Heroic Return",
+    text: '[unit_passive] Once per Combat when this unit would be defeated, roll an Attack die. On "-1" or "0", it returns at 1 Health.',
+    effect: { type: "SELF_REBIRTH_ROLL_ONCE", maxRoll: 0 },
+    implementationStatus: "implemented"
+  },
+  "mgq-gadabout-xp": {
+    id: "mgq-gadabout-xp",
+    name: "Learning by Wandering",
+    text: "[map] After this unit survives a won combat, it gains 1 additional unit experience.",
+    effect: { type: "BONUS_UNIT_EXPERIENCE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-maid-speed-aura": {
+    id: "mgq-maid-speed-aura",
+    name: "Perfect Service",
+    text: "[unit_passive] Other adjacent friendly units gain +2 Initiative only while they remain adjacent to this unit.",
+    effect: { type: "FRIENDLY_ADJACENT_INITIATIVE_AURA", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "mgq-mage-magic-arrow": {
+    id: "mgq-mage-magic-arrow",
+    name: "Magic Arrow",
+    text: "[activation] Once per Combat before moving, deal 1 damage to an enemy unit. This does not end the activation.",
+    effect: { type: "MGQ_MAGE_MAGIC_ARROW_ACTION", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-hunter-low-roll-pierce": {
+    id: "mgq-hunter-low-roll-pierce",
+    name: "Hunter's Opening",
+    text: "[unit_attack] On a -1 or 0 Attack die result, ignore 1 Defense for this attack.",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK_DIE", minRoll: -1, maxRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-wild-hair": {
+    id: "mgq-wild-hair",
+    name: "Wild Hair",
+    text: "While this side is damaged, its Attack gains +1.",
+    effect: { type: "FLAT_ATTACK_BONUS", amount: 1, requiresDamaged: true },
+    implementationStatus: "implemented"
+  },
+  "mgq-devour": {
+    id: "mgq-devour",
+    name: "Devour",
+    text: "When this unit removes a Paralyzed or Tempted target side with its own attack, heal this unit to full.",
+    effect: { type: "ON_KILL_HEAL_FULL_IF_TARGET_TOKEN", tokens: ["paralysis", "temptation"] },
+    implementationStatus: "implemented"
+  },
+  "mgq-confusion-club": {
+    id: "mgq-confusion-club",
+    name: "Confusion Club",
+    text: "[unit_attack] On a +1 Attack die result, place a Weakness token on the target.",
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "weakness", amount: -1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-nightmares-embrace": {
+    id: "mgq-nightmares-embrace",
+    name: "Nightmare's Embrace",
+    text: "[unit_attack] On a +1 Attack die result, Paralyze the target.",
+    effect: { type: "PARALYZE_TARGET_ON_DIE", source: "own", onRoll: 1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-maiden-certain-paralysis": {
+    id: "mgq-maiden-certain-paralysis",
+    name: "Nightmare's Embrace",
+    text: "[unit_attack] After this unit attacks, Paralyze the target.",
+    effect: { type: "ON_ATTACK_TOKEN", token: "paralysis", amount: 0 },
+    implementationStatus: "implemented"
+  },
+  "mgq-sleep-toxin": {
+    id: "mgq-sleep-toxin",
+    name: "Sleep Toxin",
+    text: "[unit_attack] After this unit deals damage, place a Temptation token on the target.",
+    effect: {
+      type: "ON_ATTACK_TOKEN",
+      token: "temptation",
+      amount: 1,
+      requiresDamageDealt: true
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-slimed": {
+    id: "mgq-slimed",
+    name: "Slimed",
+    text: "[unit_attack] After this unit deals damage, place a Corrosion token on the target.",
+    effect: {
+      type: "ON_ATTACK_TOKEN",
+      token: "corrosion",
+      amount: -1,
+      requiresDamageDealt: true
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-slowed-time": {
+    id: "mgq-slowed-time",
+    name: "Slowed Time",
+    text: "Adjacent enemies have -1 Initiative while this unit lives.",
+    effect: { type: "ADJACENT_ENEMY_INITIATIVE_AURA", amount: -1 },
+    implementationStatus: "implemented"
+  },
+  // Save compatibility for the provisional implementation id used before the
+  // MGQ roster was finalized.
+  "mgq-slowed-time-aura": {
+    id: "mgq-slowed-time-aura",
+    name: "Slowed Time",
+    text: "Adjacent enemies have -1 Initiative while this unit lives.",
+    effect: { type: "ADJACENT_ENEMY_INITIATIVE_AURA", amount: -1 },
+    implementationStatus: "implemented"
+  },
+  "mgq-lisa-growth": {
+    id: "mgq-lisa-growth",
+    name: "Soul Growth",
+    text: "When this unit reduces a unit side or stack layer to 0 Health, permanently gain +1 maximum Health (maximum +2).",
+    effect: { type: "ON_LETHAL_HIT_GAIN_PERMANENT_HEALTH", amount: 1, maxBonus: 2 },
+    implementationStatus: "implemented"
+  },
+  "mgq-slow-weave": {
+    id: "mgq-slow-weave",
+    name: "Slow Weave",
+    text: "[unit_attack] After this unit deals damage, the target gets -1 Initiative for the current round.",
+    effect: {
+      type: "ON_ATTACK_INITIATIVE_DEBUFF",
+      amount: -1,
+      requiresDamageDealt: true,
+      duration: { type: "current-combat-round" }
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-reaper-scythe": {
+    id: "mgq-reaper-scythe",
+    name: "Reaper Scythe",
+    text: "This unit gains +2 Attack against Paralyzed, Weakened, or Tempted targets.",
+    effect: {
+      type: "ATTACK_BONUS_VS_TARGET_TOKENS",
+      amount: 2,
+      tokens: ["paralysis", "weakness", "temptation"]
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-flower-fragrance": {
+    id: "mgq-flower-fragrance",
+    name: "Flower Fragrance",
+    text: "After this unit's Retaliation Attack, place a Temptation token on the target.",
+    effect: {
+      type: "ON_ATTACK_TOKEN",
+      token: "temptation",
+      amount: 1,
+      trigger: "retaliation"
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-love-arrow": {
+    id: "mgq-love-arrow",
+    name: "Love Arrow",
+    text: "[unit_attack] On a +1 Attack die result, place 2 Temptation tokens on the target.",
+    effect: { type: "ON_ATTACK_DIE_TOKEN", onRoll: 1, token: "temptation", amount: 1, count: 2 },
+    implementationStatus: "implemented"
+  },
+  "mgq-web-the-field": {
+    id: "mgq-web-the-field",
+    name: "Web the Field",
+    text: "[activation] Place Weakness on an adjacent enemy and gain a Defense token.",
+    effect: {
+      type: "PLACE_TOKEN_ACTION",
+      token: "weakness",
+      amount: -1,
+      targets: "enemy",
+      rounds: 2,
+      adjacentOnly: true,
+      sourceDefenseToken: true
+    },
+    implementationStatus: "implemented"
+  },
+  "mgq-colossal-max-health": {
+    id: "mgq-colossal-max-health",
+    name: "Colossal",
+    text: "This unit has 50% more maximum Health (rounded up).",
+    effect: { type: "MAX_HEALTH_MULTIPLIER", numerator: 3, denominator: 2 },
+    implementationStatus: "implemented"
+  },
+  "mgq-giga-regeneration": {
+    id: "mgq-giga-regeneration",
+    name: "Regeneration",
+    text: "[activation] At the start of this unit's activation, remove up to 2 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "mgq-sparkle": {
+    id: "mgq-sparkle",
+    name: "Sparkle☆",
+    text: "At the start of Combat, this unit's owner gains 1 positive Morale.",
+    effect: { type: "ON_COMBAT_START_GAIN_MORALE", amount: 1 },
+    implementationStatus: "implemented"
+  },
   "elemental-damage": {
     id: "elemental-damage",
     name: "Elemental Damage",
@@ -2456,6 +2884,27 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Magical Resistance",
     text: "[unit_passive] Reduce any damage this unit takes from spells or Specialty by 2 (to a minimum of 0).",
     effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "little-busters-komari-smile-ward": {
+    id: "little-busters-komari-smile-ward",
+    name: "Everyone Smiles",
+    text: "[unit_passive] This unit and all adjacent units receive 1 less damage from spells or Hero Specialties (to a minimum of 0).",
+    effect: { type: "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "little-busters-kud-random-follow-up": {
+    id: "little-busters-kud-random-follow-up",
+    name: "Unexpected Trajectory",
+    text: "[unit_attack] After this unit attacks, it attacks one other random enemy as a separate attack.",
+    effect: { type: "SECOND_ATTACK_RANDOM_OTHER_ENEMY" },
+    implementationStatus: "implemented"
+  },
+  "little-busters-rin-second-attack": {
+    id: "little-busters-rin-second-attack",
+    name: "Catlike Combo",
+    text: "[unit_attack] After the target retaliates, attack it again with -1 Attack.",
+    effect: { type: "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION", attackModifier: -1 },
     implementationStatus: "implemented"
   },
   "vampire-heal-on-attack": {

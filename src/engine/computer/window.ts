@@ -216,6 +216,7 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     const gatedWindows: (PlayerId | null | undefined)[] = [
       adventure.pendingTileChoice?.playerId,
       adventure.pendingVisit?.playerId,
+      adventure.pendingCompanionRecruitment?.playerId,
       adventure.pendingCommanderFirstAid?.playerId,
       adventure.pendingNecromancy?.playerId,
     ];

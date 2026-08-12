@@ -56,7 +56,7 @@ export const HERO_GRADE_PICKS_PER_TIER = 1;
 // ===========================================================================
 
 export type GradeLabel = { en: string; vi: string };
-export type GradeRegisterKey = "core" | "xianxia" | "isekai" | "kansen" | "modao";
+export type GradeRegisterKey = "core" | "xianxia" | "isekai" | "kansen" | "modao" | "seishun" | "mgq";
 
 /**
  * The bilingual grade-name registers, indexed by grade 0..N (length =
@@ -106,8 +106,42 @@ export const HERO_GRADE_REGISTERS: Record<GradeRegisterKey, readonly GradeLabel[
     { en: "Demon General", vi: "Ma Tướng" },
     { en: "Demon King", vi: "Ma Vương" },
     { en: "Heavenly Demon", vi: "Thiên Ma" }
+  ],
+  // Little Busters (seishun / school-days) — also scales its town-exclusive battlefield hero.
+  seishun: [
+    { en: "Benchwarmer", vi: "Dự Bị" },
+    { en: "Regular", vi: "Chính Thức" },
+    { en: "Ace", vi: "Át Chủ Bài" },
+    { en: "Strongest in the School", vi: "Mạnh Nhất Trường" }
+  ],
+  mgq: [
+    { en: "Apprentice", vi: "Học Việc" },
+    { en: "Journeyman", vi: "Hành Nghề" },
+    { en: "Advanced Job", vi: "Nghề Cao Cấp" },
+    { en: "Awakened", vi: "Thần Cấp" }
   ]
 };
+
+/** Bespoke grade emblems; other registers keep the existing Sparkles fallback. */
+export const HERO_GRADE_ICONS: Partial<Record<GradeRegisterKey, readonly string[]>> = {
+  seishun: [
+    "/assets/anime/icons/little-busters/grade-benchwarmer.webp",
+    "/assets/anime/icons/little-busters/grade-regular.webp",
+    "/assets/anime/icons/little-busters/grade-ace.webp",
+    "/assets/anime/icons/little-busters/grade-strongest-in-school.webp"
+  ],
+  mgq: [
+    "/assets/anime/icons/mgq/grade-apprentice.webp",
+    "/assets/anime/icons/mgq/grade-journeyman.webp",
+    "/assets/anime/icons/mgq/grade-advanced-job.webp",
+    "/assets/anime/icons/mgq/grade-awakened.webp"
+  ]
+};
+
+export function heroGradeIconForFaction(factionId: string | undefined, grade: number): string | undefined {
+  const register = factionGradeRegister(factionId);
+  return HERO_GRADE_ICONS[register]?.[Math.max(0, Math.floor(grade))];
+}
 
 /**
  * Faction → grade-name register family (DATA). Labels follow the hero's faction
@@ -134,7 +168,9 @@ export const FACTION_GRADE_REGISTER: Record<string, GradeRegisterKey> = {
   azur_lane: "kansen",
   // Heavenly Demon Palace uses its OWN demonic register even though it shares
   // wuxia visual chrome with Azure Breeze.
-  heavenly_demon: "modao"
+  heavenly_demon: "modao",
+  little_busters: "seishun",
+  mgq: "mgq"
 };
 
 /**
@@ -153,7 +189,9 @@ export const BESPOKE_FACTION_GRADE_REGISTERS: Record<string, GradeRegisterKey> =
   // Heavenly Demon Palace shares the "wuxia" visual register with Azure Breeze
   // Sect. This explicit branch gives it the demonic "modao" ladder, exactly as
   // Azur Lane's "kansen" branch does inside the anime visual family.
-  heavenly_demon: "modao"
+  heavenly_demon: "modao",
+  little_busters: "seishun",
+  mgq: "mgq"
 };
 
 /** The register family for a faction (defaults to core when unmapped). */
@@ -207,6 +245,19 @@ export type HeroGradeNode = {
   /** Present on skill nodes only — drives the active/reaction dispatch. */
   skill?: HeroGradeSkillSpec;
 };
+
+/**
+ * MGQ-only Awakened node contract. It stays outside the shared grade tree and
+ * is appended only by the MGQ register catalog, so other factions never see or
+ * pick a Job-system node they cannot use.
+ */
+export const MGQ_JOB_MASTERY_NODE = {
+  id: "mgq-job-mastery",
+  tier: 3,
+  kind: "passive",
+  name: { en: "Job Mastery", vi: "Tinh Thong Nghe Nghiep" },
+  summary: "Passive: this hero's town Job assignments and reassignments cost 0 gold."
+} as const satisfies HeroGradeNode;
 
 // --- Node id constants (referenced by the engine wiring & tests) ------------
 export const HERO_GRADE_NODE_IDS = {
@@ -326,6 +377,15 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     name: { en: "Standing Ovation", vi: "Vỗ Tay Đứng" },
     summary: "Passive: gain +1 gold after each combat you win (stacks with Bounty Hunter's Eye / equipment)."
   }
+};
+
+/**
+ * Register-owned additions to the shared tree. Job Mastery is deliberately
+ * absent from HERO_GRADE_NODES: only the MGQ register receives it when the
+ * engine builds that player's pickable catalog.
+ */
+export const HERO_GRADE_REGISTER_NODES: Partial<Record<GradeRegisterKey, readonly HeroGradeNode[]>> = {
+  mgq: [MGQ_JOB_MASTERY_NODE]
 };
 
 /**

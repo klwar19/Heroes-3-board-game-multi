@@ -62,6 +62,9 @@ function pvpStage(seed: string): GameState {
   }
   combat.units[ACTOR_P1].initiative = 99;
   combat.units[ENEMY_P2].initiative = 1;
+  combat.units[ENEMY_P2].position = 9;
+  combat.units.unit_p2_vampires.position = 10;
+  combat.units.unit_p2_dread_knights.position = 13;
   combat.activeUnitId = ACTOR_P1;
   return state;
 }
@@ -128,18 +131,30 @@ describe("PvP — a real stop before the enemy unit acts (off-turn reaction wind
       })()
     );
     const meteor = getLegalActions(state, "p1").find(
-      (l) => l.action.type === "PLAY_CARD" && l.action.cardId === "specialty.deemer.6"
+      (l) =>
+        l.action.type === "PLAY_CARD" &&
+        l.action.cardId === "specialty.deemer.6" &&
+        l.action.target?.type === "unit" &&
+        l.action.target.unitId === ENEMY_P2
     )!;
-    const action = { ...meteor.action, target: { type: "unit", unitId: ENEMY_P2 } } as Extract<
-      GameAction,
-      { type: "PLAY_CARD" }
-    >;
+    expect(meteor, "Meteor Shower offers the paused unit as a legal centre").toBeTruthy();
+    const action = meteor.action as Extract<GameAction, { type: "PLAY_CARD" }>;
 
     const before = state.combat!.units[ENEMY_P2].damage;
     state = applyOk(state, action);
     // Damage landed and the fight is still paused on the same enemy unit.
     expect(state.combat!.units[ENEMY_P2].damage).toBeGreaterThan(before);
     expect(state.combat!.pendingNeutralStep?.kind).toBe("pre-activation");
+
+    while (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE") {
+      const choice = state.pendingChoice;
+      state = applyOk(state, {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p1",
+        choiceId: choice.id,
+        targetUnitId: choice.candidateUnitIds[0]
+      });
+    }
 
     // Resume: the pause clears and the enemy unit is handed back to act.
     state = applyOk(state, { type: "CONTINUE_NEUTRAL_STEP", playerId: "p1" });
@@ -219,7 +234,7 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
       ["unit_p1_crusaders", 2],
       ["unit_p2_skeletons", 9], // ENEMY_P2: the paused unit (centre by default)
       ["unit_p2_vampires", 19],
-      ["unit_p2_dread_knights", 16]
+      ["unit_p2_dread_knights", 13]
     ] as const) {
       const u = staged.combat!.units[id];
       u.position = pos;
@@ -296,6 +311,7 @@ describe("Adelaide / Deemer instants — full resolution inside the off-turn PvP
       (s) => {
         s.combat!.units.unit_p2_skeletons.position = 8; // ENEMY_P2 sits IN the ring of 9
         s.combat!.units.unit_p2_vampires.position = 10; // also in the ring
+        s.combat!.units.unit_p2_dread_knights.position = 16; // keep exactly two ring targets
       }
     );
     const play = getLegalActions(state, "p1").find(

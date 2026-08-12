@@ -10,7 +10,7 @@ import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
-import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
+import { HERO_GRADE_NODES, heroGradeIconForFaction } from "@/data/anime/hero-grades";
 import {
   ANIME_EQUIPMENT_DEFINITIONS,
   EQUIPMENT_PACKAGE_LABEL,
@@ -46,6 +46,8 @@ import {
   heroGradeProgressOf,
   heroGradeNodesOf,
   heroGradesEnabled,
+  heroUnitId,
+  makeHeroCombatUnit,
   unitExperienceActive,
   type AnimeEquipmentSlot,
   type GameAction,
@@ -53,7 +55,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
-import { useCardZoom } from "@/components/table/zoom";
+import { heroBattlefieldInfoZoomContent, useCardZoom } from "@/components/table/zoom";
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
@@ -266,6 +268,13 @@ export function HeroBoard({
   const gainedSpecialtyLevels = SPECIALTY_TRACK_LEVELS.filter((level) => hero.level >= level);
   const currentSpecialtyLevel = gainedSpecialtyLevels.at(-1) ?? 1;
   const currentSpecialtyId = heroDef.specialtyCardIds?.[currentSpecialtyLevel as 1 | 4 | 6];
+  // Little Busters only: the hero is also a combat unit. Prefer the actual
+  // battlefield body while fighting (live damage), otherwise build the exact
+  // full-health profile that will enter the next combat.
+  const battlefieldHero =
+    heroDef.faction === "little_busters"
+      ? state.combat?.units[heroUnitId(hero.id)] ?? makeHeroCombatUnit(hero, 0)
+      : null;
   const handLimit = effectiveHandLimit(state, playerId);
   // Anime Cultivation (§5.6): a public realm chip (EN + VI). Renders only with
   // the module on — a module-off / non-anime table shows nothing (CONTROL).
@@ -276,6 +285,7 @@ export function HeroBoard({
   const showGrade = heroGradesEnabled(state);
   const gradeValue = heroGradeOf(state, playerId);
   const grade = heroGradeLabel(state, playerId, gradeValue);
+  const gradeIcon = heroGradeIconForFaction(heroDef.faction, gradeValue);
   const merit = heroGradeProgressOf(state, playerId);
   const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
   const gradePoints = heroGradePointsOf(state, playerId);
@@ -407,6 +417,17 @@ export function HeroBoard({
             ) : null}
           </div>
         </div>
+
+        {battlefieldHero ? (
+          <button
+            aria-label={`Show ${heroDef.name} in-battle hero card`}
+            className="hbBattlefieldHeroCardButton"
+            onClick={() => zoomContent(heroBattlefieldInfoZoomContent(battlefieldHero, state.ruleset))}
+            type="button"
+          >
+            Show in-battle hero
+          </button>
+        ) : null}
 
         {(() => {
           // The experience track is the AUTHENTIC printed mat art (green marble
@@ -565,7 +586,7 @@ export function HeroBoard({
                 onClick={() => setSystemsOpen("grade")}
                 type="button"
               >
-                <Sparkles aria-hidden="true" size={18} />
+                {gradeIcon ? <img alt="" className="hbEquipIcon" src={assetUrl(gradeIcon)} /> : <Sparkles aria-hidden="true" size={18} />}
                 <span><strong>{lexicon.grade}</strong><small>{grade.en} · {gradePoints} point{gradePoints === 1 ? "" : "s"}</small></span>
               </button>
             ) : null}
@@ -649,10 +670,15 @@ export function HeroBoard({
                 {systemsOpen === "grade" ? (
                   <>
                     <div className="gradeWindowSummary">
-                      <span><b>{grade.en}</b><small>{grade.vi}</small></span>
+                      <span>{gradeIcon ? <img alt="" className="hbEquipIcon" src={assetUrl(gradeIcon)} /> : null}<b>{grade.en}</b><small>{grade.vi}</small></span>
                       <span><b>{merit}{nextThreshold ? ` / ${nextThreshold}` : ""}</b><small>Merit</small></span>
                       <span className={gradePoints > 0 ? "ready" : ""}><b>{gradePoints}</b><small>Points available</small></span>
                     </div>
+                    {heroDef.faction === "little_busters" ? (
+                      <p className="hbGradePickText">
+                        Battlefield hero bonus: {gradeValue === 0 ? "none" : gradeValue === 1 ? "+1 Health" : gradeValue === 2 ? "+1 Health, +1 Initiative" : "+1 Attack, +2 Health, +1 Initiative"}. If defeated, the hero returns at full Health next combat.
+                      </p>
+                    ) : null}
                     <div className="heroGradeTree" aria-label="Skill and passive tree">
                       {[1, 2, 3].map((tier) => (
                         <div className="heroGradeTier" key={tier}>

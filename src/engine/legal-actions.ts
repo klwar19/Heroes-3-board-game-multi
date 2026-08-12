@@ -37,6 +37,7 @@ import {
   hasRecruitResources,
   hasResources as playerHasResources,
   humanPlayerIds,
+  mainHeroInOwnTown,
   isFieldGuarded,
   isSeaField,
   NEUTRAL_DECK_IDS,
@@ -50,6 +51,16 @@ import {
   unitDrillAvailable,
   heroHasFreeGateStep
 } from "./adventure";
+import {
+  MGQ_JOB_LABELS,
+  mgqEffectiveJob,
+  mgqJobAssignmentCost,
+  mgqJobEligible,
+  mgqJobsForUnit
+} from "./mgq-jobs";
+import { MGQ_SPIRIT_LABELS, mgqContractedSpirits } from "./mgq-spirits";
+import { mgqGoldContractAllows } from "./mgq-contracts";
+import { mgqGranberiaFirstAttackAvailable } from "./mgq-hero-specialties";
 import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
@@ -76,6 +87,7 @@ import {
 } from "./adventure-reducer";
 import {
   effectAppliesToUnit,
+  activeSpellPowerBonus,
   ignoresAllRangedCombatPenalties,
   effectiveInitiative,
   getSchoolPowerBonus,
@@ -106,6 +118,7 @@ import {
   commanderCastRuneCost,
   commanderDefenseReactionUnit,
   commanderGradeUpChoices,
+  commanderIntegratedDeploymentSortAvailable,
   commanderStandsInCurrentCombat,
   commanderUnitId
 } from "./commanders";
@@ -150,7 +163,14 @@ import {
 } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
-import { defenderOnFortification, getDemolishAbility, isArrowTowerUnit, parseFortificationTargetId, siegeBlockedPositions } from "./siege";
+import {
+  defenderOnFortification,
+  getDemolishAbility,
+  intactFortificationPositions,
+  isArrowTowerUnit,
+  parseFortificationTargetId,
+  siegeBlockedPositions
+} from "./siege";
 import {
   manualGuardControllerId,
   neutralCombatControllerId,
@@ -379,6 +399,7 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
   }
   // Pandora's Bargain: Power — a flat +Power on every spell while in play.
   bonus += permanentSpellPowerBonus(state, playerId);
+  bonus += activeSpellPowerBonus(state, playerId);
   // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on the player's
   // spell casts. Folded here beside the Pandora flat bonus — the single standing
   // chokepoint — so a Power-scaling Specialty picks it up too (like Pandora),
@@ -569,7 +590,7 @@ export function gradeRank(grade: CombatUnitState["grade"]): number {
  * gate; neither can ever be such an effect's target.
  */
 function gradeRankOfUnit(unit: CombatUnitState): number {
-  return unit.bankUnit || unit.commanderSlug ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
+  return unit.bankUnit || unit.commanderSlug || unit.heroUnit ? Number.POSITIVE_INFINITY : gradeRank(unit.grade);
 }
 
 /**
@@ -1171,7 +1192,7 @@ export function getActivationStep(
     };
   }
 
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects, combat);
   return selectActivationStep(
     Object.values(combat.units),
     combat.attackerPlayerId,
@@ -1203,7 +1224,7 @@ export function getActivationOrder(
   activeEffects: ActiveEffectState[] = []
 ): CombatUnitState[] {
   const alive = Object.values(combat.units).filter(isUnitAlive);
-  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects);
+  const initiativeOf = (unit: CombatUnitState) => effectiveInitiative(unit, activeEffects, combat);
 
   // Polish Wait: a unit that Waited has finished its MAIN-phase turn but will
   // re-activate AFTER every other unit, highest wait token first (the engine's
@@ -1499,6 +1520,12 @@ function matchesUnitName(unitName: string | undefined, target: string): boolean 
   if (unitName === target) {
     return true;
   }
+  if (target.toLowerCase() === "slime girl") {
+    return /slime|slimy/i.test(unitName) || unitName === "Ooma";
+  }
+  if (target.toLowerCase() === "dragon girl") {
+    return unitName === "Giga" || unitName.toLowerCase().endsWith("dragons");
+  }
   const family = target.replace(/^an?\s+/i, "").replace(/\s+units?$/i, "").trim();
   return family.length > 0 && family !== target && unitName.toLowerCase().endsWith(family.toLowerCase());
 }
@@ -1548,8 +1575,8 @@ function getEnemyTargets(
   // Artillery: only the enemy unit(s) with the lowest effective initiative are
   // legal targets (a tie offers each, so the controller picks which is hit).
   if (target.type === "enemy-unit" && target.lowestInitiativeOnly && units.length > 0) {
-    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects)));
-    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+    const lowest = Math.min(...units.map((unit) => effectiveInitiative(unit, state.activeEffects, state.combat)));
+    units = units.filter((unit) => effectiveInitiative(unit, state.activeEffects, state.combat) === lowest);
   }
 
   return units.map<TargetRef>((unit) => ({ type: "unit", unitId: unit.id }));
@@ -3072,6 +3099,7 @@ function isOptionEffectPlayable(
         })
       );
     case "CREATE_INITIATIVE_BUFF":
+    case "DEAL_DAMAGE":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
     case "ADD_UNIT_MAX_HEALTH":
@@ -3079,6 +3107,8 @@ function isOptionEffectPlayable(
     case "HEAL_DAMAGE":
     // Shaman's Puppet (option B): a Cure-style cleanse, played in combat on a unit.
     case "HEAL_DAMAGE_AND_REMOVE_EFFECTS":
+    case "MGQ_DRAW_AND_SPECIALTY_IMMUNITY":
+    case "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS":
     case "AREA_DAMAGE_ALL_ADJACENT":
     case "AREA_DAMAGE_PICK_ADJACENT":
     case "CREATE_FIRE_SHIELD":
@@ -3312,6 +3342,9 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
     effect.type === "HEAL_DAMAGE" ||
     // Shaman's Puppet (option B): a Cure-style cleanse placed on a chosen unit.
     effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
+    effect.type === "DEAL_DAMAGE" ||
+    effect.type === "MGQ_DRAW_AND_SPECIALTY_IMMUNITY" ||
+    effect.type === "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS" ||
     effect.type === "AREA_DAMAGE_ALL_ADJACENT" ||
     effect.type === "AREA_DAMAGE_PICK_ADJACENT" ||
     effect.type === "GRANT_ELEMENTAL_DAMAGE" ||
@@ -3738,6 +3771,14 @@ function isInstantReactionUtility(effect: ConcreteEffect): boolean {
 
 /** Effects that do something useful when played on the adventure map. */
 function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDefinition, effect: ConcreteEffect): boolean {
+  if (effect.type === "MGQ_MAD_SCIENCE") {
+    const army = state.players[playerId]?.army ?? [];
+    const hasBronzeFew = army.some(
+      (unit) => unit.side === "few" && coreUnitDefinitions[unit.unitDefId]?.tier === "bronze"
+    );
+    const hasSilver = army.some((unit) => coreUnitDefinitions[unit.unitDefId]?.tier === "silver");
+    return Boolean(state.adventure && hasBronzeFew && hasSilver);
+  }
   if (card.timing === "map") {
     return true;
   }
@@ -4262,6 +4303,17 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
       actions.push({
         label: `Revive the commander (${cost} gold)`,
         action: { type: "REVIVE_COMMANDER", playerId }
+      });
+    }
+  }
+
+  if (commander.slug === "sonya") {
+    for (const armyUnit of player.army) {
+      if (armyUnit.id === commander.bondedArmyUnitId) continue;
+      const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+      actions.push({
+        label: `Unbreakable Bond: ${unitName}`,
+        action: { type: "COMMANDER_SET_BOND", playerId, armyUnitId: armyUnit.id }
       });
     }
   }
@@ -4991,6 +5043,7 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
           sideOk &&
           isUnitAlive(target) &&
           !isArrowTowerUnit(target) &&
+          (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(target.type))
         );
       });
@@ -5003,6 +5056,107 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
             unitId: activeUnit.id,
             abilityId: ability.id,
             target: { type: "none" }
+          }
+        });
+      }
+    }
+
+    // MGQ Pochi's Pack Dig is the whole activation. Each legal adjacent empty
+    // cell is a concrete action, which keeps forged space targets out of the
+    // normal board-picker/pending-choice machinery.
+    if (
+      ability.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION" &&
+      !activeUnit.attackedThisActivation
+    ) {
+      const blocked = getBlockedSpaces(combat);
+      for (const token of combat.battlefieldTokens ?? []) {
+        blocked.add(token.position);
+      }
+      if (combat.siege) {
+        for (const position of intactFortificationPositions(combat.siege)) {
+          blocked.add(position);
+        }
+      }
+      for (const position of getOrthogonalNeighbors(activeUnit.position)) {
+        if (!isBattlefieldPosition(position) || blocked.has(position)) {
+          continue;
+        }
+        actions.push({
+          label: `${activeUnit.name}: ${ability.name} at ${getBattlefieldLabel(position)}`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "space", position }
+          }
+        });
+      }
+    }
+
+    // Sofia's White Magic is a deliberate other action, never an automatic
+    // activation trigger: choose a different adjacent friendly unit, then
+    // choose either its heal or its Attack buff. Healthy allies only expose
+    // the meaningful buff option.
+    if (ability.effect?.type === "MGQ_WHITE_MAGIC_ACTION" && !activeUnit.attackedThisActivation) {
+      for (const target of Object.values(combat.units)) {
+        if (
+          target.id === activeUnit.id ||
+          target.controllerId !== playerId ||
+          !isUnitAlive(target) ||
+          isArrowTowerUnit(target) ||
+          !isAdjacent(activeUnit.position, target.position)
+        ) {
+          continue;
+        }
+        if (target.damage > 0) {
+          actions.push({
+            label: `${activeUnit.name}: ${ability.name} — heal 1 damage from ${target.name}`,
+            action: {
+              type: "USE_UNIT_ABILITY",
+              playerId,
+              unitId: activeUnit.id,
+              abilityId: ability.id,
+              target: { type: "unit", unitId: target.id },
+              mode: "heal"
+            }
+          });
+        }
+        if (ability.effect.attackBonus > 0) actions.push({
+          label: `${activeUnit.name}: ${ability.name} — give ${target.name} +1 Attack`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "unit", unitId: target.id },
+            mode: "attack"
+          }
+        });
+      }
+    }
+
+    if (
+      ability.effect?.type === "MGQ_MAGE_MAGIC_ARROW_ACTION" &&
+      !activeUnit.attackedThisActivation &&
+      !activeUnit.usedMgqMageMagicArrowThisCombat
+    ) {
+      for (const target of Object.values(combat.units)) {
+        if (
+          target.controllerId === playerId ||
+          !isUnitAlive(target) ||
+          isArrowTowerUnit(target)
+        ) {
+          continue;
+        }
+        actions.push({
+          label: `${activeUnit.name}: Magic Arrow deals ${ability.effect.amount} damage to ${target.name}`,
+          action: {
+            type: "USE_UNIT_ABILITY",
+            playerId,
+            unitId: activeUnit.id,
+            abilityId: ability.id,
+            target: { type: "unit", unitId: target.id }
           }
         });
       }
@@ -5256,6 +5410,7 @@ function addControlledNeutralTokenActions(
         sideOk &&
         isUnitAlive(target) &&
         !isArrowTowerUnit(target) &&
+        (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
         (!effect.targetTypes || effect.targetTypes.includes(target.type))
       );
     });
@@ -8347,6 +8502,7 @@ export function resolvedSpellPowerForStackItem(
     getSchoolPowerBonus(state, playerId, card) +
     astrologersSchoolPowerBonusFor(state, card) +
     permanentSpellPowerBonus(state, playerId) +
+    activeSpellPowerBonus(state, playerId) +
     // Anime Cultivation Nascent Soul (realm 3, §5.6): +1 Power on every cast —
     // same chokepoint as the preview (standingSpellPower), so Book Spell casts
     // (polish-spell-book) and normal casts alike resolve one Power tier higher.
@@ -8883,6 +9039,9 @@ export function isEffectLegalForTrigger(
     if (effect.unitTypes && !effect.unitTypes.includes(affected.type)) {
       return false;
     }
+    if (effect.firstOwnAttackOnly && !mgqGranberiaFirstAttackAvailable(state, attacker, triggerEvent.isRetaliation)) {
+      return false;
+    }
 
     // Shield (instant): +Defense only against a ground/flying attacker. Gate on
     // the ATTACKER's type, not the buffed defender's (the unitTypes check above).
@@ -9301,6 +9460,16 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
     });
   }
 
+  // Vanguard/equipment deployment is not another phase: commander, Little
+  // Busters hero and placed troops all expose their formation moves right here,
+  // before this function adds the one normal Ready action.
+  if (
+    combat.integratedCommanderDeploymentPlayerIds?.includes(playerId) &&
+    commanderIntegratedDeploymentSortAvailable(state, playerId)
+  ) {
+    addCommanderPlacementActions(actions, state, playerId, false);
+  }
+
   // WOG Commanders: an EMPTY unit deck (no free restock while the commander
   // lives) may deploy commander-only — the commander is auto-placed at combat
   // start, so "Ready" with zero placed units is legal for that player.
@@ -9410,14 +9579,23 @@ function addNeutralPlacementActions(actions: LegalAction[], state: GameState, pl
 /**
  * WOG Commanders pre-combat SORT window offered to the head owner
  * (`combat.pendingCommanderPlacement[0] === playerId`). Enumerates every
- * `PLACE_COMMANDER` (move the commander to an empty own-zone cell, or swap it
- * with one of the owner's own units there) plus the `FINISH_COMMANDER_PLACEMENT`
+ * `PLACE_COMMANDER` formation moves (the commander and allied units may all
+ * move/swap inside the zone) plus the `FINISH_COMMANDER_PLACEMENT`
  * "Ready". The board also drives this by drag/click; enumerating keeps the AFK
  * driver and tests exercising the exact same commands.
  */
-function addCommanderPlacementActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+function addCommanderPlacementActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  includeReady = true
+): void {
   const combat = state.combat;
-  if (!combat || combat.pendingCommanderPlacement?.[0] !== playerId) {
+  const integratedDeployment = Boolean(
+    combat?.setup?.pendingPlayerIds[0] === playerId &&
+      combat.integratedCommanderDeploymentPlayerIds?.includes(playerId)
+  );
+  if (!combat || (combat.pendingCommanderPlacement?.[0] !== playerId && !integratedDeployment)) {
     return;
   }
   const commander = combat.units[commanderUnitId(playerId)];
@@ -9428,29 +9606,40 @@ function addCommanderPlacementActions(actions: LegalAction[], state: GameState, 
       occupantAt.set(unit.position, unit);
     }
     const obstacles = new Set(combat.obstacles ?? []);
-    for (const position of cells) {
-      if (position === commander.position || obstacles.has(position)) {
-        continue;
+    const movers = Object.values(combat.units).filter(
+      (unit) => unit.controllerId === playerId && isUnitAlive(unit) && cells.includes(unit.position)
+    );
+    for (const moving of movers) {
+      for (const position of cells) {
+        if (position === moving.position || obstacles.has(position)) {
+          continue;
+        }
+        const occupant = occupantAt.get(position);
+        if (occupant && (occupant.controllerId !== playerId || !isUnitAlive(occupant))) {
+          continue;
+        }
+        actions.push({
+          label: occupant
+            ? `Swap ${moving.cardName} (${getBattlefieldLabel(moving.position)}) with ${occupant.cardName} (${getBattlefieldLabel(position)})`
+            : `Move ${moving.cardName} to ${getBattlefieldLabel(position)}`,
+          action: {
+            type: "PLACE_COMMANDER",
+            playerId,
+            ...(moving.id === commander.id ? {} : { unitId: moving.id }),
+            position
+          }
+        });
       }
-      const occupant = occupantAt.get(position);
-      // An empty cell (move) or one of the owner's OWN units (swap); anything
-      // else (enemy / Neutral guard) stays blocked.
-      if (occupant && (occupant.controllerId !== playerId || !isUnitAlive(occupant))) {
-        continue;
-      }
-      actions.push({
-        label: occupant
-          ? `Swap ${commander.cardName} (${getBattlefieldLabel(commander.position)}) with ${occupant.cardName} (${getBattlefieldLabel(position)})`
-          : `Move ${commander.cardName} to ${getBattlefieldLabel(position)}`,
-        action: { type: "PLACE_COMMANDER", playerId, position }
-      });
     }
+
   }
 
-  actions.push({
-    label: "Ready for battle",
-    action: { type: "FINISH_COMMANDER_PLACEMENT", playerId }
-  });
+  if (includeReady) {
+    actions.push({
+      label: "Ready for battle",
+      action: { type: "FINISH_COMMANDER_PLACEMENT", playerId }
+    });
+  }
 }
 
 /**
@@ -9537,7 +9726,8 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       // A Legion voucher reserved for this unit may make it affordable — fold in
       // the total gold discount when offering the action.
       const recruitCost = applyRecruitGoldDiscount(state, playerId, { kind: "recruit", unitDefId }, fewSide.cost);
-      if (!owned && !goldChoiceBlocked && hasRecruitResources(state, playerId, recruitCost)) {
+      const mgqContractBlocked = !mgqGoldContractAllows(player, unitDefId);
+      if (!owned && !goldChoiceBlocked && !mgqContractBlocked && hasRecruitResources(state, playerId, recruitCost)) {
         actions.push({
           label: `Recruit few ${unit.name}`,
           action: {
@@ -10454,7 +10644,7 @@ function getCombatInteractionActions(
       addTurnCardActions(actions, state, playerId, cards, "combat-prep");
       addPermanentDiscardActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
-      actions.push({
+      if (state.players[playerId]?.factionId !== "mgq" || state.players[playerId]?.mgqSpirit) actions.push({
         label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }
       });
@@ -10676,6 +10866,16 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
     return getParallelBystanderActions(state, playerId);
   }
 
+  // A preparation card may open a normal adventure sub-prompt while the PvP
+  // combat shell is already present (Legion asks which troop receives its
+  // recruit discount). Resolve that atomic prompt before the combat dispatcher
+  // resumes the simultaneous preparation window; otherwise `combat.prep` would
+  // hide every RESOLVE_VISIT_STEP action and strand the defender.
+  if (state.combat?.prep && adventure.pendingVisit) {
+    addVisitStepActions(actions, state, playerId, cards);
+    return actions;
+  }
+
   // Any open combat — end-of-combat ack, PvP prep, Tactics, deployment
   // placement, the neutral-step pause, the continue/retreat window and the
   // active fight — is handled by the shared combat dispatcher (also used by
@@ -10735,6 +10935,33 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // until after explicit Resolve.
   if (adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
+    return actions;
+  }
+
+  // MGQ Companion Recruitment is an atomic after-combat transaction. The
+  // defeated card is already in its Neutral discard; the field reward waits.
+  if (adventure.pendingCompanionRecruitment) {
+    const pending = adventure.pendingCompanionRecruitment;
+    if (pending.playerId === playerId) {
+      const freeSeal = (player.mgqFreeCompanionSeals ?? 0) > 0;
+      for (const option of pending.options) {
+        const cost = freeSeal ? {} : option.cost;
+        if (!playerHasResources(player, cost)) continue;
+        const name = coreUnitDefinitions[option.unitDefId]?.name ?? option.unitDefId;
+        actions.push({
+          label: `Seal ${name} as a Companion (${freeSeal ? "free charge" : formatResourceCost(cost)})`,
+          action: {
+            type: "RESOLVE_COMPANION_RECRUITMENT",
+            playerId,
+            unitDefId: option.unitDefId
+          }
+        });
+      }
+      actions.push({
+        label: "Decline Companion Recruitment",
+        action: { type: "RESOLVE_COMPANION_RECRUITMENT", playerId, unitDefId: null }
+      });
+    }
     return actions;
   }
 
@@ -10945,6 +11172,37 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       actions.push({
         label: `Drill ${unitName} (${DRILL_UNIT_GOLD_COST} gold → +1 unit XP)`,
         action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id }
+      });
+    }
+  }
+  // MGQ Job System: one explicit action per eligible card/job pairing. The
+  // reducer repeats every ownership, town, window and resource check.
+  if (player.factionId === "mgq" && !state.combat && mainHeroInOwnTown(state, playerId)) {
+    const cost = mgqJobAssignmentCost(state, playerId);
+    if ((player.resources.gold ?? 0) >= cost) {
+      for (const armyUnit of player.army.filter(mgqJobEligible)) {
+        const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+        for (const job of mgqJobsForUnit(armyUnit.unitDefId)) {
+          if (mgqEffectiveJob(armyUnit) === job) continue;
+          actions.push({
+            label: `Assign ${MGQ_JOB_LABELS[job]} to ${unitName} (${cost} gold)`,
+            action: { type: "ASSIGN_UNIT_JOB", playerId, armyUnitId: armyUnit.id, job }
+          });
+        }
+      }
+    }
+  }
+  // Four Spirits are an innate MGQ hero choice, available anywhere outside
+  // combat on the hero's turn; no Shrine or separately built contracts gate it.
+  if (
+    player.factionId === "mgq" &&
+    ((!state.combat && hasOpenAdventureTurn(state, playerId)) || inCombatPrep(state, playerId))
+  ) {
+    for (const spirit of mgqContractedSpirits(state, playerId)) {
+      if (player.mgqSpirit === spirit) continue;
+      actions.push({
+        label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in the next combat`,
+        action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
       });
     }
   }

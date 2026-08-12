@@ -2,6 +2,14 @@ export { sampleCards } from "@/data/cards/sample";
 export { sampleBuildings } from "@/data/towns/buildings";
 export { unitAbilities } from "@/data/units/abilities";
 export {
+  fightingHeroIdForPlayer,
+  heroCombatProfile,
+  heroUnitId,
+  injectHeroIntoCombat,
+  makeHeroCombatUnit
+} from "./heroes";
+
+export {
   ATTACK_DIE_FACES,
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
@@ -135,6 +143,7 @@ export {
   commanderLiveAttackBonus,
   commanderLiveDefenseBonus,
   commanderOnOwnFrontLine,
+  commanderIntegratedDeploymentSortAvailable,
   commanderPowerOf,
   commanderPreCombatSortAvailable,
   commanderRunePool,
@@ -834,6 +843,7 @@ export {
   gradeForMerit,
   pickableNodesFrom,
   heroGradeNode,
+  heroGradeNodesForRegister,
   heroGradePickableNodes,
   heroGradeRegisterKey,
   heroGradeLabel,
@@ -844,7 +854,9 @@ export {
   HERO_GRADE_TIER_COUNT,
   HERO_GRADE_MAX,
   HERO_GRADE_PICKS_PER_TIER,
-  HERO_GRADE_REGISTERS
+  HERO_GRADE_REGISTERS,
+  HERO_GRADE_REGISTER_NODES,
+  MGQ_JOB_MASTERY_NODE
 } from "@/data/anime/hero-grades";
 export {
   equipmentEnabled,

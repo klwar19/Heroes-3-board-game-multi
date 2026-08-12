@@ -46,6 +46,49 @@ function renderBoardState(state: GameState, playerId: PlayerId = "p1") {
   );
 }
 
+function littleBustersAdventure(): GameState {
+  const state = createAdventureGameState({
+    seed: "hero-board-little-busters-battlefield-profile",
+    rollFirstPlayer: false,
+    anime: { enabled: true, isekaiTowns: true, heroGrades: true },
+    players: [
+      { id: "p1", name: "Riki", factionId: "little_busters", heroDefId: "riki_naoe" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+  const hero = getMainHero(state, "p1")!;
+  hero.level = 4;
+  hero.grade = 2;
+  return state;
+}
+
+describe("HeroBoard — Little Busters in-battle hero button", () => {
+  it("keeps the normal board and opens the separate level/grade battlefield information from one button", () => {
+    renderBoardState(littleBustersAdventure());
+    expect(screen.queryByLabelText("Little Busters battlefield hero")).toBeNull();
+    expect(screen.queryByLabelText("Battlefield hero combat stats")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show Riki Naoe in-battle hero card" }));
+    const card = screen.getByLabelText("Riki Naoe battlefield progression information");
+    expect(card.textContent).toContain("ATTACK3");
+    expect(card.textContent).toContain("DEFENSE2");
+    expect(card.textContent).toContain("HEALTH6");
+    expect(card.textContent).toContain("INIT8");
+    expect(card.textContent).toContain("Prepared Position");
+    expect(card.textContent).toContain("Forgetfulness IV");
+    const progress = screen.getByLabelText("Battlefield hero level and grade gains");
+    expect(progress.textContent).toContain("Gained since Level I");
+    expect(progress.textContent).toContain("Current grade bonus");
+    expect(progress.textContent).toContain("Next — Level 5");
+    expect(progress.textContent).toContain("Next — Strongest in the School");
+    expect(card.textContent).toContain("returns at full Health in the next combat");
+  });
+
+  it("does not add the in-battle hero button to another town's Hero Board", () => {
+    renderHeroBoard("eikthurn");
+    expect(screen.queryByRole("button", { name: /in-battle hero card/i })).toBeNull();
+  });
+});
+
 describe("HeroBoard — new Bulwark heroes render on the table", () => {
   it("draws Eikthurn (Chieftain) with his name banner, class and starting stats", () => {
     renderHeroBoard("eikthurn");

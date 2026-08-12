@@ -12,6 +12,7 @@ import { CREATURE_BANKS } from "@/data/map/creature-banks";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { unitAbilities } from "@/data/units/abilities";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
   cardCanBoostPower,
   cultivationRealmLabel,
@@ -613,6 +614,7 @@ export function formatEvent(event: GameEvent, state: GameState): string {
     case "COMMANDER_REVIVED":
     case "COMMANDER_FIRST_AID_USED":
     case "COMMANDER_SPECIALTY_TRIGGERED":
+    case "COMMANDER_BOND_SET":
     case "COMMANDER_ARTIFACT_BOUND":
     case "COMMANDER_ARTIFACT_SAVED":
       return `${playerName(state, event.playerId)} — ${event.message}`;
@@ -680,6 +682,18 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       } (veteran rank ${event.rank}).`;
     case "UNIT_DRILLED":
       return `${playerName(state, event.playerId)} drills ${event.unitName} (+1 unit XP, now ${event.experience}).`;
+    case "MGQ_JOB_ASSIGNED":
+      return `${playerName(state, event.playerId)} assigns ${titleCase(event.job)} to ${
+        coreUnitDefinitions[event.unitDefId]?.name ?? event.unitDefId
+      }${event.goldPaid > 0 ? ` (${event.goldPaid} gold)` : ""}.`;
+    case "MGQ_COMPANION_RECRUITED":
+      return event.declined
+        ? `${playerName(state, event.playerId)} declines Companion Recruitment.`
+        : `${playerName(state, event.playerId)} seals ${
+            coreUnitDefinitions[event.unitDefId ?? ""]?.name ?? event.unitDefId ?? "a Companion"
+          }${event.cost ? ` (${formatCost(event.cost)})` : ""}.`;
+    case "MGQ_SPIRIT_SELECTED":
+      return `${playerName(state, event.playerId)} contracts ${titleCase(event.spirit)} for the next combat.`;
     case "UNIT_XP_DILUTED":
       return event.reason === "reinforce"
         ? `${playerName(state, event.playerId)}'s ${event.unitName} veterans are diluted by the new recruits (XP now ${event.experience}).`

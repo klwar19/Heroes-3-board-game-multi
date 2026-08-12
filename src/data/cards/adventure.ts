@@ -1559,6 +1559,20 @@ export const adventureCards: CardLibrary = {
   "specialty.xuanming.1": withoutArt(mightSpecialtyOne("xuanming", "Marrow Legion", "Bone Reavers")),
   "specialty.xuanming.4": withoutArt(unitHealthSpecialty("xuanming", "Marrow Legion", 4, 1, "Bone Reavers")),
   "specialty.xuanming.6": withoutArt(unitInitiativeSpecialty("xuanming", "Marrow Legion", 6, 1, "Bone Reavers")),
+  // Little Busters might heroes — each set strengthens a unit the campus can
+  // actually recruit. These use the fully wired unit-specialist I/IV/VI arms.
+  "specialty.sasami_sasasegawa.1": withoutArt(mightSpecialtyOne("sasami_sasasegawa", "Perfect Captain", "Softball Club")),
+  "specialty.sasami_sasasegawa.4": withoutArt(unitHealthSpecialty("sasami_sasasegawa", "Perfect Captain", 4, 1, "Softball Club")),
+  "specialty.sasami_sasasegawa.6": withoutArt(unitInitiativeSpecialty("sasami_sasasegawa", "Perfect Captain", 6, 1, "Softball Club")),
+  "specialty.riki_naoe.1": withoutArt(mightSpecialtyOne("riki_naoe", "Team Heart", "Masato the Wall")),
+  "specialty.riki_naoe.4": withoutArt(unitHealthSpecialty("riki_naoe", "Team Heart", 4, 1, "Masato the Wall")),
+  "specialty.riki_naoe.6": withoutArt(unitInitiativeSpecialty("riki_naoe", "Team Heart", 6, 1, "Masato the Wall")),
+  "specialty.rin_natsume.1": withoutArt(mightSpecialtyOne("rin_natsume", "Cat Commander", "Rin's Cats")),
+  "specialty.rin_natsume.4": withoutArt(unitHealthSpecialty("rin_natsume", "Cat Commander", 4, 1, "Rin's Cats")),
+  "specialty.rin_natsume.6": withoutArt(unitInitiativeSpecialty("rin_natsume", "Cat Commander", 6, 1, "Rin's Cats")),
+  "specialty.yuiko_kurugaya.1": withoutArt(mightSpecialtyOne("yuiko_kurugaya", "Perfect Score", "Saya Tokido")),
+  "specialty.yuiko_kurugaya.4": withoutArt(unitHealthSpecialty("yuiko_kurugaya", "Perfect Score", 4, 1, "Saya Tokido")),
+  "specialty.yuiko_kurugaya.6": withoutArt(unitInitiativeSpecialty("yuiko_kurugaya", "Perfect Score", 6, 1, "Saya Tokido")),
   // Miku (Fuyuki Virtual Diva) — Voice of Angel. NEW engine arms:
   // I SLOW_ALL_ENEMIES, IV CREATE_HEAL_ON_ATTACKED (friendly), VI DAMAGE_ALL_ENEMY_UNITS.
   "specialty.miku.1": withoutArt({
@@ -5219,3 +5233,329 @@ adventureCards["specialty.yaoji.6"] = rethemedSpecialty(adventureCards["specialt
 adventureCards["specialty.molian.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "molian", 1, "Corpse Suture");
 adventureCards["specialty.molian.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "molian", 4, "Corpse Suture");
 adventureCards["specialty.molian.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "molian", 6, "Corpse Suture");
+
+// Little Busters specialty identities. These are native-card rethemes of fully
+// implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud
+// Meteor Shower. Levels 1/4/6 only unlock the corresponding card; they do not
+// add hidden battlefield stats. Komari retains her First-Aid card line.
+adventureCards["specialty.riki_naoe.1"] = rethemedSpecialty(adventureCards["specialty.zilare.1"], "zilare", "riki_naoe", 1, "Forgetfulness");
+adventureCards["specialty.riki_naoe.4"] = rethemedSpecialty(adventureCards["specialty.zilare.4"], "zilare", "riki_naoe", 4, "Forgetfulness");
+adventureCards["specialty.riki_naoe.6"] = rethemedSpecialty(adventureCards["specialty.zilare.6"], "zilare", "riki_naoe", 6, "Forgetfulness");
+adventureCards["specialty.yuiko_kurugaya.1"] = rethemedSpecialty(adventureCards["specialty.melodia.1"], "melodia", "yuiko_kurugaya", 1, "Fortune");
+adventureCards["specialty.yuiko_kurugaya.4"] = rethemedSpecialty(adventureCards["specialty.melodia.4"], "melodia", "yuiko_kurugaya", 4, "Fortune");
+adventureCards["specialty.yuiko_kurugaya.6"] = rethemedSpecialty(adventureCards["specialty.melodia.6"], "melodia", "yuiko_kurugaya", 6, "Fortune");
+adventureCards["specialty.kudryavka_noumi.1"] = rethemedSpecialty(adventureCards["specialty.deemer.1"], "deemer", "kudryavka_noumi", 1, "Meteor Shower");
+adventureCards["specialty.kudryavka_noumi.4"] = rethemedSpecialty(adventureCards["specialty.deemer.4"], "deemer", "kudryavka_noumi", 4, "Meteor Shower");
+adventureCards["specialty.kudryavka_noumi.6"] = rethemedSpecialty(adventureCards["specialty.deemer.6"], "deemer", "kudryavka_noumi", 6, "Meteor Shower");
+adventureCards["specialty.komari_kamikita.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "komari_kamikita", 1, "Everyone Smiles");
+adventureCards["specialty.komari_kamikita.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "komari_kamikita", 4, "Everyone Smiles");
+adventureCards["specialty.komari_kamikita.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "komari_kamikita", 6, "Everyone Smiles");
+
+// ---------------------------------------------------------------------------
+// Monster Girl Quest: Paradox heroes
+// ---------------------------------------------------------------------------
+
+const mgqSpecialtySource = {
+  product: "Monster Girl Quest: Paradox — Heroes III board-game adaptation",
+  credit: "Original specialty implementation for the MGQ town module."
+};
+
+function mgqSpecialty(card: CardLibrary[string]): CardLibrary[string] {
+  delete card.assets;
+  card.source = mgqSpecialtySource;
+  return card;
+}
+
+function mgqMadScienceSpecialty(): CardLibrary[string] {
+  return {
+    id: "specialty.promestein.4",
+    name: "Mad Science IV",
+    kind: "hero-specialty",
+    timing: "map",
+    tags: [
+      "hero-specialty",
+      "map",
+      "promestein",
+      "Remove one bronze Few army card, then give one silver army card +1 permanent Attack."
+    ],
+    target: { type: "none" },
+    effect: { type: "MGQ_MAD_SCIENCE", attackBonus: 1 },
+    implementationStatus: "implemented",
+    source: mgqSpecialtySource
+  };
+}
+
+adventureCards["specialty.luka.1"] = mgqSpecialty({
+  id: "specialty.luka.1",
+  name: "Quad Slash / Serene Mind I",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "luka",
+    "Reaction: one of your unit's attacks ignores Retaliation Attacks for this strike."
+  ],
+  trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+  effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 0, ignoresRetaliation: true },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.luka.4"] = mgqSpecialty({
+  id: "specialty.luka.4",
+  name: "Quad Slash / Serene Mind IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  phaseLimit: ["reaction", "combat"],
+  tags: [
+    "hero-specialty",
+    "instant",
+    "luka",
+    "+1 Attack or Defense; doubled for Lucifina-chan, Hild, Sylph, Gnome, Undine, or Salamander."
+  ],
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "+1 attack (x2 for Lucifina-chan, Hild, or a Spirit)",
+        trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+        effect: {
+          type: "ADD_COMBAT_STAT",
+          stat: "attack",
+          amount: 1,
+          doubleForUnitName: "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander"
+        }
+      },
+      {
+        label: "+1 defense (x2 for Lucifina-chan, Hild, or a Spirit)",
+        trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
+        effect: {
+          type: "ADD_COMBAT_STAT",
+          stat: "defense",
+          amount: 1,
+          doubleForUnitName: "Lucifina-chan or Hild or Sylph or Gnome or Undine or Salamander"
+        }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.luka.6"] = mgqSpecialty(
+  rethemedSpecialty(
+    adventureCards["specialty.tarnum_dungeon.4"],
+    "tarnum_dungeon",
+    "luka",
+    6,
+    "Quad Slash / Serene Mind"
+  )
+);
+
+adventureCards["specialty.alice.1"] = mgqSpecialty({
+  id: "specialty.alice.1",
+  name: "Monster Lord's Haki I",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: [
+    "hero-specialty",
+    "instant",
+    "alice",
+    "Instant: deal 1 damage to a unit."
+  ],
+  target: { type: "any-unit" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "Deal 1 damage to a unit",
+        combatAnytime: true,
+        effect: { type: "DEAL_DAMAGE", amount: 1, damageKind: "effect" }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.alice.4"] = mgqSpecialty({
+  id: "specialty.alice.4",
+  name: "Omniscience IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: ["hero-specialty", "instant", "map", "alice", "Instant or Map: choose any shared card deck and Search (1) it."],
+  target: { type: "none" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      { label: "Search (1) the Ability deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "abilities", count: 1 } },
+      { label: "Search (1) the Artifact deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "artifacts", count: 1 } },
+      { label: "Search (1) the Spell deck", combatAnytime: true, effect: { type: "CARD_DECK_SEARCH", deck: "spells", count: 1 } }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.alice.6"] = mgqSpecialty({
+  id: "specialty.alice.6",
+  name: "Eye of Recollection VI",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: ["hero-specialty", "combat", "alice", "One enemy unit suffers -2 Attack for the whole Combat."],
+  target: { type: "enemy-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Eye of Recollection",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "negative",
+      removable: false,
+      modifiers: [{ type: "ATTACK_BONUS", amount: -2 }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+
+adventureCards["specialty.ilias.1"] = mgqSpecialty(
+  rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "ilias", 1, "Divine Wrath / Cure")
+);
+adventureCards["specialty.ilias.4"] = mgqSpecialty({
+  id: "specialty.ilias.4",
+  name: "Divine Wrath / Cure IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: ["hero-specialty", "instant", "map", "ilias", "Draw 1 card, then make a friendly unit immune to all Hero Specialties for this Combat."],
+  target: { type: "friendly-unit" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "Draw 1; this unit is immune to all Specialties this Combat",
+        combatAnytime: true,
+        effect: { type: "MGQ_DRAW_AND_SPECIALTY_IMMUNITY", drawCards: 1 }
+      },
+      {
+        label: "Map: draw 1 card",
+        mapOnly: true,
+        target: { type: "none" },
+        effect: { type: "DRAW_CARDS", amount: 1 }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.ilias.6"] = mgqSpecialty(
+  rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "ilias", 6, "Divine Wrath / Cure")
+);
+
+adventureCards["specialty.granberia.1"] = mgqSpecialty({
+  id: "specialty.granberia.1",
+  name: "Dragon Girl I",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: ["hero-specialty", "instant", "map", "granberia", "Reaction: +1 Attack, then draw 1 card. On the Map, draw 1 card."],
+  target: { type: "none" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "+1 Attack, then draw 1 card",
+        trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
+        effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, drawCards: 1 }
+      },
+      { label: "Map: draw 1 card", mapOnly: true, effect: { type: "DRAW_CARDS", amount: 1 } }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.granberia.4"] = mgqSpecialty({
+  id: "specialty.granberia.4",
+  name: "Dragon Girl IV",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: ["hero-specialty", "instant", "granberia", "Discard 1 card, then deal 2 damage to a unit."],
+  target: { type: "any-unit" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "Discard 1 card; deal 2 damage to a unit",
+        combatAnytime: true,
+        cost: { discardCards: 1 },
+        effect: { type: "DEAL_DAMAGE", amount: 2, damageKind: "effect" }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+adventureCards["specialty.granberia.6"] = mgqSpecialty({
+  id: "specialty.granberia.6",
+  name: "Dragon Girl VI",
+  kind: "hero-specialty",
+  timing: "combat",
+  phaseLimit: ["combat"],
+  tags: [
+    "hero-specialty",
+    "combat",
+    "granberia",
+    "+1 Attack to one friendly unit for the whole Combat."
+  ],
+  target: { type: "friendly-unit" },
+  effect: {
+    type: "CREATE_ACTIVE_EFFECT",
+    effect: {
+      name: "Dragon Girl VI",
+      scope: "unit",
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
+    }
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});
+
+// Only level IV has a bespoke behavior in the supplied MGQ design. Levels I
+// and VI stay in Promestein's already-declared Sorcery vocabulary by retheming
+// the proven Zydar spell-economy cards instead of inventing two extra effects.
+adventureCards["specialty.promestein.1"] = mgqSpecialty(
+  rethemedSpecialty(adventureCards["specialty.zydar.1"], "zydar", "promestein", 1, "Mad Science")
+);
+adventureCards["specialty.promestein.4"] = mgqMadScienceSpecialty();
+adventureCards["specialty.promestein.6"] = mgqSpecialty({
+  id: "specialty.promestein.6",
+  name: "Mad Science VI",
+  kind: "hero-specialty",
+  timing: "instant",
+  tags: [
+    "hero-specialty",
+    "instant",
+    "map",
+    "promestein",
+    "Destroy 1 enemy unit; all your Spells gain +1 Power this Combat. OR Draw 2 cards."
+  ],
+  target: { type: "enemy-unit" },
+  effect: {
+    type: "CHOOSE_ONE",
+    options: [
+      {
+        label: "Destroy 1 enemy; your Spells gain +1 Power this Combat",
+        combatAnytime: true,
+        effect: { type: "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS", powerBonus: 1 }
+      },
+      {
+        label: "Draw 2 cards",
+        target: { type: "none" },
+        effect: { type: "DRAW_CARDS", amount: 2 }
+      }
+    ]
+  },
+  implementationStatus: "implemented",
+  source: mgqSpecialtySource
+});

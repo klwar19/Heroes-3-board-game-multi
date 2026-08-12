@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
@@ -10,6 +10,7 @@ import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import {
   describeCardEffect,
   getUnitAbilityDefinitions,
+  heroCombatProfile,
   unitFlipSidePreview,
   type CombatUnitState,
   type GameRuleset
@@ -17,10 +18,13 @@ import {
 import { UNIT_RANK_NAMES } from "@/data/units/experience";
 import { getCardMetaLabels, isEmpoweredStatisticCard, titleCase } from "./utils";
 import { SpecialtyCard } from "@/components/specialty-card";
-import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
+import { canRenderSpecialtyCard, specialtyEffectText, specialtyIconSrc } from "@/components/specialty-card-data";
 import { CommanderCardFace, CommanderStatsPanel } from "@/components/commander-card";
 import { CardSetFrame } from "./artifact-set-badge";
 import type { CommanderSlug, CommanderStatKey } from "@/data/commanders";
+import { coreHeroDefinitions } from "@/data/factions/core";
+import { factionGradeRegister, HERO_GRADE_REGISTERS, heroGradeIconForFaction } from "@/data/anime/hero-grades";
+import { unitAbilities } from "@/data/units/abilities";
 
 /** Anything the table can blow up to readable size: a card id or a unit card. */
 export type ZoomContent = {
@@ -45,6 +49,16 @@ export type ZoomContent = {
     statValues: { attack: number; defense: number; health: number; speed: number };
     dead?: boolean;
   };
+  heroFace?: {
+    heroDefId: string;
+    level: number;
+    grade: number;
+    passiveName: string;
+    combatType: CombatUnitState["type"];
+    statValues: { attack: number; defense: number; health: number; initiative: number };
+  };
+  /** Hero Board-only progression information. Never used as the combat piece. */
+  heroInfo?: NonNullable<ZoomContent["heroFace"]>;
   subtitle?: string;
   lines: string[];
   /** Empowered card (Empowered Statistic / an Empowered ability) — show the cue. */
@@ -128,7 +142,20 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
             dead: unit.damage >= unit.maxHealth
           }
         : undefined,
-    subtitle: unit.commanderSlug
+    heroFace:
+      unit.heroUnit && unit.heroDefId
+        ? {
+            heroDefId: unit.heroDefId,
+            level: unit.heroLevel ?? 1,
+            grade: unit.heroGrade ?? 0,
+            passiveName: unit.heroPassiveName ?? "Heroic Presence",
+            combatType: unit.type,
+            statValues: { attack: unit.attack, defense: unit.defense, health: unit.maxHealth, initiative: unit.initiative }
+          }
+        : undefined,
+    subtitle: unit.heroUnit
+      ? `battlefield hero · level ${unit.heroLevel ?? 1} · returns next combat`
+      : unit.commanderSlug
       ? `commander (tierless) ${unit.type} · initiative ${unit.initiative}`
       : `${titleCase(unit.grade)} ${unit.type} · initiative ${unit.initiative}`,
     lines: [
@@ -158,6 +185,168 @@ export function unitZoomContent(unit: CombatUnitState, ruleset: GameRuleset = "l
  * 256x256 asset). With the rule off, a non-member, or no provider at all, the
  * wrapper is not emitted and this renders the byte-identical old DOM.
  */
+type BattlefieldStatLine = { attack: number; defense: number; health: number; initiative: number };
+
+function gradeBattlefieldBonus(grade: number): BattlefieldStatLine {
+  const bounded = Math.max(0, Math.min(3, Math.floor(grade)));
+  return {
+    attack: bounded >= 3 ? 1 : 0,
+    defense: 0,
+    health: (bounded >= 1 ? 1 : 0) + (bounded >= 3 ? 1 : 0),
+    initiative: bounded >= 2 ? 1 : 0
+  };
+}
+
+/**
+ * The Hero Board button opens progression INFORMATION, not the physical card.
+ * Keeping this as a distinct ZoomContent branch prevents future UI work from
+ * accidentally changing the battlefield piece or the combat inspector.
+ */
+export function heroBattlefieldInfoZoomContent(
+  unit: CombatUnitState,
+  ruleset: GameRuleset = "legacy"
+): ZoomContent {
+  const content = unitZoomContent(unit, ruleset);
+  return {
+    ...content,
+    image: undefined,
+    heroFace: undefined,
+    heroInfo: content.heroFace,
+    subtitle: `Little Busters battlefield profile · level ${unit.heroLevel ?? 1} · grade ${unit.heroGrade ?? 0}`
+  };
+}
+
+function statDifference(next: BattlefieldStatLine, previous: BattlefieldStatLine): BattlefieldStatLine {
+  return {
+    attack: next.attack - previous.attack,
+    defense: next.defense - previous.defense,
+    health: next.health - previous.health,
+    initiative: next.initiative - previous.initiative
+  };
+}
+
+function formatBattlefieldGain(gain: BattlefieldStatLine): string {
+  const labels: Array<[keyof BattlefieldStatLine, string]> = [
+    ["attack", "ATK"], ["defense", "DEF"], ["health", "HP"], ["initiative", "INIT"]
+  ];
+  const parts = labels.flatMap(([key, label]) => gain[key] > 0 ? [`+${gain[key]} ${label}`] : []);
+  return parts.length > 0 ? parts.join(" · ") : "No stat increase";
+}
+
+export function HeroBattlefieldCard({ face }: { face: NonNullable<ZoomContent["heroFace"]> }) {
+  const hero = coreHeroDefinitions[face.heroDefId];
+  if (!hero) return null;
+  const gradeLabel = HERO_GRADE_REGISTERS[factionGradeRegister(hero.faction)]?.[face.grade]?.en ?? `Grade ${face.grade}`;
+  const gradeIcon = heroGradeIconForFaction(hero.faction, face.grade);
+  const levelProfile = heroCombatProfile(hero, face.level);
+  const passive = unitAbilities[levelProfile.passiveAbilityId];
+  const frameStyle = {
+    "--hbc-border": `url("${assetUrl("/assets/specialty-card/border-6.webp")}")`,
+    "--hbc-leather": `url("${assetUrl("/assets/specialty-card/leather.webp")}")`
+  } as CSSProperties;
+  return (
+    <div
+      aria-label={`${hero.name} dynamic battlefield hero card`}
+      className="zoomCardImage hbcWrap"
+      style={frameStyle}
+    >
+      <article className="hbc hbcPhysical">
+        <header className="hbcHeader">
+          <strong>{hero.name}</strong>
+          <div className="hbcHeaderMeta">
+            {gradeIcon ? <img alt="" src={assetUrl(gradeIcon)} /> : null}
+            <span>{hero.class} · LEVEL {face.level} · {gradeLabel}</span>
+          </div>
+        </header>
+        <div className="hbcPhysicalMain">
+          <div aria-label="Battlefield hero card stats" className="hbcPhysicalStats">
+            {Object.entries(face.statValues).map(([label, value]) => (
+              <span key={label}>
+                <small>{label === "initiative" ? "INIT" : label.slice(0, 3)}</small><b>{value}</b>
+              </span>
+            ))}
+          </div>
+          <div className="hbcArt">
+            {hero.portrait ? <img alt={hero.name} src={assetUrl(hero.portrait)} /> : null}
+            <span className={`hbcCombatType ${face.combatType}`}>
+              {face.combatType === "ranged" ? "RANGED" : face.combatType === "flying" ? "FLYING" : "GROUND"}
+            </span>
+          </div>
+        </div>
+        <section className="hbcPhysicalRules">
+          <div className="hbcPassive">
+            <small>PASSIVE</small>
+            <b>{face.passiveName}</b>
+            <span>{passive?.text ?? "This passive is active while the hero is on the battlefield."}</span>
+          </div>
+        </section>
+        <footer className="hbcPhysicalFooter">
+          LITTLE BUSTERS HERO · Returns at full Health next combat
+        </footer>
+      </article>
+    </div>
+  );
+}
+
+/** Hero Board information surface: progression belongs here, not on the card. */
+export function HeroBattlefieldInfo({ face }: { face: NonNullable<ZoomContent["heroInfo"]> }) {
+  const hero = coreHeroDefinitions[face.heroDefId];
+  if (!hero) return null;
+  const specialtyLevel: 1 | 4 | 6 = face.level >= 6 ? 6 : face.level >= 4 ? 4 : 1;
+  const specialtyCardId = hero.specialtyCardIds?.[specialtyLevel];
+  const specialty = specialtyCardId ? cardLibrary[specialtyCardId] : undefined;
+  const specialtyIcon = specialtyIconSrc(specialtyCardId);
+  const gradeRegister = HERO_GRADE_REGISTERS[factionGradeRegister(hero.faction)];
+  const gradeLabel = gradeRegister?.[face.grade]?.en ?? `Grade ${face.grade}`;
+  const gradeIcon = heroGradeIconForFaction(hero.faction, face.grade);
+  const levelProfile = heroCombatProfile(hero, face.level);
+  const levelOneProfile = heroCombatProfile(hero, 1);
+  const nextLevelProfile = heroCombatProfile(hero, Math.min(7, face.level + 1));
+  const levelGain = statDifference(levelProfile, levelOneProfile);
+  const nextLevelGain = statDifference(nextLevelProfile, levelProfile);
+  const gradeGain = gradeBattlefieldBonus(face.grade);
+  const nextGradeGain = statDifference(gradeBattlefieldBonus(face.grade + 1), gradeGain);
+  const nextGradeLabel = face.grade < 3 ? gradeRegister?.[face.grade + 1]?.en ?? `Grade ${face.grade + 1}` : null;
+  const passive = unitAbilities[levelProfile.passiveAbilityId];
+
+  return (
+    <section aria-label={`${hero.name} battlefield progression information`} className="hbiWrap">
+      <header className="hbiHeader">
+        {hero.portrait ? <img alt="" src={assetUrl(hero.portrait)} /> : null}
+        <span><small>LITTLE BUSTERS BATTLEFIELD PROFILE</small><strong>{hero.name}</strong><em>{hero.class}</em></span>
+        <div>{gradeIcon ? <img alt="" src={assetUrl(gradeIcon)} /> : null}<b>LEVEL {face.level}</b><small>{gradeLabel}</small></div>
+      </header>
+      <div className="hbiCurrentStats">
+        {Object.entries(face.statValues).map(([label, value]) => (
+          <span key={label}><small>{label === "initiative" ? "INIT" : label.toUpperCase()}</small><b>{value}</b></span>
+        ))}
+      </div>
+      <div className="hbiAbilities">
+        <article><small>PASSIVE</small><b>{face.passiveName}</b><p>{passive?.text}</p></article>
+        <article>
+          <small>CURRENT SPECIALTY · LEVEL {specialtyLevel}</small>
+          {specialtyIcon ? <img alt="" src={assetUrl(specialtyIcon)} /> : null}
+          <b>{specialty?.name ?? "Specialty"}</b>
+          <p>{specialtyCardId ? specialtyEffectText(specialtyCardId) : ""}</p>
+        </article>
+      </div>
+      <div className="hbiProgress" aria-label="Battlefield hero level and grade gains">
+        <article>
+          <header><small>LEVEL {face.level}</small><b>Gained since Level I</b></header>
+          <strong>{formatBattlefieldGain(levelGain)}</strong>
+          <em>{face.level < 7 ? `Next — Level ${face.level + 1}: ${formatBattlefieldGain(nextLevelGain)}` : "Maximum level reached"}</em>
+        </article>
+        <article>
+          <header><small>{gradeLabel}</small><b>Current grade bonus</b></header>
+          <strong>{formatBattlefieldGain(gradeGain)}</strong>
+          <em>{nextGradeLabel ? `Next — ${nextGradeLabel}: ${formatBattlefieldGain(nextGradeGain)}` : "Maximum grade reached"}</em>
+        </article>
+      </div>
+      <footer>Defeat is combat-only · this hero returns at full Health in the next combat.</footer>
+    </section>
+  );
+}
+
 function ZoomCardVisual({
   content,
   failedImageSrc,
@@ -176,6 +365,10 @@ function ZoomCardVisual({
         dead={content.commanderFace.dead}
       />
     </div>
+  ) : content.heroInfo ? (
+    <HeroBattlefieldInfo face={content.heroInfo} />
+  ) : content.heroFace ? (
+    <HeroBattlefieldCard face={content.heroFace} />
   ) : content.specialtyCardId ? (
     <div className="zoomNativeCard">
       <SpecialtyCard cardId={content.specialtyCardId} />
@@ -248,7 +441,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
               failedImageSrc={failedImageSrc}
               onImageError={() => setFailedImageSrc(content.image ?? null)}
             />
-            <div className="zoomCardBody">
+            {!content.heroFace && !content.heroInfo ? <div className="zoomCardBody">
               <strong>{content.title}</strong>
               {content.empowered ? (
                 <span className="empoweredBadge zoomEmpoweredBadge">
@@ -273,7 +466,7 @@ export function CardZoomProvider({ children }: { children: ReactNode }) {
                 <X aria-hidden="true" size={14} />
                 <span>Close</span>
               </button>
-            </div>
+            </div> : null}
           </div>
         </div>
       ) : null}

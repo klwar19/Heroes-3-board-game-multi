@@ -160,6 +160,8 @@ function DesignedTile({
   building,
   spec,
   barIndex,
+  slotIndex,
+  slotCount,
   factionColor,
   compact,
   barArt
@@ -167,6 +169,8 @@ function DesignedTile({
   building: TownBuildingDefinition;
   spec: TownBoardSpec;
   barIndex: number;
+  slotIndex: number;
+  slotCount: number;
   factionColor: string;
   compact: boolean;
   /** The outer bar already carries its panorama-aligned construction slice. */
@@ -185,7 +189,10 @@ function DesignedTile({
           className="tbPanoramaSlice"
           draggable={false}
           src={assetUrl(revealSlice)}
-          style={{ width: "700%", left: `${-barIndex * 100}%` }}
+          style={{
+            width: `${700 * slotCount}%`,
+            left: `${-(barIndex * slotCount + slotIndex) * 100}%`
+          }}
         />
       ) : null}
       {!barArt && !revealSlice && building.assets?.image ? (
@@ -766,9 +773,9 @@ export function TownBoardView({
   // ---- board ----------------------------------------------------------------
 
   return (
-    <section className={`tbRoot theme-${factionVisualRegister(faction.id)}`} aria-label={`${faction.name} town board`}>
+    <section className={`tbRoot theme-${factionVisualRegister(faction.id)} faction-${faction.id}`} aria-label={`${faction.name} town board`}>
       <div
-        className={`tbBoard ${isScan ? "scan" : "designed"}`}
+        className={`tbBoard ${isScan ? "scan" : "designed"} faction-${faction.id}`}
         style={{ aspectRatio: `${geometry.aspect[0]} / ${geometry.aspect[1]}`, "--tb-faction": faction.color } as CSSProperties}
       >
         {isScan ? (
@@ -785,7 +792,14 @@ export function TownBoardView({
               }}
             >
               {spec.panoramaImage ? (
-                <img alt="" aria-hidden="true" decoding="async" draggable={false} src={assetUrl(spec.panoramaImage)} />
+                <img
+                  alt=""
+                  aria-hidden="true"
+                  className={faction.id === "little_busters" ? "tbTownArtTopAligned" : undefined}
+                  decoding="async"
+                  draggable={false}
+                  src={assetUrl(spec.panoramaImage)}
+                />
               ) : null}
             </div>
             {/* The authentic printed tracks/tokens panel, pasted back at the
@@ -833,7 +847,12 @@ export function TownBoardView({
             })
             .join(", ");
           return (
-            <div className={`tbBar ${partial && !combinedBar ? "partial" : ""}`} key={index} style={style}>
+            <div
+              className={`tbBar ${builtIds.length > 0 ? "built" : "unbuilt"} ${partial && !combinedBar ? "partial" : ""}`}
+              data-building-slot={index + 1}
+              key={index}
+              style={style}
+            >
               {/* Invisible FX anchors — one per building in this bar — so the
                   construction burst (page.tsx) can land on the bar whichever
                   board render path drew it (designed / scan / real-tile). */}
@@ -865,6 +884,25 @@ export function TownBoardView({
                   bothBuiltImage={spec.combinedTile!.bothBuiltImage}
                 />
               ) : builtIds.length > 0 ? (
+                faction.id === "little_busters" && spec.barTileImages?.[index] ? (
+                  // Seven real physical inserts: each completed slot replaces
+                  // its matching area of the empty panorama with one coherent
+                  // crop of the fully-built campus. The unique shared slot is
+                  // still one whole tile; its plaque reports the built/missing
+                  // half without visually cutting the artwork in two.
+                  <div className={`tbFill designed tbLittleBustersPhysicalTile ${partial ? "partial" : ""}`}>
+                    <LoadedImg className="tbBarTileArt tbTownArtTopAligned" src={spec.barTileImages[index]} />
+                    <span className="tbTilePlaque">
+                      <Check aria-hidden="true" size={12} />
+                      {builtIds.map((buildingId) => coreBuildingDefinitions[buildingId]?.name ?? buildingId).join(" + ")}
+                    </span>
+                    {partial ? (
+                      <span className="tbSharedMissing">
+                        Not built: {missingIds.map((buildingId) => coreBuildingDefinitions[buildingId]?.name ?? buildingId).join(" + ")}
+                      </span>
+                    ) : null}
+                  </div>
+                ) :
                 // A real printed board scan crops its one fully-built photo per
                 // bar. Designed boards instead reveal the built-town image a
                 // slice at a time inside each DesignedTile (below), so they stay
@@ -883,7 +921,7 @@ export function TownBoardView({
                     {spec.barTileImages?.[index] ? (
                       <LoadedImg className="tbBarTileArt" src={spec.barTileImages[index]} />
                     ) : null}
-                    {bar.map((buildingId) => {
+                    {bar.map((buildingId, slotIndex) => {
                       const building = coreBuildingDefinitions[buildingId];
                       if (!building) {
                         return null;
@@ -891,6 +929,8 @@ export function TownBoardView({
                       return built(buildingId) ? (
                         <DesignedTile
                           barIndex={index}
+                          slotIndex={slotIndex}
+                          slotCount={bar.length}
                           building={building}
                           compact={bar.length > 1}
                           factionColor={faction.color}
@@ -917,7 +957,7 @@ export function TownBoardView({
                 // wuxia towns, and any future designed town). Keyed off the board
                 // spec's built art, never the faction/theme, so it is generic.
                 <div className={`tbEmptyBar ${anyBuildable ? "buildable" : ""}`}>
-                  {spec.barTileImages?.[index] ? (
+                  {faction.id !== "little_busters" && spec.barTileImages?.[index] ? (
                     <LoadedImg className="tbEmptyPreview" src={spec.barTileImages[index]} />
                   ) : null}
                   {bar.map((buildingId) => {

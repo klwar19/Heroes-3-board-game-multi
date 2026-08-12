@@ -204,6 +204,8 @@ import {
   unitRankForExperience,
   withRankAbilities
 } from "./unit-experience";
+import { mgqEffectiveJob, withMgqJobAbilities } from "./mgq-jobs";
+import { maxHealthAfterUnitAbilityEffects } from "./unit-abilities";
 import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
@@ -231,6 +233,7 @@ import type {
   MapFieldState,
   MapSpaceId,
   MapTileState,
+  MgqJob,
   OnewayExitMode,
   PendingVisit,
   SubterraneanGateChoiceCandidate,
@@ -2836,7 +2839,8 @@ export function getArmyMapAbilities(state: GameState, playerId: PlayerId): ArmyM
   const abilities: ArmyMapAbility[] = [];
   for (const armyUnit of player.army) {
     const side = getUnitSide(armyUnit.unitDefId, armyUnit.side);
-    for (const abilityId of side?.abilities ?? []) {
+    const abilityIds = withMgqJobAbilities([...(side?.abilities ?? [])], mgqEffectiveJob(armyUnit));
+    for (const abilityId of abilityIds) {
       const ability = unitAbilities[abilityId];
       if (ability?.mapEffect && ability.implementationStatus === "implemented") {
         abilities.push({ abilityId, abilityName: ability.name, effect: ability.mapEffect });
@@ -3990,6 +3994,7 @@ export function declareAdventureWinner(
   // (Necromancy / First Aid would otherwise keep offering actions on a finished
   // table, and a deferred field visit must not run after the objective win).
   state.adventure.pendingNecromancy = null;
+  state.adventure.pendingCompanionRecruitment = null;
   state.adventure.pendingCommanderFirstAid = null;
   for (const player of Object.values(state.players)) {
     player.necromancyWindow = false;
@@ -4603,6 +4608,9 @@ export function eliminatePlayer(
     }
     if (state.adventure.pendingNecromancy?.playerId === playerId) {
       state.adventure.pendingNecromancy = null;
+    }
+    if (state.adventure.pendingCompanionRecruitment?.playerId === playerId) {
+      state.adventure.pendingCompanionRecruitment = null;
     }
     if (state.adventure.pendingCommanderFirstAid?.playerId === playerId) {
       state.adventure.pendingCommanderFirstAid = null;
@@ -14517,6 +14525,8 @@ export function makeCombatUnitFromArmy(
     stacks?: number;
     stackToken?: StackTokenStat;
     experience?: number;
+    job?: MgqJob;
+    companion?: boolean;
   },
   controllerId: PlayerId,
   unitId: UnitId,
@@ -14561,7 +14571,8 @@ export function makeCombatUnitFromArmy(
   // ability fold into the printed side like permanentAttackBonus. With the rule
   // off no card ever carries `experience`, so this is an exact no-op.
   const unitExperience = armyUnit.side === "bank" ? 0 : Math.max(0, Math.trunc(armyUnit.experience ?? 0));
-  const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience);
+  const effectiveJob = mgqEffectiveJob(armyUnit);
+  const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience, effectiveJob);
   // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a
   // rulebook Stack Token baked onto this army card folds one stat bonus (+1
   // Attack/Defense/Health or +2 Initiative) into the printed side, like
@@ -14570,6 +14581,8 @@ export function makeCombatUnitFromArmy(
   // it. Absent on every normally-recruited card.
   const stackToken = armyUnit.stackToken ?? null;
   const tokenBonus = (stat: StackTokenStat) => (stackToken === stat ? stackTokenDelta(stat) : 0);
+  const combatAbilityIds = withMgqJobAbilities(withRankAbilities(side.abilities, rankFold), effectiveJob);
+  const baseMaxHealth = side.health + permanentHealthBonus + rankFold.health + tokenBonus("health");
 
   const unit: CombatUnitState = {
     id: unitId,
@@ -14584,7 +14597,7 @@ export function makeCombatUnitFromArmy(
     type: side.type ?? def.type,
     attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack + tokenBonus("attack"),
     defense: side.defense + rankFold.defense + tokenBonus("defense"),
-    maxHealth: side.health + permanentHealthBonus + rankFold.health + tokenBonus("health"),
+    maxHealth: maxHealthAfterUnitAbilityEffects(baseMaxHealth, combatAbilityIds),
     damage: 0,
     initiative: side.initiative + rankFold.initiative + tokenBonus("initiative"),
     position,
@@ -14592,7 +14605,7 @@ export function makeCombatUnitFromArmy(
     movedThisActivation: false,
     retaliatedThisRound: false,
     defenseToken: false,
-    abilities: withRankAbilities(side.abilities, rankFold),
+    abilities: combatAbilityIds,
     unitDefId: armyUnit.unitDefId,
     armyUnitId: armyUnit.id,
     ...(armyUnit.side === "bank" ? { bankUnit: true } : {}),
@@ -14602,6 +14615,7 @@ export function makeCombatUnitFromArmy(
     ...(stackToken ? { stackToken } : {}),
     ...(unitExperience ? { unitExperience } : {}),
     ...(rankFold.rank ? { unitRank: rankFold.rank } : {}),
+    ...(effectiveJob ? { job: effectiveJob } : {}),
     assets: {
       cardImage: side.cardImage,
       imageAlt: `${def.name} unit card`,

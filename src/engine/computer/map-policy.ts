@@ -1979,6 +1979,11 @@ export function scoreMapAction(
   const state = observation.state as unknown as GameState;
   const memory = memoryOf(observation);
   switch (action.type) {
+    case "RESOLVE_COMPANION_RECRUITMENT":
+      return {
+        score: action.unitDefId ? 1_150 : 1_000,
+        policy: action.unitDefId ? "map.recruit-companion" : "map.decline-companion",
+      };
     case "POPULATION_ACTION":
       return {
         score: populationScore(observation, action),

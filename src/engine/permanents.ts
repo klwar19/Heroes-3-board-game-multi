@@ -772,8 +772,8 @@ export function lowestInitiativeEnemies(state: GameState, playerId: PlayerId): C
   if (enemies.length === 0) {
     return [];
   }
-  const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects)));
-  return enemies.filter((unit) => effectiveInitiative(unit, state.activeEffects) === lowest);
+  const lowest = Math.min(...enemies.map((unit) => effectiveInitiative(unit, state.activeEffects, state.combat)));
+  return enemies.filter((unit) => effectiveInitiative(unit, state.activeEffects, state.combat) === lowest);
 }
 
 /** Whether `unit` is currently one of `playerId`'s lowest-initiative living enemies. */

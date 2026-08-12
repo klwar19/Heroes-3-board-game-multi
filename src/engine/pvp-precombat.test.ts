@@ -320,6 +320,57 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     expect(state.combat?.prep?.accepted).toEqual([]);
   });
 
+  it("lets the attacked defender play Legion, choose a troop, buy it at the discount, then accept", () => {
+    let state = attack("prep-defender-legion-recruit", (s) => {
+      // Free both bronze cards so the dwelling creates real recruit choices.
+      s.players.p2.army = s.players.p2.army.filter(
+        (unit) => unit.unitDefId !== "necropolis.skeletons" && unit.unitDefId !== "necropolis.zombies"
+      );
+      s.players.p2.hand = ["artifact.legs_of_legion"];
+    });
+    state = applyOk(state, {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: "town_p2",
+      buildingId: "necropolis.dwelling_bronze"
+    });
+
+    const legion = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.legs_of_legion" &&
+        legal.action.optionIndex === 0
+    );
+    expect(legion, "the attacked defender can play Legion before accepting").toBeTruthy();
+    state = applyOk(state, legion!.action);
+    expect(state.adventure?.pendingVisit, "Legion should open a troop-target choice").toBeTruthy();
+
+    const skeletonTarget = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Recruit Skeletons/i.test(legal.label)
+    );
+    expect(skeletonTarget, "Legion opens its troop-target choice during prep").toBeTruthy();
+    state = applyOk(state, skeletonTarget!.action);
+    expect(state.combat?.prep?.accepted).toEqual([]);
+    expect(state.phase).toBe("combat-setup");
+
+    const recruit = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "POPULATION_ACTION" &&
+        legal.action.purchases.some(
+          (purchase) => purchase.kind === "recruit" && purchase.unitDefId === "necropolis.skeletons"
+        )
+    );
+    expect(recruit, "the discounted troop can still be bought before accepting").toBeTruthy();
+    const goldBeforeRecruit = state.players.p2.resources.gold;
+    state = applyOk(state, recruit!.action);
+    expect(state.players.p2.army.some((unit) => unit.unitDefId === "necropolis.skeletons")).toBe(true);
+    // Legs of Legion discounts 4 gold, which fully covers the Skeletons' price.
+    expect(state.players.p2.resources.gold).toBe(goldBeforeRecruit);
+
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    expect(state.combat?.prep?.accepted).toContain("p2");
+  });
+
   it("lets either side Retreat straight out of the prep window (and closes prep)", () => {
     const fromDefender = applyAction(attack("prep-retreat-d"), { type: "RETREAT_FROM_COMBAT", playerId: "p2" });
     expect(fromDefender.errors).toEqual([]);
@@ -368,6 +419,22 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     expect(skeletons?.transforms?.some((t) => t.name === "Legion of Skeletons")).toBe(true);
     // Preparing is not accepting — the window stays open.
     expect(after.combat?.prep?.accepted).toEqual([]);
+  });
+
+  it("keeps the preparation phase open when the defender puts a permanent into play", () => {
+    const state = attack("prep-defender-permanent", (s) => {
+      s.players.p2.hand = ["war_machine.first_aid_tent"];
+    });
+    const play = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "war_machine.first_aid_tent"
+    );
+    expect(play, "the defender can put a permanent into play before accepting").toBeTruthy();
+
+    const after = applyOk(state, play!.action);
+    expect(after.phase).toBe("combat-setup");
+    expect(after.combat?.prep?.accepted).toEqual([]);
+    expect(after.players.p2.permanents).toContain("war_machine.first_aid_tent");
+    expect(offersAccept(after, "p2")).toBe(true);
   });
 
   it("withholds a map-movement Spell (Town Portal) in prep, but still offers real prep cards", () => {

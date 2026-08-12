@@ -20,6 +20,17 @@ Build the current proofs with:
 node scripts/build-anime-cards.mjs
 ```
 
+Monster Girl Quest uses source-verified, fail-closed production contracts rather
+than proof placeholders:
+
+```sh
+node scripts/build-mgq-unit-cards.mjs --check-contract
+node scripts/build-mgq-art.mjs --check-contract
+```
+
+See `docs/mgq-art.md`. Approved masters go only at the paths printed by each
+script's `--list-masters`; the compositors will not invent a missing image.
+
 The current Fuyuki and Azure Breeze cards are visual proofs only. Fuyuki uses a
 violet nocturne frame with a left stat rail. Azure Breeze deliberately follows
 the original board game's unit-card layout: title bar, four stacked left stats,

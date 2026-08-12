@@ -6063,6 +6063,264 @@ button.hbBanner {
   max-width: 15cqw;
 }
 
+/* The actual Little Busters hero piece on the combat grid. It is a compact
+   physical card, not the raw portrait and not the Hero Board/inspector UI. */
+.battlefieldHeroUnitFace {
+  container-type: inline-size;
+  position: relative;
+  display: grid;
+  grid-template-rows: 12% 72% 16%;
+  overflow: hidden;
+  border: 2px solid #d9b866;
+  border-radius: 5px;
+  color: #fff3cf;
+  background: #100a0d;
+  box-shadow:
+    inset 0 0 0 1px #4b2c19,
+    inset 0 0 12px rgb(0 0 0 / 82%);
+  font-family: Georgia, "Times New Roman", serif;
+  text-shadow: 0 1px 2px #000;
+}
+
+.battlefieldHeroUnitMain {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 23% 77%;
+  min-height: 0;
+  overflow: hidden;
+  border-bottom: 1px solid #d9b866;
+}
+
+.battlefieldHeroUnitFace::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: 5;
+  border: 1px solid rgb(255 229 153 / 55%);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.battlefieldHeroUnitFace > header {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0 8cqw;
+  border-bottom: 1px solid #d9b866;
+  background: linear-gradient(180deg, #74304d, #391526);
+}
+
+.battlefieldHeroUnitFace > header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #ffe798;
+  font-size: 8.5cqw;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battlefieldHeroUnitFace > header span {
+  max-width: 48%;
+  overflow: hidden;
+  margin-left: 4cqw;
+  color: #e5cfa7;
+  font: 800 4.2cqw/1 Arial, sans-serif;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battlefieldHeroUnitArt {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 74%, rgb(207 86 132 / 24%), transparent 48%),
+    linear-gradient(180deg, #25202d, #09080c);
+}
+
+.battlefieldHeroUnitArt > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 5px 5px rgb(0 0 0 / 72%));
+}
+
+.battlefieldHeroTypeBadge {
+  position: absolute;
+  top: 3cqw;
+  right: 4cqw;
+  z-index: 2;
+  padding: 2cqw 4cqw;
+  border: 1px solid rgb(255 226 137 / 84%);
+  border-radius: 999px;
+  background: rgb(19 11 14 / 90%);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 66%);
+  color: #ffe6a0;
+  font: 900 3.8cqw/1 Arial, sans-serif;
+  letter-spacing: 0.08em;
+}
+
+.battlefieldHeroTypeBadge.ranged {
+  border-color: rgb(131 210 238 / 90%);
+  color: #bfeeff;
+}
+
+.battlefieldHeroLevel,
+.battlefieldHeroGrade {
+  position: absolute;
+  top: 4cqw;
+  z-index: 3;
+  border: 1px solid rgb(255 226 137 / 78%);
+  background: rgb(19 11 14 / 90%);
+  box-shadow: 0 2px 4px rgb(0 0 0 / 55%);
+}
+
+.battlefieldHeroLevel {
+  left: 4cqw;
+  padding: 2cqw 4cqw;
+  border-radius: 999px;
+  color: #ffe38e;
+  font: 900 7cqw/1 Arial, sans-serif;
+}
+
+.battlefieldHeroGrade {
+  right: 4cqw;
+  display: flex;
+  max-width: 43cqw;
+  align-items: center;
+  gap: 2cqw;
+  padding: 1.5cqw 3cqw;
+  border-radius: 4px;
+}
+
+.battlefieldHeroGrade img {
+  width: 10cqw;
+  height: 10cqw;
+  object-fit: contain;
+}
+
+.battlefieldHeroGrade b {
+  overflow: hidden;
+  color: #f7df9d;
+  font: 800 4.5cqw/1 Arial, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battlefieldHeroStats {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 1.5cqw;
+  padding: 3cqw 2cqw;
+  border-right: 1px solid #d9b866;
+  background: linear-gradient(180deg, #3d2817, #21140d);
+}
+
+.battlefieldHeroStats span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6cqw;
+  border: 1px solid rgb(226 192 104 / 78%);
+  border-radius: 3px;
+  background: rgb(18 11 10 / 91%);
+}
+
+.battlefieldHeroStats small {
+  color: #d8c9aa;
+  font: 800 3cqw/1 Arial, sans-serif;
+}
+
+.battlefieldHeroStats b {
+  color: #fff0b3;
+  font: 900 7cqw/1 Arial, sans-serif;
+}
+
+.battlefieldHeroUnitFace > footer {
+  z-index: 2;
+  display: grid;
+  align-content: center;
+  gap: 0.7cqw;
+  min-width: 0;
+  padding: 1.4cqw 7cqw;
+  border-top: 1px solid #d9b866;
+  background: linear-gradient(180deg, #442516, #21120d);
+}
+
+.battlefieldHeroUnitFace > footer strong,
+.battlefieldHeroUnitFace > footer span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.battlefieldHeroUnitFace > footer strong {
+  color: #ffe38e;
+  font-size: 5.2cqw;
+  line-height: 1;
+}
+
+.battlefieldHeroUnitFace > footer span {
+  color: #cdbd9f;
+  font: 800 2.8cqw/1 Arial, sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.heroBattleCardPiece .boardCardHud {
+  top: 18%;
+}
+
+.commanderFormationBanner {
+  position: relative;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 0 auto 8px;
+  padding: 8px 12px;
+  border: 1px solid #e5bd63;
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgb(78 50 19 / 97%), rgb(30 20 11 / 97%));
+  box-shadow: 0 5px 18px rgb(0 0 0 / 55%);
+  color: #f3e2bd;
+  font-size: 12px;
+}
+
+.commanderFormationBanner span {
+  display: grid;
+  gap: 2px;
+}
+
+.commanderFormationBanner b {
+  color: #ffe18b;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+}
+
+button.hbBattlefieldHeroCardButton {
+  display: block;
+  margin: 1.2cqw 0 0 auto;
+  padding: 0.9cqw 1.6cqw;
+  border: 0.22cqw solid rgb(244 215 116 / 78%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7b4661, #3b2131);
+  color: #fff0bd;
+  font: 800 1.9cqw/1.2 Arial, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 /* Card-art windows: a fixed crop over the scanned card recovers the art. */
 .hbArt {
   position: relative;
@@ -8352,6 +8610,630 @@ button.hbSlot:disabled {
   border-radius: 12px;
   background: var(--ink);
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* Little Busters battlefield hero card — a real self-scaling board-game frame,
+   using the same licensed border/leather materials as native specialty cards. */
+.hbcWrap {
+  container-type: inline-size;
+  width: min(340px, 42vw);
+  aspect-ratio: 5 / 8;
+  align-self: flex-start;
+  overflow: hidden;
+  background: #050403;
+}
+
+.hbc {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 5.5cqw;
+  display: grid;
+  grid-template-rows: 10cqw 64cqw 26cqw 33cqw 16cqw;
+  color: #f8efd9;
+  background:
+    radial-gradient(circle at 50% 28%, rgb(195 79 121 / 18%), transparent 42%),
+    #050403;
+  font-family: Georgia, "Times New Roman", serif;
+  text-shadow: 0 0.35cqw 0.7cqw #000;
+}
+
+.hbc::before {
+  content: "";
+  position: absolute;
+  inset: 3.8cqw;
+  z-index: 5;
+  border: 11cqw solid transparent;
+  border-image: var(--hbc-border) 165 / 11cqw / 0;
+  pointer-events: none;
+}
+
+.hbcHeader {
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+  padding: 1.2cqw 3.5cqw;
+  border: 0.55cqw solid #b99759;
+  border-bottom: 0;
+  background: linear-gradient(180deg, #5d4025, #302010);
+}
+
+.hbcHeader strong {
+  overflow: hidden;
+  color: #f4d774;
+  font-size: 5cqw;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.hbcHeader span {
+  color: #dac8a4;
+  font-size: 2.5cqw;
+  text-align: right;
+}
+
+.hbcArt {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 0.55cqw solid #b99759;
+  background:
+    radial-gradient(ellipse at 50% 64%, rgb(195 79 121 / 22%), transparent 45%),
+    linear-gradient(180deg, #15101a, #070608);
+}
+
+.hbcArt > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 1cqw 1.3cqw rgb(0 0 0 / 75%));
+}
+
+.hbcLevel {
+  position: absolute;
+  top: 1.6cqw;
+  left: 50%;
+  right: auto;
+  padding: 0.8cqw 1.8cqw;
+  border: 0.4cqw solid #f4d774;
+  border-radius: 999px;
+  background: rgb(13 8 8 / 88%);
+  color: #f4d774;
+  font-size: 2.35cqw;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  transform: translateX(-50%);
+}
+
+.hbcStats {
+  position: absolute;
+  inset: 9cqw 2cqw 2cqw;
+  display: grid;
+  grid-template-columns: 18cqw 18cqw;
+  grid-template-rows: repeat(2, min-content);
+  align-content: center;
+  justify-content: space-between;
+  gap: 2cqw 0;
+  pointer-events: none;
+}
+
+.hbcStats span {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.8cqw;
+  padding: 1cqw 1.2cqw;
+  border: 0.35cqw solid #d4b869;
+  border-radius: 1.2cqw;
+  background: rgb(20 12 9 / 90%);
+  box-shadow: inset 0 0 2cqw rgb(0 0 0 / 65%);
+}
+
+.hbcStats small {
+  color: #dbcaa3;
+  font-family: Arial, sans-serif;
+  font-size: 1.85cqw;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.hbcStats b {
+  color: #fff0b2;
+  font-size: 3.8cqw;
+  line-height: 1;
+}
+
+.hbcRules {
+  min-height: 0;
+  padding: 2cqw 3.5cqw;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1.2cqw;
+  overflow: hidden;
+  border-inline: 0.55cqw solid #b99759;
+  background-image:
+    linear-gradient(rgb(48 28 16 / 15%), rgb(22 13 8 / 25%)),
+    var(--hbc-leather);
+  background-size: cover;
+}
+
+.hbcPassive {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1cqw;
+  text-align: left;
+}
+
+.hbcPassive b,
+.hbcSpecialty b {
+  color: #f4d774;
+  font-size: 2.7cqw;
+}
+
+.hbcPassive span {
+  color: #d9cdb5;
+  font-size: 2cqw;
+  line-height: 1.15;
+}
+
+.hbcSpecialty {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 9cqw minmax(0, 1fr);
+  align-items: center;
+  gap: 1.4cqw;
+  padding: 1cqw 1.4cqw;
+  border: 0.35cqw solid rgb(244 215 116 / 65%);
+  border-radius: 1.4cqw;
+  background: rgb(15 9 6 / 62%);
+}
+
+.hbcSpecialty > img {
+  width: 9cqw;
+  height: 9cqw;
+  object-fit: contain;
+  filter: drop-shadow(0 0.5cqw 1cqw #000);
+}
+
+.hbcSpecialty div {
+  min-width: 0;
+}
+
+.hbcSpecialty b,
+.hbcSpecialty small {
+  display: block;
+}
+
+.hbcSpecialty small {
+  margin-top: 0.35cqw;
+  color: #f3ead5;
+  font-size: 1.85cqw;
+  line-height: 1.12;
+}
+
+.hbcProgress {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5cqw;
+  padding: 2cqw 3.5cqw;
+  border-inline: 0.55cqw solid #b99759;
+  background-image:
+    linear-gradient(rgb(28 15 12 / 36%), rgb(20 10 8 / 48%)),
+    var(--hbc-leather);
+  background-size: cover;
+}
+
+.hbcProgressCard {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 0.5cqw;
+  padding: 1.2cqw 1.5cqw;
+  border: 0.3cqw solid rgb(212 184 105 / 68%);
+  border-radius: 1.1cqw;
+  background: linear-gradient(150deg, rgb(28 18 13 / 92%), rgb(12 8 7 / 88%));
+  box-shadow: inset 0 0 1.5cqw rgb(0 0 0 / 55%);
+}
+
+.hbcProgressCard header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8cqw;
+}
+
+.hbcProgressCard header small,
+.hbcProgressCard > span {
+  color: #cdbd9f;
+  font: 700 1.55cqw/1.1 Arial, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.hbcProgressCard header b {
+  overflow: hidden;
+  color: #f4d774;
+  font-size: 2.65cqw;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbcProgressCard > strong {
+  color: #fff0b2;
+  font: 800 1.95cqw/1.15 Arial, sans-serif;
+}
+
+.hbcProgressCard > em {
+  align-self: end;
+  color: #e8d8c2;
+  font: normal 1.65cqw/1.15 Arial, sans-serif;
+}
+
+.hbcFooter {
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2cqw;
+  padding: 1.2cqw 3.5cqw;
+  border: 0.55cqw solid #b99759;
+  background: linear-gradient(180deg, #5a2238, #291321);
+}
+
+.hbcGrade {
+  display: flex;
+  align-items: center;
+  gap: 1.5cqw;
+}
+
+.hbcGrade img {
+  width: 8.5cqw;
+  height: 8.5cqw;
+  object-fit: contain;
+  filter: drop-shadow(0 0.5cqw 1cqw #000);
+}
+
+.hbcGrade span,
+.hbcGrade small {
+  display: block;
+}
+
+.hbcGrade b {
+  color: #f4d774;
+  font-size: 2.35cqw;
+}
+
+.hbcGrade small,
+.hbcReturn {
+  color: #ead8c0;
+  font-size: 1.9cqw;
+}
+
+.hbcReturn {
+  max-width: 34cqw;
+  text-align: right;
+}
+
+/* Physical battlefield hero card. The portrait owns the majority of a normal
+   5:7 card and has NO stat, level or grade overlays covering the body. */
+.hbcWrap {
+  width: min(360px, 44vw);
+  aspect-ratio: 5 / 7;
+}
+
+.hbc.hbcPhysical {
+  grid-template-rows: 9% 66% 20% 5%;
+  padding: 4.5cqw;
+}
+
+.hbcPhysical .hbcHeader {
+  min-width: 0;
+  padding: 0.8cqw 3.2cqw;
+}
+
+.hbcHeaderMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1.1cqw;
+}
+
+.hbcHeaderMeta img {
+  flex: none;
+  width: 6cqw;
+  height: 6cqw;
+  object-fit: contain;
+}
+
+.hbcHeaderMeta span {
+  overflow: hidden;
+  font: 700 1.95cqw/1.05 Arial, sans-serif;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hbcPhysicalMain {
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 20% 80%;
+  min-height: 0;
+  overflow: hidden;
+  border-inline: 0.55cqw solid #b99759;
+  border-bottom: 0.55cqw solid #b99759;
+  background: #0f0a0d;
+}
+
+.hbcPhysical .hbcArt {
+  min-height: 0;
+  border: 0;
+}
+
+.hbcPhysical .hbcArt > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.hbcCombatType {
+  position: absolute;
+  top: 2.4cqw;
+  right: 2.8cqw;
+  z-index: 2;
+  padding: 1.2cqw 2.4cqw;
+  border: 0.28cqw solid rgb(232 202 121 / 88%);
+  border-radius: 999px;
+  background: rgb(18 10 12 / 88%);
+  box-shadow: 0 0.7cqw 1.5cqw rgb(0 0 0 / 55%);
+  color: #ffe8a7;
+  font: 900 1.8cqw/1 Arial, sans-serif;
+  letter-spacing: 0.1em;
+}
+
+.hbcCombatType.ranged {
+  border-color: rgb(119 203 234 / 90%);
+  color: #bcecff;
+}
+
+.hbcPhysicalStats {
+  z-index: 1;
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 1.2cqw;
+  padding: 2.2cqw 1.4cqw;
+  border-right: 0.55cqw solid #b99759;
+  background-image:
+    linear-gradient(rgb(48 28 16 / 18%), rgb(22 13 8 / 30%)),
+    var(--hbc-leather);
+  background-size: cover;
+}
+
+.hbcPhysicalStats span {
+  display: grid;
+  place-items: center;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5cqw;
+  border: 0.3cqw solid rgb(218 186 104 / 74%);
+  border-radius: 1cqw;
+  background: rgb(20 12 9 / 88%);
+}
+
+.hbcPhysicalStats small {
+  color: #d9c9a8;
+  font: 800 1.8cqw/1 Arial, sans-serif;
+}
+
+.hbcPhysicalStats b {
+  color: #fff0b2;
+  font-size: 4.5cqw;
+  line-height: 1;
+}
+
+.hbcPhysicalRules {
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 0;
+  padding: 1.6cqw 3.5cqw;
+  overflow: hidden;
+  border-inline: 0.55cqw solid #b99759;
+  background-image:
+    linear-gradient(rgb(38 21 14 / 20%), rgb(20 10 8 / 38%)),
+    var(--hbc-leather);
+  background-size: cover;
+}
+
+.hbcPhysicalRules .hbcPassive {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: center;
+  gap: 0.8cqw;
+  min-width: 0;
+  padding: 1cqw 1.4cqw;
+  border: 0.3cqw solid rgb(212 184 105 / 54%);
+  border-radius: 1.2cqw;
+  background: rgb(17 10 7 / 62%);
+}
+
+.hbcPhysicalRules .hbcPassive small {
+  color: #c8b793;
+  font: 800 1.55cqw/1 Arial, sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.hbcPhysicalRules .hbcPassive b {
+  color: #ffe7a2;
+  font-size: 2.6cqw;
+}
+
+.hbcPhysicalRules .hbcPassive span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #f1e6d1;
+  font-size: 1.75cqw;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.hbcPhysicalFooter {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  border: 0.55cqw solid #b99759;
+  background: linear-gradient(180deg, #5a2238, #291321);
+  color: #ead8c0;
+  font: 800 1.55cqw/1 Arial, sans-serif;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Hero Board progression information — deliberately a panel, never a card. */
+.hbiWrap {
+  width: min(720px, 86vw);
+  max-height: 84vh;
+  overflow: auto;
+  border: 2px solid #cba65d;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 20% 0%, rgb(195 79 121 / 24%), transparent 34%),
+    linear-gradient(145deg, #201018, #0d090b 58%, #24150e);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 72%), inset 0 0 0 1px rgb(255 232 164 / 22%);
+  color: #f5ead4;
+  font-family: Arial, sans-serif;
+}
+
+.hbiHeader {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 104px;
+  padding: 12px 18px;
+  border-bottom: 1px solid rgb(220 183 100 / 55%);
+  background: linear-gradient(90deg, rgb(91 36 60 / 92%), rgb(44 23 31 / 92%));
+}
+
+.hbiHeader > img {
+  width: 82px;
+  height: 96px;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.hbiHeader > span {
+  display: grid;
+  gap: 3px;
+}
+
+.hbiHeader small {
+  color: #d9bd83;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+}
+
+.hbiHeader strong {
+  color: #ffe29a;
+  font: 700 25px/1 Georgia, "Times New Roman", serif;
+}
+
+.hbiHeader em {
+  color: #dbcdb5;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.hbiHeader > div {
+  display: grid;
+  grid-template-columns: 42px auto;
+  align-items: center;
+  gap: 2px 8px;
+  text-align: right;
+}
+
+.hbiHeader > div img {
+  grid-row: 1 / 3;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.hbiHeader > div b,
+.hbiHeader > div small {
+  display: block;
+}
+
+.hbiCurrentStats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 12px 18px;
+}
+
+.hbiCurrentStats span {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgb(205 169 88 / 48%);
+  border-radius: 8px;
+  background: rgb(14 10 9 / 72%);
+}
+
+.hbiCurrentStats small { color: #cdbb99; font-size: 10px; font-weight: 800; }
+.hbiCurrentStats b { color: #ffe49a; font: 800 22px/1 Georgia, serif; }
+
+.hbiAbilities,
+.hbiProgress {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 18px 12px;
+}
+
+.hbiAbilities article,
+.hbiProgress article {
+  position: relative;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(205 169 88 / 44%);
+  border-radius: 9px;
+  background: rgb(23 14 12 / 78%);
+}
+
+.hbiAbilities article { padding-left: 58px; }
+.hbiAbilities article:first-child { padding-left: 14px; }
+.hbiAbilities img { position: absolute; left: 12px; top: 30px; width: 36px; height: 36px; object-fit: contain; }
+.hbiAbilities small,
+.hbiProgress small { display: block; color: #caae78; font-size: 9px; font-weight: 800; letter-spacing: 0.07em; }
+.hbiAbilities b,
+.hbiProgress b { display: block; margin-top: 3px; color: #ffe19a; font: 700 15px/1.1 Georgia, serif; }
+.hbiAbilities p { margin: 6px 0 0; color: #e4d8c4; font-size: 11px; line-height: 1.3; }
+.hbiProgress article { display: grid; gap: 7px; }
+.hbiProgress header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hbiProgress strong { color: #fff0b5; font-size: 14px; }
+.hbiProgress em { color: #d9cbb5; font-size: 11px; font-style: normal; }
+.hbiWrap > footer { padding: 10px 18px 13px; border-top: 1px solid rgb(205 169 88 / 34%); color: #d9c9ae; font-size: 11px; text-align: center; }
+
+@media (max-width: 680px) {
+  .hbiHeader { grid-template-columns: 64px minmax(0, 1fr); }
+  .hbiHeader > img { width: 60px; height: 80px; }
+  .hbiHeader > div { grid-column: 1 / -1; justify-content: center; text-align: left; }
+  .hbiAbilities,
+  .hbiProgress { grid-template-columns: 1fr; }
 }
 
 /* Art-less specialty zoom: the live SpecialtyCard fills the same footprint as a
@@ -12851,6 +13733,411 @@ span.recruitThumb {
     top: -28px;
     width: 15px;
     height: 24px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Monster Girl Quest: Paradox town controls
+ * ------------------------------------------------------------------------- */
+
+.mgqGoldContracts {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0;
+  padding: 9px;
+  border: 1px solid rgb(230 160 215 / 48%);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgb(73 24 62 / 90%), rgb(31 17 47 / 92%));
+  color: #f8dff2;
+}
+
+.mgqGoldSetupPrompt {
+  width: min(960px, calc(100vw - 2rem));
+  max-height: min(82vh, 760px);
+  overflow: auto;
+}
+
+.mgqGoldIdentityChoices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 0.55rem;
+}
+
+.mgqGoldIdentity {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid rgba(224, 184, 86, 0.55);
+  border-radius: 8px;
+  background: rgba(22, 13, 38, 0.96);
+  color: #f7e8b4;
+  cursor: pointer;
+}
+
+.mgqGoldIdentity:hover:not(:disabled),
+.mgqGoldIdentity.selected {
+  border-color: #f4cf68;
+  box-shadow: 0 0 0 1px rgba(244, 207, 104, 0.35);
+}
+
+.mgqGoldIdentity > svg {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  padding: 2px;
+  border-radius: 999px;
+  background: #4f2d6e;
+}
+
+.mgqGoldIdentity img {
+  width: 72px;
+  aspect-ratio: 2 / 3;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.mgqGoldContracts > header,
+.mgqGoldContracts > header > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mgqGoldContracts > header > span {
+  justify-content: flex-start;
+  color: #ffd88b;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.mgqContractSlots {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mgqContractSlot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1px 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px;
+  border: 1px solid rgb(255 216 139 / 30%);
+  border-radius: 6px;
+  background: rgb(13 8 23 / 48%);
+}
+
+.mgqContractSlot > span,
+.mgqContractSlot > svg {
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 216 139 / 16%);
+  color: #ffd88b;
+  font-size: 0.65rem;
+}
+
+.mgqContractSlot b,
+.mgqContractSlot small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mgqContractSlot small,
+.mgqContractNote {
+  color: #d9bcd2;
+  font-size: 0.67rem;
+}
+
+.mgqContractSlot.open {
+  border-style: dashed;
+  opacity: 0.78;
+}
+
+.mgqJobControl {
+  display: grid;
+  gap: 5px;
+  margin: 5px 0 8px;
+  padding: 6px 7px;
+  border: 1px solid rgb(214 132 195 / 35%);
+  border-radius: 6px;
+  background: rgb(73 24 62 / 42%);
+}
+
+.mgqJobCurrent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mgqJobCurrent > span,
+.mgqJobCurrent > small {
+  color: #d9a9cd;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.mgqJobCurrent > b {
+  color: #ffe3a6;
+}
+
+.mgqJobCurrent > em {
+  margin-left: auto;
+  color: #d8c8d7;
+  font-size: 0.66rem;
+  font-style: normal;
+}
+
+.mgqJobChoices {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.mgqJobChoices button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 1px solid rgb(220 174 211 / 38%);
+  border-radius: 999px;
+  background: #251426;
+  color: #e8d7e5;
+  font-size: 0.66rem;
+}
+
+.mgqJobChoices button img,
+.mgqSpiritChoices button > span > img {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.mgqMechanicIcon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.mgqJobChoices button.selected {
+  border-color: #ffd37f;
+  background: #7b3b68;
+  color: #fff1c8;
+  box-shadow: 0 0 7px rgb(255 205 114 / 35%);
+}
+
+.mgqJobChoices button:disabled:not(.selected) {
+  opacity: 0.42;
+}
+
+.mgqJobWhere {
+  color: #c7a9c0;
+  font-size: 0.64rem;
+}
+
+.mgqSpiritPanel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgb(216 158 225 / 40%);
+  border-radius: 7px;
+  background: rgb(35 16 47 / 64%);
+}
+
+.mgqSpiritHeading {
+  display: grid;
+  gap: 2px;
+}
+
+.mgqSpiritHeading b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffe3a6;
+}
+
+.mgqSpiritHeading small,
+.mgqSpiritTiming {
+  color: #d1b9d2;
+}
+
+.mgqSpiritChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mgqSpiritChoices button {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  text-align: left;
+  border: 1px solid rgb(221 173 226 / 32%);
+  border-radius: 6px;
+  background: rgb(23 11 32 / 72%);
+  color: #f2e4f0;
+}
+
+.mgqSpiritChoices button > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+
+.mgqSpiritChoices button small {
+  color: #cdb6ce;
+}
+
+.mgqSpiritChoices button.selected {
+  border-color: #ffe094;
+  background: linear-gradient(135deg, #75405f, #493054);
+  box-shadow: inset 0 0 12px rgb(255 217 139 / 16%);
+}
+
+.mgqSpiritChoices button.locked {
+  filter: grayscale(0.8);
+  opacity: 0.5;
+}
+
+.mgqCompanionPrompt {
+  width: min(760px, calc(100vw - 24px));
+}
+
+.mgqCompanionPrompt > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 10px;
+}
+
+.mgqPromptIcon {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgb(255 226 163 / 48%);
+}
+
+.mgqCompanionPrompt > header > div {
+  display: grid;
+}
+
+.mgqCompanionPrompt > header small,
+.mgqCompanionPrompt > header span {
+  color: #d4b9cf;
+}
+
+.mgqCompanionOffers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.mgqCompanionOffer {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgb(226 173 218 / 38%);
+  border-radius: 7px;
+  background: rgb(44 20 46 / 80%);
+}
+
+.mgqCompanionOffer > img,
+.mgqCompanionFallback {
+  grid-row: 1 / span 2;
+  width: 68px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgb(255 226 163 / 40%);
+}
+
+.mgqCompanionFallback {
+  background: linear-gradient(135deg, #815b7c, #26162e);
+}
+
+.mgqCompanionOffer > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 5px;
+  align-content: start;
+}
+
+.mgqCompanionOffer > div > b,
+.mgqCompanionOffer > div > small,
+.mgqCompanionOffer > div > strong {
+  grid-column: 2;
+}
+
+.mgqCompanionCost {
+  margin-top: 4px;
+  color: #ffe099;
+  font-size: 0.74rem;
+}
+
+.mgqCompanionOffer > button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.mgqCompanionOffer.unaffordable {
+  opacity: 0.68;
+}
+
+.mgqCompanionDecline {
+  justify-self: end;
+}
+
+.tokenChipStatus {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 2px;
+  border: 1px solid #fff0b0;
+  border-radius: 999px;
+  background: #8e315f;
+  color: #fff7d7;
+  font-size: 0.51rem;
+  line-height: 1;
+  text-shadow: 0 1px 1px #000;
+}
+
+@media (max-width: 620px) {
+  .mgqContractSlots,
+  .mgqSpiritChoices {
+    grid-template-columns: 1fr;
+  }
+
+  .mgqJobChoices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mgqCompanionPrompt > header {
+    display: grid;
+    align-items: start;
   }
 }
 
@@ -24358,6 +25645,81 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
     inset 0 0 0 0.2cqw rgba(240, 196, 106, 0.55),
     inset 0.12cqw 0 0 rgb(0 0 0 / 45%),
     inset -0.12cqw 0 0 rgb(0 0 0 / 45%);
+}
+
+/* The Little Busters scene carries important hilltop buildings. The physical
+   town window is much wider than the source painting, so anchor both the empty
+   base and every inserted strip to the same TOP edge instead of center-cropping
+   away the upper campus. */
+.tbTownArtTopAligned {
+  object-position: center top;
+}
+
+/* Little Busters follows the physical Castle-board construction language:
+   the EMPTY panorama remains visible beneath seven printed name/cost plaques;
+   construction inserts a full-color illustrated tile into that exact slot. */
+.tbBoard.faction-little_busters .tbEmptyBar {
+  background: transparent;
+  box-shadow: none;
+}
+
+.tbBoard.faction-little_busters .tbBar.built {
+  z-index: 2;
+  box-shadow: none;
+}
+
+/* These seven inserts are contiguous pieces of one perspective painting. Do
+   not style them as seven floating decorative cards: no edge shadow, scaling
+   reveal, badge or seam. The buildings themselves are the built-state cue. */
+.tbBoard.faction-little_busters .tbFill,
+.tbBoard.faction-little_busters .tbLittleBustersPhysicalTile {
+  box-shadow: none;
+  animation: none;
+}
+
+.tbBoard.faction-little_busters .tbBar.built .tbBarTileArt,
+.tbBoard.faction-little_busters .tbBar.built .tbPanoramaSlice {
+  filter: saturate(1.08) brightness(1.04) contrast(1.04);
+}
+
+.tbLittleBustersPhysicalTile {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.tbLittleBustersPhysicalTile .tbTilePlaque {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  z-index: 2;
+  transform: translateX(-50%);
+  white-space: normal;
+}
+
+.tbBoard.faction-little_busters .tbLittleBustersPhysicalTile .tbTilePlaque {
+  display: none;
+}
+
+.tbSharedMissing {
+  position: absolute;
+  left: 50%;
+  top: 4%;
+  z-index: 2;
+  width: 88%;
+  transform: translateX(-50%);
+  padding: 0.35cqw 0.5cqw;
+  border: 1px solid rgb(238 190 87 / 82%);
+  border-radius: 0.45cqw;
+  background: rgb(25 17 7 / 90%);
+  color: #ffe5a0;
+  font-size: clamp(6px, 0.78cqw, 9px);
+  font-weight: 800;
+  text-align: center;
+}
+
+.tbBoard.faction-little_busters .tbUnbuiltPlaque {
+  display: none;
 }
 
 .tbPlate {

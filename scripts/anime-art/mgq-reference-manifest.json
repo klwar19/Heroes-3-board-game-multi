@@ -1,0 +1,388 @@
+{
+  "schemaVersion": 1,
+  "franchise": "Monster Girl Quest! Paradox RPG",
+  "sourceIndex": "https://mgq.miraheze.org/wiki/Companions",
+  "provenance": "Canonical in-game standing art mirrored by the fan-maintained MGQ wiki. The mirror is not an official publisher site.",
+  "usagePolicy": "Use the listed standing art only to verify identity, silhouette, palette, costume, and species anatomy. Do not use gallery fan art, AI derivatives, booru/Pinterest mirrors, or files credited as fan drawings.",
+  "references": [
+    {
+      "id": "pochi",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Dog_Girl/Pochi",
+      "artistCredits": ["Uminoyama"],
+      "images": [{ "file": "80_dog_st01.png", "url": "https://static.wikitide.net/mgqwiki/6/66/80_dog_st01.png", "cache": "refs/mgq/pochi.png", "form": "canonical standing art" }],
+      "visualNotes": "Chibi dog girl; short violet bob and curled ahoge, violet ears and tail, black top, pink skirt, sandals.",
+      "safety": "Keep the childlike/chibi design fully clothed, non-sexual, and in an adventure-combat pose."
+    },
+    {
+      "id": "shesta",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Shesta/Companion",
+      "artistCredits": ["Xelvy"],
+      "images": [{ "file": "3194_0928.png", "url": "https://static.wikitide.net/mgqwiki/5/5b/3194_0928.png", "cache": "refs/mgq/shesta.png", "form": "canonical standing art" }],
+      "visualNotes": "Long ash-olive hair, royal-blue layered Victorian gown, blue crystalline ear cluster, suspended skeletal insect appendage frame.",
+      "safety": "Preserve the floating insect silhouette; avoid erotic emphasis."
+    },
+    {
+      "id": "gigi",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Catfish_Girl/Gigi",
+      "artistCredits": ["Uminoyama"],
+      "images": [{ "file": "80_namazu_st01.png", "url": "https://static.wikitide.net/mgqwiki/2/21/80_namazu_st01.png", "cache": "refs/mgq/gigi.png", "form": "canonical standing art" }],
+      "visualNotes": "Long red hair and catfish barbels above a massive dark-maroon catfish lower body with broad fins.",
+      "safety": "Frame as an electric aquatic combatant; use modest card-safe coverage."
+    },
+    {
+      "id": "kitsu",
+      "role": "bronze_companion_duo_member",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Kitsune/Kitsu",
+      "artistCredits": ["Jingai Modoki"],
+      "images": [{ "file": "80_youko_st02.png", "url": "https://static.wikitide.net/mgqwiki/a/a1/80_youko_st02.png", "cache": "refs/mgq/kitsu.png", "form": "canonical standing art" }],
+      "visualNotes": "Silver-white fox ears, pale hair and large white tails; black-magenta ninja outfit and kunai.",
+      "safety": "Use an agile, non-sexual ninja pose."
+    },
+    {
+      "id": "kamuro",
+      "role": "bronze_companion_duo_member",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Two-Tailed_Geisha/Kamuro",
+      "artistCredits": ["Jingai Modoki"],
+      "images": [{ "file": "80_kamuro_st01.png", "url": "https://static.wikitide.net/mgqwiki/5/56/80_kamuro_st01.png", "cache": "refs/mgq/kamuro.png", "form": "canonical standing art" }],
+      "visualNotes": "Dark straight hair and fox ears, two brown tails, red-and-black taoist kimono and small ritual head ornament.",
+      "safety": "Pair with Kitsu without changing either character's canonical palette."
+    },
+    {
+      "id": "fleesia",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Rafflesia_Girl/Fleesia",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_rahure_st01.png", "url": "https://static.wikitide.net/mgqwiki/8/88/80_rahure_st01.png", "cache": "refs/mgq/fleesia.png", "form": "canonical standing art" }],
+      "visualNotes": "Green hair with paired stamen-like antennae, curling green vines, enormous white-and-red mottled rafflesia base.",
+      "safety": "Emphasize botanical control magic rather than anatomy."
+    },
+    {
+      "id": "sofia",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Sister_Lamia/Sofia",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_sisterlamia_st01.png", "url": "https://static.wikitide.net/mgqwiki/0/07/80_sisterlamia_st01.png", "cache": "refs/mgq/sofia.png", "form": "canonical standing art" }],
+      "visualNotes": "Blonde nun in pale-blue and white wimple and robes, with a huge pale-green serpent tail.",
+      "safety": "Keep the holy-healer presentation modest and non-fetishized."
+    },
+    {
+      "id": "miyabi",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Cursed_Doll/Miyabi",
+      "artistCredits": ["UN DO"],
+      "images": [{ "file": "80_doll_st01.png", "url": "https://static.wikitide.net/mgqwiki/f/f5/80_doll_st01.png", "cache": "refs/mgq/miyabi.png", "form": "canonical standing art" }],
+      "visualNotes": "Small porcelain doll, short dark-purple hair and red eyes, violet kimono, spectral purple hair or flame mass.",
+      "safety": "Childlike doll design must remain fully clothed and non-sexual."
+    },
+    {
+      "id": "eater",
+      "role": "bronze_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Eater/Companion",
+      "artistCredits": ["Xelvy"],
+      "images": [{ "file": "80_eater_st01.png", "url": "https://static.wikitide.net/mgqwiki/5/52/80_eater_st01.png", "cache": "refs/mgq/eater.png", "form": "canonical standing art" }],
+      "visualNotes": "Pale gray short-haired apoptosis, torso framed by four fleshy petal jaws, rooted trap-like base.",
+      "safety": "Body-horror is allowed only as non-gory fantasy creature anatomy."
+    },
+    {
+      "id": "hild",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Brynhildr/Hild",
+      "artistCredits": ["Xelvy"],
+      "images": [{ "file": "80_brunhild_st01.png", "url": "https://static.wikitide.net/mgqwiki/e/e1/80_brunhild_st01.png", "cache": "refs/mgq/hild.png", "form": "base-form canonical standing art" }],
+      "visualNotes": "Teal-blonde bob, cyan eyes, magenta insect antennae, white and steel-blue clockwork gunner armor with large circular mechanisms.",
+      "safety": "Use base Hild, not Deus Ex gallery transformations."
+    },
+    {
+      "id": "chrome",
+      "role": "silver_companion_duo_member",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Chrome/Companion",
+      "artistCredits": ["UN DO"],
+      "images": [{ "file": "80_chrom_st01.png", "url": "https://static.wikitide.net/mgqwiki/7/77/80_chrom_st01.png", "cache": "refs/mgq/chrome.png", "form": "canonical standing art" }],
+      "visualNotes": "Petite gray necromancer, black twin tails and pointed ears, red spiral eyes, black nurse cap with red cross, dark uniform and satchel.",
+      "safety": "Keep the small-bodied design fully clothed and non-sexual."
+    },
+    {
+      "id": "frederica",
+      "role": "silver_companion_duo_member",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Frederica/Companion",
+      "artistCredits": ["UN DO"],
+      "images": [
+        { "file": "80_frederika_st01.png", "url": "https://static.wikitide.net/mgqwiki/c/cb/80_frederika_st01.png", "cache": "refs/mgq/frederica.png", "form": "base-form canonical standing art" },
+        { "file": "80_frederika_st31.png", "url": "https://static.wikitide.net/mgqwiki/9/96/80_frederika_st31.png", "cache": "refs/mgq/frederica-mk2.png", "form": "MkII canonical standing art" }
+      ],
+      "visualNotes": "Base form is a huge bandage-wrapped one-eyed zombie; MkII has silver hair, a face mask, navy tactical armor, and huge biomechanical arcs and fist.",
+      "safety": "Use non-gory undead machinery; duo art must include Chrome and Frederica."
+    },
+    {
+      "id": "shizuku",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Oni/Shizuku",
+      "artistCredits": ["Neko Manma"],
+      "images": [{ "file": "80_kooni_st01.png", "url": "https://static.wikitide.net/mgqwiki/8/84/80_kooni_st01.png", "cache": "refs/mgq/shizuku.png", "form": "canonical standing art" }],
+      "visualNotes": "Dark straight hair, paired horns, pink yukata, and enormous iron kanabo clubs.",
+      "safety": "Keep her silhouette focused on the clubs and oni horns."
+    },
+    {
+      "id": "regina",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Devil_Fighter/Regina",
+      "artistCredits": ["Neko Manma"],
+      "images": [{ "file": "80_d_fighter_st01.png", "url": "https://static.wikitide.net/mgqwiki/6/65/80_d_fighter_st01.png", "cache": "refs/mgq/regina.png", "form": "canonical standing art" }],
+      "visualNotes": "Spiky purple hair, dark horns, bat wings and tail, red-black fighter gear, oversized curved sword.",
+      "safety": "Use practical card-safe coverage while preserving the canonical demon-swordswoman silhouette."
+    },
+    {
+      "id": "maiden",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Iron_Maiden/Maiden",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_ironmaiden_st01.png", "url": "https://static.wikitide.net/mgqwiki/6/64/80_ironmaiden_st01.png", "cache": "refs/mgq/maiden.png", "form": "canonical standing art" }],
+      "visualNotes": "Upright riveted dark iron-maiden coffin silhouette with a small solemn face in the upper aperture.",
+      "safety": "No torture imagery, gore, or opened-spike interior."
+    },
+    {
+      "id": "seraphy",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Dagon/Seraphy",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_dagon_st01.png", "url": "https://static.wikitide.net/mgqwiki/2/20/80_dagon_st01.png", "cache": "refs/mgq/seraphy.png", "form": "canonical standing art" }],
+      "visualNotes": "Teal bob-haired upper body rising from a broad red petal-like sea-creature body with white-blue frilled underside.",
+      "safety": "Frame as a non-erotic sea-leech combatant."
+    },
+    {
+      "id": "lisa",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Paintgeist/Lisa",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_gaistvine_st01.png", "url": "https://static.wikitide.net/mgqwiki/2/21/80_gaistvine_st01.png", "cache": "refs/mgq/lisa.png", "form": "canonical standing art" }],
+      "visualNotes": "Blonde pale ghost emerging from an upright framed painting while a dark hooded figure remains inside the frame.",
+      "safety": "Use eerie time-magic staging without sexualizing the crawling pose."
+    },
+    {
+      "id": "tama",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Nekomata/Tama",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_nekomata_st01.png", "url": "https://static.wikitide.net/mgqwiki/0/0f/80_nekomata_st01.png", "cache": "refs/mgq/tama.png", "form": "canonical standing art" }],
+      "visualNotes": "Small white fluffy cat spirit with green eyes, curled tails, and pawlike limbs.",
+      "safety": "Treat as a cute animal brawler, never as erotic furry art."
+    },
+    {
+      "id": "maya",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Miko_Arachne/Maya",
+      "artistCredits": ["Neko Manma"],
+      "images": [{ "file": "80_mikoarachne_st01.png", "url": "https://static.wikitide.net/mgqwiki/d/dd/80_mikoarachne_st01.png", "cache": "refs/mgq/maya.png", "form": "canonical standing art" }],
+      "visualNotes": "Purple-haired shrine-maiden upper body in red and white clothing over black arachnid legs.",
+      "safety": "Keep the miko costume modest and emphasize time-thread magic."
+    },
+    {
+      "id": "matis",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Mantis_Girl/Matis",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_kamakiri_st01.png", "url": "https://static.wikitide.net/mgqwiki/4/48/80_kamakiri_st01.png", "cache": "refs/mgq/matis.png", "form": "canonical standing art" }],
+      "visualNotes": "Green hair and antennae, pale green-white mantis body, huge scythe-like forearms, long insect abdomen.",
+      "safety": "Use the established modest reference treatment and avoid erotic anatomy."
+    },
+    {
+      "id": "ooma",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Elder_Scylla/Ooma",
+      "artistCredits": ["UN DO"],
+      "images": [{ "file": "80_e_scylla_st02.png", "url": "https://static.wikitide.net/mgqwiki/6/67/80_e_scylla_st02.png", "cache": "refs/mgq/ooma.png", "form": "canonical standing art" }],
+      "visualNotes": "Gray-skinned scylla with black-purple hair, toothy grin, yellow head markings, and many black tentacles banded violet.",
+      "safety": "Keep slime and tentacles as non-sexual combat anatomy."
+    },
+    {
+      "id": "jessie",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Mermaid_General/Jessie",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_g_mermaid_st01.png", "url": "https://static.wikitide.net/mgqwiki/c/c1/80_g_mermaid_st01.png", "cache": "refs/mgq/jessie.png", "form": "canonical standing art" }],
+      "visualNotes": "Pale-blue hair, icy aqua finned mermaid body and winglike fins, long spear.",
+      "safety": "Use a commanding spear-general pose with card-safe coverage."
+    },
+    {
+      "id": "aria",
+      "role": "silver_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Forest_Alraune/Aria",
+      "artistCredits": ["Uminoyama"],
+      "images": [{ "file": "80_f_alraune_st01.png", "url": "https://static.wikitide.net/mgqwiki/f/fe/80_f_alraune_st01.png", "cache": "refs/mgq/aria.png", "form": "canonical standing art" }],
+      "visualNotes": "Long red hair, upper body emerging from a bright orange-yellow flower, long green stem and vines.",
+      "safety": "Emphasize forest-spirit fragrance magic rather than anatomy."
+    },
+    {
+      "id": "carmilla",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Carmilla/Companion",
+      "artistCredits": ["Silk"],
+      "images": [{ "file": "80_carmilla_st01.png", "url": "https://static.wikitide.net/mgqwiki/7/78/80_carmilla_st01.png", "cache": "refs/mgq/carmilla.png", "form": "canonical standing art" }],
+      "visualNotes": "Pastel-pink hair, red eyes, black hornlike bows, and an enormous floor-length black bat-wing mantle.",
+      "safety": "Use a regal vampire combat pose with modest coverage."
+    },
+    {
+      "id": "giga",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Kyoryuu/Giga",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_kyoryuu_st01.png", "url": "https://static.wikitide.net/mgqwiki/2/29/80_kyoryuu_st01.png", "cache": "refs/mgq/giga.png", "form": "canonical standing art" }],
+      "visualNotes": "Colossal gray stone-scaled dragon-gigas with a long head crest, red eyes, and a huge folded body.",
+      "safety": "Preserve the massive creature scale; avoid humanizing or adding decorative armor."
+    },
+    {
+      "id": "lucretia",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Queen_Harpy/Lucretia",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_queenhapy_st01.png", "url": "https://static.wikitide.net/mgqwiki/d/d5/80_queenhapy_st01.png", "cache": "refs/mgq/lucretia.png", "form": "canonical standing art" }],
+      "visualNotes": "Petite lavender-white-haired queen harpy with green eyes, gold headdress, mint bodice, and huge pastel pink-lavender feather wings and skirt.",
+      "safety": "Keep the petite design fully clothed and non-sexual."
+    },
+    {
+      "id": "cupi",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Cupid/Cupi",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_cupid_st01.png", "url": "https://static.wikitide.net/mgqwiki/7/7e/80_cupid_st01.png", "cache": "refs/mgq/cupi.png", "form": "canonical standing art" }],
+      "visualNotes": "Cute blonde-pink angel with white wings, pink-white outfit, gold halo, and heart ornaments.",
+      "safety": "Childlike/chibi angel must remain fully clothed, non-sexual, and action-oriented."
+    },
+    {
+      "id": "sphinx",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Sphinx/Companion",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_sphinx_st01.png", "url": "https://static.wikitide.net/mgqwiki/c/c1/80_sphinx_st01.png", "cache": "refs/mgq/sphinx.png", "form": "canonical standing art" }],
+      "visualNotes": "Egyptian queen with black hair and cobra crown, six blue cobra necks, white wings, lion paws and body, and a central lion maw.",
+      "safety": "Use monumental guardian staging; avoid exposed or erotic framing."
+    },
+    {
+      "id": "lucifina_chan",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Lucifina/Lucifina-chan",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_rucyfinac_st01.png", "url": "https://static.wikitide.net/mgqwiki/f/f0/80_rucyfinac_st01.png", "cache": "refs/mgq/lucifina-chan.png", "form": "canonical standing art" }],
+      "visualNotes": "Childlike blonde angel with blue eyes, white wings and halo, and a white-gold dress.",
+      "safety": "Strictly non-sexual and age-appropriate; no revealing costume changes."
+    },
+    {
+      "id": "spider_princess",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Spider_Princess/Companion",
+      "artistCredits": ["Jingai Modoki"],
+      "images": [{ "file": "80_kumonomiko_st01.png", "url": "https://static.wikitide.net/mgqwiki/3/3e/80_kumonomiko_st01.png", "cache": "refs/mgq/spider-princess.png", "form": "canonical standing art" }],
+      "visualNotes": "Purple-haired crowned shrine priestess in white-red clothing atop a huge glossy black spider body and legs bearing paper seals.",
+      "safety": "Keep the miko outfit modest and spider anatomy non-erotic."
+    },
+    {
+      "id": "emily",
+      "role": "gold_companion",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Emily/Companion",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_emily_st01.png", "url": "https://static.wikitide.net/mgqwiki/e/e6/80_emily_st01.png", "cache": "refs/mgq/emily.png", "form": "canonical standing art" }],
+      "visualNotes": "Blonde woman in a white blouse, blue ribbon, and long black skirt, standing on a pink scylla foot with large yellow tentacles.",
+      "safety": "Use an idol-command pose; tentacles remain non-sexual combat anatomy."
+    },
+    {
+      "id": "luka",
+      "role": "hero",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Luka/Paradox",
+      "artistCredits": ["Jingai Modoki", "frfr"],
+      "images": [{ "file": "80_ruka_st01.png", "url": "https://static.wikitide.net/mgqwiki/3/36/80_ruka_st01.png", "cache": "refs/mgq/luka.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Blond, blue-eyed young swordsman in a deep-maroon hood, scarf and cape over dark travel clothes, carrying a silver blade.",
+      "safety": "Use heroic non-gory sword action."
+    },
+    {
+      "id": "alice",
+      "role": "hero",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Alice/Paradox",
+      "artistCredits": ["Jingai Modoki", "Kenko Cross"],
+      "images": [
+        { "file": "80_alice_st01.png", "url": "https://static.wikitide.net/mgqwiki/1/12/80_alice_st01.png", "cache": "refs/mgq/alice-real.png", "form": "real-form canonical standing art; preferred hero form" },
+        { "file": "80_alice_st71.png", "url": "https://static.wikitide.net/mgqwiki/3/3f/80_alice_st71.png", "cache": "refs/mgq/alice-small.png", "form": "sealed small-form canonical standing art" }
+      ],
+      "visualNotes": "Lavender hair, gray-lilac skin, red forehead eye, floral hairpiece, black-purple-red regalia, and a huge red serpent tail.",
+      "safety": "Use real form for the hero unless sealed form is explicitly required; keep either form modest and non-sexual."
+    },
+    {
+      "id": "ilias",
+      "role": "hero",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Goddess_Ilias/Paradox",
+      "artistCredits": ["Akazawa RED"],
+      "images": [
+        { "file": "Ilias_Sealed.png", "url": "https://static.wikitide.net/mgqwiki/5/5c/Ilias_Sealed.png", "cache": "refs/mgq/ilias-sealed.png", "form": "sealed canonical standing art; preferred Paradox companion form" },
+        { "file": "80_iriasu_st01.png", "url": "https://static.wikitide.net/mgqwiki/7/72/80_iriasu_st01.png", "cache": "refs/mgq/ilias-real.png", "form": "real-form canonical standing art" }
+      ],
+      "visualNotes": "Blonde, blue-eyed white angel in white robes with translucent wings and blue gem jewelry.",
+      "safety": "Use sealed form for Paradox continuity unless the real form is explicitly requested; keep divine costume modest."
+    },
+    {
+      "id": "granberia",
+      "role": "hero",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Granberia/Paradox",
+      "artistCredits": ["Akazawa RED"],
+      "images": [{ "file": "80_granberia_st61.png", "url": "https://static.wikitide.net/mgqwiki/f/fb/80_granberia_st61.png", "cache": "refs/mgq/granberia.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Rose-red hair, horned dark visor, black-gold armor, green dragon-scale limbs and tail, purple greatsword.",
+      "safety": "Use armored swordmaster staging without gore."
+    },
+    {
+      "id": "promestein",
+      "role": "hero",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Promestein/Angelic_Dominion",
+      "redirectNote": "The wiki's Promestein/Paradox URL redirects here; this is the recruitable Paradox incarnation.",
+      "artistCredits": ["Setouchi"],
+      "images": [{ "file": "80_stein_st31.png", "url": "https://static.wikitide.net/mgqwiki/7/70/80_stein_st31.png", "cache": "refs/mgq/promestein.png", "form": "canonical recruitable Paradox standing art" }],
+      "visualNotes": "Young maroon-haired scientist with rectangular glasses, black lab coat, and dark research book.",
+      "safety": "Do not silently substitute the adult/original incarnation; use non-gory laboratory imagery."
+    },
+    {
+      "id": "sonya",
+      "role": "commander",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Sonya",
+      "artistCredits": ["Xelvy"],
+      "images": [{ "file": "80_sonia_m1_st01.png", "url": "https://static.wikitide.net/mgqwiki/7/70/80_sonia_m1_st01.png", "cache": "refs/mgq/sonya.png", "form": "canonical base standing art" }],
+      "visualNotes": "Short light-brown hair, teal eyes, teal-white-gold light armor, staff or club.",
+      "safety": "Use a confident protective commander pose."
+    },
+    {
+      "id": "sylph",
+      "role": "spirit",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Sylph/Paradox",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_sylph_st01.png", "url": "https://static.wikitide.net/mgqwiki/f/f1/80_sylph_st01.png", "cache": "refs/mgq/sylph.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Tiny white and pale-green wind fairy with leaflike translucent limbs and wings.",
+      "safety": "Childlike spirit must remain fully clothed and non-sexual."
+    },
+    {
+      "id": "gnome",
+      "role": "spirit",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Gnome/Paradox",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_gnome_st01.png", "url": "https://static.wikitide.net/mgqwiki/a/af/80_gnome_st01.png", "cache": "refs/mgq/gnome.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Tiny brown-haired earth spirit mostly hidden behind a tall stone-earth idol helmet with green eyes.",
+      "safety": "Keep the small spirit non-sexual and centered on the earth-idol silhouette."
+    },
+    {
+      "id": "undine",
+      "role": "spirit",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Undine/Paradox",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_undine_st01.png", "url": "https://static.wikitide.net/mgqwiki/3/3e/80_undine_st01.png", "cache": "refs/mgq/undine.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Blue water woman with long hair covering one eye and a coiled water-slime lower body.",
+      "safety": "Use modest water-spirit presentation."
+    },
+    {
+      "id": "salamander",
+      "role": "spirit",
+      "pageUrl": "https://mgq.miraheze.org/wiki/Salamander/Paradox",
+      "artistCredits": ["frfr"],
+      "images": [{ "file": "80_salamander_st01.png", "url": "https://static.wikitide.net/mgqwiki/0/06/80_salamander_st01.png", "cache": "refs/mgq/salamander.png", "form": "canonical Paradox standing art" }],
+      "visualNotes": "Red-orange flame-haired, dark-skinned fire spirit surrounded by living flame.",
+      "safety": "Use modest flame coverage and a combat-ready elemental pose."
+    }
+  ]
+}

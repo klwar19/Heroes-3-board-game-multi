@@ -77,6 +77,7 @@ describe("PvP prep — town panel shopping (UI)", () => {
       <PreBattlePanel legalActions={getLegalActions(state, "p2")} onAction={vi.fn()} state={state} viewerPlayerId="p2" />
     );
     expect(screen.getByText(/spend any town actions/i)).toBeTruthy();
+    expect(screen.getByText(/Play artifacts and other available cards/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Accept the battle/i })).toBeTruthy();
   });
 

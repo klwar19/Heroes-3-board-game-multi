@@ -1,3 +1,5 @@
+import { MGQ_TOWN_BOARD_BARS } from "@/data/anime/mgq";
+
 /**
  * Town BOARD manifest: the physical board-game town boards, as rendered by the
  * Town window's default "board" view (src/components/adventure/town-board.tsx).
@@ -567,6 +569,32 @@ export const townBoardSpecs: Record<string, TownBoardSpec> = {
       ["heavenly_demon.demon_arena"],
       ["heavenly_demon.dwelling_gold"]
     ],
+    geometry: DESIGNED_GEOMETRY
+  },
+  little_busters: {
+    factionId: "little_busters",
+    panoramaImage: "/assets/anime/towns/little-busters-campus-empty.webp",
+    fullImage: "/assets/anime/towns/little-busters-campus-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/little-busters-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: [
+      ["little_busters.city_hall"],
+      ["little_busters.dwelling_bronze"],
+      ["little_busters.clubhouse"],
+      ["little_busters.dwelling_silver", "little_busters.practice_field"],
+      ["little_busters.mage_guild"],
+      ["little_busters.citadel"],
+      ["little_busters.dwelling_gold"]
+    ],
+    geometry: DESIGNED_GEOMETRY
+  },
+  mgq: {
+    factionId: "mgq",
+    panoramaImage: "/assets/anime/towns/mgq-paradox-town-empty.webp",
+    fullImage: "/assets/anime/towns/mgq-paradox-town-full.webp",
+    barTileImages: Array.from({ length: 7 }, (_, index) => `/assets/town-board/mgq-bar-${index + 1}.webp`),
+    panelImage: DESIGNED_PANEL_IMAGE,
+    bars: MGQ_TOWN_BOARD_BARS,
     geometry: DESIGNED_GEOMETRY
   }
 };

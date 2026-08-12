@@ -1,0 +1,196 @@
+{
+  "battleVoiceRoot": "E:\\game\\Little Busters!\\files\\BATTLE VOICE LITTLE BUSTER",
+  "kanataRoot": "E:\\game\\Little Busters!\\files\\Kanata",
+  "profiles": [
+    {
+      "slug": "rin",
+      "name": "Rin Natsume",
+      "family": "BT_KOE_A",
+      "clips": {
+        "attack": ["BT_KOE_ACA00", "BT_KOE_ACA01", "BT_KOE_ACA02"],
+        "shoot": ["BT_KOE_ACF00", "BT_KOE_ACF01", "BT_KOE_ACF02"],
+        "defend": ["BT_KOE_ACG00", "BT_KOE_ACG01", "BT_KOE_ACG02"],
+        "hurt": ["BT_KOE_ACH00", "BT_KOE_ACH01", "BT_KOE_ACH02"],
+        "death": ["BT_KOE_ACI00", "BT_KOE_ACI01", "BT_KOE_ACI02"],
+        "move": ["BT_KOE_AAA00", "BT_KOE_AAA01", "BT_KOE_AAA02"]
+      },
+      "effects": ["SYUBABA", "ZASHU", "ZYUBISI"]
+    },
+    {
+      "slug": "komari",
+      "name": "Komari Kamikita",
+      "family": "BT_KOE_B",
+      "clips": {
+        "attack": ["BT_KOE_BCA00", "BT_KOE_BCA01", "BT_KOE_BCA02"],
+        "shoot": ["BT_KOE_BCF00", "BT_KOE_BCF01", "BT_KOE_BCF02"],
+        "defend": ["BT_KOE_BCG00", "BT_KOE_BCG01", "BT_KOE_BCG02"],
+        "hurt": ["BT_KOE_BCH00", "BT_KOE_BCH01", "BT_KOE_BCH02"],
+        "death": ["BT_KOE_BCI00", "BT_KOE_BCI01"],
+        "move": ["BT_KOE_BAA00", "BT_KOE_BAA01", "BT_KOE_BAA02"]
+      },
+      "effects": ["TARAI", "MIZU01", "KOORI"]
+    },
+    {
+      "slug": "yuiko",
+      "name": "Yuiko Kurugaya",
+      "family": "BT_KOE_C",
+      "clips": {
+        "attack": ["BT_KOE_CCA00", "BT_KOE_CCA01", "BT_KOE_CCA02"],
+        "shoot": ["BT_KOE_CCF00", "BT_KOE_CCF01", "BT_KOE_CCF02"],
+        "defend": ["BT_KOE_CCG00", "BT_KOE_CCG01", "BT_KOE_CCG02"],
+        "hurt": ["BT_KOE_CCH00", "BT_KOE_CCH01", "BT_KOE_CCH02"],
+        "death": ["BT_KOE_CCI00", "BT_KOE_CCI01"],
+        "move": ["BT_KOE_CAA00", "BT_KOE_CAA01", "BT_KOE_CAA02"]
+      },
+      "effects": ["KATANA", "SYAKIN", "ZASHU"]
+    },
+    {
+      "slug": "kud",
+      "name": "Kudryavka Noumi",
+      "family": "BT_KOE_D",
+      "clips": {
+        "attack": ["BT_KOE_DCA00", "BT_KOE_DCA01", "BT_KOE_DCA02"],
+        "shoot": ["BT_KOE_DCF00", "BT_KOE_DCF01", "BT_KOE_DCF02"],
+        "defend": ["BT_KOE_DCG00", "BT_KOE_DCG01"],
+        "hurt": ["BT_KOE_DCH00", "BT_KOE_DCH01", "BT_KOE_DCH02"],
+        "death": ["BT_KOE_DCI00", "BT_KOE_DCI01"],
+        "move": ["BT_KOE_DAA00", "BT_KOE_DAA01", "BT_KOE_DAA02"]
+      },
+      "effects": ["BAZOOKA", "FIRE3", "KAMINARI"]
+    },
+    {
+      "slug": "haruka",
+      "name": "Haruka Saigusa",
+      "family": "BT_KOE_E",
+      "clips": {
+        "attack": ["BT_KOE_ECA00", "BT_KOE_ECA01", "BT_KOE_ECA02"],
+        "shoot": ["BT_KOE_ECF00", "BT_KOE_ECF01", "BT_KOE_ECF02"],
+        "defend": ["BT_KOE_ECG00", "BT_KOE_ECG01", "BT_KOE_ECG02"],
+        "hurt": ["BT_KOE_ECH00", "BT_KOE_ECH01", "BT_KOE_ECH02"],
+        "death": ["BT_KOE_ECI00", "BT_KOE_ECI01", "BT_KOE_ECI02"],
+        "move": ["BT_KOE_EAA00", "BT_KOE_EAA01", "BT_KOE_EAA02"]
+      },
+      "effects": ["BAKIBAKIBAKI", "GARAGARA", "TARAI"]
+    },
+    {
+      "slug": "mio",
+      "name": "Mio Nishizono",
+      "family": "BT_KOE_F",
+      "clips": {
+        "attack": ["BT_KOE_FCA00", "BT_KOE_FCA01", "BT_KOE_FCA02"],
+        "shoot": ["BT_KOE_FCF00", "BT_KOE_FCF01"],
+        "defend": ["BT_KOE_FCG00", "BT_KOE_FCG01", "BT_KOE_FCG02"],
+        "hurt": ["BT_KOE_FCH00", "BT_KOE_FCH01"],
+        "death": ["BT_KOE_FCI00", "BT_KOE_FCI01"],
+        "move": ["BT_KOE_FAA00", "BT_KOE_FAA01", "BT_KOE_FAA02"]
+      },
+      "effects": ["KOORI", "MIZU01", "KAZE3"]
+    },
+    {
+      "slug": "riki",
+      "name": "Riki Naoe",
+      "family": "BT_KOE_G",
+      "clips": {
+        "attack": ["BT_KOE_GCA00", "BT_KOE_GCA01", "BT_KOE_GCA02"],
+        "shoot": ["BT_KOE_GCF00", "BT_KOE_GCF01"],
+        "defend": ["BT_KOE_GCG00", "BT_KOE_GCG01", "BT_KOE_GCG02"],
+        "hurt": ["BT_KOE_GCH00", "BT_KOE_GCH01", "BT_KOE_GCH02"],
+        "death": ["BT_KOE_GCI00", "BT_KOE_GCI01", "BT_KOE_GCI02"],
+        "move": ["BT_KOE_GAA00", "BT_KOE_GAA01", "BT_KOE_GAA02"]
+      },
+      "effects": ["SWING", "SYUBABA", "ZYUBISI"]
+    },
+    {
+      "slug": "masato",
+      "name": "Masato Inohara",
+      "family": "BT_KOE_H",
+      "clips": {
+        "attack": ["BT_KOE_HCA00", "BT_KOE_HCA01", "BT_KOE_HCA02"],
+        "shoot": ["BT_KOE_HCF00", "BT_KOE_HCF01", "BT_KOE_HCF02"],
+        "defend": ["BT_KOE_HCG00", "BT_KOE_HCG01"],
+        "hurt": ["BT_KOE_HCH00", "BT_KOE_HCH01", "BT_KOE_HCH02"],
+        "death": ["BT_KOE_HCI00", "BT_KOE_HCI01", "BT_KOE_HCI02"],
+        "move": ["BT_KOE_HAA00", "BT_KOE_HAA01", "BT_KOE_HAA02"]
+      },
+      "effects": ["BAKIMERI2", "BAKIBAKIBAKI", "GARAGARA"]
+    },
+    {
+      "slug": "kyousuke",
+      "name": "Kyousuke Natsume",
+      "family": "BT_KOE_J",
+      "clips": {
+        "attack": ["BT_KOE_JCA00", "BT_KOE_JCA01", "BT_KOE_JCA02"],
+        "shoot": ["BT_KOE_JCF00", "BT_KOE_JCF01", "BT_KOE_JCF02"],
+        "defend": ["BT_KOE_JCG00", "BT_KOE_JCG01"],
+        "hurt": ["BT_KOE_JCH00", "BT_KOE_JCH01", "BT_KOE_JCH02"],
+        "death": ["BT_KOE_JCI00", "BT_KOE_JCI01", "BT_KOE_JCI02"],
+        "move": ["BT_KOE_JAA00", "BT_KOE_JAA01", "BT_KOE_JAA02"]
+      },
+      "effects": ["KATANA", "SYAKIN", "KAZE3"]
+    },
+    {
+      "slug": "sasami",
+      "name": "Sasami Sasasegawa",
+      "family": "BT_KOE_L",
+      "clips": {
+        "attack": ["BT_KOE_LCA00", "BT_KOE_LCA01", "BT_KOE_LCA02"],
+        "shoot": ["BT_KOE_LCF00"],
+        "defend": ["BT_KOE_LCG00"],
+        "hurt": ["BT_KOE_LCH00", "BT_KOE_LCH01", "BT_KOE_LCH02"],
+        "death": ["BT_KOE_LCI00", "BT_KOE_LCI01", "BT_KOE_LCI02"],
+        "move": ["BT_KOE_LBA00", "BT_KOE_LBA01", "BT_KOE_LBA02"]
+      },
+      "effects": ["SWING", "ZYUBISI", "SYUBABA"]
+    },
+    {
+      "slug": "sasami_goons",
+      "name": "Sasami's Three Goons",
+      "family": "BT_KOE_M",
+      "clips": {
+        "attack": ["BT_KOE_MCA00A", "BT_KOE_MCA00B", "BT_KOE_MCA00C"],
+        "shoot": ["BT_KOE_MCF00A", "BT_KOE_MCF00B", "BT_KOE_MCF00C"],
+        "defend": ["BT_KOE_MCG00A", "BT_KOE_MCG00B", "BT_KOE_MCG00C"],
+        "hurt": ["BT_KOE_MCH00A", "BT_KOE_MCH00B", "BT_KOE_MCH00C"],
+        "death": ["BT_KOE_MCI00A", "BT_KOE_MCI00B", "BT_KOE_MCI00C"],
+        "move": ["BT_KOE_MBA00A", "BT_KOE_MBA00B", "BT_KOE_MBA00C"]
+      },
+      "effects": ["SWING", "KAZE3", "GARAGARA"]
+    },
+    {
+      "slug": "saya",
+      "name": "Saya Tokido",
+      "family": "GS_KOE",
+      "clips": {
+        "attack": ["GS_KOE_QCD00", "GS_KOE_QCD01", "GS_KOE_QCD02"],
+        "shoot": ["GS_KOE_QCD06", "GS_KOE_QCD07", "GS_KOE_QCD08"],
+        "defend": ["GS_KOE_RDE01", "GS_KOE_RDE02", "GS_KOE_RDE03"],
+        "hurt": ["GS_KOE_QDH00", "GS_KOE_QDH01", "GS_KOE_QDH02"],
+        "death": ["GS_KOE_QDH03", "GS_KOE_QDH04"],
+        "move": ["GS_KOE_RDA00", "GS_KOE_RDE04", "GS_KOE_RDE05"]
+      },
+      "effects": ["BAZOOKA", "BOM", "ENMAKU"]
+    },
+    {
+      "slug": "kanata",
+      "name": "Kanata Futaki",
+      "family": "Kanata",
+      "sourceRoot": "kanata",
+      "clips": {
+        "attack": ["06734", "06737"],
+        "shoot": ["06736", "06737"],
+        "defend": ["06738", "06740"],
+        "hurt": ["06734", "06737"],
+        "death": ["06739", "06740"],
+        "move": ["06735", "06738"]
+      },
+      "effects": ["CHAINCRASH", "KAMINARI", "KOORI"]
+    }
+  ],
+  "cats": {
+    "slug": "rins_cats",
+    "name": "Rin's Cats",
+    "voiceProfile": "rin",
+    "sounds": ["RIN", "RIN2", "RIN3"],
+    "effects": ["SYUBABA", "ZASHU", "ZYUBISI"]
+  }
+}

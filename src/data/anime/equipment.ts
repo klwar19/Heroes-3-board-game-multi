@@ -68,7 +68,9 @@ export type EquipmentPackage =
   | "classic"
   | "shinobi"
   | "kansen"
-  | "modao";
+  | "modao"
+  | "seishun"
+  | "mgq";
 
 /** Short flavour tag per package, for UI chips (paper-doll bag rows etc.). */
 export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
@@ -78,7 +80,9 @@ export const EQUIPMENT_PACKAGE_LABEL: Record<EquipmentPackage, string> = {
   classic: "classic",
   shinobi: "shinobi",
   kansen: "kansen",
-  modao: "modao"
+  modao: "modao",
+  seishun: "seishun",
+  mgq: "MGQ"
 };
 
 /**
@@ -168,7 +172,16 @@ export const EQUIPMENT_IDS = {
   //     in EQUIPMENT_SHOP_SALES.
   demonBloodSaber: "anime.equip.demon_blood_saber",
   bonefiendPlate: "anime.equip.bonefiend_plate",
-  demonHeartRelic: "anime.equip.demon_heart"
+  demonHeartRelic: "anime.equip.demon_heart",
+  littleBustersGlassMarbles: "anime.equip.little-busters-harukas-glass-marbles",
+  littleBustersMissionLetter: "anime.equip.little-busters-lennons-mission-letter",
+  littleBustersMiosParasol: "anime.equip.little-busters-mios-parasol",
+  littleBustersFlightGoggles: "anime.equip.little-busters-kuds-flight-goggles",
+  littleBustersPracticeBat: "anime.equip.little-busters-little-busters-practice-bat",
+  littleBustersRevolutionWatch: "anime.equip.little-busters-school-revolution-watch",
+  mgqAngelHalo: "anime.equip.mgq-angel-halo",
+  mgqHeavenlyKnightsAegis: "anime.equip.mgq-heavenly-knights-aegis",
+  mgqMonsterLordsRing: "anime.equip.mgq-monster-lords-ring"
 } as const;
 
 function equip(
@@ -572,6 +585,61 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
       "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm / SG Radar) — only one accessory is worn, so same-slot twins never stack)."
+  }),
+  [EQUIPMENT_IDS.littleBustersGlassMarbles]: equip({
+    id: EQUIPMENT_IDS.littleBustersGlassMarbles, slot: "accessory", grade: "I",
+    name: { en: "Haruka's Glass Marbles", vi: "Bi Thuy Tinh cua Haruka" }, package: "seishun",
+    summary: "Accessory · Grade I: gain +1 gold after each combat you win."
+  }),
+  [EQUIPMENT_IDS.littleBustersMissionLetter]: equip({
+    id: EQUIPMENT_IDS.littleBustersMissionLetter, slot: "accessory", grade: "I",
+    name: { en: "Lennon's Mission Letter", vi: "Thu Nhiem Vu cua Lennon" }, package: "seishun",
+    summary: "Accessory · Grade I: +1 hand limit."
+  }),
+  [EQUIPMENT_IDS.littleBustersMiosParasol]: equip({
+    id: EQUIPMENT_IDS.littleBustersMiosParasol, slot: "armor", grade: "II",
+    name: { en: "Mio's Parasol", vi: "O cua Mio" }, package: "seishun",
+    summary: "Armor · Grade II: the first time one of your units is attacked each combat, it gains a Defense token after the attack."
+  }),
+  [EQUIPMENT_IDS.littleBustersFlightGoggles]: equip({
+    id: EQUIPMENT_IDS.littleBustersFlightGoggles, slot: "accessory", grade: "II",
+    name: { en: "Kud's Flight Goggles", vi: "Kinh Bay cua Kud" }, package: "seishun",
+    summary: "Accessory · Grade II: +1 spell Power on your casts."
+  }),
+  [EQUIPMENT_IDS.littleBustersPracticeBat]: equip({
+    id: EQUIPMENT_IDS.littleBustersPracticeBat, slot: "weapon", grade: "III",
+    name: { en: "Little Busters Practice Bat", vi: "Gay Tap Little Busters" }, package: "seishun",
+    summary: "Weapon · Grade III: your units' first declared attack each combat gets +1 Attack, and declared attacks in combat round 1 get +1 Attack."
+  }),
+  [EQUIPMENT_IDS.mgqAngelHalo]: equip({
+    id: EQUIPMENT_IDS.mgqAngelHalo,
+    slot: "weapon",
+    grade: "I",
+    name: { en: "Angel Halo", vi: "Thien Than Quang Hoan" },
+    package: "mgq",
+    summary: "Weapon - Grade I: your units' first declared attack each combat gets +1 Attack."
+  }),
+  [EQUIPMENT_IDS.mgqHeavenlyKnightsAegis]: equip({
+    id: EQUIPMENT_IDS.mgqHeavenlyKnightsAegis,
+    slot: "armor",
+    grade: "II",
+    name: { en: "Heavenly Knight's Aegis", vi: "Thien Ky Si Thanh Khien" },
+    package: "mgq",
+    summary:
+      "Armor - Grade II: the first time one of your units is attacked each combat, it gains a Defense token after the attack."
+  }),
+  [EQUIPMENT_IDS.mgqMonsterLordsRing]: equip({
+    id: EQUIPMENT_IDS.mgqMonsterLordsRing,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Monster Lord's Ring", vi: "Nhan Ma Vuong" },
+    package: "mgq",
+    summary: "Accessory - Grade III: +1 spell Power on your casts and +1 hand limit."
+  }),
+  [EQUIPMENT_IDS.littleBustersRevolutionWatch]: equip({
+    id: EQUIPMENT_IDS.littleBustersRevolutionWatch, slot: "accessory", grade: "III",
+    name: { en: "School Revolution Watch", vi: "Dong Ho Cach Mang Hoc Duong" }, package: "seishun",
+    summary: "Accessory · Grade III: +1 spell Power on your casts and +1 hand limit."
   })
 };
 
@@ -583,8 +651,6 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
  * and remove the id here (the UI then draws it instead of the glyph fallback).
  */
 export const ANIME_EQUIPMENT_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  // EMPTY while Codex grade-fill wave art is on disk (lucky_coin / spirit_focus /
-  // eternal_sash). A FUTURE art-less item must be declared here.
 ]);
 
 /** Slot → emoji glyph (UI fallback while an item has no art). */
@@ -688,6 +754,12 @@ export function equipmentPackagesForFaction(factionId: string | undefined): Equi
   }
   if (factionId === "heavenly_demon") {
     return ["modao"];
+  }
+  if (factionId === "little_busters") {
+    return ["seishun"];
+  }
+  if (factionId === "mgq") {
+    return ["mgq"];
   }
   switch (factionVisualRegister(factionId)) {
     case "anime":

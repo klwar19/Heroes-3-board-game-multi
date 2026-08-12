@@ -5,6 +5,11 @@ import {
   animeTownFactionDefinitions,
   animeTownHeroDefinitions,
 } from "@/data/anime/towns";
+import {
+  mgqBuildingDefinitions,
+  mgqFactionDefinitions,
+  mgqHeroDefinitions
+} from "@/data/anime/mgq";
 import type { FactionDefinition, FactionId, HeroDefinition, TownBuildingDefinition } from "./types";
 import { coreUnitDefinitions } from "./units";
 
@@ -144,6 +149,7 @@ function coveHeroSource(slug: string) {
  */
 export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
   ...animeTownBuildingDefinitions,
+  ...mgqBuildingDefinitions,
   // ---- Castle ----------------------------------------------------------
   "castle.city_hall": {
     id: "castle.city_hall",
@@ -1300,6 +1306,7 @@ for (const spec of Object.values(townBoardSpecs)) {
 
 export const coreHeroDefinitions: Record<string, HeroDefinition> = {
   ...animeTownHeroDefinitions,
+  ...mgqHeroDefinitions,
   catherine: {
     id: "catherine",
     name: "Catherine",
@@ -2685,6 +2692,7 @@ function buildingsOfFaction(faction: string): string[] {
 
 export const coreFactionDefinitions: Record<string, FactionDefinition> = {
   ...animeTownFactionDefinitions,
+  ...mgqFactionDefinitions,
   castle: {
     id: "castle",
     name: "Castle",
@@ -2946,6 +2954,8 @@ export function isPlayableFaction(
   if (id === "fuyuki") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "hidden_leaf") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "azur_lane") return Boolean(anime?.enabled && anime.isekaiTowns);
+  if (id === "little_busters") return Boolean(anime?.enabled && anime.isekaiTowns);
+  if (id === "mgq") return Boolean(anime?.enabled && anime.isekaiTowns);
   if (id === "azure_breeze") return Boolean(anime?.enabled && anime.xianxiaTowns);
   if (id === "heavenly_demon") return Boolean(anime?.enabled && anime.xianxiaTowns);
   return true;

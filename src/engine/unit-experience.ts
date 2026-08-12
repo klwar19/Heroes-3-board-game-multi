@@ -15,12 +15,15 @@ import { UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
 import { animeModuleEnabled } from "./anime";
 import { equipmentVeteranBonusXp } from "./anime-equipment";
 import { appendEvent } from "./events";
+import { mgqEffectiveJob, mgqJobSignatureAbilityId } from "./mgq-jobs";
+import { getBonusUnitExperience } from "./unit-abilities";
 import {
   NEUTRAL_PLAYER_ID,
   type ArmyUnitState,
   type CombatContext,
   type CombatUnitState,
   type GameState,
+  type MgqJob,
   type PlayerId
 } from "./state";
 
@@ -105,8 +108,23 @@ export function unitRankStatBonuses(
   return total;
 }
 
-export function unitRankStatBonusesFor(unitDefId: string, tier: UnitTier, rank: number): UnitRankStatBonus {
+export function unitRankStatBonusesFor(
+  unitDefId: string,
+  tier: UnitTier,
+  rank: number,
+  job?: MgqJob
+): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
+  if (job) {
+    const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
+    // MGQ's Job track is S / S / A / S: rank 3 is the current Job signature.
+    const statsRanks = Math.min(3, rank >= 4 ? 3 : rank >= 2 ? 2 : 1);
+    let total = ZERO_FOLD;
+    for (let index = 0; index < statsRanks; index += 1) {
+      total = addStats(total, steps[index] ?? ZERO_FOLD);
+    }
+    return total;
+  }
   const schedule = rankScheduleFor(unitDefId);
   const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
   let total = ZERO_FOLD;
@@ -123,8 +141,14 @@ export function unitRankStatBonusesFor(unitDefId: string, tier: UnitTier, rank: 
 }
 
 /** The schedule step at a given rank (stats | ability). */
-export function unitRankStep(unitDefId: string, rank: number): RankStep | null {
+export function unitRankStep(unitDefId: string, rank: number, job?: MgqJob): RankStep | null {
   if (rank < 1 || rank > MAX_UNIT_RANK) return null;
+  if (job) {
+    const signature = mgqJobSignatureAbilityId(job);
+    return rank === 3 && signature
+      ? { kind: "ability", choices: [signature] }
+      : { kind: "stats" };
+  }
   return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4] ?? null;
 }
 
@@ -142,9 +166,13 @@ export function printedAbilityIdsOf(unitDefId: string): ReadonlySet<string> {
  * Abilities granted by ability-ranks only (up through `rank`).
  * Stats ranks contribute nothing here.
  */
-export function unitRankAbilityIds(unitDefId: string, rank: number): string[] {
+export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob): string[] {
   if (rank <= 0) return [];
   const printed = printedAbilityIdsOf(unitDefId);
+  if (job) {
+    const signature = mgqJobSignatureAbilityId(job);
+    return signature && rank >= 3 && !printed.has(signature) ? [signature] : [];
+  }
   const granted: string[] = [];
   const already = new Set<string>(printed);
   const schedule = rankScheduleFor(unitDefId);
@@ -164,25 +192,26 @@ export function unitRankAbilityIds(unitDefId: string, rank: number): string[] {
 }
 
 /** Ability gained exactly at this rank (empty if the rank is a stats rank). */
-export function unitRankAbilityGainsAt(unitDefId: string, rank: number): string[] {
+export function unitRankAbilityGainsAt(unitDefId: string, rank: number, job?: MgqJob): string[] {
   if (rank <= 0) return [];
-  const step = unitRankStep(unitDefId, rank);
+  const step = unitRankStep(unitDefId, rank, job);
   if (!step || step.kind !== "ability") return [];
-  const before = new Set(unitRankAbilityIds(unitDefId, rank - 1));
-  return unitRankAbilityIds(unitDefId, rank).filter((id) => !before.has(id));
+  const before = new Set(unitRankAbilityIds(unitDefId, rank - 1, job));
+  return unitRankAbilityIds(unitDefId, rank, job).filter((id) => !before.has(id));
 }
 
 /** Stat delta gained exactly at this rank (zeros if the rank is an ability rank). */
 export function unitRankStatGainsAt(
   unitDefId: string,
   tier: UnitTier,
-  rank: number
+  rank: number,
+  job?: MgqJob
 ): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
-  const step = unitRankStep(unitDefId, rank);
+  const step = unitRankStep(unitDefId, rank, job);
   if (!step || step.kind !== "stats") return ZERO_FOLD;
-  const after = unitRankStatBonusesFor(unitDefId, tier, rank);
-  const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1);
+  const after = unitRankStatBonusesFor(unitDefId, tier, rank, job);
+  const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1, job);
   return {
     attack: after.attack - before.attack,
     defense: after.defense - before.defense,
@@ -202,12 +231,17 @@ export type UnitRankFold = UnitRankStatBonus & {
 
 const ZERO_RANK_FOLD: UnitRankFold = { ...ZERO_FOLD, rank: 0, abilityIds: [], abilityId: null };
 
-export function unitRankFold(unitDefId: string, tier: UnitTier, experience: number): UnitRankFold {
+export function unitRankFold(
+  unitDefId: string,
+  tier: UnitTier,
+  experience: number,
+  job?: MgqJob
+): UnitRankFold {
   const rank = unitRankForExperience(tier, experience);
   if (rank <= 0) return ZERO_RANK_FOLD;
-  const abilityIds = unitRankAbilityIds(unitDefId, rank);
+  const abilityIds = unitRankAbilityIds(unitDefId, rank, job);
   return {
-    ...unitRankStatBonusesFor(unitDefId, tier, rank),
+    ...unitRankStatBonusesFor(unitDefId, tier, rank, job),
     rank,
     abilityIds,
     abilityId: abilityIds[0] ?? null
@@ -227,7 +261,7 @@ export function combatUnitRankFold(unit: CombatUnitState): UnitRankFold {
   if (!def) {
     return ZERO_RANK_FOLD;
   }
-  return unitRankFold(unit.unitDefId, def.tier, xp);
+  return unitRankFold(unit.unitDefId, def.tier, xp, unit.job);
 }
 
 /**
@@ -391,7 +425,7 @@ export type ArmyUnitRankInfo = {
 
 /** UI summary of a card's veteran progression (badge + tooltip + board window). */
 export function armyUnitRankInfo(
-  armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience">
+  armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience" | "job" | "companion">
 ): ArmyUnitRankInfo | null {
   // Creature Bank reward cards are tierless printed bank cards, not recruitable
   // Neutral units; they do not enter the player-unit experience tracks.
@@ -400,27 +434,29 @@ export function armyUnitRankInfo(
   if (!def) return null;
   const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const rank = unitRankForExperience(def.tier, experience);
+  const job = mgqEffectiveJob(armyUnit);
   const thresholds = UNIT_RANK_THRESHOLDS[def.tier] ?? UNIT_RANK_THRESHOLDS.gold;
   const schedule = rankScheduleFor(armyUnit.unitDefId);
-  const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank);
+  const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank, job);
   const abilitiesByRank: Record<number, string[]> = {};
   const stepKindByRank: Record<number, "stats" | "ability"> = {};
   const statGainsByRank: Record<number, UnitRankStatBonus> = {};
   for (let r = 1; r <= MAX_UNIT_RANK; r++) {
-    const step = schedule[r as 1 | 2 | 3 | 4];
+    const step = unitRankStep(armyUnit.unitDefId, r, job) ?? schedule[r as 1 | 2 | 3 | 4];
     stepKindByRank[r] = step.kind;
-    abilitiesByRank[r] = unitRankAbilityGainsAt(armyUnit.unitDefId, r);
-    statGainsByRank[r] = unitRankStatGainsAt(armyUnit.unitDefId, def.tier, r);
+    abilitiesByRank[r] = unitRankAbilityGainsAt(armyUnit.unitDefId, r, job);
+    statGainsByRank[r] = unitRankStatGainsAt(armyUnit.unitDefId, def.tier, r, job);
   }
   return {
     experience,
     rank,
     rankName: UNIT_RANK_NAMES[rank] ?? "",
-    bonus: unitRankStatBonusesFor(armyUnit.unitDefId, def.tier, rank),
+    bonus: unitRankStatBonusesFor(armyUnit.unitDefId, def.tier, rank, job),
     nextThreshold: rank >= MAX_UNIT_RANK ? null : thresholds[rank],
-    trackId: rankAbilityTrackFor(armyUnit.unitDefId),
-    abilityBudget: scheduleAbilityCount(schedule),
-    eliteAbilityId: activeIds[0] ?? unitRankAbilityIds(armyUnit.unitDefId, MAX_UNIT_RANK)[0] ?? null,
+    trackId: job ? `mgq-job-${job}` : rankAbilityTrackFor(armyUnit.unitDefId),
+    abilityBudget: job ? 1 : scheduleAbilityCount(schedule),
+    eliteAbilityId:
+      activeIds[0] ?? unitRankAbilityIds(armyUnit.unitDefId, MAX_UNIT_RANK, job)[0] ?? null,
     eliteActive: activeIds.length > 0,
     legendAbilityId: null,
     legendActive: false,
@@ -499,7 +535,7 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
     if (!armyUnit) {
       continue;
     }
-    grantArmyUnitExperience(state, winnerId, armyUnit, gained);
+    grantArmyUnitExperience(state, winnerId, armyUnit, gained + getBonusUnitExperience(unit));
   }
 }
 

@@ -85,6 +85,8 @@ export type TileDefinition = {
      * baked-in and leave this flag off so icons never double.
      */
     attachFieldSymbols?: boolean;
+    /** Per-tile multiplier for attached field symbols (1 = standard size). */
+    fieldSymbolScale?: number;
   };
 };
 

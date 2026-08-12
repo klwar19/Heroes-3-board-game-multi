@@ -62,17 +62,19 @@ describe("field symbol modules (attach, not whole-tile bake)", () => {
     }
   });
 
-  it("baked anime seats avoid runtime doubles; the atmosphere-only Demon seat attaches symbols", () => {
+  it("baked anime seats avoid runtime doubles; atmosphere-only seats attach exact symbols", () => {
     expect(allTileDefinitions["A-S1"]?.assets?.attachFieldSymbols).toBeFalsy();
     expect(allTileDefinitions["W-S1"]?.assets?.attachFieldSymbols).toBeFalsy();
     expect(allTileDefinitions["D-S1"]?.assets?.attachFieldSymbols).toBe(true);
+    expect(allTileDefinitions["LB-S1"]?.assets?.attachFieldSymbols).toBe(true);
+    expect(allTileDefinitions["LB-S1"]?.assets?.fieldSymbolScale).toBeLessThan(1);
     // CONTROL: classic printed seats never attach.
     expect(allTileDefinitions.S4?.assets?.attachFieldSymbols).toBeFalsy();
     expect(allTileDefinitions.S3?.assets?.attachFieldSymbols).toBeFalsy();
   });
 
   it("anime starting tiles carry the standard starting bonus package", () => {
-    for (const id of ["A-S1", "W-S1", "D-S1"] as const) {
+    for (const id of ["A-S1", "W-S1", "D-S1", "LB-S1"] as const) {
       const fields = allTileDefinitions[id].fields;
       const locations = fields.map((field) => field.location);
       expect(locations).toContain("town");

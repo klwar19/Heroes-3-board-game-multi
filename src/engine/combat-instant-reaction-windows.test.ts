@@ -483,6 +483,7 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.glacius.6", optionIndex: 0 },
   { cardId: "specialty.gerwulf.4", optionIndex: 1 },
   { cardId: "specialty.gerwulf.6", optionIndex: 1 },
+  { cardId: "specialty.luka.6", optionIndex: 0 },
   { cardId: "specialty.tarnum_dungeon.4", optionIndex: 0 },
   { cardId: "specialty.tarnum_dungeon.6", optionIndex: 0 }
 ];

@@ -703,6 +703,34 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "heavenly_demon.demon_avatar": buildScheduleFromTemplate("strong", [
     ["wog-fire-shield-1", "reduce-spell-damage-1"],
     ["commander-max-damage", "ignore-paralysis"]
+  ]),
+
+  // Little Busters Campus — each signature emblem's first choice is the unit's
+  // canonical mastery; the alternative keeps every decision competitive.
+  "little_busters.haruka": buildScheduleFromTemplate("standard", [
+    ["attack-roll-advantage", "wog-no-negative-attack-roll"]
+  ]),
+  "little_busters.rins_cats": buildScheduleFromTemplate("standard", [
+    ["sandworm-strike-again", "commander-max-damage"]
+  ]),
+  "little_busters.disciplinary_committee": buildScheduleFromTemplate("standard", [
+    ["ignore-all-combat-penalties", "commander-defense-token"]
+  ]),
+  "little_busters.masato": buildScheduleFromTemplate("strong", [
+    ["unlimited-retaliation", "bulwark-thick-hide"],
+    ["ignore-paralysis", "reduce-spell-damage-1"]
+  ]),
+  "little_busters.softball_club": buildScheduleFromTemplate("strong", [
+    ["attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll"],
+    ["commander-max-damage", "bulwark-air-shield"]
+  ]),
+  "little_busters.saya": buildScheduleFromTemplate("strong", [
+    ["gorgon-death-stare", "commander-charge"],
+    ["commander-max-damage", "wog-no-negative-attack-roll"]
+  ]),
+  "little_busters.mio": buildScheduleFromTemplate("strong", [
+    ["gargoyle-spell-ward", "bulwark-air-shield"],
+    ["commander-defense-token", "ignore-paralysis"]
   ])
 };
 
@@ -1037,13 +1065,51 @@ export const AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
   "azur_lane.i19:wog-no-negative-attack-roll": "/assets/anime/icons/azur-lane/rank-ability-i19-torpedoes.webp"
 };
 
+/** Little Busters bespoke veterancy emblems (one researched emblem per line). */
+export const LITTLE_BUSTERS_RANK_ABILITY_ICONS: Record<string, string> = {
+  "little_busters.haruka": "/assets/anime/icons/little-busters/rank-haruka.webp",
+  "little_busters.rins_cats": "/assets/anime/icons/little-busters/rank-rins-cats.webp",
+  "little_busters.disciplinary_committee": "/assets/anime/icons/little-busters/rank-disciplinary-committee.webp",
+  "little_busters.masato": "/assets/anime/icons/little-busters/rank-masato.webp",
+  "little_busters.softball_club": "/assets/anime/icons/little-busters/rank-softball-club.webp",
+  "little_busters.saya": "/assets/anime/icons/little-busters/rank-saya.webp",
+  "little_busters.mio": "/assets/anime/icons/little-busters/rank-mio.webp"
+};
+
+export const LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> = {
+  "little_busters.haruka:attack-roll-advantage": "/assets/anime/icons/little-busters/rank-haruka.webp",
+  "little_busters.rins_cats:sandworm-strike-again": "/assets/anime/icons/little-busters/rank-rins-cats.webp",
+  "little_busters.disciplinary_committee:ignore-all-combat-penalties": "/assets/anime/icons/little-busters/rank-disciplinary-committee.webp",
+  "little_busters.masato:unlimited-retaliation": "/assets/anime/icons/little-busters/rank-masato.webp",
+  "little_busters.softball_club:attack-roll-advantage-passive": "/assets/anime/icons/little-busters/rank-softball-club.webp",
+  "little_busters.saya:gorgon-death-stare": "/assets/anime/icons/little-busters/rank-saya.webp",
+  "little_busters.mio:gargoyle-spell-ward": "/assets/anime/icons/little-busters/rank-mio.webp"
+};
+
+/** MGQ's rank-3 emblem follows the card's current Job, including sealed Neutrals. */
+export const MGQ_JOB_RANK_ABILITY_ICONS: Record<string, string> = {
+  "ignores-retaliation": "/assets/anime/icons/mgq/rank-job-warrior.webp",
+  "unlimited-retaliation": "/assets/anime/icons/mgq/rank-job-guard.webp",
+  "titan-ignore-ongoing": "/assets/anime/icons/mgq/rank-job-mage.webp",
+  "wraith-heal-1": "/assets/anime/icons/mgq/rank-job-healer.webp"
+};
+
 const RANK_ABILITY_ICON_FALLBACK = "/assets/spell-icons/slayer.png";
 
-export function unitRankAbilityIcon(abilityId: string, unitDefId?: string): string {
+export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJob?: string): string {
+  if (unitDefId?.startsWith("mgq.") || mgqJob) {
+    const jobIcon = MGQ_JOB_RANK_ABILITY_ICONS[abilityId];
+    if (jobIcon) return jobIcon;
+  }
   if (unitDefId?.startsWith("azur_lane.")) {
     const choiceIcon = AZUR_LANE_RANK_ABILITY_ICON_BY_CHOICE[`${unitDefId}:${abilityId}`];
     if (choiceIcon) return choiceIcon;
     if (AZUR_LANE_RANK_ABILITY_ICONS[unitDefId]) return AZUR_LANE_RANK_ABILITY_ICONS[unitDefId];
+  }
+  if (unitDefId?.startsWith("little_busters.")) {
+    const choiceIcon = LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE[`${unitDefId}:${abilityId}`];
+    if (choiceIcon) return choiceIcon;
+    if (LITTLE_BUSTERS_RANK_ABILITY_ICONS[unitDefId]) return LITTLE_BUSTERS_RANK_ABILITY_ICONS[unitDefId];
   }
   return UNIT_RANK_ABILITY_ICONS[abilityId] ?? RANK_ABILITY_ICON_FALLBACK;
 }

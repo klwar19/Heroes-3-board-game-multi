@@ -872,7 +872,7 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
 // ===========================================================================
 
 describe("healDrawOnlyRider — the map draw-only gate", () => {
-  it("opens EXACTLY the 13 medic specialty cards (Rion/Astra + the rethemed clones)", () => {
+  it("opens exactly the medic specialty cards (Rion/Astra + every rethemed clone)", () => {
     const qualifying: string[] = [];
     for (const card of Object.values(cardLibrary)) {
       if (card.implementationStatus !== "implemented") {
@@ -888,6 +888,12 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.aoko.4",
       "specialty.aoko.6",
       "specialty.astra.1",
+      "specialty.ilias.1",
+      "specialty.ilias.4",
+      "specialty.ilias.6",
+      "specialty.kudryavka_noumi.1",
+      "specialty.kudryavka_noumi.4",
+      "specialty.kudryavka_noumi.6",
       "specialty.molian.1",
       "specialty.molian.4",
       "specialty.molian.6",

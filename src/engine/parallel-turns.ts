@@ -164,6 +164,11 @@ export function parallelInteractionBlocker(state: GameState, playerId: PlayerId)
     return necromancy.playerId;
   }
 
+  const companion = adventure?.pendingCompanionRecruitment;
+  if (companion && companion.playerId !== playerId) {
+    return companion.playerId;
+  }
+
   const farFlip = adventure?.pendingFarTileFlip;
   if (farFlip && farFlip.playerId !== playerId) {
     return farFlip.playerId;
@@ -226,6 +231,9 @@ export function parallelSlotSignature(state: GameState): string {
     adventure?.pendingTileChoice ? [adventure.pendingTileChoice.playerId, adventure.pendingTileChoice.tileInstanceId] : null,
     adventure?.pendingNecromancy
       ? [adventure.pendingNecromancy.playerId, adventure.pendingNecromancy.remaining ?? 1]
+      : null,
+    adventure?.pendingCompanionRecruitment
+      ? [adventure.pendingCompanionRecruitment.playerId, adventure.pendingCompanionRecruitment.options.length]
       : null,
     adventure?.pendingFarTileFlip ? adventure.pendingFarTileFlip.playerId : null,
     adventure?.pendingGarrison ? adventure.pendingGarrison.defenderPlayerId : null

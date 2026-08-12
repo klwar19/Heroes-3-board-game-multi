@@ -31,7 +31,9 @@ export const COMMANDER_CAST_FX_KEY: Record<CommanderSlug, string> = {
   sword_saint: "spell.precision", // Sword Intent
   might_guy: "spell.haste", // Body Flicker (reuses the Shaman's Haste cast + fx)
   belfast: "spell.magic_arrow", // Royal Salvo (enemy damage → the Magic Arrow bolt + impact fx)
-  demon_ancestor: "spell.bloodlust" // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
+  demon_ancestor: "spell.bloodlust", // Blood Frenzy (reuses the Brute's Bloodlust cast + fx)
+  kyousuke_natsume: "spell.shield", // Mission Start (instant defensive reaction)
+  sonya: "spell.haste" // Cheer (Shaman Haste reuse)
 };
 
 /**

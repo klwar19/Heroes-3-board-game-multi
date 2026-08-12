@@ -1,0 +1,1424 @@
+{
+  "schemaVersion": 1,
+  "faction": "mgq",
+  "sourceManifest": "scripts/anime-art/mgq-reference-manifest.json",
+  "masterRoot": "scripts/anime-art/raw/mgq/units",
+  "outputRoot": "public/assets/anime/units/mgq",
+  "layout": {
+    "width": 743,
+    "height": 1040,
+    "artWindow": {
+      "left": 173,
+      "top": 157,
+      "width": 509,
+      "height": 597
+    },
+    "frames": {
+      "bronze": "public/assets/units-blank-bronze.webp",
+      "silver": "public/assets/units-blank-silver.webp",
+      "golden": "public/assets/units-blank-golden.webp"
+    }
+  },
+  "cards": [
+    {
+      "id": "mgq.pochi",
+      "slug": "pochi",
+      "name": "Pochi",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "pochi"
+      ],
+      "art": {
+        "few": "pochi-few-master.png",
+        "pack": "pochi-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-pochi-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-pochi-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 0,
+          "health": 2,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 2
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 2,
+          "defense": 0,
+          "health": 2,
+          "initiative": 8
+        },
+        "cost": {
+          "gold": 4
+        },
+        "abilities": [
+          "mgq-pack-dig"
+        ],
+        "text": "Pack Dig — [activation] instead of attacking, place an obstacle in an adjacent empty cell."
+      }
+    },
+    {
+      "id": "mgq.shesta",
+      "slug": "shesta",
+      "name": "Shesta",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "shesta"
+      ],
+      "art": {
+        "few": "shesta-few-master.png",
+        "pack": "shesta-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-shesta-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-shesta-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 0,
+          "health": 3,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 4
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 0,
+          "health": 3,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "heavenly-demon-blood-siphon"
+        ],
+        "text": "Blood Siphon — after her own attack deals damage, heal 1 damage from Shesta."
+      }
+    },
+    {
+      "id": "mgq.gigi",
+      "slug": "gigi",
+      "name": "Gigi",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "gigi"
+      ],
+      "art": {
+        "few": "gigi-few-master.png",
+        "pack": "gigi-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-gigi-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-gigi-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 1,
+          "health": 3,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 3
+        },
+        "abilities": [
+          "unlimited-retaliation"
+        ],
+        "text": "Counter-Discharge — may retaliate more than once each combat round."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 3,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "unlimited-retaliation"
+        ],
+        "text": "Counter-Discharge — may retaliate more than once each combat round."
+      }
+    },
+    {
+      "id": "mgq.kamuro_kitsu",
+      "slug": "kamuro_kitsu",
+      "assetSlug": "kamuro-kitsu",
+      "name": "Kamuro & Kitsu",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "kitsu",
+        "kamuro"
+      ],
+      "art": {
+        "few": "kamuro_kitsu-few-master.png",
+        "pack": "kamuro_kitsu-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-kamuro-kitsu-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-kamuro-kitsu-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 0,
+          "health": 4,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 4
+        },
+        "abilities": [
+          "teleport-move"
+        ],
+        "text": "Kitsu's Ninja Step — as a move, place this unit on any empty combat cell."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 0,
+          "health": 4,
+          "initiative": 8
+        },
+        "cost": {
+          "gold": 6
+        },
+        "abilities": [
+          "teleport-move",
+          "enchanter-heal-or-buff"
+        ],
+        "text": "Fox Duo — teleport-move; Kamuro's Taoism uses the Enchanter heal-or-buff activation."
+      }
+    },
+    {
+      "id": "mgq.fleesia",
+      "slug": "fleesia",
+      "name": "Fleesia",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "fleesia"
+      ],
+      "art": {
+        "few": "fleesia-few-master.png",
+        "pack": "fleesia-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-fleesia-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-fleesia-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 1,
+          "health": 3,
+          "initiative": 3
+        },
+        "cost": {
+          "gold": 1
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 2,
+          "defense": 2,
+          "health": 3,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "mgq-trance-pollen"
+        ],
+        "text": "Trance Pollen — a \"+1\" on Fleesia's Attack die also places 1 Temptation token on the target."
+      }
+    },
+    {
+      "id": "mgq.sofia",
+      "slug": "sofia",
+      "name": "Sofia",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "sofia"
+      ],
+      "art": {
+        "few": "sofia-few-master.png",
+        "pack": "sofia-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-sofia-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-sofia-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 1,
+          "health": 3,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 1
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 3,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "mgq-white-magic"
+        ],
+        "text": "White Magic — [activation] heal 1 damage from an adjacent ally or give that ally +1 Attack this round."
+      }
+    },
+    {
+      "id": "mgq.miyabi",
+      "slug": "miyabi",
+      "name": "Miyabi",
+      "tier": "bronze",
+      "type": "FLYING",
+      "referenceIds": [
+        "miyabi"
+      ],
+      "art": {
+        "few": "miyabi-few-master.png",
+        "pack": "miyabi-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-miyabi-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-miyabi-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 1,
+          "health": 3,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 1
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 3,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "mgq-wild-hair"
+        ],
+        "text": "Wild Hair — +1 Attack while this side has any damage."
+      }
+    },
+    {
+      "id": "mgq.eater",
+      "slug": "eater",
+      "name": "Eater",
+      "tier": "bronze",
+      "type": "GROUND",
+      "referenceIds": [
+        "eater"
+      ],
+      "art": {
+        "few": "eater-few-master.png",
+        "pack": "eater-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-bronze-eater-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-bronze-eater-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 2,
+          "defense": 1,
+          "health": 4,
+          "initiative": 2
+        },
+        "cost": {
+          "gold": 3
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 3
+        },
+        "cost": {
+          "gold": 5
+        },
+        "abilities": [
+          "mgq-devour"
+        ],
+        "text": "Devour — when Eater's attack removes a Paralyzed or Tempted side, heal Eater to full."
+      }
+    },
+    {
+      "id": "mgq.hild",
+      "slug": "hild",
+      "name": "Hild",
+      "tier": "silver",
+      "type": "RANGED",
+      "referenceIds": [
+        "hild"
+      ],
+      "art": {
+        "few": "hild-few-master.png",
+        "pack": "hild-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-hild-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-hild-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [
+          "ignore-combat-penalties"
+        ],
+        "text": "God's Eye — ignores the ranged penalty for attacking an adjacent unit."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 7,
+          "initiative": 10
+        },
+        "cost": {
+          "gold": 7,
+          "valuables": 1
+        },
+        "abilities": [
+          "ignore-combat-penalties",
+          "attack-roll-advantage"
+        ],
+        "text": "God's Eye — ignores the adjacent ranged penalty and rolls two Attack dice, resolving the higher result."
+      }
+    },
+    {
+      "id": "mgq.chrome_frederica",
+      "slug": "chrome_frederica",
+      "assetSlug": "chrome-frederica",
+      "name": "Chrome & Frederica",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "chrome",
+        "frederica"
+      ],
+      "art": {
+        "few": "chrome_frederica-few-master.png",
+        "pack": "chrome_frederica-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-chrome-frederica-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-chrome-frederica-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 5,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [
+          "phoenix-rebirth"
+        ],
+        "text": "Masterpiece Rebuilt — once per combat, Chrome re-stitches Frederica when this side would fall."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "phoenix-rebirth"
+        ],
+        "text": "Masterpiece Rebuilt — once per combat, Chrome re-stitches Frederica when this side would fall."
+      }
+    },
+    {
+      "id": "mgq.shizuku",
+      "slug": "shizuku",
+      "name": "Shizuku",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "shizuku"
+      ],
+      "art": {
+        "few": "shizuku-few-master.png",
+        "pack": "shizuku-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-shizuku-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-shizuku-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 5,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 8
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 5,
+          "defense": 1,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 12
+        },
+        "abilities": [
+          "mgq-confusion-club"
+        ],
+        "text": "Confusion Club — a \"+1\" on Shizuku's Attack die also places a Weakness token on the target."
+      }
+    },
+    {
+      "id": "mgq.regina",
+      "slug": "regina",
+      "name": "Regina",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "regina"
+      ],
+      "art": {
+        "few": "regina-few-master.png",
+        "pack": "regina-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-regina-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-regina-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 2,
+          "health": 4,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 2,
+          "health": 4,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "attack-die-reroll"
+        ],
+        "text": "Swordmaster — reroll every \"0\" on Regina's Attack die."
+      }
+    },
+    {
+      "id": "mgq.maiden",
+      "slug": "maiden",
+      "name": "Maiden",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "maiden"
+      ],
+      "art": {
+        "few": "maiden-few-master.png",
+        "pack": "maiden-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-maiden-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-maiden-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [
+          "mgq-nightmares-embrace"
+        ],
+        "text": "Nightmare's Embrace — a \"+1\" on Maiden's Attack die Paralyzes the target."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 5,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 10
+        },
+        "abilities": [
+          "mgq-maiden-certain-paralysis"
+        ],
+        "text": "Nightmare's Embrace — after Maiden attacks, Paralyze the target."
+      }
+    },
+    {
+      "id": "mgq.seraphy",
+      "slug": "seraphy",
+      "name": "Seraphy",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "seraphy"
+      ],
+      "art": {
+        "few": "seraphy-few-master.png",
+        "pack": "seraphy-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-seraphy-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-seraphy-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 4,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "mgq-sleep-toxin"
+        ],
+        "text": "Sleep Toxin — after Seraphy's own attack deals damage, place 1 Temptation token on the target."
+      }
+    },
+    {
+      "id": "mgq.lisa",
+      "slug": "lisa",
+      "name": "Lisa",
+      "tier": "silver",
+      "type": "FLYING",
+      "referenceIds": [
+        "lisa"
+      ],
+      "art": {
+        "few": "lisa-few-master.png",
+        "pack": "lisa-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-lisa-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-lisa-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 7,
+          "buildingMaterials": 1
+        },
+        "abilities": [
+          "mgq-lisa-growth"
+        ],
+        "text": "Soul Growth — after reducing a side or stack layer to 0 HP, permanently gain +1 maximum Health (maximum +2)."
+      },
+      "pack": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 11,
+          "buildingMaterials": 1
+        },
+        "abilities": [
+          "mgq-lisa-growth",
+          "ignores-retaliation"
+        ],
+        "text": "Soul Growth — gain permanent +1 maximum Health after reducing a side/layer to 0 HP (maximum +2); no Retaliation."
+      }
+    },
+    {
+      "id": "mgq.tama",
+      "slug": "tama",
+      "name": "Tama",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "tama"
+      ],
+      "art": {
+        "few": "tama-few-master.png",
+        "pack": "tama-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-tama-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-tama-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 0,
+          "health": 4,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 0,
+          "health": 4,
+          "initiative": 8
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "dread-knight-death-blow"
+        ],
+        "text": "Critical Claws — a \"0\" or \"+1\" on Tama's Attack die adds another +1 Attack."
+      }
+    },
+    {
+      "id": "mgq.maya",
+      "slug": "maya",
+      "name": "Maya",
+      "tier": "silver",
+      "type": "RANGED",
+      "referenceIds": [
+        "maya"
+      ],
+      "art": {
+        "few": "maya-few-master.png",
+        "pack": "maya-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-maya-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-maya-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 4,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 4,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "mgq-slow-weave"
+        ],
+        "text": "Slow Weave — after Maya's attack hits, the target loses 1 Initiative for the current round."
+      }
+    },
+    {
+      "id": "mgq.matis",
+      "slug": "matis",
+      "name": "Matis",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "matis"
+      ],
+      "art": {
+        "few": "matis-few-master.png",
+        "pack": "matis-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-matis-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-matis-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 5,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 8
+        },
+        "abilities": [
+          "mgq-reaper-scythe"
+        ],
+        "text": "Reaper Scythe — +2 Attack against Paralyzed, Weakened or Tempted targets."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 5,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 12
+        },
+        "abilities": [
+          "mgq-reaper-scythe"
+        ],
+        "text": "Reaper Scythe — +2 Attack against Paralyzed, Weakened or Tempted targets."
+      }
+    },
+    {
+      "id": "mgq.ooma",
+      "slug": "ooma",
+      "name": "Ooma",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "ooma"
+      ],
+      "art": {
+        "few": "ooma-few-master.png",
+        "pack": "ooma-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-ooma-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-ooma-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 1,
+          "health": 5,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "mgq-slimed"
+        ],
+        "text": "Slimed — after Ooma's own attack deals damage, place 1 Corrosion token on the target (-1 Defense)."
+      }
+    },
+    {
+      "id": "mgq.jessie",
+      "slug": "jessie",
+      "name": "Jessie",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "jessie"
+      ],
+      "art": {
+        "few": "jessie-few-master.png",
+        "pack": "jessie-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-jessie-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-jessie-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 4,
+          "defense": 2,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 8
+        },
+        "abilities": [],
+        "text": "No printed ability."
+      },
+      "pack": {
+        "stats": {
+          "attack": 5,
+          "defense": 2,
+          "health": 5,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 12,
+          "valuables": 1
+        },
+        "abilities": [
+          "mechanics-line-attack-2"
+        ],
+        "text": "Spear Wall — attack two cells in a line; the second hit has Attack 2."
+      }
+    },
+    {
+      "id": "mgq.aria",
+      "slug": "aria",
+      "name": "Aria",
+      "tier": "silver",
+      "type": "GROUND",
+      "referenceIds": [
+        "aria"
+      ],
+      "art": {
+        "few": "aria-few-master.png",
+        "pack": "aria-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-silver-aria-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-silver-aria-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 3,
+          "defense": 2,
+          "health": 5,
+          "initiative": 4
+        },
+        "cost": {
+          "gold": 7
+        },
+        "abilities": [
+          "mgq-flower-fragrance"
+        ],
+        "text": "Flower Fragrance — Aria's Retaliation Attacks place 1 Temptation token on their target."
+      },
+      "pack": {
+        "stats": {
+          "attack": 4,
+          "defense": 2,
+          "health": 5,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "mgq-flower-fragrance",
+          "unlimited-retaliation"
+        ],
+        "text": "Flower Fragrance — Retaliation Attacks place Temptation; Aria may retaliate without a round limit."
+      }
+    },
+    {
+      "id": "mgq.carmilla",
+      "slug": "carmilla",
+      "name": "Carmilla",
+      "tier": "golden",
+      "type": "GROUND",
+      "referenceIds": [
+        "carmilla"
+      ],
+      "art": {
+        "few": "carmilla-few-master.png",
+        "pack": "carmilla-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-carmilla-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-carmilla-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 2,
+          "health": 7,
+          "initiative": 8
+        },
+        "cost": {
+          "gold": 13,
+          "valuables": 1
+        },
+        "abilities": [
+          "bank-vampire-life-drain"
+        ],
+        "text": "Vampire Life-Drain — after Carmilla attacks, remove all damage from her."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 2,
+          "health": 7,
+          "initiative": 9
+        },
+        "cost": {
+          "gold": 21,
+          "valuables": 1
+        },
+        "abilities": [
+          "bank-vampire-life-drain",
+          "ignores-retaliation"
+        ],
+        "text": "Vampire Life-Drain — heal all damage after attacking; Carmilla's attacks do not provoke Retaliation."
+      }
+    },
+    {
+      "id": "mgq.giga",
+      "slug": "giga",
+      "name": "Giga",
+      "tier": "golden",
+      "type": "GROUND",
+      "referenceIds": [
+        "giga"
+      ],
+      "art": {
+        "few": "giga-few-master.png",
+        "pack": "giga-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-giga-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-giga-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 2,
+          "health": 8,
+          "initiative": 5
+        },
+        "cost": {
+          "gold": 14,
+          "valuables": 1
+        },
+        "abilities": [
+          "mgq-giga-regeneration",
+          "dragon-line-attack-2"
+        ],
+        "text": "Regeneration — heal 2 damage at each activation. Leviathan Sweep hits behind the target at Attack 2."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 2,
+          "health": 9,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 20,
+          "valuables": 1
+        },
+        "abilities": [
+          "mgq-giga-regeneration",
+          "dragon-line-attack-3"
+        ],
+        "text": "Regeneration — heal 2 damage at each activation. Leviathan Sweep hits behind the target at Attack 3."
+      }
+    },
+    {
+      "id": "mgq.lucretia",
+      "slug": "lucretia",
+      "name": "Lucretia",
+      "tier": "golden",
+      "type": "FLYING",
+      "referenceIds": [
+        "lucretia"
+      ],
+      "art": {
+        "few": "lucretia-few-master.png",
+        "pack": "lucretia-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-lucretia-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-lucretia-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 2,
+          "health": 6,
+          "initiative": 10
+        },
+        "cost": {
+          "gold": 13
+        },
+        "abilities": [
+          "harpy-return"
+        ],
+        "text": "Queen Harpy — after attacking, Lucretia may return to the cell she attacked from."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 2,
+          "health": 7,
+          "initiative": 12
+        },
+        "cost": {
+          "gold": 21,
+          "valuables": 1
+        },
+        "abilities": [
+          "harpy-return",
+          "kansen-fleet-formation"
+        ],
+        "text": "War Dance — strike and return; adjacent allies gain +1 Attack on their own attacks."
+      }
+    },
+    {
+      "id": "mgq.cupi",
+      "slug": "cupi",
+      "name": "Cupi",
+      "tier": "golden",
+      "type": "RANGED",
+      "referenceIds": [
+        "cupi"
+      ],
+      "art": {
+        "few": "cupi-few-master.png",
+        "pack": "cupi-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-cupi-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-cupi-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 1,
+          "health": 6,
+          "initiative": 9
+        },
+        "cost": {
+          "gold": 11
+        },
+        "abilities": [
+          "teleport-move",
+          "mgq-love-arrow"
+        ],
+        "text": "Flying Love Arrow — move to any empty cell; a \"+1\" places 2 Temptation tokens on the target."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 1,
+          "health": 6,
+          "initiative": 11
+        },
+        "cost": {
+          "gold": 17,
+          "valuables": 1
+        },
+        "abilities": [
+          "teleport-move",
+          "mgq-love-arrow"
+        ],
+        "text": "Flying Love Arrow — move to any empty cell; a \"+1\" places 2 Temptation tokens on the target."
+      }
+    },
+    {
+      "id": "mgq.sphinx",
+      "slug": "sphinx",
+      "name": "Sphinx",
+      "tier": "golden",
+      "type": "GROUND",
+      "referenceIds": [
+        "sphinx"
+      ],
+      "art": {
+        "few": "sphinx-few-master.png",
+        "pack": "sphinx-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-sphinx-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-sphinx-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 3,
+          "health": 8,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 20,
+          "valuables": 1
+        },
+        "abilities": [
+          "boss-fear"
+        ],
+        "text": "Riddle of the Sphinx — while Sphinx stands, the enemy cannot use Morale."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 3,
+          "health": 8,
+          "initiative": 8
+        },
+        "cost": {
+          "gold": 29,
+          "valuables": 2
+        },
+        "abilities": [
+          "boss-fear"
+        ],
+        "text": "Riddle of the Sphinx — while Sphinx stands, the enemy cannot use Morale."
+      }
+    },
+    {
+      "id": "mgq.lucifina_chan",
+      "slug": "lucifina_chan",
+      "assetSlug": "lucifina-chan",
+      "name": "Lucifina-chan",
+      "tier": "golden",
+      "type": "FLYING",
+      "referenceIds": [
+        "lucifina_chan"
+      ],
+      "art": {
+        "few": "lucifina_chan-few-master.png",
+        "pack": "lucifina_chan-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-lucifina-chan-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-lucifina-chan-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 3,
+          "health": 7,
+          "initiative": 10
+        },
+        "cost": {
+          "gold": 14,
+          "valuables": 1
+        },
+        "abilities": [
+          "archangel-combat-start-draw"
+        ],
+        "text": "Seraphic Insight — draw 1 card when combat begins."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 3,
+          "health": 7,
+          "initiative": 12
+        },
+        "cost": {
+          "gold": 22,
+          "valuables": 2
+        },
+        "abilities": [
+          "archangel-lethal-save"
+        ],
+        "text": "Seraphic Salvation — once per combat, cancel a lethal attack against another friendly unit."
+      }
+    },
+    {
+      "id": "mgq.spider_princess",
+      "slug": "spider_princess",
+      "assetSlug": "spider-princess",
+      "name": "Spider Princess",
+      "tier": "golden",
+      "type": "GROUND",
+      "referenceIds": [
+        "spider_princess"
+      ],
+      "art": {
+        "few": "spider_princess-few-master.png",
+        "pack": "spider_princess-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-spider-princess-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-spider-princess-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 5,
+          "defense": 2,
+          "health": 7,
+          "initiative": 6
+        },
+        "cost": {
+          "gold": 13,
+          "valuables": 1
+        },
+        "abilities": [
+          "mgq-web-the-field"
+        ],
+        "text": "Web the Field — [activation] place Weakness on an adjacent enemy and gain a Defense token."
+      },
+      "pack": {
+        "stats": {
+          "attack": 6,
+          "defense": 3,
+          "health": 7,
+          "initiative": 7
+        },
+        "cost": {
+          "gold": 21,
+          "valuables": 1
+        },
+        "abilities": [
+          "mgq-web-the-field"
+        ],
+        "text": "Web the Field — [activation] place Weakness on an adjacent enemy and gain a Defense token."
+      }
+    },
+    {
+      "id": "mgq.emily",
+      "slug": "emily",
+      "name": "Emily",
+      "tier": "golden",
+      "type": "GROUND",
+      "referenceIds": [
+        "emily"
+      ],
+      "art": {
+        "few": "emily-few-master.png",
+        "pack": "emily-pack-master.png"
+      },
+      "output": {
+        "few": "public/assets/anime/units/mgq/units-mgq-golden-emily-few.webp",
+        "pack": "public/assets/anime/units/mgq/units-mgq-golden-emily-pack.webp"
+      },
+      "few": {
+        "stats": {
+          "attack": 4,
+          "defense": 1,
+          "health": 6,
+          "initiative": 9
+        },
+        "cost": {
+          "gold": 10
+        },
+        "abilities": [
+          "mgq-sparkle"
+        ],
+        "text": "Sparkle☆ — at combat start, Emily's owner gains a positive Morale token."
+      },
+      "pack": {
+        "stats": {
+          "attack": 5,
+          "defense": 1,
+          "health": 6,
+          "initiative": 11
+        },
+        "cost": {
+          "gold": 15,
+          "valuables": 2
+        },
+        "abilities": [
+          "mgq-sparkle",
+          "elemental-damage"
+        ],
+        "text": "Sparkle☆ — gain positive Morale at combat start. Emily deals elemental damage."
+      }
+    }
+  ]
+}

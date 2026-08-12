@@ -481,6 +481,23 @@ export function commanderPreCombatSortAvailable(state: GameState, playerId: Play
   return false;
 }
 
+/**
+ * The same generic sort capability before the commander has been injected.
+ * Used to put Vanguard/equipment commanders directly into ordinary troop
+ * deployment, where commander, Little Busters hero and army cards are arranged
+ * together and confirmed by one Ready action.
+ */
+export function commanderIntegratedDeploymentSortAvailable(state: GameState, playerId: PlayerId): boolean {
+  if (!commandersModuleEnabled(state)) {
+    return false;
+  }
+  const commander = livingCommanderOf(state.players[playerId]);
+  if (!commander) {
+    return false;
+  }
+  return commanderIsVanguardMarshal(commander) || equipmentGrantsCommanderSort(state, playerId);
+}
+
 /** The cells considered `unit`'s own front line in the current combat. */
 function commanderFrontLineCells(state: GameState, unit: CombatUnitState): readonly number[] {
   const combat = state.combat;
@@ -563,6 +580,24 @@ export function commanderLiveDefenseBonus(state: GameState, unit: CombatUnitStat
     return 1;
   }
   return 0;
+}
+
+/**
+ * Sonya's Unbreakable Bond is a live read: the marked army card has +1 Defense
+ * only while Sonya's own combat unit is still standing. Because it keys on the
+ * persistent army-card id, Pack/Few flips and Job recomputes keep the bond.
+ */
+export function sonyaBondDefenseBonus(state: GameState, unit: CombatUnitState): number {
+  const commander = state.players[unit.controllerId]?.commander;
+  if (
+    !unit.armyUnitId ||
+    commander?.slug !== "sonya" ||
+    commander.bondedArmyUnitId !== unit.armyUnitId
+  ) {
+    return 0;
+  }
+  const sonya = findCommanderUnit(state, unit.controllerId);
+  return sonya?.commanderSlug === "sonya" && sonya.damage < sonya.maxHealth ? 1 : 0;
 }
 
 // ---------------------------------------------------------------------------

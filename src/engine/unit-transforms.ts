@@ -2,6 +2,8 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { CREATURE_BANK_UNIT_SIDES, stackTokenDelta } from "@/data/map/creature-banks";
 import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
 import { combatUnitRankFold, neutralStackRankFold, withRankAbilities } from "./unit-experience";
+import { withMgqJobAbilities } from "./mgq-jobs";
+import { maxHealthAfterUnitAbilityEffects } from "./unit-abilities";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -170,7 +172,9 @@ export function applyUnitCurrentSide(
     unit.defense = top.defense;
     unit.maxHealth = top.health;
     unit.initiative = top.initiative;
-    unit.abilities = [];
+    // A Job is a separate persistent token on the army card, not printed text
+    // covered by the transform. Its base package and rank-3 signature remain.
+    unit.abilities = withMgqJobAbilities(withRankAbilities([], combatUnitRankFold(unit)), unit.job);
     if (unit.assets && top.cardImage) {
       unit.assets.cardImage = top.cardImage;
     }
@@ -250,19 +254,22 @@ export function applyUnitCurrentSide(
   // to 0. No-op on a normally-recruited card (no token).
   const tokenBonus = (stat: "attack" | "defense" | "health" | "initiative") =>
     unit.stackToken === stat ? stackTokenDelta(stat) : 0;
+  const combatAbilityIds = withMgqJobAbilities(withRankAbilities(side.abilities, rankFold), unit.job);
   unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + rankFold.attack + tokenBonus("attack");
   unit.defense = side.defense + rankFold.defense + tokenBonus("defense");
   // combatMaxHealthBonus: ADD_UNIT_MAX_HEALTH (Valeska, Vial, Ivor VI…). Must
   // re-fold here so a Pack→Few flip or a Polish Stack layer loss keeps the
   // same +HP on the new health bar (stack / pack / few all share the bonus).
-  unit.maxHealth =
+  unit.maxHealth = maxHealthAfterUnitAbilityEffects(
     side.health +
-    (unit.permanentHealthBonus ?? 0) +
-    (unit.combatMaxHealthBonus ?? 0) +
-    rankFold.health +
-    tokenBonus("health");
+      (unit.permanentHealthBonus ?? 0) +
+      (unit.combatMaxHealthBonus ?? 0) +
+      rankFold.health +
+      tokenBonus("health"),
+    combatAbilityIds
+  );
   unit.initiative = side.initiative + rankFold.initiative + tokenBonus("initiative");
-  unit.abilities = withRankAbilities(side.abilities, rankFold);
+  unit.abilities = combatAbilityIds;
   if (rankFold.rank > 0) {
     unit.unitRank = rankFold.rank;
   } else {

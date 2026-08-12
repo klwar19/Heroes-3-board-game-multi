@@ -17,7 +17,9 @@ export type FactionId =
   | "azure_breeze"
   | "hidden_leaf"
   | "azur_lane"
-  | "heavenly_demon";
+  | "heavenly_demon"
+  | "little_busters"
+  | "mgq";
 export type UnitTier = "bronze" | "silver" | "gold" | "azure";
 
 export type UnitSideDefinition = {
@@ -101,6 +103,8 @@ export type CityHallOption = {
   valuables?: number;
   movement?: number;
   reinforceBronzeFree?: boolean;
+  /** MGQ Pocket Castle Kitchen: waive the gold cost of one Job reassignment. */
+  freeJobReassign?: boolean;
   /** Stronghold City Hall / Tower City Hall: draw cards from the M&M deck. */
   drawCards?: number;
   /** Fortress City Hall: open a Trading Post to exchange resources. */
@@ -293,6 +297,19 @@ export type TownBuildingEffect =
       type: "RUNE_ALTAR";
       startingRunes: number;
       levelCap: number;
+    }
+  | {
+      /**
+       * Monster Girl Quest: Paradox Spirit Shrine. At combat setup the owner
+       * chooses one separately built spirit contract and receives its one-shot
+       * round-1 effect. Runtime selection lives in the MGQ mechanics module.
+       */
+      type: "MGQ_SPIRIT_SHRINE";
+    }
+  | {
+      /** A buildable rung in the Spirit Shrine's HoMM-guild-style ladder. */
+      type: "MGQ_SPIRIT_CONTRACT";
+      spirit: "sylph" | "gnome" | "undine" | "salamander";
     }
   | { type: "NOT_IMPLEMENTED"; note: string };
 

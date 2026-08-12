@@ -164,6 +164,13 @@ const COMMANDERS = [
       "Eight Gates: chooses +1 Attack or +1 Defense before combat.",
       "Body Flicker: may cast Haste (initiative-shift)."
     ]
+  },
+  {
+    slug: "kyousuke_natsume", name: "Kyousuke Natsume", faction: "Little Busters",
+    abilities: [
+      "Mission Start: directs the team's opening formation.",
+      "Team Captain: protects and rallies a chosen school unit."
+    ]
   }
 ];
 

@@ -116,6 +116,10 @@ export const implementedCardEffectTypes = [
   "GRANT_ELEMENTAL_DAMAGE",
   "DOUBLE_FIRST_AID_TENT",
   "CONVERT_ARMY_UNIT",
+  "MGQ_GRANT_FREE_COMPANION_SEAL",
+  "MGQ_MAD_SCIENCE",
+  "MGQ_DRAW_AND_SPECIALTY_IMMUNITY",
+  "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS",
   "TACTICS_SWAP",
   "DIPLOMACY_RECRUIT",
   "DIPLOMACY_SKIP_COMBAT",
@@ -1397,6 +1401,14 @@ export function describeCardEffect(card: CardDefinition): string {
       ? `discard a ${card.effect.fromSide} of ${card.effect.fromUnitDefId.split(".").pop()?.replace(/_/g, " ")}`
       : `pay ${card.effect.goldCost ?? 0} gold`;
     return `${acquire} to fetch the ${to} from the ${card.effect.toTier} Neutral deck`;
+  }
+
+  if (card.effect.type === "MGQ_GRANT_FREE_COMPANION_SEAL") {
+    return `gain ${card.effect.amount} free Companion seal charge${card.effect.amount === 1 ? "" : "s"}`;
+  }
+
+  if (card.effect.type === "MGQ_MAD_SCIENCE") {
+    return `remove one bronze Few to give one silver card +${card.effect.attackBonus} permanent Attack`;
   }
 
   if (card.effect.type === "TARNUM_OVERLIMIT_SEARCH") {

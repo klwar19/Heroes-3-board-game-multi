@@ -290,6 +290,79 @@ function azurLaneVoiceKey(slug: string, action: UnitSoundAction): string | undef
 }
 
 /**
+ * Monster Girl Quest uses curated female Rune Factory clips followed by a
+ * unit-specific MGQ effect for attacks, forced shots, and movement. The four
+ * summon-only spirits are explicit entries too; their bare names include the
+ * `spirit_` prefix from mgq.ts.
+ */
+const mgqUnitVoices: Record<string, string> = {
+  spirit_sylph: "spirit_sylph",
+  spirit_gnome: "spirit_gnome",
+  spirit_undine: "spirit_undine",
+  spirit_salamander: "spirit_salamander",
+  pochi: "pochi",
+  shesta: "shesta",
+  gigi: "gigi",
+  kamuro_kitsu: "kamuro_kitsu",
+  fleesia: "fleesia",
+  sofia: "sofia",
+  miyabi: "miyabi",
+  eater: "eater",
+  hild: "hild",
+  chrome_frederica: "chrome_frederica",
+  shizuku: "shizuku",
+  regina: "regina",
+  maiden: "maiden",
+  seraphy: "seraphy",
+  lisa: "lisa",
+  tama: "tama",
+  maya: "maya",
+  matis: "matis",
+  ooma: "ooma",
+  jessie: "jessie",
+  aria: "aria",
+  carmilla: "carmilla",
+  giga: "giga",
+  lucretia: "lucretia",
+  cupi: "cupi",
+  sphinx: "sphinx",
+  lucifina_chan: "lucifina_chan",
+  spider_princess: "spider_princess",
+  emily: "emily"
+};
+
+function mgqVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
+  const key = `mgq/voices/${slug}/${action}`;
+  return soundLibrary[key] ? key : undefined;
+}
+
+/** Canonical Little Busters battle voices imported from the user's OGGPAKs. */
+const littleBustersUnitVoices: Record<string, string> = {
+  haruka: "haruka",
+  rins_cats: "rins_cats",
+  disciplinary_committee: "kanata",
+  masato: "masato",
+  softball_club: "sasami_goons",
+  saya: "saya",
+  mio: "mio"
+};
+
+/** The six Little Busters heroes also enter combat as real battlefield units. */
+const littleBustersHeroVoices: Record<string, string> = {
+  sasami_sasasegawa: "sasami",
+  riki_naoe: "riki",
+  rin_natsume: "rin",
+  yuiko_kurugaya: "yuiko",
+  kudryavka_noumi: "kud",
+  komari_kamikita: "komari"
+};
+
+function littleBustersVoiceKey(slug: string, action: UnitSoundAction): string | undefined {
+  const key = `little-busters/voices/${slug}/${action}`;
+  return soundLibrary[key] ? key : undefined;
+}
+
+/**
  * WOG commanders have no unit definition (they are tierless, army-card-less
  * champions), so their battlefield voices are keyed by commander slug (== the
  * faction) with a per-action creature-voice mapping, exactly as the user
@@ -534,6 +607,12 @@ export function commanderSoundKey(slug: string, action: UnitSoundAction): string
   if (slug === "belfast") {
     return azurLaneVoiceKey("belfast", action);
   }
+  if (slug === "sonya") {
+    return mgqVoiceKey("sonya", action);
+  }
+  if (slug === "kyousuke_natsume") {
+    return littleBustersVoiceKey("kyousuke", action);
+  }
   const voices = commanderVoices[slug];
   if (!voices) {
     return undefined;
@@ -559,12 +638,24 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
     return commanderSoundKey(unitDefId.slice(COMMANDER_VOICE_PREFIX.length), action);
   }
   const bareName = unitDefId.split(".")[1] ?? unitDefId;
+  if (unitDefId.startsWith("little_busters.")) {
+    const slug = littleBustersUnitVoices[bareName];
+    return slug ? littleBustersVoiceKey(slug, action) : undefined;
+  }
+  const littleBustersHeroSlug = littleBustersHeroVoices[unitDefId];
+  if (littleBustersHeroSlug) {
+    return littleBustersVoiceKey(littleBustersHeroSlug, action);
+  }
   if (unitDefId.startsWith("fuyuki.")) {
     const fuyukiSlug = fuyukiUnitVoices[bareName];
     const key = fuyukiSlug ? fuyukiVoiceKey(fuyukiSlug, action) : undefined;
     if (key) {
       return key;
     }
+  }
+  if (unitDefId.startsWith("mgq.")) {
+    const mgqSlug = mgqUnitVoices[bareName];
+    return mgqSlug ? mgqVoiceKey(mgqSlug, action) : undefined;
   }
   const azurLaneSlug = azurLaneUnitVoices[bareName];
   if (azurLaneSlug) {

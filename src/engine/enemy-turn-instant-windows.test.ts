@@ -287,6 +287,21 @@ describe("interaction with Intelligence and reaction pauses", () => {
     expect(state.combat!.pendingNeutralStep?.reactingPlayerId).toBe("p1");
     // With a Meteor Shower in hand and NO Intelligence, it is offered in that pause.
     state.players.p1.hand = ["specialty.deemer.6"];
+    const guardId = state.combat!.pendingNeutralStep!.unitId!;
+    const guard = state.combat!.units[guardId];
+    guard.position = 9;
+    state.combat!.units.meteor_fixture_a = {
+      ...structuredClone(guard),
+      id: "meteor_fixture_a",
+      position: 10,
+      activatedThisRound: true
+    };
+    state.combat!.units.meteor_fixture_b = {
+      ...structuredClone(guard),
+      id: "meteor_fixture_b",
+      position: 13,
+      activatedThisRound: true
+    };
     const offered = getLegalActions(state, "p1").some(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
     );
@@ -347,6 +362,7 @@ describe("interaction with Intelligence and reaction pauses", () => {
       dice: { faces: [...ATTACK_DIE_FACES], seed: "adv-instant-die", rollCount: 0 },
       units: {
         u_p1: combatUnit("u_p1", "p1", 0),
+        u_p1b: combatUnit("u_p1b", "p1", 13),
         u_p2: combatUnit("u_p2", "p2", 9),
         u_p2b: combatUnit("u_p2b", "p2", 10)
       }

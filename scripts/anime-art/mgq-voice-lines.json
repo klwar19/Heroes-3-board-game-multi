@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "engine": "Microsoft Haruka Desktop",
+  "language": "ja-JP",
+  "provenance": "Wholly original, project-authored combat barks synthesized locally. No MGQ recordings, scripts, or actor voices were sampled or cloned.",
+  "profiles": [
+    {
+      "slug": "pochi", "displayName": "Pochi", "sapiRate": 3, "tempo": 1.06, "pitch": 1.08, "formant": "shifted",
+      "lines": { "attack": "わんっ、かみつくよ！", "shoot": "穴から奇襲だよ！", "defend": "ここは守るわん！", "hurt": "くぅん、まだ平気！", "death": "ご主人、ごめんね…", "move": "においを追うよ！" }
+    },
+    {
+      "slug": "shesta", "displayName": "Shesta", "sapiRate": -1, "tempo": 0.96, "pitch": 0.95, "formant": "preserved",
+      "lines": { "attack": "静かに、力を奪う。", "shoot": "虫たちよ、狙って。", "defend": "この羽衣で受ける。", "hurt": "計算外ね…", "death": "空が、遠い…", "move": "浮上するわ。" }
+    },
+    {
+      "slug": "gigi", "displayName": "Gigi", "sapiRate": 0, "tempo": 1.01, "pitch": 1.00, "formant": "preserved",
+      "lines": { "attack": "電撃、放つよ！", "shoot": "水脈を走れ、雷！", "defend": "しびれても知らないよ！", "hurt": "電圧が乱れた…", "death": "深みに、沈むね…", "move": "水の気配がする。" }
+    },
+    {
+      "slug": "kamuro_kitsu", "displayName": "Kamuro & Kitsu", "sapiRate": 2, "tempo": 1.06, "pitch": 1.06, "formant": "shifted",
+      "lines": { "attack": "二人の術、見せてあげる！", "shoot": "影から一閃！", "defend": "結界、急いで！", "hurt": "まだ二人で立てる！", "death": "一緒なら、怖くない…", "move": "先に道を探るね。" }
+    },
+    {
+      "slug": "fleesia", "displayName": "Fleesia", "sapiRate": -1, "tempo": 0.95, "pitch": 0.97, "formant": "preserved",
+      "lines": { "attack": "香りに包まれなさい。", "shoot": "花粉よ、風に乗って。", "defend": "花びらの盾よ。", "hurt": "香りが、乱れた…", "death": "花が、閉じていく…", "move": "日だまりへ行きましょう。" }
+    },
+    {
+      "slug": "sofia", "displayName": "Sofia", "sapiRate": 0, "tempo": 0.96, "pitch": 1.02, "formant": "preserved",
+      "lines": { "attack": "聖なる光よ！", "shoot": "白き魔法、届け！", "defend": "祈りが守ります。", "hurt": "まだ祈れます…", "death": "どうか、皆に加護を…", "move": "傷ついた方はいますか？" }
+    },
+    {
+      "slug": "miyabi", "displayName": "Miyabi", "sapiRate": 2, "tempo": 0.94, "pitch": 1.10, "formant": "shifted",
+      "lines": { "attack": "髪よ、伸びて。", "shoot": "呪いの糸、絡んで。", "defend": "この身は壊れない。", "hurt": "ひびが、入った…", "death": "髪も、眠るのね…", "move": "静かな場所へ。" }
+    },
+    {
+      "slug": "eater", "displayName": "Eater", "sapiRate": -2, "tempo": 0.92, "pitch": 0.90, "formant": "shifted",
+      "lines": { "attack": "捕まえた。", "shoot": "花弁よ、閉じて。", "defend": "ここは通さない。", "hurt": "獲物が、抵抗する…", "death": "罠が、崩れる…", "move": "次の気配を探す。" }
+    },
+    {
+      "slug": "hild", "displayName": "Hild", "sapiRate": 0, "tempo": 1.02, "pitch": 0.98, "formant": "preserved",
+      "lines": { "attack": "照準固定、射撃。", "shoot": "神眼、目標を捕捉。", "defend": "装甲を展開。", "hurt": "機構に損傷…", "death": "指揮系統、停止…", "move": "推進器、起動。" }
+    },
+    {
+      "slug": "chrome_frederica", "displayName": "Chrome & Frederica", "sapiRate": 2, "tempo": 1.04, "pitch": 1.05, "formant": "shifted",
+      "lines": { "attack": "フレデリカ、実験開始！", "shoot": "再構築砲、発射！", "defend": "傑作は壊させない！", "hurt": "ちょっと、設計と違う！", "death": "研究は、まだ途中なのに…", "move": "素材を探しに行くよ！" }
+    },
+    {
+      "slug": "shizuku", "displayName": "Shizuku", "sapiRate": 1, "tempo": 1.02, "pitch": 0.97, "formant": "preserved",
+      "lines": { "attack": "鬼の一撃、受けてみな！", "shoot": "金棒の風圧だ！", "defend": "これくらい、受け切る！", "hurt": "いい打ち込みだね！", "death": "さすがに、効いたよ…", "move": "勝負の匂いがする！" }
+    },
+    {
+      "slug": "regina", "displayName": "Regina", "sapiRate": 0, "tempo": 1.03, "pitch": 0.96, "formant": "preserved",
+      "lines": { "attack": "剣筋を見切れるか！", "shoot": "斬撃よ、走れ！", "defend": "隙は見せない！", "hurt": "まだ剣は鈍らない！", "death": "私の剣が、届かない…", "move": "前線は私が取る。" }
+    },
+    {
+      "slug": "maiden", "displayName": "Maiden", "sapiRate": -3, "tempo": 0.88, "pitch": 0.88, "formant": "shifted",
+      "lines": { "attack": "悪夢の扉を開く。", "shoot": "影よ、抱きしめて。", "defend": "鉄の殻は揺るがない。", "hurt": "きしむ音がする…", "death": "扉が、閉じる…", "move": "静かに運んで。" }
+    },
+    {
+      "slug": "seraphy", "displayName": "Seraphy", "sapiRate": -1, "tempo": 0.95, "pitch": 0.94, "formant": "preserved",
+      "lines": { "attack": "眠りの潮に沈んで。", "shoot": "毒の泡よ、届いて。", "defend": "波が受け止めるわ。", "hurt": "潮目が変わった…", "death": "海が、遠ざかる…", "move": "流れに乗りましょう。" }
+    },
+    {
+      "slug": "lisa", "displayName": "Lisa", "sapiRate": 0, "tempo": 0.93, "pitch": 1.03, "formant": "shifted",
+      "lines": { "attack": "時よ、遅れて。", "shoot": "絵の影から届いて。", "defend": "額縁が守るわ。", "hurt": "時間が、ひび割れた…", "death": "絵の中へ、戻るね…", "move": "次の一秒へ。" }
+    },
+    {
+      "slug": "tama", "displayName": "Tama", "sapiRate": 3, "tempo": 1.08, "pitch": 1.10, "formant": "shifted",
+      "lines": { "attack": "にゃっ、爪の一撃！", "shoot": "猫火よ、飛んでけ！", "defend": "ふわふわガード！", "hurt": "いたいにゃ、でも平気！", "death": "ちょっと、お昼寝するにゃ…", "move": "こっちが近道にゃ！" }
+    },
+    {
+      "slug": "maya", "displayName": "Maya", "sapiRate": 0, "tempo": 0.96, "pitch": 1.01, "formant": "preserved",
+      "lines": { "attack": "運命の糸を結びます。", "shoot": "時の針よ、射抜いて。", "defend": "結界を織ります。", "hurt": "糸が、ほつれました…", "death": "時が、止まります…", "move": "未来を確かめましょう。" }
+    },
+    {
+      "slug": "matis", "displayName": "Matis", "sapiRate": -1, "tempo": 1.02, "pitch": 0.94, "formant": "preserved",
+      "lines": { "attack": "鎌の間合いよ。", "shoot": "真空の刃、飛べ！", "defend": "前脚で受ける。", "hurt": "刃が欠けたか…", "death": "収穫は、ここまで…", "move": "弱った気配がする。" }
+    },
+    {
+      "slug": "ooma", "displayName": "Ooma", "sapiRate": -2, "tempo": 0.92, "pitch": 0.88, "formant": "shifted",
+      "lines": { "attack": "ぬめりから逃げられる？", "shoot": "触手よ、絡みつけ！", "defend": "深海の体は頑丈よ。", "hurt": "乾いてしまう…", "death": "海底へ、帰るわ…", "move": "潮の道を進むよ。" }
+    },
+    {
+      "slug": "jessie", "displayName": "Jessie", "sapiRate": 0, "tempo": 1.02, "pitch": 0.97, "formant": "preserved",
+      "lines": { "attack": "槍隊、突撃！", "shoot": "水槍、一直線！", "defend": "隊列を崩すな！", "hurt": "まだ指揮は続ける！", "death": "皆、退路を守って…", "move": "次の陣地へ進む！" }
+    },
+    {
+      "slug": "aria", "displayName": "Aria", "sapiRate": 0, "tempo": 0.98, "pitch": 1.02, "formant": "preserved",
+      "lines": { "attack": "森の香りを受けて。", "shoot": "花びらよ、舞いなさい。", "defend": "蔓の壁よ。", "hurt": "枝が、折れた…", "death": "森へ、還ります…", "move": "風の向く方へ。" }
+    },
+    {
+      "slug": "carmilla", "displayName": "Carmilla", "sapiRate": -1, "tempo": 0.94, "pitch": 0.92, "formant": "preserved",
+      "lines": { "attack": "血の夜を始めましょう。", "shoot": "紅い刃よ、舞いなさい。", "defend": "闇の翼が守るわ。", "hurt": "この私に傷を…", "death": "夜明けが、来たのね…", "move": "影から参ります。" }
+    },
+    {
+      "slug": "giga", "displayName": "Giga", "sapiRate": -3, "tempo": 0.88, "pitch": 0.88, "formant": "shifted",
+      "lines": { "attack": "大地ごと薙ぎ払う。", "shoot": "竜の息吹、放つ。", "defend": "この鱗は砕けない。", "hurt": "小さくても、鋭いな…", "death": "巨体が、沈む…", "move": "道を空けろ。" }
+    },
+    {
+      "slug": "lucretia", "displayName": "Lucretia", "sapiRate": 2, "tempo": 1.02, "pitch": 1.07, "formant": "shifted",
+      "lines": { "attack": "女王の舞を見なさい！", "shoot": "羽根の刃、翔べ！", "defend": "翼で包みます。", "hurt": "王冠が、ずれましたわ！", "death": "空が、遠くなりますわ…", "move": "風は私たちの味方です。" }
+    },
+    {
+      "slug": "cupi", "displayName": "Cupi", "sapiRate": 3, "tempo": 1.07, "pitch": 1.11, "formant": "shifted",
+      "lines": { "attack": "恋の矢、届け！", "shoot": "ハートを二つ、重ねるよ！", "defend": "翼で守るね！", "hurt": "はうっ、羽が痛い…", "death": "ちょっとだけ、休むね…", "move": "みんなの心が見えるよ！" }
+    },
+    {
+      "slug": "sphinx", "displayName": "Sphinx", "sapiRate": -2, "tempo": 0.92, "pitch": 0.89, "formant": "preserved",
+      "lines": { "attack": "謎に答えられるか。", "shoot": "王墓の光よ、貫け。", "defend": "守護者は退かぬ。", "hurt": "よい答えだ…", "death": "千年の眠りへ…", "move": "神殿の道を開こう。" }
+    },
+    {
+      "slug": "lucifina_chan", "displayName": "Lucifina-chan", "sapiRate": 3, "tempo": 1.08, "pitch": 1.10, "formant": "shifted",
+      "lines": { "attack": "聖なる星よ、輝いて！", "shoot": "光の矢、まっすぐ飛んで！", "defend": "天使の翼で守るよ！", "hurt": "だいじょうぶ、まだ飛べる！", "death": "少しだけ、眠るね…", "move": "お空から案内するね！" }
+    },
+    {
+      "slug": "spider_princess", "displayName": "Spider Princess", "sapiRate": 0, "tempo": 0.96, "pitch": 0.98, "formant": "preserved",
+      "lines": { "attack": "蜘蛛の陣を敷きます。", "shoot": "封の糸よ、絡みなさい。", "defend": "御札の守りです。", "hurt": "結界が裂けました…", "death": "巣を、託します…", "move": "地脈をたどりましょう。" }
+    },
+    {
+      "slug": "emily", "displayName": "Emily", "sapiRate": 1, "tempo": 1.03, "pitch": 1.04, "formant": "shifted",
+      "lines": { "attack": "ステージを始めるよ！", "shoot": "きらめき、届け！", "defend": "応援が力になる！", "hurt": "まだ笑顔は消えない！", "death": "アンコールは、また今度…", "move": "次の会場へ行こう！" }
+    },
+    {
+      "slug": "sonya", "displayName": "Sonya", "sapiRate": 1, "tempo": 1.03, "pitch": 1.03, "formant": "preserved",
+      "lines": { "attack": "みんな、私に続いて！", "shoot": "そこ、逃がさない！", "defend": "私が守る！", "hurt": "こんなの、平気よ！", "death": "ルカ、あとはお願い…", "move": "一緒に行こう！" }
+    }
+  ]
+}
