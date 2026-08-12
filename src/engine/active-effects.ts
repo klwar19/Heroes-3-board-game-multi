@@ -5,6 +5,8 @@ import { houseRuleEnabled } from "./house-rules";
 import {
   getInnateFlatAttackBonus,
   getUnitAbilityDefinitions,
+  getAdjacentEnemyInitiativeAuraDelta,
+  getFriendlyAdjacentInitiativeAuraAmount,
   hasAmplifyInitiativeIncrease,
   hasIgnoreOngoingEffects,
   hasIgnoreOngoingSpellEffects,
@@ -16,6 +18,7 @@ import type {
   ActiveEffectDefinition,
   ActiveEffectState,
   CardDefinition,
+  CombatState,
   CombatUnitState,
   EffectDurationDefinition,
   GameState,
@@ -269,11 +272,42 @@ function effectIsFromSpecialty(effect: ActiveEffectState): boolean {
  * predicate separate from the damage-immunity path so a mixed card can still
  * deal its damage while every non-damage rider is ignored.
  */
-export function unitIgnoresCardNonDamage(unit: CombatUnitState, card: CardDefinition | undefined): boolean {
+export function unitIgnoresCardNonDamage(
+  unit: CombatUnitState,
+  card: CardDefinition | undefined,
+  state?: GameState
+): boolean {
   return (
-    hasIgnoreSpellAndSpecialtyNonDamage(unit) &&
-    (card?.kind === "spell" || card?.kind === "hero-specialty")
+    (hasIgnoreSpellAndSpecialtyNonDamage(unit) &&
+      (card?.kind === "spell" || card?.kind === "hero-specialty")) ||
+    (card?.kind === "hero-specialty" && specialtyImmunityActive(state, unit))
   );
+}
+
+/** Ilias IV's combat ward blocks both direct and ongoing Specialty effects. */
+export function specialtyImmunityActive(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "SPECIALTY_IMMUNITY")
+    )
+  );
+}
+
+/** Flat combat-long Power supplied by active effects such as Promestein VI. */
+export function activeSpellPowerBonus(state: GameState, playerId: PlayerId): number {
+  const combatUnit = Object.values(state.combat?.units ?? {}).find(
+    (unit) => unit.controllerId === playerId && unit.damage < unit.maxHealth
+  );
+  return state.activeEffects.reduce((total, effect) => {
+    if (effect.controllerId !== playerId || effect.scope !== "player") return total;
+    if (combatUnit && !effectAppliesToUnit(effect, combatUnit)) return total;
+    return total + effect.modifiers.reduce(
+      (sum, modifier) => sum + (modifier.type === "SPELL_POWER_BONUS" ? modifier.amount : 0),
+      0
+    );
+  }, 0);
 }
 
 /**
@@ -330,6 +364,12 @@ export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitS
   // Army-variant gate (Oidana VI's "all your neutral units" rally): regardless
   // of scope, the effect only touches units of the named variant.
   if (effect.appliesOnlyToVariant && unit.variant !== effect.appliesOnlyToVariant) {
+    return false;
+  }
+  if (effect.appliesOnlyToGrades && !effect.appliesOnlyToGrades.includes(unit.grade)) {
+    return false;
+  }
+  if (effect.appliesOnlyToEnemies && effect.controllerId === unit.controllerId) {
     return false;
   }
 
@@ -572,7 +612,11 @@ export function hasActiveRetaliationDisadvantage(state: GameState, unit: CombatU
 }
 
 /** Initiative including Haste/Slow and other lasting bonuses on the unit. */
-export function effectiveInitiative(unit: CombatUnitState, activeEffects: ActiveEffectState[] = []): number {
+export function effectiveInitiative(
+  unit: CombatUnitState,
+  activeEffects: ActiveEffectState[] = [],
+  combat?: CombatState | null
+): number {
   const bonus = activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, unit)) {
       return total;
@@ -607,7 +651,24 @@ export function effectiveInitiative(unit: CombatUnitState, activeEffects: Active
   // POSITIVE shift is amplified — a Slow (net-negative) is left untouched.
   const amplified = bonus > 0 && hasAmplifyInitiativeIncrease(unit) ? bonus + 1 : bonus;
 
-  return unit.initiative + amplified;
+  const adjacentEnemyAura = combat ? getAdjacentEnemyInitiativeAuraDelta(combat, unit) : 0;
+  // MGQ Maid is evaluated from current board positions on every read. Nothing
+  // is cached or written into activeEffects, so moving apart removes +2
+  // immediately and moving adjacent restores it without stale modifiers.
+  const maidAura = combat
+    ? Object.values(combat.units).reduce((best, candidate) => {
+        if (
+          candidate.id === unit.id ||
+          candidate.controllerId !== unit.controllerId ||
+          candidate.damage >= candidate.maxHealth ||
+          !isAdjacent(candidate.position, unit.position)
+        ) {
+          return best;
+        }
+        return Math.max(best, getFriendlyAdjacentInitiativeAuraAmount(candidate));
+      }, 0)
+    : 0;
+  return unit.initiative + amplified + adjacentEnemyAura + maidAura;
 }
 
 /**
@@ -619,7 +680,10 @@ export function getConditionalDefenseBonus(
   defender: CombatUnitState,
   attacker: CombatUnitState
 ): number {
-  if (effectiveInitiative(attacker, state.activeEffects) >= effectiveInitiative(defender, state.activeEffects)) {
+  if (
+    effectiveInitiative(attacker, state.activeEffects, state.combat) >=
+    effectiveInitiative(defender, state.activeEffects, state.combat)
+  ) {
     return 0;
   }
 
@@ -648,8 +712,8 @@ export function getConditionalAttackBonus(
   attacker: CombatUnitState,
   defender: CombatUnitState
 ): number {
-  const attackerInitiative = effectiveInitiative(attacker, state.activeEffects);
-  const defenderInitiative = effectiveInitiative(defender, state.activeEffects);
+  const attackerInitiative = effectiveInitiative(attacker, state.activeEffects, state.combat);
+  const defenderInitiative = effectiveInitiative(defender, state.activeEffects, state.combat);
   return state.activeEffects.reduce((total, effect) => {
     if (!effectAppliesToUnit(effect, attacker)) {
       return total;

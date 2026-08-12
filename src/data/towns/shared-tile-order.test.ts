@@ -17,15 +17,23 @@ import type { GameState } from "@/engine/state";
 
 // The effect types that mark a "main" (core) building — a dwelling, the Mage
 // Guild, the Citadel, or the City Hall.
-const CORE_MAIN_EFFECTS = new Set(["UNLOCK_RECRUIT_TIER", "MAGE_GUILD", "UNLOCK_REINFORCE", "RESOURCE_ROUND_CHOICE"]);
+const CORE_MAIN_EFFECTS = new Set([
+  "UNLOCK_RECRUIT_TIER",
+  "MAGE_GUILD",
+  "UNLOCK_REINFORCE",
+  "RESOURCE_ROUND_CHOICE",
+  "MGQ_SPIRIT_SHRINE"
+]);
 
 describe("shared-tile build order — every town", () => {
   it("every town's two-in-one tile makes the SPECIAL require its MAIN building", () => {
     let sharedTiles = 0;
     for (const [faction, spec] of Object.entries(townBoardSpecs)) {
       const shared = spec.bars.filter((bar) => bar.length > 1);
-      // Exactly one shared tile per town board.
-      expect(shared.length, `${faction}: one two-in-one tile`).toBe(1);
+      // MGQ has TWO main+special inserts (dwelling_silver+Colosseum,
+      // citadel+Amira's Shop); its Spirit Shrine is a lone building, not a
+      // shared bar. Every other board keeps exactly one shared bar.
+      expect(shared.length, `${faction}: shared building bars`).toBe(faction === "mgq" ? 2 : 1);
       for (const bar of shared) {
         sharedTiles++;
         const [mainId, ...specials] = bar;
@@ -43,7 +51,9 @@ describe("shared-tile build order — every town", () => {
         }
       }
     }
-    expect(sharedTiles, "one shared tile per town").toBe(Object.keys(townBoardSpecs).length);
+    expect(sharedTiles, "one shared tile per town, plus MGQ's one extra shared bar").toBe(
+      Object.keys(townBoardSpecs).length + 1
+    );
   });
 
   it("CONTROL: the order is one-way — the MAIN never requires the SPECIAL", () => {

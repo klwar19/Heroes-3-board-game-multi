@@ -99,6 +99,20 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // cleanse clone, like Aoko) shows the Cure spell icon.
   yaoji: "/assets/specialty-card/icon-first_aid.webp",
   molian: "/assets/specialty-card/icon-cure.webp",
+  // Little Busters — generated transparent emblems double as clean native-card
+  // specialty symbols; Kud/Komari use the exact medic icons their effects use.
+  sasami_sasasegawa: "/assets/anime/icons/little-busters/rank-softball-club.webp",
+  riki_naoe: "/assets/specialty-card/icon-forgetfulness.webp",
+  rin_natsume: "/assets/anime/icons/little-busters/rank-rins-cats.webp",
+  yuiko_kurugaya: "/assets/specialty-card/icon-fortune.webp",
+  kudryavka_noumi: "/assets/specialty-card/icon-frost_ring.webp",
+  komari_kamikita: "/assets/specialty-card/icon-first_aid.webp",
+  // Monster Girl Quest: dedicated identity-preserving specialty medallions.
+  luka: "/assets/specialty-card/icon-mgq-luka.webp",
+  alice: "/assets/specialty-card/icon-mgq-alice.webp",
+  ilias: "/assets/specialty-card/icon-mgq-ilias.webp",
+  granberia: "/assets/specialty-card/icon-mgq-granberia.webp",
+  promestein: "/assets/specialty-card/icon-mgq-promestein.webp",
   // --- Spell / emblem specialists -----------------------------------------
   oidana: "/assets/specialty-card/icon-diplomacy.webp", // Diplomacy dove
   glacius: "/assets/specialty-card/icon-frost_ring.webp", // Homm3BG symbols

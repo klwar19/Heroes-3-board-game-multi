@@ -93,6 +93,20 @@ function modTownState(factionId: "fuyuki" | "azure_breeze", heroDefId: "bin" | "
   });
 }
 
+function littleBustersTownState(): GameState {
+  return createAdventureGameState({
+    startingBuildings: [],
+    seed: "town-board-little-busters-progressive-build",
+    difficulty: "normal",
+    rollFirstPlayer: false,
+    anime: { enabled: true, isekaiTowns: true },
+    players: [
+      { id: "p1", name: "Riki", factionId: "little_busters", heroDefId: "riki_naoe" },
+      { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+    ]
+  });
+}
+
 const viewFor = (state: GameState) => (
   <TownBoardView legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
 );
@@ -853,6 +867,30 @@ function factoryState(): GameState {
 }
 
 describe("Designed board — authentic printed art (reveal slice + tile overlay, tracks panel)", () => {
+  it("Little Busters visibly changes from the empty campus to built-town slices", () => {
+    const empty = littleBustersTownState();
+    const emptyRender = render(viewFor(empty));
+    const emptyCampus = emptyRender.container.querySelector("img[src*='little-busters-campus-empty']");
+    expect(emptyCampus).toBeTruthy();
+    expect(emptyCampus?.classList.contains("tbTownArtTopAligned")).toBe(true);
+    expect(emptyRender.container.querySelector(".tbPanoramaSlice")).toBeNull();
+    expect(emptyRender.container.querySelectorAll(".tbBar.unbuilt")).toHaveLength(7);
+    expect(emptyRender.container.querySelector(".tbEmptyPreview")).toBeNull();
+    expect(emptyRender.container.querySelector(".tbConstructionSlot")).toBeNull();
+    emptyRender.unmount();
+
+    const built = littleBustersTownState();
+    built.towns.town_p1.buildings.push("little_busters.city_hall");
+    const builtRender = render(viewFor(built));
+    expect(builtRender.container.querySelector(".tbLittleBustersPhysicalTile")).toBeTruthy();
+    expect(
+      builtRender.container.querySelector(".tbLittleBustersPhysicalTile .tbBarTileArt")?.classList.contains("tbTownArtTopAligned")
+    ).toBe(true);
+    expect(builtRender.container.querySelectorAll(".tbBar.built")).toHaveLength(1);
+    expect(builtRender.container.querySelectorAll(".tbBar.unbuilt")).toHaveLength(6);
+    expect(builtRender.container.querySelector(".tbBar.built .tbBarTileArt[src*='little-busters-bar-1']")).toBeTruthy();
+  });
+
   it("factory: a built bar shows the REAL printed building tile directly (no muddy panorama slice)", () => {
     const state = factoryState();
     if (!state.towns.town_p1.buildings.includes("factory.city_hall")) {

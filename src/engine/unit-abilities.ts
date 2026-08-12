@@ -1,5 +1,6 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
+import { hasToken } from "./tokens";
 import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId } from "./state";
 
 export type UnitAbilityDamageEffect = {
@@ -230,10 +231,15 @@ export function getSameTargetAttackSequenceAbility(
 /** Wolf Raiders: a same-target second attack after retaliation has resolved. */
 export function getAfterRetaliationAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack?: number } | null {
+): { abilityId: string; abilityName: string; baseAttack?: number; attackModifier?: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION")) {
     if (ability.effect?.type === "SECOND_ATTACK_SAME_TARGET_AFTER_RETALIATION") {
-      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        baseAttack: ability.effect.baseAttack,
+        attackModifier: ability.effect.attackModifier
+      };
     }
   }
 
@@ -542,9 +548,12 @@ export function getTriggeredAttackDieBonusAbilities(
 export type OnAttackDieToken = {
   abilityId: string;
   abilityName: string;
-  onRoll: number;
+  onRoll?: number;
+  minRoll?: number;
+  maxRoll?: number;
   token: CombatTokenKind;
   amount: number;
+  count: number;
 };
 
 /** Rust Dragons: token placed on the target when the attack's own die matches. */
@@ -556,8 +565,11 @@ export function getOnAttackDieTokens(unit: CombatUnitState): OnAttackDieToken[] 
             abilityId: ability.id,
             abilityName: ability.name,
             onRoll: ability.effect.onRoll,
+            minRoll: ability.effect.minRoll,
+            maxRoll: ability.effect.maxRoll,
             token: ability.effect.token,
-            amount: ability.effect.amount
+            amount: ability.effect.amount,
+            count: ability.effect.count ?? 1
           }
         ]
       : []
@@ -613,7 +625,7 @@ export function deathStareFollowUpAppliesTo(
   if (!followUp.targetGradeAtMost) {
     return true;
   }
-  if (defender.bankUnit || defender.bossUnit || defender.commanderSlug || defender.summoned) {
+  if (defender.bankUnit || defender.bossUnit || defender.commanderSlug || defender.heroUnit || defender.summoned) {
     return false;
   }
   return STARE_GRADE_ORDER[defender.grade] <= STARE_GRADE_ORDER[followUp.targetGradeAtMost];
@@ -927,6 +939,67 @@ export function getCombatStartDraws(
       ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
       : []
   );
+}
+
+/** Kudryavka Noumi: whether this unit attacks another random enemy after attacking. */
+export function getRandomOtherEnemySecondAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_RANDOM_OTHER_ENEMY")) {
+    if (ability.effect?.type === "SECOND_ATTACK_RANDOM_OTHER_ENEMY") {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/** MGQ Hunter Job: Defense pierced only on the configured own-attack die faces. */
+export function getAttackDieDefenseReductionAbility(
+  unit: CombatUnitState,
+  roll: number
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK_DIE")) {
+    if (
+      ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK_DIE" &&
+      roll >= ability.effect.minRoll &&
+      roll <= ability.effect.maxRoll
+    ) {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
+}
+
+/** Fold printed maximum-Health traits before a combat unit enters play. */
+export function maxHealthAfterUnitAbilityEffects(baseHealth: number, abilityIds: string[]): number {
+  return abilityIds.reduce((health, abilityId) => {
+    const ability = unitAbilities[abilityId];
+    if (
+      ability?.implementationStatus !== "implemented" ||
+      ability.effect?.type !== "MAX_HEALTH_MULTIPLIER" ||
+      ability.effect.denominator <= 0
+    ) {
+      return health;
+    }
+    return Math.ceil((health * ability.effect.numerator) / ability.effect.denominator);
+  }, baseHealth);
+}
+
+/** Disciplinary Committee Pack: mandatory round-1 enemy Attack penalty choice. */
+export function getCombatStartEnemyAttackPenalty(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number; rounds: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_COMBAT_START_ENEMY_ATTACK_PENALTY")) {
+    if (ability.effect?.type === "ON_COMBAT_START_ENEMY_ATTACK_PENALTY") {
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        amount: ability.effect.amount,
+        rounds: ability.effect.rounds
+      };
+    }
+  }
+  return null;
 }
 
 export function getPostAttackAbilityDamageEffects(
@@ -1334,8 +1407,139 @@ export function hasSelfDefenseToken(unit: CombatUnitState): boolean {
  */
 export function getFlatAttackBonus(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "FLAT_ATTACK_BONUS").reduce(
-    (total, ability) => total + (ability.effect?.type === "FLAT_ATTACK_BONUS" ? ability.effect.amount : 0),
+    (total, ability) =>
+      total +
+      (ability.effect?.type === "FLAT_ATTACK_BONUS" &&
+      (!ability.effect.requiresDamaged || unit.damage > 0)
+        ? ability.effect.amount
+        : 0),
     0
+  );
+}
+
+/** MGQ Lisa: permanent Health gained whenever an attack defeats a side or stack layer. */
+export function getLethalHitHealthGrowth(
+  unit: CombatUnitState
+): { abilityId: string; amount: number; maxBonus: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "ON_LETHAL_HIT_GAIN_PERMANENT_HEALTH")) {
+    if (ability.effect?.type === "ON_LETHAL_HIT_GAIN_PERMANENT_HEALTH") {
+      return {
+        abilityId: ability.id,
+        amount: ability.effect.amount,
+        maxBonus: ability.effect.maxBonus
+      };
+    }
+  }
+  return null;
+}
+
+/** Komari: spell-and-specialty reduction radiated to self and every adjacent unit. */
+export function getSpellAndSpecialtyDamageReductionAura(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA").reduce(
+    (total, ability) =>
+      total +
+      (ability.effect?.type === "REDUCE_SPELL_AND_SPECIALTY_DAMAGE_AURA" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** MGQ Hero Job: the once-per-combat rolled self-rebirth threshold. */
+export function getSelfRebirthRollAbility(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; maxRoll: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "SELF_REBIRTH_ROLL_ONCE")) {
+    if (ability.effect?.type === "SELF_REBIRTH_ROLL_ONCE") {
+      return { abilityId: ability.id, abilityName: ability.name, maxRoll: ability.effect.maxRoll };
+    }
+  }
+  return null;
+}
+
+/** Extra survivor XP contributed by the MGQ Gadabout Job. */
+export function getBonusUnitExperience(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "BONUS_UNIT_EXPERIENCE").reduce(
+    (total, ability) => total + (ability.effect?.type === "BONUS_UNIT_EXPERIENCE" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Strongest live friendly-adjacency Initiative aura printed on this unit. */
+export function getFriendlyAdjacentInitiativeAuraAmount(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "FRIENDLY_ADJACENT_INITIATIVE_AURA").reduce(
+    (best, ability) => Math.max(
+      best,
+      ability.effect?.type === "FRIENDLY_ADJACENT_INITIATIVE_AURA" ? ability.effect.amount : 0
+    ),
+    0
+  );
+}
+
+/** MGQ Reaper Scythe: status-gated Attack bonus against the current target. */
+export function getAttackBonusVsTargetTokens(
+  attacker: CombatUnitState,
+  target: CombatUnitState
+): number {
+  return getAbilitiesWithEffect(attacker, "ATTACK_BONUS_VS_TARGET_TOKENS").reduce(
+    (total, ability) =>
+      total +
+      (ability.effect?.type === "ATTACK_BONUS_VS_TARGET_TOKENS" &&
+      ability.effect.tokens.some((kind) => hasToken(target, kind))
+        ? ability.effect.amount
+        : 0),
+    0
+  );
+}
+
+/** MGQ Devour ability that is armed by the target's pre-hit status, if any. */
+export function getDevourAbility(
+  attacker: CombatUnitState,
+  target: CombatUnitState
+): { abilityId: string; abilityName: string } | null {
+  for (const ability of getAbilitiesWithEffect(attacker, "ON_KILL_HEAL_FULL_IF_TARGET_TOKEN")) {
+    if (
+      ability.effect?.type === "ON_KILL_HEAL_FULL_IF_TARGET_TOKEN" &&
+      ability.effect.tokens.some((kind) => hasToken(target, kind))
+    ) {
+      return { abilityId: ability.id, abilityName: ability.name };
+    }
+  }
+  return null;
+}
+
+/** Signed live Initiative delta imposed by adjacent living MGQ aura carriers. */
+export function getAdjacentEnemyInitiativeAuraDelta(
+  combat: CombatState,
+  unit: CombatUnitState
+): number {
+  return Object.values(combat.units).reduce((total, source) => {
+    if (
+      source.id === unit.id ||
+      source.controllerId === unit.controllerId ||
+      !isAlive(source) ||
+      !isAdjacent(source.position, unit.position)
+    ) {
+      return total;
+    }
+    return (
+      total +
+      getAbilitiesWithEffect(source, "ADJACENT_ENEMY_INITIATIVE_AURA").reduce(
+        (sum, ability) =>
+          sum +
+          (ability.effect?.type === "ADJACENT_ENEMY_INITIATIVE_AURA" ? ability.effect.amount : 0),
+        0
+      )
+    );
+  }, 0);
+}
+
+/** MGQ combat-start morale grants, returned individually for precise event logs. */
+export function getCombatStartMoraleGains(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number }[] {
+  return getAbilitiesWithEffect(unit, "ON_COMBAT_START_GAIN_MORALE").flatMap((ability) =>
+    ability.effect?.type === "ON_COMBAT_START_GAIN_MORALE"
+      ? [{ abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount }]
+      : []
   );
 }
 

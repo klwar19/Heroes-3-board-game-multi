@@ -65,6 +65,11 @@ const RESOLVING_ACTION_TYPES = new Set<GameAction["type"]>([
   "RESOLVE_VISIT_STEP",
   "SET_TILE_ROTATION",
   "SKIP_NECROMANCY",
+  // MGQ's after-combat Companion window is the Necromancy transaction's twin:
+  // the "Decline Companion Recruitment" offer matches SKIP_LABEL, so the driver
+  // closes the atomic window (releasing the withheld field reward) instead of
+  // stranding the table on a choice only the vanished seat could answer.
+  "RESOLVE_COMPANION_RECRUITMENT",
   "REFRESH_HAND",
   // First-round opening Mulligan (option ON): keep the filled hand (empty
   // discardCardIds is the legal-actions template offer).
@@ -99,6 +104,7 @@ function ownsPendingInput(state: GameState, playerId: PlayerId): boolean {
     adventure?.pendingVisit?.playerId === playerId ||
     adventure?.pendingTileChoice?.playerId === playerId ||
     adventure?.pendingNecromancy?.playerId === playerId ||
+    adventure?.pendingCompanionRecruitment?.playerId === playerId ||
     adventure?.pendingFarTileFlip?.playerId === playerId ||
     adventure?.pendingGarrison?.defenderPlayerId === playerId
   );
@@ -214,6 +220,7 @@ export function nextTurnTimeoutAction(state: GameState, playerId: PlayerId): Gam
     (adventure.pendingVisit ||
       adventure.pendingTileChoice ||
       adventure.pendingNecromancy ||
+      adventure.pendingCompanionRecruitment ||
       adventure.pendingFarTileFlip ||
       adventure.pendingGarrison)
   ) {

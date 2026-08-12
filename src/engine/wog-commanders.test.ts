@@ -132,9 +132,9 @@ function sandboxWithCommander(
 // ===========================================================================
 
 describe("WOG commanders — content integrity", () => {
-  it("all 17 factions map to a commander and back", () => {
-    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(17);
-    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(17);
+  it("all registered factions map to a commander and back", () => {
+    expect(Object.keys(COMMANDER_SLUG_BY_FACTION)).toHaveLength(COMMANDER_SLUGS.length);
+    expect(new Set(Object.values(COMMANDER_SLUG_BY_FACTION)).size).toBe(COMMANDER_SLUGS.length);
     for (const slug of COMMANDER_SLUGS) {
       expect(commanderDefinitions[slug], slug).toBeTruthy();
     }
@@ -221,6 +221,14 @@ describe("WOG commanders — setup gating", () => {
 // ===========================================================================
 
 function intoNeutralFight(state: GameState, difficulty = 2): GameState {
+  let current = intoNeutralDeployment(state, difficulty);
+  const place = getLegalActions(current, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT");
+  expect(place, "a unit to place").toBeTruthy();
+  current = apply(current, place!.action);
+  return apply(current, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+}
+
+function intoNeutralDeployment(state: GameState, difficulty = 2): GameState {
   let current = state;
   if (current.players.p1.needsHandRefresh || current.players.p1.canMulligan) {
     current = apply(current, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
@@ -229,10 +237,7 @@ function intoNeutralFight(state: GameState, difficulty = 2): GameState {
   const field = current.adventure!.fields[hero.spaceId!];
   field.difficulty = difficulty;
   startNeutralEncounter(current, hero, field);
-  const place = getLegalActions(current, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT");
-  expect(place, "a unit to place").toBeTruthy();
-  current = apply(current, place!.action);
-  return apply(current, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  return current;
 }
 
 describe("WOG commanders — combat injection", () => {
@@ -1270,9 +1275,9 @@ describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
   // (cells 12-15); the backline is 16-19, the middle row 8-11.
   const ATTACKER_FRONT = [12, 13, 14, 15];
 
-  /** Cove commander (base Attack 2) at `pos`, attacking a stripped adjacent enemy. */
-  function coveAttackDamage(pos: number, enemyPos: number): number {
-    const state = sandboxWithCommander("corsair", {}, pos);
+  /** Commander (base Attack 2) at `pos`, attacking a stripped adjacent enemy. */
+  function commanderAttackDamage(slug: CommanderSlug, pos: number, enemyPos: number): number {
+    const state = sandboxWithCommander(slug, {}, pos);
     const skeletons = state.combat!.units.unit_p2_skeletons;
     skeletons.abilities = [];
     skeletons.position = enemyPos;
@@ -1297,10 +1302,19 @@ describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
 
   it("grants +1 Attack while the commander stands on its own front line, and none off it", () => {
     // On the front line (13) attacking an adjacent enemy (14): base 2 + 1 = 3.
-    expect(coveAttackDamage(13, 14)).toBe(3);
+    expect(commanderAttackDamage("corsair", 13, 14)).toBe(3);
     // CONTROL: off the front line (middle row 9, backline 17): base 2 only.
-    expect(coveAttackDamage(9, 10)).toBe(2);
-    expect(coveAttackDamage(17, 18)).toBe(2);
+    expect(commanderAttackDamage("corsair", 9, 10)).toBe(2);
+    expect(commanderAttackDamage("corsair", 17, 18)).toBe(2);
+  });
+
+  it("applies the same live +1 Attack to every commander sharing Vanguard Marshal", () => {
+    const shared = COMMANDER_SLUGS.filter((slug) => commanderDefinitions[slug].specialty.id === "vanguard-marshal");
+    expect(new Set(shared)).toEqual(new Set<CommanderSlug>(["corsair", "ruler", "kyousuke_natsume"]));
+    for (const slug of shared) {
+      expect(commanderAttackDamage(slug, 13, 14), `${slug} front line`).toBe(3);
+      expect(commanderAttackDamage(slug, 9, 10), `${slug} middle row`).toBe(2);
+    }
   });
 
   it("is a LIVE positional read: moving ONTO the front line mid-combat turns it on", () => {
@@ -1381,17 +1395,17 @@ describe("WOG commanders — pre-combat SORT capability & window", () => {
     expect(commanderPreCombatSortAvailable(off, "p1")).toBe(false);
   });
 
-  it("opens the sort window for a human Cove owner; PLACE_COMMANDER lands it on the clicked cell and FINISH starts the fight", () => {
-    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-open", "cove", undefined));
-    // The window is open for p1 (the fighter/owner), phase held in setup.
-    expect(state.combat!.pendingCommanderPlacement).toEqual(["p1"]);
+  it("sorts a human Cove commander inside ordinary troop deployment and uses the same Ready", () => {
+    const state = intoNeutralDeployment(adventureWithCommanders("cmd-sort-open", "cove", undefined));
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual(["p1"]);
+    expect(state.combat!.pendingCommanderPlacement ?? null).toBeNull();
     expect(state.phase).toBe("combat-setup");
     expect(state.priorityPlayerId).toBe("p1");
-    expect(state.eventLog.some((event) => event.type === "COMMANDER_PLACEMENT_OPENED")).toBe(true);
 
     const offers = getLegalActions(state, "p1");
+    expect(offers.some((offer) => offer.action.type === "PLACE_COMBAT_UNIT")).toBe(true);
     expect(offers.some((offer) => offer.action.type === "PLACE_COMMANDER")).toBe(true);
-    expect(offers.some((offer) => offer.action.type === "FINISH_COMMANDER_PLACEMENT")).toBe(true);
+    expect(offers.some((offer) => offer.action.type === "FINISH_COMMANDER_PLACEMENT")).toBe(false);
 
     // Pick an empty own-zone cell and move the commander there.
     const zone = commanderDeploymentCellsFor(state, "p1");
@@ -1405,11 +1419,105 @@ describe("WOG commanders — pre-combat SORT capability & window", () => {
     expect(moved.phase).toBe("combat-setup");
 
     // Ready → the window closes and the battle proceeds (round 1 begins).
-    moved = apply(moved, { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
+    const troopPlacement = getLegalActions(moved, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    moved = apply(moved, troopPlacement.action);
+    moved = apply(moved, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
     expect(moved.combat!.pendingCommanderPlacement ?? null).toBeNull();
     expect(moved.phase).not.toBe("combat-setup");
     // The deferred start-of-combat package ran (round 1 announced).
     expect(moved.eventLog.some((event) => event.type === "COMBAT_ROUND_STARTED")).toBe(true);
+  });
+
+  it("sorts allied units together with the commander, including direct swaps", () => {
+    let state = intoNeutralDeployment(adventureWithCommanders("cmd-sort-whole-formation", "cove", undefined));
+    const troopPlacement = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    state = apply(state, troopPlacement.action);
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    const ally = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === "p1" && unit.id !== commander.id
+    )!;
+    const commanderStart = commander.position;
+    const allyStart = ally.position;
+    const offered = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLACE_COMMANDER" && legal.action.unitId === ally.id && legal.action.position === commanderStart
+    );
+    expect(offered, "allied-unit formation swap").toBeTruthy();
+    const moved = apply(state, offered!.action);
+    expect(moved.combat!.units[ally.id].position).toBe(commanderStart);
+    expect(moved.combat!.units[commander.id].position).toBe(allyStart);
+  });
+
+  it("opens Team Captain formation for Kyousuke with the Little Busters hero and troops", () => {
+    let state = intoNeutralDeployment(
+      adventureWithCommanders("cmd-sort-little-busters", "little_busters", "riki_naoe")
+    );
+    const troopPlacement = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    state = apply(state, troopPlacement.action);
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    const hero = Object.values(state.combat!.units).find((unit) => unit.heroUnit);
+    const troop = Object.values(state.combat!.units).find(
+      (unit) => unit.controllerId === "p1" && unit.armyUnitId
+    );
+    expect(commander.commanderSlug).toBe("kyousuke_natsume");
+    expect(hero, "Little Busters hero joins before Team Captain sorting").toBeTruthy();
+    expect(troop, "a deployed Little Busters troop joins the same sorting window").toBeTruthy();
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual(["p1"]);
+    expect(state.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    const offers = getLegalActions(state, "p1");
+    expect(
+      offers.some(
+        (offer) =>
+          offer.action.type === "PLACE_COMMANDER" &&
+          offer.action.unitId === troop!.id &&
+          offer.action.position === commander.position
+      ),
+      "Team Captain must allow a troop to swap directly with Kyousuke"
+    ).toBe(true);
+    expect(
+      offers.some(
+        (offer) => offer.action.type === "PLACE_COMMANDER" && offer.action.unitId === hero!.id
+      ),
+      "Team Captain must sort the battlefield hero together with the formation"
+    ).toBe(true);
+  });
+
+  it("keeps commander deployment at five bodies and adds the Little Busters hero as the sixth", () => {
+    const initial = adventureWithCommanders("cmd-lb-sixth-body", "little_busters", "riki_naoe");
+    const template = initial.players.p1.army[0];
+    expect(template, "a starting Little Busters army card").toBeTruthy();
+    initial.players.p1.army = Array.from({ length: 5 }, (_, index) => ({
+      ...structuredClone(template),
+      id: `lb_limit_army_${index + 1}`
+    }));
+
+    let state = intoNeutralDeployment(initial);
+    expect(state.combat!.setup!.unitLimit).toBe(4);
+    for (let index = 0; index < 4; index += 1) {
+      const placed = new Set(state.combat!.setup!.placedUnitIds.p1 ?? []);
+      const offer = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "PLACE_COMBAT_UNIT" && !placed.has(legal.action.armyUnitId)
+      );
+      expect(offer, `army placement ${index + 1}`).toBeTruthy();
+      state = apply(state, offer!.action);
+    }
+
+    const placedArmyIds = state.combat!.setup!.placedUnitIds.p1;
+    expect(placedArmyIds).toHaveLength(4);
+    const excludedFifth = initial.players.p1.army.find((armyUnit) => !placedArmyIds.includes(armyUnit.id))!;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLACE_COMBAT_UNIT" && legal.action.armyUnitId === excludedFifth.id
+      )
+    ).toBe(false);
+
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    const living = Object.values(state.combat!.units).filter(
+      (unit) => unit.controllerId === "p1" && unit.damage < unit.maxHealth
+    );
+    expect(living).toHaveLength(6);
+    expect(living.filter((unit) => unit.armyUnitId)).toHaveLength(4);
+    expect(living.filter((unit) => unit.commanderSlug)).toHaveLength(1);
+    expect(living.filter((unit) => unit.heroUnit)).toHaveLength(1);
   });
 
   it("CONTROL: a non-Cove commander opens NO sort window (the fight starts directly)", () => {
@@ -1418,6 +1526,24 @@ describe("WOG commanders — pre-combat SORT capability & window", () => {
     expect(shaman.phase).not.toBe("combat-setup");
     const paladin = intoNeutralFight(adventureWithCommanders("cmd-sort-none-paladin"));
     expect(paladin.combat!.pendingCommanderPlacement ?? null).toBeNull();
+  });
+
+  it("CONTROL: a commander without the capability is absent during troop sorting and only auto-places afterward", () => {
+    let state = intoNeutralDeployment(
+      adventureWithCommanders("cmd-sort-hard-gate", "fortress", "tazar")
+    );
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual([]);
+    expect(state.combat!.units[commanderUnitId("p1")]).toBeUndefined();
+    expect(getLegalActions(state, "p1").some((offer) => offer.action.type === "PLACE_COMMANDER")).toBe(false);
+    applyError(state, { type: "PLACE_COMMANDER", playerId: "p1", position: 16 });
+
+    const troopPlacement = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLACE_COMBAT_UNIT"
+    )!;
+    state = apply(state, troopPlacement.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(state.combat!.units[commanderUnitId("p1")], "commander auto-placed after deployment").toBeTruthy();
+    expect(state.combat!.pendingCommanderPlacement ?? null).toBeNull();
   });
 
   it("CONTROL: with the Commanders module OFF a Cove fight opens no window", () => {
@@ -1449,18 +1575,16 @@ describe("WOG commanders — pre-combat SORT capability & window", () => {
     expect(commanderPreCombatSortAvailable(fought, "p1")).toBe(true);
   });
 
-  it("the AFK/turn-timeout driver resolves an open sort window (FINISH_COMMANDER_PLACEMENT)", () => {
-    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-afk", "cove", undefined));
-    expect(state.combat!.pendingCommanderPlacement).toEqual(["p1"]);
-    // The shared forced-resolution driver finishes the window for the dropped seat.
-    expect(nextAfkDropAction(state, "p1")).toEqual({ type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
-    // Applying it starts the fight.
-    const resumed = apply(state, { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" });
-    expect(resumed.combat!.pendingCommanderPlacement ?? null).toBeNull();
+  it("the AFK/turn-timeout driver uses the ordinary deployment Ready", () => {
+    let state = intoNeutralDeployment(adventureWithCommanders("cmd-sort-afk", "cove", undefined));
+    const troopPlacement = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    state = apply(state, troopPlacement.action);
+    expect(state.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(nextAfkDropAction(state, "p1")).toEqual({ type: "RESOLVE_AFK_DROP", playerId: "p1" });
   });
 
   it("PLACE_COMMANDER rejects an out-of-zone cell and a forged non-owner", () => {
-    const state = intoNeutralFight(adventureWithCommanders("cmd-sort-guard", "cove", undefined));
+    const state = intoNeutralDeployment(adventureWithCommanders("cmd-sort-guard", "cove", undefined));
     // An enemy-zone cell (defender backline 0) is out of the attacker's zone.
     applyError(state, { type: "PLACE_COMMANDER", playerId: "p1", position: 0 });
     // A player who is not the window's head owner cannot place.

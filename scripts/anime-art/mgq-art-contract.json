@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "faction": "mgq",
+  "sourceManifest": "scripts/anime-art/mgq-reference-manifest.json",
+  "unitCardContract": "scripts/anime-art/mgq-unit-card-contract.json",
+  "policy": {
+    "masters": "Approved frame-free raster inputs only; this pipeline never synthesizes or substitutes an illustration.",
+    "references": "referenceIds resolve to canonical in-game standing art mirrored by the fan-maintained MGQ wiki.",
+    "originalDesign": "An empty referenceIds list is deliberate: the asset must be an original functional game asset and must not invent a claim of canonical visual provenance."
+  },
+  "layouts": {
+    "townPanorama": { "width": 2044, "height": 701, "barWidths": [292, 292, 292, 292, 292, 292, 292] },
+    "townIcon": { "width": 174, "height": 137 },
+    "startingTile": { "width": 1024, "height": 985, "alphaMask": "public/assets/anime/tiles/a-s1.webp" },
+    "hero": { "width": 1086, "height": 1448 },
+    "commander": { "width": 743, "height": 1040, "frame": "public/assets/units-blank-golden.webp", "artWindow": { "left": 174, "top": 166, "width": 504, "height": 658 } },
+    "equipmentIcon": { "width": 512, "height": 512 },
+    "equipmentCard": { "width": 743, "height": 1040 },
+    "icon": { "width": 512, "height": 512 },
+    "specialtyIcon": { "width": 256, "height": 256 }
+  },
+  "town": {
+    "origin": "project-original-environment",
+    "referenceIds": [],
+    "sourceNote": "No canonical MGQ town screenshot is accepted by the verified character manifest. Keep empty and full masters as one aligned original composition; do not add invented logos, text, or decorative mascots.",
+    "emptyMaster": "scripts/anime-art/raw/mgq/scenery/paradox-town-empty-master.png",
+    "fullMaster": "scripts/anime-art/raw/mgq/scenery/paradox-town-full-master.png",
+    "emptyOutput": "public/assets/anime/towns/mgq-paradox-town-empty.webp",
+    "fullOutput": "public/assets/anime/towns/mgq-paradox-town-full.webp",
+    "iconOutput": "public/assets/town-icon-mgq.webp",
+    "bars": [
+      { "index": 1, "buildingIds": ["mgq.city_hall"], "output": "public/assets/town-board/mgq-bar-1.webp" },
+      { "index": 2, "buildingIds": ["mgq.dwelling_bronze"], "output": "public/assets/town-board/mgq-bar-2.webp" },
+      { "index": 3, "buildingIds": ["mgq.spirit_shrine"], "referenceIds": ["sylph", "gnome", "undine", "salamander"], "output": "public/assets/town-board/mgq-bar-3.webp" },
+      { "index": 4, "buildingIds": ["mgq.dwelling_silver", "mgq.colosseum"], "output": "public/assets/town-board/mgq-bar-4.webp" },
+      { "index": 5, "buildingIds": ["mgq.mage_guild"], "output": "public/assets/town-board/mgq-bar-5.webp" },
+      { "index": 6, "buildingIds": ["mgq.citadel", "mgq.amiras_shop"], "output": "public/assets/town-board/mgq-bar-6.webp" },
+      { "index": 7, "buildingIds": ["mgq.dwelling_gold"], "output": "public/assets/town-board/mgq-bar-7.webp" }
+    ]
+  },
+  "tile": {
+    "origin": "project-original-environment",
+    "referenceIds": [],
+    "sourceNote": "Original MGQ starting-tile environment. The exact board hex alpha comes only from the existing canonical game mask.",
+    "master": "scripts/anime-art/raw/mgq/tile/mgq-s1-master.png",
+    "output": "public/assets/anime/tiles/mgq-s1.webp"
+  },
+  "heroes": [
+    { "id": "luka", "referenceIds": ["luka"], "master": "scripts/anime-art/raw/mgq/heroes/luka-master.png", "output": "public/assets/anime/heroes/mgq-luka.webp" },
+    { "id": "alice", "referenceIds": ["alice"], "form": "real form", "master": "scripts/anime-art/raw/mgq/heroes/alice-master.png", "output": "public/assets/anime/heroes/mgq-alice.webp" },
+    { "id": "ilias", "referenceIds": ["ilias"], "form": "sealed Paradox form", "master": "scripts/anime-art/raw/mgq/heroes/ilias-master.png", "output": "public/assets/anime/heroes/mgq-ilias.webp" },
+    { "id": "granberia", "referenceIds": ["granberia"], "master": "scripts/anime-art/raw/mgq/heroes/granberia-master.png", "output": "public/assets/anime/heroes/mgq-granberia.webp" },
+    { "id": "promestein", "referenceIds": ["promestein"], "form": "recruitable Angelic Dominion/Paradox form", "master": "scripts/anime-art/raw/mgq/heroes/promestein-master.png", "output": "public/assets/anime/heroes/mgq-promestein.webp" }
+  ],
+  "commander": {
+    "id": "sonya",
+    "referenceIds": ["sonya"],
+    "master": "scripts/anime-art/raw/mgq/commander/sonya-master.png",
+    "output": "public/assets/units-commander-sonya.webp"
+  },
+  "equipment": [
+    {
+      "id": "anime.equip.mgq-angel-halo",
+      "slug": "mgq-angel-halo",
+      "name": "Angel Halo",
+      "origin": "project-original-prop-design",
+      "referenceIds": [],
+      "sourceNote": "No verified canonical item image selected; compose an original functional halo weapon without copying an unverified asset.",
+      "master": "scripts/anime-art/raw/artifacts/equipment-masters/mgq-angel-halo-master.png",
+      "iconOutput": "public/assets/anime/equipment/mgq-angel-halo.webp",
+      "cardOutput": "public/assets/anime/equipment/cards/mgq-angel-halo.webp"
+    },
+    {
+      "id": "anime.equip.mgq-heavenly-knights-aegis",
+      "slug": "mgq-heavenly-knights-aegis",
+      "name": "Heavenly Knight's Aegis",
+      "origin": "project-original-prop-design",
+      "referenceIds": [],
+      "sourceNote": "No verified canonical item image selected; compose an original practical shield without copying an unverified asset.",
+      "master": "scripts/anime-art/raw/artifacts/equipment-masters/mgq-heavenly-knights-aegis-master.png",
+      "iconOutput": "public/assets/anime/equipment/mgq-heavenly-knights-aegis.webp",
+      "cardOutput": "public/assets/anime/equipment/cards/mgq-heavenly-knights-aegis.webp"
+    },
+    {
+      "id": "anime.equip.mgq-monster-lords-ring",
+      "slug": "mgq-monster-lords-ring",
+      "name": "Monster Lord's Ring",
+      "origin": "project-original-prop-design",
+      "referenceIds": [],
+      "sourceNote": "No verified canonical item image selected; compose an original functional ring without copying an unverified asset.",
+      "master": "scripts/anime-art/raw/artifacts/equipment-masters/mgq-monster-lords-ring-master.png",
+      "iconOutput": "public/assets/anime/equipment/mgq-monster-lords-ring.webp",
+      "cardOutput": "public/assets/anime/equipment/cards/mgq-monster-lords-ring.webp"
+    }
+  ],
+  "icons": [
+    { "id": "specialty-luka", "kind": "specialty", "heroId": "luka", "levels": [1, 4, 6], "referenceIds": ["luka"], "master": "scripts/anime-art/raw/mgq/icons/specialty-luka-master.png", "output": "public/assets/specialty-card/icon-mgq-luka.webp" },
+    { "id": "specialty-alice", "kind": "specialty", "heroId": "alice", "levels": [1, 4, 6], "referenceIds": ["alice"], "master": "scripts/anime-art/raw/mgq/icons/specialty-alice-master.png", "output": "public/assets/specialty-card/icon-mgq-alice.webp" },
+    { "id": "specialty-ilias", "kind": "specialty", "heroId": "ilias", "levels": [1, 4, 6], "referenceIds": ["ilias"], "master": "scripts/anime-art/raw/mgq/icons/specialty-ilias-master.png", "output": "public/assets/specialty-card/icon-mgq-ilias.webp" },
+    { "id": "specialty-granberia", "kind": "specialty", "heroId": "granberia", "levels": [1, 4, 6], "referenceIds": ["granberia"], "master": "scripts/anime-art/raw/mgq/icons/specialty-granberia-master.png", "output": "public/assets/specialty-card/icon-mgq-granberia.webp" },
+    { "id": "specialty-promestein", "kind": "specialty", "heroId": "promestein", "levels": [1, 4, 6], "referenceIds": ["promestein"], "master": "scripts/anime-art/raw/mgq/icons/specialty-promestein-master.png", "output": "public/assets/specialty-card/icon-mgq-promestein.webp" },
+
+    { "id": "grade-apprentice", "kind": "hero-grade", "grade": 0, "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/grade-apprentice-master.png", "output": "public/assets/anime/icons/mgq/grade-apprentice.webp" },
+    { "id": "grade-journeyman", "kind": "hero-grade", "grade": 1, "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/grade-journeyman-master.png", "output": "public/assets/anime/icons/mgq/grade-journeyman.webp" },
+    { "id": "grade-advanced-job", "kind": "hero-grade", "grade": 2, "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/grade-advanced-job-master.png", "output": "public/assets/anime/icons/mgq/grade-advanced-job.webp" },
+    { "id": "grade-awakened", "kind": "hero-grade", "grade": 3, "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/grade-awakened-master.png", "output": "public/assets/anime/icons/mgq/grade-awakened.webp" },
+
+    { "id": "rank-job-warrior", "kind": "unit-experience", "job": "warrior", "rank3Ability": "ignores-retaliation", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/rank-job-warrior-master.png", "output": "public/assets/anime/icons/mgq/rank-job-warrior.webp" },
+    { "id": "rank-job-guard", "kind": "unit-experience", "job": "guard", "rank3Ability": "unlimited-retaliation", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/rank-job-guard-master.png", "output": "public/assets/anime/icons/mgq/rank-job-guard.webp" },
+    { "id": "rank-job-mage", "kind": "unit-experience", "job": "mage", "rank3Ability": "titan-ignore-ongoing", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/rank-job-mage-master.png", "output": "public/assets/anime/icons/mgq/rank-job-mage.webp" },
+    { "id": "rank-job-healer", "kind": "unit-experience", "job": "healer", "rank3Ability": "wraith-heal-1", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/rank-job-healer-master.png", "output": "public/assets/anime/icons/mgq/rank-job-healer.webp" },
+
+    { "id": "spirit-sylph", "kind": "spirit", "spirit": "sylph", "referenceIds": ["sylph"], "master": "scripts/anime-art/raw/mgq/icons/spirit-sylph-master.png", "output": "public/assets/anime/icons/mgq/spirit-sylph.webp" },
+    { "id": "spirit-gnome", "kind": "spirit", "spirit": "gnome", "referenceIds": ["gnome"], "master": "scripts/anime-art/raw/mgq/icons/spirit-gnome-master.png", "output": "public/assets/anime/icons/mgq/spirit-gnome.webp" },
+    { "id": "spirit-undine", "kind": "spirit", "spirit": "undine", "referenceIds": ["undine"], "master": "scripts/anime-art/raw/mgq/icons/spirit-undine-master.png", "output": "public/assets/anime/icons/mgq/spirit-undine.webp" },
+    { "id": "spirit-salamander", "kind": "spirit", "spirit": "salamander", "referenceIds": ["salamander"], "master": "scripts/anime-art/raw/mgq/icons/spirit-salamander-master.png", "output": "public/assets/anime/icons/mgq/spirit-salamander.webp" },
+
+    { "id": "mechanic-companion-seal", "kind": "mechanic", "mechanic": "companion-recruitment", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/mechanic-companion-seal-master.png", "output": "public/assets/anime/icons/mgq/mechanic-companion-seal.webp" },
+    { "id": "mechanic-job-reassign", "kind": "mechanic", "mechanic": "job-reassignment", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/mechanic-job-reassign-master.png", "output": "public/assets/anime/icons/mgq/mechanic-job-reassign.webp" },
+    { "id": "mechanic-spirit-contract", "kind": "mechanic", "mechanic": "spirit-contract", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/mechanic-spirit-contract-master.png", "output": "public/assets/anime/icons/mgq/mechanic-spirit-contract.webp" },
+    { "id": "token-temptation", "kind": "combat-token", "mechanic": "temptation", "referenceIds": [], "master": "scripts/anime-art/raw/mgq/icons/token-temptation-master.png", "output": "public/assets/anime/icons/mgq/token-temptation.webp" }
+  ]
+}

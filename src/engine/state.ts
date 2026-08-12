@@ -569,7 +569,9 @@ export type FactionId =
   | "azure_breeze"
   | "hidden_leaf"
   | "azur_lane"
-  | "heavenly_demon";
+  | "heavenly_demon"
+  | "little_busters"
+  | "mgq";
 
 export type TargetRef =
   | { type: "unit"; unitId: UnitId }
@@ -672,6 +674,13 @@ export type ActiveEffectModifier =
   | {
       type: "ATTACK_BONUS";
       amount: number;
+    }
+  | {
+      type: "SPELL_POWER_BONUS";
+      amount: number;
+    }
+  | {
+      type: "SPECIALTY_IMMUNITY";
     }
   | {
       type: "DEFENSE_BONUS";
@@ -1230,6 +1239,10 @@ export type ActiveEffectDefinition = {
    * draws no set icon then, so an old save renders exactly as it always did.
    */
   artifactSetId?: string;
+  /** Optional grade gate (Alice I: enemy silver/gold units only). */
+  appliesOnlyToGrades?: UnitGrade[];
+  /** Optional side gate: the effect applies only to enemies of its controller. */
+  appliesOnlyToEnemies?: boolean;
 };
 
 export type EffectDefinition =
@@ -1410,6 +1423,8 @@ export type EffectDefinition =
        * the `ignores-retaliation` unit ability).
        */
       ignoresRetaliation?: boolean;
+      /** Granberia VI: legal only on the first own declared attack this combat. */
+      firstOwnAttackOnly?: boolean;
       /**
        * Tarnum (Fortress) Basilisks VI: "your selected unit uses its special
        * ability regardless of the required roll's result." On the buffed attack
@@ -2706,6 +2721,27 @@ export type EffectDefinition =
       grantAttackBonus?: number;
     }
   | {
+      /** Alice VI: bank free uses of the MGQ after-combat Companion seal. */
+      type: "MGQ_GRANT_FREE_COMPANION_SEAL";
+      amount: number;
+    }
+  | {
+      /**
+       * Promestein — Mad Science: remove one bronze Few army card, then give a
+       * separately chosen silver army card a permanent Attack bonus.
+       */
+      type: "MGQ_MAD_SCIENCE";
+      attackBonus: number;
+    }
+  | {
+      type: "MGQ_DRAW_AND_SPECIALTY_IMMUNITY";
+      drawCards: number;
+    }
+  | {
+      type: "MGQ_DESTROY_UNIT_AND_EMPOWER_SPELLS";
+      powerBonus: number;
+    }
+  | {
       /**
        * Tarnum (Conflux) VI: "Search(1) Spell twice. … you can immediately cast
        * one or both of these spells, even if you already cast a spell this round.
@@ -3332,7 +3368,15 @@ export type GameAction =
        */
       path?: number[];
     }
-  | { type: "USE_UNIT_ABILITY"; playerId: PlayerId; unitId: UnitId; abilityId: string; target: TargetRef }
+  | {
+      type: "USE_UNIT_ABILITY";
+      playerId: PlayerId;
+      unitId: UnitId;
+      abilityId: string;
+      target: TargetRef;
+      /** MGQ White Magic's explicit choice for the selected adjacent ally. */
+      mode?: "heal" | "attack";
+    }
   | {
       /**
        * Pit Lords' "Summon Demons" other action: instead of moving/attacking,
@@ -3409,6 +3453,12 @@ export type GameAction =
       stance: "attack" | "defense";
     }
   | {
+      /** Sonya: bind Unbreakable Bond to one persistent army card outside combat. */
+      type: "COMMANDER_SET_BOND";
+      playerId: PlayerId;
+      armyUnitId: string;
+    }
+  | {
       /**
        * Anime Hero Grades (anime.heroGrades, §3.11): TRAIN on your own map turn —
        * spend 2 movement points to gain 1 Merit (grade progress). Once per own
@@ -3426,6 +3476,25 @@ export type GameAction =
       type: "DRILL_UNIT";
       playerId: PlayerId;
       armyUnitId: string;
+    }
+  | {
+      /** MGQ: assign or replace the persistent Job token on one eligible card. */
+      type: "ASSIGN_UNIT_JOB";
+      playerId: PlayerId;
+      armyUnitId: string;
+      job: MgqJob;
+    }
+  | {
+      /** MGQ: select one built Spirit contract outside combat for the next fight. */
+      type: "SET_MGQ_SPIRIT";
+      playerId: PlayerId;
+      spirit: MgqSpirit;
+    }
+  | {
+      /** MGQ post-combat seal: choose one offered Neutral or decline with null. */
+      type: "RESOLVE_COMPANION_RECRUITMENT";
+      playerId: PlayerId;
+      unitDefId: string | null;
     }
   | {
       /**
@@ -3942,12 +4011,13 @@ export type GameAction =
     }
   | {
       /**
-       * WOG Commanders pre-combat sort: move the player's commander to an empty
-       * cell of its own deployment zone, or swap it with one of the player's own
-       * units there. Validated in placeCommanderUnit.
+       * WOG Commanders pre-combat sort: move the commander or one of its allied
+       * units within the deployment zone, swapping with another allied unit.
+       * Omitting unitId retains the original commander-only command shape.
        */
       type: "PLACE_COMMANDER";
       playerId: PlayerId;
+      unitId?: UnitId;
       position: number;
     }
   | {
@@ -5859,6 +5929,15 @@ export type GameEvent =
       message: string;
     }
   | {
+      /** Sonya: Unbreakable Bond's persistent army-card target changed. */
+      id: string;
+      type: "COMMANDER_BOND_SET";
+      playerId: PlayerId;
+      armyUnitId: string;
+      unitDefId: string;
+      message: string;
+    }
+  | {
       /** WOG Commander Artifact bound permanently into a slot (Task 2). */
       id: string;
       type: "COMMANDER_ARTIFACT_BOUND";
@@ -6072,6 +6151,32 @@ export type GameEvent =
       unitDefId: string;
       unitName: string;
       experience: number;
+    }
+  | {
+      /** MGQ: one faction or sealed Companion card received a new Job token. */
+      id: string;
+      type: "MGQ_JOB_ASSIGNED";
+      playerId: PlayerId;
+      armyUnitId: string;
+      unitDefId: string;
+      job: MgqJob;
+      goldPaid: number;
+    }
+  | {
+      /** MGQ: the after-combat Companion seal was accepted or declined. */
+      id: string;
+      type: "MGQ_COMPANION_RECRUITED";
+      playerId: PlayerId;
+      unitDefId?: string;
+      cost?: ResourceCost;
+      declined?: boolean;
+    }
+  | {
+      /** MGQ: the Spirit Shrine's current contracted-spirit stance changed. */
+      id: string;
+      type: "MGQ_SPIRIT_SELECTED";
+      playerId: PlayerId;
+      spirit: MgqSpirit;
     }
   | {
       /**
@@ -6833,6 +6938,8 @@ export type ResolutionStackItem = {
     rolledCandidate?: { rolls: number[]; roll: number };
     /** Set once the lethal-save window has been offered for this attack. */
     lethalSaveOffered?: boolean;
+    /** MGQ Hunter: prevents duplicate low-roll pierce announcements on lethal-save resume. */
+    mgqHunterPierceAnnounced?: boolean;
     /**
      * Shield of the Dwarven Lords: set once the post-roll die-cancel window has
      * been offered for this attack, so it is opened at most once.
@@ -7203,6 +7310,25 @@ export type UnitTransformState = {
   alwaysOnTop?: boolean;
 };
 
+/** Monster Girl Quest's persistent per-card Job assignment. */
+export type MgqJob =
+  | "warrior"
+  | "guard"
+  | "mage"
+  | "healer"
+  | "martial_artist"
+  | "hunter"
+  | "thief"
+  | "spiritualist"
+  | "unemployed"
+  | "noble"
+  | "hero"
+  | "gadabout"
+  | "maid";
+
+/** One of the four elemental contracts selected at the MGQ Spirit Shrine. */
+export type MgqSpirit = "sylph" | "gnome" | "undine" | "salamander";
+
 export type ArmyUnitState = {
   /** Stable instance id of this unit card in the player's unit deck. */
   id: string;
@@ -7260,6 +7386,16 @@ export type ArmyUnitState = {
    * of WoG's upgrade experience loss).
    */
   experience?: number;
+  /**
+   * Monster Girl Quest Job token. Its ability package is rebuilt with the card
+   * at every combat setup and after any Pack-to-Few side change.
+   */
+  job?: MgqJob;
+  /**
+   * A Neutral-side card sealed through MGQ Companion Recruitment. It follows
+   * the ordinary Neutral casualty/recycle rules but is eligible for a Job.
+   */
+  companion?: boolean;
 };
 
 export type TownTokenState = {
@@ -7361,6 +7497,8 @@ export type CommanderPlayerState = {
    * each combat. Absent = "attack". Ignored for every other commander.
    */
   stance?: "attack" | "defense";
+  /** Sonya's persistent Unbreakable Bond target (one own army-card instance). */
+  bondedArmyUnitId?: string;
   /**
    * WOG Commander Artifacts (Task 2, `wog.artifacts + wog.commanders`): the card
    * id bound into each slot. PERMANENT once bound — never unbound/swapped, and
@@ -7732,6 +7870,12 @@ export type PlayerState = {
      * Cleared at combat start (makeCombatShell). Absent === not yet spent.
      */
     equipmentIncomingAttackUsed?: boolean;
+    /** Granberia: her first-own-attack specialty uses a charge separate from equipment. */
+    mgqGranberiaFirstAttackUsed?: boolean;
+    /** Salamander: first own declared attack charge spent in this combat. */
+    mgqSalamanderUsed?: boolean;
+    /** Undine: first incoming declared attack charge spent in this combat. */
+    mgqUndineUsed?: boolean;
   };
   /**
    * Mod-agnostic counter: total Creature Bank battles this player has WON.
@@ -7864,6 +8008,19 @@ export type PlayerState = {
   scrolls?: SpellScrollState[];
   /** WOG Commanders module: this player's commander (absent = module off). */
   commander?: CommanderPlayerState;
+  /**
+   * MGQ Pocket Castle Kitchen choices bank one free Job reassignment. The next
+   * successful reassignment consumes one charge; absent is zero.
+   */
+  mgqFreeJobReassignments?: number;
+  /** Alice VI grants this many future Companion seals without paying the cost. */
+  mgqFreeCompanionSeals?: number;
+  /** MGQ Gold Contract: exactly three distinct faction Gold cards selected at setup. */
+  mgqGoldContracts?: string[];
+  /** New-game setup barrier; optional false/absent keeps legacy snapshots compatible. */
+  mgqGoldContractSetupRequired?: boolean;
+  /** Spirit Shrine stance selected outside combat; combat snapshots it. */
+  mgqSpirit?: MgqSpirit;
 };
 
 /**
@@ -7876,8 +8033,10 @@ export type PlayerState = {
  *    stays until the end of combat.
  *  - "paralysis": the unit skips its next activation (token removed instead);
  *    removed when the unit takes damage. Retaliations still happen.
+ *  - "temptation": MGQ pressure token. Two tokens skip the unit's next
+ *    activation, then both clear. One token is inert and damage does not clear it.
  */
-export type CombatTokenKind = "attack" | "weakness" | "corrosion" | "paralysis";
+export type CombatTokenKind = "attack" | "weakness" | "corrosion" | "paralysis" | "temptation";
 
 export type CombatTokenState = {
   id: string;
@@ -7996,8 +8155,12 @@ export type CombatUnitState = {
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */
   usedLethalSaveThisCombat?: boolean;
+  /** Masato: set once Bodyguard redirects an adjacent ally's attack. */
+  usedBodyguardInterceptThisCombat?: boolean;
   /** Phoenixes: set once this unit has spent its once-per-combat Rebirth self-save. */
   usedRebirthThisCombat?: boolean;
+  /** MGQ Mage Job: the pre-movement Magic Arrow has been spent this combat. */
+  usedMgqMageMagicArrowThisCombat?: boolean;
   /**
    * Factory Automaton: set the moment this unit's on-removal detonation has
    * fired, so the explosion resolves exactly once even though the removal
@@ -8130,6 +8293,8 @@ export type CombatUnitState = {
    * `permanentAttackBonus`. Absent when the rule is off or the card has no XP.
    */
   unitExperience?: number;
+  /** MGQ Job mirrored from the backing army card for side recomputes/rank 3. */
+  job?: MgqJob;
   /** Derived veteran rank (1-3) for badges/inspect; absent at rank 0. */
   unitRank?: number;
   /**
@@ -8205,6 +8370,12 @@ export type CombatUnitState = {
    * cast is once per combat round ("may cast"), free during its own activation.
    */
   commanderCastRound?: number;
+  /** A real hero body on the battlefield. Tierless and rebuilt at full Health each combat. */
+  heroUnit?: boolean;
+  heroDefId?: string;
+  heroLevel?: number;
+  heroGrade?: number;
+  heroPassiveName?: string;
   assets?: {
     cardImage?: string;
     imageAlt?: string;
@@ -8414,6 +8585,19 @@ export type CombatState = {
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
   context: CombatContext;
+  /** Per-side Spirit Shrine choices frozen at setup for this combat. */
+  mgqSpirits?: Partial<Record<PlayerId, MgqSpirit>>;
+  /**
+   * MGQ Companion Recruitment: exact Neutral defender unit ids that were
+   * eligible, living deck-backed cards when round 1 began. Qualifying MGQ
+   * main-hero combats always stamp this (including an empty array) before any
+   * combat-start damage. The optional shape keeps pre-field saved combats
+   * loadable; an absent value is treated as the legacy eligibility path at
+   * post-combat resolution.
+   */
+  mgqCompanionStartDefenderUnitIds?: UnitId[];
+  /** Controllers whose Sonya redirect has already fired in this combat. */
+  sonyaBondRedirectUsedBy?: PlayerId[];
   /**
    * Crag Hack (Astrologers): +Attack granted to every GROUND-type unit in this
    * combat (both sides). Latched at combat creation onto the FIRST combat of
@@ -8662,11 +8846,21 @@ export type CombatState = {
    * deployment zone before round 1. Opened AFTER the commanders are injected
    * (and after any Neutral sort / Tactics), the LAST setup window; the head
    * holds priority (phase "combat-setup", `setup` already null, like the Tactics
-   * queue). `PLACE_COMMANDER` moves/swaps the commander within its zone;
+   * queue). `PLACE_COMMANDER` moves/swaps the commander or any allied unit
+   * within its zone;
    * `FINISH_COMMANDER_PLACEMENT` pops the queue and, when empty, starts round 1.
    * Computer seats are never queued (they keep the auto-placement — no stall).
    */
   pendingCommanderPlacement?: PlayerId[] | null;
+  /**
+   * Owners whose Vanguard-style commander/hero formation was injected into the
+   * ordinary troop deployment. These bodies are sorted in the same setup turn
+   * and confirmed by the same FINISH_COMBAT_PLACEMENT action; they must never
+   * receive the legacy separate commander-placement window afterwards.
+   */
+  integratedCommanderDeploymentPlayerIds?: PlayerId[];
+  /** Disciplinary Committee Pack's mandatory combat-start choices are done. */
+  disciplinaryCommitteeStartResolved?: boolean;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -11324,6 +11518,27 @@ export type AdventureState = {
     discountIds?: string[];
   } | null;
   /**
+   * MGQ's atomic fought-neutral-win seal offer. The defeated cards have already
+   * returned to their Neutral discard piles; accepting removes one exact copy
+   * and mints it as a Neutral-side Companion. The field/bank reward is withheld
+   * until this choice resolves, matching the Necromancy transaction seam.
+   */
+  pendingCompanionRecruitment?: {
+    playerId: PlayerId;
+    heroId: HeroId;
+    options: {
+      unitDefId: string;
+      tier: "bronze" | "silver";
+      cost: ResourceCost;
+    }[];
+    deferredReward?:
+      | { kind: "field-visit"; heroId: HeroId; fieldId: MapSpaceId }
+      | { kind: "creature-bank"; heroId: HeroId; fieldId: MapSpaceId; stackCount: number }
+      | { kind: "wave"; wave: number }
+      | { kind: "raid-boss"; bossInstanceId: string }
+      | { kind: "dungeon-floor"; floor: number };
+  } | null;
+  /**
    * Hierophant commander (First Aid Master): after a combat in which the
    * commander survived, ONE of the owner's bronze/silver casualties may be
    * restored — a unit that died comes back (its side re-added; a recycled
@@ -13677,6 +13892,9 @@ export type PendingChoice =
         | "cover-of-darkness"
         | "shackles-of-war"
         | "wayfarer-paralysis"
+         | "disciplinary-committee-start"
+         | "mgq-mad-science"
+         | "mgq-gold-contract"
         | "diplomacy-skip"
         | "polish-quick-combat"
         | "diplomacy-recruit"
@@ -13745,6 +13963,8 @@ export type PendingChoice =
           removeArtifactFromHand?: boolean;
           /** Bulwark City Hall: extra starting Runes per combat until the next Resource round. */
           runesNextCombats?: number;
+          /** MGQ Pocket Castle Kitchen: one no-gold Job assignment or reassignment. */
+          freeJobReassign?: boolean;
         }[];
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
@@ -13962,6 +14182,25 @@ export type PendingChoice =
        * is the Ring, discarded when a unit is picked.
        */
       wayfarerParalysis?: { cardId: CardId; unitIds: UnitId[] };
+      /**
+       * Little Busters Disciplinary Committee Pack: each queued source chooses
+       * one living enemy for -1 Attack during combat round 1. The remaining
+       * source ids let both sides resolve the mandatory start effect in order.
+       */
+      disciplinaryCommitteeStart?: {
+        sourceUnitId: UnitId;
+        targetUnitIds: UnitId[];
+        remainingSourceUnitIds: UnitId[];
+        amount: number;
+        rounds: number;
+      };
+      /** Promestein: explicit sacrifice/upgrade pairs, index-aligned with options. */
+      mgqMadScience?: {
+        pairs: { sacrificeArmyUnitId: string; targetArmyUnitId: string }[];
+        attackBonus: number;
+      };
+      /** MGQ setup: index-aligned, atomic pairs of the two Gold identities kept this game. */
+      mgqGoldContract?: { pairs: [string, string, string][] };
       /**
        * thieves-guild: the deck being peeked and its top 2 cards (index 0 is the
        * very top). The chosen option's card is discarded; the other returns on

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BattlefieldBoard, COMBAT_BOARD_ART_VARIANTS, CommandDock, InspectPanel, battlefieldCellPlacement, pickCombatBoardArt } from "./board";
-import { CardZoomProvider } from "./zoom";
+import { CardZoomProvider, HeroBattlefieldCard } from "./zoom";
 import {
   applyCombatBoardArtObstacles,
   assignCombatBoardArt,
@@ -458,6 +458,79 @@ describe("BattlefieldBoard — horizontal cell placement", () => {
   });
 });
 
+describe("BattlefieldBoard — Little Busters hero is a real battlefield card", () => {
+  it("renders the compact framed hero face on the combat grid, not the raw portrait", () => {
+    const state = createInitialGameState("little-busters-hero-card-on-grid");
+    const hero = state.combat!.units.unit_p1_griffins;
+    Object.assign(hero, {
+      name: "Riki Naoe",
+      cardName: "Riki Naoe",
+      heroUnit: true,
+      heroDefId: "riki_naoe",
+      heroLevel: 4,
+      heroGrade: 2,
+      heroPassiveName: "Prepared Position",
+      type: "ground",
+      attack: 3,
+      defense: 4,
+      maxHealth: 6,
+      initiative: 7,
+      assets: { cardImage: "/assets/anime/heroes/little-busters-riki-naoe.webp" }
+    });
+
+    const { container } = render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          legalActions={[]}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+          selectedCardAction={null}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const cell = container.querySelector(`[data-fx-unit="${hero.id}"]`)!;
+    const face = cell.querySelector('[aria-label="Riki Naoe battlefield hero card, level 4, Ace"]');
+    expect(face, "the physical hero-card face should be on the grid").toBeTruthy();
+    expect(face!.textContent).toContain("LV 4");
+    expect(face!.textContent).toContain("GROUND");
+    expect(face!.textContent).toContain("Prepared Position");
+    expect(face!.textContent).not.toContain("Team Heart IV");
+    expect(face!.textContent).toContain("ATK3");
+    expect(face!.textContent).toContain("DEF4");
+    expect(face!.textContent).toContain("HP6");
+    expect(face!.textContent).toContain("INI7");
+    const main = face!.querySelector(".battlefieldHeroUnitMain")!;
+    expect(main.firstElementChild?.classList.contains("battlefieldHeroStats")).toBe(true);
+    expect(main.lastElementChild?.classList.contains("battlefieldHeroUnitArt")).toBe(true);
+    expect(cell.querySelector("img.boardCardImage"), "the raw portrait must not be the battlefield card").toBeNull();
+  });
+  it("renders the enlarged combat card vertically with left stats, actual combat type, and passive only", () => {
+    const { container } = render(
+      <HeroBattlefieldCard
+        face={{
+          heroDefId: "riki_naoe",
+          level: 4,
+          grade: 2,
+          passiveName: "Prepared Position",
+          combatType: "ground",
+          statValues: { attack: 3, defense: 4, health: 6, initiative: 7 }
+        }}
+      />
+    );
+    const card = container.querySelector('[aria-label="Riki Naoe dynamic battlefield hero card"]')!;
+    expect(card.textContent).toContain("GROUND");
+    expect(card.textContent).toContain("PASSIVE");
+    expect(card.textContent).toContain("Prepared Position");
+    expect(card.textContent).not.toContain("Team Heart IV");
+    const main = card.querySelector(".hbcPhysicalMain")!;
+    expect(main.firstElementChild?.classList.contains("hbcPhysicalStats")).toBe(true);
+    expect(main.lastElementChild?.classList.contains("hbcArt")).toBe(true);
+  });
+});
+
 describe("manual Neutral control - real battlefield controls", () => {
   function controlledNeutralScene(): { state: GameState; guardId: string } {
     const state = createInitialGameState("manual-neutral-board");
@@ -724,16 +797,25 @@ describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
       grades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 0 }
     };
     const commander = makeCommanderCombatUnit(state.players.p1, 16)!;
-    // Leave only the commander plus a lone enemy so the whole attacker zone is open.
+    // Keep one allied troop: Team Captain sorts Kyousuke TOGETHER with troops.
+    const ally = state.combat!.units.unit_p1_griffins;
+    ally.position = 12;
     const enemy = state.combat!.units.unit_p2_skeletons;
     enemy.position = 0;
-    state.combat!.units = { [commander.id]: commander, [enemy.id]: enemy };
+    state.combat!.units = { [commander.id]: commander, [ally.id]: ally, [enemy.id]: enemy };
     state.combat!.obstacles = [];
-    state.combat!.pendingCommanderPlacement = ["p1"];
+    state.phase = "combat-setup";
+    state.combat!.setup = {
+      pendingPlayerIds: ["p1"],
+      placedUnitIds: { p1: ally.armyUnitId ? [ally.armyUnitId] : [] },
+      unitLimit: 4
+    };
+    state.combat!.integratedCommanderDeploymentPlayerIds = ["p1"];
+    state.combat!.pendingCommanderPlacement = null;
     return state;
   }
 
-  it("makes the owner's commander draggable and its empty zone cells drop targets", () => {
+  it("makes the commander and allied troops draggable, including troop-to-commander swaps", () => {
     const { container } = render(
       <CardZoomProvider>
         <BattlefieldBoard
@@ -746,17 +828,23 @@ describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
         />
       </CardZoomProvider>
     );
-    expect(container.querySelector(".unitDraggable"), "the commander should be draggable to sort").toBeTruthy();
+    expect(container.querySelectorAll(".unitDraggable")).toHaveLength(2);
+    const commander = commanderSortState().combat!.units[commanderUnitId("p1")];
+    expect(
+      container.querySelector(`[data-fx-cell="${commander.position}"].dropTarget`),
+      "the commander's occupied cell must accept an allied troop drop for a direct swap"
+    ).toBeTruthy();
     expect(
       container.querySelectorAll(".dropTarget").length,
       "empty deployment-zone cells should accept a drop"
     ).toBeGreaterThan(0);
+    expect(container.querySelector('[aria-label="Commander and troop formation sort"]')).toBeNull();
   });
 
-  it("shows the 'Ready for battle' command that finishes the commander sort", () => {
+  it("does not add a second commander-only Ready command during normal deployment", () => {
     const finish: LegalAction = {
       label: "Ready for battle",
-      action: { type: "FINISH_COMMANDER_PLACEMENT", playerId: "p1" }
+      action: { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" }
     };
     const onAction = vi.fn();
     const { container } = render(
@@ -765,9 +853,8 @@ describe("BattlefieldBoard — WOG Commanders pre-combat sort", () => {
       </CardZoomProvider>
     );
     const button = [...container.querySelectorAll("button")].find((entry) => /ready for battle/i.test(entry.textContent ?? ""));
-    expect(button, "the Ready-for-battle button should render").toBeTruthy();
-    fireEvent.click(button!);
-    expect(onAction).toHaveBeenCalledWith(finish.action);
+    expect(button).toBeUndefined();
+    expect(onAction).not.toHaveBeenCalled();
   });
 });
 

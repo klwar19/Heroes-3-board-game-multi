@@ -216,6 +216,7 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.xyron.6": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
   "specialty.deemer.1": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
   "specialty.deemer.6": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
+  "specialty.alice.1": { affect: [{ key: "fear" }], sound: "effects/fear" },
   // Septienna's Death Ripple sweep (every level's damage side), Melodia's Fortune
   // luck wash and Glacius's Frost Ring (I/VI area damage) all resolve through a
   // card PLAY with no single board target, so their sprite bursts at centre stage
@@ -261,6 +262,12 @@ export const cancelFx = { key: "dispel", sound: "spells/dispel" };
 
 /** Unit abilities that have a matching original effect. */
 export const abilityFxPlans: Record<string, SpellFxPlan> = {
+  // MGQ Mage Job uses the original Magic Arrow flight, impact and sound.
+  "mgq-mage-magic-arrow": {
+    projectile: "magic-arrow-projectile-0",
+    hit: "magic-arrow-hit",
+    sound: "spells/magic-arrow"
+  },
   // Fire Shield's burn: when an adjacent attacker strikes a shielded unit, the
   // engine fires a "fire-shield" ability event on the attacker (the unit that
   // takes the burn). The fire sheet flares over it with the dedicated

@@ -20,16 +20,20 @@ describe("town board manifest", () => {
     }
   });
 
-  it("lays out each faction's 8 buildings on 7 bars with exactly one shared bar", () => {
+  it("lays out every faction building exactly once on 7 bars", () => {
     for (const faction of Object.values(coreFactionDefinitions)) {
       const spec = townBoardSpecs[faction.id];
       expect(spec.bars).toHaveLength(7);
       const flat = spec.bars.flat();
       // The bars carry the faction's buildings exactly once each.
       expect([...flat].sort()).toEqual([...faction.buildings].sort());
-      const shared = spec.bars.filter((bar) => bar.length === 2);
-      expect(shared, `${faction.id} must have exactly one two-building bar`).toHaveLength(1);
-      expect(spec.bars.every((bar) => bar.length === 1 || bar.length === 2)).toBe(true);
+      const shared = spec.bars.filter((bar) => bar.length > 1);
+      // MGQ carries TWO two-building pairs (dwelling_silver+Colosseum,
+      // citadel+Amira's Shop); its Spirit Shrine is a lone building (the Four
+      // Spirits are innate, not a buildable ladder). Every other town keeps one
+      // two-building pair. No bar exceeds two buildings anywhere.
+      expect(shared, `${faction.id} shared building bars`).toHaveLength(faction.id === "mgq" ? 2 : 1);
+      expect(spec.bars.every((bar) => bar.length >= 1 && bar.length <= 2)).toBe(true);
     }
   });
 

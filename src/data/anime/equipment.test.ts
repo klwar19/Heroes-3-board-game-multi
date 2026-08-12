@@ -40,8 +40,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // V1 (6) + wave 2 (6) + Miku (3) + grade-fill (3) + classic line (6) + shinobi (3) + kansen (6) + modao (3) = 36.
-    expect(items).toHaveLength(36);
+    // Shared/base lines plus Shinobi, Kansen, Modao, Seishun and MGQ = 45.
+    expect(items).toHaveLength(45);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {

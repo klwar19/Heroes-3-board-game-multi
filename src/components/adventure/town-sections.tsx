@@ -35,6 +35,11 @@ import {
 import { assetUrl } from "@/lib/asset-url";
 import { actionKey, formatCost } from "@/components/table/utils";
 import { useOptionalCardZoom } from "@/components/table/zoom";
+import {
+  MgqGoldContractPanel,
+  MgqSpiritShrinePanel,
+  mgqGoldUnavailable
+} from "@/components/adventure/mgq-controls";
 
 /**
  * Shared town-window building blocks. The classic TownPanel (PC-art building
@@ -68,6 +73,9 @@ export function activeBuildingActions(
       state.pendingChoice.playerId === viewerPlayerId
       ? legalActions.filter((legal) => legal.action.type === "CHOOSE_OPTION")
       : [];
+  }
+  if (building.id === "mgq.spirit_shrine") {
+    return legalActions.filter((legal) => legal.action.type === "SET_MGQ_SPIRIT");
   }
   return legalActions.filter((legal) => {
     const action = legal.action;
@@ -190,6 +198,12 @@ export function buildingPanelNote(
       return usedThisRound
         ? "Already used this round."
         : "Becomes available on your turn (token and resources permitting).";
+    case "MGQ_SPIRIT_SHRINE":
+      return player.mgqSpirit
+        ? "The selected built contract will be snapshotted at the next combat setup."
+        : "Select one built Spirit contract for the next combat.";
+    case "MGQ_SPIRIT_CONTRACT":
+      return "Built contracts are selected from the Spirit Shrine panel.";
     default:
       // Round / turn-start automatic effects (City Hall, Brotherhood, Mystic
       // Pond, Saplings, Necromancy Amplifier, Portal, Mana Vortex…).
@@ -253,7 +267,14 @@ export function BuildingDetailPanel({
       </h4>
       <p className="buildingDetailText">{describeBuildingEffect(building)}</p>
       {note ? <small className="buildingDetailStatus">{note}</small> : null}
-      {coverBuildingId ? (
+      {building.id === "mgq.spirit_shrine" ? (
+        <MgqSpiritShrinePanel
+          legalActions={legalActions}
+          onAction={onAction}
+          playerId={viewerPlayerId}
+          state={state}
+        />
+      ) : coverBuildingId ? (
         <div className="coverPicker">
           <small>Pick 1–2 cards to discard, then draw that many:</small>
           <div className="coverPickerCards">
@@ -700,9 +721,13 @@ export function TownRecruitSection({
           </>
         ) : null}
       </small>
+      <MgqGoldContractPanel player={player} />
       {faction.units.map((unitDefId) => {
         const unit = coreUnitDefinitions[unitDefId];
         const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId);
+        if (!owned && mgqGoldUnavailable(player, unitDefId)) {
+          return null;
+        }
         const tierUnlocked = Boolean(unit && unlockedTiers.has(unit.tier));
         const rosterOwnedSide =
           owned?.side === "few" || owned?.side === "pack" || owned?.side === "neutral" ? owned.side : null;

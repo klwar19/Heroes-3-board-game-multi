@@ -54,7 +54,7 @@ function clipSrcs(key: string | undefined): string[] {
 }
 
 describe("unit combat voices", () => {
-  it("knows the full roster", () => {
+  it("voices the full roster, including Little Busters", () => {
     expect(roster.length).toBeGreaterThan(0);
     const voiceless = roster
       .filter((unit) => !unitSoundKey(unit.id, "attack"))
@@ -255,6 +255,9 @@ describe("unit combat voices", () => {
   it("gives every WOG commander a voice for every action, resolving to a real clip on disk", () => {
     const missing: string[] = [];
     for (const slug of COMMANDER_SLUGS) {
+      if (slug === "kyousuke_natsume") {
+        continue;
+      }
       for (const action of coreActions) {
         const key = commanderSoundKey(slug, action);
         const srcs = clipSrcs(key);
@@ -294,6 +297,114 @@ describe("unit combat voices", () => {
     expect(commanderSoundKey("belfast", "hurt")).toBe("azur-lane/voices/belfast/hurt");
     expect(commanderSoundKey("belfast", "death")).toBe("azur-lane/voices/belfast/death");
     expect(commanderSoundKey("belfast", "move")).toBe("azur-lane/voices/belfast/move");
+  });
+
+  it("uses curated Rune Factory women for all MGQ units, four spirits, and Sonya", () => {
+    const slugs = [
+      "spirit_sylph", "spirit_gnome", "spirit_undine", "spirit_salamander",
+      "pochi", "shesta", "gigi", "kamuro_kitsu", "fleesia", "sofia", "miyabi", "eater",
+      "hild", "chrome_frederica", "shizuku", "regina", "maiden", "seraphy", "lisa", "tama",
+      "maya", "matis", "ooma", "jessie", "aria", "carmilla", "giga", "lucretia", "cupi",
+      "sphinx", "lucifina_chan", "spider_princess", "emily"
+    ];
+    const actions: UnitSoundAction[] = ["attack", "shoot", "defend", "hurt", "death", "move"];
+    const expectOggExists = (key: string | undefined, action: UnitSoundAction) => {
+      expect(key).toBeTruthy();
+      const srcs = clipSrcs(key);
+      const sequenced = action === "attack" || action === "shoot" || action === "move";
+      expect(srcs, `${key} source count`).toHaveLength(sequenced ? 2 : 1);
+      expect(srcs[0], `${key} must lead with its female voice`).toMatch(/^\/sounds\/mgq\/rune-factory\//);
+      if (sequenced) {
+        expect(srcs[1], `${key} must put its effect after its voice`).toMatch(/^\/sounds\/mgq\/effects\//);
+      }
+      for (const src of srcs) {
+        const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+        expect(existsSync(file), `${src} file on disk`).toBe(true);
+      }
+    };
+
+    for (const slug of slugs) {
+      for (const action of actions) {
+        const key = unitSoundKey(`mgq.${slug}`, action);
+        expect(key).toBe(`mgq/voices/${slug}/${action}`);
+        expectOggExists(key, action);
+      }
+    }
+    for (const action of actions) {
+      const key = commanderSoundKey("sonya", action);
+      expect(key).toBe(`mgq/voices/sonya/${action}`);
+      expectOggExists(key, action);
+    }
+  });
+
+  it("uses randomized canonical Little Busters voices with post-voice attack effects", () => {
+    const units: Record<string, string> = {
+      haruka: "haruka",
+      rins_cats: "rins_cats",
+      disciplinary_committee: "kanata",
+      masato: "masato",
+      softball_club: "sasami_goons",
+      saya: "saya",
+      mio: "mio"
+    };
+    const heroes: Record<string, string> = {
+      sasami_sasasegawa: "sasami",
+      riki_naoe: "riki",
+      rin_natsume: "rin",
+      yuiko_kurugaya: "yuiko",
+      kudryavka_noumi: "kud",
+      komari_kamikita: "komari"
+    };
+    const actions = ["attack", "shoot", "defend", "hurt", "death", "move"] as UnitSoundAction[];
+
+    for (const [unit, profile] of Object.entries(units)) {
+      for (const action of actions) {
+        expect(unitSoundKey(`little_busters.${unit}`, action)).toBe(`little-busters/voices/${profile}/${action}`);
+      }
+    }
+    for (const [hero, profile] of Object.entries(heroes)) {
+      for (const action of actions) {
+        expect(unitSoundKey(hero, action)).toBe(`little-busters/voices/${profile}/${action}`);
+      }
+    }
+    for (const action of actions) {
+      expect(commanderSoundKey("kyousuke_natsume", action)).toBe(`little-busters/voices/kyousuke/${action}`);
+    }
+
+    for (const profile of [...Object.values(units), ...Object.values(heroes), "kyousuke"]) {
+      for (const action of actions) {
+        const key = `little-busters/voices/${profile}/${action}`;
+        const variants = soundLibrary[key]?.random ?? [];
+        expect(variants.length, key).toBeGreaterThanOrEqual(profile === "rins_cats" ? 3 : 1);
+        expect(variants.length, key).toBeLessThanOrEqual(3);
+        for (const variant of variants) {
+          const entry = soundLibrary[variant];
+          if (action === "attack" || action === "shoot") {
+            const sequence = entry?.sequence ?? [];
+            expect(sequence.length, `${variant} sequence`).toBe(profile === "rins_cats" ? 3 : 2);
+            expect(soundLibrary[sequence[0]]?.src, `${variant} leads with voice`).toContain("/sounds/little-busters/source/");
+            expect(soundLibrary[sequence.at(-1)!]?.src, `${variant} ends with effect`).toContain("/sounds/little-busters/effects/");
+          } else if (profile === "rins_cats") {
+            expect(entry?.sequence, `${variant} combines Rin and cat`).toHaveLength(2);
+          } else {
+            expect(entry?.src, `${variant} is a voice response`).toContain("/sounds/little-busters/source/");
+          }
+          for (const src of clipSrcs(variant)) {
+            const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+            expect(existsSync(file), `${src} file on disk`).toBe(true);
+          }
+        }
+      }
+    }
+
+    const catAttackVariants = soundLibrary["little-busters/voices/rins_cats/attack"].random ?? [];
+    expect(catAttackVariants).toHaveLength(3);
+    const catMiddles = catAttackVariants.map((variant) => soundLibrary[soundLibrary[variant].sequence![1]].src);
+    expect(catMiddles).toEqual([
+      "/sounds/little-busters/effects/rin.ogg",
+      "/sounds/little-busters/effects/rin2.ogg",
+      "/sounds/little-busters/effects/rin3.ogg"
+    ]);
   });
 
   it("uses Fate/unlimited codes audio for every Fuyuki Servant line", () => {

@@ -150,13 +150,18 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 //     never lift either cap (spell-power items are all accessories ⇒ +1; hand
 //     limit stays +2 = armor + one accessory).
 // ---------------------------------------------------------------------------
+// MGQ seam reuses: Angel Halo = first declared attack; Heavenly Knight's
+// Aegis = first-incoming Defense token (never incoming -1 Attack); Monster
+// Lord's Ring = spell Power plus hand limit.
 const FIRST_ATTACK_ITEMS = [
   EQUIPMENT_IDS.ironBloodSword,
   EQUIPMENT_IDS.crusadersPoleaxe,
   EQUIPMENT_IDS.shinobiKunaiPouch,
   EQUIPMENT_IDS.oxygenTorpedo,
   EQUIPMENT_IDS.retrofitBlueprint,
-  EQUIPMENT_IDS.demonBloodSaber
+  EQUIPMENT_IDS.demonBloodSaber,
+  EQUIPMENT_IDS.littleBustersPracticeBat,
+  EQUIPMENT_IDS.mgqAngelHalo
 ] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
@@ -164,16 +169,21 @@ const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.ironbarkCuirass,
   EQUIPMENT_IDS.wardensAegis,
   EQUIPMENT_IDS.repairToolkit,
-  EQUIPMENT_IDS.bonefiendPlate
+  EQUIPMENT_IDS.bonefiendPlate,
+  EQUIPMENT_IDS.littleBustersMiosParasol,
+  EQUIPMENT_IDS.mgqHeavenlyKnightsAegis
 ] as const;
-const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint] as const;
+const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint, EQUIPMENT_IDS.littleBustersPracticeBat] as const;
 const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
 const SPELL_POWER_ITEMS = [
   EQUIPMENT_IDS.cosmosPendant,
   EQUIPMENT_IDS.spiritFocus,
   EQUIPMENT_IDS.sageChakraCharm,
   EQUIPMENT_IDS.sgRadar,
-  EQUIPMENT_IDS.demonHeartRelic
+  EQUIPMENT_IDS.demonHeartRelic,
+  EQUIPMENT_IDS.littleBustersFlightGoggles,
+  EQUIPMENT_IDS.littleBustersRevolutionWatch,
+  EQUIPMENT_IDS.mgqMonsterLordsRing
 ] as const;
 const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.guildIssueMail,
@@ -181,7 +191,10 @@ const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.eternalSash,
   EQUIPMENT_IDS.sageChakraCharm,
   EQUIPMENT_IDS.sgRadar,
-  EQUIPMENT_IDS.demonHeartRelic
+  EQUIPMENT_IDS.demonHeartRelic,
+  EQUIPMENT_IDS.littleBustersMissionLetter,
+  EQUIPMENT_IDS.littleBustersRevolutionWatch,
+  EQUIPMENT_IDS.mgqMonsterLordsRing
 ] as const;
 const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.adventurersBlade,
@@ -189,7 +202,8 @@ const WIN_GOLD_ITEMS = [
   EQUIPMENT_IDS.alchemistsSatchel,
   EQUIPMENT_IDS.coinwardTalisman,
   EQUIPMENT_IDS.hornOfPlenty,
-  EQUIPMENT_IDS.manjuuPiggyBank
+  EQUIPMENT_IDS.manjuuPiggyBank,
+  EQUIPMENT_IDS.littleBustersGlassMarbles
 ] as const;
 const RESOURCE_MATERIALS_ITEMS = [EQUIPMENT_IDS.supplySatchel, EQUIPMENT_IDS.hornOfPlenty] as const;
 const RESOURCE_GOLD_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;

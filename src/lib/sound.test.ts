@@ -286,4 +286,31 @@ describe("sequenceDelayMs (paced virtual sequences)", () => {
     vi.runAllTimers();
     expect(onDone).toHaveBeenCalledTimes(1);
   });
+
+  it("plays a Little Busters attack voice before its impact", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    playUnitSound("little_busters.haruka", "attack");
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(FakeAudio.instances[0].src).toContain("/sounds/little-busters/source/bt-koe-eca00.ogg");
+
+    FakeAudio.instances[0].fireEnded();
+    expect(FakeAudio.instances).toHaveLength(1);
+    vi.advanceTimersByTime(35);
+    expect(FakeAudio.instances).toHaveLength(2);
+    expect(FakeAudio.instances[1].src).toContain("/sounds/little-busters/effects/bakibakibaki.ogg");
+  });
+
+  it("plays Rin, then a cat, then the cat unit's attack impact", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    playUnitSound("little_busters.rins_cats", "attack");
+    expect(FakeAudio.instances[0].src).toContain("/sounds/little-busters/source/bt-koe-aca00.ogg");
+
+    FakeAudio.instances[0].fireEnded();
+    vi.advanceTimersByTime(30);
+    expect(FakeAudio.instances[1].src).toContain("/sounds/little-busters/effects/rin.ogg");
+
+    FakeAudio.instances[1].fireEnded();
+    vi.advanceTimersByTime(30);
+    expect(FakeAudio.instances[2].src).toContain("/sounds/little-busters/effects/syubaba.ogg");
+  });
 });

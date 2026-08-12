@@ -21,6 +21,8 @@ const azurCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few
   `/assets/anime/units/azur-lane/units-azur-lane-${tier}-${slug}-${side}.webp`;
 const demonCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
   `/assets/anime/units/heavenly-demon/units-heavenly-demon-${tier}-${slug}-${side}.webp`;
+const littleBustersCard = (tier: "bronze" | "silver" | "golden", slug: string, side: "few" | "pack") =>
+  `/assets/anime/units/little-busters/units-little-busters-${tier}-${slug}-${side}.webp`;
 
 /** Two complete seven-line faction rosters: one anime/isekai, one wuxia. */
 export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
@@ -345,6 +347,52 @@ export const animeTownUnitDefinitions: Record<string, UnitDefinition> = {
     few: { attack: 5, defense: 3, health: 7, initiative: 4, cost: { gold: 15, valuables: 1 }, abilities: ["heavenly-demon-reap"], abilityText: "Reap the Fallen — whenever a unit adjacent to this unit is removed from Combat (any source), this unit gains +1 Attack for the rest of the Combat (this stacks with each nearby death).", cardImage: demonCard("golden", "demon-avatar", "few") },
     pack: { attack: 6, defense: 3, health: 8, initiative: 4, cost: { gold: 23, valuables: 2 }, abilities: ["heavenly-demon-reap", "titan-ignore-ongoing"], abilityText: "Reap the Fallen — gains +1 Attack whenever an adjacent unit is removed; Immortal Will — ignore any ongoing effects on this unit.", cardImage: demonCard("golden", "demon-avatar", "pack") },
     source
+  },
+
+  // Little Busters Campus — momentum/control roster. The printed numbers below
+  // are the source of truth used by the physical card compositor as well as the
+  // runtime. Every ability id is engine-implemented; there is no flavor-only arm.
+  "little_busters.haruka": {
+    id: "little_busters.haruka", name: "Haruka Saigusa", faction: "little_busters", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 0, health: 3, initiative: 9, cost: { gold: 2 }, abilities: [], cardImage: littleBustersCard("bronze", "haruka-saigusa", "few") },
+    pack: { attack: 3, defense: 0, health: 4, initiative: 10, cost: { gold: 4 }, abilities: ["haruka-prank-backfire"], abilityText: "Prank Backfire - when her own Attack die rolls -1, Paralyze the target after this attack.", cardImage: littleBustersCard("bronze", "haruka-saigusa", "pack") },
+    source
+  },
+  "little_busters.rins_cats": {
+    id: "little_busters.rins_cats", name: "Rin's Cats", faction: "little_busters", tier: "bronze", type: "ground",
+    few: { attack: 2, defense: 1, health: 2, initiative: 10, cost: { gold: 3 }, abilities: ["teleport-move"], abilityText: "Cat Step - as a move, place this unit on any empty Combat space.", cardImage: littleBustersCard("bronze", "rins-cats", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 11, cost: { gold: 6 }, abilities: ["teleport-move", "ignores-retaliation"], abilityText: "Cat Step - move to any empty space; Pounce - attacks do not provoke Retaliation.", cardImage: littleBustersCard("bronze", "rins-cats", "pack") },
+    source
+  },
+  "little_busters.disciplinary_committee": {
+    id: "little_busters.disciplinary_committee", name: "Disciplinary Committee", faction: "little_busters", tier: "bronze", type: "ranged",
+    few: { attack: 2, defense: 1, health: 3, initiative: 6, cost: { gold: 4 }, abilities: ["wog-nightmare-fear"], abilityText: "Disciplinary Pressure - when attacked, the attacker rolls 2 Attack dice and resolves the lower result.", cardImage: littleBustersCard("bronze", "disciplinary-committee", "few") },
+    pack: { attack: 3, defense: 1, health: 3, initiative: 7, cost: { gold: 6 }, abilities: ["disciplinary-sanction"], abilityText: "Disciplinary Sanction - at the start of Combat, choose 1 enemy unit. It gets -1 Attack during round 1.", cardImage: littleBustersCard("bronze", "disciplinary-committee", "pack") },
+    source
+  },
+  "little_busters.masato": {
+    id: "little_busters.masato", name: "Masato the Wall", faction: "little_busters", tier: "silver", type: "ground",
+    few: { attack: 3, defense: 2, health: 5, initiative: 4, cost: { gold: 8 }, abilities: ["commander-defense-token"], abilityText: "Muscle Wall - always rolls the Defend die when attacked.", cardImage: littleBustersCard("silver", "masato-the-wall", "few") },
+    pack: { attack: 4, defense: 2, health: 6, initiative: 5, cost: { gold: 15 }, abilities: ["commander-defense-token", "masato-bodyguard-intercept"], abilityText: "Bodyguard - always rolls the Defend die; once per Combat, an attack on an adjacent friendly unit is redirected to Masato.", cardImage: littleBustersCard("silver", "masato-the-wall", "pack") },
+    source
+  },
+  "little_busters.softball_club": {
+    id: "little_busters.softball_club", name: "Softball Club", faction: "little_busters", tier: "silver", type: "ranged",
+    few: { attack: 3, defense: 1, health: 5, initiative: 7, cost: { gold: 8 }, abilities: ["ignore-combat-penalties"], abilityText: "Pitching Lane - ignores the adjacent-unit ranged penalty.", cardImage: littleBustersCard("silver", "softball-club", "few") },
+    pack: { attack: 4, defense: 1, health: 5, initiative: 8, cost: { gold: 12 }, abilities: ["ignore-combat-penalties", "softball-power-pitch"], abilityText: "Pitching Lane - ignores the adjacent penalty; Power Pitch - when its own Attack die is -1 or 0, deal 1 additional damage.", cardImage: littleBustersCard("silver", "softball-club", "pack") },
+    source
+  },
+  "little_busters.saya": {
+    id: "little_busters.saya", name: "Saya Tokido", faction: "little_busters", tier: "gold", type: "ground",
+    few: { attack: 6, defense: 2, health: 5, initiative: 8, cost: { gold: 14, valuables: 1 }, abilities: ["saya-infiltration", "ignores-retaliation"], abilityText: "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation.", cardImage: littleBustersCard("golden", "saya-tokido", "few") },
+    pack: { attack: 7, defense: 2, health: 6, initiative: 9, cost: { gold: 21, valuables: 2 }, abilities: ["saya-infiltration", "ignores-retaliation", "saya-armor-break"], abilityText: "Infiltration - move to any empty space and ignore Retaliation; Armor Break - on a 0 or +1 on Saya's Attack die, the target gets -1 Defense (minimum 0) for the rest of Combat.", cardImage: littleBustersCard("golden", "saya-tokido", "pack") },
+    source
+  },
+  "little_busters.mio": {
+    id: "little_busters.mio", name: "Mio Nishizono", faction: "little_busters", tier: "gold", type: "ranged",
+    few: { attack: 5, defense: 3, health: 6, initiative: 4, cost: { gold: 19 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties"], abilityText: "White Parasol - takes 1 less Spell damage and ignores all ranged penalties.", cardImage: littleBustersCard("golden", "mio-nishizono", "few") },
+    pack: { attack: 6, defense: 3, health: 7, initiative: 5, cost: { gold: 28, valuables: 2 }, abilities: ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"], abilityText: "Midori's Shadow - spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit.", cardImage: littleBustersCard("golden", "mio-nishizono", "pack") },
+    source
   }
 };
 
@@ -398,10 +446,18 @@ const animeTownBuildingBar: Record<string, number> = {
   "heavenly_demon.dwelling_silver": 4,
   "heavenly_demon.mage_guild": 5,
   "heavenly_demon.demon_arena": 6,
-  "heavenly_demon.dwelling_gold": 7
+  "heavenly_demon.dwelling_gold": 7,
+  "little_busters.city_hall": 1,
+  "little_busters.dwelling_bronze": 2,
+  "little_busters.clubhouse": 3,
+  "little_busters.dwelling_silver": 4,
+  "little_busters.practice_field": 4,
+  "little_busters.mage_guild": 5,
+  "little_busters.citadel": 6,
+  "little_busters.dwelling_gold": 7
 };
 
-type AnimeTownFactionId = "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane" | "heavenly_demon";
+type AnimeTownFactionId = "fuyuki" | "azure_breeze" | "hidden_leaf" | "azur_lane" | "heavenly_demon" | "little_busters";
 
 /** The dashed art-file prefix for a faction's bar slices (id keeps the underscore). */
 const barArtPrefix = (faction: AnimeTownFactionId): string =>
@@ -413,7 +469,9 @@ const barArtPrefix = (faction: AnimeTownFactionId): string =>
         ? "azur-lane"
         : faction === "heavenly_demon"
           ? "heavenly-demon"
-          : faction;
+          : faction === "little_busters"
+            ? "little-busters"
+            : faction;
 
 const building = (
   id: string,
@@ -491,7 +549,18 @@ export const animeTownBuildingDefinitions: Record<string, TownBuildingDefinition
   "heavenly_demon.dwelling_silver": building("heavenly_demon.dwelling_silver", "Corpse Puppet Workshop", "heavenly_demon", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["heavenly_demon.dwelling_bronze"]),
   "heavenly_demon.dwelling_gold": building("heavenly_demon.dwelling_gold", "Abyssal Throne Hall", "heavenly_demon", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["heavenly_demon.dwelling_silver"]),
   "heavenly_demon.summoning_altar": building("heavenly_demon.summoning_altar", "Blood Summoning Altar", "heavenly_demon", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" }),
-  "heavenly_demon.demon_arena": building("heavenly_demon.demon_arena", "Arena of Ten Thousand Demons", "heavenly_demon", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
+  "heavenly_demon.demon_arena": building("heavenly_demon.demon_arena", "Arena of Ten Thousand Demons", "heavenly_demon", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 }),
+
+  // Little Busters — school-club economy plus training. All eight definitions
+  // reuse established town effect arms, so every built strip changes gameplay.
+  "little_busters.city_hall": building("little_busters.city_hall", "School Mission Board", "little_busters", { gold: 10, buildingMaterials: 4 }, { type: "RESOURCE_ROUND_CHOICE", options: [{ label: "Fund the clubs: gain 5 gold", gold: 5 }, { label: "Win the school contest: draw 1 card", drawCards: 1 }] }),
+  "little_busters.citadel": building("little_busters.citadel", "Little Busters Clubhouse", "little_busters", { gold: 8, buildingMaterials: 5, valuables: 1 }, { type: "UNLOCK_REINFORCE" }),
+  "little_busters.mage_guild": { ...building("little_busters.mage_guild", "Occult Research Room", "little_busters", { gold: 4, buildingMaterials: 2, valuables: 1 }, { type: "MAGE_GUILD" }), spellBookCost: 5 },
+  "little_busters.dwelling_bronze": building("little_busters.dwelling_bronze", "First-Year Club Rooms", "little_busters", { gold: 5, buildingMaterials: 3, valuables: 1 }, { type: "UNLOCK_RECRUIT_TIER", tier: "bronze" }),
+  "little_busters.dwelling_silver": building("little_busters.dwelling_silver", "Athletics Wing", "little_busters", { gold: 8, buildingMaterials: 6, valuables: 3 }, { type: "UNLOCK_RECRUIT_TIER", tier: "silver" }, ["little_busters.dwelling_bronze"]),
+  "little_busters.dwelling_gold": building("little_busters.dwelling_gold", "Secret World Passage", "little_busters", { gold: 10, buildingMaterials: 9, valuables: 4 }, { type: "UNLOCK_RECRUIT_TIER", tier: "gold" }, ["little_busters.dwelling_silver"]),
+  "little_busters.clubhouse": building("little_busters.clubhouse", "Cat & Baseball Clubhouse", "little_busters", { gold: 7, buildingMaterials: 4, valuables: 1 }, { type: "TURN_START_PORTAL_SUMMON" }),
+  "little_busters.practice_field": building("little_busters.practice_field", "After-School Practice Field", "little_busters", { gold: 7, buildingMaterials: 4 }, { type: "HALL_OF_VALHALLA", amount: 1 })
 };
 
 export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
@@ -631,6 +700,48 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     startingAbilityCardId: "ability.sorcery",
     specialtyCardIds: { 1: "specialty.molian.1", 4: "specialty.molian.4", 6: "specialty.molian.6" },
     portrait: "/assets/anime/heroes/molian.webp", source
+  },
+  sasami_sasasegawa: {
+    id: "sasami_sasasegawa", name: "Sasami Sasasegawa", faction: "little_busters", class: "Softball Captain", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.leadership",
+    specialtyCardIds: { 1: "specialty.sasami_sasasegawa.1", 4: "specialty.sasami_sasasegawa.4", 6: "specialty.sasami_sasasegawa.6" },
+    portrait: "/assets/anime/heroes/little-busters-sasami-sasasegawa.webp", source
+  },
+  riki_naoe: {
+    id: "riki_naoe", name: "Riki Naoe", faction: "little_busters", class: "Team Heart", type: "might",
+    startingStats: { attack: 1, defense: 2, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.tactics",
+    specialtyCardIds: { 1: "specialty.riki_naoe.1", 4: "specialty.riki_naoe.4", 6: "specialty.riki_naoe.6" },
+    portrait: "/assets/anime/heroes/little-busters-riki-naoe.webp", source
+  },
+  rin_natsume: {
+    id: "rin_natsume", name: "Rin Natsume", faction: "little_busters", class: "Cat Whisperer", type: "might",
+    startingStats: { attack: 2, defense: 1, power: 1, knowledge: 2 },
+    startingAbilityCardId: "ability.offense",
+    specialtyCardIds: { 1: "specialty.rin_natsume.1", 4: "specialty.rin_natsume.4", 6: "specialty.rin_natsume.6" },
+    portrait: "/assets/anime/heroes/little-busters-rin-natsume.webp", source
+  },
+  yuiko_kurugaya: {
+    id: "yuiko_kurugaya", name: "Yuiko Kurugaya", faction: "little_busters", class: "Perfect Prefect", type: "might",
+    startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
+    startingAbilityCardId: "ability.interference",
+    specialtyCardIds: { 1: "specialty.yuiko_kurugaya.1", 4: "specialty.yuiko_kurugaya.4", 6: "specialty.yuiko_kurugaya.6" },
+    portrait: "/assets/anime/heroes/little-busters-yuiko-kurugaya.webp", source
+  },
+  kudryavka_noumi: {
+    id: "kudryavka_noumi", name: "Kudryavka Noumi", faction: "little_busters", class: "Rocket Scientist", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.sorcery",
+    specialtyCardIds: { 1: "specialty.kudryavka_noumi.1", 4: "specialty.kudryavka_noumi.4", 6: "specialty.kudryavka_noumi.6" },
+    portrait: "/assets/anime/heroes/little-busters-kudryavka-noumi.webp", source
+  },
+  komari_kamikita: {
+    id: "komari_kamikita", name: "Komari Kamikita", faction: "little_busters", class: "Smile Maker", type: "magic",
+    startingStats: { attack: 1, defense: 1, power: 2, knowledge: 2 },
+    startingAbilityCardId: "ability.wisdom",
+    specialtyCardIds: { 1: "specialty.komari_kamikita.1", 4: "specialty.komari_kamikita.4", 6: "specialty.komari_kamikita.6" },
+    portrait: "/assets/anime/heroes/little-busters-komari-kamikita.webp", source
   }
 };
 
@@ -688,5 +799,12 @@ export const animeTownFactionDefinitions: Record<string, FactionDefinition> = {
     buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),
     units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "heavenly_demon").map((item) => item.id),
     townImage: "/assets/anime/towns/heavenly-demon-palace-empty.webp", source
+  },
+  little_busters: {
+    id: "little_busters", name: "Little Busters Campus", color: "#c34f79", startingTileId: "LB-S1",
+    heroes: ["sasami_sasasegawa", "riki_naoe", "rin_natsume", "yuiko_kurugaya", "kudryavka_noumi", "komari_kamikita"],
+    buildings: Object.values(animeTownBuildingDefinitions).filter((item) => item.faction === "little_busters").map((item) => item.id),
+    units: Object.values(animeTownUnitDefinitions).filter((item) => item.faction === "little_busters").map((item) => item.id),
+    townImage: "/assets/anime/towns/little-busters-campus-empty.webp", source
   }
 };

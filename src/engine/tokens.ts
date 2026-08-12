@@ -9,6 +9,8 @@ import type { CombatState, CombatTokenKind, CombatTokenState, CombatUnitState, G
  *  - Corrosion token (−1 defense, min 0) — one per unit, lasts all combat.
  *  - Paralysis token — skip the next activation (remove the token instead);
  *    removed when the unit takes damage. Retaliations still happen.
+ *  - Temptation token (MGQ) — up to two per unit. Two skip the next
+ *    activation and then both clear; one alone is visible pressure only.
  */
 
 export function getUnitTokens(unit: CombatUnitState): CombatTokenState[] {
@@ -47,6 +49,11 @@ export function hasToken(unit: CombatUnitState, kind: CombatTokenKind): boolean 
   return getUnitTokens(unit).some((token) => token.kind === kind);
 }
 
+/** Number of tokens of one kind. Most kinds cap at one; MGQ Temptation caps at two. */
+export function tokenCount(unit: CombatUnitState, kind: CombatTokenKind): number {
+  return getUnitTokens(unit).filter((token) => token.kind === kind).length;
+}
+
 /**
  * Places a combat token, enforcing the one-token-per-kind cap: a second
  * Attack token keeps the higher bonus, a second Weakness token the milder
@@ -78,6 +85,27 @@ export function placeCombatToken(
     sourceName,
     ...(expiresAtCombatRoundEnd !== undefined ? { expiresAtCombatRoundEnd } : {})
   };
+
+  // MGQ Temptation is deliberately the sole stackable combat token. Each
+  // marker stays independently visible, but pressure is capped at two because
+  // two already guarantee the activation skip. Existing token replacement
+  // semantics remain exactly as before in the branch below.
+  if (kind === "temptation") {
+    if (tokenCount(unit, kind) >= 2) {
+      return;
+    }
+    tokens.push(next);
+    unit.tokens = tokens;
+    appendEvent(state, {
+      type: "COMBAT_TOKEN_PLACED",
+      unitId: unit.id,
+      playerId: unit.controllerId,
+      kind,
+      amount,
+      sourceName
+    });
+    return;
+  }
 
   if (existingIndex >= 0) {
     const existing = tokens[existingIndex];

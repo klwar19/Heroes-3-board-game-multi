@@ -13,7 +13,8 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
-  factoryGoldUnitConflict
+  factoryGoldUnitConflict,
+  isRecruitableNeutralUnit
 } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import {
@@ -215,9 +216,26 @@ import {
   refuseFieldOverride
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
-import { ATTACK_DIE_FACES } from "./battlefield";
+import { ATTACK_DIE_FACES, getBattlefieldLabel } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
+import {
+  consumesMgqKitchenCharge,
+  mgqEffectiveJob,
+  mgqJobAssignmentCost,
+  mgqJobEligible,
+  mgqJobsForUnit,
+  MGQ_JOBS
+} from "./mgq-jobs";
+import {
+  isMgqGoldUnit,
+  MGQ_GOLD_CONTRACT_LIMIT,
+  mgqGoldContractAllows,
+  recordMgqGoldContract,
+  resolveMgqGoldContractSetupChoice
+} from "./mgq-contracts";
+import { mgqCanSelectSpirit, seedMgqSpiritsForCombat } from "./mgq-spirits";
+import { applyMgqHeroCombatStart } from "./mgq-hero-specialties";
 import {
   COMMANDER_MASTERY_MIN_HERO_LEVEL,
   COMMANDER_STAT_KEYS,
@@ -229,6 +247,7 @@ import {
   applyCommanderCombatStart,
   collectFirstAidCandidates,
   commanderGradesOf,
+  commanderIntegratedDeploymentSortAvailable,
   commanderMarchesWithHero,
   commanderPreCombatSortAvailable,
   commandersModuleEnabled,
@@ -241,6 +260,7 @@ import {
   type CommanderFirstAidOption
 } from "./commanders";
 import { isComputerPlayer } from "./computer/control";
+import { fightingHeroIdForPlayer, injectHeroIntoCombat } from "./heroes";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
@@ -267,7 +287,13 @@ import {
   shuffleCards
 } from "./decks";
 import { maybeReturnFirstSpellToHand } from "./spell-lifecycle";
-import { getCombatStartDraws, getCombatStartMark, moraleLockedForPlayer } from "./unit-abilities";
+import {
+  getCombatStartDraws,
+  getCombatStartEnemyAttackPenalty,
+  getCombatStartMark,
+  getCombatStartMoraleGains,
+  moraleLockedForPlayer
+} from "./unit-abilities";
 import {
   bossLayersRemaining,
   makeRaidBossCombatUnit,
@@ -420,6 +446,7 @@ import type {
   ResourceKind,
   SpellSchool,
   ThievesGuildTarget,
+  UnitId,
   VisitStep
 } from "./state";
 import { GRAIL_OBELISKS_REQUIRED, NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
@@ -835,6 +862,13 @@ function assertNoPendingInput(state: GameState): void {
 
   if (state.adventure?.pendingNecromancy) {
     throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
+  }
+
+  // MGQ's atomic after-combat seal offer is the Necromancy transaction's twin:
+  // ending the turn over it would carry the open window (and its withheld
+  // field reward) into the next seat's turn, freezing everyone but the owner.
+  if (state.adventure?.pendingCompanionRecruitment) {
+    throw new Error("Resolve Companion Recruitment (seal or decline) first.");
   }
 
   if (state.adventure?.pendingTileChoice) {
@@ -5171,6 +5205,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       player.combatStats.equipmentIncomingAttackUsed = false;
       player.combatStats.equipmentFirstSpellPowerUsed = false;
       player.combatStats.equipmentStageCostumeUsed = false;
+      player.combatStats.mgqGranberiaFirstAttackUsed = false;
+      player.combatStats.mgqSalamanderUsed = false;
+      player.combatStats.mgqUndineUsed = false;
       // Polish Set Artifacts: the once-per-COMBAT set-tier charges and the
       // per-combat unit selections both refresh per COMBAT — clear them here.
       player.combatStats.artifactSetUsesThisCombat = [];
@@ -5570,6 +5607,7 @@ function beginNeutralCombatPlacement(
   };
 
   state.combat = combat;
+  prepareIntegratedCombatDeployment(state);
   state.phase = "combat-setup";
   state.priorityPlayerId = playerId;
 
@@ -9070,6 +9108,7 @@ export function startPlayerCombat(
   };
 
   state.combat = combat;
+  prepareIntegratedCombatDeployment(state);
   state.phase = "combat-setup";
   state.priorityPlayerId = attacker.controllerId;
 
@@ -9180,6 +9219,23 @@ export function acceptCombat(state: GameState, action: Extract<GameAction, { typ
   }
   if (combat.prep.accepted.includes(action.playerId)) {
     throw new Error("You have already accepted — waiting for your opponent to ready up.");
+  }
+  // LOCKSTEP with getAdventureLegalActions' prep gate: while a preparation
+  // card's pendingVisit is open for a PARTICIPANT (Legion's troop pick),
+  // Accept is offered to NOBODY — a forged/stale Accept slipping through here
+  // could end prep with the visit still open and strand it under the started
+  // battle. A visit owned by a non-participant deliberately does not block
+  // (exotic queue-pump shapes must not be able to freeze the fighters).
+  const prepVisit = state.adventure?.pendingVisit;
+  if (
+    prepVisit &&
+    (prepVisit.playerId === combat.attackerPlayerId || prepVisit.playerId === combat.defenderPlayerId)
+  ) {
+    throw new Error("Resolve the open preparation prompt before readying up.");
+  }
+
+  if (state.players[action.playerId]?.factionId === "mgq" && !state.players[action.playerId]?.mgqSpirit) {
+    throw new Error("Choose one of the Four Spirits before accepting the battle.");
   }
 
   combat.prep.accepted.push(action.playerId);
@@ -9851,7 +9907,10 @@ export function maybeOpenWayfarerParalysisDecision(state: GameState): boolean {
   combat.wayfarerParalysisOffered = true;
 
   const unitRank = (unit: CombatUnitState): number =>
-    unit.commanderSlug
+    // A commander — and a Little Busters battlefield hero, which shares every
+    // commander tier exemption (`heroUnit` is tierless BOTH ways, see
+    // gradeRankOfUnit) — is never a Wayfarer Paralysis target.
+    unit.commanderSlug || unit.heroUnit
       ? Number.POSITIVE_INFINITY
       : unit.bankUnit
         // Creature-Bank monsters are tierless, not Azure. "Any unit except
@@ -9924,6 +9983,11 @@ function finalizeCombatStart(state: GameState): void {
     return;
   }
 
+  // Snapshot before ANY combat-start damage or automatic flawless-win fold.
+  // The instance-id gate is what excludes bodies spawned later even when a
+  // producer forgot to mark them `summoned`/`temporary`.
+  snapshotMgqCompanionDefendersAtCombatStart(state, combat);
+
   // Single-player smoothing (house rule): a computer seat's first TWO eligible
   // neutral-guard battles are guaranteed flawless one-round wins — the guards
   // fall before any unit acts and the outcome resolves through the normal
@@ -9953,6 +10017,9 @@ function finalizeCombatStart(state: GameState): void {
     activeUnitId: null
   });
 
+  // Little Busters only: its fighting hero is a real battlefield unit. A
+  // defeated campus hero is rebuilt at full Health for the next combat.
+  injectCombatHeroes(state);
   // WOG Commanders: each MAIN hero fighting this battle brings its living
   // commander onto the board (auto-placed on the first free cell of its own
   // backline, then frontline; bank fights use the six central attacker cells).
@@ -9988,6 +10055,17 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   state.phase = "combat";
   state.priorityPlayerId = null;
 
+  // Little Busters Disciplinary Committee Pack is a real mandatory target
+  // choice, not an automatic strongest-target shortcut. Resolve every Pack on
+  // the battlefield before the rest of the start-of-combat package fires.
+  if (maybeOpenDisciplinaryCommitteeStartChoice(state)) {
+    return;
+  }
+
+  // Monster Girl Quest Four Spirits: summon the selected basic/advanced unit
+  // for the fighting main hero, based on hero level.
+  seedMgqSpiritsForCombat(state);
+
   // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
   // Rune Level the starting pool already qualifies for.
@@ -10008,6 +10086,7 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
   applyCommanderCombatStart(state);
+  applyMgqHeroCombatStart(state);
   // Forced Battle Events (Anime mod, §3.12): a fought field's combat-start
   // script events (environment mist, an obstacle formation, an opening pulse)
   // settle LAST — after the commander package, before the first war-machine
@@ -10016,6 +10095,141 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // round-start events configured for the opening round.
   applyCombatScriptCombatStart(state);
   startWarMachineRound(state);
+}
+
+function openDisciplinaryCommitteeSourceChoice(
+  state: GameState,
+  sourceUnitId: UnitId,
+  remainingSourceUnitIds: UnitId[]
+): boolean {
+  const combat = state.combat;
+  const source = combat?.units[sourceUnitId];
+  const penalty = source ? getCombatStartEnemyAttackPenalty(source) : null;
+  if (!combat || !source || source.damage >= source.maxHealth || !penalty) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
+  }
+  const targets = Object.values(combat.units)
+    .filter(
+      (candidate) =>
+        candidate.controllerId !== source.controllerId &&
+        candidate.damage < candidate.maxHealth &&
+        !isArrowTowerUnit(candidate)
+    )
+    .sort((left, right) => left.position - right.position);
+  if (targets.length === 0) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: source.controllerId,
+    prompt: `${source.cardName}: choose 1 enemy unit. It gets ${penalty.amount} Attack during combat round 1.`,
+    options: targets.map((target) => ({ label: `${target.cardName} (${getBattlefieldLabel(target.position)})` })),
+    context: "disciplinary-committee-start",
+    disciplinaryCommitteeStart: {
+      sourceUnitId,
+      targetUnitIds: targets.map((target) => target.id),
+      remainingSourceUnitIds,
+      amount: penalty.amount,
+      rounds: penalty.rounds
+    },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = source.controllerId;
+  return true;
+}
+
+/** Opens the first unresolved Disciplinary Committee Pack target choice. */
+function maybeOpenDisciplinaryCommitteeStartChoice(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.disciplinaryCommitteeStartResolved) {
+    return false;
+  }
+  const sourceIds = Object.values(combat.units)
+    .filter((unit) => unit.damage < unit.maxHealth && getCombatStartEnemyAttackPenalty(unit))
+    .sort((left, right) => left.position - right.position)
+    .map((unit) => unit.id);
+  const [first, ...rest] = sourceIds;
+  if (!first || !openDisciplinaryCommitteeSourceChoice(state, first, rest)) {
+    combat.disciplinaryCommitteeStartResolved = true;
+    return false;
+  }
+  return true;
+}
+
+/** Resolves one mandatory Disciplinary Committee Pack round-one debuff. */
+function resolveDisciplinaryCommitteeStartChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.disciplinaryCommitteeStart : undefined;
+  if (
+    !combat ||
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "disciplinary-committee-start" ||
+    choice.playerId !== playerId ||
+    !data
+  ) {
+    throw new Error("There is no Disciplinary Committee target choice to resolve.");
+  }
+  const source = combat.units[data.sourceUnitId];
+  const targetId = data.targetUnitIds[optionIndex];
+  const target = targetId ? combat.units[targetId] : undefined;
+  if (!source || !target || target.damage >= target.maxHealth || target.controllerId === source.controllerId) {
+    throw new Error("Choose one of the living enemy units.");
+  }
+
+  const duration =
+    data.rounds <= 1
+      ? ({ type: "current-combat-round" } as const)
+      : ({ type: "combat-rounds", rounds: data.rounds } as const);
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: "Disciplinary Sanction",
+      scope: "unit",
+      duration,
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount: data.amount }]
+    },
+    { type: "unit", unitId: source.id, controllerId: source.controllerId },
+    source.controllerId,
+    { type: "unit", unitId: target.id }
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: source.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+  const penalty = getCombatStartEnemyAttackPenalty(source);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: source.id,
+    abilityId: penalty?.abilityId ?? "disciplinary-sanction",
+    targetUnitId: target.id,
+    message: `${source.cardName}: Disciplinary Sanction - ${target.cardName} gets ${data.amount} Attack during combat round 1.`
+  });
+
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  const [next, ...rest] = data.remainingSourceUnitIds;
+  if (next && openDisciplinaryCommitteeSourceChoice(state, next, rest)) {
+    return;
+  }
+  combat.disciplinaryCommitteeStartResolved = true;
+  resumeCombatStartAfterCommanderPlacement(state);
 }
 
 /**
@@ -10039,6 +10253,11 @@ function openCommanderPlacementWindow(state: GameState): boolean {
     }
     // A computer seat auto-confirms (keeps the auto-placement): never queued.
     if (isComputerPlayer(state, playerId)) {
+      continue;
+    }
+    // Vanguard/equipment sort was already performed inside the player's normal
+    // troop deployment. Never open a second, separate commander-only phase.
+    if (combat.integratedCommanderDeploymentPlayerIds?.includes(playerId)) {
       continue;
     }
     if (commanderPreCombatSortAvailable(state, playerId)) {
@@ -10071,7 +10290,6 @@ export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId
   if (!combat) {
     return [];
   }
-  const context = combat.context;
   const isBankAttacker = usesBankFormation(combat) && playerId === combat.attackerPlayerId;
   if (isBankAttacker) {
     return [...CREATURE_BANK_ATTACKER_CELLS];
@@ -10083,36 +10301,47 @@ export function commanderDeploymentCellsFor(state: GameState, playerId: PlayerId
 }
 
 /**
- * WOG Commanders pre-combat sort: the head owner repositions THEIR commander
- * (PLACE_COMMANDER) to an empty cell of their own deployment zone, or swaps it
- * with one of their OWN units standing there. Enemy units, Neutral guards,
- * obstacles and out-of-zone cells are refused.
+ * WOG Commanders pre-combat sort: arrange the commander TOGETHER with every
+ * allied unit in the deployment zone. PLACE_COMMANDER keeps its legacy name,
+ * but optional unitId selects the allied body to move/swap.
  */
 export function placeCommanderUnit(state: GameState, action: Extract<GameAction, { type: "PLACE_COMMANDER" }>): void {
   const combat = state.combat;
-  if (!combat || combat.pendingCommanderPlacement?.[0] !== action.playerId) {
+  const integratedDeployment = Boolean(
+    combat?.setup?.pendingPlayerIds[0] === action.playerId &&
+      combat.integratedCommanderDeploymentPlayerIds?.includes(action.playerId)
+  );
+  if (!combat || (combat.pendingCommanderPlacement?.[0] !== action.playerId && !integratedDeployment)) {
     throw new Error("There is no commander to reposition right now.");
   }
   const commander = combat.units[commanderUnitId(action.playerId)];
   if (!commander || commander.controllerId !== action.playerId || commander.damage >= commander.maxHealth) {
     throw new Error("Your commander is not on the battlefield.");
   }
-  if (!commanderDeploymentCellsFor(state, action.playerId).includes(action.position)) {
-    throw new Error("The commander must stay in your own deployment zone.");
+  const moving = action.unitId ? combat.units[action.unitId] : commander;
+  if (!moving || moving.controllerId !== action.playerId || moving.damage >= moving.maxHealth) {
+    throw new Error("That allied unit cannot be sorted.");
+  }
+  const deploymentCells = commanderDeploymentCellsFor(state, action.playerId);
+  if (!deploymentCells.includes(moving.position)) {
+    throw new Error("That allied unit is outside your deployment zone.");
+  }
+  if (!deploymentCells.includes(action.position)) {
+    throw new Error("The formation must stay in your own deployment zone.");
   }
   if ((combat.obstacles ?? []).includes(action.position)) {
     throw new Error("That space is blocked.");
   }
 
   const occupant = Object.values(combat.units).find(
-    (unit) => unit.position === action.position && unit.id !== commander.id
+    (unit) => unit.position === action.position && unit.id !== moving.id
   );
   if (occupant) {
     // Only one of the player's OWN units may be swapped with.
     if (occupant.controllerId !== action.playerId || occupant.damage >= occupant.maxHealth) {
       throw new Error("That space is taken.");
     }
-    occupant.position = commander.position;
+    occupant.position = moving.position;
     appendEvent(state, {
       type: "COMBAT_UNIT_PLACED",
       playerId: action.playerId,
@@ -10120,12 +10349,12 @@ export function placeCommanderUnit(state: GameState, action: Extract<GameAction,
       position: occupant.position
     });
   }
-  commander.position = action.position;
+  moving.position = action.position;
   appendEvent(state, {
     type: "COMBAT_UNIT_PLACED",
     playerId: action.playerId,
-    unitId: commander.id,
-    position: commander.position
+    unitId: moving.id,
+    position: moving.position
   });
 }
 
@@ -10157,7 +10386,7 @@ export function finishCommanderPlacement(
  * Garrison defenses (no defender hero) and secondary-hero fights get none —
  * the commander marches with the main hero only.
  */
-function injectCombatCommanders(state: GameState): void {
+function injectCombatCommanders(state: GameState, onlyPlayerIds?: ReadonlySet<PlayerId>): void {
   const combat = state.combat;
   if (!combat || !commandersModuleEnabled(state)) {
     return;
@@ -10199,10 +10428,56 @@ function injectCombatCommanders(state: GameState): void {
   }
 
   for (const side of sides) {
-    if (side.playerId && side.playerId !== NEUTRAL_PLAYER_ID) {
+    if (
+      side.playerId &&
+      side.playerId !== NEUTRAL_PLAYER_ID &&
+      (!onlyPlayerIds || onlyPlayerIds.has(side.playerId))
+    ) {
       injectCommanderIntoCombat(state, side.playerId, side.cells);
     }
   }
+}
+
+/** Little Busters only: place the actual fighting hero, including a secondary. */
+function injectCombatHeroes(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) return;
+  const sides: { playerId: PlayerId; cells: readonly number[] }[] = [
+    {
+      playerId: combat.attackerPlayerId,
+      cells: usesBankFormation(combat)
+        ? CREATURE_BANK_ATTACKER_CELLS
+        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+    },
+    { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
+  ];
+  for (const side of sides) {
+    if (side.playerId === NEUTRAL_PLAYER_ID) continue;
+    if (state.players[side.playerId]?.factionId !== "little_busters") continue;
+    const heroId = fightingHeroIdForPlayer(state, side.playerId);
+    if (heroId) injectHeroIntoCombat(state, heroId, side.cells);
+  }
+}
+
+/**
+ * Put the Little Busters fighting hero and every Vanguard/equipment commander
+ * on the board before ordinary troop deployment starts. Eligible players then
+ * drag all three body kinds together and press the normal single Ready button.
+ */
+function prepareIntegratedCombatDeployment(state: GameState): void {
+  const combat = state.combat;
+  if (!combat?.setup) {
+    return;
+  }
+  injectCombatHeroes(state);
+  const eligible = [combat.attackerPlayerId, combat.defenderPlayerId].filter(
+    (playerId, index, all) =>
+      playerId !== NEUTRAL_PLAYER_ID &&
+      all.indexOf(playerId) === index &&
+      commanderIntegratedDeploymentSortAvailable(state, playerId)
+  );
+  combat.integratedCommanderDeploymentPlayerIds = eligible;
+  injectCombatCommanders(state, new Set(eligible));
 }
 
 /** A player's living, swappable (non-Arrow-Tower) units in this combat. */
@@ -10399,6 +10674,17 @@ export function applyCombatStartUnitAbilities(state: GameState): void {
           unitId: unit.id,
           abilityId: draw.abilityId,
           message: `${unit.name}: ${draw.abilityName} — draw ${drawn} card${drawn === 1 ? "" : "s"}.`
+        });
+      }
+    }
+    if (unit.controllerId !== NEUTRAL_PLAYER_ID) {
+      for (const morale of getCombatStartMoraleGains(unit)) {
+        changeMorale(state, unit.controllerId, morale.amount);
+        appendEvent(state, {
+          type: "UNIT_ABILITY_TRIGGERED",
+          unitId: unit.id,
+          abilityId: morale.abilityId,
+          message: `${unit.name}: ${morale.abilityName} grants ${morale.amount} positive Morale.`
         });
       }
     }
@@ -10825,6 +11111,139 @@ type DeferredNecromancyReward = NonNullable<
   AdventureState["pendingNecromancy"]
 >["deferredReward"];
 
+export type MgqCompanionOption = NonNullable<
+  AdventureState["pendingCompanionRecruitment"]
+>["options"][number];
+
+/**
+ * Freeze the only bodies Companion Recruitment may inspect after the fight.
+ * This runs once at the round-1 start seam, before Ilias/other combat-start
+ * damage, and deliberately stores unit-instance ids rather than unitDefIds so
+ * a later spawned copy of the same printed unit can never inherit eligibility.
+ */
+function snapshotMgqCompanionDefendersAtCombatStart(state: GameState, combat: CombatState): void {
+  if (combat.mgqCompanionStartDefenderUnitIds !== undefined) {
+    return;
+  }
+  if (combat.context.kind !== "neutral") {
+    return;
+  }
+  const hero = state.heroes[combat.context.heroId];
+  const player = hero ? state.players[hero.controllerId] : undefined;
+  if (!hero || hero.kind !== "main" || player?.factionId !== "mgq") {
+    return;
+  }
+  combat.mgqCompanionStartDefenderUnitIds = Object.values(combat.units)
+    .filter(
+      (unit) =>
+        unit.controllerId === NEUTRAL_PLAYER_ID &&
+        unit.damage < unit.maxHealth &&
+        Boolean(unit.unitDefId) &&
+        !unit.bankGuard &&
+        !unit.bankUnit &&
+        !unit.bossUnit &&
+        !unit.summoned &&
+        !unit.temporary &&
+        (unit.grade === "bronze" || unit.grade === "silver") &&
+        isRecruitableNeutralUnit(unit.unitDefId!)
+    )
+    .map((unit) => unit.id);
+}
+
+/** The exact defeated, deck-backed bronze/silver guards MGQ may seal. */
+export function mgqCompanionOptionsAfterCombat(state: GameState, combat: CombatState): MgqCompanionOption[] {
+  if (combat.context.kind !== "neutral" || combat.outcome?.winnerPlayerId === NEUTRAL_PLAYER_ID) {
+    return [];
+  }
+  const hero = state.heroes[combat.context.heroId];
+  const player = hero ? state.players[hero.controllerId] : undefined;
+  if (!hero || hero.kind !== "main" || !player || player.factionId !== "mgq") {
+    return [];
+  }
+  // Banks, waves, bosses and Dungeon floors mint special encounter bodies and
+  // never expose cards to Companion Recruitment.
+  if (
+    combat.context.bankId ||
+    combat.context.waveAssault ||
+    combat.context.raidBossId ||
+    combat.context.dungeonFloor !== undefined
+  ) {
+    return [];
+  }
+  // New combats carry an exact unit-instance snapshot. Missing means a loaded
+  // pre-snapshot combat, for which the legacy flag/tier/card checks below stay
+  // available so old saves do not lose an already-earned offer.
+  const startDefenderUnitIds = combat.mgqCompanionStartDefenderUnitIds;
+  const startedEligible = startDefenderUnitIds ? new Set(startDefenderUnitIds) : null;
+  const seen = new Set<string>();
+  const options: MgqCompanionOption[] = [];
+  for (const unit of Object.values(combat.units)) {
+    if (
+      (startedEligible !== null && !startedEligible.has(unit.id)) ||
+      unit.controllerId !== NEUTRAL_PLAYER_ID ||
+      unit.damage < unit.maxHealth ||
+      !unit.unitDefId ||
+      unit.bankGuard ||
+      unit.bankUnit ||
+      unit.bossUnit ||
+      unit.summoned ||
+      unit.temporary ||
+      (unit.grade !== "bronze" && unit.grade !== "silver") ||
+      seen.has(unit.unitDefId) ||
+      !isRecruitableNeutralUnit(unit.unitDefId)
+    ) {
+      continue;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    const side = def?.neutral;
+    if (!def || !side || (def.tier !== "bronze" && def.tier !== "silver")) continue;
+    seen.add(unit.unitDefId);
+    options.push({ unitDefId: unit.unitDefId, tier: def.tier, cost: { ...side.cost } });
+  }
+  return options;
+}
+
+function openMgqCompanionWindow(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  options: MgqCompanionOption[],
+  deferredReward?: DeferredNecromancyReward
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || options.length === 0) return false;
+  adventure.pendingCompanionRecruitment = {
+    playerId,
+    heroId,
+    options,
+    ...(deferredReward ? { deferredReward } : {})
+  };
+  return true;
+}
+
+/** Release a reward withheld by either atomic after-combat transaction. */
+function releaseDeferredCombatReward(
+  state: GameState,
+  playerId: PlayerId,
+  reward: DeferredNecromancyReward | undefined,
+  legacyHeroId?: HeroId,
+  legacyFieldId?: MapSpaceId
+): void {
+  if (reward?.kind === "field-visit") {
+    beginFieldVisit(state, reward.heroId, reward.fieldId, false);
+  } else if (reward?.kind === "creature-bank") {
+    grantCreatureBankReward(state, reward.heroId, reward.fieldId, reward.stackCount);
+  } else if (reward?.kind === "wave") {
+    grantWaveVictoryRewards(state, playerId, reward.wave);
+  } else if (reward?.kind === "raid-boss") {
+    resolveRaidBossVictory(state, playerId, reward.bossInstanceId);
+  } else if (reward?.kind === "dungeon-floor") {
+    resolveDungeonFloorVictory(state, playerId, reward.floor);
+  } else if (legacyHeroId && legacyFieldId) {
+    beginFieldVisit(state, legacyHeroId, legacyFieldId, false);
+  }
+}
+
 /**
  * Single entry point for every fought-combat Necromancy prompt. Keeping the
  * window construction here prevents neutral, PvP, Bank, Wave, Raid Boss, and
@@ -10896,26 +11315,66 @@ export function skipNecromancy(state: GameState, action: Extract<GameAction, { t
     );
   }
 
-  const reward = pending.deferredReward;
-  if (reward?.kind === "field-visit") {
-    beginFieldVisit(state, reward.heroId, reward.fieldId, false);
-  } else if (reward?.kind === "creature-bank") {
-    grantCreatureBankReward(
-      state,
-      reward.heroId,
-      reward.fieldId,
-      reward.stackCount
-    );
-  } else if (reward?.kind === "wave") {
-    grantWaveVictoryRewards(state, action.playerId, reward.wave);
-  } else if (reward?.kind === "raid-boss") {
-    resolveRaidBossVictory(state, action.playerId, reward.bossInstanceId);
-  } else if (reward?.kind === "dungeon-floor") {
-    resolveDungeonFloorVictory(state, action.playerId, reward.floor);
-  } else if (pending.heroId && pending.fieldId) {
-    // Compatibility with snapshots written before deferredReward existed.
-    beginFieldVisit(state, pending.heroId, pending.fieldId, false);
+  releaseDeferredCombatReward(
+    state,
+    action.playerId,
+    pending.deferredReward,
+    pending.heroId,
+    pending.fieldId
+  );
+}
+
+/** Accept one MGQ Companion offer, or decline, then release the held reward. */
+export function resolveCompanionRecruitment(
+  state: GameState,
+  action: Extract<GameAction, { type: "RESOLVE_COMPANION_RECRUITMENT" }>
+): void {
+  const adventure = state.adventure;
+  const pending = adventure?.pendingCompanionRecruitment;
+  const player = state.players[action.playerId];
+  if (!adventure || !pending || !player || pending.playerId !== action.playerId) {
+    throw new Error("There is no Companion Recruitment offer for you.");
   }
+  if (action.unitDefId === null) {
+    adventure.pendingCompanionRecruitment = null;
+    appendEvent(state, {
+      type: "MGQ_COMPANION_RECRUITED",
+      playerId: action.playerId,
+      declined: true
+    });
+    releaseDeferredCombatReward(state, action.playerId, pending.deferredReward);
+    return;
+  }
+  const option = pending.options.find((candidate) => candidate.unitDefId === action.unitDefId);
+  if (!option) {
+    throw new Error("That defeated card was not offered as a Companion.");
+  }
+  const freeSeal = (player.mgqFreeCompanionSeals ?? 0) > 0;
+  const cost = freeSeal ? {} : option.cost;
+  if (!hasResources(player, cost)) {
+    throw new Error("You cannot afford to seal that Companion.");
+  }
+  const deck = state.decks[NEUTRAL_DECK_IDS[option.tier]];
+  const discardIndex = deck?.discardPile.lastIndexOf(option.unitDefId) ?? -1;
+  if (!deck || discardIndex < 0) {
+    throw new Error("That defeated Neutral card is no longer in its discard pile.");
+  }
+  if (!freeSeal) {
+    spendResources(state, action.playerId, cost, "Companion Recruitment seal");
+  } else {
+    player.mgqFreeCompanionSeals = Math.max(0, (player.mgqFreeCompanionSeals ?? 0) - 1);
+  }
+  deck.discardPile.splice(discardIndex, 1);
+  const companion = addArmyUnit(player, option.unitDefId, "neutral");
+  companion.companion = true;
+  adventure.pendingCompanionRecruitment = null;
+  appendEvent(state, {
+    type: "MGQ_COMPANION_RECRUITED",
+    playerId: action.playerId,
+    unitDefId: option.unitDefId,
+    cost: { ...cost }
+  });
+  releaseDeferredCombatReward(state, action.playerId, pending.deferredReward);
 }
 
 /**
@@ -11063,6 +11522,9 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   const context = combat.context;
   const outcome = combat.outcome;
+  // Snapshot before the neutral recycle loop below. Spawned/bank/boss bodies
+  // are excluded, and only cards actually defeated in this fought combat enter.
+  const mgqCompanionOptions = mgqCompanionOptionsAfterCombat(state, combat);
 
   // The battle is over, so every participant's PvP prep shopping window is too:
   // commit each side's Population action if they bought this round. ACCEPT_COMBAT
@@ -11500,12 +11962,9 @@ export function finalizeAdventureCombat(state: GameState): void {
           : context.raidBossId
             ? { kind: "raid-boss", bossInstanceId: context.raidBossId }
             : { kind: "dungeon-floor", floor: context.dungeonFloor! };
-        const deferred = openNecromancyWindow(
-          state,
-          playerId,
-          hero.id,
-          deferredReward
-        );
+        const deferred =
+          openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) ||
+          openNecromancyWindow(state, playerId, hero.id, deferredReward);
         if (!deferred && context.waveAssault) {
           grantWaveVictoryRewards(state, playerId, context.waveAssault.wave);
         } else if (!deferred && context.raidBossId) {
@@ -11525,7 +11984,8 @@ export function finalizeAdventureCombat(state: GameState): void {
       // precedent). A retreat/defeat left this branch (winnerPlayerId !== playerId).
       if (context.teleportArrival) {
         clearCustomGuard(field);
-        openNecromancyWindow(state, playerId, hero.id);
+        openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions) ||
+          openNecromancyWindow(state, playerId, hero.id);
         state.phase = "player-turn";
         return;
       }
@@ -11554,13 +12014,15 @@ export function finalizeAdventureCombat(state: GameState): void {
         // A Bank is a fought combat too. Its gold/search reward is part of the
         // atomic deferral, fixing the long-standing "Bank paid before prompt"
         // exploit and keeping prompt-producing Banks from hiding Necromancy.
-        if (
-          !openNecromancyWindow(state, playerId, hero.id, {
+        const deferredReward: DeferredNecromancyReward = {
             kind: "creature-bank",
             heroId: hero.id,
             fieldId: context.fieldId,
             stackCount: context.bankStackCount ?? 0
-          })
+          };
+        if (
+          !openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) &&
+          !openNecromancyWindow(state, playerId, hero.id, deferredReward)
         ) {
           grantCreatureBankReward(
             state,
@@ -11570,11 +12032,14 @@ export function finalizeAdventureCombat(state: GameState): void {
           );
         }
       } else {
-        const deferred = openNecromancyWindow(state, playerId, hero.id, {
+        const deferredReward: DeferredNecromancyReward = {
           kind: "field-visit",
           heroId: hero.id,
           fieldId: context.fieldId
-        });
+        };
+        const deferred =
+          openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) ||
+          openNecromancyWindow(state, playerId, hero.id, deferredReward);
         if (!deferred) {
           beginFieldVisit(state, hero.id, context.fieldId, false);
         }
@@ -12042,6 +12507,91 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
 }
 
 /**
+ * MGQ Job System: in an own Town, pay the single shared cost gate to assign or
+ * replace one persistent Job token on a faction card or sealed Companion.
+ */
+export function assignMgqUnitJob(
+  state: GameState,
+  action: Extract<GameAction, { type: "ASSIGN_UNIT_JOB" }>
+): void {
+  const adventure = state.adventure;
+  const player = state.players[action.playerId];
+  if (!adventure || !player || player.factionId !== "mgq") {
+    throw new Error("Only the Monster Girl Quest town can assign Jobs.");
+  }
+  if (state.combat) {
+    throw new Error("Assign Jobs outside combat in your own Town.");
+  }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Assign Jobs on your own turn.");
+  }
+  assertParallelInteractionFree(state, action.playerId);
+  if (!mainHeroInOwnTown(state, action.playerId)) {
+    throw new Error("Your main hero must be in one of your Towns to assign a Job.");
+  }
+  if (!MGQ_JOBS.includes(action.job)) {
+    throw new Error("Choose a valid Monster Girl Quest Job.");
+  }
+  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
+  if (!armyUnit || !mgqJobEligible(armyUnit)) {
+    throw new Error("That card cannot take a Monster Girl Quest Job.");
+  }
+  if (!mgqJobsForUnit(armyUnit.unitDefId).includes(action.job)) {
+    throw new Error("That Job is not compatible with this monster.");
+  }
+  if (mgqEffectiveJob(armyUnit) === action.job) {
+    throw new Error("That card already has this Job.");
+  }
+  const goldPaid = mgqJobAssignmentCost(state, action.playerId);
+  if (!hasResources(player, { gold: goldPaid })) {
+    throw new Error(`Assigning a Job needs ${goldPaid} gold.`);
+  }
+  const consumesKitchen = consumesMgqKitchenCharge(state, action.playerId);
+  if (goldPaid > 0) {
+    spendResources(state, action.playerId, { gold: goldPaid }, "MGQ Job assignment");
+  }
+  if (consumesKitchen) {
+    player.mgqFreeJobReassignments = Math.max(0, (player.mgqFreeJobReassignments ?? 0) - 1);
+  }
+  armyUnit.job = action.job;
+  appendEvent(state, {
+    type: "MGQ_JOB_ASSIGNED",
+    playerId: action.playerId,
+    armyUnitId: armyUnit.id,
+    unitDefId: armyUnit.unitDefId,
+    job: action.job,
+    goldPaid
+  });
+}
+
+/** Select the innate Spirit that the MGQ main hero will summon next combat. */
+export function setMgqSpirit(
+  state: GameState,
+  action: Extract<GameAction, { type: "SET_MGQ_SPIRIT" }>
+): void {
+  const player = state.players[action.playerId];
+  if (!state.adventure || !player || player.factionId !== "mgq") {
+    throw new Error("Only a Monster Girl Quest hero can summon a Spirit.");
+  }
+  if (state.combat ? !inCombatPrep(state, action.playerId) : !hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Choose a Spirit on your map turn or during pre-battle preparation.");
+  }
+  if (!state.combat) assertParallelInteractionFree(state, action.playerId);
+  if (!mgqCanSelectSpirit(state, action.playerId, action.spirit)) {
+    throw new Error("Choose Sylph, Gnome, Undine, or Salamander.");
+  }
+  if (player.mgqSpirit === action.spirit) {
+    throw new Error("That Spirit is already selected.");
+  }
+  player.mgqSpirit = action.spirit;
+  appendEvent(state, {
+    type: "MGQ_SPIRIT_SELECTED",
+    playerId: action.playerId,
+    spirit: action.spirit
+  });
+}
+
+/**
  * HERO_GRADE_PICK: spend one unspent grade point to pick a tree node (one node
  * per tier, tier ≤ current grade). Self-validating (the node is baked into the
  * action, so no window opens) — usable outside combat exactly like
@@ -12223,6 +12773,40 @@ export function commanderSetStance(
     throw new Error("Pick +1 Attack or +1 Defense.");
   }
   commander.stance = action.stance;
+}
+
+/** Sonya's Unbreakable Bond: persistently mark one own army-card instance. */
+export function commanderSetBond(
+  state: GameState,
+  action: Extract<GameAction, { type: "COMMANDER_SET_BOND" }>
+): void {
+  const player = state.players[action.playerId];
+  const commander = player?.commander;
+  if (!player || !commander) {
+    throw new Error("You have no commander.");
+  }
+  if (state.combat) {
+    throw new Error("Unbreakable Bond is chosen outside combat.");
+  }
+  if (commanderDefinitions[commander.slug as CommanderSlug]?.specialty.id !== "unbreakable-bond") {
+    throw new Error("This commander has no Unbreakable Bond.");
+  }
+  const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
+  if (!armyUnit) {
+    throw new Error("Choose one of your army cards for Unbreakable Bond.");
+  }
+  if (commander.bondedArmyUnitId === armyUnit.id) {
+    throw new Error("That army card is already bonded to Sonya.");
+  }
+  commander.bondedArmyUnitId = armyUnit.id;
+  const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
+  appendEvent(state, {
+    type: "COMMANDER_BOND_SET",
+    playerId: action.playerId,
+    armyUnitId: armyUnit.id,
+    unitDefId: armyUnit.unitDefId,
+    message: `Sonya forms an Unbreakable Bond with ${unitName}.`
+  });
 }
 
 /**
@@ -12672,6 +13256,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
 
   // Validate before mutating: simulate against a copy of the army.
   const armyCopy = player.army.map((unit) => ({ ...unit }));
+  const mgqContractsCopy = player.mgqGoldContracts === undefined ? [] : [...player.mgqGoldContracts];
   for (const purchase of action.purchases) {
     // Stacks may target recruited Neutrals (not on the faction roster).
     // Recruits/reinforces stay faction-only.
@@ -12702,6 +13287,17 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
         throw new Error(
           "Factory: choose Couatls or Juggernauts — you cannot have both in your army."
         );
+      }
+      if (isMgqGoldUnit(purchase.unitDefId) && !mgqGoldContractAllows(player, purchase.unitDefId)) {
+        throw new Error("Gold Contract: only the three Gold identities chosen during setup may be recruited.");
+      }
+      // Legacy snapshots had no setup marker and filled their three slots on the
+      // first successful recruits. Preserve batch atomicity for those saves only.
+      if (isMgqGoldUnit(purchase.unitDefId) && player.mgqGoldContractSetupRequired === undefined && !mgqContractsCopy.includes(purchase.unitDefId)) {
+        if (mgqContractsCopy.length >= MGQ_GOLD_CONTRACT_LIMIT) {
+          throw new Error("Gold Contract: this legacy game already has three chosen Gold Companions.");
+        }
+        mgqContractsCopy.push(purchase.unitDefId);
       }
       // The total gold discount reserved for THIS unit (a Legion voucher stacks
       // with any building/location recruit-cost source).
@@ -12799,6 +13395,7 @@ export function populationAction(state: GameState, action: Extract<GameAction, {
     const finalCost = priced[index]?.finalCost ?? {};
     if (purchase.kind === "recruit") {
       addArmyUnit(player, purchase.unitDefId, "few");
+      recordMgqGoldContract(player, purchase.unitDefId);
       appendEvent(state, {
         type: "UNIT_RECRUITED",
         playerId: action.playerId,
@@ -13766,6 +14363,44 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
   const choice = state.pendingChoice;
   if (!choice || choice.type !== "OPTION_CHOICE" || choice.id !== action.choiceId || choice.playerId !== action.playerId) {
     throw new Error("That choice cannot be resolved.");
+  }
+
+  if (choice.context === "disciplinary-committee-start") {
+    resolveDisciplinaryCommitteeStartChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "mgq-mad-science") {
+    const data = choice.mgqMadScience;
+    const pair = data?.pairs[action.optionIndex];
+    const player = state.players[action.playerId];
+    if (!data || !pair || !player) {
+      throw new Error("That Mad Science experiment cannot be resolved.");
+    }
+    const sacrificeIndex = player.army.findIndex((unit) => unit.id === pair.sacrificeArmyUnitId);
+    const targetIndex = player.army.findIndex((unit) => unit.id === pair.targetArmyUnitId);
+    const sacrifice = sacrificeIndex >= 0 ? player.army[sacrificeIndex] : undefined;
+    const target = targetIndex >= 0 ? player.army[targetIndex] : undefined;
+    if (
+      !sacrifice ||
+      sacrifice.side !== "few" ||
+      coreUnitDefinitions[sacrifice.unitDefId]?.tier !== "bronze" ||
+      !target ||
+      coreUnitDefinitions[target.unitDefId]?.tier !== "silver"
+    ) {
+      throw new Error("Mad Science still needs the selected bronze Few and silver army cards.");
+    }
+    player.army.splice(sacrificeIndex, 1);
+    target.permanentAttackBonus = (target.permanentAttackBonus ?? 0) + data.attackBonus;
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
+  if (choice.context === "mgq-gold-contract") {
+    resolveMgqGoldContractSetupChoice(state, action.playerId, action.optionIndex);
+    return;
   }
 
   if (choice.context === "morale-positive-limit") {
@@ -14958,6 +15593,18 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
           playerId: action.playerId,
           buildingId: "bulwark.city_hall",
           message: `City Hall: Rune-Empowered — +${option.runesNextCombats} starting Runes each combat until the next Resource round.`
+        });
+      }
+    }
+    if (option.freeJobReassign) {
+      const player = state.players[action.playerId];
+      if (player) {
+        player.mgqFreeJobReassignments = (player.mgqFreeJobReassignments ?? 0) + 1;
+        appendEvent(state, {
+          type: "TOWN_BUILDING_USED",
+          playerId: action.playerId,
+          buildingId: "mgq.city_hall",
+          message: "Pocket Castle Kitchen: the next Job assignment or reassignment is free."
         });
       }
     }

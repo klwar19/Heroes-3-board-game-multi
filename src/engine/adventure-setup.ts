@@ -193,6 +193,7 @@ import {
   resolveFieldOverridesEnabled
 } from "./field-overrides";
 import { isFieldOverrideLocation } from "@/data/map/field-overrides";
+import { ensureMgqGoldContractSetupChoice } from "./mgq-contracts";
 
 /** Known designer Secret-feature ids (the allow-list for sanitize + validation). */
 export const SECRET_TILE_FEATURE_IDS: readonly SecretTileFeature[] = [
@@ -1066,7 +1067,10 @@ function makePlayer(
       spellLimitBonusThisRound: 0,
       expertUsesSpentThisRound: 0,
       spellsCastThisTurn: 0
-    }
+    },
+    ...(config.factionId === "mgq"
+      ? { mgqGoldContracts: [], mgqGoldContractSetupRequired: true }
+      : {})
   };
 
   if (options.startingUnits) {
@@ -2709,7 +2713,13 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const animeTownsOn =
     Boolean(anime.enabled && (anime.isekaiTowns || anime.xianxiaTowns)) ||
     playerConfigsForCommander.some(
-      (id) => id === "fuyuki" || id === "azure_breeze" || id === "hidden_leaf" || id === "azur_lane"
+      (id) =>
+        id === "fuyuki" ||
+        id === "azure_breeze" ||
+        id === "hidden_leaf" ||
+        id === "azur_lane" ||
+        id === "little_busters" ||
+        String(id) === "mgq"
     );
   if (animeTownsOn && ruleset === "binh") {
     wog = { ...wog, enabled: true, commanders: true };
@@ -3965,6 +3975,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // instant the game state is handed back, before any action is dispatched.
   // With a starting bonus the pump stops on the first player's choice instead.
   pumpAdventureQueues(state);
+
+  // MGQ chooses both Gold identities before normal play. This sits behind any
+  // already-open mandatory setup reward and is recovered by the reducer tail if
+  // a restored snapshot still owes the choice.
+  ensureMgqGoldContractSetupChoice(state);
 
   return state;
 }

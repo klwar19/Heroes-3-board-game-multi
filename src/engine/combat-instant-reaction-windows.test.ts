@@ -483,8 +483,22 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.glacius.6", optionIndex: 0 },
   { cardId: "specialty.gerwulf.4", optionIndex: 1 },
   { cardId: "specialty.gerwulf.6", optionIndex: 1 },
+  { cardId: "specialty.luka.6", optionIndex: 0 },
   { cardId: "specialty.tarnum_dungeon.4", optionIndex: 0 },
-  { cardId: "specialty.tarnum_dungeon.6", optionIndex: 0 }
+  { cardId: "specialty.tarnum_dungeon.6", optionIndex: 0 },
+  // MGQ + Little Busters hero specialties (ORIGINAL cards) whose printed text is
+  // an "Instant (any time during Combat)" face. Each joins every reaction
+  // window (verified by the in-window sweep below); none carries a printed
+  // reaction trigger, so none is a trap twin.
+  { cardId: "specialty.alice.1", optionIndex: 0 },
+  { cardId: "specialty.alice.4", optionIndex: 0 },
+  { cardId: "specialty.alice.4", optionIndex: 1 },
+  { cardId: "specialty.alice.4", optionIndex: 2 },
+  { cardId: "specialty.granberia.4", optionIndex: 0 },
+  { cardId: "specialty.ilias.4", optionIndex: 0 },
+  { cardId: "specialty.kudryavka_noumi.1", optionIndex: 0 },
+  { cardId: "specialty.kudryavka_noumi.6", optionIndex: 0 },
+  { cardId: "specialty.promestein.6", optionIndex: 0 }
 ];
 
 /**
@@ -567,7 +581,20 @@ describe("invariant sweep — a window never swallows an 'any time' instant", ()
       // the printed discard costs (Frost Ring / Meteor Shower).
       const hand: CardId[] = [cardId, "stat.attack", "stat.defense", "stat.attack"];
       const permanents: CardId[] = ["war_machine.ballista"];
-      const offTurn = playKeys(getOffTurnCombatReactions(offTurnHolder(hand, permanents), "p1"), cardId);
+      // Scope to the card's combatAnytime option(s): getOffTurnCombatReactions
+      // returns the whole card's off-turn plays — including a SEPARATE plain
+      // draw option (e.g. Promestein VI option 1) that joins windows via the
+      // draw-utility path, not combatAnytimeInstantWindowJoins. That draw is
+      // pinned by instant-card-gain-legality; here we compare only the
+      // combatAnytime face against its window join.
+      const card = cardLibrary[cardId];
+      const anytimeIdx = new Set(
+        card?.effect.type === "CHOOSE_ONE"
+          ? card.effect.options.flatMap((option, index) => (option.combatAnytime ? [index] : []))
+          : []
+      );
+      const onlyAnytime = (keys: string[]) => keys.filter((key) => anytimeIdx.has(Number(key.split(":")[0])));
+      const offTurn = onlyAnytime(playKeys(getOffTurnCombatReactions(offTurnHolder(hand, permanents), "p1"), cardId));
       if (offTurn.length === 0) {
         // Not playable in this fixture either (a prerequisite this board cannot
         // supply) — nothing for the window to swallow, so the invariant holds
@@ -575,7 +602,7 @@ describe("invariant sweep — a window never swallows an 'any time' instant", ()
         // the face's existence.
         continue;
       }
-      const inWindow = playKeys(combatAnytimeInstantWindowJoins(offTurnHolder(hand, permanents), "p1"), cardId);
+      const inWindow = onlyAnytime(playKeys(combatAnytimeInstantWindowJoins(offTurnHolder(hand, permanents), "p1"), cardId));
       expect(inWindow, `${cardId} must join a reaction window with the same offers it has off-turn`).toEqual(
         offTurn
       );

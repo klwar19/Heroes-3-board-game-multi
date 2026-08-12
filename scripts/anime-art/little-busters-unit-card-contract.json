@@ -1,0 +1,141 @@
+[
+  {
+    "id": "little_busters.haruka",
+    "slug": "haruka-saigusa",
+    "name": "Haruka Saigusa",
+    "tier": "bronze",
+    "type": "GROUND",
+    "art": "haruka-master.png",
+    "few": {
+      "stats": { "attack": 2, "defense": 0, "health": 3, "initiative": 9 },
+      "cost": { "gold": 2 },
+      "abilities": []
+    },
+    "pack": {
+      "stats": { "attack": 3, "defense": 0, "health": 4, "initiative": 10 },
+      "cost": { "gold": 4 },
+      "abilities": ["haruka-prank-backfire"],
+      "text": "Prank Backfire - when her own Attack die rolls -1, Paralyze the target after this attack."
+    }
+  },
+  {
+    "id": "little_busters.rins_cats",
+    "slug": "rins-cats",
+    "name": "Rin's Cats",
+    "tier": "bronze",
+    "type": "GROUND",
+    "art": "rins-cats-master.png",
+    "few": {
+      "stats": { "attack": 2, "defense": 1, "health": 2, "initiative": 10 },
+      "cost": { "gold": 3 },
+      "abilities": ["teleport-move"],
+      "text": "Cat Step - as a move, place this unit on any empty Combat space."
+    },
+    "pack": {
+      "stats": { "attack": 3, "defense": 1, "health": 3, "initiative": 11 },
+      "cost": { "gold": 6 },
+      "abilities": ["teleport-move", "ignores-retaliation"],
+      "text": "Cat Step - move to any empty space; Pounce - attacks do not provoke Retaliation."
+    }
+  },
+  {
+    "id": "little_busters.disciplinary_committee",
+    "slug": "disciplinary-committee",
+    "name": "Disciplinary Committee",
+    "tier": "bronze",
+    "type": "RANGED",
+    "art": "disciplinary-committee-master.png",
+    "few": {
+      "stats": { "attack": 2, "defense": 1, "health": 3, "initiative": 6 },
+      "cost": { "gold": 4 },
+      "abilities": ["wog-nightmare-fear"],
+      "text": "Disciplinary Pressure - when attacked, the attacker rolls 2 Attack dice and resolves the lower result."
+    },
+    "pack": {
+      "stats": { "attack": 3, "defense": 1, "health": 3, "initiative": 7 },
+      "cost": { "gold": 6 },
+      "abilities": ["disciplinary-sanction"],
+      "text": "Disciplinary Sanction - at the start of Combat, choose 1 enemy unit. It gets -1 Attack during round 1."
+    }
+  },
+  {
+    "id": "little_busters.masato",
+    "slug": "masato-the-wall",
+    "name": "Masato the Wall",
+    "tier": "silver",
+    "type": "GROUND",
+    "art": "masato-the-wall-master.png",
+    "few": {
+      "stats": { "attack": 3, "defense": 2, "health": 5, "initiative": 4 },
+      "cost": { "gold": 8 },
+      "abilities": ["commander-defense-token"],
+      "text": "Muscle Wall - always rolls the Defend die when attacked."
+    },
+    "pack": {
+      "stats": { "attack": 4, "defense": 2, "health": 6, "initiative": 5 },
+      "cost": { "gold": 15 },
+      "abilities": ["commander-defense-token", "masato-bodyguard-intercept"],
+      "text": "Bodyguard - always rolls the Defend die; once per Combat, an attack on an adjacent friendly unit is redirected to Masato."
+    }
+  },
+  {
+    "id": "little_busters.softball_club",
+    "slug": "softball-club",
+    "name": "Softball Club",
+    "tier": "silver",
+    "type": "RANGED",
+    "art": "softball-club-master.png",
+    "few": {
+      "stats": { "attack": 3, "defense": 1, "health": 5, "initiative": 7 },
+      "cost": { "gold": 8 },
+      "abilities": ["ignore-combat-penalties"],
+      "text": "Pitching Lane - ignores the adjacent-unit ranged penalty."
+    },
+    "pack": {
+      "stats": { "attack": 4, "defense": 1, "health": 5, "initiative": 8 },
+      "cost": { "gold": 12 },
+      "abilities": ["ignore-combat-penalties", "softball-power-pitch"],
+      "text": "Pitching Lane - ignores the adjacent penalty; Power Pitch - when its own Attack die is -1 or 0, deal 1 additional damage."
+    }
+  },
+  {
+    "id": "little_busters.saya",
+    "slug": "saya-tokido",
+    "name": "Saya Tokido",
+    "tier": "golden",
+    "type": "GROUND",
+    "art": "saya-tokido-master.png",
+    "few": {
+      "stats": { "attack": 6, "defense": 2, "health": 5, "initiative": 8 },
+      "cost": { "gold": 14, "valuables": 1 },
+      "abilities": ["saya-infiltration", "ignores-retaliation"],
+      "text": "Infiltration - as a move, place Saya on any empty Combat space; her attacks do not provoke Retaliation."
+    },
+    "pack": {
+      "stats": { "attack": 7, "defense": 2, "health": 6, "initiative": 9 },
+      "cost": { "gold": 21, "valuables": 2 },
+      "abilities": ["saya-infiltration", "ignores-retaliation", "saya-armor-break"],
+      "text": "Infiltration - move to any empty space and ignore Retaliation; Armor Break - on a 0 or +1 on Saya's Attack die, the target gets -1 Defense (minimum 0) for the rest of Combat."
+    }
+  },
+  {
+    "id": "little_busters.mio",
+    "slug": "mio-nishizono",
+    "name": "Mio Nishizono",
+    "tier": "golden",
+    "type": "RANGED",
+    "art": "mio-nishizono-master.png",
+    "few": {
+      "stats": { "attack": 5, "defense": 3, "health": 6, "initiative": 4 },
+      "cost": { "gold": 19 },
+      "abilities": ["gargoyle-spell-ward", "ignore-all-combat-penalties"],
+      "text": "White Parasol - takes 1 less Spell damage and ignores all ranged penalties."
+    },
+    "pack": {
+      "stats": { "attack": 6, "defense": 3, "health": 7, "initiative": 5 },
+      "cost": { "gold": 28, "valuables": 2 },
+      "abilities": ["gargoyle-spell-ward", "ignore-all-combat-penalties", "archangel-lethal-save"],
+      "text": "Midori's Shadow - spell ward and no ranged penalties; once per Combat, cancel lethal damage to another friendly unit."
+    }
+  }
+]

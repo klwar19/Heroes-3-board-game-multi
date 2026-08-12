@@ -179,6 +179,13 @@ import {
   activeBuildingActions,
   buildingPanelReachable
 } from "@/components/adventure/town-sections";
+import {
+  MgqCompanionRecruitmentPrompt,
+  MgqGoldContractPanel,
+  MgqGoldContractSetupPrompt,
+  MgqJobControl,
+  mgqGoldUnavailable
+} from "@/components/adventure/mgq-controls";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import { buildCustomSetupFile, customSetupFileName, parseCustomSetupFile } from "@/lib/custom-setup-file";
 import {
@@ -1640,7 +1647,7 @@ export function HexMapBoard({
               symbol.kind === "resource" ? 0.62 :
               symbol.kind === "treasure" ? 0.6 :
               0.56;
-            const iconSize = HEX_SIZE * iconScale;
+            const iconSize = HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
             overlays.push(
               <image
                 className="fieldSymbolModule"
@@ -2174,7 +2181,7 @@ export function HexMapBoard({
             symbol.kind === "resource" ? 0.62 :
             symbol.kind === "treasure" ? 0.6 :
             0.56;
-          const iconSize = HEX_SIZE * iconScale;
+          const iconSize = HEX_SIZE * iconScale * (tileDef?.assets?.fieldSymbolScale ?? 1);
           overlays.push(
             <image
               className="fieldSymbolModule"
@@ -4215,6 +4222,16 @@ export function TownHeroDock({
                     ? (stance) => onAction({ type: "COMMANDER_SET_STANCE", playerId: armyPlayer.id, stance })
                     : undefined
                 }
+                bondedArmyUnitId={commander.bondedArmyUnitId}
+                bondOptions={armyPlayer.army.map((unit) => ({
+                  id: unit.id,
+                  label: coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId
+                }))}
+                onSetBond={
+                  onAction && !state.combat && commander.slug === "sonya"
+                    ? (armyUnitId) => onAction({ type: "COMMANDER_SET_BOND", playerId: armyPlayer.id, armyUnitId })
+                    : undefined
+                }
                 artifacts={commander.artifacts}
                 showArtifactSlots={commanderArtifactsEnabled}
               />
@@ -4577,6 +4594,12 @@ export function ArmyPanel({
   )[] = [];
   for (const unitDefId of roster) {
     const owned = player.army.find((candidate) => candidate.unitDefId === unitDefId && !renderedArmyIds.has(candidate.id));
+    // Once both MGQ Gold Contracts are recorded, the other Gold identities
+    // leave this game's roster rather than looking recruitable. The contract
+    // panel names the two locks and explains the hidden count.
+    if (!owned && mgqGoldUnavailable(player, unitDefId)) {
+      continue;
+    }
     if (owned) {
       renderedArmyIds.add(owned.id);
       rosterEntries.push({ kind: "owned", unit: owned });
@@ -4613,6 +4636,7 @@ export function ArmyPanel({
           <small>Click a unit below, or open the full picker</small>
         </button>
       ) : null}
+      <MgqGoldContractPanel player={player} />
       <ul>
         {rosterEntries.map((entry) => {
           // Unowned roster unit: card faces + name + a "not recruited" note,
@@ -4840,6 +4864,13 @@ export function ArmyPanel({
                   </small>
                 ) : null}
               </button>
+              <MgqJobControl
+                legalActions={legalActions}
+                onAction={onAction}
+                playerId={playerId}
+                state={state}
+                unit={unit}
+              />
               {rankInfo ? (
                 <button
                   className="armyXpPanel"
@@ -5546,6 +5577,7 @@ export function PromptTray({
       legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT"
   );
   const necromancyOpen = state.adventure?.pendingNecromancy?.playerId === viewerPlayerId;
+  const companionRecruitment = state.adventure?.pendingCompanionRecruitment;
   // "The combat round is over" is ONLY the neutral between-rounds gate: spend
   // 1 MP to fight another round, or retreat. RETREAT_FROM_COMBAT *also* appears
   // in the PvP start-of-combat escape window (offered to both heroes before any
@@ -5566,6 +5598,35 @@ export function PromptTray({
           legal.action.type === "PLAY_CARD"
       )
     : [];
+
+  // MGQ seals ride their own atomic after-combat field (not pendingChoice), so
+  // claim it before generic prompt routing. The dedicated surface shows each
+  // defeated card, the exact charged cost, and the explicit decline action.
+  if (companionRecruitment?.playerId === viewerPlayerId) {
+    return (
+      <MgqCompanionRecruitmentPrompt
+        legalActions={legalActions}
+        onAction={onAction}
+        playerId={viewerPlayerId}
+        state={state}
+      />
+    );
+  }
+
+  if (
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "mgq-gold-contract" &&
+    choice.playerId === viewerPlayerId
+  ) {
+    return (
+      <MgqGoldContractSetupPrompt
+        legalActions={legalActions}
+        onAction={onAction}
+        playerId={viewerPlayerId}
+        state={state}
+      />
+    );
+  }
 
   // Teleport — the Jotunn Warlord ability AND the Teleport Spell — is a simple
   // two-click board flow: click a unit to move, then click an empty slot. The
@@ -5809,7 +5870,9 @@ export function PromptTray({
   // Learning has its own waiting strip in LearningOfferModal.
   const tileChoice = state.adventure?.pendingTileChoice;
   const waitingOn =
-    choice && choice.playerId !== viewerPlayerId
+    companionRecruitment && companionRecruitment.playerId !== viewerPlayerId
+      ? { ownerId: companionRecruitment.playerId, doing: "is choosing a Companion..." }
+      : choice && choice.playerId !== viewerPlayerId
       ? choice.type === "OPTION_CHOICE" &&
         (choice.context === "learning-level-up" ||
           choice.context === "deck-search-mode" ||
@@ -7634,6 +7697,10 @@ export function PreBattlePanel({
       </div>
       {viewerPreparing ? (
         <>
+          <strong className="prepCardReminder">
+            Play artifacts and other available cards from your hand before accepting. Legion discounts apply to troops
+            bought in this window.
+          </strong>
           <small className="prepNote">
             Prepare before the fight: spend any town actions you have left this round (build, recruit, buy spells) — right
             here below, or in your town window (the Town button). Units you recruit now join your army in time to be
@@ -9416,7 +9483,7 @@ function GameModeSection({
             </small>
             <div className="wogModuleList">
               {([
-                ["isekaiTowns", "Fuyuki City + Hidden Leaf Village + Azur Lane Naval Base", "Adds three complete anime towns: Fuyuki City (7-unit Servant roster), Hidden Leaf Village (7-unit shinobi swarm) and Azur Lane Naval Base (7-ship kansen fleet) — each with original heroes, its town board, buildings, starting tile, commander, and anime-themed system vocabulary."],
+                ["isekaiTowns", "Fuyuki + Hidden Leaf + Azur Lane + Little Busters", "Adds four complete anime towns: Fuyuki City, Hidden Leaf Village, Azur Lane Naval Base, and Little Busters Campus — each with seven units, original heroes, its town board, buildings, starting tile, commander, and themed progression."],
                 ["xianxiaTowns", "Azure Breeze Sect", "Adds the complete wuxia sect: 7-unit cultivation roster, two original heroes, its mountain town board, buildings, starting tile, and wuxia-themed system vocabulary."],
                 ["doomNeutrals", "Doom monsters", "Adds the 16 classic Doom neutral monsters across the exact Bronze, Silver, Gold and Azure decks. Independent checkbox; off by default."],
                 ["mapObjects", "Map objects (Ninefold locations)", "Adds the anime single-hex map locations (Secret Realm, Sword Mound, Merchant Guild Post, gambling den, hot spring, …) to the Field Override pool. Turns Field Overrides on."],

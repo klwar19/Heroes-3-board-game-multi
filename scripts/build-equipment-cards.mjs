@@ -478,6 +478,112 @@ const CARDS = [
       "Accessory: +1 spell Power on your casts AND +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  // ==== Monster Girl Quest: Paradox bespoke equipment line — 3 items ======
+  // Their approved masters are declared by mgq-art-contract.json. As with the
+  // modao line, missing art is a hard build error; no monogram is substituted.
+  // ==== Little Busters bespoke "seishun" line - 6 items ==================
+  {
+    slug: "little-busters-harukas-glass-marbles",
+    en: "Haruka's Glass Marbles",
+    vi: "Bi Thuy Tinh cua Haruka",
+    grade: "I",
+    slot: "accessory",
+    rules: [
+      "Accessory: gain +1 gold after each combat you win.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "little-busters-lennons-mission-letter",
+    en: "Lennon's Mission Letter",
+    vi: "Thu Nhiem Vu cua Lennon",
+    grade: "I",
+    slot: "accessory",
+    rules: [
+      "Accessory: +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "little-busters-mios-parasol",
+    en: "Mio's Parasol",
+    vi: "O cua Mio",
+    grade: "II",
+    slot: "armor",
+    rules: [
+      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "little-busters-kuds-flight-goggles",
+    en: "Kud's Flight Goggles",
+    vi: "Kinh Bay cua Kud",
+    grade: "II",
+    slot: "accessory",
+    rules: [
+      "Accessory: +1 spell Power on your casts.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "little-busters-little-busters-practice-bat",
+    en: "Little Busters Practice Bat",
+    vi: "Gay Tap Little Busters",
+    grade: "III",
+    slot: "weapon",
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
+  },
+  {
+    slug: "little-busters-school-revolution-watch",
+    en: "School Revolution Watch",
+    vi: "Dong Ho Cach Mang Hoc Duong",
+    grade: "III",
+    slot: "accessory",
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
+  },
+  {
+    slug: "mgq-angel-halo",
+    en: "Angel Halo",
+    vi: "Thien Than Quang Hoan",
+    grade: "I",
+    slot: "weapon",
+    paintedMaster: true,
+    rules: [
+      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
+    slug: "mgq-heavenly-knights-aegis",
+    en: "Heavenly Knight's Aegis",
+    vi: "Thien Ky Si Thanh Khien",
+    grade: "II",
+    slot: "armor",
+    paintedMaster: true,
+    rules: [
+      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
+    ]
+  },
+  {
+    slug: "mgq-monster-lords-ring",
+    en: "Monster Lord's Ring",
+    vi: "Nhan Ma Vuong",
+    grade: "III",
+    slot: "accessory",
+    paintedMaster: true,
+    rules: [
+      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+    ]
   }
 ];
 

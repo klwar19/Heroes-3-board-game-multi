@@ -1354,8 +1354,11 @@ export default function Home() {
     }
     if (nextState.combat) {
       for (const unit of Object.values(nextState.combat.units)) {
-        // WOG commanders carry no unitDefId; they voice by `commander:<slug>`.
-        const voiceId = unit.commanderSlug ? commanderVoiceId(unit.commanderSlug) : unit.unitDefId;
+        // Commanders voice by `commander:<slug>`; Little Busters battlefield
+        // heroes voice by heroDefId because they intentionally have no unit card.
+        const voiceId = unit.commanderSlug
+          ? commanderVoiceId(unit.commanderSlug)
+          : unit.heroDefId ?? unit.unitDefId;
         if (voiceId) {
           unitDefIdsRef.current.set(unit.id, voiceId);
         }
@@ -2345,7 +2348,9 @@ export default function Home() {
         // that too, so its fall/death cry still plays after removal).
         const unitVoice = (unitId: string) => {
           const unit = nextState.combat?.units[unitId];
-          const voiceId = unit?.commanderSlug ? commanderVoiceId(unit.commanderSlug) : unit?.unitDefId;
+          const voiceId = unit?.commanderSlug
+            ? commanderVoiceId(unit.commanderSlug)
+            : unit?.heroDefId ?? unit?.unitDefId;
           return voiceId ?? unitDefIdsRef.current.get(unitId);
         };
 

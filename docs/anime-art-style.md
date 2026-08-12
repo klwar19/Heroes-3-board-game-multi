@@ -95,9 +95,12 @@ Identity and costume checks use the [official Unlimited Blade Works character
 page](https://www.fate-sn.com/ubw/sp/chara/) and the setting/class vocabulary
 uses the [official introduction](https://www.fate-sn.com/ubw/sp/intro/).
 References live only in the gitignored `scripts/anime-art/refs/` directory.
-Every final master is a newly generated pose, composition, lighting setup, and
-background; official images are never traced, pasted, upscaled, committed, or
-shipped.
+Every final master is normally a newly generated pose, composition, lighting
+setup, and background; official images are never traced or passed off as new
+art. The private MGQ pack has five explicitly documented canonical-composite
+exceptions requested for exact identity (Regina, Aria, Lisa, Ooma, and sealed
+Ilias). Their verified game-extracted standing sprites are only trimmed/scaled
+and placed over original backgrounds; see `docs/mgq-art.md`.
 
 Azure Breeze environmental research uses UNESCO's [Wudang Mountains building
 complex](https://whc.unesco.org/en/list/705/) and [Mount Huangshan shanshui

@@ -710,8 +710,15 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
         if (card.timing !== "instant" && card.timing !== "reaction") {
           return false;
         }
+        // A printed MAP-ONLY draw face never joins a combat window by design
+        // (an absolute zone bar), so it is excluded from this "joins a window"
+        // sweep — e.g. MGQ Ilias IV's pure-draw twin (option 1), whose combat
+        // presence is its SEPARATE combatAnytime immunity face (option 0). Its
+        // map play is pinned by the map draw sweeps above.
         const faces =
-          card.effect.type === "CHOOSE_ONE" ? card.effect.options.map((option) => option.effect) : [card.effect];
+          card.effect.type === "CHOOSE_ONE"
+            ? card.effect.options.filter((option) => !option.mapOnly).map((option) => option.effect)
+            : [card.effect];
         return faces.some(
           (face) => instantDrawOnlyRider(face, "basic") > 0 || instantDrawOnlyRider(face, "expert") > 0
         );
@@ -872,7 +879,7 @@ describe("sweep: EVERY implemented heal card is offered in an open attack window
 // ===========================================================================
 
 describe("healDrawOnlyRider — the map draw-only gate", () => {
-  it("opens EXACTLY the 13 medic specialty cards (Rion/Astra + the rethemed clones)", () => {
+  it("opens exactly the medic specialty cards (Rion/Astra + every rethemed clone)", () => {
     const qualifying: string[] = [];
     for (const card of Object.values(cardLibrary)) {
       if (card.implementationStatus !== "implemented") {
@@ -888,6 +895,13 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.aoko.4",
       "specialty.aoko.6",
       "specialty.astra.1",
+      // Only genuine Rion/Astra heal clones qualify. Ilias I and VI are Rion
+      // clones and stay; Ilias IV is NOT a heal-draw card (a combatAnytime
+      // draw+Specialty-immunity + a mapOnly pure draw), and Kudryavka's
+      // specialties are Deemer's Meteor Shower (AREA damage) clones — so
+      // healDrawOnlyRider (HEAL_DAMAGE faces only) returns 0 for both.
+      "specialty.ilias.1",
+      "specialty.ilias.6",
       "specialty.molian.1",
       "specialty.molian.4",
       "specialty.molian.6",

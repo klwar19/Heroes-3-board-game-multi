@@ -118,6 +118,15 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     // until both sides have accepted. So drive a computer that still owes an
     // accept; if the only pending acceptor is the human, the whole table WAITS.
     if (combat.prep) {
+      // LOCKSTEP with getAdventureLegalActions' prep gate: while a preparation
+      // card's pendingVisit is open (Legion's troop pick), EVERY seat's offer
+      // list is empty except the VISIT OWNER's — naming a still-unaccepted
+      // computer participant here would hand the runner a seat with zero legal
+      // actions (a logged stall on every tick until the human resolves).
+      const prepVisitOwner = state.adventure?.pendingVisit?.playerId;
+      if (prepVisitOwner) {
+        return computer(state, prepVisitOwner);
+      }
       for (const owner of [combat.attackerPlayerId, combat.defenderPlayerId]) {
         if (combat.prep.accepted.includes(owner)) continue;
         const result = computer(state, owner);
@@ -216,6 +225,7 @@ export function computerDecisionOwner(state: GameState): PlayerId | null {
     const gatedWindows: (PlayerId | null | undefined)[] = [
       adventure.pendingTileChoice?.playerId,
       adventure.pendingVisit?.playerId,
+      adventure.pendingCompanionRecruitment?.playerId,
       adventure.pendingCommanderFirstAid?.playerId,
       adventure.pendingNecromancy?.playerId,
     ];

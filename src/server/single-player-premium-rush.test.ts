@@ -90,7 +90,11 @@ function measureRush(
     startingBuildings: LIVE_PREBUILT,
   });
   let seenEvents = 0;
-  let seenRecruitEvents = 0;
+  // The production event log is a rolling 500-entry window. Tracking an array
+  // index becomes invalid once old entries are spliced from the front: a newly
+  // appended recruit can occupy an index already marked "seen". Event ids are
+  // monotonic across that rollover, so they preserve exact once-only sampling.
+  const seenRecruitEventIds = new Set<string>();
   const snap = (state: GameState) => {
     if (report.attemptRound === null) {
       const log = state.eventLog ?? [];
@@ -127,8 +131,10 @@ function measureRush(
       report.goldRound = state.round;
     }
     const log = state.eventLog ?? [];
-    for (; seenRecruitEvents < log.length; seenRecruitEvents += 1) {
-      const event = log[seenRecruitEvents] as unknown as {
+    for (const rawEvent of log) {
+      if (seenRecruitEventIds.has(rawEvent.id)) continue;
+      seenRecruitEventIds.add(rawEvent.id);
+      const event = rawEvent as unknown as {
         type: string;
         playerId?: string;
         unitDefId?: string;

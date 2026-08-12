@@ -114,7 +114,7 @@ function isNoTierTarget(unit: CombatUnitState, attacker?: CombatUnitState): bool
   }
   // Commanders: deprioritised only for graded attackers. Bank guards keep pure
   // distance order so a close commander is still attacked first.
-  if (unit.commanderSlug) {
+  if (unit.commanderSlug || unit.heroUnit) {
     return !attacker || !isGradelessNeutralAttacker(attacker);
   }
   return false;

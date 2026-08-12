@@ -70,6 +70,17 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
           ? ` and starts each combat with ${effect.startingRunes} Rune${effect.startingRunes === 1 ? "" : "s"}`
           : ""
       }. Level 1 = +1 Attack, Level 2 = +3 Initiative, Level 3 = +1 Defense to all your units. Current house rule for earning Runes in battle: Attack +1, Retaliate +1, Defend +2.`;
+    case "MGQ_SPIRIT_SHRINE":
+      return "Outside combat, select one Spirit whose Contract building is built. That choice is snapshotted at combat setup and lasts for that combat.";
+    case "MGQ_SPIRIT_CONTRACT": {
+      const rules = {
+        sylph: "+1 Initiative to your units in round 1",
+        gnome: "Defense token to the main hero's units in round 1",
+        undine: "-1 to the first incoming enemy attack",
+        salamander: "+1 to your first declared attack"
+      } as const;
+      return `Unlocks ${effect.spirit[0].toUpperCase()}${effect.spirit.slice(1)} at the Spirit Shrine: ${rules[effect.spirit]}.`;
+    }
     case "NOT_IMPLEMENTED":
       return effect.note;
     default:
@@ -111,6 +122,9 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
       return "always on";
     case "MAGE_GUILD":
       return "town action";
+    case "MGQ_SPIRIT_SHRINE":
+    case "MGQ_SPIRIT_CONTRACT":
+      return "outside combat";
     default:
       return null;
   }

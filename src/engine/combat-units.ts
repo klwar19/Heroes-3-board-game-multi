@@ -10,9 +10,11 @@ import {
   getOnRemovalDetonation,
   getReapOnAdjacentRemoval,
   getSelfRebirthAbility,
+  getSelfRebirthRollAbility,
   getUnitsAdjacentTo,
   isUnitDamageImmune
 } from "./unit-abilities";
+import { createSeededRandom } from "./random";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
@@ -100,6 +102,69 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       abilityId: rebirth.abilityId,
       message: `${unit.cardName} is reborn and clings to life at 1 Health.`
     });
+    return;
+  }
+
+  // MGQ Hero Job: one rolled death save per combat. The attempt is consumed on
+  // both success and failure; using the shared combat-die cursor keeps replay,
+  // multiplayer and scripted tests deterministic.
+  const rolledRebirth = getSelfRebirthRollAbility(unit);
+  if (rolledRebirth && !unit.usedRebirthThisCombat && state.combat) {
+    unit.usedRebirthThisCombat = true;
+    const dice = state.combat.dice;
+    const rollIndex = dice.rollCount++;
+    const faces = dice.faces.length > 0 ? dice.faces : [-1, -1, 0, 0, 1, 1];
+    const roll = dice.scriptedRolls && rollIndex < dice.scriptedRolls.length
+      ? (dice.scriptedRolls[rollIndex] ?? 0)
+      : faces[createSeededRandom(`${dice.seed}#${rollIndex}`, { salt: false }).nextInt(0, faces.length - 1)] ?? 0;
+    if (roll <= rolledRebirth.maxRoll) {
+      unit.damage = Math.max(0, unit.maxHealth - 1);
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: rolledRebirth.abilityId,
+        message: `${unit.cardName} rolls ${roll >= 0 ? "+" : ""}${roll}: Heroic Return succeeds at 1 Health.`
+      });
+      return;
+    }
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: rolledRebirth.abilityId,
+      message: `${unit.cardName} rolls +${roll}: Heroic Return fails.`
+    });
+  }
+
+  // Sonya — Unbreakable Bond. Rebirth retains first priority; once it is spent
+  // (or absent), Sonya intercepts the first lethal state before Stack layers,
+  // Stack Tokens and Pack→Few, exactly like a separate absorb layer. The bonded
+  // side remains at 1 Health and every point of excess is prevented; Sonya then
+  // takes 1 real damage through this same removal chokepoint.
+  const combat = state.combat;
+  const owner = state.players[unit.controllerId];
+  const sonya = combat?.units[`unit_${unit.controllerId}_commander`];
+  const bondAlreadyUsed = combat?.sonyaBondRedirectUsedBy?.includes(unit.controllerId) ?? false;
+  if (
+    combat &&
+    unit.armyUnitId &&
+    owner?.commander?.slug === "sonya" &&
+    owner.commander.bondedArmyUnitId === unit.armyUnitId &&
+    sonya?.commanderSlug === "sonya" &&
+    sonya.id !== unit.id &&
+    sonya.damage < sonya.maxHealth &&
+    !bondAlreadyUsed
+  ) {
+    combat.sonyaBondRedirectUsedBy = [...(combat.sonyaBondRedirectUsedBy ?? []), unit.controllerId];
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    sonya.damage += 1;
+    appendEvent(state, {
+      type: "COMMANDER_SPECIALTY_TRIGGERED",
+      playerId: unit.controllerId,
+      commanderSlug: "sonya",
+      specialtyId: "unbreakable-bond",
+      message: `Sonya takes 1 damage for ${unit.cardName}; Unbreakable Bond leaves it at 1 Health.`
+    });
+    markUnitRemovedIfNeeded(state, sonya);
     return;
   }
 

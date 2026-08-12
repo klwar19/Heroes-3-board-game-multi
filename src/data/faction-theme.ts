@@ -73,7 +73,13 @@ const AZUR_LANE: FactionUiLexicon = {
 };
 
 export function factionVisualRegister(factionId: string | undefined): FactionVisualRegister {
-  if (factionId === "fuyuki" || factionId === "hidden_leaf" || factionId === "azur_lane") {
+  if (
+    factionId === "fuyuki" ||
+    factionId === "hidden_leaf" ||
+    factionId === "azur_lane" ||
+    factionId === "little_busters" ||
+    factionId === "mgq"
+  ) {
     return "anime";
   }
   if (factionId === "azure_breeze" || factionId === "heavenly_demon") {

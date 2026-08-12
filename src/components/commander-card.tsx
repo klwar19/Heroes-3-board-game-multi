@@ -1025,6 +1025,9 @@ export function CommanderCard({
   goldAvailable,
   stance,
   onSetStance,
+  bondedArmyUnitId,
+  bondOptions,
+  onSetBond,
   artifacts,
   showArtifactSlots = false,
   editable = false,
@@ -1049,6 +1052,12 @@ export function CommanderCard({
   stance?: "attack" | "defense";
   /** Live mode: change the Superior Combat stance (only outside combat). */
   onSetStance?: (stance: "attack" | "defense") => void;
+  /** Sonya: persistent army-card instance protected by Unbreakable Bond. */
+  bondedArmyUnitId?: string;
+  /** Own army cards shown in Sonya's outside-combat bond picker. */
+  bondOptions?: { id: string; label: string }[];
+  /** Live mode: change Sonya's bonded army card (outside combat only). */
+  onSetBond?: (armyUnitId: string) => void;
   /** WOG Commander Artifacts (Task 2): the card id bound into each slot. */
   artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
   /** Show the three artifact slots (module on). */
@@ -1065,6 +1074,7 @@ export function CommanderCard({
   const [localStance, setLocalStance] = useState<"attack" | "defense">("attack");
 
   const hasStance = def?.specialty.id === "superior-combat";
+  const hasBond = def?.specialty.id === "unbreakable-bond";
   const shownStance: "attack" | "defense" = editable ? localStance : (stance ?? "attack");
   const grades = editable ? localGrades : normalizeGrades(gradesProp);
   const shownLevel = editable ? localLevel : level;
@@ -1229,6 +1239,33 @@ export function CommanderCard({
                 );
               })}
             </div>
+          ) : null}
+
+          {hasBond && bondOptions?.length ? (
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ color: GOLD, fontWeight: 700 }}>Unbreakable Bond</span>
+              <select
+                aria-label="Sonya bonded army card"
+                value={bondedArmyUnitId ?? ""}
+                disabled={!onSetBond}
+                onChange={(event) => {
+                  if (event.target.value && onSetBond) onSetBond(event.target.value);
+                }}
+                style={{
+                  padding: "6px 8px",
+                  background: "#2a2119",
+                  color: PALE,
+                  border: `1px solid ${GOLD}`,
+                  borderRadius: 5
+                }}
+              >
+                <option value="" disabled>Choose one army card</option>
+                {bondOptions.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+              <small style={{ color: DIM }}>+1 Defense while Sonya lives; first lethal hit each combat is redirected to her.</small>
+            </label>
           ) : null}
 
           {/* The pro read-only stats view: the authentic WoG comm3 symbols, the

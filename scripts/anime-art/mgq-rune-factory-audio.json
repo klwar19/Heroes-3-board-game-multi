@@ -1,0 +1,211 @@
+{
+  "schemaVersion": 1,
+  "voiceRoot": "E:\\voice\\rune factory 1",
+  "effectRoot": "G:\\games\\MGQ Paradox 2.41\\Audio\\SE",
+  "profiles": [
+    {
+      "slug": "pochi", "name": "Pochi", "speaker": "Cammy_JP",
+      "rationale": "Cammy's bright child voice fits the small, eager dog girl; short reactions avoid adult delivery.",
+      "clips": { "attack": "07.wav", "shoot": "08.wav", "defend": "06.wav", "hurt": "11.wav", "death": "13.wav", "move": "03.wav" },
+      "effects": { "attack": "Bite.ogg", "shoot": "mon_tume.ogg", "move": "Dog.ogg" }
+    },
+    {
+      "slug": "shesta", "name": "Shesta", "speaker": "Lynette_JP",
+      "rationale": "Lynette's cool military register suits a controlled, predatory vampire combatant.",
+      "clips": { "attack": "17.wav", "shoot": "10.wav", "defend": "08.wav", "hurt": "11.wav", "death": "18.wav", "move": "02.wav" },
+      "effects": { "attack": "Bite.ogg", "shoot": "Darkness3.ogg", "move": "mon_habataki.ogg" }
+    },
+    {
+      "slug": "gigi", "name": "Gigi", "speaker": "Mana_JP",
+      "rationale": "Mana's energetic young-adult delivery matches Gigi's lively electrical counterattacks.",
+      "clips": { "attack": "12.wav", "shoot": "23.wav", "defend": "07.wav", "hurt": "10.wav", "death": "16.wav", "move": "08.wav" },
+      "effects": { "attack": "Thunder4.ogg", "shoot": "mon_ikazuti.ogg", "move": "mon_water.ogg" }
+    },
+    {
+      "slug": "kamuro_kitsu", "name": "Kamuro & Kitsu", "speaker": "Aria_JP",
+      "rationale": "Aria's child voice and alternate short takes make the fox-girl pair sound quick and playful rather than mature.",
+      "clips": { "attack": "07 (1).wav", "shoot": "04 (1).wav", "defend": "05 (1).wav", "hurt": "01 (1).wav", "death": "08 (1).wav", "move": "02 (1).wav" },
+      "effects": { "attack": "mon_tume.ogg", "shoot": "mon_fire1.ogg", "move": "mon_asioto1.ogg" }
+    },
+    {
+      "slug": "fleesia", "name": "Fleesia", "speaker": "Felicity_JP",
+      "rationale": "Felicity's soft, restrained tone fits a flower spirit whose threat is pollen and trance rather than brute force.",
+      "clips": { "attack": "08.wav", "shoot": "09.wav", "defend": "06.wav", "hurt": "10.wav", "death": "11.wav", "move": "13.wav" },
+      "effects": { "attack": "Pollen.ogg", "shoot": "Fog2.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "sofia", "name": "Sofia", "speaker": "Lara_JP",
+      "rationale": "Lara's calm healer voice is the closest persona match for Sofia's white-magic role.",
+      "clips": { "attack": "12.wav", "shoot": "14.wav", "defend": "08.wav", "hurt": "09.wav", "death": "13.wav", "move": "07.wav" },
+      "effects": { "attack": "Saint3.ogg", "shoot": "Magic3.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "miyabi", "name": "Miyabi", "speaker": "Yue_JP",
+      "rationale": "Yue's lively Japanese cadence and forceful short cry fit Miyabi's agile wild-hair fighting style.",
+      "clips": { "attack": "12.wav", "shoot": "14.wav", "defend": "06.wav", "hurt": "08.wav", "death": "09.wav", "move": "10.wav" },
+      "effects": { "attack": "Twine.ogg", "shoot": "mon_wind2.ogg", "move": "mon_asioto1.ogg" }
+    },
+    {
+      "slug": "eater", "name": "Eater", "speaker": "Sabrina_JP",
+      "rationale": "Sabrina's older, rougher register gives the carnivorous plant a weightier identity than the child voices.",
+      "clips": { "attack": "07.wav", "shoot": "08.wav", "defend": "05.wav", "hurt": "10.wav", "death": "11.wav", "move": "13.wav" },
+      "effects": { "attack": "Bite.ogg", "shoot": "Pollen.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "hild", "name": "Hild", "speaker": "Lynette_JP",
+      "rationale": "A second, sharper Lynette set reinforces Hild's disciplined machine-soldier identity without reusing Shesta's clips.",
+      "clips": { "attack": "15.wav", "shoot": "14.wav", "defend": "13.wav", "hurt": "12.wav", "death": "09.wav", "move": "06.wav" },
+      "effects": { "attack": "Laser.ogg", "shoot": "Gun2.ogg", "move": "Machine.ogg" }
+    },
+    {
+      "slug": "chrome_frederica", "name": "Chrome & Frederica", "speaker": "Alicia_JP",
+      "rationale": "Alicia's theatrical occult delivery supports the pair's experimental reassembly magic.",
+      "clips": { "attack": "13.wav", "shoot": "15.wav", "defend": "06.wav", "hurt": "07.wav", "death": "17.wav", "move": "09.wav" },
+      "effects": { "attack": "Magic4.ogg", "shoot": "mon_magic.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "shizuku", "name": "Shizuku", "speaker": "Tanya_JP",
+      "rationale": "Tanya's weapon-obsessed confidence fits Shizuku's direct, heavy melee presence.",
+      "clips": { "attack": "11.wav", "shoot": "14.wav", "defend": "08.wav", "hurt": "06.wav", "death": "13.wav", "move": "07.wav" },
+      "effects": { "attack": "Hammer.ogg", "shoot": "Blow8.ogg", "move": "mon_asioto2.ogg" }
+    },
+    {
+      "slug": "regina", "name": "Regina", "speaker": "Mei_JP",
+      "rationale": "Mei's archaic warrior diction and explicit blade challenge are a direct fit for Regina's swordsmanship.",
+      "clips": { "attack": "14.wav", "shoot": "11.wav", "defend": "05.wav", "hurt": "09.wav", "death": "10.wav", "move": "04.wav" },
+      "effects": { "attack": "Sword4.ogg", "shoot": "Slash9.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "maiden", "name": "Maiden", "speaker": "Melody_JP",
+      "rationale": "Melody's witchlike, sing-song voice fits Maiden's nightmare and sleep magic.",
+      "clips": { "attack": "14.wav", "shoot": "10.wav", "defend": "08.wav", "hurt": "09.wav", "death": "17.wav", "move": "06.wav" },
+      "effects": { "attack": "Darkness5.ogg", "shoot": "Sleep.ogg", "move": "mon_warp.ogg" }
+    },
+    {
+      "slug": "seraphy", "name": "Seraphy", "speaker": "Mist_JP",
+      "rationale": "Mist's airy, slightly unusual delivery fits Seraphy's soft aquatic form and sleep-toxin theme.",
+      "clips": { "attack": "14.wav", "shoot": "15.wav", "defend": "09.wav", "hurt": "16.wav", "death": "13.wav", "move": "08.wav" },
+      "effects": { "attack": "mon_aqua2.ogg", "shoot": "Poison.ogg", "move": "mon_water.ogg" }
+    },
+    {
+      "slug": "lisa", "name": "Lisa", "speaker": "Tabatha_JP",
+      "rationale": "Tabatha's composed, observant voice supports Lisa's controlled time-bending role.",
+      "clips": { "attack": "11.wav", "shoot": "12.wav", "defend": "06.wav", "hurt": "07.wav", "death": "14.wav", "move": "05.wav" },
+      "effects": { "attack": "Magic5.ogg", "shoot": "Resonance.ogg", "move": "mon_warp.ogg" }
+    },
+    {
+      "slug": "tama", "name": "Tama", "speaker": "Aria_JP",
+      "rationale": "Aria's second, more assertive child set fits the small cat girl's playful bravado.",
+      "clips": { "attack": "30.wav", "shoot": "12.wav", "defend": "05.wav", "hurt": "07.wav", "death": "10.wav", "move": "03.wav" },
+      "effects": { "attack": "mon_tume.ogg", "shoot": "mon_fire2.ogg", "move": "Cat.ogg" }
+    },
+    {
+      "slug": "maya", "name": "Maya", "speaker": "Alicia_JP",
+      "rationale": "Alicia's second mystical set suits Maya's thread-of-time ranged magic; incantation-like takes are reserved for firing.",
+      "clips": { "attack": "14.wav", "shoot": "21.wav", "defend": "08.wav", "hurt": "10.wav", "death": "22.wav", "move": "11.wav" },
+      "effects": { "attack": "Twine.ogg", "shoot": "Magic6.ogg", "move": "mon_warp.ogg" }
+    },
+    {
+      "slug": "matis", "name": "Matis", "speaker": "Tabatha_JP",
+      "rationale": "Tabatha's reserved second set fits Matis's quiet blade style and keeps her distinct from Lisa.",
+      "clips": { "attack": "10.wav", "shoot": "08.wav", "defend": "09.wav", "hurt": "15.wav", "death": "14.wav", "move": "01.wav" },
+      "effects": { "attack": "Slash6.ogg", "shoot": "mon_wind3.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "ooma", "name": "Ooma", "speaker": "Lady Ann_JP",
+      "rationale": "Lady Ann's mature, grounded voice supplies the weight needed for Ooma's large deep-sea body.",
+      "clips": { "attack": "07.wav", "shoot": "09.wav", "defend": "06.wav", "hurt": "08.wav", "death": "10.wav", "move": "01.wav" },
+      "effects": { "attack": "mon_aqua4.ogg", "shoot": "Water6.ogg", "move": "mon_water.ogg" }
+    },
+    {
+      "slug": "jessie", "name": "Jessie", "speaker": "Tanya_JP",
+      "rationale": "Tanya's second weapon-focused set matches Jessie's martial, projectile-heavy battlefield role.",
+      "clips": { "attack": "10.wav", "shoot": "12.wav", "defend": "15.wav", "hurt": "09.wav", "death": "13.wav", "move": "03.wav" },
+      "effects": { "attack": "sickle-and-chain-1.mp3", "shoot": "mon_shot3.ogg", "move": "mon_asioto2.ogg" }
+    },
+    {
+      "slug": "aria", "name": "Aria", "speaker": "Cecilia_JP",
+      "rationale": "Cecilia's gentle youthful voice complements Aria's forest and flower identity.",
+      "clips": { "attack": "07.wav", "shoot": "08.wav", "defend": "05.wav", "hurt": "09.wav", "death": "11.wav", "move": "01.wav" },
+      "effects": { "attack": "Wind4.ogg", "shoot": "Pollen.ogg", "move": "mon_step.ogg" }
+    },
+    {
+      "slug": "carmilla", "name": "Carmilla", "speaker": "Bianca_JP",
+      "rationale": "Bianca's haughty aristocratic voice is the strongest social and tonal match for the vampire noble Carmilla.",
+      "clips": { "attack": "15.wav", "shoot": "16.wav", "defend": "06.wav", "hurt": "09.wav", "death": "12.wav", "move": "05.wav" },
+      "effects": { "attack": "Bite.ogg", "shoot": "Darkness7.ogg", "move": "mon_warp.ogg" }
+    },
+    {
+      "slug": "giga", "name": "Giga", "speaker": "Natalie_JP",
+      "rationale": "Natalie's firm adult register and scolding intensity give Giga authority without a childlike mismatch.",
+      "clips": { "attack": "12.wav", "shoot": "09.wav", "defend": "07.wav", "hurt": "05.wav", "death": "10.wav", "move": "04.wav" },
+      "effects": { "attack": "Earth8.ogg", "shoot": "mon_dageki4.ogg", "move": "mon_asioto4.ogg" }
+    },
+    {
+      "slug": "lucretia", "name": "Lucretia", "speaker": "Rosetta_JP",
+      "rationale": "Rosetta's confident young-adult voice suits a proud airborne queen without sounding as childlike as Cupi.",
+      "clips": { "attack": "15.wav", "shoot": "14.wav", "defend": "06.wav", "hurt": "08.wav", "death": "12.wav", "move": "01.wav" },
+      "effects": { "attack": "mon_tume.ogg", "shoot": "Wind8.ogg", "move": "mon_habataki.ogg" }
+    },
+    {
+      "slug": "cupi", "name": "Cupi", "speaker": "Cammy_JP",
+      "rationale": "Cammy's assertive second set keeps the small cupid youthful while making her ranged attack read clearly.",
+      "clips": { "attack": "15.wav", "shoot": "09.wav", "defend": "10.wav", "hurt": "14.wav", "death": "13.wav", "move": "16.wav" },
+      "effects": { "attack": "Bow2.ogg", "shoot": "Bow3.ogg", "move": "mon_habataki.ogg" }
+    },
+    {
+      "slug": "sphinx", "name": "Sphinx", "speaker": "Natalie_JP",
+      "rationale": "Natalie's second authoritative set fits Sphinx's royal, judgmental presence and remains distinct from Giga's clips.",
+      "clips": { "attack": "13.wav", "shoot": "14.wav", "defend": "06.wav", "hurt": "08.wav", "death": "16.wav", "move": "15.wav" },
+      "effects": { "attack": "Saint8.ogg", "shoot": "Starlight.ogg", "move": "mon_asioto3.ogg" }
+    },
+    {
+      "slug": "lucifina_chan", "name": "Lucifina-chan", "speaker": "Serena_JP",
+      "rationale": "Serena's bright child voice matches Lucifina-chan's deliberately small angel form.",
+      "clips": { "attack": "08.wav", "shoot": "06.wav", "defend": "05.wav", "hurt": "07.wav", "death": "10.wav", "move": "09.wav" },
+      "effects": { "attack": "Saint9.ogg", "shoot": "Flash3.ogg", "move": "mon_habataki.ogg" }
+    },
+    {
+      "slug": "spider_princess", "name": "Spider Princess", "speaker": "Rosetta_JP",
+      "rationale": "Rosetta's sharper second set fits the calculating spider noble; no Lucretia clips are reused.",
+      "clips": { "attack": "07.wav", "shoot": "10.wav", "defend": "05.wav", "hurt": "09.wav", "death": "11.wav", "move": "03.wav" },
+      "effects": { "attack": "mon_ero_ito.ogg", "shoot": "Twine.ogg", "move": "mon_asioto3.ogg" }
+    },
+    {
+      "slug": "emily", "name": "Emily", "speaker": "Mana_JP",
+      "rationale": "Mana's upbeat second set matches Emily's cheerful stage presence and sparkle motif.",
+      "clips": { "attack": "20.wav", "shoot": "06.wav", "defend": "21.wav", "hurt": "11.wav", "death": "17.wav", "move": "22.wav" },
+      "effects": { "attack": "Starlight.ogg", "shoot": "Flash2.ogg", "move": "Applause1.ogg" }
+    },
+    {
+      "slug": "spirit_sylph", "name": "Sylph", "speaker": "Yue_JP",
+      "rationale": "Yue's quick, light second set gives the fastest spirit a lively airborne identity distinct from Miyabi.",
+      "clips": { "attack": "07.wav", "shoot": "20.wav", "defend": "05.wav", "hurt": "18.wav", "death": "19.wav", "move": "13.wav" },
+      "effects": { "attack": "Wind8.ogg", "shoot": "mon_wind4.ogg", "move": "mon_habataki.ogg" }
+    },
+    {
+      "slug": "spirit_gnome", "name": "Gnome", "speaker": "Mei_JP",
+      "rationale": "Mei's second stoic warrior set matches the earth spirit's compact, defensive toughness.",
+      "clips": { "attack": "13.wav", "shoot": "06.wav", "defend": "08.wav", "hurt": "07.wav", "death": "11.wav", "move": "02.wav" },
+      "effects": { "attack": "Earth7.ogg", "shoot": "mon_stone.ogg", "move": "mon_asioto2.ogg" }
+    },
+    {
+      "slug": "spirit_undine", "name": "Undine", "speaker": "Lara_JP",
+      "rationale": "Lara's second healer set is a direct match for Undine's restorative water role.",
+      "clips": { "attack": "10.wav", "shoot": "11.wav", "defend": "06.wav", "hurt": "16.wav", "death": "17.wav", "move": "05.wav" },
+      "effects": { "attack": "Water5.ogg", "shoot": "Heal5.ogg", "move": "mon_water.ogg" }
+    },
+    {
+      "slug": "spirit_salamander", "name": "Salamander", "speaker": "Melody_JP",
+      "rationale": "Melody's sharper second witch set gives the fire spirit energy without duplicating Maiden's reactions.",
+      "clips": { "attack": "07.wav", "shoot": "13.wav", "defend": "11.wav", "hurt": "12.wav", "death": "16.wav", "move": "04.wav" },
+      "effects": { "attack": "Fire8.ogg", "shoot": "mon_fire4.ogg", "move": "mon_asioto1.ogg" }
+    },
+    {
+      "slug": "sonya", "name": "Sonya (commander)", "speaker": "Marian_JP",
+      "rationale": "Marian's dedicated battle set gives Sonya a firm young-adult voice. Short clips carry reactions, medium clips carry movement and attacks, and the longest battle line is reserved for defeat.",
+      "clips": { "attack": "BATTLE_05.wav", "shoot": "BATTLE_08.wav", "defend": "BATTLE_04.wav", "hurt": "BATTLE_02.wav", "death": "BATTLE_09.wav", "move": "BATTLE_07.wav" },
+      "effects": { "attack": "Sword3.ogg", "shoot": "Magic2.ogg", "move": "Run.ogg" }
+    }
+  ]
+}

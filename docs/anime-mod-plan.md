@@ -2243,6 +2243,14 @@ q82–92) → R2 sync automatic on push. Every consumption position through
   sheet per character first, then expression/pose edits keep the face) —
   add that folder to `.gitignore` so references never enter history,
   `public/`, or the CDN.
+- The private MGQ pack has five user-requested canonical-composite exceptions:
+  Regina, Aria, Lisa, Ooma, and sealed Ilias retain their verified standing
+  sprites over original scenes. The exact process is documented in
+  `docs/mgq-art.md`.
+- The private MGQ pack has five user-requested canonical-composite exceptions:
+  Regina, Aria, Lisa, Ooma, and sealed Ilias retain their verified standing
+  sprites over original scenes. The exact process is documented in
+  `docs/mgq-art.md`.
 - Hard constraint in every prompt: no text/numbers baked into generated art
   — titles, stats and glyphs are set by the compositor from
   `scripts/card-glyphs/`.

@@ -8,6 +8,7 @@ import {
 import { getMainHero } from "./adventure";
 import { startPlayerCombat } from "./adventure-reducer";
 import { chooseComputerAction } from "./computer/policy";
+import { computerDecisionOwner } from "./computer/window";
 import type { GameAction, GameState, PlayerId, PlayerVisibleState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -320,6 +321,57 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     expect(state.combat?.prep?.accepted).toEqual([]);
   });
 
+  it("lets the attacked defender play Legion, choose a troop, buy it at the discount, then accept", () => {
+    let state = attack("prep-defender-legion-recruit", (s) => {
+      // Free both bronze cards so the dwelling creates real recruit choices.
+      s.players.p2.army = s.players.p2.army.filter(
+        (unit) => unit.unitDefId !== "necropolis.skeletons" && unit.unitDefId !== "necropolis.zombies"
+      );
+      s.players.p2.hand = ["artifact.legs_of_legion"];
+    });
+    state = applyOk(state, {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: "town_p2",
+      buildingId: "necropolis.dwelling_bronze"
+    });
+
+    const legion = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.legs_of_legion" &&
+        legal.action.optionIndex === 0
+    );
+    expect(legion, "the attacked defender can play Legion before accepting").toBeTruthy();
+    state = applyOk(state, legion!.action);
+    expect(state.adventure?.pendingVisit, "Legion should open a troop-target choice").toBeTruthy();
+
+    const skeletonTarget = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && /Recruit Skeletons/i.test(legal.label)
+    );
+    expect(skeletonTarget, "Legion opens its troop-target choice during prep").toBeTruthy();
+    state = applyOk(state, skeletonTarget!.action);
+    expect(state.combat?.prep?.accepted).toEqual([]);
+    expect(state.phase).toBe("combat-setup");
+
+    const recruit = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "POPULATION_ACTION" &&
+        legal.action.purchases.some(
+          (purchase) => purchase.kind === "recruit" && purchase.unitDefId === "necropolis.skeletons"
+        )
+    );
+    expect(recruit, "the discounted troop can still be bought before accepting").toBeTruthy();
+    const goldBeforeRecruit = state.players.p2.resources.gold;
+    state = applyOk(state, recruit!.action);
+    expect(state.players.p2.army.some((unit) => unit.unitDefId === "necropolis.skeletons")).toBe(true);
+    // Legs of Legion discounts 4 gold, which fully covers the Skeletons' price.
+    expect(state.players.p2.resources.gold).toBe(goldBeforeRecruit);
+
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+    expect(state.combat?.prep?.accepted).toContain("p2");
+  });
+
   it("lets either side Retreat straight out of the prep window (and closes prep)", () => {
     const fromDefender = applyAction(attack("prep-retreat-d"), { type: "RETREAT_FROM_COMBAT", playerId: "p2" });
     expect(fromDefender.errors).toEqual([]);
@@ -370,6 +422,22 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     expect(after.combat?.prep?.accepted).toEqual([]);
   });
 
+  it("keeps the preparation phase open when the defender puts a permanent into play", () => {
+    const state = attack("prep-defender-permanent", (s) => {
+      s.players.p2.hand = ["war_machine.first_aid_tent"];
+    });
+    const play = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "war_machine.first_aid_tent"
+    );
+    expect(play, "the defender can put a permanent into play before accepting").toBeTruthy();
+
+    const after = applyOk(state, play!.action);
+    expect(after.phase).toBe("combat-setup");
+    expect(after.combat?.prep?.accepted).toEqual([]);
+    expect(after.players.p2.permanents).toContain("war_machine.first_aid_tent");
+    expect(offersAccept(after, "p2")).toBe(true);
+  });
+
   it("withholds a map-movement Spell (Town Portal) in prep, but still offers real prep cards", () => {
     const state = attack("prep-no-town-portal", (s) => {
       s.players.p2.hand = ["spell.town_portal", "specialty.sandro.6"];
@@ -395,5 +463,149 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     const after = applyOk(state, legionPlay!.action);
     const skeletons = after.players.p1.army.find((u) => u.id === "p1_skel");
     expect(skeletons?.transforms?.some((t) => t.name === "Legion of Skeletons")).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // AUDIT PINS — the prep pendingVisit gate (a prep card like Legion opens a
+  // normal adventure sub-prompt while combat.prep is set): the visit owner
+  // resolves it FIRST, everyone else is offered NOTHING, and neither side can
+  // slip an Accept past it (offer-hidden AND handler-rejected), so a visit can
+  // never be stranded under a started battle.
+  // -------------------------------------------------------------------------
+
+  /** Prep window with p2's Legion troop-pick pendingVisit open. */
+  function legionPrepVisit(seed: string, mutate: (s: GameState) => void = () => {}): GameState {
+    let state = attack(seed, (s) => {
+      s.players.p2.army = s.players.p2.army.filter(
+        (unit) => unit.unitDefId !== "necropolis.skeletons" && unit.unitDefId !== "necropolis.zombies"
+      );
+      s.players.p2.hand = ["artifact.legs_of_legion"];
+      mutate(s);
+    });
+    state = applyOk(state, {
+      type: "BUILD_STRUCTURE",
+      playerId: "p2",
+      townId: "town_p2",
+      buildingId: "necropolis.dwelling_bronze"
+    });
+    const legion = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "artifact.legs_of_legion" &&
+        legal.action.optionIndex === 0
+    );
+    expect(legion, "Legion is playable in prep").toBeTruthy();
+    state = applyOk(state, legion!.action);
+    expect(state.adventure?.pendingVisit, "Legion opened its troop pick").toBeTruthy();
+    return state;
+  }
+
+  it("while a prep pendingVisit is open, ONLY the visit owner may act — the opponent gets nothing", () => {
+    const state = legionPrepVisit("prep-visit-freeze");
+
+    // The visit owner is offered exactly its visit steps.
+    const ownerOffers = getLegalActions(state, "p2");
+    expect(ownerOffers.length).toBeGreaterThan(0);
+    expect(ownerOffers.every((legal) => legal.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
+    // The NON-owner participant is offered nothing at all (no Accept, no
+    // shopping) until the atomic prompt resolves — a momentary, recoverable
+    // freeze: the owner holds the actionable window.
+    expect(getLegalActions(state, "p1")).toEqual([]);
+
+    // Resolving hands the prep window back to BOTH sides.
+    const pick = ownerOffers.find((legal) => /Recruit Skeletons/i.test(legal.label)) ?? ownerOffers[0];
+    const resumed = applyOk(state, pick.action);
+    expect(offersAccept(resumed, "p1")).toBe(true);
+    expect(offersAccept(resumed, "p2")).toBe(true);
+  });
+
+  it("a forged/stale ACCEPT_COMBAT is REJECTED while a participant's prep pendingVisit is open", () => {
+    const state = legionPrepVisit("prep-visit-accept-guard");
+
+    // Neither the opponent nor the visit owner can end prep under the open
+    // prompt — otherwise both accepting would strand the visit beneath the
+    // started battle (deployment shadows every RESOLVE_VISIT_STEP).
+    for (const id of ["p1", "p2"] as const) {
+      const forged = applyAction(state, { type: "ACCEPT_COMBAT", playerId: id });
+      expect(forged.errors.length, `${id}'s accept is rejected mid-visit`).toBeGreaterThan(0);
+      expect(forged.state.combat?.prep?.accepted).toEqual([]);
+    }
+
+    // CONTROL: once the visit resolves, the very same accept goes through.
+    const pick = getLegalActions(state, "p2")[0];
+    const resumed = applyOk(state, pick.action);
+    const accepted = applyOk(resumed, { type: "ACCEPT_COMBAT", playerId: "p1" });
+    expect(accepted.combat?.prep?.accepted).toContain("p1");
+  });
+
+  it("computerDecisionOwner mirrors the prep pendingVisit gate (never names a seat with zero offers)", () => {
+    const state = legionPrepVisit("prep-visit-owner-mirror", (s) => {
+      s.sessionMode = "single-player";
+      s.controllers = {
+        ...(s.controllers ?? {}),
+        p1: { kind: "computer", difficulty: "standard", policyVersion: 1 }
+      };
+    });
+
+    // The HUMAN p2 owns the open visit; the computer attacker p1 has an empty
+    // offer list, so the whole table must WAIT on the human — naming p1 here
+    // hands the runner a stall ("no safe legal action") on every tick.
+    expect(computerDecisionOwner(state)).toBeNull();
+
+    // CONTROL: the moment the visit resolves, the prep loop names the
+    // still-unaccepted computer participant again.
+    const pick = getLegalActions(state, "p2")[0];
+    const resumed = applyOk(state, pick.action);
+    expect(computerDecisionOwner(resumed)).toBe("p1");
+  });
+
+  // -------------------------------------------------------------------------
+  // AUDIT PIN — integrated commander deployment in PvP: once the attacker has
+  // deployed, the defender's PLACE_COMMANDER may name ITS OWN bodies only. A
+  // forged `unitId` pointing at an ENEMY unit (the first moment enemy units
+  // even exist during a sort window — they never do in a neutral fight's
+  // deployment) must be rejected without moving anything.
+  // -------------------------------------------------------------------------
+
+  it("integrated deployment: PLACE_COMMANDER refuses a forged ENEMY unitId (own formation moves still work)", () => {
+    let state = createAdventureGameState({
+      seed: "prep-place-commander-forgery",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      wog: { enabled: true, commanders: true, newObjects: false, newCreatures: false, artifacts: false },
+      players: [
+        { id: "p1", name: "One", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Two", factionId: "cove" }
+      ]
+    } as never);
+    const attacker = getMainHero(state, "p1")!;
+    const defender = getMainHero(state, "p2")!;
+    startPlayerCombat(state, attacker, defender, defender.spaceId ?? "0,0");
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p2" });
+
+    // Attacker deploys first; the Cove (Vanguard Marshal) defender then sorts
+    // its commander + troops inside its OWN deployment turn.
+    const place = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT");
+    expect(place, "an attacker unit to place").toBeTruthy();
+    state = applyOk(state, place!.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(state.combat?.integratedCommanderDeploymentPlayerIds).toContain("p2");
+
+    const enemyUnit = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const enemyPosition = enemyUnit.position;
+    const forged = applyAction(state, {
+      type: "PLACE_COMMANDER",
+      playerId: "p2",
+      unitId: enemyUnit.id,
+      position: 3 // a free defender-zone cell — the CONTROLLER check must fire first
+    });
+    expect(forged.errors.length, "an enemy body can never be sorted").toBeGreaterThan(0);
+    expect(forged.state.combat!.units[enemyUnit.id].position).toBe(enemyPosition);
+
+    // CONTROL: the engine's own offer (an allied formation move) applies cleanly.
+    const own = getLegalActions(state, "p2").find((legal) => legal.action.type === "PLACE_COMMANDER");
+    expect(own, "a legal formation move is offered to the defender").toBeTruthy();
+    applyOk(state, own!.action);
   });
 });

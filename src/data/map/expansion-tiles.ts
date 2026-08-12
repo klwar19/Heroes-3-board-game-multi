@@ -150,6 +150,60 @@ export const expansionTileDefinitions: Record<string, TileDefinition> = {
     // shared symbol modules so its starting resources and rewards remain visible.
     assets: { tileImage: "/assets/anime/tiles/d-s1.webp", attachFieldSymbols: true }
   },
+  "LB-S1": {
+    id: "LB-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "little_busters" },
+      { location: "resource_symbol" },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Anime Realms module",
+      credit: "Little Busters Campus starting tile. Hex roles and outer borders copy Rampart S4; commissioned art uses the shared starting-tile silhouette."
+    },
+    // The redrawn campus is an atmosphere layer. Runtime symbol modules keep
+    // the resource roll, treasure I and materials-mine I/+2 rewards exact and
+    // readable at every zoom/rotation without trusting generated glyphs.
+    assets: {
+      tileImage: "/assets/anime/tiles/lb-s1-v2.webp",
+      attachFieldSymbols: true,
+      fieldSymbolScale: 0.62
+    }
+  },
+  "MGQ-S1": {
+    id: "MGQ-S1",
+    group: "starting",
+    content: "regular_stretch_goals",
+    terrain: "highlands",
+    fields: [
+      { location: "town", faction: "mgq" },
+      { location: "resource_symbol" },
+      { location: "blocked_field" },
+      { location: "empty_field" },
+      { location: "treasure_symbol", difficulty: 1 },
+      { location: "mine", difficulty: 1, resource: "buildingMaterials", amount: 2 },
+      { location: "empty_field" }
+    ],
+    outerImpassable: [false, true, false, true, true, true],
+    source: {
+      product: "Anime Realms module",
+      credit:
+        "Monster Girl Quest: Paradox starting tile. Hex roles and outer borders copy Rampart S4; generated town art is an atmosphere layer over shared field symbols."
+    },
+    assets: {
+      tileImage: "/assets/anime/tiles/mgq-s1.webp",
+      attachFieldSymbols: true,
+      fieldSymbolScale: 0.62
+    }
+  },
   S7: {
     id: "S7",
     group: "starting",

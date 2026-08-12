@@ -206,6 +206,7 @@ export const COMBAT_TOKEN_IMAGES = {
   weakness: "/assets/board/tokens/combat-weakness.webp",
   corrosion: "/assets/board/tokens/combat-corrosion.webp",
   paralysis: "/assets/board/tokens/combat-paralysis.webp",
+  temptation: "/assets/anime/icons/mgq/token-temptation.webp",
   damage: "/assets/board/tokens/combat-damage.webp",
   defense: "/assets/board/tokens/combat-defense.webp"
 } as const;
