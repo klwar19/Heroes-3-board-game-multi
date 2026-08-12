@@ -70,7 +70,7 @@ function serveRoom(state: GameState) {
     updatedAt: new Date().toISOString(),
     state
   };
-  const submitAction = vi.fn(async () => ({ version: 1, errors: [], notices: [] }));
+  const submitAction = vi.fn(async (_action: unknown) => ({ version: 1, errors: [], notices: [] }));
   connectRoomMock.mockReset().mockImplementation(() => ({
     close: vi.fn(),
     submitAction,
@@ -192,7 +192,9 @@ describe("Ash's Bloodlust IV — clickable end-to-end on the real battle table",
     await settle();
 
     const sent = submitAction.mock.calls
-      .map(([action]) => action as { type?: string; cardId?: string; target?: { type?: string; unitId?: string } })
+      .map(
+        ([action]) => action as { type?: string; cardId?: string; target?: { type?: string; unitId?: string } }
+      )
       .find((action) => action?.type === "PLAY_CARD");
     expect(sent, "clicking the glowing cell submits the play to the room").toBeTruthy();
     expect(sent!.cardId).toBe("specialty.ash.4");
