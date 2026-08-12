@@ -465,6 +465,100 @@ describe("Ash's Bloodlust I and VI in a REAL adventure combat", () => {
 });
 
 // ===========================================================================
+// The ONGOING cube lasts the WHOLE combat (USER RULING 2026-08-12: "IV is
+// ongoing and place black cube means that unit can never retaliate"). The
+// original cube case above only exercises combat ROUND 1 — and
+// `resetCombatRound` clears `retaliatedThisRound` at every round start, so
+// before the CANNOT_RETALIATE modifier the lock silently evaporated in round 2.
+// The I-instant twin is the discriminating CONTROL: its cube is the ordinary
+// round-scoped one and MUST lift at the round start.
+// KNOWN LIMIT (documented, not wired): the AI's `provokesRetaliation` heuristic
+// reads only `retaliatedThisRound`, so an enemy computer seat stays cautious of
+// a locked unit — over-caution only, never a stall or an illegal move.
+// ===========================================================================
+
+/**
+ * Drives the fight until the guard has declared `strikes` non-retaliation
+ * attacks of its own, ending the player's activations and paying the 1-MP
+ * round extension (CONTINUE_NEUTRAL_COMBAT) at each continue window. The
+ * staged player unit is fastest (initiative 99), so each round opens on it.
+ */
+function letTheGuardStrikeTimes(state: GameState, strikes: number): GameState {
+  let current = settleWindows(state);
+  const guardId = guardUnit(current).id;
+  const struck = () =>
+    current.eventLog.filter(
+      (event) => event.type === "ATTACK_ROLLED" && event.attackerId === guardId && !event.isRetaliation
+    ).length;
+  for (let guard = 0; guard < 120 && struck() < strikes && !current.combat?.outcome; guard += 1) {
+    current = settleWindows(current);
+    if (struck() >= strikes) {
+      break;
+    }
+    if (current.combat?.awaitingContinue) {
+      const cont = getLegalActions(current, "p1").find(
+        (legal) => legal.action.type === "CONTINUE_NEUTRAL_COMBAT"
+      );
+      expect(cont, "the 1-MP round extension is offered").toBeTruthy();
+      current = apply(current, cont!.action);
+      continue;
+    }
+    const next = getLegalActions(current, "p1").find(
+      (legal) =>
+        legal.action.type === "END_ACTIVATION" ||
+        legal.action.type === "CONTINUE_NEUTRAL_STEP" ||
+        legal.action.type === "ADVANCE_COMPUTER" ||
+        legal.action.type === "CHOOSE_OPTION"
+    );
+    if (!next) {
+      break;
+    }
+    current = apply(current, next.action);
+  }
+  expect(struck(), `the guard really declared ${strikes} attack(s)`).toBeGreaterThanOrEqual(strikes);
+  return current;
+}
+
+describe("Ash's Bloodlust cube across combat ROUNDS", () => {
+  it("IV (ongoing): the unit STILL cannot retaliate in round 2 — the cube rides the card", () => {
+    let state = stagedFight("ash-iv-round2", ["specialty.ash.4"] as CardId[]);
+    const ownId = ownUnit(state).id;
+    state = apply(state, cardPlay(state, "specialty.ash.4" as CardId)!.action);
+    state = letTheGuardStrikeTimes(state, 2);
+    // Non-vacuity: the second strike really happened in a LATER round (one
+    // guard activation per round; the player's unit never attacks here).
+    expect(state.combat?.round, "the fight crossed a round boundary").toBeGreaterThanOrEqual(2);
+    expect(
+      retaliated(state, ownId),
+      "the ongoing Black cube suppressed the Retaliation in BOTH rounds"
+    ).toBe(false);
+  });
+
+  it("CONTROL — I (instant): the round-scoped cube lifts at the round start, round 2 retaliates", () => {
+    let state = stagedFight("ash-i-round2", ["specialty.ash.1"] as CardId[]);
+    const ownId = ownUnit(state).id;
+    state = apply(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: ownId,
+      defenderId: guardUnit(state).id
+    });
+    state = settleWindows(apply(state, windowReaction(state, "specialty.ash.1" as CardId)!.action));
+
+    // Round 1: the cube from Bloodlust I holds — the guard's strike draws no
+    // Retaliation Attack.
+    state = letTheGuardStrikeTimes(state, 1);
+    expectGuardStruck(state, ownId);
+    expect(retaliated(state, ownId), "round 1: the instant's cube holds").toBe(false);
+
+    // Round 2: the ordinary cube reset lifts it — the unit retaliates again.
+    state = letTheGuardStrikeTimes(state, 2);
+    expect(state.combat?.round, "the fight crossed a round boundary").toBeGreaterThanOrEqual(2);
+    expect(retaliated(state, ownId), "round 2: an instant's cube has lifted").toBe(true);
+  });
+});
+
+// ===========================================================================
 // The sibling class (CLAUDE.md rule #1a: cross-check siblings that share a
 // mechanic). Ash IV is one of a family of hero specialties shaped
 // "timing: combat, no trigger, plain effect, friendly-unit target" — Solmyr IV

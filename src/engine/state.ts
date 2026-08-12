@@ -857,6 +857,18 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Ash's Bloodlust IV: the ONGOING card's printed "Place a Black cube on
+       * that unit" — because the card stays in play for the Combat, the cube
+       * rides it and never lifts at a round start (USER RULING 2026-08-12:
+       * "IV is ongoing and place black cube means that unit can never
+       * retaliate"). While this effect lives the unit cannot perform ANY
+       * Retaliation Attack — the veto beats even unlimited retaliation.
+       * Dispelling the effect (it is removable) lifts the lock with the buff.
+       */
+      type: "CANNOT_RETALIATE";
+    }
+  | {
+      /**
        * Shield / Air Shield: extra Defense that applies only against an attacker
        * of a given UNIT TYPE — "ground-or-flying" (Shield) matches any non-ranged
        * attacker; "ranged" (Air Shield) matches a ranged attacker. Lasts the

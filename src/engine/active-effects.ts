@@ -684,6 +684,22 @@ export function unitHasUnlimitedRetaliationEffect(state: GameState, unit: Combat
 }
 
 /**
+ * Ash's Bloodlust IV: the ONGOING card's Black cube. While the effect lives the
+ * unit cannot perform ANY Retaliation Attack — the round-start cube reset never
+ * lifts it (the cube rides the ongoing card, not the round), and the veto beats
+ * even unlimited retaliation (USER RULING 2026-08-12: "IV is ongoing and place
+ * black cube means that unit can never retaliate"). The instant Bloodlust sides
+ * (I/VI) keep the plain round-scoped cube (`retaliatedThisRound`).
+ */
+export function unitHasCannotRetaliateEffect(state: GameState, unit: CombatUnitState): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effectAppliesToUnit(effect, unit) &&
+      effect.modifiers.some((modifier) => modifier.type === "CANNOT_RETALIATE")
+  );
+}
+
+/**
  * Shield / Air Shield: extra Defense the unit gets only against an attacker of a
  * matching UNIT TYPE. Shield ("ground-or-flying") applies against any non-ranged
  * attacker; Air Shield ("ranged") applies against a ranged attacker — exactly as

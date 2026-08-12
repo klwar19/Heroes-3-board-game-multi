@@ -342,6 +342,7 @@ import {
   spellNullifiedByRestriction,
   syncAbilitySuppression,
   unitDealsElementalDamage,
+  unitHasCannotRetaliateEffect,
   unitHasUnlimitedRetaliationEffect,
   unitIgnoresCardNonDamage,
   unitImmuneToParalysis
@@ -9984,6 +9985,9 @@ function shouldRetaliate(
     isAdjacent(attacker.position, defender.position) &&
     !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+    // Ash's Bloodlust IV: the ongoing card's Black cube — the unit cannot
+    // retaliate at all while the effect lives (beats unlimited retaliation).
+    !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
     (!defender.retaliatedThisRound ||
       hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION") ||
       (state ? unitHasUnlimitedRetaliationEffect(state, defender) : false))
@@ -10002,7 +10006,9 @@ function shouldRetaliate(
 function qualifiesForPreemptiveRetaliation(
   attacker: CombatUnitState,
   defender: CombatUnitState,
-  ignoreRetaliationOverride: boolean
+  ignoreRetaliationOverride: boolean,
+  /** When given, the Bloodlust IV combat-long CANNOT_RETALIATE cube is honoured. */
+  state?: GameState
 ): boolean {
   return (
     Boolean(getPreemptiveRetaliation(defender)) &&
@@ -10010,6 +10016,9 @@ function qualifiesForPreemptiveRetaliation(
     isUnitAlive(defender) &&
     !ignoreRetaliationOverride &&
     !hasUnitAbilityEffect(attacker, "IGNORE_RETALIATION") &&
+    // A pre-emptive strike is still a Retaliation Attack, so the Bloodlust IV
+    // combat-long Black cube suppresses it too.
+    !(state ? unitHasCannotRetaliateEffect(state, defender) : false) &&
     (!defender.retaliatedThisRound || hasUnitAbilityEffect(defender, "ALLOW_UNLIMITED_RETALIATION"))
   );
 }
@@ -10208,7 +10217,8 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     qualifiesForPreemptiveRetaliation(
       details.attacker,
       details.defender,
-      Boolean(stackItem.modifiers.ignoresRetaliationThisAttack)
+      Boolean(stackItem.modifiers.ignoresRetaliationThisAttack),
+      state
     )
   ) {
     stackItem.modifiers.preemptiveRetaliationTriggered = true;
@@ -16301,7 +16311,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
     // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
-    // selected unit — it spends its Retaliation for the round.
+    // selected unit. The physical flag below covers the CURRENT round; the
+    // whole-combat lock is the effect's own CANNOT_RETALIATE modifier, which
+    // shouldRetaliate reads every round while the ongoing card lives.
     if (effect.placeBlackCube && state.combat && nonDamageTarget?.type === "unit") {
       const cubed = state.combat.units[nonDamageTarget.unitId];
       if (cubed && cubed.controllerId === action.playerId) {

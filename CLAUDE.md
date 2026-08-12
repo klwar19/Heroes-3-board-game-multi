@@ -4010,6 +4010,66 @@ fails 2, and restoring IV's invented `activate: "up-to-two"` fails 1. The
 level-IV round-expiry seam stays pinned directly against `startAdventureRound` in
 `tower-hero-specialties.test.ts`.
 
+## Ash's Bloodlust IV cube lasts the WHOLE combat (2026-08-12)
+
+USER RULING, verbatim: "ASH SPECIALITY IV IS ONGOING AND PLACE BLACK CUBE MEANS
+THAT UNIT CAN NEVER RETALIATE … ASH I AND VI ARE INSTANT, IV IS ONGOING."
+
+THE BUG (reproduced): all three Bloodlust levels implemented the printed "Place
+a Black cube on that unit" as `retaliatedThisRound = true` — and
+`resetCombatRound` clears that flag at EVERY combat-round start. For the
+instants (I/VI) that is the ordinary round-scoped cube and stays correct; for
+IV, an ONGOING "for this Combat" card, the lock silently evaporated in round 2
+while the +2 attack / +1 initiative kept running. The existing cube tests only
+ever exercised round 1, so they stayed green.
+
+THE RULE (one modifier, one shared read): Bloodlust IV's ongoing effect now
+also carries the NEW `CANNOT_RETALIATE` ActiveEffectModifier (state.ts) — the
+cube rides the ongoing CARD, so while the effect lives the unit cannot perform
+ANY Retaliation Attack. Read by `unitHasCannotRetaliateEffect`
+(active-effects.ts, the `unitHasUnlimitedRetaliationEffect` twin) at BOTH
+retaliation gates in reducer.ts: `shouldRetaliate` (ordinary + parked
+retaliations) and `qualifiesForPreemptiveRetaliation` (the Bounty Hunter
+pre-emptive shot — it too is a Retaliation Attack). The veto sits ABOVE the
+unlimited-retaliation escapes, so it beats Counterstrike / Griffins by design
+("can NEVER retaliate").
+
+Leading with what does NOT change / deliberate limits:
+- **I and VI are untouched** — their cube is the round-scoped
+  `retaliatedThisRound`, lifting at the next round start exactly as before
+  (pinned as the discriminating CONTROL). The engine-wide black-cube reading
+  (Cure's removal, the Tarnum-Dungeon VI toggle, round resets) is unchanged.
+- **Dispelling Bloodlust IV lifts the lock with the buff** (the effect is
+  `removable`) — the cube rides the card, so removing the card removes the
+  cube. Conversely, a Cure-family "remove the Black cube" play flips only
+  `retaliatedThisRound` and does NOT unlock a unit still under Bloodlust IV.
+- **The immediate `retaliatedThisRound = true` on play is kept** — it is the
+  physical cube for the current round and keeps a mid-round-1 Dispel from
+  refunding the already-spent retaliation.
+- **The AI's `provokesRetaliation` heuristic (combat-policy.ts) still reads
+  only `retaliatedThisRound`**, so an enemy computer seat stays cautious of a
+  locked unit in round 2+ — over-caution only, never a stall or illegal move.
+- **No protocol bump** (a new modifier variant is plain data; no action or
+  offer shape moved), but the fix is server-side: a stale PartyKit edge keeps
+  the old one-round cube until `npm run deploy:partykit` runs.
+
+Pinned in `ash-bloodlust-specialty.test.ts` ("Ash's Bloodlust cube across
+combat ROUNDS"): the IV round-2 case drives a REAL neutral fight through the
+1-MP continue window into round 2 and asserts the guard's second strike still
+draws no Retaliation Attack (non-vacuity: the strike count and the crossed
+round boundary are both asserted), with the I-instant twin as the CONTROL that
+DOES retaliate in round 2. Mutation-checked: removing the data modifier fails
+the IV case (control green), and neutering both gate vetoes fails it too.
+The CLICK SURFACE is pinned end-to-end on the REAL page in
+`src/app/page-ash-bloodlust.test.tsx` (the page-mount precedent): hand fan card
+reads playable → one click arms board targeting (single board-target play, the
+Lightning-Bolt fast path) → the own ground unit's `battleCell.cardTarget`
+button → clicking it submits the exact `PLAY_CARD specialty.ash.4` to the room
+connection; the CONTROL shows a RANGED-only line correctly not playable (the
+printed ground-or-flying gate — Inferno's Magogs are ranged, which is the one
+real way "Ash IV cannot be clicked" reproduces). jsdom cannot compute CSS, so
+the glow itself stays a real-browser concern.
+
 ## Aiming spells hit the Arrow Tower — and never MOVE it (2026-08-12, protocol v27)
 
 USER RULING, verbatim: "You should be able to cast aiming spells like magic

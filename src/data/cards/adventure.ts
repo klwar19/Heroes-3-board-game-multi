@@ -4247,7 +4247,10 @@ export const adventureCards: CardLibrary = {
 
   // Ash (Inferno, Heretic): the Bloodlust specialist — pumps a ground/flying unit's
   // attack but "places a Black cube" on it (it spends its Retaliation). I/VI are
-  // instants on your declared attack; IV is an ongoing +2 attack / +1 initiative.
+  // instants on your declared attack (their cube is the ordinary round-scoped
+  // one); IV is an ONGOING +2 attack / +1 initiative whose cube rides the card:
+  // the unit cannot retaliate for the WHOLE Combat while the effect lives
+  // (CANNOT_RETALIATE modifier — USER RULING 2026-08-12).
   "specialty.ash.1": withSpecialtyArt({
     id: "specialty.ash.1",
     name: "Bloodlust I",
@@ -4296,7 +4299,11 @@ export const adventureCards: CardLibrary = {
         removable: true,
         modifiers: [
           { type: "ATTACK_BONUS", amount: 2 },
-          { type: "INITIATIVE_BONUS", amount: 1 }
+          { type: "INITIATIVE_BONUS", amount: 1 },
+          // The printed "Place a Black cube" rides the ONGOING card, so the
+          // unit cannot perform a Retaliation Attack for the whole Combat —
+          // round-start cube resets never lift it while the effect lives.
+          { type: "CANNOT_RETALIATE" }
         ]
       },
       placeBlackCube: true
