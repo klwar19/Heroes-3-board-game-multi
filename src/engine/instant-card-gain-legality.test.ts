@@ -101,13 +101,21 @@ describe("all Instant draw/recovery faces", () => {
 
   it("offers every direct draw/recovery face inside an existing reaction window", () => {
     for (const face of gainFaces) {
-      const offered = getLegalActions(reactionState(face), "p2").some(
+      const reacts = getLegalActions(reactionState(face), "p2").some(
         (legal) =>
           legal.action.type === "PLAY_REACTION" &&
           legal.action.cardId === face.cardId &&
           legal.action.optionIndex === face.optionIndex
       );
-      expect(offered, `${face.cardId} option ${face.optionIndex ?? "direct"} must work as a reaction`).toBe(true);
+      // A printed MAP-ONLY draw side (e.g. MGQ Ilias IV option 1, the pure-draw
+      // twin of its combatAnytime immunity option) is an ABSOLUTE bar to a
+      // combat window — the same rule riderFaces asserts below. Its map half is
+      // pinned by the map sweep above.
+      if (face.option?.mapOnly) {
+        expect(reacts, `${face.cardId} option ${face.optionIndex ?? "direct"} mapOnly side must NOT react`).toBe(false);
+        continue;
+      }
+      expect(reacts, `${face.cardId} option ${face.optionIndex ?? "direct"} must work as a reaction`).toBe(true);
     }
   });
 });

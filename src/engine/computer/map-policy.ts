@@ -1984,6 +1984,17 @@ export function scoreMapAction(
         score: action.unitDefId ? 1_150 : 1_000,
         policy: action.unitDefId ? "map.recruit-companion" : "map.decline-companion",
       };
+    case "SET_MGQ_SPIRIT":
+      // A spiritless MGQ seat MUST pick a Spirit before it may ACCEPT a PvP
+      // battle (the printed Four Spirits gate withholds Accept), so the first
+      // pick outranks the prep-exit floor (225) — without it the only exits a
+      // spiritless seat had were the escapes, i.e. the AI fled every PvP fight.
+      // Once a Spirit is set the re-pick drops to a token score (below END_TURN
+      // and every real play), so the offer can never ping-pong between Spirits.
+      return {
+        score: state.players[action.playerId]?.mgqSpirit ? 5 : 700,
+        policy: "map.mgq-select-spirit",
+      };
     case "POPULATION_ACTION":
       return {
         score: populationScore(observation, action),

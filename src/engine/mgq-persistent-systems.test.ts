@@ -15,9 +15,11 @@ import {
   type GameState
 } from "./index";
 import { chooseComputerAction } from "./computer";
-import { nextAfkDropAction } from "./afk-drop";
+import { nextAfkDropAction, nextTurnTimeoutAction } from "./afk-drop";
 import type { PlayerVisibleState } from "./state";
 import { mainHeroInOwnTown } from "./adventure";
+import { markUnitRemovedIfNeeded } from "./combat-units";
+import { parallelInteractionBlocker, parallelSlotSignature } from "./parallel-turns";
 import { mgqCompanionOptionsAfterCombat, startNeutralEncounter } from "./adventure-reducer";
 import type { CombatState, MapFieldState } from "./state";
 
@@ -483,6 +485,236 @@ describe("MGQ Companion Recruitment transaction", () => {
     expect(targetedCardCount(state, "neutral.griffins", "bronze")).toBe(1);
     expect(state.players.p1.resources.gold).toBe(7);
     expect(state.adventure?.fields[fieldId]?.blackCube).toBe(true);
+  });
+});
+
+describe("MGQ Companion Recruitment — anti-stall & forgery", () => {
+  /** An open p1 window with a deferred field reward (the atomic shape). */
+  function companionWindowState(seed: string): GameState {
+    const state = mgqMapState(seed);
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "mgq-window-field";
+    hero.spaceId = fieldId;
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "mgq-window-tile",
+      slot: 0,
+      location: "water_wheel",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } satisfies MapFieldState;
+    stageNeutralDiscard(state, "neutral.griffins", "bronze");
+    state.adventure!.pendingCompanionRecruitment = {
+      playerId: "p1",
+      heroId: hero.id,
+      options: [{ unitDefId: "neutral.griffins", tier: "bronze", cost: { gold: 7 } }],
+      deferredReward: { kind: "field-visit", heroId: hero.id, fieldId }
+    };
+    return state;
+  }
+
+  it("END_TURN is refused while the atomic window is open (CONTROL: decline, then it ends)", () => {
+    let state = companionWindowState("mgq-companion-endturn-gate");
+    // Without the assertNoPendingInput gate the turn ends OVER the open window,
+    // carrying it (and the withheld field reward) into the next seat's turn —
+    // where the non-owner's legal actions are [] and the table freezes.
+    const forced = applyAction(state, { type: "END_TURN", playerId: "p1" });
+    expect(forced.errors.length).toBeGreaterThan(0);
+    expect(forced.state.adventure?.pendingCompanionRecruitment).not.toBeNull();
+
+    state = applyOk(state, { type: "RESOLVE_COMPANION_RECRUITMENT", playerId: "p1", unitDefId: null });
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.activePlayerId).toBe("p2");
+  });
+
+  it("the turn-timeout driver DECLINES the owner's open window and releases the withheld reward", () => {
+    let state = companionWindowState("mgq-companion-timeout-driver");
+    state.afk = { lastActionAt: {}, vote: null, turnTimeoutPlayerId: "p1" };
+
+    const step = nextTurnTimeoutAction(state, "p1");
+    expect(step).toEqual({ type: "RESOLVE_COMPANION_RECRUITMENT", playerId: "p1", unitDefId: null });
+    state = applyOk(state, step!);
+    expect(state.adventure?.pendingCompanionRecruitment ?? null).toBeNull();
+    // The withheld field reward really lands (the visit resolves, cube placed).
+    expect(state.adventure?.fields["mgq-window-field"]?.blackCube).toBe(true);
+    // The physical card is conserved in its Neutral tier discard.
+    expect(targetedCardCount(state, "neutral.griffins", "bronze")).toBe(1);
+  });
+
+  it("the AFK-drop driver answers the window; a NON-owner timeout waits on it", () => {
+    const state = companionWindowState("mgq-companion-afk-driver");
+    state.afk = { lastActionAt: {}, vote: null, droppingPlayerId: "p1" };
+    expect(nextAfkDropAction(state, "p1")).toEqual({
+      type: "RESOLVE_COMPANION_RECRUITMENT",
+      playerId: "p1",
+      unitDefId: null
+    });
+
+    // p2's expired turn must WAIT on p1's exclusive window, never force past it.
+    const waiting = companionWindowState("mgq-companion-timeout-bystander");
+    waiting.afk = { lastActionAt: {}, vote: null, turnTimeoutPlayerId: "p2" };
+    expect(nextTurnTimeoutAction(waiting, "p2")).toBeNull();
+  });
+
+  it("parallel turns: the open window blocks every other seat as its exclusive interaction", () => {
+    const state = companionWindowState("mgq-companion-parallel-blocker");
+    state.turn = { ...state.turn, mode: "parallel" } as GameState["turn"];
+    expect(parallelInteractionBlocker(state, "p2")).toBe("p1");
+    expect(parallelInteractionBlocker(state, "p1")).toBeNull();
+    // The interaction fingerprint carries the window, so a bystander action
+    // that would touch it is rejected whole by the applyAction backstop.
+    const signatureOpen = parallelSlotSignature(state);
+    state.adventure!.pendingCompanionRecruitment = null;
+    expect(parallelSlotSignature(state)).not.toBe(signatureOpen);
+  });
+
+  it("rejects another seat's forged accept or decline without touching the window", () => {
+    const state = companionWindowState("mgq-companion-forgery");
+    for (const unitDefId of ["neutral.griffins", null]) {
+      const forged = applyAction(state, {
+        type: "RESOLVE_COMPANION_RECRUITMENT",
+        playerId: "p2",
+        unitDefId
+      });
+      expect(forged.errors.length).toBeGreaterThan(0);
+      expect(forged.state.adventure?.pendingCompanionRecruitment).not.toBeNull();
+      expect(forged.state.players.p2.army.some((unit) => unit.unitDefId === "neutral.griffins")).toBe(false);
+    }
+  });
+});
+
+describe("MGQ persistent-state hygiene through real combat", () => {
+  it("a sealed Companion casualty recycles to its Neutral tier discard and its Job token dies with the card", () => {
+    let state = mgqMapState("mgq-companion-casualty-recycle");
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "mgq-casualty-field";
+    state.adventure!.fields[hero.spaceId] = {
+      spaceId: hero.spaceId,
+      tileInstanceId: "mgq-casualty-tile",
+      slot: 0,
+      location: "guard",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } satisfies MapFieldState;
+    state.players.p1.hand = [];
+    state.players.p1.army = [
+      { id: "sealed-griffin", unitDefId: "neutral.griffins", side: "neutral", companion: true, job: "guard" },
+      { id: "backup-gigi", unitDefId: "mgq.gigi", side: "few" }
+    ];
+    // Keep the count conserved: no copy of the sealed card may sit in a deck.
+    for (const deck of [state.decks[NEUTRAL_DECK_IDS.bronze]]) {
+      deck.drawPile = deck.drawPile.filter((cardId) => cardId !== "neutral.griffins");
+      deck.discardPile = deck.discardPile.filter((cardId) => cardId !== "neutral.griffins");
+    }
+    state.decks[NEUTRAL_DECK_IDS.bronze].drawPile.unshift("neutral.halberdiers");
+
+    startNeutralEncounter(state, hero, state.adventure!.fields[hero.spaceId]!);
+    const placeCompanion = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLACE_COMBAT_UNIT" && legal.action.armyUnitId === "sealed-griffin"
+    );
+    expect(placeCompanion, "the sealed Companion deploys like any army card").toBeTruthy();
+    state = applyOk(state, placeCompanion!.action);
+    const placeBackup = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLACE_COMBAT_UNIT" && legal.action.armyUnitId === "backup-gigi"
+    );
+    expect(placeBackup).toBeTruthy();
+    state = applyOk(state, placeBackup!.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    const combat = state.combat!;
+    const companionUnit = Object.values(combat.units).find((unit) => unit.armyUnitId === "sealed-griffin")!;
+    // The Job token's always-on package really rides the Companion into combat.
+    expect(companionUnit.abilities).toContain("commander-defense-token");
+    // The Companion falls; the guard falls too so p1 wins the fight.
+    companionUnit.damage = companionUnit.maxHealth;
+    for (const unit of Object.values(combat.units)) {
+      if (unit.controllerId === NEUTRAL_PLAYER_ID) unit.damage = unit.maxHealth;
+    }
+    combat.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    state = applyOk(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
+
+    // Its window may offer re-sealing the fallen guard; decline to settle.
+    if (state.adventure?.pendingCompanionRecruitment) {
+      state = applyOk(state, { type: "RESOLVE_COMPANION_RECRUITMENT", playerId: "p1", unitDefId: null });
+    }
+
+    // The army card (and with it the Job token) is gone…
+    expect(state.players.p1.army.some((unit) => unit.id === "sealed-griffin")).toBe(false);
+    // …and EXACTLY ONE physical copy recycled to the bronze Neutral discard.
+    expect(
+      state.decks[NEUTRAL_DECK_IDS.bronze].discardPile.filter((cardId) => cardId === "neutral.griffins")
+    ).toHaveLength(1);
+    expect(state.decks[NEUTRAL_DECK_IDS.bronze].drawPile).not.toContain("neutral.griffins");
+    // The survivor kept its card untouched.
+    expect(state.players.p1.army.some((unit) => unit.id === "backup-gigi")).toBe(true);
+  });
+
+  it("a Pack→Few flip mid-combat keeps the Job package and the army card keeps its token after the fight", () => {
+    let state = mgqMapState("mgq-job-pack-few-flip");
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "mgq-flip-field";
+    state.adventure!.fields[hero.spaceId] = {
+      spaceId: hero.spaceId,
+      tileInstanceId: "mgq-flip-tile",
+      slot: 0,
+      location: "guard",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } satisfies MapFieldState;
+    state.players.p1.hand = [];
+    state.players.p1.army = [
+      { id: "jobbed-pochi", unitDefId: "mgq.pochi", side: "pack", job: "guard" }
+    ];
+    state.decks[NEUTRAL_DECK_IDS.bronze].drawPile.unshift("neutral.halberdiers");
+
+    startNeutralEncounter(state, hero, state.adventure!.fields[hero.spaceId]!);
+    const place = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT");
+    expect(place).toBeTruthy();
+    state = applyOk(state, place!.action);
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    const combat = state.combat!;
+    const pochi = Object.values(combat.units).find((unit) => unit.armyUnitId === "jobbed-pochi")!;
+    expect(pochi.variant).toBe("pack");
+    expect(pochi.abilities).toContain("commander-defense-token");
+
+    // Lethal damage flips the Pack to its Few side mid-combat…
+    pochi.damage = pochi.maxHealth;
+    markUnitRemovedIfNeeded(state, pochi);
+    expect(pochi.variant).toBe("few");
+    // …and the persistent Job package survives the side recompute.
+    expect(pochi.abilities).toContain("commander-defense-token");
+
+    for (const unit of Object.values(combat.units)) {
+      if (unit.controllerId === NEUTRAL_PLAYER_ID) unit.damage = unit.maxHealth;
+    }
+    combat.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    state = applyOk(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
+    if (state.adventure?.pendingCompanionRecruitment) {
+      state = applyOk(state, { type: "RESOLVE_COMPANION_RECRUITMENT", playerId: "p1", unitDefId: null });
+    }
+
+    const card = state.players.p1.army.find((unit) => unit.id === "jobbed-pochi");
+    expect(card, "the flipped card survives as a Few").toBeTruthy();
+    expect(card?.side).toBe("few");
+    expect(card?.job, "the Job token persists on the army card").toBe("guard");
   });
 });
 

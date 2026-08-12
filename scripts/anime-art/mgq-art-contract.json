@@ -31,7 +31,7 @@
     "bars": [
       { "index": 1, "buildingIds": ["mgq.city_hall"], "output": "public/assets/town-board/mgq-bar-1.webp" },
       { "index": 2, "buildingIds": ["mgq.dwelling_bronze"], "output": "public/assets/town-board/mgq-bar-2.webp" },
-      { "index": 3, "buildingIds": ["mgq.spirit_shrine", "mgq.contract_sylph", "mgq.contract_gnome", "mgq.contract_undine", "mgq.contract_salamander"], "referenceIds": ["sylph", "gnome", "undine", "salamander"], "output": "public/assets/town-board/mgq-bar-3.webp" },
+      { "index": 3, "buildingIds": ["mgq.spirit_shrine"], "referenceIds": ["sylph", "gnome", "undine", "salamander"], "output": "public/assets/town-board/mgq-bar-3.webp" },
       { "index": 4, "buildingIds": ["mgq.dwelling_silver", "mgq.colosseum"], "output": "public/assets/town-board/mgq-bar-4.webp" },
       { "index": 5, "buildingIds": ["mgq.mage_guild"], "output": "public/assets/town-board/mgq-bar-5.webp" },
       { "index": 6, "buildingIds": ["mgq.citadel", "mgq.amiras_shop"], "output": "public/assets/town-board/mgq-bar-6.webp" },

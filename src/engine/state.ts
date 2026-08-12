@@ -7976,7 +7976,7 @@ export type PlayerState = {
   mgqFreeJobReassignments?: number;
   /** Alice VI grants this many future Companion seals without paying the cost. */
   mgqFreeCompanionSeals?: number;
-  /** MGQ Gold Contract: exactly two distinct faction Gold cards selected at setup. */
+  /** MGQ Gold Contract: exactly three distinct faction Gold cards selected at setup. */
   mgqGoldContracts?: string[];
   /** New-game setup barrier; optional false/absent keeps legacy snapshots compatible. */
   mgqGoldContractSetupRequired?: boolean;

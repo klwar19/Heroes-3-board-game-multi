@@ -431,16 +431,16 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "maiden",
       "few",
       { attack: 3, defense: 1, health: 5, initiative: 5, gold: 7 },
-      ["mgq-maiden-certain-paralysis"],
-      "Nightmare's Embrace — after Maiden attacks, Paralyze the target."
+      ["mgq-nightmares-embrace"],
+      'Nightmare\'s Embrace — a "+1" on Maiden\'s Attack die Paralyzes the target.'
     ),
     mgqSide(
       "silver",
       "maiden",
       "pack",
       { attack: 4, defense: 1, health: 5, initiative: 6, gold: 10 },
-      ["mgq-nightmares-embrace"],
-      'Nightmare\'s Embrace — a "+1" on Maiden\'s Attack die Paralyzes the target.'
+      ["mgq-maiden-certain-paralysis"],
+      "Nightmare's Embrace — after Maiden attacks, Paralyze the target."
     )
   ),
   "mgq.seraphy": mgqUnit(

@@ -28,10 +28,12 @@ describe("town board manifest", () => {
       // The bars carry the faction's buildings exactly once each.
       expect([...flat].sort()).toEqual([...faction.buildings].sort());
       const shared = spec.bars.filter((bar) => bar.length > 1);
-      // MGQ keeps two main+special pairs plus a five-stage Spirit Shrine bar.
-      // Every printed/classic town keeps one two-building pair.
-      expect(shared, `${faction.id} shared building bars`).toHaveLength(faction.id === "mgq" ? 3 : 1);
-      expect(spec.bars.every((bar) => bar.length >= 1 && bar.length <= (faction.id === "mgq" ? 5 : 2))).toBe(true);
+      // MGQ carries TWO two-building pairs (dwelling_silver+Colosseum,
+      // citadel+Amira's Shop); its Spirit Shrine is a lone building (the Four
+      // Spirits are innate, not a buildable ladder). Every other town keeps one
+      // two-building pair. No bar exceeds two buildings anywhere.
+      expect(shared, `${faction.id} shared building bars`).toHaveLength(faction.id === "mgq" ? 2 : 1);
+      expect(spec.bars.every((bar) => bar.length >= 1 && bar.length <= 2)).toBe(true);
     }
   });
 

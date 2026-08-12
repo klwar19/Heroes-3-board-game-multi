@@ -166,11 +166,13 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
     // The recruitable CONFLUX faction elementals
     // (Storm/Ice/Energy/Magma/Magic Few & Pack) do NOT deal elemental damage —
     // only their separate neutral guard card does — so no conflux.* id appears.
-    // The ONE non-neutral exception is the anime Fuyuki Casters (an ORIGINAL
-    // unit, not a wiki transcription): their printed card text says "deals
-    // elemental damage" on both sides, and the per-side die-proof cases below
-    // cover them like any elemental. They carry NO school immunity (that stays
-    // pinned to the hard-coded neutral list further down).
+    // The non-neutral exceptions are ORIGINAL anime units (not wiki
+    // transcriptions) whose printed card text says "deals elemental damage":
+    // the Fuyuki Casters (Few & Pack) and the MGQ wind spirit Sylph (Few &
+    // Pack) plus MGQ Emily's Pack side. The per-side die-proof cases below
+    // cover each like any elemental. They carry NO school immunity (that stays
+    // pinned to the hard-coded neutral list further down); the other three MGQ
+    // spirits (Gnome/Undine/Salamander) do NOT deal elemental damage.
     const ids = new Set(elementalSides.map((entry) => entry.unitId));
     expect(ids).toEqual(
       new Set([
@@ -187,12 +189,20 @@ describe("every Elemental deals die-proof, fixed damage (real unit data)", () =>
         "neutral.fire_elementals",
         "neutral.magma_elementals",
         "neutral.magic_elementals",
-        "fuyuki.casters"
+        "fuyuki.casters",
+        "mgq.spirit_sylph",
+        "mgq.emily"
       ])
     );
-    expect([...ids].every((id) => id.startsWith("neutral.") || id.startsWith("conflux.") || id === "fuyuki.casters")).toBe(true);
-    // 9 neutral sides + 8 summon sides + the Fuyuki Casters Few & Pack.
-    expect(elementalSides.length).toBe(19);
+    expect(
+      [...ids].every(
+        (id) =>
+          id.startsWith("neutral.") || id.startsWith("conflux.") || id === "fuyuki.casters" || id.startsWith("mgq.")
+      )
+    ).toBe(true);
+    // 9 neutral sides + 8 summon sides + Fuyuki Casters Few & Pack + MGQ Sylph
+    // Few & Pack + MGQ Emily Pack.
+    expect(elementalSides.length).toBe(22);
   });
 
   for (const { unitId, sideKey, printedAttack, abilities } of elementalSides) {

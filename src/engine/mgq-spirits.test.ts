@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { getMainHero } from "./adventure";
-import { createInitialGameState } from "./index";
+import { startPlayerCombat } from "./adventure-reducer";
+import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { chooseComputerAction } from "./computer/policy";
 import { mgqContractedSpirits, seedMgqSpiritsForCombat } from "./mgq-spirits";
-import type { GameState, MgqSpirit } from "./state";
+import type { GameAction, GameState, MgqSpirit, PlayerVisibleState } from "./state";
 
 function spiritState(selected: MgqSpirit, level = 1): GameState {
   const state = createInitialGameState();
@@ -55,5 +57,98 @@ describe("MGQ spirit selection gate", () => {
     seedMgqSpiritsForCombat(state);
     expect(state.combat!.mgqSpirits).toEqual({});
     expect(Object.keys(state.combat!.units).some((id) => id.includes("spirit_sylph"))).toBe(false);
+  });
+});
+
+describe("MGQ Four Spirits in the PvP prep window", () => {
+  function applyOk(state: GameState, action: GameAction): GameState {
+    const result = applyAction(state, action);
+    expect(result.errors, result.errors.map((error) => error.message).join("; ")).toEqual([]);
+    return result.state;
+  }
+
+  /** A castle attacker walks into the spiritless MGQ defender: prep opens. */
+  function mgqDefenderPrep(seed: string, mutate: (state: GameState) => void = () => {}): GameState {
+    const state = createAdventureGameState({
+      seed,
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      players: [
+        { id: "p1", name: "Luka", factionId: "mgq", heroDefId: "luka" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ]
+    });
+    // Skip the Gold Contract setup picker (irrelevant to this suite).
+    state.pendingChoice = null;
+    state.players.p1.mgqGoldContracts = ["mgq.carmilla", "mgq.giga", "mgq.lucretia"];
+    state.players.p1.mgqGoldContractSetupRequired = false;
+    delete state.players.p1.mgqSpirit;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    mutate(state);
+    const attacker = getMainHero(state, "p2")!;
+    const defender = getMainHero(state, "p1")!;
+    startPlayerCombat(state, attacker, defender, defender.spaceId ?? "0,0");
+    expect(state.combat?.prep?.accepted).toEqual([]);
+    return state;
+  }
+
+  it("a spiritless MGQ participant is offered the Spirit choice INSIDE prep, then Accept (CONTROL: no Accept before)", () => {
+    let state = mgqDefenderPrep("mgq-prep-spirit-reachable");
+
+    const before = getLegalActions(state, "p1");
+    // CONTROL — the printed gate: no spirit selected means Accept is withheld…
+    expect(before.some((legal) => legal.action.type === "ACCEPT_COMBAT")).toBe(false);
+    // …so the Spirit choice MUST be reachable in this very window (the map-turn
+    // offer block is never consulted while the combat dispatcher owns the legal
+    // actions — without the prep offer the defender could neither ready up nor
+    // choose, a stall once escapes are exhausted/blocked).
+    const spiritOffers = before.filter((legal) => legal.action.type === "SET_MGQ_SPIRIT");
+    expect(spiritOffers.map((legal) => (legal.action.type === "SET_MGQ_SPIRIT" ? legal.action.spirit : null)).sort())
+      .toEqual(["gnome", "salamander", "sylph", "undine"]);
+
+    // The castle opponent gets the plain Accept and never a Spirit offer.
+    const opponent = getLegalActions(state, "p2");
+    expect(opponent.some((legal) => legal.action.type === "ACCEPT_COMBAT")).toBe(true);
+    expect(opponent.some((legal) => legal.action.type === "SET_MGQ_SPIRIT")).toBe(false);
+
+    // Taking the offer really selects the Spirit and unlocks Accept.
+    state = applyOk(state, spiritOffers[0]!.action);
+    expect(state.players.p1.mgqSpirit).toBe("sylph");
+    const after = getLegalActions(state, "p1");
+    expect(after.some((legal) => legal.action.type === "ACCEPT_COMBAT")).toBe(true);
+    state = applyOk(state, { type: "ACCEPT_COMBAT", playerId: "p1" });
+    expect(state.combat?.prep?.accepted).toContain("p1");
+  });
+
+  it("a spiritless COMPUTER MGQ seat readies up through the normal policy instead of fleeing or stalling", () => {
+    let state = mgqDefenderPrep("mgq-prep-spirit-computer", (initial) => {
+      initial.sessionMode = "single-player";
+      initial.controllers = {
+        ...(initial.controllers ?? {}),
+        p1: { kind: "computer", difficulty: "standard", policyVersion: 1 }
+      };
+      // Nothing to shop with: the seat must still make progress.
+      initial.players.p1.townTokens = { build: false, population: false, spellBook: false };
+      initial.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    });
+
+    for (let safety = 0; safety < 12 && !state.combat?.prep?.accepted.includes("p1"); safety += 1) {
+      const legalActions = getLegalActions(state, "p1");
+      const decision = chooseComputerAction({
+        playerId: "p1",
+        state: state as unknown as PlayerVisibleState,
+        legalActions
+      });
+      expect(decision, `the computer must own a prep decision (step ${safety})`).toBeTruthy();
+      expect(
+        ["RETREAT_FROM_COMBAT", "SURRENDER_COMBAT", "GIVE_UP_COMBAT"].includes(decision!.action.type),
+        "a healthy MGQ defender never flees just because no Spirit was picked"
+      ).toBe(false);
+      state = applyOk(state, decision!.action);
+    }
+    expect(state.players.p1.mgqSpirit).toBeTruthy();
+    expect(state.combat?.prep?.accepted).toContain("p1");
   });
 });

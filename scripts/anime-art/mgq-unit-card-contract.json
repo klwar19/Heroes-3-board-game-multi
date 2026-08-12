@@ -91,7 +91,7 @@
           "initiative": 5
         },
         "cost": {
-          "gold": 4
+          "gold": 3
         },
         "abilities": [],
         "text": "No printed ability."
@@ -206,9 +206,9 @@
         },
         "abilities": [
           "teleport-move",
-          "enchanter-heal-or-buff"
+          "mgq-white-magic"
         ],
-        "text": "Fox Duo — teleport-move; Kamuro's Taoism uses the Enchanter heal-or-buff activation."
+        "text": "Fox Duo — teleport-move; Kamuro's Taoism heals 1 damage from an adjacent ally or grants +1 Attack this round."
       }
     },
     {
@@ -236,7 +236,7 @@
           "initiative": 3
         },
         "cost": {
-          "gold": 1
+          "gold": 3
         },
         "abilities": [],
         "text": "No printed ability."
@@ -282,7 +282,7 @@
           "initiative": 4
         },
         "cost": {
-          "gold": 1
+          "gold": 3
         },
         "abilities": [],
         "text": "No printed ability."
@@ -387,7 +387,7 @@
           "initiative": 3
         },
         "cost": {
-          "gold": 5
+          "gold": 6
         },
         "abilities": [
           "mgq-devour"
@@ -712,7 +712,7 @@
         "abilities": [
           "mgq-lisa-growth"
         ],
-        "text": "Soul Growth — after reducing a side or stack layer to 0 HP, permanently gain +1 maximum Health (maximum +2)."
+        "text": "Soul Growth — when Lisa reduces a unit side or stack layer to 0 HP, she permanently gains +1 maximum Health (maximum +2)."
       },
       "pack": {
         "stats": {
@@ -729,7 +729,7 @@
           "mgq-lisa-growth",
           "ignores-retaliation"
         ],
-        "text": "Soul Growth — gain permanent +1 maximum Health after reducing a side/layer to 0 HP (maximum +2); no Retaliation."
+        "text": "Soul Growth — gain permanent +1 maximum Health after reducing a side or stack layer to 0 HP (maximum +2); attacks provoke no Retaliation."
       }
     },
     {
@@ -1097,7 +1097,7 @@
           "mgq-giga-regeneration",
           "dragon-line-attack-2"
         ],
-        "text": "Regeneration — heal 2 damage at each activation. Leviathan Sweep hits behind the target at Attack 2."
+        "text": "Regeneration — heal 2 damage at the start of each activation. Leviathan Sweep hits behind the target at Attack 2."
       },
       "pack": {
         "stats": {
@@ -1114,7 +1114,7 @@
           "mgq-giga-regeneration",
           "dragon-line-attack-3"
         ],
-        "text": "Regeneration — heal 2 damage at each activation. Leviathan Sweep hits behind the target at Attack 3."
+        "text": "Regeneration — heal 2 damage at the start of each activation. Leviathan Sweep hits behind the target at Attack 3."
       }
     },
     {
@@ -1400,7 +1400,7 @@
         "abilities": [
           "mgq-sparkle"
         ],
-        "text": "Sparkle☆ — at combat start, Emily's owner gains a positive Morale token."
+        "text": "Sparkle☆— at combat start, Emily's owner gains a positive Morale token."
       },
       "pack": {
         "stats": {
@@ -1417,7 +1417,7 @@
           "mgq-sparkle",
           "elemental-damage"
         ],
-        "text": "Sparkle☆ — gain positive Morale at combat start. Emily deals elemental damage."
+        "text": "Sparkle☆— at combat start, Emily's owner gains a positive Morale token. Emily deals elemental damage."
       }
     }
   ]

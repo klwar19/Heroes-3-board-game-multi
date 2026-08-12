@@ -10644,6 +10644,21 @@ function getCombatInteractionActions(
       addTurnCardActions(actions, state, playerId, cards, "combat-prep");
       addPermanentDiscardActions(actions, state, playerId);
       addPvpEscapeActions(actions, state, playerId);
+      // MGQ Four Spirits: Accept is withheld until a Spirit is chosen, so the
+      // choice MUST be offered inside this window — the map-turn offer block is
+      // never reached while a combat dispatcher owns the legal actions, and
+      // without this a spiritless MGQ participant could neither ready up nor
+      // pick a Spirit (with escapes blocked, e.g. Shackles of War, a hard
+      // stall). setMgqSpirit already accepts the prep window (inCombatPrep).
+      if (state.players[playerId]?.factionId === "mgq") {
+        for (const spirit of mgqContractedSpirits(state, playerId)) {
+          if (state.players[playerId]?.mgqSpirit === spirit) continue;
+          actions.push({
+            label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in the next combat`,
+            action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+          });
+        }
+      }
       if (state.players[playerId]?.factionId !== "mgq" || state.players[playerId]?.mgqSpirit) actions.push({
         label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }

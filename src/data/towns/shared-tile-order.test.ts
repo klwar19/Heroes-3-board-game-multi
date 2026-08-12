@@ -30,9 +30,10 @@ describe("shared-tile build order — every town", () => {
     let sharedTiles = 0;
     for (const [faction, spec] of Object.entries(townBoardSpecs)) {
       const shared = spec.bars.filter((bar) => bar.length > 1);
-      // MGQ has two main+special inserts plus its buildable Spirit-contract
-      // ladder on one bar; every existing board keeps exactly one shared bar.
-      expect(shared.length, `${faction}: shared building bars`).toBe(faction === "mgq" ? 3 : 1);
+      // MGQ has TWO main+special inserts (dwelling_silver+Colosseum,
+      // citadel+Amira's Shop); its Spirit Shrine is a lone building, not a
+      // shared bar. Every other board keeps exactly one shared bar.
+      expect(shared.length, `${faction}: shared building bars`).toBe(faction === "mgq" ? 2 : 1);
       for (const bar of shared) {
         sharedTiles++;
         const [mainId, ...specials] = bar;
@@ -50,8 +51,8 @@ describe("shared-tile build order — every town", () => {
         }
       }
     }
-    expect(sharedTiles, "one shared tile per town, plus MGQ's two extra shared bars").toBe(
-      Object.keys(townBoardSpecs).length + 2
+    expect(sharedTiles, "one shared tile per town, plus MGQ's one extra shared bar").toBe(
+      Object.keys(townBoardSpecs).length + 1
     );
   });
 

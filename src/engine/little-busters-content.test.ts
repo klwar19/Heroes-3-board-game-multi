@@ -18,11 +18,13 @@ import {
   getDisplayAttackBonus,
   getLegalActions,
   getMainHero,
-  isAdjacent
+  isAdjacent,
+  pickNeutralTarget
 } from "./index";
 import { expireEffectsForCombatRoundEnd } from "./active-effects";
 import { startNeutralEncounter } from "./adventure-reducer";
-import type { GameAction, GameState, HeroState } from "./state";
+import { deathStareFollowUpAppliesTo, type DeathStareFollowUp } from "./unit-abilities";
+import { NEUTRAL_PLAYER_ID, type GameAction, type GameState, type HeroState } from "./state";
 
 const ROOT = process.cwd();
 const FACTION = "little_busters";
@@ -504,5 +506,101 @@ describe("Little Busters complete playable content", () => {
     const miss = sayaAttack(-1).combat!.units.unit_p2_skeletons;
     expect(miss.tokens?.some((token) => token.kind === "corrosion") ?? false).toBe(false);
     expect(miss.damage).toBe(3);
+  });
+
+  it("Komari's Everyone Smiles reduces spell damage on adjacent units (a non-adjacent unit takes it in full)", () => {
+    // The aura is a live positional read: only Komari herself and units
+    // standing NEXT to her are shielded, so the same Magic Arrow that bounces
+    // off her neighbour still wounds a far unit for its printed 1.
+    function magicArrowDamageAt(position: number, seed: string): number {
+      const state = createInitialGameState(seed);
+      state.players.p1.hand = [];
+      const komari = makeHeroCombatUnit(heroState("komari_kamikita", 1, 0), 6)!;
+      state.combat!.units[komari.id] = komari;
+      const target = state.combat!.units.unit_p1_marksmen;
+      Object.assign(target, { position, damage: 0, maxHealth: 10 });
+      state.players.p2.hand = ["spell.magic_arrow"];
+      state.combat!.activeUnitId = "unit_p2_skeletons";
+      state.activePlayerId = "p2";
+      let after = apply(state, {
+        type: "CAST_SPELL",
+        playerId: "p2",
+        cardId: "spell.magic_arrow",
+        target: { type: "unit", unitId: target.id }
+      });
+      while (after.reactionWindow) {
+        after = apply(after, { type: "PASS_REACTION", playerId: after.reactionWindow.priorityPlayerId });
+      }
+      return after.combat!.units[target.id].damage;
+    }
+    // Cell 5 is orthogonally adjacent to Komari on 6 — the arrow's 1 damage is
+    // absorbed to 0. CONTROL: cell 16 is out of the aura, the full 1 lands.
+    expect(magicArrowDamageAt(5, "lb-komari-aura-adjacent")).toBe(0);
+    expect(magicArrowDamageAt(16, "lb-komari-aura-control")).toBe(1);
+  });
+
+  it("the campus hero is tierless both ways: never a tier-gated target, never Devour bait, hit LAST by graded neutrals", () => {
+    // (a) Tier-gated casts skip it: Blind targets by grade, and the hero (like
+    // a commander) has none — other units stay offered, the hero never is.
+    const blind = createInitialGameState("lb-hero-tierless-blind");
+    const blindHero = makeHeroCombatUnit(heroState("sasami_sasasegawa", 4, 0), 2)!;
+    blind.combat!.units[blindHero.id] = blindHero;
+    blind.players.p2.hand = ["spell.blind"];
+    blind.combat!.activeUnitId = "unit_p2_skeletons";
+    blind.activePlayerId = "p2";
+    const blindTargets = getLegalActions(blind, "p2")
+      .filter((legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.blind")
+      .map((legal) =>
+        legal.action.type === "CAST_SPELL" && legal.action.target?.type === "unit" ? legal.action.target.unitId : null
+      );
+    expect(blindTargets.length).toBeGreaterThan(0);
+    expect(blindTargets).not.toContain(blindHero.id);
+
+    // (b) A tier-gated stare (raid-boss Devour, "at most gold") never threatens
+    // the hero even though its cosmetic grade field reads "gold". CONTROL: a
+    // plain gold unit IS threatened by the same follow-up.
+    const devour: DeathStareFollowUp = {
+      abilityId: "boss-devour",
+      abilityName: "Devour",
+      diceCount: 1,
+      onRoll: 1,
+      targetGradeAtMost: "gold"
+    };
+    const stareState = createInitialGameState("lb-hero-tierless-stare");
+    const stareHero = makeHeroCombatUnit(heroState("sasami_sasasegawa", 4, 0), 2)!;
+    expect(deathStareFollowUpAppliesTo(devour, stareHero)).toBe(false);
+    const plainGold = { ...stareState.combat!.units.unit_p1_griffins, grade: "gold" as const };
+    expect(deathStareFollowUpAppliesTo(devour, plainGold)).toBe(true);
+
+    // (c) A GRADED neutral attacker deprioritises the hero exactly like a
+    // commander: adjacent hero + far graded unit → it walks to the far graded
+    // unit. CONTROL: with a plain graded unit adjacent instead, nearest wins.
+    // Everything is GOLD so the hero's cosmetic `grade: "gold"` field alone
+    // cannot save the claim — only the heroUnit no-tier read can.
+    function neutralTargetScenario(adjacentIsHero: boolean): string | undefined {
+      const state = createInitialGameState(`lb-hero-target-last-${adjacentIsHero}`);
+      const attacker = state.combat!.units.unit_p2_skeletons;
+      Object.assign(attacker, { controllerId: NEUTRAL_PLAYER_ID, position: 0, type: "ground", grade: "gold" });
+      const far = state.combat!.units.unit_p1_crusaders;
+      Object.assign(far, { position: 19, type: "ground", grade: "gold", damage: 0 });
+      let adjacentId: string;
+      if (adjacentIsHero) {
+        const hero = makeHeroCombatUnit(heroState("sasami_sasasegawa", 1, 0), 1)!;
+        state.combat!.units[hero.id] = hero;
+        adjacentId = hero.id;
+      } else {
+        const plain = state.combat!.units.unit_p1_griffins;
+        Object.assign(plain, { position: 1, type: "ground", grade: "gold", damage: 0 });
+        adjacentId = plain.id;
+      }
+      for (const unit of Object.values(state.combat!.units)) {
+        if (unit.id !== attacker.id && unit.id !== far.id && unit.id !== adjacentId) {
+          unit.damage = unit.maxHealth;
+        }
+      }
+      return pickNeutralTarget(state.combat!, attacker)?.id;
+    }
+    expect(neutralTargetScenario(true), "hero adjacent → the far graded unit is struck first").toBe("unit_p1_crusaders");
+    expect(neutralTargetScenario(false), "CONTROL: plain graded unit adjacent → nearest wins").toBe("unit_p1_griffins");
   });
 });

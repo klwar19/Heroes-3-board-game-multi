@@ -14,6 +14,6 @@
   <text x="118" y="435" class="stat">1</text>
   <text x="118" y="584" class="stat">4</text>
   <text x="118" y="732" class="stat">7</text>
-  <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M11 28c8-18 19-20 29-16-7 2-12 7-14 15 6-6 12-8 18-7-8 4-13 9-18 14Z" fill="#f4e6b6"/><text x="50" y="24" class="kind">FLYING</text></g><rect x="61" y="764" width="622" height="66" fill="#372615" stroke="#b99759" stroke-width="3"/><text x="372" y="810" class="pack"># PACK</text><text x="371" y="892.5" class="rule">Soul Growth — gain permanent +1 maximum Health after</text><text x="371" y="917.5" class="rule">reducing a side/layer to 0 HP (maximum +2); no</text><text x="371" y="942.5" class="rule">Retaliation.</text>
+  <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M11 28c8-18 19-20 29-16-7 2-12 7-14 15 6-6 12-8 18-7-8 4-13 9-18 14Z" fill="#f4e6b6"/><text x="50" y="24" class="kind">FLYING</text></g><rect x="61" y="764" width="622" height="66" fill="#372615" stroke="#b99759" stroke-width="3"/><text x="372" y="810" class="pack"># PACK</text><text x="371" y="892.5" class="rule">Soul Growth — gain permanent +1 maximum Health after</text><text x="371" y="917.5" class="rule">reducing a side or stack layer to 0 HP (maximum +2);</text><text x="371" y="942.5" class="rule">attacks provoke no Retaliation.</text>
   </g>
   </svg>

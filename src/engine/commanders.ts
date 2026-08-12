@@ -708,7 +708,13 @@ export function commanderCastCandidates(state: GameState, unit: CombatUnitState)
       return false;
     }
     if (targeting.maxTierByPower) {
-      const targetRank = target.commanderSlug || target.bankUnit || target.summoned ? null : (TIER_RANK[target.grade] ?? null);
+      // Tierless bodies never pass a tier ladder — the same set gradeRankOfUnit
+      // excludes (a Little Busters battlefield hero joins commanders/banks/
+      // summons here: `heroUnit` is tierless BOTH ways).
+      const targetRank =
+        target.commanderSlug || target.bankUnit || target.summoned || target.heroUnit
+          ? null
+          : (TIER_RANK[target.grade] ?? null);
       const maxRank = TIER_RANK[targeting.maxTierByPower[tierIndex]] ?? 0;
       if (targetRank === null || targetRank > maxRank) {
         return false;

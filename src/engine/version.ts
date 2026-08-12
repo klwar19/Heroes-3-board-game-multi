@@ -125,7 +125,31 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // as a Dragon Utopia instead of returning reward-free. A v22 room server would
 // silently award zero Artifacts for the same clear, so reducer compatibility
 // requires an explicit bump.
-export const ENGINE_PROTOCOL_VERSION = 23;
+// v29: the Little Busters / Monster Girl Quest towns batch (this branch forked
+// at v23; main has meanwhile taken v24–v28, so 29 is the first free slot — a
+// merge conflict on this constant must resolve to 29, never back to a lower
+// number). NEW ACTIONS a stale room server rejects outright: ASSIGN_UNIT_JOB,
+// SET_MGQ_SPIRIT, RESOLVE_COMPANION_RECRUITMENT, COMMANDER_SET_BOND, plus
+// PLACE_COMMANDER gaining an optional `unitId` (integrated commander/hero/troop
+// deployment sorting — a v28 server ignores the field and moves the COMMANDER
+// to the clicked cell instead of the named ally) and USE_UNIT_ABILITY gaining
+// `mode` (Sofia's White Magic heal-vs-attack pick — dropped silently by an old
+// server, resolving the WRONG half). New persisted state an old server neither
+// writes nor understands: `combat.integratedCommanderDeploymentPlayerIds`
+// (formation moves offered DURING ordinary troop deployment instead of the
+// separate pendingCommanderPlacement window — the two halves would disagree
+// about WHEN PLACE_COMMANDER is legal), `unit.heroUnit` (Little Busters
+// battlefield heroes — tierless at every grade gate, so a v28 server offers
+// tier-gated casts at them that a new client refuses, and vice versa),
+// `adventure.pendingCompanionRecruitment` + the prep-window pendingVisit gate
+// (an attacked player may play Legion mid-prep and resolve its troop pick —
+// a v28 server hides those RESOLVE_VISIT_STEP offers behind the combat
+// dispatcher and rejects the new client's clicks), MGQ jobs / spirits / gold
+// contracts, and Sonya's `commander.bondedArmyUnitId`. The catalogs detect the
+// new factions' content, but none of the action/legality changes above — the
+// explicit bump makes a skewed edge/client show the version banner instead of
+// the "not legal on every click" frozen-table symptom class.
+export const ENGINE_PROTOCOL_VERSION = 29;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

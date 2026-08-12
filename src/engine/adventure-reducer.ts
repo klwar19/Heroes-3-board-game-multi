@@ -863,6 +863,13 @@ function assertNoPendingInput(state: GameState): void {
     throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
   }
 
+  // MGQ's atomic after-combat seal offer is the Necromancy transaction's twin:
+  // ending the turn over it would carry the open window (and its withheld
+  // field reward) into the next seat's turn, freezing everyone but the owner.
+  if (state.adventure?.pendingCompanionRecruitment) {
+    throw new Error("Resolve Companion Recruitment (seal or decline) first.");
+  }
+
   if (state.adventure?.pendingTileChoice) {
     throw new Error("Confirm the rotation of the new tile first.");
   }
@@ -9195,6 +9202,19 @@ export function acceptCombat(state: GameState, action: Extract<GameAction, { typ
   if (combat.prep.accepted.includes(action.playerId)) {
     throw new Error("You have already accepted — waiting for your opponent to ready up.");
   }
+  // LOCKSTEP with getAdventureLegalActions' prep gate: while a preparation
+  // card's pendingVisit is open for a PARTICIPANT (Legion's troop pick),
+  // Accept is offered to NOBODY — a forged/stale Accept slipping through here
+  // could end prep with the visit still open and strand it under the started
+  // battle. A visit owned by a non-participant deliberately does not block
+  // (exotic queue-pump shapes must not be able to freeze the fighters).
+  const prepVisit = state.adventure?.pendingVisit;
+  if (
+    prepVisit &&
+    (prepVisit.playerId === combat.attackerPlayerId || prepVisit.playerId === combat.defenderPlayerId)
+  ) {
+    throw new Error("Resolve the open preparation prompt before readying up.");
+  }
 
   if (state.players[action.playerId]?.factionId === "mgq" && !state.players[action.playerId]?.mgqSpirit) {
     throw new Error("Choose one of the Four Spirits before accepting the battle.");
@@ -9869,7 +9889,10 @@ export function maybeOpenWayfarerParalysisDecision(state: GameState): boolean {
   combat.wayfarerParalysisOffered = true;
 
   const unitRank = (unit: CombatUnitState): number =>
-    unit.commanderSlug
+    // A commander — and a Little Busters battlefield hero, which shares every
+    // commander tier exemption (`heroUnit` is tierless BOTH ways, see
+    // gradeRankOfUnit) — is never a Wayfarer Paralysis target.
+    unit.commanderSlug || unit.heroUnit
       ? Number.POSITIVE_INFINITY
       : unit.bankUnit
         // Creature-Bank monsters are tierless, not Azure. "Any unit except
