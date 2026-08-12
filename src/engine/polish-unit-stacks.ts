@@ -69,10 +69,15 @@ export function polishUnitStackCost(
     return null;
   }
   // Gold: printed gold + the tier surcharge (0 printed gold still pays the fee).
-  // Valuables: the side's printed valuables — the same fee as a Few→Pack reinforce.
+  // Every OTHER printed cost resource is charged unchanged — valuables, and
+  // building materials on the rare side that carries them (e.g. MGQ Lisa) — so a
+  // Stack costs exactly the reinforcement price + the tier number, whatever the
+  // side's cost shape.
+  const materials = printed.cost.buildingMaterials ?? 0;
   const valuables = printed.cost.valuables ?? 0;
   return {
     gold: (printed.cost.gold ?? 0) + rule.goldSurcharge,
+    ...(materials > 0 ? { buildingMaterials: materials } : {}),
     ...(valuables > 0 ? { valuables } : {})
   };
 }

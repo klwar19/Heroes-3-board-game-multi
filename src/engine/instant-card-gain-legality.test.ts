@@ -244,7 +244,13 @@ const DOCUMENTED_WINDOW_EXCLUSIONS: Record<string, string> = {
   // be a strictly-worse twin of the real reaction. Kriv VI option 1 is a printed
   // "React to an enemy attack: gain 3 Runes".
   "specialty.kriv.6#2":
-    "trap-twin dedupe: option 1 is a printed UNIT_ATTACK_DECLARED reaction on the same card"
+    "trap-twin dedupe: option 1 is a printed UNIT_ATTACK_DECLARED reaction on the same card",
+  // MGQ Ilias IV / Granberia I: a printed `mapOnly` pure-draw twin of a real
+  // combat face (Ilias' combatAnytime immunity-draw, Granberia's attack-window
+  // reaction). A mapOnly side is an absolute window bar; the map play is pinned
+  // by the map sweep above.
+  "specialty.ilias.4#1": "printed mapOnly: pure-draw twin of the combatAnytime immunity option",
+  "specialty.granberia.1#1": "printed mapOnly: pure-draw twin of the attack-window +1 Attack reaction"
 };
 
 type SweepFace = {

@@ -279,11 +279,15 @@ describe("innate flat Attack bonuses — the whole class reaches the display", (
           : 0;
       const unit = {
         abilities: [ability.id],
-        // Both gates the registry can impose, satisfied so the ability is live.
+        // Every gate the registry can impose, satisfied so the ability is live:
+        // the flip gate (ATTACK_BONUS_IF_FLIPPED), the Stack Token (the Stacked
+        // FLAT_ATTACK_BONUS) and `damage > 0` (a `requiresDamaged` FLAT_ATTACK_BONUS
+        // such as MGQ's Wild Hair — folded only while the side is wounded).
         flippedDownThisCombat: true,
         stackToken: "attack",
         bankUnit: true,
-        armyStacks: 0
+        armyStacks: 0,
+        damage: 1
       } as unknown as CombatUnitState;
       expect(getInnateFlatAttackBonus(unit, false), ability.id).toBe(amount);
     }
