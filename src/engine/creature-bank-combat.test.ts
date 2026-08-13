@@ -612,6 +612,41 @@ describe("Creature Bank battlefield formation", () => {
     expect(state.combat!.activeUnitId).toBe(orcs?.id);
   });
 
+  it("asks which allied unit activates first when Ammo Cart ties Pack Evil Eyes with Pack Harpies in a bank", () => {
+    let state = createAdventureGameState({
+      seed: "bank-ammo-cart-allied-tie",
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    state = (state.players.p1.needsHandRefresh || state.players.p1.canMulligan)
+      ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+      : state;
+    state.players.p1.army = [
+      { id: "harpies", unitDefId: "dungeon.harpies", side: "pack" },
+      { id: "evil-eyes", unitDefId: "dungeon.evil_eyes", side: "pack" }
+    ];
+    state.players.p1.permanents = ["war_machine.ammo_cart"];
+    placeBankUnderHero(state, "imp_cache", 7);
+    startNeutralEncounter(state, getMainHero(state, "p1")!, state.adventure!.fields["bank-field"]);
+    while (true) {
+      const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+      if (!place) {
+        break;
+      }
+      state = apply(state, place!.action);
+    }
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("combat-activation-order");
+    expect(choice.options.map((option) => option.label)).toEqual(
+      expect.arrayContaining([expect.stringContaining("Harpies"), expect.stringContaining("Evil Eyes")])
+    );
+    expect(state.combat!.activeUnitId).toBeNull();
+  });
+
   it("CONTROL: the same initiative-Stacked Wraith starts when the Orcs have no Ammo Cart", () => {
     const state = startShipwreckInitiativeTie();
     const orcs = Object.values(state.combat!.units).find((unit) => unit.armyUnitId === "orcs");

@@ -393,7 +393,7 @@ describe("Factory faction — art wired and playable (&S1 starting tile)", () =>
     expect(b["factory.citadel"]).toMatchObject({ cost: { gold: 8, buildingMaterials: 5, valuables: 1 }, effect: { type: "UNLOCK_REINFORCE" } });
     // The spell building keeps id mage_guild (default-setup slot) but is the
     // printed "Mana Generator" card.
-    expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 7, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
+    expect(b["factory.mage_guild"]).toMatchObject({ name: "Mana Generator", cost: { gold: 4, buildingMaterials: 2, valuables: 1 }, effect: { type: "MAGE_GUILD" } });
     // The two special buildings per the article: the Bank is a GOLD engine (a
     // per-Resource-round gold income), the Artifact Merchants is the buy/sell
     // Blacksmith archetype. (The earlier data put ARTIFACT_SMITH on the Bank.)

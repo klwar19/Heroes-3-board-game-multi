@@ -14,6 +14,7 @@ import { getLegalActions } from "./legal-actions";
 import { getPlayerView } from "./player-view";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { STORY_SCENE_IDS } from "@/data/story/scenes";
+import { coreUnitDefinitions } from "@/data/factions/units";
 
 describe("custom starting army", () => {
   it("gives each player their own faction's unit of every picked level", () => {
@@ -36,6 +37,42 @@ describe("custom starting army", () => {
       "necropolis.zombies:pack",
       "necropolis.liches:few",
       "necropolis.ghost_dragons:few"
+    ]);
+  });
+
+  it("randomizes only MGQ beginning-of-game bronze/silver slots without replacement", () => {
+    const make = (seed: string) => createAdventureGameState({
+      seed,
+      players: [
+        { id: "p1", name: "Luka", factionId: "mgq", heroDefId: "luka" },
+        { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+      ],
+      startingUnits: [
+        { level: 1, side: "few" },
+        { level: 2, side: "few" },
+        { level: 4, side: "few" }
+      ]
+    });
+
+    const first = make("mgq-random-start-a");
+    const firstIds = first.players.p1.army.map((unit) => unit.unitDefId);
+    expect(firstIds).toHaveLength(3);
+    expect(new Set(firstIds).size).toBe(3);
+    expect(firstIds.slice(0, 2).every((id) => coreUnitDefinitions[id]?.tier === "bronze")).toBe(true);
+    expect(coreUnitDefinitions[firstIds[2]!]?.tier).toBe("silver");
+    expect(make("mgq-random-start-a").players.p1.army.map((unit) => unit.unitDefId)).toEqual(firstIds);
+
+    const outcomes = new Set<string>();
+    for (let index = 0; index < 24; index += 1) {
+      outcomes.add(make(`mgq-random-start-${index}`).players.p1.army.map((unit) => unit.unitDefId).join("|"));
+    }
+    expect(outcomes.size).toBeGreaterThan(1);
+
+    // CONTROL: Castle keeps the fixed level mapping.
+    expect(first.players.p2.army.map((unit) => unit.unitDefId)).toEqual([
+      "castle.halberdiers",
+      "castle.marksmen",
+      "castle.crusaders"
     ]);
   });
 

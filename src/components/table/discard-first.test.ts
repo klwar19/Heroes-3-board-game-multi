@@ -67,7 +67,17 @@ describe("armedPaymentFor — re-attaching a banked discard to the right play", 
   const armed = { cardId: "specialty.glacius.1", optionIndex: 0, costCardIds: ["stat.attack"] };
 
   it("returns the banked payment for the matching card AND option", () => {
-    expect(armedPaymentFor(armed, ringPlay("specialty.glacius.1", 0))).toEqual(["stat.attack"]);
+    expect(armedPaymentFor(armed, ringPlay("specialty.glacius.1", 0))).toEqual(armed);
+  });
+
+  it("keeps crown/expert Power modes while a paid specialty is aimed", () => {
+    const meteor = {
+      cardId: "specialty.deemer.1",
+      optionIndex: 0,
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert" as const]
+    };
+    expect(armedPaymentFor(meteor, ringPlay("specialty.deemer.1", 0))).toEqual(meteor);
   });
 
   it("never spends a payment armed for a different card or option", () => {

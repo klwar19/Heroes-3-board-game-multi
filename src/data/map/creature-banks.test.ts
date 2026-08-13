@@ -230,19 +230,19 @@ describe("Creature Bank rewards", () => {
     });
   });
 
-  // The BANK TOKEN keeps the printed card verbatim: the Extra scales with X and
-  // each Extra is the Artifact-or-Spell choice. The fixed Search 3 / 5 / 5 ladder
-  // is a Ⅶ-OBJECTIVE-FIELD rule and must never reach this bank — see
-  // src/engine/dragon-utopia-artifact-reward.test.ts.
-  it("builds the Dragon Utopia base reward plus one Artifact/Spell choice per Stacked defender", () => {
-    const reward = CREATURE_BANKS.dragon_utopia.buildReward(2);
-    expect(reward.type).toBe("SEQUENCE");
-    if (reward.type !== "SEQUENCE") return;
-    expect(reward.interactions[0]).toEqual({ type: "GAIN_RESOURCES", gold: 40 });
-    expect(reward.interactions[1]).toEqual({ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 });
-    const choices = reward.interactions.slice(2);
-    expect(choices).toHaveLength(2);
-    expect(choices.every((step) => step.type === "CHOOSE_ONE")).toBe(true);
+  it("builds the fixed IV–V Dragon Utopia reward regardless of Stacked defenders", () => {
+    for (const stacked of [0, 1, 2, 3, 4]) {
+      const reward = CREATURE_BANKS.dragon_utopia.buildReward(stacked);
+      expect(reward).toEqual({
+        type: "SEQUENCE",
+        interactions: [
+          { type: "GAIN_RESOURCES", gold: 40 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
+        ]
+      });
+    }
   });
 
   // Pulls the GAIN_UNIT out of a unit bank's reward sequence (which now also

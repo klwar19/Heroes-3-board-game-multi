@@ -19,6 +19,7 @@ import {
   mgqJobsForUnit
 } from "@/engine/mgq-jobs";
 import { MGQ_SPIRITS, MGQ_SPIRIT_LABELS, MGQ_SPIRIT_RULES } from "@/engine/mgq-spirits";
+import { playerMainHeroInCombat } from "@/engine/anime-hero-grades";
 import type {
   ArmyUnitState,
   GameAction,
@@ -326,6 +327,59 @@ export function MgqSpiritShrinePanel({
   );
 }
 
+/** The visible Four Spirits choice shown at the beginning-of-battle boundary. */
+export function MgqBattleSpiritPicker({
+  state,
+  playerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction: (action: GameAction) => void;
+}) {
+  const player = state.players[playerId];
+  const spiritActions = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "SET_MGQ_SPIRIT" }> } =>
+      legal.action.type === "SET_MGQ_SPIRIT" && legal.action.playerId === playerId
+  );
+  if (
+    !state.adventure ||
+    player?.factionId !== "mgq" ||
+    !playerMainHeroInCombat(state, playerId) ||
+    (spiritActions.length === 0 && !player.mgqSpirit)
+  ) return null;
+
+  return (
+    <section className="mgqSpiritPanel mgqBattleSpiritPicker" aria-label="Choose one of the Four Spirits">
+      <div className="mgqSpiritHeading">
+        <b><img alt="" className="mgqMechanicIcon" src={assetUrl("/assets/anime/icons/mgq/mechanic-spirit-contract.webp")} /> Summon a Spirit</b>
+        <small>{player.mgqSpirit ? `${MGQ_SPIRIT_LABELS[player.mgqSpirit]} will join this battle` : "Choose 1 of the 4 Spirits before readying up"}</small>
+      </div>
+      <div className="mgqSpiritChoices">
+        {MGQ_SPIRITS.map((spirit) => {
+          const selected = player.mgqSpirit === spirit;
+          const legal = spiritActions.find((candidate) => candidate.action.spirit === spirit);
+          return (
+            <button
+              aria-pressed={selected}
+              className={`built ${selected ? "selected" : ""}`}
+              disabled={selected || !legal}
+              key={spirit}
+              onClick={() => legal && onAction(legal.action)}
+              type="button"
+            >
+              <span><img alt="" src={assetUrl(SPIRIT_ICONS[spirit])} />{selected ? <Check aria-hidden="true" size={13} /> : <Sparkles aria-hidden="true" size={13} />}{MGQ_SPIRIT_LABELS[spirit]}</span>
+              <small>Lv 1–3: {MGQ_SPIRIT_RULES[spirit].basic}<br />Lv 4–7: {MGQ_SPIRIT_RULES[spirit].advanced}</small>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function appliedCompanionCost(state: GameState, playerId: PlayerId, printed: ResourceCost): string {
   return (state.players[playerId]?.mgqFreeCompanionSeals ?? 0) > 0
     ? `free (Eye of Recollection charge; printed ${formatCost(printed)})`
@@ -361,7 +415,7 @@ export function MgqCompanionRecruitmentPrompt({
           <small>Fought neutral victory</small>
           <strong>Companion Recruitment</strong>
         </div>
-        <span>Seal one defeated bronze or silver card</span>
+          <span>Seal one defeated bronze or silver card</span>
       </header>
       <div className="mgqCompanionOffers">
         {pending.options.map((option) => {

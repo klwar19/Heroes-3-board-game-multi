@@ -1774,11 +1774,13 @@ function playCardSpellPower(
   playerId: PlayerId,
   card: CardDefinition,
   costCardIds: CardId[] | undefined,
+  costCardModes: CardPlayMode[] | undefined,
   cards: CardLibrary
 ): number {
   const schools = card.spellSchools ?? [];
   const fromCards = (costCardIds ?? []).reduce(
-    (sum, id) => sum + spellPowerValueOfCard(cards[id], schools),
+    (sum, id, index) =>
+      sum + spellPowerValueOfCard(cards[id], schools, costCardModes?.[index] ?? "basic"),
     0
   );
   return standingSpellPower(state, playerId, card) + fromCards;
@@ -3022,7 +3024,7 @@ function applyAreaPickAdjacentPlay(
     getAmountByPower(
       effect.amountByPower ?? {},
       1,
-      playCardSpellPower(state, action.playerId, card, action.costCardIds, cards)
+      playCardSpellPower(state, action.playerId, card, action.costCardIds, action.costCardModes, cards)
     );
   const center =
     action.target.type === "space"
@@ -3350,7 +3352,13 @@ function applyAttackDamageFromCandidate(
   // Reported bonuses fold in the die-face-conditioned deltas so the event's
   // numbers reconcile with the resolved attack/defense values.
   const reportedAttackBonus = attackBonus + dieAttackBonus;
-  const reportedDefenseBonus = defenseBonus + dieDefenseBonus;
+  // Include the Defend-die payout in the reported bonus. `defenseValue` already
+  // contains it; omitting it here made the dice overlay subtract only other
+  // buffs and present the shield twice (for example Gigi appeared as Defense 2
+  // and then showed another "+1 Defense" Guarded chip). The resolved damage was
+  // correct, but the visible formula was not. A winning Guarded roll must read
+  // printed 1 + die 1 = total 2; a 0/-1 roll stays at printed 1.
+  const reportedDefenseBonus = defenseBonus + defendBonus + dieDefenseBonus;
   // A cancelled die (Shield of the Dwarven Lords) is reported like an unrolled
   // die so the client skips the rolling-dice cinematic.
   const skipDieCinematic = noDie || dieCancelled;
@@ -7016,6 +7024,10 @@ function openGoldDragonLineAttack(
       finishCombatIfNeeded(state);
     }
     return false;
+  }
+  if (ability.fixedDamage) {
+    applyFlatAbilityDamage(state, attacker, behind.id, ability.abilityId, ability.abilityName, ability.baseAttack);
+    return finishCombatIfNeeded(state);
   }
   declareAbilityAttack(state, attacker, behind.id, ability, cards);
   return true;
@@ -12576,6 +12588,36 @@ function payOptionCardCost(
   // power-source card must reach the threshold, and every discarded card must be
   // necessary (no wasteful over-payment). Expert mode on a Power source uses
   // expertAmount and spends one crown per such card.
+  let expertPays = 0;
+  for (let index = 0; index < paying.length; index += 1) {
+    if (payModes[index] !== "expert") {
+      continue;
+    }
+    if (cost.costCardFilter !== "power-source") {
+      throw new Error(`${cardName} cannot use an expert Power payment for this cost.`);
+    }
+    const paid = cards[paying[index]];
+    const add =
+      paid?.effect.type === "ADD_SPELL_POWER"
+        ? paid.effect
+        : paid?.effect.type === "CHOOSE_ONE"
+          ? paid.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER")?.effect
+          : undefined;
+    if (!add || add.type !== "ADD_SPELL_POWER" || add.expertAmount === undefined) {
+      throw new Error(`${paid?.name ?? paying[index]} has no expert Power side to pay with.`);
+    }
+    if (!abilityExpertIsCrownFree(player, paying[index])) {
+      expertPays += 1;
+    }
+  }
+  const crownsLeft =
+    player.limits.expertUses +
+    (player.combatStats.expertUseBonusThisRound ?? 0) -
+    player.combatStats.expertUsesSpentThisRound;
+  if (expertPays > crownsLeft) {
+    throw new Error(`${cardName} needs ${expertPays} crown${expertPays === 1 ? "" : "s"} for expert Power payment.`);
+  }
+
   if (cost.powerCost !== undefined) {
     const schools = playedCard.spellSchools ?? [];
     // The map draw-rider bank (Sorcery / Scales) counts as standing Power, so a
@@ -12587,31 +12629,6 @@ function payOptionCardCost(
     // An EMPOWERED ability paid at its Expert Power value costs no crown — the
     // same waiver its ordinary Expert play gets, so it is counted out of the
     // budget here AND out of the spend below.
-    const expertPays = paying.filter(
-      (cardId, index) => payModes[index] === "expert" && !abilityExpertIsCrownFree(player, cardId)
-    ).length;
-    const crownsLeft =
-      player.limits.expertUses +
-      (player.combatStats.expertUseBonusThisRound ?? 0) -
-      player.combatStats.expertUsesSpentThisRound;
-    if (expertPays > 0 && crownsLeft < expertPays) {
-      throw new Error(`${cardName} needs ${expertPays} crown${expertPays === 1 ? "" : "s"} for expert Power payment.`);
-    }
-    for (let index = 0; index < paying.length; index += 1) {
-      if (payModes[index] !== "expert") {
-        continue;
-      }
-      const paid = cards[paying[index]];
-      const add =
-        paid?.effect.type === "ADD_SPELL_POWER"
-          ? paid.effect
-          : paid?.effect.type === "CHOOSE_ONE"
-            ? paid.effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER")?.effect
-            : undefined;
-      if (!add || add.type !== "ADD_SPELL_POWER" || add.expertAmount === undefined) {
-        throw new Error(`${paid?.name ?? paying[index]} has no expert Power side to pay with.`);
-      }
-    }
     const total = standing + values.reduce((sum, value) => sum + value, 0);
     if (total < cost.powerCost) {
       throw new Error(`${cardName} needs at least ${cost.powerCost} Power; this pays only ${total}.`);
@@ -12621,9 +12638,6 @@ function payOptionCardCost(
         throw new Error(`${cardName} was paid more Power than it needs — drop a card.`);
       }
     }
-    if (expertPays > 0) {
-      player.combatStats.expertUsesSpentThisRound += expertPays;
-    }
     // Consume the map bank: it paid toward this cast, so it is spent (one Spell,
     // one boost — mirrors the combat pendingDrawRiderSpellPower consume). A
     // base-tier map Spell that pays no Power cost never reaches here and leaves
@@ -12631,6 +12645,10 @@ function payOptionCardCost(
     if (mapBank > 0) {
       player.mapSpellPowerBank = 0;
     }
+  }
+
+  if (expertPays > 0) {
+    player.combatStats.expertUsesSpentThisRound += expertPays;
   }
 
   paying.forEach((cardId, payIndex) => {
@@ -18535,14 +18553,16 @@ function applyUnitAbilityAction(
   // The Dreadnought splash is an attack ALTERNATIVE, so — unlike the pre-move
   // "other actions" (token place, Summon Demons) — it stays available after an
   // optional move (just never once the unit has attacked).
-  const isSplashAllocation = ability?.effect?.type === "SPLASH_ALLOCATION_ATTACK";
+  const mayBeUsedAfterMoving =
+    ability?.effect?.type === "SPLASH_ALLOCATION_ATTACK" ||
+    ability?.effect?.type === "PLACE_ADJACENT_OBSTACLE_ACTION";
 
   if (
     !combat ||
     !unit ||
     unit.controllerId !== action.playerId ||
     unit.activatedThisRound ||
-    (unit.movedThisActivation && !isSplashAllocation) ||
+    (unit.movedThisActivation && !mayBeUsedAfterMoving) ||
     combat.activeUnitId !== unit.id ||
     ability?.implementationStatus !== "implemented"
   ) {
@@ -20053,17 +20073,23 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
     }
     case "initiative-shift": {
       const amount = effect.amountByPower[tier];
+      const attackModifier = effect.attackVs
+        ? { type: "ATTACK_BONUS_VS_INITIATIVE" as const, comparison: effect.attackVs, amount: effect.attackAmount }
+        : { type: "ATTACK_BONUS" as const, amount: effect.attackAmount };
       createActiveEffect(
         state,
         {
           name: `${cast.name} (${caster.cardName})`,
           scope: "unit",
-          duration: { type: "current-combat-round" },
+          duration:
+            effect.durationByPower?.[tier] === "combat"
+              ? { type: "combat" }
+              : { type: "current-combat-round" },
           polarity: amount >= 0 ? "positive" : "negative",
           removable: true,
           modifiers: [
             { type: "INITIATIVE_BONUS", amount },
-            { type: "ATTACK_BONUS_VS_INITIATIVE", comparison: effect.attackVs, amount: effect.attackAmount }
+            attackModifier
           ]
         },
         source,

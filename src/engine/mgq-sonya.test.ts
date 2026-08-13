@@ -48,9 +48,14 @@ describe("MGQ — Sonya's Unbreakable Bond", () => {
     expect(result.state.eventLog.some((event) => event.type === "COMMANDER_BOND_SET")).toBe(true);
   });
 
-  it("adds +1 Defense only while Sonya is alive", () => {
+  it("adds +1 Defense only in round 1 while Sonya is alive, independent of printed Defense", () => {
     const { state, bonded, sonya } = sonyaSandbox();
+    bonded.defense = 1;
     expect(sonyaBondDefenseBonus(state, bonded)).toBe(1);
+    state.combat!.round = 2;
+    expect(sonyaBondDefenseBonus(state, bonded)).toBe(0);
+    expect(bonded.defense).toBe(1);
+    state.combat!.round = 1;
     sonya.damage = sonya.maxHealth;
     expect(sonyaBondDefenseBonus(state, bonded)).toBe(0);
   });

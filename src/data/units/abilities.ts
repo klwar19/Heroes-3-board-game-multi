@@ -475,6 +475,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "SECOND_ATTACK_BEHIND_TARGET";
       baseAttack: number;
+      /** When true, deal `baseAttack` as fixed effect damage instead of rolling a second attack. */
+      fixedDamage?: boolean;
     }
   | {
       /**
@@ -1632,6 +1634,13 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2 },
     implementationStatus: "implemented"
   },
+  "mgq-jessie-spear-wall": {
+    id: "mgq-jessie-spear-wall",
+    name: "Spear Wall",
+    text: "[unit_attack] After this unit's normal attack, deal 2 damage to the unit directly behind the target. This damage ignores Defense and never provokes Retaliation.",
+    effect: { type: "SECOND_ATTACK_BEHIND_TARGET", baseAttack: 2, fixedDamage: true },
+    implementationStatus: "implemented"
+  },
   // Factory Halflings (Pack): "Roll 2 Attack dice and resolve the higher one. If
   // you resolve a +1 on the Attack Die, the attacked unit suffers -1 [defense]
   // (to a minimum of 0)." The roll-two-take-higher half is attack-roll-advantage;
@@ -2564,7 +2573,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "mgq-pack-dig": {
     id: "mgq-pack-dig",
     name: "Pack Dig",
-    text: "[activation] Instead of attacking, place an Obstacle in an adjacent empty Combat space.",
+    text: "[activation] Instead of attacking, place an Obstacle in an adjacent empty Combat space. This may be used after moving.",
     effect: { type: "PLACE_ADJACENT_OBSTACLE_ACTION" },
     implementationStatus: "implemented"
   },

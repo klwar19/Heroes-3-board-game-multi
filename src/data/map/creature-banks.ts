@@ -498,28 +498,17 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     name: "Dragon Utopia",
     tier: "near",
     units: ["neutral.black_dragons", "neutral.gold_dragons", "neutral.faerie_dragons", "neutral.crystal_dragons"],
-    rewardText: "40 gold and Search (3) the Artifact Deck. Extra: X times, Search (5) the Artifact or Spell Deck.",
+    rewardText: "40 gold, Search (3) the Artifact Deck, then Search (5) the Artifact Deck twice.",
     rewardStatus: "implemented",
-    // The PRINTED bank card, unchanged: the Extra scales with X = the number of
-    // Stacked defenders, and each Extra is the printed Artifact-or-Spell choice.
-    // The fixed 3/5/5 artifact ladder is a Ⅶ-OBJECTIVE-FIELD rule only (see
-    // VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS in engine/adventure.ts) — it must
-    // never be applied to this Creature Bank token.
-    buildReward: (x) => ({
+    // IV–V Creature Bank reward: fixed 40 gold + Artifact Search (3), (5), (5).
+    // Stacked defenders affect the fight only, not this reward.
+    buildReward: (_x) => ({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_RESOURCES", gold: 40 },
         { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
-        ...Array.from(
-          { length: Math.max(0, x) },
-          (): LocationInteraction => ({
-            type: "CHOOSE_ONE",
-            options: [
-              { label: "Search (5) the Artifact Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 } },
-              { label: "Search (5) the Spell Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 } }
-            ]
-          })
-        )
+        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
+        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
       ]
     })
   }

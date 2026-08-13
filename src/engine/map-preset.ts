@@ -2454,7 +2454,7 @@ export function describeObjectivesConfig(config: CustomMapObjectivesConfig): Cus
   if (config.grailAsUtopia === "always" || config.grailAsUtopia === "after-dig-utopia") {
     entries.push({
       icon: "🏆",
-      text: "After the Grail is taken, other Grail tiles become Utopias (Search 3 / 5 / 5)"
+      text: "After the Grail is taken, other Grail tiles become Utopias (20 gold, two Artifact Search (3), token choice)"
     });
   } else if (config.grailAsUtopia === "after-dig-empty") {
     entries.push({ icon: "🏆", text: "After the Grail is taken, other Grail tiles become empty" });

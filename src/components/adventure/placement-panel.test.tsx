@@ -231,6 +231,33 @@ describe("PreBattlePanel — PvP pre-battle preparation (on the map)", () => {
     expect(onAction).toHaveBeenCalledWith({ type: "ACCEPT_COMBAT", playerId: "p1" });
   });
 
+  it("shows all four beginning-of-battle Spirit choices only for an MGQ participant", () => {
+    const mgq = prepState();
+    // The picker is an Adventure-only boundary; prepState starts from the
+    // battle-test sandbox, so give this focused render the minimal truthy
+    // Adventure marker while retaining its explicit PvP combat context.
+    mgq.adventure = {} as NonNullable<GameState["adventure"]>;
+    mgq.players.p2.factionId = "mgq";
+    delete mgq.players.p2.mgqSpirit;
+    const spiritActions: LegalAction[] = (["sylph", "gnome", "undine", "salamander"] as const).map((spirit) => ({
+      action: { type: "SET_MGQ_SPIRIT", playerId: "p2", spirit },
+      label: `Summon ${spirit}`
+    }));
+    const onAction = vi.fn<(action: GameAction) => void>();
+    const { getByRole, getByText, rerender } = render(
+      <PreBattlePanel legalActions={spiritActions} onAction={onAction} state={mgq} viewerPlayerId="p2" />
+    );
+
+    expect(getByRole("region", { name: "Choose one of the Four Spirits" })).toBeTruthy();
+    for (const label of ["Sylph", "Gnome", "Undine", "Salamander"]) expect(getByText(label)).toBeTruthy();
+    fireEvent.click(getByText("Undine"));
+    expect(onAction).toHaveBeenCalledWith({ type: "SET_MGQ_SPIRIT", playerId: "p2", spirit: "undine" });
+
+    mgq.players.p2.factionId = "castle";
+    rerender(<PreBattlePanel legalActions={spiritActions} onAction={onAction} state={mgq} viewerPlayerId="p2" />);
+    expect(document.querySelector('[aria-label="Choose one of the Four Spirits"]')).toBeNull();
+  });
+
   it("shows a waiting message once the viewer has accepted (no Accept button)", () => {
     const onAction = vi.fn();
     const { queryByText, getByText } = render(

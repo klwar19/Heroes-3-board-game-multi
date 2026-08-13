@@ -8861,6 +8861,8 @@ export type CombatState = {
   integratedCommanderDeploymentPlayerIds?: PlayerId[];
   /** Disciplinary Committee Pack's mandatory combat-start choices are done. */
   disciplinaryCommitteeStartResolved?: boolean;
+  /** Factory Bounty Hunters' mandatory combat-start Mark choices are done. */
+  bountyHunterMarkStartResolved?: boolean;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -13893,6 +13895,7 @@ export type PendingChoice =
         | "shackles-of-war"
         | "wayfarer-paralysis"
          | "disciplinary-committee-start"
+         | "bounty-hunter-mark-start"
          | "mgq-mad-science"
          | "mgq-gold-contract"
         | "diplomacy-skip"
@@ -14193,6 +14196,12 @@ export type PendingChoice =
         remainingSourceUnitIds: UnitId[];
         amount: number;
         rounds: number;
+      };
+      /** Factory Bounty Hunters: mandatory enemy Mark target and queued sources. */
+      bountyHunterMarkStart?: {
+        sourceUnitId: UnitId;
+        targetUnitIds: UnitId[];
+        remainingSourceUnitIds: UnitId[];
       };
       /** Promestein: explicit sacrifice/upgrade pairs, index-aligned with options. */
       mgqMadScience?: {

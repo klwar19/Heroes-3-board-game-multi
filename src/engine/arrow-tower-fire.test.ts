@@ -105,4 +105,39 @@ describe("Arrow Tower — it actually shoots", () => {
     // the die low; the neutral scripted roll proves the mode was "normal".)
     expect(after.combat!.units.unit_p1_marksmen.damage).toBe(3);
   });
+
+  it("pauses the tower shot so the attacked player can play Armorer", () => {
+    let state = siegeWithTower("tower-armorer-window");
+    const combat = state.combat!;
+    const target = combat.units.unit_p1_marksmen;
+    target.position = 16;
+    target.defense = 0;
+    target.maxHealth = 10;
+    target.damage = 0;
+    state.players.p1.hand = ["ability.armorer"];
+    state.players.p1.deck = ["stat.attack"];
+    combat.activeUnitId = "siege_tower";
+    state.activePlayerId = "p2";
+    combat.dice.scriptedRolls = [0];
+
+    state = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "siege_tower",
+      defenderId: target.id
+    });
+    expect(state.combat!.units.unit_p1_marksmen.damage, "the attack waits while reactions are offered").toBe(0);
+    const armorer = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.armorer"
+    );
+    expect(armorer, "Armorer is offered against an Arrow Tower attack").toBeTruthy();
+    state = applyOk(state, armorer!.action);
+    while (state.reactionWindow) {
+      state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+    }
+
+    expect(state.combat!.units.unit_p1_marksmen.damage).toBe(3);
+    expect(state.players.p1.discard).toContain("ability.armorer");
+    expect(state.players.p1.hand).toContain("stat.attack");
+  });
 });

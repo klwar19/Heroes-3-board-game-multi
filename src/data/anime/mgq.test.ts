@@ -40,8 +40,8 @@ const signature = (side: UnitSideDefinition): SideSignature => [
 ];
 
 const EXPECTED_STATS: Record<string, { tier: string; type: string; few: SideSignature; pack: SideSignature }> = {
-  "mgq.pochi": { tier: "bronze", type: "ground", few: [2, 0, 2, 6, 2, 0], pack: [2, 0, 2, 8, 4, 0] },
-  "mgq.shesta": { tier: "bronze", type: "ground", few: [2, 0, 3, 5, 3, 0], pack: [3, 0, 3, 6, 5, 0] },
+  "mgq.pochi": { tier: "bronze", type: "ground", few: [2, 0, 2, 6, 2, 0], pack: [2, 0, 3, 8, 4, 0] },
+  "mgq.shesta": { tier: "bronze", type: "ground", few: [2, 0, 3, 5, 3, 0], pack: [3, 0, 4, 6, 5, 0] },
   "mgq.gigi": { tier: "bronze", type: "ground", few: [2, 1, 3, 4, 3, 0], pack: [3, 1, 3, 5, 5, 0] },
   "mgq.kamuro_kitsu": { tier: "bronze", type: "ground", few: [2, 0, 4, 7, 4, 0], pack: [3, 0, 4, 8, 6, 0] },
   "mgq.fleesia": { tier: "bronze", type: "ground", few: [2, 1, 3, 3, 3, 0], pack: [2, 2, 3, 4, 5, 0] },
@@ -53,13 +53,13 @@ const EXPECTED_STATS: Record<string, { tier: string; type: string; few: SideSign
   "mgq.shizuku": { tier: "silver", type: "ground", few: [4, 1, 5, 4, 8, 0], pack: [5, 1, 5, 5, 12, 0] },
   "mgq.regina": { tier: "silver", type: "ground", few: [3, 2, 4, 5, 7, 0], pack: [4, 2, 4, 6, 11, 0] },
   "mgq.maiden": { tier: "silver", type: "ground", few: [3, 1, 5, 5, 7, 0], pack: [4, 1, 5, 6, 10, 0] },
-  "mgq.seraphy": { tier: "silver", type: "ground", few: [3, 1, 4, 5, 7, 0], pack: [4, 1, 4, 6, 11, 0] },
-  "mgq.lisa": { tier: "silver", type: "flying", few: [3, 1, 4, 6, 7, 0], pack: [3, 1, 4, 7, 11, 0] },
-  "mgq.tama": { tier: "silver", type: "ground", few: [3, 0, 4, 7, 7, 0], pack: [4, 0, 4, 8, 11, 0] },
+  "mgq.seraphy": { tier: "silver", type: "ground", few: [3, 1, 4, 5, 5, 0], pack: [4, 1, 4, 6, 7, 0] },
+  "mgq.lisa": { tier: "silver", type: "flying", few: [3, 1, 4, 6, 7, 0], pack: [3, 1, 4, 7, 8, 0] },
+  "mgq.tama": { tier: "silver", type: "ground", few: [3, 0, 6, 7, 7, 0], pack: [4, 0, 6, 8, 11, 0] },
   "mgq.maya": { tier: "silver", type: "ranged", few: [3, 1, 4, 5, 7, 0], pack: [4, 1, 4, 6, 11, 0] },
   "mgq.matis": { tier: "silver", type: "ground", few: [3, 1, 5, 6, 8, 0], pack: [4, 1, 5, 7, 12, 0] },
   "mgq.ooma": { tier: "silver", type: "ground", few: [3, 1, 5, 4, 7, 0], pack: [4, 1, 5, 5, 11, 0] },
-  "mgq.jessie": { tier: "silver", type: "ground", few: [4, 2, 5, 5, 8, 0], pack: [5, 2, 5, 6, 12, 1] },
+  "mgq.jessie": { tier: "silver", type: "ground", few: [4, 2, 5, 5, 8, 0], pack: [5, 2, 6, 7, 12, 1] },
   "mgq.aria": { tier: "silver", type: "ground", few: [3, 2, 5, 4, 7, 0], pack: [4, 2, 5, 5, 11, 0] },
   "mgq.carmilla": { tier: "gold", type: "ground", few: [5, 2, 7, 8, 13, 1], pack: [6, 2, 7, 9, 21, 1] },
   "mgq.giga": { tier: "gold", type: "ground", few: [5, 2, 8, 5, 14, 1], pack: [6, 2, 9, 6, 20, 1] },
@@ -168,7 +168,12 @@ describe("Monster Girl Quest: Paradox static town contract", () => {
 
     expect(COMMANDER_SLUG_BY_FACTION.mgq).toBe("sonya");
     expect(commanderDefinitions.sonya.cast.abilityId).toBe("commander-cast-shaman");
-    expect(commanderDefinitions.sonya.cast.effect).toMatchObject({ kind: "initiative-shift", amountByPower: [2, 3, 4] });
+    expect(commanderDefinitions.sonya.cast.effect).toMatchObject({
+      kind: "initiative-shift",
+      amountByPower: [2, 6, 9],
+      durationByPower: ["round", "round", "combat"],
+      attackAmount: 1
+    });
     expect(commanderDefinitions.sonya.specialty.id).toBe("unbreakable-bond");
   });
 

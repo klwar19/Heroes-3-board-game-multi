@@ -442,8 +442,9 @@ export type CommanderCastEffect =
   | {
       kind: "initiative-shift";
       amountByPower: readonly [number, number, number];
-      /** The shifted unit's Attack also changes vs slower/faster targets. */
-      attackVs: "slower" | "faster";
+      durationByPower?: readonly ["round" | "combat", "round" | "combat", "round" | "combat"];
+      /** Omit to make the Attack modifier unconditional. */
+      attackVs?: "slower" | "faster";
       attackAmount: number;
     }
   | { kind: "unlimited-retaliation" }
@@ -686,11 +687,16 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Haste",
       icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      effect: {
+        kind: "initiative-shift",
+        amountByPower: [2, 6, 9],
+        durationByPower: ["round", "round", "combat"],
+        attackAmount: 1
+      },
       tierText: [
-        "A friendly unit gains +2 Initiative and +1 Attack against slower units this round.",
-        "A friendly unit gains +3 Initiative and +1 Attack against slower units this round.",
-        "A friendly unit gains +4 Initiative and +1 Attack against slower units this round."
+        "A friendly unit gains +2 Initiative and +1 Attack this round.",
+        "A friendly unit gains +6 Initiative and +1 Attack this round.",
+        "A friendly unit gains +9 Initiative and +1 Attack for the whole combat."
       ]
     },
     specialty: {
@@ -851,11 +857,16 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Body Flicker",
       icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      effect: {
+        kind: "initiative-shift",
+        amountByPower: [2, 6, 9],
+        durationByPower: ["round", "round", "combat"],
+        attackAmount: 1
+      },
       tierText: [
-        "A friendly unit gains +2 Initiative and +1 Attack against slower units this round.",
-        "A friendly unit gains +3 Initiative and +1 Attack against slower units this round.",
-        "A friendly unit gains +4 Initiative and +1 Attack against slower units this round."
+        "A friendly unit gains +2 Initiative and +1 Attack this round.",
+        "A friendly unit gains +6 Initiative and +1 Attack this round.",
+        "A friendly unit gains +9 Initiative and +1 Attack for the whole combat."
       ]
     },
     // Specialty: REUSE `superior-combat` (owner-picked stance) — the sword_saint /
@@ -956,17 +967,22 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
       name: "Cheer",
       icon: "/assets/spell-icons/haste.png",
       targeting: { side: "friendly", canTargetSelf: false },
-      effect: { kind: "initiative-shift", amountByPower: [2, 3, 4], attackVs: "slower", attackAmount: 1 },
+      effect: {
+        kind: "initiative-shift",
+        amountByPower: [2, 6, 9],
+        durationByPower: ["round", "round", "combat"],
+        attackAmount: 1
+      },
       tierText: [
-        "A friend gains +2 Initiative and +1 Attack against slower units this round.",
-        "A friend gains +3 Initiative and +1 Attack against slower units this round.",
-        "A friend gains +4 Initiative and +1 Attack against slower units this round."
+        "A friend gains +2 Initiative and +1 Attack this round.",
+        "A friend gains +6 Initiative and +1 Attack this round.",
+        "A friend gains +9 Initiative and +1 Attack for the whole combat."
       ]
     },
     specialty: {
       id: "unbreakable-bond",
       name: "Unbreakable Bond",
-      text: "Outside combat, choose one army card. While Sonya lives, that unit has +1 Defense; the first time it would die each combat, Sonya takes 1 damage instead."
+      text: "Outside combat, choose one army card. While Sonya lives, that unit has +1 Defense during combat round 1; the first time it would die each combat, Sonya takes 1 damage instead."
     },
     cardImage: "/assets/units-commander-sonya.webp"
   }

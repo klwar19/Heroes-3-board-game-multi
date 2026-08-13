@@ -260,7 +260,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts")
         .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0))
-    ).toEqual([3, 5, 5]);
+    ).toEqual([3, 3]);
     const choice = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
     expect(choice?.kind === "visit-steps" && choice.steps[0]?.type).toBe("CHOOSE_ONE");
   });
@@ -400,7 +400,7 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
 
     beginFieldVisit(state, hero.id, utopia.spaceId, false);
 
-    expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     // USER RULE 2026-08-03: the Utopia's artifact reward is the fixed 3 / 5 / 5
     // Search ladder (see dragon-utopia-artifact-reward.test.ts) — this bundle
     // used to be two Search (3) rewards.
@@ -408,7 +408,7 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts")
         .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0))
-    ).toEqual([3, 5, 5]);
+    ).toEqual([3, 3]);
     const choice = state.adventure!.rewardQueue.find((reward) => reward.kind === "visit-steps");
     expect(choice?.kind === "visit-steps" && choice.steps[0]).toMatchObject({
       type: "CHOOSE_ONE",

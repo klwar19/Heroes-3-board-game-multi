@@ -584,13 +584,15 @@ export function commanderLiveDefenseBonus(state: GameState, unit: CombatUnitStat
 
 /**
  * Sonya's Unbreakable Bond is a live read: the marked army card has +1 Defense
- * only while Sonya's own combat unit is still standing. Because it keys on the
- * persistent army-card id, Pack/Few flips and Job recomputes keep the bond.
+ * during round 1 while Sonya's own combat unit is still standing. Because the
+ * bonus stays separate from printed/job Defense and keys on the persistent
+ * army-card id, Pack/Few flips and Guard Job recomputes cannot overwrite it.
  */
 export function sonyaBondDefenseBonus(state: GameState, unit: CombatUnitState): number {
   const commander = state.players[unit.controllerId]?.commander;
   if (
     !unit.armyUnitId ||
+    state.combat?.round !== 1 ||
     commander?.slug !== "sonya" ||
     commander.bondedArmyUnitId !== unit.armyUnitId
   ) {

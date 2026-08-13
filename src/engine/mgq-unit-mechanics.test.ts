@@ -27,7 +27,8 @@ const IDS = {
   love: "mgq-love-arrow",
   web: "mgq-web-the-field",
   regeneration: "mgq-giga-regeneration",
-  sparkle: "mgq-sparkle"
+  sparkle: "mgq-sparkle",
+  jessie: "mgq-jessie-spear-wall"
 } as const;
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -503,6 +504,44 @@ describe("MGQ activation and combat-start abilities", () => {
       target: { type: "space", position: 10 }
     });
     expect(rejected.combat!.obstacles ?? []).toEqual(before);
+  });
+
+  it("Pack Dig may replace the attack after Pochi moves", () => {
+    let state = duel("pack-dig-after-move", [IDS.dig]);
+    const move = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "MOVE_UNIT" && entry.action.unitId === "unit_p1_marksmen"
+    );
+    expect(move).toBeDefined();
+    state = applyOk(state, move!.action);
+    expect(state.combat!.units.unit_p1_marksmen.movedThisActivation).toBe(true);
+
+    const dig = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "USE_UNIT_ABILITY" && entry.action.abilityId === IDS.dig
+    );
+    expect(dig).toBeDefined();
+    state = applyOk(state, dig!.action);
+    expect(state.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
+    expect(state.combat!.obstacles?.length).toBeGreaterThan(0);
+  });
+
+  it("Jessie's Spear Wall deals fixed 2 damage behind a normal first attack", () => {
+    const state = duel("jessie-spear-wall", [IDS.jessie], { attack: 4, defenderHealth: 40 });
+    const behind = place(state, "unit_p2_vampires", {
+      position: 11,
+      controllerId: "p2",
+      abilities: [],
+      attack: 0,
+      defense: 99,
+      maxHealth: 40,
+      damage: 0,
+      type: "ground"
+    });
+    const after = attack(state);
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    expect(after.combat!.units[behind.id].damage).toBe(2);
+    expect(
+      after.eventLog.some((event) => event.type === "ATTACK_ROLLED" && event.defenderId === behind.id)
+    ).toBe(false);
   });
 
   it("Web the Field targets adjacent enemies, applies Weakness, and gives only its source a Defense token", () => {

@@ -12,7 +12,7 @@
   <text x="371" y="111" class="title">Tama</text>
   <text x="118" y="286" class="stat">3</text>
   <text x="118" y="435" class="stat">0</text>
-  <text x="118" y="584" class="stat">4</text>
+  <text x="118" y="584" class="stat">6</text>
   <text x="118" y="732" class="stat">7</text>
   <g transform="translate(190 171)"><rect width="121" height="38" rx="8" fill="#17130dcc" stroke="#d9bd75" stroke-width="2"/><path d="M12 27c4-1 6-6 7-13l8-4 4 5-3 5 12 8c2 2 1 5-2 5H17c-4 0-6-3-5-6Z" fill="#f4e6b6"/><text x="50" y="24" class="kind">GROUND</text></g><text x="291" y="813" class="cost">7</text><text x="582" y="813" class="cost">11</text><text x="371" y="917.5" class="rule">No printed ability.</text>
   </g>

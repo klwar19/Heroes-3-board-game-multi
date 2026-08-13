@@ -177,11 +177,9 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       // The converted field is a normal paying Utopia, and its built-in Artifact
       // reward is exactly THREE cards — never the six reported in live play.
       expect(extra.blackCube, "the fight still clears the hex").toBe(true);
-      expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 5, 5]);
+      expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 3]);
       expect(tokenChoices(state), "one Morale / Ability-Empower pick").toBe(choicesBefore + 1);
-      expect(state.players.p1.resources.gold).toBe(
-        goldBefore + (label === "Polish house rule" ? 20 : 0)
-      );
+      expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
       // Conversion-origin bookkeeping still keeps it out of original-objective
       // credit; reward semantics and objective identity are separate concerns.
       expect(
@@ -196,7 +194,7 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       state.adventure!.fields[real.spaceId] = real;
       hero.spaceId = real.spaceId;
       beginFieldVisit(state, hero.id, real.spaceId, false);
-      expect(artifactSearches(state).slice(realSearchesBefore)).toEqual([3, 5, 5]);
+      expect(artifactSearches(state).slice(realSearchesBefore)).toEqual([3, 3]);
       expect(tokenChoices(state)).toBe(choicesBefore + 2);
       expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).toContain(real.spaceId);
     });
@@ -329,8 +327,8 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
         const searches = artifactSearches(state).length;
         hero.spaceId = extra.spaceId;
         beginFieldVisit(state, hero.id, extra.spaceId, false);
-        expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
-        expect(artifactSearches(state).slice(searches)).toEqual([3, 5, 5]);
+        expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
+        expect(artifactSearches(state).slice(searches)).toEqual([3, 3]);
         expect(extra.blackCube).toBe(true);
       } else {
         expect(extra.grailConverted ?? false).toBe(false);

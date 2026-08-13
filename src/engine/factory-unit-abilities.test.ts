@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { applyAction, createInitialGameState, tokenDefenseDelta } from "./index";
+import { applyAction, createInitialGameState, getLegalActions, tokenDefenseDelta } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
-import { applyCombatStartUnitAbilities } from "./adventure-reducer";
+import { applyCombatStartUnitAbilities, maybeOpenBountyHunterMarkStartChoice } from "./adventure-reducer";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -558,6 +558,7 @@ describe("Factory Mechanics — Field Repair", () => {
     if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
     expect(choice.kind).toBe("enchanter-activation");
     expect(choice.candidateUnitIds).toEqual(["unit_p1_crusaders"]);
+    expect(getLegalActions(state, "p1")[0]?.label).toContain("repair");
     const resolved = applyOk(state, {
       type: "CHOOSE_ABILITY_TARGET",
       playerId: "p1",
@@ -659,7 +660,7 @@ function bountyHunterShot(attackerAbilities: string[], marked: boolean): GameSta
 }
 
 describe("Factory Bounty Hunters — Mark", () => {
-  it("at combat start Marks the strongest enemy (highest maxHealth), not the weaker one", () => {
+  it("asks the controller which enemy receives the combat-start Mark", () => {
     const state = createInitialGameState("factory-mark-start");
     Object.assign(state.combat!.units.unit_p1_marksmen, {
       name: "Bounty Hunters",
@@ -668,12 +669,26 @@ describe("Factory Bounty Hunters — Mark", () => {
     Object.assign(state.combat!.units.unit_p2_skeletons, { maxHealth: 10, damage: 0, marked: false, position: 13 });
     Object.assign(state.combat!.units.unit_p2_vampires, { maxHealth: 20, damage: 0, marked: false, position: 14 });
 
-    applyCombatStartUnitAbilities(state);
+    expect(maybeOpenBountyHunterMarkStartChoice(state)).toBe(true);
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    expect(choice.context).toBe("bounty-hunter-mark-start");
+    expect(choice.options.map((option) => option.label)).toEqual(
+      expect.arrayContaining([expect.stringContaining("Skeletons"), expect.stringContaining("Vampires")])
+    );
+    const skeletonIndex = choice.bountyHunterMarkStart!.targetUnitIds.indexOf("unit_p2_skeletons");
+    const resolved = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: skeletonIndex
+    });
 
-    expect(state.combat!.units.unit_p2_vampires.marked, "the tougher enemy is Marked").toBe(true);
-    expect(state.combat!.units.unit_p2_skeletons.marked, "the weaker enemy is not").toBeFalsy();
+    expect(resolved.combat!.units.unit_p2_skeletons.marked, "the chosen weaker enemy is Marked").toBe(true);
+    expect(resolved.combat!.units.unit_p2_vampires.marked, "the engine does not auto-pick the tougher enemy").toBeFalsy();
     expect(
-      state.eventLog.some((e) => e.type === "UNIT_ABILITY_TRIGGERED" && e.abilityId === "bounty-hunter-mark-1"),
+      resolved.eventLog.some((e) => e.type === "UNIT_ABILITY_TRIGGERED" && e.abilityId === "bounty-hunter-mark-1"),
       "a Mark event fires"
     ).toBe(true);
   });

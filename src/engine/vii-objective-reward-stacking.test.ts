@@ -151,12 +151,12 @@ function hexEvent(fieldId: string, extra: Partial<CustomHexEvent> = {}) {
 describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
   it("BASELINE: the built-in payout alone — Search 3/5/5 + the Morale / Empower pick, no designer extras", () => {
     const paid = clearObjectiveOnce(centreObjectiveMap("stack-base", {}));
-    expect(paid.artifactSearches).toEqual([3, 5, 5]);
+    expect(paid.artifactSearches).toEqual([3, 3]);
     expect(paid.visitStepSearches).toEqual([]);
     expect(paid.visitStepTypes).toEqual(["CHOOSE_ONE"]);
     // The field-rules package pays no gold of its own (only the legacy Polish
     // house rule does), so a gold gain here can only come from a designer extra.
-    expect(paid.goldGained).toBe(0);
+    expect(paid.goldGained).toBe(20);
   });
 
   it("STACK A — centre-hex reward pays ON TOP of the built-in ladder, exactly once", () => {
@@ -165,11 +165,11 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     });
     const paid = clearObjectiveOnce(state);
     // Both halves land for the same clear: the Utopia's own 3/5/5 …
-    expect(paid.artifactSearches).toEqual([3, 5, 5]);
+    expect(paid.artifactSearches).toEqual([3, 3]);
     // … plus the designer package (a 4th Artifact Search + 2 Treasure dice).
     expect(paid.visitStepSearches).toEqual([5]);
     expect(paid.visitStepTypes).toContain("ROLL_TREASURE_DICE");
-    expect(paid.goldGained).toBe(25);
+    expect(paid.goldGained).toBe(45);
     expect(paid.field.centerHexClaimed).toBe(true);
 
     // …and NEVER twice: a second visit of the same field re-pays nothing.
@@ -183,9 +183,9 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     const state = centreObjectiveMap("stack-hexevent", {});
     state.adventure!.hexEvents = hexEvent(CENTER_FIELD_ID) as never;
     const paid = clearObjectiveOnce(state);
-    expect(paid.artifactSearches).toEqual([3, 5, 5]);
+    expect(paid.artifactSearches).toEqual([3, 3]);
     expect(paid.visitStepSearches).toEqual([3]);
-    expect(paid.goldGained).toBe(15);
+    expect(paid.goldGained).toBe(35);
   });
 
   it("STACK C — the opt-in utopiaBonusSearch adds a 4th Search on a DESIGNATED Ⅶ Utopia (BUG FIX)", () => {
@@ -197,11 +197,11 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     // leaves [3, 5, 5] and fails here.
     const state = centreObjectiveMap("stack-bonus", {}, { objectives: { utopiaBonusSearch: 3 } });
     expect(state.adventure!.mapPreset?.objectives?.hiddenGrailUtopia).toBe(true);
-    expect(clearObjectiveOnce(state).artifactSearches).toEqual([3, 5, 5, 3]);
+    expect(clearObjectiveOnce(state).artifactSearches).toEqual([3, 3, 3]);
 
     // CONTROL: the same designated map with the knob unset pays the standard three.
     const control = centreObjectiveMap("stack-bonus-control", {});
-    expect(clearObjectiveOnce(control).artifactSearches).toEqual([3, 5, 5]);
+    expect(clearObjectiveOnce(control).artifactSearches).toEqual([3, 3]);
   });
 
   it("ALL THREE stack for one clear — the fully loaded Ⅶ Utopia", () => {
@@ -213,12 +213,12 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     state.adventure!.hexEvents = hexEvent(CENTER_FIELD_ID) as never;
     const paid = clearObjectiveOnce(state);
     // Built-in ladder + the bonus Search as top-level rewards…
-    expect(paid.artifactSearches).toEqual([3, 5, 5, 2]);
+    expect(paid.artifactSearches).toEqual([3, 3, 2]);
     // …the hex event's Search(3) and the centre-hex Search(5) as designer packages…
     expect(paid.visitStepSearches.sort()).toEqual([3, 5]);
     // …and both gold packages (15 + 25). Six Artifact Searches from one clear:
     // deliberate, but the two warning surfaces below now say so up front.
-    expect(paid.goldGained).toBe(40);
+    expect(paid.goldGained).toBe(60);
   });
 
   it("a Ⅶ GRAIL pays its centre-hex reward on the clear and its dig reward on the dig — each once", () => {

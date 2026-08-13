@@ -529,7 +529,7 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
     ).toBe(true);
     hero.spaceId = utopia.spaceId;
     beginFieldVisit(state, hero.id, utopia.spaceId, false);
-    expect(artifactSearches()).toBe(searchesBefore + 3);
+    expect(artifactSearches()).toBe(searchesBefore + 2);
     expect(utopia.grailDiggable ?? false).toBe(false);
   });
 
@@ -853,7 +853,7 @@ describe("objectives options", () => {
           (reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts"
         )
         .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0));
-    expect(searchCounts(withBonus)).toEqual([3, 5, 5, 3]);
+    expect(searchCounts(withBonus)).toEqual([3, 3, 3]);
 
     // CONTROL: no objectives → the Utopia's own three Searches and no fourth.
     const control = createAdventureGameState({ seed: "vii-bonus-ctl", difficulty: "normal", rollFirstPlayer: false, victoryMode: "conquest" });
@@ -862,7 +862,7 @@ describe("objectives options", () => {
     const cHero = getMainHero(control, "p1")!;
     cHero.spaceId = cField.spaceId;
     beginFieldVisit(control, cHero.id, cField.spaceId, false);
-    expect(searchCounts(control)).toEqual([3, 5, 5]);
+    expect(searchCounts(control)).toEqual([3, 3]);
   });
 });
 

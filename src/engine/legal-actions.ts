@@ -5062,12 +5062,18 @@ function placeTokenCommandLabel(
 
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
   const combat = state.combat;
-  if (!combat || activeUnit.movedThisActivation) {
+  if (!combat) {
     return;
   }
 
   for (const ability of getUnitAbilityDefinitions(activeUnit)) {
     if (ability.implementationStatus !== "implemented") {
+      continue;
+    }
+    // Pochi's Dig replaces the attack, not the move, so it remains available
+    // after an optional move. Other pre-move activation abilities retain their
+    // existing gate.
+    if (activeUnit.movedThisActivation && ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION") {
       continue;
     }
 
@@ -6503,7 +6509,9 @@ function getLegalActionsCore(
         choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
-            ? `${choice.abilityName}: heal`
+            ? choice.abilityId?.startsWith("mechanics-repair-")
+              ? `${choice.abilityName}: repair`
+              : `${choice.abilityName}: heal`
             : choice.kind === "jotunn-teleport"
               ? `${choice.abilityName}: teleport`
               : choice.kind === "place-token"
@@ -9741,7 +9749,11 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   // lives) may deploy commander-only — the commander is auto-placed at combat
   // start, so "Ready" with zero placed units is legal for that player.
   const commanderOnly = player.army.length === 0 && commanderStandsInCurrentCombat(state, playerId);
-  if (placed.length > 0 || commanderOnly) {
+  const spiritSelected =
+    player.factionId !== "mgq" ||
+    !playerMainHeroInCombat(state, playerId) ||
+    Boolean(player.mgqSpirit);
+  if ((placed.length > 0 || commanderOnly) && spiritSelected) {
     actions.push({
       label: commanderOnly && placed.length === 0 ? "Ready for battle (commander only)" : "Ready for battle",
       action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
@@ -10918,7 +10930,7 @@ function getCombatInteractionActions(
       // without this a spiritless MGQ participant could neither ready up nor
       // pick a Spirit (with escapes blocked, e.g. Shackles of War, a hard
       // stall). setMgqSpirit already accepts the prep window (inCombatPrep).
-      if (state.players[playerId]?.factionId === "mgq") {
+      if (state.players[playerId]?.factionId === "mgq" && playerMainHeroInCombat(state, playerId)) {
         for (const spirit of mgqContractedSpirits(state, playerId)) {
           if (state.players[playerId]?.mgqSpirit === spirit) continue;
           actions.push({
@@ -10927,7 +10939,11 @@ function getCombatInteractionActions(
           });
         }
       }
-      if (state.players[playerId]?.factionId !== "mgq" || state.players[playerId]?.mgqSpirit) actions.push({
+      if (
+        state.players[playerId]?.factionId !== "mgq" ||
+        !playerMainHeroInCombat(state, playerId) ||
+        state.players[playerId]?.mgqSpirit
+      ) actions.push({
         label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }
       });
@@ -10966,6 +10982,22 @@ function getCombatInteractionActions(
 
   // Combat setup placement.
   if (combat.setup) {
+    // Neutral battles have no PvP preparation window, so deployment is the
+    // MGQ hero's beginning-of-battle Four Spirits choice.
+    if (
+      state.adventure &&
+      combat.setup.pendingPlayerIds[0] === playerId &&
+      state.players[playerId]?.factionId === "mgq" &&
+      playerMainHeroInCombat(state, playerId)
+    ) {
+      for (const spirit of mgqContractedSpirits(state, playerId)) {
+        if (state.players[playerId]?.mgqSpirit === spirit) continue;
+        actions.push({
+          label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in this combat`,
+          action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+        });
+      }
+    }
     addCombatSetupActions(actions, state, playerId);
     // A PvP hero may still Retreat while deploying (before any fighting).
     addPvpRetreatDuringSetup(actions, state, playerId);
