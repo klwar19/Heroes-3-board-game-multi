@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions, tokenDefenseDelta } from "./index";
 import { effectiveInitiative, makeActiveEffect } from "./active-effects";
 import { applyCombatStartUnitAbilities, maybeOpenBountyHunterMarkStartChoice } from "./adventure-reducer";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import type { GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 /**
@@ -691,6 +692,53 @@ describe("Factory Bounty Hunters — Mark", () => {
       resolved.eventLog.some((e) => e.type === "UNIT_ABILITY_TRIGGERED" && e.abilityId === "bounty-hunter-mark-1"),
       "a Mark event fires"
     ).toBe(true);
+  });
+
+  // REGRESSION (the frozen-table class). e4c134b1 turned the deterministic
+  // strongest-enemy Mark into a player pick, but the NEUTRAL seat holds no
+  // client and the reducer pump has NO auto-resolver for this OPTION_CHOICE
+  // context — and `isComputerPlayer` returns false for NEUTRAL_PLAYER_ID by
+  // design. A Ⅶ Random Town whose rolled faction is Factory fields two GOLD
+  // FEWS of that roster (`randomTownGuardDraws`), and `factory.gunslingers`
+  // (Bounty Hunters, gold) carries `bounty-hunter-mark-1` on its Few — so the
+  // guards opened a NEUTRAL-owned pendingChoice nobody could ever answer.
+  it("a NEUTRAL-controlled Bounty Hunter Marks automatically instead of freezing the table", () => {
+    const state = createInitialGameState("factory-mark-neutral");
+    // The guard side: a neutral-controlled Bounty Hunter Few.
+    Object.assign(state.combat!.units.unit_p2_skeletons, {
+      name: "Bounty Hunters",
+      cardName: "Bounty Hunters",
+      controllerId: NEUTRAL_PLAYER_ID,
+      abilities: ["bounty-hunter-mark-1"],
+      maxHealth: 30,
+      damage: 0,
+      marked: false,
+      position: 13
+    });
+    Object.assign(state.combat!.units.unit_p2_vampires, {
+      controllerId: NEUTRAL_PLAYER_ID,
+      abilities: [],
+      maxHealth: 30,
+      damage: 0,
+      marked: false,
+      position: 14
+    });
+    // Two live player bodies so the pick would genuinely have been ambiguous.
+    Object.assign(state.combat!.units.unit_p1_marksmen, { maxHealth: 20, damage: 0, marked: false, position: 9 });
+    Object.assign(state.combat!.units.unit_p1_crusaders, { maxHealth: 10, damage: 0, marked: false, position: 10 });
+
+    expect(maybeOpenBountyHunterMarkStartChoice(state), "no window opens for the neutral seat").toBe(false);
+    expect(state.pendingChoice, "and nothing is left for nobody to answer").toBeNull();
+    expect(state.priorityPlayerId).not.toBe(NEUTRAL_PLAYER_ID);
+    expect(state.combat!.bountyHunterMarkStartResolved).toBe(true);
+    // The deterministic pre-e4c134b1 pick: the strongest living enemy.
+    expect(state.combat!.units.unit_p1_marksmen.marked, "the tougher player unit is Marked").toBe(true);
+    expect(state.combat!.units.unit_p1_crusaders.marked).toBeFalsy();
+    expect(
+      state.eventLog.some((e) => e.type === "UNIT_ABILITY_TRIGGERED" && e.abilityId === "bounty-hunter-mark-1")
+    ).toBe(true);
+    // The whole point: the human seat can still act.
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
   });
 
   it("CONTROL: a player with no Bounty Hunters Marks nobody at combat start", () => {

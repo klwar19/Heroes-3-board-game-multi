@@ -245,7 +245,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(state.adventure!.grail.carrierHeroId).toBe(winner.id);
   });
 
-  it("pays Utopia's 20 gold, the fixed Search 3 / 5 / 5 Artifact reward, and token choice", () => {
+  it("pays Utopia's 20 gold, the fixed two Artifact Search (3) rewards, and token choice", () => {
     const state = game("polish-utopia-reward");
     const hero = getMainHero(state, "p1")!;
     const utopia = field("dragon_utopia", "40,40");
@@ -255,7 +255,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     beginFieldVisit(state, hero.id, utopia.spaceId, false);
 
     expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
-    // USER RULE 2026-08-03: three Searches (3 / 5 / 5), not two Search (3).
+    // 2026-08-13: exactly TWO Search (3) rewards (it was 3 / 5 / 5 from 2026-08-03).
     expect(
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts")
@@ -401,9 +401,9 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
     beginFieldVisit(state, hero.id, utopia.spaceId, false);
 
     expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
-    // USER RULE 2026-08-03: the Utopia's artifact reward is the fixed 3 / 5 / 5
-    // Search ladder (see dragon-utopia-artifact-reward.test.ts) — this bundle
-    // used to be two Search (3) rewards.
+    // 2026-08-13: the Utopia's artifact reward is two fixed Search (3) rewards
+    // (see dragon-utopia-artifact-reward.test.ts), and the editor-authored
+    // package now pays the same 20 gold the legacy Polish house rule pays.
     expect(
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search" && reward.deckId === "artifacts")

@@ -149,13 +149,14 @@ function hexEvent(fieldId: string, extra: Partial<CustomHexEvent> = {}) {
 }
 
 describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
-  it("BASELINE: the built-in payout alone — Search 3/5/5 + the Morale / Empower pick, no designer extras", () => {
+  it("BASELINE: the built-in payout alone — 20 gold + two Search (3) + the Morale / Empower pick, no designer extras", () => {
     const paid = clearObjectiveOnce(centreObjectiveMap("stack-base", {}));
     expect(paid.artifactSearches).toEqual([3, 3]);
     expect(paid.visitStepSearches).toEqual([]);
     expect(paid.visitStepTypes).toEqual(["CHOOSE_ONE"]);
-    // The field-rules package pays no gold of its own (only the legacy Polish
-    // house rule does), so a gold gain here can only come from a designer extra.
+    // 2026-08-13: EVERY Ⅶ-field Utopia mode pays 20 gold (the editor-authored
+    // package used to pay none), so 20 is the baseline and any surplus above it
+    // can only come from a designer extra.
     expect(paid.goldGained).toBe(20);
   });
 
@@ -164,9 +165,9 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
       centerHex: { reward: { gold: 25, searchArtifact: 5, treasureDice: 2 }, vp: 4 }
     });
     const paid = clearObjectiveOnce(state);
-    // Both halves land for the same clear: the Utopia's own 3/5/5 …
+    // Both halves land for the same clear: the Utopia's own two Search (3) …
     expect(paid.artifactSearches).toEqual([3, 3]);
-    // … plus the designer package (a 4th Artifact Search + 2 Treasure dice).
+    // … plus the designer package (an extra Artifact Search + 2 Treasure dice).
     expect(paid.visitStepSearches).toEqual([5]);
     expect(paid.visitStepTypes).toContain("ROLL_TREASURE_DICE");
     expect(paid.goldGained).toBe(45);
@@ -188,7 +189,7 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(paid.goldGained).toBe(35);
   });
 
-  it("STACK C — the opt-in utopiaBonusSearch adds a 4th Search on a DESIGNATED Ⅶ Utopia (BUG FIX)", () => {
+  it("STACK C — the opt-in utopiaBonusSearch adds an EXTRA Search on a DESIGNATED Ⅶ Utopia (BUG FIX)", () => {
     // BEFORE this fix the package branch (which a designated Ⅶ Utopia always
     // activates — i.e. exactly the map the knob is set for) never read the knob,
     // so it silently paid NOTHING while the map-pick banner still advertised
@@ -199,7 +200,7 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(state.adventure!.mapPreset?.objectives?.hiddenGrailUtopia).toBe(true);
     expect(clearObjectiveOnce(state).artifactSearches).toEqual([3, 3, 3]);
 
-    // CONTROL: the same designated map with the knob unset pays the standard three.
+    // CONTROL: the same designated map with the knob unset pays the standard two.
     const control = centreObjectiveMap("stack-bonus-control", {});
     expect(clearObjectiveOnce(control).artifactSearches).toEqual([3, 3]);
   });
@@ -216,7 +217,7 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(paid.artifactSearches).toEqual([3, 3, 2]);
     // …the hex event's Search(3) and the centre-hex Search(5) as designer packages…
     expect(paid.visitStepSearches.sort()).toEqual([3, 5]);
-    // …and both gold packages (15 + 25). Six Artifact Searches from one clear:
+    // …and both gold packages (20 + 15 + 25). FIVE Artifact Searches from one clear:
     // deliberate, but the two warning surfaces below now say so up front.
     expect(paid.goldGained).toBe(60);
   });
@@ -269,7 +270,12 @@ describe("Ⅶ reward stacking — the designer warning", () => {
     const warnings = viiRewardStackWarnings(plans, preset);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("Dragon Utopia at row 9, col 4");
-    expect(warnings[0]).toContain("three Artifact Searches (3, then 5, 5)");
+    // The designer/lobby warning must quote the CURRENT built-in payout. It read
+    // "10 gold + three Artifact Searches (3, then 5, 5)" until e4c134b1 changed
+    // the Ⅶ field to 20 gold + two Search (3) rewards; the stale wording was
+    // pinned here, which is why the rot survived that commit.
+    expect(warnings[0]).toContain("20 gold + two Artifact Searches (3, 3)");
+    expect(warnings[0]).not.toContain("three Artifact Searches");
     expect(warnings[0]).toContain("the centre-hex reward");
     expect(warnings[0]).toContain("a hidden hex event on that same hex");
     expect(warnings[0]).toContain("the Dragon Utopia bonus Search");

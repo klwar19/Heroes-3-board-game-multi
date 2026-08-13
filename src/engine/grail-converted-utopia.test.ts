@@ -160,7 +160,7 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       ).toHaveLength(1);
     });
 
-    it(`${label}: a converted extra Grail pays exactly one Search 3 / 5 / 5 Utopia ladder`, () => {
+    it(`${label}: a converted extra Grail pays exactly one Utopia bundle (20 gold + two Search (3))`, () => {
       const state = make(`${label}-exact-reward`);
       const { hero, dug, extra } = twoGrails(state, "reward");
       hero.spaceId = dug.spaceId;

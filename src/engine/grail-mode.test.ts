@@ -325,7 +325,7 @@ describe("Dragon Utopia objective", () => {
     beginFieldVisit(state, heroId, field.spaceId, false);
 
     // The Dragon Utopia pays its Lvl-VII bank reward, never the game. Its
-    // artifact half is the fixed Search 3 / 5 / 5 (USER RULE 2026-08-03) — it
+    // artifact half is two fixed Artifact Search (3) rewards (2026-08-13) — it
     // used to be the shared consolation's single hardcoded Relic Search (2).
     expect(state.adventure!.winnerPlayerId).toBeNull();
     expect(state.phase).not.toBe("game-over");
@@ -361,7 +361,7 @@ describe("Dragon Utopia objective", () => {
 describe("Creature-bank consolation (Conquest)", () => {
   // The GRAIL keeps the shared Lvl-VII consolation (10 gold + Search (2) of the
   // Relic deck). The DRAGON UTOPIA no longer does: USER RULE 2026-08-03 gives it
-  // its own fixed 3 / 5 / 5 Artifact-FAMILY reward (the hardcoded Relic deck also
+  // its own fixed two-Search(3) Artifact-FAMILY reward (the hardcoded Relic deck also
   // bypassed the normal eligible-deck pick, so the Search did not follow the
   // field's Ⅵ–Ⅶ tile band). Behaviour: dragon-utopia-artifact-reward.test.ts.
   it("gives 10 gold and a Relic search when grail is not the objective", () => {

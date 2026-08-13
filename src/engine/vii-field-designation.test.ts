@@ -843,10 +843,10 @@ describe("objectives options", () => {
     const hero = getMainHero(withBonus, "p1")!;
     hero.spaceId = field.spaceId;
     beginFieldVisit(withBonus, hero.id, field.spaceId, false);
-    // USER RULE 2026-08-03: the Utopia's OWN reward is now the fixed three
-    // Artifact Searches 3 / 5 / 5 (it used to be a hardcoded Relic Search(2)),
-    // so the bonus is the FOURTH Search appended after them — the old
-    // "the count-3 Search must be the bonus" discriminator no longer holds.
+    // 2026-08-13: the Utopia's OWN reward is two fixed Artifact Search (3)
+    // rewards (it used to be a hardcoded Relic Search(2), then 3 / 5 / 5), so
+    // the opt-in bonus is the THIRD Search appended after them — every entry is
+    // a 3 now, so the LENGTH is the discriminator, not the count.
     const searchCounts = (state: GameState): number[] =>
       state
         .adventure!.rewardQueue.filter(

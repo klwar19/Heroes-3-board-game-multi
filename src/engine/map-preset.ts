@@ -3371,7 +3371,7 @@ export function victoryDesignConflicts(
 // Ⅶ objective reward STACKING (Dragon Utopia / Grail) — designer + lobby warning
 //
 // A Ⅶ Grail or Dragon Utopia field ALREADY pays a built-in objective reward (the
-// Utopia's 10 gold + the fixed Search 3 / 5 / 5 Artifact ladder and its
+// Utopia's 20 gold + its two fixed Artifact Search (3) rewards and its
 // morale-or-Empower-token pick; the Grail's dig reward, or 10 gold + a Relic
 // Search outside Grail Hunt). Several INDEPENDENT map-design options can attach
 // MORE payouts to that same field for the same clear:
@@ -3486,7 +3486,7 @@ export function viiObjectiveRewardStacks(
 /** What a Ⅶ objective field pays on its own, in plain words. */
 function viiBuiltInRewardText(objective: "dragon_utopia" | "grail"): string {
   return objective === "dragon_utopia"
-    ? "10 gold + three Artifact Searches (3, then 5, 5) + a Morale / Ability-Empower pick"
+    ? "20 gold + two Artifact Searches (3, 3) + a Morale / Ability-Empower pick"
     : "its own objective reward (the Grail dig, or 10 gold + a Relic Artifact Search outside Grail Hunt)";
 }
 

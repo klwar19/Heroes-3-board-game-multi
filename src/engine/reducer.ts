@@ -7018,6 +7018,13 @@ function openGoldDragonLineAttack(
     // line breath fells an ENEMY Wall/Gate that occupies the single behind cell.
     // Automatic (one cell — no choice); a defender's own wall is excluded by the
     // enemy-only filter in destroyEnemyFortificationsInCells.
+    //
+    // A FIXED-damage arm (MGQ Jessie's Spear Wall) is NOT a breath attack — its
+    // printed text is "deal 2 damage to the unit directly behind the target", so
+    // with no unit behind it does nothing at all and never demolishes a wall.
+    if (ability.fixedDamage) {
+      return false;
+    }
     const behindCell = cellBehindTarget(attacker, defender);
     if (behindCell !== null) {
       destroyEnemyFortificationsInCells(state, attacker, [behindCell]);

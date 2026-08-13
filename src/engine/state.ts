@@ -9216,7 +9216,7 @@ export type MapFieldState = {
   /**
    * This Ⅶ `dragon_utopia` field originated as an extra Grail site and was
    * converted after another Grail was taken. It fights and pays exactly like a
-   * Utopia, including the fixed Search 3 / 5 / 5 Artifact ladder, but remains
+   * Utopia, including the fixed two Artifact Search (3) rewards, but remains
    * distinguishable for objective bookkeeping: it is not an original
    * Dragon-Hunt target or `defeat-dragon-utopia` VP/win target.
    */

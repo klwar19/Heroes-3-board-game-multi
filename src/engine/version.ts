@@ -205,6 +205,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // new factions' content, but none of the action/legality changes above — the
 // explicit bump makes a skewed edge/client show the version banner instead of
 // the "not legal on every click" frozen-table symptom class.
+// v29 (continued — the "Polish combat towns spirits and MGQ balance" commit
+// landed on the same undeployed protocol, so it needs no second bump but IS
+// covered by this note): a NEW OPTION_CHOICE context
+// `bounty-hunter-mark-start` with its own `pendingChoice.bountyHunterMarkStart`
+// payload and the `combat.bountyHunterMarkStartResolved` latch (the Factory
+// Bounty Hunters' combat-start Mark became a player pick instead of the old
+// deterministic strongest-enemy auto-placement — a v28 edge never opens that
+// choice and rejects the CHOOSE_OPTION a new client sends); SET_MGQ_SPIRIT
+// legality widened to the neutral DEPLOYMENT window (a v28 server rejects it
+// there while a new client withholds "Ready for battle" until a Spirit is
+// picked — a hard stall on a skewed pair); and two REWARD readings a stale edge
+// pays differently for the same clear — the Ⅶ Dragon-Utopia FIELD now pays
+// 20 gold + two Artifact Search (3) in every mode (was 10 or 20 gold + Search
+// 3/5/5) and the Creature-Bank Dragon Utopia TOKEN now pays a fixed 40 gold +
+// Search (3)/(5)/(5) instead of scaling its Artifact-or-Spell picks with the
+// Stacked-defender count.
 export const ENGINE_PROTOCOL_VERSION = 29;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

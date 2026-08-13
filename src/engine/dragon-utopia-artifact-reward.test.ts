@@ -390,7 +390,7 @@ describe("Ⅶ Dragon-Utopia FIELD — the artifact reward is two Search (3)", ()
     expect(resolved.state.adventure!.fields[fieldId]!.blackCube).toBe(true);
     // The deferred reward pays the PRINTED bank reward: the base Search (3) plus
     // the same fixed Search (3), (5), (5) reward after the deferred combat, so
-    // FIVE Artifacts here — the Ⅶ field's fixed three never applies to a bank.
+    // THREE Artifacts here — the bank ladder is its own (40 gold + 3/5/5),
     const after = resolved.state;
     const beforeArtifacts = artifactsOwned(after, "p1").length;
     const { revealCounts } = driveSearches(after);

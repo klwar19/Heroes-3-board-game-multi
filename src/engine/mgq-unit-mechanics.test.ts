@@ -544,6 +544,26 @@ describe("MGQ activation and combat-start abilities", () => {
     ).toBe(false);
   });
 
+  it("Jessie's Spear Wall never demolishes a Wall behind the target (the Gold-Dragon breath does)", () => {
+    // The shared SECOND_ATTACK_BEHIND_TARGET arm carries a house rule: with NO
+    // unit behind the target, a line BREATH fells an enemy Wall/Gate in that
+    // cell. Jessie's printed text is "deal 2 damage to the unit directly behind
+    // the target" — no breath, so a fixed-damage arm must leave the wall alone.
+    function walledAttack(abilityId: string): GameState {
+      const state = duel(`jessie-wall-${abilityId}`, [abilityId], { attack: 4 });
+      state.combat!.siege = {
+        townPlayerId: "p2",
+        walls: [11],
+        gatePosition: null,
+        arrowTowerUnitId: null
+      };
+      return attack(state);
+    }
+    expect(walledAttack(IDS.jessie).combat!.siege!.walls, "Spear Wall leaves the wall standing").toEqual([11]);
+    // CONTROL: the ordinary (non-fixed) line arm still fells it.
+    expect(walledAttack("mechanics-line-attack-2").combat!.siege!.walls).toEqual([]);
+  });
+
   it("Web the Field targets adjacent enemies, applies Weakness, and gives only its source a Defense token", () => {
     const state = duel("web-field", [IDS.web]);
     const open = getLegalActions(state, "p1").find(

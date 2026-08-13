@@ -3422,9 +3422,10 @@ Leading with what CHANGED / the deliberate limits:
   draws its normal Grail guards in every mode. Saved maps still load (the id is
   kept and resolves to the after-dig conversion). No shipped scenario/map sets it.
 - **A CONVERTED extra Grail pays the NORMAL Utopia field bundle** (2026-08-09,
-  reversing the 2026-08-07 reward-free reading): the fixed Search 3 / 5 / 5
-  Artifact ladder plus the surface's own gold (Polish 20 / plain 10 / package 0)
-  and, under the field-rules package, the Morale / Ability-Empower token pick.
+  reversing the 2026-08-07 reward-free reading): the fixed two Artifact
+  Search (3) rewards plus the Ⅶ field's 20 gold (2026-08-13 — it used to be
+  Polish 20 / plain 10 / package 0) and, under the field-rules package, the
+  Morale / Ability-Empower token pick.
   `field.grailConverted` stays purely an ORIGIN marker for objective
   bookkeeping. Designer-authored rewards on that hex (centre-hex reward/VP, hex
   events) still pay on top — they resolve in `beginFieldVisit` before the
@@ -3487,8 +3488,9 @@ What runs (each with a failing-if-removed test):
   with the rest of the old identity.
 - UI honesty: the map-editor row is "Extra Grail site after the dig" with
   "→ Utopia" / "→ empty" / "Always (legacy)" chips and per-chip tooltips naming
-  the Search 3 / 5 / 5 payout; the lobby/designer banner line reads "After the
-  Grail is taken, other Grail tiles become Utopias (Search 3 / 5 / 5)". The
+  the payout (20 gold + two Artifact Search (3)); the lobby/designer banner line
+  reads "After the Grail is taken, other Grail tiles become Utopias (20 gold,
+  two Artifact Search (3), token choice)". The
   hidden-package section no longer claims "there is no after-dig conversion"
   (it always had one).
 
@@ -3707,48 +3709,41 @@ Neither is a toggle — the previous behaviour was wrong.
   CONTROL, and "conserves the Neutral decks" — the table draw shrinks the piles
   by exactly its count while the minted party leaves them untouched and stays
   flagged, so neither mode can consume or CREATE a card).
-- **The Ⅶ Dragon-Utopia FIELD pays a FIXED Search (3) + two Search (5) = exactly
-  THREE Artifact cards. The Creature-Bank Dragon Utopia TOKEN is UNCHANGED**
-  (user rule 2026-08-03, "Utopia VII field Is still giving too much artifacts.
-  Should be 3. First you take Search(3) and then 2 times Search(5) (search
-  properly according to VI-VII tile)" — scoped by an explicit follow-up veto: "I
-  ONLY SAID TO DO FOR VII, ESPECIALLY ONLY FOR POLISH RULE AND MAP DESIGN, NOT
-  CHANGE THE FUCKING CREATURE BANK"). Lead with the scope, because the two
-  surfaces now deliberately DISAGREE:
-  - **Ⅶ objective FIELD** — the map-designed / hidden Grail & Dragon Utopia
-    package, the `polish-grail-utopia` house rule, AND the plain conquest/grail Ⅶ
-    field: the fixed ladder `VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS` =
-    `[3, 5, 5]` queued by `queueDragonUtopiaArtifactSearches` (adventure.ts —
-    deliberately NOT in creature-banks.ts, so nothing implies the bank shares it).
-    Two behaviour changes here: the hidden/Polish package used to pay **two
-    Search (3)** (2 artifacts), and the plain branch used to take the shared
-    Lvl-VII `giveCreatureBankConsolation` (10 gold + a **hardcoded**
-    `artifacts-relic` Search (2), which bypassed the eligible-deck pick). Both now
-    pay three `"artifacts"`-FAMILY searches — that family routing IS the "search
-    properly according to VI-VII tile" half: on a centre tile the deck pick really
-    offers Minor/Major/**Relic**. Each search is pinned to the visiting hero+field
-    so a Secondary Hero's win still reads the Ⅵ–Ⅶ band. The **GRAIL** keeps the
-    consolation unchanged.
-  - **Creature-Bank `dragon_utopia` TOKEN** — the PRINTED card, untouched: 40 gold
-    + Search (3) + **X × CHOOSE_ONE(Search (5) Artifact | Search (5) Spell)**,
-    X = the number of Stacked defenders (incl. the Polish rolled bank size), so up
-    to five Artifacts on Impossible. That scaling and the Artifact-or-Spell choice
-    are the printed rule and stay.
-  Untouched everywhere: the gold per surface (40 bank / 10 plain / legacy 20
-  Polish), the Morale-or-Ability-token pick, the guard modes (`utopiaGuards` four
-  vs by-difficulty only pick the army), Dragon Hunt (the win is the reward) and
-  Dragon Conqueror (the capture is the reward — no artifacts, only the opt-in
-  `objectives.utopiaBonusSearch`, which still appends its EXTRA search on top of
-  the three; default absent ⇒ exactly three). Pinned in
-  `dragon-utopia-artifact-reward.test.ts`: the real pipeline reveals 3/5/5 on the
-  Ⅶ field and the winner ends with exactly +3 Artifact cards, with CONTROLs for
-  Easy-vs-Impossible sameness, the plain branch's family routing, both guard
-  modes, the bonus knob — plus TWO bank CONTROLs proving the ladder never leaks
-  there (the printed 1+X shape at every Stacked count 0–4, and an Impossible X=4
-  bank win through the atomic Necromancy deferral revealing 3/5/5/5/5 for **five**
-  Artifacts). The bank's own printed shape is also still pinned in
-  `src/data/map/creature-banks.test.ts` ("…plus one Artifact/Spell choice per
-  Stacked defender").
+- **The Ⅶ Dragon-Utopia FIELD pays 20 gold + TWO Search (3) = exactly TWO
+  Artifact cards, and the Creature-Bank Dragon Utopia TOKEN pays a FIXED
+  40 gold + Search (3) + Search (5) + Search (5)** (2026-08-13, superseding the
+  2026-08-03 reading below). Lead with what CHANGED, because an older user
+  ruling in this very section is now overridden by a newer commissioned one:
+  - the Ⅶ FIELD's ladder went `[3, 5, 5]` → **`[3, 3]`**
+    (`VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS`, adventure.ts), so the winner
+    keeps TWO Artifacts, not three;
+  - its GOLD is now **20 in every Ⅶ-field mode** — the plain conquest/grail
+    branch paid 10 and the editor-authored field-rules package paid 0, and the
+    `polishGrailUtopiaEnabled` gate that used to fence the 20 off is gone;
+  - the **Creature-Bank TOKEN was CHANGED too**, which the 2026-08-03 follow-up
+    veto ("I ONLY SAID TO DO FOR VII … NOT CHANGE THE FUCKING CREATURE BANK")
+    had forbidden: its printed `X × CHOOSE_ONE(Search (5) Artifact | Search (5)
+    Spell)` extras — X = the number of Stacked defenders — are replaced by a
+    FIXED `Search (5)` + `Search (5)` of the ARTIFACT deck, so a bank win is
+    always 3 Artifacts and the Artifact-or-Spell choice is gone. Stacked
+    defenders now affect only the FIGHT (`buildReward` ignores its `x`).
+  The two surfaces therefore still DISAGREE, but the other way round: the bank
+  (40 gold + 3/5/5) is deliberately RICHER than the Ⅶ field (20 gold + 3/3).
+  Untouched: the `"artifacts"`-FAMILY routing (so a centre tile's deck pick
+  really offers Minor/Major/**Relic**), each search pinned to the visiting
+  hero+field (a Secondary Hero's win still reads the Ⅵ–Ⅶ band), the
+  Morale-or-Ability-token pick, the guard modes (`utopiaGuards` four vs
+  by-difficulty only pick the army), the GRAIL's own consolation, Dragon Hunt
+  (the win is the reward) and Dragon Conqueror (the capture is the reward — only
+  the opt-in `objectives.utopiaBonusSearch` appends an EXTRA search, default
+  absent ⇒ exactly two). Pinned in `dragon-utopia-artifact-reward.test.ts` (the
+  real pipeline reveals 3/3 on the Ⅶ field and the winner ends with exactly +2
+  Artifact cards; CONTROLs for Easy-vs-Impossible sameness, the plain branch's
+  20 gold + family routing, both guard modes, the bonus knob, the bank's fixed
+  shape at every Stacked count 0–4, and an Impossible bank win through the
+  atomic Necromancy deferral revealing 3/5/5), plus the bank's own shape in
+  `src/data/map/creature-banks.test.ts` ("builds the fixed IV–V Dragon Utopia
+  reward regardless of Stacked defenders").
 - **Also in this batch:** `REVISIT_FIELD` finally has a human button (the
   `HeroActionsDock`), so a hero that starts its turn standing on a Monolith can
   travel without walking off and back — the hex tooltip promised "step on (or
@@ -3768,10 +3763,9 @@ nerfed or blocked. The MATRIX for ONE clear of a Ⅶ objective field, verified
 empirically in `src/engine/vii-objective-reward-stacking.test.ts` (each pair
 asserts the COMBINED observable outcome, so a change to either half fails):
 
-- **Built-in** — Ⅶ Dragon Utopia: 10 gold on a plain Ⅶ field (0 under the
-  designer/hidden field-rules package, 20 under the legacy `polish-grail-utopia`
-  house rule) + the fixed Search 3 / 5 / 5 Artifact ladder + the
-  Morale-or-Ability-Empower pick. Ⅶ Grail: arms the dig (the dig itself pays 20
+- **Built-in** — Ⅶ Dragon Utopia: 20 gold in EVERY Ⅶ-field mode (2026-08-13;
+  it used to be 10 plain / 0 package / 20 legacy Polish) + two fixed Artifact
+  Search (3) rewards + the Morale-or-Ability-Empower pick. Ⅶ Grail: arms the dig (the dig itself pays 20
   gold under the package, else `objectives.grailDigReward`), or — outside Grail
   Hunt — 10 gold + a Search (2) Relic (`giveCreatureBankConsolation`).
 - **+ centre-hex reward / VP** (`plan.centerHex`, via `grantCenterHexBonus`) —
@@ -3789,8 +3783,9 @@ asserts the COMBINED observable outcome, so a change to either half fails):
   Every paying Ⅶ Utopia branch now reads it; Dragon Hunt still does not (that
   clear wins outright, so there is no turn left to spend it). Repro + control in
   the test above ("STACK C", mutation-checked).
-- A fully loaded Ⅶ Utopia therefore pays SIX Artifact Searches and both gold
-  packages from one clear. Deliberate — hence the two warnings.
+- A fully loaded Ⅶ Utopia therefore pays FIVE Artifact Searches (two built-in +
+  the bonus knob + the centre-hex and hex-event packages) and every gold package
+  from one clear. Deliberate — hence the two warnings.
 
 Warnings (both from ONE pure derivation, `viiObjectiveRewardStacks` /
 `viiRewardStackWarnings` in `map-preset.ts`, so the surfaces cannot disagree):
@@ -4162,6 +4157,121 @@ Lightning/Slow, nothing-armed inspects, armed-at-another-unit, the untouched
 Mutation-checked: dropping the card-level filter fails 1, the option-level filter
 fails 1, `targetAction={null}` fails 3, and neutering the Tower's click handler
 fails 2.
+
+## Polish combat towns, MGQ balance + its audit (2026-08-13, protocol v29)
+
+The `e4c134b1` commit plus its effect-level audit. Protocol stays **v29** (that
+number was stamped by the Little Busters / MGQ towns batch and has never been
+deployed — the deployed edge is v28), but the v29 NOTE in `version.ts` was
+extended to name what this commit adds, because a stale edge now pays different
+REWARDS and rejects two widened legalities. `npm run deploy:partykit` is owed.
+
+Leading with what does NOT work / the deliberate limits:
+- **`polish-grail-utopia` is no longer offered in the lobby.** It is filtered out
+  of the Polish house-rule list (`HouseRulesSection`, screen.tsx) and therefore
+  out of "Enable all Polish rules"; its registry description now reads "Legacy
+  compatibility rule for old saves". Grails and Utopia fields are a MAP-EDITOR
+  concern now. The id still loads from a saved setting file / map preset and the
+  engine still honours it, so in-flight games are unaffected — but a NEW table
+  cannot switch it on from the UI. In exchange the Polish list now shows the two
+  artifact re-tier switches (`torso-of-legion-major`,
+  `eversmoking-ring-of-sulfur-major`), which ALSO appear in the BINH list: two
+  checkboxes, one setting, acknowledged at the filter.
+- **A `disciplinary-committee-start` / `bounty-hunter-mark-start` window is
+  never opened for the NEUTRAL seat** (audit fix, below). That means the
+  controller under PvP Neutral Control does NOT get to place a controlled guard's
+  Mark / Sanction either — those two combat-START passives stay deterministic for
+  the neutral side, unlike the guards' `[activation]` follow-ups. Deliberate: the
+  alternative (open it NEUTRAL-owned and let the pump re-stamp it) leaves an
+  un-answerable choice the moment the controller is eliminated, because neither
+  context has an auto-resolver.
+- **A SANDBOX (Battle Test) MGQ seat could not ready up** — `addCombatSetupActions`
+  withholds "Ready for battle" until a Spirit is picked while `setMgqSpirit`
+  requires `state.adventure`. Unreachable today (the sandbox never offers an anime
+  faction), so it is documented, not special-cased.
+- **jsdom cannot compute CSS**, so the MGQ battle Spirit picker
+  (`MgqBattleSpiritPicker`) and the CostPlayBar crown toggle are pinned as DOM +
+  dispatch contracts only.
+
+The DELIBERATE rule changes (each verified coherent at offer == resolution ==
+label == describe/banner == AI == view-masking, and re-pinned):
+- **Ⅶ Dragon-Utopia FIELD reward → 20 gold + two Search (3); the Creature-Bank
+  Dragon Utopia TOKEN → a fixed 40 gold + Search (3)/(5)/(5)** — see the
+  "Diplomacy's skip costs a crown · Dragon Utopia guards use the table" section,
+  whose bullet was rewritten. The bank change overrides an explicit 2026-08-03
+  user veto and is called out there.
+- **Factory's Mana Generator (`factory.mage_guild`) costs 4 gold, not 7**
+  (`factory-content.test.ts`).
+- **MGQ's beginning-of-game bronze/silver army slots draw RANDOMLY, without
+  replacement, from the full MGQ tier roster** (`takeRandomMgqStartingUnit`,
+  adventure-setup.ts) — MGQ has 8 bronze / 13 silver identities instead of the
+  classic fixed 3/2 ladder. Seeded (`createSeededRandom(...#mgq-starting-units#…)`,
+  never `Math.random`), so a re-built game is identical; other factions and an
+  exact `unitDefId` pick are byte-identical (`custom-setup.test.ts`, with a Castle
+  CONTROL).
+- **The MGQ Four Spirits choice reaches the NEUTRAL deployment window**
+  (`SET_MGQ_SPIRIT` legality + the offer in `getCombatInteractionActions`'s setup
+  branch), and every spirit gate is now scoped by `playerMainHeroInCombat` — so a
+  garrison defense or a Secondary-Hero fight no longer demands a Spirit nobody can
+  pick, and "Ready for battle" is withheld until the MAIN hero's fight has one
+  (`mgq-spirits.test.ts`, with a Castle CONTROL).
+- **Pochi's Pack Dig may replace the ATTACK after moving** (the Dreadnought-splash
+  precedent): one shared read in `addUnitAbilityActions` + `applyUnitAbilityAction`
+  (`PLACE_ADJACENT_OBSTACLE_ACTION`), so offer and resolution cannot disagree.
+- **Jessie's Spear Wall is fixed effect damage, not a second attack**: the new
+  `SECOND_ATTACK_BEHIND_TARGET.fixedDamage` flag (`mgq-jessie-spear-wall`) deals
+  2 damage behind the target through `applyFlatAbilityDamage` — ignores Defense,
+  provokes no Retaliation, and opens NO attack window (effect damage never does).
+- **Sonya's Unbreakable Bond +1 Defense is combat ROUND 1 only**
+  (`sonyaBondDefenseBonus`); the lethal-redirect half is unchanged.
+- **The shaman-Haste command cast (Shaman / Might Guy / Sonya) is +2/+6/+9
+  Initiative with an UNCONDITIONAL +1 Attack, and lasts the whole COMBAT at
+  Power 2** — `CommanderCastEffect.initiative-shift` gained `durationByPower` and
+  made `attackVs` optional (absent ⇒ a flat `ATTACK_BONUS`).
+- **Factory Bounty Hunters' combat-start Mark is a player PICK**
+  (`bounty-hunter-mark-start` OPTION_CHOICE + `combat.bountyHunterMarkStartResolved`),
+  resolved before any automatic combat-start effect; the Arrow Tower is never a
+  legal Mark target.
+- **A crown may pay a Power-source card's EXPERT value on an "up to N" cost**
+  (Meteor Shower): `payOptionCardCost` validates and spends the crown even when
+  the cost has no numeric `powerCost`, `playCardSpellPower` reads the chosen
+  modes, and both cost pickers (the map/hand `CostPlayBar` and the reaction tray)
+  show the toggle. `armedPaymentFor` now returns the whole `ArmedCardPayment` so a
+  "discard first" board-aimed play keeps its `costCardModes`.
+- **The ATTACK_ROLLED event reports the Defend-die payout inside `defenseBonus`**
+  so the dice overlay reads "printed 1 + die 1 = 2" instead of showing the shield
+  twice (display only — the resolved damage never changed).
+- **The AI aims the Catapult at enemies** and prefers an enemy+enemy adjacent
+  pair (`choice-policy.ts`, score layer only).
+
+Audit fixes on top (each mutation-checked):
+- **THE FROZEN-TABLE CLASS: a NEUTRAL-controlled Bounty Hunter opened a
+  pendingChoice nobody could answer.** `isComputerPlayer` returns FALSE for
+  `NEUTRAL_PLAYER_ID` by design, so the new Mark pick was created with
+  `playerId: "neutrals"` — and the reducer pump has no auto-resolver for that
+  OPTION_CHOICE context, so no seat had a legal action for the rest of the game.
+  REACHABLE on a DEFAULT table: a Ⅶ Random Town whose rolled faction is Factory
+  fields two GOLD FEWS of that roster (`randomTownGuardDraws`), and
+  `factory.gunslingers` (Bounty Hunters, gold) prints `bounty-hunter-mark-1` on
+  its Few. The neutral seat now takes the deterministic strongest-enemy pick the
+  pre-e4c134b1 engine always used. Pinned in `factory-unit-abilities.test.ts`
+  ("a NEUTRAL-controlled Bounty Hunter Marks automatically instead of freezing
+  the table" — no window, nothing pending, the Mark really lands, and the human
+  seat still has legal actions).
+- **The Little Busters Disciplinary Committee sibling had the identical hole**
+  (from the earlier towns batch, same class): fixed the same way, with the
+  penalty application extracted to the shared `applyDisciplinarySanction` so the
+  human pick and the neutral auto-resolution can never diverge. Pinned in
+  `little-busters-content.test.ts`.
+- **Six user-facing surfaces still described the OLD Utopia reward** and two of
+  them were PINNED in place by tests that asserted the stale wording: the lobby /
+  map-pick banner line (`viiBuiltInRewardText`, "10 gold + three Artifact
+  Searches (3, then 5, 5)"), the map-editor hidden-package hint, the two
+  `grailAsUtopia` "→ Utopia" hint/tooltip strings, and doc comments in
+  `adventure.ts` / `state.ts` / `map-preset.ts`. All corrected; the two tests that
+  froze the stale text (`vii-objective-reward-stacking.test.ts`,
+  `map-preset-editor.test.tsx`) now assert the CURRENT wording and additionally
+  assert the old wording is ABSENT.
 
 ## A live ongoing card is NEVER in the discard pile (2026-08-10, protocol v25)
 

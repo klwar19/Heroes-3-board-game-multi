@@ -736,9 +736,12 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
       />
     );
     expect(screen.getByText(/4 fields = 2 \+ 2/)).toBeTruthy();
-    // USER RULE 2026-08-03: the hint used to promise "two Search(3) Artifacts";
-    // the Utopia now pays the fixed Search(3) + two Search(5) = three Artifacts.
-    expect(screen.getByText(/Search\(3\), Search\(5\) and\s+Search\(5\)/)).toBeTruthy();
+    // The hint must quote the CURRENT Ⅶ-FIELD payout (20 gold + two Search(3)),
+    // and must NOT quote the richer Creature-Bank ladder — this assertion pinned
+    // the old "Search(3), Search(5) and Search(5)" wording in place through the
+    // 2026-08-13 reward change, which is how that rot survived.
+    expect(screen.getByText(/two Search\(3\)\s+rewards from the Artifact deck/)).toBeTruthy();
+    expect(screen.queryByText(/Search\(3\), Search\(5\) and\s+Search\(5\)/)).toBeNull();
     fireEvent.click(screen.getByLabelText("Use hidden Grail and Dragon Utopia rules"));
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });

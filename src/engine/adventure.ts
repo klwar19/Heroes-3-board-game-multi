@@ -5546,7 +5546,7 @@ const VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 3] as const;
  * Queues the Ⅶ Dragon-Utopia field's fixed artifact reward — two Search (3)
  * rewards from the Artifact deck FAMILY
  * ({@link VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS}).
- * THREE distinct rewards, so each acquisition
+ * TWO distinct rewards, so each acquisition
  * gets its own Polish Artifact die roll, and each is pinned to the visiting
  * Hero + Field so split-deck access follows the Ⅵ–Ⅶ centre tile (Relic
  * reachable) even when a Secondary Hero won the fight. The Searches run through
@@ -5585,7 +5585,8 @@ function queueDragonUtopiaArtifactSearches(
  * (3) rewards ({@link queueDragonUtopiaArtifactSearches}). The guard
  * mode (`utopiaGuards` four vs by-difficulty) only picks the guard army and never
  * changes the reward. The Creature Bank `dragon_utopia` TOKEN never comes through
- * here — it keeps its printed, X-scaling reward (see creature-banks.ts).
+ * here — it keeps its own fixed IV–V bank reward (40 gold + Search (3), (5),
+ * (5) — see creature-banks.ts), deliberately RICHER than this field's bundle.
  */
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);

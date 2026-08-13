@@ -1249,8 +1249,9 @@ export function MapPresetEditor({
           On each face-down Center (Ⅶ) tile, select both Grail and Dragon Utopia and leave “Player picks” off.
           The game balances the hidden results: 4 fields = 2 + 2; 3 fields = a random 2 + 1 split.
           Grail guards use the difficulty table; dig costs 1 MP and gives 20 gold plus the 3-VP Grail token.
-          Dragon Utopia adds a Black Dragon and rewards Morale or an Ability token plus Search(3), Search(5) and
-          Search(5) of the Artifact deck (three Artifacts).
+          Dragon Utopia adds a Black Dragon and rewards 20 gold, Morale or an Ability token, plus two Search(3)
+          rewards from the Artifact deck (two Artifacts). The Utopia Creature Bank (Ⅳ–Ⅴ) pays its own richer
+          reward instead: 40 gold, Search(3), then Search(5) twice.
         </small>
       </section>
 
@@ -1330,7 +1331,7 @@ export function MapPresetEditor({
                   {
                     id: "after-dig-utopia" as const,
                     label: "→ Utopia",
-                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal reward, including exactly three Artifacts via Search (3), Search (5), Search (5). The dug site itself never turns."
+                    hint: "Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal Ⅶ-field reward: 20 gold, a Morale / Ability-Empower pick, and exactly two Artifacts via two Search (3) rewards. The dug site itself never turns."
                   },
                   {
                     id: "after-dig-empty" as const,
@@ -1556,7 +1557,7 @@ export function MapPresetEditor({
                 aria-pressed
                 className="mapPresetChip active"
                 disabled
-                title="Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal reward: exactly three Artifacts via Search (3), Search (5), Search (5). The dug site itself never turns. Pick 'empty' below to remove them instead."
+                title="Once a Grail is taken, every OTHER still-unfought Grail site becomes a Dragon Utopia and pays its normal Ⅶ-field reward: 20 gold, a Morale / Ability-Empower pick, and exactly two Artifacts via two Search (3) rewards. The dug site itself never turns. Pick 'empty' below to remove them instead."
                 type="button"
               >
                 → Utopia

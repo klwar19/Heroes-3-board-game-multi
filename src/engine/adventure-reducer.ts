@@ -10119,6 +10119,53 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   startWarMachineRound(state);
 }
 
+/**
+ * Lays one Disciplinary Sanction (the round-one Attack penalty) on the picked
+ * enemy. Shared by the human pick and by the NEUTRAL seat's auto-resolution.
+ */
+function applyDisciplinarySanction(
+  state: GameState,
+  source: CombatUnitState,
+  target: CombatUnitState,
+  amount: number,
+  rounds: number
+): void {
+  const duration =
+    rounds <= 1
+      ? ({ type: "current-combat-round" } as const)
+      : ({ type: "combat-rounds", rounds } as const);
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: "Disciplinary Sanction",
+      scope: "unit",
+      duration,
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount }]
+    },
+    { type: "unit", unitId: source.id, controllerId: source.controllerId },
+    source.controllerId,
+    { type: "unit", unitId: target.id }
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: source.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+  const penalty = getCombatStartEnemyAttackPenalty(source);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: source.id,
+    abilityId: penalty?.abilityId ?? "disciplinary-sanction",
+    targetUnitId: target.id,
+    message: `${source.cardName}: Disciplinary Sanction - ${target.cardName} gets ${amount} Attack during combat round 1.`
+  });
+}
+
 function openDisciplinaryCommitteeSourceChoice(
   state: GameState,
   sourceUnitId: UnitId,
@@ -10140,6 +10187,23 @@ function openDisciplinaryCommitteeSourceChoice(
     )
     .sort((left, right) => left.position - right.position);
   if (targets.length === 0) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
+  }
+
+  // The NEUTRAL seat has no owner to answer a NEUTRAL-owned pendingChoice and
+  // the reducer pump has no auto-resolver for this OPTION_CHOICE context, so
+  // opening one would freeze the whole table (the bounty-hunter-mark class).
+  // A neutral-controlled Disciplinary Committee therefore sanctions the
+  // strongest living enemy deterministically instead.
+  if (source.controllerId === NEUTRAL_PLAYER_ID) {
+    const target = targets.reduce((best, candidate) =>
+      candidate.maxHealth > best.maxHealth ||
+      (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
+        ? candidate
+        : best
+    );
+    applyDisciplinarySanction(state, source, target, penalty.amount, penalty.rounds);
     const [next, ...rest] = remainingSourceUnitIds;
     return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
   }
@@ -10166,7 +10230,7 @@ function openDisciplinaryCommitteeSourceChoice(
 }
 
 /** Opens the first unresolved Disciplinary Committee Pack target choice. */
-function maybeOpenDisciplinaryCommitteeStartChoice(state: GameState): boolean {
+export function maybeOpenDisciplinaryCommitteeStartChoice(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || combat.disciplinaryCommitteeStartResolved) {
     return false;
@@ -10208,40 +10272,7 @@ function resolveDisciplinaryCommitteeStartChoice(
     throw new Error("Choose one of the living enemy units.");
   }
 
-  const duration =
-    data.rounds <= 1
-      ? ({ type: "current-combat-round" } as const)
-      : ({ type: "combat-rounds", rounds: data.rounds } as const);
-  const effect = makeActiveEffect(
-    state,
-    {
-      name: "Disciplinary Sanction",
-      scope: "unit",
-      duration,
-      polarity: "negative",
-      removable: true,
-      modifiers: [{ type: "ATTACK_BONUS", amount: data.amount }]
-    },
-    { type: "unit", unitId: source.id, controllerId: source.controllerId },
-    source.controllerId,
-    { type: "unit", unitId: target.id }
-  );
-  state.activeEffects.push(effect);
-  appendEvent(state, {
-    type: "ACTIVE_EFFECT_CREATED",
-    effectId: effect.id,
-    controllerId: source.controllerId,
-    name: effect.name,
-    duration: effect.duration
-  });
-  const penalty = getCombatStartEnemyAttackPenalty(source);
-  appendEvent(state, {
-    type: "UNIT_ABILITY_TRIGGERED",
-    unitId: source.id,
-    abilityId: penalty?.abilityId ?? "disciplinary-sanction",
-    targetUnitId: target.id,
-    message: `${source.cardName}: Disciplinary Sanction - ${target.cardName} gets ${data.amount} Attack during combat round 1.`
-  });
+  applyDisciplinarySanction(state, source, target, data.amount, data.rounds);
 
   state.pendingChoice = null;
   state.phase = "combat";
@@ -10297,7 +10328,14 @@ function openBountyHunterMarkSourceChoice(
     return next ? openBountyHunterMarkSourceChoice(state, next, rest) : false;
   }
 
-  if (isComputerPlayer(state, source.controllerId)) {
+  // A computer seat resolves the rule without a window, and so does the NEUTRAL
+  // seat: a neutral-controlled Bounty Hunter (a Ⅶ Random Town's gold Few of a
+  // Factory defense, a designer "packs" gold guard) has no owner to click a
+  // NEUTRAL-owned pendingChoice, and the reducer pump has no auto-resolver for
+  // this OPTION_CHOICE context — so opening one froze the whole table (no seat
+  // had a legal action). The deterministic strongest-enemy pick is the same one
+  // the pre-2026-08-13 engine always used.
+  if (source.controllerId === NEUTRAL_PLAYER_ID || isComputerPlayer(state, source.controllerId)) {
     const target = targets.reduce((best, candidate) =>
       candidate.maxHealth > best.maxHealth ||
       (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
