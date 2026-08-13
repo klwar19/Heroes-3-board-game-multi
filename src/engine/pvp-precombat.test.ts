@@ -500,19 +500,31 @@ describe("PvP pre-battle preparation window (both sides)", () => {
     return state;
   }
 
-  it("while a prep pendingVisit is open, ONLY the visit owner may act — the opponent gets nothing", () => {
+  it("while a prep pendingVisit is open, the visit owner resolves it FIRST — the opponent keeps shopping only", () => {
     const state = legionPrepVisit("prep-visit-freeze");
 
     // The visit owner is offered exactly its visit steps.
     const ownerOffers = getLegalActions(state, "p2");
     expect(ownerOffers.length).toBeGreaterThan(0);
     expect(ownerOffers.every((legal) => legal.action.type === "RESOLVE_VISIT_STEP")).toBe(true);
-    // The NON-owner participant is offered nothing at all (no Accept, no
-    // shopping) until the atomic prompt resolves — a momentary, recoverable
-    // freeze: the owner holds the actionable window.
-    expect(getLegalActions(state, "p1")).toEqual([]);
+    // SUPERSEDED 2026-08-14 (user report "when attacked I can only buy once"):
+    // the NON-owner participant used to be offered NOTHING here. The prep
+    // window is a SIMULTANEOUS shopping window, so they now keep their
+    // handler-validated town purchases — but still no Accept, no card plays,
+    // no escapes until the atomic prompt resolves (those could move the combat
+    // machinery / collide with the open visit). Full behaviour is pinned in
+    // pvp-prep-simultaneous-shopping.test.ts.
+    const bystander = getLegalActions(state, "p1");
+    expect(bystander.length, "the opponent is not frozen").toBeGreaterThan(0);
+    for (const legal of bystander) {
+      expect(
+        ["POPULATION_ACTION", "SPELL_BOOK_ACTION", "BUILD_STRUCTURE"].includes(legal.action.type),
+        `only town shopping while the visit is open; got ${legal.action.type}`
+      ).toBe(true);
+    }
+    expect(offersAccept(state, "p1")).toBe(false);
 
-    // Resolving hands the prep window back to BOTH sides.
+    // Resolving hands the FULL prep window back to BOTH sides.
     const pick = ownerOffers.find((legal) => /Recruit Skeletons/i.test(legal.label)) ?? ownerOffers[0];
     const resumed = applyOk(state, pick.action);
     expect(offersAccept(resumed, "p1")).toBe(true);

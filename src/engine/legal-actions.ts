@@ -6384,6 +6384,23 @@ function getLegalActionsCore(
 
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
+      // PvP pre-battle prep is a SIMULTANEOUS shopping window — both fighters
+      // may spend town actions at once. Another player's open exclusive choice
+      // (typically the opponent's spell-buy Search) must therefore not freeze
+      // this still-preparing fighter's shopping: the town purchases are
+      // handler-validated, touch only the actor's own state, and anything they
+      // QUEUE (a Spell search of their own) waits in the reward queue behind
+      // the open choice. Card plays / Accept / escapes stay withheld here — a
+      // card play could open a SECOND exclusive interaction, and Accept/escape
+      // move the combat machinery itself. Without this branch, a defender who
+      // bought one unit while the attacker was resolving a Search saw every
+      // shop button die — the reported "when attacked I can only buy once /
+      // can't buy units AND spells" bug. See pvp-prep-simultaneous-shopping.test.ts.
+      if (inCombatPrep(state, playerId)) {
+        const prepShopping: LegalAction[] = [];
+        addTownActions(prepShopping, state, playerId);
+        return prepShopping;
+      }
       // Parallel turns: bystanders keep their quiet actions while another
       // player's choice is open ([] outside parallel mode, as before).
       return getParallelBystanderActions(state, playerId);
@@ -10153,10 +10170,14 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   // Blacksmith: once per turn, search Artifacts for gold or sell one.
+  // `blacksmithAction` refuses ANY open combat (no prep exemption), so the
+  // offer is withheld during the PvP prep window too — without the gate the
+  // town panel showed Blacksmith buttons there that the reducer then rejected
+  // ("Town actions cannot interrupt a combat." — a dead offer).
   const smith = town.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "ARTIFACT_SMITH");
-  if (smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
+  if (!state.combat && smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
     if (player.resources.gold >= smith.effect.searchCost) {
       actions.push({
         label: `Blacksmith: pay ${smith.effect.searchCost} gold, Search (2) Artifacts`,
@@ -10176,7 +10197,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   // Magic University (Conflux): once per round, instead of buying spells at the
   // Mage Guild, choose a School of Magic and dig your deck for that school's
   // Spell. Offered as one action per school during your turn.
+  // `magicUniversityAction` refuses ANY open combat (no prep exemption), so the
+  // offer is withheld during the PvP prep window too — the same dead-offer
+  // class as the Blacksmith above (a Conflux player read those rejected
+  // buttons as "I can't buy spells when attacked").
   if (
+    !state.combat &&
     townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") &&
     player.magicUniversityUsedRound !== state.round
   ) {
@@ -11195,6 +11221,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // hide every RESOLVE_VISIT_STEP action and strand the defender.
   if (state.combat?.prep && adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
+    // The visit freezes only its OWNER (they must resolve their Legion pick
+    // before shopping on): the OTHER still-preparing fighter keeps the town
+    // purchases — the prep window is a simultaneous shopping window, and those
+    // handler-validated purchases cannot touch the open visit. Card plays stay
+    // withheld (a second Legion play would collide with the open visit).
+    // Mirrors the pendingChoice branch in getLegalActionsCore.
+    if (adventure.pendingVisit.playerId !== playerId && inCombatPrep(state, playerId)) {
+      addTownActions(actions, state, playerId);
+    }
     return actions;
   }
 

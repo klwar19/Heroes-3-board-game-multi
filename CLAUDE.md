@@ -4273,6 +4273,80 @@ Audit fixes on top (each mutation-checked):
   `map-preset-editor.test.tsx`) now assert the CURRENT wording and additionally
   assert the old wording is ABSENT.
 
+## PvP prep shopping is truly SIMULTANEOUS — the opponent's open Search no longer freezes you (2026-08-14)
+
+USER REPORT (repeated): "WHEN PLAYER GET ATTACKED BY ANOTHER PLAYER: WHY CANT I
+BUY UNITS THEN UPGRADE, OR THEN BUY SPELLS, CAN'T DO BOTH BUY UNITS AND SPELLS
+OR CAN ONLY BUY 1 UNITS, THEN CANT BUY ANOTHER OR UPGRADE."
+
+**LEADING WITH WHAT WAS NOT BROKEN, because it decides what was fixed.** The
+lone-shopper spree has been green since 2026-08-08 (the Population-token fix,
+`population-token-combat-prep.test.ts`) — verified again end to end at the
+engine, from a hosted redacted frame, AND on the REAL page (a live-applying
+mock room: buy → buy → upgrade → buy spells → resolve the Search in the UI →
+buy again → accept, now pinned in `src/app/page-pvp-prep-shopping.test.tsx`).
+THE SURVIVING BUG was the SIMULTANEITY: the prep window is designed for both
+fighters to act at once, but the moment the OTHER fighter's purchase opened an
+exclusive interaction — the spell-buy's Search `pendingChoice`, or a Legion
+play's troop-pick `pendingVisit` — the pendingChoice bystander branch of
+`getLegalActionsCore` (ordered mode returns []) and the prep pendingVisit gate
+in `getAdventureLegalActions` collapsed this fighter's offers to NOTHING. In a
+live two-human game where both sides shop at once that reads exactly as the
+report — "I bought one unit and now every buy/upgrade/spell button is dead",
+seemingly at random, because it depended on what the opponent was doing.
+
+THE FIX (two seams, one rule): a participant still `inCombatPrep` keeps their
+TOWN-ACTION offers (`addTownActions` — recruit / reinforce / Stack / build /
+spell buy) while ANOTHER player's pendingChoice or pendingVisit is open. Safe
+because those purchases are HANDLER-VALIDATED (the server accepted them all
+along — only the offers collapsed), touch only the actor's own state, and
+anything they QUEUE (the shopper's own Spell search) waits in the reward queue
+behind the open interaction, FIFO.
+
+Leading with what is DELIBERATELY still withheld in that moment (the
+conservative scope, each CONTROL-pinned):
+- **Card plays** — a second Legion play would collide with the open visit (the
+  exclusive-interaction machinery is a singleton).
+- **ACCEPT_COMBAT and the escapes** — they move the combat machinery itself;
+  the visit-open Accept rejection from the 2026-08-12 audit is unchanged. All
+  of these return the moment the open interaction resolves.
+- **The choice OWNER is unchanged** — your own open Search still gates you to
+  resolving it first.
+- **Outside the prep window nothing moved** — a foreign pendingChoice on an
+  ordinary map turn still offers [] in ordered mode (the parallel-mode quiet
+  set is untouched).
+- **No window.ts lockstep change** — the new offers are OPTIONAL shopping,
+  never an owed window; `computerDecisionOwner` still names the choice/visit
+  owner, so the runner waits exactly as before (the audit's owner-mirror pin
+  still passes).
+- **No protocol bump** — no action or state shape moved, and because the
+  purchases are handler-validated even a STALE edge accepts what the new
+  client offers; the offers themselves are what ship (Vercel + the CI edge
+  deploy).
+
+Also fixed, the DEAD-OFFER twin of the same complaint: `addTownActions`
+offered the **Blacksmith** and the **Magic University** during prep, but BOTH
+handlers refuse ANY open combat ("Town actions cannot interrupt a combat." —
+no `inCombatPrep` exemption), so a Conflux player's "buy spells" (the
+University dig) and anyone's Blacksmith search were buttons that always
+rejected. Both offer blocks are now gated on `!state.combat`, matching their
+handlers verbatim — the same pattern the audit used for the "during your turn"
+buildings. (Whether they SHOULD work in prep is a separate rules question;
+today's fix only stops offering what the engine refuses.)
+
+Pinned in `src/engine/pvp-prep-simultaneous-shopping.test.ts` (9 tests: the
+REPRO as the full observable chain — second buy, upgrade, the shopper's own
+queued Search opening after the opponent's resolves, both accepts closing prep
+— the pendingVisit twin, the owner / withheld / already-accepted / map-turn
+CONTROLs, both dead-offer pairs with normal-turn CONTROLs, and an INVARIANT
+sweep that every town-family action offered in prep applies cleanly, foreign
+choice open or not), the updated pin in `pvp-precombat.test.ts` (the non-owner
+now keeps shopping ONLY — the old "offered nothing at all" reading is
+superseded, Accept still refused), and the client pipeline in
+`src/app/page-pvp-prep-shopping.test.tsx`. Mutation-checked: neutering the
+pendingChoice prep branch fails 3, the pendingVisit prep addition fails 2
+(across both files), the Blacksmith gate fails 2, the University gate fails 1.
+
 ## A live ongoing card is NEVER in the discard pile (2026-08-10, protocol v25)
 
 USER RULE: "when ongoing spells/abilities/artifacts are ongoing — like Luck,
