@@ -23,6 +23,7 @@ import {
   computerDecisionOwner,
   isParallelActor,
   isResetVoteApproved,
+  houseRuleEnabled,
   polishSpellBookEnabled,
   resetVoteRequired,
   resourceDieFaces,
@@ -49,6 +50,7 @@ import {
 } from "@/components/table/board";
 import { CardFrame, HandFan, OpponentBar, PermanentSlot, PlayerDock } from "@/components/table/seats";
 import { ArtifactSetIconsProvider } from "@/components/table/artifact-set-badge";
+import { PolishBalanceArtProvider } from "@/components/table/polish-balance-art";
 import { ArtifactSetPanel } from "@/components/adventure/artifact-set-panel";
 import { assetUrl } from "@/lib/asset-url";
 import { maybeClaimFinishedMatch } from "@/lib/match-claim-client";
@@ -5720,6 +5722,7 @@ export default function Home() {
 
     return (
       <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
+      <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")}>
       <CardZoomProvider>
         <main
           className={`tableRoot adventureRoot${phoneUi ? " phoneMode" : ""}`}
@@ -6931,6 +6934,7 @@ export default function Home() {
           ) : null}
         </main>
       </CardZoomProvider>
+      </PolishBalanceArtProvider>
       </ArtifactSetIconsProvider>
     );
   }
@@ -6966,6 +6970,7 @@ export default function Home() {
       }}
     >
     <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
+    <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")}>
     <CardZoomProvider>
     <main
       className={`tableRoot${phoneUi ? " phoneMode" : ""}`}
@@ -7343,6 +7348,7 @@ export default function Home() {
       ) : null}
     </main>
     </CardZoomProvider>
+    </PolishBalanceArtProvider>
     </ArtifactSetIconsProvider>
     </TableErrorBoundary>
   );

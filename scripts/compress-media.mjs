@@ -123,6 +123,7 @@ function webpQualityFor(r) {
   if (/^assets\/story\/covers\//.test(r)) return 85;
   if (/^assets\/wog\/artifacts\//.test(r)) return 85;
   if (/^assets\/set-artifacts\//.test(r)) return 85; // Polish set card faces + icons
+  if (/^assets\/polish-balance\//.test(r)) return 85; // Polish Balance Pack reprinted card faces
   // q80 — scenery / panorama / board / portrait / background
   if (/^assets\/board\//.test(r)) return 80;
   if (/^assets\/town-board\//.test(r)) return 80;

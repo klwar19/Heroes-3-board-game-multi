@@ -7,6 +7,7 @@ import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
+import { useCardFaceImage } from "./polish-balance-art";
 import {
   describeCardEffect,
   getInnateFlatAttackBonus,
@@ -369,6 +370,11 @@ function ZoomCardVisual({
   failedImageSrc: string | null;
   onImageError: () => void;
 }) {
+  // Polish Balance Pack: a reprinted card reads its NEW face here too. The hook
+  // returns exactly what `cardZoomContent` already computed for every other card
+  // (and `undefined` for a unit / hero / hand-built zoom, which has no cardId),
+  // so `content.image` stays the value for all of them.
+  const image = useCardFaceImage(content.cardId, Boolean(content.empowered)) ?? content.image;
   const visual = content.commanderFace ? (
     <div className="zoomCardImage" style={{ background: "transparent", boxShadow: "none" }}>
       <CommanderCardFace
@@ -386,7 +392,7 @@ function ZoomCardVisual({
     <div className="zoomNativeCard">
       <SpecialtyCard cardId={content.specialtyCardId} />
     </div>
-  ) : content.image && failedImageSrc !== content.image ? (
+  ) : image && failedImageSrc !== image ? (
     <img
       alt={content.empowered ? `${content.title} (empowered)` : content.title}
       className={`zoomCardImage${content.empowered ? " empoweredCard" : ""}`}
@@ -394,7 +400,7 @@ function ZoomCardVisual({
       loading="eager"
       onError={onImageError}
       referrerPolicy="no-referrer"
-      src={assetUrl(content.image)}
+      src={assetUrl(image)}
     />
   ) : (
     <div className={`zoomCardImage cardFaceFallback${content.empowered ? " empoweredCard" : ""}`}>{content.title}</div>

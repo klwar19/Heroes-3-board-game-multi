@@ -163,6 +163,7 @@ import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "
 // non-member card, so a default table keeps its exact DOM.
 import { CardSetCornerBadge, CardSetFrame } from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
+import { resolveCardFaceImage, usePolishBalanceArtEnabled } from "@/components/table/polish-balance-art";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
@@ -7207,17 +7208,21 @@ export function AdventureOwnDeck({
     empoweredAbilities?: string[]
   ) => void;
 }) {
+  // Read the Balance-Pack flag BEFORE any early return (rules of hooks), then
+  // resolve the face through the shared pure precedence helper.
+  const balanceArt = usePolishBalanceArtEnabled();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
   }
 
   // Top of the discard is face-up — show the actual card graphic (not a bare
-  // count); an Empowered ability shows its printed Empowered face.
+  // count); an Empowered ability shows its printed Empowered face (or, under the
+  // Polish Balance Pack, the card's reprinted face).
   const topDiscardId = player.discard.length > 0 ? player.discard[player.discard.length - 1] : undefined;
   const topDiscard = topDiscardId ? cardLibrary[topDiscardId] : undefined;
   const topImage =
-    cardFaceImage(topDiscardId, cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)) ??
+    resolveCardFaceImage(balanceArt, topDiscardId, cardIsEmpoweredFor(topDiscardId, player.empoweredAbilities)) ??
     topDiscard?.assets?.cardImage;
 
   return (
@@ -7544,6 +7549,9 @@ function PileModalCards({
   empoweredAbilities?: string[];
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
+  // A row's face is resolved inside the .map() below, where a hook cannot run —
+  // so the rule is read once here and passed to the shared pure resolver.
+  const balanceArt = usePolishBalanceArtEnabled();
 
   return (
     <ul>
@@ -7558,7 +7566,7 @@ function PileModalCards({
         // Empowered face too (shared decks pass nothing: nobody owns those).
         const empowered = kind === "cards" && cardIsEmpoweredFor(cardId, empoweredAbilities);
         const image =
-          (kind === "cards" ? cardFaceImage(cardId, empowered) : undefined) ??
+          (kind === "cards" ? resolveCardFaceImage(balanceArt, cardId, empowered) : undefined) ??
           card?.assets?.cardImage ??
           unit?.neutral?.cardImage ??
           astro?.image ??

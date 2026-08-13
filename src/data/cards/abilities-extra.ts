@@ -133,8 +133,13 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "search",
-      "Basic: Play this card before taking a Search action, then do Search (3) instead. Expert: Search (5) instead."
+      "Basic: Play this card before taking a Search action, then do Search (3) instead. Expert: Search (5) instead.",
+      "Balance pack: both sides read Search (X+2) instead of a flat 3 / 5, and the Expert side widens EVERY Search until the end of your turn instead of only the next one."
     ],
+    // Both printings ride the SAME modifier: the classic flat `count`, plus the
+    // Balance-Pack `balanceDelta` / `balancePersist`. `searchCountOverrideFor`
+    // (ruleset.ts) is the one reader that picks which printing applies, so the
+    // pre-Search menu label and the actual reveal can never disagree.
     effect: {
       type: "CREATE_ACTIVE_EFFECT",
       effect: {
@@ -143,7 +148,7 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "current-turn" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 3 }]
+        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 3, balanceDelta: 2 }]
       },
       expertEffect: {
         name: "Expert Scouting",
@@ -151,7 +156,7 @@ export const extraAbilityCards: CardLibrary = {
         duration: { type: "current-turn" },
         polarity: "positive",
         removable: false,
-        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 5 }]
+        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 5, balanceDelta: 2, balancePersist: true }]
       }
     },
     assets: abilityAssets("scouting", "Scouting"),
@@ -168,7 +173,8 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "spell-recall",
-      "Basic: Play immediately after casting a spell; take the Spell card back into your hand instead of discarding it. Expert: also take back all other cards played together with it."
+      "Basic: Play immediately after casting a spell; take the Spell card back into your hand instead of discarding it. Expert: also take back all other cards played together with it.",
+      "Balance pack: the reprint is the SAME behaviour in Polish-Spell-Book vocabulary — take the \"Cast a Spell\" card back instead of discarding it and refresh the cast Spell (once per round). Under polish-spell-book that is exactly what this card already does; without the Book the closest reading is the printed one above (the Spell card itself returns), so the reprint changes no engine rule — only the face."
     ],
     trigger: {
       event: "SPELL_CAST_STARTED",
@@ -489,7 +495,8 @@ export const extraAbilityCards: CardLibrary = {
       "instant",
       "war-machine",
       "wiki-reference",
-      "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times."
+      "Basic: Deal 1 damage to an enemy unit with the lowest initiative. Expert: when using the Ballista card, resolve its effect against the same target 3 times.",
+      "Balance pack: BOTH sides also carry an ongoing rider — while you have a Ballista in play, you choose its targets for the rest of this combat (the same freedom Gerwulf's Ballista VI grants). Because a Ballista fires at round start, the aim first applies from the next combat round. CONSEQUENCE: the rider is a real lasting effect, so a played Artillery is HELD in the public Permanents & Ongoing tray until the combat ends (the engine-wide \"a live ongoing card is never in the discard pile\" rule) instead of going straight to the discard; with the rule off it discards immediately as before."
     ],
     effect: {
       type: "CHOOSE_ONE",

@@ -336,6 +336,15 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     legacyDefault: false
   },
   {
+    id: "polish-card-balance",
+    label: "Balanced cards (Balance Pack)",
+    description:
+      "Polish house rule: the community \"Balance Pack\" reprints. A covered card plays its NEW printed text and shows its balance-pack card face; every card that is NOT covered is byte-identical to a normal game, face included. WIRED SO FAR — three Abilities: Scouting (both sides read Search (X+2) instead of a flat 3 / 5, so the widen scales with the Search being made, and the EXPERT side widens EVERY Search until the end of your turn instead of only the next one), Artillery (both sides also carry an ongoing rider — while you have a Ballista in play you choose its targets for the rest of the combat, the same freedom Gerwulf's Ballista VI grants; since a Ballista fires at round start the aim first bites next round) and Mysticism (face only — its reprint restates, in Polish-Spell-Book vocabulary, exactly what this card already does: take the \"Cast a Spell\" card back instead of discarding it and refresh the cast Spell, once per round). NOT YET REPRINTED, and deliberately keeping their classic text AND classic face so the card can never promise a rule the engine does not run: Intelligence, Wisdom, Eagle Eye, Tactics, Pathfinding, Learning, Diplomacy, Ballistics, First Aid — plus every Spell, Artifact and Specialty (later steps of the pack). The machine-readable scope is POLISH_BALANCE_CARD_IDS / POLISH_BALANCE_NOT_IMPLEMENTED in src/data/cards/polish-balance-art.ts.",
+    category: "polish",
+    default: false,
+    legacyDefault: false
+  },
+  {
     id: "multi-demon-summon",
     label: "Pit Lords: multiple Demons",
     description:

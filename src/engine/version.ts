@@ -205,7 +205,21 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // new factions' content, but none of the action/legality changes above — the
 // explicit bump makes a skewed edge/client show the version banner instead of
 // the "not legal on every click" frozen-table symptom class.
-export const ENGINE_PROTOCOL_VERSION = 29;
+// v30: the Polish Balance Pack, step 1 (`polish-card-balance`, default OFF).
+// NO new action type — but two skew hazards a stale room server cannot see.
+// (1) The house-rule ID itself: `resolveHouseRules` iterates the server's OWN
+// registry, so a v29 edge freezes `adventure.houseRules` WITHOUT this key,
+// `houseRuleEnabled` falls back to the mode default (false), and every reprint
+// silently stops running while the new client keeps showing the reprinted card
+// FACES — the client reads one card and the server plays another. (2) The
+// Scouting offer SHAPE: the reprint is Search (X+2), so `scoutingPromptFor`
+// offers a basic tier where the classic flat 3 was withheld (any Search of 3+).
+// A v29 server therefore builds a DIFFERENT option list for the same pop-up, so
+// the new client's CHOOSE_OPTION index selects the wrong tier or is rejected.
+// The new persisted state is additive and optional — `SEARCH_COUNT_OVERRIDE`
+// gains `balanceDelta` / `balancePersist`, which an old server simply ignores
+// (falling back to the flat `count`), so every legacy snapshot reads as before.
+export const ENGINE_PROTOCOL_VERSION = 30;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
  * runtime the two halves run on (Vercel Node and Cloudflare Workers). */

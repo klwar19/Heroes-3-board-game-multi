@@ -8,7 +8,7 @@ import { playSpellBookOpen } from "@/lib/sound";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
-import { cardFaceImage } from "@/data/cards/empowered-card-art";
+import { useCardFaceImage } from "./polish-balance-art";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
@@ -73,7 +73,9 @@ export function CardFrame({
   // An Empowered ability has its OWN printed face on the wiki (the "Empowered"
   // scan), so render that instead of the base face — the gold ring/badge below
   // stays on top of it. Falls back to the base face when no scan is registered.
-  const src = cardFaceImage(cardId, showEmpowered);
+  // The Polish Balance Pack's reprint beats BOTH (its `-empowered` twin prints
+  // the OLD rules text) — see useCardFaceImage.
+  const src = useCardFaceImage(cardId, showEmpowered);
   // The empowered ring is layered onto whichever element renders, so the cue is
   // identical across the hand fan, trays, piles and discard tops.
   const frameClass = showEmpowered ? `${className} empoweredCard` : className;

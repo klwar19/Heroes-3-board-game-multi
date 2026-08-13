@@ -636,25 +636,62 @@ export function eligibleArtifactDecks(
 // Scouting applies to the next Search of any deck)
 // ---------------------------------------------------------------------------
 
-/** Applies and consumes a pending Scouting override on a search size. */
-export function applySearchCountEffects(state: GameState, playerId: PlayerId, baseCount: number): number {
-  let count = baseCount;
+/**
+ * The ONE read of a standing Search-size override (a played Scouting): what a
+ * Search of `baseCount` would ACTUALLY reveal, which effect grants it, and
+ * whether that grant survives being used.
+ *
+ * Both the consuming path (`applySearchCountEffects`, called at reveal) and the
+ * honest "Search (N)" LABEL in the up-front deck menu read this, so the label can
+ * never promise a different count from the reveal (the reported Derelict Ship
+ * bug). Polish Balance Pack: a modifier carrying `balanceDelta` is read as
+ * `base + delta` while `polish-card-balance` is ON — the classic flat `count` is
+ * what the same modifier means with the rule off.
+ */
+export function searchCountOverrideFor(
+  state: GameState,
+  playerId: PlayerId,
+  baseCount: number
+): { effectId: string; count: number; source: string; persist: boolean } | null {
   const effect = state.activeEffects.find(
     (candidate) =>
       candidate.controllerId === playerId &&
       candidate.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
   );
-
-  if (effect) {
-    for (const modifier of effect.modifiers) {
-      if (modifier.type === "SEARCH_COUNT_OVERRIDE") {
-        count = Math.max(count, modifier.count);
-      }
-    }
-    state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== effect.id);
+  if (!effect) {
+    return null;
   }
+  const balance = houseRuleEnabled(state, "polish-card-balance");
+  let count = baseCount;
+  let persist = false;
+  for (const modifier of effect.modifiers) {
+    if (modifier.type !== "SEARCH_COUNT_OVERRIDE") {
+      continue;
+    }
+    const target =
+      balance && modifier.balanceDelta !== undefined ? baseCount + modifier.balanceDelta : modifier.count;
+    count = Math.max(count, target);
+    if (balance && modifier.balancePersist) {
+      persist = true;
+    }
+  }
+  return { effectId: effect.id, count, source: effect.name, persist };
+}
 
-  return count;
+/**
+ * Applies and consumes a pending Scouting override on a search size. A
+ * Balance-Pack EXPERT Scouting is NOT consumed (it widens every Search until the
+ * end of the turn); its `current-turn` duration is what ends it.
+ */
+export function applySearchCountEffects(state: GameState, playerId: PlayerId, baseCount: number): number {
+  const override = searchCountOverrideFor(state, playerId, baseCount);
+  if (!override) {
+    return baseCount;
+  }
+  if (!override.persist) {
+    state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== override.effectId);
+  }
+  return override.count;
 }
 
 /**

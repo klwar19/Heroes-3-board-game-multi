@@ -371,6 +371,7 @@ import { seedRunesForCombat } from "./runes";
 import {
   activeSchoolFetches,
   applySearchCountEffects,
+  searchCountOverrideFor,
   canAcquireSharedDeckCard,
   canPlayExpertMode,
   deckDisplayName,
@@ -16696,6 +16697,14 @@ function performSchoolFetchFromDecks(
 const SCOUTING_CARD_ID = "ability.scouting" as CardId;
 /** Search sizes the Scouting card grants ("do Search (N) instead"). */
 const SCOUTING_BASIC_COUNT = 3;
+/**
+ * Polish Balance Pack (`polish-card-balance`): the reprinted Scouting reads
+ * "do Search (X+2) instead" on BOTH sides — the basic side for one Search, the
+ * Expert side for every Search until the end of the turn. Both printings ride the
+ * same modifier (`balanceDelta` / `balancePersist`) and `searchCountOverrideFor`
+ * picks which one is read, so nothing here can disagree with the reveal.
+ */
+const SCOUTING_BALANCE_DELTA = 2;
 const SCOUTING_EXPERT_COUNT = 5;
 
 /** Whether the player already holds a Search-size override (a pre-played Scouting). */
@@ -16714,29 +16723,20 @@ function hasSearchCountOverride(state: GameState, playerId: PlayerId): boolean {
  * so an up-front discard/fetch menu leaves it intact for a later search — but the
  * menu's "Search (N)" label must still show what a Search would ACTUALLY reveal, or
  * it disagrees with the reveal (a "Search (2)" label that then peeks 3 cards, the
- * reported bug). Mirrors applySearchCountEffects' first-effect/max read exactly so
- * label == reveal.
+ * reported bug). Reads the SHARED `searchCountOverrideFor` so label == reveal by
+ * construction (it used to be a hand-copied mirror, which is how a Balance-Pack
+ * relative widen could have drifted).
  */
 function searchCountOverrideLabel(
   state: GameState,
   playerId: PlayerId,
   baseCount: number
 ): { count: number; source: string } | null {
-  const effect = state.activeEffects.find(
-    (candidate) =>
-      candidate.controllerId === playerId &&
-      candidate.modifiers.some((modifier) => modifier.type === "SEARCH_COUNT_OVERRIDE")
-  );
-  if (!effect) {
+  const override = searchCountOverrideFor(state, playerId, baseCount);
+  if (!override || override.count <= baseCount) {
     return null;
   }
-  let count = baseCount;
-  for (const modifier of effect.modifiers) {
-    if (modifier.type === "SEARCH_COUNT_OVERRIDE") {
-      count = Math.max(count, modifier.count);
-    }
-  }
-  return count > baseCount ? { count, source: effect.name } : null;
+  return { count: override.count, source: override.source };
 }
 
 /**
@@ -16758,8 +16758,13 @@ function scoutingPromptFor(
   if (!player || !player.hand.includes(SCOUTING_CARD_ID) || hasSearchCountOverride(state, playerId)) {
     return null;
   }
-  const offerBasic = SCOUTING_BASIC_COUNT > baseCount;
-  const offerExpert = SCOUTING_EXPERT_COUNT > baseCount && canPlayExpertMode(player, SCOUTING_CARD_ID);
+  // Balance Pack: both sides are Search (X+2), so they ALWAYS beat the base count
+  // — the "would this tier even help?" filter that hides a flat 3 on a Search (4)
+  // has nothing to hide. Expert stays crown-gated.
+  const balance = houseRuleEnabled(state, "polish-card-balance");
+  const offerBasic = balance || SCOUTING_BASIC_COUNT > baseCount;
+  const offerExpert =
+    (balance || SCOUTING_EXPERT_COUNT > baseCount) && canPlayExpertMode(player, SCOUTING_CARD_ID);
   if (!offerBasic && !offerExpert) {
     return null;
   }
@@ -16782,12 +16787,23 @@ function openScoutingPrompt(
   modeResolved = false,
   ignoreDiscardTopOnce = false
 ): void {
+  // Balance Pack: the reprint is RELATIVE, so the label must say base+2 (and that
+  // the Expert widen lasts the turn) rather than the classic flat 3 / 5.
+  const balancePrint = houseRuleEnabled(state, "polish-card-balance");
   const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
   if (offer.offerBasic) {
-    options.push({ label: `Play Scouting — Search (${SCOUTING_BASIC_COUNT})` });
+    options.push({
+      label: balancePrint
+        ? `Play Scouting — Search (${baseCount + SCOUTING_BALANCE_DELTA})`
+        : `Play Scouting — Search (${SCOUTING_BASIC_COUNT})`
+    });
   }
   if (offer.offerExpert) {
-    options.push({ label: `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)` });
+    options.push({
+      label: balancePrint
+        ? `Play Expert Scouting — Search (${baseCount + SCOUTING_BALANCE_DELTA}) for every Search this turn (spend a crown)`
+        : `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)`
+    });
   }
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -16842,7 +16858,13 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
         polarity: "positive",
         removable: false,
         modifiers: [
-          { type: "SEARCH_COUNT_OVERRIDE", count: mode === "expert" ? SCOUTING_EXPERT_COUNT : SCOUTING_BASIC_COUNT }
+          {
+            type: "SEARCH_COUNT_OVERRIDE",
+            count: mode === "expert" ? SCOUTING_EXPERT_COUNT : SCOUTING_BASIC_COUNT,
+            // Both printings ride the same modifier; the reader picks by rule.
+            balanceDelta: SCOUTING_BALANCE_DELTA,
+            balancePersist: mode === "expert"
+          }
         ]
       },
       { type: "card", cardId: SCOUTING_CARD_ID, controllerId: playerId },

@@ -225,6 +225,7 @@ import {
   elementalTileSpellPowerBonus,
   firstAidVolleyHeals,
   getPermanentCardIds,
+  grantBalanceBallistaAim,
   isLowestInitiativeEnemy,
   playerCanUseFirstAidVolley,
   playerOwnsWarMachine,
@@ -14653,6 +14654,8 @@ function applyReactionPlayCore(
       damageKind: "effect"
     });
     markUnitRemovedIfNeeded(state, unit);
+    // Balance Pack: the reprinted BASIC side also carries the aim rider.
+    grantBalanceBallistaAim(state, playerId);
     finishCombatIfNeeded(state);
   }
 
@@ -16831,6 +16834,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       damageKind: "effect"
     });
     markUnitRemovedIfNeeded(state, unit);
+    // Balance Pack: the reprinted BASIC side also carries the aim rider — the
+    // SAME grant the in-window reaction play makes, so the card cannot behave
+    // differently depending on which moment it was played.
+    grantBalanceBallistaAim(state, action.playerId);
     finishCombatIfNeeded(state);
   }
 

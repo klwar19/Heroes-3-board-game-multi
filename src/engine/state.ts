@@ -256,7 +256,15 @@ export type HouseRuleId =
   // listed effect switches on, at 3 the first two, and so on — cumulative, never
   // a choice. Data in `src/data/cards/artifact-sets.ts`, read layer in
   // `src/engine/artifact-sets.ts`.
-  | "polish-set-artifacts";
+  | "polish-set-artifacts"
+  // Polish house rule (default OFF in BOTH modes): the "Balance Pack" reprints.
+  // Each covered card plays its NEW printed text and renders its balance-pack
+  // FACE; with the rule off every card is byte-identical to before. The covered
+  // ids are the single registry `POLISH_BALANCE_CARD_IDS`
+  // (`src/data/cards/polish-balance-art.ts`) — a card is listed there ONLY once
+  // its new behaviour is genuinely engine-wired, so the face can never advertise
+  // a rule the engine does not run.
+  | "polish-card-balance";
 
 /** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
 export type PveEncounterTheme = "classic" | "doom" | "random";
@@ -928,6 +936,20 @@ export type ActiveEffectModifier =
       /** Scouting: the next Search(X) becomes Search(count). Consumed on use. */
       type: "SEARCH_COUNT_OVERRIDE";
       count: number;
+      /**
+       * Polish Balance Pack (`polish-card-balance`): the reprinted Scouting reads
+       * "do Search (X+2) instead", i.e. RELATIVE to the Search's own base rather
+       * than the flat `count`. Both printings live on the modifier and the RULE
+       * decides which one is read — `searchCountOverrideFor` (ruleset.ts) is the
+       * single seam, so the offer label and the reveal can never disagree.
+       */
+      balanceDelta?: number;
+      /**
+       * Polish Balance Pack: the reprinted EXPERT Scouting widens EVERY Search
+       * "until the end of this turn" instead of only the next one, so the
+       * override is not consumed on use (its `current-turn` duration ends it).
+       */
+      balancePersist?: boolean;
     }
   | {
       /** Pendant of Courage: repeat the next Search action once. */

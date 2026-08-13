@@ -15,6 +15,7 @@ import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { defenderOnFortification, destroyFortification, fortificationTargets, parseFortificationTargetId } from "./siege";
 import { noteUnitDamagedForTokens } from "./tokens";
 import { abilityExpertIsCrownFree, canPlayExpertMode, expertUsesAvailable } from "./ruleset";
+import { houseRuleEnabled } from "./house-rules";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
@@ -1035,6 +1036,52 @@ export function playerCanUseArtilleryVolley(state: GameState, playerId: PlayerId
   );
 }
 
+const BALLISTA_CARD_ID = "war_machine.ballista" as CardId;
+
+/**
+ * Polish Balance Pack (`polish-card-balance`) — Artillery's ongoing rider, on
+ * BOTH printed sides: "If you have a Balista card played, until the end of this
+ * combat you can choose its targets."
+ *
+ * REUSE, not a new arm: it pushes the very same `BALLISTA_CHOOSE_TARGET` effect
+ * Gerwulf's Ballista VI grants, so every downstream read (the round-start target
+ * offer via `hasBallistaChooseTarget`) picks it up unchanged. Conditions, all
+ * from the printed line: the rule is on, a combat is open, the player really has
+ * a Ballista in play, and they are not already aiming it (a second copy of the
+ * effect would be noise). Returns whether the freedom was granted.
+ *
+ * Note the printed timing consequence: a Ballista fires at ROUND START, so the
+ * aim this grants first bites on the NEXT combat round — exactly what "until the
+ * end of this combat" buys.
+ */
+export function grantBalanceBallistaAim(state: GameState, playerId: PlayerId): boolean {
+  if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
+    return false;
+  }
+  if (!getPermanentCardIds(state, playerId).includes(BALLISTA_CARD_ID)) {
+    return false;
+  }
+  if (hasBallistaChooseTarget(state, playerId)) {
+    return false;
+  }
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Artillery (aim your Ballista)",
+        scope: "player",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "BALLISTA_CHOOSE_TARGET" }]
+      },
+      { type: "card", cardId: ARTILLERY_ABILITY_ID, controllerId: playerId },
+      playerId
+    )
+  );
+  return true;
+}
+
 /** Pays the Artillery expert cost: spend a crown (unless Empowered) and play (discard) the card. */
 function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
@@ -1044,6 +1091,9 @@ function spendArtilleryExpert(state: GameState, playerId: PlayerId): void {
   if (!abilityExpertIsCrownFree(player, ARTILLERY_ABILITY_ID)) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
+  // Balance Pack: the reprinted EXPERT side also carries the aim rider
+  // ("Until the end of this combat you can choose the targets of your Balista").
+  grantBalanceBallistaAim(state, playerId);
   const handIndex = player.hand.indexOf(ARTILLERY_ABILITY_ID);
   if (handIndex !== -1) {
     player.hand.splice(handIndex, 1);
