@@ -218,9 +218,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // picked — a hard stall on a skewed pair); and two REWARD readings a stale edge
 // pays differently for the same clear — the Ⅶ Dragon-Utopia FIELD now pays
 // 20 gold + two Artifact Search (3) in every mode (was 10 or 20 gold + Search
-// 3/5/5) and the Creature-Bank Dragon Utopia TOKEN now pays a fixed 40 gold +
-// Search (3)/(5)/(5) instead of scaling its Artifact-or-Spell picks with the
-// Stacked-defender count.
+// 3/5/5). The Creature-Bank Dragon Utopia TOKEN briefly took a fixed
+// 40 gold + Search (3)/(5)/(5) on this same undeployed protocol; that was
+// VETOED (2026-08-13, the second veto) and REVERTED — the token pays its
+// printed card again (40 gold + Search (3), then one "Search (5) the Artifact
+// or Spell Deck" per Stacked defender), with its Artifact searches newly capped
+// at MAJOR (a Ⅳ–Ⅴ placement never reaches the Relic deck). A v28 edge would
+// therefore offer the Relic deck on that reward; still no new action or state
+// shape, so the cap needs no bump of its own.
 export const ENGINE_PROTOCOL_VERSION = 29;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

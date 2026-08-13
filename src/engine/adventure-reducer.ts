@@ -376,6 +376,7 @@ import {
   canPlayExpertMode,
   deckDisplayName,
   abilityExpertIsCrownFree,
+  ARTIFACT_DECK_RELIC,
   eligibleArtifactDecks,
   eligibleSpellDecks,
   expertUsesAvailable,
@@ -16490,13 +16491,15 @@ export function beginSharedDeckSearchNow(
     artifactBand?: "tile" | "level";
     sourceHeroId?: HeroId;
     sourceFieldId?: MapSpaceId;
+    maxArtifactTier?: "major";
   }
 ): boolean {
   const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
     strictExpertGate: options?.strictExpertGate,
     artifactBand: options?.artifactBand,
     sourceHeroId: options?.sourceHeroId,
-    sourceFieldId: options?.sourceFieldId
+    sourceFieldId: options?.sourceFieldId,
+    maxArtifactTier: options?.maxArtifactTier
   }).filter((candidateId) => {
     const deck = state.decks[candidateId];
     return deck && deck.drawPile.length + deck.discardPile.length > 0;
@@ -16602,6 +16605,8 @@ export function resolveSearchDeckCandidates(
     artifactBand?: "tile" | "level";
     sourceHeroId?: HeroId;
     sourceFieldId?: MapSpaceId;
+    /** Per-Search Artifact-tier cap; see {@link capArtifactDecksToMajor}. */
+    maxArtifactTier?: "major";
   }
 ): string[] {
   const liveHero = options?.sourceHeroId
@@ -16625,10 +16630,36 @@ export function resolveSearchDeckCandidates(
         (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "ARTIFACT_SMITH"
       )
     );
-    return eligibleArtifactDecks(state, playerId, hero, artifactSource);
+    return capArtifactDecksToMajor(
+      eligibleArtifactDecks(state, playerId, hero, artifactSource),
+      options?.maxArtifactTier
+    );
   }
 
   return [deckId];
+}
+
+/**
+ * Applies a per-Search Artifact-tier cap on TOP of the normal deck-access rules
+ * (`eligibleArtifactDecks`), i.e. after the official tile band, the
+ * `deck-access-hero-level` house rule AND the Polish Random Artifacts override
+ * have all had their say. `"major"` drops the Relic deck; no cap is a no-op.
+ *
+ * Today's only user is the Creature Bank Dragon Utopia's reward — a Ⅳ–Ⅴ
+ * (Near-band) placement, so its Artifact searches may never reach Relics
+ * (USER RULING 2026-08-13, "artifacts search can only be up to major, because
+ * in IV-V field").
+ *
+ * DELIBERATE LIMIT: this can only ever REMOVE a split deck. In a LEGACY
+ * single-Artifact-deck game (`split-decks` off) the family resolves to the one
+ * mixed `artifacts` deck, which holds every tier and cannot be tier-filtered
+ * here — a Relic is reachable there exactly as it always was.
+ */
+function capArtifactDecksToMajor(decks: string[], maxArtifactTier?: "major"): string[] {
+  if (maxArtifactTier !== "major") {
+    return decks;
+  }
+  return decks.filter((candidateId) => candidateId !== ARTIFACT_DECK_RELIC);
 }
 
 // Polish Random Artifacts helpers: re-exported from polish-random-artifacts.ts
@@ -17750,7 +17781,8 @@ export function pumpAdventureQueues(state: GameState): void {
           strictExpertGate: reward.strictExpertGate,
           artifactBand: reward.polishArtifactBand,
           sourceHeroId: reward.sourceHeroId,
-          sourceFieldId: reward.sourceFieldId
+          sourceFieldId: reward.sourceFieldId,
+          maxArtifactTier: reward.maxArtifactTier
         })
       ) {
         return;

@@ -3710,28 +3710,45 @@ Neither is a toggle — the previous behaviour was wrong.
   by exactly its count while the minted party leaves them untouched and stays
   flagged, so neither mode can consume or CREATE a card).
 - **The Ⅶ Dragon-Utopia FIELD pays 20 gold + TWO Search (3) = exactly TWO
-  Artifact cards, and the Creature-Bank Dragon Utopia TOKEN pays a FIXED
-  40 gold + Search (3) + Search (5) + Search (5)** (2026-08-13, superseding the
-  2026-08-03 reading below). Lead with what CHANGED, because an older user
-  ruling in this very section is now overridden by a newer commissioned one:
+  Artifact cards. The Creature-Bank Dragon Utopia TOKEN pays its PRINTED card —
+  40 gold + Search (3), then ONE "Search (5) the Artifact **or** Spell Deck"
+  choice per Stacked defender — with its Artifact searches capped at MAJOR**
+  (2026-08-13; the field half supersedes the 2026-08-03 reading below, the bank
+  half is a REVERT back to it). Lead with the veto history, because the bank has
+  now been changed and reverted twice:
   - the Ⅶ FIELD's ladder went `[3, 5, 5]` → **`[3, 3]`**
     (`VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS`, adventure.ts), so the winner
     keeps TWO Artifacts, not three;
   - its GOLD is now **20 in every Ⅶ-field mode** — the plain conquest/grail
     branch paid 10 and the editor-authored field-rules package paid 0, and the
     `polishGrailUtopiaEnabled` gate that used to fence the 20 off is gone;
-  - the **Creature-Bank TOKEN was CHANGED too**, which the 2026-08-03 follow-up
-    veto ("I ONLY SAID TO DO FOR VII … NOT CHANGE THE FUCKING CREATURE BANK")
-    had forbidden: its printed `X × CHOOSE_ONE(Search (5) Artifact | Search (5)
-    Spell)` extras — X = the number of Stacked defenders — are replaced by a
-    FIXED `Search (5)` + `Search (5)` of the ARTIFACT deck, so a bank win is
-    always 3 Artifacts and the Artifact-or-Spell choice is gone. Stacked
-    defenders now affect only the FIGHT (`buildReward` ignores its `x`).
-  The two surfaces therefore still DISAGREE, but the other way round: the bank
-  (40 gold + 3/5/5) is deliberately RICHER than the Ⅶ field (20 gold + 3/3).
-  Untouched: the `"artifacts"`-FAMILY routing (so a centre tile's deck pick
-  really offers Minor/Major/**Relic**), each search pinned to the visiting
-  hero+field (a Secondary Hero's win still reads the Ⅵ–Ⅶ band), the
+  - the **Creature-Bank TOKEN was briefly changed with it** to a fixed
+    `40 gold + Search (3)/(5)/(5)`, which the 2026-08-03 veto ("I ONLY SAID TO
+    DO FOR VII … NOT CHANGE THE FUCKING CREATURE BANK") had already forbidden.
+    The user VETOED it again on 2026-08-13 ("revert bank to this, should be like
+    this all the time"), so `buildReward` is back to the printed X-scaling shape
+    — X = the number of Stacked defenders, each Extra the printed
+    Artifact-or-Spell `CHOOSE_ONE`. **Do not harmonise the two surfaces again.**
+  - **NEW (2026-08-13): the bank's Artifact searches may never reach the RELIC
+    deck** — "artifacts search can only be up to major, because in IV-V field".
+    ONE seam: `maxArtifactTier: "major"` on the bank's own SEARCH_SHARED_DECK
+    interactions (data), carried through the visit step and the deferred reward
+    queue, applied by `capArtifactDecksToMajor` in `adventure-reducer.ts` AFTER
+    `eligibleArtifactDecks` — so it sits on TOP of the official tile-band rule,
+    the `deck-access-hero-level` house rule AND the Polish Random Artifacts
+    override, and holds even for a DESIGNER-pinned bank on a Ⅵ–Ⅶ centre tile.
+    **LIMIT: a LEGACY single-Artifact-deck game (`split-decks` off) cannot be
+    tier-capped** — the family resolves to one mixed `artifacts` deck holding
+    every tier, so a Relic stays reachable there exactly as before (filtering
+    the revealed cards would be a much larger change to the reveal pipeline).
+    The Spell arm of each Extra is untouched, and the Ⅶ FIELD's own searches
+    still reach Relics on a centre tile.
+  The two surfaces therefore still DISAGREE: a fully-Stacked bank (40 gold +
+  Search (3) + four Artifact-or-Spell picks) is deliberately RICHER than the Ⅶ
+  field (20 gold + two Search (3)) — but Major-capped, where the centre field is
+  not. Untouched: the `"artifacts"`-FAMILY routing (so a centre tile's deck pick
+  really offers Minor/Major/**Relic** for the FIELD), each search pinned to the
+  visiting hero+field (a Secondary Hero's win still reads the Ⅵ–Ⅶ band), the
   Morale-or-Ability-token pick, the guard modes (`utopiaGuards` four vs
   by-difficulty only pick the army), the GRAIL's own consolation, Dragon Hunt
   (the win is the reward) and Dragon Conqueror (the capture is the reward — only
@@ -3739,11 +3756,19 @@ Neither is a toggle — the previous behaviour was wrong.
   absent ⇒ exactly two). Pinned in `dragon-utopia-artifact-reward.test.ts` (the
   real pipeline reveals 3/3 on the Ⅶ field and the winner ends with exactly +2
   Artifact cards; CONTROLs for Easy-vs-Impossible sameness, the plain branch's
-  20 gold + family routing, both guard modes, the bonus knob, the bank's fixed
-  shape at every Stacked count 0–4, and an Impossible bank win through the
-  atomic Necromancy deferral revealing 3/5/5), plus the bank's own shape in
-  `src/data/map/creature-banks.test.ts` ("builds the fixed IV–V Dragon Utopia
-  reward regardless of Stacked defenders").
+  20 gold + family routing, both guard modes, the bonus knob, the bank's printed
+  X-scaling shape at every Stacked count 0–4, and an Impossible bank win through
+  the atomic Necromancy deferral revealing 3/5/5/5/5 = FIVE Artifacts), the
+  bank's own shape in `src/data/map/creature-banks.test.ts` ("builds the printed
+  X-scaling Dragon Utopia reward"), and the Major cap in
+  `src/engine/creature-bank-artifact-tier-cap.test.ts` (7 cases: the data stamp,
+  a centre-tile pin with a no-cap CONTROL that DOES reach Relics, the Ⅶ field as
+  the untouched CONTROL, the cap surviving the reward queue into the real deck
+  pick, the `deck-access-hero-level` case with a level-1 CONTROL, the legacy
+  single-deck LIMIT, and an AI/AFK non-stall drive of the printed Extras).
+  Mutation-checked: restoring the fixed 3/5/5 shape fails 5 tests across 3
+  files, neutering the cap filter fails 3, dropping the reward-queue carry
+  fails 1.
 - **Also in this batch:** `REVISIT_FIELD` finally has a human button (the
   `HeroActionsDock`), so a hero that starts its turn standing on a Monolith can
   travel without walking off and back — the hex tooltip promised "step on (or
@@ -4195,11 +4220,13 @@ Leading with what does NOT work / the deliberate limits:
 
 The DELIBERATE rule changes (each verified coherent at offer == resolution ==
 label == describe/banner == AI == view-masking, and re-pinned):
-- **Ⅶ Dragon-Utopia FIELD reward → 20 gold + two Search (3); the Creature-Bank
-  Dragon Utopia TOKEN → a fixed 40 gold + Search (3)/(5)/(5)** — see the
+- **Ⅶ Dragon-Utopia FIELD reward → 20 gold + two Search (3)** — see the
   "Diplomacy's skip costs a crown · Dragon Utopia guards use the table" section,
-  whose bullet was rewritten. The bank change overrides an explicit 2026-08-03
-  user veto and is called out there.
+  whose bullet was rewritten. This commit ALSO changed the Creature-Bank Dragon
+  Utopia TOKEN to a fixed 40 gold + Search (3)/(5)/(5), overriding an explicit
+  2026-08-03 user veto; that half was **VETOED AGAIN and REVERTED on 2026-08-13**
+  — the token pays its printed X-scaling Artifact-or-Spell card again (now
+  Major-capped). Details in the same rewritten bullet.
 - **Factory's Mana Generator (`factory.mage_guild`) costs 4 gold, not 7**
   (`factory-content.test.ts`).
 - **MGQ's beginning-of-game bronze/silver army slots draw RANDOMLY, without

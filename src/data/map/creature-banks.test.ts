@@ -230,16 +230,31 @@ describe("Creature Bank rewards", () => {
     });
   });
 
-  it("builds the fixed IV–V Dragon Utopia reward regardless of Stacked defenders", () => {
+  // The PRINTED card (wiki `fields/dragon_utopia_creature_bank`): "40 gold and
+  // Search (3) the Artifact Deck. Extra: Search (5) the Artifact deck or the
+  // Spell deck for every Stacked unit." USER VETO re-stated 2026-08-13 — an
+  // earlier commit replaced the Extras with a FIXED Search (5)+(5) of the
+  // Artifact deck and was vetoed for the second time. The Ⅶ-FIELD's own fixed
+  // ladder must never leak here.
+  it("builds the printed X-scaling Dragon Utopia reward (Artifact-or-Spell Extras)", () => {
     for (const stacked of [0, 1, 2, 3, 4]) {
       const reward = CREATURE_BANKS.dragon_utopia.buildReward(stacked);
-      expect(reward).toEqual({
+      expect(reward, `X=${stacked}`).toEqual({
         type: "SEQUENCE",
         interactions: [
           { type: "GAIN_RESOURCES", gold: 40 },
-          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
-          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 },
-          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 }
+          // Ⅳ–Ⅴ (Near-band) placement ⇒ Major-capped Artifact searches.
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3, maxArtifactTier: "major" },
+          ...Array.from({ length: stacked }, () => ({
+            type: "CHOOSE_ONE",
+            options: [
+              {
+                label: "Search (5) the Artifact Deck",
+                interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5, maxArtifactTier: "major" }
+              },
+              { label: "Search (5) the Spell Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 } }
+            ]
+          }))
         ]
       });
     }

@@ -9537,6 +9537,13 @@ export type AdventureReward =
        */
       sourceHeroId?: HeroId;
       sourceFieldId?: MapSpaceId;
+      /**
+       * Caps the `"artifacts"` deck FAMILY below the Relic deck for this Search
+       * alone (see LocationInteraction.SEARCH_SHARED_DECK). Carried through the
+       * deferred reward queue so a Creature Bank Dragon Utopia's payout stays
+       * Major-capped however long it waits behind a Necromancy window.
+       */
+      maxArtifactTier?: "major";
       allowRemove?: boolean;
       /**
        * Polish Random Artifacts: which band table to use for the die roll.
@@ -10038,7 +10045,13 @@ export type VisitStep =
         /** Polish Unit Stacks: reserved for one army card's Stack purchase. */
         | { kind: "stack"; armyUnitId: string };
     }
-  | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
+  | {
+      type: "SEARCH_SHARED_DECK";
+      deckId: DeckId;
+      count: number;
+      /** See LocationInteraction.SEARCH_SHARED_DECK — caps the `"artifacts"` family below Relic. */
+      maxArtifactTier?: "major";
+    }
   | { type: "SETTLEMENT_CHOICE" }
   | {
       /**

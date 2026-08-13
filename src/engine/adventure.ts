@@ -3520,7 +3520,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return Array.from({ length: times }, () => ({
         type: "SEARCH_SHARED_DECK" as const,
         deckId: interaction.deckId,
-        count: interaction.count
+        count: interaction.count,
+        ...(interaction.maxArtifactTier ? { maxArtifactTier: interaction.maxArtifactTier } : {})
       }));
     }
     case "MINE_FLAG":
@@ -4945,7 +4946,7 @@ export function relicArtifactDeckId(state: GameState): "artifacts-relic" | "arti
 /**
  * Creature-bank consolation (a Grail that is not this game's objective): "gain
  * 10 gold and Search (2) the Relic Artifact deck." The Dragon Utopia no longer
- * uses it — it pays its own fixed 3/5/5 Artifact reward (see
+ * uses it — it pays its own fixed two Search (3) Artifact reward (see
  * {@link queueDragonUtopiaArtifactSearches}).
  */
 function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, fieldName: string): void {
@@ -5537,8 +5538,10 @@ function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): vo
  * SCOPE: the Ⅶ OBJECTIVE FIELD only — the map-designed / hidden Grail & Dragon
  * Utopia package, the `polish-grail-utopia` house rule, and the plain
  * conquest/grail Ⅶ field. The Creature Bank `dragon_utopia` TOKEN is NOT
- * affected: it keeps the distinct IV–V reward (40 gold + Search (3), (5), (5)) in
- * `src/data/map/creature-banks.ts`. Never share this ladder with the bank.
+ * affected: it keeps its PRINTED card (40 gold + Search (3), then one
+ * "Search (5) the Artifact or Spell Deck" per Stacked defender, Major-capped) in
+ * `src/data/map/creature-banks.ts`. Never share this ladder with the bank — that
+ * swap has now been vetoed by the user twice (2026-08-03 and 2026-08-13).
  */
 const VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 3] as const;
 
@@ -8127,7 +8130,10 @@ export function processPendingVisit(state: GameState): void {
           // across the deferred reward queue instead of later substituting the
           // Main Hero and their unrelated tile.
           sourceHeroId: visit.heroId,
-          sourceFieldId: visit.fieldId
+          sourceFieldId: visit.fieldId,
+          // A per-Search Artifact-tier cap (the Ⅳ–Ⅴ Creature Bank Dragon
+          // Utopia) rides the deferred reward, so the cap survives the queue.
+          ...(step.maxArtifactTier ? { maxArtifactTier: step.maxArtifactTier } : {})
         };
         queueVisitFollowUpReward(state, adventure, reward);
         break;

@@ -116,7 +116,20 @@ export type LocationInteraction =
     }
   | { type: "ROLL_RESOURCE_DICE"; count: number }
   | { type: "ROLL_TREASURE_DICE"; count: number }
-  | { type: "SEARCH_SHARED_DECK"; deckId: "spells" | "abilities" | "artifacts"; count: number; times?: number }
+  | {
+      type: "SEARCH_SHARED_DECK";
+      deckId: "spells" | "abilities" | "artifacts";
+      count: number;
+      times?: number;
+      /**
+       * Caps which Artifact decks this Search may reach, whatever the visitor's
+       * tile band or house rules would otherwise allow (`"major"` = never the
+       * Relic deck). Only the `"artifacts"` FAMILY is affected; an explicit
+       * split-deck id and every other deck ignore it. Today's only user is the
+       * Creature Bank Dragon Utopia, a Ⅳ–Ⅴ (Near-band) placement.
+       */
+      maxArtifactTier?: "major";
+    }
   | { type: "MINE_FLAG" }
   | { type: "SETTLEMENT_FLAG" }
   | { type: "TOWN_FLAG" }
