@@ -22,7 +22,7 @@ import { cardLibrary } from "@/data/cards/library";
  */
 
 /**
- * Every card whose Balance-Pack reprint is WIRED. Abilities only so far — see
+ * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts) — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -59,7 +59,34 @@ export const POLISH_BALANCE_CARD_IDS = [
   "spell.slayer",
   "spell.slow",
   "spell.sorrow",
-  "spell.visions"
+  "spell.visions",
+  "artifact.ambassadors_sash",
+  "artifact.blackshard_of_the_dead_knight",
+  "artifact.boots_of_speed",
+  "artifact.cape_of_velocity",
+  "artifact.cards_of_prophecy",
+  "artifact.celestial_necklace_of_bliss",
+  "artifact.centaurs_axe",
+  "artifact.crown_of_dragontooth",
+  "artifact.crown_of_the_five_seas",
+  "artifact.diplomats_ring",
+  "artifact.dragon_wing_tabard",
+  "artifact.equestrians_gloves",
+  "artifact.eversmoking_ring_of_sulfur",
+  "artifact.golden_bow",
+  "artifact.helm_of_the_alabaster_unicorn",
+  "artifact.hourglass_of_the_evil_hour",
+  "artifact.lions_shield_of_courage",
+  "artifact.necklace_of_swiftness",
+  "artifact.pendant_of_second_sight",
+  "artifact.rib_cage",
+  "artifact.ring_of_the_wayfarer",
+  "artifact.sandals_of_the_saint",
+  "artifact.shamans_puppet",
+  "artifact.speculum",
+  "artifact.spirit_of_oppression",
+  "artifact.sword_of_judgement",
+  "artifact.thunder_helmet"
 ] as const;
 
 /**
@@ -69,8 +96,8 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 12 Abilities AND all 21 Spells are wired. The next steps
- * (Artifacts / Specialties) add their own hold-outs here.
+ * EMPTY: all 12 Abilities, all 21 Spells AND all 27 Artifacts are wired. The
+ * last step (Specialties) adds its own hold-outs here.
  */
 export const POLISH_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {};
 

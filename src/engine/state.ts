@@ -734,6 +734,37 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Polish Balance Pack Necklace of Swiftness: the reprint's ground buff also
+       * reads "and they can move 1 more space". The GROUND twin of
+       * MOVEMENT_BONUS — read in `getUnitMoveRange` for the controller's GROUND
+       * units only, and (like the Balance-Pack Haste/Slow) it applies whatever
+       * the `combat-move-initiative` house rule says, because the reprinted card
+       * PRINTS the movement half.
+       */
+      type: "GROUND_MOVEMENT_BONUS";
+      amount: number;
+    }
+  | {
+      /**
+       * Polish Balance Pack Golden Bow: while the Bow's ongoing effect lives, the
+       * owner's RANGED units may reroll 1 Attack die on each of their attacks
+       * (the Ammo Cart reading of "once per turn" — the source is rebuilt per
+       * attack). Read in `buildRerollSources`.
+       */
+      type: "RANGED_ATTACK_REROLL";
+    }
+  | {
+      /**
+       * Polish Balance Pack Hourglass of the Evil Hour (option B): for this
+       * combat round, each "+1" on the EFFECT OWNER'S ENEMIES' Attack dice is
+       * rerolled once. The `reroll_plus_one` Negative-Morale curse, scoped to a
+       * combat round and pointed at the other side. Read in
+       * `applyEnemyPlusOneRerolls`.
+       */
+      type: "REROLL_ENEMY_PLUS_ONE";
+    }
+  | {
       type: "ATTACK_DIE_REROLL";
       maxUsesPerRoll: number;
       consumeEffectOnUse: boolean;
@@ -1414,6 +1445,14 @@ export type EffectDefinition =
        * of the cards paid through the option's `cost.discardCards` was a Spell.
        */
       drawIfCostCardSpell?: boolean;
+      /**
+       * Polish Balance Pack Blackshard of the Dead Knight: the reprint reads "If
+       * the discarded card was a Cast a Spell, draw 1 card." BOOK-GATED — while
+       * `polish-spell-book` is on this is the check that runs (owned Spells live
+       * in the Book, so no raw Spell card is in hand to pitch); without the Book
+       * the printed `drawIfCostCardSpell` check applies.
+       */
+      drawIfCostCardCastEnabler?: boolean;
       /** Sword of Hellfire / Shield of the Damned: the unit also takes damage. */
       selfDamage?: number;
       /**
@@ -1495,6 +1534,12 @@ export type EffectDefinition =
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
       type: "TRIPLE_ATTACK_DIE";
+      /**
+       * Polish Balance Pack Centaur's Axe: "Ignore on '-1' result" — a rolled
+       * "-1" is NOT tripled (it counts as a plain -1). Read at the single
+       * attack-value seam (`getAttackDamagePreview`).
+       */
+      ignoreOnNegative?: boolean;
     }
   | {
       /**
@@ -1539,6 +1584,13 @@ export type EffectDefinition =
       amount: number;
       expertAmount?: number;
       drawCards?: number;
+      /**
+       * Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 SP,
+       * draw 1 card then discard 1 card." The discard runs AFTER the draw (the
+       * printed order), so the just-drawn card is a legal candidate — the same
+       * `drawRiderThenDiscard` rider the medic specialties use.
+       */
+      thenDiscard?: number;
       /** Breastplate of Brimstone: +1 more per card paid via the cost. */
       perCostCard?: number;
       /** Elemental Magic abilities: only spells of this school qualify. */
@@ -1711,6 +1763,14 @@ export type EffectDefinition =
       /** Rib Cage: shuffle the rest of the discard pile into the deck. */
       shuffleRestIntoDeck?: boolean;
       /**
+       * Polish Balance Pack Crown of Dragontooth: how many "Cast a Spell"
+       * enablers the Polish-Spell-Book recovery returns AND how many used Book
+       * Spells it may refresh. Absent = 1 (every other recovery artifact, and the
+       * Crown's own classic printing, whose count 2 belongs to the non-book
+       * discard-to-hand arm).
+       */
+      polishRecoveryLimit?: number;
+      /**
        * Scholar (basic) house rule: the pick may also be made mid-Combat. The
        * adventure reward queue is parked while a fight is live, so the reducer
        * opens the discard-pick choice immediately instead of queuing it (and
@@ -1882,6 +1942,14 @@ export type EffectDefinition =
        * discard — never in the shared Spell deck.
        */
       ownDiscard?: boolean;
+      /**
+       * Polish Balance Pack Helm of the Alabaster Unicorn: "Add casted Spell to
+       * your Spellbook." BOOK-GATED — with `polish-spell-book` on the cast Spell
+       * leaves the shared Spell-deck discard pile and is inscribed (refreshed)
+       * into the caster's Spellbook instead of staying there. Without the Book
+       * there is no Spellbook and the Spell stays put.
+       */
+      addToSpellBook?: boolean;
     }
   | {
       /**
@@ -6959,6 +7027,11 @@ export type ResolutionStackItem = {
     interfereSpellReductions?: { unitId: UnitId; amount: number }[];
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
     attackDieMultiplier?: number;
+    /**
+     * Polish Balance Pack Centaur's Axe: the multiplier above is IGNORED on a
+     * rolled "-1" ("Ignore on '-1' result"), so a "-1" counts once, not thrice.
+     */
+    attackDieMultiplierSkipsNegative?: boolean;
     /** Brimstone Stormclouds: faction cubes spent on this cast (max 1). */
     townCubePowerBonus?: number;
     /**
@@ -6983,6 +7056,12 @@ export type ResolutionStackItem = {
      * pile — so finalizeSpellCardDestination leaves it untouched.
      */
     fromSpellDeck?: boolean;
+    /**
+     * Polish Balance Pack Helm of the Alabaster Unicorn: the cast Spell is
+     * INSCRIBED into the caster's Polish Spellbook when it resolves, instead of
+     * staying in the shared Spell-deck discard pile.
+     */
+    inscribeCastToSpellBook?: boolean;
     /**
      * Tarnum (Conflux) VI cast: a free over-limit cast of a just-Searched hand
      * spell. On resolution the card is pulled out of the caster's discard and
@@ -9771,6 +9850,8 @@ export type AdventureReward =
       filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
+      /** Polish Balance Pack Crown of Dragontooth: up to 2 enablers / refreshes. */
+      polishRecoveryLimit?: number;
       /** One protected occurrence per id is still resolving and cannot be recovered yet. */
       excludeCardIds?: CardId[];
     }
@@ -13997,6 +14078,14 @@ export type AttackRerollSource = {
    * via the explicit set-die action, never by a plain reroll.
    */
   setDieFace?: number;
+  /**
+   * Polish Balance Pack Cards of Prophecy (option B): "roll it 3 times and
+   * resolve 1 chosen result." Spending this source appends THIS MANY fresh
+   * candidates at once (2) and unlocks a free pick among every candidate in the
+   * window (`freeCandidateChoice`) instead of the rulebook's "only the latest
+   * roll counts".
+   */
+  rollExtraCandidates?: number;
   remaining: number;
   used: number;
 };
@@ -14016,6 +14105,12 @@ export type PendingChoice =
       defenseBonus: number;
       candidates: AttackRollCandidate[];
       remainingRerolls: number;
+      /**
+       * Polish Balance Pack Cards of Prophecy: once its "roll it 3 times"
+       * source has been spent in this window the owner may keep ANY candidate,
+       * not only the latest — the printed "resolve 1 chosen result".
+       */
+      freeCandidateChoice?: boolean;
       /** Reroll pools in spend order — Luck is always sorted last. */
       rerollSources: AttackRerollSource[];
       sourceEffectIds: string[];

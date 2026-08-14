@@ -1,10 +1,31 @@
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceSpellCards, POLISH_BALANCE_SPELL_IDS } from "@/data/cards/spells-balance";
+import {
+  polishBalanceArtifactCards,
+  POLISH_BALANCE_ARTIFACT_IDS,
+  POLISH_BALANCE_MOVEMENT_ARTIFACT_IDS
+} from "@/data/cards/artifacts-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import type { CardDefinition, CardLibrary, GameState } from "./state";
 
-export { POLISH_BALANCE_SPELL_IDS };
+export { POLISH_BALANCE_SPELL_IDS, POLISH_BALANCE_ARTIFACT_IDS };
+
+/** Every card id the Balance Pack REPRINTS as a whole definition. */
+const REPRINTED_CARDS: CardLibrary = { ...polishBalanceSpellCards, ...polishBalanceArtifactCards };
+const REPRINTED_IDS: readonly string[] = Object.keys(REPRINTED_CARDS);
+
+/**
+ * The reprints whose PRINTED text carries a Combat-movement half — the
+ * Balance-Pack Haste / Slow and the five "+N initiative and can move N more
+ * spaces" artifacts. `getUnitMoveRange` applies THEIR movement whatever the
+ * classic `combat-move-initiative` house rule says, because the card prints it;
+ * every other MOVEMENT_BONUS stays gated on that rule.
+ */
+export const POLISH_BALANCE_PRINTED_MOVEMENT_IDS: readonly string[] = [
+  ...POLISH_BALANCE_SPELL_IDS,
+  ...POLISH_BALANCE_MOVEMENT_ARTIFACT_IDS
+];
 
 /**
  * Polish Balance Pack — the ONE seam that swaps the 21 reprinted Spell cards in.
@@ -37,12 +58,12 @@ export function polishBalanceCardLibrary(state: GameState, cards: CardLibrary): 
     return cached;
   }
   const next: CardLibrary = { ...cards };
-  for (const cardId of POLISH_BALANCE_SPELL_IDS) {
+  for (const cardId of REPRINTED_IDS) {
     // Only replace a card the caller's library actually carries: the combat
     // sandbox and the tests build trimmed libraries, and inventing a card there
-    // would put a spell in play the table never dealt.
-    if (cards[cardId] && polishBalanceSpellCards[cardId]) {
-      next[cardId] = polishBalanceSpellCards[cardId]!;
+    // would put a card in play the table never dealt.
+    if (cards[cardId] && REPRINTED_CARDS[cardId]) {
+      next[cardId] = REPRINTED_CARDS[cardId]!;
     }
   }
   merged.set(cards, next);
@@ -56,8 +77,8 @@ export function polishBalanceCardLibrary(state: GameState, cards: CardLibrary): 
  * call sites that reach `cardLibrary` directly instead of the threaded library.
  */
 export function polishBalanceCard(state: GameState, cardId: string): CardDefinition | undefined {
-  if (houseRuleEnabled(state, "polish-card-balance") && cardLibrary[cardId] && polishBalanceSpellCards[cardId]) {
-    return polishBalanceSpellCards[cardId];
+  if (houseRuleEnabled(state, "polish-card-balance") && cardLibrary[cardId] && REPRINTED_CARDS[cardId]) {
+    return REPRINTED_CARDS[cardId];
   }
   return cardLibrary[cardId];
 }

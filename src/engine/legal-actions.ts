@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { POLISH_BALANCE_SPELL_IDS, polishBalanceCardLibrary } from "./polish-balance-spells";
+import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS, polishBalanceCardLibrary } from "./polish-balance-spells";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
 import { moraleCardsRuleEnabled } from "./morale-cards";
@@ -953,12 +953,15 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
   // (MOVEMENT_BONUS), the Battlefield-Expansion reading. When the rule is off the
   // buff changes only Initiative, keeping the fixed range (the standard/wiki rule).
-  // Polish Balance Pack: Haste / Slow PRINT their "+X spaces" / "-X spaces"
-  // half, so those two apply even with the classic house rule off. Every OTHER
-  // MOVEMENT_BONUS (Cape of Velocity, the initiative-buff specialties) stays
-  // gated on `combat-move-initiative` exactly as before — the Balance Pack must
-  // not switch the classic rider on for cards it does not reprint. Their own
-  // ladder REPLACES the ±1 rider (initiativeBuffMovementModifiers), so nothing
+  // Polish Balance Pack: Haste / Slow — and the five reprinted "+N initiative
+  // AND can move N more spaces" artifacts (Boots of Speed, Equestrian's Gloves,
+  // Ring of the Wayfarer, Necklace of Swiftness, Cape of Velocity) — PRINT their
+  // "+X spaces" / "-X spaces" half, so they apply even with the classic house
+  // rule off (`POLISH_BALANCE_PRINTED_MOVEMENT_IDS`). Every OTHER MOVEMENT_BONUS
+  // (a CLASSIC Cape of Velocity, the initiative-buff specialties) stays gated on
+  // `combat-move-initiative` exactly as before — the Balance Pack must not
+  // switch the classic rider on for cards it does not reprint. A reprint's own
+  // amount REPLACES the ±1 rider (initiativeBuffMovementModifiers), so nothing
   // double-counts when both rules are on.
   const classicRider = Boolean(state && houseRuleEnabled(state, "combat-move-initiative"));
   const balancePrinted = Boolean(state && houseRuleEnabled(state, "polish-card-balance"));
@@ -971,12 +974,19 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
       continue;
     }
     const printedByReprint =
-      effect.source.type === "card" && POLISH_BALANCE_SPELL_IDS.includes(effect.source.cardId);
+      balancePrinted &&
+      effect.source.type === "card" &&
+      POLISH_BALANCE_PRINTED_MOVEMENT_IDS.includes(effect.source.cardId);
     if (!classicRider && !printedByReprint) {
       continue;
     }
     for (const modifier of effect.modifiers) {
       if (modifier.type === "MOVEMENT_BONUS") {
+        bonus += modifier.amount;
+      }
+      // Necklace of Swiftness (Balance Pack): the ground twin — its player-scoped
+      // effect reaches every unit, so the modifier itself gates on the type.
+      if (modifier.type === "GROUND_MOVEMENT_BONUS" && unit.type === "ground") {
         bonus += modifier.amount;
       }
     }
@@ -4027,7 +4037,13 @@ export function healDrawOnlyRider(effect: EffectDefinition): number {
  * target-less map draw-only) so they cannot disagree about the order.
  */
 export function drawRiderThenDiscard(effect: EffectDefinition): number {
-  if (effect.type === "HEAL_DAMAGE" || effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS") {
+  if (
+    effect.type === "HEAL_DAMAGE" ||
+    effect.type === "HEAL_DAMAGE_AND_REMOVE_EFFECTS" ||
+    // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 SP,
+    // draw 1 card then discard 1 card" — the same draw-then-discard order.
+    effect.type === "ADD_SPELL_POWER"
+  ) {
     return effect.thenDiscard ?? 0;
   }
   return 0;
@@ -6790,6 +6806,29 @@ function getLegalActionsCore(
         }
       }
     ];
+
+    // Polish Balance Pack Cards of Prophecy: "roll it 3 times and resolve 1
+    // chosen result" — once its source has been spent in this window EVERY
+    // candidate is keepable, not just the latest.
+    if (state.pendingChoice.freeCandidateChoice) {
+      state.pendingChoice.candidates.forEach((candidate, index) => {
+        if (index === latestIndex) {
+          return;
+        }
+        const faces = candidate.rolls.map((roll) => (roll >= 0 ? `+${roll}` : `${roll}`)).join(", ");
+        actions.push({
+          label: abilityRoll
+            ? `Keep the ${abilityRoll.abilityName} roll ${faces} (throw ${index + 1})`
+            : `Keep the attack roll ${candidate.roll >= 0 ? "+" : ""}${candidate.roll} (throw ${index + 1})`,
+          action: {
+            type: "CHOOSE_PENDING_ROLL",
+            playerId,
+            choiceId: state.pendingChoice?.id ?? "",
+            candidateIndex: index
+          }
+        });
+      });
+    }
 
     const nextSource = state.pendingChoice.rerollSources.find(
       (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace === undefined

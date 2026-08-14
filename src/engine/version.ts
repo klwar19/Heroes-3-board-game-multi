@@ -247,6 +247,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `activationsRemaining`, the stack modifiers `attackDamageCap` /
 // `misfortuneDie`), so an old server just ignores them.
 
+// v30 (extended again, still v30 — never deployed): the pack's 27 ARTIFACTS. NO
+// new action type either, but the skew is again real: a stale edge prices the
+// Discard-X relics without their flat +1, triples a Centaur's Axe "-1", refuses
+// the Speculum / Pendant of Second Sight extra option indexes the new client
+// offers, and rejects a `CHOOSE_PENDING_ROLL` on anything but the LATEST
+// candidate — which the reprinted Cards of Prophecy ("roll it 3 times and
+// resolve 1 chosen result") depends on. Every persisted addition is optional:
+// `AttackRerollSource.rollExtraCandidates`, the ATTACK_DIE_REROLL choice's
+// `freeCandidateChoice`, the stack modifiers `attackDieMultiplierSkipsNegative` /
+// `inscribeCastToSpellBook`, the `discard-pick` reward's `polishRecoveryLimit`,
+// and the two new ActiveEffectModifier variants `GROUND_MOVEMENT_BONUS` /
+// `RANGED_ATTACK_REROLL` / `REROLL_ENEMY_PLUS_ONE`, which an old server ignores.
+
 // The face-swap seam and every reprint listed in the `polish-card-balance`
 // house-rule description are otherwise pure engine reads, so a table that leaves
 // the rule OFF is unaffected by the skew either way.

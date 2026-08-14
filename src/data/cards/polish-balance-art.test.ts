@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceSpellCards } from "./spells-balance";
+import { polishBalanceArtifactCards } from "./artifacts-balance";
 import {
   POLISH_BALANCE_CARD_IDS,
   POLISH_BALANCE_NOT_IMPLEMENTED,
@@ -77,7 +78,7 @@ describe("Polish Balance Pack registries", () => {
     }
   });
 
-  it("declares every one of the pack's 12 Abilities + 21 Spells as wired or not-implemented", () => {
+  it("declares every one of the pack's 12 Abilities + 21 Spells + 27 Artifacts as wired or not-implemented", () => {
     // The Balance Pack's Ability folder is exactly these 12 cards (docs/
     // polish-card-balance-spec.md §1). Every one must be accounted for, so a
     // reprint can never be silently dropped from the pack's scope.
@@ -115,7 +116,35 @@ describe("Polish Balance Pack registries", () => {
       "spell.slayer",
       "spell.slow",
       "spell.sorrow",
-      "spell.visions"
+      "spell.visions",
+      // The pack's Artifacts folder is exactly these 27 cards (spec §3).
+      "artifact.ambassadors_sash",
+      "artifact.blackshard_of_the_dead_knight",
+      "artifact.boots_of_speed",
+      "artifact.cape_of_velocity",
+      "artifact.cards_of_prophecy",
+      "artifact.celestial_necklace_of_bliss",
+      "artifact.centaurs_axe",
+      "artifact.crown_of_dragontooth",
+      "artifact.crown_of_the_five_seas",
+      "artifact.diplomats_ring",
+      "artifact.dragon_wing_tabard",
+      "artifact.equestrians_gloves",
+      "artifact.eversmoking_ring_of_sulfur",
+      "artifact.golden_bow",
+      "artifact.helm_of_the_alabaster_unicorn",
+      "artifact.hourglass_of_the_evil_hour",
+      "artifact.lions_shield_of_courage",
+      "artifact.necklace_of_swiftness",
+      "artifact.pendant_of_second_sight",
+      "artifact.rib_cage",
+      "artifact.ring_of_the_wayfarer",
+      "artifact.sandals_of_the_saint",
+      "artifact.shamans_puppet",
+      "artifact.speculum",
+      "artifact.spirit_of_oppression",
+      "artifact.sword_of_judgement",
+      "artifact.thunder_helmet"
     ];
     for (const cardId of PACK_ABILITIES) {
       const accounted =
@@ -134,7 +163,11 @@ describe("Polish Balance Pack registries", () => {
       // Abilities patch their printed definition in place; Spells ship a whole
       // reprinted definition that the engine swaps in under the rule — read
       // whichever one the rule actually plays.
-      const tags = polishBalanceSpellCards[cardId]?.tags ?? cardLibrary[cardId]?.tags ?? [];
+      const tags =
+        polishBalanceSpellCards[cardId]?.tags ??
+        polishBalanceArtifactCards[cardId]?.tags ??
+        cardLibrary[cardId]?.tags ??
+        [];
       expect(
         tags.some((tag) => tag.startsWith("Balance pack:")),
         `${cardId} must state its reprinted text in a "Balance pack: …" tag`

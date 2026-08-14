@@ -218,6 +218,7 @@ import {
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
 import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
+import { openHandDiscardChoice } from "./hand-discard-choice";
 import { ATTACK_DIE_FACES, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
@@ -7089,6 +7090,28 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     if (draws > 0) {
       nextFlags = { ...nextFlags, inFlightCardIds: resolving };
       drawCardsForPlayer(state, playerId, draws, { inFlightCardIds: resolving });
+      // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
+      // card then discard 1 card" — the discard follows the draw here too, so the
+      // Power tray cannot resolve the draw without the printed pitch.
+      // The rider lives on the ADD_SPELL_POWER side actually played. Read inline
+      // (adventure-reducer cannot import legal-actions' `drawRiderThenDiscard` —
+      // the dependency runs the other way); keep the two in step.
+      const boostCard = cardLibrary[offer.cardId];
+      const boostEffect =
+        boostCard?.effect.type === "CHOOSE_ONE"
+          ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
+          : boostCard?.effect;
+      const thenDiscard = boostEffect?.type === "ADD_SPELL_POWER" ? (boostEffect.thenDiscard ?? 0) : 0;
+      if (thenDiscard > 0) {
+        openHandDiscardChoice(
+          state,
+          playerId,
+          thenDiscard,
+          [...(state.players[playerId]?.hand ?? [])],
+          false,
+          cardLibrary[offer.cardId]?.name ?? offer.cardId
+        );
+      }
     } else if (!offer.removeSelf) {
       nextFlags = {
         ...nextFlags,
@@ -17428,6 +17451,12 @@ export function openDiscardPickChoice(
     fromTop?: number;
     shuffleRestIntoDeck?: boolean;
     excludeCardIds?: CardId[];
+    /**
+     * Polish Balance Pack Crown of Dragontooth: how many "Cast a Spell" enablers
+     * the Polish-Book recovery returns AND how many used Book Spells it may
+     * refresh. Absent = 1 (every other recovery artifact).
+     */
+    polishRecoveryLimit?: number;
   }
 ): boolean {
   const player = state.players[playerId];
@@ -17473,9 +17502,15 @@ export function openDiscardPickChoice(
   // refresh would otherwise no-op the whole card), and BEFORE the fromTop slice
   // is read so the returned enabler never occupies one of the peeked slots.
   const polishReturnEnabler = polishRecovery && pick.filter === "spell";
+  // Balance Pack Crown of Dragontooth returns UP TO 2 enablers and refreshes up
+  // to 2 Book Spells; every other recovery card stays at exactly one.
+  const polishRecoveryLimit = Math.max(1, pick.polishRecoveryLimit ?? 1);
   if (polishReturnEnabler) {
-    const enablerIndex = player.discard.indexOf(CAST_A_SPELL_CARD_ID);
-    if (enablerIndex !== -1) {
+    for (let taken = 0; taken < polishRecoveryLimit; taken += 1) {
+      const enablerIndex = player.discard.indexOf(CAST_A_SPELL_CARD_ID);
+      if (enablerIndex === -1) {
+        break;
+      }
       player.discard.splice(enablerIndex, 1);
       player.hand.push(CAST_A_SPELL_CARD_ID);
       appendEvent(state, {
@@ -17571,7 +17606,7 @@ export function openDiscardPickChoice(
   // printed count 2 belongs to its classic discard-to-hand arm; carrying that
   // count into the Polish adaptation incorrectly reopened this picker and let
   // the Crown refresh two used Book Spells.
-  const selectionCount = polishRecovery ? 1 : pick.count;
+  const selectionCount = polishRecovery ? polishRecoveryLimit : pick.count;
   const remainingSuffix = selectionCount > 1 ? ` (${selectionCount} left)` : "";
   const prompt =
     usedCount === entries.length
@@ -17856,6 +17891,7 @@ export function pumpAdventureQueues(state: GameState): void {
           filter: reward.filter,
           fromTop: reward.fromTop,
           shuffleRestIntoDeck: reward.shuffleRestIntoDeck,
+          polishRecoveryLimit: reward.polishRecoveryLimit,
           excludeCardIds: reward.excludeCardIds
         })
       ) {

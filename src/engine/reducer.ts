@@ -30,6 +30,7 @@ import {
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade } from "./unit-experience";
 import { polishBalanceCardLibrary } from "./polish-balance-spells";
+import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
   canPlaceTransformOn,
@@ -1480,6 +1481,48 @@ function aggregateCandidateRoll(rolls: number[], aggregation: MoraleDiceAggregat
  * rule off, or when neither card is held. Also run on window rerolls and the
  * set-die result, so a "+1" that only appears later still triggers the curse.
  */
+/**
+ * Polish Balance Pack Hourglass of the Evil Hour (option B): "For this combat
+ * round, reroll once each '+1' result on your enemy's Attack dice."
+ *
+ * A sibling of the Negative-Morale `reroll_plus_one` curse below, but sourced
+ * from an ONGOING effect the OTHER side owns: every live REROLL_ENEMY_PLUS_ONE
+ * effect whose controller is not the roller rerolls each "+1" ONCE (a rerolled
+ * die is never re-caught — one pass per die per effect, so it can never loop).
+ * Called at every seam `applyMoraleDiceCurses` is, so the two curses compose.
+ */
+function applyEnemyPlusOneRerolls(
+  state: GameState,
+  controllerId: PlayerId,
+  candidate: AttackRollCandidate,
+  aggregation: MoraleDiceAggregation
+): AttackRollCandidate {
+  const combat = state.combat;
+  if (!combat) {
+    return candidate;
+  }
+  const curses = state.activeEffects.filter(
+    (effect) =>
+      effect.controllerId !== controllerId &&
+      effect.modifiers.some((modifier) => modifier.type === "REROLL_ENEMY_PLUS_ONE")
+  );
+  for (const curse of curses) {
+    let rerolled = false;
+    candidate.rolls.forEach((roll, index) => {
+      if (roll !== 1) {
+        return;
+      }
+      candidate.rolls[index] = rollAttackDie(combat);
+      rerolled = true;
+    });
+    if (rerolled) {
+      candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+      pushRollModifierNote(candidate, curse.name, 'each "+1" is rerolled once');
+    }
+  }
+  return candidate;
+}
+
 function applyMoraleDiceCurses(
   state: GameState,
   controllerId: PlayerId,
@@ -3247,7 +3290,10 @@ function getAttackDamagePreview(
   cardDamageCap?: number,
   // Polish Balance Pack Forgetfulness (Power 0): halve this ranged attack's
   // value, rounded up.
-  halveAttack = false
+  halveAttack = false,
+  // Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a rolled
+  // "-1" ("Ignore on '-1' result"), so a "-1" counts once instead of thrice.
+  dieMultiplierSkipsNegative = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -3266,7 +3312,12 @@ function getAttackDamagePreview(
   // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
   // dice, so they ride the attack value beside the normal die (before Defense),
   // rolled once by the caller and passed in so every recompute agrees.
-  const rawAttackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier + mightBonus);
+  // Centaur's Axe (Balance Pack): the tripling is ignored on a rolled "-1".
+  const effectiveDieMultiplier = dieMultiplierSkipsNegative && roll < 0 ? 1 : dieMultiplier;
+  const rawAttackValue = Math.max(
+    0,
+    baseAttack + attackBonus + dieAttackBonus + roll * effectiveDieMultiplier + mightBonus
+  );
   const attackValue = halveAttack ? Math.ceil(rawAttackValue / 2) : rawAttackValue;
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
   // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
@@ -3324,7 +3375,9 @@ function applyAttackDamageFromCandidate(
   mightBonus = 0,
   mightRolls: number[] = [],
   cardDamageCap?: number,
-  halveAttack = false
+  halveAttack = false,
+  // Centaur's Axe (Balance Pack): ignore the die multiplier on a rolled "-1".
+  dieMultiplierSkipsNegative = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -3345,7 +3398,8 @@ function applyAttackDamageFromCandidate(
     mightBonus,
     isRetaliation,
     cardDamageCap,
-    halveAttack
+    halveAttack,
+    dieMultiplierSkipsNegative
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
@@ -3765,6 +3819,11 @@ function getAttackStackDetails(
        * at half the attacker's Attack value, rounded up.
        */
       halveAttack?: boolean;
+      /**
+       * Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a
+       * rolled "-1" ("Ignore on '-1' result").
+       */
+      dieMultiplierSkipsNegative?: boolean;
       /** Behemoths: the announced defense reduction applied to this attack. */
       defenseReductionAbility?: { abilityId: string; abilityName: string; amount: number };
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
@@ -4060,6 +4119,8 @@ function getAttackStackDetails(
     // Polish Balance Pack Forgetfulness (Power 0): only the RANGED attack is
     // halved — a melee strike by the same unit is untouched.
     halveAttack: attackKind === "ranged" && unitRangedAttackHalved(state, attacker),
+    // Centaur's Axe (Balance Pack): the die multiplier is ignored on a "-1".
+    dieMultiplierSkipsNegative: Boolean(stackItem.modifiers.attackDieMultiplierSkipsNegative),
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       elementalLocksAttack ||
@@ -4097,6 +4158,9 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
 }
 
 const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
+/** Cards of Prophecy — its Balance-Pack reprint is the 3-roll die instant. */
+const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
+const GOLDEN_BOW_CARD_ID = "artifact.golden_bow" as CardId;
 
 /**
  * Builds the spend-ordered reroll pools for one attack roll. Rerolls from
@@ -4142,6 +4206,20 @@ function buildRerollSources(
     proclamation.rangedAttackReroll &&
     getPermanentCardIds(state, attacker.controllerId).includes(AMMO_CART_CARD_ID)
       ? [{ name: "Ammo Cart", remaining: 1, used: 0 }]
+      : [];
+
+  // Polish Balance Pack Golden Bow (option A): while its ongoing effect lives,
+  // the owner's RANGED units "can reroll 1 Attack die once per turn". Read as
+  // once per ATTACK (the Ammo Cart precedent above — the source is rebuilt per
+  // declared attack, so a unit gets one reroll on each of its own strikes).
+  const goldenBowSources: AttackRerollSource[] =
+    attacker.type === "ranged" &&
+    state.activeEffects.some(
+      (effect) =>
+        effect.controllerId === attacker.controllerId &&
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_ATTACK_REROLL")
+    )
+      ? [{ name: cardLibrary[GOLDEN_BOW_CARD_ID]?.name ?? "Golden Bow", remaining: 1, used: 0 }]
       : [];
 
   const orderedEffects = [...rerollEffects].sort(
@@ -4192,12 +4270,9 @@ function buildRerollSources(
   // reroll discards the artifact (handled in rerollPendingChoice).
   const artifactSources: AttackRerollSource[] =
     player && !isHandLockedInCombat(state, attacker.controllerId)
-      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
-          name: cardLibrary[cardId]?.name ?? cardId,
-          cardId,
-          remaining: 1,
-          used: 0
-        }))
+      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) =>
+          rerollArtifactSource(state, cardId)
+        )
       : [];
 
   // Anime Cultivation Core Formation (realm 2, §5.6): one FREE Attack-die reroll
@@ -4223,6 +4298,7 @@ function buildRerollSources(
   return [
     ...abilitySources,
     ...ammoCartSources,
+    ...goldenBowSources,
     ...orderedEffects.map((effect) => ({
       name: effect.name,
       effectId: effect.id,
@@ -4381,6 +4457,29 @@ function rollAbilityCandidate(
  * effects are all printed against the ATTACK roll. The Spirit of Oppression
  * lockout suppresses these exactly like the attack window's.
  */
+/**
+ * One held reroll artifact (Cards of Prophecy / Diplomat's Ring / Ambassador's
+ * Sash) as a die-window source.
+ *
+ * Polish Balance Pack: the Cards of Prophecy reprint reads "When you are about
+ * to roll any die, roll it 3 times and resolve 1 chosen result" — so its ONE use
+ * appends TWO fresh candidates at once and unlocks a free pick among all three
+ * (`rollExtraCandidates`). Every other artifact — and Cards of Prophecy with the
+ * rule OFF — stays the classic single reroll.
+ */
+function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSource {
+  const base: AttackRerollSource = {
+    name: cardLibrary[cardId]?.name ?? cardId,
+    cardId,
+    remaining: 1,
+    used: 0
+  };
+  if (cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")) {
+    return { ...base, rollExtraCandidates: 2 };
+  }
+  return base;
+}
+
 function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): AttackRerollSource[] {
   if (isNeutralUnit(roller) || attackRerollsBlocked(state)) {
     return [];
@@ -4422,12 +4521,9 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       : [];
 
   const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
-    ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) => ({
-        name: cardLibrary[cardId]?.name ?? cardId,
-        cardId,
-        remaining: 1,
-        used: 0
-      }))
+    ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) =>
+        rerollArtifactSource(state, cardId)
+      )
     : [];
 
   // Enterprise "Lucky E" — held-card halves ride the ability-roll window too,
@@ -5339,7 +5435,8 @@ function finishResolvedAttack(
       mightBonus,
       details.isRetaliation,
       details.attackDamageCap,
-      details.halveAttack
+      details.halveAttack,
+      details.dieMultiplierSkipsNegative
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(state, details.defender, preview.damage);
     if (
@@ -5402,7 +5499,8 @@ function finishResolvedAttack(
         mightBonus,
         details.isRetaliation,
         details.attackDamageCap,
-        details.halveAttack
+        details.halveAttack,
+        details.dieMultiplierSkipsNegative
       );
       if (
         preview.damage > 0 &&
@@ -5467,7 +5565,8 @@ function finishResolvedAttack(
         mightBonus,
         details.isRetaliation,
         details.attackDamageCap,
-        details.halveAttack
+        details.halveAttack,
+        details.dieMultiplierSkipsNegative
       );
       return (
         preview.damage > 0 &&
@@ -5513,7 +5612,8 @@ function finishResolvedAttack(
     mightBonus,
     mightRolls,
     details.attackDamageCap,
-    details.halveAttack
+    details.halveAttack,
+    details.dieMultiplierSkipsNegative
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -10794,10 +10894,15 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     const slayerCount = takeMoraleRollOneLess(state, details.attacker.controllerId, stackItem.modifiers.slayerRolls);
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const rolls = Array.from({ length: slayerCount }, () => rollAttackDie(combat));
-    const slayerCandidate = applyMoraleDiceCurses(
+    const slayerCandidate = applyEnemyPlusOneRerolls(
       state,
       details.attacker.controllerId,
-      { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
+      applyMoraleDiceCurses(
+        state,
+        details.attacker.controllerId,
+        { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
+        "count-plus"
+      ),
       "count-plus"
     );
     if (slayerCount < stackItem.modifiers.slayerRolls) {
@@ -10887,7 +10992,12 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       state,
       stackItem,
       details,
-      applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
+      applyEnemyPlusOneRerolls(
+        state,
+        details.attacker.controllerId,
+        applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
+        "sum"
+      ),
       cards
     );
     return;
@@ -10902,10 +11012,15 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     details.rollMode = "normal";
   }
   applyMoraleAttackRollPenalty(state, stackItem, details);
-  const candidate = applyMoraleDiceCurses(
+  const candidate = applyEnemyPlusOneRerolls(
     state,
     details.attacker.controllerId,
-    rollAttackCandidate(combat, details.rollMode),
+    applyMoraleDiceCurses(
+      state,
+      details.attacker.controllerId,
+      rollAttackCandidate(combat, details.rollMode),
+      details.rollMode
+    ),
     details.rollMode
   );
   if (collapsedToOneDie) {
@@ -10960,6 +11075,28 @@ function finalizeSpellCardDestination(
     stackItem.modifiers.fromSpellDeck ||
     stackItem.modifiers.spellPowerBaseZero
   ) {
+    // Polish Balance Pack Helm of the Alabaster Unicorn: "Add casted Spell to
+    // your Spellbook." The Spell was cast FROM a shared Spell-deck discard pile
+    // and normally stays there; with the Book on it is pulled out and inscribed
+    // (refreshed) into the caster's Book instead. Any split deck may hold it, so
+    // the pile is found by id.
+    if (stackItem.modifiers.inscribeCastToSpellBook) {
+      const caster = state.players[stackItem.action.playerId];
+      const cardId = stackItem.action.cardId;
+      const deck = Object.values(state.decks).find((candidate) => candidate?.discardPile.includes(cardId));
+      if (caster && deck) {
+        const index = deck.discardPile.lastIndexOf(cardId);
+        if (index >= 0) {
+          deck.discardPile.splice(index, 1);
+          caster.spellBook.push(cardId);
+          appendEvent(state, {
+            type: "EVENT_NOTE",
+            playerId: stackItem.action.playerId,
+            message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook.`
+          });
+        }
+      }
+    }
     return;
   }
 
@@ -12640,6 +12777,23 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // through to the power hooks below.
   if (action.fromSpellDeck) {
     stackItem.modifiers.fromSpellDeck = true;
+    // Polish Balance Pack Helm of the Alabaster Unicorn: "Add casted Spell to
+    // your Spellbook." BOOK-GATED — with the Polish Book on, the cast Spell
+    // leaves the shared Spell-deck discard and is inscribed (refreshed) into the
+    // caster's Book instead of staying there.
+    const enabler = cards[action.fromSpellDeck];
+    const castOption =
+      enabler?.effect.type === "CHOOSE_ONE"
+        ? enabler.effect.options.find((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
+        : undefined;
+    if (
+      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+      castOption.effect.addToSpellBook === true &&
+      polishSpellBookEnabled(state) &&
+      spellCanEnterSpellBook(action.cardId)
+    ) {
+      stackItem.modifiers.inscribeCastToSpellBook = true;
+    }
   }
 
   // Tarnum (Conflux) VI: flag the placement and spend the over-limit privilege
@@ -14394,6 +14548,10 @@ function applyReactionPlayCore(
         inFlightCardIds: reactionInFlightCardIds
       });
     }
+    // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
+    // card then discard 1 card" — the discard runs AFTER the draw, so the drawn
+    // card is a legal candidate (the Rion VI rider, shared read).
+    applyDrawRiderThenDiscard(state, playerId, effect, card.name);
   }
 
   // Tome of X (option B): "resolve its effect without paying the Power cost."
@@ -14429,6 +14587,7 @@ function applyReactionPlayCore(
       filter: effect.filter,
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      polishRecoveryLimit: effect.polishRecoveryLimit,
       excludeCardIds: reactionInFlightCardIds
     });
   }
@@ -14685,7 +14844,21 @@ function applyReactionPlayCore(
     // Blackshard of the Dead Knight: the option discarded 1 card; draw 1 only
     // when that paid card was a Spell. The cost cards were already moved to the
     // discard pile by payOptionCardCost above, so inspect the paid ids.
-    if (effect.drawIfCostCardSpell && (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")) {
+    // Polish Balance Pack Blackshard: with the Polish Spell Book on, the printed
+    // rider reads "If the discarded card was a Cast a Spell" — owned Spells live
+    // in the Book, so no raw Spell card is in hand to pitch. Without the Book the
+    // printed "was a Spell" check below applies unchanged.
+    const paidCastEnabler =
+      effect.drawIfCostCardCastEnabler &&
+      polishSpellBookEnabled(state) &&
+      (play.costCardIds ?? []).includes(CAST_A_SPELL_CARD_ID);
+    if (paidCastEnabler) {
+      drawCardsForPlayer(state, playerId, 1, { inFlightCardIds: reactionInFlightCardIds });
+    } else if (
+      effect.drawIfCostCardSpell &&
+      !(effect.drawIfCostCardCastEnabler && polishSpellBookEnabled(state)) &&
+      (play.costCardIds ?? []).some((id) => cards[id]?.kind === "spell")
+    ) {
       drawCardsForPlayer(state, playerId, 1, { inFlightCardIds: reactionInFlightCardIds });
     }
 
@@ -14836,6 +15009,11 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.attackDieMultiplier = (stackItem.modifiers.attackDieMultiplier ?? 1) * 3;
+    // Polish Balance Pack Centaur's Axe: "Ignore on '-1' result" — the tripling
+    // is skipped on a rolled "-1" (which stays a plain -1 instead of -3).
+    if (effect.ignoreOnNegative) {
+      stackItem.modifiers.attackDieMultiplierSkipsNegative = true;
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
@@ -16101,36 +16279,6 @@ function startChainLightning(
     reachable,
     damages.slice(1).filter((value) => value > 0)
   );
-}
-
-/**
- * Charm of Mana / Shackles of War: open a "discard M cards from hand" choice.
- * `candidates` are the cards the player may discard (the whole hand, or only
- * the cards just drawn). With nothing to discard the choice is skipped.
- */
-function openHandDiscardChoice(
-  state: GameState,
-  playerId: PlayerId,
-  remaining: number,
-  candidates: CardId[],
-  drawnOnly: boolean,
-  cardName: string
-): void {
-  if (remaining <= 0 || candidates.length === 0) {
-    return;
-  }
-  state.pendingChoice = {
-    id: `choice_${nextEventNumber(state)}`,
-    type: "OPTION_CHOICE",
-    playerId,
-    prompt: `${cardName}: discard ${remaining} card${remaining === 1 ? "" : "s"}.`,
-    options: candidates.map((cardId) => ({ label: `Discard ${cardLibrary[cardId]?.name ?? cardId}` })),
-    context: "hand-discard",
-    handDiscard: { cardIds: candidates, remaining, drawnOnly },
-    returnPhase: state.combat ? "combat" : "player-turn"
-  };
-  state.phase = "choice";
-  state.priorityPlayerId = playerId;
 }
 
 /**
@@ -17964,6 +18112,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       filter: effect.filter,
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
+      polishRecoveryLimit: effect.polishRecoveryLimit,
       excludeCardIds: playInFlightCardIds
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
@@ -20286,21 +20435,54 @@ function rerollPendingChoice(
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
   }
+  // Polish Balance Pack Cards of Prophecy: "roll it 3 times and resolve 1 chosen
+  // result" — one press throws the die TWICE more (this candidate plus an extra)
+  // and unlocks the free pick below. Extra throws take the same curse pass.
+  const extraCandidates: AttackRollCandidate[] = [];
+  if (source.rollExtraCandidates && source.setDieFace === undefined) {
+    for (let index = 1; index < source.rollExtraCandidates; index += 1) {
+      const extra = choice.abilityRoll
+        ? {
+            rolls: Array.from({ length: Math.max(1, choice.abilityRoll.diceCount) }, () => rollAttackDie(combat)),
+            roll: 0,
+            sumAllDice: true
+          }
+        : rollAttackCandidate(combat, choice.rollMode);
+      if (choice.abilityRoll) {
+        extra.roll = extra.rolls[0] ?? 0;
+      }
+      if (abilityWindow) {
+        applyAbilityDiceCurses(state, action.playerId, extra, abilityWindow, true);
+      } else {
+        applyMoraleDiceCurses(state, action.playerId, extra, choice.rollMode);
+        applyEnemyPlusOneRerolls(state, action.playerId, extra, choice.rollMode);
+      }
+      extraCandidates.push(extra);
+    }
+    choice.freeCandidateChoice = true;
+  }
   // A fresh face may be the first "+1" of this attack — the holder's own
   // Negative Morale reroll-the-"+1" curse (if still held) triggers on it.
   if (abilityWindow) {
     applyAbilityDiceCurses(state, action.playerId, candidate, abilityWindow, true);
   } else {
     applyMoraleDiceCurses(state, action.playerId, candidate, choice.rollMode);
+    applyEnemyPlusOneRerolls(state, action.playerId, candidate, choice.rollMode);
   }
   choice.candidates.push(candidate);
+  for (const extra of extraCandidates) {
+    choice.candidates.push(extra);
+  }
   // EVERY source spends one use — the face-gated unit abilities included. An
   // "[unit_attack]" icon activates ONCE PER ATTACK, so a Minotaur/Crusader that
   // rerolls into another gated face may NOT reroll again in the same attack;
   // `onlyOnRoll` only says WHEN the one use may be taken.
   source.remaining -= 1;
   source.used += 1;
-  choice.remainingRerolls = countAvailableRerolls(choice.rerollSources, candidate.roll);
+  choice.remainingRerolls = countAvailableRerolls(
+    choice.rerollSources,
+    choice.candidates.at(-1)?.roll ?? candidate.roll
+  );
 
   // The morale token is discarded the moment its reroll is taken.
   if (source.morale && source.used === 1) {
@@ -20393,8 +20575,10 @@ function choosePendingRoll(
   }
 
   // Rulebook rerolls: "the new result replaces the old one" — once rerolled,
-  // earlier rolls are gone for good.
-  if (action.candidateIndex !== choice.candidates.length - 1) {
+  // earlier rolls are gone for good. Polish Balance Pack Cards of Prophecy is the
+  // ONE exception: its printed "roll it 3 times and resolve 1 chosen result"
+  // unlocks a free pick among every candidate in this window.
+  if (!choice.freeCandidateChoice && action.candidateIndex !== choice.candidates.length - 1) {
     throw new Error("A reroll replaces the previous result — only the latest roll counts.");
   }
 
