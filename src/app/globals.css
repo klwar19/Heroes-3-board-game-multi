@@ -40758,6 +40758,53 @@ button.armyExperienceBoard > small {
   padding: 5px 4px 2px;
   border-radius: 0 0 6px 6px;
 }
+
+/* Stat rewards now use the same full-art treatment as ability rewards. */
+.unitXpStatUpgrade {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed rgb(255 255 255 / 14%);
+  color: #746d61;
+  font-size: 12px;
+}
+.unitXpStatUpgrade.active {
+  color: var(--mod-accent);
+}
+.unitXpStatUpgrade > b {
+  color: inherit;
+}
+.unitXpStatUpgrade > em {
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.unitXpStatUpgrade > small {
+  grid-column: 2 / -1;
+  color: inherit;
+  line-height: 1.4;
+}
+.unitXpStatIconStack {
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+}
+.unitXpStatIconStack > img.unitXpAbilityIcon {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 55%);
+}
+.unitXpStatIconStack > img.unitXpAbilityIcon + img.unitXpAbilityIcon {
+  margin-left: -10px;
+  box-shadow: -2px 0 0 1px rgb(0 0 0 / 72%);
+}
 .unitXpTrackTag,
 .unitXpBudgetTag {
   display: inline-flex;
@@ -40794,11 +40841,18 @@ button.armyExperienceBoard > small {
   background: rgb(90 70 30 / 55%);
   color: #f0d48a;
 }
+.unitXpKindPill.kind-hybrid {
+  background: linear-gradient(90deg, rgb(60 100 60 / 55%), rgb(90 70 30 / 65%));
+  color: #f2e4ad;
+}
 .unitXpRank.kind-stats.reached {
   border-color: rgb(100 160 100 / 70%);
 }
 .unitXpRank.kind-ability.reached {
   border-color: var(--mod-accent);
+}
+.unitXpRank.kind-hybrid.reached {
+  border-color: #d5b85f;
 }
 .unitXpActiveAbilities {
   display: flex;

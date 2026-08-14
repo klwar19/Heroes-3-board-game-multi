@@ -479,6 +479,7 @@ import {
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
+  getAttackBonusVsSlowerTarget,
   deathStareFollowUpAppliesTo,
   getDeathStareFollowUps,
   moraleLockedForPlayer,
@@ -4021,6 +4022,11 @@ function getAttackStackDetails(
   // unit when its target is strictly slower/faster (effective Initiative).
   // Spell-borne like Bless, so it rides the elemental clamp with the card bonus.
   const initiativeConditionalAttackBonus = getConditionalAttackBonus(state, attacker, defender);
+  const slowerTargetAttackBonus =
+    effectiveInitiative(attacker, state.activeEffects, combat) >
+    effectiveInitiative(defender, state.activeEffects, combat)
+      ? getAttackBonusVsSlowerTarget(attacker)
+      : 0;
 
   // MGQ Reaper Scythe: a live target-status read. The bonus is innate and
   // unclamped, just like the other printed conditional Attack bonuses. The
@@ -4090,6 +4096,7 @@ function getAttackStackDetails(
       chargeAttackBonus +
       commanderPositionalAttackBonus +
       targetStatusAttackBonus +
+      slowerTargetAttackBonus +
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
@@ -6627,7 +6634,7 @@ function applyOnAttackDieDraw(
   }
   for (const draw of getOnAttackDieDraw(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
-    if (!forceRoll && attackRoll !== draw.onRoll) {
+    if (!forceRoll && (attackRoll < draw.minRoll || attackRoll > draw.maxRoll)) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount, {

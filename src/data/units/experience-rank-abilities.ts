@@ -21,7 +21,8 @@ export type RankTemplateId = "standard" | "strong" | "rare";
 
 export type RankStep =
   | { kind: "stats" }
-  | { kind: "ability"; choices: readonly string[] };
+  | { kind: "ability"; choices: readonly string[] }
+  | { kind: "hybrid"; stats: UnitRankStatBonus; choices: readonly string[] };
 
 export type RankSchedule = {
   readonly 1: RankStep;
@@ -69,6 +70,9 @@ function S(): RankStep {
 function A(...choices: string[]): RankStep {
   return { kind: "ability", choices };
 }
+function H(stats: UnitRankStatBonus, ...choices: string[]): RankStep {
+  return { kind: "hybrid", stats, choices };
+}
 
 /** Pattern skeletons (which ranks are stats vs ability). */
 export const RANK_TEMPLATES: Record<RankTemplateId, readonly ("stats" | "ability")[]> = {
@@ -109,7 +113,7 @@ export function buildScheduleFromTemplate(
 export function scheduleAbilityCount(schedule: RankSchedule): number {
   let n = 0;
   for (const r of [1, 2, 3, 4] as const) {
-    if (schedule[r].kind === "ability") n += 1;
+    if (schedule[r].kind === "ability" || schedule[r].kind === "hybrid") n += 1;
   }
   return n;
 }
@@ -916,18 +920,205 @@ export function inferFlavour(unitDefId: string): Flavour {
   return "melee";
 }
 
-/** Resolved schedule: unique table first, else flavoured template fill. */
-export function rankScheduleFor(unitDefId: string): RankSchedule {
-  const unique = UNIT_RANK_SCHEDULES[unitDefId];
-  if (unique) return unique;
+type RankOneProfile = "defense" | "health" | "initiative" | "own-attack" | "retaliation" | "guarded";
+
+const FLAT_DEFENSE_RANK_ONE_UNITS = new Set([
+  "stronghold.wolf_raiders",
+  "fuyuki.riders",
+  "azure_breeze.spirit_crane",
+  "hidden_leaf.anbu",
+  "azur_lane.javelin",
+  "heavenly_demon.bone_reavers",
+  "little_busters.haruka",
+  "mgq.miyabi",
+  "mgq.hild",
+  "mgq.pochi",
+  "conflux.ice_elementals",
+  "dungeon.minotaurs",
+  "necropolis.wraiths",
+  "inferno.demons",
+  "tower.genies",
+  "rampart.dendroids",
+  "castle.marksmen",
+  "fortress.gnolls",
+  "wog.ghost",
+  "doom.former_human",
+  "doom.cacodemon"
+]);
+
+function stableRankHash(value: string, salt = 0): number {
+  let hash = 2166136261 ^ salt;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+const RANK_ONE_PROFILES: Record<Flavour, readonly RankOneProfile[]> = {
+  melee: ["health", "own-attack", "retaliation", "guarded"],
+  ranged: ["initiative", "own-attack", "health", "guarded"],
+  flying: ["initiative", "own-attack", "health", "retaliation"],
+  cavalry: ["initiative", "own-attack", "retaliation", "health"],
+  undead: ["health", "retaliation", "guarded", "own-attack"],
+  fire: ["own-attack", "health", "retaliation", "initiative"],
+  beast: ["health", "guarded", "retaliation", "own-attack"],
+  dragon: ["health", "initiative", "guarded", "own-attack"],
+  elemental: ["health", "initiative", "guarded", "own-attack"],
+  machine: ["health", "guarded", "retaliation", "initiative"],
+  mystic: ["initiative", "health", "own-attack", "guarded"],
+  assassin: ["initiative", "own-attack", "retaliation", "health"],
+  warden: ["health", "guarded", "retaliation", "initiative"]
+};
+
+export function rankOneProfileFor(unitDefId: string): RankOneProfile {
+  if (unitDefId === "fortress.gorgons") return "initiative";
+  if (FLAT_DEFENSE_RANK_ONE_UNITS.has(unitDefId)) return "defense";
+  const profiles = RANK_ONE_PROFILES[inferFlavour(unitDefId)];
+  return profiles[stableRankHash(unitDefId, 1) % profiles.length]!;
+}
+
+/** Unit-aware, one-point stat packages. Defense 3 is never increased. */
+export function unitStatStepsFor(
+  unitDefId: string,
+  tier: UnitTier
+): readonly UnitRankStatBonus[] {
+  const def = coreUnitDefinitions[unitDefId];
+  const printedDefense = Math.max(
+    def?.few?.defense ?? 0,
+    def?.pack?.defense ?? 0,
+    def?.neutral?.defense ?? 0
+  );
+  const profile = rankOneProfileFor(unitDefId);
   const flavour = inferFlavour(unitDefId);
-  const pack = FLAVOUR_ABILITIES[flavour];
-  return buildScheduleFromTemplate(pack.template, pack.slots);
+  const logicalDefault: Record<Flavour, keyof UnitRankStatBonus> = {
+    melee: "attack", ranged: "attack", flying: "initiative", cavalry: "initiative",
+    undead: "health", fire: "attack", beast: "health", dragon: "health",
+    elemental: "initiative", machine: "health", mystic: "initiative",
+    assassin: "initiative", warden: "health"
+  };
+  const defenseCapFallback: keyof UnitRankStatBonus =
+    ["flying", "cavalry", "assassin", "mystic"].includes(flavour) ? "initiative" : "health";
+  const first = profile === "defense" && printedDefense >= 3
+    ? defenseCapFallback
+    : ["defense", "health", "initiative"].includes(profile)
+    ? (profile as keyof UnitRankStatBonus)
+    : logicalDefault[flavour];
+  const tierOrder: Record<UnitTier, readonly (keyof UnitRankStatBonus)[]> = {
+    bronze: ["defense", "attack", "health", "initiative"],
+    silver: ["defense", "attack", "health", "initiative"],
+    gold: ["attack", "health", "initiative", "defense"],
+    azure: ["attack", "health", "initiative", "defense"]
+  };
+  const order = [first, ...tierOrder[tier]]
+    .filter((stat, index, all) => all.indexOf(stat) === index)
+    .filter((stat) => stat !== "defense" || printedDefense < 3)
+    .slice(0, 3);
+  return order.map((stat) => ({ ...Z, [stat]: 1 }));
+}
+
+const RANK_TWO_ABILITIES: Record<Flavour, readonly string[]> = {
+  melee: ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
+  ranged: ["veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll"],
+  flying: ["bulwark-air-shield", "veteran-attack-when-attacking", "reduce-spell-damage-1", "commander-charge"],
+  cavalry: ["commander-charge", "veteran-retaliation-fury", "veteran-attack-when-attacking", "wog-no-negative-attack-roll"],
+  undead: ["zombie-resilience-weak", "veteran-retaliation-fury", "wraith-heal-1", "veteran-guarded-stance"],
+  fire: ["wog-fire-shield-1", "veteran-attack-when-attacking", "reduce-spell-damage-1", "wog-no-negative-attack-roll"],
+  beast: ["veteran-guarded-stance", "wog-no-negative-attack-roll", "commander-charge", "wog-nightmare-fear"],
+  dragon: ["reduce-spell-damage-1", "veteran-guarded-stance", "bulwark-air-shield", "wog-fire-shield-1"],
+  elemental: ["reduce-spell-damage-1", "bulwark-air-shield", "veteran-guarded-stance", "wog-fire-shield-1"],
+  machine: ["veteran-guarded-stance", "reduce-spell-damage-1", "commander-defense-token", "veteran-retaliation-fury"],
+  mystic: ["reduce-spell-damage-1", "bulwark-air-shield", "veteran-steady-aim", "wraith-heal-1"],
+  assassin: ["veteran-steady-aim", "commander-charge", "ignores-retaliation", "veteran-attack-when-attacking"],
+  warden: ["veteran-guarded-stance", "commander-defense-token", "veteran-retaliation-fury", "reduce-spell-damage-1"]
+};
+
+const RANK_THREE_ABILITIES: Record<Flavour, readonly string[]> = {
+  melee: ["veteran-defense-pierce", "commander-max-damage", "unlimited-retaliation", "ignores-retaliation"],
+  ranged: ["ignore-all-combat-penalties", "veteran-low-roll-insight", "ranged-extra-shot-on-low-roll", "veteran-defense-pierce"],
+  flying: ["veteran-speed-hunter", "teleport-move", "ignores-retaliation", "veteran-soul-feast"],
+  cavalry: ["veteran-speed-hunter", "commander-max-damage", "ignores-retaliation", "double-attack-low-roll"],
+  undead: ["veteran-rebirth", "veteran-soul-feast", "wraith-heal-2", "wraith-enemy-discard"],
+  fire: ["wog-fire-shield-1", "commander-max-damage", "ignores-retaliation", "double-attack-low-roll"],
+  beast: ["wog-nightmare-fear", "wraith-heal-2", "veteran-defense-pierce", "veteran-rebirth"],
+  dragon: ["veteran-speed-hunter", "wraith-heal-2", "wog-fire-shield-1", "veteran-soul-feast"],
+  elemental: ["veteran-spell-sunder", "teleport-move", "wog-fire-shield-1", "reduce-spell-damage-1"],
+  machine: ["commander-defense-token", "unlimited-retaliation", "veteran-defense-pierce", "reduce-spell-damage-1"],
+  mystic: ["veteran-spell-sunder", "veteran-low-roll-insight", "teleport-move", "wraith-heal-2"],
+  assassin: ["ignores-retaliation", "veteran-low-roll-insight", "double-attack-low-roll", "teleport-move"],
+  warden: ["unlimited-retaliation", "wraith-heal-2", "veteran-defense-pierce", "commander-defense-token"]
+};
+
+const RANK_FOUR_ABILITIES: Record<Flavour, readonly string[]> = {
+  melee: ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"],
+  ranged: ["veteran-low-roll-insight", "veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"],
+  flying: ["veteran-speed-hunter", "veteran-soul-feast", "teleport-move", "ignores-retaliation"],
+  cavalry: ["veteran-speed-hunter", "double-attack-low-roll", "commander-max-damage", "ignores-retaliation"],
+  undead: ["veteran-rebirth", "veteran-soul-feast", "wraith-heal-2", "wraith-enemy-discard"],
+  fire: ["wog-fire-shield-1", "double-attack-low-roll", "commander-max-damage", "veteran-rebirth"],
+  beast: ["wog-nightmare-fear", "veteran-rebirth", "wraith-heal-2", "veteran-defense-pierce"],
+  dragon: ["veteran-speed-hunter", "wraith-heal-2", "veteran-soul-feast", "wog-fire-shield-1"],
+  elemental: ["veteran-spell-sunder", "teleport-move", "wog-fire-shield-1", "veteran-low-roll-insight"],
+  machine: ["unlimited-retaliation", "commander-defense-token", "veteran-defense-pierce", "reduce-spell-damage-1"],
+  mystic: ["veteran-spell-sunder", "veteran-low-roll-insight", "wraith-heal-2", "teleport-move"],
+  assassin: ["ignores-retaliation", "double-attack-low-roll", "veteran-low-roll-insight", "teleport-move"],
+  warden: ["unlimited-retaliation", "wraith-heal-2", "veteran-defense-pierce", "commander-defense-token"]
+};
+
+function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]): string[] {
+  const start = stableRankHash(unitDefId, rank) % pool.length;
+  return pool.map((_, index) => pool[(start + index) % pool.length]!);
+}
+
+function rankOneStepFor(unitDefId: string): RankStep {
+  if (unitDefId === "fortress.hydras") return A("wog-nightmare-fear");
+  const profile = rankOneProfileFor(unitDefId);
+  if (["defense", "health", "initiative"].includes(profile)) return S();
+  if (profile === "own-attack") return A("veteran-attack-when-attacking");
+  if (profile === "retaliation") return A("veteran-retaliation-fury");
+  return A("veteran-guarded-stance");
+}
+
+function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "stronghold.behemoths") return A("veteran-flying-movement");
+  if (unitDefId.endsWith(".black_dragons")) {
+    return H({ ...Z, initiative: 2 }, "veteran-speed-hunter");
+  }
+  if (unitDefId.endsWith(".phoenixes")) return A("veteran-regeneration-2");
+  // Reserve Soul Feast for the requested Ghost Dragon capstone instead of
+  // accidentally consuming it from the generic dragon pool one rank early.
+  if (unitDefId.endsWith(".ghost_dragons")) return S();
+  return null;
+}
+
+function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "conflux.sprites") return A("pegasi-magic-damper");
+  if (unitDefId.endsWith(".skeletons")) return A("veteran-rebirth");
+  if (unitDefId.endsWith(".magi")) return A("veteran-spell-sunder");
+  if (unitDefId.endsWith(".unicorns")) return A("veteran-low-roll-insight");
+  if (unitDefId.endsWith(".zealots")) return A("veteran-defense-pierce");
+  if (unitDefId.endsWith(".ghost_dragons")) return A("veteran-soul-feast");
+  return null;
+}
+
+/** Resolved schedule: diversified small R1, themed R2/R3, and a capstone R4. */
+export function rankScheduleFor(unitDefId: string): RankSchedule {
+  const flavour = inferFlavour(unitDefId);
+  const rankThree = explicitRankThree(unitDefId) ??
+    (stableRankHash(unitDefId, 3) % 3 === 0
+      ? A(...rotatedChoices(unitDefId, 3, RANK_THREE_ABILITIES[flavour]))
+      : S());
+  return {
+    1: rankOneStepFor(unitDefId),
+    2: A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
+    3: rankThree,
+    4: explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
+  };
 }
 
 /** Whether this unit has a hand-authored unique schedule (not template fallback). */
 export function hasUniqueRankSchedule(unitDefId: string): boolean {
-  return Boolean(UNIT_RANK_SCHEDULES[unitDefId]);
+  return Boolean(coreUnitDefinitions[unitDefId]);
 }
 
 // ---------------------------------------------------------------------------
@@ -937,9 +1128,6 @@ export function hasUniqueRankSchedule(unitDefId: string): boolean {
 export type RankAbilityTrackId = Flavour | RankTemplateId;
 
 export function rankAbilityTrackFor(unitDefId: string): string {
-  if (UNIT_RANK_SCHEDULES[unitDefId]) {
-    return `unique:${scheduleTemplateId(UNIT_RANK_SCHEDULES[unitDefId])}`;
-  }
   return inferFlavour(unitDefId);
 }
 
@@ -984,15 +1172,16 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "reduce-spell-damage-1": "/assets/ui/rank-ability/spell-ward.webp",
   "ignore-paralysis": "/assets/ui/rank-ability/unshackled.webp",
   "commander-defense-token": "/assets/ui/rank-ability/guarded.webp",
-  "wog-fire-shield-1": "/assets/spell-icons/fire_shield.png",
-  "ignore-all-combat-penalties": "/assets/spell-icons/precision.png",
-  "ignore-combat-penalties": "/assets/spell-icons/precision.png",
+  "wog-fire-shield-1": "/assets/ui/rank-ability/fire-shield.webp",
+  "ignore-all-combat-penalties": "/assets/ui/rank-ability/precision.webp",
+  "ignore-combat-penalties": "/assets/ui/rank-ability/precision.webp",
   "ranged-extra-shot-on-low-roll": "/assets/ui/rank-ability/extra-shot.webp",
   "attack-roll-advantage-passive": "/assets/ui/rank-ability/advantage.webp",
-  "commander-charge": "/assets/spell-icons/haste.png",
-  "commander-max-damage": "/assets/spell-icons/bloodlust.png",
+  "attack-roll-advantage": "/assets/ui/rank-ability/advantage.webp",
+  "commander-charge": "/assets/ui/rank-ability/charge.webp",
+  "commander-max-damage": "/assets/ui/rank-ability/max-damage.webp",
   "ignores-retaliation": "/assets/ui/rank-ability/no-retaliation.webp",
-  "unlimited-retaliation": "/assets/spell-icons/counterstrike.png",
+  "unlimited-retaliation": "/assets/ui/rank-ability/counterstrike.webp",
   "double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "double-attack-low-roll": "/assets/ui/rank-ability/double-strike.webp",
   "sandworm-strike-again": "/assets/ui/rank-ability/double-strike.webp",
@@ -1001,10 +1190,27 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "kansen-fleet-formation": "/assets/ui/rank-ability/fleet-formation.webp",
   "zombie-resilience-weak": "/assets/ui/rank-ability/resilience.webp",
   "zombie-resilience": "/assets/ui/rank-ability/resilience.webp",
-  "wraith-heal-1": "/assets/spell-icons/animate_dead.png",
+  "wraith-heal-1": "/assets/ui/rank-ability/soul-mend.webp",
+  "wraith-heal-2": "/assets/ui/rank-ability/regeneration-2.webp",
+  "wraith-enemy-discard": "/assets/ui/rank-ability/spell-sunder.webp",
   "wog-nightmare-fear": "/assets/ui/rank-ability/fear.webp",
-  "unicorn-paralyze-retaliation": "/assets/spell-icons/blind.png",
-  "teleport-move": "/assets/spell-icons/teleport.png"
+  "unicorn-paralyze-retaliation": "/assets/ui/rank-ability/paralyzing-gaze.webp",
+  "gorgon-death-stare": "/assets/ui/rank-ability/death-stare.webp",
+  "gargoyle-spell-ward": "/assets/ui/rank-ability/spell-ward.webp",
+  "teleport-move": "/assets/ui/rank-ability/teleport.webp",
+  "veteran-attack-when-attacking": "/assets/ui/rank-ability/own-attack.webp",
+  "veteran-retaliation-fury": "/assets/ui/rank-ability/retaliation-fury.webp",
+  "veteran-guarded-stance": "/assets/ui/rank-ability/guarded-stance.webp",
+  "veteran-steady-aim": "/assets/ui/rank-ability/steady-aim.webp",
+  "veteran-rebirth": "/assets/ui/rank-ability/rebirth.webp",
+  "veteran-spell-sunder": "/assets/ui/rank-ability/spell-sunder.webp",
+  "veteran-low-roll-insight": "/assets/ui/rank-ability/low-roll-insight.webp",
+  "veteran-defense-pierce": "/assets/ui/rank-ability/defense-pierce.webp",
+  "veteran-soul-feast": "/assets/ui/rank-ability/soul-feast.webp",
+  "veteran-speed-hunter": "/assets/ui/rank-ability/speed-hunter.webp",
+  "veteran-regeneration-2": "/assets/ui/rank-ability/regeneration-2.webp",
+  "veteran-flying-movement": "/assets/ui/rank-ability/flying-movement.webp",
+  "pegasi-magic-damper": "/assets/ui/rank-ability/spell-dampening.webp"
 };
 
 /**

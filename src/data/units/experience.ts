@@ -1,10 +1,8 @@
 import type { UnitTier } from "@/data/factions/types";
 
 /**
- * Unit Experience — 4 ranks. Each rank = stats XOR ability.
- * Ability budget from 3 templates (standard 1 / strong 2 / rare 3), never by
- * gold tier. Unique schedules for every faction unit; neutrals use flavoured
- * template fills.
+ * Unit Experience — four varied ranks per unit. A rank may grant a focused
+ * stat, an engine-backed ability, or a signature hybrid of both.
  */
 
 export type {
@@ -39,7 +37,8 @@ export {
   rankScheduleFor,
   scheduleAbilityCount,
   scheduleTemplateId,
-  unitRankAbilityIcon
+  unitRankAbilityIcon,
+  unitStatStepsFor
 } from "./experience-rank-abilities";
 
 export const UNIT_RANK_NAMES = ["", "Seasoned", "Veteran", "Elite", "Legend"] as const;
@@ -56,6 +55,39 @@ export const UNIT_RANK_BADGE_IMAGES = [
 export function unitRankBadgeImage(rank: number): string | null {
   if (rank <= 0 || rank > MAX_UNIT_RANK) return null;
   return UNIT_RANK_BADGE_IMAGES[rank] ?? null;
+}
+
+export const UNIT_RANK_STAT_ICONS = {
+  attack: "/assets/ui/rank-stat/attack.webp",
+  defense: "/assets/ui/rank-stat/defense.webp",
+  health: "/assets/ui/rank-stat/health.webp",
+  initiative: "/assets/ui/rank-stat/initiative.webp"
+} as const;
+
+export function unitRankStatIcons(bonus: {
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+}): string[] {
+  return (Object.keys(UNIT_RANK_STAT_ICONS) as (keyof typeof UNIT_RANK_STAT_ICONS)[])
+    .filter((stat) => bonus[stat] > 0)
+    .map((stat) => UNIT_RANK_STAT_ICONS[stat]);
+}
+
+export function unitRankStatVariantName(bonus: {
+  attack: number;
+  defense: number;
+  health: number;
+  initiative: number;
+}): string {
+  const active = [bonus.attack, bonus.defense, bonus.health, bonus.initiative].filter((value) => value > 0).length;
+  if (active > 1) return "Veteran conditioning";
+  if (bonus.attack > 0) return "Battle-hardened";
+  if (bonus.defense > 0) return "Shield discipline";
+  if (bonus.health > 0) return "Enduring ranks";
+  if (bonus.initiative > 0) return "Battle tempo";
+  return "Field training";
 }
 
 /** Higher tiers rank slower — they do not get stronger rewards. */

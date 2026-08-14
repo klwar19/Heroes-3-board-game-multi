@@ -1,7 +1,7 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
 import { hasToken } from "./tokens";
-import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId } from "./state";
+import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId, UnitType } from "./state";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -1192,12 +1192,28 @@ export function getSpellDamageReductionAura(unit: CombatUnitState): number {
 /** Dungeon Minotaurs: cards the attacker draws when its attack die shows `onRoll`. */
 export function getOnAttackDieDraw(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; onRoll: number; amount: number }[] {
+): { abilityId: string; abilityName: string; minRoll: number; maxRoll: number; amount: number }[] {
   return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_DRAW").flatMap((ability) =>
     ability.effect?.type === "ON_ATTACK_DIE_DRAW"
-      ? [{ abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll, amount: ability.effect.amount }]
+      ? [{
+          abilityId: ability.id,
+          abilityName: ability.name,
+          minRoll: ability.effect.minRoll ?? ability.effect.onRoll ?? -1,
+          maxRoll: ability.effect.maxRoll ?? ability.effect.onRoll ?? -1,
+          amount: ability.effect.amount
+        }]
       : []
   );
+}
+
+/** Fold veterancy traits that replace a unit's ordinary combat movement type. */
+export function movementTypeAfterUnitAbilityEffects(baseType: UnitType, abilityIds: string[]): UnitType {
+  return abilityIds.some((abilityId) => {
+    const ability = unitAbilities[abilityId];
+    return ability?.implementationStatus === "implemented" && ability.effect?.type === "GRANT_FLYING_MOVEMENT";
+  })
+    ? "flying"
+    : baseType;
 }
 
 /** Ghost Dragons (neutral): the post-attack die that may shove the target away. */
@@ -1556,6 +1572,15 @@ export function getCombatStartMoraleGains(
 export function getOwnAttackFlatBonus(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "OWN_ATTACK_FLAT_BONUS").reduce(
     (total, ability) => total + (ability.effect?.type === "OWN_ATTACK_FLAT_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Veterancy bonus against a target whose live Initiative is strictly lower. */
+export function getAttackBonusVsSlowerTarget(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ATTACK_BONUS_VS_SLOWER_TARGET").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ATTACK_BONUS_VS_SLOWER_TARGET" ? ability.effect.amount : 0),
     0
   );
 }
