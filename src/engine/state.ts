@@ -759,6 +759,31 @@ export type ActiveEffectModifier =
     }
   | {
       /**
+       * Polish Balance Pack Forgetfulness (Power 1/2): while held, the unit
+       * cannot make a RANGED attack — a melee strike is still allowed (the
+       * classic UNIT_CANNOT_ATTACK blocks every attack). Read at the same
+       * attack-legality seam.
+       */
+      type: "UNIT_CANNOT_RANGED_ATTACK";
+    }
+  | {
+      /**
+       * Polish Balance Pack Forgetfulness (Power 0): while held, the unit's
+       * RANGED attack value is halved (rounded up). Read in the attack maths
+       * beside the other attack modifiers; a melee strike is untouched.
+       */
+      type: "RANGED_ATTACK_HALVED";
+    }
+  | {
+      /**
+       * Polish Balance Pack Bless: while held, the unit's attacks ignore the
+       * Attack die roll (the classic one-attack Bless instant, made lasting).
+       * Read at the same `details.ignoreAttackDie` seam the instant sets.
+       */
+      type: "IGNORE_ATTACK_DIE_ROLL";
+    }
+  | {
+      /**
        * Berserk: while held (its next activation), the unit MUST attack the
        * nearest unit — friend or foe — or move toward it and attack it. The
        * legal-action layer drops every other action (no free move, defend or
@@ -1242,6 +1267,11 @@ export type ActiveEffectDefinition = {
   polarity?: "positive" | "negative" | "neutral";
   removable?: boolean;
   /**
+   * Polish Balance Pack Forgetfulness: how many of the bound unit's activations
+   * a "next-activation" effect survives (default 1).
+   */
+  activationsRemaining?: number;
+  /**
    * Optional army-variant gate (Oidana VI's "all your neutral units" rally):
    * when set, the effect only touches combat units of this variant. Combined
    * with `scope: "player"` it means "this player's neutral-recruited units" —
@@ -1365,6 +1395,13 @@ export type EffectDefinition =
       stat: "attack" | "defense";
       amount: number;
       expertAmount?: number;
+      /**
+       * Polish Balance Pack Shield (Power 2): instead of a Defense bonus, the
+       * defending unit "takes up to 3 damage" from the triggering attack — a
+       * per-attack damage CAP on this one blow. The highest key at or below the
+       * Power paid wins; when a cap applies the stat bonus is not added.
+       */
+      damageCapByPower?: Record<number, number>;
       /** Spell instants (Bloodlust, Stone Skin…): amount scales with Power. */
       amountByPower?: Record<number, number>;
       /** Sword of Judgement style: +1 per card paid via the option's cost. */
@@ -1859,12 +1896,28 @@ export type EffectDefinition =
        */
       type: "NEGATE_ATTACK";
       grade?: UnitGrade;
+      /**
+       * Polish Balance Pack Misfortune: the printed "Negate an additional Attack
+       * from any card" rider is the classic buff lock (always on); the DIE half
+       * is the option's own rung — "negate" (the classic cancelled die, Power 0),
+       * "lower-of-two" (Power 1) or "four-reroll-plus" (Power 2). Power is paid
+       * the way the classic card always paid it: as the option's discard cost.
+       * Read at the attack-roll seam (resolveAttackStackItem).
+       */
+      dieMode?: "negate" | "lower-of-two" | "four-reroll-plus";
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
       type: "CREATE_SPELL_IMMUNITY";
       gradeByPower: Record<number, UnitGrade>;
       duration: EffectDurationDefinition;
+      /**
+       * Polish Balance Pack Anti-Magic: the ward ALSO blocks DAMAGE from Spells
+       * and from Hero Specialties ("cannot be targeted by Spells and take damage
+       * from Spells and Specialities"). Adds a SPELL_DAMAGE_REDUCTION large
+       * enough to zero any spell hit plus SPECIALTY_IMMUNITY to the effect.
+       */
+      blocksSpellAndSpecialtyDamage?: boolean;
     }
   | {
       /**
@@ -1897,6 +1950,12 @@ export type EffectDefinition =
   | {
       /** Haste / Slow / initiative artifacts: a lasting initiative shift. */
       type: "CREATE_INITIATIVE_BUFF";
+      /**
+       * Polish Balance Pack Haste / Slow: the printed Combat-movement half
+       * scales with Power (+1/+2/+3 and -1/-2/-3), so it replaces the flat
+       * house-rule `movementBonus` when the Balance Pack is on.
+       */
+      movementBonusByPower?: Record<number, number>;
       name: string;
       amount?: number;
       amountByPower?: Record<number, number>;
@@ -2072,6 +2131,11 @@ export type EffectDefinition =
        */
       type: "SLAYER_ATTACK";
       rollsByPower: Record<number, number>;
+      /**
+       * Polish Balance Pack Slayer: the printed target tiers ("when attacking a
+       * GOLD or AZURE unit"). Absent = the classic gold-only reading.
+       */
+      targetGrades?: readonly UnitGrade[];
     }
   | {
       /**
@@ -2092,6 +2156,16 @@ export type EffectDefinition =
        */
       type: "FORGETFULNESS";
       gradeByPower: Record<number, UnitGrade>;
+      /**
+       * Polish Balance Pack Forgetfulness: "For X activations it suffers …".
+       * `activationsByPower` is how many of the target's activations the effect
+       * lasts (1 or 2), and `rangedModeByPower` says what it suffers: "halve"
+       * (its RANGED attack value is halved, rounded up) or "block" (it cannot
+       * make RANGED attacks; melee is still allowed — the classic wiring blocked
+       * every attack).
+       */
+      activationsByPower?: Record<number, number>;
+      rangedModeByPower?: Record<number, "halve" | "block">;
     }
   | {
       /**
@@ -2167,6 +2241,12 @@ export type EffectDefinition =
        */
       type: "DISPEL_EFFECTS";
       gradeByPower: Record<number, UnitGrade>;
+      /**
+       * Polish Balance Pack Dispel (Power 2): "ANY unit or ALL effects" — at or
+       * above this Power the cast opens a two-option pick (`dispel-scope`): the
+       * selected unit/space as printed, or EVERY ongoing effect in the Combat.
+       */
+      allInCombatAtPower?: number;
     }
   | {
       /**
@@ -2502,6 +2582,20 @@ export type EffectDefinition =
       removable?: boolean;
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
+      /**
+       * Polish Balance Pack Bless: the buff ALSO makes the affected unit ignore
+       * its Attack die roll (an IGNORE_ATTACK_DIE_ROLL modifier) for the buff's
+       * whole duration, instead of Bless's classic one-attack instant.
+       */
+      ignoreAttackDie?: boolean;
+      /**
+       * Polish Balance Pack Bless (Power 3): at or above this Power the buff is
+       * created on EVERY living ground/flying unit the caster controls instead of
+       * only the selected one ("all units +1 Attack"). One unit-scoped effect per
+       * unit, so every existing read (dispel, ongoing tray, effectAppliesToUnit)
+       * keeps working unchanged.
+       */
+      allGroundFlyingAtPower?: number;
     }
   | {
       /**
@@ -2858,6 +2952,14 @@ export type EffectDefinition =
        */
       type: "DISRUPTING_RAY";
       gradeByPower: Record<number, UnitGrade>;
+      /**
+       * Polish Balance Pack: "…cannot use their special ability OR suffers -1
+       * Defense". When set, the resolved cast opens a two-option pick
+       * (`disrupting-ray-mode` OPTION_CHOICE) for the caster: suppress the
+       * ability (the classic effect) or lay a lasting -`defenseChoice` Defense
+       * penalty (floored at 0 by the normal effective-Defense clamp).
+       */
+      defenseChoice?: number;
     }
   | {
       /**
@@ -6830,6 +6932,25 @@ export type ResolutionStackItem = {
     attackBonus: number;
     defenseBonus: number;
     /**
+     * Polish Balance Pack Shield (Power 2): "takes up to 3 damage" — a per-attack
+     * damage CAP on the blow this stack item is resolving. Clamped at the shared
+     * damage seam alongside the printed unit damage caps.
+     */
+    attackDamageCap?: number;
+    /**
+     * The same cap's Power TABLE plus the caster, so Power pooled into this
+     * window AFTER the card was played still re-derives the rung — the
+     * `slayerRollsByPower` pattern.
+     */
+    attackDamageCapByPower?: { table: Record<number, number>; playerId: PlayerId };
+    /**
+     * Polish Balance Pack Misfortune: how the negated attack's Attack DIE is
+     * rolled. "negate" is the classic cancelled die; "lower-of-two" rolls 2 dice
+     * and resolves the lower; "four-reroll-plus" rolls 4, rerolls every "+1"
+     * once, and resolves every result (a "-1" subtracts).
+     */
+    misfortuneDie?: "negate" | "lower-of-two" | "four-reroll-plus";
+    /**
      * Interference / Plate of the Dying Light played as an INSTANT reaction to
      * THIS cast: reduce Spell damage dealt to `unitId` by `amount` for the
      * duration of this stack item only (vanishes with the cast). Multiple
@@ -7184,6 +7305,12 @@ export type ActiveEffectState = ActiveEffectDefinition & {
    * to the active unit at creation, "next-activation" to the target unit).
    */
   expiresAtActivationEndUnitId?: UnitId;
+  /**
+   * Polish Balance Pack Forgetfulness (Power 2): "for 2 activations". Counted
+   * DOWN at each activation end of `expiresAtActivationEndUnitId`; the effect
+   * only expires once it reaches 1. Absent = the classic single activation.
+   */
+  activationsRemaining?: number;
   usedRollEventIds: string[];
   usedChoiceIds: string[];
   usedCombatRoundNumbers: number[];
@@ -13957,6 +14084,8 @@ export type PendingChoice =
         | "rogues-scout"
         | "thieves-guild"
         | "combat-reposition"
+        | "disrupting-ray-mode"
+        | "dispel-scope"
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
@@ -14045,6 +14174,14 @@ export type PendingChoice =
       };
       /** combat-reposition: Harpies' optional fly-back after their attack. */
       reposition?: { unitId: UnitId; originPosition: number };
+      /**
+       * Polish Balance Pack: the caster's pick after a reprinted Spell resolves.
+       * "disrupting-ray-mode" — suppress the ability (option 0) or lay the
+       * lasting Defense penalty (option 1) on `unitId`. "dispel-scope" — clear
+       * the printed unit/space (option 0) or EVERY ongoing effect in the Combat
+       * (option 1).
+       */
+      balanceSpellChoice?: { cardId: CardId; unitId?: UnitId; amount?: number; target?: TargetRef };
       /**
        * genie-take-spell: the Spells dug out of the Genies' controller's deck
        * (index-aligned with `options`); the chosen one goes to hand, the rest to

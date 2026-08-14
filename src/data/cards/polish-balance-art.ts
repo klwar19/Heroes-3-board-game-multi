@@ -38,7 +38,28 @@ export const POLISH_BALANCE_CARD_IDS = [
   "ability.pathfinding",
   "ability.scouting",
   "ability.tactics",
-  "ability.wisdom"
+  "ability.wisdom",
+  "spell.anti_magic",
+  "spell.bless",
+  "spell.blind",
+  "spell.counterstrike",
+  "spell.dispel",
+  "spell.disrupting_ray",
+  "spell.fire_shield",
+  "spell.fire_wall",
+  "spell.forgetfulness",
+  "spell.fortune",
+  "spell.frenzy",
+  "spell.haste",
+  "spell.mirth",
+  "spell.misfortune",
+  "spell.prayer",
+  "spell.remove_obstacle",
+  "spell.shield",
+  "spell.slayer",
+  "spell.slow",
+  "spell.sorrow",
+  "spell.visions"
 ] as const;
 
 /**
@@ -48,8 +69,8 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY for the Abilities category: all 12 reprints are wired. The next steps
- * (Spells / Artifacts / Specialties) add their own hold-outs here.
+ * EMPTY: all 12 Abilities AND all 21 Spells are wired. The next steps
+ * (Artifacts / Specialties) add their own hold-outs here.
  */
 export const POLISH_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {};
 

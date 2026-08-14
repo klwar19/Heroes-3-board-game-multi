@@ -235,6 +235,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // the rule-OFF card's reaction-window behaviour), so a stale server rejects that
 // play with "That card is not a permanent." while the new client offers it.
 
+// v30 (extended again, still v30 — never deployed): the pack's 21 SPELLS. NO new
+// action type, but a stale edge is a real skew: it resolves every one of them
+// from the PRINTED ladder while the new client shows the reprinted face and
+// offers the reprinted targets (Slayer against an AZURE unit, Blind / Dispel /
+// Disrupting Ray at ANY tier, Forgetfulness with no tier gate at all), so an
+// offer the client builds can be rejected. Two additive pendingChoice CONTEXTS
+// come with them — `disrupting-ray-mode` and `dispel-scope`, plain OPTION_CHOICEs
+// carrying `balanceSpellChoice` — for which a v29 server has no resolver; the
+// persisted additions are optional throughout (`ActiveEffectState`.
+// `activationsRemaining`, the stack modifiers `attackDamageCap` /
+// `misfortuneDie`), so an old server just ignores them.
+
 // The face-swap seam and every reprint listed in the `polish-card-balance`
 // house-rule description are otherwise pure engine reads, so a table that leaves
 // the rule OFF is unaffected by the skew either way.

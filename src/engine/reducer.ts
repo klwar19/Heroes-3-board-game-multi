@@ -29,6 +29,7 @@ import {
   grantRegularArtifactOfSameGrade
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade } from "./unit-experience";
+import { polishBalanceCardLibrary } from "./polish-balance-spells";
 import {
   applyUnitCurrentSide,
   canPlaceTransformOn,
@@ -359,6 +360,8 @@ import {
   unitHasUnlimitedRetaliationEffect,
   unitIgnoresCardNonDamage,
   specialtyImmunityActive,
+  unitIgnoresAttackDieFromEffects,
+  unitRangedAttackHalved,
   unitImmuneToParalysis
 } from "./active-effects";
 import {
@@ -2216,6 +2219,72 @@ function createAttackBuffFromCard(
     targetUnit,
     effect.doubleForUnitName
   );
+  const modifiers: ActiveEffectModifier[] = [{ type: "ATTACK_BONUS", amount }];
+  // Polish Balance Pack Bless: the buff also skips the unit's Attack die roll
+  // for its whole duration (the classic card did it for ONE attack).
+  if (effect.ignoreAttackDie) {
+    modifiers.push({ type: "IGNORE_ATTACK_DIE_ROLL" });
+  }
+  // Polish Balance Pack Bless (Power 3): "all units +1 attack" — the same buff
+  // on every living ground/flying unit the caster controls, one unit-scoped
+  // effect each so dispel / the ongoing tray / effectAppliesToUnit are unchanged.
+  const armyWide =
+    effect.allGroundFlyingAtPower !== undefined &&
+    power >= effect.allGroundFlyingAtPower &&
+    state.combat !== null;
+  const targets: { type: "unit"; unitId: UnitId }[] = armyWide
+    ? Object.values(state.combat!.units)
+        .filter(
+          (unit) =>
+            unit.controllerId === playerId &&
+            isUnitAlive(unit) &&
+            (unit.type === "ground" || unit.type === "flying")
+        )
+        .map((unit) => ({ type: "unit" as const, unitId: unit.id }))
+    : [target];
+  for (const each of targets) {
+    createActiveEffect(
+      state,
+      {
+        name: effect.name,
+        scope: "unit",
+        duration: effect.duration,
+        polarity: effect.polarity ?? "positive",
+        removable: effect.removable ?? true,
+        modifiers: modifiers.map((modifier) => ({ ...modifier }))
+      },
+      {
+        type: "card",
+        cardId: card.id,
+        controllerId: playerId
+      },
+      playerId,
+      each
+    );
+  }
+}
+
+function createDefenseBuffFromCard(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  power: number,
+  target: { type: "unit"; unitId: UnitId },
+  // Passed in (not read off card.effect) so it also works as a CHOOSE_ONE
+  // option — the Balance Pack's Prayer "+X defense" arm.
+  override?: Extract<EffectDefinition, { type: "CREATE_DEFENSE_BUFF" }>
+): void {
+  const effect = override ?? (card.effect.type === "CREATE_DEFENSE_BUFF" ? card.effect : null);
+  if (!effect) {
+    return;
+  }
+
+  const amount = getAmountByPower(effect.amountByPower, effect.amount ?? 0, power);
+  // Shield / Air Shield carry `vsAttackerType`, so their Defense is conditional
+  // (read in getAttackerTypeDefenseBonus); a plain buff emits an always-on bonus.
+  const modifier: ActiveEffectModifier = effect.vsAttackerType
+    ? { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: effect.vsAttackerType, amount }
+    : { type: "DEFENSE_BONUS", amount };
   createActiveEffect(
     state,
     {
@@ -2224,48 +2293,6 @@ function createAttackBuffFromCard(
       duration: effect.duration,
       polarity: effect.polarity ?? "positive",
       removable: effect.removable ?? true,
-      modifiers: [
-        {
-          type: "ATTACK_BONUS",
-          amount
-        }
-      ]
-    },
-    {
-      type: "card",
-      cardId: card.id,
-      controllerId: playerId
-    },
-    playerId,
-    target
-  );
-}
-
-function createDefenseBuffFromCard(
-  state: GameState,
-  card: CardDefinition,
-  playerId: PlayerId,
-  power: number,
-  target: { type: "unit"; unitId: UnitId }
-): void {
-  if (card.effect.type !== "CREATE_DEFENSE_BUFF") {
-    return;
-  }
-
-  const amount = getAmountByPower(card.effect.amountByPower, card.effect.amount ?? 0, power);
-  // Shield / Air Shield carry `vsAttackerType`, so their Defense is conditional
-  // (read in getAttackerTypeDefenseBonus); a plain buff emits an always-on bonus.
-  const modifier: ActiveEffectModifier = card.effect.vsAttackerType
-    ? { type: "DEFENSE_VS_ATTACKER_TYPE", attackerType: card.effect.vsAttackerType, amount }
-    : { type: "DEFENSE_BONUS", amount };
-  createActiveEffect(
-    state,
-    {
-      name: card.effect.name,
-      scope: "unit",
-      duration: card.effect.duration,
-      polarity: card.effect.polarity ?? "positive",
-      removable: card.effect.removable ?? true,
       modifiers: [modifier]
     },
     {
@@ -3214,7 +3241,13 @@ function getAttackDamagePreview(
   ignoreDefense = false,
   dieCancelled = false,
   mightBonus = 0,
-  isRetaliation = false
+  isRetaliation = false,
+  // Polish Balance Pack Shield (Power 2): a per-attack cap laid by a card, on
+  // top of any printed unit cap.
+  cardDamageCap?: number,
+  // Polish Balance Pack Forgetfulness (Power 0): halve this ranged attack's
+  // value, rounded up.
+  halveAttack = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -3233,7 +3266,8 @@ function getAttackDamagePreview(
   // −1 for the whole pool if any "−1" appeared). They are ADDITIONAL attack
   // dice, so they ride the attack value beside the normal die (before Defense),
   // rolled once by the caller and passed in so every recompute agrees.
-  const attackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier + mightBonus);
+  const rawAttackValue = Math.max(0, baseAttack + attackBonus + dieAttackBonus + roll * dieMultiplier + mightBonus);
+  const attackValue = halveAttack ? Math.ceil(rawAttackValue / 2) : rawAttackValue;
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
   // the Defend roll's bonus (0 or +1, rolled per attack by the caller), played
   // Defense buffs and any die-face Defense bonus.
@@ -3257,7 +3291,8 @@ function getAttackDamagePreview(
   // lethal-save preview too (both go through here), so a capped blow correctly
   // reads as non-lethal.
   const cap = getDamageCapPerAttack(defender);
-  const damage = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
+  const unitCapped = cap ? Math.min(rawDamage, cap.amount) : rawDamage;
+  const damage = cardDamageCap === undefined ? unitCapped : Math.min(unitCapped, cardDamageCap);
 
   return {
     attackValue,
@@ -3287,7 +3322,9 @@ function applyAttackDamageFromCandidate(
   noDie = false,
   dieCancelled = false,
   mightBonus = 0,
-  mightRolls: number[] = []
+  mightRolls: number[] = [],
+  cardDamageCap?: number,
+  halveAttack = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -3306,7 +3343,9 @@ function applyAttackDamageFromCandidate(
     ignoreDefense,
     dieCancelled,
     mightBonus,
-    isRetaliation
+    isRetaliation,
+    cardDamageCap,
+    halveAttack
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
@@ -3716,6 +3755,16 @@ function getAttackStackDetails(
       ignoreDefense: boolean;
       /** Siege wall cover: damage knocked off a ranged hit (0 or 1). */
       damageReduction: number;
+      /**
+       * Polish Balance Pack Shield (Power 2): a per-attack damage CAP on this
+       * blow ("takes up to 3 damage"). Undefined on every other attack.
+       */
+      attackDamageCap?: number;
+      /**
+       * Polish Balance Pack Forgetfulness (Power 0): this RANGED attack resolves
+       * at half the attacker's Attack value, rounded up.
+       */
+      halveAttack?: boolean;
       /** Behemoths: the announced defense reduction applied to this attack. */
       defenseReductionAbility?: { abilityId: string; abilityName: string; amount: number };
       /** Printed-ability follow-up (Death Cloud): replacement base attack. */
@@ -4007,9 +4056,17 @@ function getAttackStackDetails(
     // attack die is treated as 0, exactly like Bless. The [unit_attack] icon means
     // own declared attack only, so a Mummy's Retaliation Attack rolls a normal die
     // (same convention as Hatred / the roll advantage).
+    attackDamageCap: resolvedAttackDamageCap(stackItem),
+    // Polish Balance Pack Forgetfulness (Power 0): only the RANGED attack is
+    // halved — a melee strike by the same unit is untouched.
+    halveAttack: attackKind === "ranged" && unitRangedAttackHalved(state, attacker),
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       elementalLocksAttack ||
+      // Polish Balance Pack Bless: a lasting buff, so the die is skipped for
+      // every attack it covers (own attacks AND retaliations — the reprint
+      // carries no [unit_attack] icon).
+      unitIgnoresAttackDieFromEffects(state, attacker) ||
       (!isRetaliation && hasIgnoreOwnAttackDie(attacker)),
     // Frenzy: legacy fixed-grade sets modifiers.ignoreDefense outright; the
     // Power-scaled form re-derives its pierced grade now from the caster's final
@@ -4680,6 +4737,202 @@ function openHarpyReturnChoice(state: GameState, unit: CombatUnitState, origin: 
 }
 
 /**
+ * Combat-movement modifier an Initiative buff carries. Polish Balance Pack
+ * Haste / Slow print the movement half themselves and scale it with Power, so
+ * their `movementBonusByPower` REPLACES the flat house-rule `movementBonus`
+ * (the ±1 rider never stacks on top — there is one modifier either way).
+ */
+function initiativeBuffMovementModifiers(
+  effect: { movementBonus?: number; movementBonusByPower?: Record<number, number> },
+  power: number
+): ActiveEffectModifier[] {
+  const amount = effect.movementBonusByPower
+    ? (balanceLadderAt(effect.movementBonusByPower, power) ?? effect.movementBonus ?? 0)
+    : (effect.movementBonus ?? 0);
+  return amount ? [{ type: "MOVEMENT_BONUS", amount }] : [];
+}
+
+/** Highest key at or below `power` in a Balance-Pack ladder, or undefined. */
+function balanceLadderAt<T>(table: Record<number, T>, power: number): T | undefined {
+  const keys = Object.keys(table)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = keys.filter((value) => value <= power).at(-1);
+  return matched === undefined ? undefined : table[matched];
+}
+
+/** Polish Balance Pack Shield: the damage cap the Power paid buys, if any. */
+function balanceDamageCapAtPower(table: Record<number, number>, power: number): number | undefined {
+  return balanceLadderAt(table, power);
+}
+
+/**
+ * The per-attack damage cap in force on this blow: the value stamped when the
+ * card was played, re-derived from the caster's FINAL pooled Power so Power
+ * paid after the card still lifts it to the capping rung.
+ */
+function resolvedAttackDamageCap(stackItem: ResolutionStackItem): number | undefined {
+  const stamped = stackItem.modifiers.attackDamageCap;
+  const record = stackItem.modifiers.attackDamageCapByPower;
+  if (!record) {
+    return stamped;
+  }
+  const derived = balanceDamageCapAtPower(record.table, attackPowerFor(stackItem, record.playerId));
+  if (derived === undefined) {
+    return stamped;
+  }
+  return stamped === undefined ? derived : Math.min(stamped, derived);
+}
+
+/**
+ * Polish Balance Pack Forgetfulness: which penalty the reprint lays at this
+ * Power — a halved RANGED attack (Power 0) or no ranged attack at all.
+ */
+function forgetfulnessRangedModifier(
+  table: Record<number, "halve" | "block">,
+  power: number
+): ActiveEffectModifier {
+  const keys = Object.keys(table)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  const matched = keys.filter((value) => value <= power).at(-1) ?? keys[0];
+  const mode = matched === undefined ? "block" : (table[matched] ?? "block");
+  return mode === "halve" ? { type: "RANGED_ATTACK_HALVED" } : { type: "UNIT_CANNOT_RANGED_ATTACK" };
+}
+
+/**
+ * Polish Balance Pack Dispel: the printed cleanse — a unit's removable effects
+ * (grade-gated by the Power paid) plus the obstacle on the space it stands on,
+ * or a bare space's obstacle/trap tokens.
+ */
+function applyDispelToTarget(
+  state: GameState,
+  card: CardDefinition,
+  playerId: PlayerId,
+  target: TargetRef,
+  power: number
+): void {
+  if (!state.combat || card.effect.type !== "DISPEL_EFFECTS") {
+    return;
+  }
+  const dispelSource = { type: "card" as const, cardId: card.id, controllerId: playerId };
+  if (target.type === "unit") {
+    const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
+    const unit = state.combat.units[target.unitId];
+    if (
+      unit &&
+      !unitIgnoresCardNonDamage(unit, card, state) &&
+      maxGrade &&
+      gradeRankOfUnit(unit) <= gradeRank(maxGrade)
+    ) {
+      removeEffectsFromTarget(state, dispelSource, target, "any-removable");
+      clearBattlefieldTokensAt(state, state.combat, unit.position);
+    }
+  } else if (target.type === "space") {
+    clearBattlefieldTokensAt(state, state.combat, target.position);
+  }
+}
+
+/**
+ * Polish Balance Pack: opens the caster's post-cast pick (Disrupting Ray's
+ * ability-vs-Defense, Dispel's target-vs-everything). A plain OPTION_CHOICE, so
+ * the generic AI scorer and the AFK / turn-timeout driver answer it like any
+ * other — the reprints can never strand a table.
+ */
+function openBalanceSpellChoice(
+  state: GameState,
+  playerId: PlayerId,
+  context: "disrupting-ray-mode" | "dispel-scope",
+  payload: { cardId: CardId; unitId?: UnitId; amount?: number; target?: TargetRef },
+  prompt: string,
+  options: { label: string }[]
+): void {
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt,
+    options,
+    context,
+    balanceSpellChoice: payload,
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "OPTION_CHOICE",
+    playerId,
+    sourceEffectIds: [],
+    message: prompt
+  });
+}
+
+/** Applies the answer to a Balance-Pack post-cast pick (see above). */
+function resolveBalanceSpellChoice(
+  state: GameState,
+  action: Extract<GameAction, { type: "CHOOSE_OPTION" }>,
+  cards: CardLibrary
+): void {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || !choice.balanceSpellChoice) {
+    return;
+  }
+  const payload = choice.balanceSpellChoice;
+  const card = cards[payload.cardId];
+  const picked = action.optionIndex;
+  state.pendingChoice = null;
+  state.phase = choice.returnPhase ?? "combat";
+  state.priorityPlayerId = null;
+
+  if (choice.context === "disrupting-ray-mode" && state.combat && payload.unitId && card) {
+    const target = { type: "unit" as const, unitId: payload.unitId };
+    createActiveEffect(
+      state,
+      {
+        name: card.name,
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "negative",
+        removable: true,
+        modifiers:
+          picked === 1
+            ? [{ type: "DEFENSE_BONUS", amount: -(payload.amount ?? 1) }]
+            : [{ type: "UNIT_ABILITY_SUPPRESSED" }]
+      },
+      { type: "card", cardId: card.id, controllerId: choice.playerId },
+      choice.playerId,
+      target
+    );
+    return;
+  }
+
+  if (choice.context === "dispel-scope" && state.combat && card) {
+    if (picked === 1) {
+      // "ALL effects in the combat": every removable ongoing effect, both sides.
+      const removed = state.activeEffects.filter((effect) => effect.removable !== false);
+      if (removed.length > 0) {
+        const removedIds = new Set(removed.map((effect) => effect.id));
+        state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
+        stripCombatHealthBonusFromRemovedEffects(state, removed);
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          message: `${card.name} clears every ongoing effect in the Combat (${removed.length}).`
+        });
+      }
+    } else if (payload.target) {
+      // The pick already proved the Power ceiling was reached, so the grade gate
+      // cannot bite here — pass a Power above every ladder key.
+      applyDispelToTarget(state, card, choice.playerId, payload.target, 99);
+    }
+  }
+}
+
+/**
  * Resolves the Harpy "Strike and Return" choice: option 0 flies the unit back
  * to its origin, option 1 leaves it where it attacked. Either way the
  * activation then ends.
@@ -5084,7 +5337,9 @@ function finishResolvedAttack(
       details.ignoreDefense,
       dieCancelled,
       mightBonus,
-      details.isRetaliation
+      details.isRetaliation,
+      details.attackDamageCap,
+      details.halveAttack
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(state, details.defender, preview.damage);
     if (
@@ -5145,7 +5400,9 @@ function finishResolvedAttack(
         details.ignoreDefense,
         dieCancelled,
         mightBonus,
-        details.isRetaliation
+        details.isRetaliation,
+        details.attackDamageCap,
+        details.halveAttack
       );
       if (
         preview.damage > 0 &&
@@ -5208,7 +5465,9 @@ function finishResolvedAttack(
         details.ignoreDefense,
         dieCancelled,
         mightBonus,
-        details.isRetaliation
+        details.isRetaliation,
+        details.attackDamageCap,
+        details.halveAttack
       );
       return (
         preview.damage > 0 &&
@@ -5252,7 +5511,9 @@ function finishResolvedAttack(
     details.ignoreAttackDie,
     dieCancelled,
     mightBonus,
-    mightRolls
+    mightRolls,
+    details.attackDamageCap,
+    details.halveAttack
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -10489,6 +10750,40 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     return;
   }
 
+  // Polish Balance Pack Misfortune (Power 1/2): the cursed attack still rolls,
+  // but badly — 2 dice keeping the LOWER, or 4 dice with every "+1" rerolled
+  // once and every result resolved (a "-1" subtracts). Power 0 keeps the classic
+  // cancelled die (details.ignoreAttackDie above already returned).
+  if (stackItem.modifiers.misfortuneDie && stackItem.modifiers.misfortuneDie !== "negate") {
+    const mode = stackItem.modifiers.misfortuneDie;
+    const rolls =
+      mode === "lower-of-two"
+        ? [rollAttackDie(combat), rollAttackDie(combat)]
+        : Array.from({ length: 4 }, () => {
+            const first = rollAttackDie(combat);
+            return first === 1 ? rollAttackDie(combat) : first;
+          });
+    const value = mode === "lower-of-two" ? Math.min(...rolls) : rolls.reduce((sum, roll) => sum + roll, 0);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: "misfortune",
+      targetUnitId: details.defender.id,
+      message:
+        mode === "lower-of-two"
+          ? `Misfortune: ${details.attacker.cardName} rolls 2 Attack dice and resolves the lower (${value}).`
+          : `Misfortune: ${details.attacker.cardName} rolls 4 Attack dice, rerolling every "+1" (${value}).`
+    });
+    finishResolvedAttack(
+      state,
+      stackItem,
+      details,
+      { rolls, roll: value, sumAllDice: mode !== "lower-of-two" },
+      cards
+    );
+    return;
+  }
+
   // Slayer: against a gold unit, roll the Attack die N times and apply every
   // result but a "-1" — each "+1" adds 1 to the attack (a "0"/"-1" adds
   // nothing), so the die's whole contribution is the number of "+1"s. Then
@@ -11085,7 +11380,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           modifiers: [
             { type: "INITIATIVE_BONUS", amount },
             ...(card.effect.movementBonus
-              ? [{ type: "MOVEMENT_BONUS" as const, amount: card.effect.movementBonus }]
+              ? initiativeBuffMovementModifiers(card.effect, power)
               : [])
           ]
         },
@@ -11124,7 +11419,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             removable: chosen.removable ?? true,
             modifiers: [
               { type: "INITIATIVE_BONUS", amount },
-              ...(chosen.movementBonus ? [{ type: "MOVEMENT_BONUS" as const, amount: chosen.movementBonus }] : [])
+              ...initiativeBuffMovementModifiers(chosen, power)
             ]
           },
           { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
@@ -11132,6 +11427,29 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           stackItem.action.target
         );
         appliedCombatInitiativeBuff = true;
+      }
+      // Polish Balance Pack Prayer: its "+X attack" / "+X defense" arms are
+      // LASTING buffs on the selected unit now (not one-attack riders), so they
+      // resolve here beside the Initiative arm.
+      if (chosen?.type === "CREATE_ATTACK_BUFF") {
+        createAttackBuffFromCard(
+          state,
+          card,
+          chosen,
+          stackItem.action.playerId,
+          getCurrentSpellPower(state, stackItem, cards),
+          stackItem.action.target
+        );
+      }
+      if (chosen?.type === "CREATE_DEFENSE_BUFF") {
+        createDefenseBuffFromCard(
+          state,
+          card,
+          stackItem.action.playerId,
+          getCurrentSpellPower(state, stackItem, cards),
+          stackItem.action.target,
+          chosen
+        );
       }
     }
 
@@ -11148,7 +11466,19 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             duration: card.effect.duration,
             polarity: "positive",
             removable: true,
-            modifiers: [{ type: "UNIT_SPELL_IMMUNE", maxGrade }]
+            modifiers: [
+              { type: "UNIT_SPELL_IMMUNE", maxGrade },
+              // Polish Balance Pack Anti-Magic: "…and take damage from Spells
+              // and Specialities". A reduction bigger than any spell in the game
+              // zeroes every Spell hit at the shared totalSpellDamageReduction
+              // seam; SPECIALTY_IMMUNITY blocks the Specialty side.
+              ...(card.effect.blocksSpellAndSpecialtyDamage
+                ? ([
+                    { type: "SPELL_DAMAGE_REDUCTION", amount: 99 },
+                    { type: "SPECIALTY_IMMUNITY" }
+                  ] as ActiveEffectModifier[])
+                : [])
+            ]
           },
           { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
           stackItem.action.playerId,
@@ -11256,22 +11586,22 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // clears that space's obstacle/trap tokens — tokens carry no grade, so this
     // works at any Power.
     if (card?.effect.type === "DISPEL_EFFECTS" && state.combat) {
-      const dispelSource = { type: "card" as const, cardId: card.id, controllerId: stackItem.action.playerId };
-      if (stackItem.action.target.type === "unit") {
-        const power = getCurrentSpellPower(state, stackItem, cards);
-        const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
-        const target = state.combat.units[stackItem.action.target.unitId];
-        if (
-          target &&
-          !unitIgnoresCardNonDamage(target, card, state) &&
-          maxGrade &&
-          gradeRankOfUnit(target) <= gradeRank(maxGrade)
-        ) {
-          removeEffectsFromTarget(state, dispelSource, stackItem.action.target, "any-removable");
-          clearBattlefieldTokensAt(state, state.combat, target.position);
-        }
-      } else if (stackItem.action.target.type === "space") {
-        clearBattlefieldTokensAt(state, state.combat, stackItem.action.target.position);
+      const dispelPower = getCurrentSpellPower(state, stackItem, cards);
+      // Polish Balance Pack (Power 2, "ANY unit or ALL effects"): the caster
+      // picks between the printed unit/space cleanse and wiping every ongoing
+      // effect in the Combat. A generic OPTION_CHOICE, so the AI scorer and the
+      // AFK / turn-timeout driver can always answer it.
+      if (card.effect.allInCombatAtPower !== undefined && dispelPower >= card.effect.allInCombatAtPower) {
+        openBalanceSpellChoice(
+          state,
+          stackItem.action.playerId,
+          "dispel-scope",
+          { cardId: card.id, target: stackItem.action.target },
+          `${card.name}: clear the selected target, or EVERY ongoing effect in the Combat?`,
+          [{ label: "Clear the selected unit / space" }, { label: "Clear ALL ongoing effects in the Combat" }]
+        );
+      } else {
+        applyDispelToTarget(state, card, stackItem.action.playerId, stackItem.action.target, dispelPower);
       }
     }
 
@@ -11291,7 +11621,18 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
             duration: { type: "next-activation" },
             polarity: "negative",
             removable: true,
-            modifiers: [{ type: "UNIT_CANNOT_ATTACK" }]
+            // Polish Balance Pack: the reprint suffers only on RANGED attacks —
+            // "halve" (Power 0) or "can't" (Power 1/2) — and may last two of the
+            // target's activations. Classic printing: no attack at all, one
+            // activation.
+            activationsRemaining: card.effect.activationsByPower
+              ? Math.max(1, getAmountByPower(card.effect.activationsByPower, 1, power))
+              : undefined,
+            modifiers: [
+              card.effect.rangedModeByPower
+                ? forgetfulnessRangedModifier(card.effect.rangedModeByPower, power)
+                : { type: "UNIT_CANNOT_ATTACK" }
+            ]
           },
           { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
           stackItem.action.playerId,
@@ -11413,7 +11754,25 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      // Polish Balance Pack: "…cannot use their special ability OR suffers -1
+      // Defense" — the caster picks after the cast lands. Auto-answerable by the
+      // generic OPTION_CHOICE scorer / AFK driver, so it can never stall.
+      if (
+        card.effect.defenseChoice !== undefined &&
+        target &&
+        maxGrade &&
+        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+      ) {
+        openBalanceSpellChoice(state, stackItem.action.playerId, "disrupting-ray-mode", {
+          cardId: card.id,
+          unitId: target.id,
+          amount: card.effect.defenseChoice,
+          target: stackItem.action.target
+        }, `${card.name}: ${target.cardName} cannot use its special ability, or suffers -${card.effect.defenseChoice} Defense?`, [
+          { label: `${target.cardName} cannot use its special ability` },
+          { label: `${target.cardName} suffers -${card.effect.defenseChoice} Defense` }
+        ]);
+      } else if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -14220,7 +14579,31 @@ function applyReactionPlayCore(
         : 0;
     const appliedAmount = effectAmount * doubleFactor + adjacencyDefenseBonus;
 
-    if (effect.stat === "attack") {
+    // Polish Balance Pack Shield (Power 2): "takes up to 3 damage" replaces the
+    // Defense bonus for this one blow — a per-attack damage cap, the tightest
+    // one winning if several land.
+    const balanceCapTable = effect.damageCapByPower;
+    const balanceCap = balanceCapTable
+      ? balanceDamageCapAtPower(balanceCapTable, play.fromScroll ? 0 : attackPowerFor(stackItem, playerId))
+      : undefined;
+    if (balanceCapTable && !play.fromScroll) {
+      // Recorded so Power paid LATER in this window still reaches the cap rung.
+      stackItem.modifiers.attackDamageCapByPower = { table: balanceCapTable, playerId };
+    }
+    if (balanceCap !== undefined) {
+      stackItem.modifiers.attackDamageCap =
+        stackItem.modifiers.attackDamageCap === undefined
+          ? balanceCap
+          : Math.min(stackItem.modifiers.attackDamageCap, balanceCap);
+    } else if (balanceCapTable) {
+      // The rung is not reached yet — add nothing (the printed Defense bonus is
+      // the OTHER rungs of the same ladder and is applied below).
+      if (effect.stat === "attack") {
+        stackItem.modifiers.attackBonus += appliedAmount;
+      } else {
+        stackItem.modifiers.defenseBonus += appliedAmount;
+      }
+    } else if (effect.stat === "attack") {
       stackItem.modifiers.attackBonus += appliedAmount;
     } else {
       stackItem.modifiers.defenseBonus += appliedAmount;
@@ -14368,7 +14751,12 @@ function applyReactionPlayCore(
     (stackItem?.action.type === "ATTACK_UNIT" || stackItem?.action.type === "MOVE_AND_ATTACK_UNIT")
   ) {
     stackItem.modifiers.negateAttackBuffs = true;
-    stackItem.modifiers.attackDieCancelled = true;
+    // Polish Balance Pack Misfortune: the rung the caster paid for decides the
+    // DIE half — only "negate" still cancels the die outright; the other two
+    // roll a punished die instead (resolveAttackStackItem).
+    const misfortuneMode = effect.dieMode ?? "negate";
+    stackItem.modifiers.misfortuneDie = misfortuneMode;
+    stackItem.modifiers.attackDieCancelled = misfortuneMode === "negate";
     stackItem.modifiers.misfortunePhase = false;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -22959,7 +23347,11 @@ function acknowledgeFirstPlayerRoll(
 }
 
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
-  const cards = options.cards ?? cardLibrary;
+  // Polish Balance Pack: ONE seam. Every card read below (and in every helper
+  // this action reaches) goes through `cards`, so swapping the 21 reprinted
+  // Spells in here is what makes the rule real for the whole resolution path.
+  // Rule off => the caller's library is returned unchanged.
+  const cards = polishBalanceCardLibrary(state, options.cards ?? cardLibrary);
   const buildings = options.buildings ?? sampleBuildings;
 
   // Self-heal any duplicate army-unit ids before validating or running the
@@ -23560,6 +23952,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         // handled by the adventure reducer.
         if (nextState.pendingChoice?.type === "TARNUM_SEARCH") {
           resolveTarnumSearch(nextState, action, cards);
+        } else if (
+          nextState.pendingChoice?.type === "OPTION_CHOICE" &&
+          (nextState.pendingChoice.context === "disrupting-ray-mode" ||
+            nextState.pendingChoice.context === "dispel-scope")
+        ) {
+          resolveBalanceSpellChoice(nextState, action, cards);
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           nextState.pendingChoice.context === "combat-reposition"

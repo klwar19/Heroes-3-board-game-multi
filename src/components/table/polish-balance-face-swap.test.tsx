@@ -63,8 +63,17 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
       // CONTROL: with the rule off the Empowered scan still wins, unchanged.
       expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(empowered);
     }
-    // Non-vacuity: this must really be exercising most of the pack.
-    expect(covered).toBeGreaterThanOrEqual(POLISH_BALANCE_CARD_IDS.length - 1);
+    // Non-vacuity: this must really be exercising every reprint that HAS an
+    // Empowered scan — the eleven Abilities other than Diplomacy. The pack's
+    // SPELLS have none: Empower is a hand-ABILITY affordance
+    // (`handAbilityEmpowerCandidates`), so no spell ships an `-empowered` face
+    // and there is no precedence to test for them.
+    const abilities = POLISH_BALANCE_CARD_IDS.filter((cardId) => cardId.startsWith("ability."));
+    expect(covered).toBeGreaterThanOrEqual(abilities.length - 1);
+    expect(
+      POLISH_BALANCE_CARD_IDS.filter((cardId) => cardId.startsWith("spell.") && empoweredCardImage(cardId)),
+      "no reprinted Spell ships an Empowered scan"
+    ).toEqual([]);
   });
 
   it("the Empowered CUE is untouched by the swap — the gold ring still renders", () => {

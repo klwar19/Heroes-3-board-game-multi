@@ -14,6 +14,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { cardLibrary } from "@/data/cards/library";
+import { polishBalanceSpellCards } from "./spells-balance";
 import {
   POLISH_BALANCE_CARD_IDS,
   POLISH_BALANCE_NOT_IMPLEMENTED,
@@ -76,7 +77,7 @@ describe("Polish Balance Pack registries", () => {
     }
   });
 
-  it("declares every one of the pack's 12 reprinted Abilities as wired or not-implemented", () => {
+  it("declares every one of the pack's 12 Abilities + 21 Spells as wired or not-implemented", () => {
     // The Balance Pack's Ability folder is exactly these 12 cards (docs/
     // polish-card-balance-spec.md §1). Every one must be accounted for, so a
     // reprint can never be silently dropped from the pack's scope.
@@ -92,7 +93,29 @@ describe("Polish Balance Pack registries", () => {
       "ability.pathfinding",
       "ability.scouting",
       "ability.tactics",
-      "ability.wisdom"
+      "ability.wisdom",
+      // The pack's Spells folder is exactly these 21 cards (spec §2).
+      "spell.anti_magic",
+      "spell.bless",
+      "spell.blind",
+      "spell.counterstrike",
+      "spell.dispel",
+      "spell.disrupting_ray",
+      "spell.fire_shield",
+      "spell.fire_wall",
+      "spell.forgetfulness",
+      "spell.fortune",
+      "spell.frenzy",
+      "spell.haste",
+      "spell.mirth",
+      "spell.misfortune",
+      "spell.prayer",
+      "spell.remove_obstacle",
+      "spell.shield",
+      "spell.slayer",
+      "spell.slow",
+      "spell.sorrow",
+      "spell.visions"
     ];
     for (const cardId of PACK_ABILITIES) {
       const accounted =
@@ -108,7 +131,10 @@ describe("Polish Balance Pack registries", () => {
 
   it("every WIRED card's tags carry a \"Balance pack:\" note (CLAUDE.md #2)", () => {
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
-      const tags = cardLibrary[cardId]?.tags ?? [];
+      // Abilities patch their printed definition in place; Spells ship a whole
+      // reprinted definition that the engine swaps in under the rule — read
+      // whichever one the rule actually plays.
+      const tags = polishBalanceSpellCards[cardId]?.tags ?? cardLibrary[cardId]?.tags ?? [];
       expect(
         tags.some((tag) => tag.startsWith("Balance pack:")),
         `${cardId} must state its reprinted text in a "Balance pack: …" tag`

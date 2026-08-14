@@ -306,6 +306,34 @@ export function specialtyImmunityActive(state: GameState | undefined, unit: Comb
   );
 }
 
+/**
+ * Polish Balance Pack Bless: the buff makes the unit's attacks skip the Attack
+ * die roll for its whole duration (the classic card did it for one attack).
+ */
+export function unitIgnoresAttackDieFromEffects(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "IGNORE_ATTACK_DIE_ROLL")
+    )
+  );
+}
+
+/**
+ * Polish Balance Pack Forgetfulness (Power 0): the unit's RANGED attack value is
+ * halved (rounded up) while the effect lasts.
+ */
+export function unitRangedAttackHalved(state: GameState | undefined, unit: CombatUnitState): boolean {
+  return Boolean(
+    state?.activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, unit) &&
+        effect.modifiers.some((modifier) => modifier.type === "RANGED_ATTACK_HALVED")
+    )
+  );
+}
+
 /** Flat combat-long Power supplied by active effects such as Promestein VI. */
 export function activeSpellPowerBonus(state: GameState, playerId: PlayerId): number {
   const combatUnit = Object.values(state.combat?.units ?? {}).find(
@@ -970,7 +998,18 @@ export function syncAbilitySuppression(state: GameState): void {
  * activation ends — including when the activation is skipped.
  */
 export function expireEffectsForActivationEnd(state: GameState, unitId: UnitId): ActiveEffectState[] {
-  const expired = state.activeEffects.filter((effect) => effect.expiresAtActivationEndUnitId === unitId);
+  const bound = state.activeEffects.filter((effect) => effect.expiresAtActivationEndUnitId === unitId);
+  // Polish Balance Pack Forgetfulness (Power 2) lasts TWO activations: tick the
+  // counter down and keep the effect until the last one ends. Every other
+  // activation-scoped effect carries no counter and expires as before.
+  const expired = bound.filter((effect) => {
+    const remaining = effect.activationsRemaining ?? 1;
+    if (remaining > 1) {
+      effect.activationsRemaining = remaining - 1;
+      return false;
+    }
+    return true;
+  });
   if (expired.length > 0) {
     const expiredIds = new Set(expired.map((effect) => effect.id));
     state.activeEffects = state.activeEffects.filter((effect) => !expiredIds.has(effect.id));

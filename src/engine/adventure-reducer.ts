@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { polishBalanceCard } from "./polish-balance-spells";
 import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import {
   applyNeutralRoundsRank,
@@ -8819,8 +8820,9 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
 const VISIONS_SPELL_ID = "spell.visions";
 
 /** Visions' Power → card-count table (1/2/3), reused as the swap budget. */
-function visionsCardsByPower(): Record<number, number> {
-  const card = cardLibrary[VISIONS_SPELL_ID];
+function visionsCardsByPower(state: GameState): Record<number, number> {
+  // Polish Balance Pack: the reprint scrys 2/4/6, so the swap budget follows.
+  const card = polishBalanceCard(state, VISIONS_SPELL_ID);
   return card?.effect.type === "VISIONS_SCRY" ? card.effect.cardsByPower : { 0: 1 };
 }
 
@@ -8905,7 +8907,7 @@ export function resolveVisionsGuardCast(state: GameState, playerId: PlayerId, op
     mode: "basic",
     optionLabel: "swap Neutral guards (pre-battle)"
   });
-  openVisionsGuardSwapBoost(state, playerId, visionsCardsByPower(), 0);
+  openVisionsGuardSwapBoost(state, playerId, visionsCardsByPower(state), 0);
 }
 
 /**

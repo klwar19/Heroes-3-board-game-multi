@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { POLISH_BALANCE_SPELL_IDS, polishBalanceCardLibrary } from "./polish-balance-spells";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
 import { moraleCardsRuleEnabled } from "./morale-cards";
@@ -952,12 +953,26 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1
   // (MOVEMENT_BONUS), the Battlefield-Expansion reading. When the rule is off the
   // buff changes only Initiative, keeping the fixed range (the standard/wiki rule).
-  if (!state || !houseRuleEnabled(state, "combat-move-initiative")) {
+  // Polish Balance Pack: Haste / Slow PRINT their "+X spaces" / "-X spaces"
+  // half, so those two apply even with the classic house rule off. Every OTHER
+  // MOVEMENT_BONUS (Cape of Velocity, the initiative-buff specialties) stays
+  // gated on `combat-move-initiative` exactly as before — the Balance Pack must
+  // not switch the classic rider on for cards it does not reprint. Their own
+  // ladder REPLACES the ±1 rider (initiativeBuffMovementModifiers), so nothing
+  // double-counts when both rules are on.
+  const classicRider = Boolean(state && houseRuleEnabled(state, "combat-move-initiative"));
+  const balancePrinted = Boolean(state && houseRuleEnabled(state, "polish-card-balance"));
+  if (!state || (!classicRider && !balancePrinted)) {
     return base;
   }
   let bonus = 0;
   for (const effect of state.activeEffects) {
     if (!effectAppliesToUnit(effect, unit)) {
+      continue;
+    }
+    const printedByReprint =
+      effect.source.type === "card" && POLISH_BALANCE_SPELL_IDS.includes(effect.source.cardId);
+    if (!classicRider && !printedByReprint) {
       continue;
     }
     for (const modifier of effect.modifiers) {
@@ -1462,6 +1477,21 @@ export function canUnitAttack(
       (effect) =>
         effectAppliesToUnit(effect, attacker) &&
         effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_ATTACK")
+    )
+  ) {
+    return false;
+  }
+
+  // Polish Balance Pack Forgetfulness: the reprint blocks only the RANGED
+  // attack, so a ranged unit under it may still strike an adjacent enemy in
+  // melee. A ranged unit shooting at a distance is what this refuses.
+  if (
+    attacker.type === "ranged" &&
+    !isAdjacent(attacker.position, defender.position) &&
+    activeEffects.some(
+      (effect) =>
+        effectAppliesToUnit(effect, attacker) &&
+        effect.modifiers.some((modifier) => modifier.type === "UNIT_CANNOT_RANGED_ATTACK")
     )
   ) {
     return false;
@@ -2608,7 +2638,14 @@ function addSpellActions(
  * stays skipped (never silently offered, then fizzling).
  */
 function optionCastableAsCombatSpell(effect: ConcreteEffect): boolean {
-  return effect.type === "CREATE_INITIATIVE_BUFF";
+  // Polish Balance Pack Prayer: its "+X attack" / "+X defense" arms are LASTING
+  // buffs on the selected unit now (the classic arms are one-attack reaction
+  // riders and carry a trigger, so they never reach this predicate).
+  return (
+    effect.type === "CREATE_INITIATIVE_BUFF" ||
+    effect.type === "CREATE_ATTACK_BUFF" ||
+    effect.type === "CREATE_DEFENSE_BUFF"
+  );
 }
 
 /**
@@ -6471,9 +6508,13 @@ function withComputerAdvanceOffer(
 function getLegalActionsCore(
   state: GameState,
   playerId: PlayerId,
-  cards: CardLibrary = cardLibrary,
+  baseCards: CardLibrary = cardLibrary,
   buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
+  // Polish Balance Pack: the offer layer reads the SAME reprinted definitions
+  // the reducer resolves, so a ladder can never be promised here and paid
+  // differently there. Rule off => the caller's library, unchanged.
+  const cards = polishBalanceCardLibrary(state, baseCards);
   if (state.phase === "game-over") {
     // An adventure combat that just ended waits on the battlefield until a
     // participant closes the end-of-combat notice; only that acknowledgment
@@ -7108,21 +7149,40 @@ function getMisfortunePreWindowReactions(
   const reactions: LegalAction[] = [];
   for (const { cardId, fromSpellBook } of sources) {
     const card = cards[cardId];
-    if (
-      !card ||
-      card.kind !== "spell" ||
-      card.implementationStatus !== "implemented" ||
-      card.effect.type !== "CHOOSE_ONE"
-    ) {
+    if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+      continue;
+    }
+    // Polish Balance Pack Misfortune: the reprint has NO tier gate and no "OR"
+    // options — one card-level NEGATE_ATTACK whose die half scales with the
+    // Power paid. Offered against any attacker the Spell can legally hex.
+    if (card.effect.type === "NEGATE_ATTACK") {
+      if (unitBlockedBySpellCard(state, attacker, card)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}${fromSpellBook ? " (Spell Book)" : ""}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          ...(fromSpellBook ? { fromSpellBook: true } : {})
+        })
+      );
+      continue;
+    }
+    if (card.effect.type !== "CHOOSE_ONE") {
       continue;
     }
     for (const [optionIndex, option] of card.effect.options.entries()) {
       // Only the option whose grade matches the attacking unit (Power 0/1/2 →
       // bronze/silver/gold) is offered, and only when its Power cost is payable.
+      // The classic card gates each rung on the ATTACKER's tier; the Polish
+      // Balance Pack reprint has no tier gate at all (its rungs are die modes),
+      // so a grade-less option is offered whenever it is affordable.
       if (
         option.effect.type !== "NEGATE_ATTACK" ||
-        option.effect.grade === undefined ||
-        gradeRankOfUnit(attacker) !== gradeRank(option.effect.grade) ||
+        (option.effect.grade !== undefined &&
+          gradeRankOfUnit(attacker) !== gradeRank(option.effect.grade)) ||
         !canAffordCardCost(state, playerId, cardId, option.cost)
       ) {
         continue;
@@ -7578,8 +7638,10 @@ function followUpAttackInstantOpener(state: GameState, triggerEvent: GameEvent):
 export function getLegalReactionsForTrigger(
   state: GameState,
   triggerEvent: GameEvent,
-  cards: CardLibrary = cardLibrary
+  baseCards: CardLibrary = cardLibrary
 ): Record<PlayerId, LegalAction[]> {
+  // Polish Balance Pack: same reprinted library the reducer resolves with.
+  const cards = polishBalanceCardLibrary(state, baseCards);
   // Alamar's Resurrection: its own save window when a unit is about to die.
   if (triggerEvent.type === "UNIT_LETHAL_HIT") {
     return getLethalSaveReactions(state, triggerEvent, cards);
@@ -9378,8 +9440,13 @@ export function isEffectLegalForTrigger(
     // unit ("when attacking a golden unit"). A Creature Bank defender has no
     // tier, so it never counts as golden. Misfortune locks it out too.
     if (effect.type === "SLAYER_ATTACK") {
+      // Polish Balance Pack: "when attacking a GOLD or AZURE unit".
+      const allowed = effect.targetGrades ?? ["gold"];
       return (
-        !attackBuffsNegated && attacker.controllerId === playerId && !defender.bankUnit && defender.grade === "gold"
+        !attackBuffsNegated &&
+        attacker.controllerId === playerId &&
+        !defender.bankUnit &&
+        allowed.includes(defender.grade)
       );
     }
 
