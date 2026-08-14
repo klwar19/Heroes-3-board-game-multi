@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import type { GameAction, GameState, PendingChoice } from "../state";
+import { isAdjacent } from "../battlefield";
 import { cardKeepValue, crownsAvailable } from "./card-policy";
 import {
   BANK_ENGAGE_RATIO,
@@ -187,6 +188,10 @@ function scoreAbilityTarget(
   if (remaining <= 0) return CHOICE_BASE - 50;
 
   const choice = pendingChoiceOf(observation);
+  const isCatapult =
+    choice?.type === "ABILITY_TARGET_CHOICE" &&
+    choice.kind === "war-machine" &&
+    choice.abilityId === "war_machine.catapult";
   const isDamagePick =
     choice?.type === "ABILITY_TARGET_CHOICE" &&
     (choice.kind === "flat-damage" ||
@@ -196,23 +201,45 @@ function scoreAbilityTarget(
       choice.kind === "faerie-damage" ||
       choice.kind === "area-pick" ||
       choice.kind === "chain-lightning" ||
-      choice.kind === "dreadnought-splash");
+      choice.kind === "dreadnought-splash" ||
+      // War-machine choices are not uniformly offensive: First Aid Tent heals.
+      // Catapult specifically damages either side, so never score an allied
+      // target as a desirable heal/buff.
+      isCatapult);
+
+  // On the FIRST Catapult pick, score the best adjacent second hit too. This
+  // prevents a tempting high-threat enemy from being selected when its only
+  // neighbour is the computer's own stack and an enemy+enemy pair is available.
+  const catapultPairAdjustment =
+    isCatapult && !combat.warMachineRound?.firstTargetUnitId
+      ? (() => {
+          const adjustments = choice.candidateUnitIds
+            .filter((candidateId) => candidateId !== action.targetUnitId)
+            .map((candidateId) => combat.units[candidateId])
+            .filter((candidate): candidate is NonNullable<typeof candidate> =>
+              Boolean(candidate && isAdjacent(candidate.position, unit.position))
+            )
+            .map((candidate) => (candidate.controllerId === observation.playerId ? -100 : 100));
+          return adjustments.length > 0 ? Math.max(...adjustments) : 0;
+        })()
+      : 0;
 
   if (unit.controllerId === observation.playerId) {
     if (isDamagePick) {
       // Friendly fire: legal (Magog/Lich) but never preferred over an enemy.
       // Prefer the weakest ally if forced — spare the stronger stack.
-      return CHOICE_BASE - 40 - remaining;
+      return CHOICE_BASE - 40 - remaining + catapultPairAdjustment - (isCatapult ? 200 : 0);
     }
     // Friendly target (heal / buff): prefer more wounded, then higher threat.
     const missing = unit.maxHealth - remaining;
-    return CHOICE_BASE + missing * 8 + Math.min(20, Math.round(unitThreatValue(unit) / 5));
+    return CHOICE_BASE + missing * 8 + Math.min(20, Math.round(unitThreatValue(unit) / 5)) + catapultPairAdjustment;
   }
   // Enemy: highest threat, slight bonus if nearly dead.
   return (
     CHOICE_BASE +
     Math.min(60, Math.round(unitThreatValue(unit) / 2)) +
-    (remaining <= 2 ? 15 : 0)
+    (remaining <= 2 ? 15 : 0) +
+    catapultPairAdjustment
   );
 }
 

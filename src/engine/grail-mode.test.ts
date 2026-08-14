@@ -289,12 +289,12 @@ describe("Dragon Utopia objective", () => {
     expect(state.phase).not.toBe("game-over");
     // …and it pays the normal plain-Utopia field bundle instead.
     expect(converted.blackCube).toBe(true);
-    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search")
         .map((reward) => (reward.kind === "shared-deck-search" ? reward.count : 0))
-    ).toEqual([3, 5, 5]);
+    ).toEqual([3, 3]);
   });
 
   it("a CONVERTED extra Grail is never captured in Dragon Conqueror (not a hold-to-win target)", () => {
@@ -325,20 +325,19 @@ describe("Dragon Utopia objective", () => {
     beginFieldVisit(state, heroId, field.spaceId, false);
 
     // The Dragon Utopia pays its Lvl-VII bank reward, never the game. Its
-    // artifact half is the fixed Search 3 / 5 / 5 (USER RULE 2026-08-03) — it
+    // artifact half is two fixed Artifact Search (3) rewards (2026-08-13) — it
     // used to be the shared consolation's single hardcoded Relic Search (2).
     expect(state.adventure!.winnerPlayerId).toBeNull();
     expect(state.phase).not.toBe("game-over");
     expect(field.blackCube).toBe(true);
-    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search")
         .map((reward) => (reward.kind === "shared-deck-search" ? [reward.deckId, reward.count] : []))
     ).toEqual([
       ["artifacts", 3],
-      ["artifacts", 5],
-      ["artifacts", 5]
+      ["artifacts", 3]
     ]);
   });
 
@@ -362,7 +361,7 @@ describe("Dragon Utopia objective", () => {
 describe("Creature-bank consolation (Conquest)", () => {
   // The GRAIL keeps the shared Lvl-VII consolation (10 gold + Search (2) of the
   // Relic deck). The DRAGON UTOPIA no longer does: USER RULE 2026-08-03 gives it
-  // its own fixed 3 / 5 / 5 Artifact-FAMILY reward (the hardcoded Relic deck also
+  // its own fixed two-Search(3) Artifact-FAMILY reward (the hardcoded Relic deck also
   // bypassed the normal eligible-deck pick, so the Search did not follow the
   // field's Ⅵ–Ⅶ tile band). Behaviour: dragon-utopia-artifact-reward.test.ts.
   it("gives 10 gold and a Relic search when grail is not the objective", () => {
@@ -381,7 +380,7 @@ describe("Creature-bank consolation (Conquest)", () => {
     expect(state.adventure!.winnerPlayerId).toBeNull();
   });
 
-  it("gives 10 gold and the fixed Search 3 / 5 / 5 when dragon_utopia is not the objective", () => {
+  it("gives 20 gold and two Search (3) rewards when dragon_utopia is not the objective", () => {
     const state = makeGame("conquest");
     const field = injectField(state, "dragon_utopia");
     const heroId = placeHeroOn(state, "p1", field.spaceId);
@@ -390,15 +389,14 @@ describe("Creature-bank consolation (Conquest)", () => {
     beginFieldVisit(state, heroId, field.spaceId, false);
 
     expect(field.blackCube).toBe(true);
-    expect(state.players.p1.resources.gold).toBe(goldBefore + 10);
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(
       state.adventure!.rewardQueue
         .filter((reward) => reward.kind === "shared-deck-search")
         .map((reward) => (reward.kind === "shared-deck-search" ? [reward.deckId, reward.count] : []))
     ).toEqual([
       ["artifacts", 3],
-      ["artifacts", 5],
-      ["artifacts", 5]
+      ["artifacts", 3]
     ]);
     expect(state.adventure!.winnerPlayerId).toBeNull();
   });

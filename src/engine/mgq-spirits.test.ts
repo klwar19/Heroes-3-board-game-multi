@@ -58,6 +58,54 @@ describe("MGQ spirit selection gate", () => {
     expect(state.combat!.mgqSpirits).toEqual({});
     expect(Object.keys(state.combat!.units).some((id) => id.includes("spirit_sylph"))).toBe(false);
   });
+
+  it("offers all four choices during neutral deployment, blocks Ready until selected, and does not affect other factions", () => {
+    const deploymentState = (factionId: "mgq" | "castle"): GameState => {
+      const state = createAdventureGameState({
+        seed: `spirit-deployment-${factionId}`,
+        difficulty: "normal",
+        rollFirstPlayer: false,
+        events: false,
+        players: [
+          { id: "p1", name: "Fighter", factionId, heroDefId: factionId === "mgq" ? "luka" : "catherine" },
+          { id: "p2", name: "Other", factionId: "castle", heroDefId: "catherine" }
+        ]
+      });
+      state.pendingChoice = null;
+      const hero = getMainHero(state, "p1")!;
+      const shell = createInitialGameState(`spirit-shell-${factionId}`).combat!;
+      state.combat = {
+        ...shell,
+        attackerPlayerId: "p1",
+        defenderPlayerId: "neutral",
+        context: { kind: "neutral", heroId: hero.id, fieldId: hero.spaceId ?? "0,0", difficulty: 1, hasAzure: false },
+        setup: { pendingPlayerIds: ["p1"], placedUnitIds: { p1: [] }, unitLimit: 5 },
+        units: {}
+      };
+      state.phase = "combat-setup";
+      state.priorityPlayerId = "p1";
+      delete state.players.p1.mgqSpirit;
+      return state;
+    };
+
+    let mgq = deploymentState("mgq");
+    let legal = getLegalActions(mgq, "p1");
+    expect(legal.filter((entry) => entry.action.type === "SET_MGQ_SPIRIT")).toHaveLength(4);
+    expect(legal.some((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(false);
+
+    mgq = applyAction(mgq, { type: "SET_MGQ_SPIRIT", playerId: "p1", spirit: "undine" }).state;
+    legal = getLegalActions(mgq, "p1");
+    const place = legal.find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+    expect(place).toBeTruthy();
+    mgq = applyAction(mgq, place!.action).state;
+    expect(getLegalActions(mgq, "p1").some((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(true);
+
+    let castle = deploymentState("castle");
+    expect(getLegalActions(castle, "p1").some((entry) => entry.action.type === "SET_MGQ_SPIRIT")).toBe(false);
+    const castlePlace = getLegalActions(castle, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT")!;
+    castle = applyAction(castle, castlePlace.action).state;
+    expect(getLegalActions(castle, "p1").some((entry) => entry.action.type === "FINISH_COMBAT_PLACEMENT")).toBe(true);
+  });
 });
 
 describe("MGQ Four Spirits in the PvP prep window", () => {

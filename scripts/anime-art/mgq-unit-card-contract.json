@@ -54,7 +54,7 @@
         "stats": {
           "attack": 2,
           "defense": 0,
-          "health": 2,
+          "health": 3,
           "initiative": 8
         },
         "cost": {
@@ -63,7 +63,7 @@
         "abilities": [
           "mgq-pack-dig"
         ],
-        "text": "Pack Dig — [activation] instead of attacking, place an obstacle in an adjacent empty cell."
+        "text": "Pack Dig — after moving or while stationary, instead of attacking place an obstacle in an adjacent empty cell."
       }
     },
     {
@@ -100,7 +100,7 @@
         "stats": {
           "attack": 3,
           "defense": 0,
-          "health": 3,
+          "health": 4,
           "initiative": 6
         },
         "cost": {
@@ -660,7 +660,7 @@
           "initiative": 5
         },
         "cost": {
-          "gold": 7
+          "gold": 5
         },
         "abilities": [],
         "text": "No printed ability."
@@ -673,7 +673,7 @@
           "initiative": 6
         },
         "cost": {
-          "gold": 11
+          "gold": 7
         },
         "abilities": [
           "mgq-sleep-toxin"
@@ -722,7 +722,7 @@
           "initiative": 7
         },
         "cost": {
-          "gold": 11,
+          "gold": 8,
           "buildingMaterials": 1
         },
         "abilities": [
@@ -753,7 +753,7 @@
         "stats": {
           "attack": 3,
           "defense": 0,
-          "health": 4,
+          "health": 6,
           "initiative": 7
         },
         "cost": {
@@ -766,7 +766,7 @@
         "stats": {
           "attack": 4,
           "defense": 0,
-          "health": 4,
+          "health": 6,
           "initiative": 8
         },
         "cost": {
@@ -952,17 +952,17 @@
         "stats": {
           "attack": 5,
           "defense": 2,
-          "health": 5,
-          "initiative": 6
+          "health": 6,
+          "initiative": 7
         },
         "cost": {
           "gold": 12,
           "valuables": 1
         },
         "abilities": [
-          "mechanics-line-attack-2"
+          "mgq-jessie-spear-wall"
         ],
-        "text": "Spear Wall — attack two cells in a line; the second hit has Attack 2."
+        "text": "Spear Wall — attack the first unit normally, then deal 2 damage to the unit directly behind it."
       }
     },
     {

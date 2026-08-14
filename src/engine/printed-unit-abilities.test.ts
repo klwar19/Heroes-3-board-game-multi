@@ -356,6 +356,30 @@ describe("Defend roll (per-attack +1 shield)", () => {
     );
     expect(rolled?.defendRoll).toBeUndefined();
   });
+
+  it("Guarded reports Gigi-style Defense 1 + a winning die as total 2, not base 2 plus another +1", () => {
+    const resolved = rangedDuel({
+      defenderAbilities: ["commander-defense-token"],
+      defenderDefense: 1,
+      rolls: [0, 1]
+    });
+    const rolled = resolved.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
+    );
+    expect(rolled).toMatchObject({ defendRoll: 1, defenseBonus: 1, defenseValue: 2 });
+  });
+
+  it("Guarded gives no automatic +1 when its Defend die is 0", () => {
+    const resolved = rangedDuel({
+      defenderAbilities: ["commander-defense-token"],
+      defenderDefense: 1,
+      rolls: [0, 0]
+    });
+    const rolled = resolved.eventLog.find(
+      (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> => event.type === "ATTACK_ROLLED"
+    );
+    expect(rolled).toMatchObject({ defendRoll: 0, defenseBonus: 0, defenseValue: 1 });
+  });
 });
 
 describe("Wyvern sting (extra die, only on '0')", () => {

@@ -102,6 +102,7 @@ export const MGQ_NEW_ABILITY_IDS = [
   "mgq-lisa-growth",
   "mgq-maiden-certain-paralysis",
   "mgq-giga-regeneration",
+  "mgq-jessie-spear-wall",
   "mgq-undine-heal-1",
   "mgq-undine-heal-2"
 ] as const;
@@ -222,9 +223,9 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "bronze",
       "pochi",
       "pack",
-      { attack: 2, defense: 0, health: 2, initiative: 8, gold: 4 },
+      { attack: 2, defense: 0, health: 3, initiative: 8, gold: 4 },
       ["mgq-pack-dig"],
-      "Pack Dig — [activation] instead of attacking, place an obstacle in an adjacent empty cell."
+      "Pack Dig — after moving or while stationary, instead of attacking place an obstacle in an adjacent empty cell."
     )
   ),
   "mgq.shesta": mgqUnit(
@@ -237,7 +238,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "bronze",
       "shesta",
       "pack",
-      { attack: 3, defense: 0, health: 3, initiative: 6, gold: 5 },
+      { attack: 3, defense: 0, health: 4, initiative: 6, gold: 5 },
       ["heavenly-demon-blood-siphon"],
       "Blood Siphon — after her own attack deals damage, heal 1 damage from Shesta."
     )
@@ -448,12 +449,12 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
     "Seraphy",
     "silver",
     "ground",
-    mgqSide("silver", "seraphy", "few", { attack: 3, defense: 1, health: 4, initiative: 5, gold: 7 }),
+    mgqSide("silver", "seraphy", "few", { attack: 3, defense: 1, health: 4, initiative: 5, gold: 5 }),
     mgqSide(
       "silver",
       "seraphy",
       "pack",
-      { attack: 4, defense: 1, health: 4, initiative: 6, gold: 11 },
+      { attack: 4, defense: 1, health: 4, initiative: 6, gold: 7 },
       ["mgq-sleep-toxin"],
       "Sleep Toxin — after Seraphy's own attack deals damage, place 1 Temptation token on the target."
     )
@@ -475,7 +476,7 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "lisa",
       "pack",
-      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 11, buildingMaterials: 1 },
+      { attack: 3, defense: 1, health: 4, initiative: 7, gold: 8, buildingMaterials: 1 },
       ["mgq-lisa-growth", "ignores-retaliation"],
       "Soul Growth — gain permanent +1 maximum Health after reducing a side or stack layer to 0 HP (maximum +2); attacks provoke no Retaliation."
     )
@@ -485,12 +486,12 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
     "Tama",
     "silver",
     "ground",
-    mgqSide("silver", "tama", "few", { attack: 3, defense: 0, health: 4, initiative: 7, gold: 7 }),
+    mgqSide("silver", "tama", "few", { attack: 3, defense: 0, health: 6, initiative: 7, gold: 7 }),
     mgqSide(
       "silver",
       "tama",
       "pack",
-      { attack: 4, defense: 0, health: 4, initiative: 8, gold: 11 },
+      { attack: 4, defense: 0, health: 6, initiative: 8, gold: 11 },
       ["dread-knight-death-blow"],
       'Critical Claws — a "0" or "+1" on Tama\'s Attack die adds another +1 Attack.'
     )
@@ -557,9 +558,9 @@ export const mgqUnitDefinitions: Record<string, UnitDefinition> = {
       "silver",
       "jessie",
       "pack",
-      { attack: 5, defense: 2, health: 5, initiative: 6, gold: 12, valuables: 1 },
-      ["mechanics-line-attack-2"],
-      "Spear Wall — attack two cells in a line; the second hit has Attack 2."
+      { attack: 5, defense: 2, health: 6, initiative: 7, gold: 12, valuables: 1 },
+      ["mgq-jessie-spear-wall"],
+      "Spear Wall — attack the first unit normally, then deal 2 damage to the unit directly behind it."
     )
   ),
   "mgq.aria": mgqUnit(

@@ -321,7 +321,8 @@ import {
   heroGradesEnabled,
   heroTrainAvailable,
   HERO_TRAIN_MERIT,
-  HERO_TRAIN_MOVEMENT_COST
+  HERO_TRAIN_MOVEMENT_COST,
+  playerMainHeroInCombat
 } from "./anime-hero-grades";
 import {
   equipmentEnabled,
@@ -379,6 +380,7 @@ import {
   canPlayExpertMode,
   deckDisplayName,
   abilityExpertIsCrownFree,
+  ARTIFACT_DECK_RELIC,
   eligibleArtifactDecks,
   eligibleSpellDecks,
   expertUsesAvailable,
@@ -9304,7 +9306,12 @@ export function acceptCombat(state: GameState, action: Extract<GameAction, { typ
     throw new Error("Resolve the open preparation prompt before readying up.");
   }
 
-  if (state.players[action.playerId]?.factionId === "mgq" && !state.players[action.playerId]?.mgqSpirit) {
+  if (
+    state.adventure &&
+    state.players[action.playerId]?.factionId === "mgq" &&
+    playerMainHeroInCombat(state, action.playerId) &&
+    !state.players[action.playerId]?.mgqSpirit
+  ) {
     throw new Error("Choose one of the Four Spirits before accepting the battle.");
   }
 
@@ -9654,6 +9661,15 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
 
   if (combat.prep) {
     throw new Error("Deployment waits until both sides accept the battle.");
+  }
+
+  if (
+    state.adventure &&
+    state.players[action.playerId]?.factionId === "mgq" &&
+    playerMainHeroInCombat(state, action.playerId) &&
+    !state.players[action.playerId]?.mgqSpirit
+  ) {
+    throw new Error("Choose one of the Four Spirits before starting the battle.");
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
@@ -10132,6 +10148,13 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
 
+  // Factory Bounty Hunters choose their Mark target before any automatic
+  // combat-start effects. Computer controllers resolve the same rule without
+  // opening a window, so their setup cannot stall.
+  if (maybeOpenBountyHunterMarkStartChoice(state)) {
+    return;
+  }
+
   // Monster Girl Quest Four Spirits: summon the selected basic/advanced unit
   // for the fighting main hero, based on hero level.
   seedMgqSpiritsForCombat(state);
@@ -10167,6 +10190,53 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   startWarMachineRound(state);
 }
 
+/**
+ * Lays one Disciplinary Sanction (the round-one Attack penalty) on the picked
+ * enemy. Shared by the human pick and by the NEUTRAL seat's auto-resolution.
+ */
+function applyDisciplinarySanction(
+  state: GameState,
+  source: CombatUnitState,
+  target: CombatUnitState,
+  amount: number,
+  rounds: number
+): void {
+  const duration =
+    rounds <= 1
+      ? ({ type: "current-combat-round" } as const)
+      : ({ type: "combat-rounds", rounds } as const);
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: "Disciplinary Sanction",
+      scope: "unit",
+      duration,
+      polarity: "negative",
+      removable: true,
+      modifiers: [{ type: "ATTACK_BONUS", amount }]
+    },
+    { type: "unit", unitId: source.id, controllerId: source.controllerId },
+    source.controllerId,
+    { type: "unit", unitId: target.id }
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: source.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+  const penalty = getCombatStartEnemyAttackPenalty(source);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: source.id,
+    abilityId: penalty?.abilityId ?? "disciplinary-sanction",
+    targetUnitId: target.id,
+    message: `${source.cardName}: Disciplinary Sanction - ${target.cardName} gets ${amount} Attack during combat round 1.`
+  });
+}
+
 function openDisciplinaryCommitteeSourceChoice(
   state: GameState,
   sourceUnitId: UnitId,
@@ -10188,6 +10258,23 @@ function openDisciplinaryCommitteeSourceChoice(
     )
     .sort((left, right) => left.position - right.position);
   if (targets.length === 0) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
+  }
+
+  // The NEUTRAL seat has no owner to answer a NEUTRAL-owned pendingChoice and
+  // the reducer pump has no auto-resolver for this OPTION_CHOICE context, so
+  // opening one would freeze the whole table (the bounty-hunter-mark class).
+  // A neutral-controlled Disciplinary Committee therefore sanctions the
+  // strongest living enemy deterministically instead.
+  if (source.controllerId === NEUTRAL_PLAYER_ID) {
+    const target = targets.reduce((best, candidate) =>
+      candidate.maxHealth > best.maxHealth ||
+      (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
+        ? candidate
+        : best
+    );
+    applyDisciplinarySanction(state, source, target, penalty.amount, penalty.rounds);
     const [next, ...rest] = remainingSourceUnitIds;
     return next ? openDisciplinaryCommitteeSourceChoice(state, next, rest) : false;
   }
@@ -10214,7 +10301,7 @@ function openDisciplinaryCommitteeSourceChoice(
 }
 
 /** Opens the first unresolved Disciplinary Committee Pack target choice. */
-function maybeOpenDisciplinaryCommitteeStartChoice(state: GameState): boolean {
+export function maybeOpenDisciplinaryCommitteeStartChoice(state: GameState): boolean {
   const combat = state.combat;
   if (!combat || combat.disciplinaryCommitteeStartResolved) {
     return false;
@@ -10256,40 +10343,7 @@ function resolveDisciplinaryCommitteeStartChoice(
     throw new Error("Choose one of the living enemy units.");
   }
 
-  const duration =
-    data.rounds <= 1
-      ? ({ type: "current-combat-round" } as const)
-      : ({ type: "combat-rounds", rounds: data.rounds } as const);
-  const effect = makeActiveEffect(
-    state,
-    {
-      name: "Disciplinary Sanction",
-      scope: "unit",
-      duration,
-      polarity: "negative",
-      removable: true,
-      modifiers: [{ type: "ATTACK_BONUS", amount: data.amount }]
-    },
-    { type: "unit", unitId: source.id, controllerId: source.controllerId },
-    source.controllerId,
-    { type: "unit", unitId: target.id }
-  );
-  state.activeEffects.push(effect);
-  appendEvent(state, {
-    type: "ACTIVE_EFFECT_CREATED",
-    effectId: effect.id,
-    controllerId: source.controllerId,
-    name: effect.name,
-    duration: effect.duration
-  });
-  const penalty = getCombatStartEnemyAttackPenalty(source);
-  appendEvent(state, {
-    type: "UNIT_ABILITY_TRIGGERED",
-    unitId: source.id,
-    abilityId: penalty?.abilityId ?? "disciplinary-sanction",
-    targetUnitId: target.id,
-    message: `${source.cardName}: Disciplinary Sanction - ${target.cardName} gets ${data.amount} Attack during combat round 1.`
-  });
+  applyDisciplinarySanction(state, source, target, data.amount, data.rounds);
 
   state.pendingChoice = null;
   state.phase = "combat";
@@ -10299,6 +10353,148 @@ function resolveDisciplinaryCommitteeStartChoice(
     return;
   }
   combat.disciplinaryCommitteeStartResolved = true;
+  resumeCombatStartAfterCommanderPlacement(state);
+}
+
+function applyBountyHunterMark(state: GameState, sourceUnitId: UnitId, targetUnitId: UnitId): void {
+  const source = state.combat?.units[sourceUnitId];
+  const target = state.combat?.units[targetUnitId];
+  const mark = source ? getCombatStartMark(source) : null;
+  if (!source || !target || !mark) {
+    return;
+  }
+  target.marked = true;
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: source.id,
+    abilityId: mark.abilityId,
+    targetUnitId: target.id,
+    message: `${source.name}: ${mark.abilityName} - Marks ${target.name}.`
+  });
+}
+
+function openBountyHunterMarkSourceChoice(
+  state: GameState,
+  sourceUnitId: UnitId,
+  remainingSourceUnitIds: UnitId[]
+): boolean {
+  const combat = state.combat;
+  const source = combat?.units[sourceUnitId];
+  const mark = source ? getCombatStartMark(source) : null;
+  if (!combat || !source || source.damage >= source.maxHealth || !mark) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openBountyHunterMarkSourceChoice(state, next, rest) : false;
+  }
+  const targets = Object.values(combat.units)
+    .filter(
+      (candidate) =>
+        candidate.controllerId !== source.controllerId &&
+        candidate.damage < candidate.maxHealth &&
+        !candidate.marked &&
+        !isArrowTowerUnit(candidate)
+    )
+    .sort((left, right) => left.position - right.position);
+  if (targets.length === 0) {
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openBountyHunterMarkSourceChoice(state, next, rest) : false;
+  }
+
+  // A computer seat resolves the rule without a window, and so does the NEUTRAL
+  // seat: a neutral-controlled Bounty Hunter (a Ⅶ Random Town's gold Few of a
+  // Factory defense, a designer "packs" gold guard) has no owner to click a
+  // NEUTRAL-owned pendingChoice, and the reducer pump has no auto-resolver for
+  // this OPTION_CHOICE context — so opening one froze the whole table (no seat
+  // had a legal action). The deterministic strongest-enemy pick is the same one
+  // the pre-2026-08-13 engine always used.
+  if (source.controllerId === NEUTRAL_PLAYER_ID || isComputerPlayer(state, source.controllerId)) {
+    const target = targets.reduce((best, candidate) =>
+      candidate.maxHealth > best.maxHealth ||
+      (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
+        ? candidate
+        : best
+    );
+    applyBountyHunterMark(state, source.id, target.id);
+    const [next, ...rest] = remainingSourceUnitIds;
+    return next ? openBountyHunterMarkSourceChoice(state, next, rest) : false;
+  }
+
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId: source.controllerId,
+    prompt: `${source.cardName}: choose an enemy unit to receive the Mark token.`,
+    options: targets.map((target) => ({ label: `${target.cardName} (${getBattlefieldLabel(target.position)})` })),
+    context: "bounty-hunter-mark-start",
+    bountyHunterMarkStart: {
+      sourceUnitId,
+      targetUnitIds: targets.map((target) => target.id),
+      remainingSourceUnitIds
+    },
+    returnPhase: "combat"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = source.controllerId;
+  return true;
+}
+
+/** Opens the first unresolved Factory Bounty Hunter Mark choice. */
+export function maybeOpenBountyHunterMarkStartChoice(state: GameState): boolean {
+  const combat = state.combat;
+  if (!combat || combat.bountyHunterMarkStartResolved) {
+    return false;
+  }
+  const sourceIds = Object.values(combat.units)
+    .filter((unit) => unit.damage < unit.maxHealth && getCombatStartMark(unit))
+    .sort((left, right) => left.position - right.position)
+    .map((unit) => unit.id);
+  const [first, ...rest] = sourceIds;
+  if (!first || !openBountyHunterMarkSourceChoice(state, first, rest)) {
+    combat.bountyHunterMarkStartResolved = true;
+    return false;
+  }
+  return true;
+}
+
+function resolveBountyHunterMarkStartChoice(
+  state: GameState,
+  playerId: PlayerId,
+  optionIndex: number
+): void {
+  const combat = state.combat;
+  const choice = state.pendingChoice;
+  const data = choice?.type === "OPTION_CHOICE" ? choice.bountyHunterMarkStart : undefined;
+  if (
+    !combat ||
+    choice?.type !== "OPTION_CHOICE" ||
+    choice.context !== "bounty-hunter-mark-start" ||
+    choice.playerId !== playerId ||
+    !data
+  ) {
+    throw new Error("There is no Bounty Hunter Mark target choice to resolve.");
+  }
+  const source = combat.units[data.sourceUnitId];
+  const targetId = data.targetUnitIds[optionIndex];
+  const target = targetId ? combat.units[targetId] : undefined;
+  if (
+    !source ||
+    !target ||
+    target.damage >= target.maxHealth ||
+    target.controllerId === source.controllerId ||
+    target.marked ||
+    isArrowTowerUnit(target)
+  ) {
+    throw new Error("Choose one of the unmarked living enemy units.");
+  }
+
+  applyBountyHunterMark(state, source.id, target.id);
+  state.pendingChoice = null;
+  state.phase = "combat";
+  state.priorityPlayerId = null;
+  const [next, ...rest] = data.remainingSourceUnitIds;
+  if (next && openBountyHunterMarkSourceChoice(state, next, rest)) {
+    return;
+  }
+  combat.bountyHunterMarkStartResolved = true;
   resumeCombatStartAfterCommanderPlacement(state);
 }
 
@@ -10861,41 +11057,6 @@ export function applyCombatStartUnitAbilities(state: GameState): void {
         });
       }
     }
-  }
-
-  // Factory Bounty Hunters: "At the start of Combat, place a Mark token on an
-  // enemy unit." The Mark unlocks the Bounty Hunters' +Attack against it. The
-  // rulebook lets the controller pick the target; the engine resolves that
-  // deterministically here — the strongest living enemy (highest maxHealth, ties
-  // broken by lowest position) not already Marked by another Bounty Hunter stack.
-  for (const unit of Object.values(combat.units)) {
-    const mark = getCombatStartMark(unit);
-    if (!mark) {
-      continue;
-    }
-    const enemies = Object.values(combat.units).filter(
-      (candidate) =>
-        candidate.controllerId !== unit.controllerId &&
-        candidate.damage < candidate.maxHealth &&
-        !candidate.marked
-    );
-    if (enemies.length === 0) {
-      continue;
-    }
-    const target = enemies.reduce((best, candidate) =>
-      candidate.maxHealth > best.maxHealth ||
-      (candidate.maxHealth === best.maxHealth && candidate.position < best.position)
-        ? candidate
-        : best
-    );
-    target.marked = true;
-    appendEvent(state, {
-      type: "UNIT_ABILITY_TRIGGERED",
-      unitId: unit.id,
-      abilityId: mark.abilityId,
-      targetUnitId: target.id,
-      message: `${unit.name}: ${mark.abilityName} — Marks ${target.name}.`
-    });
   }
 }
 
@@ -12737,7 +12898,7 @@ export function assignMgqUnitJob(
   });
 }
 
-/** Select the innate Spirit that the MGQ main hero will summon next combat. */
+/** Select the innate Spirit that the MGQ main hero will summon in this/next combat. */
 export function setMgqSpirit(
   state: GameState,
   action: Extract<GameAction, { type: "SET_MGQ_SPIRIT" }>
@@ -12746,8 +12907,18 @@ export function setMgqSpirit(
   if (!state.adventure || !player || player.factionId !== "mgq") {
     throw new Error("Only a Monster Girl Quest hero can summon a Spirit.");
   }
-  if (state.combat ? !inCombatPrep(state, action.playerId) : !hasOpenAdventureTurn(state, action.playerId)) {
-    throw new Error("Choose a Spirit on your map turn or during pre-battle preparation.");
+  const choosingDuringDeployment = Boolean(
+    state.combat?.setup &&
+    !state.combat.prep &&
+    state.combat.setup.pendingPlayerIds[0] === action.playerId &&
+    playerMainHeroInCombat(state, action.playerId)
+  );
+  if (
+    state.combat
+      ? !inCombatPrep(state, action.playerId) && !choosingDuringDeployment
+      : !hasOpenAdventureTurn(state, action.playerId)
+  ) {
+    throw new Error("Choose a Spirit on your map turn or at the beginning of battle.");
   }
   if (!state.combat) assertParallelInteractionFree(state, action.playerId);
   if (!mgqCanSelectSpirit(state, action.playerId, action.spirit)) {
@@ -14548,6 +14719,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "disciplinary-committee-start") {
     resolveDisciplinaryCommitteeStartChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "bounty-hunter-mark-start") {
+    resolveBountyHunterMarkStartChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -16511,13 +16687,15 @@ export function beginSharedDeckSearchNow(
     artifactBand?: "tile" | "level";
     sourceHeroId?: HeroId;
     sourceFieldId?: MapSpaceId;
+    maxArtifactTier?: "major";
   }
 ): boolean {
   const candidates = resolveSearchDeckCandidates(state, playerId, deckId, {
     strictExpertGate: options?.strictExpertGate,
     artifactBand: options?.artifactBand,
     sourceHeroId: options?.sourceHeroId,
-    sourceFieldId: options?.sourceFieldId
+    sourceFieldId: options?.sourceFieldId,
+    maxArtifactTier: options?.maxArtifactTier
   }).filter((candidateId) => {
     const deck = state.decks[candidateId];
     return deck && deck.drawPile.length + deck.discardPile.length > 0;
@@ -16623,6 +16801,8 @@ export function resolveSearchDeckCandidates(
     artifactBand?: "tile" | "level";
     sourceHeroId?: HeroId;
     sourceFieldId?: MapSpaceId;
+    /** Per-Search Artifact-tier cap; see {@link capArtifactDecksToMajor}. */
+    maxArtifactTier?: "major";
   }
 ): string[] {
   const liveHero = options?.sourceHeroId
@@ -16646,10 +16826,36 @@ export function resolveSearchDeckCandidates(
         (buildingId) => coreBuildingDefinitions[buildingId]?.effect?.type === "ARTIFACT_SMITH"
       )
     );
-    return eligibleArtifactDecks(state, playerId, hero, artifactSource);
+    return capArtifactDecksToMajor(
+      eligibleArtifactDecks(state, playerId, hero, artifactSource),
+      options?.maxArtifactTier
+    );
   }
 
   return [deckId];
+}
+
+/**
+ * Applies a per-Search Artifact-tier cap on TOP of the normal deck-access rules
+ * (`eligibleArtifactDecks`), i.e. after the official tile band, the
+ * `deck-access-hero-level` house rule AND the Polish Random Artifacts override
+ * have all had their say. `"major"` drops the Relic deck; no cap is a no-op.
+ *
+ * Today's only user is the Creature Bank Dragon Utopia's reward — a Ⅳ–Ⅴ
+ * (Near-band) placement, so its Artifact searches may never reach Relics
+ * (USER RULING 2026-08-13, "artifacts search can only be up to major, because
+ * in IV-V field").
+ *
+ * DELIBERATE LIMIT: this can only ever REMOVE a split deck. In a LEGACY
+ * single-Artifact-deck game (`split-decks` off) the family resolves to the one
+ * mixed `artifacts` deck, which holds every tier and cannot be tier-filtered
+ * here — a Relic is reachable there exactly as it always was.
+ */
+function capArtifactDecksToMajor(decks: string[], maxArtifactTier?: "major"): string[] {
+  if (maxArtifactTier !== "major") {
+    return decks;
+  }
+  return decks.filter((candidateId) => candidateId !== ARTIFACT_DECK_RELIC);
 }
 
 // Polish Random Artifacts helpers: re-exported from polish-random-artifacts.ts
@@ -17932,7 +18138,8 @@ export function pumpAdventureQueues(state: GameState): void {
           strictExpertGate: reward.strictExpertGate,
           artifactBand: reward.polishArtifactBand,
           sourceHeroId: reward.sourceHeroId,
-          sourceFieldId: reward.sourceFieldId
+          sourceFieldId: reward.sourceFieldId,
+          maxArtifactTier: reward.maxArtifactTier
         })
       ) {
         return;

@@ -287,7 +287,6 @@ import {
   grailDigMovementCost,
   grailAsUtopiaMode,
   grailUtopiaFieldRulesEnabled,
-  polishGrailUtopiaEnabled
 } from "./map-design-features";
 
 /** Hero level track: hand limit and expert-effect uses by level (hero board). */
@@ -1006,7 +1005,7 @@ export function materializeTileFields(
     };
     if (convertedFromGrail) {
       // Preserve the conversion origin for objective bookkeeping. Reward
-      // resolution still treats this as a normal Utopia (Search 3 / 5 / 5).
+      // resolution still treats this as a normal Ⅶ Utopia (two Search (3)).
       field.grailConverted = true;
     }
     if (fieldDef.difficulty) {
@@ -3540,7 +3539,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return Array.from({ length: times }, () => ({
         type: "SEARCH_SHARED_DECK" as const,
         deckId: interaction.deckId,
-        count: interaction.count
+        count: interaction.count,
+        ...(interaction.maxArtifactTier ? { maxArtifactTier: interaction.maxArtifactTier } : {})
       }));
     }
     case "MINE_FLAG":
@@ -4974,7 +4974,7 @@ export function relicArtifactDeckId(state: GameState): "artifacts-relic" | "arti
 /**
  * Creature-bank consolation (a Grail that is not this game's objective): "gain
  * 10 gold and Search (2) the Relic Artifact deck." The Dragon Utopia no longer
- * uses it — it pays its own fixed 3/5/5 Artifact reward (see
+ * uses it — it pays its own fixed two Search (3) Artifact reward (see
  * {@link queueDragonUtopiaArtifactSearches}).
  */
 function giveCreatureBankConsolation(state: GameState, playerId: PlayerId, fieldName: string): void {
@@ -5560,27 +5560,24 @@ function applyGrailTakenConversion(state: GameState, dugFieldId: MapSpaceId): vo
 }
 
 /**
- * The Ⅶ Dragon-Utopia FIELD's artifact reward — USER RULE 2026-08-03 ("Utopia
- * VII field Is still giving too much artifacts. Should be 3. First you take
- * Search(3) and then 2 times Search(5) (search properly according to VI-VII
- * tile)"): clearing a Ⅶ Dragon Utopia objective field pays exactly THREE
- * Artifact-deck Searches — 3, then 5, then 5 — so the winner keeps exactly three
- * Artifact cards.
+ * The Ⅶ Dragon-Utopia FIELD's artifact reward is two Search (3) rewards, so the
+ * winner keeps exactly two Artifact cards.
  *
  * SCOPE: the Ⅶ OBJECTIVE FIELD only — the map-designed / hidden Grail & Dragon
  * Utopia package, the `polish-grail-utopia` house rule, and the plain
  * conquest/grail Ⅶ field. The Creature Bank `dragon_utopia` TOKEN is NOT
- * affected: it keeps its printed reward (40 gold + Search (3) + X × the
- * Artifact-or-Spell Search (5) choice, X = Stacked defenders) in
- * `src/data/map/creature-banks.ts`. Never share this ladder with the bank.
+ * affected: it keeps its PRINTED card (40 gold + Search (3), then one
+ * "Search (5) the Artifact or Spell Deck" per Stacked defender, Major-capped) in
+ * `src/data/map/creature-banks.ts`. Never share this ladder with the bank — that
+ * swap has now been vetoed by the user twice (2026-08-03 and 2026-08-13).
  */
-const VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 5, 5] as const;
+const VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS = [3, 3] as const;
 
 /**
- * Queues the Ⅶ Dragon-Utopia field's fixed artifact reward — Search (3),
- * Search (5), Search (5) of the Artifact deck FAMILY
+ * Queues the Ⅶ Dragon-Utopia field's fixed artifact reward — two Search (3)
+ * rewards from the Artifact deck FAMILY
  * ({@link VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS}).
- * THREE distinct rewards, so each acquisition
+ * TWO distinct rewards, so each acquisition
  * gets its own Polish Artifact die roll, and each is pinned to the visiting
  * Hero + Field so split-deck access follows the Ⅵ–Ⅶ centre tile (Relic
  * reachable) even when a Secondary Hero won the fight. The Searches run through
@@ -5615,12 +5612,12 @@ function queueDragonUtopiaArtifactSearches(
  *    the Utopia's fixed artifact reward — the Utopia is NOT a win condition in
  *    those modes.
  *
- * Every Ⅶ-FIELD mode that pays the Utopia pays the same artifact reward (Search
- * 3 / 5 / 5, {@link queueDragonUtopiaArtifactSearches}); only the gold differs
- * (10 on a plain Ⅶ field, the legacy 20 under the Polish house rule). The guard
+ * Every Ⅶ-FIELD mode that pays the Utopia pays the same 20 gold and two Search
+ * (3) rewards ({@link queueDragonUtopiaArtifactSearches}). The guard
  * mode (`utopiaGuards` four vs by-difficulty) only picks the guard army and never
  * changes the reward. The Creature Bank `dragon_utopia` TOKEN never comes through
- * here — it keeps its printed, X-scaling reward (see creature-banks.ts).
+ * here — it keeps its own fixed IV–V bank reward (40 gold + Search (3), (5),
+ * (5) — see creature-banks.ts), deliberately RICHER than this field's bundle.
  */
 function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFieldState): void {
   const mode = adventureVictoryMode(state);
@@ -5638,12 +5635,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
   if (grailUtopiaFieldRulesEnabled(state)) {
     if (!field.blackCube) {
       field.blackCube = true;
-      // The editor-authored field package has exactly the rewards printed in
-      // its summary. Keep the older Polish house-rule's historical 20-gold
-      // bonus for save/ruleset compatibility, but do not add it to new maps.
-      if (polishGrailUtopiaEnabled(state)) {
-        gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
-      }
+      gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
       queueDragonUtopiaArtifactSearches(state, hero, field);
       // BUG FIX 2026-08-03: the opt-in designer knob used to be read ONLY by the
       // plain-mode branch below, so on a DESIGNATED Ⅶ Utopia — which
@@ -5715,7 +5707,7 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     // artifact reward. It no longer takes the shared consolation's hardcoded
     // Search (2) of the RELIC deck: that bypassed the eligible-deck pick, so the
     // Searches did not follow the field's Ⅵ–Ⅶ tile band like every other Search.
-    gainResources(state, hero.controllerId, { gold: 10 }, "cleared the Dragon Utopia");
+    gainResources(state, hero.controllerId, { gold: 20 }, "cleared the Dragon Utopia");
     queueDragonUtopiaArtifactSearches(state, hero, field);
     grantUtopiaBonusSearch(state, hero.controllerId);
   }
@@ -8166,7 +8158,10 @@ export function processPendingVisit(state: GameState): void {
           // across the deferred reward queue instead of later substituting the
           // Main Hero and their unrelated tile.
           sourceHeroId: visit.heroId,
-          sourceFieldId: visit.fieldId
+          sourceFieldId: visit.fieldId,
+          // A per-Search Artifact-tier cap (the Ⅳ–Ⅴ Creature Bank Dragon
+          // Utopia) rides the deferred reward, so the cap survives the queue.
+          ...(step.maxArtifactTier ? { maxArtifactTier: step.maxArtifactTier } : {})
         };
         queueVisitFollowUpReward(state, adventure, reward);
         break;

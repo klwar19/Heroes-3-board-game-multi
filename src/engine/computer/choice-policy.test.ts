@@ -218,6 +218,62 @@ describe("choice policy — ability target", () => {
       "E1",
     );
   });
+  it("aims the Catapult at an enemy instead of treating a wounded ally as a heal target", () => {
+    const ally = unit({ id: "A1", controllerId: "p2", maxHealth: 10, damage: 6, position: 9 });
+    const enemy = unit({ id: "E1", controllerId: "p1", attack: 5, maxHealth: 6, position: 10 });
+    const choice = {
+      id: "catapult-target",
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: "p2",
+      kind: "war-machine",
+      abilityId: "war_machine.catapult",
+      candidateUnitIds: ["A1", "E1"]
+    } as unknown as PendingChoice;
+    const actions: LegalAction[] = ["A1", "E1"].map((targetUnitId) => ({
+      label: `hit ${targetUnitId}`,
+      action: {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p2",
+        choiceId: "catapult-target",
+        targetUnitId
+      } as GameAction
+    }));
+
+    const decision = chooseComputerAction(observation(choice, actions, [ally, enemy]));
+    expect((decision?.action as { targetUnitId: string }).targetUnitId).toBe("E1");
+  });
+
+  it("chooses an enemy-enemy Catapult pair over a strong enemy whose only neighbour is friendly", () => {
+    const ally = unit({ id: "A1", controllerId: "p2", maxHealth: 10, position: 9 });
+    const boss = unit({ id: "E1", controllerId: "p1", attack: 12, maxHealth: 12, position: 10 });
+    const weakA = unit({ id: "E2", controllerId: "p1", attack: 2, maxHealth: 4, position: 18 });
+    const weakB = unit({ id: "E3", controllerId: "p1", attack: 2, maxHealth: 4, position: 19 });
+    const choice = {
+      id: "catapult-pair",
+      type: "ABILITY_TARGET_CHOICE",
+      playerId: "p2",
+      kind: "war-machine",
+      abilityId: "war_machine.catapult",
+      candidateUnitIds: ["A1", "E1", "E2", "E3"]
+    } as unknown as PendingChoice;
+    const actions: LegalAction[] = ["A1", "E1", "E2", "E3"].map((targetUnitId) => ({
+      label: `hit ${targetUnitId}`,
+      action: {
+        type: "CHOOSE_ABILITY_TARGET",
+        playerId: "p2",
+        choiceId: "catapult-pair",
+        targetUnitId
+      } as GameAction
+    }));
+    const observed = observation(choice, actions, [ally, boss, weakA, weakB]);
+    (observed.state.combat as CombatState).warMachineRound = {
+      pending: [{ playerId: "p2", cardId: "war_machine.catapult" }],
+      firstTargetUnitId: null
+    };
+
+    const chosen = (chooseComputerAction(observed)?.action as { targetUnitId: string }).targetUnitId;
+    expect(["E2", "E3"]).toContain(chosen);
+  });
 });
 
 describe("choice policy — city hall income", () => {

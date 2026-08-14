@@ -682,15 +682,20 @@ describe("commander casts — Soul Eater's Animate Dead", () => {
 });
 
 describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
-  it("Haste: +2/+4 Initiative and +1 Attack against SLOWER targets only", () => {
+  it("Haste: Power 0/1/2 grants +2/+6/+9 Initiative and +1 Attack; Power 2 lasts all combat", () => {
     // Initiative shift.
     const state = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
     const crusaders = state.combat!.units.unit_p1_crusaders;
     expect(effectiveInitiative(crusaders, state.activeEffects)).toBe(crusaders.initiative + 2);
+    const middle = castOn(castState("shaman", { magic: 2 }), "shaman", "unit_p1_crusaders");
+    expect(effectiveInitiative(middle.combat!.units.unit_p1_crusaders, middle.activeEffects)).toBe(
+      middle.combat!.units.unit_p1_crusaders.initiative + 6
+    );
     const high = castOn(castState("shaman", { magic: 3 }), "shaman", "unit_p1_crusaders");
     expect(effectiveInitiative(high.combat!.units.unit_p1_crusaders, high.activeEffects)).toBe(
-      high.combat!.units.unit_p1_crusaders.initiative + 4
+      high.combat!.units.unit_p1_crusaders.initiative + 9
     );
+    expect(high.activeEffects.find((effect) => effect.name.startsWith("Haste"))?.duration.type).toBe("combat");
 
     function strike(state: GameState, defenderInitiative: number): number {
       const attacker = state.combat!.units.unit_p1_crusaders;
@@ -715,12 +720,12 @@ describe("commander casts — Shaman's Haste and Sea Marshal's Slow", () => {
       return next.combat!.units.unit_p2_skeletons.damage;
     }
 
-    // Hasted crusaders vs a SLOWER skeleton: +1 Attack (2 + 1 = 3).
+    // Hasted crusaders get +1 Attack against any target (2 + 1 = 3).
     const hasted = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
     expect(strike(hasted, 1)).toBe(3);
-    // Same buff vs a FASTER skeleton: no rider (2).
+    // The same buff remains +1 Attack against a faster skeleton.
     const vsFaster = castOn(castState("shaman"), "shaman", "unit_p1_crusaders");
-    expect(strike(vsFaster, 30)).toBe(2);
+    expect(strike(vsFaster, 30)).toBe(3);
     // CONTROL: unhasted vs slower: 2.
     expect(strike(castState("shaman"), 1)).toBe(2);
   });

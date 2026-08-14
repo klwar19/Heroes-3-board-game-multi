@@ -4,11 +4,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import { abilityFxPlans } from "@/data/fx";
 import { effectiveInitiative } from "./active-effects";
-import { getArmyMapAbilities } from "./adventure";
+import { getArmyMapAbilities, makeCombatUnitFromArmy } from "./adventure";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { createInitialGameState } from "./index";
 import { MGQ_JOBS, mgqEffectiveJob, mgqJobBaseAbilityIds, mgqJobsForUnit } from "./mgq-jobs";
-import { getBonusUnitExperience } from "./unit-abilities";
+import { getBonusUnitExperience, getDefendBonus, hasSelfDefenseToken } from "./unit-abilities";
 
 describe("MGQ varied Job pools", () => {
   it("gives every recruitable monster Unemployed plus exactly four unique compatible Jobs", () => {
@@ -46,6 +46,20 @@ describe("MGQ varied Job pools", () => {
 
   it("starts every MGQ monster Unemployed with no inherited bonus", () => {
     expect(mgqEffectiveJob({ unitDefId: "mgq.sofia", side: "few", companion: false })).toBe("unemployed");
+  });
+
+  it("Guard Job gives Gigi exactly one virtual Defend die and no hidden flat Defense", () => {
+    const gigi = makeCombatUnitFromArmy(
+      { id: "guard-gigi", unitDefId: "mgq.gigi", side: "few", job: "guard" },
+      "p1",
+      "unit_guard_gigi",
+      12
+    )!;
+    expect(gigi.defense).toBe(1);
+    expect(gigi.defenseToken).toBe(false);
+    expect(gigi.abilities.filter((abilityId) => abilityId === "commander-defense-token")).toHaveLength(1);
+    expect(hasSelfDefenseToken(gigi)).toBe(true);
+    expect(getDefendBonus(gigi)).toBe(0);
   });
 
   it("Noble contributes exactly +1 gold to the Resource-round map ability fold", () => {

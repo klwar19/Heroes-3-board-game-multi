@@ -337,7 +337,11 @@ const MAX_WHIRLPOOL_TOKENS = 3;
 const VII_FIELD_OPTIONS: { id: CustomMapTilePlan["viiField"]; label: string; hint: string }[] = [
   { id: undefined, label: "Default", hint: "Keep whatever objective the drawn / chosen tile prints." },
   { id: "grail", label: "Grail", hint: "Force the Grail dig site on this slot's Ⅶ field." },
-  { id: "dragon_utopia", label: "Dragon Utopia", hint: "Force the Dragon Utopia on this slot's Ⅶ field." },
+  {
+    id: "dragon_utopia",
+    label: "Utopia — Ⅶ field",
+    hint: "Force the Ⅶ-field Utopia: Morale/Ability-Empower token, 20 gold, and 2× Artifact Search (3)."
+  },
   { id: "town", label: "Random Town", hint: "Force a neutral conquerable Random Town on this slot's Ⅶ field." },
   {
     id: "settlement",
@@ -6021,6 +6025,11 @@ export function MapDesigner({
                       &quot;Player picks&quot; is on). Face-down slots that select exactly Grail + Utopia are balanced
                       together: 4 slots become 2 + 2; 3 slots become a random 2 + 1 split.
                     </small>
+                    <small className="popoverHint">
+                      Utopia — Ⅶ field reward: Morale/Ability-Empower token, 20 gold, and 2× Artifact Search (3).
+                      This differs from Utopia — Creature Bank IV–V (40 gold, Artifact Search (3), then 2×
+                      Artifact Search (5)).
+                    </small>
                     <div className="popoverModeRow" role="group" aria-label="Center Ⅶ field">
                       {VII_FIELD_OPTIONS.map((option) => {
                         const multi = selected.viiFields ?? [];
@@ -6966,6 +6975,9 @@ export function MapDesigner({
               <small className="popoverHint">
                 No designer guard, first-clear reward, or yellow borders — the bank&apos;s fight and printed win reward
                 are the content, and the hex is always open (does not obstruct tile discovery).
+                {selectedObject.bankId === "dragon_utopia"
+                  ? " Utopia — Creature Bank IV–V reward: 40 gold, Artifact Search (3), then 2× Artifact Search (5)."
+                  : ""}
               </small>
             ) : selectedObject.kind !== "barrier" && selectedObject.kind !== "oneway_exit" ? (
               <>

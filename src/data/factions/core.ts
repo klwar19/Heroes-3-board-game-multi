@@ -1192,7 +1192,7 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     id: "factory.mage_guild",
     name: "Mana Generator",
     faction: "factory",
-    cost: { gold: 7, buildingMaterials: 2, valuables: 1 },
+    cost: { gold: 4, buildingMaterials: 2, valuables: 1 },
     effect: { type: "MAGE_GUILD" },
     spellBookCost: 5,
     implementationStatus: "implemented",

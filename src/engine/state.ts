@@ -9213,6 +9213,8 @@ export type CombatState = {
   integratedCommanderDeploymentPlayerIds?: PlayerId[];
   /** Disciplinary Committee Pack's mandatory combat-start choices are done. */
   disciplinaryCommitteeStartResolved?: boolean;
+  /** Factory Bounty Hunters' mandatory combat-start Mark choices are done. */
+  bountyHunterMarkStartResolved?: boolean;
   /**
    * Controllers who have had at least one unit removed from the board this
    * combat (Pit Lords' "Summon Demons" triggers off a friendly removal).
@@ -9566,7 +9568,7 @@ export type MapFieldState = {
   /**
    * This Ⅶ `dragon_utopia` field originated as an extra Grail site and was
    * converted after another Grail was taken. It fights and pays exactly like a
-   * Utopia, including the fixed Search 3 / 5 / 5 Artifact ladder, but remains
+   * Utopia, including the fixed two Artifact Search (3) rewards, but remains
    * distinguishable for objective bookkeeping: it is not an original
    * Dragon-Hunt target or `defeat-dragon-utopia` VP/win target.
    */
@@ -9887,6 +9889,13 @@ export type AdventureReward =
        */
       sourceHeroId?: HeroId;
       sourceFieldId?: MapSpaceId;
+      /**
+       * Caps the `"artifacts"` deck FAMILY below the Relic deck for this Search
+       * alone (see LocationInteraction.SEARCH_SHARED_DECK). Carried through the
+       * deferred reward queue so a Creature Bank Dragon Utopia's payout stays
+       * Major-capped however long it waits behind a Necromancy window.
+       */
+      maxArtifactTier?: "major";
       allowRemove?: boolean;
       /**
        * Polish Random Artifacts: which band table to use for the die roll.
@@ -10400,7 +10409,13 @@ export type VisitStep =
         /** Polish Unit Stacks: reserved for one army card's Stack purchase. */
         | { kind: "stack"; armyUnitId: string };
     }
-  | { type: "SEARCH_SHARED_DECK"; deckId: DeckId; count: number }
+  | {
+      type: "SEARCH_SHARED_DECK";
+      deckId: DeckId;
+      count: number;
+      /** See LocationInteraction.SEARCH_SHARED_DECK — caps the `"artifacts"` family below Relic. */
+      maxArtifactTier?: "major";
+    }
   | { type: "SETTLEMENT_CHOICE" }
   | {
       /**
@@ -14274,6 +14289,7 @@ export type PendingChoice =
         | "shackles-of-war"
         | "wayfarer-paralysis"
          | "disciplinary-committee-start"
+         | "bounty-hunter-mark-start"
          | "mgq-mad-science"
          | "mgq-gold-contract"
         | "diplomacy-skip"
@@ -14608,6 +14624,12 @@ export type PendingChoice =
         remainingSourceUnitIds: UnitId[];
         amount: number;
         rounds: number;
+      };
+      /** Factory Bounty Hunters: mandatory enemy Mark target and queued sources. */
+      bountyHunterMarkStart?: {
+        sourceUnitId: UnitId;
+        targetUnitIds: UnitId[];
+        remainingSourceUnitIds: UnitId[];
       };
       /** Promestein: explicit sacrifice/upgrade pairs, index-aligned with options. */
       mgqMadScience?: {

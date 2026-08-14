@@ -54,6 +54,7 @@ function mgqMapState(seed: string): GameState {
   state.players.p1.resources = { gold: 100, buildingMaterials: 100, valuables: 100 };
   state.players.p1.mgqGoldContracts = ["mgq.carmilla", "mgq.giga"];
   state.players.p1.mgqGoldContractSetupRequired = false;
+  state.players.p1.mgqSpirit = "sylph";
   state.players.p1.townTokens.population = true;
   expect(mainHeroInOwnTown(state, "p1"), "fixture must keep Luka in his own Town").toBe(true);
   return state;
@@ -641,6 +642,11 @@ describe("MGQ persistent-state hygiene through real combat", () => {
       defeatedPlayerId: NEUTRAL_PLAYER_ID,
       reason: "all-enemy-units-defeated"
     };
+    // This fixture force-finishes the fight instead of resolving unrelated
+    // combat-start choices opened by the broader configured ruleset.
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
     state = applyOk(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
 
     // Its window may offer re-sealing the fallen guard; decline to settle.
@@ -706,6 +712,9 @@ describe("MGQ persistent-state hygiene through real combat", () => {
       defeatedPlayerId: NEUTRAL_PLAYER_ID,
       reason: "all-enemy-units-defeated"
     };
+    state.pendingChoice = null;
+    state.phase = "combat";
+    state.priorityPlayerId = null;
     state = applyOk(state, { type: "ACKNOWLEDGE_COMBAT_END", playerId: "p1" });
     if (state.adventure?.pendingCompanionRecruitment) {
       state = applyOk(state, { type: "RESOLVE_COMPANION_RECRUITMENT", playerId: "p1", unitDefId: null });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Castle, CheckCircle2, Crosshair, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
+import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -386,6 +386,7 @@ function CostPlayBar({
   bookCards = [],
   bookCardId,
   onPick,
+  onMode,
   onBookPick,
   onConfirm,
   onCancel
@@ -396,6 +397,7 @@ function CostPlayBar({
     upTo?: number;
     filter?: "spell" | "power-source";
     picks: number[];
+    pickModes: ("basic" | "expert")[];
     /** "Discard first" arming: confirming aims the card rather than playing it now. */
     armSelection?: unknown;
   };
@@ -404,6 +406,7 @@ function CostPlayBar({
   bookCards?: string[];
   bookCardId?: string;
   onPick: (index: number, hand: string[]) => void;
+  onMode: (pickIndex: number, mode: "basic" | "expert") => void;
   onBookPick?: (cardId: string) => void;
   onConfirm: (hand: string[]) => void;
   onCancel: () => void;
@@ -444,6 +447,39 @@ function CostPlayBar({
           </button>
         );
       })}
+      {pending.filter === "power-source"
+        ? pending.picks.map((handIndex, pickIndex) => {
+            const cardId = hand[handIndex];
+            const effect = cardLibrary[cardId]?.effect;
+            const addPower =
+              effect?.type === "ADD_SPELL_POWER"
+                ? effect
+                : effect?.type === "CHOOSE_ONE"
+                  ? effect.options.find((option) => option.effect.type === "ADD_SPELL_POWER")?.effect
+                  : undefined;
+            if (
+              !addPower ||
+              addPower.type !== "ADD_SPELL_POWER" ||
+              addPower.expertAmount === undefined ||
+              addPower.expertAmount <= addPower.amount
+            ) {
+              return null;
+            }
+            const expert = pending.pickModes[pickIndex] === "expert";
+            return (
+              <button
+                aria-pressed={expert}
+                className={expert ? "selected" : ""}
+                key={`cost-mode-${handIndex}`}
+                onClick={() => onMode(pickIndex, expert ? "basic" : "expert")}
+                title="Use one crown for this card's expert Power value"
+                type="button"
+              >
+                <Crown aria-hidden="true" size={13} /> {expert ? `Expert +${addPower.expertAmount}` : "Use crown"}
+              </button>
+            );
+          })
+        : null}
       {[...new Set(bookCards)].map((cardId) => (
         <button
           className={bookCardId === cardId ? "selected" : ""}
@@ -4051,7 +4087,11 @@ export default function Home() {
         // pre-armed (a no-target costed play submitted straight from the hand).
         const banked = armedPaymentFor(armedCardPayment, action);
         if (banked) {
-          outgoing = { ...action, costCardIds: banked };
+          outgoing = {
+            ...action,
+            costCardIds: banked.costCardIds,
+            ...(banked.costCardModes ? { costCardModes: banked.costCardModes } : {})
+          };
         } else {
           setPendingCostPlay({
             action,
@@ -4513,7 +4553,8 @@ export default function Home() {
       setArmedCardPayment({
         cardId: armSelection.cardId,
         optionIndex: armSelection.type === "PLAY_CARD" ? armSelection.optionIndex : undefined,
-        costCardIds
+        costCardIds,
+        ...(costCardModes ? { costCardModes } : {})
       });
       setSelectedCardAction(armSelection);
     } else {
@@ -6363,7 +6404,7 @@ export default function Home() {
                       <em className="costPickerBankNote"> (+{mapPowerBank} banked from Sorcery/Scales)</em>
                     ) : null}
                   </span>
-                  {pendingCostPlay.powerCost !== undefined && pendingCostPlay.picks.length > 0 ? (
+                  {pendingCostPlay.filter === "power-source" && pendingCostPlay.picks.length > 0 ? (
                     <div className="costPickerModes" aria-label="Expert Power payments">
                       {pendingCostPlay.picks.map((handIndex, pickIndex) => {
                         const payId = handCards[handIndex];
@@ -7165,6 +7206,16 @@ export default function Home() {
             )
           }
           onConfirm={confirmPendingCostPlay}
+          onMode={(pickIndex, mode) =>
+            setPendingCostPlay((current) => {
+              if (!current) {
+                return current;
+              }
+              const pickModes = [...current.pickModes];
+              pickModes[pickIndex] = mode;
+              return { ...current, pickModes };
+            })
+          }
           onPick={toggleCostPick}
           pending={pendingCostPlay}
         />

@@ -181,6 +181,7 @@ import {
   buildingPanelReachable
 } from "@/components/adventure/town-sections";
 import {
+  MgqBattleSpiritPicker,
   MgqCompanionRecruitmentPrompt,
   MgqGoldContractPanel,
   MgqGoldContractSetupPrompt,
@@ -7714,6 +7715,12 @@ export function PreBattlePanel({
             here below, or in your town window (the Town button). Units you recruit now join your army in time to be
             deployed. When you are ready, accept the battle — deployment begins once both sides accept.
           </small>
+          <MgqBattleSpiritPicker
+            legalActions={legalActions}
+            onAction={onAction}
+            playerId={viewerPlayerId}
+            state={state}
+          />
           {townActions.length > 0 || onOpenTown ? (
             <div className="prepTownActions" aria-label="Spend a town action before the battle">
               <small className="prepNote">Buy / build now:</small>
@@ -7872,6 +7879,12 @@ export function PlacementPanel({
           The guard army is drawn and revealed only after you lock your deployment in (rulebook combat setup).
         </small>
       ) : null}
+      <MgqBattleSpiritPicker
+        legalActions={legalActions}
+        onAction={onAction}
+        playerId={viewerPlayerId}
+        state={state}
+      />
       <div className="placementUnits">
         {player.army.map((unit) => {
           const def = coreUnitDefinitions[unit.unitDefId];
@@ -8879,7 +8892,15 @@ function HouseRulesSection({
   const globalRules = HOUSE_RULES.filter((rule) =>
     (GLOBAL_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
   );
-  const polishRules = HOUSE_RULES.filter((rule) => rule.category === "polish");
+  // The Polish package shares these artifact re-tier switches with BINH: both
+  // rows edit the same rules. Grail/Utopia is a map-designer concern now; its
+  // legacy id remains loadable for old saves but is no longer offered here.
+  const polishRules = HOUSE_RULES.filter(
+    (rule) =>
+      rule.id === "torso-of-legion-major" ||
+      rule.id === "eversmoking-ring-of-sulfur-major" ||
+      (rule.category === "polish" && rule.id !== "polish-grail-utopia")
+  );
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
   const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;

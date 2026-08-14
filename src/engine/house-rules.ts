@@ -321,7 +321,7 @@ export const HOUSE_RULES: HouseRuleDef[] = [
     id: "polish-grail-utopia",
     label: "Grail & Dragon Utopia",
     description:
-      "Polish house rule: randomly place one Grail/Utopia objective per player (4 players: 2+2; 3 players: random 1+2). Grail sites fight 2 Azure guards; after one Grail is dug, every other Grail site becomes a Utopia. Digging costs 1 movement and grants 20 gold plus a transferable 3-VP token. Build it at a controlled Town or Settlement to gain a free building. Utopias fight 2 Azure guards plus a Black Dragon and grant 20 gold, Search (3) then two Search (5) of the Artifact deck (exactly three Artifacts), and a Morale or Ability-Empower token.",
+      "Legacy compatibility rule for old saves: randomly place Grail/Utopia objectives and convert extra Grail sites after the dig. New games configure Grails and Utopia fields in the Map Editor. A Utopia field grants 20 gold, two Artifact Search (3) rewards, and a Morale or Ability-Empower token.",
     category: "polish",
     default: false,
     legacyDefault: false

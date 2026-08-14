@@ -523,6 +523,20 @@ describe("DiceOverlay — ability rolls (Death Stare & friends)", () => {
 });
 
 describe("DiceOverlay — roll modifiers, Defend die and Might dice", () => {
+  it("shows Guarded as printed Defense 1 + die 1 = total 2 without double-counting the chip", () => {
+    vi.useFakeTimers();
+    const { container } = render(
+      <DiceOverlay
+        cue={diceCue({ defenseValue: 2, defenseBonus: 1, defendRoll: 1 })}
+        onDone={vi.fn()}
+      />
+    );
+    act(() => vi.advanceTimersByTime(2000));
+    const formulas = container.querySelectorAll(".diceBreakdown .formula");
+    expect(formulas[1]?.textContent?.replace(/\s+/g, " ")).toContain("1 + 1 = 2");
+    expect(container.querySelectorAll(".diceModChip.shield")).toHaveLength(1);
+  });
+
   it("lists the modifier chips and the Defend-die chip once the dice settle", () => {
     vi.useFakeTimers();
     const { container } = render(
@@ -1275,6 +1289,47 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(applied.errors).toEqual([]);
     expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
     expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("lets Meteor Shower use a Power card's crown side in an off-turn reaction window", () => {
+    const state = silverSkipWindow(["stat.power"]);
+    state.players.p1.hand[0] = "specialty.deemer.1";
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={[
+            {
+              label: "Meteor Shower at Skeletons",
+              action: {
+                type: "PLAY_REACTION",
+                playerId: "p1",
+                cardId: "specialty.deemer.1",
+                mode: "basic",
+                optionIndex: 0,
+                target: { type: "unit", unitId: "unit_p2_skeletons" }
+              }
+            }
+          ]}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const meteorTargets = screen.getAllByRole("button", { name: /Activate /i });
+    expect(meteorTargets.length).toBeGreaterThan(0);
+    act(() => fireEvent.click(meteorTargets[0]));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /Crown/i })));
+    act(() => fireEvent.click(confirmButton()));
+
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played.cardId).toBe("specialty.deemer.1");
+    expect(played.costCardIds).toEqual(["stat.power"]);
+    expect(played.costCardModes).toEqual(["expert"]);
   });
 
   it("CONTROL: with no crowns the +1 Power source shows no Crown toggle and cannot reach the skip", () => {

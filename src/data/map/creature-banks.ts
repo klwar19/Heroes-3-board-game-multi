@@ -504,18 +504,30 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
     // Stacked defenders, and each Extra is the printed Artifact-or-Spell choice.
     // The fixed 3/5/5 artifact ladder is a Ⅶ-OBJECTIVE-FIELD rule only (see
     // VII_DRAGON_UTOPIA_ARTIFACT_SEARCH_COUNTS in engine/adventure.ts) — it must
-    // never be applied to this Creature Bank token.
+    // never be applied to this Creature Bank token. USER VETO, re-stated
+    // 2026-08-13 ("revert bank to this, should be like this all the time"): an
+    // earlier commit replaced the printed X-scaling shape with that fixed ladder
+    // and was vetoed a SECOND time; this bank stays the printed card ALL the
+    // time. Do not "harmonise" it with the Ⅶ field again.
+    //
+    // `maxArtifactTier: "major"` is the 2026-08-13 half of the same ruling: a
+    // Creature Bank Dragon Utopia is a Ⅳ–Ⅴ (Near-band) placement, so its
+    // Artifact searches may never reach the Relic deck — see
+    // `capArtifactDecksToMajor` in engine/adventure-reducer.ts.
     buildReward: (x) => ({
       type: "SEQUENCE",
       interactions: [
         { type: "GAIN_RESOURCES", gold: 40 },
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3 },
+        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 3, maxArtifactTier: "major" },
         ...Array.from(
           { length: Math.max(0, x) },
           (): LocationInteraction => ({
             type: "CHOOSE_ONE",
             options: [
-              { label: "Search (5) the Artifact Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5 } },
+              {
+                label: "Search (5) the Artifact Deck",
+                interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 5, maxArtifactTier: "major" }
+              },
               { label: "Search (5) the Spell Deck", interaction: { type: "SEARCH_SHARED_DECK", deckId: "spells", count: 5 } }
             ]
           })

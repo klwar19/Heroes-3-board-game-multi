@@ -1033,6 +1033,15 @@ function makePlayer(
   const hero = coreHeroDefinitions[heroDefId];
   const deck = shuffleCards(makeStartingDeck(heroDefId, polishSpellBook), `${seed}#starting-deck#${config.id}`);
   const startingSpellCount = hero?.type === "magic" ? 2 : 1;
+  const mgqStartingRandom = createSeededRandom(`${seed}#mgq-starting-units#${config.id}`, { salt: false });
+  const mgqStartingPools: Partial<Record<"bronze" | "silver", string[]>> = {};
+  const takeRandomMgqStartingUnit = (tier: "bronze" | "silver"): string | undefined => {
+    const pool = mgqStartingPools[tier] ??= coreFactionDefinitions.mgq.units.filter(
+      (unitDefId) => coreUnitDefinitions[unitDefId]?.tier === tier
+    );
+    if (pool.length === 0) return undefined;
+    return pool.splice(mgqStartingRandom.nextInt(0, pool.length - 1), 1)[0];
+  };
 
   const player: PlayerState = {
     id: config.id,
@@ -1083,7 +1092,19 @@ function makePlayer(
     const tierCursors: Record<string, number> = {};
     for (const choice of options.startingUnits) {
       let unitDefId = choice.unitDefId;
-      if (choice.level) {
+      const choiceTier = choice.level ? tierOfLevel(choice.level) : choice.tier;
+      if (
+        !choice.unitDefId &&
+        config.factionId === "mgq" &&
+        (choiceTier === "bronze" || choiceTier === "silver")
+      ) {
+        // MGQ has 8 bronze and 13 silver identities rather than the classic
+        // fixed 3/2 level ladder. Every beginning-of-game bronze/silver slot
+        // therefore draws randomly from its full tier roster. Multiple slots
+        // draw without replacement; other factions and exact legacy picks are
+        // untouched.
+        unitDefId = takeRandomMgqStartingUnit(choiceTier);
+      } else if (choice.level) {
         unitDefId = faction.units[choice.level - 1];
       } else if (choice.tier) {
         const pool = faction.units.filter((candidate) => coreUnitDefinitions[candidate]?.tier === choice.tier);

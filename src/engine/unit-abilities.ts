@@ -322,10 +322,15 @@ export function getSelfAdjacentSecondAttackAbility(
 /** Gold Dragons: a separate attack against the unit directly behind the target. */
 export function getLineAttackAbility(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; baseAttack: number } | null {
+): { abilityId: string; abilityName: string; baseAttack: number; fixedDamage: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "SECOND_ATTACK_BEHIND_TARGET")) {
     if (ability.effect?.type === "SECOND_ATTACK_BEHIND_TARGET") {
-      return { abilityId: ability.id, abilityName: ability.name, baseAttack: ability.effect.baseAttack };
+      return {
+        abilityId: ability.id,
+        abilityName: ability.name,
+        baseAttack: ability.effect.baseAttack,
+        fixedDamage: Boolean(ability.effect.fixedDamage)
+      };
     }
   }
 

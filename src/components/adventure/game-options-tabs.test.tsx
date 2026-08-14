@@ -478,6 +478,9 @@ describe("Game options — tabbed layout", () => {
     expect(call.options.houseRules["polish-reduced-starting-bonus"]).toBe(true);
     expect(call.options.houseRules["polish-wait"]).toBe(true);
     expect(call.options.houseRules["polish-spell-book"]).toBe(true);
+    expect(call.options.houseRules["torso-of-legion-major"]).toBe(true);
+    expect(call.options.houseRules["eversmoking-ring-of-sulfur-major"]).toBe(true);
+    expect(call.options.houseRules["polish-grail-utopia"]).toBeUndefined();
     // Turning on Polish Spell Book also forces the stash Spell Book off.
     expect(call.options.spellBook).toBe(false);
   });
@@ -560,7 +563,8 @@ describe("Game options — tabbed layout", () => {
       "polish-pandora-search": true,
       "polish-wait": true,
       "polish-quick-combat": true,
-      "polish-grail-utopia": true,
+      "torso-of-legion-major": true,
+      "eversmoking-ring-of-sulfur-major": true,
       "polish-set-artifacts": true,
       "polish-card-balance": true
     };
@@ -595,7 +599,8 @@ describe("Game options — tabbed layout", () => {
         "polish-pandora-search": true,
         "polish-wait": true,
         "polish-quick-combat": true,
-        "polish-grail-utopia": true,
+        "torso-of-legion-major": true,
+        "eversmoking-ring-of-sulfur-major": true,
         "polish-set-artifacts": true,
         "polish-card-balance": true,
         "discovery-border-gate": true

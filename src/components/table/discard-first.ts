@@ -25,6 +25,8 @@ export type ArmedCardPayment = {
   optionIndex?: number;
   /** The hand card ids chosen to pay the discard. */
   costCardIds: string[];
+  /** Index-aligned Power modes; retained while the player aims at the board. */
+  costCardModes?: ("basic" | "expert")[];
 };
 
 /** Whether a cost object actually charges a card discard (exact or up-to). */
@@ -53,7 +55,7 @@ export function boardCardDiscardCost(
 }
 
 /**
- * The banked `costCardIds` to attach to a costed PLAY_CARD when its discard was
+ * The banked payment to attach to a costed PLAY_CARD when its discard was
  * already paid at selection time, or undefined when nothing matching is armed
  * (so the caller falls back to opening the discard picker). A match requires the
  * same card AND the same CHOOSE_ONE option — a payment armed for one option must
@@ -62,11 +64,11 @@ export function boardCardDiscardCost(
 export function armedPaymentFor(
   armed: ArmedCardPayment | null,
   action: Extract<GameAction, { type: "PLAY_CARD" }>
-): string[] | undefined {
+): ArmedCardPayment | undefined {
   if (!armed || armed.cardId !== action.cardId || armed.optionIndex !== action.optionIndex) {
     return undefined;
   }
-  return armed.costCardIds;
+  return armed;
 }
 
 /**

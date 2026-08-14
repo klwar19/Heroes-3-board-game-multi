@@ -5291,12 +5291,18 @@ function placeTokenCommandLabel(
 
 function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerId: PlayerId, activeUnit: CombatUnitState): void {
   const combat = state.combat;
-  if (!combat || activeUnit.movedThisActivation) {
+  if (!combat) {
     return;
   }
 
   for (const ability of getUnitAbilityDefinitions(activeUnit)) {
     if (ability.implementationStatus !== "implemented") {
+      continue;
+    }
+    // Pochi's Dig replaces the attack, not the move, so it remains available
+    // after an optional move. Other pre-move activation abilities retain their
+    // existing gate.
+    if (activeUnit.movedThisActivation && ability.effect?.type !== "PLACE_ADJACENT_OBSTACLE_ACTION") {
       continue;
     }
 
@@ -6611,6 +6617,23 @@ function getLegalActionsCore(
 
   if (state.pendingChoice) {
     if (state.pendingChoice.playerId !== playerId) {
+      // PvP pre-battle prep is a SIMULTANEOUS shopping window — both fighters
+      // may spend town actions at once. Another player's open exclusive choice
+      // (typically the opponent's spell-buy Search) must therefore not freeze
+      // this still-preparing fighter's shopping: the town purchases are
+      // handler-validated, touch only the actor's own state, and anything they
+      // QUEUE (a Spell search of their own) waits in the reward queue behind
+      // the open choice. Card plays / Accept / escapes stay withheld here — a
+      // card play could open a SECOND exclusive interaction, and Accept/escape
+      // move the combat machinery itself. Without this branch, a defender who
+      // bought one unit while the attacker was resolving a Search saw every
+      // shop button die — the reported "when attacked I can only buy once /
+      // can't buy units AND spells" bug. See pvp-prep-simultaneous-shopping.test.ts.
+      if (inCombatPrep(state, playerId)) {
+        const prepShopping: LegalAction[] = [];
+        addTownActions(prepShopping, state, playerId);
+        return prepShopping;
+      }
       // Parallel turns: bystanders keep their quiet actions while another
       // player's choice is open ([] outside parallel mode, as before).
       return getParallelBystanderActions(state, playerId);
@@ -6736,7 +6759,9 @@ function getLegalActionsCore(
         choice.kind === "second-attack"
           ? `${choice.abilityName}: attack`
           : choice.kind === "enchanter-activation"
-            ? `${choice.abilityName}: heal`
+            ? choice.abilityId?.startsWith("mechanics-repair-")
+              ? `${choice.abilityName}: repair`
+              : `${choice.abilityName}: heal`
             : choice.kind === "jotunn-teleport"
               ? `${choice.abilityName}: teleport`
               : choice.kind === "place-token"
@@ -10034,7 +10059,11 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   // lives) may deploy commander-only — the commander is auto-placed at combat
   // start, so "Ready" with zero placed units is legal for that player.
   const commanderOnly = player.army.length === 0 && commanderStandsInCurrentCombat(state, playerId);
-  if (placed.length > 0 || commanderOnly) {
+  const spiritSelected =
+    player.factionId !== "mgq" ||
+    !playerMainHeroInCombat(state, playerId) ||
+    Boolean(player.mgqSpirit);
+  if ((placed.length > 0 || commanderOnly) && spiritSelected) {
     actions.push({
       label: commanderOnly && placed.length === 0 ? "Ready for battle (commander only)" : "Ready for battle",
       action: { type: "FINISH_COMBAT_PLACEMENT", playerId }
@@ -10472,10 +10501,14 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   }
 
   // Blacksmith: once per turn, search Artifacts for gold or sell one.
+  // `blacksmithAction` refuses ANY open combat (no prep exemption), so the
+  // offer is withheld during the PvP prep window too — without the gate the
+  // town panel showed Blacksmith buttons there that the reducer then rejected
+  // ("Town actions cannot interrupt a combat." — a dead offer).
   const smith = town.buildings
     .map((buildingId) => coreBuildingDefinitions[buildingId])
     .find((building) => building?.effect?.type === "ARTIFACT_SMITH");
-  if (smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
+  if (!state.combat && smith?.effect?.type === "ARTIFACT_SMITH" && player.blacksmithUsedRound !== state.round) {
     if (player.resources.gold >= smith.effect.searchCost) {
       actions.push({
         label: `Blacksmith: pay ${smith.effect.searchCost} gold, Search (2) Artifacts`,
@@ -10495,7 +10528,12 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
   // Magic University (Conflux): once per round, instead of buying spells at the
   // Mage Guild, choose a School of Magic and dig your deck for that school's
   // Spell. Offered as one action per school during your turn.
+  // `magicUniversityAction` refuses ANY open combat (no prep exemption), so the
+  // offer is withheld during the PvP prep window too — the same dead-offer
+  // class as the Blacksmith above (a Conflux player read those rejected
+  // buttons as "I can't buy spells when attacked").
   if (
+    !state.combat &&
     townHasBuildingEffect(state, playerId, "MAGIC_UNIVERSITY") &&
     player.magicUniversityUsedRound !== state.round
   ) {
@@ -11249,7 +11287,7 @@ function getCombatInteractionActions(
       // without this a spiritless MGQ participant could neither ready up nor
       // pick a Spirit (with escapes blocked, e.g. Shackles of War, a hard
       // stall). setMgqSpirit already accepts the prep window (inCombatPrep).
-      if (state.players[playerId]?.factionId === "mgq") {
+      if (state.players[playerId]?.factionId === "mgq" && playerMainHeroInCombat(state, playerId)) {
         for (const spirit of mgqContractedSpirits(state, playerId)) {
           if (state.players[playerId]?.mgqSpirit === spirit) continue;
           actions.push({
@@ -11258,7 +11296,11 @@ function getCombatInteractionActions(
           });
         }
       }
-      if (state.players[playerId]?.factionId !== "mgq" || state.players[playerId]?.mgqSpirit) actions.push({
+      if (
+        state.players[playerId]?.factionId !== "mgq" ||
+        !playerMainHeroInCombat(state, playerId) ||
+        state.players[playerId]?.mgqSpirit
+      ) actions.push({
         label: "Accept the battle (ready up — deployment begins when both sides accept)",
         action: { type: "ACCEPT_COMBAT", playerId }
       });
@@ -11297,6 +11339,22 @@ function getCombatInteractionActions(
 
   // Combat setup placement.
   if (combat.setup) {
+    // Neutral battles have no PvP preparation window, so deployment is the
+    // MGQ hero's beginning-of-battle Four Spirits choice.
+    if (
+      state.adventure &&
+      combat.setup.pendingPlayerIds[0] === playerId &&
+      state.players[playerId]?.factionId === "mgq" &&
+      playerMainHeroInCombat(state, playerId)
+    ) {
+      for (const spirit of mgqContractedSpirits(state, playerId)) {
+        if (state.players[playerId]?.mgqSpirit === spirit) continue;
+        actions.push({
+          label: `Summon ${MGQ_SPIRIT_LABELS[spirit]} in this combat`,
+          action: { type: "SET_MGQ_SPIRIT", playerId, spirit }
+        });
+      }
+    }
     addCombatSetupActions(actions, state, playerId);
     // A PvP hero may still Retreat while deploying (before any fighting).
     addPvpRetreatDuringSetup(actions, state, playerId);
@@ -11503,6 +11561,15 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // hide every RESOLVE_VISIT_STEP action and strand the defender.
   if (state.combat?.prep && adventure.pendingVisit) {
     addVisitStepActions(actions, state, playerId, cards);
+    // The visit freezes only its OWNER (they must resolve their Legion pick
+    // before shopping on): the OTHER still-preparing fighter keeps the town
+    // purchases — the prep window is a simultaneous shopping window, and those
+    // handler-validated purchases cannot touch the open visit. Card plays stay
+    // withheld (a second Legion play would collide with the open visit).
+    // Mirrors the pendingChoice branch in getLegalActionsCore.
+    if (adventure.pendingVisit.playerId !== playerId && inCombatPrep(state, playerId)) {
+      addTownActions(actions, state, playerId);
+    }
     return actions;
   }
 

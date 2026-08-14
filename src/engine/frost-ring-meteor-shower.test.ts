@@ -298,6 +298,24 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p2_vampires")).toBe(3);
   });
 
+  it("I lets one Power card use its crown side, spends the crown, and deals Power-2 damage", () => {
+    const state = meteorState(["specialty.deemer.1", "stat.power"]);
+    const crownsBefore = state.players.p1.combatStats.expertUsesSpentThisRound;
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(2);
+    expect(damage(result, "unit_p2_vampires")).toBe(2);
+    expect(result.players.p1.combatStats.expertUsesSpentThisRound).toBe(crownsBefore + 1);
+  });
+
   // The core bug this fix closes: a power source counts its printed Power VALUE,
   // not as one "card". A single +2 source brings Power 2 → 2 damage, where the
   // old count-based tier wrongly needed two separate discards. (Mutation guard:

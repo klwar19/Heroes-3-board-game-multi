@@ -22,7 +22,7 @@ import {
   pickNeutralTarget
 } from "./index";
 import { expireEffectsForCombatRoundEnd } from "./active-effects";
-import { startNeutralEncounter } from "./adventure-reducer";
+import { maybeOpenDisciplinaryCommitteeStartChoice, startNeutralEncounter } from "./adventure-reducer";
 import { deathStareFollowUpAppliesTo, type DeathStareFollowUp } from "./unit-abilities";
 import { NEUTRAL_PLAYER_ID, type GameAction, type GameState, type HeroState } from "./state";
 
@@ -443,6 +443,41 @@ describe("Little Busters complete playable content", () => {
     expect(effect?.expiresAtCombatRoundEnd).toBe(1);
     expireEffectsForCombatRoundEnd(state, 1);
     expect(getDisplayAttackBonus(state, state.combat!.units[targetId])).toBe(0);
+  });
+
+  // SIBLING of the Bounty-Hunter Mark regression (see
+  // factory-unit-abilities.test.ts): the NEUTRAL seat holds no client, and the
+  // reducer pump has no auto-resolver for this OPTION_CHOICE context, so a
+  // neutral-controlled Disciplinary Committee opening a window would leave a
+  // pendingChoice nobody can ever answer. It sanctions deterministically.
+  it("a NEUTRAL-controlled Disciplinary Committee sanctions automatically instead of freezing the table", () => {
+    const state = createInitialGameState("little-busters-disciplinary-neutral");
+    Object.assign(state.combat!.units.unit_p2_skeletons, {
+      cardName: "Pack of the Disciplinary Committee",
+      controllerId: NEUTRAL_PLAYER_ID,
+      abilities: ["disciplinary-sanction"],
+      maxHealth: 30,
+      damage: 0,
+      position: 13
+    });
+    Object.assign(state.combat!.units.unit_p2_vampires, {
+      controllerId: NEUTRAL_PLAYER_ID,
+      abilities: [],
+      maxHealth: 30,
+      damage: 0,
+      position: 14
+    });
+    Object.assign(state.combat!.units.unit_p1_marksmen, { maxHealth: 20, damage: 0, position: 9 });
+    Object.assign(state.combat!.units.unit_p1_crusaders, { maxHealth: 10, damage: 0, position: 10 });
+
+    expect(maybeOpenDisciplinaryCommitteeStartChoice(state), "no window opens for the neutral seat").toBe(false);
+    expect(state.pendingChoice).toBeNull();
+    expect(state.priorityPlayerId).not.toBe(NEUTRAL_PLAYER_ID);
+    expect(state.combat!.disciplinaryCommitteeStartResolved).toBe(true);
+    // The strongest living enemy really takes the printed -1 Attack.
+    expect(getDisplayAttackBonus(state, state.combat!.units.unit_p1_marksmen)).toBe(-1);
+    expect(getDisplayAttackBonus(state, state.combat!.units.unit_p1_crusaders)).toBe(0);
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
   });
 
   it("Saya Pack moves anywhere, ignores Retaliation, and reduces Defense only on a 0 or +1", () => {

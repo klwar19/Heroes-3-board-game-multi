@@ -1415,6 +1415,13 @@ export function ReactionTray({
                   // running total (standing + chosen) must reach the threshold.
                   const powerCostValue = selection?.costCards?.powerCost;
                   const isPowerCost = powerCostValue !== undefined;
+                  // Meteor Shower pays an optional NUMBER of Power-source cards,
+                  // but its damage reads the VALUE brought. Those cards need the
+                  // same crown/expert toggle as numeric Power costs.
+                  const valuesPowerSources =
+                    isPowerCost ||
+                    (selection?.costCards?.upTo !== undefined &&
+                      selection.costCards.filter === "power-source");
                   const playedSchools = cardLibrary[tile.cardId]?.spellSchools ?? [];
                   const powerPaid = isPowerCost && selection ? powerPaidBy(selection) : null;
 
@@ -1492,13 +1499,13 @@ export function ReactionTray({
                               // A power source of the wrong school contributes
                               // nothing to this spell, so it can never validly pay.
                               // Value it at the chosen mode (expert = crown).
-                              const powerValue = isPowerCost
+                              const powerValue = valuesPowerSources
                                 ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, payMode)
                                 : 0;
-                              const powerValueBasic = isPowerCost
+                              const powerValueBasic = valuesPowerSources
                                 ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, "basic")
                                 : 0;
-                              if (takenElsewhere || wrongKind || (isPowerCost && powerValueBasic <= 0)) {
+                              if (takenElsewhere || wrongKind || (valuesPowerSources && powerValueBasic <= 0)) {
                                 return null;
                               }
                               // A Power source with a higher expert value can be
@@ -1511,7 +1518,7 @@ export function ReactionTray({
                                     ? payCardEffect.options.find((o) => o.effect.type === "ADD_SPELL_POWER")?.effect
                                     : undefined;
                               const canExpertPay =
-                                isPowerCost &&
+                                valuesPowerSources &&
                                 payAddPower?.type === "ADD_SPELL_POWER" &&
                                 payAddPower.expertAmount !== undefined &&
                                 payAddPower.expertAmount > payAddPower.amount;
@@ -1533,7 +1540,7 @@ export function ReactionTray({
                                     type="button"
                                   >
                                     {cardName(payCardId)}
-                                    {isPowerCost ? ` (+${powerValue})` : ""}
+                                    {valuesPowerSources ? ` (+${powerValue})` : ""}
                                   </button>
                                   {inThisPayment &&
                                   canExpertPay &&
@@ -1573,10 +1580,10 @@ export function ReactionTray({
                                 const wrongKind =
                                   selection?.costCards?.filter !== undefined &&
                                   !costCardEligible(bookCardId, selection.costCards.filter);
-                                const powerValue = isPowerCost
+                                const powerValue = valuesPowerSources
                                   ? spellPowerValueOfCard(cardLibrary[bookCardId], playedSchools)
                                   : 0;
-                                if (wrongKind || (isPowerCost && powerValue <= 0)) {
+                                if (wrongKind || (valuesPowerSources && powerValue <= 0)) {
                                   return null;
                                 }
                                 const full =
@@ -1595,7 +1602,7 @@ export function ReactionTray({
                                     type="button"
                                   >
                                     📖 {cardName(bookCardId)}
-                                    {isPowerCost ? ` (+${powerValue})` : ""}
+                                    {valuesPowerSources ? ` (+${powerValue})` : ""}
                                   </button>
                                 );
                               })}

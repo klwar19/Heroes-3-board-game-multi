@@ -1264,7 +1264,7 @@ export function CommanderCard({
                   <option key={option.id} value={option.id}>{option.label}</option>
                 ))}
               </select>
-              <small style={{ color: DIM }}>+1 Defense while Sonya lives; first lethal hit each combat is redirected to her.</small>
+              <small style={{ color: DIM }}>+1 Defense in combat round 1 while Sonya lives; first lethal hit each combat is redirected to her.</small>
             </label>
           ) : null}
 
