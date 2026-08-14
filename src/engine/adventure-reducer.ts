@@ -15366,6 +15366,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
 
+    // Adelaide IV (Balance Pack): the take is done — now the printed second
+    // sentence, "Refresh 1 Spell, once per round". Opened here (never merged
+    // into the take menu) so the player really gets BOTH halves.
+    if (pick.polishRefreshAfter && openPolishBookRefreshPick(state, action.playerId)) {
+      return;
+    }
+
     if (pick.remaining > 1) {
       state.adventure?.rewardQueue.unshift({
         playerId: action.playerId,
@@ -17435,6 +17442,20 @@ export function maybeOpenPostSearchOffers(
 // ---------------------------------------------------------------------------
 
 /**
+ * Polish Balance Pack Adelaide IV's SECOND half: "Refresh 1 Spell, once per
+ * round." A refresh-only discard pick (no discard-pile candidate can match the
+ * `polish-refresh-only` filter), so the player picks WHICH used Book Spell comes
+ * back. BOOK-GATED — without `polish-spell-book` there is no Book and nothing
+ * opens. The once-per-round half is the SHARED `polishBookSpellRefreshBlocked`
+ * gate the candidate builder already consults, never a new counter.
+ */
+export function openPolishBookRefreshPick(state: GameState, playerId: PlayerId): boolean {
+  if (!polishSpellBookEnabled(state)) {
+    return false;
+  }
+  return openDiscardPickChoice(state, playerId, { count: 1, filter: "polish-refresh-only" });
+}
+
 /**
  * Opens a "Search(N) your discard pile, take 1" choice (Scholar, Rib Cage,
  * Blood Obelisk). Returns false (opening nothing) when no card qualifies, so
@@ -17447,7 +17468,15 @@ export function openDiscardPickChoice(
   playerId: PlayerId,
   pick: {
     count: number;
-    filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
+    filter?:
+      | "spell"
+      | "non-artifact"
+      | "specialty"
+      | "power-or-knowledge-statistic"
+      | "spell-or-specialty"
+      | "magic-arrow"
+      | "cast-enabler-or-specialty"
+      | "polish-refresh-only";
     fromTop?: number;
     shuffleRestIntoDeck?: boolean;
     excludeCardIds?: CardId[];
@@ -17457,6 +17486,12 @@ export function openDiscardPickChoice(
      * refresh. Absent = 1 (every other recovery artifact).
      */
     polishRecoveryLimit?: number;
+    /**
+     * Polish Balance Pack Adelaide IV: once this take resolves, open a SECOND
+     * pick offering only used Book Spells to refresh ("… Refresh 1 Spell, once
+     * per round"). Book-gated at the follow-up seam.
+     */
+    polishRefreshAfter?: boolean;
   }
 ): boolean {
   const player = state.players[playerId];
@@ -17481,6 +17516,23 @@ export function openDiscardPickChoice(
     if (pick.filter === "magic-arrow") {
       return cardId === "spell.magic_arrow";
     }
+    // Polish Balance Pack Adelaide IV — BOOK-AWARE: with the Polish Book on the
+    // printed "Cast a Spell or Specialty card" is exactly those two (owned Spells
+    // live in the Book, so a raw Spell is never in the discard pile to take);
+    // with the Book off there is no enabler and the card keeps its classic
+    // printed reading, "Spell or Specialty".
+    if (pick.filter === "cast-enabler-or-specialty") {
+      if (kind === "hero-specialty") {
+        return true;
+      }
+      return polishSpellBookEnabled(state) ? isCastASpellCard(cardId) : kind === "spell";
+    }
+    // The Adelaide IV follow-up: only a used Book Spell may be picked (every
+    // discard-pile candidate is filtered out here, and `polishRecovery` below
+    // adds the used-Book side).
+    if (pick.filter === "polish-refresh-only") {
+      return kind === "spell";
+    }
     if (pick.filter === "power-or-knowledge-statistic") {
       const statisticType = cardLibrary[cardId]?.statisticType;
       return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
@@ -17490,7 +17542,10 @@ export function openDiscardPickChoice(
 
   const polishRecovery =
     polishSpellBookEnabled(state) &&
-    (pick.filter === "spell" || pick.filter === "spell-or-specialty" || pick.filter === "magic-arrow");
+    (pick.filter === "spell" ||
+      pick.filter === "spell-or-specialty" ||
+      pick.filter === "magic-arrow" ||
+      pick.filter === "polish-refresh-only");
 
   // Polish Spell Book (reference sheet): the four discard-recovery Spell artifacts
   // — Helm of the Alabaster Unicorn, Rib Cage, Crown of the Five Seas, Thunder
@@ -17567,6 +17622,12 @@ export function openDiscardPickChoice(
       );
       player.discard = [];
     }
+    // Adelaide IV (Balance Pack): nothing to TAKE, but the printed "Refresh 1
+    // Spell" still resolves — open the follow-up straight away rather than
+    // dropping the whole card's second sentence.
+    if (pick.polishRefreshAfter) {
+      return openPolishBookRefreshPick(state, playerId);
+    }
     return false;
   }
 
@@ -17636,7 +17697,8 @@ export function openDiscardPickChoice(
       filter: pick.filter,
       fromTop: pick.fromTop,
       shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
-      excludeCardIds: pick.excludeCardIds
+      excludeCardIds: pick.excludeCardIds,
+      ...(pick.polishRefreshAfter ? { polishRefreshAfter: true } : {})
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
@@ -17892,7 +17954,8 @@ export function pumpAdventureQueues(state: GameState): void {
           fromTop: reward.fromTop,
           shuffleRestIntoDeck: reward.shuffleRestIntoDeck,
           polishRecoveryLimit: reward.polishRecoveryLimit,
-          excludeCardIds: reward.excludeCardIds
+          excludeCardIds: reward.excludeCardIds,
+          polishRefreshAfter: reward.polishRefreshAfter
         })
       ) {
         return;

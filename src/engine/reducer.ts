@@ -12420,26 +12420,49 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   if (action.fromOwnDiscard) {
     const caster = state.players[action.playerId];
     const enablerId = action.fromSpellDeck;
-    const enabler = enablerId ? cards[enablerId] : undefined;
-    const castOption =
-      enabler?.effect.type === "CHOOSE_ONE"
-        ? enabler.effect.options.find((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
-        : undefined;
-    const authorisedSpellId =
-      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true
-        ? castOption.effect.spellId
-        : undefined;
+    const castOption = enablerId ? castFromSpellDiscardOption(state, cards, enablerId) : undefined;
+    const authorisedSpellId = castOption?.ownDiscard === true ? castOption.spellId : undefined;
+    // Polish Balance Pack Ciele I/IV: the reprint sources the Spell from the
+    // caster's USED Book side (refreshing it) with a Cast a Spell enabler in the
+    // discard pile as the condition. Validate THAT surface instead of the classic
+    // own-discard one — this cast is free of a hand enabler, so an unchecked
+    // client could otherwise cast any spell.
+    const refreshFromBook =
+      castOption?.polishRefreshFromBook === true && polishSpellBookEnabled(state);
+    const sourceHoldsSpell = refreshFromBook
+      ? Boolean(caster?.spellBookUsed?.includes(action.cardId)) &&
+        Boolean(caster?.discard.includes(CAST_A_SPELL_CARD_ID)) &&
+        polishBookSpellRefreshBlocked(state, action.playerId, action.cardId, caster) === null
+      : polishSpellBookEnabled(state)
+      ? Boolean(caster?.spellBook.includes(action.cardId))
+      : Boolean(caster?.discard.includes(action.cardId));
     if (
       !caster ||
       !enablerId ||
       !caster.hand.includes(enablerId) ||
       authorisedSpellId === undefined ||
       authorisedSpellId !== action.cardId ||
-      !(polishSpellBookEnabled(state)
-        ? caster.spellBook.includes(action.cardId)
-        : caster.discard.includes(action.cardId))
+      !sourceHoldsSpell
     ) {
       throw new Error("That Spell cannot be cast from your discard pile.");
+    }
+    // Refresh it: the printed "Refresh up to 1 Magic Arrow spell and cast it"
+    // really moves the card off the used side, marked so the shared once-per-round
+    // Polish limit sees it.
+    if (refreshFromBook) {
+      const used = caster.spellBookUsed ?? [];
+      const index = used.lastIndexOf(action.cardId);
+      if (index !== -1) {
+        used.splice(index, 1);
+        caster.spellBook.push(action.cardId);
+        markPolishSpellRefreshedThisRound(caster, action.cardId);
+        appendEvent(state, {
+          type: "SPELL_RETURNED_TO_HAND",
+          playerId: action.playerId,
+          cardId: action.cardId,
+          reason: "refreshed in the Spell Book"
+        });
+      }
     }
   }
 
@@ -12753,12 +12776,22 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // (noteSpellCast still closes the first-spell-this-round gate for them). A
   // Book cast DOES count — it casts like a hand Spell and shares the
   // one-Spell-per-round limit.
+  // Polish Balance Pack Ciele I: the ONE CAST_FROM_SPELL_DISCARD arm that DOES
+  // consume the per-round limit — only her level IV prints "does not count
+  // toward your Spell limit per Combat round".
+  const spellDeckCastCountsLimit =
+    action.fromSpellDeck
+      ? castFromSpellDiscardOption(state, cards, action.fromSpellDeck)?.countsTowardSpellLimit === true
+      : false;
   noteSpellCast(
     state,
     caster,
     // The Balance-Pack Eagle Eye copy is likewise a bonus cast: "does not count
     // toward your spell limit per Combat round".
-    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll && !action.eagleEyeCopy,
+    (!action.fromSpellDeck || spellDeckCastCountsLimit) &&
+      !action.tarnumReturn &&
+      !action.fromScroll &&
+      !action.eagleEyeCopy,
     castInFlightCardIds(state, action)
   );
 
@@ -12781,14 +12814,9 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // your Spellbook." BOOK-GATED — with the Polish Book on, the cast Spell
     // leaves the shared Spell-deck discard and is inscribed (refreshed) into the
     // caster's Book instead of staying there.
-    const enabler = cards[action.fromSpellDeck];
-    const castOption =
-      enabler?.effect.type === "CHOOSE_ONE"
-        ? enabler.effect.options.find((option) => option.effect.type === "CAST_FROM_SPELL_DISCARD")
-        : undefined;
+    const castOption = castFromSpellDiscardOption(state, cards, action.fromSpellDeck);
     if (
-      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
-      castOption.effect.addToSpellBook === true &&
+      castOption?.addToSpellBook === true &&
       polishSpellBookEnabled(state) &&
       spellCanEnterSpellBook(action.cardId)
     ) {
@@ -13440,6 +13468,33 @@ function resolveDeckDigKeepOne(
   }
 }
 
+/**
+ * The CAST_FROM_SPELL_DISCARD option of an enabling card (Helm of the Alabaster
+ * Unicorn, Ciele I/IV). ONE read shared by the cast's Book-inscribe, its
+ * spell-limit reading and its Balance-Pack Book refresh, so those can never
+ * disagree about which arm authorised the cast.
+ */
+function castFromSpellDiscardOption(
+  state: GameState,
+  cards: CardLibrary,
+  enablerId: CardId
+): Extract<ConcreteEffect, { type: "CAST_FROM_SPELL_DISCARD" }> | undefined {
+  const enabler = cards[enablerId];
+  if (enabler?.effect.type !== "CHOOSE_ONE") {
+    return undefined;
+  }
+  // House-rule gated arms (Balance Pack Ciele I/IV print a Polish-Book cast AND
+  // the classic one): take the first whose gates pass — the SAME read the
+  // legal-action offer uses, so offer and resolution can never disagree.
+  const option = enabler.effect.options.find(
+    (entry) =>
+      entry.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+      !(entry.requiresHouseRule && !houseRuleEnabled(state, entry.requiresHouseRule)) &&
+      !(entry.forbidsHouseRule && houseRuleEnabled(state, entry.forbidsHouseRule))
+  );
+  return option?.effect.type === "CAST_FROM_SPELL_DISCARD" ? option.effect : undefined;
+}
+
 /** Jeddite's Mysterious Warlock I/VI: dig `count`, keep every match (no choice). */
 function resolveDeckDigKeepMatching(
   state: GameState,
@@ -13466,8 +13521,15 @@ function resolveDeckDigKeepMatching(
   const discarded: CardId[] = [];
   for (const drawn of dig.cardIds) {
     const drawnKind = cards[drawn]?.kind;
+    // Polish Balance Pack Jeddite I/VI: BOOK-AWARE — with the Polish Book on the
+    // printed "Cast a Spell and Specialty cards" is exactly those two (an owned
+    // Spell lives in the Book, so it is never in the deck to dig); with the Book
+    // off the reprint keeps the classic "Spell and Specialty" reading.
     const matches =
-      effect.filter === "spell-or-specialty" && (drawnKind === "spell" || drawnKind === "hero-specialty");
+      effect.filter === "cast-enabler-or-specialty"
+        ? drawnKind === "hero-specialty" ||
+          (polishSpellBookEnabled(state) ? isCastASpellCard(drawn) : drawnKind === "spell")
+        : drawnKind === "spell" || drawnKind === "hero-specialty";
     if (matches) {
       kept.push(drawn);
     } else {
@@ -14588,7 +14650,8 @@ function applyReactionPlayCore(
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
       polishRecoveryLimit: effect.polishRecoveryLimit,
-      excludeCardIds: reactionInFlightCardIds
+      excludeCardIds: reactionInFlightCardIds,
+      polishRefreshAfter: effect.polishRefreshAfter
     });
   }
 
@@ -18113,7 +18176,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       fromTop: effect.fromTop,
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
       polishRecoveryLimit: effect.polishRecoveryLimit,
-      excludeCardIds: playInFlightCardIds
+      excludeCardIds: playInFlightCardIds,
+      polishRefreshAfter: effect.polishRefreshAfter
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
     // a queued discard-pick would not surface until the fight ended. A mid-Combat
@@ -18599,8 +18663,25 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     const hasFrom = tradesUnit ? fromIndex >= 0 : true;
     const canPayGold = effect.goldCost ? (player?.resources.gold ?? 0) >= effect.goldCost : true;
     if (player && deck && hasFrom && canPayGold && !alreadyHas && (inDraw >= 0 || inDiscard >= 0)) {
+      // Polish Balance Pack Dracon IV / Gelu IV: "Gain 13 / 9 gold for each stack
+      // of Magi / Elves you had." Read off the card being traded in BEFORE it
+      // leaves the army; 0 layers (or a table without Polish Unit Stacks, where
+      // `stacks` is never written) pays nothing.
+      const tradedStackLayers = tradesUnit ? Math.max(0, Math.trunc(player.army[fromIndex]?.stacks ?? 0)) : 0;
       if (tradesUnit) {
         player.army.splice(fromIndex, 1);
+      }
+      const stackRefund = (effect.goldPerStackLayer ?? 0) * tradedStackLayers;
+      if (stackRefund > 0) {
+        player.resources.gold += stackRefund;
+        appendEvent(state, {
+          type: "RESOURCES_GAINED",
+          playerId: action.playerId,
+          gold: stackRefund,
+          buildingMaterials: 0,
+          valuables: 0,
+          reason: `traded in a Stack (${tradedStackLayers} layer${tradedStackLayers === 1 ? "" : "s"})`
+        });
       }
       if (effect.goldCost) {
         player.resources.gold -= effect.goldCost;

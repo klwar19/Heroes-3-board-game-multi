@@ -5,14 +5,22 @@ import {
   POLISH_BALANCE_ARTIFACT_IDS,
   POLISH_BALANCE_MOVEMENT_ARTIFACT_IDS
 } from "@/data/cards/artifacts-balance";
+import {
+  polishBalanceSpecialtyCards,
+  POLISH_BALANCE_SPECIALTY_IDS
+} from "@/data/cards/specialties-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import type { CardDefinition, CardLibrary, GameState } from "./state";
 
-export { POLISH_BALANCE_SPELL_IDS, POLISH_BALANCE_ARTIFACT_IDS };
+export { POLISH_BALANCE_SPELL_IDS, POLISH_BALANCE_ARTIFACT_IDS, POLISH_BALANCE_SPECIALTY_IDS };
 
 /** Every card id the Balance Pack REPRINTS as a whole definition. */
-const REPRINTED_CARDS: CardLibrary = { ...polishBalanceSpellCards, ...polishBalanceArtifactCards };
+const REPRINTED_CARDS: CardLibrary = {
+  ...polishBalanceSpellCards,
+  ...polishBalanceArtifactCards,
+  ...polishBalanceSpecialtyCards
+};
 const REPRINTED_IDS: readonly string[] = Object.keys(REPRINTED_CARDS);
 
 /**

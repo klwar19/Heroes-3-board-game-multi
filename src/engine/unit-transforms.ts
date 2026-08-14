@@ -32,7 +32,8 @@ export function makeUnitTransformState(
     health: specialtyTransformHealth(ruleset, cardId, effect.health, sandroSkeletonHp),
     initiative: effect.initiative,
     ...(effect.cardImage ? { cardImage: effect.cardImage } : {}),
-    ...(effect.alwaysOnTop ? { alwaysOnTop: true } : {})
+    ...(effect.alwaysOnTop ? { alwaysOnTop: true } : {}),
+    ...(effect.stackAttackBonus ? { stackAttackBonus: effect.stackAttackBonus } : {})
   };
 }
 
@@ -178,8 +179,16 @@ export function applyUnitCurrentSide(
 ): void {
   const top = topTransform(unit);
   if (top) {
+    // Polish Balance Pack Sandro I / Vidomina IV: "Put this card on the Stack or
+    // Pack … When the card is played on the Stack it gives additional +1 ⚔."
+    // A "Stack" IS a Pack card carrying paid Polish layers, so the cover's own
+    // +1 is folded on top of its printed Attack while at least one layer is left
+    // (the cover replaces the card's statistics, so the Stack's ordinary flat +1
+    // is gone — this rider is what the reprint gives back, and only on a Stack).
+    const coverStackBonus =
+      overrides?.polishUnitStacks && (unit.armyStacks ?? 0) > 0 ? top.stackAttackBonus ?? 0 : 0;
     unit.cardName = top.name;
-    unit.attack = top.attack;
+    unit.attack = top.attack + coverStackBonus;
     unit.defense = top.defense;
     unit.maxHealth = top.health;
     unit.initiative = top.initiative;

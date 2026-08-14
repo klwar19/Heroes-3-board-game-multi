@@ -213,6 +213,7 @@ import {
   CAST_A_SPELL_CARD_ID,
   isCastASpellCard,
   midRoundRefreshablePolishUsedSpells,
+  polishBookSpellRefreshBlocked,
   polishSpellBookEnabled
 } from "./polish-spell-book";
 import {
@@ -2403,9 +2404,18 @@ function addSpellActions(
   // consume the enabling card (see performSpellCast).
   for (const enablerId of [...new Set(player.hand)].filter((id) => cardEnablesSpellDeckCast(cards[id]))) {
     const enabler = cards[enablerId];
+    // The card may print SEVERAL cast arms gated on a house rule (the Balance
+    // Pack Ciele I/IV carry a Polish-Book arm AND the classic one) — take the
+    // first whose gates pass, so exactly one reading is live at a time. The
+    // reducer's `castFromSpellDiscardOption` applies the SAME gates.
     const castOption =
       enabler?.effect.type === "CHOOSE_ONE"
-        ? enabler.effect.options.find((o) => o.effect.type === "CAST_FROM_SPELL_DISCARD")
+        ? enabler.effect.options.find(
+            (o) =>
+              o.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+              !(o.requiresHouseRule && !houseRuleEnabled(state, o.requiresHouseRule)) &&
+              !(o.forbidsHouseRule && houseRuleEnabled(state, o.forbidsHouseRule))
+          )
         : undefined;
     const spellIdFilter =
       castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" ? castOption.effect.spellId : undefined;
@@ -2413,7 +2423,33 @@ function addSpellActions(
     // a cast Magic Arrow actually lands), not the shared Spell-deck discard the
     // Helm draws from. Search it for the filtered spell id.
     const fromOwnDiscard = castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true;
-    const sourcePile = fromOwnDiscard
+    // Polish Balance Pack Ciele I/IV: "If you have a Cast a Spell card on your
+    // discard pile, Refresh up to 1 Magic Arrow spell and cast it." The source is
+    // the caster's USED Book side, the enabler in the discard pile is only the
+    // CONDITION (never spent), and a Book Spell the shared once-per-round /
+    // in-effect gate refuses is not a candidate. Book-gated: without the Polish
+    // Book this arm is not offered (the reprint's classic sides cover that table).
+    const refreshFromBook =
+      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+      castOption.effect.polishRefreshFromBook === true &&
+      polishSpellBookEnabled(state);
+    if (refreshFromBook && !player.discard.includes(CAST_A_SPELL_CARD_ID)) {
+      continue;
+    }
+    // Ciele I's reprint counts against the per-round limit (only IV prints the
+    // over-limit clause), so it is withheld once the limit is spent.
+    if (
+      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+      castOption.effect.countsTowardSpellLimit === true &&
+      spellLimitReached
+    ) {
+      continue;
+    }
+    const sourcePile = refreshFromBook
+      ? (player.spellBookUsed ?? []).filter(
+          (id) => polishBookSpellRefreshBlocked(state, playerId, id, player) === null
+        )
+      : fromOwnDiscard
       ? polishSpellBookEnabled(state)
         ? player.spellBook
         : player.discard

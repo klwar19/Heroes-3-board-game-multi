@@ -31,10 +31,16 @@ NOT committed (re-fetch via the badger-token recipe in the session memory
 
 ## Category → step mapping (sequential implementation)
 
-1. ABILITIES (12) — creates the house rule + the face-swap seam.
-2. SPELLS (21).
-3. ARTIFACTS (27).
-4. SPECIALTIES (11).
+1. ABILITIES (12) — creates the house rule + the face-swap seam. **SHIPPED.**
+2. SPELLS (21). **SHIPPED.**
+3. ARTIFACTS (27). **SHIPPED.**
+4. SPECIALTIES (11). **SHIPPED.**
+
+STATUS: the pack is COMPLETE — all 71 cards are wired and face-swapped
+(`POLISH_BALANCE_CARD_IDS` in `src/data/cards/polish-balance-art.ts` holds all
+71; `POLISH_BALANCE_NOT_IMPLEMENTED` is EMPTY). Per-step behaviour tests:
+`polish-card-balance-abilities.test.ts`, `-spells.test.ts`, `-artifacts.test.ts`,
+`-specialties.test.ts`.
 
 ---
 
@@ -390,7 +396,7 @@ File → card id (faces: `polish-balance/specialty-<hero>-<level>.webp`):
   does not count toward your Spell limit per Combat round. OR +1 SP. (Don't
   need to use Cast a spell card)". Book-gated as above; non-book keeps the
   current own-discard free cast.
-- **Tarnum I** (Conflux, `specialty.tarnum_conflux.1` — verify the exact id)
+- **Tarnum I** (Conflux, `specialty.tarnum_conflux.1` — id CONFIRMED)
   — "Search(1) Spell and add it to your Spellbook." CHANGES: the Remove option
   is DROPPED (the find is always kept; Book table → Spellbook, non-book →
   hand).
@@ -414,3 +420,41 @@ File → card id (faces: `polish-balance/specialty-<hero>-<level>.webp`):
   `ArtifactSetIconsProvider`) so every card-face surface follows; pin files on
   disk + the swap wiring with a rule-OFF CONTROL. Register the family in
   `scripts/compress-media.mjs` protections if needed (text-bearing faces).
+
+---
+
+## Step 4 (Specialties) — what shipped, and the deliberate readings
+
+The reprints live in `src/data/cards/specialties-balance.ts` and are swapped in
+by the same `polishBalanceCardLibrary` seam the Spells / Artifacts use. Leading
+with what a reviewer must know:
+
+- A "Stack" IS a Pack card carrying paid `stacks` layers, so "Stack or Pack"
+  needed NO new placement rule — a Stacked Pack was always a legal cover / trade
+  target. What shipped is the rider on top: `TRANSFORM_UNIT.stackAttackBonus`
+  (Sandro I, Vidomina IV) and `CONVERT_ARMY_UNIT.goldPerStackLayer` (Dracon IV,
+  Gelu IV). Both are inert with `polish-unit-stacks` off (no card carries a layer).
+- **Sandro IV therefore changes NOTHING mechanically**: its face prints no Stack
+  rider, so the reprint only restates the printed text (its Stack placement is
+  pinned by test all the same). That is the one card of the eleven whose reprint
+  is text-only.
+- The Stack rider is read LIVE (while a layer remains), not frozen at play time.
+- **Gelu IV keeps `grantAttackBonus`** and **Dracon IV keeps its Few-trade
+  option**: those are separate house rules (`gelu-sharpshooter-buff`,
+  `dracon-few-magi-trade`) the Balance Pack must not silently switch off.
+- **Adelaide IV** resolves BOTH printed sentences: the take opens first
+  (`filter: "cast-enabler-or-specialty"`), and its resolution opens a SECOND,
+  refresh-only pick (`polishRefreshAfter` → `filter: "polish-refresh-only"`). The
+  "once per round" half is the SHARED `polishBookSpellRefreshBlocked` gate, not a
+  new counter. LIMIT: with nothing takeable AND nothing refreshable the card is
+  simply not playable (the pre-existing TAKE_FROM_DISCARD offer gate).
+- **Ciele I/IV** are the one pair whose two readings are different EFFECT kinds,
+  so the reprint carries both and gates them per option on `polish-spell-book`
+  (`requiresHouseRule` / `forbidsHouseRule`). The Book arm sources the Spell from
+  `spellBookUsed` (refreshing it, marked once-per-round) with a Cast a Spell card
+  in the DISCARD pile as the condition — never spent. Level I consumes the
+  per-round Spell limit (`countsTowardSpellLimit`); only level IV prints the
+  over-limit clause. After the cast the Arrow is USED again (refresh → cast →
+  used), which is the printed sequence.
+- **Tarnum (Conflux) I** only drops `allowRemove`; "add it to your Spellbook" is
+  the Polish Book's own routing for every acquired Spell (`gainOwnedCard`).

@@ -16,6 +16,7 @@ import sharp from "sharp";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceSpellCards } from "./spells-balance";
 import { polishBalanceArtifactCards } from "./artifacts-balance";
+import { polishBalanceSpecialtyCards } from "./specialties-balance";
 import {
   POLISH_BALANCE_CARD_IDS,
   POLISH_BALANCE_NOT_IMPLEMENTED,
@@ -78,7 +79,7 @@ describe("Polish Balance Pack registries", () => {
     }
   });
 
-  it("declares every one of the pack's 12 Abilities + 21 Spells + 27 Artifacts as wired or not-implemented", () => {
+  it("declares every one of the pack's 12 Abilities + 21 Spells + 27 Artifacts + 11 Specialties as wired or not-implemented", () => {
     // The Balance Pack's Ability folder is exactly these 12 cards (docs/
     // polish-card-balance-spec.md §1). Every one must be accounted for, so a
     // reprint can never be silently dropped from the pack's scope.
@@ -144,7 +145,19 @@ describe("Polish Balance Pack registries", () => {
       "artifact.speculum",
       "artifact.spirit_of_oppression",
       "artifact.sword_of_judgement",
-      "artifact.thunder_helmet"
+      "artifact.thunder_helmet",
+      // The pack's Specialities folder is exactly these 11 cards (spec §4).
+      "specialty.adelaide.4",
+      "specialty.ciele.1",
+      "specialty.ciele.4",
+      "specialty.dracon.4",
+      "specialty.gelu.4",
+      "specialty.jeddite.1",
+      "specialty.jeddite.6",
+      "specialty.sandro.1",
+      "specialty.sandro.4",
+      "specialty.tarnum_conflux.1",
+      "specialty.vidomina.4"
     ];
     for (const cardId of PACK_ABILITIES) {
       const accounted =
@@ -166,6 +179,7 @@ describe("Polish Balance Pack registries", () => {
       const tags =
         polishBalanceSpellCards[cardId]?.tags ??
         polishBalanceArtifactCards[cardId]?.tags ??
+        polishBalanceSpecialtyCards[cardId]?.tags ??
         cardLibrary[cardId]?.tags ??
         [];
       expect(

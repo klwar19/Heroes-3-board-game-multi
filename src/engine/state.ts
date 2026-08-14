@@ -1564,6 +1564,13 @@ export type EffectDefinition =
        * still be reinforced/upgraded while the Legion's statistics apply.
        */
       alwaysOnTop?: boolean;
+      /**
+       * Polish Balance Pack Sandro I / Vidomina IV: extra Attack the cover grants
+       * while it sits on a Polish Unit-STACK ("When the card is played on the
+       * Stack it gives additional +1"). Absent on every classic printing AND on
+       * the Balance Sandro IV, whose face prints no such rider.
+       */
+      stackAttackBonus?: number;
     }
   | {
       /**
@@ -1757,7 +1764,30 @@ export type EffectDefinition =
        */
       type: "TAKE_FROM_DISCARD";
       count: number;
-      filter?: "spell" | "non-artifact" | "spell-or-specialty" | "magic-arrow";
+      /**
+       * `cast-enabler-or-specialty` is the Polish Balance Pack Adelaide IV filter
+       * ("Take Cast a Spell or Specialty card from your discard pile"): BOOK-AWARE
+       * — with `polish-spell-book` on it matches the Cast a Spell enabler and
+       * Specialty cards (owned Spells live in the Book, never the discard pile);
+       * without the Book it matches the printed classic reading, Spell or
+       * Specialty. `polish-refresh-only` is the follow-up pick that half of that
+       * card opens (see `polishRefreshAfter`) and offers ONLY used Book Spells.
+       */
+      filter?:
+        | "spell"
+        | "non-artifact"
+        | "spell-or-specialty"
+        | "magic-arrow"
+        | "cast-enabler-or-specialty"
+        | "polish-refresh-only";
+      /**
+       * Polish Balance Pack Adelaide IV: after the take resolves, open a SECOND
+       * pick that refreshes one used Book Spell ("Refresh 1 Spell, once per
+       * round" — the once-per-round half is the shared Polish
+       * `polishBookSpellRefreshBlocked` gate, not a new counter). BOOK-GATED: with
+       * `polish-spell-book` off there is no Book to refresh and nothing opens.
+       */
+      polishRefreshAfter?: boolean;
       /** Only the top N discard cards qualify (Mystic Orb of Mana). */
       fromTop?: number;
       /** Rib Cage: shuffle the rest of the discard pile into the deck. */
@@ -1950,6 +1980,24 @@ export type EffectDefinition =
        * there is no Spellbook and the Spell stays put.
        */
       addToSpellBook?: boolean;
+      /**
+       * Polish Balance Pack Ciele I / IV: "If you have a Cast a Spell card on
+       * your discard pile, Refresh up to 1 Magic Arrow spell and cast it." Sources
+       * the Spell from the caster's USED Book side (refreshing it — and honouring
+       * the shared once-per-round refresh gate) instead of a discard pile, with a
+       * Cast a Spell enabler sitting in the discard pile as the CONDITION (never
+       * consumed — the cast needs no enabler). BOOK-GATED: with `polish-spell-book`
+       * off this arm is not offered at all (Ciele keeps her classic sides, which
+       * the reprint carries under `forbidsHouseRule`).
+       */
+      polishRefreshFromBook?: boolean;
+      /**
+       * Polish Balance Pack Ciele I: unlike every other CAST_FROM_SPELL_DISCARD
+       * bonus cast, this one DOES consume the per-Combat-round Spell limit — only
+       * Ciele IV's face prints "This spell does not count toward your Spell limit
+       * per Combat round". Absent = the classic free bonus cast.
+       */
+      countsTowardSpellLimit?: boolean;
     }
   | {
       /**
@@ -2543,7 +2591,15 @@ export type EffectDefinition =
        */
       type: "DECK_DIG_KEEP_MATCHING";
       count: number;
-      filter: "spell-or-specialty";
+      /**
+       * `cast-enabler-or-specialty` is the Polish Balance Pack Jeddite I/VI
+       * filter ("take any Cast a Spell and Specialty cards to your hand"):
+       * BOOK-AWARE — with `polish-spell-book` on the takeable kinds are the Cast
+       * a Spell enabler and Specialty cards (owned Spells live in the Book, so a
+       * raw Spell card is never dug out of the deck); with the Book off it keeps
+       * the printed classic reading, Spell or Specialty.
+       */
+      filter: "spell-or-specialty" | "cast-enabler-or-specialty";
     }
   | {
       /**
@@ -2908,6 +2964,14 @@ export type EffectDefinition =
        * notice.
        */
       grantAttackBonus?: number;
+      /**
+       * Polish Balance Pack Dracon IV / Gelu IV: "Gain 13 (resp. 9) gold for each
+       * stack of Magi (Elves) you had." Gold paid per Polish Unit-STACK layer the
+       * traded-in card carried. A card with no layers (or a table without the
+       * `polish-unit-stacks` rule, where `stacks` never exists) pays nothing, so
+       * the rider is inert by construction.
+       */
+      goldPerStackLayer?: number;
     }
   | {
       /** Alice VI: bank free uses of the MGQ after-combat Companion seal. */
@@ -7581,6 +7645,13 @@ export type UnitTransformState = {
   cardImage?: string;
   /** Cloak VI: stays on top even when more upgrades land underneath. */
   alwaysOnTop?: boolean;
+  /**
+   * Polish Balance Pack Sandro I / Vidomina IV: "When the card is played on the
+   * Stack it gives additional +1 [attack]." Folded LIVE in `applyUnitCurrentSide`
+   * while the covered card still carries at least one Polish Unit-Stack layer,
+   * so a spent Stack drops the rider with it. Absent on every classic printing.
+   */
+  stackAttackBonus?: number;
 };
 
 /** Monster Girl Quest's persistent per-card Job assignment. */
@@ -9847,13 +9918,23 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "discard-pick";
       count: number;
-      filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
+      filter?:
+      | "spell"
+      | "non-artifact"
+      | "specialty"
+      | "power-or-knowledge-statistic"
+      | "spell-or-specialty"
+      | "magic-arrow"
+      | "cast-enabler-or-specialty"
+      | "polish-refresh-only";
       fromTop?: number;
       shuffleRestIntoDeck?: boolean;
       /** Polish Balance Pack Crown of Dragontooth: up to 2 enablers / refreshes. */
       polishRecoveryLimit?: number;
       /** One protected occurrence per id is still resolving and cannot be recovered yet. */
       excludeCardIds?: CardId[];
+      /** Polish Balance Pack Adelaide IV: open a Book-refresh pick after the take. */
+      polishRefreshAfter?: boolean;
     }
   | {
       /** Generic queued interaction resolved through the visit-step machinery. */
@@ -14578,11 +14659,21 @@ export type PendingChoice =
         /** Polish recovery cards may select from the used Book zone. */
         sources?: ("discard" | "polish-used")[];
         remaining: number;
-        filter?: "spell" | "non-artifact" | "specialty" | "power-or-knowledge-statistic" | "spell-or-specialty" | "magic-arrow";
+        filter?:
+      | "spell"
+      | "non-artifact"
+      | "specialty"
+      | "power-or-knowledge-statistic"
+      | "spell-or-specialty"
+      | "magic-arrow"
+      | "cast-enabler-or-specialty"
+      | "polish-refresh-only";
         fromTop?: number;
         shuffleRestIntoDeck?: boolean;
         /** One protected occurrence per id is still resolving and cannot be recovered yet. */
         excludeCardIds?: CardId[];
+        /** Polish Balance Pack Adelaide IV: open a Book-refresh pick once this take resolves. */
+        polishRefreshAfter?: boolean;
       };
       /** Found shared-deck Spell waiting for its take-or-discard decision. */
       eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };

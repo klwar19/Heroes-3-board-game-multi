@@ -22,7 +22,8 @@ import { cardLibrary } from "@/data/cards/library";
  */
 
 /**
- * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts) — see
+ * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
+ * Specialties — all four categories, 71 cards) — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -86,7 +87,18 @@ export const POLISH_BALANCE_CARD_IDS = [
   "artifact.speculum",
   "artifact.spirit_of_oppression",
   "artifact.sword_of_judgement",
-  "artifact.thunder_helmet"
+  "artifact.thunder_helmet",
+  "specialty.adelaide.4",
+  "specialty.ciele.1",
+  "specialty.ciele.4",
+  "specialty.dracon.4",
+  "specialty.gelu.4",
+  "specialty.jeddite.1",
+  "specialty.jeddite.6",
+  "specialty.sandro.1",
+  "specialty.sandro.4",
+  "specialty.tarnum_conflux.1",
+  "specialty.vidomina.4"
 ] as const;
 
 /**
@@ -96,8 +108,9 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 12 Abilities, all 21 Spells AND all 27 Artifacts are wired. The
- * last step (Specialties) adds its own hold-outs here.
+ * EMPTY: all 12 Abilities, 21 Spells, 27 Artifacts AND 11 Specialties are
+ * wired — the pack is complete (71/71). A FUTURE unwireable reprint belongs
+ * here, never silently in the classic-face fallback.
  */
 export const POLISH_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {};
 

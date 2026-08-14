@@ -260,6 +260,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and the two new ActiveEffectModifier variants `GROUND_MOVEMENT_BONUS` /
 // `RANGED_ATTACK_REROLL` / `REROLL_ENEMY_PLUS_ONE`, which an old server ignores.
 
+// v30 (extended again, still v30 — never deployed): the pack's 11 SPECIALTIES,
+// which COMPLETE it (71 cards). NO new action type: every reprint rides an
+// existing one. The skew is again real when the rule is on — a stale edge takes
+// a Cast a Spell enabler for a raw Spell in Jeddite's dig and Adelaide's take
+// (its `matchesFilter` has no `cast-enabler-or-specialty` case and falls through
+// to "anything matches"), never opens Adelaide's second Book-refresh pick,
+// refunds no gold for a traded-in Unit Stack, gives the Cloak/Necromancy cover
+// no +1 on a Stack, refuses Ciele I/IV's Book refresh-and-cast (its enabler
+// lookup takes the FIRST cast option, not the house-rule-gated one) and still
+// offers Tarnum (Conflux) I's Remove pick. Every persisted addition is optional
+// and an old server simply ignores it: `UnitTransformState.stackAttackBonus`,
+// the `discard-pick` reward's + pendingChoice's `polishRefreshAfter`, and the
+// two new `filter` values `cast-enabler-or-specialty` / `polish-refresh-only`.
+
 // The face-swap seam and every reprint listed in the `polish-card-balance`
 // house-rule description are otherwise pure engine reads, so a table that leaves
 // the rule OFF is unaffected by the skew either way.
