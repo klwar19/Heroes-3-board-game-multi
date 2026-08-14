@@ -1394,3 +1394,141 @@ describe("Game options — Custom win condition", () => {
     expect((within(row).getByRole("button", { name: "Add win condition" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
+
+/**
+ * The "Player order" lobby row — on the MATCH tab beside the win conditions,
+ * because who goes first is a match-level rule. These assert it is WIRED: the
+ * mode buttons and the ↑/↓ reorder dispatch the exact SET_GAME_OPTIONS the
+ * engine reads. (The engine half — the order really being played, the roll and
+ * its ceremony really being skipped — is pinned by player-order-option.test.ts.)
+ *
+ * LIMIT: jsdom cannot compute CSS, so nothing here proves the row is legible;
+ * it borrows the neighbouring Custom-win-condition classes for exactly that
+ * reason.
+ */
+describe("Game options — Player order", () => {
+  /** Open the options on the Match tab with `seats` open seats. */
+  function openPlayerOrder(onAction = vi.fn(), seats = 3, mutate?: (state: GameState) => void) {
+    const state = createAdventureLobbyState({ seed: "options-order", playerCount: seats });
+    mutate?.(state);
+    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    return onAction;
+  }
+
+  const orderRow = () => screen.getByText("Player order").closest(".optionRow") as HTMLElement;
+
+  it("defaults to Random roll and shows NO order picker (CONTROL for the default table)", () => {
+    openPlayerOrder();
+    const row = orderRow();
+    expect(within(row).getByRole("button", { name: "Random roll" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(row).getByRole("button", { name: "Chosen order" }).getAttribute("aria-pressed")).toBe("false");
+    // The picker only exists in manual mode.
+    expect(within(row).queryByRole("group", { name: "Player order" })).toBeNull();
+    expect(row.textContent).toMatch(/the Attack die decides the first player/i);
+  });
+
+  it("lives on the MATCH tab, after the Custom win condition row — NOT on Mode & Rules", () => {
+    const state = createAdventureLobbyState({ seed: "options-order-tab", playerCount: 2 });
+    render(<SetupLobbyScreen onAction={vi.fn()} state={state} viewerPlayerId="p1" />);
+    fireEvent.click(screen.getByRole("button", { name: /Advanced settings/ }));
+    expect(screen.queryByText("Player order")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Match/ }));
+    const custom = screen.getByText("Custom win condition");
+    const order = screen.getByText("Player order");
+    expect(custom.compareDocumentPosition(order) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("picking Chosen order dispatches the mode (the engine seeds the list)", () => {
+    const onAction = openPlayerOrder();
+    fireEvent.click(within(orderRow()).getByRole("button", { name: "Chosen order" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { playerOrderMode: "manual" }
+    });
+  });
+
+  it("in manual mode it lists every open seat in order and ↑/↓ dispatch the reordered list", () => {
+    const onAction = openPlayerOrder(vi.fn(), 3, (state) => {
+      state.setupLobby!.options.playerOrderMode = "manual";
+      state.setupLobby!.options.manualPlayerOrder = ["p1", "p2", "p3"];
+    });
+    const row = orderRow();
+    const list = within(row).getByRole("group", { name: "Player order" });
+    expect(playerOrderLabels(list)).toEqual(["1. Player 1", "2. Player 2", "3. Player 3"]);
+
+    // Moving seat 2 EARLIER swaps it ahead of seat 1.
+    fireEvent.click(within(list).getByRole("button", { name: "Move Player 2 earlier" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { manualPlayerOrder: ["p2", "p1", "p3"] }
+    });
+
+    // Moving seat 1 LATER is the mirror move — same resulting order.
+    fireEvent.click(within(list).getByRole("button", { name: "Move Player 1 later" }));
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { manualPlayerOrder: ["p2", "p1", "p3"] }
+    });
+
+    // …and moving seat 3 EARLIER moves only that seat (the list is a real
+    // reorder, not a fixed swap).
+    fireEvent.click(within(list).getByRole("button", { name: "Move Player 3 earlier" }));
+    expect(onAction).toHaveBeenLastCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { manualPlayerOrder: ["p1", "p3", "p2"] }
+    });
+  });
+
+  it("the ends are not movable past the list (first has no ↑, last has no ↓)", () => {
+    openPlayerOrder(vi.fn(), 3, (state) => {
+      state.setupLobby!.options.playerOrderMode = "manual";
+    });
+    const list = within(orderRow()).getByRole("group", { name: "Player order" });
+    const earlier = within(list).getAllByRole("button", { name: /^Move .* earlier$/ }) as HTMLButtonElement[];
+    const later = within(list).getAllByRole("button", { name: /^Move .* later$/ }) as HTMLButtonElement[];
+    expect(earlier[0]!.disabled).toBe(true);
+    expect(earlier[1]!.disabled).toBe(false);
+    expect(later[later.length - 1]!.disabled).toBe(true);
+  });
+
+  it("a STALE stored order (a seat that is no longer open) never renders a ghost row", () => {
+    openPlayerOrder(vi.fn(), 2, (state) => {
+      state.setupLobby!.options.playerOrderMode = "manual";
+      // p4 was closed after the order was stored; p2 was never named.
+      state.setupLobby!.options.manualPlayerOrder = ["p4", "p1"] as never;
+    });
+    const list = within(orderRow()).getByRole("group", { name: "Player order" });
+    const rows = list.querySelectorAll(".playerOrderEntry");
+    expect(rows).toHaveLength(2);
+    expect(list.textContent).not.toMatch(/p4/);
+  });
+
+  it("switching back to Random roll dispatches the mode and hides the picker", () => {
+    const onAction = openPlayerOrder(vi.fn(), 2, (state) => {
+      state.setupLobby!.options.playerOrderMode = "manual";
+    });
+    const row = orderRow();
+    expect(within(row).getByRole("group", { name: "Player order" })).toBeTruthy();
+    expect(row.textContent).toMatch(/no Attack die is rolled/i);
+    fireEvent.click(within(row).getByRole("button", { name: "Random roll" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { playerOrderMode: "random" }
+    });
+  });
+});
+
+/** The visible "N. Name" labels of the player-order picker, top to bottom. */
+function playerOrderLabels(list: HTMLElement): string[] {
+  return Array.from(list.querySelectorAll(".playerOrderSeat")).map((node) =>
+    (node.textContent ?? "").replace(/\s+/g, " ").trim()
+  );
+}

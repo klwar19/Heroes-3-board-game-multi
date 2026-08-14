@@ -300,7 +300,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // The face-swap seam and every reprint listed in the `polish-card-balance`
 // house-rule description are otherwise pure engine reads, so a table that leaves
 // the rule OFF is unaffected by the skew either way.
-export const ENGINE_PROTOCOL_VERSION = 30;
+// v31: WHO GOES FIRST is a lobby option (`playerOrderMode`, default "random" —
+// absent reads as random, so every legacy lobby/snapshot is byte-identical).
+// NO new action type, but a stale room server is a REAL skew because the game
+// is BUILT on the server: a v30 edge's `setGameOptions` has no branch for
+// `playerOrderMode` / `manualPlayerOrder`, so it silently drops the host's
+// deliberate order, `buildAdventureFromLobby` never carries it, and the table
+// rolls the die anyway — the new client meanwhile shows the chosen order in the
+// lobby, so what the host sets is not what the game plays. Every persisted
+// addition is OPTIONAL (both option fields plus the `opening-first-player-roll`
+// reward's `skipRoll` flag), so an old server never crashes on a new snapshot —
+// it just ignores `skipRoll`, rolls anyway, rotates the order away from the
+// host's choice and can arm an opening ceremony the new client never expects.
+// `npm run deploy:partykit` is therefore owed alongside the Vercel deploy.
+export const ENGINE_PROTOCOL_VERSION = 31;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

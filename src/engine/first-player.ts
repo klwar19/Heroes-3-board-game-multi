@@ -71,6 +71,61 @@ export function calculateFirstPlayerRoll(
   return { attempts, winnerPlayerId };
 }
 
+/**
+ * MANUAL player order (lobby option `playerOrderMode: "manual"`): coerce an
+ * untrusted list into a FULL permutation of the open seats — unknown ids and
+ * duplicates dropped, still-missing seats appended in seat order. Called at
+ * every lobby seam (the option write AND every seat resize), so the stored
+ * order can never go stale when the seat count changes.
+ */
+export function sanitizeManualPlayerOrder(
+  seatIds: readonly PlayerId[],
+  order: readonly unknown[] | undefined
+): PlayerId[] {
+  const seats = new Set(seatIds);
+  const seen = new Set<PlayerId>();
+  const cleaned: PlayerId[] = [];
+  for (const entry of order ?? []) {
+    if (typeof entry !== "string" || !seats.has(entry) || seen.has(entry)) {
+      continue;
+    }
+    seen.add(entry);
+    cleaned.push(entry);
+  }
+  for (const seatId of seatIds) {
+    if (!seen.has(seatId)) {
+      cleaned.push(seatId);
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * The turn order a MANUAL-order game must use, or null when the option is off
+ * or the stored list is not a full permutation of the seats. Null is the
+ * fall-back-to-the-random-roll signal (build time re-validates rather than
+ * trusting the lobby sanitiser, because `createAdventureGameState` is also
+ * called directly with a hand-built options object).
+ */
+export function resolveManualPlayerOrder(
+  seatIds: readonly PlayerId[],
+  mode: "random" | "manual" | undefined,
+  order: readonly PlayerId[] | undefined
+): PlayerId[] | null {
+  if (mode !== "manual" || !order || order.length !== seatIds.length) {
+    return null;
+  }
+  const seats = new Set(seatIds);
+  const seen = new Set<PlayerId>();
+  for (const entry of order) {
+    if (typeof entry !== "string" || !seats.has(entry) || seen.has(entry)) {
+      return null;
+    }
+    seen.add(entry);
+  }
+  return [...order];
+}
+
 /** Clockwise seat order rotated so the rolled winner occupies map position 1. */
 export function gameOrderForFirstPlayerRoll(
   playerIds: readonly PlayerId[],

@@ -79,6 +79,7 @@ import {
   MAX_CUSTOM_WIN_CONDITIONS,
   MAX_PARALLEL_TURN_ROUNDS,
   mergeCustomWinConditions,
+  sanitizeManualPlayerOrder,
   parallelInteractionBlocker,
   parallelTurnsActive,
   polishArmyUnitStackCap,
@@ -10463,6 +10464,99 @@ function GameOptionsPanel({
               {effective.length === 0
                 ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
                 : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
+            </small>
+          </div>
+        );
+      })()}
+
+      {(() => {
+        // WHO GOES FIRST — a match-level rule, so it lives beside the win
+        // conditions. Random (default) is the rulebook setup-step-22 Attack-die
+        // roll + its ceremony; Chosen order lets the host write the whole turn
+        // order and skips the roll entirely. The displayed order is re-derived
+        // from the OPEN seats through the engine's own sanitiser, so a stale
+        // stored list (a closed seat) can never render a ghost row.
+        const seatIds = lobby.seats.map((seat) => seat.playerId);
+        const orderMode = options.playerOrderMode ?? "random";
+        const order = sanitizeManualPlayerOrder(seatIds, options.manualPlayerOrder);
+        const seatLabel = (playerId: PlayerId) =>
+          state.players[playerId]?.name ??
+          lobby.seats.find((seat) => seat.playerId === playerId)?.name ??
+          playerId;
+        const moveSeat = (index: number, delta: number) => {
+          const target = index + delta;
+          if (target < 0 || target >= order.length) {
+            return;
+          }
+          const next = [...order];
+          const [moved] = next.splice(index, 1);
+          next.splice(target, 0, moved!);
+          send({ manualPlayerOrder: next });
+        };
+        return (
+          // Styling is BORROWED from the neighbouring Custom-win-condition
+          // section (`customWinConditions` / `customWinConditionRow` /
+          // `customWinConditionText` / `customWinConditionAdd`) rather than
+          // hand-rolled: the two are the same "stacked list of small rows with
+          // pill buttons" shape, and reusing proven values keeps this row from
+          // being the one unstyled thing in the panel. The `playerOrder*`
+          // classes alongside them are semantic/test hooks with no CSS of their
+          // own.
+          <div className="optionRow playerOrderRow">
+            <small title="Who takes the first turn: the rulebook Attack-die roll, or an order you set yourself">
+              Player order
+            </small>
+            <div className="optionButtons">
+              {(["random", "manual"] as const).map((mode) => (
+                <button
+                  aria-pressed={orderMode === mode}
+                  className={orderMode === mode ? "selected" : ""}
+                  key={mode}
+                  onClick={() => send({ playerOrderMode: mode })}
+                  title={
+                    mode === "random"
+                      ? "Roll the Attack die for the starting player (rulebook setup step 22)"
+                      : "Set the whole turn order yourself — no roll, no opening ceremony"
+                  }
+                  type="button"
+                >
+                  {mode === "random" ? "Random roll" : "Chosen order"}
+                </button>
+              ))}
+            </div>
+            {orderMode === "manual" ? (
+              <div className="customWinConditions playerOrderList" role="group" aria-label="Player order">
+                {order.map((playerId, index) => (
+                  <div className="customWinConditionRow playerOrderEntry" key={playerId}>
+                    <span className="customWinConditionText playerOrderSeat">
+                      {index + 1}. {seatLabel(playerId)}
+                    </span>
+                    <button
+                      aria-label={`Move ${seatLabel(playerId)} earlier`}
+                      className="customWinConditionAdd"
+                      disabled={index === 0}
+                      onClick={() => moveSeat(index, -1)}
+                      type="button"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      aria-label={`Move ${seatLabel(playerId)} later`}
+                      className="customWinConditionAdd"
+                      disabled={index === order.length - 1}
+                      onClick={() => moveSeat(index, 1)}
+                      type="button"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <small className="optionHint">
+              {orderMode === "manual"
+                ? "The game uses exactly this order — no Attack die is rolled and the opening first-player ceremony is skipped (a feed line announces the order instead). Position 1 also takes map position 1."
+                : "Default: the Attack die decides the first player after the starting bonuses, announced by the opening ceremony."}
             </small>
           </div>
         );

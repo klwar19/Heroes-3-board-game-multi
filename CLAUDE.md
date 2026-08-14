@@ -2001,6 +2001,26 @@ pool tile OF that kind. Vocabulary + classification live in ONE leaf
 LIMITS: the menu leaks pool AVAILABILITY to the table; it composes with, never replaces,
 `far-tile-rerolls`; supply-path only; no new AI policy.
 
+## WHO GOES FIRST — chosen player order (OPTIONAL, lobby, default random) — 2026-08-14
+
+`GameSetupOptions.playerOrderMode` ("random" | "manual", absent ⇒ random ⇒ byte-identical)
++ `manualPlayerOrder`. "manual" plays the host's order verbatim: `createAdventureGameState`
+seats it as `turnOrder`/`activePlayerId` AND as the MAP positions, bakes no roll seed, and
+flags the `opening-first-player-roll` divider `skipRoll` so `commitFirstPlayerRoll` never
+runs — `openingFirstPlayerRollPending` therefore never arms, which is what keeps a
+computer-first table from freezing (`firstPlayerCeremonyPending` /
+`computerDecisionOwner` are untouched). A feed line announces the order instead of the
+ceremony. Helpers in `src/engine/first-player.ts`
+(`sanitizeManualPlayerOrder` coerces to a full seat permutation, `resolveManualPlayerOrder`
+returns null = fall back to the roll); UI row on the lobby MATCH tab under Custom win
+condition, borrowing the `customWinCondition*` CSS. Protocol v31 — server-built game, so
+`npm run deploy:partykit` is owed.
+LIMITS: an invalid/partial order at BUILD time silently falls back to the RANDOM roll (with
+an `EVENT_NOTE`), never a partial seating; `setGameOptions` + every `resizeLobbySeats` are
+the only sanitising seams, so a hand-built lobby can still carry a stale list; the order is
+public lobby state; no map-preset seeding and no AI awareness of it.
+Pinned in `player-order-option.test.ts` + `game-options-tabs.test.tsx` ("Player order").
+
 ## Far-tile rerolls and single-player AI (2026-07-31)
 
 Ⅱ–Ⅲ tile replacement is ONE BINH house rule, `far-tile-rerolls`, covering both the

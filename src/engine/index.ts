@@ -24,6 +24,11 @@ export {
 export { applyAction, findEvent, unitMatchesSpecialtyName } from "./reducer";
 export type { ReducerOptions } from "./reducer";
 export {
+  firstPlayerCeremonyPending,
+  resolveManualPlayerOrder,
+  sanitizeManualPlayerOrder
+} from "./first-player";
+export {
   AFK_AUTO_KICK_MS,
   AFK_IDLE_MS,
   AFK_REASK_MS,

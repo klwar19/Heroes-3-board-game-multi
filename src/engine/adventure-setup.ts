@@ -129,7 +129,12 @@ import { makeMoraleDecks } from "./morale-cards";
 import { bakeEntropy, createSeededRandom, type SeededRandom } from "./random";
 import { freshSeed } from "./seed";
 import { appendEvent, eventSeedNumber } from "./events";
-import { calculateFirstPlayerRoll, gameOrderForFirstPlayerRoll } from "./first-player";
+import {
+  calculateFirstPlayerRoll,
+  gameOrderForFirstPlayerRoll,
+  resolveManualPlayerOrder,
+  sanitizeManualPlayerOrder
+} from "./first-player";
 import { VICTORY_MODE_LABELS } from "./ruleset";
 import {
   hexEquals,
@@ -169,6 +174,7 @@ import type {
   PlayerController,
   PlayerState,
   PvpTroopLoss,
+  PlayerOrderMode,
   RoomMembershipState,
   SecretTileFeature,
   StartCheckState,
@@ -652,6 +658,14 @@ export type AdventureSetupOptions = {
    * Defaults to true; deterministic tests opt out to keep seat order.
    */
   rollFirstPlayer?: boolean;
+  /**
+   * WHO GOES FIRST (default "random"). "manual" + a valid `manualPlayerOrder`
+   * uses that order verbatim and skips the roll AND its ceremony. Absent /
+   * "random" is byte-identical to before.
+   */
+  playerOrderMode?: PlayerOrderMode;
+  /** The deliberate turn order for `playerOrderMode: "manual"` (first player first). */
+  manualPlayerOrder?: PlayerId[];
   /**
    * Force each player to rotate their own faction Ⅰ (home) tile at the start of
    * their first turn, before they may move (BINH house rule). Defaults to the
@@ -2866,21 +2880,35 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     options.sessionMode === "single-player"
       ? singlePlayerMapDeployment(customMap, soloOpponentLimit)
       : null;
+  // WHO GOES FIRST. Default "random" = the rulebook setup-step-22 roll below.
+  // "manual" (with a valid full permutation) uses the host's order verbatim and
+  // skips the roll, its seed and its ceremony entirely; an INVALID manual list
+  // falls back to the random roll with a feed note rather than crashing or
+  // silently seating a partial order.
+  const manualOrder = resolveManualPlayerOrder(
+    playerConfigs.map((config) => config.id),
+    options.playerOrderMode,
+    options.manualPlayerOrder
+  );
+  const manualOrderRejected = options.playerOrderMode === "manual" && !manualOrder;
   // Preview without publishing: homes follow the eventual game order, while
   // the authoritative roll remains hidden until starting bonuses resolve.
-  const openingFirstPlayerSeed =
-    options.rollFirstPlayer !== false ? bakeEntropy(`${seed}#first-player`) : undefined;
-  const openingRoll =
-    options.rollFirstPlayer !== false
-      ? calculateFirstPlayerRoll(
-          playerConfigs.map((config) => ({ playerId: config.id, name: config.name })),
-          openingFirstPlayerSeed!
-        )
-      : null;
-  const startingPositionOrder = gameOrderForFirstPlayerRoll(
-    playerConfigs.map((config) => config.id),
-    openingRoll
-  );
+  const rollFirstPlayerOn = options.rollFirstPlayer !== false && !manualOrder;
+  const openingFirstPlayerSeed = rollFirstPlayerOn ? bakeEntropy(`${seed}#first-player`) : undefined;
+  const openingRoll = rollFirstPlayerOn
+    ? calculateFirstPlayerRoll(
+        playerConfigs.map((config) => ({ playerId: config.id, name: config.name })),
+        openingFirstPlayerSeed!
+      )
+    : null;
+  // Manual order decides the map positions too — position 1 is the first
+  // player, exactly as the rolled winner would be.
+  const startingPositionOrder =
+    manualOrder ??
+    gameOrderForFirstPlayerRoll(
+      playerConfigs.map((config) => config.id),
+      openingRoll
+    );
   const startingPositionIndex = new Map(
     startingPositionOrder.map((playerId, index) => [playerId, index] as const)
   );
@@ -3120,9 +3148,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     anime,
     round: 1,
     phase: "player-turn",
-    activePlayerId: playerConfigs[0].id,
+    // Manual player order is live from the first frame (no roll will rotate it
+    // later); random order keeps plain seat order until the ceremony commits.
+    activePlayerId: manualOrder?.[0] ?? playerConfigs[0].id,
     priorityPlayerId: null,
-    turnOrder: playerConfigs.map((config) => config.id),
+    turnOrder: manualOrder ?? playerConfigs.map((config) => config.id),
     players: Object.fromEntries([
       ...playerConfigs.map((config) => [
         config.id,
@@ -3968,14 +3998,35 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     appendEvent(state, { type: "PARALLEL_TURNS_STARTED", rounds: parallelRounds });
   }
 
+  if (manualOrderRejected) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message:
+        "The chosen player order did not match this game's seats — the first player is rolled for instead."
+    });
+  }
+  if (manualOrder) {
+    // Deliberate player order: announce it up front. There is no die and no
+    // ceremony, so this feed line IS the announcement.
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message: `Player order chosen by the host: ${manualOrder
+        .map((playerId, index) => `${index + 1}. ${state.players[playerId]?.name ?? playerId}`)
+        .join(", ")}.`
+    });
+  }
+
   if (options.rollFirstPlayer !== false) {
     // Rulebook order: bonuses are setup step 17; the first-player roll is step
-    // 22. The divider stays behind bonus follow-ups, then opens round 1.
+    // 22. The divider stays behind bonus follow-ups, then opens round 1. With a
+    // MANUAL order the divider still runs (bonuses first, then round 1) but
+    // rolls nothing — `skipRoll` is what keeps the ceremony from arming.
     adventure.rewardQueue.push({
       playerId: playerConfigs[0]!.id,
       kind: "opening-first-player-roll",
       ...(tournamentRules.secondPlayerMorale ? { secondPlayerMorale: true } : {}),
-      ...(!bonusSteps ? { dealStartingHands: true } : {})
+      ...(!bonusSteps ? { dealStartingHands: true } : {}),
+      ...(manualOrder ? { skipRoll: true as const } : {})
     });
   } else {
     // Deterministic fixtures keep seat order and their immediate round start.
@@ -4085,6 +4136,15 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
     state.activePlayerId = state.turnOrder[0];
   }
   lobby.options.playerCount = count;
+  // A manual player order must never go stale: every seat-count change routes
+  // through here, so re-coerce the stored order to the new seat set (closed
+  // seats drop out, newly opened ones join at the end).
+  if (lobby.options.manualPlayerOrder) {
+    lobby.options.manualPlayerOrder = sanitizeManualPlayerOrder(
+      state.turnOrder,
+      lobby.options.manualPlayerOrder
+    );
+  }
 
   // Single-player controller invariant (plan §4.3): a resize NEVER mints a
   // human opponent. Every seat-count change routes through here — the
@@ -4703,6 +4763,39 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
       delete lobby.options.customWinConditions;
       changes.push("Custom win conditions cleared");
     }
+  }
+
+  if (next.playerOrderMode !== undefined) {
+    if (next.playerOrderMode !== "random" && next.playerOrderMode !== "manual") {
+      throw new Error("Unknown player order mode.");
+    }
+    lobby.options.playerOrderMode = next.playerOrderMode;
+    if (next.playerOrderMode === "manual" && next.manualPlayerOrder === undefined) {
+      // Switching to manual seeds the current seat order, so the option is
+      // never "manual" with nothing to play — the picker edits a real list.
+      lobby.options.manualPlayerOrder = sanitizeManualPlayerOrder(
+        lobby.seats.map((seat) => seat.playerId),
+        lobby.options.manualPlayerOrder
+      );
+    }
+    changes.push(
+      next.playerOrderMode === "manual" ? "player order chosen by the host" : "first player rolled at random"
+    );
+  }
+
+  if (next.manualPlayerOrder !== undefined) {
+    // Untrusted list: coerced to a full permutation of the OPEN seats (unknown
+    // ids / duplicates dropped, missing seats appended in seat order).
+    const order = sanitizeManualPlayerOrder(
+      lobby.seats.map((seat) => seat.playerId),
+      next.manualPlayerOrder
+    );
+    lobby.options.manualPlayerOrder = order;
+    changes.push(
+      `player order ${order
+        .map((playerId) => state.players[playerId]?.name ?? playerId)
+        .join(" → ")}`
+    );
   }
 
   if (next.parallelTurns !== undefined) {
@@ -6092,6 +6185,10 @@ function buildAdventureFromLobby(state: GameState): void {
     victoryPoints: lobby.options.victoryPoints,
     victoryPointsRoundLimit: lobby.options.victoryPointsRoundLimit,
     customWinConditions: lobby.options.customWinConditions,
+    // WHO GOES FIRST (default random). Carried or the host's deliberate order is
+    // silently dropped and the game rolls anyway.
+    playerOrderMode: lobby.options.playerOrderMode,
+    manualPlayerOrder: lobby.options.manualPlayerOrder,
     spellBook: lobby.options.spellBook,
     moraleCards: lobby.options.moraleCards,
     tournamentMode: lobby.options.tournamentMode,

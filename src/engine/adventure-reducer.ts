@@ -18028,7 +18028,15 @@ export function pumpAdventureQueues(state: GameState): void {
         continue;
       }
 
-      commitFirstPlayerRoll(state);
+      // MANUAL player order (lobby `playerOrderMode: "manual"`): the host fixed
+      // the turn order at setup, so there is nothing to roll and — crucially —
+      // nothing to acknowledge. Rolling here would rotate the order away from
+      // the host's choice AND could arm `openingFirstPlayerRollPending`, which
+      // is the frozen-table class (a ceremony overlay for a roll that never
+      // happened).
+      if (!reward.skipRoll) {
+        commitFirstPlayerRoll(state);
+      }
       if (reward.secondPlayerMorale && state.turnOrder.length >= 2) {
         changeMorale(state, state.turnOrder[1]!, 1);
       }

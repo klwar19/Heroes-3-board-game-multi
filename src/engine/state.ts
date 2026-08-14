@@ -519,6 +519,17 @@ export type FieldOverridePlacementMode = "random" | "manual" | "manual-or-refuse
 export type VictoryMode = "conquest" | "grail" | "dragon-hunt" | "dragon-conqueror";
 
 /**
+ * Who goes first ({@link GameSetupOptions.playerOrderMode}, default "random").
+ *  - "random": the rulebook setup step 22 Attack-die roll picks the first
+ *    player and rotates the seat order to them, published through the opening
+ *    ceremony overlay.
+ *  - "manual": the host writes the whole turn order themselves
+ *    ({@link GameSetupOptions.manualPlayerOrder}); NO die is rolled and the
+ *    ceremony never arms — the order is announced in the feed instead.
+ */
+export type PlayerOrderMode = "random" | "manual";
+
+/**
  * Center-tile Ⅶ objective designation ({@link CustomMapTilePlan.viiField}).
  *   - "town" → Random Town (`random_town`)
  *   - "settlement" → Random Settlement (a difficulty-7 Settlement)
@@ -9995,6 +10006,14 @@ export type AdventureReward =
       secondPlayerMorale?: boolean;
       /** No difficulty bonus: deal the ordinary opening hands after the roll. */
       dealStartingHands?: boolean;
+      /**
+       * MANUAL player order ({@link GameSetupOptions.playerOrderMode}): the
+       * host already fixed the turn order at setup, so this divider does
+       * everything EXCEPT roll — no die, no ceremony, no
+       * `openingFirstPlayerRollPending`. Absent on every random-order game and
+       * on every legacy snapshot.
+       */
+      skipRoll?: boolean;
     }
   | {
       /**
@@ -12301,6 +12320,22 @@ export type GameSetupOptions = {
    * condition is never removed by the lobby. Absent = the map's own list only.
    */
   customWinConditions?: CustomWinCondition[];
+  /**
+   * WHO GOES FIRST (default "random" — absent reads as random, so every legacy
+   * lobby/snapshot is byte-identical). "manual" makes the host write the whole
+   * turn order in {@link manualPlayerOrder}; the setup-step-22 Attack-die roll
+   * and its opening ceremony are then skipped entirely.
+   */
+  playerOrderMode?: PlayerOrderMode;
+  /**
+   * The host's deliberate turn order (seat ids, first player first). Only read
+   * while {@link playerOrderMode} is "manual". `setGameOptions` sanitises it
+   * against the open seats (unknown ids and duplicates dropped, missing seats
+   * appended in seat order) so it always stays a full permutation; a list that
+   * is STILL not a full permutation at build time (a hand-built options object)
+   * falls back to the random roll with a feed note.
+   */
+  manualPlayerOrder?: PlayerId[];
   /**
    * Spell Book house rule (default ON). Gives every player a personal Spell Book
    * zone they may stash hand Spells into to free slots, then cast or boost from.
