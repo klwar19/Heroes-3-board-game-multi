@@ -50,6 +50,23 @@ function homePayoffs(state: GameState, playerId: string): Payoff[] {
   return payoffs;
 }
 
+/**
+ * The bands of the tiles `playerId` opened, in order ("far" = Ⅱ–Ⅲ, "near" =
+ * Ⅳ–Ⅴ, "center" = Ⅵ–Ⅶ), covering BOTH ways a seat opens land: dropping a Ⅱ–Ⅲ
+ * supply tile (TILE_PLACED) and flipping a face-down one (TILE_REVEALED).
+ */
+function openedTileBands(state: GameState, playerId: string): string[] {
+  const bands: string[] = [];
+  for (const event of state.eventLog) {
+    if (event.type !== "TILE_REVEALED" && event.type !== "TILE_PLACED") continue;
+    if ((event as { playerId?: string }).playerId !== playerId) continue;
+    const id = (event as { tileInstanceId?: string }).tileInstanceId;
+    const tile = id ? state.adventure!.tiles[id] : undefined;
+    bands.push(String(tile?.group ?? "?"));
+  }
+  return bands;
+}
+
 function newGame(seed: string): GameState {
   return createAdventureGameState({
     seed,
@@ -118,6 +135,30 @@ describe("single-player opening: the computer sweeps its home tile", () => {
       ).not.toBe(town?.tileInstanceId);
     });
 
+    it(`seed ${seed}: the FIRST land it opens is a Ⅱ–Ⅲ tile, never Ⅳ+`, () => {
+      // USER RULE: "flip tile II-III next … not tile IV-V or VI-VII". Measured
+      // pre-fix on this very seed: round 2 dropped a Ⅱ–Ⅲ tile and round 3 then
+      // flipped a Ⅵ–Ⅶ CENTER tile with a level-2 hero. Both halves of the
+      // opening fix (the tile-Ⅰ rotation doorway and the band-first discovery
+      // preference) are what keep this true — see the "map.discover-high-band-
+      // defer" cases in src/engine/computer/map-navigation.test.ts.
+      const byRound5 = playUntilRound(newGame(seed), 5);
+      expect(byRound5.stalled, byRound5.reason).toBe(false);
+      const bands = openedTileBands(byRound5.state, "p2");
+      // Non-vacuity: the seat really did expand.
+      expect(bands.length, "the computer should open land by round 5").toBeGreaterThan(0);
+      expect(bands[0], `bands opened: ${bands.join(", ")}`).toBe("far");
+      // FIXED-SEED FLOOR (measured): through round 5 these seats still hold a
+      // Ⅱ–Ⅲ supply tile, so the band rule keeps every opening Ⅱ–Ⅲ. Pre-fix this
+      // read "far, center". It is a behavioural floor, not a rule — a seat that
+      // spends its whole Ⅱ–Ⅲ supply DOES flip Ⅳ+ again (measured on the
+      // little_busters faction seed), which is the rule terminating by design.
+      expect(
+        bands.filter((band) => band !== "far"),
+        `bands opened: ${bands.join(", ")}`,
+      ).toEqual([]);
+    });
+
     it(`seed ${seed}: turn 1 banks at least two home payoffs (no stall)`, () => {
       const afterTurn1 = playUntilRound(newGame(seed), 2);
       expect(afterTurn1.stalled, afterTurn1.reason).toBe(false);
@@ -149,6 +190,15 @@ describe("single-player opening: the computer sweeps its home tile", () => {
         afterTurn2.state.adventure!.farTilesOpenedByPlayer?.p2 ?? 0,
         `${factionId}: turn two should open expansion land`,
       ).toBeGreaterThanOrEqual(1);
+      // …and that land is Ⅱ–Ⅲ, never a Ⅳ–Ⅴ / Ⅵ–Ⅶ tile it cannot fight on yet.
+      // Measured on all 17 factions: the first opening is `TILE_PLACED:far`
+      // every time. (little_busters spends BOTH supply tiles by round 3 and
+      // only then flips Ⅳ+ — the rule is self-terminating, by design.)
+      const openedBands = openedTileBands(afterTurn2.state, "p2");
+      expect.soft(
+        openedBands[0],
+        `${factionId}: first land opened should be Ⅱ–Ⅲ (got ${openedBands.join(", ")})`,
+      ).toBe("far");
 
       const afterTurn3 = playUntilRound(newFactionGame(seed, factionId), 4);
       expect.soft(afterTurn3.stalled, `${factionId}: ${afterTurn3.reason}`).toBe(false);

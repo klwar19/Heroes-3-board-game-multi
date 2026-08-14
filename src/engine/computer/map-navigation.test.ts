@@ -12,8 +12,10 @@ import {
   getAdjacentSpaceIds,
   instantiateTile,
   isOuterEdgeSealed,
+  materializeTileFields,
   playerHasPlaceableFarTile,
 } from "../adventure";
+import { applyAction } from "../reducer";
 import {
   canonicalTileEdgeCode,
   hexDirectionBetween,
@@ -25,7 +27,12 @@ import {
   tileLatticeNeighbors
 } from "../hex";
 import { getLegalActions } from "../legal-actions";
-import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
+import { observeForComputer } from "./observation";
+import { getPlayerView } from "../player-view";
+import {
+  canHeroDiscoverAdjacentTile,
+  canHeroImmediatelyAccessAdjacentTile,
+} from "../adventure-reducer";
 import type {
   ArmyUnitState,
   GameAction,
@@ -33,15 +40,20 @@ import type {
   HeroState,
   MapFieldState,
   MapSpaceId,
+  MapTileState,
 } from "../state";
 import { UNOPENED_FAR_TILE } from "../state";
 import {
   canBeatGuardedField,
   collectMapObjectives,
   distanceFromHeroTo,
+  farExpansionRouteRemains,
   freeSeizuresWithinReach,
+  minPrintedGuardDifficultyForBand,
   objectiveDistanceField,
   primaryMapObjective,
+  seatHoldsFarSupplyTile,
+  startTileRotationOpensFarExpansion,
 } from "./map-navigation";
 import {
   armyEngagementTier,
@@ -2196,6 +2208,16 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
     establishP2PackCore(state);
     state.adventure!.victoryMode = "dragon-hunt";
     clearLocalPrizes(state);
+    // NARROWED (Ⅱ–Ⅲ-first opening rule): the doorway this fixture parks at is a
+    // Ⅳ–Ⅴ / Ⅵ–Ⅶ tile, which a level-1 hero can fight nothing on. With a Ⅱ–Ⅲ
+    // supply tile still in hand the AI now expands THAT way first
+    // (`map.discover-high-band-defer`), so the anti-park claim this test exists
+    // for is pinned with the Ⅱ–Ⅲ route already spent. The deferral itself is
+    // pinned in "computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery".
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
     // Neutralise every remaining REACHABLE payoff so only out-of-reach ones stay.
     for (const objective of collectMapObjectives(state, hero)) {
       if (
@@ -2254,6 +2276,12 @@ describe("expansion push — open/place Ⅱ–Ⅲ before a long march to a lefto
     establishP2PackCore(state);
     state.adventure!.victoryMode = "dragon-hunt";
     clearLocalPrizes(state);
+    // NARROWED for the same reason as the sibling above: Ⅱ–Ⅲ expansion outranks
+    // flipping a band this hero cannot fight, so the Ⅱ–Ⅲ route is spent first.
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
 
     // Park the hero on a ring field and guard another ring field 2 steps away;
     // with 1 movement point left the payoff is out of reach this turn.
@@ -3698,5 +3726,504 @@ describe("enter-first-opened-tile boost — safe entries only", () => {
       to: entry,
     });
     expect(scored?.policy).toBe("map.enter-first-opened-tile");
+  });
+});
+
+/**
+ * USER REPORT (single-player opening): "pls make AI always rotate tile I so that
+ * they can access and open tile II-III next … right now still stupid and flip
+ * tiles they can't get in after tile I (like flip tile IV-V or VI-VII)."
+ *
+ * Two independent gaps, both reproduced before the fix:
+ *  1. the round-1 home rotation was scored BAND-BLIND — `tileRotationDoorwayScore`
+ *     rewards an open arc facing ANY face-down tile, so a Ⅵ–Ⅶ frontier counted
+ *     exactly like a Ⅱ–Ⅲ one, and the Ⅱ–Ⅲ SUPPLY placement was invisible to it;
+ *  2. `map.discover-tile` scored a Ⅵ–Ⅶ CENTER tile at 640 for a LEVEL-2 hero —
+ *     measured on 6 of 8 fixed seeds (round 2 placed a Ⅱ–Ⅲ tile, round 3 flipped
+ *     a center tile), which is the reported behaviour verbatim.
+ */
+describe("computer opening: tile Ⅰ rotation and Ⅱ–Ⅲ-first discovery", () => {
+  /** A synthetic tile def with exactly ONE open outer arc (slot 1). */
+  function oneArcDef(
+    id: string,
+    group: "starting" | "far" | "near",
+    /** Optional printed internal lines — used to POCKET the open arc's hex. */
+    internalBorders?: Array<[number, number]>,
+  ) {
+    return {
+      id,
+      group,
+      content: "core_game" as const,
+      terrain: "grass" as const,
+      fields: Array.from({ length: 7 }, () => ({ location: "empty_field" })),
+      outerImpassable: [false, true, true, true, true, true],
+      ...(internalBorders ? { internalBorders } : {}),
+      source: { product: "test", credit: "test" },
+    };
+  }
+
+  /** Lattice centers that TOUCH `center` without overlapping it or each other. */
+  function touchingCenters(
+    center: { row: number; col: number },
+    count: number,
+  ): Array<{ row: number; col: number }> {
+    const footprint = new Set(
+      tileFootprint(center, 0).map((cell) => hexSpaceId(cell)),
+    );
+    const found: Array<{ row: number; col: number }> = [];
+    const taken = new Set<string>();
+    for (let dRow = -4; dRow <= 4 && found.length < count; dRow += 1) {
+      for (let dCol = -4; dCol <= 4 && found.length < count; dCol += 1) {
+        const candidate = { row: center.row + dRow, col: center.col + dCol };
+        const cells = tileFootprint(candidate, 0).map((cell) => hexSpaceId(cell));
+        if (cells.some((cell) => footprint.has(cell) || taken.has(cell))) continue;
+        if (
+          !cells.some((cell) =>
+            getAdjacentSpaceIds(cell).some((id) => footprint.has(id)),
+          )
+        ) {
+          continue;
+        }
+        for (const cell of cells) taken.add(cell);
+        found.push(candidate);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * A p2 home (Ⅰ) tile with ONE open arc, awaiting its round-1 rotation, in an
+   * empty corner of the map so nothing else touches it. `neighbourGroups` are
+   * dropped as face-down tiles of those bands. No Ⅱ–Ⅲ supply, so ONLY the
+   * "discover a Ⅱ–Ⅲ tile" half can qualify a rotation.
+   */
+  function homeRotationFixture(
+    neighbourGroups: Array<"far" | "near">,
+    internalBorders?: Array<[number, number]>,
+  ) {
+    const state = game();
+    const hero = p2Hero(state);
+    const defId = "TEST_AI_HOME_ROTATION_DOORWAY";
+    allTileDefinitions[defId] = oneArcDef(defId, "starting", internalBorders) as never;
+    const center = { row: 30, col: 30 };
+    const tile = {
+      id: "ai-home-rotation-tile",
+      tileDefId: defId,
+      centerRow: center.row,
+      centerCol: center.col,
+      rotation: 0,
+      faceDown: false,
+      group: "starting" as const,
+      awaitingRotation: true,
+    };
+    state.adventure!.tiles[tile.id] = tile;
+    materializeTileFields(state.adventure!, tile);
+    hero.spaceId = hexSpaceId(center);
+    state.adventure!.pendingTileChoice = {
+      tileInstanceId: tile.id,
+      playerId: "p2",
+      kind: "starting",
+    };
+    // No Ⅱ–Ⅲ supply tile: the placement half of the doorway test is off, so the
+    // ONLY way a rotation qualifies is an open arc facing a face-down Ⅱ–Ⅲ tile.
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const spots = touchingCenters(center, neighbourGroups.length);
+    expect(spots.length).toBe(neighbourGroups.length);
+    const neighbours = neighbourGroups.map((group, index) => {
+      const neighbour = {
+        id: `ai-rotation-neighbour-${index}`,
+        tileDefId: "N1",
+        centerRow: spots[index].row,
+        centerCol: spots[index].col,
+        rotation: 0,
+        faceDown: true,
+        group,
+      };
+      state.adventure!.tiles[neighbour.id] = neighbour;
+      return neighbour;
+    });
+    /** The one open arc's hex at `rotation`. */
+    const arcCell = (rotation: number) =>
+      hexSpaceId(tileFootprint(center, rotation)[1]);
+    const facesTile = (rotation: number, neighbour: (typeof neighbours)[number]) => {
+      const cells = new Set(
+        tileFootprint(
+          { row: neighbour.centerRow, col: neighbour.centerCol },
+          0,
+        ).map((cell) => hexSpaceId(cell)),
+      );
+      return getAdjacentSpaceIds(arcCell(rotation)).some((id) => cells.has(id));
+    };
+    const scoreOf = (rotation: number) =>
+      scoreMapAction(observe(state), {
+        type: "SET_TILE_ROTATION",
+        playerId: "p2",
+        tileInstanceId: tile.id,
+        rotation,
+      })!.score;
+    return { state, hero, tile, neighbours, facesTile, scoreOf, defId };
+  }
+
+  it("rotates tile Ⅰ so a Ⅱ–Ⅲ tile can be opened next, not a Ⅳ–Ⅴ one", () => {
+    const fixture = homeRotationFixture(["far", "near"]);
+    try {
+      const { state, hero, tile, neighbours, facesTile, scoreOf } = fixture;
+      const rotations = [0, 1, 2, 3, 4, 5];
+      const farRotation = rotations.find((rotation) =>
+        facesTile(rotation, neighbours[0]),
+      );
+      const nearRotation = rotations.find(
+        (rotation) =>
+          facesTile(rotation, neighbours[1]) && !facesTile(rotation, neighbours[0]),
+      );
+      expect(farRotation, "a rotation must face the Ⅱ–Ⅲ neighbour").toBeDefined();
+      expect(nearRotation, "a rotation must face the Ⅳ–Ⅴ neighbour only").toBeDefined();
+
+      // The DOORWAY PROPERTY itself: only the Ⅱ–Ⅲ-facing rotation lets the hero
+      // open Ⅱ–Ⅲ land next — decided by the LIVE discovery gate, not a copy.
+      expect(
+        startTileRotationOpensFarExpansion(state, tile, farRotation!, hero),
+      ).toBe(true);
+      expect(
+        startTileRotationOpensFarExpansion(state, tile, nearRotation!, hero),
+      ).toBe(false);
+
+      // And the POLICY follows it: the gap dwarfs the whole band-blind doorway
+      // spread (max 45), so the Ⅱ–Ⅲ rotation is picked, not merely preferred.
+      expect(scoreOf(farRotation!) - scoreOf(nearRotation!)).toBeGreaterThan(200);
+      const best = rotations.reduce((a, b) => (scoreOf(b) > scoreOf(a) ? b : a));
+      expect(facesTile(best, neighbours[0])).toBe(true);
+    } finally {
+      delete allTileDefinitions[fixture.defId];
+    }
+  });
+
+  it("CONTROL: with no Ⅱ–Ⅲ route at all, the old tiebreaks still decide (no stall)", () => {
+    const fixture = homeRotationFixture(["near"]);
+    try {
+      const { state, hero, tile, scoreOf } = fixture;
+      const rotations = [0, 1, 2, 3, 4, 5];
+      // Nothing qualifies — no Ⅱ–Ⅲ neighbour, no supply tile.
+      for (const rotation of rotations) {
+        expect(
+          startTileRotationOpensFarExpansion(state, tile, rotation, hero),
+        ).toBe(false);
+      }
+      // …so the new term contributes nothing and the pre-existing tiebreaks
+      // decide: the whole spread stays far below the 240 doorway bonus.
+      const scores = rotations.map(scoreOf);
+      expect(Math.max(...scores) - Math.min(...scores)).toBeLessThan(240);
+      // NEVER a stall: a rotation is still legal and the engine accepts it.
+      const best = rotations.reduce((a, b) => (scoreOf(b) > scoreOf(a) ? b : a));
+      expect(() =>
+        applyAction(state, {
+          type: "SET_TILE_ROTATION",
+          playerId: "p2",
+          tileInstanceId: tile.id,
+          rotation: best,
+        }),
+      ).not.toThrow();
+    } finally {
+      delete allTileDefinitions[fixture.defId];
+    }
+  });
+
+  it("CONTROL: a doorway the hero cannot WALK to does not count", () => {
+    // The one open arc is pocketed off by printed internal lines, so the hex is
+    // a doorway on paper the hero can never stand on. Sealing centre↔1, 1↔2 and
+    // 1↔6 isolates it inside the flower.
+    const fixture = homeRotationFixture(
+      ["far", "near"],
+      [
+        [0, 1],
+        [1, 2],
+        [1, 6],
+      ],
+    );
+    try {
+      const { state, hero, tile, neighbours, facesTile, scoreOf } = fixture;
+      const rotations = [0, 1, 2, 3, 4, 5];
+      const farRotation = rotations.find((rotation) =>
+        facesTile(rotation, neighbours[0]),
+      )!;
+      for (const rotation of rotations) {
+        expect(
+          startTileRotationOpensFarExpansion(state, tile, rotation, hero),
+          `rotation ${rotation} should not count a pocketed arc`,
+        ).toBe(false);
+      }
+      const nearRotation = rotations.find(
+        (rotation) =>
+          facesTile(rotation, neighbours[1]) && !facesTile(rotation, neighbours[0]),
+      )!;
+      expect(scoreOf(farRotation) - scoreOf(nearRotation)).toBeLessThan(240);
+    } finally {
+      delete allTileDefinitions[fixture.defId];
+    }
+  });
+
+  it("CONTROL: when EVERY rotation qualifies the term cannot decide anything", () => {
+    // The stock map: a Ⅱ–Ⅲ supply tile can be dropped from some home hex in any
+    // orientation, so the bonus is a constant and the old tiebreak still picks.
+    const state = game();
+    const hero = p2Hero(state);
+    const homeTileId = state.adventure!.fields[hero.spaceId!].tileInstanceId;
+    const tile = state.adventure!.tiles[homeTileId];
+    state.adventure!.pendingTileChoice = {
+      tileInstanceId: tile.id,
+      playerId: "p2",
+      kind: "starting",
+    };
+    const rotations = [0, 1, 2, 3, 4, 5];
+    for (const rotation of rotations) {
+      expect(
+        startTileRotationOpensFarExpansion(state, tile, rotation, hero),
+        `rotation ${rotation} should keep a Ⅱ–Ⅲ doorway on the stock map`,
+      ).toBe(true);
+    }
+    const scores = rotations.map(
+      (rotation) =>
+        scoreMapAction(observe(state), {
+          type: "SET_TILE_ROTATION",
+          playerId: "p2",
+          tileInstanceId: tile.id,
+          rotation,
+        })!.score,
+    );
+    expect(Math.max(...scores) - Math.min(...scores)).toBeLessThan(240);
+  });
+
+  it("CONTROL: a NON-starting tile rotation is untouched by the Ⅱ–Ⅲ term", () => {
+    // A placed/revealed Ⅱ–Ⅲ or Ⅳ–Ⅴ tile keeps its easiest-entrance + payoff
+    // ordering: the bonus is scoped to `pendingTileChoice.kind === "starting"`.
+    const fixture = homeRotationFixture(["far", "near"]);
+    try {
+      const { state, hero, tile, neighbours, facesTile, scoreOf } = fixture;
+      const rotations = [0, 1, 2, 3, 4, 5];
+      const farRotation = rotations.find((rotation) =>
+        facesTile(rotation, neighbours[0]),
+      )!;
+      const nearRotation = rotations.find(
+        (rotation) =>
+          facesTile(rotation, neighbours[1]) && !facesTile(rotation, neighbours[0]),
+      )!;
+      // The doorway PROPERTY is true either way (a pure geometric read)…
+      expect(startTileRotationOpensFarExpansion(state, tile, farRotation, hero)).toBe(
+        true,
+      );
+      // …and on the round-1 home rotation it is worth the full bonus…
+      const startingGap = scoreOf(farRotation) - scoreOf(nearRotation);
+      expect(startingGap).toBeGreaterThan(200);
+      // …but flipping the SAME tile to a plain reveal removes it entirely, so a
+      // placed/revealed tile keeps its own easiest-entrance + payoff ordering.
+      state.adventure!.pendingTileChoice = {
+        tileInstanceId: tile.id,
+        playerId: "p2",
+        kind: "reveal",
+      };
+      const revealGap = scoreOf(farRotation) - scoreOf(nearRotation);
+      expect(startingGap - revealGap).toBeGreaterThan(200);
+    } finally {
+      delete allTileDefinitions[fixture.defId];
+    }
+  });
+
+  /**
+   * Park the hero where an EXISTING face-down Ⅳ–Ⅴ / Ⅵ–Ⅶ tile is discoverable and
+   * drop a synthetic face-down Ⅱ–Ⅲ tile so BOTH are discoverable from there.
+   */
+  function bothBandsDiscoverable(state: GameState) {
+    const hero = p2Hero(state);
+    // Home objectives out of the way so `map.finish-home-before-discover` (100)
+    // cannot mask the band rule.
+    for (const field of Object.values(state.adventure!.fields)) {
+      const category = locationDefinitions[field.location]?.category;
+      if (category === "flaggable" && field.flagOwnerId !== "p2") {
+        field.flagOwnerId = "p2";
+        field.everFlagged = true;
+        delete field.difficulty;
+      }
+      if (category === "visitable" && !field.blackCube) field.blackCube = true;
+    }
+    state.round = 5;
+    const highBand = parkAtOpenDiscoveryDoorway(state, hero);
+    expect(highBand.group).not.toBe("far");
+    const heroCoord = parseHexSpaceId(hero.spaceId!)!;
+    let farTile: MapTileState | undefined;
+    for (let dRow = -4; dRow <= 4 && !farTile; dRow += 1) {
+      for (let dCol = -4; dCol <= 4 && !farTile; dCol += 1) {
+        const candidate = { row: heroCoord.row + dRow, col: heroCoord.col + dCol };
+        const cells = tileFootprint(candidate, 0).map((cell) => hexSpaceId(cell));
+        if (cells.some((cell) => state.adventure!.fields[cell])) continue;
+        if (
+          Object.values(state.adventure!.tiles).some((other) =>
+            tileFootprint({ row: other.centerRow, col: other.centerCol }, 0).some(
+              (cell) => cells.includes(hexSpaceId(cell)),
+            ),
+          )
+        ) {
+          continue;
+        }
+        if (!cells.some((cell) => getAdjacentSpaceIds(cell).includes(hero.spaceId!))) {
+          continue;
+        }
+        farTile = {
+          id: "ai-band-far-tile",
+          tileDefId: "N1",
+          centerRow: candidate.row,
+          centerCol: candidate.col,
+          rotation: 0,
+          faceDown: true,
+          group: "far",
+        };
+        state.adventure!.tiles[farTile.id] = farTile;
+      }
+    }
+    expect(farTile, "a free lattice slot beside the hero should exist").toBeDefined();
+    return { state, hero, highBand, farTile: farTile! };
+  }
+
+  const discoverScore = (state: GameState, heroId: string, tileId: string) =>
+    scoreMapAction(observe(state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId,
+      tileInstanceId: tileId,
+    })!;
+
+  it("flips the Ⅱ–Ⅲ tile, never the Ⅳ+ tile it cannot fight yet", () => {
+    const { state, hero, highBand, farTile } = bothBandsDiscoverable(game());
+    hero.level = 2; // below every Ⅳ–Ⅴ (4) and Ⅵ–Ⅶ (6) printed guard
+    // Fixture sanity: the engine really offers BOTH discoveries right now.
+    expect(canHeroDiscoverAdjacentTile(state, hero, highBand)).toBe(true);
+    expect(canHeroDiscoverAdjacentTile(state, hero, farTile)).toBe(true);
+
+    const high = discoverScore(state, hero.id, highBand.id);
+    const far = discoverScore(state, hero.id, farTile.id);
+    expect(high.policy).toBe("map.discover-high-band-defer");
+    expect(high.score).toBe(100);
+    expect(far.score).toBeGreaterThan(high.score);
+    // Observable pick: of the two discoveries the engine offers, the AI takes Ⅱ–Ⅲ.
+    const best = [
+      { tile: highBand, score: high.score },
+      { tile: farTile, score: far.score },
+    ].sort((a, b) => b.score - a.score)[0];
+    expect(best.tile.id).toBe(farTile.id);
+  });
+
+  it("CONTROL: with NO Ⅱ–Ⅲ route left the Ⅳ+ discovery happens normally", () => {
+    const { state, hero, highBand, farTile } = bothBandsDiscoverable(game());
+    hero.level = 2;
+    delete state.adventure!.tiles[farTile.id];
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const scored = discoverScore(state, hero.id, highBand.id);
+    expect(scored.policy).not.toBe("map.discover-high-band-defer");
+    expect(scored.score).toBeGreaterThan(300); // above END_TURN — it really flips it
+  });
+
+  it("CONTROL: a hero that OUT-LEVELS the band flips it even with Ⅱ–Ⅲ left", () => {
+    const { state, hero, highBand } = bothBandsDiscoverable(game());
+    hero.level = 7; // beats every printed guard in every band
+    const scored = discoverScore(state, hero.id, highBand.id);
+    expect(scored.policy).not.toBe("map.discover-high-band-defer");
+    expect(scored.score).toBeGreaterThan(300);
+  });
+
+  it("CONTROL: a Ⅱ–Ⅲ tile is NEVER deferred by the band rule", () => {
+    const { state, hero, farTile } = bothBandsDiscoverable(game());
+    hero.level = 1; // below the Ⅱ–Ⅲ band's own printed guard (2) as well
+    const scored = discoverScore(state, hero.id, farTile.id);
+    expect(scored.policy).not.toBe("map.discover-high-band-defer");
+    expect(scored.score).toBeGreaterThan(300);
+  });
+
+  it("reads the band's cheapest printed guard from the shipped catalog", () => {
+    // Ⅰ 1 · Ⅱ–Ⅲ 2 · Ⅳ–Ⅴ 4 · Ⅵ–Ⅶ 6 — the mapping the band rule gates on.
+    expect(minPrintedGuardDifficultyForBand("starting")).toBe(1);
+    expect(minPrintedGuardDifficultyForBand("far")).toBe(2);
+    expect(minPrintedGuardDifficultyForBand("near")).toBe(4);
+    expect(minPrintedGuardDifficultyForBand("center")).toBe(6);
+    expect(minPrintedGuardDifficultyForBand(undefined)).toBe(0);
+  });
+
+  it("both rules survive the REDACTED frame the policy really scores against", () => {
+    // observeForComputer scores `getPlayerView(state, seat)`, where EVERY
+    // playerFarTiles entry — the owner's own included — reads "hidden". A
+    // supply read that matches UNOPENED_FAR_TILE is silently false there, so
+    // both rules would quietly switch off in real play while passing every
+    // raw-state test. Drive them through the real redacted observation.
+    const redacted = (state: GameState) => observeForComputer(state, "p2");
+
+    // (1) discovery: the Ⅳ+ defer still fires on the frame the AI sees.
+    const discovery = bothBandsDiscoverable(game());
+    discovery.hero.level = 2;
+    discovery.state.adventure!.playerFarTiles = {
+      ...(discovery.state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    const highBandScore = scoreMapAction(redacted(discovery.state), {
+      type: "DISCOVER_TILE",
+      playerId: "p2",
+      heroId: discovery.hero.id,
+      tileInstanceId: discovery.highBand.id,
+    })!;
+    expect(highBandScore.policy).toBe("map.discover-high-band-defer");
+
+    // (2) rotation: the home tile's Ⅱ–Ⅲ doorway is still seen on that frame.
+    const state = game();
+    const hero = p2Hero(state);
+    const tile =
+      state.adventure!.tiles[state.adventure!.fields[hero.spaceId!].tileInstanceId];
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    state.adventure!.pendingTileChoice = {
+      tileInstanceId: tile.id,
+      playerId: "p2",
+      kind: "starting",
+    };
+    const view = getPlayerView(state, "p2") as unknown as GameState;
+    const viewHero = Object.values(view.heroes).find(
+      (candidate) => candidate.controllerId === "p2" && candidate.kind === "main",
+    )!;
+    expect(
+      startTileRotationOpensFarExpansion(
+        view,
+        view.adventure!.tiles[tile.id],
+        0,
+        viewHero,
+      ),
+      "the Ⅱ–Ⅲ supply doorway must be visible through the redacted frame",
+    ).toBe(true);
+  });
+
+  it("reads the Ⅱ–Ⅲ supply through a REDACTED player view", () => {
+    // getPlayerView rewrites every playerFarTiles entry — the owner's too — to
+    // "hidden", so `playerHasPlaceableFarTile` is always false on the frame the
+    // policy scores against. The mask-safe count is what the rule must use.
+    const state = game();
+    state.adventure!.playerFarTiles = {
+      ...(state.adventure!.playerFarTiles ?? {}),
+      p2: [UNOPENED_FAR_TILE],
+    };
+    const view = getPlayerView(state, "p2") as unknown as GameState;
+    expect(playerHasPlaceableFarTile(view, "p2")).toBe(false); // the trap
+    expect(seatHoldsFarSupplyTile(view, "p2")).toBe(true);
+    expect(farExpansionRouteRemains(view, "p2")).toBe(true);
+    // …and an EMPTY supply is false through the same view.
+    const spent = game();
+    spent.adventure!.playerFarTiles = {
+      ...(spent.adventure!.playerFarTiles ?? {}),
+      p2: [],
+    };
+    const spentView = getPlayerView(spent, "p2") as unknown as GameState;
+    expect(seatHoldsFarSupplyTile(spentView, "p2")).toBe(false);
   });
 });

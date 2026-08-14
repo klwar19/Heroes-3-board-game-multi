@@ -15,10 +15,13 @@ import {
   heroAtSpace,
   isFieldGuarded,
   listKnownTeleportDestinations,
+  materializeTileFields,
   neutralBattleLevel,
   playerHasPlaceableFarTile,
   playerHoldsTentFlag,
 } from "../adventure";
+import { allTileDefinitions } from "@/data/map/tiles";
+import { hexSpaceId, tileFootprint } from "../hex";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
 import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
@@ -27,6 +30,7 @@ import type {
   HeroState,
   MapFieldState,
   MapSpaceId,
+  MapTileState,
   PlayerId,
 } from "../state";
 import {
@@ -1412,6 +1416,169 @@ function distanceBetweenHomeFields(
   to: MapSpaceId,
 ): number | undefined {
   return distanceFromHeroTo(state, { ...hero, spaceId: from }, to);
+}
+
+/**
+ * Minimum PRINTED guard difficulty a face-down tile of this BAND can carry,
+ * derived from the shipped catalog instead of a hardcoded table (today:
+ * starting 1 · far Ⅱ–Ⅲ 2 · near Ⅳ–Ⅴ 4 · center Ⅵ–Ⅶ 6 · sea/subterranean 4).
+ * The band is exactly what a face-down tile's printed BACK shows every player,
+ * so reading it leaks nothing a human cannot see. A band nobody prints a guard
+ * on answers 0 (never "unbeatable").
+ */
+export function minPrintedGuardDifficultyForBand(
+  group: string | undefined,
+): number {
+  if (!group) return 0;
+  let min = Number.POSITIVE_INFINITY;
+  for (const def of Object.values(allTileDefinitions)) {
+    if (def.group !== group) continue;
+    for (const field of def.fields) {
+      if (field?.difficulty && field.difficulty < min) min = field.difficulty;
+    }
+  }
+  return Number.isFinite(min) ? min : 0;
+}
+
+/**
+ * Whether NOTHING guarded on a face-down tile of this band could be fought by
+ * this hero — its `neutralBattleLevel` is below the band's cheapest printed
+ * guard (the same `>=` reading `canBeatGuardedField` engages on). Deliberately
+ * NOT "cannot enter": every band also prints unguarded fields to walk onto, so
+ * this only says the tile holds no fight the hero can take yet.
+ */
+export function heroCanBeatNoGuardInBand(
+  state: GameState,
+  hero: HeroState,
+  group: string | undefined,
+): boolean {
+  const min = minPrintedGuardDifficultyForBand(group);
+  return min > 0 && neutralBattleLevel(state, hero) < min;
+}
+
+/**
+ * Mask-safe "does this seat still hold an unspent Ⅱ–Ⅲ supply tile?".
+ *
+ * `playerHasPlaceableFarTile` matches `UNOPENED_FAR_TILE` ("?") exactly, but the
+ * policy scores against `getPlayerView`, which rewrites EVERY `playerFarTiles`
+ * entry — including the owner's own — to the literal `"hidden"` (a supply tile
+ * is face down even for its holder). So that predicate is ALWAYS false on the
+ * frame the AI reasons over. The COUNTS survive redaction and are exactly what
+ * the owner's own UI shows, so a masked entry counts as an unspent supply tile
+ * here; the far POOL is length-checked the same way. Nothing hidden is read.
+ * Never call `playerHasPlaceableFarTile` from policy scoring for this reason.
+ */
+export function seatHoldsFarSupplyTile(
+  state: GameState,
+  playerId: PlayerId,
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || (adventure.farTilePool?.length ?? 0) === 0) return false;
+  return (adventure.playerFarTiles?.[playerId] ?? []).length > 0;
+}
+
+/**
+ * Whether the seat still has a Ⅱ–Ⅲ expansion route it has not spent: an UNOPENED
+ * Far supply tile it may still drop, or a face-down Ⅱ–Ⅲ tile this hero could
+ * flip from where it stands right now.
+ *
+ * The second half is deliberately "from HERE", not "somewhere on the board": a
+ * face-down Ⅱ–Ⅲ tile walled off behind a sealed border forever would otherwise
+ * make this true for the rest of the game and permanently freeze the seat's Ⅳ+
+ * discovery (see `map.discover-high-band-defer`). The supply half needs no such
+ * guard — the AI actively marches to placement doorways, so a held tile is spent.
+ */
+export function farExpansionRouteRemains(
+  state: GameState,
+  playerId: PlayerId,
+  hero?: HeroState | null,
+): boolean {
+  if (seatHoldsFarSupplyTile(state, playerId)) return true;
+  if (!hero?.spaceId) return false;
+  return Object.values(state.adventure?.tiles ?? {}).some(
+    (tile) =>
+      tile.faceDown &&
+      tile.group === "far" &&
+      canHeroImmediatelyAccessAdjacentTile(state, hero, tile),
+  );
+}
+
+/**
+ * Would the home (Ⅰ) tile, turned to `rotation`, leave this hero a Ⅱ–Ⅲ DOORWAY —
+ * a hex of its own tile it can walk to and from which it may either flip an
+ * adjacent face-down Ⅱ–Ⅲ tile or drop a Ⅱ–Ⅲ supply tile?
+ *
+ * The rotation is evaluated by re-materializing the ring through the ENGINE's own
+ * `materializeTileFields` onto a shallow copy of `adventure.fields` — the exact
+ * fields SET_TILE_ROTATION will produce — and then asking the LIVE discovery /
+ * placement gates (`canHeroImmediatelyAccessAdjacentTile`,
+ * `farTilePlacementCenters`), never a re-implementation of border logic. Both
+ * honour `discovery-border-gate` in either reading, because the AI probe always
+ * demands immediate access.
+ *
+ * Scoped to the round-1 starting rotation (`onlyRing`, hero on the invariant
+ * centre): re-materializing a ring resets its flags, which is only safe before
+ * anything on the ring has been claimed.
+ */
+export function startTileRotationOpensFarExpansion(
+  state: GameState,
+  tile: MapTileState,
+  rotation: number,
+  hero: HeroState,
+): boolean {
+  const adventure = state.adventure;
+  if (!adventure || !hero.spaceId) return false;
+  // Mask-safe: the policy scores against a redacted view (see the note on
+  // seatHoldsFarSupplyTile) where `playerHasPlaceableFarTile` is always false.
+  const canPlaceFar = seatHoldsFarSupplyTile(state, hero.controllerId);
+  const faceDownFar = Object.values(adventure.tiles).filter(
+    (candidate) => candidate.faceDown && candidate.group === "far",
+  );
+  if (!canPlaceFar && faceDownFar.length === 0) return false;
+
+  const rotated: MapTileState = { ...tile, rotation, awaitingRotation: false };
+  const fields = { ...adventure.fields };
+  const probeAdventure = {
+    ...adventure,
+    fields,
+    tiles: { ...adventure.tiles, [tile.id]: rotated },
+  };
+  materializeTileFields(probeAdventure, rotated, { onlyRing: true });
+  const probeState = { ...state, adventure: probeAdventure } as GameState;
+
+  for (const cell of tileFootprint(
+    { row: tile.centerRow, col: tile.centerCol },
+    rotation,
+  )) {
+    const spaceId = hexSpaceId(cell);
+    const field = fields[spaceId];
+    if (!field || locationDefinitions[field.location]?.category === "blocked") {
+      continue;
+    }
+    // The doorway must be one the hero can actually WALK to (printed internal
+    // borders / blocked fields can pocket a ring hex off from the centre).
+    if (
+      spaceId !== hero.spaceId &&
+      distanceFromHeroTo(probeState, hero, spaceId) === undefined
+    ) {
+      continue;
+    }
+    const probe: HeroState = { ...hero, spaceId };
+    for (const target of faceDownFar) {
+      if (canHeroImmediatelyAccessAdjacentTile(probeState, probe, target)) {
+        return true;
+      }
+    }
+    if (
+      canPlaceFar &&
+      farTilePlacementCenters(probeState, probe, undefined, {
+        requireImmediateAccess: true,
+      }).length > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Whether a payoff field itself is an open doorway into revealed/new land. */

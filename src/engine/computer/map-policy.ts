@@ -53,13 +53,16 @@ import {
 import {
   canBeatGuardedField,
   collectMapObjectives,
+  farExpansionRouteRemains,
   freeSeizuresWithinReach,
+  heroCanBeatNoGuardInBand,
   isHomeTileOpeningObjective,
   homeTileInstanceId,
   objectiveDistanceField,
   ownTownSpaceId,
   premiumEconomyResourceBonus,
   primaryMapObjective,
+  startTileRotationOpensFarExpansion,
   type MapObjective,
   type MapObjectiveKind,
 } from "./map-navigation";
@@ -650,6 +653,11 @@ const OWN_TOWN_DETOUR_SCORE = 240;
 // noise so the blocker actually moves, below a real march/enter step so a
 // secondary with an objective of its own never abandons it to shuffle around.
 const ALLY_UNBLOCK_SCORE = 620;
+// Home (Ⅰ) rotation bonus for leaving a Ⅱ–Ⅲ expansion doorway open — larger
+// than the whole band-blind doorway-count spread (3*9 + 3*6 = 45) so a
+// qualifying rotation always wins, per the user rule. See
+// `startTileFarDoorwayScore`.
+const START_TILE_FAR_DOORWAY_SCORE = 240;
 
 function moveScore(
   observation: ComputerObservation,
@@ -1159,6 +1167,44 @@ function tileHeroEntryScore(
 }
 
 /**
+ * USER RULE: the round-1 home (Ⅰ) rotation must be the one that lets the seat
+ * open a Ⅱ–Ⅲ tile NEXT, after the three home objectives are drained. The
+ * generic `tileRotationDoorwayScore` counts open arcs but is BAND-BLIND (a
+ * frontier doorway onto a Ⅳ–Ⅴ or Ⅵ–Ⅶ tile scores exactly like one onto Ⅱ–Ⅲ),
+ * and it never asks whether a Ⅱ–Ⅲ SUPPLY tile could be dropped through that
+ * arc at all — so the alignment on the stock layout was luck, not policy.
+ *
+ * The weight (240) is deliberately larger than the whole doorway-count spread
+ * (max 45) so on the home tile this is effectively "always". Scoped to the
+ * `"starting"` rotation on purpose:
+ *  - the hero sits on the rotation-invariant centre there, so the entrance
+ *    grading cancels out and this term cannot fight it;
+ *  - a placed/revealed Ⅱ–Ⅲ / Ⅳ–Ⅴ tile keeps its existing easiest-entrance +
+ *    payoff-reachability ordering untouched.
+ * FALLBACK: when no rotation qualifies (no Ⅱ–Ⅲ neighbour, no supply tile, or
+ * every arc walled) every rotation scores 0 here and the previous tiebreaks
+ * decide exactly as before — never a stall.
+ */
+function startTileFarDoorwayScore(
+  observation: ComputerObservation,
+  state: GameState,
+  tile: MapTileState,
+  rotation: number,
+): number {
+  if (state.adventure?.pendingTileChoice?.kind !== "starting") return 0;
+  const hero = Object.values(state.heroes).find(
+    (candidate) =>
+      candidate.controllerId === observation.playerId &&
+      candidate.kind === "main" &&
+      candidate.spaceId,
+  );
+  if (!hero) return 0;
+  return startTileRotationOpensFarExpansion(state, tile, rotation, hero)
+    ? START_TILE_FAR_DOORWAY_SCORE
+    : 0;
+}
+
+/**
  * Score a tile rotation so the AI opens a doorway onto the new land instead of
  * sealing itself off with a random hash pick among equal foundation scores.
  */
@@ -1207,6 +1253,7 @@ function tileRotationScore(
   // land / future tiles means the hero can leave again and keep expanding —
   // never rotate yourself into a dead end when an equal entrance avoids it.
   score += tileRotationDoorwayScore(state, tile, action.rotation);
+  score += startTileFarDoorwayScore(observation, state, tile, action.rotation);
 
   // Stable preference among equal scores (lower rotation when all equal).
   score += (6 - action.rotation) * 0.01;
@@ -2093,6 +2140,27 @@ export function scoreMapAction(
         // reserved for stepping into it (this turn or the next). Do not expose
         // a second adjacent tile while still standing on tile I.
         return { score: 100, policy: "map.enter-opened-tile-before-more-discovery" };
+      }
+      // USER RULE: while cheap Ⅱ–Ⅲ expansion is still ahead of the seat, never
+      // burn a discovery on a Ⅳ–Ⅴ / Ⅵ–Ⅶ tile whose cheapest printed guard is
+      // already above the hero's battle level. Measured pre-fix on 6 of 8 fixed
+      // seeds: round 2 placed a Ⅱ–Ⅲ tile, then round 3 flipped a Ⅵ–Ⅶ CENTER
+      // tile at 640 with a level-2 hero — the reported "flip tiles they can't
+      // get in". 100 is the file's established "do not do this" band (below
+      // END_TURN 300), so the seat marches / places instead.
+      // SELF-TERMINATING on BOTH halves, so late-game Ⅳ+ discovery is untouched:
+      // the hero out-levels the band (level 4 opens Ⅳ–Ⅴ, level 6 Ⅵ–Ⅶ), or the
+      // Ⅱ–Ⅲ route runs out (last supply tile spent AND no Ⅱ–Ⅲ tile the hero can
+      // flip from where it stands). A Ⅱ–Ⅲ tile is NEVER deferred by this.
+      if (
+        hero &&
+        tile &&
+        tile.group !== "far" &&
+        tile.group !== "starting" &&
+        heroCanBeatNoGuardInBand(state, hero, tile.group) &&
+        farExpansionRouteRemains(state, observation.playerId, hero)
+      ) {
+        return { score: 100, policy: "map.discover-high-band-defer" };
       }
       const farGroup =
         tile?.group === "far";

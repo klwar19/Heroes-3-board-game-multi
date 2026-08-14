@@ -1020,6 +1020,30 @@ turn 3 (`bestHomeOpeningObjective`), and a hero on a STANDALONE Monolith is
 selectable again. `frost-ring-meteor-shower.test.ts`, `catapult-siege.test.ts`,
 `map-navigation.test.ts`, `single-player-opening.test.ts`.
 
+## AI opening is Ⅱ–Ⅲ-first: tile Ⅰ rotation + band-first discovery (2026-08-14)
+
+Score layer only (engine rules untouched, no protocol change). LIMITS FIRST: on the
+STOCK layout every home rotation already leaves a Ⅱ–Ⅲ doorway, so the rotation term is
+a constant there and changes nothing — it only decides on maps where some rotations
+wall Ⅱ–Ⅲ off; it is scoped to `pendingTileChoice.kind === "starting"` (a placed/revealed
+tile keeps its easiest-entrance ordering); with NO qualifying rotation the old tiebreaks
+decide (never a stall); deferring a Ⅳ+ flip can leave the AI with only END_TURN that
+step (discovery costs no MP, so nothing is lost but map info); and the AI's own explore
+objectives are still blind to its supply through the redaction (pre-existing, NOT fixed).
+What runs: `startTileRotationOpensFarExpansion` re-materializes the ring through the
+ENGINE's `materializeTileFields` and asks the LIVE discover/place gates (so both
+`discovery-border-gate` readings hold), worth 240 — above the whole band-blind doorway
+spread (45); and `map.discover-high-band-defer` sinks a Ⅳ–Ⅴ / Ⅵ–Ⅶ discovery to 100 while
+`heroCanBeatNoGuardInBand` (band minimum read from the shipped catalog: Ⅰ1 · Ⅱ–Ⅲ2 ·
+Ⅳ–Ⅴ4 · Ⅵ–Ⅶ6) and `farExpansionRouteRemains` hold — self-terminating on both halves, and
+a Ⅱ–Ⅲ tile is never deferred. Both read the supply via `seatHoldsFarSupplyTile`:
+`getPlayerView` masks EVERY `playerFarTiles` entry (the owner's too) to `"hidden"`, so
+`playerHasPlaceableFarTile` is ALWAYS false on the frame the policy scores — never call
+it from policy code. Repro: 6/8 fixed seeds flipped a Ⅵ–Ⅶ tile at R3 with a level-2 hero
+(640); now 0/8. Pinned in `map-navigation.test.ts` ("computer opening: tile Ⅰ rotation
+and Ⅱ–Ⅲ-first discovery", 12) + the end-to-end floor in `single-player-opening.test.ts`;
+two "expansion push" pins were NARROWED (Ⅱ–Ⅲ route spent) with the reason in place.
+
 ## Random Town defenders match the printed card (2026-08-04)
 
 The Ⅶ Random Town's default defense is the printed card: ONE BRONZE Pack (a player
