@@ -2129,7 +2129,25 @@ export default function Home() {
         }
       });
 
-      if (freshDiceCues.length > 0) {
+      // The battlefield dice overlay (`<DiceOverlay>`) is mounted ONLY on the
+      // combat-board layout, and each cue completes through that overlay's own
+      // timers. A combat cue held while the table shows the MAP can therefore
+      // never finish — and `dice.current` gates the map's PromptTray, so an
+      // undrained cue invisibly hid an owed visit choice (the reported
+      // "rolled the Treasure dice, then received nothing" freeze) until the
+      // presentation watchdog cleared it up to 20s later. Mirrors the
+      // `combatVisible` layout switch: cues are queued only while the battle
+      // board can actually present them, and any leftover (the player clicked
+      // "Return to the adventure map" while the last roll was still reading,
+      // or a bulk-resolved AI/neutral fight's rolls arrived map-side) is
+      // dropped — leaving the battlefield forfeits the leftover cinematic.
+      const combatBoardLive = Boolean(
+        nextState.combat && (nextState.sessionMode !== "single-player" || combatHasHumanParticipant(nextState))
+      );
+      if (!combatBoardLive) {
+        setDice((current) => (current.current || current.queue.length > 0 ? { current: null, queue: [] } : current));
+      }
+      if (freshDiceCues.length > 0 && combatBoardLive) {
         setDice((current) => {
           const queue = [...current.queue, ...freshDiceCues];
           if (!current.current && queue.length > 0) {
@@ -3465,7 +3483,7 @@ export default function Home() {
         // Show any spell rolls (Inferno) collected above in the attack-die
         // overlay, each waiting out the beat the loop scheduled it at (the spell
         // card's flight) before its cube tumbles.
-        if (spellDiceCues.length > 0) {
+        if (spellDiceCues.length > 0 && combatBoardLive) {
           setDice((current) => {
             const queue = [...current.queue, ...spellDiceCues];
             if (!current.current && queue.length > 0) {
