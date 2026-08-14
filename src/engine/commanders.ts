@@ -20,7 +20,7 @@ import {
 } from "@/data/commanders";
 import { aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
 import { equipmentGrantsCommanderRevive, equipmentGrantsCommanderSort } from "./anime-equipment";
-import { unitImmuneToParalysis } from "./active-effects";
+import { makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { shuffleCards } from "./decks";
@@ -449,45 +449,39 @@ export function playerHasLivingFirstAidCommander(state: GameState, playerId: Pla
 }
 
 /**
- * GENERIC pre-combat SORT capability. True when the Commanders module is on, the
- * player's commander is present + alive in THIS combat, AND some source grants
- * the capability. The reusable predicate the setup window keys off — designed so
- * a FUTURE hero-equipment item can grant it too (a second OR-branch reading the
- * hero's equipment; see the marked seam below), never touching the window
- * machinery.
+ * The ABILITY sources that grant the pre-combat SORT: the Vanguard Marshal
+ * specialty (Cove Sea Marshal — plus the Bulwark Ruler and Little Busters
+ * Kyousuke, who share it) and the Marshal's War Horn hero-equipment item
+ * (anime.equipment; module-off / unworn ⇒ false). These — and ONLY these — also
+ * carry the front-line +2 Speed buff (`commanderFrontLineSpeedBonusActive`); the
+ * Speed-grade unlock below deliberately does not.
  */
-export function commanderPreCombatSortAvailable(state: GameState, playerId: PlayerId): boolean {
-  if (!commandersModuleEnabled(state)) {
-    return false;
-  }
-  const unit = findCommanderUnit(state, playerId);
-  if (!unit || unit.damage >= unit.maxHealth) {
-    return false;
-  }
-  const commander = state.players[playerId]?.commander;
+export function commanderSortAbilitySource(state: GameState, playerId: PlayerId): boolean {
+  const commander = livingCommanderOf(state.players[playerId]);
   if (!commander) {
     return false;
   }
-  // Source 1: the Vanguard Marshal specialty (Cove Sea Marshal).
-  if (commanderIsVanguardMarshal(commander)) {
-    return true;
-  }
-  // Source 2: the Marshal's War Horn hero-equipment item (anime.equipment). Reads
-  // the main hero's equipment off `state`; module-off / unworn ⇒ false. This is
-  // the seam the predicate was designed around — the window machinery is untouched.
-  if (equipmentGrantsCommanderSort(state, playerId)) {
-    return true;
-  }
-  return false;
+  return commanderIsVanguardMarshal(commander) || equipmentGrantsCommanderSort(state, playerId);
 }
 
 /**
- * The same generic sort capability before the commander has been injected.
- * Used to put Vanguard/equipment commanders directly into ordinary troop
- * deployment, where commander, Little Busters hero and army cards are arranged
- * together and confirmed by one Ready action.
+ * Speed-grade unlock threshold: one `COMMANDER_GRADE_UP` spent on speed (grade
+ * >= 1) makes the commander a normally-placed body forever after.
  */
-export function commanderIntegratedDeploymentSortAvailable(state: GameState, playerId: PlayerId): boolean {
+export const COMMANDER_SORT_SPEED_GRADE = 1;
+
+/**
+ * THE shared read: may `playerId` arrange their commander before the fight?
+ * True when the Commanders module is on, the player owns a LIVING commander, and
+ * either
+ *  - its Speed grade has been raised at least once (the user rule: "if player
+ *    increase commander speed once, allow sorting commander with units always"),
+ *    or
+ *  - an ability source grants it (Vanguard Marshal / Marshal's War Horn).
+ * Both sort surfaces (the integrated troop deployment and the separate
+ * commander-only window) key off this one function, so they cannot drift.
+ */
+export function commanderSortUnlocked(state: GameState, playerId: PlayerId): boolean {
   if (!commandersModuleEnabled(state)) {
     return false;
   }
@@ -495,7 +489,33 @@ export function commanderIntegratedDeploymentSortAvailable(state: GameState, pla
   if (!commander) {
     return false;
   }
-  return commanderIsVanguardMarshal(commander) || equipmentGrantsCommanderSort(state, playerId);
+  if (commanderGradesOf(commander).speed >= COMMANDER_SORT_SPEED_GRADE) {
+    return true;
+  }
+  return commanderSortAbilitySource(state, playerId);
+}
+
+/**
+ * GENERIC pre-combat SORT capability. True when the commander is present + alive
+ * in THIS combat AND `commanderSortUnlocked` holds. The predicate the separate
+ * commander-only setup window keys off.
+ */
+export function commanderPreCombatSortAvailable(state: GameState, playerId: PlayerId): boolean {
+  const unit = findCommanderUnit(state, playerId);
+  if (!unit || unit.damage >= unit.maxHealth) {
+    return false;
+  }
+  return commanderSortUnlocked(state, playerId);
+}
+
+/**
+ * The same generic sort capability before the commander has been injected.
+ * Used to put sort-unlocked commanders directly into ordinary troop deployment,
+ * where commander, Little Busters hero and army cards are arranged together and
+ * confirmed by one Ready action.
+ */
+export function commanderIntegratedDeploymentSortAvailable(state: GameState, playerId: PlayerId): boolean {
+  return commanderSortUnlocked(state, playerId);
 }
 
 /** The cells considered `unit`'s own front line in the current combat. */
@@ -519,6 +539,71 @@ function commanderFrontLineCells(state: GameState, unit: CombatUnitState): reado
 /** Whether the commander unit currently stands on its own front line. */
 export function commanderOnOwnFrontLine(state: GameState, unit: CombatUnitState): boolean {
   return commanderFrontLineCells(state, unit).includes(unit.position);
+}
+
+/**
+ * Front-line SPEED buff on the SORT-granting ABILITIES (user rule: "buff the
+ * current cove and other ability that allow sorting commander to increase speed
+ * by 2 if at frontline"). +2 Initiative, whole combat.
+ */
+export const COMMANDER_FRONT_LINE_SPEED_BONUS = 2;
+
+/** Effect name of the front-line Speed buff (also its idempotence key). */
+export const COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME = "Front-line command — Speed";
+
+/**
+ * Combat-start read: does this commander earn the front-line Speed buff? The
+ * ability sources ONLY (Vanguard Marshal / Marshal's War Horn) — the Speed-grade
+ * sort unlock deliberately grants no bonus, and the commander must be standing on
+ * its own front line when the fighting begins.
+ */
+export function commanderFrontLineSpeedBonusActive(
+  state: GameState,
+  playerId: PlayerId,
+  unit: CombatUnitState
+): boolean {
+  return commanderSortAbilitySource(state, playerId) && commanderOnOwnFrontLine(state, unit);
+}
+
+/**
+ * Lay the front-line Speed buff as a real combat-duration INITIATIVE_BONUS on the
+ * commander's unit, so `effectiveInitiative` reads it and the activation order
+ * genuinely moves. Measured ONCE, at combat start — i.e. after the pre-combat
+ * sort/deployment the buff exists to reward — and then held for the whole fight;
+ * walking off the front line later does not take it away (unlike the Vanguard
+ * Marshal's live +1 Attack, which is a per-attack positional read).
+ */
+function applyCommanderFrontLineSpeed(state: GameState, playerId: PlayerId, unit: CombatUnitState): void {
+  if (!commanderFrontLineSpeedBonusActive(state, playerId, unit)) {
+    return;
+  }
+  // Idempotent across any finalizeCombatStart re-entry (the combat-start package
+  // can be resumed after a Disciplinary/Bounty-Hunter window): never stack twice.
+  const already = state.activeEffects.some(
+    (effect) =>
+      effect.name === COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME &&
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unit.id
+  );
+  if (already) {
+    return;
+  }
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME,
+        scope: "unit",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "INITIATIVE_BONUS", amount: COMMANDER_FRONT_LINE_SPEED_BONUS }]
+      },
+      { type: "system" },
+      playerId,
+      { type: "unit", unitId: unit.id }
+    )
+  );
 }
 
 /** Whether a Superior Combat stance is ACTIVE this combat round (rounds 1-2). */
@@ -928,6 +1013,12 @@ export function applyCommanderCombatStart(state: GameState): void {
     if (!unit || !player || unit.damage >= unit.maxHealth) {
       continue;
     }
+
+    // Sort-ABILITY commanders (Vanguard Marshal / Marshal's War Horn) that ended
+    // the pre-combat arrangement on their own front line take +2 Initiative for
+    // the whole fight. Read here, after the sort window has drained, so the
+    // position it measures is the one the owner actually chose.
+    applyCommanderFrontLineSpeed(state, playerId, unit);
 
     switch (unit.commanderSlug) {
       case "temple_guardian":

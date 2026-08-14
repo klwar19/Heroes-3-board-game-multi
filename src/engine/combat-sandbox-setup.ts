@@ -30,6 +30,7 @@ import {
   TOURNAMENT_REMOVED_ABILITY_ID,
   TOURNAMENT_REMOVED_ARTIFACT_ID
 } from "./adventure-setup";
+import { prepareIntegratedCombatDeployment } from "./adventure-reducer";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import { makeInitialCommanderState } from "./commanders";
 import { shuffleCards } from "./decks";
@@ -793,6 +794,17 @@ export function sandboxBeginCombat(
     units: {},
     obstacles: [...obstacles].sort((a, b) => a - b)
   };
+
+  // Same preparation the two ADVENTURE combat-start paths run
+  // (startNeutralEncounter / startPlayerCombat): a seat whose commander is
+  // sort-unlocked (`commanderSortUnlocked` — an ability source, or a raised Speed
+  // grade) gets it on the board NOW so it is arranged together with the troops
+  // and confirmed by the ordinary Ready. Without this the Battle Test arena was
+  // the ONE surface that fell through to the separate commander-only window
+  // after both sides Ready, parking the phase in `combat-setup` instead of
+  // starting the fight (pre-existing for a Vanguard-Marshal seat; reachable by
+  // any Speed-graded commander since 2026-08-14).
+  prepareIntegratedCombatDeployment(state);
 
   state.phase = "combat-setup";
   state.round = 1;

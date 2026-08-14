@@ -262,6 +262,72 @@ describe("Battle Test free setup", () => {
     );
   });
 
+  it("a SORT-UNLOCKED commander joins the sandbox's own troop deployment (no separate window)", () => {
+    // REGRESSION (2026-08-14): the Battle Test arena builds its own combat.setup
+    // and was the ONE surface that never ran prepareIntegratedCombatDeployment.
+    // A sort-unlocked commander therefore fell through to the separate
+    // commander-only window after BOTH sides pressed Ready, parking the phase in
+    // "combat-setup" instead of starting the fight.
+    let state = createCombatSandboxLobbyState("sandbox-commander-sort");
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { wog: { enabled: true, commanders: true } }
+    });
+    // Speed grade 1 = the 2026-08-14 sort unlock (p2 stays at grade 0).
+    state = applyOk(state, {
+      type: "SANDBOX_CONFIGURE_SEAT",
+      playerId: "p1",
+      seatId: "p1",
+      commanderGrades: { attack: 0, defense: 0, health: 0, damage: 0, magic: 0, speed: 1 }
+    });
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+
+    // The unlocked seat's commander is on the board DURING deployment and can be
+    // arranged with the troops; the grade-0 seat's is not (it auto-places later).
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual(["p1"]);
+    const commanderUnits = Object.values(state.combat!.units).filter((unit) => unit.commanderSlug);
+    expect(commanderUnits.map((unit) => unit.controllerId)).toEqual(["p1"]);
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "PLACE_COMMANDER")).toBe(true);
+    expect(getLegalActions(state, "p2").some((legal) => legal.action.type === "PLACE_COMMANDER")).toBe(false);
+
+    // Both sides Ready → the fight STARTS (no separate commander window parks it)
+    // and p2's commander auto-places as before, so both are on the board.
+    state = applyOk(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: state.players.p1.army[0]!.id,
+      position: 12
+    });
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    state = applyOk(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p2",
+      armyUnitId: state.players.p2.army[0]!.id,
+      position: 4
+    });
+    state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p2" });
+
+    expect(state.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(state.phase).not.toBe("combat-setup");
+    expect(Object.values(state.combat!.units).filter((unit) => unit.commanderSlug)).toHaveLength(2);
+  });
+
+  it("CONTROL: with no sort unlock the sandbox commanders only auto-place after Ready", () => {
+    let state = createCombatSandboxLobbyState("sandbox-commander-nosort");
+    state = applyOk(state, {
+      type: "SANDBOX_SET_OPTIONS",
+      playerId: "p1",
+      options: { wog: { enabled: true, commanders: true } }
+    });
+    state = applyOk(state, { type: "SANDBOX_BEGIN_COMBAT", playerId: "p1" });
+    // `?? []` so this stays a BEHAVIOURAL control (nobody is sort-unlocked),
+    // not a shape assertion about whether the preparation ran at all.
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds ?? []).toEqual([]);
+    expect(Object.values(state.combat!.units).some((unit) => unit.commanderSlug)).toBe(false);
+    expect(getLegalActions(state, "p1").some((legal) => legal.action.type === "PLACE_COMMANDER")).toBe(false);
+  });
+
   it("Begin with morale cards stores the rule on sandboxRules and seeds decks", () => {
     let state = createCombatSandboxLobbyState("sandbox-morale");
     state = applyOk(state, {

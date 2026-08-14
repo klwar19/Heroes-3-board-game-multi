@@ -91,6 +91,7 @@ import { MapSpellBoostModal } from "@/components/table/map-spell-boost-modal";
 import { attackDeclarationForRoll, makeCombatDiceCue } from "@/components/table/combat-dice-cue";
 import { MoraleOverflowPrompt } from "@/components/table/morale-overflow-prompt";
 import { StoryOverlay, type StoryCue } from "@/components/table/story-overlay";
+import { CommanderIntroOverlay } from "@/components/table/commander-intro-overlay";
 import { SinglePlayerSavePanel } from "@/components/single-player-save-panel";
 import {
   clearPendingSinglePlayerLoad,
@@ -6950,6 +6951,10 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && !mapDice.current && moraleCue.current ? (
             <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
           ) : null}
+          {/* WOG Commanders: the one-time "how your commander is placed" card.
+              Pure presentation and self-gating — module off / no commander /
+              already seen this game ⇒ it renders nothing. */}
+          <CommanderIntroOverlay state={state} viewerPlayerId={viewerPlayerId} />
           <FxStage cues={fxCues} onDone={handleFxDone} />
           {reactionsLayer}
           {phoneUi ? (
@@ -7381,6 +7386,9 @@ export default function Home() {
       {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && moraleCue.current ? (
         <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
       ) : null}
+      {/* Same one-time Commanders card on the battle screen (a direct-link
+          joiner may land straight in a fight). */}
+      <CommanderIntroOverlay state={state} viewerPlayerId={viewerPlayerId} />
       <FxStage cues={fxCues} onDone={handleFxDone} />
       {reactionsLayer}
       {phoneUi ? (

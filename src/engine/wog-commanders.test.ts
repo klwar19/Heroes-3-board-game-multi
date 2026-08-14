@@ -22,18 +22,23 @@ import {
   makeCommanderCombatUnit,
   commanderAbilityIds,
   commanderDeploymentCellsFor,
+  commanderFrontLineSpeedBonusActive,
+  commanderIntegratedDeploymentSortAvailable,
   commanderOnOwnFrontLine,
   commanderPreCombatSortAvailable,
+  commanderSortAbilitySource,
+  commanderSortUnlocked,
   commanderUnitId,
   findCommanderUnit,
   gainExperience,
+  getActivationOrder,
   nextAfkDropAction,
   placementCellsFor,
   spellLimitFor,
   DEFAULT_ANIME_OPTIONS,
   EQUIPMENT_IDS
 } from "./index";
-import { finalizeCommandersAfterCombat } from "./commanders";
+import { COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME, finalizeCommandersAfterCombat } from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { warMachinesForSale } from "./permanents";
 import { hasBallistaChooseTarget, effectiveInitiative } from "./active-effects";
@@ -2177,5 +2182,223 @@ describe("WOG commanders — Demon Ancestor (Heavenly Demon Palace)", () => {
 
     expect(strike(false)).toBe(2); // base attack 2 + die 0
     expect(strike(true)).toBe(3); // Blood Frenzy Pow 1: +1 → 3
+  });
+});
+
+// ===========================================================================
+// Speed-grade sort unlock + the ability-only front-line +2 Speed buff.
+//
+// USER RULING: "if player increase commander speed once, allow sorting commander
+// with units always, not just the cove ability or others" and "buff the current
+// cove and other ability that allow sorting commander to increase speed by 2 if
+// at frontline".
+// ===========================================================================
+
+describe("WOG commanders — Speed grade unlocks the pre-combat sort", () => {
+  /** Cells of the attacker's front / back row on the 4x5 board. */
+  const ATTACKER_FRONT = [12, 13, 14, 15];
+  const ATTACKER_BACK = [16, 17, 18, 19];
+
+  function castleWithSpeedGrade(seed: string, speed: number): GameState {
+    const state = adventureWithCommanders(seed);
+    state.players.p1.commander = freshCommander("paladin", { speed });
+    return state;
+  }
+
+  it("commanderSortUnlocked: a Speed grade of 1 unlocks a NON-ability commander (CONTROL: grade 0 does not)", () => {
+    const unlocked = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-unlock", 1));
+    expect(commanderSortUnlocked(unlocked, "p1")).toBe(true);
+    // ...and it is NOT the ability branch that answered.
+    expect(commanderSortAbilitySource(unlocked, "p1")).toBe(false);
+
+    // CONTROL: the same Paladin at Speed grade 0 stays auto-placed.
+    const locked = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-locked", 0));
+    expect(commanderSortUnlocked(locked, "p1")).toBe(false);
+
+    // CONTROL: module OFF — the grade means nothing.
+    const off = castleWithSpeedGrade("cmd-speed-module-off", 3);
+    off.wog = { enabled: false, commanders: false, newObjects: false, newCreatures: false, artifacts: false };
+    expect(commanderSortUnlocked(off, "p1")).toBe(false);
+  });
+
+  it("the two sort surfaces read the ONE predicate (integrated deployment + the separate window)", () => {
+    const state = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-both-surfaces", 1));
+    expect(commanderIntegratedDeploymentSortAvailable(state, "p1")).toBe(true);
+    const fought = intoNeutralFight(castleWithSpeedGrade("cmd-speed-both-surfaces-2", 1));
+    expect(commanderPreCombatSortAvailable(fought, "p1")).toBe(true);
+  });
+
+  it("a Speed-graded commander joins ordinary troop deployment and really moves", () => {
+    const state = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-deploy", 1));
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual(["p1"]);
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    expect(commander, "commander on the board during deployment").toBeTruthy();
+    expect(getLegalActions(state, "p1").some((offer) => offer.action.type === "PLACE_COMMANDER")).toBe(true);
+
+    const zone = commanderDeploymentCellsFor(state, "p1");
+    const occupied = new Set(Object.values(state.combat!.units).map((unit) => unit.position));
+    const target = zone.find((cell) => !occupied.has(cell) && cell !== commander.position)!;
+    const moved = apply(state, { type: "PLACE_COMMANDER", playerId: "p1", position: target });
+    expect(moved.combat!.units[commanderUnitId("p1")].position).toBe(target);
+  });
+
+  it("CONTROL: at Speed grade 0 the commander is absent from deployment and only auto-places on Ready", () => {
+    let state = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-control", 0));
+    expect(state.combat!.integratedCommanderDeploymentPlayerIds).toEqual([]);
+    expect(state.combat!.units[commanderUnitId("p1")]).toBeUndefined();
+    expect(getLegalActions(state, "p1").some((offer) => offer.action.type === "PLACE_COMMANDER")).toBe(false);
+    applyError(state, { type: "PLACE_COMMANDER", playerId: "p1", position: 16 });
+
+    const place = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    state = apply(state, place.action);
+    state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    expect(state.combat!.units[commanderUnitId("p1")], "auto-placed after Ready").toBeTruthy();
+  });
+
+  it("a COMPUTER seat with the Speed unlock never stalls — the fight starts and round 1 runs", () => {
+    const state = castleWithSpeedGrade("cmd-speed-ai", 1);
+    state.controllers = { p1: { kind: "computer", difficulty: "standard", policyVersion: 1 } };
+    const fought = intoNeutralFight(state);
+    // No separate commander window was opened for the computer seat...
+    expect(fought.combat!.pendingCommanderPlacement ?? null).toBeNull();
+    expect(fought.phase).not.toBe("combat-setup");
+    // ...and the capability genuinely held (the skip is the computer check).
+    expect(commanderSortUnlocked(fought, "p1")).toBe(true);
+    expect(fought.eventLog.some((event) => event.type === "COMBAT_ROUND_STARTED")).toBe(true);
+  });
+
+  it("the AFK/turn-timeout driver closes a Speed-unlocked deployment with the ordinary Ready", () => {
+    let state = intoNeutralDeployment(castleWithSpeedGrade("cmd-speed-afk", 1));
+    const place = getLegalActions(state, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT")!;
+    state = apply(state, place.action);
+    expect(nextAfkDropAction(state, "p1")).toEqual({ type: "RESOLVE_AFK_DROP", playerId: "p1" });
+  });
+
+  // -------------------------------------------------------------------------
+  // The +2 Speed front-line buff (ABILITY sources only).
+  // -------------------------------------------------------------------------
+
+  /**
+   * Deploy p1's commander onto `cell`, press Ready, and return the settled
+   * combat. Requires the commander to be sort-unlocked (it is placed by hand).
+   */
+  function fightWithCommanderAt(state: GameState, cell: number): GameState {
+    let current = intoNeutralDeployment(state);
+    const commander = current.combat!.units[commanderUnitId("p1")];
+    expect(commander, "commander in deployment").toBeTruthy();
+    if (commander.position !== cell) {
+      current = apply(current, { type: "PLACE_COMMANDER", playerId: "p1", position: cell });
+    }
+    const place = getLegalActions(current, "p1").find((legal) => legal.action.type === "PLACE_COMBAT_UNIT");
+    if (place) {
+      current = apply(current, place.action);
+    }
+    return apply(current, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  }
+
+  /** LIVE (effect-folded) initiative of p1's commander in a settled combat. */
+  function commanderInitiative(state: GameState): number {
+    const unit = state.combat!.units[commanderUnitId("p1")];
+    return effectiveInitiative(unit, state.activeEffects, state.combat);
+  }
+
+  it("a Cove (Vanguard Marshal) commander starting on its FRONT LINE gains +2 Speed for the combat", () => {
+    const front = fightWithCommanderAt(adventureWithCommanders("cmd-front-speed", "cove", undefined), 13);
+    expect(ATTACKER_FRONT).toContain(13);
+    const unit = front.combat!.units[commanderUnitId("p1")];
+    // Printed Speed grade 0 = initiative 5; the buff makes the LIVE read 7.
+    expect(unit.initiative).toBe(5);
+    expect(commanderInitiative(front)).toBe(7);
+  });
+
+  it("the buff really MOVES the activation order (it out-speeds a 6-initiative body)", () => {
+    const front = fightWithCommanderAt(adventureWithCommanders("cmd-front-order", "cove", undefined), 13);
+    // Give an enemy body initiative 6: above the commander's printed 5, below the
+    // buffed 7. With the buff the commander activates first.
+    const enemy = Object.values(front.combat!.units).find((unit) => unit.controllerId !== "p1")!;
+    enemy.initiative = 6;
+    const order = getActivationOrder(front.combat!, front.activeEffects).map((unit) => unit.id);
+    expect(order.indexOf(commanderUnitId("p1"))).toBeLessThan(order.indexOf(enemy.id));
+
+    // CONTROL: the same fight with the commander on the BACK line — no buff, so
+    // the initiative-6 body activates first.
+    const back = fightWithCommanderAt(adventureWithCommanders("cmd-front-order", "cove", undefined), 17);
+    expect(ATTACKER_BACK).toContain(17);
+    expect(commanderInitiative(back)).toBe(5);
+    const backEnemy = Object.values(back.combat!.units).find((unit) => unit.controllerId !== "p1")!;
+    backEnemy.initiative = 6;
+    const backOrder = getActivationOrder(back.combat!, back.activeEffects).map((unit) => unit.id);
+    expect(backOrder.indexOf(commanderUnitId("p1"))).toBeGreaterThan(backOrder.indexOf(backEnemy.id));
+  });
+
+  it("CONTROL: the Speed-GRADE unlock alone grants no buff, even from the front line", () => {
+    const state = adventureWithCommanders("cmd-front-speed-grade-only");
+    state.players.p1.commander = freshCommander("paladin", { speed: 1 });
+    const front = fightWithCommanderAt(state, 13);
+    const unit = front.combat!.units[commanderUnitId("p1")];
+    // Speed grade 1 = printed initiative 6; sort unlocked, but NO front-line buff.
+    expect(commanderSortUnlocked(front, "p1")).toBe(true);
+    expect(commanderSortAbilitySource(front, "p1")).toBe(false);
+    expect(unit.initiative).toBe(6);
+    expect(commanderInitiative(front)).toBe(6);
+  });
+
+  it("CONTROL: a non-sorting commander auto-placed on the front line gains nothing", () => {
+    const fought = intoNeutralFight(adventureWithCommanders("cmd-front-none"));
+    const unit = fought.combat!.units[commanderUnitId("p1")];
+    expect(commanderFrontLineSpeedBonusActive(fought, "p1", unit)).toBe(false);
+    expect(effectiveInitiative(unit, fought.activeEffects, fought.combat)).toBe(unit.initiative);
+  });
+
+  it("Marshal's War Horn earns the same front-line +2 (CONTROL: horn removed → none)", () => {
+    function horned(seed: string, wear: boolean): GameState {
+      const state = adventureWithCommanders(seed);
+      state.anime = { ...ANIME_EQUIP_ON };
+      if (wear) {
+        getMainHero(state, "p1")!.equipment = { accessory: EQUIPMENT_IDS.marshalsWarHorn };
+      }
+      return state;
+    }
+    const worn = fightWithCommanderAt(horned("cmd-front-horn", true), 13);
+    expect(commanderSortAbilitySource(worn, "p1")).toBe(true);
+    const wornUnit = worn.combat!.units[commanderUnitId("p1")];
+    expect(effectiveInitiative(wornUnit, worn.activeEffects, worn.combat)).toBe(wornUnit.initiative + 2);
+
+    // CONTROL: no horn — a plain Paladin cannot even be hand-placed, and the
+    // auto-placed commander carries no buff wherever it lands.
+    const bare = intoNeutralFight(horned("cmd-front-horn-none", false));
+    const bareUnit = bare.combat!.units[commanderUnitId("p1")];
+    expect(commanderSortAbilitySource(bare, "p1")).toBe(false);
+    expect(effectiveInitiative(bareUnit, bare.activeEffects, bare.combat)).toBe(bareUnit.initiative);
+  });
+
+  it("the buff is laid ONCE and holds for the whole combat (walking off the line keeps it)", () => {
+    const front = fightWithCommanderAt(adventureWithCommanders("cmd-front-hold", "cove", undefined), 13);
+    expect(commanderInitiative(front)).toBe(7);
+    const laid = front.activeEffects.filter((effect) => effect.name === COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME);
+    expect(laid).toHaveLength(1);
+    expect(laid[0].duration).toEqual({ type: "combat" });
+    // Walk the commander off the front line: the combat-long buff stays.
+    front.combat!.units[commanderUnitId("p1")].position = 17;
+    expect(commanderInitiative(front)).toBe(7);
+  });
+
+  it("a Creature-Bank fight reads the documented bank front line (5/6/13/14), not the middle row", () => {
+    // The bank formation has no single enemy side: the front line is the two
+    // central rows touching a guard corner. Pinned on the predicate directly.
+    const state = sandboxWithCommander("corsair", {}, 13);
+    state.combat!.context = {
+      kind: "neutral",
+      heroId: "hero_p1",
+      fieldId: "f1",
+      difficulty: 3,
+      bankId: "griffin_conservatory"
+    } as never;
+    const unit = state.combat!.units[commanderUnitId("p1")];
+    expect(commanderFrontLineSpeedBonusActive(state, "p1", unit)).toBe(true);
+    unit.position = 9; // the shielded middle row
+    expect(commanderFrontLineSpeedBonusActive(state, "p1", unit)).toBe(false);
+    unit.position = 5;
+    expect(commanderFrontLineSpeedBonusActive(state, "p1", unit)).toBe(true);
   });
 });

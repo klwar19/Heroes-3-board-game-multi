@@ -313,6 +313,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // it just ignores `skipRoll`, rolls anyway, rotates the order away from the
 // host's choice and can arm an opening ceremony the new client never expects.
 // `npm run deploy:partykit` is therefore owed alongside the Vercel deploy.
+// v31 (extended, 2026-08-14 — the number is NOT bumped because v31 has never
+// reached the edge, so every stale room already shows the skew banner): WOG
+// Commanders — raising the commander's SPEED grade once
+// (`commanderSortUnlocked`) now unlocks the pre-combat sort for every fight, and
+// a sort-ABILITY commander (Vanguard Marshal / Marshal's War Horn) that starts a
+// fight on its own front line gains a combat-long +2 Initiative. NO new action,
+// NO new persisted field (the buff is an ordinary `activeEffects` entry any
+// engine understands), but the SORT LEGALITY moved server-side: a v30 edge would
+// neither inject a Speed-graded commander into troop deployment nor accept the
+// `PLACE_COMMANDER` the new client offers for it ("that action is not legal"),
+// and it lays no front-line buff. Deploy both halves.
 export const ENGINE_PROTOCOL_VERSION = 31;
 
 

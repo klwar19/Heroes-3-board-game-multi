@@ -10730,7 +10730,7 @@ function injectCombatHeroes(state: GameState): void {
  * on the board before ordinary troop deployment starts. Eligible players then
  * drag all three body kinds together and press the normal single Ready button.
  */
-function prepareIntegratedCombatDeployment(state: GameState): void {
+export function prepareIntegratedCombatDeployment(state: GameState): void {
   const combat = state.combat;
   if (!combat?.setup) {
     return;

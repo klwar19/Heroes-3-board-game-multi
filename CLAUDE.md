@@ -587,7 +587,47 @@ Leading with the adaptations / deliberate limits:
   against a ranged-TYPE attacker). Readings: Cure cleanses ALL negative
   tokens/effects, Animate Dead heals a flat 2, Bloodlust / Precision scale Pow 0 =
   +1 adjacent-only, 1 = +1 anywhere, 2 = +2, this round only.
-- **Scope**: only the MAIN hero's combats, auto-placed, full health each combat,
+- **Pre-combat SORT — who may arrange their commander** (`commanderSortUnlocked`,
+  THE one shared read behind both surfaces: the integrated troop deployment
+  `commanderIntegratedDeploymentSortAvailable` and the separate
+  `commanderPreCombatSortAvailable` window). Unlocked by EITHER a sort ABILITY —
+  the Vanguard Marshal specialty (Cove Sea Marshal, Bulwark Ruler, Little Busters
+  Kyousuke) or the Marshal's War Horn equipment (`commanderSortAbilitySource`) —
+  OR, since 2026-08-14 (USER RULE), **the commander's SPEED grade being raised
+  even once** (`COMMANDER_SORT_SPEED_GRADE` = 1): from then on it is arranged with
+  the units in EVERY fight it joins. LIMITS: grade 0 + no ability ⇒ auto-placed as
+  before (own backline first, then frontline) and `PLACE_COMMANDER` is refused;
+  the AI is untouched (a computer seat is still never queued for the separate
+  window and closes its integrated deployment with the ordinary Ready — no new
+  stall surface, so `computer/window.ts` needed NO lockstep change). The Battle
+  Test SANDBOX now runs the same `prepareIntegratedCombatDeployment` its two
+  adventure siblings do (`sandboxBeginCombat`): it built its own `combat.setup`
+  and was the ONE surface where a sort-unlocked commander fell through to the
+  separate window and parked the phase in `combat-setup` after both sides Ready
+  (latent for a Vanguard-Marshal seat, reachable by any Speed grade) —
+  `combat-sandbox-setup.test.ts`.
+- **Front-line +2 Speed — the sort ABILITIES only** (`COMMANDER_FRONT_LINE_SPEED_BONUS`,
+  `commanderFrontLineSpeedBonusActive`). Lead with the limits: the Speed-GRADE
+  unlock grants NOTHING here (CONTROL-pinned), and the buff is measured ONCE at
+  combat start (`applyCommanderCombatStart`, idempotent by effect name) — walking
+  off the line later keeps it, unlike the Vanguard Marshal's live +1 Attack. It is
+  a real combat-duration `INITIATIVE_BONUS` on the commander's unit, so
+  `effectiveInitiative` / `getActivationOrder` genuinely move (pinned by order, not
+  a field read). Creature-Bank fights DO qualify, using the already-documented bank
+  front line 5/6/13/14 (the two central rows touching a guard corner; the shielded
+  middle row 9/10 is not).
+- **Commanders intro POPUP** (`src/components/table/commander-intro-overlay.tsx`,
+  mounted on both table screens in `page.tsx`): a one-time card at the start of a
+  Commanders game stating both halves (auto-placed by default; one Speed grade ⇒
+  always placed by hand) plus the ability-only front-line +2. PURE PRESENTATION —
+  it dispatches nothing and opens no engine window, so no AI/AFK seat can stall on
+  it. Once per GAME per browser (`localStorage["binh-commander-intro"]` keyed by
+  `GameState.id`, `useSyncExternalStore` with a server snapshot of "seen" so the
+  SSR frame emits nothing; a rematch's new id shows it again). Reuses the
+  level-up modal's chrome, so NO new CSS — jsdom cannot compute CSS, so only the
+  DOM contract is pinned (`commander-intro-overlay.test.tsx`); the look is a
+  real-browser concern with no e2e spec.
+- **Scope**: only the MAIN hero's combats, auto-placed by default, full health each combat,
   only DEATH persists (revive for 2 + 2×hero level gold). Tierless both ways
   (tier-gated spells never target it, the neutral AI hits it LAST) and it COUNTS for
   win/loss (`livingControllerIds`).
