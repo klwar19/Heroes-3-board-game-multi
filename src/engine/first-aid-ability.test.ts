@@ -29,7 +29,9 @@ describe("First Aid card definition", () => {
     if (card.effect.type !== "CHOOSE_ONE") {
       return;
     }
-    expect(card.effect.options).toHaveLength(2);
+    // The two classic sides plus the Polish Balance Pack's +2-Health expert,
+    // APPENDED (index 2) so the classic indices below keep their meaning.
+    expect(card.effect.options).toHaveLength(3);
 
     const basic = card.effect.options[0];
     expect(basic.effect.type).toBe("HEAL_DAMAGE");
@@ -38,11 +40,20 @@ describe("First Aid card definition", () => {
     }
 
     const expert = card.effect.options[1];
-    expect(expert.expertOnly).toBe(true);
+    // The volley is the printed Expert side EXCEPT under the Balance Pack, where
+    // the reprint moves it onto the basic side (`expertUnlessHouseRule`).
+    expect(expert.expertOnly).toBeFalsy();
+    expect(expert.expertUnlessHouseRule).toBe("polish-card-balance");
     expect(expert.effect.type).toBe("FIRST_AID_TENT_VOLLEY");
     if (expert.effect.type === "FIRST_AID_TENT_VOLLEY") {
       expect(expert.effect.heals).toBe(3);
     }
+
+    const balance = card.effect.options[2];
+    expect(balance.requiresHouseRule).toBe("polish-card-balance");
+    expect(balance.requiresWarMachine).toBe("war_machine.first_aid_tent");
+    expect(balance.expertOnly).toBe(true);
+    expect(balance.effect.type).toBe("ADD_UNIT_MAX_HEALTH");
   });
 
   it("is reachable in real games — included in the ability decks", () => {

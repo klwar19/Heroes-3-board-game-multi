@@ -219,6 +219,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // The new persisted state is additive and optional — `SEARCH_COUNT_OVERRIDE`
 // gains `balanceDelta` / `balancePersist`, which an old server simply ignores
 // (falling back to the flat `count`), so every legacy snapshot reads as before.
+// v30 (extended, still v30 — this number has never been deployed): the pack's
+// remaining NINE Abilities. This DOES add an action type — `TACTICS_MOVE_UNIT`
+// (the reprinted Tactics' "move one of your units 1 space" arm, the twin of
+// SWAP_COMBAT_UNITS) — which a stale edge rejects outright, and three more offer
+// SHAPES a stale server builds differently for the same pop-up: the Catapult's
+// round-start offer gains a third option (the Ballistics expert double, appended
+// after fire/skip), the Scouting pop-up gains a trailing Wisdom widen, and the
+// Eagle Eye play opens a `spell-deck-pick` whose buttons carry a spell LEVEL
+// (`spellDeckPick.wantedLevels`, with `school` now optional). Also new and
+// additive: the `deck-card-placement` pendingChoice context (the reprinted
+// Diplomacy's top/bottom placement) — a v29 server has no resolver for it.
+// One more legality skew: the reprinted Ballistics' basic side ENTERS PLAY even
+// though the card carries no card-wide `permanent` flag (flagging it would move
+// the rule-OFF card's reaction-window behaviour), so a stale server rejects that
+// play with "That card is not a permanent." while the new client offers it.
+
+// The face-swap seam and every reprint listed in the `polish-card-balance`
+// house-rule description are otherwise pure engine reads, so a table that leaves
+// the rule OFF is unaffected by the skew either way.
 export const ENGINE_PROTOCOL_VERSION = 30;
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

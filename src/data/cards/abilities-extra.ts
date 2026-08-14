@@ -197,7 +197,8 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "spell-deck",
-      "Basic: Draw cards from the Spell deck until you find a Basic Spell card. Take it into your hand or discard it; reshuffle the rest. Expert: the same for an Expert Spell card."
+      "Basic: Draw cards from the Spell deck until you find a Basic Spell card. Take it into your hand or discard it; reshuffle the rest. Expert: the same for an Expert Spell card.",
+      "Balance pack: ONE play, then a two-button \"Basic or Expert Spell?\" pick (no crown), and the find is always TAKEN — into your hand, or into the Spellbook under polish-spell-book. The reprinted EXPERT side is a different card entirely: after an ENEMY Spell that dealt damage to one of your units RESOLVES, you may discard Eagle Eye (spend a crown) to copy that spell at Power 0 against a new target of your choice, boostable through the normal Power window and free of the per-round Spell limit."
     ],
     effect: { type: "EAGLE_EYE_DIG" },
     assets: abilityAssets("eagle_eye", "Eagle Eye"),
@@ -250,7 +251,8 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "magic",
       "spell-timing",
-      "Instant (Combat): Until the end of the Combat you may cast a Spell at any time — even off-turn, without one of your units being active (still one Spell per Combat round). Expert: your Spell casts no longer count toward that limit."
+      "Instant (Combat): Until the end of the Combat you may cast a Spell at any time — even off-turn, without one of your units being active (still one Spell per Combat round). Expert: your Spell casts no longer count toward that limit.",
+      "Balance pack: the free cast is scoped to the START of a Combat — the card is playable, and the freedom it grants only lasts, while no unit has activated yet (the shared combatStartWindowOpen read). Under polish-spell-book the cast needs no \"Cast a Spell\" card. Expert keeps its no-limit rider, likewise only inside that window."
     ],
     effect: {
       type: "CREATE_ACTIVE_EFFECT",
@@ -337,7 +339,8 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "map",
       "empowered",
-      "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown."
+      "Regular (basic): for every Dwelling you have, draw 1 corresponding Neutral Unit card; you may Recruit one by paying its cost. Expert: skip Combat with Neutral Units on a field whose Difficulty equals your Hero's level — claim the field and resolve its effect, gaining no Experience. Empowered: use either side without spending a crown.",
+      "Balance pack: the basic side adds \"Decide for each unpurchased unit: place its card on the top or bottom of its appropriate deck\" — one two-button placement choice per unpurchased draw (the shared deck-card-placement window) instead of the silent return to the discard pile. Expert is unchanged."
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -408,7 +411,8 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "map",
-      "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (spend a crown): also move over yellow borders and blocked fields (never ending on a blocked field). BINH house rule (pathfinding-expert, on by default): the basic side already crosses yellow borders & blocked fields, and the expert side additionally crosses between land and sea with no penalty and steps directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly)."
+      "Basic (Map): This turn your Hero can move through fields with Neutral Units and enemy Heroes — ending on such a field starts Combat. Expert (spend a crown): also move over yellow borders and blocked fields (never ending on a blocked field). BINH house rule (pathfinding-expert, on by default): the basic side already crosses yellow borders & blocked fields, and the expert side additionally crosses between land and sea with no penalty and steps directly between the Surface and a Subterranean Tile without a Gate (unlike Dimension Door or Fly).",
+      "Balance pack: a complete restructure, and it WINS over the pathfinding-expert house rule (both classic sides are withheld while polish-card-balance is on). BASIC is no longer a movement card at all — it is played in a neutral combat's continue-or-retreat window to fight one more round for free (the Dessa Logistics CONTINUE_NEUTRAL_FREE arm). EXPERT (spend a crown) is the whole movement package for the turn: cross yellow borders and blocked fields without ending on them, pass through Neutral Units and enemy Heroes (Combat only if the Hero ENDS there), and entering a Sea field from land no longer halts the move. It deliberately does NOT step Surface↔Subterranean without a Gate (that is the pathfinding-expert rule's own extra, not on this card)."
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -419,6 +423,8 @@ export const extraAbilityCards: CardLibrary = {
           // fields (both printed halves bundled).
           label: "Basic: this turn move through Neutral & enemy Hero fields (and, with the BINH crossing rule, over yellow borders & blocked fields)",
           mapOnly: true,
+          // The Balance Pack reprints this card with entirely different sides.
+          forbidsHouseRule: "polish-card-balance",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
@@ -439,6 +445,39 @@ export const extraAbilityCards: CardLibrary = {
           // Surface↔Subterranean without a Gate.
           label:
             "Expert (spend a crown): also move over yellow borders & blocked fields (never ending on one); with the BINH crossing rule, also cross the coastline and step into the Subterranean",
+          mapOnly: true,
+          expertOnly: true,
+          // Replaced by the Balance Pack's own expert movement package below.
+          forbidsHouseRule: "polish-card-balance",
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Pathfinding (Expert)",
+              scope: "player",
+              duration: { type: "current-turn" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [{ type: "HERO_PATHFINDING", expert: true }]
+            }
+          }
+        },
+        // The two Balance-Pack sides are APPENDED, never inserted, so every
+        // pre-existing `optionIndex` keeps its meaning.
+        {
+          // Balance Pack basic: "Extend your Combat against a Neutral Army for 1
+          // round (without spending any MP)." A card play in the continue-or-
+          // retreat window, reusing Dessa's Logistics arm verbatim.
+          label: "Balance: fight another round of this neutral combat for free (no movement point)",
+          requiresHouseRule: "polish-card-balance",
+          combatOnly: true,
+          effect: { type: "CONTINUE_NEUTRAL_FREE" }
+        },
+        {
+          // Balance Pack expert: the movement package, independent of the
+          // `pathfinding-expert` house rule (see getHeroMovementCapabilities).
+          label:
+            "Balance (spend a crown): this turn cross yellow borders & blocked fields, pass through Neutral & enemy Hero fields, and enter the Sea from land without halting",
+          requiresHouseRule: "polish-card-balance",
           mapOnly: true,
           expertOnly: true,
           effect: {
@@ -468,7 +507,8 @@ export const extraAbilityCards: CardLibrary = {
     tags: [
       "ability",
       "level-up",
-      "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card."
+      "Basic: Play when the Hero is about to level up; advance an additional half level. Expert: advance an additional full level, then Remove this card.",
+      "Balance pack: the basic timing widens to \"Play when the Hero gains experience\" (ANY gain, not only one that crosses a level — and it is offered at the Experience cap too), and the basic play ALSO draws 1 card, so it is worth playing even when the extra half level cannot apply. Expert is unchanged (+1 full level, then Remove)."
     ],
     // Never played from hand: the engine offers it (a "learning-level-up" pending
     // choice) whenever the Hero crosses a level while this card is in hand. A
@@ -544,7 +584,20 @@ export const extraAbilityCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["combat"],
     abilityClass: "might",
-    tags: ["ability", "instant", "siege", "wiki-reference"],
+    tags: [
+      "ability",
+      "instant",
+      "siege",
+      "wiki-reference",
+      "Balance pack: the reprint WINS over the ballistics-buff house rule (the Arrow-Tower demolition and the buff's bombard are both withheld while polish-card-balance is on). BASIC: put Ballistics into play — at the beginning of each Combat round you may pay 1 building material to hit 2 adjacent targets (units, Walls, the Gate) for 1 damage each, exactly the Catapult's round-start offer — OR, during a siege, destroy 1 Wall or the Gate. EXPERT (spend a crown): when your Catapult fires, resolve its effect TWICE on the same two targets and pay none of its cost (offered at the Catapult's own round-start prompt, like Artillery's Ballista volley) — OR, during a siege, destroy 3 Walls and the Gate at once."
+    ],
+    // Balance Pack: the round-start descriptor the basic side's ENTER_PLAY arm
+    // uses. Read ONLY through getRoundStartDefinitionForCard, which is called for
+    // cards actually IN PLAY — so with the rule off (where no option puts this
+    // card into play) it is inert.
+    permanentEffect: {
+      roundStart: { kind: "pay-to-splash", cost: { buildingMaterials: 1 }, amount: 1 }
+    },
     effect: {
       type: "CHOOSE_ONE",
       options: [
@@ -558,6 +611,8 @@ export const extraAbilityCards: CardLibrary = {
           // printed/wiki Expert side (spend a crown) via `expertUnlessHouseRule`.
           label: "Destroy the Arrow Tower",
           expertUnlessHouseRule: "ballistics-buff",
+          // Not on the Balance Pack reprint (its sides replace it).
+          forbidsHouseRule: "polish-card-balance",
           effect: { type: "SIEGE_DEMOLISH", target: "arrow-tower" }
         },
         {
@@ -567,9 +622,32 @@ export const extraAbilityCards: CardLibrary = {
           label: "Pay 1 building material: 1 damage to an enemy unit and an enemy adjacent to it",
           expertOnly: true,
           requiresHouseRule: "ballistics-buff",
+          // The Balance Pack's own basic bombard replaces it.
+          forbidsHouseRule: "polish-card-balance",
           cost: { resources: { buildingMaterials: 1 } },
           target: { type: "enemy-unit" },
           effect: { type: "BALLISTICS_BOMBARD", amount: 1 }
+        },
+        // The two Balance-Pack sides are APPENDED, never inserted, so every
+        // pre-existing `optionIndex` (and every client / test that names one)
+        // keeps its meaning.
+        {
+          // Balance Pack basic: the recurring paid bombard. Entering play is what
+          // makes it recur — `startWarMachineRound` queues every in-play card that
+          // carries a `roundStart`, so the Catapult's own machinery drives it.
+          label:
+            "Balance: put Ballistics into play — each combat round, pay 1 building material to hit 2 adjacent targets for 1 damage each",
+          requiresHouseRule: "polish-card-balance",
+          combatOnly: true,
+          effect: { type: "ENTER_PLAY" }
+        },
+        {
+          // Balance Pack expert siege arm: no target pick — it fells the Gate and
+          // up to 3 standing Walls at once.
+          label: "Balance (spend a crown): during a siege, destroy 3 Walls and the Gate",
+          requiresHouseRule: "polish-card-balance",
+          expertOnly: true,
+          effect: { type: "SIEGE_DEMOLISH", target: "three-walls-and-gate" }
         }
       ]
     },

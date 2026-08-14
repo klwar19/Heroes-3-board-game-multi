@@ -85,7 +85,8 @@ import {
   TILE_ROTATION_SEAL_GATE_ENABLED,
   observatoryPlacementCenters,
   observatoryRevealTargets,
-  removableHandCards
+  removableHandCards,
+  tacticsMoveDestinations
 } from "./adventure-reducer";
 import {
   effectAppliesToUnit,
@@ -231,9 +232,11 @@ import {
   SPELL_DECK_BASIC,
   SPELL_DECK_EXPERT,
   wisdomGoldDiscount,
-  wisdomSearchCount
+  wisdomSearchCount,
+  WISDOM_BALANCE_SEARCH_DELTA
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
 import {
   polishArmyUnitCanBuyStack,
@@ -1891,6 +1894,85 @@ function isPhaseAllowedForCard(state: GameState, card: CardDefinition): boolean 
   return !card.phaseLimit || card.phaseLimit.includes(state.phase);
 }
 
+/**
+ * Polish Balance Pack: the reprinted WISDOM keeps its `timing: "town"` (its basic
+ * side is still the Spell-Book town action, never a PLAY_CARD) but gains a real
+ * COMBAT expert side. This waives the combat-play timing gate for exactly that
+ * card while the rule is on — its town-side option carries `mapOnly`, so the only
+ * thing the waiver can surface in combat is the rule-gated Balance expert option.
+ * With the rule off nothing changes (Wisdom is never a PLAY_CARD anywhere).
+ */
+export function balanceCardWaivesCombatTiming(state: GameState, card: CardDefinition): boolean {
+  return card.id === "ability.wisdom" && houseRuleEnabled(state, "polish-card-balance");
+}
+
+/**
+ * The card face that extends a neutral combat one round for free: Dessa's
+ * Logistics I (a top-level `CONTINUE_NEUTRAL_FREE`) or, under the Polish Balance
+ * Pack, the reprinted Pathfinding's basic CHOOSE_ONE option. Returns the option
+ * index to play (undefined for a top-level effect), or null.
+ */
+export function continueNeutralFreeOption(
+  state: GameState,
+  card: CardDefinition | undefined
+): { optionIndex?: number } | null {
+  if (!card || card.implementationStatus !== "implemented") {
+    return null;
+  }
+  if (card.effect.type === "CONTINUE_NEUTRAL_FREE") {
+    return {};
+  }
+  if (card.effect.type !== "CHOOSE_ONE") {
+    return null;
+  }
+  for (const [optionIndex, option] of card.effect.options.entries()) {
+    if (option.effect.type !== "CONTINUE_NEUTRAL_FREE") {
+      continue;
+    }
+    if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+      continue;
+    }
+    if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+      continue;
+    }
+    return { optionIndex };
+  }
+  return null;
+}
+
+/**
+ * Polish Balance Pack — the reprinted INTELLIGENCE may only be PLAYED at the
+ * start of a Combat, before any unit activates. Read by the combat card offer AND
+ * by `playCard`'s backstop, so a stale client cannot slip it in mid-fight.
+ */
+export function balanceIntelligencePlayBlocked(state: GameState, cardId: CardId): boolean {
+  return cardId === "ability.intelligence" && balanceIntelligenceWindowClosed(state);
+}
+
+/**
+ * Polish Balance Pack — the reprinted EAGLE EYE EXPERT: the enemy Spell this
+ * player may currently COPY (Power 0, new target, free of the round limit), or
+ * undefined. Latched when that spell resolved damage onto one of their units
+ * (`noteEagleEyeCopyOpportunity`); re-checked here so a card or crown spent since
+ * then withdraws the offer. The ONE read the offer AND the resolution share.
+ */
+export function balanceEagleEyeCopySpellId(state: GameState, playerId: PlayerId): CardId | undefined {
+  if (!houseRuleEnabled(state, "polish-card-balance")) {
+    return undefined;
+  }
+  const player = state.players[playerId];
+  const spellId = player?.combatStats.eagleEyeCopySpellId;
+  if (
+    !player ||
+    !spellId ||
+    !player.hand.includes("ability.eagle_eye" as CardId) ||
+    !canPlayExpertMode(player, "ability.eagle_eye" as CardId)
+  ) {
+    return undefined;
+  }
+  return spellId;
+}
+
 function getAttackRerollsForMode(card: CardDefinition, mode: CardPlayMode): number {
   if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
     return 0;
@@ -1934,7 +2016,14 @@ function getPlayableModesForCard(state: GameState, playerId: PlayerId, card: Car
   // Eagle Eye's Expert side digs for an Expert spell instead of a Basic one (an
   // Expert use / crown). Offer it in combat too so the player picks Basic or
   // Expert just like on the map play (effectSupportsExpertOption) — never a unit.
-  if (card.effect.type === "EAGLE_EYE_DIG" && expertCrownFree) {
+  // Polish Balance Pack: the reprint is ONE play whose Basic/Expert LEVEL is a
+  // crown-free two-button pick AFTER the play (openEagleEyeLevelPick), so the
+  // second mode offer would be a duplicate that also charges a crown.
+  if (
+    card.effect.type === "EAGLE_EYE_DIG" &&
+    expertCrownFree &&
+    !houseRuleEnabled(state, "polish-card-balance")
+  ) {
     modes.push("expert");
   }
 
@@ -2220,6 +2309,7 @@ function addSpellActions(
     fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
+    eagleEyeCopy?: boolean;
   }[] = [
     ...(spellLimitReached
       ? []
@@ -2238,6 +2328,17 @@ function addSpellActions(
       [...new Set(scroll.spellCardIds)].map((cardId) => ({ cardId, fromScroll: scroll.id }))
     )
   ];
+
+  // Polish Balance Pack — the reprinted EAGLE EYE EXPERT: an enemy Spell that just
+  // resolved against one of this player's units may be COPIED once, at Power 0, at
+  // a new target of their choice, free of the per-round limit. Offered like a
+  // scroll cast (the spell is not theirs — nothing leaves a zone) and never gated
+  // on their own unit being active: the printed card is a reaction to the enemy's
+  // cast. Consuming the Eagle Eye card + crown happens at resolution.
+  const eagleEyeCopyId = balanceEagleEyeCopySpellId(state, playerId);
+  if (eagleEyeCopyId) {
+    castCandidates.push({ cardId: eagleEyeCopyId, eagleEyeCopy: true });
+  }
 
   // Tarnum over-limit casts: each flagged hand spell, offered with both
   // placements ("on the top of the Spell deck or on its discard pile").
@@ -2285,7 +2386,15 @@ function addSpellActions(
     }
   }
 
-  for (const { cardId, fromScroll, fromSpellDeck, fromOwnDiscard, fromSpellBook, tarnumReturn } of castCandidates) {
+  for (const {
+    cardId,
+    fromScroll,
+    fromSpellDeck,
+    fromOwnDiscard,
+    fromSpellBook,
+    tarnumReturn,
+    eagleEyeCopy
+  } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
       continue;
@@ -2303,9 +2412,11 @@ function addSpellActions(
       continue;
     }
 
-    // Activation spells need one of your own units active, pre-attack.
+    // Activation spells need one of your own units active, pre-attack. The
+    // Balance-Pack Eagle Eye copy is a printed REACTION to the enemy's cast, so
+    // it is exempt (the copy is offered while the opponent's unit is active).
     const needsOwnActivation = card.timing === "combat" || card.timing === "action";
-    if (needsOwnActivation && !ownActivationOpen) {
+    if (needsOwnActivation && !ownActivationOpen && !eagleEyeCopy) {
       continue;
     }
 
@@ -2425,7 +2536,9 @@ function addSpellActions(
 
     for (const target of getTargetsForCard(state, playerId, cardId, cards)) {
       actions.push({
-        label: fromScroll
+        label: eagleEyeCopy
+          ? `Copy ${card.name} with Eagle Eye (expert; Power 0, new target)`
+          : fromScroll
           ? `Cast ${card.name} (Scroll)`
           : fromOwnDiscard
             ? `Cast ${card.name} from your discard pile (free)`
@@ -2445,7 +2558,8 @@ function addSpellActions(
           ...(fromSpellDeck ? { fromSpellDeck } : {}),
           ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(fromSpellBook ? { fromSpellBook: true } : {}),
-          ...(tarnumReturn ? { tarnumReturn } : {})
+          ...(tarnumReturn ? { tarnumReturn } : {}),
+          ...(eagleEyeCopy ? { eagleEyeCopy: true } : {})
         }
       });
 
@@ -2657,7 +2771,20 @@ function addPlayableCardActions(
       continue;
     }
 
-    if (card.timing !== "combat" && card.timing !== "instant" && card.timing !== "ongoing" && card.timing !== "action") {
+    // Polish Balance Pack: the reprinted Intelligence is a START-of-combat play
+    // ("before any unit activates"). Same shared window read the freedom itself
+    // uses, so the offer and the effect can never disagree.
+    if (balanceIntelligencePlayBlocked(state, cardId)) {
+      continue;
+    }
+
+    if (
+      card.timing !== "combat" &&
+      card.timing !== "instant" &&
+      card.timing !== "ongoing" &&
+      card.timing !== "action" &&
+      !balanceCardWaivesCombatTiming(state, card)
+    ) {
       continue;
     }
 
@@ -3630,6 +3757,12 @@ function addOptionPlays(
     if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
       continue;
     }
+    // The inverse gate (Polish Balance Pack): a CLASSIC side the reprinted card
+    // replaces is dropped while the rule is ON, so only the reprint's own sides
+    // are on the table. Same offer-validated legality, so it is rejected at play.
+    if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+      continue;
+    }
     if (!isOptionEffectPlayable(state, playerId, option.effect, context, cardId)) {
       continue;
     }
@@ -4296,8 +4429,15 @@ function addTurnCardActions(
       continue;
     }
 
+    // Polish Balance Pack: the reprinted Eagle Eye is ONE play whose Basic/Expert
+    // LEVEL is a crown-free pick AFTER the play, so its second (crown-paying)
+    // mode would be a duplicate here exactly as it is in the combat pass.
     const modes: CardPlayMode[] =
-      effectSupportsExpertOption(effect) && canPlayExpertMode(player, cardId) ? ["basic", "expert"] : ["basic"];
+      effectSupportsExpertOption(effect) &&
+      canPlayExpertMode(player, cardId) &&
+      !(effect.type === "EAGLE_EYE_DIG" && houseRuleEnabled(state, "polish-card-balance"))
+        ? ["basic", "expert"]
+        : ["basic"];
     for (const mode of modes) {
       actions.push({
         label: `Play ${card.name}${mode === "expert" ? " (expert)" : ""}${fromSpellBook ? " (Spell Book)" : ""}`,
@@ -8705,6 +8845,17 @@ export function resolvedSpellPowerForStackItem(
     }
     return Math.min(paid, minUseful);
   }
+  if (stackItem.modifiers.spellPowerBaseZero) {
+    // Polish Balance Pack — the reprinted Eagle Eye EXPERT copy: "with 0 SP … You
+    // can add SP to this spell". Base 0, plus only the Power paid into this cast
+    // window (no standing / school / Orb source, and NOT capped like a Scroll).
+    return Math.max(
+      0,
+      stackItem.modifiers.spellPowerBonus +
+        (stackItem.modifiers.schoolPowerBonus ?? 0) +
+        (stackItem.modifiers.townCubePowerBonus ?? 0)
+    );
+  }
   const playerId = stackItem.action.playerId;
   const base =
     (card?.power ?? 0) +
@@ -9773,10 +9924,40 @@ function addTacticsSetupActions(actions: LegalAction[], state: GameState, player
     }
   }
 
+  addTacticsMoveActions(actions, state, playerId, units, "Tactics");
+
   actions.push({
     label: "Tactics: keep your current positions",
     action: { type: "FINISH_TACTICS", playerId }
   });
+}
+
+/**
+ * Polish Balance Pack — the reprinted TACTICS' OR arm ("Move one of your units 1
+ * space"), offered in BOTH of the card's windows beside the swap. One offer per
+ * (unit, legal empty adjacent cell), like `PLACE_NEUTRAL_GUARD`, so no follow-up
+ * choice is opened. Destinations come from the SHARED `tacticsMoveDestinations`,
+ * so an offered move can never be rejected at resolution.
+ */
+function addTacticsMoveActions(
+  actions: LegalAction[],
+  state: GameState,
+  playerId: PlayerId,
+  units: CombatUnitState[],
+  labelPrefix: string
+): void {
+  const combat = state.combat;
+  if (!combat || !houseRuleEnabled(state, "polish-card-balance")) {
+    return;
+  }
+  for (const unit of units) {
+    for (const position of tacticsMoveDestinations(combat, unit)) {
+      actions.push({
+        label: `${labelPrefix}: move ${unit.cardName} to ${getBattlefieldLabel(position)}`,
+        action: { type: "TACTICS_MOVE_UNIT", playerId, unitId: unit.id, position }
+      });
+    }
+  }
 }
 
 /**
@@ -9937,6 +10118,8 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
       });
     }
   }
+
+  addTacticsMoveActions(actions, state, playerId, units, "Tactics (expert)");
 }
 
 function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
@@ -10098,10 +10281,16 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
       const ruleset = getRuleset(state);
       const wisdomCardId = player.hand.find((cardId) => cardLibrary[cardId]?.name === "Wisdom");
       if (wisdomCardId) {
+        // Polish Balance Pack: the reprinted basic side is RELATIVE — "Search
+        // (X+2) instead of Search (X)" — and its town EXPERT side is gone (the
+        // reprint's Expert is a combat play), so only the basic arm is offered.
+        const balance = houseRuleEnabled(state, "polish-card-balance");
         const basicCost = Math.max(0, cost - wisdomGoldDiscount(ruleset, "basic"));
         if (player.resources.gold >= basicCost) {
           actions.push({
-            label: `${basicCost} gold: Buy spell with Wisdom — search (${wisdomSearchCount("basic")})`,
+            label: `${basicCost} gold: Buy spell with Wisdom — search (${
+              balance ? baseSearchCount + WISDOM_BALANCE_SEARCH_DELTA : wisdomSearchCount("basic")
+            })`,
             action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "basic" } }
           });
         }
@@ -10111,7 +10300,7 @@ function addTownActions(actions: LegalAction[], state: GameState, playerId: Play
           cost - wisdomGoldDiscount(ruleset, "expert", houseRuleEnabled(state, "wisdom-expert-discount"))
         );
         // Empowered Wisdom skips the crown but still pays the gold.
-        if (canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
+        if (!balance && canPlayExpertMode(player, wisdomCardId) && player.resources.gold >= expertCost) {
           actions.push({
             label: `${expertCost} gold: Buy spell with Wisdom expert — search (${wisdomSearchCount("expert")})`,
             action: { type: "SPELL_BOOK_ACTION", playerId, wisdom: { cardId: wisdomCardId, mode: "expert" } }
@@ -11030,13 +11219,22 @@ function getCombatInteractionActions(
             action: { type: "CONTINUE_NEUTRAL_COMBAT", playerId }
           });
         }
-        // Dessa's Logistics specialty: continue the combat for free.
+        // Dessa's Logistics specialty — and, under the Polish Balance Pack, the
+        // reprinted Pathfinding's basic side (a CHOOSE_ONE option, so the scan is
+        // option-aware): continue the combat for free.
         const player = state.players[playerId];
         for (const cardId of new Set(player?.hand ?? [])) {
-          if (cards[cardId]?.effect.type === "CONTINUE_NEUTRAL_FREE") {
+          const free = continueNeutralFreeOption(state, cards[cardId]);
+          if (free) {
             actions.push({
               label: `Play ${cards[cardId]?.name}: fight another combat round for free`,
-              action: { type: "PLAY_CARD", playerId, cardId, target: { type: "none" } }
+              action: {
+                type: "PLAY_CARD",
+                playerId,
+                cardId,
+                target: { type: "none" },
+                ...(free.optionIndex !== undefined ? { optionIndex: free.optionIndex } : {})
+              }
             });
           }
         }

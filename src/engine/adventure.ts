@@ -1452,7 +1452,22 @@ export function getHeroMovementCapabilities(state: GameState, hero: HeroState): 
         // hero ENDS there) is the PRINTED BASIC power — granted by both sides in
         // both modes.
         passEncounters = true;
-        if (houseRuleEnabled(state, "pathfinding-expert")) {
+        if (houseRuleEnabled(state, "polish-card-balance")) {
+          // Polish Balance Pack: the reprinted card has ONE movement side — its
+          // EXPERT — and it WINS over the `pathfinding-expert` house rule, so the
+          // package is identical in either mode: yellow borders + blocked fields
+          // (never ending on one), pass-through Neutral / enemy-Hero fields (above)
+          // and no coastline halt. Deliberately NOT the Surface↔Subterranean step
+          // (that is the other rule's own extra, not printed on this card). The
+          // classic BASIC side is withheld by `forbidsHouseRule`, so a
+          // `HERO_PATHFINDING` effect without `expert` can only come from a legacy
+          // in-flight snapshot; it keeps the printed pass-through alone.
+          if (modifier.expert) {
+            moveThrough = true;
+            crossSealedBorders = true;
+            waterWalk = true;
+          }
+        } else if (houseRuleEnabled(state, "pathfinding-expert")) {
           // BINH house rule ON: the basic side bundles BOTH printed halves
           // (pass-through AND crossing yellow borders / blocked fields); the
           // expert side then adds the coastline (no halt) + Surface↔Subterranean
@@ -3248,9 +3263,13 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
   // natural level-up benefits settle (and after any combat that granted the XP
   // fully ends — pumpAdventureQueues waits for combat to clear). Skipped at the
   // Experience cap, where advancing further would do nothing.
+  // Polish Balance Pack: the reprint reads "Play when the Hero GAINS EXPERIENCE"
+  // (not "is about to level up") and its basic side also draws a card — so the
+  // offer opens on ANY gain, and even at the Experience cap where the extra half
+  // level cannot apply but the draw still can.
+  const balanceLearning = houseRuleEnabled(state, "polish-card-balance");
   if (
-    hero.level > previousLevel &&
-    hero.experience < MAX_EXPERIENCE &&
+    (balanceLearning || (hero.level > previousLevel && hero.experience < MAX_EXPERIENCE)) &&
     state.adventure &&
     player.hand.includes("ability.learning")
   ) {
@@ -4819,6 +4838,15 @@ export function eliminatePlayer(
         ...choice.visionsScry.remaining,
         ...choice.visionsScry.toReturn
       );
+    }
+    if (choice.type === "OPTION_CHOICE" && choice.deckCardPlacement) {
+      // The Balance Pack's "top or bottom?" window holds cards that are already
+      // OUT of their deck (Diplomacy drew them). Return every still-unplaced one
+      // to its discard pile — the classic destination — so eliminating the owner
+      // mid-placement never destroys a Neutral card.
+      for (const placement of choice.deckCardPlacement.pending) {
+        state.decks[placement.deckId]?.discardPile.push(placement.cardId);
+      }
     }
     if (choice.type === "OPTION_CHOICE" && choice.pandoraScry) {
       // A Pandora scry lifted these cards OFF the top of a shared draw pile

@@ -2,6 +2,7 @@ import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { EVERSMOKING_RING_OF_SULFUR_ID, TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
+import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import type {
   ArtifactDeckAccess,
@@ -218,6 +219,14 @@ export function wisdomGoldDiscount(ruleset: GameRuleset, mode: CardPlayMode, ena
 export function wisdomSearchCount(mode: CardPlayMode): number {
   return mode === "expert" ? 4 : 3;
 }
+
+/**
+ * Polish Balance Pack: the reprinted Wisdom's basic side is RELATIVE — "do Search
+ * (X+2) instead of Search (X), once" — so the widen scales with the purchase's own
+ * base count instead of the printed flat 3. The ONE constant the Mage-Guild
+ * purchase label, its reducer spend and the build-round prompt all read.
+ */
+export const WISDOM_BALANCE_SEARCH_DELTA = 2;
 
 /**
  * Gold gained by playing Estates (printed 3/6, BINH nerf 2/4). `enabled` is the
@@ -782,11 +791,18 @@ export function spellLimitFor(state: GameState, player: PlayerState): number {
   // Expert Intelligence "ignores the limit": the one-Spell-per-round cap no
   // longer applies to that player, so every limit check (which all derive from
   // this value) passes for as long as the effect is held.
-  const ignoresLimit = state.activeEffects.some(
-    (effect) =>
-      effect.controllerId === player.id &&
-      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.ignoreSpellLimit === true)
-  );
+  // Polish Balance Pack: the reprinted Intelligence's no-limit rider is scoped to
+  // the start-of-combat window (the same shared read `playerHasSpellTimingFreedom`
+  // takes), so once a unit has acted the limit is the ordinary one again.
+  const ignoresLimit =
+    !balanceIntelligenceWindowClosed(state) &&
+    state.activeEffects.some(
+      (effect) =>
+        effect.controllerId === player.id &&
+        effect.modifiers.some(
+          (modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.ignoreSpellLimit === true
+        )
+    );
   // Polish Spell Book reading of Intelligence (reference sheet): the ability is
   // "Start of Combat: Cast a Spell" (the SPELL_CAST_ANYTIME timing freedom stays)
   // and its EXPERT side reads "+1 Limit" — the per-round cap rises by exactly 1

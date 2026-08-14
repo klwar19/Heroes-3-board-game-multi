@@ -45,18 +45,26 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
   });
 
   it("the reprint beats the printed \"-empowered\" scan (which prints the OLD rules text)", () => {
-    // Every wired reprint happens to have an Empowered scan, which is exactly the
+    // Most wired reprints have a separate Empowered scan, which is exactly the
     // trap this precedence exists for: an Empowered holder must still read the
-    // NEW card, not a face describing rules the engine no longer runs.
+    // NEW card, not a face describing rules the engine no longer runs. (Diplomacy
+    // has none — it is a PRINTED always-Empowered card, so its own face IS the
+    // Empowered scan; it is covered by the plain swap case above.)
+    let covered = 0;
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
       const empowered = empoweredCardImage(cardId);
-      expect(empowered, `${cardId} is expected to have an Empowered scan`).toBeTruthy();
+      if (!empowered) {
+        continue;
+      }
+      covered += 1;
       const balanceFace = `/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`;
 
       expect(faceSrc(cardId, { balance: true, empowered: true })).toBe(balanceFace);
       // CONTROL: with the rule off the Empowered scan still wins, unchanged.
       expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(empowered);
     }
+    // Non-vacuity: this must really be exercising most of the pack.
+    expect(covered).toBeGreaterThanOrEqual(POLISH_BALANCE_CARD_IDS.length - 1);
   });
 
   it("the Empowered CUE is untouched by the swap — the gold ring still renders", () => {

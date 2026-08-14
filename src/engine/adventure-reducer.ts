@@ -216,7 +216,8 @@ import {
   refuseFieldOverride
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
-import { ATTACK_DIE_FACES, getBattlefieldLabel } from "./battlefield";
+import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
+import { ATTACK_DIE_FACES, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -386,7 +387,8 @@ import {
   spellCanEnterSpellBook,
   unitSideRuleOverrides,
   wisdomGoldDiscount,
-  wisdomSearchCount
+  wisdomSearchCount,
+  WISDOM_BALANCE_SEARCH_DELTA
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import {
@@ -5187,6 +5189,9 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // Tarnum (Conflux) VI: the over-limit Search privilege never carries into a
       // fresh combat.
       player.combatStats.tarnumOverlimitCards = [];
+      // Polish Balance Pack — the reprinted Eagle Eye EXPERT: an unused
+      // copy-the-enemy-spell offer never carries into a fresh combat.
+      player.combatStats.eagleEyeCopySpellId = undefined;
       // Sorcery / Scales draw-only bank ("+Power, then draw" played on your own
       // activation): same-activation intent, so it must never survive the fight
       // it was banked in. advanceCombatRound already drops it between rounds,
@@ -6008,11 +6013,36 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
   // pile (so the deck can reshuffle it later). Match on tier too, and consume
   // only a single copy, so duplicate draws are returned correctly.
   let consumedRecruit = false;
+  const unpurchased: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
   for (const draw of recruit.draws) {
     if (!consumedRecruit && draw.unitDefId === recruitedDefId && draw.tier === recruitedTier) {
       consumedRecruit = true;
       continue;
     }
+    unpurchased.push(draw);
+  }
+
+  // Polish Balance Pack: the reprinted basic side reads "Decide for each
+  // unpurchased unit: place its card on the top or bottom of its appropriate
+  // deck." With the rule off they go to the tier discard pile, exactly as before.
+  if (houseRuleEnabled(state, "polish-card-balance") && unpurchased.length > 0) {
+    const opened = openDeckCardPlacementChoice(
+      state,
+      playerId,
+      unpurchased.map((draw) => ({
+        cardId: draw.unitDefId as CardId,
+        deckId: NEUTRAL_DECK_IDS[draw.tier],
+        label: coreUnitDefinitions[draw.unitDefId]?.name ?? draw.unitDefId
+      })),
+      choice.returnPhase,
+      "Diplomacy"
+    );
+    if (opened) {
+      return;
+    }
+  }
+
+  for (const draw of unpurchased) {
     state.decks[NEUTRAL_DECK_IDS[draw.tier]]?.discardPile.push(draw.unitDefId);
   }
 }
@@ -6032,10 +6062,13 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
   const card = cardLibrary["ability.learning"];
+  // Polish Balance Pack: the basic play also draws a card, so it is worth taking
+  // at the Experience cap where the extra half level would do nothing.
+  const balance = houseRuleEnabled(state, "polish-card-balance");
   if (
     !player ||
     !hero ||
-    hero.experience >= MAX_EXPERIENCE ||
+    (!balance && hero.experience >= MAX_EXPERIENCE) ||
     !player.hand.includes("ability.learning") ||
     card?.effect.type !== "ADVANCE_EXPERIENCE"
   ) {
@@ -6055,12 +6088,16 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: "Your Hero is about to level up — play Learning to advance further?",
+    prompt: balance
+      ? "Your Hero gained Experience — play Learning?"
+      : "Your Hero is about to level up — play Learning to advance further?",
     options: [
       ...modes.map((mode) => ({
         label:
           mode === "basic"
-            ? `Play Learning — advance a half level (+${effect.amount} Experience)`
+            ? balance
+              ? `Play Learning — advance a half level (+${effect.amount} Experience) and draw 1 card`
+              : `Play Learning — advance a half level (+${effect.amount} Experience)`
             : `Play Learning (expert) — advance a full level (+${effect.expertAmount} Experience), then remove it`
       })),
       { label: "Decline" }
@@ -6133,6 +6170,13 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
     timing: card.timing,
     mode
   });
+
+  // Polish Balance Pack: the reprinted BASIC side reads "…then/or draw 1 card".
+  // Drawn BEFORE the Experience so the draw lands even when the gain re-offers
+  // Learning (a second copy) or ends the turn's queue pumping.
+  if (mode === "basic" && houseRuleEnabled(state, "polish-card-balance")) {
+    drawCardsForPlayer(state, playerId, 1);
+  }
 
   // The bonus Experience runs through gainExperience, so advancing into another
   // level resolves its searches/specialties (and may even re-offer Learning when
@@ -10552,6 +10596,109 @@ function advanceTacticsSetupQueue(state: GameState): void {
   finalizeCombatStart(state);
 }
 
+/**
+ * Polish Balance Pack — the reprinted TACTICS' OR arm ("Move one of your units 1
+ * space"): the empty orthogonally-adjacent cells that unit may step onto. Same
+ * blocked set the Necklace of Swiftness step uses (living units, obstacles,
+ * battlefield tokens, standing Walls and the Gate). Exported so the offer
+ * (legal-actions) and this resolution read ONE list.
+ */
+export function tacticsMoveDestinations(combat: CombatState, unit: CombatUnitState): number[] {
+  const blocked = new Set<number>();
+  for (const other of Object.values(combat.units)) {
+    if (other.damage < other.maxHealth) {
+      blocked.add(other.position);
+    }
+  }
+  for (const position of combat.obstacles ?? []) {
+    blocked.add(position);
+  }
+  for (const token of combat.battlefieldTokens ?? []) {
+    blocked.add(token.position);
+  }
+  for (const position of combat.siege?.walls ?? []) {
+    blocked.add(position);
+  }
+  if (combat.siege?.gatePosition != null) {
+    blocked.add(combat.siege.gatePosition);
+  }
+  return getOrthogonalNeighbors(unit.position).filter((position) => !blocked.has(position));
+}
+
+/**
+ * Polish Balance Pack — the reprinted TACTICS' move arm. Shares the swap's own
+ * windows, card spend and crown rules verbatim (`TACTICS_MOVE_UNIT` is the twin of
+ * `SWAP_COMBAT_UNITS`), so the only difference is what happens to the board.
+ */
+export function tacticsMoveUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "TACTICS_MOVE_UNIT" }>
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    throw new Error("There is no combat in progress.");
+  }
+  if (!houseRuleEnabled(state, "polish-card-balance")) {
+    throw new Error("Tactics only moves a unit under the Balanced cards rule.");
+  }
+  const unit = combat.units[action.unitId];
+  if (!unit || unit.controllerId !== action.playerId) {
+    throw new Error("Tactics only moves your own units.");
+  }
+  if (unit.damage >= unit.maxHealth || isArrowTowerUnit(unit)) {
+    throw new Error("That unit cannot be repositioned.");
+  }
+  if (!tacticsMoveDestinations(combat, unit).includes(action.position)) {
+    throw new Error("Tactics moves a unit one space, onto an empty adjacent space.");
+  }
+
+  const player = state.players[action.playerId];
+  if (!player || !player.hand.includes("ability.tactics")) {
+    throw new Error("Tactics is not available to move a unit.");
+  }
+
+  const isSetupWindow = combat.pendingTacticsSwaps?.[0] === action.playerId;
+  let mode: "basic" | "expert";
+  if (isSetupWindow) {
+    mode = "basic";
+  } else if (state.phase === "combat") {
+    const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+    if (!active || active.controllerId !== action.playerId) {
+      throw new Error("Tactics can only be used during combat on your own turn.");
+    }
+    if (active.movedThisActivation || active.attackedThisActivation) {
+      throw new Error("Tactics must be used before your active unit moves or attacks.");
+    }
+    if (expertUsesAvailable(player) <= 0 && !abilityExpertIsCrownFree(player, "ability.tactics")) {
+      throw new Error("No expert uses are available this combat round.");
+    }
+    mode = "expert";
+  } else {
+    throw new Error("There is no Tactics move available right now.");
+  }
+
+  const from = unit.position;
+  unit.position = action.position;
+
+  spendTacticsCard(state, action.playerId);
+  if (mode === "expert" && !abilityExpertIsCrownFree(player, "ability.tactics")) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: "ability.tactics",
+    timing: "combat",
+    mode,
+    optionLabel: `Tactics: move ${unit.cardName} from ${getBattlefieldLabel(from)} to ${getBattlefieldLabel(action.position)}`
+  });
+
+  if (isSetupWindow) {
+    advanceTacticsSetupQueue(state);
+  }
+}
+
 /** Removes one Tactics ability card from a player's hand to its discard pile. */
 function spendTacticsCard(state: GameState, playerId: PlayerId): void {
   const player = state.players[playerId];
@@ -13523,10 +13670,16 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     throw new Error("Cast a Spell replaces a normal Polish Mage Guild purchase.");
   }
 
+  const wisdomBalance = houseRuleEnabled(state, "polish-card-balance");
   if (wisdom) {
     const card = cardLibrary[wisdom.cardId];
     if (card?.name !== "Wisdom" || !player.hand.includes(wisdom.cardId)) {
       throw new Error("Playing Wisdom here needs a Wisdom card in hand.");
+    }
+    // Polish Balance Pack: the reprint has NO town expert side (its Expert is a
+    // combat play), so an expert payload here is a stale/forged client.
+    if (wisdomBalance && wisdom.mode === "expert") {
+      throw new Error("The reprinted Wisdom has no expert Town side.");
     }
     // An Empowered Wisdom skips the crown (it still pays the gold).
     if (
@@ -13541,7 +13694,9 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
       0,
       goldCost - wisdomGoldDiscount(getRuleset(state), wisdom.mode, houseRuleEnabled(state, "wisdom-expert-discount"))
     );
-    searchCount = wisdomSearchCount(wisdom.mode);
+    // Balance Pack: "do Search (X+2) instead of Search (X)" — RELATIVE to this
+    // purchase's own base count, not the printed flat 3.
+    searchCount = wisdomBalance ? searchCount + WISDOM_BALANCE_SEARCH_DELTA : wisdomSearchCount(wisdom.mode);
   }
 
   const cost: ResourceCost = { gold: goldCost };
@@ -14970,7 +15125,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.priorityPlayerId = null;
 
     // Option 0 declines; the basic / expert plays follow in the order they were
-    // offered (mirroring openScoutingPrompt).
+    // offered (mirroring openScoutingPrompt), then the Balance-Pack Wisdom widen.
     if (action.optionIndex > 0) {
       const tiers: ("basic" | "expert")[] = [];
       if (prompt.offerBasic) {
@@ -14980,10 +15135,13 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         tiers.push("expert");
       }
       const tier = tiers[action.optionIndex - 1];
-      if (!tier) {
+      if (tier) {
+        playScoutingCard(state, action.playerId, tier);
+      } else if (prompt.offerWisdom && action.optionIndex === tiers.length + 1) {
+        playWisdomSearchWiden(state, action.playerId);
+      } else {
         throw new Error("That Scouting option is not available.");
       }
-      playScoutingCard(state, action.playerId, tier);
     }
 
     // Resume the Search (the override, if any, is consumed on the reveal).
@@ -15421,6 +15579,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
 
   if (choice.context === "learning-level-up") {
     resolveLearningLevelUpChoice(state, action.playerId, action.optionIndex);
+    return;
+  }
+
+  if (choice.context === "deck-card-placement") {
+    resolveDeckCardPlacementChoice(state, action.playerId, action.optionIndex);
     return;
   }
 
@@ -16531,7 +16694,7 @@ export function openSharedDeckSearch(
   // The choice (`chooseOption` → "scouting-prompt") plays the chosen tier and
   // re-enters this Search with scoutingResolved = true.
   if (!scoutingResolved) {
-    const offer = scoutingPromptFor(state, playerId, baseCount);
+    const offer = scoutingPromptFor(state, playerId, baseCount, deckId);
     if (offer) {
       openScoutingPrompt(
         state,
@@ -16752,11 +16915,27 @@ function searchCountOverrideLabel(
 function scoutingPromptFor(
   state: GameState,
   playerId: PlayerId,
-  baseCount: number
-): { offerBasic: boolean; offerExpert: boolean } | null {
+  baseCount: number,
+  deckId?: string
+): { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean } | null {
   const player = state.players[playerId];
-  if (!player || !player.hand.includes(SCOUTING_CARD_ID) || hasSearchCountOverride(state, playerId)) {
+  if (!player || hasSearchCountOverride(state, playerId)) {
     return null;
+  }
+  // Polish Balance Pack — the reprinted WISDOM's basic side: "When buying Spells
+  // from your Mage Guild OR you built the Mage Guild, do Search (X+2) instead of
+  // Search (X), once." The Mage-Guild PURCHASE carries its own inline `wisdom`
+  // payload (which also pays the −2 gold); this prompt is the "you built the
+  // Mage Guild" half, so it rides any SPELL-deck Search in the round that
+  // player's Mage Guild went up. LIMIT: an unrelated Spell Search in that same
+  // round is offered the widen too — the card is consumed either way.
+  const offerWisdom =
+    houseRuleEnabled(state, "polish-card-balance") &&
+    Boolean(deckId && isSpellDeck(deckId)) &&
+    player.mageGuildBuiltRound === state.round &&
+    player.hand.some((cardId) => cardLibrary[cardId]?.name === "Wisdom");
+  if (!player.hand.includes(SCOUTING_CARD_ID)) {
+    return offerWisdom ? { offerBasic: false, offerExpert: false, offerWisdom: true } : null;
   }
   // Balance Pack: both sides are Search (X+2), so they ALWAYS beat the base count
   // — the "would this tier even help?" filter that hides a flat 3 on a Search (4)
@@ -16765,10 +16944,10 @@ function scoutingPromptFor(
   const offerBasic = balance || SCOUTING_BASIC_COUNT > baseCount;
   const offerExpert =
     (balance || SCOUTING_EXPERT_COUNT > baseCount) && canPlayExpertMode(player, SCOUTING_CARD_ID);
-  if (!offerBasic && !offerExpert) {
+  if (!offerBasic && !offerExpert && !offerWisdom) {
     return null;
   }
-  return { offerBasic, offerExpert };
+  return { offerBasic, offerExpert, ...(offerWisdom ? { offerWisdom: true } : {}) };
 }
 
 /**
@@ -16782,7 +16961,7 @@ function openScoutingPrompt(
   playerId: PlayerId,
   deckId: string,
   baseCount: number,
-  offer: { offerBasic: boolean; offerExpert: boolean },
+  offer: { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean },
   allowRemove = false,
   modeResolved = false,
   ignoreDiscardTopOnce = false
@@ -16805,11 +16984,18 @@ function openScoutingPrompt(
         : `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)`
     });
   }
+  // Balance Pack (Wisdom's "you built the Mage Guild" widen) — the LAST option,
+  // after the Scouting tiers, so every pre-existing index keeps its meaning.
+  if (offer.offerWisdom) {
+    options.push({ label: `Play Wisdom — Search (${baseCount + WISDOM_BALANCE_SEARCH_DELTA})` });
+  }
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Use Scouting before this ${deckDisplayName(state, deckId)} Search?`,
+    prompt: offer.offerBasic || offer.offerExpert
+      ? `Use Scouting before this ${deckDisplayName(state, deckId)} Search?`
+      : `Play Wisdom before this ${deckDisplayName(state, deckId)} Search?`,
     options,
     context: "scouting-prompt",
     scoutingPrompt: {
@@ -16817,6 +17003,7 @@ function openScoutingPrompt(
       baseCount,
       offerBasic: offer.offerBasic,
       offerExpert: offer.offerExpert,
+      ...(offer.offerWisdom ? { offerWisdom: true } : {}),
       ...(allowRemove ? { allowRemove: true } : {}),
       ...(modeResolved ? { modeResolved: true } : {}),
       ...(ignoreDiscardTopOnce ? { ignoreDiscardTopOnce: true } : {})
@@ -16877,6 +17064,55 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
     cardId: SCOUTING_CARD_ID,
     timing: "instant",
     mode
+  });
+}
+
+/**
+ * Polish Balance Pack — the reprinted WISDOM's basic widen played at the "you
+ * built the Mage Guild" trigger: discard the card and leave the SAME one-shot
+ * `SEARCH_COUNT_OVERRIDE` Scouting uses (relative +2), so the reveal reads it
+ * through `searchCountOverrideFor` exactly like a Scouting override. No crown —
+ * the reprint's basic side is free.
+ */
+function playWisdomSearchWiden(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const cardId = player?.hand.find((id) => cardLibrary[id]?.name === "Wisdom");
+  if (!player || !cardId) {
+    return;
+  }
+  player.hand.splice(player.hand.indexOf(cardId), 1);
+  player.discard.push(cardId);
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Wisdom",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [
+          {
+            type: "SEARCH_COUNT_OVERRIDE",
+            // `count` is the rule-OFF reading and is unreachable here (this play
+            // only exists while polish-card-balance is on); the delta is what
+            // `searchCountOverrideFor` reads under the rule.
+            count: 0,
+            balanceDelta: WISDOM_BALANCE_SEARCH_DELTA
+          }
+        ]
+      },
+      { type: "card", cardId, controllerId: playerId },
+      playerId
+    )
+  );
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId,
+    timing: "town",
+    mode: "basic",
+    optionLabel: `Wisdom: Search (X+${WISDOM_BALANCE_SEARCH_DELTA})`
   });
 }
 

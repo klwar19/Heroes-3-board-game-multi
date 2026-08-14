@@ -2618,7 +2618,12 @@ export type EffectDefinition =
        * longer costs a crown).
        */
       type: "SIEGE_DEMOLISH";
-      target: "wall-or-gate" | "arrow-tower";
+      /**
+       * `three-walls-and-gate` is the Polish Balance Pack's Ballistics EXPERT
+       * siege arm ("During the siege: destroy 3 Walls and Gate") — it fells the
+       * Gate plus up to 3 standing Walls at once, so it needs no target pick.
+       */
+      target: "wall-or-gate" | "arrow-tower" | "three-walls-and-gate";
     }
   | {
       /**
@@ -3086,6 +3091,16 @@ export type CardOptionDefinition = {
    */
   requiresHouseRule?: HouseRuleId;
   /**
+   * The INVERSE gate: this option is offered ONLY while the named house rule is
+   * OFF. Used by the Polish Balance Pack (`polish-card-balance`) for a CLASSIC
+   * side the reprinted card replaces — Pathfinding's two printed movement tiers,
+   * Ballistics' Arrow-Tower demolition, the `ballistics-buff` bombard — so the
+   * reprint's own sides are the only ones on the table while it is on. Dropped
+   * from the offer when the rule is on AND rejected at play (legality is
+   * validated against the offer). Absent = always offered.
+   */
+  forbidsHouseRule?: HouseRuleId;
+  /**
    * House-rule gate on the option's SIDE: while the named house rule is ON the
    * option plays as its BASIC side (no crown); while the rule is OFF it becomes
    * an Expert side (spends a crown), reverting to the printed/wiki card. Used by
@@ -3325,6 +3340,15 @@ export type GameAction =
        * trusts the flag.
        */
       useSchoolFetchExpert?: boolean;
+      /**
+       * Polish Balance Pack — the reprinted EXPERT Eagle Eye: this is the COPY of
+       * an enemy Spell that just resolved against one of the caster's units. The
+       * spell card itself is never moved (it is not the caster's); the Eagle Eye
+       * ability is discarded and a crown spent instead, the copy resolves at base
+       * Power 0 (boostable), and it does not count toward the per-round Spell
+       * limit. Validated against `combatStats.eagleEyeCopySpellId`.
+       */
+      eagleEyeCopy?: boolean;
     }
   | {
       type: "PLAY_CARD";
@@ -4009,6 +4033,19 @@ export type GameAction =
       playerId: PlayerId;
       unitIdA: UnitId;
       unitIdB: UnitId;
+    }
+  | {
+      /**
+       * Polish Balance Pack — the reprinted Tactics: BOTH sides gain the OR arm
+       * "Move one of your units 1 space". Same two windows as the swap (the
+       * start-of-combat setup window and the expert mid-combat play, which spends
+       * a crown), same card spend; the destination is enumerated per offer, so no
+       * follow-up choice is opened. Only legal while `polish-card-balance` is on.
+       */
+      type: "TACTICS_MOVE_UNIT";
+      playerId: PlayerId;
+      unitId: UnitId;
+      position: number;
     }
   | {
       /** Decline a start-of-combat Tactics swap window without swapping. */
@@ -6811,6 +6848,14 @@ export type ResolutionStackItem = {
      */
     scrollLocked?: boolean;
     /**
+     * Polish Balance Pack — the reprinted EXPERT Eagle Eye copies an enemy's
+     * damaging spell "with 0 SP": the copy's base Power is ZERO (no standing /
+     * school / Orb source counts), and only Power the caster ADDS into this cast
+     * window applies. Unlike `scrollLocked` the paid Power is NOT capped at the
+     * spell's weakest tier — the printed card says "You can add SP to this spell".
+     */
+    spellPowerBaseZero?: boolean;
+    /**
      * Helm of the Alabaster Unicorn cast (option B): the spell was cast from the
      * top of the Spell-deck discard pile. Like a scroll cast it has no hand/discard
      * card to send anywhere afterward — the card stays in the Spell-deck discard
@@ -7825,6 +7870,14 @@ export type PlayerState = {
      * Cleared at the start of each combat and each combat round.
      */
     tarnumOverlimitCards?: CardId[];
+    /**
+     * Polish Balance Pack — the reprinted EXPERT Eagle Eye: an enemy Spell that
+     * just RESOLVED and dealt damage to one of this player's units. While it is
+     * latched (and the player still holds Eagle Eye with a crown) they may copy
+     * that spell once, at Power 0, at a new target, over the round limit.
+     * Cleared when used and at the start of each combat / combat round.
+     */
+    eagleEyeCopySpellId?: CardId;
     /**
      * Sorcery played outside a spell-cast window (draw-only during own
      * activation): banked Power for the NEXT spell this player casts. Wiki:
@@ -13895,6 +13948,7 @@ export type PendingChoice =
         | "own-deck-pick"
         | "artifact-deck-pick"
         | "spell-deck-pick"
+        | "deck-card-placement"
         | "garrison"
         | "siege-gate"
         | "siege-demolish"
@@ -14138,6 +14192,13 @@ export type PendingChoice =
         baseCount: number;
         offerBasic: boolean;
         offerExpert: boolean;
+        /**
+         * Polish Balance Pack — the reprinted Wisdom's basic side reads "When
+         * buying Spells from your Mage Guild OR you built the Mage Guild, do
+         * Search (X+2) instead of Search (X), once". Offered alongside Scouting
+         * on a Spell-deck Search in the round this player built their Mage Guild.
+         */
+        offerWisdom?: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
         /**
@@ -14178,9 +14239,28 @@ export type PendingChoice =
         /** Deck ids among `deckIds` whose pick spends an Expert use (crown). */
         crownDeckIds: DeckId[];
         /** The dig's School filter (a Tome's own School). */
-        school: Exclude<SpellSchool, "any">;
+        school?: Exclude<SpellSchool, "any">;
+        /**
+         * Polish Balance Pack — the reprinted Eagle Eye: the pick is over the
+         * spell LEVEL ("Choose one: Basic or Expert Spell"), not a School, so
+         * each offered deck carries the level its dig looks for. Index-aligned
+         * with `deckIds`; a Tome's School dig leaves it absent.
+         */
+        wantedLevels?: ("basic" | "expert")[];
         /** The card that opened the dig — its Empower waives the crown. */
         cardId?: CardId;
+      };
+      /**
+       * deck-card-placement: cards the player must put back on the TOP or the
+       * BOTTOM of a shared deck, one at a time (the reprinted Diplomacy's
+       * unpurchased draws; reused by the Balance Pack's Diplomat's Ring /
+       * Ambassador's Sash). The head is the card being placed; each answer pops
+       * it and re-opens for the tail until the queue empties.
+       */
+      deckCardPlacement?: {
+        pending: { cardId: CardId; deckId: string; label?: string }[];
+        /** Feed-line source (the card that granted the placement). */
+        source?: string;
       };
       /** rogues-scout: the deck being peeked and its revealed top card. */
       rogueScout?: { deckId: DeckId; cardId: CardId };

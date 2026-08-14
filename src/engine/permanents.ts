@@ -538,6 +538,22 @@ export function enforcePermanentLimit(state: GameState, playerId: PlayerId): voi
 }
 
 /**
+ * May this card occupy a permanent slot at all? Either the card-wide
+ * `permanent` flag (war machines, School of Magic, income artifacts) or a
+ * printed `ENTER_PLAY` SIDE — the Balance Pack's Ballistics reprint is the
+ * first card with the side but no flag, because flagging it would change the
+ * rule-OFF card's reaction-window behaviour (permanents are excluded there).
+ */
+export function cardMayEnterPlay(card: CardDefinition): boolean {
+  if (card.permanent) {
+    return true;
+  }
+  return (
+    card.effect.type === "CHOOSE_ONE" && card.effect.options.some((option) => option.effect.type === "ENTER_PLAY")
+  );
+}
+
+/**
  * Puts a hand card into play as one of the player's permanents. At the
  * limit — 1 as printed, up to 3 with the Pandora's Box exception — the
  * oldest permanent goes to the discard pile first ("playing another
@@ -546,7 +562,7 @@ export function enforcePermanentLimit(state: GameState, playerId: PlayerId): voi
 export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardId: CardId): void {
   const player = state.players[playerId];
   const card = cardLibrary[cardId];
-  if (!player || !card?.permanent) {
+  if (!player || !card || !cardMayEnterPlay(card)) {
     throw new Error("That card is not a permanent.");
   }
 
@@ -1037,6 +1053,49 @@ export function playerCanUseArtilleryVolley(state: GameState, playerId: PlayerId
 }
 
 const BALLISTA_CARD_ID = "war_machine.ballista" as CardId;
+const BALLISTICS_ABILITY_ID = "ability.ballistics" as CardId;
+/** Polish Balance Pack: the reprinted Ballistics EXPERT doubles a Catapult volley. */
+export const BALLISTICS_CATAPULT_SHOTS = 2;
+
+/**
+ * Polish Balance Pack — the reprinted BALLISTICS EXPERT: "When using the Catapult
+ * use it effect twice on the same targets WITHOUT PAYING ITS COST." Offered at the
+ * Catapult's own round-start prompt (the Artillery-volley pattern): the holder
+ * needs the card in hand and a free crown (an Empowered Ballistics pays none).
+ */
+export function playerCanUseBallisticsCatapultDouble(state: GameState, playerId: PlayerId): boolean {
+  const player = state.players[playerId];
+  return Boolean(
+    houseRuleEnabled(state, "polish-card-balance") &&
+      player &&
+      player.hand.includes(BALLISTICS_ABILITY_ID) &&
+      canPlayExpertMode(player, BALLISTICS_ABILITY_ID)
+  );
+}
+
+/** Pays the Ballistics expert cost: a crown (unless Empowered) and the card. */
+function spendBallisticsExpert(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player) {
+    return;
+  }
+  if (!abilityExpertIsCrownFree(player, BALLISTICS_ABILITY_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  const handIndex = player.hand.indexOf(BALLISTICS_ABILITY_ID);
+  if (handIndex !== -1) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(BALLISTICS_ABILITY_ID);
+  }
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: BALLISTICS_ABILITY_ID,
+    timing: cardLibrary[BALLISTICS_ABILITY_ID]?.timing ?? "instant",
+    mode: "expert",
+    optionLabel: "Ballistics: resolve the Catapult twice on the same targets, free"
+  });
+}
 
 /**
  * Polish Balance Pack (`polish-card-balance`) — Artillery's ongoing rider, on
@@ -1129,13 +1188,23 @@ export function firstAidVolleyHeals(): number {
  * expert use (crown). Playing it consumes the card — one volley per card. The
  * Tent itself must already be in play for the heal to exist at all.
  */
+/**
+ * Polish Balance Pack: the reprinted First Aid moves the Tent triple-volley off
+ * the crown — it is the BASIC side's OR arm (the card's own
+ * `expertUnlessHouseRule: "polish-card-balance"`), so no crown is needed or spent.
+ */
+function firstAidVolleyIsBasic(state: GameState): boolean {
+  return houseRuleEnabled(state, "polish-card-balance");
+}
+
 export function playerCanUseFirstAidVolley(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   return Boolean(
     player &&
       player.hand.includes(FIRST_AID_ABILITY_ID) &&
-      // An EMPOWERED First Aid plays its Expert volley with no crown.
-      canPlayExpertMode(player, FIRST_AID_ABILITY_ID) &&
+      // An EMPOWERED First Aid plays its Expert volley with no crown — and under
+      // the Balance Pack the volley is a BASIC side, so no crown at all.
+      (firstAidVolleyIsBasic(state) || canPlayExpertMode(player, FIRST_AID_ABILITY_ID)) &&
       firstAidVolleyHeals() > 1
   );
 }
@@ -1146,7 +1215,7 @@ export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void 
   if (!player) {
     return;
   }
-  if (!abilityExpertIsCrownFree(player, FIRST_AID_ABILITY_ID)) {
+  if (!firstAidVolleyIsBasic(state) && !abilityExpertIsCrownFree(player, FIRST_AID_ABILITY_ID)) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
   const handIndex = player.hand.indexOf(FIRST_AID_ABILITY_ID);
@@ -1159,7 +1228,7 @@ export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void 
     playerId,
     cardId: FIRST_AID_ABILITY_ID,
     timing: cardLibrary[FIRST_AID_ABILITY_ID]?.timing ?? "instant",
-    mode: "expert"
+    mode: firstAidVolleyIsBasic(state) ? "basic" : "expert"
   });
 }
 
@@ -1217,7 +1286,11 @@ function openWarMachineOffer(
   playerId: PlayerId,
   prompt: string,
   fireLabel: string,
-  skipLabel = "Skip"
+  skipLabel = "Skip",
+  // Extra options APPENDED after fire/skip, so every pre-existing index keeps its
+  // meaning (index 0 fires, 1 skips) — the Balance Pack's Ballistics double is
+  // index 2. Same convention the Diplomacy Legion offers use.
+  extraLabels: string[] = []
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
@@ -1225,7 +1298,7 @@ function openWarMachineOffer(
     type: "OPTION_CHOICE",
     playerId,
     prompt,
-    options: [{ label: fireLabel }, { label: skipLabel }],
+    options: [{ label: fireLabel }, { label: skipLabel }, ...extraLabels.map((label) => ({ label }))],
     context: "war-machine",
     returnPhase: "combat"
   };
@@ -1322,7 +1395,11 @@ export function processWarMachineRound(state: GameState): void {
 
     if (roundStart.kind === "pay-to-splash") {
       const player = state.players[playerId];
-      if (!player || !hasResources(player, roundStart.cost) || splashFirstTargets(state).length === 0) {
+      // Balance Pack: the Ballistics expert fires this WITHOUT paying, so a broke
+      // owner still gets the offer when they hold it.
+      const ballistics = playerCanUseBallisticsCatapultDouble(state, playerId);
+      const canPay = Boolean(player && hasResources(player, roundStart.cost));
+      if (!player || (!canPay && !ballistics) || splashFirstTargets(state).length === 0) {
         queue.pending.shift();
         continue;
       }
@@ -1331,7 +1408,15 @@ export function processWarMachineRound(state: GameState): void {
         state,
         playerId,
         `${name}: pay 1 building material to hit 2 adjacent targets for ${roundStart.amount} damage each?`,
-        "Fire the Catapult"
+        // The Catapult keeps its printed wording; the Balance Pack's in-play
+        // Ballistics reprint drives the SAME offer and must name itself.
+        entry.cardId === "war_machine.catapult" ? "Fire the Catapult" : `Fire ${name}`,
+        "Skip",
+        ballistics
+          ? [
+              `Play Ballistics (expert): resolve the Catapult ${BALLISTICS_CATAPULT_SHOTS}× on the same targets, free`
+            ]
+          : []
       );
       return;
     }
@@ -1414,7 +1499,13 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     return;
   }
 
-  if (optionIndex !== 0) {
+  // Balance Pack: option 2 on a Catapult offer is the Ballistics expert double.
+  const ballisticsDouble =
+    roundStart.kind === "pay-to-splash" &&
+    optionIndex === 2 &&
+    playerCanUseBallisticsCatapultDouble(state, playerId);
+
+  if (optionIndex !== 0 && !ballisticsDouble) {
     queue.pending.shift();
     processWarMachineRound(state);
     return;
@@ -1424,13 +1515,21 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
 
   if (roundStart.kind === "pay-to-splash") {
     const player = state.players[playerId];
-    if (!player || !hasResources(player, roundStart.cost)) {
+    if (!player || (!ballisticsDouble && !hasResources(player, roundStart.cost))) {
       throw new Error("Not enough resources to fire.");
     }
     if (splashFirstTargets(state).length === 0) {
       throw new Error("Catapult requires two adjacent targets (units, Walls, or the Gate).");
     }
-    spendResources(state, playerId, roundStart.cost, `${name} shot`);
+    if (ballisticsDouble) {
+      // "…twice on the same targets WITHOUT PAYING ITS COST": no building
+      // material, and both chosen targets are hit BALLISTICS_CATAPULT_SHOTS times
+      // (the same `volleyShots` slot the Artillery volley rides).
+      spendBallisticsExpert(state, playerId);
+      queue.volleyShots = BALLISTICS_CATAPULT_SHOTS;
+    } else {
+      spendResources(state, playerId, roundStart.cost, `${name} shot`);
+    }
     openWarMachineTargetChoice(
       state,
       playerId,
@@ -1478,7 +1577,12 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     // then offer the second target adjacent to that same spot.
     const firstPosition = splashTargetPosition(state, targetUnitId);
     queue.firstTargetUnitId = targetUnitId;
-    applyCatapultHit(state, playerId, targetUnitId, amount);
+    // `volleyShots` is 1 for every ordinary Catapult shot; the Balance Pack's
+    // Ballistics expert sets 2, so BOTH chosen targets take the doubled hit (the
+    // second target reads the same slot at the tail of this function).
+    for (let shot = 0; shot < (queue.volleyShots ?? 1); shot += 1) {
+      applyCatapultHit(state, playerId, targetUnitId, amount);
+    }
 
     const neighbors =
       firstPosition === null
@@ -1488,6 +1592,7 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
           );
 
     if (neighbors.length === 0) {
+      queue.volleyShots = null;
       queue.firstTargetUnitId = null;
       queue.pending.shift();
       processWarMachineRound(state);
@@ -1495,7 +1600,11 @@ export function resolveWarMachineTarget(state: GameState, playerId: PlayerId, ta
     }
 
     if (neighbors.length === 1) {
-      applyCatapultHit(state, playerId, neighbors[0].id, amount);
+      // The lone second target takes the same doubled hit a chosen one would.
+      for (let shot = 0; shot < (queue.volleyShots ?? 1); shot += 1) {
+        applyCatapultHit(state, playerId, neighbors[0].id, amount);
+      }
+      queue.volleyShots = null;
       queue.firstTargetUnitId = null;
       queue.pending.shift();
       processWarMachineRound(state);

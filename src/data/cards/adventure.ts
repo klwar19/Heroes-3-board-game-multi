@@ -1315,9 +1315,46 @@ export const adventureCards: CardLibrary = {
     tags: [
       "ability",
       "town",
-      "Basic: The cost of buying spells in this Town is reduced by 2 gold; Search (3) instead of Search (2). Expert: Search (4) instead. (BINH expert: −3 gold.)"
+      "Basic: The cost of buying spells in this Town is reduced by 2 gold; Search (3) instead of Search (2). Expert: Search (4) instead. (BINH expert: −3 gold.)",
+      "Balance pack: the basic side keeps −2 gold but its widen becomes RELATIVE — Search (X+2) instead of Search (X), once — and it applies both when buying Spells from your Mage Guild AND on a Spell-deck Search in the round you BUILT the Mage Guild (offered beside Scouting there). Its town EXPERT side is gone: the reprinted Expert is a COMBAT play — +1 spell Power and +1 to your spell limit, for this combat round."
     ],
-    effect: { type: "DRAW_CARDS", amount: 0 },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          // The town side is a declarative marker, exactly as before: Wisdom is
+          // never played through PLAY_CARD there — it rides the Spell Book token
+          // (SPELL_BOOK_ACTION's `wisdom` payload). `mapOnly` keeps it out of the
+          // combat offer the Balance expert side opens below; the card's "town"
+          // timing keeps it out of the map offer in both readings.
+          label: "Town (with the Spell Book token): −2 gold and a wider Search when buying a Spell",
+          mapOnly: true,
+          effect: { type: "DRAW_CARDS", amount: 0 }
+        },
+        {
+          // Balance Pack expert: a real combat play. ONE effect carries both
+          // printed halves for the combat round.
+          label: "Balance (spend a crown): +1 spell Power and +1 to your spell limit this combat round",
+          requiresHouseRule: "polish-card-balance",
+          combatOnly: true,
+          expertOnly: true,
+          effect: {
+            type: "CREATE_ACTIVE_EFFECT",
+            effect: {
+              name: "Wisdom",
+              scope: "player",
+              duration: { type: "current-combat-round" },
+              polarity: "positive",
+              removable: false,
+              modifiers: [
+                { type: "SPELL_POWER_BONUS", amount: 1 },
+                { type: "SPELL_LIMIT_BONUS", amount: 1 }
+              ]
+            }
+          }
+        }
+      ]
+    },
     assets: {
       cardImage: "/assets/abilities-wisdom.webp",
       imageAlt: "Wisdom ability card"
@@ -1346,7 +1383,8 @@ export const adventureCards: CardLibrary = {
       "instant",
       "heal",
       "wiki-reference",
-      "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times."
+      "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times.",
+      "Balance pack: the Tent triple-volley moves OFF the crown — it becomes the basic side's OR arm (no expert use spent), and the reprinted EXPERT side is new: with a First Aid Tent in play, one of your units gains +2 Health for this combat (the Vial of Lifeblood arm at magnitude 2)."
     ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
@@ -1358,12 +1396,25 @@ export const adventureCards: CardLibrary = {
           effect: { type: "HEAL_DAMAGE", amount: 1 }
         },
         {
-          // Expert: never played from hand. Offered when this player's First Aid
-          // Tent heals — spends one expert use and discards the card — resolving
-          // the Tent heal against the SAME target 3× (see permanents.ts).
+          // Never played from hand. Offered when this player's First Aid Tent
+          // heals — discards the card — resolving the Tent heal against the SAME
+          // target 3× (see permanents.ts). Balance Pack: a BASIC side (no crown);
+          // with the rule off it stays the printed Expert side.
           label: "When using your First Aid Tent: resolve its heal against the same target 3×",
-          expertOnly: true,
+          expertUnlessHouseRule: "polish-card-balance",
           effect: { type: "FIRST_AID_TENT_VOLLEY", heals: 3 }
+        },
+        {
+          // Balance Pack expert: gated on a First Aid Tent actually in play (the
+          // Jeremy-Cannon `requiresWarMachine` gate), and it targets ANY of your
+          // units — not only a damaged one — so it carries its own target.
+          label: "Balance (spend a crown; First Aid Tent in play): one of your units gains +2 Health for this combat",
+          requiresHouseRule: "polish-card-balance",
+          requiresWarMachine: "war_machine.first_aid_tent",
+          combatOnly: true,
+          expertOnly: true,
+          target: { type: "friendly-unit" },
+          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2 }
         }
       ]
     },
@@ -1440,7 +1491,8 @@ export const adventureCards: CardLibrary = {
     tags: [
       "ability",
       "combat",
-      "Regular: at the start of Combat, switch the position of any 2 of your units. Expert: switch any 2 of your units during Combat, on your turn before your active unit moves."
+      "Regular: at the start of Combat, switch the position of any 2 of your units. Expert: switch any 2 of your units during Combat, on your turn before your active unit moves.",
+      "Balance pack: BOTH sides gain the OR arm \"Move one of your units 1 space\" — offered in the SAME two windows as the swap (TACTICS_MOVE_UNIT, one offer per legal destination; the expert window still spends a crown)."
     ],
     effect: {
       type: "CHOOSE_ONE",

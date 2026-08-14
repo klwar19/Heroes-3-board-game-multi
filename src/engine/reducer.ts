@@ -79,6 +79,7 @@ import {
   hireSecondaryHero,
   placeCombatUnit,
   swapCombatUnits,
+  tacticsMoveUnit,
   placeNeutralGuard,
   finishNeutralPlacement,
   placeCommanderUnit,
@@ -423,6 +424,8 @@ import {
   getLegalActions,
   getLegalMoveDestinations,
   getUnitMoveRange,
+  balanceEagleEyeCopySpellId,
+  balanceIntelligencePlayBlocked,
   combatEnemyImposesPowerTax,
   combatEnemyLocksSpells,
   getActivationStep,
@@ -10655,7 +10658,13 @@ function finalizeSpellCardDestination(
   // shared Spell-deck discard pile — in both cases there is no card in
   // hand/discard to hold ongoing, recall, or send to the discard. Any ongoing
   // effect they created still lives on in activeEffects.
-  if (stackItem.modifiers.scrollLocked || stackItem.modifiers.fromSpellDeck) {
+  // The Balance-Pack Eagle Eye copy is the same shape: the Spell belongs to the
+  // OPPONENT and never entered this player's zones, so there is nothing to move.
+  if (
+    stackItem.modifiers.scrollLocked ||
+    stackItem.modifiers.fromSpellDeck ||
+    stackItem.modifiers.spellPowerBaseZero
+  ) {
     return;
   }
 
@@ -10761,7 +10770,66 @@ function expertRecallSupportCardIds(playedCardIds: CardId[], sourceCardId?: Card
   });
 }
 
+const EAGLE_EYE_ABILITY_ID = "ability.eagle_eye" as CardId;
+
+/**
+ * Polish Balance Pack — the reprinted EAGLE EYE EXPERT: "When your opponent casts
+ * a Spell that deals damage to your unit, AFTER RESOLVING ITS EFFECT copy this
+ * spell effect (with 0 SP) and choose a new target for it."
+ *
+ * Latched here, straight after the cast resolves, by reading the events THAT
+ * resolution appended: any `DAMAGE_ASSIGNED` sourced from the cast card that hit
+ * a unit belonging to an opponent who holds Eagle Eye with a crown to spend. The
+ * offer then rides `addSpellActions` as an ordinary optional cast (no window is
+ * opened, so nothing can stall), and expires with the combat round.
+ */
+function noteEagleEyeCopyOpportunity(
+  state: GameState,
+  cast: Extract<GameAction, { type: "CAST_SPELL" }>,
+  eventsBefore: number
+): void {
+  if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
+    return;
+  }
+  const damaged = new Set<PlayerId>();
+  for (const event of state.eventLog.slice(eventsBefore)) {
+    if (
+      event.type !== "DAMAGE_ASSIGNED" ||
+      event.amount <= 0 ||
+      event.source.type !== "card" ||
+      event.source.cardId !== cast.cardId ||
+      event.target.type !== "unit"
+    ) {
+      continue;
+    }
+    const unit = state.combat.units[event.target.unitId];
+    if (unit && unit.controllerId !== cast.playerId && unit.controllerId !== NEUTRAL_PLAYER_ID) {
+      damaged.add(unit.controllerId);
+    }
+  }
+  for (const playerId of damaged) {
+    const player = state.players[playerId];
+    if (
+      player &&
+      player.hand.includes(EAGLE_EYE_ABILITY_ID) &&
+      canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)
+    ) {
+      player.combatStats.eagleEyeCopySpellId = cast.cardId;
+    }
+  }
+}
+
 function resolveTopStack(state: GameState, cards: CardLibrary): void {
+  const pendingSpellCast = state.stack.at(-1)?.action;
+  const spellCast = pendingSpellCast?.type === "CAST_SPELL" ? pendingSpellCast : undefined;
+  const eventsBefore = spellCast ? state.eventLog.length : 0;
+  resolveTopStackCore(state, cards);
+  if (spellCast) {
+    noteEagleEyeCopyOpportunity(state, spellCast, eventsBefore);
+  }
+}
+
+function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
   const stackItem = state.stack.at(-1);
   if (!stackItem) {
     state.phase = "combat";
@@ -12091,9 +12159,33 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     throw new Error("Cast a Spell enables a refreshed Spell Book card; it is not itself cast as a Spell.");
   }
 
-  // A Spell Scroll cast pulls the spell from the scroll (it is not in hand) and
-  // removes it from the game; a normal cast moves the card hand → discard.
-  if (action.fromScroll) {
+  // Polish Balance Pack — the reprinted EAGLE EYE EXPERT copy: the Spell is the
+  // OPPONENT'S, so no card leaves any zone for it. The Eagle Eye ability pays
+  // instead (discard + a crown unless Empowered) and the latch is spent, so the
+  // copy can only ever be taken once.
+  if (action.eagleEyeCopy) {
+    if (balanceEagleEyeCopySpellId(state, action.playerId) !== action.cardId) {
+      throw new Error("That Spell cannot be copied with Eagle Eye right now.");
+    }
+    const copier = state.players[action.playerId];
+    if (!abilityExpertIsCrownFree(copier, EAGLE_EYE_ABILITY_ID)) {
+      copier.combatStats.expertUsesSpentThisRound += 1;
+    }
+    const handIndex = copier.hand.indexOf(EAGLE_EYE_ABILITY_ID);
+    if (handIndex !== -1) {
+      copier.hand.splice(handIndex, 1);
+      copier.discard.push(EAGLE_EYE_ABILITY_ID);
+    }
+    copier.combatStats.eagleEyeCopySpellId = undefined;
+    appendEvent(state, {
+      type: "CARD_PLAYED",
+      playerId: action.playerId,
+      cardId: EAGLE_EYE_ABILITY_ID,
+      timing: cardLibrary[EAGLE_EYE_ABILITY_ID]?.timing ?? "instant",
+      mode: "expert",
+      optionLabel: `Eagle Eye: copy ${card.name} at Power 0`
+    });
+  } else if (action.fromScroll) {
     if (!consumeScrollSpell(state, action.playerId, action.fromScroll, action.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
     }
@@ -12168,11 +12260,20 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   noteSpellCast(
     state,
     caster,
-    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll,
+    // The Balance-Pack Eagle Eye copy is likewise a bonus cast: "does not count
+    // toward your spell limit per Combat round".
+    !action.fromSpellDeck && !action.tarnumReturn && !action.fromScroll && !action.eagleEyeCopy,
     castInFlightCardIds(state, action)
   );
 
   const stackItem = makeStackItem(state, action);
+
+  // Balance-Pack Eagle Eye copy: "with 0 SP". Base Power is ZERO — only Power the
+  // caster ADDS into this cast window counts (read once in
+  // resolvedSpellPowerForStackItem), and unlike a Scroll it is not capped.
+  if (action.eagleEyeCopy) {
+    stackItem.modifiers.spellPowerBaseZero = true;
+  }
 
   // Helm of the Alabaster Unicorn cast: flag the stack item so the spell card is
   // left in the Spell-deck discard pile when it resolves (no hand/discard card to
@@ -16086,6 +16187,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (isCastASpellCard(action.cardId)) {
     throw new Error("Cast a Spell enables a refreshed Spell Book card; its only direct play is the printed +1 Power reaction.");
   }
+  // Polish Balance Pack: the reprinted Intelligence is a start-of-combat play.
+  // PLAY_CARD is offer-validated, so this is the backstop for a stale client.
+  if (balanceIntelligencePlayBlocked(state, action.cardId)) {
+    throw new Error("Intelligence is played at the start of a Combat, before any unit activates.");
+  }
   if (polishSpellBookEnabled(state) && card.kind === "spell" && !action.fromSpellBook) {
     throw new Error("Owned Spells must be played from the Polish Spell Book with Cast a Spell.");
   }
@@ -16143,9 +16249,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     throw new Error("Finish the after-combat Necromancy bonuses, then press Resolve.");
   }
 
-  // Dessa's Logistics: playable only during the continue-or-retreat decision
-  // against neutral units — the combat extends one round for free.
-  if (card.effect.type === "CONTINUE_NEUTRAL_FREE") {
+  // Dessa's Logistics — and, under the Polish Balance Pack, the reprinted
+  // PATHFINDING's basic side (a CHOOSE_ONE option, hence the effective-effect
+  // read): playable only during the continue-or-retreat decision against neutral
+  // units — the combat extends one round for free.
+  if (getEffectiveCardEffect(card, action.optionIndex)?.type === "CONTINUE_NEUTRAL_FREE") {
     const combat = state.combat;
     if (
       !combat ||
@@ -16192,9 +16300,17 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // enters play. A hybrid artifact whose CHOOSE_ONE offers an enter-play side
   // (ENTER_PLAY) alongside a one-shot instant (income rings/carts) enters play
   // only when that side is chosen; its instant side falls through below.
+  // A CHOOSE_ONE card is decided by the CHOSEN option alone: an `ENTER_PLAY`
+  // side means "enter play", whether or not the card is flagged `permanent`.
+  // Every card that carried such a side before the Balance Pack also carried
+  // the flag, so this reading is byte-identical for all of them; the Balance
+  // Pack's Ballistics reprint is the first card with an enter-play SIDE and no
+  // card-wide flag (flagging it would change its rule-OFF reaction-window
+  // behaviour, which permanents are excluded from).
   const entersPlayAsPermanent =
-    Boolean(card.permanent) &&
-    (card.effect.type !== "CHOOSE_ONE" || getChosenOption(card, action.optionIndex)?.effect.type === "ENTER_PLAY");
+    card.effect.type === "CHOOSE_ONE"
+      ? getChosenOption(card, action.optionIndex)?.effect.type === "ENTER_PLAY"
+      : Boolean(card.permanent);
   if (entersPlayAsPermanent) {
     putPermanentIntoPlay(state, action.playerId, action.cardId);
     appendEvent(state, {
@@ -16747,6 +16863,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         throw new Error("The Arrow Tower is already gone.");
       }
       removeArrowTower(state, null, "Ballistics levels it");
+    } else if (effect.target === "three-walls-and-gate") {
+      // Polish Balance Pack — the reprinted Ballistics EXPERT siege arm: "destroy
+      // 3 Walls and Gate". Deterministic, so no target pick: the Gate first, then
+      // up to three standing Walls (nearest the Gate first, so the breach is one
+      // contiguous hole rather than three scattered gaps). A Gate a defender
+      // stands on is still shielded by `destroyFortification`'s own backstop.
+      const gatePosition = siege.gatePosition;
+      if (gatePosition != null) {
+        destroyFortification(state, null, "gate", gatePosition);
+      }
+      const walls = [...siege.walls].sort(
+        (left, right) =>
+          Math.abs(left - (gatePosition ?? left)) - Math.abs(right - (gatePosition ?? right))
+      );
+      for (const position of walls.slice(0, 3)) {
+        destroyFortification(state, null, "wall", position);
+      }
+      finishCombatIfNeeded(state);
     } else {
       openSiegeDemolishChoice(state, action.playerId, 1);
     }
@@ -18287,6 +18421,14 @@ function resolveEagleEyeDig(
     performSpellDig(state, playerId, "spells", cards, { school });
     return;
   }
+  // Polish Balance Pack — the reprinted EAGLE EYE: ONE play, then a two-button
+  // "Basic or Expert Spell?" pick (no crown either way; the reprint's Expert side
+  // is a different card entirely). The pick reuses the Tome's `spell-deck-pick`
+  // window, carrying the LEVEL each button digs for.
+  if (houseRuleEnabled(state, "polish-card-balance")) {
+    openEagleEyeLevelPick(state, playerId, cardId, cards);
+    return;
+  }
   // With split decks, the selected Basic/Expert mode determines which physical
   // Spell deck the LEVEL dig (Eagle Eye) reads.
   const wantedLevel = mode === "expert" ? "expert" : "basic";
@@ -18295,6 +18437,44 @@ function resolveEagleEyeDig(
       ? "spells-expert"
       : "spells";
   performSpellDig(state, playerId, deckId, cards, { wantedLevel });
+}
+
+/**
+ * Polish Balance Pack — the reprinted Eagle Eye's "Choose one: Basic or Expert
+ * Spell" pick. Rides the SAME `spell-deck-pick` window the Tome uses, but the
+ * buttons carry a spell LEVEL (`wantedLevels`, index-aligned with `deckIds`) and
+ * NEITHER costs a crown. With split decks the Expert level reads the
+ * `spells-expert` pile; on a single-deck table both dig `spells` and only the
+ * level filter differs, which is a real choice (a Basic vs an Expert spell).
+ */
+function openEagleEyeLevelPick(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId | undefined,
+  cards: CardLibrary
+): void {
+  const splitExpert =
+    houseRuleEnabled(state, "split-decks") && state.decks["spells-expert"] ? "spells-expert" : "spells";
+  const deckIds: DeckId[] = ["spells", splitExpert as DeckId];
+  const cardName = cardId ? (cards[cardId]?.name ?? "Eagle Eye") : "Eagle Eye";
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: `${cardName}: find the first Basic or Expert Spell?`,
+    options: [{ label: "Basic Spell" }, { label: "Expert Spell" }],
+    context: "spell-deck-pick",
+    spellDeckPick: {
+      deckIds,
+      // The reprint's basic side pays nothing for either level.
+      crownDeckIds: [],
+      wantedLevels: ["basic", "expert"],
+      ...(cardId ? { cardId } : {})
+    },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
 }
 
 /** The Tome's "which Spell deck?" two-button pick (see resolveEagleEyeDig). */
@@ -18375,8 +18555,16 @@ function resolveSpellDeckPick(
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
   // May open the take-or-discard choice of its own — the nested shape the
-  // CHOOSE_OPTION tail already parks/resumes a reaction window around.
-  performSpellDig(state, action.playerId, deckId, cards, { school: pick.school });
+  // CHOOSE_OPTION tail already parks/resumes a reaction window around. A Tome
+  // carries a `school`; the Balance-Pack Eagle Eye carries a spell LEVEL.
+  const wantedLevel = pick.wantedLevels?.[action.optionIndex];
+  performSpellDig(
+    state,
+    action.playerId,
+    deckId,
+    cards,
+    pick.school ? { school: pick.school } : { wantedLevel: wantedLevel ?? "basic" }
+  );
 }
 
 /** The dig itself: one deck, one filter (School for a Tome, level for Eagle Eye). */
@@ -18429,6 +18617,15 @@ function performSpellDig(
 
   const digLabel = school ? `${school} Magic` : "Eagle Eye";
   deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
+
+  // Polish Balance Pack — the reprinted EAGLE EYE: "Put it into your Spellbook."
+  // There is no discard arm on the reprint, so the find is TAKEN with no prompt
+  // (a one-button window would be a dead click). A Tome's School dig keeps its
+  // printed take-or-discard choice in every mode.
+  if (!school && houseRuleEnabled(state, "polish-card-balance")) {
+    gainOwnedCard(state, playerId, foundCardId, cards);
+    return;
+  }
 
   const takeDest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
   const choiceId = `choice_${nextEventNumber(state)}`;
@@ -21415,6 +21612,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // does not survive into the next combat round (an uncast Searched spell just
     // stays in hand as a normal card).
     player.combatStats.tarnumOverlimitCards = [];
+    // Polish Balance Pack — the reprinted Eagle Eye EXPERT: "after resolving its
+    // effect" is a same-round reaction, so an unused copy offer expires with the
+    // combat round.
+    player.combatStats.eagleEyeCopySpellId = undefined;
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
     // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
     // a per-combat-round one. They are NOT reset here: a single battle's many
@@ -23256,6 +23457,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SWAP_COMBAT_UNITS":
         swapCombatUnits(nextState, action);
+        break;
+      case "TACTICS_MOVE_UNIT":
+        tacticsMoveUnit(nextState, action);
         break;
       case "FINISH_TACTICS":
         finishTactics(nextState, action);

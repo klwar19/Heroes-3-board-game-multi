@@ -44,7 +44,10 @@ describe("Ballistics card definition (house-rule buff)", () => {
     if (card.effect.type !== "CHOOSE_ONE") {
       return;
     }
-    expect(card.effect.options).toHaveLength(3);
+    // Three CLASSIC sides plus the two Polish Balance Pack reprints, which are
+    // APPENDED (indices 3 and 4) precisely so the classic indices below — and
+    // every client / test that names one — keep their meaning.
+    expect(card.effect.options).toHaveLength(5);
 
     // Option 0: destroy a Wall or the Gate — basic.
     const wallGate = card.effect.options[0];
@@ -71,6 +74,15 @@ describe("Ballistics card definition (house-rule buff)", () => {
     if (bombard.effect.type === "BALLISTICS_BOMBARD") {
       expect(bombard.effect.amount).toBe(1);
     }
+
+    // Options 3 & 4: the Polish Balance Pack reprint, gated on its own rule, and
+    // the three classic sides above are gated OFF while it is on.
+    expect(card.effect.options[3].requiresHouseRule).toBe("polish-card-balance");
+    expect(card.effect.options[3].effect.type).toBe("ENTER_PLAY");
+    expect(card.effect.options[4].requiresHouseRule).toBe("polish-card-balance");
+    expect(card.effect.options[4].expertOnly).toBe(true);
+    expect(arrowTower.forbidsHouseRule).toBe("polish-card-balance");
+    expect(bombard.forbidsHouseRule).toBe("polish-card-balance");
   });
 
   it("is reachable in real games — included in the ability decks", () => {

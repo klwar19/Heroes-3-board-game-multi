@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { isAdjacent } from "./battlefield";
+import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { appendEvent, nextEventNumber } from "./events";
 import { houseRuleEnabled } from "./house-rules";
 import {
@@ -98,6 +99,12 @@ export function makeActiveEffect(
  * units being active. Used to lift the activation-timing gate on spell casts.
  */
 export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId): boolean {
+  // Polish Balance Pack: the reprinted Intelligence scopes the free cast to the
+  // START of the combat, so the freedom (and the Polish-Book enabler waiver that
+  // reads it) closes the moment a unit acts.
+  if (balanceIntelligenceWindowClosed(state)) {
+    return false;
+  }
   return state.activeEffects.some(
     (effect) =>
       effect.controllerId === playerId &&
@@ -110,6 +117,10 @@ export function playerHasSpellTimingFreedom(state: GameState, playerId: PlayerId
  * one-Spell-per-combat-round limit (`spellLimitFor` returns Infinity for them).
  */
 export function playerSpellCastsIgnoreLimit(state: GameState, playerId: PlayerId): boolean {
+  // Balance Pack: the reprint's no-limit rider is likewise start-of-combat only.
+  if (balanceIntelligenceWindowClosed(state)) {
+    return false;
+  }
   // Polish Spell Book reading: Expert Intelligence raises the limit by +1 rather
   // than lifting it (see spellLimitFor), so the "∞" affordance never applies under
   // that rule — the UI shows the real finite number instead.

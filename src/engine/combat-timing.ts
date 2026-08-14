@@ -13,7 +13,8 @@
  * leaf `artifact-sets.ts` can read the same predicate with no import cycle.
  */
 
-import type { CombatState } from "./state";
+import { houseRuleEnabled } from "./house-rules";
+import type { CombatState, GameState } from "./state";
 
 /**
  * True once ANY unit in this combat has acted — moved, attacked, or finished an
@@ -46,4 +47,21 @@ export function combatStartWindowOpen(combat: CombatState): boolean {
     return false;
   }
   return !combatFightingHasBegun(combat);
+}
+
+/**
+ * Polish Balance Pack — the reprinted INTELLIGENCE: "At the start of a Combat,
+ * BEFORE ANY UNIT ACTIVATES, you can Cast a Spell." The classic card grants a
+ * combat-long timing freedom; the reprint scopes it to the same
+ * `combatStartWindowOpen` moment the Set-Artifact "beginning of the combat" tiers
+ * use. TRUE means the freedom (and its expert no-limit rider) is CLOSED right now.
+ *
+ * Outside combat there is no window to close, so this is false — the card is a
+ * combat play and the freedom is only ever read mid-fight.
+ */
+export function balanceIntelligenceWindowClosed(state: GameState): boolean {
+  if (!houseRuleEnabled(state, "polish-card-balance")) {
+    return false;
+  }
+  return Boolean(state.combat) && !combatStartWindowOpen(state.combat!);
 }
