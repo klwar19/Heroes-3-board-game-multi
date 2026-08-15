@@ -19,10 +19,14 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RANGED_MELEE_PENALTY" }
   | { type: "IGNORE_RANGED_PENALTIES" }
   | { type: "MOVE_ANYWHERE" }
+  | { type: "UNIT_MOVE_RANGE_BONUS"; amount: number }
   | {
       /** Veterancy: treat this unit as Flying for ordinary combat movement. */
       type: "GRANT_FLYING_MOVEMENT";
     }
+  | { type: "DEFENSE_REDUCTION_AFTER_MOVE"; amount: number }
+  | { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER"; amount: number }
+  | { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY"; onRoll: number }
   | {
       /**
        * Jotunn Warlord (Bulwark, house rule): at the START of its activation the
@@ -450,6 +454,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "DOUBLE_ATTACK";
       maxRoll?: number;
+      /** Veterancy variant: also works for adjacent/melee attacks. */
+      anyRange?: boolean;
     }
   | {
       type: "ACTIVATION_ATTACK_BUFF";
@@ -3554,6 +3560,41 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Winged Advance",
     text: "This unit uses Flying movement and may cross units and Combat Obstacles.",
     effect: { type: "GRANT_FLYING_MOVEMENT" },
+    implementationStatus: "implemented"
+  },
+  "veteran-fear-aura": {
+    id: "veteran-fear-aura",
+    name: "Fear Aura",
+    text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit.",
+    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-layer-draw": {
+    id: "veteran-layer-draw",
+    name: "Divine Triumph",
+    text: "After this unit's attack reduces an enemy side or Stack layer to 0 HP, draw 1 card.",
+    effect: { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-moving-pierce": {
+    id: "veteran-moving-pierce",
+    name: "Lancer's Momentum",
+    text: "After moving, this unit ignores 1 Defense on its next attack that activation.",
+    effect: { type: "DEFENSE_REDUCTION_AFTER_MOVE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-mobility-1": {
+    id: "veteran-mobility-1",
+    name: "Cavalry Tempo",
+    text: "This unit may move 1 additional Combat space.",
+    effect: { type: "UNIT_MOVE_RANGE_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-double-attack": {
+    id: "veteran-double-attack",
+    name: "Relentless Assault",
+    text: "After this unit's first attack, it attacks the same target a second time if the target survives.",
+    effect: { type: "DOUBLE_ATTACK", anyRange: true },
     implementationStatus: "implemented"
   },
   // Commander combination skills (COMMANDER_COMBOS in src/data/commanders.ts;

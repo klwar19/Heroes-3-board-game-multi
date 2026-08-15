@@ -287,6 +287,7 @@ import {
   getLethalSaveUnitAbility,
   getSpendCubeAttackAgain,
   getSplashAllocationAttack,
+  getUnitAbilityMoveRangeBonus,
   getUnitAbilityDefinitions,
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
@@ -948,7 +949,7 @@ export { isAdjacent } from "./battlefield";
  * ranged units up to 1 space (after shooting or instead of attacking).
  */
 export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): number {
-  const base = unit.type === "ranged" ? 1 : 3;
+  const base = (unit.type === "ranged" ? 1 : 3) + getUnitAbilityMoveRangeBonus(unit);
 
   // House rule ("combat-move-initiative"): Haste / Slow (and the initiative-buff
   // hero specialties — Cyra, Catherine VI, …) also shift Combat movement by ±1

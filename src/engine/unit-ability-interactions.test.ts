@@ -388,6 +388,29 @@ function activateOnly(state: GameState, unitId: string): GameState {
 }
 
 describe("activation-start abilities", () => {
+  it("Hydra Fear Aura rolls at activation start and paralyses one random enemy only on −1", () => {
+    const hit = createInitialGameState("hydra-fear-hit");
+    hit.combat!.units.unit_p1_crusaders.abilities = ["veteran-fear-aura"];
+    hit.combat!.dice.scriptedRolls = [-1];
+    hit.combat!.dice.rollCount = 0;
+    const afterHit = activateOnly(hit, "unit_p1_crusaders");
+    const hitEnemies = Object.values(afterHit.combat!.units).filter(
+      (unit) => unit.controllerId === "p2" && unitTokens(afterHit, unit.id).includes("paralysis")
+    );
+    expect(hitEnemies).toHaveLength(1);
+
+    const miss = createInitialGameState("hydra-fear-miss");
+    miss.combat!.units.unit_p1_crusaders.abilities = ["veteran-fear-aura"];
+    miss.combat!.dice.scriptedRolls = [0];
+    miss.combat!.dice.rollCount = 0;
+    const afterMiss = activateOnly(miss, "unit_p1_crusaders");
+    expect(
+      Object.values(afterMiss.combat!.units).some(
+        (unit) => unit.controllerId === "p2" && unitTokens(afterMiss, unit.id).includes("paralysis")
+      )
+    ).toBe(false);
+  });
+
   it("Ghost Dragons discard the enemy's positive morale token when they activate", () => {
     const state = createInitialGameState();
     state.players.p2.morale = 1;

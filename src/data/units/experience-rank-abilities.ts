@@ -20,7 +20,7 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 export type RankTemplateId = "standard" | "strong" | "rare";
 
 export type RankStep =
-  | { kind: "stats" }
+  | { kind: "stats"; stats?: UnitRankStatBonus }
   | { kind: "ability"; choices: readonly string[] }
   | { kind: "hybrid"; stats: UnitRankStatBonus; choices: readonly string[] };
 
@@ -64,8 +64,8 @@ export const UNIT_STAT_STEPS: Record<UnitTier, readonly UnitRankStatBonus[]> = {
   ]
 };
 
-function S(): RankStep {
-  return { kind: "stats" };
+function S(stats?: UnitRankStatBonus): RankStep {
+  return stats ? { kind: "stats", stats } : { kind: "stats" };
 }
 function A(...choices: string[]): RankStep {
   return { kind: "ability", choices };
@@ -1071,7 +1071,8 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
 }
 
 function rankOneStepFor(unitDefId: string): RankStep {
-  if (unitDefId === "fortress.hydras") return A("wog-nightmare-fear");
+  if (unitDefId === "fortress.hydras") return A("veteran-fear-aura");
+  if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
   const profile = rankOneProfileFor(unitDefId);
   if (["defense", "health", "initiative"].includes(profile)) return S();
   if (profile === "own-attack") return A("veteran-attack-when-attacking");
@@ -1079,7 +1080,16 @@ function rankOneStepFor(unitDefId: string): RankStep {
   return A("veteran-guarded-stance");
 }
 
+function explicitRankTwo(unitDefId: string): RankStep | null {
+  if (unitDefId === "castle.champions") return S({ ...Z, health: 1 });
+  return null;
+}
+
 function explicitRankThree(unitDefId: string): RankStep | null {
+  if (unitDefId === "castle.archangels") return A("veteran-layer-draw");
+  if (unitDefId === "castle.champions") {
+    return H({ ...Z, initiative: 2 }, "veteran-mobility-1");
+  }
   if (unitDefId === "stronghold.behemoths") return A("veteran-flying-movement");
   if (unitDefId.endsWith(".black_dragons")) {
     return H({ ...Z, initiative: 2 }, "veteran-speed-hunter");
@@ -1092,6 +1102,10 @@ function explicitRankThree(unitDefId: string): RankStep | null {
 }
 
 function explicitRankFour(unitDefId: string): RankStep | null {
+  if (unitDefId === "castle.crusaders") return A("veteran-double-attack");
+  if (unitDefId === "inferno.pit_lords") return A("veteran-defense-pierce");
+  if (unitDefId === "inferno.magogs") return S({ ...Z, health: 2 });
+  if (unitDefId === "necropolis.dread_knights") return A("reduce-spell-and-specialty-damage-2");
   if (unitDefId === "conflux.sprites") return A("pegasi-magic-damper");
   if (unitDefId.endsWith(".skeletons")) return A("veteran-rebirth");
   if (unitDefId.endsWith(".magi")) return A("veteran-spell-sunder");
@@ -1110,7 +1124,7 @@ export function rankScheduleFor(unitDefId: string): RankSchedule {
       : S());
   return {
     1: rankOneStepFor(unitDefId),
-    2: A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
+    2: explicitRankTwo(unitDefId) ?? A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
     3: rankThree,
     4: explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
   };
@@ -1210,6 +1224,12 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "veteran-speed-hunter": "/assets/ui/rank-ability/speed-hunter.webp",
   "veteran-regeneration-2": "/assets/ui/rank-ability/regeneration-2.webp",
   "veteran-flying-movement": "/assets/ui/rank-ability/flying-movement.webp",
+  "veteran-fear-aura": "/assets/ui/rank-ability/fear-aura.webp",
+  "veteran-layer-draw": "/assets/ui/rank-ability/layer-triumph.webp",
+  "veteran-moving-pierce": "/assets/ui/rank-ability/moving-pierce.webp",
+  "veteran-mobility-1": "/assets/ui/rank-ability/mobility.webp",
+  "veteran-double-attack": "/assets/ui/rank-ability/double-strike.webp",
+  "reduce-spell-and-specialty-damage-2": "/assets/ui/rank-ability/arcane-aegis.webp",
   "pegasi-magic-damper": "/assets/ui/rank-ability/spell-dampening.webp"
 };
 

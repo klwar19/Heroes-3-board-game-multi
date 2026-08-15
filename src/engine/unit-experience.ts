@@ -122,9 +122,9 @@ export function unitRankStatBonusesFor(
     const step = unitRankStep(unitDefId, r, job);
     if (!step) continue;
     if (step.kind === "stats") {
-      const delta = steps[statsIndex] ?? ZERO_FOLD;
+      const delta = step.stats ?? steps[statsIndex] ?? ZERO_FOLD;
       total = addStats(total, delta);
-      statsIndex += 1;
+      if (!step.stats) statsIndex += 1;
     } else if (step.kind === "hybrid") {
       total = addStats(total, step.stats);
     }
