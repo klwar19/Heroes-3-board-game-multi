@@ -150,6 +150,7 @@ import {
   mainHeroInOwnTown,
   unitDrillGoldCost,
   unitDrillLimit,
+  unitDrillMovementCost,
   unitDrillsUsedThisRound,
   unitDrillAvailable,
   neutralBattleLevel,
@@ -12778,8 +12779,9 @@ export function heroTrain(state: GameState, action: Extract<GameAction, { type: 
 }
 
 /**
- * DRILL_UNIT (Unit Experience optional rule): with the main hero standing in
- * an OWN Town, pay the target's tier price to grant one army unit card +1 XP.
+ * DRILL_UNIT (Unit Experience optional rule): pay the target's tier price to
+ * grant one army unit card +1 XP. It is free to move at a Town, Settlement or
+ * Random Town; anywhere else on the map also costs 1 movement.
  * Recruited Neutrals and bronze cost 1, silver costs 2, gold/azure cost 3.
  * Uses per round scale from 1 to 2 at hero level IV and 3 at level VII.
  */
@@ -12799,8 +12801,13 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
     throw new Error("Drill on your own turn.");
   }
   assertParallelInteractionFree(state, action.playerId);
-  if (!mainHeroInOwnTown(state, action.playerId)) {
-    throw new Error("Drilling needs your main hero in one of your Towns.");
+  const hero = getMainHero(state, action.playerId);
+  const movementCost = unitDrillMovementCost(state, action.playerId);
+  if (!hero || movementCost === null) {
+    throw new Error("Your main hero must be on the map to drill a unit.");
+  }
+  if (hero.movementPoints < movementCost) {
+    throw new Error("Drilling outside a Town, Settlement or Random Town needs 1 movement.");
   }
   if (!unitDrillAvailable(state, action.playerId)) {
     throw new Error(
@@ -12833,6 +12840,7 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   if (used >= limit) {
     throw new Error(`You have used all ${limit} drills available this round.`);
   }
+  hero.movementPoints -= movementCost;
   spendResources(state, action.playerId, { gold: cost }, "unit drill");
   player.unitDrillRound = state.round;
   player.unitDrillsUsed = used + 1;

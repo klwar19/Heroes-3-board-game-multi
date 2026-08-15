@@ -1174,6 +1174,39 @@ describe("Unit Experience — Drill", () => {
     expect(max.players.p1.army[0].experience).toBe(3);
   });
 
+  it("waives movement at Towns, Settlements and Random Towns; elsewhere spends exactly 1 movement", () => {
+    for (const location of ["town", "settlement", "random_town"] as const) {
+      const state = drillState(`uxp-drill-free-${location}`);
+      const hero = getMainHero(state, "p1")!;
+      hero.movementPoints = 2;
+      state.adventure!.fields[hero.spaceId!].location = location;
+      const next = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+      expect(next.heroes[hero.id].movementPoints, `${location} waives movement`).toBe(2);
+      expect(next.players.p1.army[0].experience).toBe(1);
+    }
+
+    const field = drillState("uxp-drill-field-cost");
+    const hero = getMainHero(field, "p1")!;
+    hero.movementPoints = 2;
+    field.adventure!.fields[hero.spaceId!].location = "empty";
+    expect(
+      getLegalActions(field, "p1").find((legal) => legal.action.type === "DRILL_UNIT")?.label
+    ).toContain("1 movement");
+    const drilled = applyOk(field, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    expect(drilled.heroes[hero.id].movementPoints).toBe(1);
+    expect(drilled.players.p1.resources.gold).toBe(9);
+    expect(drilled.players.p1.army[0].experience).toBe(1);
+
+    const exhausted = drillState("uxp-drill-no-movement");
+    const tiredHero = getMainHero(exhausted, "p1")!;
+    tiredHero.movementPoints = 0;
+    exhausted.adventure!.fields[tiredHero.spaceId!].location = "empty";
+    expect(getLegalActions(exhausted, "p1").some((legal) => legal.action.type === "DRILL_UNIT")).toBe(false);
+    expect(
+      applyAction(exhausted, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message
+    ).toContain("needs 1 movement");
+  });
+
   it("CONTROLs: rule off / away from town / maxed card", () => {
     const off = drillState("uxp-drill-off", false);
     expect(applyAction(off, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message).toContain(

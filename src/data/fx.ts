@@ -216,6 +216,12 @@ export const spellFxPlans: Record<string, SpellFxPlan> = {
   "specialty.xyron.6": { affect: [{ key: "inferno" }], sound: "spells/inferno" },
   "specialty.deemer.1": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
   "specialty.deemer.6": { affect: [{ key: "meteor-shower" }], sound: "spells/meteor-shower" },
+  // Kud's Deemer-derived damage faces keep the same real area-damage engine,
+  // but present as her Rocket Launcher: a board-filling flame burst with the
+  // supplied BAZOOKA.oggpak explosion. IV is utility/Power, so it does not fake
+  // a launcher shot.
+  "specialty.kudryavka_noumi.1": { affect: [{ key: "inferno" }], sound: "little-busters/effects/bazooka" },
+  "specialty.kudryavka_noumi.6": { affect: [{ key: "inferno" }], sound: "little-busters/effects/bazooka" },
   "specialty.alice.1": { affect: [{ key: "fear" }], sound: "effects/fear" },
   // Septienna's Death Ripple sweep (every level's damage side), Melodia's Fortune
   // luck wash and Glacius's Frost Ring (I/VI area damage) all resolve through a

@@ -239,8 +239,14 @@ describe("Little Busters complete playable content", () => {
       "Fortune I", "Fortune IV", "Fortune VI"
     ]);
     expect([1, 4, 6].map((level) => cardLibrary[`specialty.kudryavka_noumi.${level}`]?.name)).toEqual([
-      "Meteor Shower I", "Meteor Shower IV", "Meteor Shower VI"
+      "Rocket Launcher I", "Rocket Launcher IV", "Rocket Launcher VI"
     ]);
+    const rocketOne = cardLibrary["specialty.kudryavka_noumi.1"];
+    const rocketSix = cardLibrary["specialty.kudryavka_noumi.6"];
+    expect(rocketOne.tags?.find((tag) => tag.startsWith("Instant:"))).toBe(
+      "Instant: Select a unit and 1 adjacent unit. Deal damage to each (friend or foe): 1 at Power 0–1, 2 at Power 2–3, or 3 at Power 4+."
+    );
+    expect(rocketSix.tags?.find((tag) => tag.startsWith("Instant:"))).toContain("2 adjacent units");
   });
 
   it("resolves Rin's -1 combo and Kud's random other-target attack as separate attacks", () => {

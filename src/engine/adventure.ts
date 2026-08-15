@@ -3081,10 +3081,18 @@ export function unitDrillsUsedThisRound(state: GameState, playerId: PlayerId): n
   return player?.unitDrillRound === state.round ? Math.max(0, player.unitDrillsUsed ?? 1) : 0;
 }
 
+/** Movement paid by Drill at the hero's current field; null means off-map. */
+export function unitDrillMovementCost(state: GameState, playerId: PlayerId): 0 | 1 | null {
+  const hero = getMainHero(state, playerId);
+  if (!hero?.spaceId) return null;
+  const location = state.adventure?.fields[hero.spaceId]?.location;
+  return location === "town" || location === "settlement" || location === "random_town" ? 0 : 1;
+}
+
 /**
- * Whether DRILL_UNIT is available right now: Unit Experience on, the player's
- * main hero standing in an OWN Town (the training grounds), the gold cost
- * covered, within the hero-level use limit, and at least one card below max rank.
+ * Whether DRILL_UNIT is available right now: Unit Experience on, the main hero
+ * on the map with any required movement, the gold cost covered, within the
+ * hero-level use limit, and at least one card below max rank.
  */
 export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolean {
   if (!unitExperienceActive(state)) {
@@ -3094,7 +3102,9 @@ export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolea
   if (!player || unitDrillsUsedThisRound(state, playerId) >= unitDrillLimit(state, playerId)) {
     return false;
   }
-  if (!mainHeroInOwnTown(state, playerId)) {
+  const movementCost = unitDrillMovementCost(state, playerId);
+  const hero = getMainHero(state, playerId);
+  if (movementCost === null || !hero || hero.movementPoints < movementCost) {
     return false;
   }
   return drillableArmyUnits(state, playerId).some(

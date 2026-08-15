@@ -475,12 +475,16 @@ describe("the new offers never strand a window", () => {
  * DISPLAY_ONLY_ABILITIES pattern).
  */
 const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
+  { cardId: "ability.artillery", optionIndex: 0 },
   { cardId: "specialty.deemer.1", optionIndex: 0 },
   { cardId: "specialty.deemer.6", optionIndex: 0 },
   { cardId: "specialty.adelaide.1", optionIndex: 0 },
+  { cardId: "specialty.adelaide.4", optionIndex: 0 },
   { cardId: "specialty.adelaide.6", optionIndex: 0 },
   { cardId: "specialty.glacius.1", optionIndex: 0 },
+  { cardId: "specialty.glacius.4", optionIndex: 0 },
   { cardId: "specialty.glacius.6", optionIndex: 0 },
+  { cardId: "specialty.gerwulf.1", optionIndex: 1 },
   { cardId: "specialty.gerwulf.4", optionIndex: 1 },
   { cardId: "specialty.gerwulf.6", optionIndex: 1 },
   { cardId: "specialty.luka.6", optionIndex: 0 },
@@ -498,7 +502,21 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.ilias.4", optionIndex: 0 },
   { cardId: "specialty.kudryavka_noumi.1", optionIndex: 0 },
   { cardId: "specialty.kudryavka_noumi.6", optionIndex: 0 },
-  { cardId: "specialty.promestein.6", optionIndex: 0 }
+  { cardId: "specialty.jeremy.1", optionIndex: 1 },
+  { cardId: "specialty.jeremy.4", optionIndex: 0 },
+  { cardId: "specialty.jeremy.4", optionIndex: 1 },
+  { cardId: "specialty.jeremy.6", optionIndex: 0 },
+  { cardId: "specialty.jeremy.6", optionIndex: 1 },
+  { cardId: "specialty.melodia.1", optionIndex: 1 },
+  { cardId: "specialty.promestein.6", optionIndex: 0 },
+  { cardId: "specialty.tarnum_castle.1", optionIndex: 1 },
+  { cardId: "specialty.tarnum_castle.4", optionIndex: 0 },
+  { cardId: "specialty.tarnum_castle.4", optionIndex: 1 },
+  { cardId: "specialty.tarnum_castle.6", optionIndex: 0 },
+  { cardId: "specialty.tarnum_rampart.6", optionIndex: 1 },
+  { cardId: "specialty.torosar.1", optionIndex: 1 },
+  { cardId: "specialty.torosar.6", optionIndex: 0 },
+  { cardId: "specialty.yuiko_kurugaya.1", optionIndex: 1 }
 ];
 
 /**
@@ -509,9 +527,8 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
  * - `mapOnly` faces are an ABSOLUTE bar: a printed zone restriction must never
  *   be overridden by a window join (pinned below).
  * - A `combatOnly` face WITHOUT `combatAnytime` is a TURN play, not an instant:
- *   Gerwulf I's "Activate your Ballista", Gerwulf IV's free 1 damage and
- *   Gerwulf VI's ongoing "you aim the Ballista" all print no "any time" clause,
- *   and the same card's instant side is the one that joins.
+ *   Gerwulf IV's free 1 damage and Gerwulf VI's ongoing "you aim the Ballista"
+ *   print no "any time" clause, and the same card's instant side is the one that joins.
  * - A face with a printed reaction TRIGGER is already a real reaction through
  *   the ordinary variant loop (Tarnum-Dungeon VI's "+2 attack" on
  *   UNIT_ATTACK_DECLARED) — it needs no join, and giving it one would be a
@@ -524,7 +541,6 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
  */
 const DOCUMENTED_WINDOW_EXCLUSIONS: { cardId: CardId; optionIndex: number; reason: string }[] = [
   { cardId: "specialty.gerwulf.1", optionIndex: 0, reason: "mapOnly: pay 5 gold to gain a Ballista" },
-  { cardId: "specialty.gerwulf.1", optionIndex: 1, reason: "turn play: 'Activate your Ballista' prints no instant clause" },
   { cardId: "specialty.gerwulf.4", optionIndex: 0, reason: "turn play: the free 1 damage prints no instant clause" },
   { cardId: "specialty.gerwulf.6", optionIndex: 0, reason: "turn play: the ongoing 'you aim the Ballista' effect" },
   { cardId: "specialty.tarnum_dungeon.6", optionIndex: 1, reason: "printed UNIT_ATTACK_DECLARED trigger — already a real reaction" }
@@ -554,6 +570,33 @@ function playKeys(offers: LegalAction[], cardId: CardId): string[] {
 }
 
 describe("invariant sweep — a window never swallows an 'any time' instant", () => {
+  it.each([
+    "specialty.deemer.1",
+    "specialty.deemer.6",
+    "specialty.kudryavka_noumi.1",
+    "specialty.kudryavka_noumi.6"
+  ] as CardId[])("offers %s before an enemy attack resolves", (cardId) => {
+    const state = aboutToAttack([]);
+    state.players.p1.hand = [cardId, "stat.attack", "stat.defense"];
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+    state.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    state.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_marksmen"
+    });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_ATTACK_DECLARED");
+    expect(
+      getLegalActions(declared, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId
+      ),
+      `${cardId} must be playable before enemy attack damage`
+    ).toBe(true);
+  });
+
   it("the library's combatAnytime faces are exactly the registered list", () => {
     const found: { cardId: CardId; optionIndex: number }[] = [];
     for (const [cardId, card] of Object.entries(cardLibrary)) {
@@ -637,7 +680,7 @@ describe("invariant sweep — a window never swallows an 'any time' instant", ()
     }
   });
 
-  it("CONTROL: a mapOnly face never joins a window even on a card whose other side does", () => {
+  it("CONTROL: a mapOnly face never joins even though its Ballista activation side does", () => {
     // Gerwulf I prints [mapOnly "pay 5 gold for a Ballista", turn-only
     // "Activate your Ballista"] — neither is an instant, so the whole card is
     // absent from the window. Fails if the join filter stops reading
@@ -646,9 +689,11 @@ describe("invariant sweep — a window never swallows an 'any time' instant", ()
       offTurnHolder(["specialty.gerwulf.1"], ["war_machine.ballista"]),
       "p1"
     );
-    expect(joins.filter((legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.1")).toEqual(
-      []
+    const gerwulf = joins.filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.gerwulf.1"
     );
+    expect(gerwulf).toHaveLength(1);
+    expect(gerwulf[0].action.type === "PLAY_CARD" ? gerwulf[0].action.optionIndex : -1).toBe(1);
   });
 
   it("CONTROL: a hand-locked defender (no hero in the fight) is offered no join", () => {

@@ -483,9 +483,14 @@ describe("the shared 'Ballista I' card is identical for every Ballista hero", ()
       grant: "game-round"
     });
     expect(cardLibrary["specialty.torosar.6"]?.effect).toEqual({
-      type: "BALLISTA_SPECIALTY",
-      grant: "combat",
-      activate: "all"
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain an additional Ballista and activate all Ballistas now",
+          combatAnytime: true,
+          effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" }
+        }
+      ]
     });
     // IV prints the MAP icon; VI prints the INSTANT icon.
     expect(cardLibrary["specialty.torosar.4"]?.timing).toBe("map");

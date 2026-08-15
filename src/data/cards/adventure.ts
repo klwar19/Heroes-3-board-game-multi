@@ -2867,6 +2867,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Activate your Ballista",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
         }
       ]
@@ -2913,7 +2914,16 @@ export const adventureCards: CardLibrary = {
       "For this Combat, gain an additional Ballista. You can activate all your Ballistas now. When played, this card counts as a Ballista."
     ],
     target: { type: "none" },
-    effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Gain an additional Ballista and activate all Ballistas now",
+          combatAnytime: true,
+          effect: { type: "BALLISTA_SPECIALTY", grant: "combat", activate: "all" }
+        }
+      ]
+    },
     implementationStatus: "implemented",
     source: heroSource("torosar")
   }),
@@ -3451,6 +3461,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a Spell or Specialty card from your discard pile",
+          combatAnytime: true,
           effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
         }
       ]
@@ -3561,6 +3572,7 @@ export const adventureCards: CardLibrary = {
       options: [
         {
           label: "Take a Spell or Specialty card from your discard pile",
+          combatAnytime: true,
           effect: { type: "TAKE_FROM_DISCARD", count: 1, filter: "spell-or-specialty", allowInCombat: true }
         },
         {
@@ -4189,6 +4201,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Activate your Ballista",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
         }
       ]
@@ -4216,10 +4229,12 @@ export const adventureCards: CardLibrary = {
         {
           label: "Gain an additional Ballista this Combat",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "BALLISTA_SPECIALTY", grant: "combat" }
         },
         {
           label: "Draw 1 card",
+          combatAnytime: true,
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
@@ -4242,7 +4257,16 @@ export const adventureCards: CardLibrary = {
       "Choose 2 enemy units. Each of these units suffers 2 damage."
     ],
     target: { type: "none" },
-    effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 2, amount: 2 },
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          label: "Choose 2 enemy units: 2 damage to each",
+          combatAnytime: true,
+          effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 2, amount: 2 }
+        }
+      ]
+    },
     implementationStatus: "implemented",
     source: heroSource("tarnum_castle")
   }),
@@ -4435,6 +4459,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Activate your Ballista",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "BALLISTA_SPECIALTY", activate: "one" }
         }
       ]
@@ -4797,7 +4822,13 @@ export const adventureCards: CardLibrary = {
     name: "Fortune I",
     kind: "hero-specialty",
     timing: "instant",
-    tags: ["hero-specialty", "instant", "melodia", "fortune", "Gain a positive morale token and 1 gold."],
+    tags: [
+      "hero-specialty",
+      "instant",
+      "melodia",
+      "fortune",
+      "Gain a positive morale token and 1 gold. — OR — During Combat, draw 1 card as an Instant."
+    ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
@@ -4806,6 +4837,12 @@ export const adventureCards: CardLibrary = {
           label: "Gain a positive morale token and 1 gold",
           mapOnly: true,
           effect: { type: "RESOURCE_FORTUNE_PLAY", morale: 1, gold: 1 }
+        },
+        {
+          label: "Draw 1 card",
+          combatOnly: true,
+          combatAnytime: true,
+          effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
     },
@@ -4949,6 +4986,7 @@ export const adventureCards: CardLibrary = {
         },
         {
           label: "Draw a card",
+          combatAnytime: true,
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
@@ -5003,6 +5041,7 @@ export const adventureCards: CardLibrary = {
         {
           label: "Deal 1 damage to an enemy unit",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 1 }
         }
       ]
@@ -5032,11 +5071,13 @@ export const adventureCards: CardLibrary = {
         {
           label: "Use the Cannon once for free (2 damage to a chosen enemy)",
           combatOnly: true,
+          combatAnytime: true,
           requiresWarMachine: "war_machine.cannon",
           effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
         },
         {
           label: "Draw 1 card",
+          combatAnytime: true,
           effect: { type: "DRAW_CARDS", amount: 1 }
         }
       ]
@@ -5068,11 +5109,13 @@ export const adventureCards: CardLibrary = {
         {
           label: "Use the Cannon once for free (2 damage to a chosen enemy)",
           combatOnly: true,
+          combatAnytime: true,
           requiresWarMachine: "war_machine.cannon",
           effect: { type: "DAMAGE_CHOSEN_ENEMIES", count: 1, amount: 2 }
         },
         {
           label: "Draw 2 cards",
+          combatAnytime: true,
           effect: { type: "DRAW_CARDS", amount: 2 }
         }
       ]
@@ -5344,8 +5387,8 @@ adventureCards["specialty.molian.4"] = rethemedSpecialty(adventureCards["special
 adventureCards["specialty.molian.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "molian", 6, "Corpse Suture");
 
 // Little Busters specialty identities. These are native-card rethemes of fully
-// implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud
-// Meteor Shower. Levels 1/4/6 only unlock the corresponding card; they do not
+// implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud's
+// Rocket Launcher uses Meteor Shower's engine effect. Levels 1/4/6 only unlock the corresponding card; they do not
 // add hidden battlefield stats. Komari retains her First-Aid card line.
 adventureCards["specialty.riki_naoe.1"] = rethemedSpecialty(adventureCards["specialty.zilare.1"], "zilare", "riki_naoe", 1, "Forgetfulness");
 adventureCards["specialty.riki_naoe.4"] = rethemedSpecialty(adventureCards["specialty.zilare.4"], "zilare", "riki_naoe", 4, "Forgetfulness");
@@ -5353,9 +5396,28 @@ adventureCards["specialty.riki_naoe.6"] = rethemedSpecialty(adventureCards["spec
 adventureCards["specialty.yuiko_kurugaya.1"] = rethemedSpecialty(adventureCards["specialty.melodia.1"], "melodia", "yuiko_kurugaya", 1, "Fortune");
 adventureCards["specialty.yuiko_kurugaya.4"] = rethemedSpecialty(adventureCards["specialty.melodia.4"], "melodia", "yuiko_kurugaya", 4, "Fortune");
 adventureCards["specialty.yuiko_kurugaya.6"] = rethemedSpecialty(adventureCards["specialty.melodia.6"], "melodia", "yuiko_kurugaya", 6, "Fortune");
-adventureCards["specialty.kudryavka_noumi.1"] = rethemedSpecialty(adventureCards["specialty.deemer.1"], "deemer", "kudryavka_noumi", 1, "Meteor Shower");
-adventureCards["specialty.kudryavka_noumi.4"] = rethemedSpecialty(adventureCards["specialty.deemer.4"], "deemer", "kudryavka_noumi", 4, "Meteor Shower");
-adventureCards["specialty.kudryavka_noumi.6"] = rethemedSpecialty(adventureCards["specialty.deemer.6"], "deemer", "kudryavka_noumi", 6, "Meteor Shower");
+function kudRocketLauncherSpecialty(level: 1 | 4 | 6): CardLibrary[string] {
+  const next = rethemedSpecialty(
+    adventureCards[`specialty.deemer.${level}`],
+    "deemer",
+    "kudryavka_noumi",
+    level,
+    "Rocket Launcher"
+  );
+  if (level !== 4) {
+    const neighbours = level === 1 ? "1 adjacent unit" : "2 adjacent units";
+    next.tags = next.tags?.map((tag) =>
+      tag.startsWith("Instant (any time")
+        ? `Instant: Select a unit and ${neighbours}. Deal damage to each (friend or foe): 1 at Power 0–1, 2 at Power 2–3, or 3 at Power 4+.`
+        : tag
+    );
+  }
+  return next;
+}
+
+adventureCards["specialty.kudryavka_noumi.1"] = kudRocketLauncherSpecialty(1);
+adventureCards["specialty.kudryavka_noumi.4"] = kudRocketLauncherSpecialty(4);
+adventureCards["specialty.kudryavka_noumi.6"] = kudRocketLauncherSpecialty(6);
 adventureCards["specialty.komari_kamikita.1"] = rethemedSpecialty(adventureCards["specialty.gem.1"], "gem", "komari_kamikita", 1, "Everyone Smiles");
 adventureCards["specialty.komari_kamikita.4"] = rethemedSpecialty(adventureCards["specialty.gem.4"], "gem", "komari_kamikita", 4, "Everyone Smiles");
 adventureCards["specialty.komari_kamikita.6"] = rethemedSpecialty(adventureCards["specialty.gem.6"], "gem", "komari_kamikita", 6, "Everyone Smiles");

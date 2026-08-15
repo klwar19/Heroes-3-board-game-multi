@@ -544,6 +544,7 @@ export const extraAbilityCards: CardLibrary = {
         {
           label: "Deal 1 damage to the enemy unit with the lowest initiative",
           combatOnly: true,
+          combatAnytime: true,
           effect: { type: "DAMAGE_LOWEST_INITIATIVE_ENEMY", amount: 1 }
         },
         {

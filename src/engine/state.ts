@@ -3759,7 +3759,8 @@ export type GameAction =
     }
   | {
       /**
-       * Unit Experience: Drill one army unit at your own Town for +1 XP.
+       * Unit Experience: Drill one army unit for +1 XP. This costs no movement
+       * at a Town/Settlement/Random Town and 1 movement elsewhere on the map.
        * Tier/Neutral pricing and hero-level uses are validated by the reducer.
        * Handler-validated (self-validating).
        */
@@ -8268,7 +8269,7 @@ export type PlayerState = {
   wavePreparedFor?: number;
   /**
    * Unit Experience (optional rule): the game round this player last used the
-   * DRILL_UNIT action at their own Town. Used with `unitDrillsUsed` so hero
+   * DRILL_UNIT action. Used with `unitDrillsUsed` so hero
    * levels IV/VII can train two/three times in the same round.
    */
   unitDrillRound?: number;

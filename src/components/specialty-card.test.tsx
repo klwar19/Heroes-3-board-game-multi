@@ -161,6 +161,9 @@ describe("hero-board / zoom wiring", () => {
     expect(specialtyIconSrc("specialty.lingxi.1")).toContain("icon-first_aid.webp");
     expect(specialtyIconSrc("specialty.lingxi.1")).not.toContain("abilities-first_aid");
     expect(specialtyIconSrc("specialty.lingxi.6")).toContain("icon-first_aid.webp");
+    expect(specialtyIconSrc("specialty.kudryavka_noumi.1")).toContain(
+      "specialty-kud-rocket-launcher.webp"
+    );
     // Unit specialists for anime towns use their own unit portraits.
     expect(specialtyIconSrc("specialty.bin.1")).toContain("fuyuki-sabers.webp");
     expect(specialtyIconSrc("specialty.qingyun.1")).toContain("azure-breeze-true-inheritors.webp");

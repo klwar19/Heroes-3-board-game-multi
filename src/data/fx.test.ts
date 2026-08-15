@@ -501,6 +501,8 @@ describe("area spells & specialties carry their correct SFX + animation", () => 
   const SPECIALTY_FX: [string, string, string][] = [
     ["specialty.deemer.1", "meteor-shower", "spells/meteor-shower"],
     ["specialty.deemer.6", "meteor-shower", "spells/meteor-shower"],
+    ["specialty.kudryavka_noumi.1", "inferno", "little-busters/effects/bazooka"],
+    ["specialty.kudryavka_noumi.6", "inferno", "little-busters/effects/bazooka"],
     ["specialty.xyron.1", "inferno", "spells/inferno"],
     ["specialty.xyron.4", "inferno", "spells/inferno"],
     ["specialty.xyron.6", "inferno", "spells/inferno"],

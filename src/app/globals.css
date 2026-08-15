@@ -40575,17 +40575,18 @@ button.armyExperienceBoard > small {
 }
 .unitXpPicker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-  padding: 12px 18px 18px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  padding: 10px 18px 16px;
   max-height: min(70vh, 720px);
   overflow: auto;
 }
 .unitXpPickerCard {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 8px;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 7px;
   border: 1px solid var(--mod-line);
   border-radius: 12px;
   background: linear-gradient(165deg, rgb(30 24 16 / 88%), rgb(8 10 14 / 92%));
@@ -40607,8 +40608,8 @@ button.armyExperienceBoard > small {
   outline: none;
 }
 .unitXpPickerArt {
-  width: 100%;
-  aspect-ratio: 3 / 4;
+  width: 72px;
+  height: 96px;
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid rgb(255 255 255 / 10%);
@@ -40616,7 +40617,7 @@ button.armyExperienceBoard > small {
 }
 .unitXpPickerArt.fallback {
   display: block;
-  min-height: 180px;
+  min-height: 96px;
 }
 .unitXpPickerMeta {
   display: flex;
@@ -40654,20 +40655,20 @@ button.armyExperienceBoard > small {
 .unitXpDetail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 18px 18px;
+  gap: 9px;
+  padding: 10px 16px 14px;
   min-height: 0;
   overflow: auto;
 }
 .unitXpDetailHero {
   display: grid;
-  grid-template-columns: minmax(180px, 224px) minmax(0, 1fr);
-  gap: 14px 18px;
+  grid-template-columns: 152px minmax(0, 1fr);
+  gap: 10px 14px;
   align-items: start;
 }
 .unitXpDetailArt {
   width: 100%;
-  max-width: 224px;
+  max-width: 152px;
   aspect-ratio: 3 / 4;
   object-fit: cover;
   border-radius: 11px;
@@ -40677,7 +40678,7 @@ button.armyExperienceBoard > small {
 }
 .unitXpDetailArt.fallback {
   display: block;
-  min-height: 320px;
+  min-height: 203px;
 }
 .unitXpDetailSummary {
   display: flex;
@@ -40757,19 +40758,20 @@ button.armyExperienceBoard > small {
 }
 @media (max-width: 720px) {
   .unitXpDetailHero {
-    grid-template-columns: 1fr;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 8px 10px;
   }
   .unitXpDetailArt {
-    max-width: 220px;
-    margin: 0 auto;
+    max-width: 86px;
+    margin: 0;
   }
 }
 
 .unitXpRank {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-columns: 60px minmax(0, 1fr);
   gap: 2px 7px;
-  padding: 9px;
+  padding: 8px;
   border: 1px solid rgb(255 255 255 / 9%);
   border-radius: 10px;
   background: rgb(0 0 0 / 24%);
@@ -40784,8 +40786,8 @@ button.armyExperienceBoard > small {
   color: var(--mod-accent);
 }
 .unitXpRank .unitXpRankIcon .unitRankBadgeArt {
-  width: 46px;
-  height: 46px;
+  width: 56px;
+  height: 56px;
   filter: drop-shadow(0 3px 5px rgb(0 0 0 / 62%));
 }
 .unitXpRank b {
@@ -40823,7 +40825,7 @@ button.armyExperienceBoard > small {
 .unitXpElite {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
   gap: 3px 8px;
   margin-top: 4px;
   padding-top: 6px;
@@ -40833,8 +40835,8 @@ button.armyExperienceBoard > small {
 }
 .unitXpElite > img.unitXpAbilityIcon {
   grid-row: 1 / 2;
-  width: 42px;
-  height: 42px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
@@ -40848,7 +40850,7 @@ button.armyExperienceBoard > small {
   color: inherit;
 }
 .unitXpElite > small {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   line-height: 1.4;
   opacity: 0.9;
 }
@@ -40869,7 +40871,7 @@ button.armyExperienceBoard > small {
 .unitXpStatUpgrade {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 60px minmax(0, 1fr) auto;
   gap: 3px 8px;
   align-items: center;
   margin-top: 4px;
@@ -40901,8 +40903,8 @@ button.armyExperienceBoard > small {
   align-items: center;
 }
 .unitXpStatIconStack > img.unitXpAbilityIcon {
-  width: 42px;
-  height: 42px;
+  width: 56px;
+  height: 56px;
   object-fit: cover;
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 55%);
@@ -40989,11 +40991,39 @@ button.armyExperienceBoard > small {
   font-size: 13px;
 }
 .unitXpActiveChip.large img {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
 }
 
 @media (max-width: 720px) {
+  .heroSystemModal.unitXpWindow,
+  .heroSystemModal.unitXpWindow.unitXpDetailOpen {
+    width: 100%;
+    max-height: 96dvh;
+  }
+  .unitXpPicker {
+    grid-template-columns: 1fr;
+    padding-inline: 10px;
+  }
+  .unitXpDetail {
+    padding: 8px 10px 12px;
+  }
+  .unitXpHeadRow {
+    gap: 4px 6px;
+  }
+  .unitXpHeadRow strong {
+    font-size: 15px;
+  }
+  .unitXpHeadRow > b {
+    margin-left: 0;
+  }
+  .unitXpRank {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
+  .unitXpElite,
+  .unitXpStatUpgrade {
+    grid-template-columns: 60px minmax(0, 1fr) auto;
+  }
   .unitXpEntry {
     grid-template-columns: 64px minmax(0, 1fr);
   }

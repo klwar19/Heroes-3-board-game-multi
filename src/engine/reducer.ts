@@ -23607,8 +23607,9 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "HERO_GRADE_PICK",
   "EQUIP_HERO_ITEM",
   "UNEQUIP_HERO_ITEM",
-  // Unit Experience Drill: fully self-validated (rule on, own turn, own Town,
-  // gold, once-per-turn, own army card) and touches only the actor's state.
+  // Unit Experience Drill: fully self-validated (rule on, own turn, map
+  // position/movement, gold, per-round limit, own army card) and touches only
+  // the actor's state.
   "DRILL_UNIT",
   "ASSIGN_UNIT_JOB",
   "SET_MGQ_SPIRIT",

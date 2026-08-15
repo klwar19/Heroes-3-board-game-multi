@@ -158,6 +158,74 @@ describe("Deemer's Meteor Shower — playable during the enemy's turn", () => {
     state.combat!.units.unit_p2_skeletons.movedThisActivation = true;
     expect(findPlay(state, "p1", "specialty.deemer.1"), "still offered mid/after the enemy move").toBeTruthy();
   });
+
+  it.each([
+    "ability.artillery",
+    "specialty.adelaide.1",
+    "specialty.adelaide.4",
+    "specialty.adelaide.6",
+    "specialty.deemer.1",
+    "specialty.deemer.6",
+    "specialty.gerwulf.1",
+    "specialty.gerwulf.4",
+    "specialty.gerwulf.6",
+    "specialty.glacius.1",
+    "specialty.glacius.4",
+    "specialty.glacius.6",
+    "specialty.jeremy.1",
+    "specialty.jeremy.4",
+    "specialty.jeremy.6",
+    "specialty.kudryavka_noumi.1",
+    "specialty.kudryavka_noumi.6",
+    "specialty.melodia.1",
+    "specialty.tarnum_castle.1",
+    "specialty.tarnum_castle.4",
+    "specialty.tarnum_castle.6",
+    "specialty.tarnum_conflux.6",
+    "specialty.tarnum_dungeon.4",
+    "specialty.tarnum_dungeon.6",
+    "specialty.tarnum_rampart.6",
+    "specialty.torosar.1",
+    "specialty.torosar.6",
+    "specialty.yuiko_kurugaya.1"
+  ])("offers %s both before and after the enemy moves", (cardId) => {
+    const state = p2TurnState([cardId, "stat.attack", "stat.defense", "stat.power"]);
+    state.players.p1.permanents = ["war_machine.ballista", "war_machine.cannon"];
+    state.players.p1.discard = ["spell.magic_arrow"];
+    state.combat!.units.unit_p1_griffins.name = "Black Dragons";
+    expect(findPlay(state, "p1", cardId), "offered before the enemy move").toBeTruthy();
+    state.combat!.units.unit_p2_skeletons.movedThisActivation = true;
+    expect(findPlay(state, "p1", cardId), "still offered after the enemy move").toBeTruthy();
+  });
+
+  it("Melodia I can draw before an enemy attack, and the draw really enters the hand", () => {
+    const state = p2TurnState(["specialty.melodia.1"]);
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.position = 9;
+    state.combat!.units.unit_p1_marksmen.position = 8;
+    state.combat!.units.unit_p1_marksmen.maxHealth = 20;
+    const declared = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: skeletons.id,
+      defenderId: "unit_p1_marksmen"
+    });
+    const draw = getLegalActions(declared, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "specialty.melodia.1" &&
+        legal.action.optionIndex === 1
+    );
+    expect(draw, "Fortune I draw opens before attack damage").toBeTruthy();
+    const resolved = applyOk(declared, draw!.action);
+    expect(resolved.players.p1.hand).not.toContain("specialty.melodia.1");
+    expect(resolved.players.p1.hand.length, "the replacement card was drawn").toBe(1);
+    expect(
+      resolved.eventLog.some(
+        (event) => event.type === "CARD_PLAYED" && event.cardId === "specialty.melodia.1"
+      )
+    ).toBe(true);
+  });
 });
 
 // ===========================================================================
