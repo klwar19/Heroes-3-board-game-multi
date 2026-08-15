@@ -324,7 +324,21 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // neither inject a Speed-graded commander into troop deployment nor accept the
 // `PLACE_COMMANDER` the new client offers for it ("that action is not legal"),
 // and it lays no front-line buff. Deploy both halves.
-export const ENGINE_PROTOCOL_VERSION = 31;
+// v32 (2026-08-15): the Unit Experience / veterancy redesign changed COMBAT
+// SEMANTICS a stale worker cannot reproduce, while `ENGINE_SIGNATURE` hashes
+// only the unit/hero/faction KEY lists (no unit was added) — so without this
+// bump no skew banner would fire and the table would just reject actions.
+// What moved: `maybeDeclareDoubleAttack` now fires for MELEE via the new
+// `anyRange` flag (a v31 edge rejects the offered second attack);
+// `ON_ATTACK_DIE_DRAW` became a min/max window; `unit.type` is now MUTABLE to
+// "flying" (`veteran-flying-movement`) on the persisted `CombatUnitState`, so
+// the client offers cross-unit moves the old server refuses; the Fear Aura roll
+// CONSUMES a combat die from the shared cursor, desynchronising every later
+// seeded roll between the two halves; plus the whole rank-schedule resolver
+// (bespoke-vs-generator precedence, the per-rank stat ladder, the effect-aware
+// no-op dedupe) and Guarded Stance's new `FLAT_DEFENSE_WHEN_ATTACKED` arm, which
+// changes the damage maths for any ranked unit. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 32;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

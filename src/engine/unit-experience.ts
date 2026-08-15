@@ -1,5 +1,6 @@
 import type { UnitTier } from "@/data/factions/types";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
 import {
   MAX_UNIT_RANK,
   UNIT_RANK_NAMES,
@@ -161,9 +162,78 @@ export function printedAbilityIdsOf(unitDefId: string): ReadonlySet<string> {
   return ids;
 }
 
+type AbilityEffect = NonNullable<(typeof unitAbilities)[string]["effect"]>;
+
+/**
+ * Effect families whose engine reader takes the FIRST match (or the MAX), so a
+ * second copy on the same unit can never move a number:
+ *   MINIMUM_ATTACK_DIE   getMinimumAttackDie takes Math.max(...)
+ *   ON_ATTACK_HEAL_SELF  getOnAttackSelfHeal returns the first match
+ *   SELF_REBIRTH_ONCE    getSelfRebirthAbility returns the first match
+ *   DOUBLE_ATTACK        getDoubleAttackAbility returns the first match
+ *   ATTACK_ROLL_ADVANTAGE unitHasAttackRollAdvantage is a coverage predicate
+ *   MOVE_ANYWHERE        a presence check
+ * DELIBERATELY ABSENT: OWN_ATTACK_FLAT_BONUS, DEFENSE_BONUS_ON_ATTACK_DIE and
+ * ON_ACTIVATION_HEAL_SELF genuinely STACK (their readers sum), so a second copy
+ * is a real reward and must never be skipped.
+ */
+const NO_OP_DEDUPE_EFFECT_TYPES = new Set<string>([
+  "MINIMUM_ATTACK_DIE",
+  "ON_ATTACK_HEAL_SELF",
+  "SELF_REBIRTH_ONCE",
+  "DOUBLE_ATTACK",
+  "ATTACK_ROLL_ADVANTAGE",
+  "MOVE_ANYWHERE"
+]);
+
+/** Which attacks an ATTACK_ROLL_ADVANTAGE copy actually covers. */
+function attackRollAdvantageCoverage(effect: AbilityEffect): "own" | "retaliation" | "any" {
+  if (effect.type !== "ATTACK_ROLL_ADVANTAGE") return "any";
+  if (effect.ownAttackOnly) return "own";
+  if (effect.retaliationOnly) return "retaliation";
+  return "any";
+}
+
+/**
+ * True when granting `abilityId` on top of `existing` could not change a single
+ * outcome — the rank would be paid for and give nothing. Only the first-match /
+ * max-wins families above are ever judged; everything else falls through as a
+ * real reward.
+ */
+function grantWouldBeStrictNoOp(abilityId: string, existing: Iterable<string>): boolean {
+  const granted = unitAbilities[abilityId]?.effect;
+  if (!granted || !NO_OP_DEDUPE_EFFECT_TYPES.has(granted.type)) return false;
+  for (const heldId of existing) {
+    const held = unitAbilities[heldId]?.effect;
+    if (!held || held.type !== granted.type) continue;
+    switch (granted.type) {
+      case "MINIMUM_ATTACK_DIE":
+        // Math.max wins: an equal-or-higher floor already in place swallows it.
+        if (held.type === "MINIMUM_ATTACK_DIE" && held.minimum >= granted.minimum) return true;
+        break;
+      case "ATTACK_ROLL_ADVANTAGE": {
+        const heldCoverage = attackRollAdvantageCoverage(held);
+        const grantedCoverage = attackRollAdvantageCoverage(granted);
+        // A retaliation-only printed copy does NOT cover an unconditional grant.
+        if (heldCoverage === "any" || heldCoverage === grantedCoverage) return true;
+        break;
+      }
+      default:
+        // First-match-wins readers: the printed/earlier copy always answers, so
+        // a second copy is unreachable whatever its parameters.
+        return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Abilities granted by ability-ranks only (up through `rank`).
  * Stats ranks contribute nothing here.
+ *
+ * Dedupe is by ability id AND by EFFECT: a choice whose effect is already
+ * answered by the unit's printed kit (or by an earlier rank's grant) would be a
+ * strict no-op, so the rank falls through to the next choice in the rotation.
  */
 export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob): string[] {
   if (rank <= 0) return [];
@@ -176,11 +246,10 @@ export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob
     if (!step) continue;
     if (step.kind !== "ability" && step.kind !== "hybrid") continue;
     for (const abilityId of step.choices) {
-      if (!already.has(abilityId)) {
-        granted.push(abilityId);
-        already.add(abilityId);
-        break;
-      }
+      if (already.has(abilityId) || grantWouldBeStrictNoOp(abilityId, already)) continue;
+      granted.push(abilityId);
+      already.add(abilityId);
+      break;
     }
   }
   return granted;

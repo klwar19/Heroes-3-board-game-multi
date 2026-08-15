@@ -198,7 +198,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "dungeon.harpies": buildScheduleFromTemplate("rare", [
     ["wog-no-negative-attack-roll", "bulwark-air-shield"],
     ["ignores-retaliation", "commander-charge"],
-    ["double-attack-low-roll", "commander-max-damage"]
+    ["veteran-double-attack-low-roll", "commander-max-damage"]
   ]),
   "dungeon.evil_eyes": buildScheduleFromTemplate("strong", [
     ["bulwark-air-shield", "wog-no-negative-attack-roll"],
@@ -256,7 +256,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "inferno.familiars": buildScheduleFromTemplate("rare", [
     ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
     ["ignores-retaliation", "commander-charge"],
-    ["double-attack-low-roll", "commander-max-damage"]
+    ["veteran-double-attack-low-roll", "commander-max-damage"]
   ]),
   "inferno.magogs": buildScheduleFromTemplate("strong", [
     ["bulwark-air-shield", "wog-fire-shield-1"],
@@ -416,7 +416,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "cove.ayssids": buildScheduleFromTemplate("rare", [
     ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
     ["ignores-retaliation", "commander-charge"],
-    ["double-attack", "commander-max-damage"]
+    ["veteran-double-attack", "commander-max-damage"]
   ]),
   "cove.sorceresses": buildScheduleFromTemplate("strong", [
     ["reduce-spell-damage-1", "bulwark-air-shield"],
@@ -500,7 +500,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   "fuyuki.assassins": buildScheduleFromTemplate("rare", [
     ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
     ["ignores-retaliation", "commander-charge"],
-    ["double-attack", "commander-max-damage"]
+    ["veteran-double-attack", "commander-max-damage"]
   ]),
   "fuyuki.riders": buildScheduleFromTemplate("strong", [
     ["commander-charge", "bulwark-thick-hide"],
@@ -520,7 +520,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   ]),
   "fuyuki.sabers": buildScheduleFromTemplate("rare", [
     ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["double-attack", "commander-max-damage"],
+    ["veteran-double-attack", "commander-max-damage"],
     ["ignores-retaliation", "commander-max-damage"]
   ]),
   "fuyuki.berserkers": buildScheduleFromTemplate("strong", [
@@ -546,7 +546,7 @@ export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
   // LV5 silver (Qingyun specialty).
   "azure_breeze.true_inheritors": buildScheduleFromTemplate("rare", [
     ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["double-attack", "commander-max-damage"],
+    ["veteran-double-attack", "commander-max-damage"],
     ["commander-max-damage", "ignore-paralysis"] // pack already no-retaliation
   ]),
   // LV6 gold formation mage.
@@ -757,94 +757,10 @@ type Flavour =
   | "assassin"
   | "warden";
 
-const FLAVOUR_ABILITIES: Record<Flavour, { template: RankTemplateId; slots: readonly (readonly string[])[] }> = {
-  melee: {
-    template: "standard",
-    slots: [["bulwark-thick-hide", "bulwark-air-shield"]]
-  },
-  ranged: {
-    template: "strong",
-    slots: [
-      ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-      ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-    ]
-  },
-  flying: {
-    template: "standard",
-    slots: [["bulwark-air-shield", "reduce-spell-damage-1"]]
-  },
-  cavalry: {
-    template: "strong",
-    slots: [
-      ["commander-charge", "bulwark-thick-hide"],
-      ["commander-max-damage", "wog-no-negative-attack-roll"]
-    ]
-  },
-  undead: {
-    template: "strong",
-    slots: [
-      ["zombie-resilience-weak", "ignore-paralysis"],
-      ["ignore-paralysis", "wraith-heal-1"]
-    ]
-  },
-  fire: {
-    template: "strong",
-    slots: [
-      ["wog-fire-shield-1", "bulwark-thick-hide"],
-      ["ignore-paralysis", "commander-max-damage"]
-    ]
-  },
-  beast: {
-    template: "strong",
-    slots: [
-      ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-      ["wog-nightmare-fear", "commander-charge"]
-    ]
-  },
-  dragon: {
-    template: "strong",
-    slots: [
-      ["reduce-spell-damage-1", "bulwark-thick-hide"],
-      ["wog-fire-shield-1", "ignore-paralysis"]
-    ]
-  },
-  elemental: {
-    template: "strong",
-    slots: [
-      ["reduce-spell-damage-1", "bulwark-air-shield"],
-      ["ignore-paralysis", "wog-fire-shield-1"]
-    ]
-  },
-  machine: {
-    template: "strong",
-    slots: [
-      ["bulwark-thick-hide", "reduce-spell-damage-1"],
-      ["ignore-paralysis", "commander-defense-token"]
-    ]
-  },
-  mystic: {
-    template: "strong",
-    slots: [
-      ["reduce-spell-damage-1", "bulwark-air-shield"],
-      ["ignore-paralysis", "commander-defense-token"]
-    ]
-  },
-  assassin: {
-    template: "rare",
-    slots: [
-      ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
-      ["ignores-retaliation", "commander-charge"],
-      ["double-attack", "commander-max-damage"]
-    ]
-  },
-  warden: {
-    template: "strong",
-    slots: [
-      ["bulwark-thick-hide", "commander-defense-token"],
-      ["commander-defense-token", "reduce-spell-damage-1"]
-    ]
-  }
-};
+// The old FLAVOUR_ABILITIES template-fill table was deleted when the per-rank
+// generator (RANK_ONE_PROFILES / RANK_TWO..FOUR_ABILITIES, below) took over the
+// fallback path. UNIT_RANK_SCHEDULES above is still the bespoke tier that wins
+// over the generator; nothing reads a flavour TEMPLATE any more.
 
 export function inferFlavour(unitDefId: string): Flavour {
   const def = coreUnitDefinitions[unitDefId];
@@ -1033,19 +949,25 @@ const RANK_TWO_ABILITIES: Record<Flavour, readonly string[]> = {
   warden: ["veteran-guarded-stance", "commander-defense-token", "veteran-retaliation-fury", "reduce-spell-damage-1"]
 };
 
+// NOTE (2026-08-15): the ranged-gated `double-attack` / `double-attack-low-roll`
+// arms are NEVER offered here or in a bespoke schedule for a non-shooter — a
+// DOUBLE_ATTACK without `anyRange` is refused by maybeDeclareDoubleAttack unless
+// the attack is ranged, so it paid a whole rank for nothing. The veteran twins
+// (`veteran-double-attack`, `veteran-double-attack-low-roll`) carry anyRange.
+// Invariant pinned in unit-experience.test.ts.
 const RANK_THREE_ABILITIES: Record<Flavour, readonly string[]> = {
   melee: ["veteran-defense-pierce", "commander-max-damage", "unlimited-retaliation", "ignores-retaliation"],
   ranged: ["ignore-all-combat-penalties", "veteran-low-roll-insight", "ranged-extra-shot-on-low-roll", "veteran-defense-pierce"],
   flying: ["veteran-speed-hunter", "teleport-move", "ignores-retaliation", "veteran-soul-feast"],
-  cavalry: ["veteran-speed-hunter", "commander-max-damage", "ignores-retaliation", "double-attack-low-roll"],
+  cavalry: ["veteran-speed-hunter", "commander-max-damage", "ignores-retaliation", "veteran-double-attack-low-roll"],
   undead: ["veteran-rebirth", "veteran-soul-feast", "wraith-heal-2", "wraith-enemy-discard"],
-  fire: ["wog-fire-shield-1", "commander-max-damage", "ignores-retaliation", "double-attack-low-roll"],
+  fire: ["wog-fire-shield-1", "commander-max-damage", "ignores-retaliation", "veteran-double-attack-low-roll"],
   beast: ["wog-nightmare-fear", "wraith-heal-2", "veteran-defense-pierce", "veteran-rebirth"],
   dragon: ["veteran-speed-hunter", "wraith-heal-2", "wog-fire-shield-1", "veteran-soul-feast"],
   elemental: ["veteran-spell-sunder", "teleport-move", "wog-fire-shield-1", "reduce-spell-damage-1"],
   machine: ["commander-defense-token", "unlimited-retaliation", "veteran-defense-pierce", "reduce-spell-damage-1"],
   mystic: ["veteran-spell-sunder", "veteran-low-roll-insight", "teleport-move", "wraith-heal-2"],
-  assassin: ["ignores-retaliation", "veteran-low-roll-insight", "double-attack-low-roll", "teleport-move"],
+  assassin: ["ignores-retaliation", "veteran-low-roll-insight", "veteran-double-attack-low-roll", "teleport-move"],
   warden: ["unlimited-retaliation", "wraith-heal-2", "veteran-defense-pierce", "commander-defense-token"]
 };
 
@@ -1053,15 +975,15 @@ const RANK_FOUR_ABILITIES: Record<Flavour, readonly string[]> = {
   melee: ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"],
   ranged: ["veteran-low-roll-insight", "veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"],
   flying: ["veteran-speed-hunter", "veteran-soul-feast", "teleport-move", "ignores-retaliation"],
-  cavalry: ["veteran-speed-hunter", "double-attack-low-roll", "commander-max-damage", "ignores-retaliation"],
+  cavalry: ["veteran-speed-hunter", "veteran-double-attack-low-roll", "commander-max-damage", "ignores-retaliation"],
   undead: ["veteran-rebirth", "veteran-soul-feast", "wraith-heal-2", "wraith-enemy-discard"],
-  fire: ["wog-fire-shield-1", "double-attack-low-roll", "commander-max-damage", "veteran-rebirth"],
+  fire: ["wog-fire-shield-1", "veteran-double-attack-low-roll", "commander-max-damage", "veteran-rebirth"],
   beast: ["wog-nightmare-fear", "veteran-rebirth", "wraith-heal-2", "veteran-defense-pierce"],
   dragon: ["veteran-speed-hunter", "wraith-heal-2", "veteran-soul-feast", "wog-fire-shield-1"],
   elemental: ["veteran-spell-sunder", "teleport-move", "wog-fire-shield-1", "veteran-low-roll-insight"],
   machine: ["unlimited-retaliation", "commander-defense-token", "veteran-defense-pierce", "reduce-spell-damage-1"],
   mystic: ["veteran-spell-sunder", "veteran-low-roll-insight", "wraith-heal-2", "teleport-move"],
-  assassin: ["ignores-retaliation", "double-attack-low-roll", "veteran-low-roll-insight", "teleport-move"],
+  assassin: ["ignores-retaliation", "veteran-double-attack-low-roll", "veteran-low-roll-insight", "teleport-move"],
   warden: ["unlimited-retaliation", "wraith-heal-2", "veteran-defense-pierce", "commander-defense-token"]
 };
 
@@ -1070,9 +992,13 @@ function rotatedChoices(unitDefId: string, rank: number, pool: readonly string[]
   return pool.map((_, index) => pool[(start + index) % pool.length]!);
 }
 
-function rankOneStepFor(unitDefId: string): RankStep {
+function explicitRankOne(unitDefId: string): RankStep | null {
   if (unitDefId === "fortress.hydras") return A("veteran-fear-aura");
   if (unitDefId === "castle.champions") return A("veteran-moving-pierce");
+  return null;
+}
+
+function rankOneStepFor(unitDefId: string): RankStep {
   const profile = rankOneProfileFor(unitDefId);
   if (["defense", "health", "initiative"].includes(profile)) return S();
   if (profile === "own-attack") return A("veteran-attack-when-attacking");
@@ -1115,24 +1041,44 @@ function explicitRankFour(unitDefId: string): RankStep | null {
   return null;
 }
 
-/** Resolved schedule: diversified small R1, themed R2/R3, and a capstone R4. */
+/**
+ * Resolved schedule. Precedence is PER RANK, highest first:
+ *   (i)   an explicit per-unit override (the signature ranks below),
+ *   (ii)  the hand-authored bespoke `UNIT_RANK_SCHEDULES` entry (lore-keyed;
+ *         127 units — this is what keeps kansen-full-barrage, gorgon-death-stare,
+ *         bulwark-thick-hide, zombie-resilience … reachable),
+ *   (iii) the flavour generator (diversified small R1, themed R2/R3, capstone R4)
+ *         for everything else — neutrals, WOG, doom, MGQ, future content.
+ * A bespoke `{kind:"stats"}` step carries no `stats` payload, so it still draws
+ * from the per-unit `unitStatStepsFor` ladder via the shared statsIndex: the two
+ * halves compose, they never double-grant.
+ */
 export function rankScheduleFor(unitDefId: string): RankSchedule {
+  const bespoke = UNIT_RANK_SCHEDULES[unitDefId];
   const flavour = inferFlavour(unitDefId);
-  const rankThree = explicitRankThree(unitDefId) ??
+  const rankThree =
+    explicitRankThree(unitDefId) ??
+    bespoke?.[3] ??
     (stableRankHash(unitDefId, 3) % 3 === 0
       ? A(...rotatedChoices(unitDefId, 3, RANK_THREE_ABILITIES[flavour]))
       : S());
   return {
-    1: rankOneStepFor(unitDefId),
-    2: explicitRankTwo(unitDefId) ?? A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
+    1: explicitRankOne(unitDefId) ?? bespoke?.[1] ?? rankOneStepFor(unitDefId),
+    2:
+      explicitRankTwo(unitDefId) ??
+      bespoke?.[2] ??
+      A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
     3: rankThree,
-    4: explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
+    4:
+      explicitRankFour(unitDefId) ??
+      bespoke?.[4] ??
+      A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
   };
 }
 
-/** Whether this unit has a hand-authored unique schedule (not template fallback). */
+/** Whether this unit has a hand-authored unique schedule (not the generator). */
 export function hasUniqueRankSchedule(unitDefId: string): boolean {
-  return Boolean(coreUnitDefinitions[unitDefId]);
+  return Boolean(UNIT_RANK_SCHEDULES[unitDefId]);
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,6 +1144,7 @@ export const UNIT_RANK_ABILITY_ICONS: Record<string, string> = {
   "unlimited-retaliation": "/assets/ui/rank-ability/counterstrike.webp",
   "double-attack": "/assets/ui/rank-ability/double-strike.webp",
   "double-attack-low-roll": "/assets/ui/rank-ability/double-strike.webp",
+  "veteran-double-attack-low-roll": "/assets/ui/rank-ability/double-strike.webp",
   "sandworm-strike-again": "/assets/ui/rank-ability/double-strike.webp",
   // Azur Lane bespoke arms (2026-07 upgrade) — Codex-painted naval icons.
   "kansen-full-barrage": "/assets/ui/rank-ability/full-barrage.webp",

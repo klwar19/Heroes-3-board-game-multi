@@ -51,9 +51,9 @@ function mintNeutral(unitDefId: string, tier: "bronze" | "silver" | "gold"): Com
   return makeCombatUnitFromNeutral({ unitDefId, tier }, "u1", 0, "legacy")!;
 }
 
-// neutral.boars: bronze ground, printed abilities []. Flavour "beast" → strong
-// schedule [stats, ability, stats, ability], so rank 1 = +Defense (bronze step0)
-// and rank 2 adds the "bulwark-thick-hide" ability on top.
+// neutral.boars: bronze ground, printed abilities []. Generator-served (no
+// bespoke UNIT_RANK_SCHEDULES entry), so rank 1 = +1 Health (its per-unit stat
+// ladder's first step) and rank 2 is the ability rank.
 const BOARS = "neutral.boars";
 // neutral.behemoths: gold, ranks slower (rank-1 threshold 5 vs bronze 3).
 const BEHEMOTHS = "neutral.behemoths";
@@ -132,11 +132,12 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
     const veteran = mintNeutral(BOARS, "bronze");
     applyNeutralRoundsRank(veteran, 7);
 
-    // Observable: Defense rises by exactly the bronze Veteran fold (+1); every
-    // other printed stat is untouched (bronze spends rank 2 on the ability).
-    expect(veteran.defense).toBe(base.defense + 1);
+    // Observable: Health rises by exactly the boars' Veteran fold (+1 — their
+    // rank-1 step on the per-unit stat ladder); every other printed stat is
+    // untouched (rank 2 is the ability rank).
+    expect(veteran.maxHealth).toBe(base.maxHealth + 1);
     expect(veteran.attack).toBe(base.attack);
-    expect(veteran.maxHealth).toBe(base.maxHealth);
+    expect(veteran.defense).toBe(base.defense);
     expect(veteran.unitRank).toBe(2);
     // The schedule's rank-≤2 ability id is granted on top (boars print none).
     const granted = unitRankAbilityIds(BOARS, 2);
@@ -145,7 +146,7 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
       expect(veteran.abilities).toContain(id);
     }
     // If applyNeutralRoundsRank were a no-op (fold removed) `veteran` would equal
-    // `base` and both the +1 Defense and the unitRank assertions above fail.
+    // `base` and both the +1 Health and the unitRank assertions above fail.
   });
 
   it("round 1 is IDENTICAL to off (below every tier's first threshold)", () => {
@@ -168,7 +169,7 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
     applyNeutralRoundsRank(gold, 4); // gold still rank 0
 
     expect(bronze.unitRank).toBe(1);
-    expect(bronze.defense).toBe(0 + 1);
+    expect(bronze.maxHealth).toBe(coreUnitDefinitions[BOARS]!.neutral!.health + 1);
     // CONTROL: the gold guard's threshold is higher — round 4 leaves it bare.
     expect(gold.unitRank).toBeUndefined();
     expect(gold.attack).toBe(goldBaseAttack);
@@ -180,10 +181,11 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
     applyNeutralRoundsRank(late, 30);
     expect(late.unitRank).toBe(2);
     // The cap is observable: an UNCAPPED bronze at 29 XP would be Legend (rank 4)
-    // and carry +Attack (step 1). Capped, only the rank-2 +Defense lands.
-    expect(late.attack).toBe(2); // unchanged — NOT +1
-    expect(late.defense).toBe(1);
-    expect(late.maxHealth).toBe(4);
+    // and carry the rank-3 +Defense step. Capped, only rank 1's +Health lands
+    // (rank 2 is the boars' ability rank).
+    expect(late.attack).toBe(coreUnitDefinitions[BOARS]!.neutral!.attack); // NOT +1
+    expect(late.defense).toBe(coreUnitDefinitions[BOARS]!.neutral!.defense); // NOT +1
+    expect(late.maxHealth).toBe(coreUnitDefinitions[BOARS]!.neutral!.health + 1);
     // And a downstream recompute reproduces the SAME capped rank (mirror XP).
     expect(combatUnitRankFold(late).rank).toBe(2);
   });
@@ -272,7 +274,7 @@ describe("Neutral Rank-Up — ROUNDS seam (revealNeutralArmy)", () => {
     const behemoth = Object.values(state.combat!.units).find((u) => u.unitDefId === BEHEMOTHS)!;
     // Round 7: bronze reaches Veteran (2), gold only Seasoned (1) — tier-scaled.
     expect(boars.unitRank).toBe(2);
-    expect(boars.defense).toBe(coreUnitDefinitions[BOARS]!.neutral!.defense + 1);
+    expect(boars.maxHealth).toBe(coreUnitDefinitions[BOARS]!.neutral!.health + 1);
     expect(behemoth.unitRank).toBe(1);
     expect(boars.controllerId).toBe(NEUTRAL_PLAYER_ID);
   });
@@ -282,7 +284,7 @@ describe("Neutral Rank-Up — ROUNDS seam (revealNeutralArmy)", () => {
     expect(neutralRankUpActive(state)).toBe(false);
     const boars = seedAndFind(state, [{ unitDefId: BOARS, tier: "bronze" }], BOARS);
     expect(boars.unitRank).toBeUndefined();
-    expect(boars.defense).toBe(coreUnitDefinitions[BOARS]!.neutral!.defense);
+    expect(boars.maxHealth).toBe(coreUnitDefinitions[BOARS]!.neutral!.health);
     expect(boars.unitExperience).toBeUndefined();
   });
 
@@ -317,32 +319,40 @@ describe("Neutral Rank-Up — STACKS half (Creature Bank defenders)", () => {
   it("the stack fold is a fixed Seasoned rank keyed off the UNDERLYING unit tier", () => {
     const fold = neutralStackRankFold("neutral.nagas");
     expect(fold.rank).toBe(1);
-    // neutral.nagas is gold → rank-1 step is Attack-first, an observable buff.
-    expect(fold.attack).toBe(1);
+    // neutral.nagas' rank 1 is an ABILITY rank, so the fold's payload is the
+    // granted id (a stat assertion here would have no teeth — see the
+    // behavioural damage-delta in veteran-guarded-stance.test.ts).
+    expect(fold.abilityIds).toEqual(["veteran-guarded-stance"]);
+    expect(fold.abilityId).toBe("veteran-guarded-stance");
     expect(coreUnitDefinitions["neutral.nagas"]!.tier).toBe("gold");
+    // The tier really is read from the DEF (bank draws mint "bronze"): a bronze
+    // guard's rank-1 fold differs, so the def-keyed lookup is what runs.
+    expect(neutralStackRankFold("neutral.boars").rank).toBe(1);
+    expect(neutralStackRankFold("neutral.boars").health).toBe(1);
   });
 
   it("a Stacked defender fights rank 1 ON TOP of the Stack Token; the token alone does NOT rank", () => {
-    // Token on Health, so the rank's +Attack is independently observable.
+    // Token on Health; the rank's own payload is the granted ABILITY, so the
+    // two are independently observable.
     const ranked = makeCombatUnitFromNeutral(bankNagaDraw, "u1", 0, "legacy")!;
     ranked.stackToken = "health";
     applyUnitCurrentSide(ranked, "legacy", { neutralRankUp: true });
     expect(ranked.maxHealth).toBe(6); // 5 base + 1 Health token
-    expect(ranked.attack).toBe(5); // 4 base + rank-1 gold +Attack
+    expect(ranked.abilities).toContain("veteran-guarded-stance"); // rank 1
     expect(ranked.unitRank).toBe(1);
 
     // CONTROL A: module ON but NO token — a plain (un-Stacked) defender never ranks.
     const noToken = makeCombatUnitFromNeutral(bankNagaDraw, "u2", 0, "legacy")!;
     applyUnitCurrentSide(noToken, "legacy", { neutralRankUp: true });
     expect(noToken.unitRank).toBeUndefined();
-    expect(noToken.attack).toBe(4);
+    expect(noToken.abilities).not.toContain("veteran-guarded-stance");
 
     // CONTROL B: token present but module OFF — the +1 Stack Token stands alone.
     const off = makeCombatUnitFromNeutral(bankNagaDraw, "u3", 0, "legacy")!;
     off.stackToken = "health";
     applyUnitCurrentSide(off, "legacy");
     expect(off.maxHealth).toBe(6);
-    expect(off.attack).toBe(4); // token gives no rank
+    expect(off.abilities).not.toContain("veteran-guarded-stance"); // token gives no rank
     expect(off.unitRank).toBeUndefined();
   });
 
@@ -360,7 +370,7 @@ describe("Neutral Rank-Up — STACKS half (Creature Bank defenders)", () => {
     unit.stackToken = "health";
     applyUnitCurrentSide(unit, getRuleset(state), overrides);
     expect(unit.maxHealth).toBe(6);
-    expect(unit.attack).toBe(5); // Stacked → rank 1
+    expect(unit.abilities).toContain("veteran-guarded-stance"); // Stacked → rank 1
     expect(unit.unitRank).toBe(1);
 
     // Lethal blow: the token is discarded (rulebook p.67), carrying the excess —
@@ -369,7 +379,7 @@ describe("Neutral Rank-Up — STACKS half (Creature Bank defenders)", () => {
     markUnitRemovedIfNeeded(state, unit);
     expect(unit.stackToken).toBeNull();
     expect(unit.maxHealth).toBe(5);
-    expect(unit.attack).toBe(4); // rank gone with the token
+    expect(unit.abilities).not.toContain("veteran-guarded-stance"); // rank gone with the token
     expect(unit.unitRank).toBeUndefined();
     expect(unit.damage).toBe(2);
     expect(state.eventLog.some((e) => e.type === "STACK_TOKEN_DISCARDED" && e.unitId === "u1")).toBe(true);

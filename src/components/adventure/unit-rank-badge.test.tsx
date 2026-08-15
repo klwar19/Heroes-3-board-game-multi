@@ -109,7 +109,7 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     const dialog = document.querySelector(".heroSystemModal.unitXpWindow") as HTMLElement;
     expect(dialog).toBeTruthy();
     expect(dialog.textContent).toContain("Click a unit");
-    expect(dialog.textContent).toContain("either stats or one ability");
+    expect(dialog.textContent).toContain("stats, abilities, or a signature combination");
     // Picker lists army cards — click one to open the large detail panel.
     const pickHalberdiers = dialog.querySelector(
       'button[aria-label="Open Few Halberdiers experience board"]'

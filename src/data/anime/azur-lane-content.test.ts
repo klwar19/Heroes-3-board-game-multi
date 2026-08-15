@@ -630,7 +630,7 @@ describe("Azur Lane Naval Base — Fleet veterancy: bespoke rank schedules", () 
   // a stats rank moves a real stat and an ability rank grants the signature id.
   // Fails if withRankAbilities / the schedule wiring is removed, OR if the
   // schedule reverts to a generic filler (r2 would carry a different id).
-  it("Yukikaze folds in combat: R1 stats (+1 Def), R2 grants Twin Attack Dice — below-threshold CONTROL grants neither the ability nor the stat", () => {
+  it("Yukikaze folds in combat: R1 stats (+1 HP), R2 grants Twin Attack Dice — below-threshold CONTROL grants neither the ability nor the stat", () => {
     const build = (experience?: number): CombatUnitState =>
       makeCombatUnitFromArmy(
         { id: "yk_army", unitDefId: "azur_lane.yukikaze", side: "few", ...(experience ? { experience } : {}) },
@@ -648,10 +648,12 @@ describe("Azur Lane Naval Base — Fleet veterancy: bespoke rank schedules", () 
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);
 
-    // Stats-rank fold: silver step 0 is +1 Defense — an OBSERVABLE stat delta.
-    expect(plain.defense).toBe(coreUnitDefinitions["azur_lane.yukikaze"].few!.defense);
-    expect(r1.defense).toBe(plain.defense + 1);
-    expect(r2.defense).toBe(plain.defense + 1); // R2 is an ability rank → no further stat step
+    // Stats-rank fold: Yukikaze's per-unit ladder opens with +1 Health — an
+    // OBSERVABLE stat delta (the flat silver tier table is no longer read).
+    expect(plain.maxHealth).toBe(coreUnitDefinitions["azur_lane.yukikaze"].few!.health);
+    expect(r1.maxHealth).toBe(plain.maxHealth + 1);
+    expect(r2.maxHealth).toBe(plain.maxHealth + 1); // R2 is an ability rank → no further stat step
+    expect(r1.defense).toBe(plain.defense);
 
     // Ability-rank grant: R2 carries the lore signature (Twin Attack Dice).
     expect(r2.abilities).toContain("attack-roll-advantage-passive");

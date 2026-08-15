@@ -1160,6 +1160,21 @@ export function getDefendBonus(unit: CombatUnitState): number {
 }
 
 /**
+ * Veteran Guarded Stance: extra Defense the unit gets whenever it is ATTACKED —
+ * unconditional (no Defense token, no attacker-type gate), which is why it is a
+ * separate arm from DEFEND_BONUS. Folded into the defender's effective Defense
+ * in getAttackStackDetails alongside the other conditional defence bonuses, so
+ * it lands OUTSIDE resolveDefendBonus' Defend-token gate.
+ */
+export function getFlatDefenseWhenAttacked(defender: CombatUnitState): number {
+  return getAbilitiesWithEffect(defender, "FLAT_DEFENSE_WHEN_ATTACKED").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "FLAT_DEFENSE_WHEN_ATTACKED" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/**
  * Shamans' innate Air Shield: extra Defense the unit gets only against an
  * attacker of a matching unit type ("ranged" = Air Shield, "ground-or-flying" =
  * Shield) — the unit-ability twin of the DEFENSE_VS_ATTACKER_TYPE active-effect

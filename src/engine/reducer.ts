@@ -550,6 +550,7 @@ import {
   hasBindAdjacentEnemies,
   hasInnateMagicMirror,
   getDefendBonus,
+  getFlatDefenseWhenAttacked,
   getSelfAttackerTypeDefenseBonus,
   hasDefenseTokenAura,
   hasIgnoreOwnAttackDie,
@@ -3929,7 +3930,11 @@ function getAttackStackDetails(
   const attackerTypeDefenseBonus =
     getAttackerTypeDefenseBonus(state, defender, attacker) +
     // Shamans' innate Air Shield is a unit passive, not an active effect.
-    getSelfAttackerTypeDefenseBonus(defender, attacker);
+    getSelfAttackerTypeDefenseBonus(defender, attacker) +
+    // Veteran Guarded Stance: +Defense whenever this unit is attacked. Lives
+    // here, NOT in resolveDefendBonus, because it is unconditional — a Defense
+    // token is not required (that is DEFEND_BONUS / Mammoths' Thick Hide).
+    getFlatDefenseWhenAttacked(defender);
   const activeDefenseBonus =
     getActiveDefenseBonus(state, defender) + conditionalDefenseBonus + attackerTypeDefenseBonus;
   const abilityAttack = stackItem.action.type === "ATTACK_UNIT" ? stackItem.action.abilityAttack : undefined;

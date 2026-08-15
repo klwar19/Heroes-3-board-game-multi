@@ -42,6 +42,18 @@ export function topTransform(holder: { transforms?: UnitTransformState[] }): Uni
 }
 
 /**
+ * The unit's PRINTED movement type for its current variant — the base the
+ * ability-driven type recompute (GRANT_FLYING_MOVEMENT) is applied to. Null when
+ * the definition/side is unknown, in which case the caller leaves the type alone.
+ */
+function printedMovementTypeOf(unit: CombatUnitState): CombatUnitState["type"] | null {
+  const def = unit.unitDefId ? coreUnitDefinitions[unit.unitDefId] : undefined;
+  if (!def) return null;
+  const printed = unit.variant === "few" ? def.few : unit.variant === "pack" ? def.pack : def.neutral;
+  return (printed?.type ?? def.type) ?? null;
+}
+
+/**
  * Whether this specialty card may be placed on the unit right now. The
  * checks always look at the UNDERLYING card (name, printed side), per the
  * printed FAQ: the Legion goes on Few, Pack or even a Horde and always stays
@@ -195,6 +207,16 @@ export function applyUnitCurrentSide(
     // A Job is a separate persistent token on the army card, not printed text
     // covered by the transform. Its base package and rank-3 signature remain.
     unit.abilities = withMgqJobAbilities(withRankAbilities([], combatUnitRankFold(unit)), unit.job);
+    // Keep the movement TYPE in lockstep with the ability list, exactly like the
+    // printed-side branch below: `veteran-flying-movement` (GRANT_FLYING_MOVEMENT)
+    // sets `unit.type = "flying"` outright, so a unit that gains it and is then
+    // covered by a specialty card would otherwise keep a flying type its (wiped)
+    // ability list no longer justifies. Latent today — no shipped cover unit can
+    // reach that rank — but the drift is the bug, not the reachability.
+    const coveredBaseType = printedMovementTypeOf(unit);
+    if (coveredBaseType) {
+      unit.type = movementTypeAfterUnitAbilityEffects(coveredBaseType, unit.abilities);
+    }
     if (unit.assets && top.cardImage) {
       unit.assets.cardImage = top.cardImage;
     }
@@ -223,6 +245,13 @@ export function applyUnitCurrentSide(
     unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);
     unit.initiative = bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0);
     unit.abilities = rankFold ? withRankAbilities(bankSide.abilities, rankFold) : bankSide.abilities;
+    // Same lockstep as the cover branch above: a bank card's ability list is
+    // replaced wholesale, so the movement type must be recomputed from the
+    // bank side's own printed type rather than left carrying a stale "flying".
+    const bankBaseType = bankSide.type ?? printedMovementTypeOf(unit);
+    if (bankBaseType) {
+      unit.type = movementTypeAfterUnitAbilityEffects(bankBaseType, unit.abilities);
+    }
     if (rankFold && rankFold.rank > 0) {
       unit.unitRank = rankFold.rank;
     } else {

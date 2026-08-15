@@ -708,8 +708,26 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   PvP = 2), riding the CARD (`ArmyUnitState.experience`).
 - Four ranks (`UNIT_RANK_THRESHOLDS` bronze 3/6/10/14, silver 4/8/13/18, gold+azure
   5/10/16/22); each unit has a 4-step schedule (`rankScheduleFor`) whose steps are
-  EITHER stats (`UNIT_STAT_STEPS`) OR one already-implemented ability appended at
-  runtime by `withRankAbilities` (printed card data is never edited).
+  EITHER stats OR one already-implemented ability appended at runtime by
+  `withRankAbilities` (printed card data is never edited).
+- **Schedule precedence is PER RANK** (2026-08-15): an explicit per-unit override >
+  the hand-authored `UNIT_RANK_SCHEDULES` entry (127 units — this is what keeps
+  `kansen-full-barrage`, `gorgon-death-stare`, `bulwark-thick-hide`… reachable) >
+  the flavour generator. STATS payloads always come from the per-unit
+  `unitStatStepsFor` ladder (`UNIT_STAT_STEPS` survives only through the deprecated
+  2-arg overload), so a bespoke `S()` step and the generator compose without
+  double-granting. `hasUniqueRankSchedule` is the bespoke read.
+- **Guarded Stance** is `FLAT_DEFENSE_WHEN_ATTACKED` — +1 Defense on EVERY incoming
+  attack, folded in `getAttackStackDetails`, NOT `DEFEND_BONUS` (Mammoths' Thick
+  Hide, still Defense-token-gated). It was inert before; damage deltas +
+  a Neutral-Rank-Up delta pin it in `veteran-guarded-stance.test.ts`.
+- **No dead rewards**: a `DOUBLE_ATTACK` grant must carry `anyRange` unless a side
+  has `type: "ranged"` (`veteran-double-attack`, `veteran-double-attack-low-roll`),
+  and `unitRankAbilityIds` skips a choice whose effect a first-match/max-wins
+  reader already answers (MINIMUM_ATTACK_DIE, ON_ATTACK_HEAL_SELF, SELF_REBIRTH_ONCE,
+  DOUBLE_ATTACK, ATTACK_ROLL_ADVANTAGE coverage, MOVE_ANYWHERE), falling through to
+  the next choice. Both are library-wide INVARIANT sweeps in `unit-experience.test.ts`.
+  Protocol v32 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
   layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
   never dilutes. Drill: 2 gold for +1 XP in an OWN Town, once per own turn.

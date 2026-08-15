@@ -133,6 +133,17 @@ export type UnitAbilityEffectDefinition =
       amount: number;
     }
   | {
+      /**
+       * Veteran Guarded Stance: +N Defense WHENEVER this unit is attacked —
+       * unconditional, unlike DEFEND_BONUS (which only pays while the unit
+       * actually holds a Defense token). Read in getFlatDefenseWhenAttacked and
+       * folded next to the conditional defence bonuses in getAttackStackDetails,
+       * i.e. OUTSIDE the Defend-token gate in resolveDefendBonus.
+       */
+      type: "FLAT_DEFENSE_WHEN_ATTACKED";
+      amount: number;
+    }
+  | {
       /** Innate Fire Shield: an adjacent attacker takes flat damage after striking this unit. */
       type: "FIRE_SHIELD_DAMAGE";
       amount: number;
@@ -3496,7 +3507,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "veteran-guarded-stance",
     name: "Guarded Stance",
     text: "[unit_passive] This unit gains +1 Defense whenever it is attacked.",
-    effect: { type: "DEFEND_BONUS", amount: 1 },
+    // NOT DEFEND_BONUS (Mammoths' Thick Hide) — that arm only pays while the
+    // unit holds a Defense token, which a rank-1 reward (and every neutral
+    // guard) essentially never does. FLAT_DEFENSE_WHEN_ATTACKED is the printed
+    // reading: unconditional, on every incoming attack.
+    effect: { type: "FLAT_DEFENSE_WHEN_ATTACKED", amount: 1 },
     implementationStatus: "implemented"
   },
   "veteran-steady-aim": {
@@ -3579,7 +3594,11 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "veteran-moving-pierce": {
     id: "veteran-moving-pierce",
     name: "Lancer's Momentum",
-    text: "After moving, this unit ignores 1 Defense on its next attack that activation.",
+    // Matches commander-charge's wording: the engine reads
+    // getAttackDefenseReductionAbility(attacker, movedThisActivation), so it
+    // applies to EVERY attack made that activation while the unit has moved —
+    // not just the first one.
+    text: "After moving, this unit ignores 1 Defense on its attacks for the rest of that activation.",
     effect: { type: "DEFENSE_REDUCTION_AFTER_MOVE", amount: 1 },
     implementationStatus: "implemented"
   },
@@ -3595,6 +3614,17 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Relentless Assault",
     text: "After this unit's first attack, it attacks the same target a second time if the target survives.",
     effect: { type: "DOUBLE_ATTACK", anyRange: true },
+    implementationStatus: "implemented"
+  },
+  // The low-roll twin of the above. The printed `double-attack-low-roll`
+  // (Elves) is RANGED-gated by maybeDeclareDoubleAttack, so handing it to a
+  // ground/flying veteran paid nothing; this variant keeps the −1/0 gate and
+  // adds anyRange so a melee veteran really does strike twice.
+  "veteran-double-attack-low-roll": {
+    id: "veteran-double-attack-low-roll",
+    name: "Opportunist's Assault",
+    text: "After this unit's attack resolves −1 or 0 on the Attack die, it attacks the same target a second time if the target survives.",
+    effect: { type: "DOUBLE_ATTACK", maxRoll: 0, anyRange: true },
     implementationStatus: "implemented"
   },
   // Commander combination skills (COMMANDER_COMBOS in src/data/commanders.ts;
