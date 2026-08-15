@@ -233,10 +233,13 @@ export function applyUnitCurrentSide(
     }
     const bonus = (stat: "attack" | "defense" | "health" | "initiative") =>
       unit.stackToken === stat ? stackTokenDelta(stat) : 0;
-    // Neutral Rank-Up (optional module): Creature-Bank defenders receive the
-    // Far/Near round rank mirrored onto `unitExperience` by the bank builder.
-    // It is independent of the ordinary Stack Token stat/absorb mechanic.
-    const rankFold = overrides?.neutralRankUp && (unit.unitExperience ?? 0) > 0 ? combatUnitRankFold(unit) : null;
+    // Veteran ranks on a bank face fold off mirrored `unitExperience` alone,
+    // independent of the ordinary Stack Token stat/absorb mechanic. Only a live
+    // rule ever mirrors XP here — the bank builder (gated on neutralRankUpActive)
+    // for NEUTRAL defenders, makeCombatUnitFromArmy (off `armyUnit.experience`,
+    // which only accrues under Unit Experience) for a PLAYER's won bank card
+    // (USER RULE 2026-08-15) — so with both rules off this is an exact no-op.
+    const rankFold = (unit.unitExperience ?? 0) > 0 ? combatUnitRankFold(unit) : null;
     unit.attack = bankSide.attack + bonus("attack") + (rankFold?.attack ?? 0);
     unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0);
     unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);

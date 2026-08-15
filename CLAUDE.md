@@ -618,8 +618,10 @@ Leading with the adaptations / deliberate limits:
   middle row 9/10 is not).
 - **Commanders intro POPUP** (`src/components/table/commander-intro-overlay.tsx`,
   mounted on both table screens in `page.tsx`): a one-time card at the start of a
-  Commanders game stating both halves (auto-placed by default; one Speed grade ⇒
-  always placed by hand) plus the ability-only front-line +2. PURE PRESENTATION —
+  Commanders game showing the viewer's commander card art plus two SHORT lines
+  (auto-placed at Speed grade 0; spend one point on Speed ⇒ always arranged by
+  hand). Since 2026-08-15 it deliberately does NOT mention the ability-only
+  front-line +2 (that rule lives in the bullet below). PURE PRESENTATION —
   it dispatches nothing and opens no engine window, so no AI/AFK seat can stall on
   it. Once per GAME per browser (`localStorage["binh-commander-intro"]` keyed by
   `GameState.id`, `useSyncExternalStore` with a server snapshot of "seen" so the
@@ -737,8 +739,10 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   Protocol v33 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
   layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
-  never dilutes. Drill in an OWN Town costs 1 gold for bronze or recruited Neutral,
-  2 for silver, 3 for gold/azure; heroes get 1/2/3 uses per round at levels I/IV/VII.
+  never dilutes. Drill in an OWN Town costs 1 gold for bronze, recruited Neutral or
+  a won Creature Bank card, 2 for silver, 3 for gold/azure; heroes get 1/2/3 uses
+  per round at levels I/IV/VII. Won bank cards (Dragon Fly Hive / Griffin
+  Conservatory) train on the same track — USER RULE 2026-08-15.
 - LIMITS: **Quick Combat trains nobody**; Clone tokens and specialty covers ignore
   ranks; the AI drills from surplus gold but is not a veterancy planner.
 
@@ -1470,8 +1474,11 @@ line per sub-rule:
   gives +1 attack/defense/health or +2 initiative and absorbs one lethal blow.
 - **"Gain a unit" rewards** (Dragon Fly Hive / Griffin Conservatory): the dedicated
   BANK card — never the faction or Neutral-deck twin, never a Polish layer — plus
-  (X ≥ 2) a chosen real `ArmyUnitState.stackToken`; that card is tierless, has no
-  veteran track, cannot flip, and does NOT occupy the same-named unit's recruit slot.
+  (X ≥ 2) a chosen real `ArmyUnitState.stackToken`; that card is tierless in play,
+  cannot flip, and does NOT occupy the same-named unit's recruit slot — but it DOES
+  train on the Unit Experience veteran track (USER RULE 2026-08-15): its XP folds
+  off the underlying def's printed tier (both are bronze) and Drill prices it at
+  the cheap 1-gold rate (`unit-experience.test.ts` "a won Creature Bank card").
   Both banks also grant an **Ability Empower token** (`USE_ABILITY_EMPOWER_TOKEN` on a
   non-Empowered hand Ability → crown-free Expert forever —
   `ability-empower-token.test.ts`, `empowered-ability.test.ts`).

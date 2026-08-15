@@ -23,6 +23,7 @@ import {
   type PlayerId
 } from "./index";
 import { makeCombatUnitFromNeutral } from "./adventure";
+import { neutralBankMirrorXp } from "./unit-experience";
 import { applyUnitCurrentSide } from "./unit-transforms";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -158,13 +159,17 @@ describe("Guarded Stance is a real +1 Defense on every incoming attack", () => {
 });
 
 describe("Neutral Rank-Up inherits the fix (a ranked guard really is harder to hit)", () => {
-  it("a Stacked bank Naga at Seasoned takes 1 less damage than the unranked CONTROL", () => {
+  it("a Near-bank Naga at Seasoned (round 6) takes 1 less damage than the unranked CONTROL", () => {
     const draw = { unitDefId: "neutral.nagas", tier: "bronze" as const, bankUnit: true };
 
     function bankNagaDamage(seed: string, options: { neutralRankUp: boolean }): number {
       const state = freshCombat(seed);
       const guard = makeCombatUnitFromNeutral(draw, "nru_guard", 10, "legacy")!;
-      guard.stackToken = "health";
+      // With the module ON the bank builder mirrors the Near-band round rank
+      // (Seasoned at round 6) onto `unitExperience`; OFF, it never mirrors XP.
+      if (options.neutralRankUp) {
+        guard.unitExperience = neutralBankMirrorXp("neutral.nagas", "near", 6);
+      }
       applyUnitCurrentSide(guard, "legacy", options.neutralRankUp ? { neutralRankUp: true } : undefined);
       Object.assign(state.combat!.units[DEFENDER], guard, {
         id: DEFENDER,

@@ -6,7 +6,7 @@ import { CardZoomProvider } from "@/components/table/zoom";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { CREATURE_BANK_UNIT_SIDES } from "@/data/map/creature-banks";
-import { createAdventureGameState, type GameAction, type GameState } from "@/engine";
+import { armyUnitRankInfo, createAdventureGameState, type GameAction, type GameState } from "@/engine";
 
 afterEach(cleanup);
 
@@ -233,11 +233,12 @@ describe("ArmyPanel — full faction roster (owned + unowned) with costs", () =>
     ).toBe(false);
   });
 
-  it("a won Creature Bank card shows its OWN bank face, the Stack Token fold, and no veteran track", () => {
+  it("a won Creature Bank card shows its OWN bank face, the Stack Token fold, AND its veteran track", () => {
     // The Dragon Fly Hive / Griffin Conservatory reward is a dedicated bank card
     // (`side: "bank"`), not the faction/Neutral card of the same name. The panel
-    // must read it off CREATURE_BANK_UNIT_SIDES and fold its rulebook Stack
-    // Token, or it shows numbers the engine will not fight with.
+    // must read it off CREATURE_BANK_UNIT_SIDES, fold its rulebook Stack Token
+    // AND its veteran rank (USER RULE 2026-08-15: bank cards train too), or it
+    // shows numbers the engine will not fight with.
     const state = makeState(true, "roster-bank-card");
     state.players.p1.army = [
       { id: "bank1", unitDefId: "neutral.griffins", side: "bank", stackToken: "attack", experience: 14 }
@@ -248,13 +249,14 @@ describe("ArmyPanel — full faction roster (owned + unowned) with costs", () =>
     expect(row, "the won bank card renders as an owned row").toBeTruthy();
     expect(row?.textContent).toContain("Creature Bank");
     const bankSide = CREATURE_BANK_UNIT_SIDES["neutral.griffins"]!;
+    const rankInfo = armyUnitRankInfo({ unitDefId: "neutral.griffins", side: "bank", experience: 14 })!;
+    expect(rankInfo.rank, "bronze def: 14 XP = max rank").toBe(4);
     const stats = row?.querySelector("small")?.textContent ?? "";
-    // Bank face + the +1 Attack Stack Token; every other stat is the bank face.
-    expect(stats).toContain(`A${bankSide.attack + 1}`);
-    expect(stats).toContain(`D${bankSide.defense}`);
-    // Tierless printed bank card: no veteran badge even carrying max XP with the
-    // rule ON (the engine zeroes a bank face's experience).
-    expect(row?.querySelector(".unitRankBadge"), "no veteran rank on a bank face").toBeNull();
+    // Bank face + the +1 Attack Stack Token + the veteran rank fold.
+    expect(stats).toContain(`A${bankSide.attack + 1 + rankInfo.bonus.attack}`);
+    expect(stats).toContain(`D${bankSide.defense + rankInfo.bonus.defense}`);
+    // The bank card wears the veteran badge its XP earns, like any other card.
+    expect(row?.querySelector(".unitRankBadge"), "a bank face ranks now").toBeTruthy();
     // A bank face has no Few/Pack sides, so the row keeps the single-face thumb
     // instead of the both-faces card block.
     expect(row?.querySelector(".armyUnitThumb"), "single bank face thumb").toBeTruthy();

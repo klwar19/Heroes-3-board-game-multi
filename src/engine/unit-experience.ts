@@ -473,9 +473,9 @@ export type ArmyUnitRankInfo = {
 export function armyUnitRankInfo(
   armyUnit: Pick<ArmyUnitState, "unitDefId" | "side" | "experience" | "job" | "companion">
 ): ArmyUnitRankInfo | null {
-  // Creature Bank reward cards are tierless printed bank cards, not recruitable
-  // Neutral units; they do not enter the player-unit experience tracks.
-  if (armyUnit.side === "bank") return null;
+  // A won Creature Bank reward card (side "bank") trains on the SAME veteran
+  // track as every other card (USER RULE 2026-08-15), keyed off its underlying
+  // definition's tier — Griffins / Dragon Flies are bronze, so bronze thresholds.
   const def = coreUnitDefinitions[armyUnit.unitDefId];
   if (!def) return null;
   const experience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
@@ -605,10 +605,10 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
  * crossed. Shared by the combat award and the Drill action.
  *
  * A WON Creature Bank card (`side: "bank"` — the Dragon Fly Hive / Griffin
- * Conservatory reward) is refused here, the ONE producer seam, because the read
- * side cannot honour the XP: `makeCombatUnitFromArmy` zeroes a bank face's
- * experience and `armyUnitRankInfo` returns null for it. Banking XP on such a
- * card would only produce a UNIT_RANK_UP feed line for a rank that never folds.
+ * Conservatory reward) trains here too (USER RULE 2026-08-15): the read side
+ * honours its XP (makeCombatUnitFromArmy mirrors it, armyUnitRankInfo reports
+ * it, the bank branch of applyUnitCurrentSide folds it), keyed off the
+ * underlying definition's printed tier.
  */
 export function grantArmyUnitExperience(
   state: GameState,
@@ -617,7 +617,7 @@ export function grantArmyUnitExperience(
   amount: number
 ): void {
   const def = coreUnitDefinitions[armyUnit.unitDefId];
-  if (!def || amount <= 0 || armyUnit.side === "bank") {
+  if (!def || amount <= 0) {
     return;
   }
   const before = unitRankForExperience(def.tier, armyUnit.experience ?? 0);

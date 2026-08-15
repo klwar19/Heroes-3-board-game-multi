@@ -33,6 +33,7 @@ import {
 } from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
 import { makeCombatUnitFromNeutral } from "./adventure";
+import { applyUnitCurrentSide } from "./unit-transforms";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type { CombatState, GameAction, GameState } from "./state";
 import {
@@ -1187,48 +1188,41 @@ describe("Unit Experience — Drill", () => {
 
 // ===========================================================================
 // A WON Creature Bank card (Dragon Fly Hive / Griffin Conservatory reward,
-// `side: "bank"`) is a tierless printed bank face, NOT a recruitable unit: it
-// never enters the veteran tracks. The read side already refuses it
-// (armyUnitRankInfo → null, makeCombatUnitFromArmy zeroes its experience), so
-// every PRODUCER must refuse it too — otherwise the card silently banks XP that
-// can never fold, the feed announces rank-ups that do not exist, and Drill
-// charges 2 gold plus the once-per-turn slot for literally nothing.
+// `side: "bank"`) trains on the SAME veteran track as every other army card
+// (USER RULE 2026-08-15): its XP folds off the underlying definition's printed
+// tier (Griffins / Dragon Flies are bronze), it earns won-combat XP like any
+// deployed survivor, and Drill trains it at the cheap 1-gold rate.
 // ===========================================================================
 
-describe("Unit Experience — a won Creature Bank card stays out of the veteran tracks", () => {
+describe("Unit Experience — a won Creature Bank card trains on the veteran track", () => {
   const BANK_FLIES = { id: "xp_bank_flies", unitDefId: "neutral.dragon_flies", side: "bank" as const };
 
-  it("the READ side cannot fold a bank card's XP (why accruing it would be a lie)", () => {
+  it("the READ side folds a bank card's XP off its definition's tier", () => {
     const loaded = { ...BANK_FLIES, experience: 14 };
-    expect(armyUnitRankInfo(loaded), "no veteran track for a bank face").toBeNull();
+    const info = armyUnitRankInfo(loaded);
+    expect(info, "a bank face now has a veteran track").not.toBeNull();
+    expect(info!.rank, "bronze thresholds: 14 XP = max rank").toBe(MAX_UNIT_RANK);
     const plain = makeCombatUnitFromArmy(BANK_FLIES, "p1", "u_bank_plain", 0, "legacy")!;
     const veteran = makeCombatUnitFromArmy(loaded, "p1", "u_bank_vet", 0, "legacy")!;
-    expect(veteran.attack).toBe(plain.attack);
-    expect(veteran.defense).toBe(plain.defense);
-    expect(veteran.maxHealth).toBe(plain.maxHealth);
-    expect(veteran.unitRank ?? 0).toBe(0);
-    // CONTROL: the SAME creature as a recruited Neutral card does fold its rank.
-    const neutralPlain = makeCombatUnitFromArmy(
-      { id: "n0", unitDefId: "neutral.dragon_flies", side: "neutral" },
-      "p1",
-      "u_n_plain",
-      0,
-      "legacy"
-    )!;
-    const neutralVeteran = makeCombatUnitFromArmy(
-      { id: "n1", unitDefId: "neutral.dragon_flies", side: "neutral", experience: 14 },
-      "p1",
-      "u_n_vet",
-      0,
-      "legacy"
-    )!;
-    expect(neutralVeteran.unitRank).toBe(MAX_UNIT_RANK);
+    expect(veteran.unitRank).toBe(MAX_UNIT_RANK);
+    expect(veteran.unitExperience).toBe(14);
+    // The fold is observable on the combat card, not just a rank number.
     expect(
-      neutralVeteran.attack + neutralVeteran.defense + neutralVeteran.maxHealth
-    ).toBeGreaterThan(neutralPlain.attack + neutralPlain.defense + neutralPlain.maxHealth);
+      veteran.attack + veteran.defense + veteran.maxHealth + veteran.abilities.length
+    ).toBeGreaterThan(plain.attack + plain.defense + plain.maxHealth + plain.abilities.length);
+    // …and a mid-combat recompute (the bank branch of applyUnitCurrentSide)
+    // reproduces the same fold instead of wiping it back to the bank face.
+    const recomputed = makeCombatUnitFromArmy(loaded, "p1", "u_bank_recompute", 0, "legacy")!;
+    applyUnitCurrentSide(recomputed, "legacy");
+    expect(recomputed.unitRank).toBe(MAX_UNIT_RANK);
+    expect(recomputed.attack).toBe(veteran.attack);
+    expect(recomputed.defense).toBe(veteran.defense);
+    // CONTROL: no XP ⇒ the bank face is byte-identical to before (rank never folds).
+    expect(plain.unitRank ?? 0).toBe(0);
+    expect(plain.unitExperience ?? 0).toBe(0);
   });
 
-  it("a won combat awards no XP to the bank card (CONTROL: the deployed faction card gains it)", () => {
+  it("a won combat awards XP to the surviving bank card like any deployed card", () => {
     const state = makeAdventure("uxp-bank-reward", { unitExperience: true });
     state.players.p1.army = [{ ...BANK_FLIES }, { ...MARKSMEN }];
     const bankCard = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", "u_bank_card", 0, "legacy")!;
@@ -1238,13 +1232,14 @@ describe("Unit Experience — a won Creature Bank card stays out of the veteran 
     finishNeutralCombat(state, { [bankCard.id]: bankCard, [marksmen.id]: marksmen }, "p1", { difficulty: 3 });
 
     expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience, "CONTROL").toBe(3);
-    expect(state.players.p1.army.find((unit) => unit.id === BANK_FLIES.id)?.experience).toBeUndefined();
+    expect(state.players.p1.army.find((unit) => unit.id === BANK_FLIES.id)?.experience).toBe(3);
+    // Crossing bronze rank-1 (3 XP) announces the rank-up for the bank card too.
     expect(
       state.eventLog.some((event) => event.type === "UNIT_RANK_UP" && event.unitDefId === "neutral.dragon_flies")
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("is never a Drill target, and a forged DRILL_UNIT is rejected without spending", () => {
+  it("is a Drill target at the cheap 1-gold rate (like a recruited Neutral)", () => {
     const state = makeAdventure("uxp-bank-drill", { unitExperience: true });
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
     getMainHero(state, "p1")!.spaceId = town.fieldId ?? null;
@@ -1254,21 +1249,20 @@ describe("Unit Experience — a won Creature Bank card stays out of the veteran 
     const offered = getLegalActions(state, "p1")
       .filter((legal) => legal.action.type === "DRILL_UNIT")
       .map((legal) => (legal.action.type === "DRILL_UNIT" ? legal.action.armyUnitId : ""));
-    expect(offered).toEqual([MARKSMEN.id]);
+    expect(offered).toEqual([BANK_FLIES.id, MARKSMEN.id]);
 
-    const forged = applyAction(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: BANK_FLIES.id });
-    expect(forged.errors[0]?.message).toContain("Creature Bank");
-    expect(forged.state.players.p1.resources.gold, "no gold burned on the rejected drill").toBe(10);
-    expect(forged.state.players.p1.army[0].experience).toBeUndefined();
-
-    // CONTROL: the SAME creature recruited as a Neutral card IS drillable — the
-    // exclusion keys off the bank FACE, not off `neutral.dragon_flies`.
-    const control = makeAdventure("uxp-bank-drill-control", { unitExperience: true });
-    const controlTown = Object.values(control.towns).find((candidate) => candidate.controllerId === "p1")!;
-    getMainHero(control, "p1")!.spaceId = controlTown.fieldId ?? null;
-    control.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-    control.players.p1.army = [{ id: BANK_FLIES.id, unitDefId: "neutral.dragon_flies", side: "neutral" }];
-    const drilled = applyOk(control, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: BANK_FLIES.id });
+    const drilled = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: BANK_FLIES.id });
+    expect(drilled.players.p1.resources.gold, "bank card drills for 1 gold").toBe(9);
     expect(drilled.players.p1.army[0].experience).toBe(1);
+
+    // CONTROL: a maxed bank card is not offered (the shared max-rank gate).
+    const maxed = makeAdventure("uxp-bank-drill-maxed", { unitExperience: true });
+    const maxedTown = Object.values(maxed.towns).find((candidate) => candidate.controllerId === "p1")!;
+    getMainHero(maxed, "p1")!.spaceId = maxedTown.fieldId ?? null;
+    maxed.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    maxed.players.p1.army = [{ ...BANK_FLIES, experience: 14 }];
+    expect(
+      getLegalActions(maxed, "p1").filter((legal) => legal.action.type === "DRILL_UNIT")
+    ).toEqual([]);
   });
 });

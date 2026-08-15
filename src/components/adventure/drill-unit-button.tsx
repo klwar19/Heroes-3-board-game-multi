@@ -31,7 +31,12 @@ export function DrillUnitButton({
   const limit = unitDrillLimit(state, playerId);
   const used = unitDrillsUsedThisRound(state, playerId);
   const remaining = Math.max(0, limit - used);
-  const pricing = unit.side === "neutral" ? "recruited Neutral rate" : `${cost === 1 ? "bronze" : cost === 2 ? "silver" : "gold/azure"} rate`;
+  const pricing =
+    unit.side === "neutral"
+      ? "recruited Neutral rate"
+      : unit.side === "bank"
+        ? "Creature Bank card rate"
+        : `${cost === 1 ? "bronze" : cost === 2 ? "silver" : "gold/azure"} rate`;
   const tip = `Drill ${unitName}: pay ${cost} gold to gain +1 persistent unit XP. ${pricing}; ${remaining} of ${limit} Drill ${limit === 1 ? "use" : "uses"} remaining this round. Requires your main hero in your own Town.`;
 
   return (

@@ -903,7 +903,7 @@ describe("Game options — tabbed layout", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /Mod options/i }));
     const dialog = screen.getByRole("dialog", { name: /Wake of Gods mod options/i });
-    const row = within(dialog).getByRole("button", { name: /NEUTRAL guards toughen as the game ages/i });
+    const row = within(dialog).getByRole("button", { name: /Neutral-OWNED guards toughen with the round/i });
     expect(row.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(row);
     expect(onAction).toHaveBeenCalledWith(

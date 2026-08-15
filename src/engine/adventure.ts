@@ -3049,9 +3049,8 @@ export function mainHeroInOwnTown(state: GameState, playerId: PlayerId): boolean
 /**
  * Unit Experience Drill (map action): the army cards still below max veteran
  * rank (XP past the last threshold does nothing, so maxed cards are not
- * offered). A WON Creature Bank card (`side: "bank"`) is never offered either —
- * its face has no veteran track at all (grantArmyUnitExperience refuses it), so
- * drilling it would charge 2 gold and the once-per-turn slot for nothing.
+ * offered). A WON Creature Bank card (`side: "bank"`) trains on the same track
+ * (USER RULE 2026-08-15), ranked off its underlying definition's tier.
  */
 export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUnitState[] {
   const player = state.players[playerId];
@@ -3059,17 +3058,14 @@ export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUn
     return [];
   }
   return player.army.filter((armyUnit) => {
-    if (armyUnit.side === "bank") {
-      return false;
-    }
     const def = coreUnitDefinitions[armyUnit.unitDefId];
     return def ? unitRankForExperience(def.tier, armyUnit.experience ?? 0) < MAX_UNIT_RANK : false;
   });
 }
 
-/** Recruited Neutrals train cheaply; faction cards use their printed tier. */
+/** Recruited Neutrals and won Creature Bank cards train cheaply; faction cards use their printed tier. */
 export function unitDrillGoldCost(armyUnit: ArmyUnitState): number {
-  if (armyUnit.side === "neutral") return 1;
+  if (armyUnit.side === "neutral" || armyUnit.side === "bank") return 1;
   const tier = coreUnitDefinitions[armyUnit.unitDefId]?.tier ?? "gold";
   return DRILL_UNIT_GOLD_COST_BY_TIER[tier];
 }
@@ -14758,8 +14754,9 @@ export function makeCombatUnitFromArmy(
       : 0;
   // Unit Experience (optional rule): veteran-rank stat bonuses + the elite
   // ability fold into the printed side like permanentAttackBonus. With the rule
-  // off no card ever carries `experience`, so this is an exact no-op.
-  const unitExperience = armyUnit.side === "bank" ? 0 : Math.max(0, Math.trunc(armyUnit.experience ?? 0));
+  // off no card ever carries `experience`, so this is an exact no-op. A won
+  // Creature Bank card (side "bank") trains too (USER RULE 2026-08-15).
+  const unitExperience = Math.max(0, Math.trunc(armyUnit.experience ?? 0));
   const effectiveJob = mgqEffectiveJob(armyUnit);
   const rankFold = unitRankFold(armyUnit.unitDefId, def.tier, unitExperience, effectiveJob);
   // Creature Bank Stacked reward (Dragon Fly Hive / Griffin Conservatory): a

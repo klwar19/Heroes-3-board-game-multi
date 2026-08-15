@@ -346,7 +346,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // grants a DIFFERENT ability/stat at the same rank for those units — same action
 // ids, silently different game state — so it must show the skew banner rather
 // than serve the wrong rewards. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 33;
+// v34 (2026-08-15): the unit-experience / neutral-progression batch. What
+// moved server-side: DRILL_UNIT is tier-priced (1/2/3 gold) with 1/2/3 uses
+// per round at hero levels I/IV/VII (a v33 edge validates the old 2-gold
+// once-per-turn rule and rejects/mis-prices the new offers); Neutral Rank-Up
+// uses new tier round tables capped at ELITE (v33 capped at Veteran on
+// different rounds — same actions, silently different guard stats) plus
+// Far/Near Creature-Bank round schedules replacing the Stack-Token Seasoned
+// rule; won combats vs Veteran/Elite neutral guards award +1/+2 bonus unit XP;
+// and a won Creature Bank reward card (side "bank") now trains on the veteran
+// track (XP folds, drillable at 1 gold) — USER RULE 2026-08-15.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 34;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
