@@ -8,6 +8,7 @@ import {
   rankScheduleFor,
   rankAbilityTrackFor,
   scheduleAbilityCount,
+  unitStatStepsFor,
   type RankStep,
   type UnitRankStatBonus
 } from "@/data/units/experience";
@@ -28,9 +29,8 @@ import {
 } from "./state";
 
 /**
- * Unit Experience — each rank is EITHER stats OR one ability (never both).
- * Ability count is by track rarity (1 / 2 / 3), never by gold tier.
- * Stats only accumulate on stats ranks (schedule-driven steps).
+ * Unit Experience — ranks may grant stats, an ability, or a signature hybrid.
+ * Stats accumulate only from the schedule steps that explicitly grant them.
  */
 
 const ZERO_FOLD: UnitRankStatBonus = { attack: 0, defense: 0, health: 0, initiative: 0 };
@@ -115,39 +115,38 @@ export function unitRankStatBonusesFor(
   job?: MgqJob
 ): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
-  if (job) {
-    const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
-    // MGQ's Job track is S / S / A / S: rank 3 is the current Job signature.
-    const statsRanks = Math.min(3, rank >= 4 ? 3 : rank >= 2 ? 2 : 1);
-    let total = ZERO_FOLD;
-    for (let index = 0; index < statsRanks; index += 1) {
-      total = addStats(total, steps[index] ?? ZERO_FOLD);
-    }
-    return total;
-  }
-  const schedule = rankScheduleFor(unitDefId);
-  const steps = UNIT_STAT_STEPS[tier] ?? UNIT_STAT_STEPS.gold;
+  const steps = unitStatStepsFor(unitDefId, tier);
   let total = ZERO_FOLD;
   let statsIndex = 0;
   for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
-    const step = schedule[r as 1 | 2 | 3 | 4];
+    const step = unitRankStep(unitDefId, r, job);
+    if (!step) continue;
     if (step.kind === "stats") {
-      const delta = steps[statsIndex] ?? ZERO_FOLD;
+      const delta = step.stats ?? steps[statsIndex] ?? ZERO_FOLD;
       total = addStats(total, delta);
-      statsIndex += 1;
+      if (!step.stats) statsIndex += 1;
+    } else if (step.kind === "hybrid") {
+      total = addStats(total, step.stats);
     }
   }
   return total;
 }
 
-/** The schedule step at a given rank (stats | ability). */
+/** The schedule step at a given rank (stats | ability | hybrid). */
 export function unitRankStep(unitDefId: string, rank: number, job?: MgqJob): RankStep | null {
   if (rank < 1 || rank > MAX_UNIT_RANK) return null;
   if (job) {
     const signature = mgqJobSignatureAbilityId(job);
-    return rank === 3 && signature
-      ? { kind: "ability", choices: [signature] }
-      : { kind: "stats" };
+    if (rank === 1) return rankScheduleFor(unitDefId)[1];
+    if (rank === 2) return { kind: "stats" };
+    if (rank === 3 && signature) {
+      const baseStep = rankScheduleFor(unitDefId)[3];
+      return {
+        kind: "ability",
+        choices: [signature, ...(baseStep.kind === "stats" ? ["veteran-steady-aim"] : baseStep.choices)]
+      };
+    }
+    return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4];
   }
   return rankScheduleFor(unitDefId)[rank as 1 | 2 | 3 | 4] ?? null;
 }
@@ -169,17 +168,13 @@ export function printedAbilityIdsOf(unitDefId: string): ReadonlySet<string> {
 export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob): string[] {
   if (rank <= 0) return [];
   const printed = printedAbilityIdsOf(unitDefId);
-  if (job) {
-    const signature = mgqJobSignatureAbilityId(job);
-    return signature && rank >= 3 && !printed.has(signature) ? [signature] : [];
-  }
   const granted: string[] = [];
   const already = new Set<string>(printed);
-  const schedule = rankScheduleFor(unitDefId);
 
   for (let r = 1; r <= Math.min(rank, MAX_UNIT_RANK); r++) {
-    const step = schedule[r as 1 | 2 | 3 | 4];
-    if (step.kind !== "ability") continue;
+    const step = unitRankStep(unitDefId, r, job);
+    if (!step) continue;
+    if (step.kind !== "ability" && step.kind !== "hybrid") continue;
     for (const abilityId of step.choices) {
       if (!already.has(abilityId)) {
         granted.push(abilityId);
@@ -195,7 +190,7 @@ export function unitRankAbilityIds(unitDefId: string, rank: number, job?: MgqJob
 export function unitRankAbilityGainsAt(unitDefId: string, rank: number, job?: MgqJob): string[] {
   if (rank <= 0) return [];
   const step = unitRankStep(unitDefId, rank, job);
-  if (!step || step.kind !== "ability") return [];
+  if (!step || (step.kind !== "ability" && step.kind !== "hybrid")) return [];
   const before = new Set(unitRankAbilityIds(unitDefId, rank - 1, job));
   return unitRankAbilityIds(unitDefId, rank, job).filter((id) => !before.has(id));
 }
@@ -209,7 +204,7 @@ export function unitRankStatGainsAt(
 ): UnitRankStatBonus {
   if (rank <= 0) return ZERO_FOLD;
   const step = unitRankStep(unitDefId, rank, job);
-  if (!step || step.kind !== "stats") return ZERO_FOLD;
+  if (!step || (step.kind !== "stats" && step.kind !== "hybrid")) return ZERO_FOLD;
   const after = unitRankStatBonusesFor(unitDefId, tier, rank, job);
   const before = unitRankStatBonusesFor(unitDefId, tier, rank - 1, job);
   return {
@@ -418,7 +413,7 @@ export type ArmyUnitRankInfo = {
   /** Per-rank ability gains (empty array on stats ranks). */
   abilitiesByRank: Record<number, string[]>;
   /** Per-rank step kind for the board. */
-  stepKindByRank: Record<number, "stats" | "ability">;
+  stepKindByRank: Record<number, "stats" | "ability" | "hybrid">;
   /** Per-rank stat deltas (zeros on ability ranks). */
   statGainsByRank: Record<number, UnitRankStatBonus>;
 };
@@ -439,7 +434,7 @@ export function armyUnitRankInfo(
   const schedule = rankScheduleFor(armyUnit.unitDefId);
   const activeIds = unitRankAbilityIds(armyUnit.unitDefId, rank, job);
   const abilitiesByRank: Record<number, string[]> = {};
-  const stepKindByRank: Record<number, "stats" | "ability"> = {};
+  const stepKindByRank: Record<number, "stats" | "ability" | "hybrid"> = {};
   const statGainsByRank: Record<number, UnitRankStatBonus> = {};
   for (let r = 1; r <= MAX_UNIT_RANK; r++) {
     const step = unitRankStep(armyUnit.unitDefId, r, job) ?? schedule[r as 1 | 2 | 3 | 4];

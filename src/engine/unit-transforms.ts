@@ -4,7 +4,7 @@ import { applyUnitSideRules, specialtyTransformHealth } from "./ruleset";
 import { attackBonusIfFlippedForAbilityIds } from "./unit-abilities";
 import { combatUnitRankFold, neutralStackRankFold, withRankAbilities } from "./unit-experience";
 import { withMgqJobAbilities } from "./mgq-jobs";
-import { maxHealthAfterUnitAbilityEffects } from "./unit-abilities";
+import { maxHealthAfterUnitAbilityEffects, movementTypeAfterUnitAbilityEffects } from "./unit-abilities";
 import type { CombatUnitState, EffectDefinition, GameRuleset, UnitTransformState } from "./state";
 
 /**
@@ -248,7 +248,7 @@ export function applyUnitCurrentSide(
   // Energy Elemental (flying) reverts to ground, and a Pack Gremlin/Titan (ranged)
   // reverts to ground. Without this the flipped unit kept its Pack type and behaved
   // as a shooter on a melee card.
-  unit.type = side.type ?? def.type;
+  const printedType = side.type ?? def.type;
   // House rule (BINH) — Gelu IV: re-apply the permanent +Attack onto the printed
   // side so a Gelu-recruited Sharpshooters keeps its buff across any recompute
   // (e.g. a Pack→Few flip). A specialty cover (top branch) or a bank card (above)
@@ -275,6 +275,7 @@ export function applyUnitCurrentSide(
   const tokenBonus = (stat: "attack" | "defense" | "health" | "initiative") =>
     unit.stackToken === stat ? stackTokenDelta(stat) : 0;
   const combatAbilityIds = withMgqJobAbilities(withRankAbilities(side.abilities, rankFold), unit.job);
+  unit.type = movementTypeAfterUnitAbilityEffects(printedType, combatAbilityIds);
   unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + rankFold.attack + tokenBonus("attack");
   unit.defense = side.defense + rankFold.defense + tokenBonus("defense");
   // combatMaxHealthBonus: ADD_UNIT_MAX_HEALTH (Valeska, Vial, Ivor VI…). Must

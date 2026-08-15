@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import {
   MAX_UNIT_RANK,
-  RANK_TEMPLATES,
-  UNIT_RANK_SCHEDULES,
+  UNIT_RANK_ABILITY_ICONS,
+  UNIT_RANK_STAT_ICONS,
   UNIT_RANK_THRESHOLDS,
   UNIT_STAT_STEPS,
   UNIT_XP_BANK_MIN,
@@ -14,11 +14,13 @@ import {
   rankScheduleFor,
   rankAbilityTrackFor,
   scheduleAbilityCount,
-  scheduleTemplateId,
+  unitStatStepsFor,
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { mgqJobsForUnit } from "./mgq-jobs";
+import { getLegalMoveDestinations } from "./legal-actions";
 import {
   applyAction,
   createAdventureGameState,
@@ -36,9 +38,11 @@ import {
   armyUnitRankInfo,
   awardUnitExperienceAfterCombat,
   unitRankAbilityIds,
+  unitRankAbilityGainsAt,
   unitRankForExperience,
   unitRankStatBonuses,
   unitRankStatBonusesFor,
+  unitRankStatGainsAt,
   unitRankStep
 } from "./unit-experience";
 
@@ -139,37 +143,70 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     expect(unitRankStatBonuses("gold", 1)).toEqual({ attack: 1, defense: 0, health: 0, initiative: 0 });
   });
 
-  it("THREE templates only: standard=1 ability, strong=2, rare=3", () => {
-    expect(RANK_TEMPLATES.standard.filter((k) => k === "ability")).toHaveLength(1);
-    expect(RANK_TEMPLATES.strong.filter((k) => k === "ability")).toHaveLength(2);
-    expect(RANK_TEMPLATES.rare.filter((k) => k === "ability")).toHaveLength(3);
-    // Every unique schedule matches a template pattern.
-    for (const [id, schedule] of Object.entries(UNIT_RANK_SCHEDULES)) {
-      const t = scheduleTemplateId(schedule);
-      expect(["standard", "strong", "rare"], id).toContain(t);
-      for (const r of [1, 2, 3, 4] as const) {
-        const step = schedule[r];
-        expect(step.kind === "stats" || step.kind === "ability").toBe(true);
-        if (step.kind === "ability") expect(step.choices.length).toBeGreaterThan(0);
+  it("unit-aware balance: printed Defense 3 never gains Defense", () => {
+    expect(unitStatStepsFor("castle.archangels", "gold")).toEqual([
+      { attack: 0, defense: 0, health: 0, initiative: 1 },
+      { attack: 1, defense: 0, health: 0, initiative: 0 },
+      { attack: 0, defense: 0, health: 1, initiative: 0 }
+    ]);
+    expect(unitRankStatBonusesFor("castle.archangels", "gold", 4)).toEqual({
+      attack: 0,
+      defense: 0,
+      health: 0,
+      initiative: 1
+    });
+    for (const def of Object.values(coreUnitDefinitions)) {
+      const printedDefense = Math.max(def.few?.defense ?? 0, def.pack?.defense ?? 0, def.neutral?.defense ?? 0);
+      if (printedDefense < 3) continue;
+      expect(unitRankStatBonusesFor(def.id, def.tier, 4).defense, def.id).toBe(0);
+    }
+  });
+
+  it("R1 uses only the approved small reward pool", () => {
+    const flatDefenseIds = new Set([
+      "stronghold.wolf_raiders", "fuyuki.riders", "azure_breeze.spirit_crane", "hidden_leaf.anbu",
+      "azur_lane.javelin", "heavenly_demon.bone_reavers", "little_busters.haruka", "mgq.miyabi",
+      "mgq.hild", "mgq.pochi", "conflux.ice_elementals", "dungeon.minotaurs", "necropolis.wraiths",
+      "inferno.demons", "tower.genies", "rampart.dendroids", "castle.marksmen", "fortress.gnolls",
+      "wog.ghost", "doom.former_human", "doom.cacodemon"
+    ]);
+    for (const def of Object.values(coreUnitDefinitions)) {
+      const step = rankScheduleFor(def.id)[1];
+      if (step.kind === "stats") {
+        const gain = unitStatStepsFor(def.id, def.tier)[0]!;
+        expect(gain.attack, def.id).toBe(0);
+        expect(gain.defense + gain.health + gain.initiative, def.id).toBe(1);
+        if (gain.defense > 0) expect(flatDefenseIds.has(def.id), def.id).toBe(true);
+      } else {
+        expect(step.choices, def.id).toHaveLength(1);
+        if (def.id === "fortress.hydras") {
+          expect(step.choices[0]).toBe("veteran-fear-aura");
+          continue;
+        }
+        if (def.id === "castle.champions") {
+          expect(step.choices[0]).toBe("veteran-moving-pierce");
+          continue;
+        }
+        expect([
+          "veteran-attack-when-attacking",
+          "veteran-retaliation-fury",
+          "veteran-guarded-stance"
+        ], def.id).toContain(step.choices[0]);
       }
     }
-    expect(Object.keys(UNIT_RANK_SCHEDULES).length, "unique schedules").toBeGreaterThanOrEqual(80);
+    for (const unitDefId of flatDefenseIds) {
+      const def = coreUnitDefinitions[unitDefId]!;
+      expect(unitRankStatGainsAt(unitDefId, def.tier, 1).defense, unitDefId).toBe(1);
+    }
   });
 
-  it("gold units do NOT get more abilities than bronze peers", () => {
-    expect(scheduleAbilityCount(rankScheduleFor("castle.marksmen"))).toBe(2);
-    expect(scheduleAbilityCount(rankScheduleFor("tower.titans"))).toBe(2);
-    expect(scheduleAbilityCount(rankScheduleFor("castle.halberdiers"))).toBe(1);
-    expect(scheduleAbilityCount(rankScheduleFor("castle.griffins"))).toBe(1);
-    expect(scheduleAbilityCount(rankScheduleFor("castle.archangels"))).toBe(2); // strong flyer unique
-  });
-
-  it("REGISTRY: every ability choice on unique schedules is implemented", () => {
+  it("REGISTRY: every resolved reward choice is implemented", () => {
     const ids = new Set<string>();
-    for (const schedule of Object.values(UNIT_RANK_SCHEDULES)) {
+    for (const unitDefId of Object.keys(coreUnitDefinitions)) {
+      const schedule = rankScheduleFor(unitDefId);
       for (const r of [1, 2, 3, 4] as const) {
         const step = schedule[r];
-        if (step.kind === "ability") for (const id of step.choices) ids.add(id);
+        if (step.kind !== "stats") for (const id of step.choices) ids.add(id);
       }
     }
     expect(ids.size).toBeGreaterThan(10);
@@ -181,51 +218,40 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     }
   });
 
-  it("DIFFERENT unique paths: marksmen ≠ griffins ≠ champions ≠ sabers", () => {
-    expect(hasUniqueRankSchedule("castle.marksmen")).toBe(true);
-    expect(hasUniqueRankSchedule("castle.champions")).toBe(true);
-    expect(hasUniqueRankSchedule("fuyuki.sabers")).toBe(true);
-
-    expect(unitRankStep("castle.marksmen", 1)?.kind).toBe("stats");
-    expect(unitRankStep("castle.marksmen", 2)?.kind).toBe("ability");
-    expect(unitRankAbilityIds("castle.marksmen", 1)).toEqual([]);
-    expect(unitRankAbilityIds("castle.marksmen", 2)).toContain("bulwark-air-shield");
-    expect(unitRankAbilityIds("castle.marksmen", 4)).toContain("ignore-all-combat-penalties");
-    expect(unitRankStatBonusesFor("castle.marksmen", "bronze", 3)).toEqual({
-      attack: 1,
-      defense: 1,
-      health: 0,
-      initiative: 0
+  it("explicit signature examples resolve exactly at their requested ranks", () => {
+    expect(unitRankAbilityIds("necropolis.skeletons", 4)).toContain("veteran-rebirth");
+    expect(unitRankAbilityIds("tower.magi", 4)).toContain("veteran-spell-sunder");
+    expect(unitRankAbilityIds("rampart.unicorns", 4)).toContain("veteran-low-roll-insight");
+    expect(unitRankAbilityIds("castle.zealots", 4)).toContain("veteran-defense-pierce");
+    expect(unitRankAbilityIds("necropolis.ghost_dragons", 4)).toContain("veteran-soul-feast");
+    expect(rankScheduleFor("dungeon.black_dragons")[3]).toMatchObject({
+      kind: "hybrid",
+      stats: { initiative: 2 },
+      choices: ["veteran-speed-hunter"]
     });
-    expect(unitRankStatBonusesFor("castle.marksmen", "bronze", 4)).toEqual({
-      attack: 1,
-      defense: 1,
-      health: 0,
-      initiative: 0
+    expect(rankScheduleFor("conflux.phoenixes")[3]).toMatchObject({
+      kind: "ability",
+      choices: ["veteran-regeneration-2"]
     });
-
-    expect(unitRankStep("castle.champions", 1)?.kind).toBe("ability");
-    expect(unitRankAbilityIds("castle.champions", 1)).toContain("commander-charge");
-    expect(unitRankAbilityIds("castle.champions", 3)).toContain("ignores-retaliation");
-    expect(unitRankStatBonusesFor("castle.champions", "gold", 1)).toEqual({
-      attack: 0,
-      defense: 0,
-      health: 0,
-      initiative: 0
+    expect(unitRankStatGainsAt("fortress.gorgons", "silver", 1)).toMatchObject({ initiative: 1 });
+    expect(unitRankAbilityIds("fortress.hydras", 1)).toContain("veteran-fear-aura");
+    expect(unitRankAbilityIds("stronghold.behemoths", 3)).toContain("veteran-flying-movement");
+    expect(unitRankAbilityIds("conflux.sprites", 4)).toContain("pegasi-magic-damper");
+    expect(unitRankAbilityIds("castle.archangels", 3)).toContain("veteran-layer-draw");
+    expect(unitRankAbilityIds("castle.champions", 1)).toContain("veteran-moving-pierce");
+    expect(unitRankStatGainsAt("castle.champions", "gold", 2)).toMatchObject({ health: 1 });
+    expect(rankScheduleFor("castle.champions")[3]).toMatchObject({
+      kind: "hybrid",
+      stats: { initiative: 2 },
+      choices: ["veteran-mobility-1"]
     });
-    expect(unitRankStatBonusesFor("castle.champions", "gold", 2)).toEqual({
-      attack: 1,
-      defense: 0,
-      health: 0,
-      initiative: 0
-    });
-
-    expect(scheduleAbilityCount(rankScheduleFor("fuyuki.sabers"))).toBe(3);
-    expect(unitRankAbilityIds("fuyuki.sabers", 3)).toContain("double-attack");
-    expect(rankAbilityTrackFor("castle.marksmen")).toContain("unique");
+    expect(unitRankAbilityIds("castle.crusaders", 4)).toContain("veteran-double-attack");
+    expect(unitRankAbilityIds("inferno.pit_lords", 4)).toContain("veteran-defense-pierce");
+    expect(unitRankStatGainsAt("inferno.magogs", "bronze", 4)).toMatchObject({ health: 2 });
+    expect(unitRankAbilityIds("necropolis.dread_knights", 4)).toContain("reduce-spell-and-specialty-damage-2");
   });
 
-  it("every core/anime unit has a schedule; ability budget ≤ 3; grants are cumulative", () => {
+  it("every core/anime unit has four non-empty rewards; grants are cumulative", () => {
     const unitIds = Object.keys(coreUnitDefinitions).filter(
       (id) =>
         !id.startsWith("neutral.") &&
@@ -245,7 +271,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
       const schedule = rankScheduleFor(unitDefId);
       const budget = scheduleAbilityCount(schedule);
       expect(budget).toBeGreaterThanOrEqual(1);
-      expect(budget).toBeLessThanOrEqual(3);
+      expect(budget).toBeLessThanOrEqual(4);
       const maxIds = unitRankAbilityIds(unitDefId, 4);
       expect(maxIds.length).toBeLessThanOrEqual(budget);
       for (let r = 1; r <= 4; r++) {
@@ -254,15 +280,30 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         for (const id of prev) expect(cur).toContain(id);
       }
     }
-    expect(uniqueCount, "most faction units should be unique").toBeGreaterThanOrEqual(80);
+    expect(uniqueCount).toBe(unitIds.length);
   });
 
-  it("ability icons resolve (dedicated glyph on disk or spell-icon fallback)", () => {
-    for (const id of unitRankAbilityIds("castle.marksmen", 4)) {
-      const icon = unitRankAbilityIcon(id);
-      expect(icon.startsWith("/assets/")).toBe(true);
-      if (icon.includes("/rank-ability/")) {
-        expect(existsSync(join(process.cwd(), "public", icon.replace(/^\//, "")))).toBe(true);
+  it("every shared ability and stat reward resolves to dedicated veterancy art on disk", () => {
+    for (const [id, icon] of Object.entries(UNIT_RANK_ABILITY_ICONS)) {
+      expect(icon, id).toContain("/assets/ui/rank-ability/");
+      expect(existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))), id).toBe(true);
+      expect(unitRankAbilityIcon(id), id).toBe(icon);
+    }
+    for (const [stat, icon] of Object.entries(UNIT_RANK_STAT_ICONS)) {
+      expect(icon, stat).toContain("/assets/ui/rank-stat/");
+      expect(existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))), stat).toBe(true);
+    }
+  });
+
+  it("every offered MGQ unit/job path grants a non-empty reward at every rank", () => {
+    for (const def of Object.values(coreUnitDefinitions).filter((unit) => unit.faction === "mgq")) {
+      for (const job of mgqJobsForUnit(def.id)) {
+        for (const rank of [1, 2, 3, 4]) {
+          const stat = unitRankStatGainsAt(def.id, def.tier, rank, job);
+          const statTotal = stat.attack + stat.defense + stat.health + stat.initiative;
+          const abilities = unitRankAbilityGainsAt(def.id, rank, job);
+          expect(statTotal + abilities.length, `${def.id}/${job}/R${rank}`).toBeGreaterThan(0);
+        }
       }
     }
   });
@@ -386,7 +427,9 @@ function resolveArmyAttack(
   seed: string,
   attackerArmy: { unitDefId: string; side: "few" | "pack" | "neutral"; experience?: number },
   defenderArmy?: { unitDefId: string; side: "few" | "pack" | "neutral"; experience?: number },
-  defenderAttack = 0
+  defenderAttack = 0,
+  defenderInitiative?: number,
+  options: { defenderMaxHealth?: number; attackerMoved?: boolean; attackerDeck?: string[] } = {}
 ): GameState {
   let state = createInitialGameState(seed);
   const attacker = makeCombatUnitFromArmy(
@@ -398,6 +441,7 @@ function resolveArmyAttack(
   )!;
   attacker.type = "ground";
   attacker.position = 9;
+  attacker.movedThisActivation = options.attackerMoved ?? false;
   state.combat!.units.unit_p1_griffins = attacker;
   if (defenderArmy) {
     const defender = makeCombatUnitFromArmy(
@@ -408,20 +452,26 @@ function resolveArmyAttack(
       "legacy"
     )!;
     defender.position = 13;
-    defender.maxHealth = 40;
+    defender.maxHealth = options.defenderMaxHealth ?? 40;
     defender.attack = defenderAttack;
+    if (defenderInitiative !== undefined) defender.initiative = defenderInitiative;
     state.combat!.units.unit_p2_skeletons = defender;
   } else {
     const defender = state.combat!.units.unit_p2_skeletons;
     defender.position = 13;
     defender.defense = 1;
-    defender.maxHealth = 40;
+    defender.maxHealth = options.defenderMaxHealth ?? 40;
     defender.damage = 0;
     defender.abilities = [];
     defender.attack = defenderAttack;
+    if (defenderInitiative !== undefined) defender.initiative = defenderInitiative;
   }
   state.combat!.dice.scriptedRolls = Array(8).fill(0);
   state.combat!.dice.rollCount = 0;
+  if (options.attackerDeck) {
+    state.players.p1.hand = [];
+    state.players.p1.deck = [...options.attackerDeck];
+  }
   state.activePlayerId = "p1";
   state.combat!.activeUnitId = "unit_p1_griffins";
   state = applyOk(state, {
@@ -449,26 +499,23 @@ function resolveArmyAttack(
   return state;
 }
 
-describe("Unit Experience — observable either/or effects in combat", () => {
-  it("halberdiers R1 is STATS (+1 Def for bronze) — lowers incoming damage by 1", () => {
-    // Halberdiers melee_line: R1 stats. Bronze first step = +1 Defense.
-    const control = resolveArmyAttack(
-      "uxp-def-ctl",
-      { unitDefId: "castle.champions", side: "few" },
-      { unitDefId: "castle.halberdiers", side: "few" }
+describe("Unit Experience — observable redesigned effects in combat", () => {
+  it("halberdiers R1 adds +1 Attack only when they initiate", () => {
+    const control = resolveArmyAttack("uxp-r1-attack-ctl", {
+      unitDefId: "castle.halberdiers",
+      side: "few"
+    });
+    const seasoned = resolveArmyAttack("uxp-r1-attack", {
+      unitDefId: "castle.halberdiers",
+      side: "few",
+      experience: 3
+    });
+    expect(seasoned.combat!.units.unit_p2_skeletons.damage).toBe(
+      control.combat!.units.unit_p2_skeletons.damage + 1
     );
-    const seasoned = resolveArmyAttack(
-      "uxp-def-vet",
-      { unitDefId: "castle.champions", side: "few" },
-      { unitDefId: "castle.halberdiers", side: "few", experience: 3 }
-    );
-    const controlDamage = control.combat!.units.unit_p2_skeletons.damage;
-    expect(controlDamage).toBeGreaterThan(0);
-    expect(seasoned.combat!.units.unit_p2_skeletons.damage).toBe(controlDamage - 1);
   });
 
-  it("champions R2 is STATS (+1 Atk gold) — raises hit by 1 over rank-1 CONTROL (ability only)", () => {
-    // Champions: R1 ability (no stats), R2 stats (+1 Atk gold). Gold R2 at 10 XP.
+  it("champions R2 adds +1 HP without changing their attack damage", () => {
     const rank1 = resolveArmyAttack("uxp-atk-r1", {
       unitDefId: "castle.champions",
       side: "few",
@@ -480,29 +527,30 @@ describe("Unit Experience — observable either/or effects in combat", () => {
       experience: 10
     });
     const d1 = rank1.combat!.units.unit_p2_skeletons.damage;
-    expect(d1, "rank1 ability-only: 5 attack + 0 die − 1 def").toBe(4);
-    expect(rank2.combat!.units.unit_p2_skeletons.damage).toBe(d1 + 1);
+    expect(d1).toBeGreaterThan(0);
+    expect(rank2.combat!.units.unit_p2_skeletons.damage).toBe(d1);
+    expect(rank2.combat!.units.unit_p1_griffins.maxHealth).toBe(
+      rank1.combat!.units.unit_p1_griffins.maxHealth + 1
+    );
   });
 
-  it("champions R3 ability ignores retaliation (R2 CONTROL still takes it)", () => {
-    // R2 = 10 XP: stats only (+1 Atk). Defense still 2. Retaliation 6 − 2 = 4.
-    // R3 = 16 XP: ability ignores-retaliation → 0 damage taken.
+  it("champions R4 ignores retaliation (R3 CONTROL still takes it)", () => {
     const control = resolveArmyAttack(
       "uxp-elite-ctl",
-      { unitDefId: "castle.champions", side: "few", experience: 10 },
+      { unitDefId: "castle.champions", side: "few", experience: 16 },
       undefined,
       6
     );
     const elite = resolveArmyAttack(
       "uxp-elite",
-      { unitDefId: "castle.champions", side: "few", experience: 16 },
+      { unitDefId: "castle.champions", side: "few", experience: 22 },
       undefined,
       6
     );
-    expect(control.combat!.units.unit_p1_griffins.damage, "rank 2 still takes retaliation").toBe(4);
-    expect(elite.combat!.units.unit_p1_griffins.damage, "rank 3 no retaliation").toBe(0);
+    expect(control.combat!.units.unit_p1_griffins.damage, "rank 3 still takes retaliation").toBeGreaterThan(0);
+    expect(elite.combat!.units.unit_p1_griffins.damage, "rank 4 no retaliation").toBe(0);
     expect(makeCombatUnitFromArmy(
-      { id: "c", unitDefId: "castle.champions", side: "few", experience: 16 },
+      { id: "c", unitDefId: "castle.champions", side: "few", experience: 22 },
       "p1",
       "u_c",
       0,
@@ -527,46 +575,213 @@ describe("Unit Experience — observable either/or effects in combat", () => {
     expect(r4.unitRank).toBe(4);
     expect(r4.attack).toBe(r3.attack);
     expect(r4.defense).toBe(r3.defense);
-    expect(r4.abilities).toContain("ignore-all-combat-penalties");
+    expect(r4.abilities).toContain("ranged-extra-shot-on-low-roll");
   });
 
-  it("halberdiers standard path R3 takes 3 stats steps (+Def +Atk +HP/Init)", () => {
+  it("Black Dragons R3 gain +2 Initiative and +1 Attack against a slower target", () => {
+    const veteran = makeCombatUnitFromArmy(
+      { id: "bd2", unitDefId: "dungeon.black_dragons", side: "few", experience: 10 },
+      "p1",
+      "bd2",
+      0,
+      "legacy"
+    )!;
+    const elite = makeCombatUnitFromArmy(
+      { id: "bd3", unitDefId: "dungeon.black_dragons", side: "few", experience: 16 },
+      "p1",
+      "bd3",
+      0,
+      "legacy"
+    )!;
+    expect(elite.initiative).toBe(veteran.initiative + 2);
+    expect(elite.abilities).toContain("veteran-speed-hunter");
+
+    const control = resolveArmyAttack("uxp-black-dragon-r2", {
+      unitDefId: "dungeon.black_dragons",
+      side: "few",
+      experience: 10
+    });
+    const rank3 = resolveArmyAttack("uxp-black-dragon-r3", {
+      unitDefId: "dungeon.black_dragons",
+      side: "few",
+      experience: 16
+    });
+    expect(rank3.combat!.units.unit_p2_skeletons.damage).toBe(
+      control.combat!.units.unit_p2_skeletons.damage + 1
+    );
+    const fasterControl = resolveArmyAttack(
+      "uxp-black-dragon-fast-r2",
+      { unitDefId: "dungeon.black_dragons", side: "few", experience: 10 },
+      undefined,
+      0,
+      99
+    );
+    const fasterRank3 = resolveArmyAttack(
+      "uxp-black-dragon-fast-r3",
+      { unitDefId: "dungeon.black_dragons", side: "few", experience: 16 },
+      undefined,
+      0,
+      99
+    );
+    expect(fasterRank3.combat!.units.unit_p2_skeletons.damage).toBe(
+      fasterControl.combat!.units.unit_p2_skeletons.damage
+    );
+  });
+
+  it("Behemoths R3 use real flying movement to cross a blocking unit", () => {
+    const state = createInitialGameState("uxp-behemoth-flying");
+    const ground = makeCombatUnitFromArmy(
+      { id: "behemoth-r2", unitDefId: "stronghold.behemoths", side: "few", experience: 10 },
+      "p1",
+      "behemoth-r2",
+      0,
+      "legacy"
+    )!;
+    const flying = makeCombatUnitFromArmy(
+      { id: "behemoth-r3", unitDefId: "stronghold.behemoths", side: "few", experience: 16 },
+      "p1",
+      "behemoth-r3",
+      0,
+      "legacy"
+    )!;
+    const blocker = state.combat!.units.unit_p2_skeletons;
+    blocker.position = 1;
+
+    state.combat!.units = { [ground.id]: ground, [blocker.id]: blocker };
+    expect(ground.type).toBe("ground");
+    expect(getLegalMoveDestinations(state.combat!, ground)).not.toContain(2);
+
+    state.combat!.units = { [flying.id]: flying, [blocker.id]: blocker };
+    expect(flying.type).toBe("flying");
+    expect(getLegalMoveDestinations(state.combat!, flying)).toContain(2);
+  });
+
+  it("Champions R1 pierce 1 Defense only after moving", () => {
+    const control = resolveArmyAttack(
+      "uxp-champion-pierce-control",
+      { unitDefId: "castle.champions", side: "few" },
+      undefined,
+      0,
+      undefined,
+      { attackerMoved: true }
+    );
+    const moved = resolveArmyAttack(
+      "uxp-champion-pierce-moved",
+      { unitDefId: "castle.champions", side: "few", experience: 5 },
+      undefined,
+      0,
+      undefined,
+      { attackerMoved: true }
+    );
+    const unmoved = resolveArmyAttack("uxp-champion-pierce-unmoved", {
+      unitDefId: "castle.champions",
+      side: "few",
+      experience: 5
+    });
+    expect(moved.combat!.units.unit_p2_skeletons.damage).toBe(
+      control.combat!.units.unit_p2_skeletons.damage + 1
+    );
+    expect(unmoved.combat!.units.unit_p2_skeletons.damage).toBe(
+      control.combat!.units.unit_p2_skeletons.damage
+    );
+  });
+
+  it("Champions R3 gain +2 Initiative and one real movement space", () => {
+    const state = createInitialGameState("uxp-champion-mobility");
+    const rank2 = makeCombatUnitFromArmy(
+      { id: "champ-r2", unitDefId: "castle.champions", side: "few", experience: 10 },
+      "p1",
+      "champ-r2",
+      0,
+      "legacy"
+    )!;
+    const rank3 = makeCombatUnitFromArmy(
+      { id: "champ-r3", unitDefId: "castle.champions", side: "few", experience: 16 },
+      "p1",
+      "champ-r3",
+      0,
+      "legacy"
+    )!;
+    state.combat!.units = { [rank2.id]: rank2 };
+    expect(getLegalMoveDestinations(state.combat!, rank2)).not.toContain(7);
+    state.combat!.units = { [rank3.id]: rank3 };
+    expect(rank3.initiative).toBe(rank2.initiative + 2);
+    expect(getLegalMoveDestinations(state.combat!, rank3)).toContain(7);
+  });
+
+  it("Archangels R3 draw when their attack defeats a Pack side", () => {
+    const rank2 = resolveArmyAttack(
+      "uxp-archangel-layer-control",
+      { unitDefId: "castle.archangels", side: "few", experience: 10 },
+      { unitDefId: "castle.griffins", side: "pack" },
+      0,
+      undefined,
+      { defenderMaxHealth: 4, attackerDeck: ["stat.attack"] }
+    );
+    const rank3 = resolveArmyAttack(
+      "uxp-archangel-layer-draw",
+      { unitDefId: "castle.archangels", side: "few", experience: 16 },
+      { unitDefId: "castle.griffins", side: "pack" },
+      0,
+      undefined,
+      { defenderMaxHealth: 4, attackerDeck: ["stat.attack"] }
+    );
+    expect(rank2.players.p1.hand).toHaveLength(0);
+    expect(rank3.players.p1.hand).toEqual(["stat.attack"]);
+    expect(rank3.combat!.units.unit_p2_skeletons.variant).toBe("few");
+  });
+
+  it("Crusaders R4 attack an adjacent target twice", () => {
+    const rank3 = resolveArmyAttack("uxp-crusader-r3", {
+      unitDefId: "castle.crusaders",
+      side: "few",
+      experience: 13
+    });
+    const rank4 = resolveArmyAttack("uxp-crusader-r4", {
+      unitDefId: "castle.crusaders",
+      side: "few",
+      experience: 18
+    });
+    expect(rank4.combat!.units.unit_p2_skeletons.damage).toBe(
+      rank3.combat!.units.unit_p2_skeletons.damage * 2
+    );
+  });
+
+  it("halberdiers R3 adds a single Attack stat while ability ranks stay stat-neutral", () => {
     const plain = makeCombatUnitFromArmy({ ...HALBERDIERS }, "p1", "u_h0", 0, "legacy")!;
     const r3 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 10 }, "p1", "u_h3", 0, "legacy")!;
-    // Standard melee: R1 stats, R2 ability, R3 stats, R4 stats → at R3 only 2 stats steps
     expect(unitRankStep("castle.halberdiers", 2)?.kind).toBe("ability");
-    expect(r3.defense).toBe(plain.defense + 1);
     expect(r3.attack).toBe(plain.attack + 1);
-    // R4 (14 XP) is third stats step
+    expect(r3.defense).toBe(plain.defense);
     const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 14 }, "p1", "u_h4", 0, "legacy")!;
-    expect(r4.maxHealth).toBe(plain.maxHealth + 1);
-    expect(r4.initiative).toBe(plain.initiative + 1);
-    expect(r4.abilities).toContain("bulwark-thick-hide");
+    expect(r4.attack).toBe(r3.attack);
+    expect(r4.abilities).toContain("veteran-defense-pierce");
   });
 
   it("mid-combat Pack→Few keeps rank folds", () => {
     const state = makeAdventure("uxp-midflip", { unitExperience: true });
     const packDef = coreUnitDefinitions[GRIFFINS.unitDefId]!.pack!;
     const fewDef = coreUnitDefinitions[GRIFFINS.unitDefId]!.few!;
-    // Griffins R1 stats at 3 XP = +1 Def
+    // Griffins R1 = +1 HP, and the fold must remain after Pack→Few.
     const unit = makeCombatUnitFromArmy({ ...GRIFFINS, experience: 3 }, "p1", "u_mid", 0, "legacy")!;
-    expect(unit.defense).toBe(packDef.defense + 1);
+    expect(unit.maxHealth).toBe(packDef.health + 1);
     unit.damage = unit.maxHealth;
     markUnitRemovedIfNeeded(state, unit);
     expect(unit.variant).toBe("few");
-    expect(unit.defense).toBe(fewDef.defense + 1);
+    expect(unit.maxHealth).toBe(fewDef.health + 1);
   });
 
-  it("silver crusaders R1 stats = +1 Def; R3 has two stats steps", () => {
+  it("silver crusaders separate retaliation training from their R3 Initiative stat", () => {
     const CRUSADERS = { id: "xp_crusaders", unitDefId: "castle.crusaders", side: "few" as const };
     const plain = makeCombatUnitFromArmy({ ...CRUSADERS }, "p1", "u_s0", 0, "legacy")!;
     const r1 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 4 }, "p1", "u_s1", 0, "legacy")!;
     const r3 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 13 }, "p1", "u_s3", 0, "legacy")!;
-    expect(r1.defense).toBe(plain.defense + 1);
+    expect(r1.abilities).toContain("veteran-retaliation-fury");
+    expect(r1.defense).toBe(plain.defense);
     expect(r1.attack).toBe(plain.attack);
-    // Cavalry strong: R1 stats, R2 ability, R3 stats, R4 ability → R3 = 2 stats
-    expect(r3.attack).toBe(plain.attack + 1);
-    expect(r3.defense).toBe(plain.defense + 1);
+    expect(r3.initiative).toBe(plain.initiative + 1);
+    expect(r3.attack).toBe(plain.attack);
+    expect(r3.defense).toBe(plain.defense);
     expect(r3.maxHealth).toBe(plain.maxHealth);
   });
 });

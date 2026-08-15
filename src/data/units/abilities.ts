@@ -19,6 +19,14 @@ export type UnitAbilityEffectDefinition =
   | { type: "IGNORE_RANGED_MELEE_PENALTY" }
   | { type: "IGNORE_RANGED_PENALTIES" }
   | { type: "MOVE_ANYWHERE" }
+  | { type: "UNIT_MOVE_RANGE_BONUS"; amount: number }
+  | {
+      /** Veterancy: treat this unit as Flying for ordinary combat movement. */
+      type: "GRANT_FLYING_MOVEMENT";
+    }
+  | { type: "DEFENSE_REDUCTION_AFTER_MOVE"; amount: number }
+  | { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER"; amount: number }
+  | { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY"; onRoll: number }
   | {
       /**
        * Jotunn Warlord (Bulwark, house rule): at the START of its activation the
@@ -446,6 +454,8 @@ export type UnitAbilityEffectDefinition =
        */
       type: "DOUBLE_ATTACK";
       maxRoll?: number;
+      /** Veterancy variant: also works for adjacent/melee attacks. */
+      anyRange?: boolean;
     }
   | {
       type: "ACTIVATION_ATTACK_BUFF";
@@ -1135,7 +1145,9 @@ export type UnitAbilityEffectDefinition =
        * "-1" instead — a different printed card.)
        */
       type: "ON_ATTACK_DIE_DRAW";
-      onRoll: number;
+      onRoll?: number;
+      minRoll?: number;
+      maxRoll?: number;
       amount: number;
     }
   | {
@@ -1177,6 +1189,11 @@ export type UnitAbilityEffectDefinition =
        * the Retaliation Attack.
        */
       type: "OWN_ATTACK_FLAT_BONUS";
+      amount: number;
+    }
+  | {
+      /** Veterancy hunter: Attack bonus against a strictly slower live target. */
+      type: "ATTACK_BONUS_VS_SLOWER_TARGET";
       amount: number;
     }
   | {
@@ -3456,6 +3473,128 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     // so the text is unit-neutral.
     text: "[unit_passive] This unit is always treated as if it had a Defense token — it rolls the Defend die when attacked (a \"+1\" face gives +1 Defense).",
     effect: { type: "SELF_DEFENSE_TOKEN" },
+    implementationStatus: "implemented"
+  },
+  // Shared, engine-backed Unit Experience reward families. These are separate
+  // ids from printed abilities so the XP board can name and illustrate the
+  // veteran training without changing printed unit-card rules.
+  "veteran-attack-when-attacking": {
+    id: "veteran-attack-when-attacking",
+    name: "Aggressive Drill",
+    text: "[unit_attack] This unit gains +1 Attack on its own attacks, but not on Retaliation Attacks.",
+    effect: { type: "OWN_ATTACK_FLAT_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-retaliation-fury": {
+    id: "veteran-retaliation-fury",
+    name: "Retaliation Drill",
+    text: "[unit_passive] This unit gains +1 Attack on Retaliation Attacks only.",
+    effect: { type: "RETALIATION_ATTACK_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-guarded-stance": {
+    id: "veteran-guarded-stance",
+    name: "Guarded Stance",
+    text: "[unit_passive] This unit gains +1 Defense whenever it is attacked.",
+    effect: { type: "DEFEND_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-steady-aim": {
+    id: "veteran-steady-aim",
+    name: "Steady Aim",
+    text: "[unit_attack] This unit's Attack die cannot resolve below 0.",
+    effect: { type: "MINIMUM_ATTACK_DIE", minimum: 0 },
+    implementationStatus: "implemented"
+  },
+  "veteran-rebirth": {
+    id: "veteran-rebirth",
+    name: "Veteran Rebirth",
+    text: "[unit_passive] Once per Combat when an attack would defeat this unit, it survives at 1 Health.",
+    effect: { type: "SELF_REBIRTH_ONCE" },
+    implementationStatus: "implemented"
+  },
+  "veteran-spell-sunder": {
+    id: "veteran-spell-sunder",
+    name: "Spell Sunder",
+    text: "[unit_passive] Whenever an enemy casts a Spell from hand, that enemy discards 1 additional card from hand.",
+    effect: { type: "SPELL_CAST_HAND_TAX" },
+    implementationStatus: "implemented"
+  },
+  "veteran-low-roll-insight": {
+    id: "veteran-low-roll-insight",
+    name: "Adversity's Insight",
+    text: "[unit_attack] After this unit's own Attack die resolves −1 or 0, draw 1 card.",
+    effect: { type: "ON_ATTACK_DIE_DRAW", minRoll: -1, maxRoll: 0, amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-defense-pierce": {
+    id: "veteran-defense-pierce",
+    name: "Armor-Piercing Drill",
+    text: "[unit_passive] Ignore 1 of the target's Defense on this unit's attacks and Retaliation Attacks (minimum 0).",
+    effect: { type: "DEFENSE_REDUCTION_ON_ATTACK", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-soul-feast": {
+    id: "veteran-soul-feast",
+    name: "Soul Feast",
+    text: "[unit_attack] After this unit's own attack, remove up to 1 damage from it.",
+    effect: { type: "ON_ATTACK_HEAL_SELF", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-speed-hunter": {
+    id: "veteran-speed-hunter",
+    name: "Hunt the Slow",
+    text: "[unit_passive] This unit gains +1 Attack against a unit with strictly lower current Initiative.",
+    effect: { type: "ATTACK_BONUS_VS_SLOWER_TARGET", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-regeneration-2": {
+    id: "veteran-regeneration-2",
+    name: "Veteran Regeneration",
+    text: "When this unit activates, remove up to 2 damage from it.",
+    effect: { type: "ON_ACTIVATION_HEAL_SELF", amount: 2 },
+    implementationStatus: "implemented"
+  },
+  "veteran-flying-movement": {
+    id: "veteran-flying-movement",
+    name: "Winged Advance",
+    text: "This unit uses Flying movement and may cross units and Combat Obstacles.",
+    effect: { type: "GRANT_FLYING_MOVEMENT" },
+    implementationStatus: "implemented"
+  },
+  "veteran-fear-aura": {
+    id: "veteran-fear-aura",
+    name: "Fear Aura",
+    text: "When this unit activates, roll 1 Attack die. On −1, Paralyze one random living enemy unit.",
+    effect: { type: "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY", onRoll: -1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-layer-draw": {
+    id: "veteran-layer-draw",
+    name: "Divine Triumph",
+    text: "After this unit's attack reduces an enemy side or Stack layer to 0 HP, draw 1 card.",
+    effect: { type: "DRAW_ON_DEFEAT_SIDE_OR_LAYER", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-moving-pierce": {
+    id: "veteran-moving-pierce",
+    name: "Lancer's Momentum",
+    text: "After moving, this unit ignores 1 Defense on its next attack that activation.",
+    effect: { type: "DEFENSE_REDUCTION_AFTER_MOVE", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-mobility-1": {
+    id: "veteran-mobility-1",
+    name: "Cavalry Tempo",
+    text: "This unit may move 1 additional Combat space.",
+    effect: { type: "UNIT_MOVE_RANGE_BONUS", amount: 1 },
+    implementationStatus: "implemented"
+  },
+  "veteran-double-attack": {
+    id: "veteran-double-attack",
+    name: "Relentless Assault",
+    text: "After this unit's first attack, it attacks the same target a second time if the target survives.",
+    effect: { type: "DOUBLE_ATTACK", anyRange: true },
     implementationStatus: "implemented"
   },
   // Commander combination skills (COMMANDER_COMBOS in src/data/commanders.ts;

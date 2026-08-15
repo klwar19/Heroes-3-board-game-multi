@@ -167,6 +167,32 @@ describe("Dungeon Minotaurs [unit_attack] 'draw a card on a -1'", () => {
   });
 });
 
+describe("Veteran Low-Roll Insight draws on either a -1 or 0", () => {
+  it.each([-1, 0])("draws one card when the own attack resolves %i", (roll) => {
+    const after = ownAttackDamage({
+      attackerAbilities: ["veteran-low-roll-insight"],
+      attackerAttack: 4,
+      rolls: [roll]
+    });
+    expect(after.players.p1.hand).toHaveLength(1);
+  });
+
+  it("does not draw on +1 or during retaliation", () => {
+    const high = ownAttackDamage({
+      attackerAbilities: ["veteran-low-roll-insight"],
+      attackerAttack: 4,
+      rolls: [1]
+    });
+    const counter = retaliation({
+      defenderAbilities: ["veteran-low-roll-insight"],
+      defenderAttack: 4,
+      rolls: [0, 0]
+    });
+    expect(high.players.p1.hand).toHaveLength(0);
+    expect(counter.players.p2.hand).toHaveLength(0);
+  });
+});
+
 describe("[unit_attack] Attack-die reroll abilities are own-attack-only", () => {
   it("Crusaders' 'reroll every 0' is offered on the own attack but NOT on a retaliation", () => {
     const crusader = unitWith(["attack-die-reroll"]);

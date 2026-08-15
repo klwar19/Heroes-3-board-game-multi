@@ -18,6 +18,8 @@ import {
   UNIT_RANK_THRESHOLDS,
   unitRankAbilityIcon,
   unitRankBadgeImage,
+  unitRankStatIcons,
+  unitRankStatVariantName,
   type RankAbilityTrackId
 } from "@/data/units/experience";
 import {
@@ -220,8 +222,8 @@ export function UnitExperienceWindow({
         {!detail ? (
           <>
             <p className="unitXpSources">
-              Click a unit to open its full rank board. Each rank grants <strong>either stats or one ability</strong> —
-              never both. Paths have 1, 2, or (rare) 3 abilities. XP from won fights you survived, or {lexicon.train}{" "}
+              Click a unit to open its full rank board. Rank 1 is focused basic training; later ranks grant stats,
+              abilities, or a signature combination of both. XP comes from won fights you survived, or {lexicon.train}{" "}
               (2 gold → +1 XP). Reinforce halves XP; Stacks cost 1 XP; Quick Combat trains nobody.
             </p>
             <div className="unitXpPicker" aria-label="Army unit list">
@@ -384,7 +386,7 @@ export function UnitExperienceWindow({
                       {rank} · {UNIT_RANK_NAMES[rank]}
                     </b>
                     <span className={`unitXpKindPill kind-${kind}`}>
-                      {kind === "stats" ? "STATS" : "ABILITY"}
+                      {kind === "hybrid" ? "STATS + ABILITY" : kind === "stats" ? "STATS" : "ABILITY"}
                     </span>
                     <small>
                       at {detail.thresholds[rank - 1]} XP
@@ -394,34 +396,44 @@ export function UnitExperienceWindow({
                           ? " · reached"
                           : ""}
                     </small>
-                    {kind === "stats" ? (
-                      <span className="unitXpRankGains">{formatStatDelta(statDelta)}</span>
-                    ) : (
-                      abilityIds.map((abilityId) => {
-                        const ability = unitAbilities[abilityId];
-                        if (!ability) {
+                    {kind !== "ability" ? (
+                      <span className={`unitXpStatUpgrade ${reached ? "active" : "locked"}`}>
+                        <span className="unitXpStatIconStack" aria-hidden="true">
+                          {unitRankStatIcons(statDelta).map((icon) => (
+                            <img alt="" className="unitXpAbilityIcon" key={icon} src={assetUrl(icon)} />
+                          ))}
+                        </span>
+                        <b>{unitRankStatVariantName(statDelta)}</b>
+                        <em>{reached ? "ACTIVE" : "locked"}</em>
+                        <small>{formatStatDelta(statDelta)}</small>
+                      </span>
+                    ) : null}
+                    {kind !== "stats"
+                      ? abilityIds.map((abilityId) => {
+                          const ability = unitAbilities[abilityId];
+                          if (!ability) {
+                            return (
+                              <span className="unitXpElite locked" key={abilityId}>
+                                (ability already on card — next fallback applied)
+                              </span>
+                            );
+                          }
                           return (
-                            <span className="unitXpElite locked" key={abilityId}>
-                              (ability already on card — next fallback applied)
+                            <span className={`unitXpElite ${reached ? "active" : "locked"}`} key={abilityId}>
+                              <img
+                                alt=""
+                                aria-hidden="true"
+                                className="unitXpAbilityIcon"
+                                src={assetUrl(unitRankAbilityIcon(abilityId, detail.unit.unitDefId, detail.unit.job))}
+                              />
+                              <b>{ability.name}</b>
+                              {reached ? " · ACTIVE" : " · locked"}
+                              <small>{ability.text}</small>
                             </span>
                           );
-                        }
-                        return (
-                          <span className={`unitXpElite ${reached ? "active" : "locked"}`} key={abilityId}>
-                            <img
-                              alt=""
-                              aria-hidden="true"
-                              className="unitXpAbilityIcon"
-                              src={assetUrl(unitRankAbilityIcon(abilityId, detail.unit.unitDefId, detail.unit.job))}
-                            />
-                            <b>{ability.name}</b>
-                            {reached ? " · ACTIVE" : " · locked"}
-                            <small>{ability.text}</small>
-                          </span>
-                        );
-                      })
-                    )}
-                    {kind === "ability" && abilityIds.length === 0 ? (
+                        })
+                      : null}
+                    {kind !== "stats" && abilityIds.length === 0 ? (
                       <span className="unitXpRankGains">
                         {reached
                           ? "All path abilities already printed on this unit"

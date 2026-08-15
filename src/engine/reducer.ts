@@ -479,6 +479,7 @@ import {
   getOnKillResourceGain,
   getAttackDieDamageFollowUps,
   getAttackDieResultBonus,
+  getAttackBonusVsSlowerTarget,
   deathStareFollowUpAppliesTo,
   getDeathStareFollowUps,
   moraleLockedForPlayer,
@@ -488,6 +489,7 @@ import {
   getDoubleAttackAbility,
   getCardNegateOnDie,
   getDeckDiscardTakeSpell,
+  getDefeatedSideOrLayerDraw,
   getDevourAbility,
   getEnchanterActivationAbility,
   getEnemyDiscardAbility,
@@ -3575,6 +3577,20 @@ function applyAttackDamageFromCandidate(
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
 
+  if (defeatedSideOrLayer && isUnitAlive(attacker)) {
+    const draw = getDefeatedSideOrLayerDraw(attacker);
+    if (draw) {
+      drawCardsForPlayer(state, attacker.controllerId, draw.amount);
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: draw.abilityId,
+        targetUnitId: defender.id,
+        message: `${attacker.cardName} draws ${draw.amount} card after defeating an enemy side or Stack layer.`
+      });
+    }
+  }
+
   // MGQ Lisa gains Health when she drives ANY physical side/layer to 0 HP,
   // including Pack -> Few flips and Polish stack-layer losses. The bonus lives
   // on the army card, so it follows Lisa through later flips and combats.
@@ -3956,7 +3972,9 @@ function getAttackStackDetails(
     // Folds into the printed/buffed Defense before the reduction-ability clamp.
     combatScriptStatDelta(combat, defender, "defense");
   const defenseReductionSource =
-    !isRetaliation && !abilityAttack ? getAttackDefenseReductionAbility(attacker) : null;
+    !isRetaliation && !abilityAttack
+      ? getAttackDefenseReductionAbility(attacker, attacker.movedThisActivation)
+      : null;
   const ignoreCardDefenseSource =
     !isRetaliation && !abilityAttack ? getIgnoreTargetCardDefenseAbility(attacker) : null;
   // The Defend roll's +1 is a separate per-attack shield resolved at damage
@@ -4021,6 +4039,11 @@ function getAttackStackDetails(
   // unit when its target is strictly slower/faster (effective Initiative).
   // Spell-borne like Bless, so it rides the elemental clamp with the card bonus.
   const initiativeConditionalAttackBonus = getConditionalAttackBonus(state, attacker, defender);
+  const slowerTargetAttackBonus =
+    effectiveInitiative(attacker, state.activeEffects, combat) >
+    effectiveInitiative(defender, state.activeEffects, combat)
+      ? getAttackBonusVsSlowerTarget(attacker)
+      : 0;
 
   // MGQ Reaper Scythe: a live target-status read. The bonus is innate and
   // unclamped, just like the other printed conditional Attack bonuses. The
@@ -4090,6 +4113,7 @@ function getAttackStackDetails(
       chargeAttackBonus +
       commanderPositionalAttackBonus +
       targetStatusAttackBonus +
+      slowerTargetAttackBonus +
       fleetFormationAttackBonus +
       bestFriendsAttackBonus +
       astrologersRoundAttackBonus +
@@ -5096,7 +5120,7 @@ function maybeDeclareDoubleAttack(
   roll: number,
   cards: CardLibrary
 ): boolean {
-  if (attackKind !== "ranged" || (attacker.attacksThisActivation ?? 0) !== 1) {
+  if ((attacker.attacksThisActivation ?? 0) !== 1) {
     return false;
   }
 
@@ -5105,11 +5129,19 @@ function maybeDeclareDoubleAttack(
     return false;
   }
 
+  if (!doubleAttack.anyRange && attackKind !== "ranged") {
+    return false;
+  }
+
   if (doubleAttack.maxRoll !== undefined && roll > doubleAttack.maxRoll) {
     return false;
   }
 
-  if (!isUnitAlive(attacker) || !isUnitAlive(defender) || isAdjacent(attacker.position, defender.position)) {
+  if (
+    !isUnitAlive(attacker) ||
+    !isUnitAlive(defender) ||
+    (!doubleAttack.anyRange && isAdjacent(attacker.position, defender.position))
+  ) {
     return false;
   }
 
@@ -6627,7 +6659,7 @@ function applyOnAttackDieDraw(
   }
   for (const draw of getOnAttackDieDraw(attacker)) {
     // Tarnum (Fortress) Basilisks VI forces the draw regardless of the face.
-    if (!forceRoll && attackRoll !== draw.onRoll) {
+    if (!forceRoll && (attackRoll < draw.minRoll || attackRoll > draw.maxRoll)) {
       continue;
     }
     drawCardsForPlayer(state, attacker.controllerId, draw.amount, {
@@ -9486,6 +9518,42 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
         abilityId: ability.abilityId,
         message: `${unit.name} drains a card from the enemy's hand.`
       });
+      continue;
+    }
+
+    if (ability.kind === "fear-aura") {
+      const window: AbilityRollWindow = { minRoll: ability.amount, maxRoll: ability.amount };
+      const candidate = rollAbilityCandidate(state, combat, unit.controllerId, 1, window, false);
+      const candidates = Object.values(combat.units).filter(
+        (target) => target.controllerId !== unit.controllerId && isUnitAlive(target)
+      );
+      const succeeds = abilityRollSucceeds(candidate.rolls, window) && candidates.length > 0;
+      const target = succeeds
+        ? candidates[
+            createSeededRandom(`${state.seed}#${ability.abilityId}#${eventSeedNumber(state)}`).nextInt(
+              0,
+              candidates.length - 1
+            )
+          ]
+        : undefined;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: `${ability.abilityId}-roll`,
+        ...(target ? { targetUnitId: target.id } : {}),
+        message: succeeds
+          ? `${unit.name} rolls ${candidate.roll} and its Fear Aura finds ${target!.cardName}.`
+          : `${unit.name} rolls ${candidate.roll} for Fear Aura — no effect.`,
+        dice: {
+          rolls: [...candidate.rolls],
+          success: succeeds,
+          label: ability.abilityName,
+          caption: succeeds ? `${target!.cardName} is seized by fear!` : "No effect."
+        }
+      });
+      if (target) {
+        applyParalysisToTarget(state, unit, target, ability);
+      }
       continue;
     }
   }

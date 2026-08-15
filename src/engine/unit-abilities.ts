@@ -1,7 +1,7 @@
 import { unitAbilities, type UnitAbilityDefinition, type UnitAbilityEffectDefinition } from "@/data/units/abilities";
 import { BATTLEFIELD_COLUMNS } from "./battlefield";
 import { hasToken } from "./tokens";
-import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId } from "./state";
+import type { CombatState, CombatTokenKind, CombatUnitState, DamageKind, SpellSchool, UnitId, UnitType } from "./state";
 
 export type UnitAbilityDamageEffect = {
   abilityId: string;
@@ -181,10 +181,12 @@ export function getUnitAttackRerollSources(
 }
 
 /** Marksmen/Elves: attack the same non-adjacent target a second time. */
-export function getDoubleAttackAbility(unit: CombatUnitState): { abilityId: string; maxRoll?: number } | null {
+export function getDoubleAttackAbility(
+  unit: CombatUnitState
+): { abilityId: string; maxRoll?: number; anyRange?: boolean } | null {
   for (const ability of getAbilitiesWithEffect(unit, "DOUBLE_ATTACK")) {
     if (ability.effect?.type === "DOUBLE_ATTACK") {
-      return { abilityId: ability.id, maxRoll: ability.effect.maxRoll };
+      return { abilityId: ability.id, maxRoll: ability.effect.maxRoll, anyRange: ability.effect.anyRange };
     }
   }
 
@@ -374,11 +376,19 @@ export function getEnemyDiscardAbility(
 }
 
 export function getAttackDefenseReductionAbility(
-  unit: CombatUnitState
+  unit: CombatUnitState,
+  movedThisActivation = false
 ): { abilityId: string; abilityName: string; amount: number } | null {
   for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_ON_ATTACK")) {
     if (ability.effect?.type === "DEFENSE_REDUCTION_ON_ATTACK") {
       return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  if (movedThisActivation) {
+    for (const ability of getAbilitiesWithEffect(unit, "DEFENSE_REDUCTION_AFTER_MOVE")) {
+      if (ability.effect?.type === "DEFENSE_REDUCTION_AFTER_MOVE") {
+        return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+      }
     }
   }
 
@@ -815,7 +825,7 @@ export function getRetaliationParalysis(unit: CombatUnitState): RetaliationParal
 export type ActivationAbility = {
   abilityId: string;
   abilityName: string;
-  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card";
+  kind: "heal-self" | "discard-enemy-morale" | "discard-enemy-card" | "fear-aura";
   amount: number;
 };
 
@@ -836,6 +846,8 @@ export function getActivationAbilities(unit: CombatUnitState): ActivationAbility
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-morale", amount: 1 });
     } else if (ability.effect?.type === "ON_ACTIVATION_DISCARD_ENEMY_CARD") {
       abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "discard-enemy-card", amount: ability.effect.count });
+    } else if (ability.effect?.type === "ON_ACTIVATION_ROLL_PARALYZE_RANDOM_ENEMY") {
+      abilities.push({ abilityId: ability.id, abilityName: ability.name, kind: "fear-aura", amount: ability.effect.onRoll });
     }
   }
   return abilities;
@@ -1192,12 +1204,46 @@ export function getSpellDamageReductionAura(unit: CombatUnitState): number {
 /** Dungeon Minotaurs: cards the attacker draws when its attack die shows `onRoll`. */
 export function getOnAttackDieDraw(
   unit: CombatUnitState
-): { abilityId: string; abilityName: string; onRoll: number; amount: number }[] {
+): { abilityId: string; abilityName: string; minRoll: number; maxRoll: number; amount: number }[] {
   return getAbilitiesWithEffect(unit, "ON_ATTACK_DIE_DRAW").flatMap((ability) =>
     ability.effect?.type === "ON_ATTACK_DIE_DRAW"
-      ? [{ abilityId: ability.id, abilityName: ability.name, onRoll: ability.effect.onRoll, amount: ability.effect.amount }]
+      ? [{
+          abilityId: ability.id,
+          abilityName: ability.name,
+          minRoll: ability.effect.minRoll ?? ability.effect.onRoll ?? -1,
+          maxRoll: ability.effect.maxRoll ?? ability.effect.onRoll ?? -1,
+          amount: ability.effect.amount
+        }]
       : []
   );
+}
+
+/** Fold veterancy traits that replace a unit's ordinary combat movement type. */
+export function movementTypeAfterUnitAbilityEffects(baseType: UnitType, abilityIds: string[]): UnitType {
+  return abilityIds.some((abilityId) => {
+    const ability = unitAbilities[abilityId];
+    return ability?.implementationStatus === "implemented" && ability.effect?.type === "GRANT_FLYING_MOVEMENT";
+  })
+    ? "flying"
+    : baseType;
+}
+
+export function getUnitAbilityMoveRangeBonus(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "UNIT_MOVE_RANGE_BONUS").reduce(
+    (total, ability) => total + (ability.effect?.type === "UNIT_MOVE_RANGE_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+export function getDefeatedSideOrLayerDraw(
+  unit: CombatUnitState
+): { abilityId: string; abilityName: string; amount: number } | null {
+  for (const ability of getAbilitiesWithEffect(unit, "DRAW_ON_DEFEAT_SIDE_OR_LAYER")) {
+    if (ability.effect?.type === "DRAW_ON_DEFEAT_SIDE_OR_LAYER") {
+      return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };
+    }
+  }
+  return null;
 }
 
 /** Ghost Dragons (neutral): the post-attack die that may shove the target away. */
@@ -1556,6 +1602,15 @@ export function getCombatStartMoraleGains(
 export function getOwnAttackFlatBonus(unit: CombatUnitState): number {
   return getAbilitiesWithEffect(unit, "OWN_ATTACK_FLAT_BONUS").reduce(
     (total, ability) => total + (ability.effect?.type === "OWN_ATTACK_FLAT_BONUS" ? ability.effect.amount : 0),
+    0
+  );
+}
+
+/** Veterancy bonus against a target whose live Initiative is strictly lower. */
+export function getAttackBonusVsSlowerTarget(unit: CombatUnitState): number {
+  return getAbilitiesWithEffect(unit, "ATTACK_BONUS_VS_SLOWER_TARGET").reduce(
+    (total, ability) =>
+      total + (ability.effect?.type === "ATTACK_BONUS_VS_SLOWER_TARGET" ? ability.effect.amount : 0),
     0
   );
 }

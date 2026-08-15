@@ -269,7 +269,7 @@ describe("Minotaurs draw on a '-1' Attack die", () => {
   it("getOnAttackDieDraw reports the -1 trigger", () => {
     const draws = getOnAttackDieDraw(unitWith(["minotaur-draw-on-miss"]));
     expect(draws).toHaveLength(1);
-    expect(draws[0]).toMatchObject({ onRoll: -1, amount: 1 });
+    expect(draws[0]).toMatchObject({ minRoll: -1, maxRoll: -1, amount: 1 });
     expect(getOnAttackDieDraw(unitWith([]))).toHaveLength(0);
   });
 

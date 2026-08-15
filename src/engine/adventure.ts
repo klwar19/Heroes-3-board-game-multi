@@ -206,7 +206,7 @@ import {
   withRankAbilities
 } from "./unit-experience";
 import { mgqEffectiveJob, withMgqJobAbilities } from "./mgq-jobs";
-import { maxHealthAfterUnitAbilityEffects } from "./unit-abilities";
+import { maxHealthAfterUnitAbilityEffects, movementTypeAfterUnitAbilityEffects } from "./unit-abilities";
 import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
@@ -14747,7 +14747,7 @@ export function makeCombatUnitFromArmy(
         : `${armyUnit.side === "few" ? "Few" : armyUnit.side === "pack" ? "Pack of" : "Neutral"} ${def.name}`,
     variant,
     grade: def.tier,
-    type: side.type ?? def.type,
+    type: movementTypeAfterUnitAbilityEffects(side.type ?? def.type, combatAbilityIds),
     attack: side.attack + permanentAttackBonus + (armyStacks > 0 ? 1 : 0) + rankFold.attack + tokenBonus("attack"),
     defense: side.defense + rankFold.defense + tokenBonus("defense"),
     maxHealth: maxHealthAfterUnitAbilityEffects(baseMaxHealth, combatAbilityIds),
