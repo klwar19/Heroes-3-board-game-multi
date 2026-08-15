@@ -1207,7 +1207,7 @@ describe("Unit Experience — Drill", () => {
     ).toContain("needs 1 movement");
   });
 
-  it("CONTROLs: rule off / away from town / maxed card", () => {
+  it("CONTROLs: rule off / maxed card (the old own-Town gate is now the movement test above)", () => {
     const off = drillState("uxp-drill-off", false);
     expect(applyAction(off, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message).toContain(
       "off for this game"

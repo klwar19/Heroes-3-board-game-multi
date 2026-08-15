@@ -159,4 +159,48 @@ describe("Artillery (basic) — instant reaction when your unit is attacked", ()
     const healthyFired = applyOk(healthyDeclared, artilleryOffer(healthyDeclared, "p1")!.action);
     expect(healthyFired.combat!.units.unit_p1_crusaders.damage, "a surviving attacker's blow lands").toBeGreaterThan(0);
   });
+
+  it("the combatAnytime window join never DUPLICATES the targeted reaction (2026-08-16)", () => {
+    // Artillery's basic side is both a bespoke targeted reaction here AND (since
+    // the 2026-08-16 `combatAnytime` flag) a generic window join. In the same
+    // attack window that is the same play twice, so the join is deduped and only
+    // the targeted PLAY_REACTION (better label, existing AFK/AI pricing) stays.
+    const declared = applyOk(attackWithArtilleryInHand(true), {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: "unit_p2_skeletons",
+      defenderId: "unit_p1_crusaders"
+    });
+    const offers = getLegalActions(declared, "p1").filter(
+      (legal) =>
+        (legal.action.type === "PLAY_REACTION" || legal.action.type === "PLAY_CARD") &&
+        legal.action.cardId === "ability.artillery"
+    );
+    expect(offers, "exactly one Artillery offer in the attack window").toHaveLength(1);
+    expect(offers[0].action.type).toBe("PLAY_REACTION");
+  });
+
+  it("CONTROL: the join still rides a CAST window, where no bespoke reaction exists", () => {
+    // Fails if the dedupe over-filters: in a SPELL_CAST_STARTED window
+    // `artilleryCardReactions` never runs, so the generic PLAY_CARD join is the
+    // ONLY way to fire the shot there — it must survive.
+    const state = attackWithArtilleryInHand(true);
+    state.players.p1.hand = ["ability.resistance", "ability.artillery"];
+    state.players.p2.hand = ["spell.magic_arrow"];
+    const cast = getLegalActions(state, "p2").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast, "p2 can cast Magic Arrow on its activation").toBeTruthy();
+    const casted = applyOk(state, {
+      ...cast!.action,
+      target: { type: "unit", unitId: "unit_p1_crusaders" }
+    } as GameAction);
+    expect(casted.reactionWindow?.triggerEvent.type, "Resistance opened the cast window").toBe(
+      "SPELL_CAST_STARTED"
+    );
+    const joins = getLegalActions(casted, "p1").filter(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.artillery"
+    );
+    expect(joins.length, "the Artillery join rides the open cast window").toBeGreaterThan(0);
+  });
 });

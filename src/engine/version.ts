@@ -357,7 +357,21 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // and a won Creature Bank reward card (side "bank") now trains on the veteran
 // track (XP folds, drillable at 1 gold) — USER RULE 2026-08-15.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 34;
+// v35 (2026-08-16): the instant-specialties + Drill-anywhere batch (b1b91c8b).
+// What moved server-side, all same-action-id validation changes a v34 edge
+// answers DIFFERENTLY (so without this bump the symptom is "that action is not
+// legal" instead of the skew banner): DRILL_UNIT no longer requires the main
+// hero in an OWN Town — it is free at any Town/Settlement/Random Town and
+// spends 1 hero movement anywhere else (a v34 edge rejects every off-Town
+// drill and never deducts the movement a new client shows); Melodia I /
+// Yuiko I gained a second CHOOSE_ONE option ("Draw 1 card", combat instant) a
+// v34 edge has no branch for; Torosar VI and Tarnum-Castle IV re-shaped from a
+// bare effect to a single-option CHOOSE_ONE, so the new client's
+// `optionIndex: 0` plays mis-resolve on an old edge; and ~20 printed instant
+// faces (Ballista activations, Fortune/Scholar takes, Cannon shots, Kud's
+// Rocket Launcher rethemes) gained `combatAnytime`, offering window joins a
+// v34 edge refuses. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 35;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

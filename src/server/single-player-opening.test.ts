@@ -216,5 +216,10 @@ describe("single-player opening: the computer sweeps its home tile", () => {
         `${factionId}: hero should enter II-III no later than turn three`,
       ).not.toBe(town?.tileInstanceId);
     }
-  }, 60_000);
+    // 120s: 17 factions × 3 seeded runs. The 2026-08-16 instant-specialty batch
+    // (protocol v35) legitimately added actions per AI turn — idle-gold Drills
+    // anywhere plus more pass-able instant windows — pushing the old 60s budget
+    // just over (62s). Stall detection is the `stalled` assertions, not the
+    // timeout.
+  }, 120_000);
 });

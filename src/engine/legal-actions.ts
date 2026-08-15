@@ -8743,12 +8743,24 @@ export function getLegalReactionsForTrigger(
         )
         .map((legal) => `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`)
     );
-    result[playerId] = reactions.filter(
-      (legal) =>
-        legal.action.type !== "PLAY_REACTION" ||
-        !legal.action.utilityOnly ||
-        !realCardFaces.has(`${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`)
-    );
+    result[playerId] = reactions.filter((legal) => {
+      if (legal.action.type === "PLAY_REACTION" && legal.action.utilityOnly) {
+        return !realCardFaces.has(
+          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`
+        );
+      }
+      // A `combatAnytime` PLAY_CARD window join for a face this window already
+      // offers as a REAL targeted reaction is the same play twice (Artillery's
+      // basic side in an attack window: the bespoke `artilleryCardReactions`
+      // shot vs the generic join). Keep the reaction — its per-target labels,
+      // AFK pricing and pins predate the join — and drop the duplicate button.
+      if (legal.action.type === "PLAY_CARD") {
+        return !realCardFaces.has(
+          `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`
+        );
+      }
+      return true;
+    });
   }
   const hasWindowOpeningReaction = Object.values(result).some((reactions) =>
     reactions.some((legal) => reactionOfferOpensWindow(legal, triggerEvent))

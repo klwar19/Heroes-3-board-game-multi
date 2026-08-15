@@ -69,11 +69,17 @@ function runSoak(
 }
 
 describe("single-player soak matrix — option combos never stall", () => {
+  // 60s on the two heaviest cases (8 rounds / Impossible): the 2026-08-16
+  // instant-specialty batch (protocol v35) legitimately added actions per AI
+  // turn — idle-gold Drills anywhere plus more pass-able instant windows — and
+  // tipped both just past the global 20s budget (~21-24s isolated, more under a
+  // full parallel run). Stall detection is `terminatedCleanly` + the runner's
+  // step cap, not the timeout.
   it("1 opponent, defaults, 8 rounds (2 seeds)", () => {
     for (const seed of ["matrix-1opp-a", "matrix-1opp-b"]) {
       runSoak("1opp", seed, { playerCount: 2 }, 8);
     }
-  });
+  }, 60_000);
 
   it("3 opponents, defaults, 6 rounds", () => {
     runSoak("3opp", "matrix-3opp-a", { playerCount: 4 }, 6);
@@ -126,7 +132,7 @@ describe("single-player soak matrix — option combos never stall", () => {
     for (const seed of ["matrix-imp-a", "matrix-imp-b"]) {
       runSoak("impossible", seed, { playerCount: 2, difficulty: "impossible" }, 6);
     }
-  });
+  }, 60_000);
 
   it("Creature Banks + Spell Book default ON, 6 rounds", () => {
     // Both default on (creatureBanks default true; spellBook default true in

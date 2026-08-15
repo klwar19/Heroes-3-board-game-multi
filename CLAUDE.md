@@ -739,10 +739,13 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   Protocol v33 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
   layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
-  never dilutes. Drill in an OWN Town costs 1 gold for bronze, recruited Neutral or
-  a won Creature Bank card, 2 for silver, 3 for gold/azure; heroes get 1/2/3 uses
-  per round at levels I/IV/VII. Won bank cards (Dragon Fly Hive / Griffin
-  Conservatory) train on the same track — USER RULE 2026-08-15.
+  never dilutes. Drill works ANYWHERE on the map (2026-08-16, `b1b91c8b`,
+  protocol v35): free at any Town / Settlement / Random Town (ownership NOT
+  required — `unitDrillMovementCost`), 1 hero movement anywhere else; it costs
+  1 gold for bronze, recruited Neutral or a won Creature Bank card, 2 for
+  silver, 3 for gold/azure; heroes get 1/2/3 uses per round at levels I/IV/VII.
+  Won bank cards (Dragon Fly Hive / Griffin Conservatory) train on the same
+  track — USER RULE 2026-08-15.
 - LIMITS: **Quick Combat trains nobody**; Clone tokens and specialty covers ignore
   ranks; the AI drills from surplus gold but is not a veterancy planner.
 
@@ -968,6 +971,19 @@ LIMITS: never an opener outside an attack window; not widened past the printed
 via `cardHasPrintedTriggerMatch`; `mapOnly` is an ABSOLUTE bar; exclusions live in the
 registry `DOCUMENTED_WINDOW_EXCLUSIONS`); the tray lists only unit-target /
 target-less joins; a computer seat PASSES.
+WIDENED 2026-08-16 (`b1b91c8b`, protocol v35): ~20 more printed instant faces
+carry `combatAnytime` (every Ballista activation incl. Gerwulf I's — its old
+"turn play" exclusion is REMOVED — Torosar VI and Tarnum-Castle IV re-shaped to
+single-option CHOOSE_ONE, Fortune/Scholar takes, Cannon shots, Jeremy, Kud's
+Rocket Launcher Deemer-rethemes), Melodia I / Yuiko I gained a combat "Draw 1
+card" option, and Drill moved off the own-Town gate (see Unit Experience). The
+conscious face list is `COMBAT_ANYTIME_FACES` in
+`combat-instant-reaction-windows.test.ts`. AUDIT FIX in the same batch: a
+`combatAnytime` PLAY_CARD join whose face this window already offers as a REAL
+PLAY_REACTION (Artillery's basic side vs `artilleryCardReactions`) is DEDUPED —
+the targeted reaction stays, the duplicate join button is dropped
+(`getLegalReactionsForTrigger`'s trap-twin block; pinned with a cast-window
+CONTROL in `artillery-reaction.test.ts`).
 
 ## A printed FOLLOW-UP attack gives the ATTACKER a window too (2026-08-07)
 
