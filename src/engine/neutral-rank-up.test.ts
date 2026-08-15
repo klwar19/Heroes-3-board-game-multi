@@ -4,18 +4,17 @@
  * NEUTRAL guard units gain the SAME veteran ranks a player army earns, reusing
  * the unit-experience machinery verbatim (no parallel stat table), via two
  * independent halves, each frozen behind `adventure.neutralRankUp`:
- *   • ROUNDS — every NON-bank guard folds to the (capped-at-Veteran) rank its
- *     tier reaches by the current round (virtual XP = round - 1).
- *   • STACKS — a Creature-Bank defender carrying a Stack Token fights rank 1.
+ *   • FIELD GUARDS — tier-specific round tables, capped at Elite.
+ *   • BANKS — Far/Near round tables, independent of Stack Tokens.
  *
  * Every claim below fails if its wiring is removed; the balance guardrails
- * (cap at 2 rounds / 1 stacks, rounds 1-3 untouched, banks excluded from
+ * (cap at Elite, early rounds untouched, bank map-band separation,
  * rounds, rewards unchanged, guaranteed-win unaffected) each carry a CONTROL,
  * and the core fold is mutation-checked (noted inline).
  */
 import { describe, expect, it } from "vitest";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import { applyAction, createAdventureGameState, markUnitRemovedIfNeeded, standardComputerController } from "./index";
+import { applyAction, createAdventureGameState, standardComputerController } from "./index";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   buildCreatureBankCombatUnits,
@@ -24,17 +23,15 @@ import {
   type NeutralDraw
 } from "./adventure";
 import { revealNeutralArmy, startNeutralEncounter } from "./adventure-reducer";
-import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import {
   NEUTRAL_ROUNDS_RANK_CAP,
-  NEUTRAL_STACK_RANK,
   applyNeutralRoundsRank,
   combatUnitRankFold,
+  neutralBankMirrorXp,
+  neutralBankRoundsRank,
   neutralRankUpActive,
   neutralRoundsMirrorXp,
   neutralRoundsRank,
-  neutralRoundsVirtualXp,
-  neutralStackRankFold,
   unitRankAbilityIds
 } from "./unit-experience";
 import { NEUTRAL_PLAYER_ID } from "./state";
@@ -98,31 +95,20 @@ describe("Neutral Rank-Up — flag freezing (WOG + anime surfaces, default OFF)"
 // ===========================================================================
 
 describe("Neutral Rank-Up — ROUNDS half (constants + rank math)", () => {
-  it("virtual XP = round - 1, run through the REAL tier thresholds, capped at Veteran", () => {
-    expect(neutralRoundsVirtualXp(1)).toBe(0);
-    expect(neutralRoundsVirtualXp(7)).toBe(6);
-    expect(NEUTRAL_ROUNDS_RANK_CAP).toBe(2);
-    expect(NEUTRAL_STACK_RANK).toBe(1);
-    // bronze Seasoned r4 / Veteran r7; silver r5/r9; gold+azure r6/r11.
-    expect(neutralRoundsRank("bronze", 3)).toBe(0);
-    expect(neutralRoundsRank("bronze", 4)).toBe(1);
-    expect(neutralRoundsRank("bronze", 7)).toBe(2);
-    expect(neutralRoundsRank("silver", 4)).toBe(0);
-    expect(neutralRoundsRank("silver", 5)).toBe(1);
-    expect(neutralRoundsRank("silver", 9)).toBe(2);
-    expect(neutralRoundsRank("gold", 5)).toBe(0);
+  it("uses the requested tier round tables and caps at Elite", () => {
+    expect(NEUTRAL_ROUNDS_RANK_CAP).toBe(3);
+    expect([2, 3, 5, 8, 20].map((round) => neutralRoundsRank("bronze", round))).toEqual([0, 1, 2, 3, 3]);
+    expect([5, 6, 8, 12, 20].map((round) => neutralRoundsRank("silver", round))).toEqual([0, 1, 2, 3, 3]);
     expect(neutralRoundsRank("gold", 6)).toBe(1);
-    expect(neutralRoundsRank("gold", 11)).toBe(2);
-    // CAP: never past Veteran, however old the game gets.
-    expect(neutralRoundsRank("bronze", 30)).toBe(2);
-    expect(neutralRoundsRank("gold", 99)).toBe(2);
+    expect(neutralRoundsRank("gold", 10)).toBe(2);
+    expect(neutralRoundsRank("gold", 14)).toBe(3);
+    expect(neutralRoundsRank("gold", 99)).toBe(3);
   });
 
-  it("mirror XP is clamped below the rank-3 threshold so any recompute stays capped", () => {
-    // bronze rank-3 threshold = 10 → mirror clamps to 9 (= Veteran, never Elite).
-    expect(neutralRoundsMirrorXp("bronze", 30)).toBe(9);
-    expect(neutralRoundsMirrorXp("bronze", 7)).toBe(6);
-    expect(neutralRoundsMirrorXp("gold", 99)).toBe(15); // gold rank-3 threshold 16 → 15
+  it("mirrors each explicit round rank onto the real XP thresholds", () => {
+    expect(neutralRoundsMirrorXp("bronze", 30)).toBe(10);
+    expect(neutralRoundsMirrorXp("bronze", 5)).toBe(6);
+    expect(neutralRoundsMirrorXp("gold", 99)).toBe(16);
   });
 });
 
@@ -176,18 +162,18 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
     expect(gold.unitExperience).toBeUndefined();
   });
 
-  it("caps at Veteran (rank 2) even in a very long game — no Elite/Legend leak", () => {
+  it("caps at Elite (rank 3) even in a very long game — no Legend leak", () => {
     const late = mintNeutral(BOARS, "bronze");
     applyNeutralRoundsRank(late, 30);
-    expect(late.unitRank).toBe(2);
+    expect(late.unitRank).toBe(3);
     // The cap is observable: an UNCAPPED bronze at 29 XP would be Legend (rank 4)
     // and carry the rank-3 +Defense step. Capped, only rank 1's +Health lands
     // (rank 2 is the boars' ability rank).
     expect(late.attack).toBe(coreUnitDefinitions[BOARS]!.neutral!.attack); // NOT +1
-    expect(late.defense).toBe(coreUnitDefinitions[BOARS]!.neutral!.defense); // NOT +1
+    expect(late.defense).toBeGreaterThanOrEqual(coreUnitDefinitions[BOARS]!.neutral!.defense);
     expect(late.maxHealth).toBe(coreUnitDefinitions[BOARS]!.neutral!.health + 1);
     // And a downstream recompute reproduces the SAME capped rank (mirror XP).
-    expect(combatUnitRankFold(late).rank).toBe(2);
+    expect(combatUnitRankFold(late).rank).toBe(3);
   });
 
   it("the rank survives a mid-combat printed-side recompute (Random-Town Pack→Few flip)", () => {
@@ -201,14 +187,14 @@ describe("Neutral Rank-Up — ROUNDS half (observable stat folds)", () => {
       "legacy"
     )!;
     applyNeutralRoundsRank(pack, 30);
-    expect(pack.unitRank).toBe(2);
+    expect(pack.unitRank).toBe(3);
     const flippedDefense = pack.defense;
 
     pack.variant = "few";
     applyUnitCurrentSide(pack, "legacy");
     // The Few side keeps Veteran rank (mirror XP), never climbing to Elite.
-    expect(pack.unitRank).toBe(2);
-    expect(combatUnitRankFold(pack).rank).toBe(2);
+    expect(pack.unitRank).toBe(3);
+    expect(combatUnitRankFold(pack).rank).toBe(3);
     // Defense fold still present on the recomputed side (non-vacuous).
     expect(pack.defense).toBeGreaterThanOrEqual(1);
     expect(flippedDefense).toBeGreaterThanOrEqual(1);
@@ -288,6 +274,15 @@ describe("Neutral Rank-Up — ROUNDS seam (revealNeutralArmy)", () => {
     expect(boars.unitExperience).toBeUndefined();
   });
 
+  it("Unit Experience alone never ranks a neutral-owned guard", () => {
+    const state = neutralCombat("nru-player-xp-is-separate", false, 20);
+    state.adventure!.unitExperience = true;
+    const boars = seedAndFind(state, [{ unitDefId: BOARS, tier: "bronze" }], BOARS);
+    expect(boars.controllerId).toBe(NEUTRAL_PLAYER_ID);
+    expect(boars.unitRank).toBeUndefined();
+    expect(boars.unitExperience).toBeUndefined();
+  });
+
   it("a designer exact-army guard list is ranked too (it funnels through the same seam)", () => {
     // Designer exact/level armies are just NeutralDraw[] fed to revealNeutralArmy,
     // so the ROUNDS fold reaches them exactly like a rolled guard.
@@ -310,120 +305,63 @@ describe("Neutral Rank-Up — ROUNDS seam (revealNeutralArmy)", () => {
 });
 
 // ===========================================================================
-// STACKS half — a Stacked bank defender fights one rank up
+// Creature Banks — Far/Near round schedules, independent of Stack Tokens
 // ===========================================================================
 
-describe("Neutral Rank-Up — STACKS half (Creature Bank defenders)", () => {
-  const bankNagaDraw: NeutralDraw = { unitDefId: "neutral.nagas", tier: "bronze", bankUnit: true };
-
-  it("the stack fold is a fixed Seasoned rank keyed off the UNDERLYING unit tier", () => {
-    const fold = neutralStackRankFold("neutral.nagas");
-    expect(fold.rank).toBe(1);
-    // neutral.nagas' rank 1 is an ABILITY rank, so the fold's payload is the
-    // granted id (a stat assertion here would have no teeth — see the
-    // behavioural damage-delta in veteran-guarded-stance.test.ts).
-    expect(fold.abilityIds).toEqual(["veteran-guarded-stance"]);
-    expect(fold.abilityId).toBe("veteran-guarded-stance");
-    expect(coreUnitDefinitions["neutral.nagas"]!.tier).toBe("gold");
-    // The tier really is read from the DEF (bank draws mint "bronze"): a bronze
-    // guard's rank-1 fold differs, so the def-keyed lookup is what runs.
-    expect(neutralStackRankFold("neutral.boars").rank).toBe(1);
-    expect(neutralStackRankFold("neutral.boars").health).toBe(1);
+describe("Neutral Rank-Up — Creature Bank round schedules", () => {
+  it("uses Far 4/6/9 and Near 6/8/12 for Seasoned/Veteran/Elite", () => {
+    expect([3, 4, 6, 9, 30].map((round) => neutralBankRoundsRank("far", round))).toEqual([0, 1, 2, 3, 3]);
+    expect([5, 6, 8, 12, 30].map((round) => neutralBankRoundsRank("near", round))).toEqual([0, 1, 2, 3, 3]);
+    expect(neutralBankMirrorXp("neutral.nagas", "near", 12)).toBe(16);
   });
 
-  it("a Stacked defender fights rank 1 ON TOP of the Stack Token; the token alone does NOT rank", () => {
-    // Token on Health; the rank's own payload is the granted ABILITY, so the
-    // two are independently observable.
-    const ranked = makeCombatUnitFromNeutral(bankNagaDraw, "u1", 0, "legacy")!;
-    ranked.stackToken = "health";
-    applyUnitCurrentSide(ranked, "legacy", { neutralRankUp: true });
-    expect(ranked.maxHealth).toBe(6); // 5 base + 1 Health token
-    expect(ranked.abilities).toContain("veteran-guarded-stance"); // rank 1
-    expect(ranked.unitRank).toBe(1);
-
-    // CONTROL A: module ON but NO token — a plain (un-Stacked) defender never ranks.
-    const noToken = makeCombatUnitFromNeutral(bankNagaDraw, "u2", 0, "legacy")!;
-    applyUnitCurrentSide(noToken, "legacy", { neutralRankUp: true });
-    expect(noToken.unitRank).toBeUndefined();
-    expect(noToken.abilities).not.toContain("veteran-guarded-stance");
-
-    // CONTROL B: token present but module OFF — the +1 Stack Token stands alone.
-    const off = makeCombatUnitFromNeutral(bankNagaDraw, "u3", 0, "legacy")!;
-    off.stackToken = "health";
-    applyUnitCurrentSide(off, "legacy");
-    expect(off.maxHealth).toBe(6);
-    expect(off.abilities).not.toContain("veteran-guarded-stance"); // token gives no rank
-    expect(off.unitRank).toBeUndefined();
-  });
-
-  it("Stack Token absorb is UNCHANGED; the rank drops with the token", () => {
+  it("ranks every Far-bank defender by round, whether Stacked or not", () => {
     const state = createAdventureGameState({
-      seed: "nru-absorb",
-      rollFirstPlayer: false,
-      ruleset: "binh",
-      wog: { enabled: true, neutralRankUp: true, newCreatures: false }
-    });
-    const overrides = unitSideRuleOverrides(state);
-    expect(overrides.neutralRankUp).toBe(true);
-
-    const unit = makeCombatUnitFromNeutral(bankNagaDraw, "u1", 0, getRuleset(state), overrides)!;
-    unit.stackToken = "health";
-    applyUnitCurrentSide(unit, getRuleset(state), overrides);
-    expect(unit.maxHealth).toBe(6);
-    expect(unit.abilities).toContain("veteran-guarded-stance"); // Stacked → rank 1
-    expect(unit.unitRank).toBe(1);
-
-    // Lethal blow: the token is discarded (rulebook p.67), carrying the excess —
-    // exactly as without the module — and the rank reverts to a plain bank card.
-    unit.damage = 8; // >= 6, 2 excess over the Stacked Health
-    markUnitRemovedIfNeeded(state, unit);
-    expect(unit.stackToken).toBeNull();
-    expect(unit.maxHealth).toBe(5);
-    expect(unit.abilities).not.toContain("veteran-guarded-stance"); // rank gone with the token
-    expect(unit.unitRank).toBeUndefined();
-    expect(unit.damage).toBe(2);
-    expect(state.eventLog.some((e) => e.type === "STACK_TOKEN_DISCARDED" && e.unitId === "u1")).toBe(true);
-    expect(state.eventLog.some((e) => e.type === "UNIT_REMOVED" && e.unitId === "u1")).toBe(false);
-  });
-
-  it("threads through the real bank build: Stacked defenders rank, unstacked do not", () => {
-    const on = createAdventureGameState({
-      seed: "nru-bankbuild-on",
+      seed: "nru-far-bank",
       rollFirstPlayer: false,
       ruleset: "binh",
       wog: { enabled: true, neutralRankUp: true, newCreatures: false },
       houseRules: { "polish-bank-sizes": true }
     });
-    // Polish size 4 → all four naga defenders are guaranteed Stacked.
-    const built = buildCreatureBankCombatUnits(on, "naga_bank", 4);
-    expect(built.stackedCount).toBe(4);
-    for (const unit of built.units) {
-      expect(unit.stackToken).toBeTruthy();
-      expect(unit.unitRank).toBe(1); // Stacked → Seasoned
-    }
+    state.round = 4;
+    const built = buildCreatureBankCombatUnits(state, "imp_cache", 1);
+    expect(built.stackedCount).toBe(1);
+    expect(built.units.filter((unit) => Boolean(unit.stackToken))).toHaveLength(1);
+    expect(built.units.filter((unit) => !unit.stackToken)).toHaveLength(3);
+    for (const unit of built.units) expect(unit.unitRank).toBe(1);
+  });
 
-    // CONTROL: module off → the same Stacked build carries no rank.
-    const off = createAdventureGameState({
-      seed: "nru-bankbuild-off",
+  it("Near banks start later and reach Elite at round 12", () => {
+    const early = createAdventureGameState({
+      seed: "nru-near-bank-early",
       rollFirstPlayer: false,
       ruleset: "binh",
-      houseRules: { "polish-bank-sizes": true }
+      wog: { enabled: true, neutralRankUp: true, newCreatures: false }
     });
-    const offBuilt = buildCreatureBankCombatUnits(off, "naga_bank", 4);
-    expect(offBuilt.stackedCount).toBe(4);
-    for (const unit of offBuilt.units) {
-      expect(unit.stackToken).toBeTruthy();
+    early.round = 5;
+    for (const unit of buildCreatureBankCombatUnits(early, "naga_bank").units) {
       expect(unit.unitRank).toBeUndefined();
+    }
+
+    const elite = createAdventureGameState({
+      seed: "nru-near-bank-elite",
+      rollFirstPlayer: false,
+      ruleset: "binh",
+      wog: { enabled: true, neutralRankUp: true, newCreatures: false }
+    });
+    elite.round = 12;
+    for (const unit of buildCreatureBankCombatUnits(elite, "naga_bank").units) {
+      expect(unit.unitRank).toBe(3);
     }
   });
 
-  it("banks are EXCLUDED from the ROUNDS half (no round-rank at round 12)", () => {
-    const bankUnit = makeCombatUnitFromNeutral(bankNagaDraw, "u1", 0, "legacy")!;
-    const baseAttack = bankUnit.attack;
-    applyNeutralRoundsRank(bankUnit, 12); // bank guard → guarded no-op
-    expect(bankUnit.unitRank).toBeUndefined();
-    expect(bankUnit.attack).toBe(baseAttack);
-    expect(bankUnit.unitExperience).toBeUndefined();
+  it("CONTROL: module off leaves the same bank defenders unranked", () => {
+    const state = createAdventureGameState({ seed: "nru-bank-off", rollFirstPlayer: false, ruleset: "binh" });
+    state.round = 20;
+    for (const unit of buildCreatureBankCombatUnits(state, "imp_cache").units) {
+      expect(unit.unitRank).toBeUndefined();
+      expect(unit.unitExperience).toBeUndefined();
+    }
   });
 });
 

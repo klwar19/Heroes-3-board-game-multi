@@ -1313,8 +1313,7 @@ export function CommanderLevelUpPicker({
         LEVEL UP — {gradePoints} stat {gradePoints === 1 ? "point" : "points"} to spend
       </div>
       <div className="commanderLevelUpHint">
-        Click a stat to raise it one grade — each click spends 1 point. Mastery (grade III) unlocks at hero level{" "}
-        {COMMANDER_MASTERY_MIN_HERO_LEVEL}.
+        Spend 1 point on a stat. Raise Speed to grade I to arrange your commander with your units.
       </div>
       <div className="commanderLevelUpGrid">
         {COMMANDER_STAT_KEYS.map((key) => {

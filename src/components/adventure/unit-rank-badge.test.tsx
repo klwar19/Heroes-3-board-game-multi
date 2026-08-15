@@ -104,6 +104,13 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
       </CardZoomProvider>
     );
     expect(document.querySelector(".armyXpTrack")).toBeTruthy();
+    const deckDrill = document.querySelector(".drillUnitButton") as HTMLButtonElement;
+    expect(deckDrill, "the Unit deck exposes the polished Drill control").toBeTruthy();
+    expect(deckDrill.textContent).toContain("Drill unit");
+    expect(deckDrill.textContent).toContain("Gain +1 unit XP");
+    expect(deckDrill.textContent).toContain("1gold");
+    expect(deckDrill.title).toContain("pay 1 gold to gain +1 persistent unit XP");
+    expect(deckDrill.title).toContain("remaining this round");
     const boardButton = document.querySelector("button.armyExperienceBoard") as HTMLButtonElement;
     expect(boardButton?.textContent).toContain("Unit Experience Board");
     fireEvent.click(boardButton);
@@ -130,7 +137,8 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("Aggressive Drill"); // R1
     expect(text).toContain("Charge"); // R2
     expect(text).toContain("+1 Attack when this unit attacks after moving this activation");
-    fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
+    expect(dialog.querySelector(".unitXpRankIcon .unitRankBadgeArt"), "rank rows use large illustrated badges").toBeTruthy();
+    fireEvent.click(dialog.querySelector(".drillUnitButton") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
   });
 });

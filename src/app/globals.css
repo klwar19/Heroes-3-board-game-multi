@@ -40183,6 +40183,107 @@ button.armyXpPanel:focus-visible {
   border-color: var(--mod-accent, #e4bd68);
   color: #fff0ce;
 }
+.commanderIntroFace img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgb(0 0 0 / 55%));
+}
+.armyUnitActions button.drillUnitButton {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(84px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 176px;
+  padding: 7px 9px 7px 7px;
+  overflow: visible;
+  border: 1px solid #ffd65a;
+  background:
+    radial-gradient(circle at 16px 50%, rgb(255 226 113 / 28%), transparent 31px),
+    linear-gradient(180deg, rgb(151 93 12 / 96%), rgb(66 32 3 / 98%));
+  color: #fff7d6;
+  box-shadow: 0 0 15px rgb(255 194 55 / 35%), inset 0 0 0 1px rgb(255 241 185 / 17%);
+  text-align: left;
+}
+.armyUnitActions button.drillUnitButton:hover,
+.armyUnitActions button.drillUnitButton:focus-visible {
+  border-color: #fff0a6;
+  background:
+    radial-gradient(circle at 16px 50%, rgb(255 239 161 / 36%), transparent 32px),
+    linear-gradient(180deg, rgb(199 132 20 / 98%), rgb(92 47 5 / 100%));
+  box-shadow: 0 0 23px rgb(255 202 69 / 58%), inset 0 0 0 1px rgb(255 248 213 / 24%);
+  transform: translateY(-1px);
+}
+.drillUnitButtonIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgb(255 233 147 / 74%);
+  border-radius: 50%;
+  background: rgb(40 19 2 / 58%);
+  color: #ffe680;
+}
+.drillUnitButtonText {
+  display: grid;
+  gap: 1px;
+  line-height: 1.1;
+}
+.drillUnitButtonText strong {
+  font-size: 11px;
+  letter-spacing: 0.035em;
+}
+.drillUnitButtonText small {
+  color: #f5dca0;
+  font-size: 8px;
+}
+.drillUnitButtonCost {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border: 1px solid rgb(255 224 112 / 55%);
+  border-radius: 999px;
+  background: rgb(27 14 2 / 66%);
+  color: #ffe06c;
+}
+.drillUnitButtonCost b {
+  font-size: 12px;
+}
+.drillUnitButtonCost small {
+  color: #f7d98d;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.drillUnitButton::after {
+  position: absolute;
+  z-index: 120;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: min(300px, 76vw);
+  padding: 8px 10px;
+  border: 1px solid rgb(255 218 103 / 65%);
+  border-radius: 7px;
+  background: rgb(20 13 5 / 97%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 60%);
+  color: #f9e8bd;
+  content: attr(data-tip);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.drillUnitButton:hover::after,
+.drillUnitButton:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
 .armyPanel.theme-classic,
 .armyPanel.theme-anime,
 .armyPanel.theme-wuxia {
@@ -40474,19 +40575,19 @@ button.armyExperienceBoard > small {
 }
 .unitXpPicker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 16px;
-  padding: 18px 28px 28px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 12px 18px 18px;
   max-height: min(70vh, 720px);
   overflow: auto;
 }
 .unitXpPickerCard {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
+  gap: 7px;
+  padding: 8px;
   border: 1px solid var(--mod-line);
-  border-radius: 16px;
+  border-radius: 12px;
   background: linear-gradient(165deg, rgb(30 24 16 / 88%), rgb(8 10 14 / 92%));
   color: inherit;
   text-align: left;
@@ -40509,7 +40610,7 @@ button.armyExperienceBoard > small {
   width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid rgb(255 255 255 / 10%);
   background: rgb(0 0 0 / 35%);
 }
@@ -40553,23 +40654,23 @@ button.armyExperienceBoard > small {
 .unitXpDetail {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 18px 28px 28px;
+  gap: 12px;
+  padding: 12px 18px 18px;
   min-height: 0;
   overflow: auto;
 }
 .unitXpDetailHero {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  gap: 20px 24px;
+  grid-template-columns: minmax(180px, 224px) minmax(0, 1fr);
+  gap: 14px 18px;
   align-items: start;
 }
 .unitXpDetailArt {
   width: 100%;
-  max-width: 280px;
+  max-width: 224px;
   aspect-ratio: 3 / 4;
   object-fit: cover;
-  border-radius: 14px;
+  border-radius: 11px;
   border: 1px solid var(--mod-line);
   box-shadow: 0 16px 36px rgb(0 0 0 / 45%);
   background: rgb(0 0 0 / 35%);
@@ -40581,7 +40682,7 @@ button.armyExperienceBoard > small {
 .unitXpDetailSummary {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -40639,7 +40740,7 @@ button.armyExperienceBoard > small {
 }
 .unitXpRanks.large {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 @media (min-width: 900px) {
   .unitXpRanks {
@@ -40649,7 +40750,7 @@ button.armyExperienceBoard > small {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (min-width: 1100px) {
+@media (min-width: 980px) {
   .unitXpRanks.large {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -40666,11 +40767,11 @@ button.armyExperienceBoard > small {
 
 .unitXpRank {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 3px 8px;
-  padding: 12px;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 2px 7px;
+  padding: 9px;
   border: 1px solid rgb(255 255 255 / 9%);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgb(0 0 0 / 24%);
 }
 
@@ -40679,8 +40780,13 @@ button.armyExperienceBoard > small {
   display: grid;
   place-items: center;
   align-self: start;
-  margin-top: 2px;
+  margin-top: 0;
   color: var(--mod-accent);
+}
+.unitXpRank .unitXpRankIcon .unitRankBadgeArt {
+  width: 46px;
+  height: 46px;
+  filter: drop-shadow(0 3px 5px rgb(0 0 0 / 62%));
 }
 .unitXpRank b {
   color: #e8dcc4;
@@ -40717,18 +40823,18 @@ button.armyExperienceBoard > small {
 .unitXpElite {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  gap: 4px 10px;
-  margin-top: 6px;
-  padding-top: 8px;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 3px 8px;
+  margin-top: 4px;
+  padding-top: 6px;
   border-top: 1px dashed rgb(255 255 255 / 14%);
   font-size: 12px;
   align-items: start;
 }
 .unitXpElite > img.unitXpAbilityIcon {
   grid-row: 1 / 2;
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 50%);
@@ -40764,10 +40870,10 @@ button.armyExperienceBoard > small {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 4px 10px;
+  gap: 3px 8px;
   align-items: center;
-  margin-top: 6px;
-  padding-top: 8px;
+  margin-top: 4px;
+  padding-top: 6px;
   border-top: 1px dashed rgb(255 255 255 / 14%);
   color: #746d61;
   font-size: 12px;
@@ -40795,8 +40901,8 @@ button.armyExperienceBoard > small {
   align-items: center;
 }
 .unitXpStatIconStack > img.unitXpAbilityIcon {
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   object-fit: cover;
   border-radius: 6px;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 55%);
@@ -40879,12 +40985,12 @@ button.armyExperienceBoard > small {
 }
 .unitXpActiveChip.large {
   gap: 8px;
-  padding: 4px 12px 4px 6px;
+  padding: 3px 10px 3px 4px;
   font-size: 13px;
 }
 .unitXpActiveChip.large img {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
 }
 
 @media (max-width: 720px) {

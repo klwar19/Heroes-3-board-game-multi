@@ -119,5 +119,12 @@ export const UNIT_RANK_STAT_BONUSES = {
 
 export const UNIT_XP_PVP_WIN = 2;
 export const UNIT_XP_BANK_MIN = 2;
-export const DRILL_UNIT_GOLD_COST = 2;
 export const DRILL_UNIT_XP = 1;
+
+/** Town Drill price by printed unit tier. Recruited Neutral cards always cost 1. */
+export const DRILL_UNIT_GOLD_COST_BY_TIER: Record<UnitTier, number> = {
+  bronze: 1,
+  silver: 2,
+  gold: 3,
+  azure: 3
+};

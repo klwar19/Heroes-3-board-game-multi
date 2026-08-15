@@ -32,6 +32,7 @@ import {
   NEUTRAL_PLAYER_ID
 } from "./index";
 import { finalizeAdventureCombat } from "./adventure-reducer";
+import { makeCombatUnitFromNeutral } from "./adventure";
 import { ATTACK_DIE_FACES } from "./battlefield";
 import type { CombatState, GameAction, GameState } from "./state";
 import {
@@ -1089,18 +1090,87 @@ describe("Unit Experience — Drill", () => {
     return state;
   }
 
-  it("pays 2 gold for +1 XP once per turn; maxed cards not offered", () => {
+  it("bronze pays 1 gold for +1 XP once at hero levels I–III; maxed cards are not offered", () => {
     const state = drillState("uxp-drill");
     const offers = getLegalActions(state, "p1").filter((legal) => legal.action.type === "DRILL_UNIT");
     expect(offers.map((legal) => (legal.action.type === "DRILL_UNIT" ? legal.action.armyUnitId : ""))).toEqual([
       MARKSMEN.id
     ]);
     const next = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
-    expect(next.players.p1.resources.gold).toBe(8);
+    expect(next.players.p1.resources.gold).toBe(9);
     expect(next.players.p1.army[0].experience).toBe(1);
     expect(applyAction(next, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message).toContain(
-      "once per turn"
+      "unused drill"
     );
+  });
+
+  it("player-controlled recruited Neutrals earn persistent XP without Neutral Rank-Up", () => {
+    const state = makeAdventure("uxp-recruited-neutral", { unitExperience: true });
+    expect(state.adventure?.neutralRankUp).toBeUndefined();
+    state.players.p1.army = [{ id: "recruited_naga", unitDefId: "neutral.nagas", side: "neutral" }];
+    const naga = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", "u_recruited_naga", 0, "legacy")!;
+    finishNeutralCombat(state, { [naga.id]: naga }, "p1", { difficulty: 5 });
+    expect(state.players.p1.army[0].experience).toBe(5);
+    expect(state.players.p1.army[0].side).toBe("neutral");
+    expect(armyUnitRankInfo(state.players.p1.army[0])?.rank).toBe(1);
+  });
+
+  it("defeating Veteran/Elite neutral-owned guards adds +1/+2 unit XP", () => {
+    const wonAgainst = (rank: number) => {
+      const state = makeAdventure(`uxp-ranked-neutral-${rank}`, { unitExperience: true });
+      state.players.p1.army = [{ ...MARKSMEN }];
+      const survivor = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", `u_survivor_${rank}`, 0, "legacy")!;
+      const guard = makeCombatUnitFromNeutral(
+        { unitDefId: "neutral.boars", tier: "bronze" },
+        `u_guard_${rank}`,
+        1,
+        "legacy"
+      )!;
+      guard.unitRank = rank;
+      guard.damage = guard.maxHealth;
+      finishNeutralCombat(state, { [survivor.id]: survivor, [guard.id]: guard }, "p1", { difficulty: 3 });
+      return state.players.p1.army[0].experience ?? 0;
+    };
+
+    expect(wonAgainst(1), "Seasoned gives no bonus").toBe(3);
+    expect(wonAgainst(2), "Veteran gives +1").toBe(4);
+    expect(wonAgainst(3), "Elite gives +2").toBe(5);
+  });
+
+  it("prices recruited Neutral/bronze at 1, silver at 2, and gold at 3", () => {
+    const state = drillState("uxp-drill-prices");
+    const hero = getMainHero(state, "p1")!;
+    hero.level = 7;
+    state.players.p1.army = [
+      { id: "neutral", unitDefId: "neutral.nagas", side: "neutral" },
+      { id: "silver", unitDefId: "castle.crusaders", side: "few" },
+      { id: "gold", unitDefId: "castle.champions", side: "few" }
+    ];
+    let next = applyOk(state, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "neutral" });
+    expect(next.players.p1.resources.gold).toBe(9);
+    next = applyOk(next, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "silver" });
+    expect(next.players.p1.resources.gold).toBe(7);
+    next = applyOk(next, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: "gold" });
+    expect(next.players.p1.resources.gold).toBe(4);
+  });
+
+  it("allows two drills from hero level IV and three from level VII", () => {
+    const levelFour = drillState("uxp-drill-level-four");
+    getMainHero(levelFour, "p1")!.level = 4;
+    let next = applyOk(levelFour, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    next = applyOk(next, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    expect(next.players.p1.army[0].experience).toBe(2);
+    expect(applyAction(next, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id }).errors[0]?.message).toContain(
+      "unused drill"
+    );
+
+    const levelSeven = drillState("uxp-drill-level-seven");
+    getMainHero(levelSeven, "p1")!.level = 7;
+    let max = levelSeven;
+    for (let index = 0; index < 3; index += 1) {
+      max = applyOk(max, { type: "DRILL_UNIT", playerId: "p1", armyUnitId: MARKSMEN.id });
+    }
+    expect(max.players.p1.army[0].experience).toBe(3);
   });
 
   it("CONTROLs: rule off / away from town / maxed card", () => {

@@ -155,11 +155,9 @@ export function unitSideRuleOverrides(
     // Army Stack layers: the Polish house rule OR the anime `unitStacks` module
     // (one machinery — see armyUnitStacksActive).
     polishUnitStacks: armyUnitStacksActive(state),
-    // Neutral Rank-Up (optional module) — STACKS half: a flag IS threaded here so
-    // applyUnitCurrentSide can rank a Stacked bank defender up (Seasoned) off the
-    // LIVE Stack Token, which the bank stat-recompute branch owns. The ROUNDS
-    // half instead mirrors capped XP straight onto the guard (see
-    // unit-experience.ts), like player veterancy — no flag needed there.
+    // Neutral Rank-Up (optional module): the bank stat-recompute branch reads
+    // the Far/Near round rank mirrored onto its combat unit. Field guards also
+    // mirror their explicit tier-round rank (see unit-experience.ts).
     neutralRankUp: Boolean(state.adventure?.neutralRankUp),
     // Pack of Phoenixes Rebirth is a BINH HOUSE RULE ONLY — a plain
     // `houseRuleEnabled` read like every other unit toggle. The printed/wiki card

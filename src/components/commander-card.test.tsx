@@ -151,6 +151,7 @@ describe("CommanderLevelUpPicker", () => {
     for (const key of ["attack", "defense", "health", "damage", "magic", "speed"]) {
       expect(container.querySelector(`button.commanderPickStat[data-stat="${key}"]`), key).toBeTruthy();
     }
+    expect(container.textContent).toMatch(/Raise Speed to grade I to arrange your commander/i);
     // The Attack option shows its grade jump (→ II) and the numeric value it buys.
     const attack = container.querySelector('button[data-stat="attack"]') as HTMLButtonElement;
     expect(attack.textContent).toContain("→ II");

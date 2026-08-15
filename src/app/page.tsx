@@ -40,6 +40,7 @@ import {
   type PlayerId
 } from "@/engine";
 import { cardLibrary } from "@/data/cards/library";
+import { coreHeroDefinitions } from "@/data/factions/core";
 import {
   BattlefieldBoard,
   CommandDock,
@@ -1416,7 +1417,7 @@ export default function Home() {
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
       seenMoraleCueIdsRef.current = new Set(moraleCardEvents.map((event) => event.id));
-      // A mid-game join must not re-pop a past Dracon level-up or buffed recruit.
+      // A mid-game join must not re-pop past hero level-ups or buffed recruits.
       seenLevelNoticeIdsRef.current = new Set(
         presentationEvents.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
       );
@@ -1691,14 +1692,11 @@ export default function Home() {
         });
       }
 
-      // House rule (BINH) notices, queued onto the same map-notice overlay.
-      //  - Dracon reaching level IV: announce his new "Few of Magi + 6 gold →
-      //    Enchanters" recruit option (fires once, even off a combat-XP level-up).
+      // Hero level-up notice: every new level gets one short image-led popup.
+      // Dracon IV folds its special recruit unlock into the same two-line cue.
       const levelNotices = presentationEvents.filter(
         (event): event is Extract<GameEvent, { type: "HERO_LEVEL_UP" }> =>
-          event.type === "HERO_LEVEL_UP" &&
-          event.level === 4 &&
-          nextState.players[event.playerId]?.heroDefId === "dracon"
+          event.type === "HERO_LEVEL_UP"
       );
       const freshLevelNotices = levelNotices.filter((event) => !seenLevelNoticeIdsRef.current.has(event.id));
       for (const event of levelNotices) {
@@ -1784,17 +1782,23 @@ export default function Home() {
             }) satisfies MapNoticeCue
         ),
         ...freshLevelNotices.map(
-          (event) =>
-            ({
+          (event) => {
+            const player = nextState.players[event.playerId];
+            const heroDef = player?.heroDefId ? coreHeroDefinitions[player.heroDefId] : undefined;
+            const draconUnlock = event.level === 4 && player?.heroDefId === "dracon";
+            return ({
               id: `level-notice-${event.id}`,
               icon: "⭐",
-              title: "Dracon reaches Level IV",
-              subtitle: `${nextState.players[event.playerId]?.name ?? event.playerId} — new recruit option`,
-              lines: [
-                "Enchanters IV now also lets you recruit the Enchanters",
-                "from a Few of Magi by paying 6 extra gold."
-              ]
-            }) satisfies MapNoticeCue
+              title: `${heroDef?.name ?? "Hero"} reaches Level ${event.level}`,
+              subtitle: player?.name ?? event.playerId,
+              lines: draconUnlock
+                ? ["Hero improved.", "Enchanters unlocked from Few of Magi for +6 gold."]
+                : event.effects.length > 0
+                  ? event.effects.slice(0, 2)
+                  : ["Hero improved."],
+              ...(heroDef?.portrait ? { iconImage: heroDef.portrait } : {})
+            }) satisfies MapNoticeCue;
+          }
         ),
         ...freshBuffRecruits.map(
           (event) =>

@@ -170,6 +170,7 @@ import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/co
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
 import { HeroBoard } from "@/components/hero-board";
 import { UnitExperienceWindow, armyUnitPrintedSide } from "@/components/adventure/unit-experience-window";
+import { DrillUnitButton } from "@/components/adventure/drill-unit-button";
 import { cardZoomContent, useCardZoom, useOptionalCardZoom } from "@/components/table/zoom";
 import {
   BuildingDetailPanel,
@@ -4918,7 +4919,16 @@ export function ArmyPanel({
               ) : null}
               {onAction && (drillAction || reinforceAction || stackAction) ? (
                 <div className="armyUnitActions" aria-label={`${def?.name ?? unit.unitDefId} actions`}>
-                  {drillAction ? <button onClick={() => onAction(drillAction.action)} type="button"><Sparkles size={13} /> {lexicon.train} · 2 gold → +1 XP</button> : null}
+                  {drillAction ? (
+                    <DrillUnitButton
+                      action={drillAction.action}
+                      onAction={onAction}
+                      playerId={playerId}
+                      state={state}
+                      unit={unit}
+                      unitName={def?.name ?? unit.unitDefId}
+                    />
+                  ) : null}
                   {reinforceAction ? <button onClick={() => onAction(reinforceAction.action)} type="button"><ChevronsUp size={13} /> {bankedReinforceAction ? bankedReinforceAction.label : "Reinforce to Pack"}</button> : null}
                   {stackAction ? <button onClick={() => onAction(stackAction.action)} type="button"><Layers size={13} /> {bankedStackAction ? bankedStackAction.label : "Increase Stack"}</button> : null}
                 </div>
@@ -9348,7 +9358,7 @@ function GameModeSection({
                 ["artifacts", "Artifacts", "Shuffles 5 Wake of Gods hero Artifact cards (Magic Wand, Gate Key, Crimson Shield, Warlord's Banner, Dragonheart) into the shared Artifact decks by tier."],
                 ["newObjects", "New adventure objects", "Adds 3 Wake of Gods single-hex map objects to the Field Override pool: Emerald Tower (guarded; trains your commander or hero), Mirror of the Home-Way (pay 2 gold to teleport to a Town), and Junk Merchant (sell weak Artifacts / buy an Artifact search). Turns Field Overrides on."],
                 ["unitExperience", "Unit experience", "WoG Unit Experience System (board adaptation): units surviving won battles gain XP and veteran ranks — stat bonuses, an Elite ability per faction's signature unit, XP dilution on reinforce, and a Drill action at your Towns."],
-                ["neutralRankUp", "Neutral rank-up", "NEUTRAL guards toughen as the game ages: every non-bank guard fights at the veteran rank its tier has reached by the current round (capped at Veteran — bronze from round 4, gold from round 6), and a Creature-Bank defender carrying a Stack Token fights one rank up. Harder fights, NOT richer — XP/rewards are unchanged; Quick Combat and the AI still ignore ranks."],
+                ["neutralRankUp", "Neutral rank-up", "Neutral-OWNED guards toughen with the round: bronze Seasoned/Veteran/Elite at rounds 3/5/8; silver at 6/8/12; gold at 6/10/14. Creature Banks use Far 4/6/9 or Near 6/8/12. Winning against Veteran guards adds +1 unit XP; Elite adds +2. This never gates player-controlled recruited Neutral XP."],
                 ["monsterWaves", "Monster waves", "Calamity Waves: every Nth round, EVERY live player fights a themed invasion at round start. A Far-tile Calamity Gate can be visited beforehand to cancel that wave's battle event for you. Standard and Brutal rewards/pillage are configurable below, as is optional elimination after repeated defeats."],
                 ["raidBosses", "Raid bosses", "A persistent multi-layer world boss lairs in a Rift Lair near map center from round 5 (announced one round ahead). Its wounds persist between attempts; every layer YOU break pays 2 gold at once, and the kill pays 5 gold + a relic-tier Artifact search. An ignored boss regrows a layer every 4th round."],
                 ["dungeon", "Dungeon Gate", "Adds one shared Dungeon Gate. Each player tracks their own floor and sees the same seeded rooms. Choose a room, defeat the floor guard, and claim escalating rewards; floors 5 and 10 have bosses. Entering uses normal movement, and continuing after a win uses the cost selected below."]
@@ -10276,7 +10286,7 @@ function GameOptionsPanel({
               </div>
               <small className="optionHint">
                 {unitExperienceOn
-                  ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP). Ranks: Seasoned, Veteran, Elite — small stat bonuses, a unique Elite ability for one signature unit per faction. Reinforcing halves a card's XP; Stack layers cost 1 XP each. Drill (2 gold, once per turn at your Town) trains a unit by hand."
+                  ? "Survivors of won battles earn XP (guard difficulty / bank size / 2 for PvP), plus +1 against Veteran neutral-owned guards or +2 against Elite. Player-controlled recruited Neutrals always use this XP system. Reinforcing halves XP; Stack layers cost 1 XP. Drill costs 1 gold for bronze or recruited Neutral, 2 for silver, and 3 for gold; heroes may Drill 1/2/3 times per round at levels I/IV/VII."
                   : "Off by default. Also available as a Wake of Gods module — units level up like in the WoG Unit Experience System, adapted to the board game."}
               </small>
             </div>

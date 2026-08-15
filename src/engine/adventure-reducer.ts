@@ -1,6 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceCard } from "./polish-balance-spells";
-import { DRILL_UNIT_GOLD_COST, DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
+import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import {
   applyNeutralRoundsRank,
   awardUnitExperienceAfterCombat,
@@ -148,6 +148,9 @@ import {
   getMainHero,
   liftSeaHaltForWaterWalk,
   mainHeroInOwnTown,
+  unitDrillGoldCost,
+  unitDrillLimit,
+  unitDrillsUsedThisRound,
   unitDrillAvailable,
   neutralBattleLevel,
   getTileFootprintSpaceIds,
@@ -12776,10 +12779,9 @@ export function heroTrain(state: GameState, action: Extract<GameAction, { type: 
 
 /**
  * DRILL_UNIT (Unit Experience optional rule): with the main hero standing in
- * an OWN Town, pay DRILL_UNIT_GOLD_COST (2) gold to grant one army unit card
- * DRILL_UNIT_XP (1) experience. Once per own turn; cards already at max rank
- * are not drillable. Self-validating; opens no window (a threshold crossing
- * emits UNIT_RANK_UP inside grantArmyUnitExperience).
+ * an OWN Town, pay the target's tier price to grant one army unit card +1 XP.
+ * Recruited Neutrals and bronze cost 1, silver costs 2, gold/azure cost 3.
+ * Uses per round scale from 1 to 2 at hero level IV and 3 at level VII.
  */
 export function drillUnit(state: GameState, action: Extract<GameAction, { type: "DRILL_UNIT" }>): void {
   const adventure = state.adventure;
@@ -12802,7 +12804,7 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   }
   if (!unitDrillAvailable(state, action.playerId)) {
     throw new Error(
-      `Drilling needs ${DRILL_UNIT_GOLD_COST} gold, once per turn, and a unit below max rank.`
+      `Drilling needs enough gold, an unused drill this round, and a unit below max rank.`
     );
   }
   const armyUnit = player.army.find((candidate) => candidate.id === action.armyUnitId);
@@ -12828,8 +12830,18 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   if (unitRankForExperience(def.tier, armyUnit.experience ?? 0) >= MAX_UNIT_RANK) {
     throw new Error("That unit is already at max veteran rank.");
   }
-  spendResources(state, action.playerId, { gold: DRILL_UNIT_GOLD_COST }, "unit drill");
+  const cost = unitDrillGoldCost(armyUnit);
+  if ((player.resources.gold ?? 0) < cost) {
+    throw new Error(`Drilling this unit needs ${cost} gold.`);
+  }
+  const used = unitDrillsUsedThisRound(state, action.playerId);
+  const limit = unitDrillLimit(state, action.playerId);
+  if (used >= limit) {
+    throw new Error(`You have used all ${limit} drills available this round.`);
+  }
+  spendResources(state, action.playerId, { gold: cost }, "unit drill");
   player.unitDrillRound = state.round;
+  player.unitDrillsUsed = used + 1;
   grantArmyUnitExperience(state, action.playerId, armyUnit, DRILL_UNIT_XP);
   appendEvent(state, {
     type: "UNIT_DRILLED",

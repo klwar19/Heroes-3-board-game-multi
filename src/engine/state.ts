@@ -297,9 +297,8 @@ export type WogModOptions = {
   unitExperience?: boolean;
   /**
    * Neutral Rank-Up (optional module): NEUTRAL guard units gain the shared
-   * veteran ranks as the game ages — every non-bank guard folds to the rank its
-   * tier reaches by the current round (capped at Veteran), and a Creature-Bank
-   * defender carrying a Stack Token fights one rank up. Balance guardrails and
+   * veteran ranks as the game ages — field guards use tier round tables capped
+   * at Elite, while Creature Banks use separate Far/Near round tables. Balance guardrails and
    * scope in src/engine/unit-experience.ts. Default OFF ⇒ byte-identical.
    */
   neutralRankUp?: boolean;
@@ -3760,8 +3759,8 @@ export type GameAction =
     }
   | {
       /**
-       * Unit Experience (optional rule): Drill one army unit at your own Town —
-       * pay DRILL_UNIT_GOLD_COST (2) gold for +1 unit XP. Once per own turn.
+       * Unit Experience: Drill one army unit at your own Town for +1 XP.
+       * Tier/Neutral pricing and hero-level uses are validated by the reducer.
        * Handler-validated (self-validating).
        */
       type: "DRILL_UNIT";
@@ -8269,10 +8268,12 @@ export type PlayerState = {
   wavePreparedFor?: number;
   /**
    * Unit Experience (optional rule): the game round this player last used the
-   * DRILL_UNIT action (2 gold → +1 unit XP at their own Town). Once per own
-   * turn: legal only while `unitDrillRound !== state.round`. Absent = never.
+   * DRILL_UNIT action at their own Town. Used with `unitDrillsUsed` so hero
+   * levels IV/VII can train two/three times in the same round.
    */
   unitDrillRound?: number;
+  /** Number of Drill actions used during `unitDrillRound` (legacy stamp = 1). */
+  unitDrillsUsed?: number;
   /**
    * Anime Hero Grades (anime.heroGrades, §3.11): the game round each
    * once-per-round map SKILL node was last used, keyed by node id (Forced
@@ -12072,7 +12073,7 @@ export type AdventureState = {
    * Neutral Rank-Up (optional module): frozen at setup when either surface
    * enabled it (`wog.neutralRankUp` / `anime.neutralRankUp`). Absent/false = OFF:
    * neutral guards never rank up (byte-identical). See src/engine/unit-experience.ts
-   * (`neutralRankUpActive`, `applyNeutralRoundsRank`, `neutralStackRankFold`).
+   * (`neutralRankUpActive`, `applyNeutralRoundsRank`, `neutralBankMirrorXp`).
    */
   neutralRankUp?: boolean;
   /**

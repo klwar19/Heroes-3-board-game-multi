@@ -51,6 +51,7 @@ import {
   townHasBuildingEffect,
   unlockedRecruitTiers,
   drillableArmyUnits,
+  unitDrillGoldCost,
   unitDrillAvailable,
   heroHasFreeGateStep
 } from "./adventure";
@@ -64,7 +65,6 @@ import {
 import { MGQ_SPIRIT_LABELS, mgqContractedSpirits } from "./mgq-spirits";
 import { mgqGoldContractAllows } from "./mgq-contracts";
 import { mgqGranberiaFirstAttackAvailable } from "./mgq-hero-specialties";
-import { DRILL_UNIT_GOLD_COST } from "@/data/units/experience";
 import { firstPlayerCeremonyPending } from "./first-player";
 import { grailBuildAt, grailDigMovementCost } from "./map-design-features";
 import {
@@ -11866,9 +11866,11 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // still below max veteran rank. All no-ops when the rule is off.
   if (unitDrillAvailable(state, playerId)) {
     for (const armyUnit of drillableArmyUnits(state, playerId)) {
+      const cost = unitDrillGoldCost(armyUnit);
+      if ((player.resources.gold ?? 0) < cost) continue;
       const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       actions.push({
-        label: `Drill ${unitName} (${DRILL_UNIT_GOLD_COST} gold → +1 unit XP)`,
+        label: `Drill ${unitName} (${cost} gold → +1 unit XP)`,
         action: { type: "DRILL_UNIT", playerId, armyUnitId: armyUnit.id }
       });
     }

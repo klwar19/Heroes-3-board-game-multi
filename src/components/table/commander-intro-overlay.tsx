@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 /**
  * WOG Commanders — the one-time "how your commander gets placed" popup, shown at
  * the START of a game that runs the Commanders module (user rule: "show big pop
@@ -25,6 +27,8 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { commanderGradesOf, commandersModuleEnabled, COMMANDER_SORT_SPEED_GRADE } from "@/engine";
+import { commanderDefinitions, type CommanderSlug } from "@/data/commanders";
+import { assetUrl } from "@/lib/asset-url";
 import type { GameState, PlayerId } from "@/engine/state";
 
 const STORAGE_KEY = "binh-commander-intro";
@@ -113,6 +117,7 @@ export function CommanderIntroOverlay({
   }
 
   const commander = viewerPlayerId ? state.players[viewerPlayerId]?.commander : undefined;
+  const definition = commander ? commanderDefinitions[commander.slug as CommanderSlug] : undefined;
   const speedGrade = commander ? commanderGradesOf(commander).speed : 0;
   const unlocked = speedGrade >= COMMANDER_SORT_SPEED_GRADE;
 
@@ -129,27 +134,17 @@ export function CommanderIntroOverlay({
       <div className="commanderLevelUpModal" onClick={(event) => event.stopPropagation()}>
         <div className="commanderLevelUpBanner">⚔ COMMANDERS — PLACING YOUR COMMANDER ⚔</div>
         <div className="commanderLevelUpModalBody commanderLevelUpScroll">
+          {definition?.cardImage ? (
+            <div className="commanderLevelUpFace commanderIntroFace">
+              <img alt={definition.name} src={assetUrl(definition.cardImage)} />
+            </div>
+          ) : null}
           <p>
-            You are playing with <strong>Commanders</strong>. Until you raise your commander&apos;s{" "}
-            <strong>Speed</strong> grade, it is <strong>placed automatically</strong> at the start of every battle —
-            your own back row first, then the front row. You cannot move it during setup.
+            At Speed grade 0, your commander is <strong>placed automatically</strong> in every battle.
           </p>
           <p>
-            <strong>Raise the Speed grade just once</strong> (spend one commander stat point on Speed when your hero
-            levels up) and from then on your commander is <strong>always arranged together with your units</strong>{" "}
-            before every battle, like any other body in your formation.
-          </p>
-          <p>
-            Abilities that already grant that arrangement — the Cove Sea Marshal&apos;s{" "}
-            <strong>Vanguard Marshal</strong> specialty (shared by the Bulwark Rune Keeper&apos;s Ruler and Little
-            Busters&apos; Kyousuke) and the <strong>Marshal&apos;s War Horn</strong> equipment — additionally give the
-            commander <strong>+2 Speed for the whole combat</strong> when it starts the fight on your{" "}
-            <strong>front line</strong>. The Speed-grade unlock alone does not grant that bonus.
-          </p>
-          <p>
-            {unlocked
-              ? `Your commander's Speed grade is ${speedGrade} — you already place it yourself.`
-              : "Your commander's Speed grade is 0 — it is auto-placed for now."}
+            Spend <strong>1 point on Speed</strong> to always arrange it with your units
+            {unlocked ? ` — Speed ${speedGrade} already unlocks this.` : "."}
           </p>
         </div>
         <button type="button" className="commanderLevelUpDone" onClick={dismiss}>

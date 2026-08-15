@@ -200,6 +200,8 @@ import {
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
+  neutralBankMirrorXp,
+  neutralRankUpActive,
   unitExperienceActive,
   unitRankFold,
   unitRankForExperience,
@@ -207,7 +209,7 @@ import {
 } from "./unit-experience";
 import { mgqEffectiveJob, withMgqJobAbilities } from "./mgq-jobs";
 import { maxHealthAfterUnitAbilityEffects, movementTypeAfterUnitAbilityEffects } from "./unit-abilities";
-import { DRILL_UNIT_GOLD_COST, MAX_UNIT_RANK } from "@/data/units/experience";
+import { DRILL_UNIT_GOLD_COST_BY_TIER, MAX_UNIT_RANK } from "@/data/units/experience";
 import type {
   ActiveEffectState,
   AdventureReward,
@@ -3065,26 +3067,43 @@ export function drillableArmyUnits(state: GameState, playerId: PlayerId): ArmyUn
   });
 }
 
+/** Recruited Neutrals train cheaply; faction cards use their printed tier. */
+export function unitDrillGoldCost(armyUnit: ArmyUnitState): number {
+  if (armyUnit.side === "neutral") return 1;
+  const tier = coreUnitDefinitions[armyUnit.unitDefId]?.tier ?? "gold";
+  return DRILL_UNIT_GOLD_COST_BY_TIER[tier];
+}
+
+/** Drill uses per round scale with the main hero: 1 normally, 2 at IV, 3 at VII. */
+export function unitDrillLimit(state: GameState, playerId: PlayerId): number {
+  const level = getMainHero(state, playerId)?.level ?? 1;
+  return level >= 7 ? 3 : level >= 4 ? 2 : 1;
+}
+
+export function unitDrillsUsedThisRound(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  return player?.unitDrillRound === state.round ? Math.max(0, player.unitDrillsUsed ?? 1) : 0;
+}
+
 /**
  * Whether DRILL_UNIT is available right now: Unit Experience on, the player's
  * main hero standing in an OWN Town (the training grounds), the gold cost
- * covered, once per own turn, and at least one card still below max rank.
+ * covered, within the hero-level use limit, and at least one card below max rank.
  */
 export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolean {
   if (!unitExperienceActive(state)) {
     return false;
   }
   const player = state.players[playerId];
-  if (!player || player.unitDrillRound === state.round) {
-    return false;
-  }
-  if ((player.resources.gold ?? 0) < DRILL_UNIT_GOLD_COST) {
+  if (!player || unitDrillsUsedThisRound(state, playerId) >= unitDrillLimit(state, playerId)) {
     return false;
   }
   if (!mainHeroInOwnTown(state, playerId)) {
     return false;
   }
-  return drillableArmyUnits(state, playerId).length > 0;
+  return drillableArmyUnits(state, playerId).some(
+    (armyUnit) => (player.resources.gold ?? 0) >= unitDrillGoldCost(armyUnit)
+  );
 }
 
 /** The single Secondary Hero a player may field, if they have gained one. */
@@ -14346,6 +14365,23 @@ export function buildCreatureBankCombatUnits(
     // Re-derive the fighting statistics so the token's bonus is baked in.
     applyUnitCurrentSide(unit, ruleset, sideOverrides);
     stackedCount += 1;
+  }
+
+  // Neutral Rank-Up is a separate optional rule from player Unit Experience.
+  // Every neutral-owned bank defender uses its bank token's Far/Near schedule;
+  // Stack Tokens remain their ordinary independent stat/absorb mechanic.
+  if (neutralRankUpActive(state)) {
+    const bankTier = CREATURE_BANKS[bankId].tier;
+    for (const unit of units) {
+      if (!unit.unitDefId) continue;
+      const mirroredXp = neutralBankMirrorXp(unit.unitDefId, bankTier, state.round);
+      if (mirroredXp > 0) {
+        unit.unitExperience = mirroredXp;
+      } else {
+        delete unit.unitExperience;
+      }
+      applyUnitCurrentSide(unit, ruleset, sideOverrides);
+    }
   }
 
   return { units, stackedCount };

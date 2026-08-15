@@ -705,7 +705,9 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
 `unit-rank-badge.test.tsx`, `board.test.tsx`, `game-options-tabs.test.tsx`.
 - XP: after a WON combat the surviving DEPLOYED cards gain
   `unitExperienceForWonCombat` (guard = Field Difficulty, bank = max(2, Stacked),
-  PvP = 2), riding the CARD (`ArmyUnitState.experience`).
+  PvP = 2), riding the CARD (`ArmyUnitState.experience`). A fight against any
+  neutral-owned Veteran guard adds +1 XP; Elite adds +2 XP (highest rank wins,
+  once per fight), including Far/Near Creature-Bank defenders.
 - Four ranks (`UNIT_RANK_THRESHOLDS` bronze 3/6/10/14, silver 4/8/13/18, gold+azure
   5/10/16/22); each unit has a 4-step schedule (`rankScheduleFor`) whose steps are
   EITHER stats OR one already-implemented ability appended at runtime by
@@ -735,7 +737,8 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   Protocol v33 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
   layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
-  never dilutes. Drill: 2 gold for +1 XP in an OWN Town, once per own turn.
+  never dilutes. Drill in an OWN Town costs 1 gold for bronze or recruited Neutral,
+  2 for silver, 3 for gold/azure; heroes get 1/2/3 uses per round at levels I/IV/VII.
 - LIMITS: **Quick Combat trains nobody**; Clone tokens and specialty covers ignore
   ranks; the AI drills from surplus gold but is not a veterancy planner.
 
@@ -744,15 +747,17 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
 NEUTRAL guards gain the EXISTING veteran ranks as the game ages. ONE boolean from
 `wog.neutralRankUp` / `anime.neutralRankUp` frozen onto `adventure.neutralRankUp`;
 constants and reads all in `src/engine/unit-experience.ts`
-(`NEUTRAL_ROUNDS_RANK_CAP` 2, `NEUTRAL_STACK_RANK` 1, `applyNeutralRoundsRank`,
-`neutralStackRankFold`). Pinned in `neutral-rank-up.test.ts`, `board.test.tsx`,
+(`NEUTRAL_ROUNDS_RANK_CAP` 3, `NEUTRAL_GUARD_ROUND_THRESHOLDS`,
+`NEUTRAL_BANK_ROUND_THRESHOLDS`, `applyNeutralRoundsRank`, `neutralBankMirrorXp`).
+Pinned in `neutral-rank-up.test.ts`, `board.test.tsx`,
 `game-options-tabs.test.tsx`.
-- ROUNDS half: at the one non-bank mint seam (`revealNeutralArmy`) every guard folds
-  to `min(2, rankForXp(tier, round-1))` — bronze r4/r7, silver r5/r9, gold+azure
-  r6/r11 — capped at Veteran by mirroring a CAPPED virtual XP. Rounds 1–3 unchanged.
-- STACKS half: a bank defender CARRYING a Stack Token fights at Seasoned (bank
-  branch of `applyUnitCurrentSide`); absorbing the token reverts it. Banks never
-  round-rank, so the halves never stack.
+- FIELD GUARDS: at `revealNeutralArmy`, neutral-owned bronze reaches
+  Seasoned/Veteran/Elite at rounds 3/5/8, silver at 6/8/12, gold+azure at
+  6/10/14. Elite is the cap; mirrored real XP keeps mid-combat recomputes stable.
+- CREATURE BANKS: every defender follows the bank token's map band — Far
+  Seasoned/Veteran/Elite at rounds 4/6/9, Near at 6/8/12 — independent of Stack
+  Tokens. Player-controlled recruited Neutrals are never gated here; their
+  persistent XP belongs exclusively to Unit Experience.
 - LIMITS: Quick Combat and the polish-quick-combat strength read IGNORE ranks (a
   FOUGHT-OUT fight gets harder, never a skipped one); rewards/XP are UNCHANGED; the
   AI ignores ranks; the only preview is the veteran badge on the combat card.

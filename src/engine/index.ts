@@ -347,7 +347,7 @@ export {
   type UnitFlipSide
 } from "./unit-transforms";
 export { markUnitRemovedIfNeeded } from "./combat-units";
-export { makeCombatUnitFromArmy } from "./adventure";
+export { makeCombatUnitFromArmy, unitDrillGoldCost, unitDrillLimit, unitDrillsUsedThisRound } from "./adventure";
 export {
   armyUnitRankInfo,
   unitExperienceActive,

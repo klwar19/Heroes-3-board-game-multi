@@ -47,21 +47,19 @@ describe("Commanders intro popup", () => {
     expect(text).toMatch(/placed automatically/i);
     // Half 2: raising Speed once unlocks placing/sorting it yourself, always.
     expect(text).toMatch(/Speed/);
-    expect(text).toMatch(/always arranged together with your units/i);
-    // ...and the ability-only front-line buff.
-    expect(text).toMatch(/\+2 Speed/);
-    expect(text).toMatch(/front line/i);
+    expect(text).toMatch(/arrange it with your units/i);
+    expect(dialog.querySelector('img[alt="Paladin"]')).toBeTruthy();
+    expect(dialog.querySelectorAll("p")).toHaveLength(2);
     // It portals to <body>, like the level-up modal it shares chrome with.
     expect(dialog.parentElement).toBe(document.body);
   });
 
   it("reports the viewer's CURRENT Speed grade (auto-placed vs already yours)", () => {
     render(<CommanderIntroOverlay state={stateWithCommander("g-locked", 0)} viewerPlayerId="p1" />);
-    expect(screen.getByRole("dialog").textContent).toMatch(/Speed grade is 0/);
+    expect(screen.getByRole("dialog").textContent).toMatch(/Speed grade 0/);
     cleanup();
     render(<CommanderIntroOverlay state={stateWithCommander("g-unlocked", 2)} viewerPlayerId="p1" />);
-    expect(screen.getByRole("dialog").textContent).toMatch(/Speed grade is 2/);
-    expect(screen.getByRole("dialog").textContent).toMatch(/already place it yourself/i);
+    expect(screen.getByRole("dialog").textContent).toMatch(/Speed 2 already unlocks this/i);
   });
 
   it("one click dismisses it and it never returns for the same game", () => {

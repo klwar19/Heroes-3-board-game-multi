@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, ChevronsUp, Crown, Layers, Lock, Sparkles, Swords, X } from "lucide-react";
+import { ArrowLeft, ChevronsUp, Layers, X } from "lucide-react";
 
 import { assetUrl } from "@/lib/asset-url";
 import { factionUiLexicon } from "@/data/faction-theme";
@@ -33,6 +33,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
+import { DrillUnitButton } from "@/components/adventure/drill-unit-button";
 
 export function armyUnitPrintedSide(
   def: UnitDefinition | undefined,
@@ -224,7 +225,9 @@ export function UnitExperienceWindow({
             <p className="unitXpSources">
               Click a unit to open its full rank board. Rank 1 is focused basic training; later ranks grant stats,
               abilities, or a signature combination of both. XP comes from won fights you survived, or {lexicon.train}{" "}
-              (2 gold → +1 XP). Reinforce halves XP; Stacks cost 1 XP; Quick Combat trains nobody.
+              (1–3 gold → +1 XP). Recruited Neutrals and bronze cost 1; silver costs 2; gold costs 3. Your hero can
+              Drill twice from level IV and three times from level VII. Reinforce halves XP; Stacks cost 1 XP;
+              Quick Combat trains nobody. Defeating Veteran neutral-owned guards adds +1 XP; Elite adds +2 XP.
             </p>
             <div className="unitXpPicker" aria-label="Army unit list">
               {army.map((unit) => {
@@ -343,9 +346,14 @@ export function UnitExperienceWindow({
                 {onAction && (detail.drillAction || detail.reinforceAction || detail.stackAction) ? (
                   <div className="armyUnitActions">
                     {detail.drillAction ? (
-                      <button onClick={() => onAction(detail.drillAction!.action)} type="button">
-                        <Sparkles size={16} /> {lexicon.train} · 2 gold → +1 XP
-                      </button>
+                      <DrillUnitButton
+                        action={detail.drillAction.action}
+                        onAction={onAction}
+                        playerId={playerId}
+                        state={state}
+                        unit={detail.unit}
+                        unitName={detail.def.name}
+                      />
                     ) : null}
                     {detail.reinforceAction ? (
                       <button onClick={() => onAction(detail.reinforceAction!.action)} type="button">
@@ -380,7 +388,7 @@ export function UnitExperienceWindow({
                     key={rank}
                   >
                     <span className="unitXpRankIcon" aria-hidden="true">
-                      {reached ? <Crown size={20} /> : next ? <Swords size={20} /> : <Lock size={18} />}
+                      <RankBadgeIcon large rank={rank} />
                     </span>
                     <b>
                       {rank} · {UNIT_RANK_NAMES[rank]}
