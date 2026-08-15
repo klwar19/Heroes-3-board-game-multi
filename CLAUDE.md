@@ -710,13 +710,18 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   5/10/16/22); each unit has a 4-step schedule (`rankScheduleFor`) whose steps are
   EITHER stats OR one already-implemented ability appended at runtime by
   `withRankAbilities` (printed card data is never edited).
-- **Schedule precedence is PER RANK** (2026-08-15): an explicit per-unit override >
-  the hand-authored `UNIT_RANK_SCHEDULES` entry (127 units — this is what keeps
-  `kansen-full-barrage`, `gorgon-death-stare`, `bulwark-thick-hide`… reachable) >
-  the flavour generator. STATS payloads always come from the per-unit
-  `unitStatStepsFor` ladder (`UNIT_STAT_STEPS` survives only through the deprecated
-  2-arg overload), so a bespoke `S()` step and the generator compose without
-  double-granting. `hasUniqueRankSchedule` is the bespoke read.
+- **Schedule resolution has exactly TWO tiers**: an explicit per-unit OVERRIDE
+  (the signature ranks) > the FLAVOUR GENERATOR. The old hand-authored
+  `UNIT_RANK_SCHEDULES` table (plus `RANK_TEMPLATES` /
+  `buildScheduleFromTemplate` / `scheduleTemplateId`) is **DELETED** — the
+  26f6e37f/2d2da234 redesign replaced it, and `docs/unit-experience-balance-sheet.md`
+  is the DESIGN AUTHORITY (regenerate with
+  `npx tsx scripts/generate-unit-experience-balance-sheet.ts` and read the diff as
+  the review). Do NOT reintroduce a bespoke schedule table: a 2026-08-15 audit
+  re-plugged it into the resolver and silently changed 127 units' rewards.
+  STATS payloads always come from the per-unit `unitStatStepsFor` ladder
+  (`UNIT_STAT_STEPS` survives only through the deprecated 2-arg overload).
+  `hasUniqueRankSchedule` = "this unit owns an explicit override".
 - **Guarded Stance** is `FLAT_DEFENSE_WHEN_ATTACKED` — +1 Defense on EVERY incoming
   attack, folded in `getAttackStackDetails`, NOT `DEFEND_BONUS` (Mammoths' Thick
   Hide, still Defense-token-gated). It was inert before; damage deltas +
@@ -727,7 +732,7 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   reader already answers (MINIMUM_ATTACK_DIE, ON_ATTACK_HEAL_SELF, SELF_REBIRTH_ONCE,
   DOUBLE_ATTACK, ATTACK_ROLL_ADVANTAGE coverage, MOVE_ANYWHERE), falling through to
   the next choice. Both are library-wide INVARIANT sweeps in `unit-experience.test.ts`.
-  Protocol v32 (`npm run deploy:partykit` owed).
+  Protocol v33 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
   layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
   never dilutes. Drill: 2 gold for +1 XP in an OWN Town, once per own turn.

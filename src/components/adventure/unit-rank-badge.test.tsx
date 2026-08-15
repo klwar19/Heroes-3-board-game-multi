@@ -26,21 +26,22 @@ function makeState(unitExperience: boolean, seed: string): GameState {
     ruleset: "legacy",
     ...(unitExperience ? { unitExperience: true } : {})
   } as Parameters<typeof createAdventureGameState>[0]);
-  // Halberdiers standard path: R3 = 2 stats steps (+Def +Atk), R2 ability
+  // Halberdiers (generator-served A A S A): R1/R2 are ability ranks, so the
+  // per-unit ladder's FIRST stat step (+1 Attack) lands at R3 — 10 XP = rank 3.
   state.players.p1.army = [{ id: "vets", unitDefId: "castle.halberdiers", side: "few", experience: 10 }];
   return state;
 }
 
 describe("ArmyPanel veteran rank badge (unit experience)", () => {
-  it("shows rank badge and schedule-folded stats for a rank-3 standard-path unit", () => {
+  it("shows rank badge and schedule-folded stats for a rank-3 unit", () => {
     renderArmy(makeState(true, "rank-badge-on"));
     const badge = document.querySelector(".unitRankBadge.rank-3");
     expect(badge).toBeTruthy();
     const printed = coreUnitDefinitions["castle.halberdiers"]!.few!;
     const stats = document.querySelector(".armyUnitRow small")?.textContent ?? "";
-    // R1 stats +1 Def, R3 stats +1 Atk (R2 is ability)
+    // R1/R2 are ability ranks; R3 is the first stats rank and pays +1 Attack.
     expect(stats).toContain(`A${printed.attack + 1}`);
-    expect(stats).toContain(`D${printed.defense + 1}`);
+    expect(stats).toContain(`D${printed.defense}`);
   });
 
   it("CONTROL — with the rule off the same card shows printed stats and no badge", () => {
@@ -125,9 +126,10 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("STATS");
     expect(text).toContain("ABILITY");
     expect(text).toContain("at 3 XP");
-    // Halberdiers standard path ability rank (R2) — name + full rules text.
-    expect(text).toContain("Thick Hide");
-    expect(text).toContain("+1 Defense while this unit is defending");
+    // Halberdiers' resolved ability ranks — name + full rules text.
+    expect(text).toContain("Aggressive Drill"); // R1
+    expect(text).toContain("Charge"); // R2
+    expect(text).toContain("+1 Attack when this unit attacks after moving this activation");
     fireEvent.click(dialog.querySelector(".armyUnitActions button") as Element);
     expect(dispatched[0]).toEqual({ type: "DRILL_UNIT", playerId: "p1", armyUnitId: "vets" });
   });

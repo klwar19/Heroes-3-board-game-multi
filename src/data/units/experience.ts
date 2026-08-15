@@ -9,7 +9,6 @@ export type {
   UnitRankStatBonus,
   RankSchedule,
   RankStep,
-  RankTemplateId,
   RankAbilityTrackId
 } from "./experience-rank-abilities";
 
@@ -19,16 +18,9 @@ export {
   AZUR_LANE_RANK_ABILITY_ICONS,
   LEGEND_UNIT_RANK_ABILITIES,
   RANK_ABILITY_TRACK_LABELS,
-  RANK_ABILITY_TRACKS,
-  RANK_SCHEDULES,
-  RANK_TEMPLATES,
-  RANK_TEMPLATE_LABELS,
   UNIT_RANK_ABILITY_ICONS,
-  UNIT_RANK_ABILITY_SCHEDULES,
-  UNIT_RANK_SCHEDULES,
   UNIT_RANK_TRACK_OVERRIDES,
   UNIT_STAT_STEPS,
-  buildScheduleFromTemplate,
   hasUniqueRankSchedule,
   inferFlavour,
   inferRankAbilityTrack,
@@ -36,7 +28,6 @@ export {
   rankAbilityTrackFor,
   rankScheduleFor,
   scheduleAbilityCount,
-  scheduleTemplateId,
   unitRankAbilityIcon,
   unitStatStepsFor
 } from "./experience-rank-abilities";

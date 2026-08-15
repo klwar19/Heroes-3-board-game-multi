@@ -10,7 +10,6 @@ import {
   UNIT_STAT_STEPS,
   UNIT_XP_BANK_MIN,
   UNIT_XP_PVP_WIN,
-  UNIT_RANK_SCHEDULES,
   hasUniqueRankSchedule,
   rankScheduleFor,
   rankAbilityTrackFor,
@@ -149,8 +148,16 @@ describe("Unit Experience — rank math & either/or rewards", () => {
       initiative: 0
     });
     expect(unitStatStepsFor("castle.halberdiers", "bronze")[0]).not.toEqual(UNIT_STAT_STEPS.bronze[0]);
-    // …and the cumulative fold really uses it: halberdiers R1 is +1 Attack.
-    expect(unitRankStatBonusesFor("castle.halberdiers", "bronze", 1)).toEqual({
+    // …and the cumulative fold really uses it. Halberdiers' R1/R2 are ability
+    // ranks, so their FIRST stat step lands at R3 — and it is the per-unit
+    // ladder's +1 Attack, not the bronze table's +1 Defense.
+    expect(unitRankStatBonusesFor("castle.halberdiers", "bronze", 2)).toEqual({
+      attack: 0,
+      defense: 0,
+      health: 0,
+      initiative: 0
+    });
+    expect(unitRankStatBonusesFor("castle.halberdiers", "bronze", 3)).toEqual({
       attack: 1,
       defense: 0,
       health: 0,
@@ -184,7 +191,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     }
   });
 
-  it("R1 uses only the approved small reward pool (GENERATOR-served units)", () => {
+  it("R1 uses only the approved small reward pool (every unit but the two overrides)", () => {
     const flatDefenseIds = new Set([
       "stronghold.wolf_raiders", "fuyuki.riders", "azure_breeze.spirit_crane", "hidden_leaf.anbu",
       "azur_lane.javelin", "heavenly_demon.bone_reavers", "little_busters.haruka", "mgq.miyabi",
@@ -194,7 +201,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
     ]);
     for (const def of Object.values(coreUnitDefinitions)) {
       const step = rankScheduleFor(def.id)[1];
-      // The two EXPLICIT R1 overrides beat both the bespoke table and the pool.
+      // The two EXPLICIT R1 overrides are the ONLY units outside the pool.
       if (def.id === "fortress.hydras") {
         expect(step.kind === "ability" && step.choices).toEqual(["veteran-fear-aura"]);
         continue;
@@ -203,13 +210,10 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         expect(step.kind === "ability" && step.choices).toEqual(["veteran-moving-pierce"]);
         continue;
       }
-      // A bespoke UNIT_RANK_SCHEDULES entry OUTRANKS the generator (see the
-      // precedence test below), so its hand-authored R1 is not held to the
-      // generator's small-reward pool. Its stat budget still is — the
-      // one-point assertion runs for EVERY unit below.
+      // Every other unit is generator-served at R1: one point of stats, or one
+      // of the three approved small abilities.
       const gain = unitStatStepsFor(def.id, def.tier)[0]!;
       expect(gain.attack + gain.defense + gain.health + gain.initiative, def.id).toBe(1);
-      if (hasUniqueRankSchedule(def.id)) continue;
       if (step.kind === "stats") {
         expect(gain.attack, def.id).toBe(0);
         if (gain.defense > 0) expect(flatDefenseIds.has(def.id), def.id).toBe(true);
@@ -323,31 +327,71 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         for (const id of prev) expect(cur).toContain(id);
       }
     }
-    // hasUniqueRankSchedule is a REAL read again: some of these units are served
-    // by the hand-authored table and some by the generator. (It used to be
-    // `Boolean(coreUnitDefinitions[id])` — a tautology that could never fail.)
-    expect(uniqueCount).toBeGreaterThan(80);
-    expect(uniqueCount).toBeLessThan(unitIds.length);
+    // hasUniqueRankSchedule is a REAL read: it is true only for the units that
+    // own an EXPLICIT signature rank, false for everything the generator serves.
+    // (It used to be `Boolean(coreUnitDefinitions[id])` — a tautology that could
+    // never fail — and later a lookup in a bespoke table that no longer exists.)
+    expect(uniqueCount).toBeGreaterThan(5);
+    expect(uniqueCount).toBeLessThan(unitIds.length / 2);
   });
 
-  it("SCHEDULE PRECEDENCE: explicit override > bespoke UNIT_RANK_SCHEDULES > generator", () => {
-    // (i) an explicit per-unit override wins over the unit's own bespoke entry.
+  it("SCHEDULE PRECEDENCE: explicit per-unit override > flavour generator, and nothing else", () => {
+    // The redesign (26f6e37f / 2d2da234) has exactly TWO tiers. The old
+    // hand-authored UNIT_RANK_SCHEDULES table is DELETED, and
+    // docs/unit-experience-balance-sheet.md is the design authority.
+    //
+    // (i) an explicit override wins its rank…
     expect(hasUniqueRankSchedule("castle.crusaders")).toBe(true);
-    expect(UNIT_RANK_SCHEDULES["castle.crusaders"]![4]).not.toMatchObject({
-      choices: ["veteran-double-attack"]
-    });
     expect(rankScheduleFor("castle.crusaders")[4]).toMatchObject({
       kind: "ability",
       choices: ["veteran-double-attack"]
     });
-    // (ii) every OTHER rank of that same unit comes from the bespoke entry.
-    for (const r of [1, 2, 3] as const) {
-      expect(rankScheduleFor("castle.crusaders")[r], `crusaders R${r}`).toEqual(
-        UNIT_RANK_SCHEDULES["castle.crusaders"]![r]
-      );
-    }
-    // …and the bespoke entry is what keeps the lore-keyed arms reachable: a
-    // sweep of ids that exist ONLY inside UNIT_RANK_SCHEDULES.
+    // …while every OTHER rank of that same unit is the generator's cavalry
+    // rotation (a bespoke entry would have made R2 a single lore-keyed choice).
+    expect(rankScheduleFor("castle.crusaders")[2]).toEqual({
+      kind: "ability",
+      choices: [
+        "veteran-retaliation-fury",
+        "veteran-attack-when-attacking",
+        "wog-no-negative-attack-roll",
+        "commander-charge"
+      ]
+    });
+    expect(rankScheduleFor("castle.crusaders")[3]).toEqual({ kind: "stats" });
+
+    // (ii) a unit with NO override is the generator top to bottom. Halberdiers
+    // are the canonical case: the deleted table gave them S / A(thick-hide,
+    // air-shield) / S / S, so this whole schedule fails if a bespoke tier is
+    // ever re-plugged into the resolver.
+    expect(hasUniqueRankSchedule("castle.halberdiers")).toBe(false);
+    expect(rankScheduleFor("castle.halberdiers")).toEqual({
+      1: { kind: "ability", choices: ["veteran-attack-when-attacking"] },
+      2: {
+        kind: "ability",
+        choices: [
+          "commander-charge",
+          "wog-no-negative-attack-roll",
+          "veteran-attack-when-attacking",
+          "veteran-guarded-stance"
+        ]
+      },
+      3: { kind: "stats" },
+      4: {
+        kind: "ability",
+        choices: [
+          "veteran-defense-pierce",
+          "veteran-rebirth",
+          "unlimited-retaliation",
+          "commander-max-damage"
+        ]
+      }
+    });
+    expect(hasUniqueRankSchedule("neutral.boars")).toBe(false);
+    expect(rankScheduleFor("neutral.boars")[2].kind).toBe("ability");
+
+    // (iii) the reward economy is EXACTLY the override ids plus the generator
+    // pools. These arms lived only in the deleted table, so their reappearance
+    // in a resolved schedule means the bespoke tier is back.
     const reachable = new Set<string>();
     for (const unitDefId of Object.keys(coreUnitDefinitions)) {
       const schedule = rankScheduleFor(unitDefId);
@@ -356,7 +400,7 @@ describe("Unit Experience — rank math & either/or rewards", () => {
         if (step.kind !== "stats") for (const id of step.choices) reachable.add(id);
       }
     }
-    for (const bespokeOnlyId of [
+    for (const deletedTableOnlyId of [
       "kansen-full-barrage",
       "kansen-fleet-formation",
       "gorgon-death-stare",
@@ -369,12 +413,11 @@ describe("Unit Experience — rank math & either/or rewards", () => {
       "sandworm-strike-again",
       "ignore-combat-penalties"
     ]) {
-      expect(reachable.has(bespokeOnlyId), `${bespokeOnlyId} must stay reachable`).toBe(true);
+      expect(
+        reachable.has(deletedTableOnlyId),
+        `${deletedTableOnlyId} came only from the deleted UNIT_RANK_SCHEDULES table`
+      ).toBe(false);
     }
-    // (iii) a unit with NO bespoke entry falls through to the generator.
-    expect(hasUniqueRankSchedule("neutral.boars")).toBe(false);
-    expect(UNIT_RANK_SCHEDULES["neutral.boars"]).toBeUndefined();
-    expect(rankScheduleFor("neutral.boars")[2].kind).toBe("ability");
   });
 
   it("INVARIANT: a DOUBLE_ATTACK reward is never handed to a unit that cannot shoot", () => {
@@ -714,26 +757,31 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
   });
 
-  it("champions R4 (bespoke) always resolves the Attack die as +1 — R3 CONTROL rolls the scripted 0", () => {
-    // Champions carry EXPLICIT overrides at R1-R3; R4 falls through to the
-    // bespoke UNIT_RANK_SCHEDULES entry, whose first choice is
-    // commander-max-damage (MINIMUM_ATTACK_DIE 1). Observable with the harness'
-    // scripted "0" die: the blow lands one damage higher.
-    const control = resolveArmyAttack("uxp-elite-ctl", {
-      unitDefId: "castle.champions",
-      side: "few",
-      experience: 16
-    });
-    const elite = resolveArmyAttack("uxp-elite", {
-      unitDefId: "castle.champions",
-      side: "few",
-      experience: 22
-    });
-    expect(control.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(0);
-    expect(elite.combat!.units.unit_p2_skeletons.damage).toBe(
-      control.combat!.units.unit_p2_skeletons.damage + 1
+  it("champions R4 ignores retaliation (R3 CONTROL still takes it)", () => {
+    // Champions carry EXPLICIT overrides at R1-R3; R4 is the generator's
+    // cavalry capstone rotation, whose first choice is ignores-retaliation.
+    const control = resolveArmyAttack(
+      "uxp-elite-ctl",
+      { unitDefId: "castle.champions", side: "few", experience: 16 },
+      undefined,
+      6
     );
-    expect(unitRankAbilityGainsAt("castle.champions", 4)).toEqual(["commander-max-damage"]);
+    const elite = resolveArmyAttack(
+      "uxp-elite",
+      { unitDefId: "castle.champions", side: "few", experience: 22 },
+      undefined,
+      6
+    );
+    expect(control.combat!.units.unit_p1_griffins.damage, "rank 3 still takes retaliation").toBeGreaterThan(0);
+    expect(elite.combat!.units.unit_p1_griffins.damage, "rank 4 no retaliation").toBe(0);
+    expect(makeCombatUnitFromArmy(
+      { id: "c", unitDefId: "castle.champions", side: "few", experience: 22 },
+      "p1",
+      "u_c",
+      0,
+      "legacy"
+    )!.abilities).toContain("ignores-retaliation");
+    expect(unitRankAbilityGainsAt("castle.champions", 4)).toEqual(["ignores-retaliation"]);
   });
 
   it("marksmen R3 has 2 stats steps (+1 Def +1 Atk) but NOT HP/Init (those need a 3rd stats rank)", () => {
@@ -753,8 +801,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(r4.unitRank).toBe(4);
     expect(r4.attack).toBe(r3.attack);
     expect(r4.defense).toBe(r3.defense);
-    // Marksmen's bespoke R4 slot: precision first, the extra shot as the alt.
-    expect(r4.abilities).toContain("ignore-all-combat-penalties");
+    expect(r4.abilities).toContain("ranged-extra-shot-on-low-roll");
   });
 
   it("Black Dragons R3 gain +2 Initiative and +1 Attack against a slower target", () => {
@@ -926,26 +973,20 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
   });
 
-  it("halberdiers walk their bespoke S-A-S-S ladder: +Atk, ability, +Def, +HP", () => {
+  it("halberdiers R3 adds a single Attack stat while ability ranks stay stat-neutral", () => {
+    // Generator-served end to end (A / A / S / A): R1 and R2 are abilities, so
+    // the FIRST stat step of the per-unit ladder (+1 Attack) lands at R3.
     const plain = makeCombatUnitFromArmy({ ...HALBERDIERS }, "p1", "u_h0", 0, "legacy")!;
-    const r1 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 3 }, "p1", "u_h1", 0, "legacy")!;
     const r2 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 6 }, "p1", "u_h2", 0, "legacy")!;
     const r3 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 10 }, "p1", "u_h3", 0, "legacy")!;
-    const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 14 }, "p1", "u_h4", 0, "legacy")!;
     expect(unitRankStep("castle.halberdiers", 2)?.kind).toBe("ability");
-    // R1 stats step
-    expect(r1.attack).toBe(plain.attack + 1);
-    expect(r1.defense).toBe(plain.defense);
-    // R2 is the ability rank — no stat moves, the bespoke arm lands
-    expect(r2.attack).toBe(r1.attack);
-    expect(r2.defense).toBe(r1.defense);
-    expect(r2.abilities).toContain("bulwark-thick-hide");
-    // R3 / R4 stats steps
-    expect(r3.defense).toBe(plain.defense + 1);
-    expect(r3.maxHealth).toBe(plain.maxHealth);
+    expect(r2.attack).toBe(plain.attack);
+    expect(r2.abilities).toContain("commander-charge");
+    expect(r3.attack).toBe(plain.attack + 1);
+    expect(r3.defense).toBe(plain.defense);
+    const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 14 }, "p1", "u_h4", 0, "legacy")!;
     expect(r4.attack).toBe(r3.attack);
-    expect(r4.defense).toBe(r3.defense);
-    expect(r4.maxHealth).toBe(plain.maxHealth + 1);
+    expect(r4.abilities).toContain("veteran-defense-pierce");
   });
 
   it("mid-combat Pack→Few keeps rank folds", () => {
@@ -961,25 +1002,17 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     expect(unit.maxHealth).toBe(fewDef.health + 1);
   });
 
-  it("silver crusaders separate their R1 Initiative stat from the R2 charge ability", () => {
+  it("silver crusaders separate retaliation training from their R3 Initiative stat", () => {
     const CRUSADERS = { id: "xp_crusaders", unitDefId: "castle.crusaders", side: "few" as const };
     const plain = makeCombatUnitFromArmy({ ...CRUSADERS }, "p1", "u_s0", 0, "legacy")!;
     const r1 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 4 }, "p1", "u_s1", 0, "legacy")!;
-    const r2 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 8 }, "p1", "u_s2", 0, "legacy")!;
     const r3 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 13 }, "p1", "u_s3", 0, "legacy")!;
-    // R1 is the stats rank: only Initiative moves, and no ability lands.
-    expect(r1.initiative).toBe(plain.initiative + 1);
+    expect(r1.abilities).toContain("veteran-retaliation-fury");
     expect(r1.defense).toBe(plain.defense);
     expect(r1.attack).toBe(plain.attack);
-    expect(r1.abilities).toEqual(plain.abilities);
-    // R2 is the bespoke ability rank: the arm lands, no stat moves.
-    expect(r2.abilities).toContain("commander-charge");
-    expect(r2.initiative).toBe(r1.initiative);
-    expect(r2.defense).toBe(r1.defense);
-    // R3 is the next stats rank: Defense, not Initiative again.
-    expect(r3.defense).toBe(plain.defense + 1);
     expect(r3.initiative).toBe(plain.initiative + 1);
     expect(r3.attack).toBe(plain.attack);
+    expect(r3.defense).toBe(plain.defense);
     expect(r3.maxHealth).toBe(plain.maxHealth);
   });
 });

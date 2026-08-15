@@ -1,23 +1,23 @@
 /**
  * Unit Experience rank rewards — each of the 4 ranks is EITHER stats OR one
- * ability (never both on the same rank).
+ * ability (a signature rank may be a hybrid of both).
  *
- * THREE generic templates (ability budget, not tier):
- *   standard — 1 ability  (S A S S)
- *   strong   — 2 abilities (S A S A)
- *   rare     — 3 abilities (A S A A)
+ * RESOLUTION (the whole design, `rankScheduleFor` below): per rank,
+ *   (i)  an explicit per-unit OVERRIDE (the signature ranks), else
+ *   (ii) the FLAVOUR GENERATOR — a diversified small R1, themed R2/R3 and a
+ *        capstone R4 rotated per unit off `stableRankHash`.
+ * There is no third tier. Gold units do NOT get a higher ability budget — only
+ * slower XP thresholds.
  *
- * Gold units do NOT get a higher budget — only slower XP thresholds.
- * Unique schedules override the template for as many units as practical;
- * everything else falls back to a flavoured fill of one of the three templates.
+ * `docs/unit-experience-balance-sheet.md` is the DESIGN AUTHORITY: regenerate it
+ * with `npx tsx scripts/generate-unit-experience-balance-sheet.ts` after any
+ * change here and read the diff as the review.
  *
  * CLAUDE.md §2: every ability id is already-implemented.
  */
 
 import type { UnitTier } from "@/data/factions/types";
 import { coreUnitDefinitions } from "@/data/factions/units";
-
-export type RankTemplateId = "standard" | "strong" | "rare";
 
 export type RankStep =
   | { kind: "stats"; stats?: UnitRankStatBonus }
@@ -74,42 +74,6 @@ function H(stats: UnitRankStatBonus, ...choices: string[]): RankStep {
   return { kind: "hybrid", stats, choices };
 }
 
-/** Pattern skeletons (which ranks are stats vs ability). */
-export const RANK_TEMPLATES: Record<RankTemplateId, readonly ("stats" | "ability")[]> = {
-  // 1 ability
-  standard: ["stats", "ability", "stats", "stats"],
-  // 2 abilities
-  strong: ["stats", "ability", "stats", "ability"],
-  // 3 abilities
-  rare: ["ability", "stats", "ability", "ability"]
-};
-
-export const RANK_TEMPLATE_LABELS: Record<RankTemplateId, string> = {
-  standard: "Standard (1 ability)",
-  strong: "Strong (2 abilities)",
-  rare: "Rare (3 abilities)"
-};
-
-/** Build a schedule from a template + ability choice lists (length = ability slots). */
-export function buildScheduleFromTemplate(
-  template: RankTemplateId,
-  abilitySlots: readonly (readonly string[])[]
-): RankSchedule {
-  const pattern = RANK_TEMPLATES[template];
-  let ai = 0;
-  const steps: RankStep[] = [];
-  for (const kind of pattern) {
-    if (kind === "stats") {
-      steps.push(S());
-    } else {
-      const choices = abilitySlots[ai] ?? ["bulwark-thick-hide", "wog-no-negative-attack-roll"];
-      ai += 1;
-      steps.push(A(...choices));
-    }
-  }
-  return { 1: steps[0]!, 2: steps[1]!, 3: steps[2]!, 4: steps[3]! };
-}
-
 export function scheduleAbilityCount(schedule: RankSchedule): number {
   let n = 0;
   for (const r of [1, 2, 3, 4] as const) {
@@ -118,628 +82,20 @@ export function scheduleAbilityCount(schedule: RankSchedule): number {
   return n;
 }
 
-export function scheduleTemplateId(schedule: RankSchedule): RankTemplateId {
-  const n = scheduleAbilityCount(schedule);
-  if (n >= 3) return "rare";
-  if (n === 2) return "strong";
-  return "standard";
-}
-
 // ---------------------------------------------------------------------------
-// UNIQUE schedules — as many playable units as practical
-// Pattern always matches one of the three templates.
-// ---------------------------------------------------------------------------
-
-export const UNIT_RANK_SCHEDULES: Record<string, RankSchedule> = {
-  // ── Castle ──────────────────────────────────────────────────────────────
-  "castle.halberdiers": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "bulwark-air-shield"]
-  ]),
-  "castle.marksmen": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "castle.griffins": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"] // already print unlimited-retaliation
-  ]),
-  "castle.crusaders": buildScheduleFromTemplate("strong", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["commander-max-damage", "wog-no-negative-attack-roll"]
-  ]),
-  "castle.zealots": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "castle.champions": buildScheduleFromTemplate("rare", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["ignores-retaliation", "commander-max-damage"],
-    ["commander-max-damage", "wog-no-negative-attack-roll"]
-  ]),
-  "castle.archangels": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-
-  // ── Necropolis ──────────────────────────────────────────────────────────
-  "necropolis.skeletons": buildScheduleFromTemplate("rare", [
-    ["zombie-resilience-weak", "bulwark-thick-hide"],
-    ["bulwark-air-shield", "ignore-paralysis"],
-    ["ignore-paralysis", "wraith-heal-1"]
-  ]),
-  "necropolis.zombies": buildScheduleFromTemplate("strong", [
-    ["zombie-resilience-weak", "bulwark-thick-hide"],
-    ["ignore-paralysis", "zombie-resilience"]
-  ]),
-  "necropolis.wraiths": buildScheduleFromTemplate("strong", [
-    ["ignore-paralysis", "zombie-resilience-weak"],
-    ["wraith-heal-1", "reduce-spell-damage-1"]
-  ]),
-  "necropolis.vampires": buildScheduleFromTemplate("strong", [
-    ["ignore-paralysis", "zombie-resilience-weak"], // already print ignores-retaliation
-    ["wraith-heal-1", "zombie-resilience"]
-  ]),
-  "necropolis.liches": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "necropolis.dread_knights": buildScheduleFromTemplate("strong", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-  "necropolis.ghost_dragons": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-thick-hide"],
-    ["ignore-paralysis", "wog-fire-shield-1"]
-  ]),
-
-  // ── Dungeon ─────────────────────────────────────────────────────────────
-  "dungeon.troglodytes": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "dungeon.harpies": buildScheduleFromTemplate("rare", [
-    ["wog-no-negative-attack-roll", "bulwark-air-shield"],
-    ["ignores-retaliation", "commander-charge"],
-    ["veteran-double-attack-low-roll", "commander-max-damage"]
-  ]),
-  "dungeon.evil_eyes": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "dungeon.medusas": buildScheduleFromTemplate("rare", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ignore-combat-penalties"],
-    ["ignores-retaliation", "commander-max-damage"]
-  ]),
-  "dungeon.minotaurs": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["commander-max-damage", "commander-charge"]
-  ]),
-  "dungeon.manticores": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "bulwark-air-shield"],
-    ["wog-nightmare-fear", "ignore-paralysis"]
-  ]),
-  "dungeon.black_dragons": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-thick-hide"],
-    ["wog-fire-shield-1", "ignore-paralysis"]
-  ]),
-
-  // ── Rampart ─────────────────────────────────────────────────────────────
-  "rampart.centaurs": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "commander-charge"],
-    ["ignore-all-combat-penalties", "wog-no-negative-attack-roll"]
-  ]),
-  "rampart.dwarves": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["reduce-spell-damage-1", "commander-defense-token"]
-  ]),
-  "rampart.elves": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "rampart.pegasi": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"]
-  ]),
-  "rampart.dendroids": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "ignore-paralysis"]
-  ]),
-  "rampart.unicorns": buildScheduleFromTemplate("rare", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["unicorn-paralyze-retaliation", "reduce-spell-damage-1"],
-    ["ignore-all-combat-penalties", "ignore-paralysis"]
-  ]),
-  "rampart.gold_dragons": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-thick-hide"],
-    ["wog-fire-shield-1", "ignore-paralysis"]
-  ]),
-
-  // ── Inferno ─────────────────────────────────────────────────────────────
-  "inferno.familiars": buildScheduleFromTemplate("rare", [
-    ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
-    ["ignores-retaliation", "commander-charge"],
-    ["veteran-double-attack-low-roll", "commander-max-damage"]
-  ]),
-  "inferno.magogs": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-fire-shield-1"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "inferno.cerberi": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-fire-shield-1"],
-    ["unlimited-retaliation", "wog-nightmare-fear"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-  "inferno.demons": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "bulwark-thick-hide"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-  "inferno.pit_lords": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "bulwark-thick-hide"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-  "inferno.efreet": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "bulwark-thick-hide"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-  "inferno.arch_devils": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-
-  // ── Stronghold ──────────────────────────────────────────────────────────
-  "stronghold.goblins": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "stronghold.wolf_raiders": buildScheduleFromTemplate("strong", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["commander-max-damage", "wog-no-negative-attack-roll"]
-  ]),
-  "stronghold.orcs": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "stronghold.ogres": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "commander-max-damage"]
-  ]),
-  "stronghold.thunderbirds": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"]
-  ]),
-  "stronghold.cyclopes": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "commander-max-damage"]
-  ]),
-  "stronghold.behemoths": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["wog-nightmare-fear", "commander-charge"],
-    ["ignores-retaliation", "commander-max-damage"]
-  ]),
-
-  // ── Fortress ────────────────────────────────────────────────────────────
-  "fortress.gnolls": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "fortress.lizardmen": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "fortress.dragon_flies": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"]
-  ]),
-  "fortress.basilisks": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["ignore-paralysis", "commander-charge"]
-  ]),
-  "fortress.gorgons": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["wog-nightmare-fear", "commander-max-damage"]
-  ]),
-  "fortress.wyverns": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "bulwark-thick-hide"]
-  ]),
-  "fortress.hydras": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["unlimited-retaliation", "commander-defense-token"],
-    ["commander-defense-token", "ignore-paralysis"]
-  ]),
-
-  // ── Tower ───────────────────────────────────────────────────────────────
-  "tower.gremlins": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ranged-extra-shot-on-low-roll", "ignore-all-combat-penalties"]
-  ]),
-  "tower.gargoyles": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "reduce-spell-damage-1"]
-  ]),
-  "tower.iron_golems": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "tower.magi": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "tower.genies": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "wog-no-negative-attack-roll"]
-  ]),
-  "tower.nagas": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["unlimited-retaliation", "commander-max-damage"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-  "tower.titans": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"],
-    ["ignore-all-combat-penalties", "commander-max-damage"]
-  ]),
-
-  // ── Conflux ─────────────────────────────────────────────────────────────
-  "conflux.sprites": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"]
-  ]),
-  "conflux.storm_elementals": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "wog-no-negative-attack-roll"]
-  ]),
-  "conflux.ice_elementals": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-thick-hide"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "conflux.energy_elementals": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "wog-fire-shield-1"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-  "conflux.magma_elementals": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "bulwark-thick-hide"]
-  ]),
-  "conflux.magic_elementals": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "conflux.phoenixes": buildScheduleFromTemplate("rare", [
-    ["wog-fire-shield-1", "reduce-spell-damage-1"],
-    ["wog-fire-shield-1", "ignore-paralysis"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-
-  // ── Cove ────────────────────────────────────────────────────────────────
-  "cove.oceanids": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "bulwark-air-shield"]
-  ]),
-  "cove.seamen": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "cove.sea_dogs": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "cove.ayssids": buildScheduleFromTemplate("rare", [
-    ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
-    ["ignores-retaliation", "commander-charge"],
-    ["veteran-double-attack", "commander-max-damage"]
-  ]),
-  "cove.sorceresses": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "cove.nix": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "ignore-paralysis"]
-  ]),
-  "cove.haspids": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["ignores-retaliation", "commander-charge"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-
-  // ── Bulwark ─────────────────────────────────────────────────────────────
-  "bulwark.kobolds": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "bulwark.mountain_rams": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-charge"],
-    ["commander-defense-token", "wog-no-negative-attack-roll"]
-  ]),
-  "bulwark.snow_elves": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "bulwark.yetis": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["ignore-paralysis", "commander-max-damage"]
-  ]),
-  "bulwark.shamans": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "bulwark.mammoths": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "commander-defense-token"], // pack already thick-hide
-    ["commander-defense-token", "reduce-spell-damage-1"]
-  ]),
-  "bulwark.jotunns": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["reduce-spell-damage-1", "ignore-paralysis"],
-    ["commander-defense-token", "ignore-paralysis"]
-  ]),
-
-  // ── Factory ─────────────────────────────────────────────────────────────
-  "factory.halflings": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ranged-extra-shot-on-low-roll", "ignore-all-combat-penalties"]
-  ]),
-  "factory.mechanics": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "wog-no-negative-attack-roll"]
-  ]),
-  "factory.armadillos": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "reduce-spell-damage-1"]
-  ]),
-  "factory.automatons": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "factory.sandworms": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-charge"],
-    ["wog-nightmare-fear", "ignore-paralysis"]
-  ]),
-  "factory.gunslingers": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "factory.couatls": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"]
-  ]),
-  "factory.dreadnoughts": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "reduce-spell-damage-1"],
-    ["ignore-paralysis", "reduce-spell-damage-1"],
-    ["commander-defense-token", "wog-fire-shield-1"]
-  ]),
-
-  // ── Anime Fuyuki ────────────────────────────────────────────────────────
-  "fuyuki.assassins": buildScheduleFromTemplate("rare", [
-    ["wog-no-negative-attack-roll", "bulwark-thick-hide"],
-    ["ignores-retaliation", "commander-charge"],
-    ["veteran-double-attack", "commander-max-damage"]
-  ]),
-  "fuyuki.riders": buildScheduleFromTemplate("strong", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["commander-max-damage", "wog-no-negative-attack-roll"]
-  ]),
-  "fuyuki.lancers": buildScheduleFromTemplate("strong", [
-    ["commander-charge", "bulwark-thick-hide"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-  "fuyuki.archers": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "fuyuki.casters": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  "fuyuki.sabers": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["veteran-double-attack", "commander-max-damage"],
-    ["ignores-retaliation", "commander-max-damage"]
-  ]),
-  "fuyuki.berserkers": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-charge"],
-    ["commander-max-damage", "wog-nightmare-fear"]
-  ]),
-
-  // ── Anime Azure Breeze ──────────────────────────────────────────────────
-  "azure_breeze.outer_disciples": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "azure_breeze.inner_swordsmen": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "commander-charge"]
-  ]),
-  // LV3 bronze flyer.
-  "azure_breeze.spirit_crane": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"]
-  ]),
-  "azure_breeze.sect_protectors": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"], // few already Guarded
-    ["wog-fire-shield-1", "ignore-paralysis"]
-  ]),
-  // LV5 silver (Qingyun specialty).
-  "azure_breeze.true_inheritors": buildScheduleFromTemplate("rare", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"],
-    ["veteran-double-attack", "commander-max-damage"],
-    ["commander-max-damage", "ignore-paralysis"] // pack already no-retaliation
-  ]),
-  // LV6 gold formation mage.
-  "azure_breeze.core_master": buildScheduleFromTemplate("strong", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"],
-    ["ignore-paralysis", "commander-defense-token"]
-  ]),
-  // LV7 gold mountain tank.
-  "azure_breeze.mountain_guardian": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "reduce-spell-damage-1"]
-  ]),
-
-  // ── Anime Hidden Leaf ────────────────────────────────────────────────────
-  // Swarm veterancy: bronze standard (1 ability), silver/gold strong (2). Every
-  // choice is an already-implemented, non-Stacked ability drawn from the same
-  // pools the Fuyuki/Azure schedules use.
-  "hidden_leaf.genin_squad": buildScheduleFromTemplate("standard", [
-    ["bulwark-thick-hide", "wog-no-negative-attack-roll"]
-  ]),
-  "hidden_leaf.medical_nin": buildScheduleFromTemplate("standard", [
-    ["reduce-spell-damage-1", "bulwark-air-shield"]
-  ]),
-  // LV3 bronze ranged skirmisher.
-  "hidden_leaf.anbu": buildScheduleFromTemplate("standard", [
-    ["bulwark-air-shield", "ranged-extra-shot-on-low-roll"]
-  ]),
-  // LV4 silver ranged elite.
-  "hidden_leaf.jonin": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "wog-no-negative-attack-roll"],
-    ["ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll"]
-  ]),
-  // LV5 silver ground tank.
-  "hidden_leaf.giant_toad": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-defense-token"],
-    ["commander-defense-token", "reduce-spell-damage-1"]
-  ]),
-  // LV6 gold AoE beast.
-  "hidden_leaf.jinchuriki": buildScheduleFromTemplate("strong", [
-    ["bulwark-thick-hide", "commander-charge"],
-    ["commander-max-damage", "wog-nightmare-fear"]
-  ]),
-  // LV7 gold armored avatar.
-  "hidden_leaf.susanoo": buildScheduleFromTemplate("strong", [
-    ["bulwark-air-shield", "reduce-spell-damage-1"],
-    ["wog-fire-shield-1", "ignore-paralysis"]
-  ]),
-
-  // ── Anime Azur Lane ──────────────────────────────────────────────────────
-  // Fleet veterancy: bronze standard (1 ability), silver/gold strong (2). Every
-  // choice is an already-implemented, non-Stacked ability NOT already printed on
-  // that shipgirl's sides. Each schedule is keyed to the shipgirl's LORE (the
-  // FIRST choice per slot is the signature; the second is a safer alternative):
-  //   laffey  — "Solomon's Wardog", impossible rate of fire → the bespoke
-  //     kansen-full-barrage (around-target salvo; 2026-07 upgrade), with the
-  //     full second strike (sandworm-strike-again) as the safer alternative
-  //     (NOT double-attack — that arm is ranged-gated and inert on a ground unit).
-  //   javelin — torpedo-salvo destroyer → commander-max-damage (own die always
-  //     counts +1 → a reliable full-power salvo; again NOT the ranged-only
-  //     double-attack, which is dead on this ground unit).
-  //   honolulu— ranged cruiser gunner → ranged-extra-shot-on-low-roll (a real
-  //     ranged arm on the faction's one shooter).
-  //   unicorn — carrier MEDIC → wraith-heal-1 (self-repair) then the bespoke
-  //     kansen-fleet-formation escort aura (2026-07 upgrade; air-shield alt).
-  //   yukikaze— "Miracle Yukikaze", luckiest ship → attack-roll-advantage-passive
-  //     (roll two Attack dice, keep the higher) then a damage burst.
-  //   prinz_eugen— UNSINKABLE cruiser → zombie-resilience (+1 Defense vs a 0/+1
-  //     die = hard to sink) then wog-fire-shield-1 (flak barrage — reflect damage).
-  //   i19     — ambush submarine → commander-max-damage / commander-charge (glass
-  //     cannon after surfacing) then wog-nightmare-fear (terror from below). Its
-  //     ranged double-attack alternative is likewise inert on this ground body, so
-  //     the safer pick is wog-no-negative-attack-roll (torpedoes never misfire).
-  // laffey signature UPGRADED (2026-07): kansen-full-barrage — the bespoke
-  // around-target salvo arm — is her "impossible rate of fire"; the old full
-  // second strike stays as the alternative.
-  "azur_lane.laffey": buildScheduleFromTemplate("standard", [
-    ["kansen-full-barrage", "sandworm-strike-again"]
-  ]),
-  "azur_lane.javelin": buildScheduleFromTemplate("standard", [
-    ["commander-max-damage", "bulwark-air-shield"]
-  ]),
-  // LV3 bronze ranged cruiser gunner.
-  "azur_lane.honolulu": buildScheduleFromTemplate("standard", [
-    ["ranged-extra-shot-on-low-roll", "bulwark-air-shield"]
-  ]),
-  // LV4 silver carrier medic — heal itself, then (2026-07 upgrade) the bespoke
-  // kansen-fleet-formation escort aura: adjacent allies +1 Attack on their own
-  // attacks — the carrier escorting her fleet. Spell-ward stays the alternative.
-  "azur_lane.unicorn": buildScheduleFromTemplate("strong", [
-    ["wraith-heal-1", "commander-defense-token"],
-    ["kansen-fleet-formation", "bulwark-air-shield"]
-  ]),
-  // LV5 silver lucky destroyer — twin Attack dice (keep higher), then a burst.
-  "azur_lane.yukikaze": buildScheduleFromTemplate("strong", [
-    ["attack-roll-advantage-passive", "wog-no-negative-attack-roll"],
-    ["commander-charge", "commander-max-damage"]
-  ]),
-  // LV6 gold unsinkable heavy cruiser — die-roll soak, then a flak barrage.
-  "azur_lane.prinz_eugen": buildScheduleFromTemplate("strong", [
-    ["zombie-resilience", "reduce-spell-damage-1"],
-    ["wog-fire-shield-1", "ignore-paralysis"]
-  ]),
-  // LV7 gold glass-cannon submarine — max-damage ambush, then Fear from below.
-  "azur_lane.i19": buildScheduleFromTemplate("strong", [
-    ["commander-max-damage", "commander-charge"],
-    ["wog-nightmare-fear", "wog-no-negative-attack-roll"]
-  ]),
-
-  // ── Anime Heavenly Demon Palace ───────────────────────────────────────────
-  // Demonic-path veterancy: bronze standard (1 ability), silver/gold strong (2).
-  // Every choice is an already-implemented, non-Stacked ability NOT already
-  // printed on that unit's sides. Each schedule is keyed to the unit's demonic
-  // LORE (the FIRST choice per slot is the signature; the second a safer
-  // alternative). The ground bodies avoid the ranged-gated `double-attack` arm
-  // (inert on a melee unit — the same deviation the Azur Lane schedules document),
-  // reaching for functional demonic arms (blood regeneration, terror, hellfire).
-  //   blood_disciples — vampiric blood cultivators → wraith-heal-1 (regenerate
-  //     each activation — the blood-drinker's self-heal on top of the printed
-  //     siphon) then undying resilience.
-  //   gu_witches      — poison-hex shooters → unicorn-paralyze-retaliation
-  //     (a hex/curse that Paralyzes an attacker who engages the witch) then an
-  //     extra poisoned volley.
-  //   shadow_wraiths  — incorporeal terror → wog-nightmare-fear (spectral dread)
-  //     then air-shield evasion (hard to pin an incorporeal wraith).
-  //   corpse_puppets  — reanimated puppets → zombie-resilience (die-roll soak =
-  //     unkillable corpse) then unshackled (a corpse ignores Paralysis) + terror.
-  //   bone_reavers    — bone-crushing demon cavalry → commander-max-damage (the
-  //     reliable full-power charge) then bone terror.
-  //   ghost_king      — sovereign of the dead → teleport-move (spectral walk —
-  //     phase across the battlefield) then a soul-reaping terror / devastation.
-  //   demon_avatar    — apex demon incarnate → wog-fire-shield-1 (a hellfire aura
-  //     that burns attackers) then devastating demonic blows.
-  "heavenly_demon.blood_disciples": buildScheduleFromTemplate("standard", [
-    ["wraith-heal-1", "zombie-resilience-weak"]
-  ]),
-  "heavenly_demon.gu_witches": buildScheduleFromTemplate("standard", [
-    ["unicorn-paralyze-retaliation", "ranged-extra-shot-on-low-roll"]
-  ]),
-  "heavenly_demon.shadow_wraiths": buildScheduleFromTemplate("standard", [
-    ["wog-nightmare-fear", "bulwark-air-shield"]
-  ]),
-  // LV5 silver reanimated tank.
-  "heavenly_demon.corpse_puppets": buildScheduleFromTemplate("strong", [
-    ["zombie-resilience", "bulwark-thick-hide"],
-    ["ignore-paralysis", "wog-nightmare-fear"]
-  ]),
-  // LV4/5 silver demon cavalry.
-  "heavenly_demon.bone_reavers": buildScheduleFromTemplate("strong", [
-    ["commander-max-damage", "wog-no-negative-attack-roll"],
-    ["wog-nightmare-fear", "commander-defense-token"]
-  ]),
-  // LV6 gold spectral sovereign.
-  "heavenly_demon.ghost_king": buildScheduleFromTemplate("strong", [
-    ["teleport-move", "bulwark-air-shield"],
-    ["wog-nightmare-fear", "commander-max-damage"]
-  ]),
-  // LV7 gold apex demon.
-  "heavenly_demon.demon_avatar": buildScheduleFromTemplate("strong", [
-    ["wog-fire-shield-1", "reduce-spell-damage-1"],
-    ["commander-max-damage", "ignore-paralysis"]
-  ]),
-
-  // Little Busters Campus — each signature emblem's first choice is the unit's
-  // canonical mastery; the alternative keeps every decision competitive.
-  "little_busters.haruka": buildScheduleFromTemplate("standard", [
-    ["attack-roll-advantage", "wog-no-negative-attack-roll"]
-  ]),
-  "little_busters.rins_cats": buildScheduleFromTemplate("standard", [
-    ["sandworm-strike-again", "commander-max-damage"]
-  ]),
-  "little_busters.disciplinary_committee": buildScheduleFromTemplate("standard", [
-    ["ignore-all-combat-penalties", "commander-defense-token"]
-  ]),
-  "little_busters.masato": buildScheduleFromTemplate("strong", [
-    ["unlimited-retaliation", "bulwark-thick-hide"],
-    ["ignore-paralysis", "reduce-spell-damage-1"]
-  ]),
-  "little_busters.softball_club": buildScheduleFromTemplate("strong", [
-    ["attack-roll-advantage-passive", "ranged-extra-shot-on-low-roll"],
-    ["commander-max-damage", "bulwark-air-shield"]
-  ]),
-  "little_busters.saya": buildScheduleFromTemplate("strong", [
-    ["gorgon-death-stare", "commander-charge"],
-    ["commander-max-damage", "wog-no-negative-attack-roll"]
-  ]),
-  "little_busters.mio": buildScheduleFromTemplate("strong", [
-    ["gargoyle-spell-ward", "bulwark-air-shield"],
-    ["commander-defense-token", "ignore-paralysis"]
-  ])
-};
-
-// ---------------------------------------------------------------------------
-// Fallback flavour for units without a unique entry (neutrals, WOG, future)
+// The flavour generator — the ONLY fallback under the redesign
+//
+// DELETED HERE (2026-08-15), deliberately and for good: the hand-authored
+// `UNIT_RANK_SCHEDULES` table (127 lore-keyed entries), the `RANK_TEMPLATES` /
+// `RANK_TEMPLATE_LABELS` / `buildScheduleFromTemplate` / `scheduleTemplateId`
+// machinery that filled it, and the older `FLAVOUR_ABILITIES` template-fill map.
+// The redesign in commit 26f6e37f / 2d2da234 REPLACED all of it with
+// "explicit per-unit override > flavour generator", and
+// `docs/unit-experience-balance-sheet.md` is the design authority for what every
+// unit's four ranks pay. A later audit mistook the table for live data and
+// re-plugged it into the resolver, silently changing 127 units' rewards; it is
+// gone now so that cannot recur. Do NOT reintroduce a bespoke schedule table —
+// a unit that needs a signature rank gets an explicit override below.
 // ---------------------------------------------------------------------------
 
 type Flavour =
@@ -756,11 +112,6 @@ type Flavour =
   | "mystic"
   | "assassin"
   | "warden";
-
-// The old FLAVOUR_ABILITIES template-fill table was deleted when the per-rank
-// generator (RANK_ONE_PROFILES / RANK_TWO..FOUR_ABILITIES, below) took over the
-// fallback path. UNIT_RANK_SCHEDULES above is still the bespoke tier that wins
-// over the generator; nothing reads a flavour TEMPLATE any more.
 
 export function inferFlavour(unitDefId: string): Flavour {
   const def = coreUnitDefinitions[unitDefId];
@@ -950,9 +301,9 @@ const RANK_TWO_ABILITIES: Record<Flavour, readonly string[]> = {
 };
 
 // NOTE (2026-08-15): the ranged-gated `double-attack` / `double-attack-low-roll`
-// arms are NEVER offered here or in a bespoke schedule for a non-shooter — a
-// DOUBLE_ATTACK without `anyRange` is refused by maybeDeclareDoubleAttack unless
-// the attack is ranged, so it paid a whole rank for nothing. The veteran twins
+// arms are NEVER offered to a non-shooter — a DOUBLE_ATTACK without `anyRange`
+// is refused by maybeDeclareDoubleAttack unless the attack is ranged, so it paid
+// a whole rank for nothing. The veteran twins
 // (`veteran-double-attack`, `veteran-double-attack-low-roll`) carry anyRange.
 // Invariant pinned in unit-experience.test.ts.
 const RANK_THREE_ABILITIES: Record<Flavour, readonly string[]> = {
@@ -1042,50 +393,43 @@ function explicitRankFour(unitDefId: string): RankStep | null {
 }
 
 /**
- * Resolved schedule. Precedence is PER RANK, highest first:
- *   (i)   an explicit per-unit override (the signature ranks below),
- *   (ii)  the hand-authored bespoke `UNIT_RANK_SCHEDULES` entry (lore-keyed;
- *         127 units — this is what keeps kansen-full-barrage, gorgon-death-stare,
- *         bulwark-thick-hide, zombie-resilience … reachable),
- *   (iii) the flavour generator (diversified small R1, themed R2/R3, capstone R4)
- *         for everything else — neutrals, WOG, doom, MGQ, future content.
- * A bespoke `{kind:"stats"}` step carries no `stats` payload, so it still draws
- * from the per-unit `unitStatStepsFor` ladder via the shared statsIndex: the two
- * halves compose, they never double-grant.
+ * Resolved schedule: an explicit per-unit override wins that rank, otherwise the
+ * flavour generator fills it (diversified small R1, themed R2/R3, capstone R4).
+ * There is NO third tier — see the deletion note above.
  */
 export function rankScheduleFor(unitDefId: string): RankSchedule {
-  const bespoke = UNIT_RANK_SCHEDULES[unitDefId];
   const flavour = inferFlavour(unitDefId);
-  const rankThree =
-    explicitRankThree(unitDefId) ??
-    bespoke?.[3] ??
+  const rankThree = explicitRankThree(unitDefId) ??
     (stableRankHash(unitDefId, 3) % 3 === 0
       ? A(...rotatedChoices(unitDefId, 3, RANK_THREE_ABILITIES[flavour]))
       : S());
   return {
-    1: explicitRankOne(unitDefId) ?? bespoke?.[1] ?? rankOneStepFor(unitDefId),
-    2:
-      explicitRankTwo(unitDefId) ??
-      bespoke?.[2] ??
-      A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
+    1: explicitRankOne(unitDefId) ?? rankOneStepFor(unitDefId),
+    2: explicitRankTwo(unitDefId) ?? A(...rotatedChoices(unitDefId, 2, RANK_TWO_ABILITIES[flavour])),
     3: rankThree,
-    4:
-      explicitRankFour(unitDefId) ??
-      bespoke?.[4] ??
-      A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
+    4: explicitRankFour(unitDefId) ?? A(...rotatedChoices(unitDefId, 4, RANK_FOUR_ABILITIES[flavour]))
   };
 }
 
-/** Whether this unit has a hand-authored unique schedule (not the generator). */
+/**
+ * Whether ANY of this unit's four ranks is an explicit per-unit override rather
+ * than the generator's roll. Honest under the redesign: it is exactly "does a
+ * signature rank exist for this unit", not "is this unit in some table".
+ */
 export function hasUniqueRankSchedule(unitDefId: string): boolean {
-  return Boolean(UNIT_RANK_SCHEDULES[unitDefId]);
+  return Boolean(
+    explicitRankOne(unitDefId) ??
+      explicitRankTwo(unitDefId) ??
+      explicitRankThree(unitDefId) ??
+      explicitRankFour(unitDefId)
+  );
 }
 
 // ---------------------------------------------------------------------------
 // UI labels / icons (legacy track ids map to flavour for display)
 // ---------------------------------------------------------------------------
 
-export type RankAbilityTrackId = Flavour | RankTemplateId;
+export type RankAbilityTrackId = Flavour;
 
 export function rankAbilityTrackFor(unitDefId: string): string {
   return inferFlavour(unitDefId);
@@ -1105,9 +449,6 @@ export const RANK_ABILITY_TRACK_LABELS: Record<string, string> = {
   mystic: "Arcane disciple",
   assassin: "Silent blade",
   warden: "Bulwark",
-  "unique:standard": "Unique · Standard",
-  "unique:strong": "Unique · Strong",
-  "unique:rare": "Unique · Rare",
   // legacy aliases
   melee_line: "Shield wall",
   ranged_line: "Sharpshooter",
@@ -1291,9 +632,6 @@ export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJo
 export const ELITE_UNIT_RANK_ABILITIES: Record<string, string> = {};
 export const LEGEND_UNIT_RANK_ABILITIES: Record<string, string> = {};
 export const UNIT_RANK_TRACK_OVERRIDES: Record<string, string> = {};
-export const RANK_ABILITY_TRACKS = RANK_TEMPLATES;
-export const UNIT_RANK_ABILITY_SCHEDULES = UNIT_RANK_SCHEDULES;
-export const RANK_SCHEDULES = RANK_TEMPLATES;
 
 export function rankAbilityScheduleFor(unitDefId: string): RankSchedule {
   return rankScheduleFor(unitDefId);

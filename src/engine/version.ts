@@ -335,10 +335,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // the client offers cross-unit moves the old server refuses; the Fear Aura roll
 // CONSUMES a combat die from the shared cursor, desynchronising every later
 // seeded roll between the two halves; plus the whole rank-schedule resolver
-// (bespoke-vs-generator precedence, the per-rank stat ladder, the effect-aware
-// no-op dedupe) and Guarded Stance's new `FLAT_DEFENSE_WHEN_ATTACKED` arm, which
-// changes the damage maths for any ranked unit. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 32;
+// (the per-rank stat ladder, the effect-aware no-op dedupe) and Guarded Stance's
+// new `FLAT_DEFENSE_WHEN_ATTACKED` arm, which changes the damage maths for any
+// ranked unit. `npm run deploy:partykit` owed.
+// v33 (2026-08-15): the rank-schedule resolver is the REDESIGN's
+// "explicit per-unit override > flavour generator" again. v32 wrongly consulted
+// the old hand-authored `UNIT_RANK_SCHEDULES` table between the two, handing 127
+// units different rank rewards than `docs/unit-experience-balance-sheet.md` (the
+// design authority) prescribes; that table is now DELETED. A v32 edge therefore
+// grants a DIFFERENT ability/stat at the same rank for those units — same action
+// ids, silently different game state — so it must show the skew banner rather
+// than serve the wrong rewards. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 33;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

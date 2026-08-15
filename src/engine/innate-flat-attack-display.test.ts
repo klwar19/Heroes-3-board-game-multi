@@ -133,10 +133,12 @@ function flipDown(state: GameState, unit: CombatUnitState): void {
 // ---------------------------------------------------------------------------
 
 describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with", () => {
-  it("shows the Vengeance +2 on top of the veteran +1 after a real mid-combat flip", () => {
-    // Gold tier: rank 1 is an ability rank, rank 2 (10 XP) is the first STATS
-    // rank and its gold step is +1 Attack — exactly the "+1 from unit
-    // experience" the report says was the ONLY visible bonus.
+  it("shows the Vengeance +2 on top of the veteran Aggressive Drill +1 after a real mid-combat flip", () => {
+    // Gold tier at 10 XP = rank 2. Under the veterancy redesign cove.haspids'
+    // R1 and R2 are both ABILITY ranks, and R2 grants Aggressive Drill
+    // (veteran-attack-when-attacking) — an INNATE flat own-attack bonus. So the
+    // veteran +1 arrives through the ability list rather than the printed stat,
+    // which is precisely the class of bonus this display fix exists for.
     const { state, attacker, defender } = duel({
       unitDefId: "cove.haspids",
       side: "pack",
@@ -147,14 +149,16 @@ describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with"
     flipDown(state, attacker);
 
     // The flip itself is (and always was) correct: the printed Few side plus
-    // the surviving rank fold.
+    // the surviving rank fold (rank 2 moves no printed stat here).
     const printedFew = coreUnitDefinitions["cove.haspids"].few!;
     expect(attacker.variant).toBe("few");
     expect(attacker.flippedDownThisCombat).toBe(true);
     expect(attacker.abilities).toContain("haspid-vengeance");
-    expect(attacker.attack).toBe(printedFew.attack + 1);
+    expect(attacker.abilities).toContain("veteran-attack-when-attacking");
+    expect(attacker.attack).toBe(printedFew.attack);
 
-    // THE FIX: the display now includes the +2 the Vengeance ability is live for.
+    // THE FIX: the display now includes the veteran drill +1 AND the +2 the
+    // Vengeance ability is live for.
     expect(displayedAttack(state, attacker)).toBe(printedFew.attack + 1 + 2);
 
     // …and that displayed number is EXACTLY what the dice deal (defence 0,

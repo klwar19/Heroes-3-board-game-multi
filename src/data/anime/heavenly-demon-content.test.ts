@@ -13,10 +13,8 @@ import { commanderSoundKey, unitSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import {
   UNIT_RANK_ABILITY_ICONS,
-  UNIT_RANK_SCHEDULES,
   hasUniqueRankSchedule,
   rankScheduleFor,
-  scheduleTemplateId,
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import type { RankSchedule } from "@/data/units/experience";
@@ -427,140 +425,168 @@ describe("Heavenly Demon Palace — behavioural: the Blood Disciples Pack's real
 });
 
 // ---------------------------------------------------------------------------
-// Demon-path veterancy — bespoke rank schedules (Unit Experience system).
-// Each unit's rank-ability CHOICES are keyed to its demonic lore (signature
-// FIRST, safer alternative second). The ground bodies avoid the ranged-gated
-// DOUBLE_ATTACK arm (inert on a melee unit — the Azur Lane fleet-lore
-// precedent), reaching for functional demonic arms instead. Mirrors
-// src/data/anime/azur-lane-content.test.ts "Fleet veterancy".
+// Demon-path veterancy — the Unit Experience REDESIGN (26f6e37f / 2d2da234).
+// A rank is EITHER an explicit per-unit override OR the flavour generator's
+// roll; the old hand-authored per-unit schedule table is DELETED (see
+// experience-rank-abilities.ts) and docs/unit-experience-balance-sheet.md is the
+// design authority. No Heavenly Demon unit owns an override, so all seven are
+// generator-served. Mirrors src/data/anime/azur-lane-content.test.ts.
 // ---------------------------------------------------------------------------
 
+type RankPin = "stats" | readonly string[];
+
 /**
- * The EXACT ability-rank choice arrays per unit (signature id FIRST). This table
- * is the mutation control: revert any schedule to a generic filler and the
- * deep-equal below fails. `template` is the pinned shape (bronze=standard 1
- * ability, silver/gold=strong 2).
+ * The EXACT resolved schedule per unit: per rank, either "stats" or the ability
+ * CHOICE ARRAY the resolver offers (offer order matters — the first choice the
+ * unit does not already answer is what it gains). Mutation control: change any
+ * schedule and the deep-equal below fails.
  */
-const EXPECTED_SCHEDULES: Record<
-  string,
-  { template: "standard" | "strong"; slots: readonly (readonly string[])[] }
-> = {
-  "heavenly_demon.blood_disciples": {
-    template: "standard",
-    slots: [["wraith-heal-1", "zombie-resilience-weak"]]
-  },
-  "heavenly_demon.gu_witches": {
-    template: "standard",
-    slots: [["unicorn-paralyze-retaliation", "ranged-extra-shot-on-low-roll"]]
-  },
-  "heavenly_demon.shadow_wraiths": {
-    template: "standard",
-    slots: [["wog-nightmare-fear", "bulwark-air-shield"]]
-  },
-  "heavenly_demon.corpse_puppets": {
-    template: "strong",
-    slots: [["zombie-resilience", "bulwark-thick-hide"], ["ignore-paralysis", "wog-nightmare-fear"]]
-  },
-  "heavenly_demon.bone_reavers": {
-    template: "strong",
-    slots: [["commander-max-damage", "wog-no-negative-attack-roll"], ["wog-nightmare-fear", "commander-defense-token"]]
-  },
-  "heavenly_demon.ghost_king": {
-    template: "strong",
-    slots: [["teleport-move", "bulwark-air-shield"], ["wog-nightmare-fear", "commander-max-damage"]]
-  },
-  "heavenly_demon.demon_avatar": {
-    template: "strong",
-    slots: [["wog-fire-shield-1", "reduce-spell-damage-1"], ["commander-max-damage", "ignore-paralysis"]]
-  }
+const EXPECTED_SCHEDULES: Record<string, readonly [RankPin, RankPin, RankPin, RankPin]> = {
+  "heavenly_demon.blood_disciples": [
+    ["veteran-attack-when-attacking"],
+    ["commander-charge", "wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance"],
+    "stats",
+    ["veteran-defense-pierce", "veteran-rebirth", "unlimited-retaliation", "commander-max-damage"]
+  ],
+  "heavenly_demon.gu_witches": [
+    "stats",
+    ["ranged-extra-shot-on-low-roll", "veteran-steady-aim", "bulwark-air-shield", "attack-roll-advantage-passive"],
+    "stats",
+    ["veteran-spell-sunder", "ignore-all-combat-penalties", "ranged-extra-shot-on-low-roll", "veteran-low-roll-insight"]
+  ],
+  "heavenly_demon.shadow_wraiths": [
+    ["veteran-retaliation-fury"],
+    ["zombie-resilience-weak", "veteran-retaliation-fury", "wraith-heal-1", "veteran-guarded-stance"],
+    "stats",
+    ["wraith-heal-2", "wraith-enemy-discard", "veteran-rebirth", "veteran-soul-feast"]
+  ],
+  "heavenly_demon.corpse_puppets": [
+    ["veteran-retaliation-fury"],
+    ["wog-no-negative-attack-roll", "veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge"],
+    "stats",
+    ["veteran-rebirth", "unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce"]
+  ],
+  "heavenly_demon.bone_reavers": [
+    "stats",
+    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
+    ["ignores-retaliation", "veteran-defense-pierce", "commander-max-damage", "unlimited-retaliation"],
+    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
+  ],
+  "heavenly_demon.ghost_king": [
+    ["veteran-attack-when-attacking"],
+    ["veteran-attack-when-attacking", "veteran-guarded-stance", "commander-charge", "wog-no-negative-attack-roll"],
+    "stats",
+    ["unlimited-retaliation", "commander-max-damage", "veteran-defense-pierce", "veteran-rebirth"]
+  ],
+  "heavenly_demon.demon_avatar": [
+    "stats",
+    ["reduce-spell-damage-1", "wog-no-negative-attack-roll", "wog-fire-shield-1", "veteran-attack-when-attacking"],
+    ["commander-max-damage", "ignores-retaliation", "veteran-double-attack-low-roll", "wog-fire-shield-1"],
+    ["wog-fire-shield-1", "veteran-double-attack-low-roll", "commander-max-damage", "veteran-rebirth"]
+  ]
 };
 
-/** Pull the ability steps' choice arrays out of a schedule, in rank order. */
-function abilityChoicesOf(schedule: RankSchedule): string[][] {
-  const slots: string[][] = [];
-  for (const rank of [1, 2, 3, 4] as const) {
-    const step = schedule[rank];
-    if (step.kind === "ability") slots.push([...step.choices]);
-  }
-  return slots;
+/** The ability each ability-rank actually GRANTS (after the no-op dedupe). */
+const EXPECTED_GRANTS: Record<string, readonly string[]> = {
+  "heavenly_demon.blood_disciples": [
+    "veteran-attack-when-attacking",
+    "commander-charge",
+    "veteran-defense-pierce"
+  ],
+  "heavenly_demon.gu_witches": ["ranged-extra-shot-on-low-roll", "veteran-spell-sunder"],
+  "heavenly_demon.shadow_wraiths": ["veteran-retaliation-fury", "zombie-resilience-weak", "wraith-heal-2"],
+  "heavenly_demon.corpse_puppets": [
+    "veteran-retaliation-fury",
+    "wog-no-negative-attack-roll",
+    "veteran-rebirth"
+  ],
+  "heavenly_demon.bone_reavers": [
+    "veteran-attack-when-attacking",
+    "veteran-defense-pierce",
+    "unlimited-retaliation"
+  ],
+  "heavenly_demon.ghost_king": [
+    "veteran-attack-when-attacking",
+    "veteran-guarded-stance",
+    "commander-max-damage"
+  ],
+  "heavenly_demon.demon_avatar": ["reduce-spell-damage-1", "commander-max-damage", "wog-fire-shield-1"]
+};
+
+/** The resolved schedule as the same [RankPin × 4] shape. */
+function rankPinsOf(schedule: RankSchedule): RankPin[] {
+  return [1, 2, 3, 4].map((rank) => {
+    const step = schedule[rank as 1 | 2 | 3 | 4];
+    return step.kind === "stats" ? "stats" : [...step.choices];
+  });
 }
 
-describe("Heavenly Demon Palace — Demon-path veterancy: bespoke rank schedules", () => {
-  it("all seven ship a UNIQUE schedule; bronzes are 'standard', silver/gold 'strong'", () => {
-    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
-      expect(hasUniqueRankSchedule(unitId), unitId).toBe(true);
-      expect(scheduleTemplateId(UNIT_RANK_SCHEDULES[unitId]!), unitId).toBe(expected.template);
-    }
-    // Tier ↔ template: the three bronze bodies are 'standard', the two silver +
-    // two gold are 'strong' (the faction-peer / Azur Lane shape).
+describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedules", () => {
+  it("all seven are GENERATOR-served: no explicit override, and every rank pays something", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
-      const tier = coreUnitDefinitions[unitId].tier;
-      expect(scheduleTemplateId(rankScheduleFor(unitId)), `${unitId} (${tier})`).toBe(
-        tier === "bronze" ? "standard" : "strong"
-      );
+      expect(hasUniqueRankSchedule(unitId), unitId).toBe(false);
+      const schedule = rankScheduleFor(unitId);
+      for (const rank of [1, 2, 3, 4] as const) {
+        const step = schedule[rank];
+        if (step.kind !== "stats") expect(step.choices.length, `${unitId} R${rank}`).toBeGreaterThan(0);
+      }
     }
   });
 
-  it("SIGNATURE pins: the exact lore-keyed choice arrays (fails if a schedule reverts to fillers)", () => {
+  it("SIGNATURE pins: the exact resolved ladder per unit (fails if any schedule moves)", () => {
     for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
-      expect(abilityChoicesOf(rankScheduleFor(unitId)), unitId).toEqual(
-        expected.slots.map((slot) => [...slot])
+      expect(rankPinsOf(rankScheduleFor(unitId)), unitId).toEqual(
+        expected.map((pin) => (pin === "stats" ? "stats" : [...pin]))
       );
+      expect(unitRankAbilityIds(unitId, 4), unitId).toEqual([...EXPECTED_GRANTS[unitId]!]);
     }
-    // Spot the headline signatures explicitly so the intent is legible.
-    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.ghost_king"))[0]).toContain("teleport-move");
-    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.blood_disciples"))[0]).toContain("wraith-heal-1");
-    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.gu_witches"))[0]).toContain(
-      "unicorn-paralyze-retaliation"
-    );
-    expect(abilityChoicesOf(rankScheduleFor("heavenly_demon.corpse_puppets"))[0]).toContain("zombie-resilience");
+    // Spot the headline picks explicitly so the intent is legible.
+    expect(unitRankAbilityIds("heavenly_demon.shadow_wraiths", 4)).toContain("wraith-heal-2");
+    expect(unitRankAbilityIds("heavenly_demon.demon_avatar", 4)).toContain("wog-fire-shield-1");
   });
 
-  it("HYGIENE (heavenly_demon-scoped): every choice implemented, non-Stacked, NOT printed on either side; no wasted rank", () => {
+  it("HYGIENE (heavenly_demon-scoped): every choice implemented, non-Stacked; a GRANT is never already printed", () => {
     for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
       const unit = coreUnitDefinitions[unitId];
       const printed = new Set<string>([...unit.few!.abilities, ...unit.pack!.abilities]);
-      for (const slot of expected.slots) {
-        for (const choiceId of slot) {
+      for (const pin of expected) {
+        if (pin === "stats") continue;
+        for (const choiceId of pin) {
           const ability = unitAbilities[choiceId];
           expect(ability, `${unitId} → ${choiceId}`).toBeTruthy();
           expect(ability.implementationStatus, `${unitId} → ${choiceId}`).toBe("implemented");
           expect(ability.requiresStacked, `${unitId} → ${choiceId}`).not.toBe(true);
-          // No-wasted-rank invariant: a choice printed on the unit would be
-          // deduped away by withRankAbilities, making the rank inert.
-          expect(printed.has(choiceId), `${unitId} prints ${choiceId} (would waste the rank)`).toBe(false);
         }
       }
-      // The real resolver grants EXACTLY one ability per ability-rank (never a
-      // dup collapse): a 'standard' unit ends at 1 rank ability, 'strong' at 2.
-      expect(unitRankAbilityIds(unitId, 4), unitId).toHaveLength(expected.slots.length);
+      for (const grantedId of EXPECTED_GRANTS[unitId]!) {
+        expect(printed.has(grantedId), `${unitId} prints ${grantedId} (would waste the rank)`).toBe(false);
+      }
+      const abilityRanks = expected.filter((pin) => pin !== "stats").length;
+      expect(unitRankAbilityIds(unitId, 4), unitId).toHaveLength(abilityRanks);
     }
   });
 
   it("ART: every choice id has an EXPLICIT icon entry resolving to a file on disk", () => {
-    for (const [unitId, expected] of Object.entries(EXPECTED_SCHEDULES)) {
-      for (const slot of expected.slots) {
-        for (const choiceId of slot) {
-          expect(
-            UNIT_RANK_ABILITY_ICONS[choiceId],
-            `${unitId} → ${choiceId} needs an explicit icon`
-          ).toBeTruthy();
-          const icon = unitRankAbilityIcon(choiceId);
-          expect(icon.startsWith("/assets/"), choiceId).toBe(true);
-          expect(
-            existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
-            `${choiceId} → ${icon} missing on disk`
-          ).toBe(true);
-        }
-      }
+    const ids = new Set<string>();
+    for (const ranks of Object.values(EXPECTED_SCHEDULES)) {
+      for (const pin of ranks) if (pin !== "stats") for (const id of pin) ids.add(id);
+    }
+    for (const choiceId of ids) {
+      expect(UNIT_RANK_ABILITY_ICONS[choiceId], `${choiceId} needs an explicit icon`).toBeTruthy();
+      const icon = unitRankAbilityIcon(choiceId);
+      expect(icon.startsWith("/assets/"), choiceId).toBe(true);
+      expect(
+        existsSync(join(process.cwd(), "public", icon.replace(/^\//, ""))),
+        `${choiceId} → ${icon} missing on disk`
+      ).toBe(true);
     }
   });
 
   // BEHAVIOURAL (effect-level): the Ghost King's schedule actually FOLDS in
-  // combat — a stats rank moves a real stat and an ability rank grants the
-  // signature id. Fails if withRankAbilities / the schedule wiring is removed, OR
-  // if the schedule reverts to a generic filler (R2 would carry a different id).
-  it("Ghost King folds in combat: R1 stats (+1 Attack), R2 grants Spectral Walk (teleport-move) — below-threshold CONTROL grants neither", () => {
+  // combat — an ability rank grants the resolved id and a stats rank moves a
+  // real stat. Fails if withRankAbilities / the schedule wiring is removed, OR
+  // if the schedule moves (R2 would carry a different id).
+  it("Ghost King folds in combat: R1/R2 grant abilities, R3 is the +1 Attack stat rank — below-threshold CONTROLs grant neither", () => {
     const build = (experience?: number): CombatUnitState =>
       makeCombatUnitFromArmy(
         { id: "gk_army", unitDefId: "heavenly_demon.ghost_king", side: "few", ...(experience ? { experience } : {}) },
@@ -570,26 +596,31 @@ describe("Heavenly Demon Palace — Demon-path veterancy: bespoke rank schedules
         "legacy"
       )!;
 
-    // gold thresholds 5/10/16/22 → R1 at 5 XP (stats), R2 at 10 XP (ability slot1).
+    // gold thresholds 5/10/16/22 → R1 at 5 XP, R2 at 10 XP, R3 at 16 XP.
     const plain = build();
     const r1 = build(5);
     const r2 = build(10);
+    const r3 = build(16);
 
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);
+    expect(r3.unitRank).toBe(3);
 
-    // Stats-rank fold: gold step 0 is +1 Attack — an OBSERVABLE stat delta.
+    // R1 and R2 are ABILITY ranks: the ids land and no stat moves.
     expect(plain.attack).toBe(coreUnitDefinitions["heavenly_demon.ghost_king"].few!.attack);
-    expect(r1.attack).toBe(plain.attack + 1);
-    expect(r2.attack).toBe(plain.attack + 1); // R2 is an ability rank → no further stat step
+    expect(r1.abilities).toContain("veteran-attack-when-attacking");
+    expect(r1.attack).toBe(plain.attack);
+    expect(r2.abilities).toContain("veteran-guarded-stance");
+    expect(r2.attack).toBe(plain.attack);
 
-    // Ability-rank grant: R2 carries the lore signature (Spectral Walk).
-    expect(r2.abilities).toContain("teleport-move");
+    // R3 is the stats rank: gold step 0 is +1 Attack — an OBSERVABLE delta.
+    expect(r3.attack).toBe(plain.attack + 1);
 
-    // CONTROLs: below the R2 ability threshold there is NO grant; the plain card
-    // (no XP) carries neither the grant nor the stat bump (base stats).
-    expect(r1.abilities).not.toContain("teleport-move");
-    expect(plain.abilities).not.toContain("teleport-move");
+    // CONTROLs: below each threshold there is NO grant, and the plain card
+    // (no XP) carries neither ability nor the stat bump.
+    expect(r1.abilities).not.toContain("veteran-guarded-stance");
+    expect(plain.abilities).not.toContain("veteran-attack-when-attacking");
+    expect(plain.abilities).not.toContain("veteran-guarded-stance");
     expect(plain.unitRank ?? 0).toBe(0);
   });
 });

@@ -7,7 +7,7 @@ import { coreFactionDefinitions, coreHeroDefinitions, coreBuildingDefinitions } 
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
 import cardContract from "../../scripts/anime-art/little-busters-unit-card-contract.json";
-import { UNIT_RANK_SCHEDULES } from "@/data/units/experience-rank-abilities";
+import { rankScheduleFor } from "@/data/units/experience-rank-abilities";
 import { commanderDefinitions, COMMANDER_SLUG_BY_FACTION } from "@/data/commanders";
 import { cardLibrary } from "@/data/cards/library";
 import { heroUnitId, makeHeroCombatUnit } from "./heroes";
@@ -99,7 +99,13 @@ describe("Little Busters complete playable content", () => {
     for (const id of faction.units) {
       const unit = coreUnitDefinitions[id];
       expect(unit.faction).toBe(FACTION);
-      expect(UNIT_RANK_SCHEDULES[id], `${id} veterancy`).toBeDefined();
+      // Veterancy: every unit resolves a four-rank schedule (the redesign's
+      // explicit-override-or-generator resolver; there is no per-unit table).
+      const schedule = rankScheduleFor(id);
+      for (const rank of [1, 2, 3, 4] as const) {
+        const step = schedule[rank];
+        if (step.kind !== "stats") expect(step.choices.length, `${id} R${rank}`).toBeGreaterThan(0);
+      }
       for (const side of [unit.few, unit.pack]) {
         expect(side).toBeDefined();
         expect(existsSync(join(ROOT, "public", side!.cardImage!.replace(/^\//, "")))).toBe(true);

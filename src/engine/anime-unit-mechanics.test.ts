@@ -277,22 +277,23 @@ describe("Anime Unit Experience — gain", () => {
 });
 
 describe("Anime Unit Experience — rank bonus folds onto both sides", () => {
-  it("griffins walk their bespoke S A S S path: R1 +HP, R2 ability, R3 +Def, R4 +Atk", () => {
+  it("griffins walk their resolved S A S A path: R1 +HP, R2 ability, R3 +Def, R4 ability", () => {
     const state = animeGame({ unitExperience: true }, "xp-fold");
     const rookie = combatUnit(state, { id: "r", unitDefId: "castle.griffins", side: "pack" }, "cu_rookie");
-    // castle.griffins keeps its hand-authored "standard" schedule (S A S S);
-    // the STAT payload of each stats rank comes from the per-unit ladder.
+    // castle.griffins is generator-served (flying flavour): stats at R1/R3 with
+    // the STAT payload coming from the per-unit ladder, abilities at R2/R4.
     const elite = combatUnit(state, { id: "l", unitDefId: "castle.griffins", side: "pack", experience: 10 }, "cu_elite");
     expect(elite.maxHealth - rookie.maxHealth).toBe(1); // R1
     expect(elite.defense - rookie.defense).toBe(1); // R3
     expect(elite.attack - rookie.attack).toBe(0); // R2 was the ability rank
     expect(elite.unitExperience).toBe(10);
     expect(elite.unitRank).toBe(3);
-    expect(elite.abilities).toContain("bulwark-air-shield"); // R2
+    expect(elite.abilities).toContain("commander-charge"); // R2
 
     const legend = combatUnit(state, { id: "l4", unitDefId: "castle.griffins", side: "pack", experience: 14 }, "cu_legend");
     expect(legend.unitRank).toBe(4);
-    expect(legend.attack - elite.attack).toBe(1); // R4 stats step
+    expect(legend.attack - elite.attack).toBe(0); // R4 is an ability rank
+    expect(legend.abilities).toContain("veteran-soul-feast"); // R4
 
     // The identical fold lands on the FEW side too.
     const eliteFew = combatUnit(state, { id: "lf", unitDefId: "castle.griffins", side: "few", experience: 10 }, "cu_elite_few");
