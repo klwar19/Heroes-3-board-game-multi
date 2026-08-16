@@ -7116,6 +7116,15 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
       ? interactionToSteps(location.interaction, locationDiceBonus)
       : [];
 
+  // Polish Pandora rule: the Pandora-card reward replaces the field's printed
+  // dice menu; it is not an additional optional arm. Enter the Search directly
+  // so a visitor cannot take either normal Treasure/Resource-dice reward while
+  // this rule is enabled. The location definition itself stays untouched, which
+  // keeps every non-Polish game on the normal three-way choice.
+  if (location.id === "pandoras_box" && houseRuleEnabled(state, "polish-pandora-search")) {
+    steps = [{ type: "DRAW_PANDORA_CARD" }];
+  }
+
   // The location data stays rules-correct (2 gold). Only BINH's explicit
   // house-rule flag upgrades that branch to 3 when this particular visit is
   // materialized, so Legacy and per-rule overrides see the printed reward.

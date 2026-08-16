@@ -15,6 +15,7 @@ import {
 import { createAdventureGameState } from "./adventure-setup";
 import { openSharedDeckSearch, startNeutralEncounter } from "./adventure-reducer";
 import {
+  beginFieldVisit,
   currentSurrenderGoldCost,
   eliminatePlayer,
   getMainHero,
@@ -524,6 +525,51 @@ describe("polish-pandora-search", () => {
     expect(off.players.p1.hand.length).toBe(before + 1);
     expect(offAdv.pandoraDeck?.length).toBe(deckBefore - 1);
     expect(offAdv.pendingVisit).toBeNull();
+  });
+
+  it("makes the Pandora Search mandatory on the field (CONTROL: rule off retains both dice rewards and the card)", () => {
+    const makeVisit = (enabled: boolean) => {
+      const state = createAdventureGameState({
+        seed: `polish-pandora-field-${enabled ? "on" : "off"}`,
+        rollFirstPlayer: false,
+        houseRules: { "polish-pandora-search": enabled }
+      });
+      const adventure = state.adventure!;
+      const hero = Object.values(state.heroes).find(
+        (candidate) => candidate.controllerId === "p1" && candidate.kind === "main"
+      )!;
+      const field = Object.values(adventure.fields)[0]!;
+      field.location = "pandoras_box";
+      field.difficulty = undefined;
+      field.blackCube = false;
+      beginFieldVisit(state, hero.id, field.spaceId, false);
+      return state;
+    };
+
+    const on = makeVisit(true);
+    const mandatory = on.adventure!.pendingVisit?.steps[0];
+    expect(mandatory?.type).toBe("CHOOSE_ONE");
+    if (mandatory?.type === "CHOOSE_ONE") {
+      expect(mandatory.prompt).toMatch(/Pandora Search/i);
+      expect(mandatory.options.length).toBeGreaterThanOrEqual(2);
+      expect(
+        mandatory.options.every((option) =>
+          option.steps.some((step) => step.type === "RESOLVE_PANDORA_SEARCH")
+        )
+      ).toBe(true);
+      expect(mandatory.options.some((option) => /dice/i.test(option.label))).toBe(false);
+    }
+
+    const off = makeVisit(false);
+    const normal = off.adventure!.pendingVisit?.steps[0];
+    expect(normal?.type).toBe("CHOOSE_ONE");
+    if (normal?.type === "CHOOSE_ONE") {
+      expect(normal.options.map((option) => option.label)).toEqual([
+        "Roll 2 Treasure dice, resolve one",
+        "Roll 2 Resource dice, resolve one",
+        "Draw a Pandora's Box card"
+      ]);
+    }
   });
 });
 

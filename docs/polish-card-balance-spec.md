@@ -3,7 +3,7 @@
 Source of truth: the mod author's OneDrive "05 Balance Pack" share —
 `Cards - Balance changes.xlsx` (sheets `Ability`/`NEW Ability`, `Art`/`NEW Art`,
 `Spells`/`NEW Spells`, `Heroes`) plus the four graphics folders (Ability 12,
-Artifacts 27, Specialities 11, Spells 21 = **71 changed cards**). The graphics
+Artifacts 27, Specialities 11, Spells 21, plus the supplied Knowledge Statistic = **73 changed cards**). The graphics
 folders define the SCOPE (exactly which cards change); the `NEW *` sheets define
 the DETAIL. This file is the committed transcription of both; the raw PNGs are
 NOT committed (re-fetch via the badger-token recipe in the session memory
@@ -36,9 +36,10 @@ NOT committed (re-fetch via the badger-token recipe in the session memory
 3. ARTIFACTS (27). **SHIPPED.**
 4. SPECIALTIES (11). **SHIPPED.**
 
-STATUS: the pack is COMPLETE — all 72 cards are wired and face-swapped
+STATUS: the pack is COMPLETE — all 73 cards are wired and face-swapped (74
+card ids/faces because Empowered Knowledge is a distinct library card)
 (`POLISH_BALANCE_CARD_IDS` in `src/data/cards/polish-balance-art.ts` holds all
-72; `POLISH_BALANCE_NOT_IMPLEMENTED` is EMPTY). Per-step behaviour tests:
+74; `POLISH_BALANCE_NOT_IMPLEMENTED` is EMPTY). Per-step behaviour tests:
 `polish-card-balance-abilities.test.ts`, `-spells.test.ts`, `-artifacts.test.ts`,
 `-specialties.test.ts`.
 
@@ -128,9 +129,9 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
 - **Learning** — Basic: "Play when the Hero gains experience. Advance their
   Experience Level by an additional 0,5 level, then/or draw 1 card." Expert
   unchanged (+1 level, remove). CHANGES: basic timing widens from "about to
-  level up" to "when the Hero gains experience", and adds "then/or draw 1
-  card" (read: the play also draws 1 card; if the +0.5 cannot apply, the draw
-  still happens).
+  level up" to "when the Hero gains experience". "Then/or" offers both the
+  combined +0.5-and-draw play and a draw-only play; at the Experience cap the
+  draw-only play remains useful.
 - **Diplomacy** — Basic: adds "Decide for each unpurchased unit: place its
   card on the top or bottom of its appropriate deck." (OLD: unpurchased units
   return without a placement choice.) Expert unchanged.
@@ -165,9 +166,17 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
 
 NOT in scope (unchanged even though the xlsx shows edits): Logistics,
 Necromancy, Leadership, Luck, the four School/Basic-School Magics,
-Offense/Archery/Armorer/Sorcery/Resistance/Scholar/Estates, and the four
-STATISTICS (Attack/Defense/Power/Knowledge) — no graphic was provided, so the
-author did not finalise them. Do NOT change them.
+Offense/Archery/Armorer/Sorcery/Resistance/Scholar/Estates, and the three
+STATISTICS Attack/Defense/Power. Knowledge is the sole Statistic now in scope,
+using the separately supplied face.
+
+### Knowledge Statistic
+
+- **Knowledge** (`stat.knowledge`) — Basic: after casting a spell, return the
+  Polish Spell Book's `Cast a Spell` enabler to hand instead of discarding it.
+  Expert also increases the spell limit by 1 for the current combat round. The
+  existing recall engine already implements both clauses; the Balance Pack adds
+  the supplied face, which also wins over Empowered art while the option is on.
 
 ---
 
@@ -343,6 +352,8 @@ first printed side, Option B = the second.
 - **Speculum** — A: "Discover any Map tile adjacent to the Map tile your Hero
   is currently on. OR Until the end of this turn, when you do Search action
   Search (X+1) instead." (adds the OR arm: a turn-long +1 Search widen).
+  The widen is an Instant offered when a Search starts (the Expert Scouting
+  prompt), not a free-turn effect that can be armed in advance.
 
 NOT in scope: every artifact not in the 27-file list (incl. Charm of Mana,
 Skull Helmet, Crest of Valor, Glyph of Gallantry, Legion pieces, Tomes, Orbs…)

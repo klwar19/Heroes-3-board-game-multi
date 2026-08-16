@@ -79,8 +79,8 @@ describe("Polish Balance Pack registries", () => {
     }
   });
 
-  it("declares every one of the pack's 12 Abilities + 21 Spells + 27 Artifacts + 11 Specialties as wired or not-implemented", () => {
-    // The Balance Pack's Ability folder is exactly these 12 cards (docs/
+  it("declares every Balance-Pack Ability, Knowledge, Spell, Artifact, and Specialty as wired or not-implemented", () => {
+    // The Balance Pack's Ability folder plus the supplied Knowledge card (docs/
     // polish-card-balance-spec.md §1). Every one must be accounted for, so a
     // reprint can never be silently dropped from the pack's scope.
     const PACK_ABILITIES = [
@@ -97,6 +97,8 @@ describe("Polish Balance Pack registries", () => {
       "ability.scouting",
       "ability.tactics",
       "ability.wisdom",
+      "stat.knowledge",
+      "stat.knowledge.empowered",
       // The pack's Spells folder is exactly these 21 cards (spec §2).
       "spell.anti_magic",
       "spell.bless",

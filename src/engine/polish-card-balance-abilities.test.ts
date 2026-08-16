@@ -743,6 +743,33 @@ describe("Balance Pack — Learning", () => {
     });
     expect(offPlayed.players.p1.deck.length, "no draw").toBe(2);
   });
+
+  it("offers the printed OR reading: draw a card instead of advancing the half level", () => {
+    const on = offerAfterGain(learner("balance-learning-draw-only", true), 1);
+    const hero = getMainHero(on, "p1")!;
+    const experienceBefore = hero.experience;
+    const labels = on.pendingChoice?.type === "OPTION_CHOICE"
+      ? on.pendingChoice.options.map((option) => option.label)
+      : [];
+    const drawOnlyIndex = labels.findIndex((label) => label.includes("draw 1 card instead"));
+    expect(drawOnlyIndex).toBeGreaterThan(0);
+    const played = applyOk(on, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: on.pendingChoice!.id,
+      optionIndex: drawOnlyIndex
+    });
+    expect(getMainHero(played, "p1")!.experience, "draw-only does not add the half level").toBe(experienceBefore);
+    expect(played.players.p1.deck.length, "one card was drawn").toBe(1);
+    expect(played.players.p1.discard).toContain("ability.learning");
+
+    // CONTROL: normal Learning still has only its printed level advance + decline.
+    const off = offerAfterGain(learner("balance-learning-draw-only-off", false), 2);
+    const offLabels = off.pendingChoice?.type === "OPTION_CHOICE"
+      ? off.pendingChoice.options.map((option) => option.label)
+      : [];
+    expect(offLabels.some((label) => label.includes("draw 1 card instead"))).toBe(false);
+  });
 });
 
 // ===========================================================================

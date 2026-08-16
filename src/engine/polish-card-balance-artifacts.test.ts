@@ -16,6 +16,7 @@ import { getUnitMoveRange } from "./legal-actions";
 import { searchCountOverrideFor } from "./ruleset";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { chooseComputerAction } from "./computer/policy";
+import { openSharedDeckSearch } from "./adventure-reducer";
 import type { ComputerObservation } from "./computer/types";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceArtifactCards } from "@/data/cards/artifacts-balance";
@@ -458,6 +459,20 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
     return next.combat!.units.unit_p1_griffins.damage;
   };
 
+  it("offers and labels the reprinted second OR arm, never the old morale roll", () => {
+    const on = combat(true);
+    on.players.p1.hand = ["artifact.hourglass_of_the_evil_hour" as CardId];
+    const labels = getLegalActions(on, "p1")
+      .filter(
+        (legal) =>
+          legal.action.type === "PLAY_CARD" &&
+          legal.action.cardId === "artifact.hourglass_of_the_evil_hour"
+      )
+      .map((legal) => legal.label);
+    expect(labels.some((label) => label.includes('reroll each "+1"'))).toBe(true);
+    expect(labels.some((label) => /roll the attack die|gain morale on a 0/i.test(label))).toBe(false);
+  });
+
   it("each enemy '+1' is rerolled once for this combat round (observable damage)", () => {
     const on = playOption(combat(true), "artifact.hourglass_of_the_evil_hour", 1);
     const curse = on.activeEffects.find((effect) => effect.name === "Hourglass of the Evil Hour");
@@ -604,16 +619,36 @@ describe("Balance Pack artifacts — the added OR arms", () => {
     expect(plays(off, "artifact.pendant_of_second_sight").some((action) => action.optionIndex === 2)).toBe(false);
   });
 
-  it("Speculum gains a turn-long Search (X+1) widen", () => {
+  it("Speculum is offered when a Search starts, then gives a turn-long Search (X+1) widen", () => {
     let on = createAdventureGameState({ seed: "speculum-on", difficulty: "normal", rollFirstPlayer: false });
     on.adventure!.houseRules = { ...(on.adventure!.houseRules ?? {}), "polish-card-balance": true };
     if (on.players.p1.needsHandRefresh || on.players.p1.canMulligan) {
       on = applyOk(on, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
     }
     on.players.p1.hand = ["artifact.speculum" as CardId];
-    const widen = plays(on, "artifact.speculum").find((action) => action.optionIndex === 1);
-    expect(widen, "the widen option is offered on the map").toBeTruthy();
-    const played = applyOk(on, widen!);
+    expect(plays(on, "artifact.speculum").map((action) => action.optionIndex)).toEqual([0, 2]);
+    expect(
+      plays(on, "artifact.speculum").some((action) => action.optionIndex === 1),
+      "the Search-start Instant cannot be armed as a free-turn map play"
+    ).toBe(false);
+    openSharedDeckSearch(on, "p1", "abilities", 2);
+    expect(on.pendingChoice?.type === "OPTION_CHOICE" ? on.pendingChoice.context : null).toBe("scouting-prompt");
+    const speculumIndex =
+      on.pendingChoice?.type === "OPTION_CHOICE"
+        ? on.pendingChoice.options.findIndex((option) => option.label.startsWith("Play Speculum"))
+        : -1;
+    expect(speculumIndex).toBeGreaterThan(0);
+    const played = applyOk(on, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: on.pendingChoice!.id,
+      optionIndex: speculumIndex
+    });
+    expect(played.players.p1.hand).not.toContain("artifact.speculum");
+    expect(
+      played.players.p1.ongoingCards?.some((entry) => entry.cardId === "artifact.speculum"),
+      "the lasting Instant is held in the ongoing tray until its effect expires"
+    ).toBe(true);
     const override = searchCountOverrideFor(played, "p1", 2);
     expect(override, "a Search (2) now reveals 3").toBeTruthy();
     expect(override!.count).toBe(3);
@@ -627,6 +662,8 @@ describe("Balance Pack artifacts — the added OR arms", () => {
     off.players.p1.hand = ["artifact.speculum" as CardId];
     const offPlays = plays(off, "artifact.speculum");
     expect(offPlays.some((action) => action.optionIndex === 2)).toBe(false);
+    openSharedDeckSearch(off, "p1", "abilities", 2);
+    expect(off.pendingChoice?.type === "OPTION_CHOICE" ? off.pendingChoice.context : null).not.toBe("scouting-prompt");
     expect(searchCountOverrideFor(off, "p1", 2)).toBeNull();
   });
 });

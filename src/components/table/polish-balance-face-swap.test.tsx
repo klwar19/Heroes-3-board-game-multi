@@ -75,6 +75,12 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
       POLISH_BALANCE_CARD_IDS.filter((cardId) => cardId.startsWith("spell.") && empoweredCardImage(cardId)),
       "no reprinted Spell ships an Empowered scan"
     ).toEqual([]);
+    expect(faceSrc("stat.knowledge", { balance: true, empowered: true })).toBe(
+      "/assets/polish-balance/stat-knowledge.webp"
+    );
+    expect(faceSrc("stat.knowledge.empowered", { balance: true })).toBe(
+      "/assets/polish-balance/stat-knowledge-empowered.webp"
+    );
   });
 
   it("the Empowered CUE is untouched by the swap — the gold ring still renders", () => {
@@ -130,6 +136,12 @@ describe("balance zoom description", () => {
     expect(cardZoomContent("ability.ballistics", false, true).lines.join(" ")).toContain("destroy 2 Walls");
     expect(cardZoomContent("ability.first_aid", false, true).lines.join(" ")).toContain(
       "use First Aid Tent on the selected unit 3 times (no crown)"
+    );
+    expect(cardZoomContent("artifact.hourglass_of_the_evil_hour", false, true).lines.join(" ")).toContain(
+      'each "+1" result'
+    );
+    expect(cardZoomContent("artifact.hourglass_of_the_evil_hour", false, true).lines.join(" ")).not.toContain(
+      "gain morale on a 0"
     );
     expect(cardZoomContent("ability.ballistics", false, false).lines.join(" ")).not.toContain("destroy 2 Walls");
   });

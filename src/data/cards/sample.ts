@@ -97,7 +97,14 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat", "map"],
     statisticType: "knowledge",
-    tags: ["statistic", "instant", "knowledge", "spell-recall", "wiki-reference"],
+    tags: [
+      "statistic",
+      "instant",
+      "knowledge",
+      "spell-recall",
+      "wiki-reference",
+      "Balance pack: Play after casting a spell. Instead of discarding Cast a Spell, take it back into your hand. Expert: also increase your spell limit by 1 for this combat round."
+    ],
     trigger: {
       event: "SPELL_CAST_STARTED",
       controller: "self"
@@ -216,7 +223,15 @@ export const sampleCards: CardLibrary = {
     timing: "instant",
     phaseLimit: ["reaction", "combat", "map"],
     statisticType: "knowledge",
-    tags: ["statistic", "instant", "knowledge", "spell-recall", "empowered", "wiki-reference"],
+    tags: [
+      "statistic",
+      "instant",
+      "knowledge",
+      "spell-recall",
+      "empowered",
+      "wiki-reference",
+      "Balance pack: Play after casting a spell. Instead of discarding Cast a Spell, take it back into your hand. During this combat round, your spell limit increases by 1."
+    ],
     trigger: {
       event: "SPELL_CAST_STARTED",
       controller: "self"

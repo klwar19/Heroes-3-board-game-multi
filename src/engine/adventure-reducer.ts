@@ -6087,7 +6087,9 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
   // The Expert side spends an expert use (crown), so it is only offered when one
   // is available — unless Learning has been Empowered, which makes its Expert
   // side free of a crown.
-  const modes: ("basic" | "expert")[] = ["basic"];
+  const modes: ("basic" | "basic-draw" | "expert")[] = balance
+    ? ["basic", "basic-draw"]
+    : ["basic"];
   if (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.learning")) {
     modes.push("expert");
   }
@@ -6106,6 +6108,8 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
             ? balance
               ? `Play Learning — advance a half level (+${effect.amount} Experience) and draw 1 card`
               : `Play Learning — advance a half level (+${effect.amount} Experience)`
+            : mode === "basic-draw"
+              ? "Play Learning — draw 1 card instead of advancing Experience"
             : `Play Learning (expert) — advance a full level (+${effect.expertAmount} Experience), then remove it`
       })),
       { label: "Decline" }
@@ -6145,11 +6149,12 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
   // The trailing option (or anything out of range) declines; if the card or an
   // expert use slipped away since the offer opened, decline rather than misfire.
   const canPlay =
-    (mode === "basic" || mode === "expert") &&
+    (mode === "basic" || mode === "basic-draw" || mode === "expert") &&
     player &&
     handIndex !== -1 &&
     card?.effect.type === "ADVANCE_EXPERIENCE" &&
     (mode === "basic" ||
+      mode === "basic-draw" ||
       expertUsesAvailable(player) > 0 ||
       abilityExpertIsCrownFree(player, "ability.learning"));
 
@@ -6176,20 +6181,22 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
     playerId,
     cardId: "ability.learning",
     timing: card.timing,
-    mode
+    mode: mode === "expert" ? "expert" : "basic"
   });
 
   // Polish Balance Pack: the reprinted BASIC side reads "…then/or draw 1 card".
   // Drawn BEFORE the Experience so the draw lands even when the gain re-offers
   // Learning (a second copy) or ends the turn's queue pumping.
-  if (mode === "basic" && houseRuleEnabled(state, "polish-card-balance")) {
+  if ((mode === "basic" || mode === "basic-draw") && houseRuleEnabled(state, "polish-card-balance")) {
     drawCardsForPlayer(state, playerId, 1);
   }
 
   // The bonus Experience runs through gainExperience, so advancing into another
   // level resolves its searches/specialties (and may even re-offer Learning when
   // the player holds a second copy).
-  gainExperience(state, playerId, mode === "expert" ? card.effect.expertAmount : card.effect.amount);
+  if (mode !== "basic-draw") {
+    gainExperience(state, playerId, mode === "expert" ? card.effect.expertAmount : card.effect.amount);
+  }
 
   pumpAdventureQueues(state);
 }
@@ -15344,7 +15351,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.priorityPlayerId = null;
 
     // Option 0 declines; the basic / expert plays follow in the order they were
-    // offered (mirroring openScoutingPrompt), then the Balance-Pack Wisdom widen.
+    // offered (mirroring openScoutingPrompt), then the Balance-Pack Wisdom and
+    // Speculum widens.
     if (action.optionIndex > 0) {
       const tiers: ("basic" | "expert")[] = [];
       if (prompt.offerBasic) {
@@ -15358,6 +15366,11 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         playScoutingCard(state, action.playerId, tier);
       } else if (prompt.offerWisdom && action.optionIndex === tiers.length + 1) {
         playWisdomSearchWiden(state, action.playerId);
+      } else if (
+        prompt.offerSpeculum &&
+        action.optionIndex === tiers.length + 1 + (prompt.offerWisdom ? 1 : 0)
+      ) {
+        playSpeculumSearchWiden(state, action.playerId);
       } else {
         throw new Error("That Scouting option is not available.");
       }
@@ -17114,6 +17127,7 @@ function performSchoolFetchFromDecks(
  * take the discard top or fetch.
  */
 const SCOUTING_CARD_ID = "ability.scouting" as CardId;
+const SPECULUM_CARD_ID = "artifact.speculum" as CardId;
 /** Search sizes the Scouting card grants ("do Search (N) instead"). */
 const SCOUTING_BASIC_COUNT = 3;
 /**
@@ -17173,7 +17187,7 @@ function scoutingPromptFor(
   playerId: PlayerId,
   baseCount: number,
   deckId?: string
-): { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean } | null {
+): { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean; offerSpeculum?: boolean } | null {
   const player = state.players[playerId];
   if (!player || hasSearchCountOverride(state, playerId)) {
     return null;
@@ -17190,8 +17204,19 @@ function scoutingPromptFor(
     Boolean(deckId && isSpellDeck(deckId)) &&
     player.mageGuildBuiltRound === state.round &&
     player.hand.some((cardId) => cardLibrary[cardId]?.name === "Wisdom");
+  // Balance-Pack Speculum: its new Instant arm is played WHEN the Search starts,
+  // then persists as Search (X+1) for every later Search this turn.
+  const offerSpeculum =
+    houseRuleEnabled(state, "polish-card-balance") && player.hand.includes(SPECULUM_CARD_ID);
   if (!player.hand.includes(SCOUTING_CARD_ID)) {
-    return offerWisdom ? { offerBasic: false, offerExpert: false, offerWisdom: true } : null;
+    return offerWisdom || offerSpeculum
+      ? {
+          offerBasic: false,
+          offerExpert: false,
+          ...(offerWisdom ? { offerWisdom: true } : {}),
+          ...(offerSpeculum ? { offerSpeculum: true } : {})
+        }
+      : null;
   }
   // Balance Pack: both sides are Search (X+2), so they ALWAYS beat the base count
   // — the "would this tier even help?" filter that hides a flat 3 on a Search (4)
@@ -17200,10 +17225,15 @@ function scoutingPromptFor(
   const offerBasic = balance || SCOUTING_BASIC_COUNT > baseCount;
   const offerExpert =
     (balance || SCOUTING_EXPERT_COUNT > baseCount) && canPlayExpertMode(player, SCOUTING_CARD_ID);
-  if (!offerBasic && !offerExpert && !offerWisdom) {
+  if (!offerBasic && !offerExpert && !offerWisdom && !offerSpeculum) {
     return null;
   }
-  return { offerBasic, offerExpert, ...(offerWisdom ? { offerWisdom: true } : {}) };
+  return {
+    offerBasic,
+    offerExpert,
+    ...(offerWisdom ? { offerWisdom: true } : {}),
+    ...(offerSpeculum ? { offerSpeculum: true } : {})
+  };
 }
 
 /**
@@ -17217,7 +17247,7 @@ function openScoutingPrompt(
   playerId: PlayerId,
   deckId: string,
   baseCount: number,
-  offer: { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean },
+  offer: { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean; offerSpeculum?: boolean },
   allowRemove = false,
   modeResolved = false,
   ignoreDiscardTopOnce = false
@@ -17247,13 +17277,18 @@ function openScoutingPrompt(
   if (offer.offerWisdom) {
     options.push({ label: `Play Wisdom — Search (${baseCount + WISDOM_BALANCE_SEARCH_DELTA})` });
   }
+  if (offer.offerSpeculum) {
+    options.push({
+      label: `Play Speculum — Search (${baseCount + 1}); every Search is Search (X+1) this turn`
+    });
+  }
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: offer.offerBasic || offer.offerExpert
-      ? `Use Scouting before this ${deckDisplayName(state, deckId)} Search?`
-      : `Play Wisdom before this ${deckDisplayName(state, deckId)} Search?`,
+      ? `Use a Search boost before this ${deckDisplayName(state, deckId)} Search?`
+      : `Play a Search boost before this ${deckDisplayName(state, deckId)} Search?`,
     options,
     context: "scouting-prompt",
     scoutingPrompt: {
@@ -17262,6 +17297,7 @@ function openScoutingPrompt(
       offerBasic: offer.offerBasic,
       offerExpert: offer.offerExpert,
       ...(offer.offerWisdom ? { offerWisdom: true } : {}),
+      ...(offer.offerSpeculum ? { offerSpeculum: true } : {}),
       ...(allowRemove ? { allowRemove: true } : {}),
       ...(modeResolved ? { modeResolved: true } : {}),
       ...(ignoreDiscardTopOnce ? { ignoreDiscardTopOnce: true } : {})
@@ -17322,6 +17358,40 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
     cardId: SCOUTING_CARD_ID,
     timing: "instant",
     mode
+  });
+}
+
+/** Plays Speculum's Balance-Pack +1 arm at the start of a Search. */
+function playSpeculumSearchWiden(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const index = player?.hand.indexOf(SPECULUM_CARD_ID) ?? -1;
+  if (!player || index === -1 || !houseRuleEnabled(state, "polish-card-balance")) {
+    return;
+  }
+  player.hand.splice(index, 1);
+  player.discard.push(SPECULUM_CARD_ID);
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Speculum",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: 0, balanceDelta: 1, balancePersist: true }]
+      },
+      { type: "card", cardId: SPECULUM_CARD_ID, controllerId: playerId },
+      playerId
+    )
+  );
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: SPECULUM_CARD_ID,
+    timing: "instant",
+    mode: "basic",
+    optionLabel: "Until the end of this turn: every Search is Search (X+1)"
   });
 }
 

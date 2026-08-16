@@ -3839,6 +3839,12 @@ function addOptionPlays(
     if (option.postSearchOnly) {
       continue;
     }
+    // Speculum's Balance-Pack Search widen is an Instant played when a Search
+    // STARTS. The shared Search prompt offers it at that exact time; exposing it
+    // as a free-turn map play would incorrectly let it be armed in advance.
+    if (option.searchStartOnly) {
+      continue;
+    }
     // Mystic Orb of Mana's "draw 2" option is offered only on an empty discard.
     if (option.requiresEmptyDiscard && (state.players[playerId]?.discard.length ?? 0) > 0) {
       continue;

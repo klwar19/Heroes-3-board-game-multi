@@ -140,9 +140,9 @@ export type HouseRuleId =
   // (field uses tile band; merchant/card effects use hero level). Also upgrades
   // polish-pandora-search by +1 card on a "+1" face.
   | "polish-random-artifacts"
-  // Polish house rule: Pandora's Box field draws become Search(N) choose 1 —
-  // N=2 on IV–V tiles, N=3 on VI–VII. With polish-random-artifacts, a "+1" die
-  // raises N by 1 (Search 3 / Search 4).
+  // Polish house rule: visiting Pandora's Box must use Search(N) choose 1
+  // instead of either printed dice reward — N=2 on IV–V tiles, N=3 on VI–VII.
+  // With polish-random-artifacts, a "+1" die raises N by 1 (Search 3 / Search 4).
   | "polish-pandora-search"
   // Polish house rule: units may Wait once per combat round at the start of
   // their activation; waited units re-activate after everyone else, highest
@@ -3416,6 +3416,13 @@ export type CardOptionDefinition = {
    * the printed timing.
    */
   postSearchOnly?: boolean;
+  /**
+   * A card side played when a Search STARTS, before any cards are revealed.
+   * It is deliberately withheld from the ordinary map/combat play list and is
+   * offered by the shared Search prompt instead. Unlike `postSearchOnly`, the
+   * effect is installed before the triggering Search and may persist afterward.
+   */
+  searchStartOnly?: boolean;
   /**
    * Targ of the Rampaging Ogre's top side: "Then, instead of discarding, put
    * this card back into your hand." After the option's effect resolves the
@@ -14602,6 +14609,8 @@ export type PendingChoice =
          * on a Spell-deck Search in the round this player built their Mage Guild.
          */
         offerWisdom?: boolean;
+        /** Balance-Pack Speculum: play its persistent +1 arm as this Search starts. */
+        offerSpeculum?: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
         /**
@@ -14831,10 +14840,10 @@ export type PendingChoice =
       /**
        * learning-level-up: the Learning play modes offered, index-aligned with
        * the options. The final "decline" option carries no mode. Resolving a
-       * mode discards (basic) or removes (expert) one Learning card from hand and
-       * advances the Hero's Experience.
+       * mode discards (basic/basic-draw) or removes (expert) one Learning card
+       * from hand. Basic advances and draws; basic-draw only draws; expert advances.
        */
-      learningLevelUp?: { modes: ("basic" | "expert")[] };
+      learningLevelUp?: { modes: ("basic" | "basic-draw" | "expert")[] };
       /**
        * visions-boost: paying Visions' Power on the map. `spellCardIds` are the
        * power-source Spells in hand offered to discard for +1 card each (index-

@@ -598,6 +598,9 @@ export const polishBalanceArtifactCards: CardLibrary = {
         },
         {
           label: "Until the end of this turn: every Search is Search (X+1)",
+          // Instant timing: offered by the shared pre-Search prompt, alongside
+          // Scouting. It cannot be armed as an ordinary free-turn map play.
+          searchStartOnly: true,
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {

@@ -23,7 +23,7 @@ import { cardLibrary } from "@/data/cards/library";
 
 /**
  * Every card whose Balance-Pack reprint is WIRED (Abilities, Spells, Artifacts,
- * Specialties — all four categories, 72 cards) — see
+ * Specialties, plus Knowledge and its distinct Empowered library card — 74 ids — see
  * the `polish-card-balance` registry entry in `house-rules.ts` for the per-card
  * summary, and `polish-balance-art.test.ts` for the on-disk + wiring pins.
  */
@@ -41,6 +41,8 @@ export const POLISH_BALANCE_CARD_IDS = [
   "ability.scouting",
   "ability.tactics",
   "ability.wisdom",
+  "stat.knowledge",
+  "stat.knowledge.empowered",
   "spell.anti_magic",
   "spell.bless",
   "spell.blind",
@@ -109,8 +111,9 @@ export const POLISH_BALANCE_CARD_IDS = [
  * `DISPLAY_ONLY_ABILITIES` pattern) — moving an id from here to
  * `POLISH_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  *
- * EMPTY: all 13 Abilities, 21 Spells, 27 Artifacts AND 11 Specialties are
- * wired — the pack is complete (72/72). A FUTURE unwireable reprint belongs
+ * EMPTY: all 13 Abilities, Knowledge (regular + Empowered), 21 Spells,
+ * 27 Artifacts AND 11 Specialties are wired — the pack is complete (74 ids).
+ * A FUTURE unwireable reprint belongs
  * here, never silently in the classic-face fallback.
  */
 export const POLISH_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {};
