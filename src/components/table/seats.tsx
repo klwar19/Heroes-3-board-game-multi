@@ -8,7 +8,7 @@ import { playSpellBookOpen } from "@/lib/sound";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
-import { useCardFaceImage } from "./polish-balance-art";
+import { useCardFaceImage, usePolishBalanceArtEnabled } from "./polish-balance-art";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
@@ -41,7 +41,7 @@ import {
   targetName,
   type CardBoardAction
 } from "./utils";
-import { useCardZoom, ZoomButton } from "./zoom";
+import { cardZoomContent, useCardZoom, ZoomButton } from "./zoom";
 import { CardSetFrame } from "./artifact-set-badge";
 import { SpecialtyCard } from "@/components/specialty-card";
 import { canRenderSpecialtyCard } from "@/components/specialty-card-data";
@@ -608,6 +608,7 @@ export function HandFan({
   const [armed, setArmed] = useState<{ handIndex: number; action: CardBoardAction; label: string } | null>(null);
   const { zoomCard } = useCardZoom();
   const helperCoach = useHelperCoachPreference();
+  const balanceArt = usePolishBalanceArtEnabled();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
@@ -816,7 +817,9 @@ export function HandFan({
         // stays grey/"blocked" for the whole fight even while Magic Arrow is
         // legal on your unit's activation, which reads as "cannot cast".
         const isPolishCastEnabler = polishBook && isCastASpellCard(entry.cardId);
-        const polishCastReady = isPolishCastEnabler && bookCastShortcuts.length > 0;
+        const isPolishIntelligenceEnabler =
+          polishBook && entry.cardId === "ability.intelligence" && bookCastShortcuts.length > 0;
+        const polishCastReady = (isPolishCastEnabler || isPolishIntelligenceEnabler) && bookCastShortcuts.length > 0;
         const playable =
           !trayActive &&
           (entry.boardSelections.length > 0 || entry.immediateActions.length > 0 || polishCastReady);
@@ -853,7 +856,7 @@ export function HandFan({
                   </div>
                 ) : (
                   <>
-                    {card ? <small>{describeCardEffect(card)}</small> : null}
+                    {card ? <small>{cardZoomContent(entry.cardId, empowered, balanceArt).lines[0]}</small> : null}
                     {card ? (
                       <div className="popMeta">
                         {getCardMetaLabels(card).map((label) => (
@@ -870,7 +873,7 @@ export function HandFan({
                     >
                       Read card (large)
                     </button>
-                    {polishBook && isCastASpellCard(entry.cardId) ? (
+                    {polishBook && (isCastASpellCard(entry.cardId) || isPolishIntelligenceEnabler) ? (
                       // Cast a Spell (Polish): two ways to reach the same cast —
                       // open the full grimoire, or pick from a quick shortcut list.
                       // Either way the chosen Spell runs the NORMAL cast flow.
@@ -1023,7 +1026,7 @@ export function HandFan({
                 !playable && helperCoach.enabled
                   ? `${card?.name ?? entry.cardId} — ${timingHint(entry.cardId)}`
                   : card
-                    ? `${empowered ? "Empowered — " : ""}${card.name} — ${describeCardEffect(card)}`
+                    ? `${empowered ? "Empowered — " : ""}${card.name} — ${cardZoomContent(entry.cardId, empowered, balanceArt).lines[0]}`
                     : entry.cardId
               }
               type="button"

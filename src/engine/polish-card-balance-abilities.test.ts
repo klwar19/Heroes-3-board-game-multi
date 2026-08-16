@@ -15,7 +15,8 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
-  getMainHero
+  getMainHero,
+  markUnitRemovedIfNeeded
 } from "./index";
 import {
   openSharedDeckSearch,
@@ -27,6 +28,8 @@ import { spellLimitFor } from "./ruleset";
 import { activeSpellPowerBonus, playerHasSpellTimingFreedom } from "./active-effects";
 import { gainExperience, getHeroMovementCapabilities } from "./adventure";
 import { playerCanUseFirstAidVolley, putPermanentIntoPlay, startWarMachineRound } from "./permanents";
+import { applyUnitCurrentSide } from "./unit-transforms";
+import { getRuleset, unitSideRuleOverrides } from "./ruleset";
 import type { CardId, GameAction, GameState, MapFieldState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
@@ -165,6 +168,32 @@ describe("Balance Pack — Intelligence is a START-of-combat cast", () => {
     const off = fightingBegins(sandbox("balance-int-play-off", false, ["ability.intelligence"]));
     expect(playsOf(off, "p1", "ability.intelligence").length).toBeGreaterThan(0);
   });
+
+  it("opens the same direct Spell Book cast flow as Cast a Spell", () => {
+    const on = sandbox("balance-int-book", true, ["ability.intelligence"]);
+    on.adventure!.houseRules = { ...(on.adventure!.houseRules ?? {}), "polish-spell-book": true };
+    on.players.p1.spellBook = ["spell.magic_arrow" as CardId];
+    on.players.p1.spellBookUsed = [];
+    const cast = getLegalActions(on, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.fromSpellBook &&
+        legal.action.castEnablerCardId === "ability.intelligence"
+    );
+    expect(cast, "Intelligence exposes a Book Spell without Cast a Spell in hand").toBeTruthy();
+    const casting = applyOk(on, cast!.action);
+    expect(casting.players.p1.discard).toContain("ability.intelligence");
+    expect(casting.players.p1.spellBookUsed).toContain("spell.magic_arrow");
+
+    const off = sandbox("balance-int-book-off", false, ["ability.intelligence"]);
+    off.adventure!.houseRules = { ...(off.adventure!.houseRules ?? {}), "polish-spell-book": true };
+    off.players.p1.spellBook = ["spell.magic_arrow" as CardId];
+    expect(
+      getLegalActions(off, "p1").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.castEnablerCardId === "ability.intelligence"
+      )
+    ).toBe(false);
+  });
 });
 
 // ===========================================================================
@@ -236,12 +265,25 @@ describe("Balance Pack — Wisdom", () => {
   });
 
   it("the reprinted EXPERT is a COMBAT play: +1 spell Power and +1 spell limit this round", () => {
-    const on = sandbox("balance-wisdom-combat-on", true, ["ability.wisdom"], 2);
+    const on = sandbox("balance-wisdom-combat-on", true, ["ability.wisdom", "spell.magic_arrow"], 2);
     const before = spellLimitFor(on, on.players.p1);
-    const play = playsOf(on, "p1", "ability.wisdom")[0];
-    expect(play, "the Balance expert side must be offered in combat").toBeTruthy();
-    const after = applyOk(on, play!.action);
-    expect(activeSpellPowerBonus(after, "p1"), "+1 spell Power").toBe(1);
+    const cast = getLegalActions(on, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(cast).toBeTruthy();
+    const casting = applyOk(on, cast!.action);
+    const play = getLegalActions(casting, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "ability.wisdom" && legal.action.mode === "expert"
+    );
+    expect(play, "Wisdom is offered after the first Spell is cast").toBeTruthy();
+    const after = applyOk(casting, play!.action);
+    expect(
+      after.eventLog.some(
+        (event) => event.type === "CARD_PLAYED" && event.cardId === "ability.wisdom" && event.effectAmount === 1
+      ),
+      "+1 Power was applied to that Spell"
+    ).toBe(true);
+    expect(after.players.p1.discard).toContain("ability.wisdom");
     expect(spellLimitFor(after, after.players.p1), "+1 spell limit").toBe(before + 1);
     expect(crownsSpent(after), "it is an EXPERT side").toBe(1);
 
@@ -796,9 +838,10 @@ describe("Balance Pack — Ballistics", () => {
       .filter((index): index is number => index !== undefined);
     expect(options, "the Arrow-Tower demolition (1) is gone").not.toContain(1);
     expect(options, "the buff bombard (2) is gone").not.toContain(2);
-    expect(options, "the printed wall/gate demolition (0) stays on the reprint").toContain(0);
-    expect(options, "the reprint's ENTER_PLAY basic (3) is offered").toContain(3);
+    expect(options, "the classic one-wall side is replaced").not.toContain(0);
+    expect(options, "the reprint's two-fortification basic (3) is offered").toContain(3);
     expect(options, "the reprint's 3-Walls-and-Gate expert (4) is offered").toContain(4);
+    expect(options, "the beginning-of-combat two-target shot (5) is offered").toContain(5);
 
     // CONTROL: with the rule off the classic sides are the ones offered.
     const off = siege("balance-ballistics-off", false);
@@ -811,32 +854,13 @@ describe("Balance Pack — Ballistics", () => {
     expect(offOptions).not.toContain(4);
   });
 
-  it("BASIC: putting it into play really arms the per-round paid 2-target bombard", () => {
+  it("BASIC: the paid 2-target bombard fires once at combat start and does not become recurring", () => {
     const on = siege("balance-ballistics-in-play", true);
     const play = playsOf(on, "p1", "ability.ballistics").find(
-      (legal) => legal.action.type === "PLAY_CARD" && legal.action.optionIndex === 3
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.optionIndex === 5
     );
-    expect(play, "the ENTER_PLAY basic must be offered").toBeTruthy();
-    const inPlay = applyOk(on, play!.action);
-    expect(inPlay.players.p1.permanents ?? [], "the card is in play").toContain("ability.ballistics");
-
-    // The round-start machinery now queues it exactly like a Catapult: pay 1
-    // building material to hit 2 adjacent targets for 1 damage each.
-    startWarMachineRound(inPlay);
-    const offer = inPlay.pendingChoice;
-    expect(offer?.type).toBe("OPTION_CHOICE");
-    if (offer?.type !== "OPTION_CHOICE") {
-      throw new Error("expected the round-start bombard offer");
-    }
-    expect(offer.prompt, "the offer names Ballistics and its cost").toContain("Ballistics");
-    expect(offer.prompt).toContain("1 building material");
-    expect(offer.options[0].label, "the fire button names the reprint, not the Catapult").toBe("Fire Ballistics");
-    const fired = applyOk(inPlay, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: offer.id,
-      optionIndex: 0
-    });
+    expect(play, "the opening bombard must be offered").toBeTruthy();
+    const fired = applyOk(on, play!.action);
     expect(fired.players.p1.resources.buildingMaterials, "the material was paid").toBe(0);
     const aim = fired.pendingChoice;
     if (aim?.type !== "ABILITY_TARGET_CHOICE") {
@@ -848,6 +872,7 @@ describe("Balance Pack — Ballistics", () => {
     );
     const hit = applyOk(fired, legal!.action);
     expect(hit.combat!.units[targetId].damage, "1 damage landed").toBe(1);
+    expect(hit.players.p1.permanents ?? []).not.toContain("ability.ballistics");
 
     // CONTROL: with the rule off the card can never enter play, so no round-start
     // offer exists for it at all.
@@ -944,7 +969,19 @@ describe("Balance Pack — First Aid", () => {
     expect(playerCanUseFirstAidVolley(offPaid, "p1")).toBe(true);
   });
 
-  it("EXPERT: with a First Aid Tent in play a unit gains +2 Health for the combat", () => {
+  it("labels the balance Tent volley as crown-free First Aid, without an expert-cost remark", () => {
+    const on = sandbox("balance-first-aid-label", true, ["ability.first_aid", "war_machine.first_aid_tent"], 0);
+    putPermanentIntoPlay(on, "p1", "war_machine.first_aid_tent" as CardId);
+    const own = Object.values(on.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    own.damage = 1;
+    const volley = getLegalActions(on, "p1").find(
+      (legal) => legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.mode === "expert"
+    );
+    expect(volley?.label).toBe(`First Aid ability: use First Aid Tent on ${own.name} 3 times`);
+    expect(volley?.label.toLowerCase()).not.toContain("crown");
+  });
+
+  it("EXPERT: +2 Health protects only the selected Stack/Pack/Few life", () => {
     const on = sandbox("balance-first-aid-expert", true, ["ability.first_aid"], 2);
     const combat = on.combat!;
     const own = Object.values(combat.units).find((unit) => unit.controllerId === "p1")!;
@@ -968,6 +1005,29 @@ describe("Balance Pack — First Aid", () => {
     const after = applyOk(on, play!.action);
     expect(after.combat!.units[own.id].maxHealth, "+2 Health").toBe(before + 2);
     expect(crownsSpent(after)).toBe(1);
+
+    // Defeat that physical health bar. The Pack flips to Few, and the newly
+    // revealed life uses its printed Health without carrying First Aid's +2.
+    const buffed = after.combat!.units[own.id];
+    buffed.variant = "pack";
+    applyUnitCurrentSide(buffed, getRuleset(after), unitSideRuleOverrides(after));
+    // Re-applying the side includes the live +2 before this life is defeated.
+    const packHealthWithFirstAid = buffed.maxHealth;
+    expect(buffed.combatMaxHealthBonus).toBe(2);
+    buffed.damage = packHealthWithFirstAid;
+    markUnitRemovedIfNeeded(after, buffed);
+    expect(buffed.variant).toBe("few");
+    expect(buffed.combatMaxHealthBonus).toBeUndefined();
+    const printedFew = { ...buffed, damage: 0 };
+    applyUnitCurrentSide(printedFew, getRuleset(after), unitSideRuleOverrides(after));
+    expect(buffed.maxHealth, "the Few life has no carried +2").toBe(printedFew.maxHealth);
+    expect(
+      after.activeEffects.some((effect) =>
+        effect.modifiers.some(
+          (modifier) => modifier.type === "HEALTH_BONUS" && modifier.currentUnitLifeOnly
+        )
+      )
+    ).toBe(false);
 
     // CONTROL: without a Tent in play the arm is never offered.
     const noTent = sandbox("balance-first-aid-no-tent", true, ["ability.first_aid"], 2);

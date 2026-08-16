@@ -303,9 +303,16 @@ export const extraAbilityCards: CardLibrary = {
       "ability",
       "magic",
       "defense",
-      "Basic: Instant +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit (the same +1 also reduces that Spell's damage). Expert: Instant +2 defense."
+      "Basic: Instant +1 defense — a reaction to an attack on your unit OR to an enemy damaging Spell on your unit (the same +1 also reduces that Spell's damage). Expert: Instant +2 defense.",
+      "Balance pack: Basic may instead decrease an enemy Spell's Power by up to 2 (minimum its weakest effect); Expert may instead decrease it by up to 4."
     ],
-    effect: { type: "INTERFERE_SPELL", amount: 1, expertAmount: 2 },
+    effect: {
+      type: "INTERFERE_SPELL",
+      amount: 1,
+      expertAmount: 2,
+      balancePowerReduction: 2,
+      balanceExpertPowerReduction: 4
+    },
     // Real printed-card scan at /assets/abilities-interference.webp, so noScan
     // stays off (default false) and the baked art is used. Refreshed 2026-08-04
     // from en.homm3bg.wiki (scripts/fetch-spell-art-refresh.py): the old local
@@ -590,20 +597,14 @@ export const extraAbilityCards: CardLibrary = {
       "instant",
       "siege",
       "wiki-reference",
-      "Balance pack: the reprint WINS over the ballistics-buff house rule (the Arrow-Tower demolition and the buff's bombard are both withheld while polish-card-balance is on). BASIC: put Ballistics into play — at the beginning of each Combat round you may pay 1 building material to hit 2 adjacent targets (units, Walls, the Gate) for 1 damage each, exactly the Catapult's round-start offer — OR, during a siege, destroy 1 Wall or the Gate. EXPERT (spend a crown): when your Catapult fires, resolve its effect TWICE on the same two targets and pay none of its cost (offered at the Catapult's own round-start prompt, like Artillery's Ballista volley) — OR, during a siege, destroy 3 Walls and the Gate at once."
+      "Balance pack: the reprint WINS over the ballistics-buff house rule. BASIC: at the beginning of Combat, pay 1 building material to deal 1 damage to two adjacent targets (units, Walls, or Gate) — OR during a siege destroy 2 Walls or 1 Wall and the Gate. EXPERT: when using the Catapult, resolve it twice on the same targets without paying its cost — OR during a siege destroy 3 Walls and the Gate."
     ],
-    // Balance Pack: the round-start descriptor the basic side's ENTER_PLAY arm
-    // uses. Read ONLY through getRoundStartDefinitionForCard, which is called for
-    // cards actually IN PLAY — so with the rule off (where no option puts this
-    // card into play) it is inert.
-    permanentEffect: {
-      roundStart: { kind: "pay-to-splash", cost: { buildingMaterials: 1 }, amount: 1 }
-    },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
           label: "Destroy 1 Wall or the Gate",
+          forbidsHouseRule: "polish-card-balance",
           effect: { type: "SIEGE_DEMOLISH", target: "wall-or-gate" }
         },
         {
@@ -636,11 +637,10 @@ export const extraAbilityCards: CardLibrary = {
           // Balance Pack basic: the recurring paid bombard. Entering play is what
           // makes it recur — `startWarMachineRound` queues every in-play card that
           // carries a `roundStart`, so the Catapult's own machinery drives it.
-          label:
-            "Balance: put Ballistics into play — each combat round, pay 1 building material to hit 2 adjacent targets for 1 damage each",
+          label: "Balance: during a siege, destroy 2 Walls or 1 Wall and the Gate",
           requiresHouseRule: "polish-card-balance",
           combatOnly: true,
-          effect: { type: "ENTER_PLAY" }
+          effect: { type: "SIEGE_DEMOLISH", target: "two-walls-or-wall-and-gate" }
         },
         {
           // Balance Pack expert siege arm: no target pick — it fells the Gate and
@@ -649,6 +649,14 @@ export const extraAbilityCards: CardLibrary = {
           requiresHouseRule: "polish-card-balance",
           expertOnly: true,
           effect: { type: "SIEGE_DEMOLISH", target: "three-walls-and-gate" }
+        },
+        {
+          label: "Balance: at the beginning of Combat pay 1 building material to hit 2 adjacent targets",
+          requiresHouseRule: "polish-card-balance",
+          combatOnly: true,
+          combatStartOnly: true,
+          cost: { resources: { buildingMaterials: 1 } },
+          effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 }
         }
       ]
     },

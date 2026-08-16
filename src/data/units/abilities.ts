@@ -3131,7 +3131,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
   "titan-ignore-ongoing": {
     id: "titan-ignore-ongoing",
     name: "Unbreakable Will",
-    text: "[unit_passive] Ignore any ongoing effects on this unit.",
+    text: "[unit_passive] Ignore ongoing effects played directly on this unit; global and player-wide ongoing effects still apply.",
     effect: { type: "IGNORE_ONGOING_EFFECTS" },
     implementationStatus: "implemented"
   },

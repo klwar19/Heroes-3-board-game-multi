@@ -275,26 +275,8 @@ export const polishBalanceSpellCards: CardLibrary = {
       "Instant: play when the selected enemy unit is attacking (ANY tier — the reprint drops the tier gate) — it cannot increase its attack from any card, and Power 0: its Attack die is negated; Power 1: it rolls 2 dice and resolves the lower result; Power 2: it rolls 4 dice, rerolls every '+1' once and resolves all of them."
     ),
     effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Negate the die roll",
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "NEGATE_ATTACK", dieMode: "negate" }
-        },
-        {
-          label: "Roll 2 dice, resolve the lower (pay 1 Power)",
-          cost: { discardCards: 1, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "NEGATE_ATTACK", dieMode: "lower-of-two" }
-        },
-        {
-          label: "Roll 4 dice, reroll every \"+1\", resolve all (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
-          trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
-          effect: { type: "NEGATE_ATTACK", dieMode: "four-reroll-plus" }
-        }
-      ]
+      type: "NEGATE_ATTACK",
+      dieModeByPower: { 0: "negate", 1: "lower-of-two", 2: "four-reroll-plus" }
     }
   }),
 
@@ -303,50 +285,18 @@ export const polishBalanceSpellCards: CardLibrary = {
   "spell.prayer": reprint("spell.prayer", {
     timing: "combat",
     phaseLimit: ["combat"],
+    target: { type: "friendly-unit" },
     tags: tags(
       "spell.prayer",
-      "Ongoing: until its activation in the next combat round the selected unit gains attack, defense OR initiative: Power 0: +1; Power 2: +2; Power 4: +3."
+      "Ongoing: until its activation in the next combat round the selected unit gains attack, defense AND initiative: Power 0: +1; Power 2: +2; Power 4: +3."
     ),
     effect: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "+X attack",
-          target: { type: "friendly-unit" },
-          effect: {
-            type: "CREATE_ATTACK_BUFF",
-            name: "Prayer",
-            amountByPower: { 0: 1, 2: 2, 4: 3 },
-            duration: { type: "next-activation" },
-            polarity: "positive",
-            removable: true
-          }
-        },
-        {
-          label: "+X defense",
-          target: { type: "friendly-unit" },
-          effect: {
-            type: "CREATE_DEFENSE_BUFF",
-            name: "Prayer",
-            amountByPower: { 0: 1, 2: 2, 4: 3 },
-            duration: { type: "next-activation" },
-            polarity: "positive",
-            removable: true
-          }
-        },
-        {
-          label: "+X initiative",
-          target: { type: "friendly-unit" },
-          effect: {
-            type: "CREATE_INITIATIVE_BUFF",
-            name: "Prayer",
-            amountByPower: { 0: 1, 2: 2, 4: 3 },
-            duration: { type: "next-activation" },
-            polarity: "positive",
-            removable: true
-          }
-        }
-      ]
+      type: "CREATE_PRAYER_BUFF",
+      name: "Prayer",
+      amountByPower: { 0: 1, 2: 2, 4: 3 },
+      duration: { type: "next-activation" },
+      polarity: "positive",
+      removable: true
     }
   }),
 

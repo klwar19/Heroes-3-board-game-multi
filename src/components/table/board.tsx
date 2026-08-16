@@ -64,6 +64,7 @@ import type { CommanderGrade, CommanderSlug } from "@/data/commanders";
 import {
   actionKey,
   formatEvent,
+  getTacticsMoveActions,
   getTacticsSwapActions,
   isBoardTargetCardAction,
   sameCardSelection,
@@ -1084,17 +1085,35 @@ export function BattlefieldBoard({
   // the single, clear control.
   const tacticsSetup = Boolean(combat) && tacticsSetupActiveFor(state, viewerPlayerId);
   const expertSwapOffers = !tacticsSetup ? getTacticsSwapActions(legalActions) : [];
-  const expertSwapAvailable = expertSwapOffers.length > 0;
+  const expertMoveOffers = !tacticsSetup ? getTacticsMoveActions(legalActions) : [];
+  const expertSwapAvailable = expertSwapOffers.length > 0 || expertMoveOffers.length > 0;
   const swapActions = tacticsSetup
     ? getTacticsSwapActions(legalActions)
     : expertSwapArmed
       ? expertSwapOffers
       : [];
+  const tacticsMoveActions = tacticsSetup
+    ? getTacticsMoveActions(legalActions)
+    : expertSwapArmed
+      ? expertMoveOffers
+      : [];
   const swapSelectable = swapSelectableUnitIds(swapActions);
-  const activeSwapSelection = swapSelection && swapSelectable.has(swapSelection) ? swapSelection : null;
+  const tacticsSelectable = new Set([
+    ...swapSelectable,
+    ...tacticsMoveActions.map((action) => action.unitId)
+  ]);
+  const activeSwapSelection = swapSelection && tacticsSelectable.has(swapSelection) ? swapSelection : null;
   const swapPartners = activeSwapSelection
     ? swapPartnerActions(swapActions, activeSwapSelection)
     : new Map<string, GameAction>();
+  const tacticsMoveDestinations = new Map<number, GameAction>();
+  if (activeSwapSelection) {
+    for (const action of tacticsMoveActions) {
+      if (action.unitId === activeSwapSelection) {
+        tacticsMoveDestinations.set(action.position, action);
+      }
+    }
+  }
 
   // Auto-disarm expert Tactics once it is no longer offered — most importantly
   // the instant the swap is made (the expert use is spent), but also if the
@@ -1119,16 +1138,25 @@ export function BattlefieldBoard({
     stepChoice.playerId === viewerPlayerId
       ? { unitId: stepChoice.step.unitId, candidates: stepChoice.step.positions }
       : null;
-  const repositionKind: "move" | "swap" | null = moveContext ? "move" : activeSwapSelection ? "swap" : null;
+  const repositionKind: "move" | "swap" | null = moveContext
+    ? "move"
+    : activeSwapSelection
+      ? hoverDestination !== null && tacticsMoveDestinations.has(hoverDestination)
+        ? "move"
+        : "swap"
+      : null;
   const repositionSourceUnitId = moveContext ? moveContext.unitId : activeSwapSelection;
   const repositionSourcePosition =
     repositionSourceUnitId && combat ? combat.units[repositionSourceUnitId]?.position ?? null : null;
   const repositionCandidates = moveContext
     ? moveContext.candidates
     : activeSwapSelection && combat
-      ? [...swapPartners.keys()]
-          .map((unitId) => combat.units[unitId]?.position)
-          .filter((position): position is number => position !== undefined)
+      ? [
+          ...[...swapPartners.keys()]
+            .map((unitId) => combat.units[unitId]?.position)
+            .filter((position): position is number => position !== undefined),
+          ...tacticsMoveDestinations.keys()
+        ]
       : [];
   const repositionGhostImage =
     repositionSourceUnitId && combat ? combat.units[repositionSourceUnitId]?.assets?.cardImage : undefined;
@@ -1212,7 +1240,7 @@ export function BattlefieldBoard({
         <div className="tacticsExpertBanner" role="group" aria-label="Expert Tactics">
           {expertSwapArmed ? (
             <>
-              <span>Tactics (expert): click one of your units, then another, to switch them.</span>
+              <span>Tactics (expert): click one of your units, then switch it with an ally or move it 1 space.</span>
               <button
                 className="commandButton"
                 onClick={() => {
@@ -1229,9 +1257,9 @@ export function BattlefieldBoard({
               className="commandButton"
               onClick={() => setExpertSwapArmed(true)}
               type="button"
-              title="Switch the positions of two of your units (spends one expert use)."
+              title="Switch two units or move one unit 1 space (spends one expert use)."
             >
-              Tactics (expert): switch two units
+              Tactics (expert): switch two units or move one
             </button>
           )}
         </div>
@@ -1393,12 +1421,14 @@ export function BattlefieldBoard({
               (integratedCommanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)) ||
               // Commander sort: an own (non-commander) unit is a swap target.
               (commanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)));
-          // Tactics swap roles for this cell's unit (only during the setup window).
+          // Tactics roles for this cell: pick a friendly source, then either an
+          // allied swap partner or a legal empty one-space destination.
           const isSwapSelected = Boolean(unit && activeSwapSelection === unit.id);
           const isSwapTarget = Boolean(unit && swapPartners.has(unit.id));
           const isSwapSource = Boolean(
-            unit && tacticsSetup && swapSelectable.has(unit.id) && !isSwapSelected && !isSwapTarget
+            unit && (tacticsSetup || expertSwapArmed) && tacticsSelectable.has(unit.id) && !isSwapSelected && !isSwapTarget
           );
+          const tacticsMoveAction = !unit ? tacticsMoveDestinations.get(index) : undefined;
           // The unit currently being moved one space (combat-step) — its origin.
           const isRepositionSource = Boolean(unit && repositionKind === "move" && repositionSourceUnitId === unit.id);
           // A candidate cell of the open reposition (empty move destinations, or
@@ -1407,7 +1437,7 @@ export function BattlefieldBoard({
           const isFlashing = flashCells.includes(index);
           const className = `battleCell ${terrain} ${unit?.controllerId ?? ""} ${isActive ? "active" : ""} ${
             isObstacle ? "obstacle" : ""
-          } ${moveAction && !selectedCardAction && !planning ? "moveTarget" : ""} ${
+          } ${(moveAction || tacticsMoveAction) && !selectedCardAction && !planning ? "moveTarget" : ""} ${
             attackAction && !selectedCardAction ? "attackTarget" : ""
           } ${cardAction || spaceCardAction || teleportAction || placeTokenAction ? "cardTarget" : ""} ${abilityAction ? "abilityTarget" : ""} ${activationOrderAction ? "activationOrderTarget" : ""} ${healAction ? "healTarget" : ""} ${setPowerAction ? "artifactSetTarget" : ""} ${dropTarget ? "dropTarget" : ""} ${
             isSwapSource ? "swapSource" : ""
@@ -1850,9 +1880,8 @@ export function BattlefieldBoard({
             );
           }
 
-          // Tactics swap (start-of-combat window): click a unit to select it,
-          // then click an ally to switch them. Clicking the selected unit again
-          // clears the pick. Takes precedence over plain inspect during setup.
+          // Tactics: click a unit, then either an ally to switch or a highlighted
+          // empty cell to use the Balance Pack's one-space move arm.
           if (unit && (isSwapSource || isSwapTarget || isSwapSelected)) {
             const swapClick = () => {
               if (isSwapSelected) {
@@ -1879,7 +1908,7 @@ export function BattlefieldBoard({
               ? `Deselect ${unit.name}`
               : isSwapTarget
                 ? `Switch ${combat?.units[activeSwapSelection ?? ""]?.name ?? "unit"} with ${unit.name}`
-                : `Select ${unit.name} to switch`;
+                : `Select ${unit.name} to switch or move`;
             return (
               <button
                 aria-label={swapLabel}
@@ -1950,6 +1979,7 @@ export function BattlefieldBoard({
             spaceCardAction ??
             teleportAction ??
             placeTokenAction ??
+            tacticsMoveAction ??
             (unit ? (attackAction ?? healAction) : planning ? undefined : moveAction);
 
           // Ability-target picks (Magog splash, Lich Death Cloud, …) must stay
@@ -1964,7 +1994,8 @@ export function BattlefieldBoard({
               cardAction ||
               spaceCardAction ||
               teleportAction ||
-              placeTokenAction)
+              placeTokenAction ||
+              tacticsMoveAction)
           ) {
             const label = activationOrderAction
               ? `Choose ${unit?.name} to activate first`
@@ -1978,8 +2009,10 @@ export function BattlefieldBoard({
                     ? repositionKind === "move" || teleportIsNeutralMove
                       ? `Move to ${getBattlefieldLabel(index)}`
                       : `Teleport to ${getBattlefieldLabel(index)}`
-                    : placeTokenAction
+                  : placeTokenAction
                       ? `Place token on ${getBattlefieldLabel(index)}`
+                      : tacticsMoveAction
+                        ? `Tactics: move to ${getBattlefieldLabel(index)}`
                       : unit
                         ? attackAction
                           ? `Attack ${unit?.name}`
@@ -1994,9 +2027,13 @@ export function BattlefieldBoard({
                 key={index}
                 onClick={() => {
                   // A unit arriving on an empty space flashes the destination.
-                  if (teleportAction) {
+                  if (teleportAction || tacticsMoveAction) {
                     setFlashCells([index]);
                     setHoverDestination(null);
+                    if (tacticsMoveAction) {
+                      setSwapSelection(null);
+                      setExpertSwapArmed(false);
+                    }
                   }
                   onAction(interactiveAction);
                 }}

@@ -30,6 +30,7 @@ import {
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade } from "./unit-experience";
 import { polishBalanceCardLibrary } from "./polish-balance-spells";
+import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
@@ -230,6 +231,7 @@ import {
   getPermanentCardIds,
   grantBalanceBallistaAim,
   isLowestInitiativeEnemy,
+  openBallisticsOpeningBombard,
   playerCanUseFirstAidVolley,
   playerOwnsWarMachine,
   putPermanentIntoPlay,
@@ -1093,7 +1095,11 @@ function consumePolishSpellBookCast(
     return null;
   }
 
-  if (castEnablerCardId !== CAST_A_SPELL_CARD_ID) {
+  const intelligenceEnabler =
+    castEnablerCardId === "ability.intelligence" &&
+    houseRuleEnabled(state, "polish-card-balance") &&
+    !balanceIntelligenceWindowClosed(state);
+  if (castEnablerCardId !== CAST_A_SPELL_CARD_ID && !intelligenceEnabler) {
     return {
       code: "CARD_NOT_IN_HAND",
       message: "Casting from the Polish Spell Book needs a Cast a Spell card in hand.",
@@ -1101,7 +1107,7 @@ function consumePolishSpellBookCast(
     };
   }
 
-  const enablerIndex = player.hand.indexOf(CAST_A_SPELL_CARD_ID);
+  const enablerIndex = player.hand.indexOf(castEnablerCardId);
   const spellIndex = player.spellBook.indexOf(spellCardId);
   if (enablerIndex === -1) {
     return {
@@ -1119,14 +1125,14 @@ function consumePolishSpellBookCast(
   }
 
   player.hand.splice(enablerIndex, 1);
-  player.discard.push(CAST_A_SPELL_CARD_ID);
+  player.discard.push(castEnablerCardId);
   player.spellBook.splice(spellIndex, 1);
   (player.spellBookUsed ??= []).push(spellCardId);
 
   appendEvent(state, {
     type: "CARD_PLAYED",
     playerId,
-    cardId: CAST_A_SPELL_CARD_ID,
+    cardId: castEnablerCardId,
     timing: "instant",
     mode: "basic",
     optionLabel: `Cast ${cardLibrary[spellCardId]?.name ?? spellCardId} from the Spell Book`
@@ -1149,8 +1155,11 @@ function assertPolishBookCastEnabled(
     action.castEnablerCardId === undefined && playerHasSpellTimingFreedom(state, action.playerId);
   const enablerOk =
     viaIntelligence ||
-    (action.castEnablerCardId === CAST_A_SPELL_CARD_ID &&
-      Boolean(caster?.hand.includes(CAST_A_SPELL_CARD_ID)));
+    ((action.castEnablerCardId === CAST_A_SPELL_CARD_ID ||
+      (action.castEnablerCardId === "ability.intelligence" &&
+        houseRuleEnabled(state, "polish-card-balance") &&
+        !balanceIntelligenceWindowClosed(state))) &&
+      Boolean(caster?.hand.includes(action.castEnablerCardId)));
   if (!enablerOk || !caster?.spellBook.includes(action.cardId)) {
     throw new Error(
       "Casting from the Polish Spell Book needs a Cast a Spell card (or Intelligence) and a refreshed Book Spell."
@@ -1908,6 +1917,9 @@ function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEf
   if (effect.type === "IGNORE_DEFENSE") {
     return Boolean(effect.gradeByPower);
   }
+  if (effect.type === "NEGATE_ATTACK") {
+    return Boolean(effect.dieModeByPower);
+  }
   return false;
 }
 
@@ -1933,6 +1945,17 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
       2,
       attackPowerFor(stackItem, attackerId) + (stackItem.modifiers.slayerSchoolPowerBonus ?? 0)
     );
+  }
+
+  if (stackItem.modifiers.misfortuneDieByPower && stackItem.modifiers.misfortuneCasterId) {
+    const power = attackPowerFor(stackItem, stackItem.modifiers.misfortuneCasterId);
+    const threshold = Object.keys(stackItem.modifiers.misfortuneDieByPower)
+      .map(Number)
+      .filter((value) => value <= power)
+      .sort((a, b) => b - a)[0] ?? 0;
+    stackItem.modifiers.misfortuneDie =
+      stackItem.modifiers.misfortuneDieByPower[threshold] ?? "negate";
+    stackItem.modifiers.attackDieCancelled = stackItem.modifiers.misfortuneDie === "negate";
   }
 
   const records = stackItem.modifiers.powerScaledAttackInstants;
@@ -2081,7 +2104,8 @@ function applyUnitMaxHealthBonus(
   amount: number,
   effectName: string,
   source: ActiveEffectState["source"],
-  controllerId: PlayerId
+  controllerId: PlayerId,
+  currentUnitLifeOnly = false
 ): void {
   if (amount <= 0 || !state.combat) {
     return;
@@ -2099,7 +2123,7 @@ function applyUnitMaxHealthBonus(
       // previous baked-maxHealth behaviour). Dragon Flies still dispel it via
       // the controller-owned path, which also strips combatMaxHealthBonus.
       removable: false,
-      modifiers: [{ type: "HEALTH_BONUS", amount }]
+      modifiers: [{ type: "HEALTH_BONUS", amount, ...(currentUnitLifeOnly ? { currentUnitLifeOnly: true } : {}) }]
     },
     source,
     controllerId,
@@ -11564,6 +11588,33 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    if (card?.effect.type === "CREATE_PRAYER_BUFF" && stackItem.action.target.type === "unit") {
+      const amount = getAmountByPower(
+        card.effect.amountByPower,
+        0,
+        getCurrentSpellPower(state, stackItem, cards)
+      );
+      createActiveEffect(
+        state,
+        {
+          name: card.effect.name,
+          scope: "unit",
+          duration: card.effect.duration,
+          polarity: card.effect.polarity ?? "positive",
+          removable: card.effect.removable ?? true,
+          modifiers: [
+            { type: "ATTACK_BONUS", amount },
+            { type: "DEFENSE_BONUS", amount },
+            { type: "INITIATIVE_BONUS", amount }
+          ]
+        },
+        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        stackItem.action.playerId,
+        stackItem.action.target
+      );
+      appliedCombatInitiativeBuff = true;
+    }
+
     if (card?.effect.type === "CREATE_DEFENSE_BUFF" && stackItem.action.target.type === "unit") {
       createDefenseBuffFromCard(
         state,
@@ -12107,7 +12158,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           doubleAmountForUnitName(card.effect.amount, target, card.effect.doubleForUnitName),
           card.name,
           { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
-          stackItem.action.playerId
+          stackItem.action.playerId,
+          card.effect.currentUnitLifeOnly
         );
       }
     }
@@ -13782,6 +13834,8 @@ function applyReactionPlayCore(
     target?: TargetRef;
     /** Tarnum (Conflux) VI: free over-limit reaction; returns to the shared Spell deck. */
     tarnumReturn?: "deck-top" | "discard";
+    /** Polish Balance Interference: use its enemy-Spell Power reduction arm. */
+    interferenceMode?: "damage" | "power";
   },
   cards: CardLibrary
 ): { windowEnded: boolean } {
@@ -14701,6 +14755,9 @@ function applyReactionPlayCore(
     } else {
       stackItem.modifiers.spellPowerBonus += effectAmount;
     }
+    if (effect.spellLimitBonus && stackItem.action.type === "CAST_SPELL") {
+      state.players[playerId].combatStats.spellLimitBonusThisRound += effect.spellLimitBonus;
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
@@ -15088,9 +15145,14 @@ function applyReactionPlayCore(
     // Polish Balance Pack Misfortune: the rung the caster paid for decides the
     // DIE half — only "negate" still cancels the die outright; the other two
     // roll a punished die instead (resolveAttackStackItem).
+    if (effect.dieModeByPower) {
+      stackItem.modifiers.misfortuneDieByPower = effect.dieModeByPower;
+      stackItem.modifiers.misfortuneCasterId = playerId;
+    }
     const misfortuneMode = effect.dieMode ?? "negate";
     stackItem.modifiers.misfortuneDie = misfortuneMode;
     stackItem.modifiers.attackDieCancelled = misfortuneMode === "negate";
+    recomputePowerScaledAttackInstants(stackItem);
     stackItem.modifiers.misfortunePhase = false;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -15377,18 +15439,27 @@ function applyReactionPlayCore(
   // unit by +X (basic 1 / expert 2 / Plate option 4). Stack-scoped only; no
   // combat-long active effect (matches Shield's Instant fix and Lion's Shield).
   if (effect.type === "INTERFERE_SPELL" && stackItem?.action.type === "CAST_SPELL") {
-    const targetRef = stackItem.action.target;
-    const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
-    // The legal-reaction gate already restricts this to the reacting player's
-    // own targeted unit; re-checked here so a stale window can never buff an
-    // enemy unit or a dead one.
-    if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
-      (stackItem.modifiers.interfereSpellReductions ??= []).push({
-        unitId: targetUnit.id,
-        amount: effectAmount
-      });
+    if (play.interferenceMode === "power" && houseRuleEnabled(state, "polish-card-balance")) {
+      const reduction = mode === "expert"
+        ? (effect.balanceExpertPowerReduction ?? effect.balancePowerReduction ?? 0)
+        : (effect.balancePowerReduction ?? 0);
+      stackItem.modifiers.interferencePowerReduction =
+        (stackItem.modifiers.interferencePowerReduction ?? 0) + reduction;
+      stackItem.modifiers.playedCardIds.push(play.cardId);
+    } else {
+      const targetRef = stackItem.action.target;
+      const targetUnit = targetRef.type === "unit" ? state.combat?.units[targetRef.unitId] : undefined;
+      // The legal-reaction gate already restricts this to the reacting player's
+      // own targeted unit; re-checked here so a stale window can never buff an
+      // enemy unit or a dead one.
+      if (targetUnit && targetUnit.controllerId === playerId && isUnitAlive(targetUnit)) {
+        (stackItem.modifiers.interfereSpellReductions ??= []).push({
+          unitId: targetUnit.id,
+          amount: effectAmount
+        });
+      }
+      stackItem.modifiers.playedCardIds.push(play.cardId);
     }
-    stackItem.modifiers.playedCardIds.push(play.cardId);
   }
 
   // Interference / Plate of the Dying Light as a plain DEFENSE reaction to a
@@ -15723,7 +15794,8 @@ function playReaction(
       const empowerable =
         (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
         (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
-        stackItem?.modifiers.ignoreDefenseCasterId === action.playerId;
+        stackItem?.modifiers.ignoreDefenseCasterId === action.playerId ||
+        stackItem?.modifiers.misfortuneCasterId === action.playerId;
       if (!empowerable) {
         throw new Error("Power can only be played into an attack together with a Spell card.");
       }
@@ -17579,7 +17651,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       }
       finishCombatIfNeeded(state);
     } else {
-      openSiegeDemolishChoice(state, action.playerId, 1);
+      openSiegeDemolishChoice(
+        state,
+        action.playerId,
+        effect.target === "two-walls-or-wall-and-gate" ? 2 : 1
+      );
     }
   }
 
@@ -17641,6 +17717,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         });
       }
     }
+  }
+
+  if (effect.type === "BALLISTICS_OPENING_BOMBARD") {
+    openBallisticsOpeningBombard(state, action.playerId, effect.amount);
   }
 
   // Artillery (basic): the slowest enemy takes `amount` "effect" damage — the
@@ -18495,7 +18575,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         doubleAmountForUnitName(effect.amount, unit, effect.doubleForUnitName),
         card.name,
         { type: "card", cardId: card.id, controllerId: action.playerId },
-        action.playerId
+        action.playerId,
+        effect.currentUnitLifeOnly
       );
     }
   }

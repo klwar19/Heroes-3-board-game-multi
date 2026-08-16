@@ -7,7 +7,9 @@ import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
-import { useCardFaceImage } from "./polish-balance-art";
+import { useCardFaceImage, usePolishBalanceArtEnabled } from "./polish-balance-art";
+import { isPolishBalanceCard } from "@/data/cards/polish-balance-art";
+import { polishBalanceCardForDisplay } from "@/engine/polish-balance-spells";
 import {
   describeCardEffect,
   getInnateFlatAttackBonus,
@@ -94,13 +96,30 @@ export function useOptionalCardZoom(): CardZoomContextValue | null {
   return useContext(CardZoomContext);
 }
 
-export function cardZoomContent(cardId: string, empowered?: boolean): ZoomContent {
-  const card = cardLibrary[cardId];
+export function cardZoomContent(cardId: string, empowered?: boolean, balanceEnabled = false): ZoomContent {
+  const resolved = polishBalanceCardForDisplay(balanceEnabled, cardId);
+  const card =
+    resolved?.effect.type === "CHOOSE_ONE"
+      ? {
+          ...resolved,
+          effect: {
+            ...resolved.effect,
+            options: resolved.effect.options.filter((option) =>
+              balanceEnabled
+                ? option.forbidsHouseRule !== "polish-card-balance"
+                : option.requiresHouseRule !== "polish-card-balance"
+            )
+          }
+        }
+      : resolved;
   if (!card) {
     return { title: cardId, cardId, lines: [], empowered: Boolean(empowered) };
   }
 
-  const lines: string[] = [describeCardEffect(card)];
+  const balanceText = balanceEnabled && isPolishBalanceCard(cardId)
+    ? card.tags.find((tag) => tag.startsWith("Balance pack:"))?.replace(/^Balance pack:\s*/, "")
+    : undefined;
+  const lines: string[] = [balanceText ?? describeCardEffect(card)];
   const note = card.tags.find((tag) => tag.includes(" "));
   if (card.implementationStatus === "not-implemented" && note) {
     lines.push(`Printed text: ${note}`);
@@ -420,17 +439,18 @@ function ZoomCardVisual({
  */
 export function CardZoomProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<ZoomContent | null>(null);
+  const balanceEnabled = usePolishBalanceArtEnabled();
   // Fall back to the text frame if a card's scan is missing (e.g. Moandor's
   // specialties); keyed by src so each newly zoomed card tries its own art.
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
 
   const value = useMemo<CardZoomContextValue>(
     () => ({
-      zoomCard: (cardId, empowered) => setContent(cardZoomContent(cardId, empowered)),
+      zoomCard: (cardId, empowered) => setContent(cardZoomContent(cardId, empowered, balanceEnabled)),
       zoomUnit: (unit, ruleset) => setContent(unitZoomContent(unit, ruleset)),
       zoomContent: (next) => setContent(next)
     }),
-    []
+    [balanceEnabled]
   );
 
   const close = useCallback(() => setContent(null), []);

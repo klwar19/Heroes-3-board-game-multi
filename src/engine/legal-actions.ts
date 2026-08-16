@@ -141,6 +141,7 @@ import {
   isBattlefieldPosition
 } from "./battlefield";
 import {
+  ballisticsOpeningBombardAvailable,
   countBallistas,
   firstAidVolleyHeals,
   getPermanentCardIds,
@@ -318,6 +319,8 @@ type CardPlayVariant = {
   mapOnly?: boolean;
   /** Option only playable during combat. */
   combatOnly?: boolean;
+  /** Option only playable before any unit activates. */
+  combatStartOnly?: boolean;
   /** Option is the card's expert side (costs a crown). */
   expertOnly?: boolean;
 };
@@ -332,6 +335,7 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       cost: option.cost,
       mapOnly: option.mapOnly,
       combatOnly: option.combatOnly,
+      combatStartOnly: option.combatStartOnly,
       expertOnly: option.expertOnly
     }));
   }
@@ -2287,7 +2291,22 @@ export function playerActivationSpellWindowOpen(state: GameState, playerId: Play
         activeUnit.controllerId === playerId &&
         !activeUnit.activatedThisRound &&
         !activeUnit.attackedThisActivation
-    ) || playerHasSpellTimingFreedom(state, playerId)
+    ) ||
+    playerHasSpellTimingFreedom(state, playerId) ||
+    (houseRuleEnabled(state, "polish-card-balance") &&
+      !balanceIntelligenceWindowClosed(state) &&
+      Boolean(state.players[playerId]?.hand.includes("ability.intelligence")))
+  );
+}
+
+/** A Spell cannot be cast again while one of that player's lasting copies is live. */
+function spellEffectIsAlreadyOngoing(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  return state.activeEffects.some(
+    (effect) =>
+      effect.source.type === "card" &&
+      effect.source.cardId === cardId &&
+      effect.source.controllerId === playerId &&
+      effect.duration.type !== "instant"
   );
 }
 
@@ -2475,6 +2494,9 @@ function addSpellActions(
   } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+      continue;
+    }
+    if (spellEffectIsAlreadyOngoing(state, playerId, cardId)) {
       continue;
     }
 
@@ -3397,6 +3419,7 @@ function isOptionEffectPlayable(
         })
       );
     case "CREATE_INITIATIVE_BUFF":
+    case "CREATE_PRAYER_BUFF":
     case "DEAL_DAMAGE":
     case "CREATE_ATTACK_BUFF":
     case "CREATE_DEFENSE_BUFF":
@@ -3414,6 +3437,8 @@ function isOptionEffectPlayable(
     // Ballistics' expert bombardment: a combat play. The primary enemy is the
     // option's `enemy-unit` target (so an empty enemy board offers no play); the
     // building-material price is enforced by canAffordCardCost.
+    case "BALLISTICS_OPENING_BOMBARD":
+      return context === "combat" && ballisticsOpeningBombardAvailable(state);
     case "BALLISTICS_BOMBARD":
     case "DAMAGE_LOWEST_INITIATIVE_ENEMY":
     // Septienna's Death Ripple: a targetless combat activation that sweeps every
@@ -3652,6 +3677,7 @@ function optionNeedsUnitTarget(effect: ConcreteEffect): boolean {
 
   return (
     effect.type === "CREATE_INITIATIVE_BUFF" ||
+    effect.type === "CREATE_PRAYER_BUFF" ||
     effect.type === "CREATE_ATTACK_BUFF" ||
     effect.type === "CREATE_DEFENSE_BUFF" ||
     effect.type === "ADD_UNIT_MAX_HEALTH" ||
@@ -3795,6 +3821,9 @@ function addOptionPlays(
       }
     }
     if (option.combatOnly && context !== "combat") {
+      continue;
+    }
+    if (option.combatStartOnly && balanceIntelligenceWindowClosed(state)) {
       continue;
     }
     // Shackles of War's "block the enemy's Surrender" side is never played from
@@ -4260,6 +4289,9 @@ function addTurnCardActions(
   for (const { cardId, fromSpellBook } of turnCardSources) {
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented") {
+      continue;
+    }
+    if (card.kind === "spell" && spellEffectIsAlreadyOngoing(state, playerId, cardId)) {
       continue;
     }
 
@@ -4902,7 +4934,9 @@ export function firstAidHealActions(state: GameState, playerId: PlayerId): Legal
       }
       if (canExpertActivate) {
         out.push({
-          label: `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
+          label: houseRuleEnabled(state, "polish-card-balance")
+            ? `First Aid ability: use First Aid Tent on ${unit.name} ${expertMax} times`
+            : `${effect.name} expert: heal ${unit.name} (1/${expertMax}, spend 1 crown)`,
           action: { type: "USE_ACTIVE_EFFECT", playerId, effectId: effect.id, target, mode: "expert" }
         });
       }
@@ -6468,6 +6502,11 @@ function applyPolishSpellBookActionGate(
 ): LegalAction[] {
   const player = state.players[playerId];
   const hasEnabler = Boolean(player?.hand.includes(CAST_A_SPELL_CARD_ID));
+  const hasIntelligenceEnabler = Boolean(
+    player?.hand.includes("ability.intelligence") &&
+      houseRuleEnabled(state, "polish-card-balance") &&
+      !balanceIntelligenceWindowClosed(state)
+  );
   // Intelligence (combat-long): the ability stands in for the Cast a Spell
   // enabler — Book Spells are selected and cast directly, nothing consumed
   // from hand. The action is offered WITHOUT `castEnablerCardId`, which is the
@@ -6518,13 +6557,14 @@ function applyPolishSpellBookActionGate(
         });
         continue;
       }
-      if (!hasEnabler) {
+      if (!hasEnabler && !hasIntelligenceEnabler) {
         continue;
       }
+      const enablerCardId = hasEnabler ? CAST_A_SPELL_CARD_ID : ("ability.intelligence" as CardId);
       gated.push({
         ...legal,
-        label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · Cast a Spell)`,
-        action: { ...action, castEnablerCardId: CAST_A_SPELL_CARD_ID }
+        label: `${legal.label.replace(" (Spell Book)", "")} (Spell Book · ${hasEnabler ? "Cast a Spell" : "Intelligence"})`,
+        action: { ...action, castEnablerCardId: enablerCardId }
       });
       continue;
     }
@@ -7856,8 +7896,15 @@ export function getLegalReactionsForTrigger(
       // side (School of Magic +3 power from hand); their basic side is the
       // enter-play action outside reaction windows.
       const allowedTiming =
-        card && (card.timing === "reaction" || card.timing === "instant" || Boolean(card.permanent));
+        card &&
+        (card.timing === "reaction" ||
+          card.timing === "instant" ||
+          Boolean(card.permanent) ||
+          balanceCardWaivesCombatTiming(state, card));
       if (!card || !allowedTiming || card.implementationStatus !== "implemented") {
+        continue;
+      }
+      if (card.kind === "spell" && spellEffectIsAlreadyOngoing(state, player.id, cardId)) {
         continue;
       }
       // Every implemented Instant whose face draws cards or recovers from the
@@ -7898,6 +7945,14 @@ export function getLegalReactionsForTrigger(
       );
 
       for (const variant of getCardPlayVariants(card)) {
+        if (
+          cardId === "ability.wisdom" &&
+          houseRuleEnabled(state, "polish-card-balance") &&
+          variant.effect.type === "ADD_SPELL_POWER" &&
+          player.combatStats.spellsCastThisRound > 1
+        ) {
+          continue;
+        }
         const matchesPrintedTrigger = variantMatchesTrigger(variant, triggerEvent, player.id, false);
         const allowUtilityJoin = allowTriggerlessUtility && !cardHasPrintedTriggerMatch;
         // GAIN_MORALE (Leadership) and TAKE_FROM_DISCARD (Scholar) are the
@@ -8020,6 +8075,34 @@ export function getLegalReactionsForTrigger(
           }
         }
 
+        // Polish Balance Interference has a second, mutually exclusive spell
+        // reaction: lower the enemy cast's Power (never below its weakest rung).
+        if (
+          !variant.expertOnly &&
+          variant.effect.type === "INTERFERE_SPELL" &&
+          variant.effect.balancePowerReduction &&
+          houseRuleEnabled(state, "polish-card-balance") &&
+          triggerEvent.type === "SPELL_CAST_STARTED" &&
+          triggerEvent.playerId !== player.id
+        ) {
+          const pending = getPendingStackItem(state, triggerEvent);
+          if (
+            pending?.action.type === "CAST_SPELL" &&
+            resolvedSpellPowerForStackItem(state, pending, cards) > spellMinUsefulPower(cards[pending.action.cardId])
+          ) {
+            push(
+              makeReactionAction(`${variantName}: reduce enemy Spell Power by up to ${variant.effect.balancePowerReduction}`, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "basic",
+                interferenceMode: "power",
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
+        }
+
         // A "+Power, THEN draw a card" face in an ATTACK window (Sorcery, Scales
         // of the Greater Basilisk, Tunic of the Cyclops King): the Power half is
         // withheld unless this player also holds a pairable spell instant (the
@@ -8071,6 +8154,32 @@ export function getLegalReactionsForTrigger(
             })
           );
         }
+
+        if (
+          variant.effect.type === "INTERFERE_SPELL" &&
+          variant.effect.balanceExpertPowerReduction &&
+          houseRuleEnabled(state, "polish-card-balance") &&
+          triggerEvent.type === "SPELL_CAST_STARTED" &&
+          triggerEvent.playerId !== player.id &&
+          (expertUsesLeft > 0 || abilityExpertIsCrownFree(player, cardId))
+        ) {
+          const pending = getPendingStackItem(state, triggerEvent);
+          if (
+            pending?.action.type === "CAST_SPELL" &&
+            resolvedSpellPowerForStackItem(state, pending, cards) > spellMinUsefulPower(cards[pending.action.cardId])
+          ) {
+            push(
+              makeReactionAction(`${variantName}: reduce enemy Spell Power by up to ${variant.effect.balanceExpertPowerReduction} (expert)`, {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId,
+                mode: "expert",
+                interferenceMode: "power",
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              })
+            );
+          }
+        }
       }
     }
 
@@ -8092,6 +8201,9 @@ export function getLegalReactionsForTrigger(
           const allowedTiming =
             card && (card.timing === "reaction" || card.timing === "instant");
           if (!card || card.kind !== "spell" || !allowedTiming || card.implementationStatus !== "implemented") {
+            continue;
+          }
+          if (spellEffectIsAlreadyOngoing(state, player.id, cardId)) {
             continue;
           }
 
@@ -8466,7 +8578,8 @@ export function getLegalReactionsForTrigger(
     const hasEmpowerablePlayed =
       (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
       (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
-      attackStackItem?.modifiers.ignoreDefenseCasterId === player.id;
+      attackStackItem?.modifiers.ignoreDefenseCasterId === player.id ||
+      attackStackItem?.modifiers.misfortuneCasterId === player.id;
     if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
@@ -8869,6 +8982,9 @@ export function playerHasAttackInstantOfSchool(
     if (stackItem.modifiers.ignoreDefenseCasterId === playerId) {
       return true;
     }
+    if (stackItem.modifiers.misfortuneCasterId === playerId) {
+      return true;
+    }
   }
   return false;
 }
@@ -9061,11 +9177,13 @@ export function resolvedSpellPowerForStackItem(
   // charge is spent once the cast resolves, so this read is stable across the
   // preview and the resolve of one cast. 0 when the rule is off.
   const setDrain = stackItem.modifiers.artifactSetSpellDrain ?? 0;
-  if (setDrain <= 0) {
+  const interferenceDrain = stackItem.modifiers.interferencePowerReduction ?? 0;
+  const totalFloorDrain = setDrain + interferenceDrain;
+  if (totalFloorDrain <= 0) {
     return drained;
   }
   const floor = Math.min(drained, spellMinUsefulPower(card));
-  return Math.max(floor, drained - setDrain);
+  return Math.max(floor, drained - totalFloorDrain);
 }
 
 /**

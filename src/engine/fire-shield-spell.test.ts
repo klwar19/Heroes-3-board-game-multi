@@ -107,6 +107,33 @@ describe("Fire Shield spell — casting it raises the shield", () => {
     expect(castOnFriendlyAt(2)).toBe(2);
     expect(castOnFriendlyAt(4)).toBe(3);
   });
+
+  it("holds the card in Ongoing and blocks a second copy until the shield ends", () => {
+    let state = createInitialGameState("fireshield-ongoing-lock");
+    state.players.p1.hand = ["spell.fire_shield", "spell.fire_shield"];
+    state.players.p1.combatStats.spellLimitBonusThisRound = 2;
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.fire_shield" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p1_griffins"
+    );
+    expect(cast).toBeTruthy();
+    state = passAllReactions(applyOk(state, cast!.action));
+
+    expect(state.players.p1.hand).toContain("spell.fire_shield");
+    expect(state.players.p1.ongoingCards?.map((held) => held.cardId)).toContain("spell.fire_shield");
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.fire_shield"
+      ),
+      "the spare physical copy stays locked while Fire Shield is ongoing"
+    ).toBe(false);
+  });
 });
 
 describe("Fire Shield spell — burning the attacker", () => {

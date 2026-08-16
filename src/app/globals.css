@@ -2199,6 +2199,31 @@ button.battleCell {
 .boardEffectIcon.artifact-set {
   border-color: rgb(255 214 92 / 62%);
 }
+.boardEffectIcon.ongoing-card {
+  position: relative;
+  border-color: rgb(129 190 255 / 80%);
+  box-shadow: 0 0 4px rgb(72 151 255 / 55%), 0 1px 3px rgb(0 0 0 / 55%);
+}
+.boardEffectIcon.ongoing-card img {
+  object-fit: cover;
+}
+.boardEffectCounter {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  min-width: 9px;
+  height: 9px;
+  padding: 0 1px;
+  border: 1px solid rgb(10 15 24 / 85%);
+  border-radius: 999px;
+  background: #e8f3ff;
+  color: #10243d;
+  font-size: 6px;
+  font-weight: 900;
+  line-height: 1;
+}
 .boardEffectIcon.roll-advantage {
   color: #65d487;
   border-color: rgb(101 212 135 / 62%);

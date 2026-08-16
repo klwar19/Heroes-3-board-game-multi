@@ -171,7 +171,7 @@ import { computeMapFloatPosition } from "@/components/adventure/map-float-positi
 import { HeroBoard } from "@/components/hero-board";
 import { UnitExperienceWindow, armyUnitPrintedSide } from "@/components/adventure/unit-experience-window";
 import { DrillUnitButton } from "@/components/adventure/drill-unit-button";
-import { cardZoomContent, useCardZoom, useOptionalCardZoom } from "@/components/table/zoom";
+import { useCardZoom, useOptionalCardZoom, ZoomButton } from "@/components/table/zoom";
 import {
   BuildingDetailPanel,
   HeroPortrait,
@@ -5468,8 +5468,10 @@ export function PromptTray({
   // Optional so the tray still renders (un-zoomable) outside a CardZoomProvider —
   // both real mount points in page.tsx are inside one; unit tests are not.
   const zoom = useOptionalCardZoom();
+  const balanceArt = usePolishBalanceArtEnabled();
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
+  const balanceSpellCardId = choice?.type === "OPTION_CHOICE" ? choice.balanceSpellChoice?.cardId : undefined;
   // A Shady Auction: the open lot (an Artifact card) the viewer is bidding on.
   // It is public to every bidder (only the bids are secret), so the tray must
   // show WHICH artifact is on the block — otherwise the player bids blind.
@@ -6283,8 +6285,12 @@ export function PromptTray({
                   };
                 })
             : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
-  const hasAnyRewardArt = rewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
-  const hasTileRewardArt = rewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
+  const displayedRewardOptions =
+    balanceArt && visitStep?.type === "CHOOSE_ONE" && visitStep.prompt.startsWith("Logistics:")
+      ? rewardOptions.filter(({ legal }) => /stay/i.test(legal.label))
+      : rewardOptions;
+  const hasAnyRewardArt = displayedRewardOptions.some((entry) => Boolean(entry.art?.image || entry.art?.name));
+  const hasTileRewardArt = displayedRewardOptions.some((entry) => entry.art?.tileRotation !== undefined);
 
   // ---- Pandora card decisions: the CARD FACE decides, never its name ----
   // Both Pandora surfaces below used to be word-only lists ("Put <name> back on
@@ -6447,13 +6453,14 @@ export function PromptTray({
             <div className="pandoraKeptCards">
               {kept.map((cardId, index) => {
                 const card = cardLibrary[cardId];
-                return card?.assets?.cardImage ? (
+                const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
+                return image ? (
                   <CardSetFrame cardId={cardId} key={`${cardId}-${index}`}>
                     <img
                       alt={card.name}
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      src={assetUrl(card.assets.cardImage)}
+                      src={assetUrl(image)}
                       title={card.name}
                     />
                   </CardSetFrame>
@@ -6469,14 +6476,14 @@ export function PromptTray({
         <div className="promptOptions pandoraCardRow" data-row-kind={rowKind} data-testid="pandora-card-row">
           {pandoraCardTiles.map((tile, index) => {
             const card = cardLibrary[tile.cardId];
-            const image = card?.assets?.cardImage;
+            const image = resolveCardFaceImage(balanceArt, tile.cardId, false) ?? card?.assets?.cardImage;
             return (
               <div className="pandoraCardTile" data-testid="pandora-card-tile" key={`${tile.cardId}-${index}`}>
                 {image ? (
                   <button
                     aria-label={`Enlarge ${card?.name ?? tile.cardId}`}
                     className="pandoraCardArt"
-                    onClick={() => zoom?.zoomContent(cardZoomContent(tile.cardId))}
+                    onClick={() => zoom?.zoomCard(tile.cardId)}
                     title={card?.name ?? tile.cardId}
                     type="button"
                   >
@@ -6724,9 +6731,15 @@ export function PromptTray({
       aria-label={title}
     >
       <strong>{title}</strong>
+      {balanceSpellCardId && zoom ? (
+        <ZoomButton
+          label={`Zoom ${cardLibrary[balanceSpellCardId]?.name ?? "Spell"}`}
+          onZoom={() => zoom.zoomCard(balanceSpellCardId)}
+        />
+      ) : null}
       {preview}
       <div className={`promptOptions${hasAnyRewardArt ? " rewardCards" : ""}${hasTileRewardArt ? " tileCards" : ""}`}>
-        {rewardOptions.map(({ legal, art }) =>
+        {displayedRewardOptions.map(({ legal, art }) =>
           art ? (
             <button
               aria-label={legal.label}
@@ -6752,7 +6765,11 @@ export function PromptTray({
                       draggable={false}
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      src={assetUrl(art.image)}
+                      src={assetUrl(
+                        art.cardId
+                          ? (resolveCardFaceImage(balanceArt, art.cardId, false) ?? art.image)
+                          : art.image
+                      )}
                     />
                   </CardSetFrame>
                 </span>
@@ -6896,6 +6913,7 @@ export function MarketPanel({
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
+  const balanceArt = usePolishBalanceArtEnabled();
   const visit = state.adventure?.pendingVisit;
   const step = visit?.steps[0];
   const isMarket =
@@ -7037,6 +7055,7 @@ export function MarketPanel({
                   ? state.players[viewerPlayerId]?.hand[legal.action.optionIndex]
                   : undefined;
               const card = cardId ? cardLibrary[cardId] : undefined;
+              const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
               return (
                 <button
                   className="marketSellCard"
@@ -7045,8 +7064,8 @@ export function MarketPanel({
                   title={legal.label}
                   type="button"
                 >
-                  {card?.assets?.cardImage ? (
-                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
+                  {image ? (
+                    <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
                   ) : (
                     <span className="marketCardFallback">{card?.name ?? cardId}</span>
                   )}
@@ -7071,6 +7090,7 @@ export function MarketPanel({
             {scrollSellActions.map((legal) => {
               const cardId = legal.action.type === "SELL_SCROLL_SPELL" ? legal.action.cardId : undefined;
               const card = cardId ? cardLibrary[cardId] : undefined;
+              const image = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
               return (
                 <button
                   className="marketSellCard"
@@ -7079,8 +7099,8 @@ export function MarketPanel({
                   title={legal.label}
                   type="button"
                 >
-                  {card?.assets?.cardImage ? (
-                    <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
+                  {image ? (
+                    <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(image)} />
                   ) : (
                     <span className="marketCardFallback">📜 {card?.name ?? cardId}</span>
                   )}

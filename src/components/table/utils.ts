@@ -33,6 +33,7 @@ import {
 } from "@/engine";
 
 type SwapAction = Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>;
+type TacticsMoveAction = Extract<GameAction, { type: "TACTICS_MOVE_UNIT" }>;
 
 /** Feed label for a rulebook Stack Token carried by a Stacked bank-reward unit. */
 const STACK_TOKEN_FEED_LABELS = {
@@ -47,6 +48,13 @@ export function getTacticsSwapActions(legalActions: LegalAction[]): SwapAction[]
   return legalActions
     .map((legal) => legal.action)
     .filter((action): action is SwapAction => action.type === "SWAP_COMBAT_UNITS");
+}
+
+/** All Polish Balance Tactics one-space moves offered in this snapshot. */
+export function getTacticsMoveActions(legalActions: LegalAction[]): TacticsMoveAction[] {
+  return legalActions
+    .map((legal) => legal.action)
+    .filter((action): action is TacticsMoveAction => action.type === "TACTICS_MOVE_UNIT");
 }
 
 /** Whether the viewer is in their start-of-combat Tactics window right now. */

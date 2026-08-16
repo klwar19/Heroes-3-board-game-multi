@@ -44,10 +44,10 @@ describe("Ballistics card definition (house-rule buff)", () => {
     if (card.effect.type !== "CHOOSE_ONE") {
       return;
     }
-    // Three CLASSIC sides plus the two Polish Balance Pack reprints, which are
-    // APPENDED (indices 3 and 4) precisely so the classic indices below — and
+    // Three CLASSIC sides plus the three Polish Balance Pack sides, which are
+    // APPENDED (indices 3–5) precisely so the classic indices below — and
     // every client / test that names one — keep their meaning.
-    expect(card.effect.options).toHaveLength(5);
+    expect(card.effect.options).toHaveLength(6);
 
     // Option 0: destroy a Wall or the Gate — basic.
     const wallGate = card.effect.options[0];
@@ -75,12 +75,21 @@ describe("Ballistics card definition (house-rule buff)", () => {
       expect(bombard.effect.amount).toBe(1);
     }
 
-    // Options 3 & 4: the Polish Balance Pack reprint, gated on its own rule, and
+    // Options 3–5: the Polish Balance Pack reprint, gated on its own rule, and
     // the three classic sides above are gated OFF while it is on.
     expect(card.effect.options[3].requiresHouseRule).toBe("polish-card-balance");
-    expect(card.effect.options[3].effect.type).toBe("ENTER_PLAY");
+    expect(card.effect.options[3].effect).toMatchObject({
+      type: "SIEGE_DEMOLISH",
+      target: "two-walls-or-wall-and-gate"
+    });
     expect(card.effect.options[4].requiresHouseRule).toBe("polish-card-balance");
     expect(card.effect.options[4].expertOnly).toBe(true);
+    expect(card.effect.options[5]).toMatchObject({
+      requiresHouseRule: "polish-card-balance",
+      combatStartOnly: true,
+      effect: { type: "BALLISTICS_OPENING_BOMBARD", amount: 1 }
+    });
+    expect(wallGate.forbidsHouseRule).toBe("polish-card-balance");
     expect(arrowTower.forbidsHouseRule).toBe("polish-card-balance");
     expect(bombard.forbidsHouseRule).toBe("polish-card-balance");
   });

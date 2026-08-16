@@ -2,9 +2,10 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Dices } from "lucide-react";
+import { Clock3, Dices } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { COMBAT_TOKEN_IMAGES } from "@/data/assets/homm-assets";
+import { cardLibrary } from "@/data/cards/library";
 import {
   artifactSetDefinition,
   artifactSetIconImage,
@@ -42,11 +43,13 @@ import {
 export type UnitEffectIcon = {
   /** Stable React key (an effect id, or the fixed key of a derived icon). */
   key: string;
-  kind: "defense-token" | "artifact-set" | "roll-advantage" | "roll-disadvantage";
+  kind: "defense-token" | "artifact-set" | "ongoing-card" | "roll-advantage" | "roll-disadvantage";
   /** The owning set, for `artifact-set` icons (also stamped as `data-set-id`). */
   setId?: string;
   /** Asset path for image-backed icons; absent for the lucide dice glyph. */
   image?: string;
+  /** Compact duration marker drawn over an ongoing card icon. */
+  counter?: string;
   /** Hover/accessible text — names the source AND what it does. */
   label: string;
 };
@@ -128,20 +131,57 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
     });
   }
 
+  // Every card-sourced ongoing effect played DIRECTLY on this unit wears a
+  // small copy of that card outside the creature card. The counter is the
+  // number of combat rounds still covered (or 1 for an activation-scoped
+  // effect such as Forgetfulness). Cards in the public Ongoing tray and these
+  // markers are derived from the same active effect, so neither can outlive the
+  // other. Set effects have their own purpose-built icon above.
+  const ongoingCardEffects = state.activeEffects.filter(
+    (effect) =>
+      !effect.artifactSetId &&
+      effect.source.type === "card" &&
+      effect.scope === "unit" &&
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unit.id &&
+      effect.duration.type !== "instant" &&
+      effectAppliesToUnit(effect, unit)
+  );
+  for (const effect of ongoingCardEffects) {
+    const card = effect.source.type === "card" ? cardLibrary[effect.source.cardId] : undefined;
+    const rounds =
+      effect.expiresAtCombatRoundEnd !== undefined && state.combat
+        ? Math.max(1, effect.expiresAtCombatRoundEnd - state.combat.round + 1)
+        : effect.duration.type === "current-activation" || effect.duration.type === "next-activation"
+          ? 1
+          : undefined;
+    icons.push({
+      key: `ongoing-${effect.id}`,
+      kind: "ongoing-card",
+      image: card?.assets?.cardImage,
+      counter: rounds === undefined ? undefined : String(rounds),
+      label: `${card?.name ?? effect.name} — ongoing on ${unit.cardName}${
+        rounds === undefined ? "" : ` (${rounds} ${rounds === 1 ? "round/activation" : "rounds"} remaining)`
+      }`
+    });
+  }
+
   // A roll mode from a NON-set source (Shaman's Puppet, the Nightmare's Fear …)
   // has no set icon to wear, so it gets the generic two-dice glyph. Withheld
   // when a set icon above already carries the same modifier, so one effect can
   // never draw two icons.
-  const setCarries = (type: ActiveEffectModifier["type"]) =>
+  const displayedEffectCarries = (type: ActiveEffectModifier["type"]) =>
     setEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === type));
-  if (unitAttackRollAdvantaged(state, unit) && !setCarries("ATTACK_ROLL_ADVANTAGE")) {
+  const ongoingCarries = (type: ActiveEffectModifier["type"]) =>
+    ongoingCardEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === type));
+  if (unitAttackRollAdvantaged(state, unit) && !displayedEffectCarries("ATTACK_ROLL_ADVANTAGE") && !ongoingCarries("ATTACK_ROLL_ADVANTAGE")) {
     icons.push({
       key: "roll-advantage",
       kind: "roll-advantage",
       label: "Rolls 2 Attack dice and keeps the higher"
     });
   }
-  if (unitAttackRollDisadvantaged(state, unit) && !setCarries("ATTACK_ROLL_DISADVANTAGE")) {
+  if (unitAttackRollDisadvantaged(state, unit) && !displayedEffectCarries("ATTACK_ROLL_DISADVANTAGE") && !ongoingCarries("ATTACK_ROLL_DISADVANTAGE")) {
     icons.push({
       key: "roll-disadvantage",
       kind: "roll-disadvantage",
@@ -181,9 +221,12 @@ export function UnitEffectIcons({ state, unit }: { state: GameState; unit: Comba
         >
           {icon.image ? (
             <img alt="" aria-hidden="true" draggable={false} loading="lazy" src={assetUrl(icon.image)} />
+          ) : icon.kind === "ongoing-card" ? (
+            <Clock3 aria-hidden="true" size={10} />
           ) : (
             <Dices aria-hidden="true" size={10} />
           )}
+          {icon.counter ? <b className="boardEffectCounter">{icon.counter}</b> : null}
         </span>
       ))}
     </span>

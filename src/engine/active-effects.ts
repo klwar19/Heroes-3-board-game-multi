@@ -385,13 +385,14 @@ export function ignoresAllRangedCombatPenalties(
 }
 
 export function effectAppliesToUnit(effect: ActiveEffectState, unit: CombatUnitState): boolean {
-  // Tower Titans ignore every ongoing effect on themselves (friendly or
-  // hostile); Tower Gargoyles ignore the ones a Spell created. Checked first so
-  // an immune unit reads its printed statistics as if the effect were not there.
-  if (hasIgnoreOngoingEffects(unit)) {
+  // Tower Titans ignore ongoing effects played DIRECTLY on their unit card.
+  // Player/global effects (Archery and other global ongoing artifacts) still
+  // apply: those cards were not played on the Titan. Tower Gargoyles keep their
+  // narrower immunity to directly targeted ongoing Spell effects.
+  if (hasIgnoreOngoingEffects(unit) && effect.scope === "unit") {
     return false;
   }
-  if (hasIgnoreOngoingSpellEffects(unit) && effectIsFromSpell(effect)) {
+  if (hasIgnoreOngoingSpellEffects(unit) && effect.scope === "unit" && effectIsFromSpell(effect)) {
     return false;
   }
   // Fangarm: ignores all ongoing effects from spells AND specialties (but still

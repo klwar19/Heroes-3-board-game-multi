@@ -19,13 +19,14 @@ import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
 import { playSpellBookPageTurn } from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import {
-  describeCardEffect,
   spellPowerLadder,
   spellTimingKind,
   type LegalAction,
   type SpellTimingKind
 } from "@/engine";
 import { actionKey, titleCase } from "@/components/table/utils";
+import { resolveCardFaceImage, usePolishBalanceArtEnabled } from "@/components/table/polish-balance-art";
+import { cardZoomContent } from "@/components/table/zoom";
 
 /**
  * Render a Mage Guild / Spell Book shortcut label ("<n> gold: …search (n)")
@@ -93,12 +94,12 @@ const SPELL_SCHOOL_COLORS: Record<string, string> = {
   water: "#5ca8ff"
 };
 
-function spellBookArtFor(cardId: string): string | undefined {
-  return SPELL_BOOK_ART[cardId] ?? cardLibrary[cardId]?.assets?.cardImage;
+function spellBookArtFor(cardId: string, balanceEnabled: boolean): string | undefined {
+  return SPELL_BOOK_ART[cardId] ?? resolveCardFaceImage(balanceEnabled, cardId, false);
 }
 
 /** Best human rules text for a card id: its printed prose tag, else the auto effect. */
-function spellRulesText(cardId: string | undefined): string {
+function spellRulesText(cardId: string | undefined, balanceEnabled: boolean): string {
   if (!cardId) {
     return "";
   }
@@ -106,8 +107,7 @@ function spellRulesText(cardId: string | undefined): string {
   if (!card) {
     return "";
   }
-  const prose = (card.tags ?? []).filter((tag) => /\s/.test(tag)).sort((a, b) => b.length - a.length)[0];
-  return prose ?? describeCardEffect(card);
+  return cardZoomContent(cardId, false, balanceEnabled).lines[0] ?? "";
 }
 
 export function SpellBookModal({
@@ -153,6 +153,7 @@ export function SpellBookModal({
   /** Cast-button label override (combat appends the concrete target). */
   castLabel?: (legal: LegalAction) => string;
 }) {
+  const balanceArt = usePolishBalanceArtEnabled();
   const [selected, setSelected] = useState(0);
   const [artFailed, setArtFailed] = useState<string | null>(null);
   // Bumped on every index change: keys the right page so the paper leaf
@@ -181,7 +182,7 @@ export function SpellBookModal({
   const index = Math.min(selected, Math.max(0, allCardIds.length - 1));
   const activeId = allCardIds[index];
   const card = activeId ? cardLibrary[activeId] : undefined;
-  const art = activeId ? spellBookArtFor(activeId) : undefined;
+  const art = activeId ? spellBookArtFor(activeId, balanceArt) : undefined;
   const casts = activeId ? castsByCard.get(activeId) ?? [] : [];
   const purchaseShortcuts = shortcuts.filter(
     (legal) => legal.action.type === "SPELL_BOOK_ACTION" && !legal.action.rollSpell
@@ -352,7 +353,7 @@ export function SpellBookModal({
                   </span>
                 ) : null}
               </div>
-              <p className="spellBookDefinition">{spellRulesText(activeId)}</p>
+              <p className="spellBookDefinition">{spellRulesText(activeId, balanceArt)}</p>
               {ladder.length > 0 ? (
                 <div className="spellBookLadder">
                   <span className="spellBookLadderTitle">

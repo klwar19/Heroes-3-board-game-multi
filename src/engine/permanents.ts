@@ -540,9 +540,7 @@ export function enforcePermanentLimit(state: GameState, playerId: PlayerId): voi
 /**
  * May this card occupy a permanent slot at all? Either the card-wide
  * `permanent` flag (war machines, School of Magic, income artifacts) or a
- * printed `ENTER_PLAY` SIDE — the Balance Pack's Ballistics reprint is the
- * first card with the side but no flag, because flagging it would change the
- * rule-OFF card's reaction-window behaviour (permanents are excluded there).
+ * printed `ENTER_PLAY` side on a hybrid card.
  */
 export function cardMayEnterPlay(card: CardDefinition): boolean {
   if (card.permanent) {
@@ -740,6 +738,10 @@ function activeWarMachineEntry(
   // shot (no expert volley) and skip the in-play check.
   if (head.granted) {
     return { cardId: head.cardId, roundStart: { kind: "damage-lowest-initiative", amount: 1 + ballistaBonus } };
+  }
+
+  if (head.openingBallistics) {
+    return { cardId: head.cardId, roundStart: { kind: "pay-to-splash", cost: { buildingMaterials: 1 }, amount: 1 } };
   }
 
   // The machine must still be in play (its expert/discard may have removed it).
@@ -1315,6 +1317,30 @@ function openWarMachineOffer(
   });
 }
 
+export function ballisticsOpeningBombardAvailable(state: GameState): boolean {
+  return splashFirstTargets(state).length > 0;
+}
+
+/** Starts the balance Ballistics basic shot after its card/resource cost is paid. */
+export function openBallisticsOpeningBombard(state: GameState, playerId: PlayerId, amount = 1): void {
+  const combat = state.combat;
+  const candidates = splashFirstTargets(state);
+  if (!combat || candidates.length === 0) {
+    throw new Error("Ballistics requires two adjacent targets (units, Walls, or the Gate).");
+  }
+  combat.warMachineRound = {
+    pending: [{ playerId, cardId: BALLISTICS_ABILITY_ID, openingBallistics: true }],
+    firstTargetUnitId: null
+  };
+  openWarMachineTargetChoice(
+    state,
+    playerId,
+    "Ballistics: choose the first of two adjacent targets — a unit, Wall or the Gate.",
+    candidates.map((target) => target.id),
+    amount
+  );
+}
+
 function hasExpertUseLeft(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   return Boolean(player && expertUsesAvailable(player) > 0);
@@ -1461,7 +1487,11 @@ export function resolveWarMachineOption(state: GameState, playerId: PlayerId, op
     if (optionIndex === 0 && playerCanUseArtilleryVolley(state, playerId)) {
       const shots = artilleryVolleyShots();
       spendArtilleryExpert(state, playerId);
-      const candidates = lowestInitiativeEnemies(state, playerId);
+      const candidates = hasBallistaChooseTarget(state, playerId)
+        ? Object.values(state.combat?.units ?? {}).filter(
+            (unit) => unit.controllerId !== playerId && isAlive(unit)
+          )
+        : lowestInitiativeEnemies(state, playerId);
       if (candidates.length > 1) {
         // A tie: the owner picks the single target the whole volley lands on.
         queue.volleyShots = shots;

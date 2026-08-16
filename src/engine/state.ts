@@ -713,6 +713,12 @@ export type ActiveEffectModifier =
        */
       type: "HEALTH_BONUS";
       amount: number;
+      /**
+       * This bonus protects only the unit's current health bar. It is consumed
+       * when a Stack layer, Stack Token, or Pack side is defeated instead of
+       * being folded onto the newly revealed bar.
+       */
+      currentUnitLifeOnly?: boolean;
     }
   | {
       /**
@@ -1601,6 +1607,8 @@ export type EffectDefinition =
       amount: number;
       expertAmount?: number;
       drawCards?: number;
+      /** Wisdom expert: this reaction also raises this round's Spell limit. */
+      spellLimitBonus?: number;
       /**
        * Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 SP,
        * draw 1 card then discard 1 card." The discard runs AFTER the draw (the
@@ -2031,6 +2039,8 @@ export type EffectDefinition =
        * Read at the attack-roll seam (resolveAttackStackItem).
        */
       dieMode?: "negate" | "lower-of-two" | "four-reroll-plus";
+      /** Balance reprint: the die mode follows Power added in this attack window. */
+      dieModeByPower?: Record<number, "negate" | "lower-of-two" | "four-reroll-plus">;
     }
   | {
       /** Anti-Magic: spell immunity for a unit (tier rises with Power). */
@@ -2118,6 +2128,8 @@ export type EffectDefinition =
       amount: number;
       /** Hero specialties: the bonus doubles when placed on the named unit. */
       doubleForUnitName?: string;
+      /** Apply the bonus to this health bar only, not later Stack/Pack/Few bars. */
+      currentUnitLifeOnly?: boolean;
     }
   | {
       /** Fireball: spell damage to the target and one unit adjacent to it. */
@@ -2684,6 +2696,9 @@ export type EffectDefinition =
        * pair — omits it, so no expert reaction is offered or resolved for it.
        */
       expertAmount?: number;
+      /** Balance reprint alternative: reduce the enemy Spell's Power by up to this amount. */
+      balancePowerReduction?: number;
+      balanceExpertPowerReduction?: number;
     }
   | {
       /**
@@ -2730,6 +2745,15 @@ export type EffectDefinition =
        * keeps working unchanged.
        */
       allGroundFlyingAtPower?: number;
+    }
+  | {
+      /** Prayer balance reprint: one ongoing effect grants all three bonuses. */
+      type: "CREATE_PRAYER_BUFF";
+      name: string;
+      amountByPower: Record<number, number>;
+      duration: EffectDurationDefinition;
+      polarity?: "positive" | "negative" | "neutral";
+      removable?: boolean;
     }
   | {
       /**
@@ -2851,7 +2875,7 @@ export type EffectDefinition =
        * siege arm ("During the siege: destroy 3 Walls and Gate") — it fells the
        * Gate plus up to 3 standing Walls at once, so it needs no target pick.
        */
-      target: "wall-or-gate" | "arrow-tower" | "three-walls-and-gate";
+      target: "wall-or-gate" | "two-walls-or-wall-and-gate" | "arrow-tower" | "three-walls-and-gate";
     }
   | {
       /**
@@ -2864,6 +2888,11 @@ export type EffectDefinition =
        * War-machine damage, so spell-damage reduction does not apply.
        */
       type: "BALLISTICS_BOMBARD";
+      amount: number;
+    }
+  | {
+      /** Ballistics balance basic: one Catapult-style two-adjacent-target picker. */
+      type: "BALLISTICS_OPENING_BOMBARD";
       amount: number;
     }
   | {
@@ -3311,6 +3340,8 @@ export type CardOptionDefinition = {
   mapOnly?: boolean;
   /** This option may only be played during combat. */
   combatOnly?: boolean;
+  /** Polish Balance: this option closes as soon as any unit has activated. */
+  combatStartOnly?: boolean;
   /**
    * "Instant" combat timing in the board-game sense: this option may be played
    * at ANY time during a Combat — on your own turn AND off-turn while an enemy
@@ -3935,6 +3966,8 @@ export type GameAction =
       fromSpellBook?: boolean;
       /** Polish Book reaction: generic Cast-a-Spell card consumed from hand. */
       castEnablerCardId?: CardId;
+      /** Polish Balance Interference: choose the Power-reduction arm. */
+      interferenceMode?: "damage" | "power";
       /**
        * Spell Scroll reaction: the spell instant comes from this scroll, not
        * the hand. It resolves at power 0 (no boosts, no expert side), is removed
@@ -7093,6 +7126,8 @@ export type ResolutionStackItem = {
      * once, and resolves every result (a "-1" subtracts).
      */
     misfortuneDie?: "negate" | "lower-of-two" | "four-reroll-plus";
+    misfortuneDieByPower?: Record<number, "negate" | "lower-of-two" | "four-reroll-plus">;
+    misfortuneCasterId?: PlayerId;
     /**
      * Interference / Plate of the Dying Light played as an INSTANT reaction to
      * THIS cast: reduce Spell damage dealt to `unitId` by `amount` for the
@@ -7100,6 +7135,8 @@ export type ResolutionStackItem = {
      * plays (basic then expert, or Interference + Plate) stack by summing.
      */
     interfereSpellReductions?: { unitId: UnitId; amount: number }[];
+    /** Balance Interference alternative, subtracted from this enemy cast only. */
+    interferencePowerReduction?: number;
     /** Centaur's Axe: multiplies the rolled attack-die outcome (default 1). */
     attackDieMultiplier?: number;
     /**
@@ -9110,7 +9147,7 @@ export type CombatState = {
      * `granted` entries are Torosar's temporary Ballistas (no permanent card) —
      * they fire a basic shot and skip the in-play check.
      */
-    pending: { playerId: PlayerId; cardId: CardId; granted?: boolean }[];
+    pending: { playerId: PlayerId; cardId: CardId; granted?: boolean; openingBallistics?: boolean }[];
     firstTargetUnitId?: UnitId | null;
     /**
      * Artillery expert: while a Ballista tie-break choice is open for the

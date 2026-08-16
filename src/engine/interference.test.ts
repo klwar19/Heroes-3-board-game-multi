@@ -30,9 +30,31 @@ function passAllReactions(state: GameState): GameState {
 function setup(
   p1Hand: string[],
   spellCardId = "spell.magic_arrow",
-  targetUnitId: UnitId = "unit_p1_griffins"
+  targetUnitId: UnitId = "unit_p1_griffins",
+  balance = false,
+  casterPower = 0
 ): GameState {
   const state = createInitialGameState();
+  if (balance) {
+    state.adventure = { houseRules: { "polish-card-balance": true } } as GameState["adventure"];
+  }
+  if (casterPower > 0) {
+    state.activeEffects.push({
+      id: "effect_interference_test_power",
+      name: "Test Power",
+      scope: "player",
+      controllerId: "p2",
+      duration: { type: "combat" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "SPELL_POWER_BONUS", amount: casterPower }],
+      source: { type: "system" },
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+  }
   state.players.p1.hand = [...p1Hand];
   state.players.p2.hand = [spellCardId];
   state.activePlayerId = "p2";
@@ -74,6 +96,29 @@ describe("Interference — card definition", () => {
 });
 
 describe("Interference — reducing spell damage", () => {
+  it("Balance basic offers a separate enemy-Power reduction and leaves normal mode unchanged", () => {
+    let state = setup(["ability.interference"], "spell.magic_arrow", "unit_p1_griffins", true, 3);
+    const power = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.interferenceMode === "power"
+    );
+    expect(power?.label).toContain("up to 2");
+    state = applyOk(state, power!.action);
+    state = passAllReactions(state);
+    const unreduced = passAllReactions(
+      setup([], "spell.magic_arrow", "unit_p1_griffins", true, 3)
+    );
+    expect(state.combat!.units.unit_p1_griffins.damage).toBeLessThan(
+      unreduced.combat!.units.unit_p1_griffins.damage
+    );
+
+    const classic = setup(["ability.interference"], "spell.magic_arrow", "unit_p1_griffins", false, 3);
+    expect(
+      getLegalActions(classic, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.interferenceMode === "power"
+      )
+    ).toBe(false);
+  });
+
   it("basic +1 reduces an enemy Magic Arrow (1 damage) to 0 and grants the unit +1 defense", () => {
     let state = setup(["ability.interference"]);
 

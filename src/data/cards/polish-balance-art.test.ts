@@ -89,6 +89,7 @@ describe("Polish Balance Pack registries", () => {
       "ability.diplomacy",
       "ability.eagle_eye",
       "ability.first_aid",
+      "ability.interference",
       "ability.intelligence",
       "ability.learning",
       "ability.mysticism",

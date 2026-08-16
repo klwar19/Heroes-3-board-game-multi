@@ -20,6 +20,46 @@ import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
 
 /**
+ * Consume health bonuses that protect only the current physical health bar.
+ * The generic combat-long bonuses stay in `combatMaxHealthBonus` and continue
+ * onto the next side/layer; Polish Balance First Aid is deliberately removed.
+ */
+function consumeCurrentLifeHealthBonuses(state: GameState, unit: CombatUnitState): void {
+  const activeEffects = state.activeEffects ?? [];
+  const consumed = activeEffects.filter(
+    (effect) =>
+      effect.target?.type === "unit" &&
+      effect.target.unitId === unit.id &&
+      effect.modifiers.some(
+        (modifier) => modifier.type === "HEALTH_BONUS" && modifier.currentUnitLifeOnly === true
+      )
+  );
+  if (consumed.length === 0) {
+    return;
+  }
+
+  const consumedIds = new Set(consumed.map((effect) => effect.id));
+  const amount = consumed.reduce(
+    (total, effect) =>
+      total +
+      effect.modifiers.reduce(
+        (effectTotal, modifier) =>
+          effectTotal +
+          (modifier.type === "HEALTH_BONUS" && modifier.currentUnitLifeOnly ? modifier.amount : 0),
+        0
+      ),
+    0
+  );
+  state.activeEffects = activeEffects.filter((effect) => !consumedIds.has(effect.id));
+  const remaining = Math.max(0, (unit.combatMaxHealthBonus ?? 0) - amount);
+  if (remaining > 0) {
+    unit.combatMaxHealthBonus = remaining;
+  } else {
+    delete unit.combatMaxHealthBonus;
+  }
+}
+
+/**
  * Finalizes lethal damage on a combat unit, peeling the physical stack top
  * to bottom: a defeated specialty card on top (Sandro's Cloak) goes to its
  * owner's discard pile and reveals the card under it with the excess
@@ -54,6 +94,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       break;
     }
     const excess = Math.max(0, unit.damage - defeated.health);
+    consumeCurrentLifeHealthBonuses(state, unit);
     applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = Math.min(unit.maxHealth, excess);
 
@@ -186,6 +227,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   ) {
     const excess = Math.max(0, unit.damage - unit.maxHealth);
     unit.armyStacks = Math.max(0, (unit.armyStacks ?? 0) - 1);
+    consumeCurrentLifeHealthBonuses(state, unit);
     applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = excess;
 
@@ -240,6 +282,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     const excess = unit.damage - unit.maxHealth;
     unit.stackToken = null;
     unit.damage = 0;
+    consumeCurrentLifeHealthBonuses(state, unit);
     applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
     unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
 
@@ -264,6 +307,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
       // A Few card is no longer a Group and cannot carry Polish Stack layers.
       delete unit.armyStacks;
       unit.damage = 0;
+      consumeCurrentLifeHealthBonuses(state, unit);
       applyUnitCurrentSide(unit, getRuleset(state), unitSideRuleOverrides(state));
       unit.damage = Math.min(unit.maxHealth, Math.max(0, excess));
       // Cove Haspids (Few): record that this unit was knocked down from its
@@ -284,6 +328,8 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     }
   }
 
+  // A one-life bonus also expires when there is no lower health bar to reveal.
+  consumeCurrentLifeHealthBonuses(state, unit);
   appendEvent(state, {
     type: "UNIT_REMOVED",
     unitId: unit.id,

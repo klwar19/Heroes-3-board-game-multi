@@ -90,3 +90,11 @@ export function polishBalanceCard(state: GameState, cardId: string): CardDefinit
   }
   return cardLibrary[cardId];
 }
+
+/** Pure display resolver for UI surfaces that have the rule boolean, not GameState. */
+export function polishBalanceCardForDisplay(enabled: boolean, cardId: string): CardDefinition | undefined {
+  if (enabled && cardLibrary[cardId] && REPRINTED_CARDS[cardId]) {
+    return REPRINTED_CARDS[cardId];
+  }
+  return cardLibrary[cardId];
+}

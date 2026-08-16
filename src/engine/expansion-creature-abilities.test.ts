@@ -391,12 +391,42 @@ describe("Gargoyle / Titan ongoing-effect immunity", () => {
     expect(effectAppliesToUnit(slow(state, nonSpellSource, unit.id), unit)).toBe(true);
   });
 
-  it("Titans ignore every ongoing effect on them, whatever its source", () => {
+  it("Titans ignore every ongoing effect played directly on them, whatever its source", () => {
     const state = createInitialGameState();
     const unit = state.combat!.units.unit_p2_skeletons;
     unit.abilities = ["titan-ignore-ongoing"];
     expect(effectAppliesToUnit(slow(state, spellSource, unit.id), unit)).toBe(false);
     expect(effectAppliesToUnit(slow(state, nonSpellSource, unit.id), unit)).toBe(false);
+  });
+
+  it("Titans still receive global/player-wide ongoing cards such as Archery", () => {
+    const state = createInitialGameState();
+    const titan = state.combat!.units.unit_p2_skeletons;
+    titan.abilities = ["titan-ignore-ongoing"];
+    const global = makeActiveEffect(
+      state,
+      {
+        name: "Global artifact",
+        scope: "global",
+        duration: { type: "combat" },
+        modifiers: [{ type: "ATTACK_BONUS", amount: 2 }]
+      },
+      { type: "card", cardId: "artifact.sword_of_judgement", controllerId: "p1" },
+      "p1"
+    );
+    const archery = makeActiveEffect(
+      state,
+      {
+        name: "Archery",
+        scope: "player",
+        duration: { type: "combat" },
+        modifiers: [{ type: "RANGED_ATTACK_BONUS", amount: 1, nonAdjacentOnly: true }]
+      },
+      { type: "card", cardId: "ability.archery", controllerId: "p2" },
+      "p2"
+    );
+    expect(effectAppliesToUnit(global, titan)).toBe(true);
+    expect(effectAppliesToUnit(archery, titan)).toBe(true);
   });
 
   it("an ordinary unit is affected by both", () => {

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { HexMapBoard } from "./screen";
+import { HexMapBoard, PromptTray } from "./screen";
+import { PolishBalanceArtProvider } from "@/components/table/polish-balance-art";
 import {
   applyAction,
   canCrossEdge,
@@ -127,5 +128,22 @@ describe("Logistics end-of-turn move — board highlight", () => {
     }
     const container = renderBoard(state, vi.fn());
     expect(container.querySelectorAll(".hexCell.endTurnMoveTarget").length).toBe(0);
+  });
+
+  it("Balance UI keeps only Stay in the tray; destinations are chosen on the map", () => {
+    const { state, destination } = logisticsOfferState();
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-card-balance": true };
+    const { queryByText, getByText } = render(
+      <PolishBalanceArtProvider enabled>
+        <PromptTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={vi.fn()}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </PolishBalanceArtProvider>
+    );
+    expect(getByText(/Stay/i)).toBeTruthy();
+    expect(queryByText(new RegExp(destination, "i"))).toBeNull();
   });
 });

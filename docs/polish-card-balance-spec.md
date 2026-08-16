@@ -31,25 +31,25 @@ NOT committed (re-fetch via the badger-token recipe in the session memory
 
 ## Category → step mapping (sequential implementation)
 
-1. ABILITIES (12) — creates the house rule + the face-swap seam. **SHIPPED.**
+1. ABILITIES (13) — creates the house rule + the face-swap seam. **SHIPPED.**
 2. SPELLS (21). **SHIPPED.**
 3. ARTIFACTS (27). **SHIPPED.**
 4. SPECIALTIES (11). **SHIPPED.**
 
-STATUS: the pack is COMPLETE — all 71 cards are wired and face-swapped
+STATUS: the pack is COMPLETE — all 72 cards are wired and face-swapped
 (`POLISH_BALANCE_CARD_IDS` in `src/data/cards/polish-balance-art.ts` holds all
-71; `POLISH_BALANCE_NOT_IMPLEMENTED` is EMPTY). Per-step behaviour tests:
+72; `POLISH_BALANCE_NOT_IMPLEMENTED` is EMPTY). Per-step behaviour tests:
 `polish-card-balance-abilities.test.ts`, `-spells.test.ts`, `-artifacts.test.ts`,
 `-specialties.test.ts`.
 
 ---
 
-## 1. ABILITIES (12 cards; folder `Ability/`)
+## 1. ABILITIES (13 cards; folder `Ability/`)
 
 File → card id (faces: `polish-balance/ability-<slug>.webp`):
 Artillery.png→ability.artillery · Ballitics.png→ability.ballistics ·
 Diplomacy.png→ability.diplomacy · Eagle Eye.png→ability.eagle_eye ·
-First Aid.png→ability.first_aid · Intelligence.png→ability.intelligence ·
+First Aid.png→ability.first_aid · Interference.png→ability.interference · Intelligence.png→ability.intelligence ·
 Learning.png→ability.learning · Mysticism.png→ability.mysticism ·
 Pathfinding.png→ability.pathfinding · Scouting.png→ability.scouting ·
 Tactics.png→ability.tactics · Wisdom.png→ability.wisdom
@@ -67,6 +67,9 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   Intelligence exception — already partially implemented; verify + align).
   Non-book game: the cast consumes no extra enabler anyway (spells are cards);
   the timing scope change applies in both.
+- **Interference** — keeps its instant +1/+2 Defense and spell-damage reduction.
+  As the printed OR arm, Basic may instead reduce an enemy Spell's Power by up
+  to 2 and Expert by up to 4, never below that Spell's weakest effect.
 - **Wisdom** — Basic: "The cost of buying spells in Town is reduced by 2 gold.
   When buying Spells from your Mage Guild or you built the Mage Guild, do
   Search(X+2) instead of Search(X), once." Expert: "+1 SP. During this combat
@@ -139,16 +142,16 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   an ongoing rider — while you have a Ballista in play, YOU choose the
   Ballista's targets for the rest of the combat (reuse the Gerwulf VI /
   `BALLISTA_CHOOSE_TARGET` machinery).
-- **Ballistics** — Basic: "At the beginning of each Combat round, you may pay
+- **Ballistics** — Basic: "At the beginning of Combat, you may pay
   1 building material to choose 2 adjacent targets (any combination of units,
   Walls and the Gate) and deal 1 DM to each of them. OR During the siege:
-  destroy 1 Wall or Gate." Expert: "When using the Catapult use it effect
+  destroy 2 Walls or a Wall and the Gate." Expert: "When using the Catapult use it effect
   twice on the same targets without paying its cost. OR During the siege:
   destroy 3 Walls and Gate." OLD (printed): basic destroy 1 Wall/Gate; expert
   destroy the Arrow Tower. NOTE: the existing `ballistics-buff` house rule
   already ships a variant (basic Arrow-Tower level + expert bombard). Under
-  `polish-card-balance` the card plays THESE sides (the recurring round-start
-  bombard is an ongoing effect; expert doubles a Catapult volley free, or
+  `polish-card-balance` the card plays THESE sides (the bombard is a one-time
+  start-of-combat effect; expert doubles a Catapult volley free, or
   demolishes 3 walls + gate). Define precedence over `ballistics-buff`
   explicitly (balance rule wins when on; document in both descriptions).
 - **First Aid** — Basic: "Remove 1 DM from one of your units. OR When using
@@ -160,8 +163,8 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   `+1 HP for this combat` arm at magnitude 2, gated on a First Aid Tent in
   play).
 
-NOT in scope (unchanged even though the xlsx shows edits): Interference,
-Logistics, Necromancy, Leadership, Luck, the four School/Basic-School Magics,
+NOT in scope (unchanged even though the xlsx shows edits): Logistics,
+Necromancy, Leadership, Luck, the four School/Basic-School Magics,
 Offense/Archery/Armorer/Sorcery/Resistance/Scholar/Estates, and the four
 STATISTICS (Attack/Defense/Power/Knowledge) — no graphic was provided, so the
 author did not finalise them. Do NOT change them.
@@ -229,10 +232,10 @@ power-source alternative — unchanged on every spell.
   reroll every '+1'. Resolve all." (all dice apply after the forced rerolls —
   a strong curse). The card-negate rider applies at every tier. The bottom
   "or +1 pow" power-source side is the standard printed alternative
-  (unchanged). Read the face for the target-tier gate.
+  (unchanged). The reprint has no target-tier gate.
 - **Prayer** — becomes ∂: "Until its activation in the next combat round, the
-  selected unit gains +2/+3 AT, Def, initiative" (a lasting buff instead of
-  the instant; same +2/+3, breakpoints 2/4 unchanged).
+  selected unit gains AT, Def, and initiative": Power 0 +1, Power 2 +2,
+  Power 4 +3 (one combined lasting buff, never an OR choice).
 - **Remove Obstacle** — counts 2/3 → **3/4** obstacles.
 - **Shield** — expert side becomes "takes up to 3 DM": at Power 2 the
   defending unit's damage from a ground/flying attacker is CAPPED at 3 for

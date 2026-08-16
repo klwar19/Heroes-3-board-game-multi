@@ -5,6 +5,7 @@ import { BattlefieldBoard } from "./board";
 import { CardZoomProvider } from "./zoom";
 import { createInitialGameState, type GameState, type LegalAction } from "@/engine";
 import {
+  getTacticsMoveActions,
   getTacticsSwapActions,
   swapPartnerActions,
   swapSelectableUnitIds,
@@ -50,6 +51,16 @@ describe("Tactics swap helpers", () => {
     expect([...swapSelectableUnitIds(swaps)].sort()).toEqual(["a", "b", "c"]);
   });
 
+  it("collects the Balance Pack one-space Tactics actions", () => {
+    const legal: LegalAction[] = [
+      { label: "move", action: { type: "TACTICS_MOVE_UNIT", playerId: "p1", unitId: "a", position: 2 } },
+      { label: "keep", action: { type: "FINISH_TACTICS", playerId: "p1" } }
+    ];
+    expect(getTacticsMoveActions(legal)).toEqual([
+      { type: "TACTICS_MOVE_UNIT", playerId: "p1", unitId: "a", position: 2 }
+    ]);
+  });
+
   it("resolves the partner -> action map from either side of a pair", () => {
     const swaps = getTacticsSwapActions([swap("a", "b"), swap("c", "a")]);
     const partners = swapPartnerActions(swaps, "a");
@@ -85,6 +96,10 @@ describe("BattlefieldBoard — Tactics swap interaction", () => {
       label: `switch ${unitIdA} and ${unitIdB}`,
       action: { type: "SWAP_COMBAT_UNITS", playerId: "p1", unitIdA, unitIdB }
     }));
+    legalActions.push({
+      label: "move Marksmen to A1",
+      action: { type: "TACTICS_MOVE_UNIT", playerId: "p1", unitId: "unit_p1_marksmen", position: 0 }
+    });
     return { state, legalActions };
   }
 
@@ -130,6 +145,30 @@ describe("BattlefieldBoard — Tactics swap interaction", () => {
     expect(onAction).not.toHaveBeenCalled();
     expect(cell(1)?.className).toContain("swapSource");
     expect(cell(5)?.className ?? "").not.toContain("swapTarget");
+  });
+
+  it("selecting a unit exposes the one-space OR destination and dispatches the Tactics move", () => {
+    const { state, legalActions } = tacticsState();
+    const onAction = renderBoard(state, legalActions);
+    fireEvent.click(cell(1)!);
+    expect(cell(0)?.className).toContain("moveTarget");
+    fireEvent.click(cell(0)!);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "TACTICS_MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_marksmen",
+      position: 0
+    });
+  });
+
+  it("expert Tactics can be armed and selected outside the setup window", () => {
+    const { state, legalActions } = tacticsState();
+    state.combat!.pendingTacticsSwaps = null;
+    renderBoard(state, legalActions);
+    fireEvent.click(document.querySelector('[aria-label="Expert Tactics"] .commandButton')!);
+    expect(cell(1)?.className).toContain("swapSource");
+    fireEvent.click(cell(1)!);
+    expect(cell(0)?.className).toContain("moveTarget");
   });
 
   it("shows the ghost + arrow preview when hovering a swap partner", () => {

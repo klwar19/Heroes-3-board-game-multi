@@ -1316,7 +1316,7 @@ export const adventureCards: CardLibrary = {
       "ability",
       "town",
       "Basic: The cost of buying spells in this Town is reduced by 2 gold; Search (3) instead of Search (2). Expert: Search (4) instead. (BINH expert: −3 gold.)",
-      "Balance pack: the basic side keeps −2 gold but its widen becomes RELATIVE — Search (X+2) instead of Search (X), once — and it applies both when buying Spells from your Mage Guild AND on a Spell-deck Search in the round you BUILT the Mage Guild (offered beside Scouting there). Its town EXPERT side is gone: the reprinted Expert is a COMBAT play — +1 spell Power and +1 to your spell limit, for this combat round."
+      "Balance pack: the basic side keeps −2 gold but its widen becomes RELATIVE — Search (X+2) instead of Search (X), once — and it applies both when buying Spells from your Mage Guild AND on a Spell-deck Search in the round you BUILT the Mage Guild. Its town EXPERT side is gone: after casting your first Spell this round, play Wisdom for +1 Power on that Spell and +1 to this round's spell limit, then discard Wisdom."
     ],
     effect: {
       type: "CHOOSE_ONE",
@@ -1336,21 +1336,12 @@ export const adventureCards: CardLibrary = {
           // printed halves for the combat round.
           label: "Balance (spend a crown): +1 spell Power and +1 to your spell limit this combat round",
           requiresHouseRule: "polish-card-balance",
-          combatOnly: true,
           expertOnly: true,
+          trigger: { event: "SPELL_CAST_STARTED", controller: "self" },
           effect: {
-            type: "CREATE_ACTIVE_EFFECT",
-            effect: {
-              name: "Wisdom",
-              scope: "player",
-              duration: { type: "current-combat-round" },
-              polarity: "positive",
-              removable: false,
-              modifiers: [
-                { type: "SPELL_POWER_BONUS", amount: 1 },
-                { type: "SPELL_LIMIT_BONUS", amount: 1 }
-              ]
-            }
+            type: "ADD_SPELL_POWER",
+            amount: 1,
+            spellLimitBonus: 1
           }
         }
       ]
@@ -1384,7 +1375,7 @@ export const adventureCards: CardLibrary = {
       "heal",
       "wiki-reference",
       "Basic: Remove 1 damage from one of your units. Expert: when using the First Aid Tent, resolve its effect against the same target 3 times.",
-      "Balance pack: the Tent triple-volley moves OFF the crown — it becomes the basic side's OR arm (no expert use spent), and the reprinted EXPERT side is new: with a First Aid Tent in play, one of your units gains +2 Health for this combat (the Vial of Lifeblood arm at magnitude 2)."
+      "Balance pack: Basic: remove 1 damage from one of your units, OR First Aid ability: use First Aid Tent on the selected unit 3 times (no crown). Expert: with a First Aid Tent in play, the selected unit gains +2 Health for its current Stack/Pack/Few life only."
     ],
     target: { type: "friendly-unit", damagedOnly: true },
     effect: {
@@ -1408,13 +1399,13 @@ export const adventureCards: CardLibrary = {
           // Balance Pack expert: gated on a First Aid Tent actually in play (the
           // Jeremy-Cannon `requiresWarMachine` gate), and it targets ANY of your
           // units — not only a damaged one — so it carries its own target.
-          label: "Balance (spend a crown; First Aid Tent in play): one of your units gains +2 Health for this combat",
+          label: "Balance expert (spend a crown; First Aid Tent in play): one unit gains +2 Health for its current life",
           requiresHouseRule: "polish-card-balance",
           requiresWarMachine: "war_machine.first_aid_tent",
           combatOnly: true,
           expertOnly: true,
           target: { type: "friendly-unit" },
-          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2 }
+          effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2, currentUnitLifeOnly: true }
         }
       ]
     },
@@ -1492,7 +1483,7 @@ export const adventureCards: CardLibrary = {
       "ability",
       "combat",
       "Regular: at the start of Combat, switch the position of any 2 of your units. Expert: switch any 2 of your units during Combat, on your turn before your active unit moves.",
-      "Balance pack: BOTH sides gain the OR arm \"Move one of your units 1 space\" — offered in the SAME two windows as the swap (TACTICS_MOVE_UNIT, one offer per legal destination; the expert window still spends a crown)."
+      "Balance pack: Regular: at the start of Combat, switch any 2 of your units OR move one of your units 1 space. Expert: on your turn before the active unit moves, switch any 2 of your units OR move one of your units 1 space (spend a crown)."
     ],
     effect: {
       type: "CHOOSE_ONE",

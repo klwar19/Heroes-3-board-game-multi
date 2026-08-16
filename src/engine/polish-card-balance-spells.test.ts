@@ -422,25 +422,38 @@ describe("Balance Pack — Misfortune", () => {
         legal.action.defenderId === "unit_p1_griffins"
     );
     expect(attack, "the enemy attack should be declarable").toBeTruthy();
-    const next = applyOk(state, attack!.action);
+    let next = applyOk(state, attack!.action);
     const offer = getLegalActions(next, "p1").find(
       (legal) =>
         legal.action.type === "PLAY_REACTION" &&
         legal.action.cardId === "spell.misfortune" &&
-        (legal.action.optionIndex ?? 0) === rung
+        (balance || (legal.action.optionIndex ?? 0) === rung)
     );
     if (!offer) {
       return null;
     }
     // The engine offers a payable TEMPLATE; the cost picker attaches the cards.
     const action =
-      rung > 0 && offer.action.type === "PLAY_REACTION"
+      !balance && rung > 0 && offer.action.type === "PLAY_REACTION"
         ? {
             ...offer.action,
             costCardIds: Array.from({ length: rung }, () => "stat.power" as CardId)
           }
         : offer.action;
-    return passAllReactions(applyOk(next, action));
+    next = applyOk(next, action);
+    if (balance) {
+      for (let index = 0; index < rung; index += 1) {
+        if (next.reactionWindow?.priorityPlayerId !== "p1") {
+          next = applyOk(next, { type: "PASS_REACTION", playerId: next.reactionWindow!.priorityPlayerId });
+        }
+        const power = getLegalActions(next, "p1").find(
+          (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "stat.power"
+        );
+        expect(power, `Misfortune Power boost ${index + 1} is offered after choosing the Spell`).toBeTruthy();
+        next = applyOk(next, power!.action);
+      }
+    }
+    return passAllReactions(next);
   }
 
   function misfortuneNote(state: GameState): string | undefined {
@@ -633,9 +646,13 @@ describe("Balance Pack — the remaining reprints", () => {
   });
 
   it("Prayer is a lasting buff on the selected unit, not a one-attack rider", () => {
-    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" }, 0);
+    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" });
     const buff = effectsOn(state, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
-    expect(buff.modifiers).toEqual([{ type: "ATTACK_BONUS", amount: 1 }]);
+    expect(buff.modifiers).toEqual([
+      { type: "ATTACK_BONUS", amount: 1 },
+      { type: "DEFENSE_BONUS", amount: 1 },
+      { type: "INITIATIVE_BONUS", amount: 1 }
+    ]);
     expect(buff.duration.type).toBe("next-activation");
   });
 

@@ -353,3 +353,62 @@ describe("battlefield effect icons — non-set roll modes", () => {
     expect(container.querySelector(".boardCard")).toBeTruthy();
   });
 });
+
+// ===========================================================================
+// 4. Card-sourced ongoing effects — card icon + duration counter
+// ===========================================================================
+
+describe("battlefield effect icons — ongoing Spell markers", () => {
+  it("shows Fire Shield outside its target card with a two-round counter", () => {
+    const state = makeState(false, "effect-icons-fire-shield");
+    stageCombat(state);
+    state.combat!.round = 2;
+    const unit = state.combat!.units.u_own_0;
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Fire Shield",
+          duration: { type: "next-combat-round" },
+          scope: "unit",
+          modifiers: [{ type: "FIRE_SHIELD", amount: 1 }]
+        },
+        { type: "card", cardId: "spell.fire_shield", controllerId: "p1" },
+        "p1",
+        { type: "unit", unitId: unit.id }
+      )
+    );
+
+    const marker = unitEffectIcons(state, unit).find((icon) => icon.kind === "ongoing-card");
+    expect(marker).toMatchObject({ counter: "2" });
+    expect(marker?.label).toContain("Fire Shield");
+    const { container } = renderBoard(state);
+    const rendered = container.querySelector<HTMLElement>('.boardEffectIcon.ongoing-card');
+    expect(rendered).toBeTruthy();
+    expect(rendered?.querySelector("img")?.getAttribute("src")).toContain("spells-fire_shield");
+    expect(rendered?.querySelector(".boardEffectCounter")?.textContent).toBe("2");
+  });
+
+  it("removes the marker as soon as the ongoing effect ends", () => {
+    const state = makeState(false, "effect-icons-forgetfulness");
+    stageCombat(state);
+    const unit = state.combat!.units.u_foe_0;
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Forgetfulness",
+          duration: { type: "next-activation" },
+          scope: "unit",
+          modifiers: [{ type: "UNIT_CANNOT_ATTACK" }]
+        },
+        { type: "card", cardId: "spell.forgetfulness", controllerId: "p1" },
+        "p1",
+        { type: "unit", unitId: unit.id }
+      )
+    );
+    expect(unitEffectIcons(state, unit).find((icon) => icon.kind === "ongoing-card")?.counter).toBe("1");
+    state.activeEffects = [];
+    expect(unitEffectIcons(state, unit).some((icon) => icon.kind === "ongoing-card")).toBe(false);
+  });
+});

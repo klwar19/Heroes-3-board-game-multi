@@ -17,6 +17,7 @@ import { POLISH_BALANCE_CARD_IDS, POLISH_BALANCE_NOT_IMPLEMENTED } from "@/data/
 import { empoweredCardImage } from "@/data/cards/empowered-card-art";
 import { CardFrame } from "./seats";
 import { PolishBalanceArtProvider, resolveCardFaceImage } from "./polish-balance-art";
+import { cardZoomContent } from "./zoom";
 
 afterEach(cleanup);
 
@@ -120,5 +121,16 @@ describe("resolveCardFaceImage — the shared precedence used where a hook canno
     expect(resolveCardFaceImage(false, wired, false)).toBe(cardLibrary[wired]!.assets!.cardImage);
     expect(resolveCardFaceImage(false, wired, true)).toBe(empoweredCardImage(wired));
     expect(resolveCardFaceImage(true, undefined, false)).toBeUndefined();
+  });
+});
+
+describe("balance zoom description", () => {
+  it("reads the reprinted definition while enabled and the classic definition while disabled", () => {
+    expect(cardZoomContent("spell.prayer", false, true).lines.join(" ")).toContain("defense AND initiative");
+    expect(cardZoomContent("ability.ballistics", false, true).lines.join(" ")).toContain("destroy 2 Walls");
+    expect(cardZoomContent("ability.first_aid", false, true).lines.join(" ")).toContain(
+      "use First Aid Tent on the selected unit 3 times (no crown)"
+    );
+    expect(cardZoomContent("ability.ballistics", false, false).lines.join(" ")).not.toContain("destroy 2 Walls");
   });
 });

@@ -7102,7 +7102,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       // The rider lives on the ADD_SPELL_POWER side actually played. Read inline
       // (adventure-reducer cannot import legal-actions' `drawRiderThenDiscard` —
       // the dependency runs the other way); keep the two in step.
-      const boostCard = cardLibrary[offer.cardId];
+      const boostCard = polishBalanceCard(state, offer.cardId) ?? cardLibrary[offer.cardId];
       const boostEffect =
         boostCard?.effect.type === "CHOOSE_ONE"
           ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
@@ -10767,7 +10767,11 @@ function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId
   if (!player || !player.hand.includes("ability.tactics")) {
     return false;
   }
-  return swappableTacticsUnits(combat, playerId).length >= 2;
+  const units = swappableTacticsUnits(combat, playerId);
+  if (houseRuleEnabled(state, "polish-card-balance")) {
+    return units.some((unit) => tacticsMoveDestinations(combat, unit).length > 0) || units.length >= 2;
+  }
+  return units.length >= 2;
 }
 
 /**
@@ -17221,7 +17225,9 @@ function openScoutingPrompt(
   // Balance Pack: the reprint is RELATIVE, so the label must say base+2 (and that
   // the Expert widen lasts the turn) rather than the classic flat 3 / 5.
   const balancePrint = houseRuleEnabled(state, "polish-card-balance");
-  const options: { label: string }[] = [{ label: `Search (${baseCount}) — don't use Scouting` }];
+  const options: { label: string }[] = [
+    { label: balancePrint ? `Search (${baseCount})` : `Search (${baseCount}) — don't use Scouting` }
+  ];
   if (offer.offerBasic) {
     options.push({
       label: balancePrint

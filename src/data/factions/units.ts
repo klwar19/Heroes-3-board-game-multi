@@ -875,8 +875,8 @@ export const coreUnitDefinitions: Record<string, UnitDefinition> = {
     faction: "tower",
     tier: "gold",
     type: "ground",
-    few: { attack: 6, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: ["titan-ignore-ongoing"], abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit.", cardImage: "/assets/units-tower-golden-titans-few.webp" },
-    pack: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 32, valuables: 2 }, abilities: ["ignore-combat-penalties", "titan-ignore-ongoing"], type: "ranged", abilityText: "[unit_passive] Ignore any [ongoing] effects on this unit and combat penalties against adjacent units.", cardImage: "/assets/units-tower-golden-titans-pack.webp" },
+    few: { attack: 6, defense: 3, health: 8, initiative: 7, cost: { gold: 18, valuables: 1 }, abilities: ["titan-ignore-ongoing"], abilityText: "[unit_passive] Ignore [ongoing] effects played directly on this unit; global effects still apply.", cardImage: "/assets/units-tower-golden-titans-few.webp" },
+    pack: { attack: 6, defense: 3, health: 8, initiative: 11, cost: { gold: 32, valuables: 2 }, abilities: ["ignore-combat-penalties", "titan-ignore-ongoing"], type: "ranged", abilityText: "[unit_passive] Ignore [ongoing] effects played directly on this unit; global effects still apply. Ignore combat penalties against adjacent units.", cardImage: "/assets/units-tower-golden-titans-pack.webp" },
     wikiUrl: "https://en.homm3bg.wiki/units/titans/",
     source: {
       product: "Heroes of Might and Magic III: The Board Game (Tower Expansion)",
