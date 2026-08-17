@@ -324,6 +324,7 @@ export function HeroBoard({
   const { zoomCard, zoomContent } = useCardZoom();
   const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | "unitxp" | null>(null);
   const [gradeHelpOpen, setGradeHelpOpen] = useState(false);
+  const [equipHelpOpen, setEquipHelpOpen] = useState(false);
   const [draggedEquipmentId, setDraggedEquipmentId] = useState<string | null>(null);
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
@@ -665,7 +666,14 @@ export function HeroBoard({
               </button>
             ) : null}
             {showEquip ? (
-              <button className="heroSystemButton equipment" onClick={() => setSystemsOpen("equipment")} type="button">
+              <button
+                className="heroSystemButton equipment"
+                onClick={() => {
+                  setEquipHelpOpen(false);
+                  setSystemsOpen("equipment");
+                }}
+                type="button"
+              >
                 <PackageOpen aria-hidden="true" size={18} />
                 <span><strong>{lexicon.equipment}</strong><small>{equippedItems.length}/{ANIME_EQUIPMENT_SLOTS.length} slots filled</small></span>
               </button>
@@ -722,7 +730,18 @@ export function HeroBoard({
                       >
                         <HelpCircle size={21} />
                       </button>
-                    ) : null}
+                    ) : (
+                      <button
+                        aria-expanded={equipHelpOpen}
+                        aria-label="How Hero Equipment works"
+                        className={`gradeHelpButton${equipHelpOpen ? " active" : ""}`}
+                        onClick={() => setEquipHelpOpen((open) => !open)}
+                        title="Hero Equipment rules"
+                        type="button"
+                      >
+                        <HelpCircle size={21} />
+                      </button>
+                    )}
                     <button aria-label="Close" className="heroSystemClose" onClick={() => setSystemsOpen(null)} type="button">
                       <X size={20} />
                     </button>
@@ -779,6 +798,15 @@ export function HeroBoard({
                     </div>
                   </>
                 ) : (
+                  <>
+                    {equipHelpOpen ? (
+                      <aside className="gradeHelpPanel" role="note">
+                        <div><b>1</b><span><strong>Get gear</strong><small>Buy Grade I / II / III items at an outfitter (5 / 7 / 10 gold), or earn them from bank wins and tough battles.</small></span></div>
+                        <div><b>2</b><span><strong>Equip a slot</strong><small>Drag an owned item onto its body slot, or press Equip. One item per slot — a new one replaces the old and returns it to your bag.</small></span></div>
+                        <div><b>3</b><span><strong>Always on</strong><small>Every equipped effect runs in your main hero&apos;s combats. Same-slot items never stack.</small></span></div>
+                        <p><Sparkles size={14} /> Replaced gear waits in your bag; drag it back any time you are not in combat.</p>
+                      </aside>
+                    ) : null}
                   <div className="equipmentWindowBody">
                     <div className="equipmentPaperdoll" aria-label="Equipped items">
                       <div className="equipmentSilhouette" aria-hidden="true">
@@ -914,6 +942,7 @@ export function HeroBoard({
                       })}
                     </aside>
                   </div>
+                  </>
                 )}
               </section>
             </div>,

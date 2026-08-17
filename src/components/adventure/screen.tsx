@@ -6,7 +6,7 @@ import Link from "next/link";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Hammer, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
+import { Ban, Castle, Check, ChevronDown, ChevronsUp, Crown, Dices, Hammer, HelpCircle, Hourglass, Image as ImageIcon, Info, Layers, Lock, Minus, Plus, RotateCcw, RotateCw, Shield, Sparkles, Swords, Unlock, X } from "lucide-react";
 import { HelperCoachLobbyPrompt } from "@/components/table/helper-coach-ui";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
 import { cardLibrary } from "@/data/cards/library";
@@ -3976,6 +3976,7 @@ export function TownHeroDock({
   const [armyOpen, setArmyOpen] = useState(false);
   const [commanderOpen, setCommanderOpen] = useState(false);
   const [commanderEquipmentOpen, setCommanderEquipmentOpen] = useState(false);
+  const [commanderEquipHelpOpen, setCommanderEquipHelpOpen] = useState(false);
   const [draggedCommanderArtifactId, setDraggedCommanderArtifactId] = useState<string | null>(null);
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
@@ -4314,8 +4315,28 @@ export function TownHeroDock({
                 <small>{commanderDef.name} · permanently bound equipment</small>
                 <h2>{lexicon.commanderEquipment}</h2>
               </div>
-              <button aria-label="Close commander equipment" onClick={() => setCommanderEquipmentOpen(false)} type="button"><X size={20} /></button>
+              <div className="heroSystemHeaderActions">
+                <button
+                  aria-expanded={commanderEquipHelpOpen}
+                  aria-label="How commander equipment works"
+                  className={`gradeHelpButton${commanderEquipHelpOpen ? " active" : ""}`}
+                  onClick={() => setCommanderEquipHelpOpen((open) => !open)}
+                  title="Commander equipment rules"
+                  type="button"
+                >
+                  <HelpCircle size={21} />
+                </button>
+                <button aria-label="Close commander equipment" onClick={() => setCommanderEquipmentOpen(false)} type="button"><X size={20} /></button>
+              </div>
             </header>
+            {commanderEquipHelpOpen ? (
+              <aside className="gradeHelpPanel" role="note">
+                <div><b>1</b><span><strong>Win artifacts</strong><small>Earn them at the Commander Forge, from the shared decks, and as raid-boss and dungeon rewards.</small></span></div>
+                <div><b>2</b><span><strong>Bind a slot</strong><small>Drag an artifact in hand onto weapon / armor / trinket, or press Bind. One artifact per slot.</small></span></div>
+                <div><b>3</b><span><strong>Permanent</strong><small>Binding cannot be undone or swapped, and it survives the commander falling and being revived.</small></span></div>
+                <p><Sparkles size={14} /> The full catalog stays visible for planning; only artifacts in hand can be bound.</p>
+              </aside>
+            ) : null}
             <div className="commanderEquipmentBody">
               <div className="commanderPaperdoll" aria-label="Commander paperdoll slots">
                 {/* Classic: body + card bust. Anime/wuxia: themed body only (no card face). */}
