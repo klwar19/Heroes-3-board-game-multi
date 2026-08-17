@@ -95,7 +95,7 @@ const CARDS = [
     grade: "I",
     slot: "armor",
     rules: [
-      "Armor: +1 hand limit.",
+      "Armor: +1 hand limit and −1 movement.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -106,7 +106,7 @@ const CARDS = [
     grade: "I",
     slot: "accessory",
     rules: [
-      "Accessory: +1 hand limit.",
+      "Accessory: +1 hand limit and −1 movement.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -117,7 +117,7 @@ const CARDS = [
     grade: "I",
     slot: "accessory",
     rules: [
-      "Accessory: gain +1 gold after each combat you win.",
+      "Accessory: once per game round, reroll one Treasure die.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -129,7 +129,7 @@ const CARDS = [
     grade: "II",
     slot: "accessory",
     rules: [
-      "Accessory: +1 spell Power on your casts.",
+      "Accessory: +1 spell Power during combat round 1 only.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -140,7 +140,7 @@ const CARDS = [
     grade: "II",
     slot: "accessory",
     rules: [
-      "Accessory: +1 building materials at the start of each Resources round.",
+      "Accessory: your Search (X) reveals one extra card; take cards normally.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -151,7 +151,7 @@ const CARDS = [
     grade: "II",
     slot: "mount",
     rules: [
-      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Mount: +1 movement at turn refresh and −1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -162,7 +162,7 @@ const CARDS = [
     grade: "II",
     slot: "weapon",
     rules: [
-      "Weapon: +1 Attack on your units' declared attacks during combat ROUND 1 only (not retaliations).",
+      "Weapon: +1 Attack on round-1 declared attacks; one random allied unit cannot retaliate in round 1.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -173,7 +173,7 @@ const CARDS = [
     grade: "II",
     slot: "accessory",
     rules: [
-      "Accessory: +1 EXTRA Unit-Experience XP per won combat (needs Unit Experience).",
+      "Accessory: an allied army card gains +1 Unit XP when it defeats a real enemy unit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -206,7 +206,7 @@ const CARDS = [
     grade: "II",
     slot: "accessory",
     rules: [
-      "Accessory: +1 spell Power on your casts.",
+      "Accessory: +1 spell Power during combat round 1 only.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -218,7 +218,7 @@ const CARDS = [
     grade: "III",
     slot: "accessory",
     rules: [
-      "Accessory: your Commander gains the pre-combat SORT window (needs WOG Commanders).",
+      "Accessory: Commander gets pre-combat SORT and +2 maximum Health.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -229,7 +229,7 @@ const CARDS = [
     grade: "III",
     slot: "mount",
     rules: [
-      "Mount: if your Commander dies in a fight, it revives FREE at combat end (needs WOG Commanders).",
+      "Mount: Commander gets +2 Speed and revives free; hero crosses blocked/yellow borders.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -240,7 +240,7 @@ const CARDS = [
     grade: "III",
     slot: "armor",
     rules: [
-      "Armor: +1 gold each Resources round AND +1 gold after each combat you win.",
+      "Armor: all allied units take 1 less Spell damage.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -251,7 +251,7 @@ const CARDS = [
     grade: "III",
     slot: "accessory",
     rules: [
-      "Accessory: +1 hand limit.",
+      "Accessory: all allied round-1 Attack rolls have advantage (roll 2, keep higher).",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -266,7 +266,7 @@ const CARDS = [
     slot: "weapon",
     placeholder: true,
     rules: [
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Weapon: once per game round, reroll one Attack die.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -278,7 +278,7 @@ const CARDS = [
     slot: "accessory",
     placeholder: true,
     rules: [
-      "Accessory: gain +1 gold after each combat you win.",
+      "Accessory: once per round, one gold-paid market trade costs 1 less gold.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -290,7 +290,7 @@ const CARDS = [
     slot: "armor",
     placeholder: true,
     rules: [
-      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Armor: allied ground units on your back line gain +1 Defense.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -302,7 +302,7 @@ const CARDS = [
     slot: "mount",
     placeholder: true,
     rules: [
-      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Mount: no movement halt when your main hero moves from land to sea.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -310,12 +310,12 @@ const CARDS = [
     slug: "horn_of_plenty",
     en: "Horn of Plenty",
     vi: "Tù Và Sung Túc",
-    grade: "III",
+    grade: "II",
     slot: "accessory",
     placeholder: true,
     rules: [
-      "Accessory: +1 gold after each combat you win AND +1 building materials each Resources round.",
-      "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
+      "Accessory: recruiting or reinforcing a unit costs 1 less gold.",
+      "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
   {
@@ -326,7 +326,7 @@ const CARDS = [
     slot: "armor",
     placeholder: true,
     rules: [
-      "Armor: the first enemy attack against your units each combat resolves at −1 Attack, and that unit gains a Defense token after the hit.",
+      "Armor: first incoming attack gets −1 Attack; its defender gains a Defense token for the whole combat.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -341,7 +341,7 @@ const CARDS = [
     slot: "weapon",
     placeholder: true,
     rules: [
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Weapon: once per combat, a ranged unit ignores the adjacent-target penalty.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -353,7 +353,7 @@ const CARDS = [
     slot: "mount",
     placeholder: true,
     rules: [
-      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Mount: +1 movement at turn refresh and −1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -365,7 +365,7 @@ const CARDS = [
     slot: "accessory",
     placeholder: true,
     rules: [
-      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Accessory: first Spell each combat gets +1 Power; +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -381,7 +381,7 @@ const CARDS = [
     grade: "I",
     slot: "weapon",
     rules: [
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Weapon: +1 Attack against an already-activated target during round 1.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -392,7 +392,7 @@ const CARDS = [
     grade: "II",
     slot: "armor",
     rules: [
-      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Armor: prevent the first point of army damage each combat.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -403,7 +403,7 @@ const CARDS = [
     grade: "III",
     slot: "accessory",
     rules: [
-      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Accessory: first Spell each combat gets +1 Power; +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -414,7 +414,7 @@ const CARDS = [
     grade: "I",
     slot: "accessory",
     rules: [
-      "Accessory: gain +1 gold after each combat you win.",
+      "Accessory: draw 1 card whenever one of your real army units is defeated.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -425,7 +425,7 @@ const CARDS = [
     grade: "II",
     slot: "mount",
     rules: [
-      "Mount: +1 movement point to your main hero at each turn refresh.",
+      "Mount: +1 movement at turn refresh and −1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -436,7 +436,7 @@ const CARDS = [
     grade: "III",
     slot: "weapon",
     rules: [
-      "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
+      "Weapon: first declared attack +1 Attack; all round-1 declared attacks +1; one random ally cannot retaliate round 1.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -451,7 +451,7 @@ const CARDS = [
     slot: "weapon",
     paintedMaster: true,
     rules: [
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Weapon: once per combat, turn one −1 Attack die into +1.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -463,7 +463,7 @@ const CARDS = [
     slot: "armor",
     paintedMaster: true,
     rules: [
-      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Armor: allied ground units on the front line get +1 Defense in round 1.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -475,7 +475,7 @@ const CARDS = [
     slot: "accessory",
     paintedMaster: true,
     rules: [
-      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Accessory: first Spell each combat gets +1 Power; +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -490,7 +490,7 @@ const CARDS = [
     grade: "I",
     slot: "accessory",
     rules: [
-      "Accessory: gain +1 gold after each combat you win.",
+      "Accessory: one Drill per game round costs no gold or movement.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -501,7 +501,7 @@ const CARDS = [
     grade: "I",
     slot: "accessory",
     rules: [
-      "Accessory: +1 hand limit.",
+      "Accessory: +1 hand limit and −1 movement.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -512,7 +512,7 @@ const CARDS = [
     grade: "II",
     slot: "armor",
     rules: [
-      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Armor: draw after defeating a real enemy unit, maximum 2 per combat round.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -523,7 +523,7 @@ const CARDS = [
     grade: "II",
     slot: "accessory",
     rules: [
-      "Accessory: +1 spell Power on your casts.",
+      "Accessory: +1 spell Power during combat round 1 only.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -534,7 +534,7 @@ const CARDS = [
     grade: "III",
     slot: "weapon",
     rules: [
-      "Weapon: your units' FIRST declared attack each combat +1 Attack AND all declared attacks in combat ROUND 1 +1 Attack (first attack in round 1 = +2; not retaliations).",
+      "Weapon: first declared attack +1 Attack; a round-1 Attack die result of 0 paralyzes the target.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
@@ -545,9 +545,61 @@ const CARDS = [
     grade: "III",
     slot: "accessory",
     rules: [
-      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Accessory: first Spell each combat gets +1 Power; +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  {
+    slug: "pathfinders_boots", en: "Pathfinder's Boots", vi: "Ủng Dẫn Lối", grade: "I", slot: "mount",
+    rules: ["Once per round after ending your turn, move to an adjacent empty field.", "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "surveyors_lens", en: "Surveyor's Lens", vi: "Kính Trắc Địa", grade: "I", slot: "accessory",
+    rules: ["Discovering an ordinary adjacent tile costs no movement.", "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "hearthbound_horseshoe", en: "Hearthbound Horseshoe", vi: "Móng Ngựa Hồi Hương", grade: "I", slot: "mount",
+    rules: ["+1 movement on a turn your main hero starts in your Town.", "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "spellward_brooch", en: "Spellward Brooch", vi: "Trâm Kháng Phép", grade: "I", slot: "accessory",
+    rules: ["The first enemy Spell each combat resolves at −1 Power against you.", "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "reactive_buckler", en: "Reactive Buckler", vi: "Khiên Phản Ứng", grade: "I", slot: "armor",
+    rules: ["Once per round when attacked, give that unit +1 Defense for the attack.", "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "duelist_insignia", en: "Duelist Insignia", vi: "Huy Hiệu Đấu Sĩ", grade: "II", slot: "accessory",
+    rules: ["Select one allied army unit in round 1: +1 Attack for the combat.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "clockwork_spurs", en: "Clockwork Spurs", vi: "Đinh Thúc Cơ Khí", grade: "II", slot: "mount",
+    rules: ["Select one allied army unit in round 1: +2 Initiative for the combat.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "corrosion_edge", en: "Corrosion Edge", vi: "Lưỡi Kiếm Ăn Mòn", grade: "II", slot: "weapon",
+    rules: ["Once per combat, one declared attack places Corrosion on its surviving target.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "wyvern_needle", en: "Wyvern Needle", vi: "Kim Độc Wyvern", grade: "II", slot: "weapon",
+    rules: ["Once per combat, one declared attack places 1 poison cube on its surviving target.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "field_medic_kit", en: "Field Medic Kit", vi: "Túi Quân Y", grade: "II", slot: "armor",
+    rules: ["Once per combat, heal 1 damage on any allied unit as an instant reaction.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "folded_tactics_manual", en: "Folded Tactics Manual", vi: "Cẩm Nang Chiến Thuật Gấp", grade: "II", slot: "accessory",
+    rules: ["Once per round, a card's draw rider draws 1 extra card.", "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "guardian_mirror", en: "Guardian Mirror", vi: "Gương Hộ Vệ", grade: "III", slot: "armor",
+    rules: ["Once per combat, cancel all damage from one enemy attack; defender cannot retaliate this round.", "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "chronicle_spurs", en: "Chronicle Spurs", vi: "Đinh Thúc Biên Niên", grade: "III", slot: "mount",
+    rules: ["Once per round after your turn ends, bank +1 movement for your next turn.", "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."]
   },
   {
     slug: "mgq-angel-halo",
@@ -557,7 +609,7 @@ const CARDS = [
     slot: "weapon",
     paintedMaster: true,
     rules: [
-      "Weapon: your units' FIRST declared attack each combat gets +1 Attack (main-hero fights; not retaliations).",
+      "Weapon: allied bronze units gain +2 Initiative.",
       "Play: equip permanently. This card leaves the game. Gain 1 Minor Artifact."
     ]
   },
@@ -569,7 +621,7 @@ const CARDS = [
     slot: "armor",
     paintedMaster: true,
     rules: [
-      "Armor: the first time one of your units is attacked each combat, it gains a Defense token after the hit.",
+      "Armor: once per game round, reroll any one die.",
       "Play: equip permanently. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -581,7 +633,7 @@ const CARDS = [
     slot: "accessory",
     paintedMaster: true,
     rules: [
-      "Accessory: +1 spell Power on your casts AND +1 hand limit.",
+      "Accessory: first Spell each combat gets +1 Power; +1 hand limit.",
       "Play: equip permanently. This card leaves the game. Gain 1 Relic Artifact."
     ]
   }

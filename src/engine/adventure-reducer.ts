@@ -26,6 +26,15 @@ import {
   quickCombatAllowedAtDifficulty
 } from "./polish-quick-combat";
 import { unitAbilities } from "@/data/units/abilities";
+import { COMMANDER_ARTIFACT_SPECS, aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
+import {
+  availableCommanderArtifactSpecs,
+  COMMANDER_ARTIFACT_GOLD_COST,
+  commanderArtifactTierForDungeonFloor,
+  commanderForgeCandidates,
+  grantCommanderArtifactCard,
+  queueNeutralCommanderArtifactOffer
+} from "./commander-artifacts";
 import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
@@ -103,6 +112,7 @@ import {
   FIRST_ROUND_MULLIGAN_LIMIT,
   fieldCreatureBankId,
   grantCreatureBankReward,
+  queueEquipmentGradePurchase,
   isCreatureBankId,
   placeCreatureBank,
   polishBankSizeForAttackRolls,
@@ -148,7 +158,7 @@ import {
   getMainHero,
   liftSeaHaltForWaterWalk,
   mainHeroInOwnTown,
-  unitDrillGoldCost,
+  unitDrillGoldCostFor,
   unitDrillLimit,
   unitDrillMovementCost,
   unitDrillsUsedThisRound,
@@ -268,6 +278,12 @@ import {
 } from "./commanders";
 import { isComputerPlayer } from "./computer/control";
 import { fightingHeroIdForPlayer, injectHeroIntoCombat } from "./heroes";
+import {
+  STARWIND_FAMILIAR_ARMY_UNIT_PREFIX,
+  applyHeroGradeArmyInitiative,
+  applyHeroGradeRoundStartDamage,
+  injectHeroGradeFamiliar
+} from "./hero-grade-combat";
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
@@ -319,23 +335,37 @@ import { commitFirstPlayerRoll } from "./first-player";
 import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
 import {
   gainGradeProgress,
+  heroGradeOverdrawAvailable,
+  heroHasGradeNode,
   heroGradeNode,
   heroGradePickableNodes,
   heroGradeWinGold,
   heroGradesEnabled,
   heroTrainAvailable,
+  markHeroGradeOverdrawUsed,
   HERO_TRAIN_MERIT,
   HERO_TRAIN_MOVEMENT_COST,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
 import {
+  consumeEquipmentTradeGoldDiscount,
+  consumeEquipmentFreeDrill,
+  consumeEquipmentEndTurnStep,
+  consumeEquipmentDrawRiderBonus,
+  bankEquipmentMovementAtTurnEnd,
+  equipmentBronzeInitiativeBonus,
+  equipmentEndTurnStepAvailable,
   equipmentEnabled,
+  equipmentFreeDiscovery,
+  equipmentRequiresRound1RetaliationPenalty,
+  equipmentTradeGoldDiscount,
   equipmentWinGold,
   equipEquipment,
   heroEquipmentInventoryOf,
   playerOwnsEquipment
 } from "./anime-equipment";
 import { getEquipmentDefinition } from "@/data/anime/equipment";
+import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import {
   consumeHeldMoraleCard,
   discardHeldMoraleCardByIndex,
@@ -385,11 +415,14 @@ import {
   deckDisplayName,
   abilityExpertIsCrownFree,
   ARTIFACT_DECK_RELIC,
+  ARTIFACT_DECK_MAJOR,
   eligibleArtifactDecks,
   eligibleSpellDecks,
   expertUsesAvailable,
   getRuleset,
   isSpellDeck,
+  SPELL_DECK_BASIC,
+  SPELL_DECK_EXPERT,
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCanEnterSpellBook,
@@ -1011,9 +1044,14 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   // Discard first, then draw back up to the hand limit — one card flow, never
   // a draw-to-limit followed by a separate swap, so the player can never both
   // "draw new" and "discard and draw new" in the same turn.
-  const toDraw = Math.max(0, limit - player.hand.length);
+  const gradeOverdraw = heroGradeOverdrawAvailable(state, action.playerId);
+  const drawTarget = limit + (gradeOverdraw ? 1 : 0);
+  const toDraw = Math.max(0, drawTarget - player.hand.length);
   const drawn = toDraw > 0 ? drawCardsForPlayer(state, action.playerId, toDraw) : 0;
-  player.needsHandRefresh = false;
+  if (gradeOverdraw) {
+    markHeroGradeOverdrawUsed(state, action.playerId);
+  }
+  player.needsHandRefresh = player.hand.length > limit;
   // The once-per-turn start-of-turn draw is now spent.
   player.canMulligan = false;
   player.explorersDiscardPending = explorersActive && player.hand.length > 0;
@@ -1023,6 +1061,7 @@ export function refreshHand(state: GameState, action: Extract<GameAction, { type
   // keep the filled hand so the AI never freezes on an optional window.
   if (
     state.round === 1 &&
+    !player.needsHandRefresh &&
     !explorersActive &&
     state.adventure?.startingHandMulligan !== false &&
     state.controllers?.[action.playerId]?.kind !== "computer"
@@ -2476,11 +2515,12 @@ export function discoverTile(state: GameState, action: Extract<GameAction, { typ
   assertNoPendingInput(state);
 
   const hero = requireHero(state, action.playerId, action.heroId);
-  if (hero.movementPoints <= 0) {
+  const free = equipmentFreeDiscovery(state, action.playerId);
+  if (hero.movementPoints <= 0 && !free) {
     throw new Error("Discovering a tile costs 1 movement point.");
   }
 
-  hero.movementPoints -= 1;
+  if (!free) hero.movementPoints -= 1;
   revealTileForHero(state, action.playerId, hero, action.tileInstanceId);
 }
 
@@ -4361,6 +4401,13 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
           throw new Error("Not enough gold for that item.");
         }
       }
+      const grantStep = option.steps.find((inner) => inner.type === "GRANT_EQUIPMENT");
+      if (grantStep && grantStep.type === "GRANT_EQUIPMENT") {
+        const def = getEquipmentDefinition(grantStep.equipmentId);
+        if (!def || playerOwnsEquipment(state, action.playerId, grantStep.equipmentId)) {
+          throw new Error("That equipment reward is no longer available.");
+        }
+      }
       visit.steps.shift();
       visit.steps.unshift(...option.steps);
       // Map-location Scholar (+1 Attack die): the four "Gain an X card" options
@@ -5116,14 +5163,17 @@ export function tradeResources(state: GameState, action: Extract<GameAction, { t
     throw new Error("That trade rate does not exist.");
   }
 
-  if (!hasResources(player, rate.sell)) {
+  const discount = rate.sell.gold ? Math.min(rate.sell.gold, equipmentTradeGoldDiscount(state, action.playerId)) : 0;
+  const sell = discount > 0 ? { ...rate.sell, gold: Math.max(0, (rate.sell.gold ?? 0) - discount) } : rate.sell;
+  if (!hasResources(player, sell)) {
     throw new Error("Not enough resources for that trade.");
   }
 
   // "Choose one": trading any resources locks this visit to the (repeatable)
   // resource-trade option — no card selling or war machine buying after it.
   step.traded = true;
-  spendResources(state, action.playerId, rate.sell, "trading post");
+  spendResources(state, action.playerId, sell, "trading post");
+  if (discount > 0) consumeEquipmentTradeGoldDiscount(state, action.playerId);
   gainResources(state, action.playerId, rate.buy, "trading post");
   appendEvent(state, { type: "TRADE_EXECUTED", playerId: action.playerId, rateLabel: rate.label });
 }
@@ -5226,6 +5276,7 @@ function makeCombatShell(state: GameState, attackerPlayerId: PlayerId, defenderP
       // per-combat unit selections both refresh per COMBAT — clear them here.
       player.combatStats.artifactSetUsesThisCombat = [];
       player.combatStats.artifactSetSelections = {};
+      player.combatStats.equipmentSelections = {};
     }
   }
 
@@ -7339,7 +7390,7 @@ function applyMapSpellEffect(
       liftSeaHaltForWaterWalk(state, playerId);
     }
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards, { inFlightCardIds });
+      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), { inFlightCardIds });
     }
   }
 }
@@ -9557,12 +9608,42 @@ export function placeCombatUnit(state: GameState, action: Extract<GameAction, { 
   }
 
   const placed = setup.placedUnitIds[action.playerId] ?? [];
+  const occupant = Object.values(combat.units).find((unit) => unit.position === action.position);
+  const familiar = Object.values(combat.units).find(
+    (unit) =>
+      unit.controllerId === action.playerId &&
+      unit.armyUnitId === action.armyUnitId &&
+      action.armyUnitId === `${STARWIND_FAMILIAR_ARMY_UNIT_PREFIX}${action.playerId}` &&
+      unit.heroGradeExpiresAfterRound === 1
+  );
+
+  // Spirit Companion uses a synthetic armyUnitId only as a deployment drag
+  // handle. It never joins the persistent army, never consumes the five-card
+  // deployment limit, and cannot be taken back; it can move or swap freely
+  // inside its owner's legal setup rows.
+  if (familiar) {
+    if (occupant && occupant.id !== familiar.id) {
+      if (occupant.controllerId !== action.playerId) throw new Error("That space is already taken.");
+      const from = familiar.position;
+      familiar.position = action.position;
+      occupant.position = from;
+      appendEvent(state, { type: "COMBAT_UNIT_PLACED", playerId: action.playerId, unitId: occupant.id, position: from });
+    } else {
+      familiar.position = action.position;
+    }
+    appendEvent(state, {
+      type: "COMBAT_UNIT_PLACED",
+      playerId: action.playerId,
+      unitId: familiar.id,
+      position: familiar.position
+    });
+    return;
+  }
+
   const armyUnit = player.army.find((unit) => unit.id === action.armyUnitId);
   if (!armyUnit) {
     throw new Error("That unit cannot be placed.");
   }
-
-  const occupant = Object.values(combat.units).find((unit) => unit.position === action.position);
 
   // An already-placed unit is being dragged around the deployment area: move it
   // to an empty space, or SWAP it with one of YOUR OWN units already standing
@@ -9681,6 +9762,40 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     !state.players[action.playerId]?.mgqSpirit
   ) {
     throw new Error("Choose one of the Four Spirits before starting the battle.");
+  }
+
+  // Monster Girl Quest faction cost: every main-hero combat pays one hand card
+  // before deployment can be confirmed. The combat-local receipt prevents a
+  // reopened setup or a second participant from charging the same hero twice.
+  if (
+    state.adventure &&
+    state.players[action.playerId]?.factionId === "mgq" &&
+    playerMainHeroInCombat(state, action.playerId) &&
+    !(combat.mgqSpiritCostPaidPlayerIds ?? []).includes(action.playerId)
+  ) {
+    const player = state.players[action.playerId];
+    if (player.hand.length === 0) {
+      combat.mgqSpiritCostPaidPlayerIds = [...(combat.mgqSpiritCostPaidPlayerIds ?? []), action.playerId];
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId: action.playerId,
+        message: "Spirit summoning cost waived — no card was available to discard."
+      });
+    } else {
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId: action.playerId,
+        prompt: "Spirit summoning cost: discard 1 card before the battle begins.",
+        options: player.hand.map((cardId) => ({ label: `Discard ${cardLibrary[cardId]?.name ?? cardId}` })),
+        context: "hand-discard",
+        handDiscard: { cardIds: [...player.hand], remaining: 1, drawnOnly: false, mgqSpiritCost: true },
+        returnPhase: "combat-setup"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = action.playerId;
+      return;
+    }
   }
 
   if ((setup.placedUnitIds[action.playerId] ?? []).length === 0) {
@@ -10169,6 +10284,11 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // Monster Girl Quest Four Spirits: summon the selected basic/advanced unit
   // for the fighting main hero, based on hero level.
   seedMgqSpiritsForCombat(state);
+  applyHeroGradeArmyInitiative(state);
+  for (const unit of Object.values(combat.units)) {
+    unit.initiative += equipmentBronzeInitiativeBonus(state, unit);
+  }
+  applyEquipmentRound1RetaliationPenalty(state);
 
   // Bulwark "Runes" (Gamefound Update #3): seed each Bulwark player's per-combat
   // Rune pool from their Sieidi/Altar baseline + City Hall flag, applying any
@@ -10198,7 +10318,59 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // idempotent across finalizeCombatStart re-entries. Also fires any
   // round-start events configured for the opening round.
   applyCombatScriptCombatStart(state);
+  applyHeroGradeRoundStartDamage(state);
+  if (state.combat?.outcome) {
+    return;
+  }
   startWarMachineRound(state);
+}
+
+/**
+ * Blade of the Trial / Retrofit Blueprint drawback: one seeded-random allied
+ * army unit cannot retaliate during round 1. A combat-round Active Effect is
+ * used so unlimited-retaliation abilities cannot bypass the drawback and the
+ * ordinary round-expiry machinery removes it before round 2.
+ */
+function applyEquipmentRound1RetaliationPenalty(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1) return;
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (!equipmentRequiresRound1RetaliationPenalty(state, playerId)) continue;
+    const candidates = Object.values(combat.units)
+      .filter((unit) =>
+        unit.controllerId === playerId &&
+        unit.damage < unit.maxHealth &&
+        !unit.commanderSlug &&
+        !unit.bossUnit &&
+        !unit.bankUnit
+      )
+      .sort((a, b) => a.id.localeCompare(b.id));
+    if (candidates.length === 0) continue;
+    const random = createSeededRandom(`${state.seed}#equipment-retaliation-drawback#${playerId}#${combat.dice.seed}`);
+    const target = candidates[random.nextInt(0, candidates.length - 1)];
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: "Equipment drawback: cannot retaliate",
+        scope: "unit",
+        duration: { type: "current-combat-round" },
+        polarity: "negative",
+        removable: true,
+        modifiers: [{ type: "CANNOT_RETALIATE" }]
+      },
+      { type: "system" },
+      playerId,
+      { type: "unit", unitId: target.id }
+    );
+    state.activeEffects.push(effect);
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_CREATED",
+      effectId: effect.id,
+      controllerId: playerId,
+      name: effect.name,
+      duration: effect.duration
+    });
+  }
 }
 
 /**
@@ -10747,6 +10919,10 @@ export function prepareIntegratedCombatDeployment(state: GameState): void {
     return;
   }
   injectCombatHeroes(state);
+  // Spirit Companion joins before ordinary deployment: its generated unit card
+  // is visible in setup, initiative sorts immediately, and the owner may drag
+  // it among their legal starting cells.
+  injectHeroGradeFamiliars(state);
   const eligible = [combat.attackerPlayerId, combat.defenderPlayerId].filter(
     (playerId, index, all) =>
       playerId !== NEUTRAL_PLAYER_ID &&
@@ -10779,6 +10955,26 @@ function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId
     return units.some((unit) => tacticsMoveDestinations(combat, unit).length > 0) || units.length >= 2;
   }
   return units.length >= 2;
+}
+
+/** Tier-1 Spirit Companion: one weak, temporary body for combat round 1. */
+function injectHeroGradeFamiliars(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) return;
+  const sides: { playerId: PlayerId; cells: readonly number[] }[] = [
+    {
+      playerId: combat.attackerPlayerId,
+      cells: usesBankFormation(combat)
+        ? CREATURE_BANK_ATTACKER_CELLS
+        : [...ATTACKER_BACKLINE, ...ATTACKER_FRONTLINE]
+    },
+    { playerId: combat.defenderPlayerId, cells: [...DEFENDER_BACKLINE, ...DEFENDER_FRONTLINE] }
+  ];
+  for (const side of sides) {
+    if (side.playerId !== NEUTRAL_PLAYER_ID) {
+      injectHeroGradeFamiliar(state, side.playerId, side.cells);
+    }
+  }
 }
 
 /**
@@ -11790,6 +11986,24 @@ export function transferPolishCarriedGrailAfterPvp(
  * and clear the lair (the field is black-cubed empty; a later visit is inert).
  * Layer-break payouts already happened LIVE during the fight.
  */
+function grantEncounterCommanderArtifact(
+  state: GameState,
+  playerId: PlayerId,
+  tier: "minor" | "major" | "relic",
+  source: string
+): void {
+  const candidates = availableCommanderArtifactSpecs(state, playerId, tier, true);
+  if (candidates.length === 0) return;
+  const random = createSeededRandom(`${state.seed}#${source}#${playerId}#${eventSeedNumber(state)}`, { salt: false });
+  const spec = candidates[random.nextInt(0, candidates.length - 1)]!;
+  if (!grantCommanderArtifactCard(state, playerId, spec.cardId)) return;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${state.players[playerId]?.name ?? playerId} claims ${spec.name}, a Grade ${tier === "minor" ? "I" : tier === "major" ? "II" : "III"} commander artifact, from ${source}.`
+  });
+}
+
 function resolveRaidBossVictory(state: GameState, playerId: PlayerId, bossInstanceId: string): void {
   const adventure = state.adventure;
   const boss = adventure?.raidBosses?.[bossInstanceId];
@@ -11812,6 +12026,7 @@ function resolveRaidBossVictory(state: GameState, playerId: PlayerId, bossInstan
     deckId: relicDeck,
     count: 1
   });
+  grantEncounterCommanderArtifact(state, playerId, "relic", `Raid Boss ${def?.name ?? boss.defId}`);
   appendEvent(state, {
     type: "RAID_BOSS_SLAIN",
     bossInstanceId,
@@ -11843,6 +12058,12 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
       { type: "DUNGEON_CONTINUE" }
     ]
   });
+  grantEncounterCommanderArtifact(
+    state,
+    playerId,
+    commanderArtifactTierForDungeonFloor(floor),
+    `Dungeon floor ${floor}`
+  );
   player.dungeonFloor = Math.min(floorCap, floor + 1);
   appendEvent(state, {
     type: "DUNGEON_FLOOR_CLEARED",
@@ -11928,6 +12149,9 @@ export function finalizeAdventureCombat(state: GameState): void {
 
   // WOG Commanders: persist deaths (a fallen commander stays dead until
   // revived for gold) and remember whose commander survived this battle.
+  const commanderParticipants = new Set(
+    Object.values(combat.units).filter((unit) => Boolean(unit.commanderSlug)).map((unit) => unit.controllerId)
+  );
   const commanderSurvivors = finalizeCommandersAfterCombat(state);
   // Hierophant "First Aid Master": collect restorable bronze/silver casualties
   // BEFORE the army-sync loop below rewrites `armyUnit.side` (the Pack→Few
@@ -12120,6 +12344,24 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
   }
 
+  // Victor's Coin: reward only a win in which the main hero's commander was
+  // actually deployed. Queue behind Necromancy like the other win-gold arms.
+  const commanderArtifactWinGold =
+    outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && commanderParticipants.has(outcome.winnerPlayerId)
+      ? aggregateCommanderArtifactBonuses(state.players[outcome.winnerPlayerId]?.commander?.artifacts).goldAfterWonCombat
+      : 0;
+  if (outcome.winnerPlayerId !== NEUTRAL_PLAYER_ID && commanderArtifactWinGold > 0) {
+    if (playerCanPlayNecromancy(state, outcome.winnerPlayerId)) {
+      adventure.rewardQueue.push({
+        playerId: outcome.winnerPlayerId,
+        kind: "visit-steps",
+        steps: [{ type: "GAIN_RESOURCES", gold: commanderArtifactWinGold }]
+      });
+    } else {
+      gainResources(state, outcome.winnerPlayerId, { gold: commanderArtifactWinGold }, "Victor's Coin");
+    }
+  }
+
   // Open the Hierophant's post-combat First Aid window (choose 1 casualty to
   // restore, or decline). Gated in legal-actions: until resolved, the owner
   // may only answer it — exactly like the Necromancy deferral it mirrors.
@@ -12134,6 +12376,18 @@ export function finalizeAdventureCombat(state: GameState): void {
 
     if (hero && playerId) {
       if (outcome.winnerPlayerId === playerId) {
+        // Standard level-3/4/5 Neutral guards may open an optional commander-
+        // artifact purchase after the fight. Banks, waves, Raid Bosses and
+        // Dungeon floors keep their own reward paths below.
+        if (
+          !context.bankId &&
+          !context.waveAssault &&
+          !context.raidBossId &&
+          context.dungeonFloor === undefined &&
+          state.players[playerId]?.commander
+        ) {
+          queueNeutralCommanderArtifactOffer(state, playerId, context.difficulty);
+        }
         // Mod-agnostic bank-win counter: incremented on EVERY Creature-Bank win
         // (never gated on any module) so it is plain additive state. It gates
         // anime Cultivation's Core Formation realm (§5.6) and the future
@@ -12165,6 +12419,26 @@ export function finalizeAdventureCombat(state: GameState): void {
           } else if (context.difficulty === level) {
             gainExperience(state, playerId, 1);
           }
+        }
+
+        // Hero Equipment: a fought victory over a level VI/VII field guard
+        // earns an optional Grade-III purchase. Banks, waves, bosses and
+        // Dungeon encounters use their own reward paths and never enter this
+        // ordinary difficulty-gated branch.
+        if (
+          hero.kind === "main" &&
+          !context.bankId &&
+          !context.waveAssault &&
+          !context.raidBossId &&
+          context.dungeonFloor === undefined &&
+          context.difficulty >= 6
+        ) {
+          queueEquipmentGradePurchase(
+            state,
+            playerId,
+            ["III"],
+            "Level VI/VII neutral victory — buy 1 Grade III equipment item:"
+          );
         }
 
         // Freelancer's Guild: "Each time you win against Neutral Units,
@@ -12842,7 +13116,7 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   if (unitRankForExperience(def.tier, armyUnit.experience ?? 0) >= MAX_UNIT_RANK) {
     throw new Error("That unit is already at max veteran rank.");
   }
-  const cost = unitDrillGoldCost(armyUnit);
+  const cost = unitDrillGoldCostFor(state, action.playerId, armyUnit);
   if ((player.resources.gold ?? 0) < cost) {
     throw new Error(`Drilling this unit needs ${cost} gold.`);
   }
@@ -12853,6 +13127,7 @@ export function drillUnit(state: GameState, action: Extract<GameAction, { type: 
   }
   hero.movementPoints -= movementCost;
   spendResources(state, action.playerId, { gold: cost }, "unit drill");
+  if (cost === 0) consumeEquipmentFreeDrill(state, action.playerId);
   player.unitDrillRound = state.round;
   player.unitDrillsUsed = used + 1;
   grantArmyUnitExperience(state, action.playerId, armyUnit, DRILL_UNIT_XP);
@@ -12992,6 +13267,7 @@ export function heroGradePick(state: GameState, action: Extract<GameAction, { ty
   }
   hero.gradePoints = (hero.gradePoints ?? 0) - 1;
   hero.gradeNodes = [...(hero.gradeNodes ?? []), node.id];
+  applyHeroGradeOneTimeReward(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_GRADE_NODE_PICKED",
     playerId: action.playerId,
@@ -14742,6 +15018,34 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     throw new Error("That choice cannot be resolved.");
   }
 
+  if (choice.context === "commander-artifact-offer") {
+    const offer = choice.commanderArtifactOffer;
+    if (!offer) throw new Error("That commander artifact offer is unavailable.");
+    const cardId = offer.cardIds[action.optionIndex];
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    if (!cardId) {
+      if (action.optionIndex !== offer.cardIds.length) throw new Error("Choose an offered artifact or decline.");
+      return;
+    }
+    const player = state.players[action.playerId];
+    const spec = COMMANDER_ARTIFACT_SPECS[cardId];
+    if (!player || !spec || !hasResources(player, { gold: offer.cost })) {
+      throw new Error(`Buying that commander artifact costs ${offer.cost} gold.`);
+    }
+    spendResources(state, action.playerId, { gold: offer.cost }, `bought ${spec.name} from ${offer.source}`);
+    if (!grantCommanderArtifactCard(state, action.playerId, cardId)) {
+      throw new Error("That commander artifact was already claimed.");
+    }
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: action.playerId,
+      message: `${player.name} buys ${spec.name} from ${offer.source} for ${offer.cost} gold.`
+    });
+    return;
+  }
+
   if (choice.context === "disciplinary-committee-start") {
     resolveDisciplinaryCommitteeStartChoice(state, action.playerId, action.optionIndex);
     return;
@@ -15609,9 +15913,28 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       player.discard.push(cardId);
     }
 
+    if (pick.mgqSpiritCost && state.combat) {
+      state.combat.mgqSpiritCostPaidPlayerIds = [
+        ...(state.combat.mgqSpiritCostPaidPlayerIds ?? []).filter((id) => id !== action.playerId),
+        action.playerId
+      ];
+      appendEvent(state, {
+        type: "HAND_REFRESHED",
+        playerId: action.playerId,
+        discarded: 1,
+        drawn: 0,
+        discardedCardIds: [cardId]
+      });
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId: action.playerId,
+        message: `${cardLibrary[cardId]?.name ?? cardId} was discarded to summon a Spirit.`
+      });
+    }
+
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
-    state.priorityPlayerId = null;
+    state.priorityPlayerId = pick.mgqSpiritCost ? action.playerId : null;
 
     // More to discard: reopen. "Drawn-only" keeps shrinking the drawn set;
     // otherwise any remaining hand card is a candidate.
@@ -16183,6 +16506,59 @@ function queueNomadEndTurnMove(state: GameState, playerId: PlayerId): boolean {
   return true;
 }
 
+/** Buy one of the Forge's two stable offers, with handler-side validation. */
+export function forgeCommanderArtifact(
+  state: GameState,
+  action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }>
+): void {
+  const player = state.players[action.playerId];
+  const commander = player?.commander;
+  const spec = COMMANDER_ARTIFACT_SPECS[action.cardId];
+  if (!player || !commander || !spec || spec.tier !== action.tier) {
+    throw new Error("That commander Forge offer is not available.");
+  }
+
+  if (state.combat || state.phase !== "player-turn" || state.activePlayerId !== action.playerId) {
+    throw new Error("The Commander Forge is used during your own map turn.");
+  }
+  const highTier = action.tier === "major" || action.tier === "relic";
+  if ((!highTier && state.round < 2) || (highTier && state.round < 7)) {
+    throw new Error(highTier ? "Grade II/III forging unlocks in round 7." : "Grade I forging unlocks in round 2.");
+  }
+  if ((!highTier && commander.forgeMinorUsed) || (highTier && commander.forgeHighUsed)) {
+    throw new Error("That once-per-game Commander Forge use is already spent.");
+  }
+  if (commander.artifacts?.[spec.slot]) {
+    throw new Error(`Your commander's ${spec.slot} slot is already filled.`);
+  }
+  const offered = commanderForgeCandidates(state, action.playerId, action.tier).map((candidate) => candidate.cardId);
+  if (!offered.includes(action.cardId)) {
+    throw new Error("That artifact is not one of the Forge's two offers.");
+  }
+  const cost = COMMANDER_ARTIFACT_GOLD_COST[action.tier];
+  if (!hasResources(player, { gold: cost })) {
+    throw new Error(`Forging that artifact costs ${cost} gold.`);
+  }
+  spendResources(state, action.playerId, { gold: cost }, `forged ${spec.name}`);
+  if (!grantCommanderArtifactCard(state, action.playerId, action.cardId)) {
+    throw new Error("That commander artifact was already claimed.");
+  }
+  if (highTier) commander.forgeHighUsed = true;
+  else commander.forgeMinorUsed = true;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId: action.playerId,
+    message: `${player.name} forges ${spec.name} for ${cost} gold; it is placed in hand ready to bind.`
+  });
+}
+
+function queueEquipmentEndTurnMove(state: GameState, playerId: PlayerId): boolean {
+  if (!equipmentEndTurnStepAvailable(state, playerId)) return false;
+  if (!offerEndTurnAdjacentMove(state, playerId, "Pathfinder's Boots: move your hero to an adjacent empty field?")) return false;
+  consumeEquipmentEndTurnStep(state, playerId);
+  return true;
+}
+
 /**
  * Pandora's Bargain: Power — "at the end of your turn, remove this card OR
  * gain Negative Morale." Opens that choice when the player holds the upkeep
@@ -16244,6 +16620,11 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   if (queueNomadEndTurnMove(state, action.playerId)) {
     return;
   }
+  if (queueEquipmentEndTurnMove(state, action.playerId)) {
+    return;
+  }
+
+  bankEquipmentMovementAtTurnEnd(state, action.playerId);
 
   const player = endingPlayer;
   if (player) {
@@ -16957,6 +17338,9 @@ export function openSharedDeckSearch(
   if (spellWiden?.type === "SPELL_SEARCH_WIDEN" && isSpellDeck(deckId)) {
     baseCount = Math.max(baseCount, spellWiden.count);
   }
+  if (isSpellDeck(deckId) && heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.spellSavant)) {
+    baseCount += 1;
+  }
 
   // First, every shared-deck Search asks whether to play a held Scouting card —
   // an instant pop-up offering the tiers that would actually grow this Search.
@@ -17359,6 +17743,62 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
     timing: "instant",
     mode
   });
+}
+
+/** Draw one actual shared-deck card into ownership, reshuffling if necessary. */
+function grantRandomSharedCard(state: GameState, playerId: PlayerId, deckId: string): boolean {
+  const deck = state.decks[deckId];
+  if (!deck) return false;
+  if (deck.drawPile.length === 0 && !reshuffleSharedDeckIfEmpty(state, deckId, "hero-grade-random-grant")) {
+    return false;
+  }
+  const cardId = deck.drawPile.pop();
+  if (!cardId) return false;
+  gainOwnedCard(state, playerId, cardId);
+  return true;
+}
+
+/** Rewards whose "one time" timing is exactly the irreversible node pick. */
+function applyHeroGradeOneTimeReward(state: GameState, playerId: PlayerId, nodeId: string): void {
+  if (nodeId === HERO_GRADE_NODE_IDS.majorLegacy) {
+    grantRandomSharedCard(state, playerId, ARTIFACT_DECK_MAJOR);
+    return;
+  }
+  if (nodeId === HERO_GRADE_NODE_IDS.dualArcana) {
+    const basic = grantRandomSharedCard(state, playerId, SPELL_DECK_BASIC);
+    const expert = grantRandomSharedCard(state, playerId, SPELL_DECK_EXPERT);
+    if (!basic && !expert) gainResources(state, playerId, { gold: 1 }, "Dual Arcana fallback");
+    return;
+  }
+  if (nodeId === HERO_GRADE_NODE_IDS.relicDestiny) {
+    // This node is an explicit Relic reward, so it must not be downgraded or
+    // rejected by the optional random-artifact access roll used for ordinary
+    // map searches. The normal search cleanup clears this temporary latch.
+    if (state.adventure) {
+      state.adventure.polishArtifactAccess = { minor: false, major: false, relic: true };
+    }
+    state.adventure?.rewardQueue.push({
+      playerId,
+      kind: "shared-deck-search",
+      deckId: ARTIFACT_DECK_RELIC,
+      count: 5
+    });
+  }
+}
+
+/** Artifact Broker: repeatable map-turn sale, matching market removal semantics. */
+export function heroGradeSellArtifact(
+  state: GameState,
+  action: Extract<GameAction, { type: "HERO_GRADE_SELL_ARTIFACT" }>
+): void {
+  if (state.combat || !hasOpenAdventureTurn(state, action.playerId)) throw new Error("Sell an Artifact on your map turn.");
+  if (!heroHasGradeNode(state, action.playerId, HERO_GRADE_NODE_IDS.artifactBroker)) throw new Error("Artifact Broker is not learned.");
+  const player = state.players[action.playerId];
+  const index = player?.hand.indexOf(action.cardId) ?? -1;
+  if (!player || index < 0 || cardLibrary[action.cardId]?.kind !== "artifact") throw new Error("Choose an Artifact from your hand.");
+  player.hand.splice(index, 1);
+  player.removed.push(action.cardId);
+  gainResources(state, action.playerId, { gold: 4 }, "Artifact Broker sale");
 }
 
 /** Plays Speculum's Balance-Pack +1 arm at the start of a Search. */
@@ -18164,6 +18604,33 @@ export function pumpAdventureQueues(state: GameState): void {
         return;
       }
       continue;
+    }
+
+    if (reward.kind === "commander-artifact-offer") {
+      adventure.rewardQueue.shift();
+      const stillAvailable = reward.cardIds.filter((cardId) => COMMANDER_ARTIFACT_SPECS[cardId]);
+      if (stillAvailable.length === 0) continue;
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId,
+        type: "OPTION_CHOICE",
+        playerId: reward.playerId,
+        prompt: `${reward.source}: buy one commander artifact for ${reward.cost} gold?`,
+        options: [
+          ...stillAvailable.map((cardId) => ({ label: `Buy ${COMMANDER_ARTIFACT_SPECS[cardId]!.name} (${reward.cost} gold)` })),
+          { label: "Decline" }
+        ],
+        context: "commander-artifact-offer",
+        commanderArtifactOffer: {
+          cardIds: stillAvailable,
+          cost: reward.cost,
+          source: reward.source
+        },
+        returnPhase: "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = reward.playerId;
+      return;
     }
 
     if (reward.kind === "map-spell-effect") {

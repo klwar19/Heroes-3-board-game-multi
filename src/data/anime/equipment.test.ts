@@ -30,7 +30,20 @@ const SHARED_BOTH = [
   EQUIPMENT_IDS.windriderSaddle,
   EQUIPMENT_IDS.spiritCraneMount,
   EQUIPMENT_IDS.bladeOfTheTrial,
-  EQUIPMENT_IDS.alchemistsSatchel
+  EQUIPMENT_IDS.alchemistsSatchel,
+  EQUIPMENT_IDS.pathfindersBoots,
+  EQUIPMENT_IDS.surveyorsLens,
+  EQUIPMENT_IDS.hearthboundHorseshoe,
+  EQUIPMENT_IDS.spellwardBrooch,
+  EQUIPMENT_IDS.reactiveBuckler,
+  EQUIPMENT_IDS.duelistInsignia,
+  EQUIPMENT_IDS.clockworkSpurs,
+  EQUIPMENT_IDS.corrosionEdge,
+  EQUIPMENT_IDS.wyvernNeedle,
+  EQUIPMENT_IDS.fieldMedicKit,
+  EQUIPMENT_IDS.foldedTacticsManual,
+  EQUIPMENT_IDS.guardianMirror,
+  EQUIPMENT_IDS.chronicleSpurs
 ];
 
 /** True when an item's art file exists under public/ (the promote target). */
@@ -40,8 +53,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // Shared/base lines plus Shinobi, Kansen, Modao, Seishun and MGQ = 45.
-    expect(items).toHaveLength(45);
+    // Shared/base lines plus Shinobi, Kansen, Modao, Seishun and MGQ = 58.
+    expect(items).toHaveLength(58);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -50,69 +63,69 @@ describe("anime equipment catalog integrity", () => {
       expect(EQUIPMENT_GRADE_TO_ARTIFACT_TIER[def.grade]).toBeTruthy();
     }
 
-    // Grade I (minor / 4g).
-    expect(bySlug(EQUIPMENT_IDS.ironBloodSword)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "anime-xianxia" });
-    expect(bySlug(EQUIPMENT_IDS.blackTortoiseMail)).toMatchObject({ slot: "armor", grade: "I", cost: 4, package: "anime-xianxia" });
-    expect(bySlug(EQUIPMENT_IDS.adventurersBlade)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "anime-isekai" });
-    expect(bySlug(EQUIPMENT_IDS.guildIssueMail)).toMatchObject({ slot: "armor", grade: "I", cost: 4, package: "anime-isekai" });
-    expect(bySlug(EQUIPMENT_IDS.twinTailRibbon)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "anime-isekai" });
-    expect(bySlug(EQUIPMENT_IDS.luckyCoin)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "shared" });
+    // Grade I (minor / 5g).
+    expect(bySlug(EQUIPMENT_IDS.ironBloodSword)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "anime-xianxia" });
+    expect(bySlug(EQUIPMENT_IDS.blackTortoiseMail)).toMatchObject({ slot: "armor", grade: "I", cost: 5, package: "anime-xianxia" });
+    expect(bySlug(EQUIPMENT_IDS.adventurersBlade)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.guildIssueMail)).toMatchObject({ slot: "armor", grade: "I", cost: 5, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.twinTailRibbon)).toMatchObject({ slot: "accessory", grade: "I", cost: 5, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.luckyCoin)).toMatchObject({ slot: "accessory", grade: "I", cost: 5, package: "shared" });
 
-    // Grade II (major / 6g).
-    expect(bySlug(EQUIPMENT_IDS.cosmosPendant)).toMatchObject({ slot: "accessory", grade: "II", cost: 6, package: "anime-xianxia" });
-    expect(bySlug(EQUIPMENT_IDS.supplySatchel)).toMatchObject({ slot: "accessory", grade: "II", cost: 6, package: "shared" });
-    expect(bySlug(EQUIPMENT_IDS.windriderSaddle)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "shared" });
-    expect(bySlug(EQUIPMENT_IDS.bladeOfTheTrial)).toMatchObject({ slot: "weapon", grade: "II", cost: 6, package: "shared" });
+    // Grade II (major / 7g).
+    expect(bySlug(EQUIPMENT_IDS.cosmosPendant)).toMatchObject({ slot: "accessory", grade: "II", cost: 7, package: "anime-xianxia" });
+    expect(bySlug(EQUIPMENT_IDS.supplySatchel)).toMatchObject({ slot: "accessory", grade: "II", cost: 7, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.windriderSaddle)).toMatchObject({ slot: "mount", grade: "II", cost: 7, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.bladeOfTheTrial)).toMatchObject({ slot: "weapon", grade: "II", cost: 7, package: "shared" });
     expect(bySlug(EQUIPMENT_IDS.veteransStandard)).toMatchObject({
       slot: "accessory",
       grade: "II",
-      cost: 6,
+      cost: 7,
       package: "shared",
       requiresContext: "anime.unitExperience"
     });
-    expect(bySlug(EQUIPMENT_IDS.neonMicrophone)).toMatchObject({ slot: "weapon", grade: "II", cost: 6, package: "anime-isekai" });
-    expect(bySlug(EQUIPMENT_IDS.stageCostume)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "anime-isekai" });
-    expect(bySlug(EQUIPMENT_IDS.spiritFocus)).toMatchObject({ slot: "accessory", grade: "II", cost: 6, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.neonMicrophone)).toMatchObject({ slot: "weapon", grade: "II", cost: 7, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.stageCostume)).toMatchObject({ slot: "armor", grade: "II", cost: 7, package: "anime-isekai" });
+    expect(bySlug(EQUIPMENT_IDS.spiritFocus)).toMatchObject({ slot: "accessory", grade: "II", cost: 7, package: "anime-isekai" });
 
-    // Grade III (relic / 8g).
+    // Grade III (relic / 10g).
     expect(bySlug(EQUIPMENT_IDS.marshalsWarHorn)).toMatchObject({
       slot: "accessory",
       grade: "III",
-      cost: 8,
+      cost: 10,
       package: "shared",
       requiresContext: "wog.commanders"
     });
     expect(bySlug(EQUIPMENT_IDS.spiritCraneMount)).toMatchObject({
       slot: "mount",
       grade: "III",
-      cost: 8,
+      cost: 10,
       package: "shared",
       requiresContext: "wog.commanders"
     });
-    expect(bySlug(EQUIPMENT_IDS.alchemistsSatchel)).toMatchObject({ slot: "armor", grade: "III", cost: 8, package: "shared" });
-    expect(bySlug(EQUIPMENT_IDS.eternalSash)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.alchemistsSatchel)).toMatchObject({ slot: "armor", grade: "III", cost: 10, package: "shared" });
+    expect(bySlug(EQUIPMENT_IDS.eternalSash)).toMatchObject({ slot: "accessory", grade: "III", cost: 10, package: "shared" });
 
     // Classic register line (2 per grade, spread across weapon/armor/accessory/mount).
-    expect(bySlug(EQUIPMENT_IDS.crusadersPoleaxe)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "classic" });
-    expect(bySlug(EQUIPMENT_IDS.coinwardTalisman)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "classic" });
-    expect(bySlug(EQUIPMENT_IDS.ironbarkCuirass)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "classic" });
-    expect(bySlug(EQUIPMENT_IDS.coursersBarding)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "classic" });
-    expect(bySlug(EQUIPMENT_IDS.hornOfPlenty)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "classic" });
-    expect(bySlug(EQUIPMENT_IDS.wardensAegis)).toMatchObject({ slot: "armor", grade: "III", cost: 8, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.crusadersPoleaxe)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.coinwardTalisman)).toMatchObject({ slot: "accessory", grade: "I", cost: 5, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.ironbarkCuirass)).toMatchObject({ slot: "armor", grade: "II", cost: 7, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.coursersBarding)).toMatchObject({ slot: "mount", grade: "II", cost: 7, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.hornOfPlenty)).toMatchObject({ slot: "accessory", grade: "II", cost: 7, package: "classic" });
+    expect(bySlug(EQUIPMENT_IDS.wardensAegis)).toMatchObject({ slot: "armor", grade: "III", cost: 10, package: "classic" });
     // The classic line covers all four slots and both grades of each item pair.
     const classic = items.filter((def) => def.package === "classic");
     expect(classic).toHaveLength(6);
     expect(new Set(classic.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory", "mount"]));
     expect(classic.filter((def) => def.grade === "I")).toHaveLength(2);
-    expect(classic.filter((def) => def.grade === "II")).toHaveLength(2);
-    expect(classic.filter((def) => def.grade === "III")).toHaveLength(2);
+    expect(classic.filter((def) => def.grade === "II")).toHaveLength(3);
+    expect(classic.filter((def) => def.grade === "III")).toHaveLength(1);
 
     // Hidden Leaf Village bespoke "shinobi" line (§3.13): one per grade, spread
     // across weapon / mount / accessory (Kunai Pouch I, Body-Flicker Tabi II,
     // Sage Chakra Charm III).
-    expect(bySlug(EQUIPMENT_IDS.shinobiKunaiPouch)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "shinobi" });
-    expect(bySlug(EQUIPMENT_IDS.bodyFlickerTabi)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "shinobi" });
-    expect(bySlug(EQUIPMENT_IDS.sageChakraCharm)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "shinobi" });
+    expect(bySlug(EQUIPMENT_IDS.shinobiKunaiPouch)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "shinobi" });
+    expect(bySlug(EQUIPMENT_IDS.bodyFlickerTabi)).toMatchObject({ slot: "mount", grade: "II", cost: 7, package: "shinobi" });
+    expect(bySlug(EQUIPMENT_IDS.sageChakraCharm)).toMatchObject({ slot: "accessory", grade: "III", cost: 10, package: "shinobi" });
     const shinobi = items.filter((def) => def.package === "shinobi");
     expect(shinobi).toHaveLength(3);
     expect(new Set(shinobi.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
@@ -121,12 +134,12 @@ describe("anime equipment catalog integrity", () => {
     // Azur Lane Naval Base bespoke "kansen" line (§3.13): 2 per grade, spread
     // across all four slots (Oxygen Torpedo I / Manjuu Piggy Bank I,
     // Repair Toolkit II / Beaver Squad Tag II, SG Radar III / Retrofit Blueprint III).
-    expect(bySlug(EQUIPMENT_IDS.oxygenTorpedo)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "kansen" });
-    expect(bySlug(EQUIPMENT_IDS.manjuuPiggyBank)).toMatchObject({ slot: "accessory", grade: "I", cost: 4, package: "kansen" });
-    expect(bySlug(EQUIPMENT_IDS.repairToolkit)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "kansen" });
-    expect(bySlug(EQUIPMENT_IDS.beaverSquadTag)).toMatchObject({ slot: "mount", grade: "II", cost: 6, package: "kansen" });
-    expect(bySlug(EQUIPMENT_IDS.sgRadar)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "kansen" });
-    expect(bySlug(EQUIPMENT_IDS.retrofitBlueprint)).toMatchObject({ slot: "weapon", grade: "III", cost: 8, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.oxygenTorpedo)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.manjuuPiggyBank)).toMatchObject({ slot: "accessory", grade: "I", cost: 5, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.repairToolkit)).toMatchObject({ slot: "armor", grade: "II", cost: 7, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.beaverSquadTag)).toMatchObject({ slot: "mount", grade: "II", cost: 7, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.sgRadar)).toMatchObject({ slot: "accessory", grade: "III", cost: 10, package: "kansen" });
+    expect(bySlug(EQUIPMENT_IDS.retrofitBlueprint)).toMatchObject({ slot: "weapon", grade: "III", cost: 10, package: "kansen" });
     const kansen = items.filter((def) => def.package === "kansen");
     expect(kansen).toHaveLength(6);
     expect(new Set(kansen.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
@@ -144,9 +157,9 @@ describe("anime equipment catalog integrity", () => {
     // Heavenly Demon Palace bespoke "modao" line (§3.13): one per grade, spread
     // across weapon / armor / accessory (Blood Demon Saber I / Bonefiend Plate II /
     // Demon Heart III).
-    expect(bySlug(EQUIPMENT_IDS.demonBloodSaber)).toMatchObject({ slot: "weapon", grade: "I", cost: 4, package: "modao" });
-    expect(bySlug(EQUIPMENT_IDS.bonefiendPlate)).toMatchObject({ slot: "armor", grade: "II", cost: 6, package: "modao" });
-    expect(bySlug(EQUIPMENT_IDS.demonHeartRelic)).toMatchObject({ slot: "accessory", grade: "III", cost: 8, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.demonBloodSaber)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.bonefiendPlate)).toMatchObject({ slot: "armor", grade: "II", cost: 7, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.demonHeartRelic)).toMatchObject({ slot: "accessory", grade: "III", cost: 10, package: "modao" });
     const modao = items.filter((def) => def.package === "modao");
     expect(modao).toHaveLength(3);
     expect(new Set(modao.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));

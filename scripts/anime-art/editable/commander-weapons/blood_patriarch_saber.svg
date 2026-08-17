@@ -19,5 +19,5 @@
   <text x="371" y="93" class="titleText">Blood Patriarch's Saber</text>
   <text x="371" y="630" class="tierText" fill="#e7b73c">MAJOR  ·  COMMANDER WEAPON</text>
   <text x="371" y="664" class="slotText">WEAPON</text>
-  <g><text x="371" y="766" class="ruleText">Commander weapon: +2 Attack.</text><line x1="120" y1="804" x2="623" y2="804" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="810" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="842" class="ruleText">card leaves the game. Gain 1 Major</text><text x="371" y="874" class="ruleText">Artifact.</text></g>
+  <g><text x="371" y="750" class="ruleText">Commander weapon: +1 Attack. Its attacks</text><text x="371" y="782" class="ruleText">roll with advantage.</text><line x1="120" y1="820" x2="623" y2="820" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="826" class="ruleText">Bind permanently to your commander. This</text><text x="371" y="858" class="ruleText">card leaves the game. Gain 1 Major</text><text x="371" y="890" class="ruleText">Artifact.</text></g>
 </svg>

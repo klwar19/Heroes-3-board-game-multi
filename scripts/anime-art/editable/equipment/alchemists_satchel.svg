@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#6fa8ff">GRADE III  ·  RELIC EQUIPMENT</text>
     <text x="371" y="654" class="slotText">ARMOR</text>
     <text x="371" y="688" class="enText">Túi Luyện Kim</text>
-    <g id="editable-rules"><text x="371" y="778" class="ruleText">Armor: +1 gold each Resources round AND +1</text><text x="371" y="809" class="ruleText">gold after each combat you win.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="778" class="ruleText">Armor: all allied units take 1 less Spell</text><text x="371" y="809" class="ruleText">damage.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
   </g>
 </svg>

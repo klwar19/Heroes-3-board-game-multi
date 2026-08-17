@@ -229,6 +229,17 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
 }
 
 /**
+ * Whether a card can actually fuel a school-less Power-scaled effect such as
+ * Deemer's Meteor Shower / Kud's Rocket Launcher. Spells always bring their
+ * generic +1 Power side; ordinary Power statistics, specialties and artifacts
+ * bring their printed school-agnostic ADD_SPELL_POWER value. A source that only
+ * boosts a named School's Spells brings 0 and must not be offered or discarded.
+ */
+export function cardCanFuelSchoollessPower(card: CardDefinition | undefined): boolean {
+  return cardCanBoostPower(card) && spellPowerValueOfCard(card, []) > 0;
+}
+
+/**
  * If this card can be played to top up a hero's movement pool — a bare
  * GAIN_HERO_MOVEMENT card, or an "OR" card with a GAIN_HERO_MOVEMENT side (Boots
  * of Speed, the Logistics ability's expert side, Dessa's Logistics IV/VI, Shield

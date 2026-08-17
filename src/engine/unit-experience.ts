@@ -16,6 +16,8 @@ import {
 import { UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
 import { animeModuleEnabled } from "./anime";
 import { equipmentVeteranBonusXp } from "./anime-equipment";
+import { heroHasGradeNode } from "./anime-hero-grades";
+import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import { appendEvent } from "./events";
 import { mgqEffectiveJob, mgqJobSignatureAbilityId } from "./mgq-jobs";
 import { getBonusUnitExperience } from "./unit-abilities";
@@ -575,6 +577,7 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
   const gained =
     unitExperienceForWonCombat(combat.context) +
     equipmentVeteranBonusXp(state, winnerId) +
+    (heroHasGradeNode(state, winnerId, HERO_GRADE_NODE_IDS.combatScholar) ? 1 : 0) +
     neutralGuardExperienceBonusAfterCombat(state);
   if (gained <= 0) {
     return;

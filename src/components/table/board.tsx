@@ -1419,6 +1419,10 @@ export function BattlefieldBoard({
               // Integrated Vanguard deployment: hero, commander and troops all
               // swap inside the same ordinary placement grid.
               (integratedCommanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)) ||
+              // Ordinary deployment also supports drop-to-swap. This includes
+              // Spirit Companion's synthetic setup handle and matches the
+              // engine's long-standing placed-unit swap branch.
+              (placing && unit.controllerId === viewerPlayerId && isUnitAlive(unit)) ||
               // Commander sort: an own (non-commander) unit is a swap target.
               (commanderSorting && unit.controllerId === viewerPlayerId && isUnitAlive(unit)));
           // Tactics roles for this cell: pick a friendly source, then either an

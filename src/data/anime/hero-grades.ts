@@ -50,6 +50,8 @@ export const HERO_GRADE_TIER_COUNT = HERO_GRADE_MERIT_THRESHOLDS.length;
 export const HERO_GRADE_MAX = HERO_GRADE_TIER_COUNT;
 /** Nodes a hero may pick per unlocked tier (pick-1-per-tier is the rule). */
 export const HERO_GRADE_PICKS_PER_TIER = 1;
+/** Each hero is dealt exactly four deterministic-random candidates per tier. */
+export const HERO_GRADE_CHOICES_PER_TIER = 4;
 
 // ===========================================================================
 // Grade-name REGISTERS (one mechanic, different NAMES per content family)
@@ -200,13 +202,13 @@ export function factionGradeRegister(factionId: string | undefined): GradeRegist
 }
 
 // ===========================================================================
-// Tree node catalog (3 tiers × 3 nodes — extend as pure data)
+// Tree node catalog (3 tiers with a varied node pool — extend as pure data)
 // ===========================================================================
 
 /** How a "skill" node is used, and what it does — read by the engine dispatch. */
 export type HeroGradeSkillSpec =
   | {
-      /** Forced March: on your own map turn, +N movement, once per round. */
+      /** Reserved generic map-active movement skill shape for future nodes. */
       mode: "map-active";
       effect: "movement";
       amount: number;
@@ -264,12 +266,34 @@ export const HERO_GRADE_NODE_IDS = {
   bountyHuntersEye: "bounty-hunters-eye",
   provisioner: "provisioner",
   battleFocus: "battle-focus",
+  spiritCompanion: "spirit-companion",
+  overflowingInsight: "overflowing-insight",
+  oreDivination: "ore-divination",
+  mineWindfall: "mine-windfall",
+  volatileTreasury: "volatile-treasury",
+  artifactBroker: "artifact-broker",
+  spellSavant: "spell-savant",
+  dualArcana: "dual-arcana",
   deepPockets: "deep-pockets",
   ironWill: "iron-will",
   forcedMarch: "forced-march",
+  crystalDividend: "crystal-dividend",
+  wanderingCurioDealer: "wandering-curio-dealer",
+  firstBlood: "first-blood",
+  resourceSacrifice: "resource-sacrifice",
+  combatScholar: "combat-scholar",
+  astrologersMorale: "astrologers-morale",
+  resourceMastery: "resource-mastery",
+  majorLegacy: "major-legacy",
   arcaneInsight: "arcane-insight",
   warCry: "war-cry",
   tactician: "tactician",
+  fallingStar: "falling-star",
+  veteranMentor: "veteran-mentor",
+  inspiringPresence: "inspiring-presence",
+  swiftHost: "swift-host",
+  ancestralRecall: "ancestral-recall",
+  relicDestiny: "relic-destiny",
   // Idol / song-themed creative nodes (shared tree — any hero may pick)
   encore: "encore",
   harmonyWard: "harmony-ward",
@@ -301,6 +325,52 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     summary: "Skill (reaction): when your unit declares an attack, +1 Attack that attack. Once per combat.",
     skill: { mode: "reaction", role: "attacker", stat: "attack", amount: 1 }
   },
+  [HERO_GRADE_NODE_IDS.spiritCompanion]: {
+    id: HERO_GRADE_NODE_IDS.spiritCompanion,
+    tier: 1,
+    kind: "passive",
+    name: { en: "Spirit Companion", vi: "Linh Thú Đồng Hành" },
+    summary: "Passive: during combat preparation, summon a sortable 2 Attack / 1 Defense / 2 Health / 8 Initiative Starwind Familiar for combat round 1."
+  },
+  [HERO_GRADE_NODE_IDS.overflowingInsight]: {
+    id: HERO_GRADE_NODE_IDS.overflowingInsight,
+    tier: 1,
+    kind: "passive",
+    name: { en: "Overflowing Insight", vi: "Linh Cảm Tràn Đầy" },
+    summary: "Passive: during your start-of-turn hand refresh, draw 1 card over your hand limit, then discard back down to the limit."
+  },
+  [HERO_GRADE_NODE_IDS.oreDivination]: {
+    id: HERO_GRADE_NODE_IDS.oreDivination,
+    tier: 1,
+    kind: "passive",
+    name: { en: "Ore Divination", vi: "Bói Quặng" },
+    summary: "Passive: gain +1 building material (ore) at the beginning of each Astrologers round."
+  },
+  [HERO_GRADE_NODE_IDS.mineWindfall]: {
+    id: HERO_GRADE_NODE_IDS.mineWindfall, tier: 1, kind: "passive",
+    name: { en: "Mine Windfall", vi: "Lộc Mỏ" },
+    summary: "Passive: whenever you capture a Mine from another owner or the wild, immediately gain its printed production once as bonus resources."
+  },
+  [HERO_GRADE_NODE_IDS.volatileTreasury]: {
+    id: HERO_GRADE_NODE_IDS.volatileTreasury, tier: 1, kind: "passive",
+    name: { en: "Volatile Treasury", vi: "Ngân Khố Biến Động" },
+    summary: "Passive: lose 3 gold each Resources round, then gain 6 gold each Astrologers round (loss floors at 0)."
+  },
+  [HERO_GRADE_NODE_IDS.artifactBroker]: {
+    id: HERO_GRADE_NODE_IDS.artifactBroker, tier: 1, kind: "passive",
+    name: { en: "Artifact Broker", vi: "Môi Giới Bảo Vật" },
+    summary: "Passive: on your map turn, you may sell any Artifact in your hand for 4 gold; the sold card is removed."
+  },
+  [HERO_GRADE_NODE_IDS.spellSavant]: {
+    id: HERO_GRADE_NODE_IDS.spellSavant, tier: 1, kind: "passive",
+    name: { en: "Spell Savant", vi: "Kỳ Tài Pháp Thuật" },
+    summary: "Passive: whenever you Search a Basic or Expert Spell deck, reveal 1 additional Spell."
+  },
+  [HERO_GRADE_NODE_IDS.dualArcana]: {
+    id: HERO_GRADE_NODE_IDS.dualArcana, tier: 1, kind: "passive",
+    name: { en: "Dual Arcana", vi: "Song Pháp" },
+    summary: "One time when learned: gain 1 random Basic Spell and 1 random Expert Spell; if neither can be gained, gain 1 gold."
+  },
 
   // ---- Tier 2 --------------------------------------------------------------
   [HERO_GRADE_NODE_IDS.deepPockets]: {
@@ -321,10 +391,55 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
   [HERO_GRADE_NODE_IDS.forcedMarch]: {
     id: HERO_GRADE_NODE_IDS.forcedMarch,
     tier: 2,
-    kind: "skill",
+    kind: "passive",
     name: { en: "Forced March", vi: "Hành Quân Cấp Tốc" },
-    summary: "Skill (active, your map turn): +1 movement point. Once per round.",
-    skill: { mode: "map-active", effect: "movement", amount: 1 }
+    summary: "Passive: your main hero gains +1 movement point at the beginning of each Resources round."
+  },
+  [HERO_GRADE_NODE_IDS.crystalDividend]: {
+    id: HERO_GRADE_NODE_IDS.crystalDividend,
+    tier: 2,
+    kind: "passive",
+    name: { en: "Crystal Dividend", vi: "Lợi Tức Pha Lê" },
+    summary: "Passive: gain +1 valuable (crystal) at the beginning of each Resources round."
+  },
+  [HERO_GRADE_NODE_IDS.wanderingCurioDealer]: {
+    id: HERO_GRADE_NODE_IDS.wanderingCurioDealer,
+    tier: 2,
+    kind: "passive",
+    name: { en: "Wandering Curio Dealer", vi: "Thương Nhân Kỳ Vật" },
+    summary: "Passive: at the beginning of each Astrologers round, you may pay 3 gold to reveal a random Minor Artifact and add it to your hand."
+  },
+  [HERO_GRADE_NODE_IDS.firstBlood]: {
+    id: HERO_GRADE_NODE_IDS.firstBlood,
+    tier: 2,
+    kind: "passive",
+    name: { en: "First Blood", vi: "Tiên Huyết" },
+    summary: "Passive: the first declared attack by one of your units each combat gets +2 Attack."
+  },
+  [HERO_GRADE_NODE_IDS.resourceSacrifice]: {
+    id: HERO_GRADE_NODE_IDS.resourceSacrifice, tier: 2, kind: "passive",
+    name: { en: "Resource Sacrifice", vi: "Hiến Tế Tài Nguyên" },
+    summary: "Passive: each Resources round, you may remove 1 card from your hand to gain 3 gold."
+  },
+  [HERO_GRADE_NODE_IDS.combatScholar]: {
+    id: HERO_GRADE_NODE_IDS.combatScholar, tier: 2, kind: "passive",
+    name: { en: "Combat Scholar", vi: "Học Giả Chiến Trận" },
+    summary: "Passive: after each combat you win, every surviving deployed unit gains +1 bonus Unit Experience (when Unit Experience is enabled)."
+  },
+  [HERO_GRADE_NODE_IDS.astrologersMorale]: {
+    id: HERO_GRADE_NODE_IDS.astrologersMorale, tier: 2, kind: "passive",
+    name: { en: "Auspicious Stars", vi: "Cát Tinh" },
+    summary: "Passive: gain +1 morale at the beginning of each Astrologers round."
+  },
+  [HERO_GRADE_NODE_IDS.resourceMastery]: {
+    id: HERO_GRADE_NODE_IDS.resourceMastery, tier: 2, kind: "passive",
+    name: { en: "Resource Mastery", vi: "Tinh Thông Tài Nguyên" },
+    summary: "Passive: whenever you roll Resource dice, you may choose any printed face instead."
+  },
+  [HERO_GRADE_NODE_IDS.majorLegacy]: {
+    id: HERO_GRADE_NODE_IDS.majorLegacy, tier: 2, kind: "passive",
+    name: { en: "Major Legacy", vi: "Di Sản Cao Cấp" },
+    summary: "One time when learned: gain 1 random Major Artifact."
   },
 
   // ---- Tier 3 --------------------------------------------------------------
@@ -349,6 +464,40 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     kind: "passive",
     name: { en: "Tactician", vi: "Chiến Thuật Gia" },
     summary: "Passive: gain +2 gold at the start of each Resources round."
+  },
+  [HERO_GRADE_NODE_IDS.fallingStar]: {
+    id: HERO_GRADE_NODE_IDS.fallingStar,
+    tier: 3,
+    kind: "passive",
+    name: { en: "Falling Star", vi: "Sao Rơi" },
+    summary: "Passive: at the beginning of each combat round, deal 1 effect damage to the slowest enemy unit. This is not a Ballista."
+  },
+  [HERO_GRADE_NODE_IDS.veteranMentor]: {
+    id: HERO_GRADE_NODE_IDS.veteranMentor,
+    tier: 3,
+    kind: "passive",
+    name: { en: "Veteran Mentor", vi: "Danh Sư Lão Luyện" },
+    summary: "Passive: at the beginning of every game round, each unit card in your army gains +1 Unit Experience (when Unit Experience is enabled)."
+  },
+  [HERO_GRADE_NODE_IDS.inspiringPresence]: {
+    id: HERO_GRADE_NODE_IDS.inspiringPresence, tier: 3, kind: "passive",
+    name: { en: "Inspiring Presence", vi: "Khích Lệ" },
+    summary: "Passive: gain +1 morale at the beginning of every game round."
+  },
+  [HERO_GRADE_NODE_IDS.swiftHost]: {
+    id: HERO_GRADE_NODE_IDS.swiftHost, tier: 3, kind: "passive",
+    name: { en: "Swift Host", vi: "Thần Tốc Quân" },
+    summary: "Passive: all of your units gain +1 Initiative in combats led by your main hero."
+  },
+  [HERO_GRADE_NODE_IDS.ancestralRecall]: {
+    id: HERO_GRADE_NODE_IDS.ancestralRecall, tier: 3, kind: "passive",
+    name: { en: "Ancestral Recall", vi: "Hồi Ức Tổ Tiên" },
+    summary: "Passive: each Resources round, you may choose 1 card from your discard pile and return it to your hand."
+  },
+  [HERO_GRADE_NODE_IDS.relicDestiny]: {
+    id: HERO_GRADE_NODE_IDS.relicDestiny, tier: 3, kind: "passive",
+    name: { en: "Relic Destiny", vi: "Thiên Mệnh Thánh Vật" },
+    summary: "One time when learned: Search (5) the Relic Artifact deck and keep 1."
   },
 
   // ---- Idol / song-themed creative nodes -----------------------------------
@@ -409,7 +558,7 @@ export const HERO_GRADE_TRAINING_MANUAL_CARD_ID = "anime.item.training_manual";
 
 /**
  * The Training Manual (Học Vũ Kinh) — a one-time item. It lives in the card
- * library ALWAYS (lookups/hidden-info) but joins NO deck; it is bought for 2
+ * library ALWAYS (lookups/hidden-info) but joins NO deck; it is bought for 5
  * gold at the two guild shops (Merchant Guild Post / Urahara's Shop) only when
  * `anime.heroGrades` is on. Playing it on the map grants +2 Merit and REMOVES
  * the card from the game (removeSelf convention), so it is truly single-use.

@@ -483,9 +483,9 @@ function lethalSaveSpecialty(
  * with spell power, similar to standard spells" — the book/Power table reads
  * Power 0-1 → 1, Power 2-3 → 2, Power 4+ → 3, exactly like the Frost Ring Spell.
  * So it is a SINGLE power-scaled activation (`amountByPower`), NOT a menu of fixed
- * damage tiers: the Power brought is the caster's standing spell Power plus the
- * printed Power of the power-source cards discarded to play it (a +2 source
- * counts as 2), resolved in `playCardSpellPower`. The earlier 3-tier CHOOSE_ONE
+ * damage tiers: the Power brought is the printed Power of the chosen fuel cards
+ * (a +2 source counts as 2), resolved in `playCardSpellPower`. Spell-only passive
+ * bonuses do not apply because this card is a Specialty. The earlier 3-tier CHOOSE_ONE
  * (deal 1/2/3 for an exact discard COUNT of 0/2/4 cards) was wrong on both axes:
  * it presented a confusing tier menu and ignored spell-power buffs / card Power
  * values. The engine hits the centre unit and that many adjacent units, letting
@@ -508,8 +508,8 @@ function meteorShowerSpecialty(level: 1 | 6, adjacentPicks: number): CardLibrary
     ],
     target: { type: "any-unit" },
     // ONE power-scaled activation, not a tier menu. The optional power-source
-    // discard (up to 4 — the breakpoint for max damage) plus standing spell Power
-    // set the damage via `amountByPower`, mirroring the Frost Ring Spell. Playable
+    // discard (up to 4 sources — the breakpoint is Power 4) sets the damage via
+    // `amountByPower`, mirroring the Frost Ring ladder. Playable
     // any time during Combat (combatAnytime): on your turn and off-turn when an
     // enemy unit's activation starts or when it finishes its move.
     effect: {

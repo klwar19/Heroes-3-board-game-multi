@@ -371,7 +371,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // faces (Ballista activations, Fortune/Scholar takes, Cannon shots, Kud's
 // Rocket Launcher rethemes) gained `combatAnytime`, offering window joins a
 // v34 edge refuses. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 35;
+// v37 (2026-08-17): faction limits add server-authoritative state changes at
+// existing boundaries. Little Busters now pay up to 4 gold each Resource round;
+// an MGQ main hero must discard one chosen hand card before confirming combat
+// deployment, recorded per combat so it cannot be charged twice. A v36 worker
+// would silently omit both costs and reject the resulting choice action.
+export const ENGINE_PROTOCOL_VERSION = 37;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

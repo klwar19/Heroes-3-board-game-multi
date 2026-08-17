@@ -28,7 +28,7 @@ import {
   recordLevelUpAbilityPick,
   grantRegularArtifactOfSameGrade
 } from "./adventure";
-import { diluteUnitExperienceForUpgrade } from "./unit-experience";
+import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
 import { polishBalanceCardLibrary } from "./polish-balance-spells";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
@@ -111,6 +111,7 @@ import {
   setTileRotation,
   skipNecromancy,
   commanderGradeUp,
+  forgeCommanderArtifact,
   reviveCommander,
   beginHeavenlyTribulation,
   heroTrain,
@@ -119,6 +120,7 @@ import {
   setMgqSpirit,
   resolveCompanionRecruitment,
   heroGradePick,
+  heroGradeSellArtifact,
   equipHeroItem,
   unequipHeroItem,
   resolveCommanderFirstAid,
@@ -243,21 +245,44 @@ import {
 import { cultivationCombatRerollBonus } from "./anime-cultivation";
 import {
   gainGradeProgress,
+  heroGradeFirstBloodBonus,
   heroGradeNode,
   heroGradesEnabled,
   heroSkillAvailableThisCombat,
   heroSkillAvailableThisRound,
   markHeroSkillUsedThisCombat,
+  markHeroGradeFirstBloodUsed,
   markHeroSkillUsedThisRound,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
+import { applyHeroGradeRoundStartDamage, expireHeroGradeFamiliars } from "./hero-grade-combat";
 import {
   applyEquipmentStageCostumeDefenseToken,
+  consumeEquipmentFirstDamagePrevention,
+  consumeEquipmentKillDraw,
+  consumeEquipmentEnemySpellDrain,
+  consumeEquipmentDefenseReaction,
+  consumeEquipmentCombatUse,
+  consumeEquipmentDrawRiderBonus,
   equipEquipment,
+  equipmentActivatedTargetAttackBonus,
+  equipmentAttackRerollSources,
   equipmentEnabled,
+  equipmentDrawsOnUnitLoss,
+  equipmentDefenseReactionAvailable,
+  equipmentAttackRiderAvailable,
+  equipmentCombatUnitOffers,
   equipmentFirstAttackBonus,
   equipmentIncomingAttackPenalty,
+  equipmentRowDefenseBonus,
   equipmentRound1AttackBonus,
+  equipmentRound1ZeroStuns,
+  equipmentSpellDamageReduction,
+  equipmentIgnoresAdjacentRangedPenalty,
+  equipmentKillXpBonus,
+  equipmentGuardianReactionAvailable,
+  equipmentHealReactionAvailable,
+  markEquipmentAdjacentRangedWaiverUsed,
   markEquipmentAttackResolved,
   markEquipmentFirstSpellCast
 } from "./anime-equipment";
@@ -266,7 +291,7 @@ import {
   mgqGranberiaFirstAttackAvailable
 } from "./mgq-hero-specialties";
 import { ensureMgqGoldContractSetupChoice } from "./mgq-contracts";
-import { getEquipmentDefinition } from "@/data/anime/equipment";
+import { EQUIPMENT_IDS, getEquipmentDefinition } from "@/data/anime/equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
@@ -379,6 +404,7 @@ import {
 } from "./afk";
 import { cancelRoomReset, confirmRoomReset, requestRoomReset } from "./reset-vote";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
+import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import { gainRunes, gainRunesForAttack, gainRunesForDefend, grantStartingRunes, spendRunes } from "./runes";
 import { commanderCastIsInstantReaction, commanderCastTierIndex } from "@/data/commanders";
 import {
@@ -408,6 +434,7 @@ import { maybeReturnFirstSpellToHand, noteMapSpellCast } from "./spell-lifecycle
 import {
   cancelSpellAllowsSchoolAndLevel,
   cardCanBoostPower,
+  cardCanFuelSchoollessPower,
   collectPowerBreakpoints,
   getEffectAmount,
   getEffectDamageAmount,
@@ -790,8 +817,8 @@ function assertLegal(
       };
     }
     if (
-      card?.id.startsWith("specialty.deemer.") &&
       effect?.type === "AREA_DAMAGE_PICK_ADJACENT" &&
+      effect.amountByPower !== undefined &&
       action.target?.type === "unit" &&
       state.combat
     ) {
@@ -808,7 +835,7 @@ function assertLegal(
       if (adjacent < effect.adjacentPicks) {
         return {
           code: "ACTION_NOT_LEGAL",
-          message: `Meteor Shower requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`
+          message: `${card.name} requires the selected unit to have ${effect.adjacentPicks} living adjacent target${effect.adjacentPicks === 1 ? "" : "s"}.`
         };
       }
     }
@@ -1326,7 +1353,7 @@ function lockArtifactSetSpellDrain(state: GameState, playerId: PlayerId): number
   if (drain > 0) {
     markArtifactSetSpellDrain(state, playerId);
   }
-  return drain;
+  return drain + consumeEquipmentEnemySpellDrain(state, playerId);
 }
 
 function reactionPlayerOrder(
@@ -1824,12 +1851,10 @@ function getAmountByPower(amountByPower: Record<number, number> | undefined, fal
 
 /**
  * The spell Power a hero-specialty PLAY_CARD brings to a power-scaled effect
- * (Deemer's Meteor Shower) — the player's standing spell Power PLUS the full
- * printed Power VALUE of each power-source card discarded as the play's cost (a
- * +2 source counts as 2, not as a single card). Mirrors how a Spell's
- * `amountByPower` reads getCurrentSpellPower, so a Specialty "scales directly
- * with spell power, similar to standard spells" (wiki) rather than counting raw
- * discards.
+ * (Deemer's Meteor Shower / Kud's Rocket Launcher) — the full printed Power
+ * VALUE of each chosen fuel card (a +2 source counts as 2, not as one card).
+ * Spell-only passive bonuses do not apply because this is a Specialty, not a
+ * Spell; its dedicated Power window collects the complete fuel explicitly.
  */
 function playCardSpellPower(
   state: GameState,
@@ -1845,7 +1870,9 @@ function playCardSpellPower(
       sum + spellPowerValueOfCard(cards[id], schools, costCardModes?.[index] ?? "basic"),
     0
   );
-  return standingSpellPower(state, playerId, card) + fromCards;
+  return card.tags?.includes("meteor-shower")
+    ? fromCards
+    : standingSpellPower(state, playerId, card) + fromCards;
 }
 
 /** Whether a stack item is a pending attack (its Power pool is split per side). */
@@ -2644,6 +2671,7 @@ function totalSpellDamageReduction(state: GameState, target: CombatUnitState): n
   // Dragon bolt, and the Titan's Thunder zap, which is itself Spell damage) sees
   // it. 0 when the rule is off / outside a combat.
   total += artifactSetSpellDamageReduction(state, target.controllerId);
+  total += equipmentSpellDamageReduction(state, target.controllerId);
 
   // Lasting SPELL_DAMAGE_REDUCTION active effects (Clancy's Unicorns ward,
   // CREATE_SPELL_WARD specialties, …). Sum every such modifier on an effect
@@ -3432,6 +3460,9 @@ function applyAttackDamageFromCandidate(
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
+  if (damage > 0) {
+    damage = Math.max(0, damage - consumeEquipmentFirstDamagePrevention(state, defender));
+  }
   const defensiveRoll = getDefenseDieDamageReduction(defender);
   if (defensiveRoll && damage > 0) {
     // The soak die rolls inside the blow's damage computation, so no
@@ -3601,6 +3632,16 @@ function applyAttackDamageFromCandidate(
 
   noteUnitDamagedForTokens(state, defender, damage);
   markUnitRemovedIfNeeded(state, defender);
+
+  if (defenderWasAlive && !isUnitAlive(defender)) {
+    const draws = consumeEquipmentKillDraw(state, attacker.controllerId);
+    if (draws > 0) drawCardsForPlayer(state, attacker.controllerId, draws);
+    const xp = equipmentKillXpBonus(state, attacker.controllerId);
+    const armyUnit = state.players[attacker.controllerId]?.army.find((unit) => unit.id === attacker.armyUnitId);
+    if (xp > 0 && armyUnit && unitExperienceActive(state)) {
+      grantArmyUnitExperience(state, attacker.controllerId, armyUnit, xp);
+    }
+  }
 
   if (defeatedSideOrLayer && isUnitAlive(attacker)) {
     const draw = getDefeatedSideOrLayerDraw(attacker);
@@ -3942,6 +3983,12 @@ function getAttackStackDetails(
   if (!isRetaliation && hasUnitAbilityEffect(defender, "FEAR_ATTACKER_DISADVANTAGE")) {
     rollMode = "disadvantage";
   }
+  if (!isRetaliation && defender.commanderSlug) {
+    const protection = commanderArtifactBonusesForUnit(state, defender).incomingAttackDisadvantage;
+    if (protection === "combat" || (protection === "round-1" && combat.round === 1)) {
+      rollMode = "disadvantage";
+    }
+  }
 
   const activeAttackBonus = getActiveAttackBonus(state, {
     attacker,
@@ -4011,8 +4058,11 @@ function getAttackStackDetails(
   // Manticore "ignore printed Defense") can reduce — so it stays out of this
   // clamp and is simply added on top afterwards.
   const currentDefenseValue = Math.max(0, defender.defense + defenseBonusBeforeAbility);
+  const artifactDefensePierce = commanderArtifactBonusesForUnit(state, attacker).defensePierce;
   const requestedDefenseReduction =
-    (defenseReductionSource?.amount ?? 0) + (ignoreCardDefenseSource ? defender.defense : 0);
+    (defenseReductionSource?.amount ?? 0) +
+    (ignoreCardDefenseSource ? defender.defense : 0) +
+    artifactDefensePierce;
   const defenseReductionAmount = Math.min(requestedDefenseReduction, currentDefenseValue);
   const reductionAbilitySource = defenseReductionSource ?? ignoreCardDefenseSource;
   const defenseReductionAbility =
@@ -4159,15 +4209,19 @@ function getAttackStackDetails(
       // The Blade of the Trial's +1 rides alongside — a LIVE round-1-only read
       // (not a charge), so every round-1 declared attack benefits.
       equipmentFirstAttackBonus(state, attacker, isRetaliation) +
+      heroGradeFirstBloodBonus(state, attacker.controllerId, isRetaliation) +
       equipmentRound1AttackBonus(state, attacker, isRetaliation) -
       equipmentIncomingAttackPenalty(state, defender, isRetaliation) +
+      equipmentActivatedTargetAttackBonus(state, attacker, defender, isRetaliation) +
       retaliationAttackBonus -
       retaliationAttackPenalty -
       // Negative Morale "-1 to your next Attack … roll": latched onto this
       // attack when its die rolled (applyMoraleAttackRollPenalty), then folded
       // into every recompute — arithmetically identical to -1 on the die result.
       (stackItem.modifiers.moraleRollPenalty ?? 0),
-    defenseBonus: defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus,
+    defenseBonus:
+      defenseBonusBeforeAbility - defenseReductionAmount + retaliationDefenseBonus +
+      equipmentRowDefenseBonus(state, defender),
     dieMultiplier: stackItem.modifiers.attackDieMultiplier ?? 1,
     // With `elemental-damage-no-die` ON, elemental damage never rolls the Attack
     // die: the hit lands for the (un-buffable) Attack value. OFF (official): the
@@ -4348,6 +4402,8 @@ function buildRerollSources(
       ? [{ name: "Core Formation reroll", cultivation: true, remaining: 1, used: 0 }]
       : [];
 
+  const equipmentSources = equipmentAttackRerollSources(state, attacker.controllerId, true);
+
   // Enterprise "Lucky E" (Azur Lane specialty): each HELD level joins the
   // window like the reroll artifacts — I/VI a reroll, IV/VI a set-die-to-"+1".
   // Taking a half plays/discards the card; VI's two halves share the card, so
@@ -4370,7 +4426,8 @@ function buildRerollSources(
     ...luckyESources,
     ...moraleSources,
     ...moraleSetSources,
-    ...cultivationSources
+    ...cultivationSources,
+    ...equipmentSources
   ].filter((source) => source.remaining > 0);
 }
 
@@ -4597,7 +4654,10 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
   // scoped to ATTACK-die rolls (buildRerollSources) and is NOT added here — like
   // the unit reroll abilities / Ammo Cart / Luck-Fortune-Mirth pools, it stays
   // OFF ability rolls (Death Stare & co.). A documented, tested limit.
-  return [...artifactSources, ...luckyESources, ...moraleSources, ...moraleSetSources].filter(
+  const equipmentSources = equipmentAttackRerollSources(state, roller.controllerId, true).filter(
+    (source) => source.name === "Heavenly Knight's Aegis"
+  );
+  return [...artifactSources, ...luckyESources, ...moraleSources, ...moraleSetSources, ...equipmentSources].filter(
     (source) => source.remaining > 0
   );
 }
@@ -5388,6 +5448,118 @@ function applyBloodSiphonSelfHeal(
   });
 }
 
+/** Every non-stat commander-artifact attack rider resolves at one chokepoint. */
+function applyCommanderArtifactAfterAttack(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean,
+  damageDealt: number
+): void {
+  const combat = state.combat;
+  if (!combat) return;
+  const artifact = commanderArtifactBonusesForUnit(state, attacker);
+
+  if (!isRetaliation && isUnitAlive(defender)) {
+    const debuffs = [
+      artifact.onAttackDefensePenalty > 0
+        ? { id: "commander-artifact-corrosion", name: "Corrosive Edge", type: "DEFENSE_BONUS" as const, amount: -artifact.onAttackDefensePenalty }
+        : null,
+      artifact.onAttackAttackPenalty > 0
+        ? { id: "commander-artifact-enfeeble", name: "Enfeebling Mace", type: "ATTACK_BONUS" as const, amount: -artifact.onAttackAttackPenalty }
+        : null,
+      artifact.onAttackInitiativePenalty > 0
+        ? { id: "commander-artifact-slow", name: "Chrono Pike", type: "INITIATIVE_BONUS" as const, amount: -artifact.onAttackInitiativePenalty }
+        : null
+    ].filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+    for (const debuff of debuffs) {
+      createActiveEffect(
+        state,
+        {
+          name: debuff.name,
+          scope: "unit",
+          duration: { type: "combat" },
+          polarity: "negative",
+          removable: true,
+          modifiers: [{ type: debuff.type, amount: debuff.amount }]
+        },
+        { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        attacker.controllerId,
+        { type: "unit", unitId: defender.id }
+      );
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: debuff.id,
+        targetUnitId: defender.id,
+        message: `${debuff.name} afflicts ${defender.cardName} for the rest of combat.`
+      });
+    }
+  }
+
+  if (!isRetaliation && damageDealt > 0 && artifact.healAfterDamagingAttack > 0 && attacker.damage > 0 && isUnitAlive(attacker)) {
+    const healed = Math.min(artifact.healAfterDamagingAttack, attacker.damage);
+    attacker.damage -= healed;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: attacker.id,
+      abilityId: "commander-artifact-vampiric-fang",
+      targetUnitId: attacker.id,
+      message: `Vampiric Fang heals ${healed} damage from ${attacker.cardName}.`
+    });
+    appendEvent(state, {
+      type: "DAMAGE_HEALED",
+      source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+      target: { type: "unit", unitId: attacker.id },
+      amount: healed
+    });
+  }
+
+  const defenderArtifact = commanderArtifactBonusesForUnit(state, defender);
+  if (damageDealt > 0 && defenderArtifact.reflectAttackDamage && isUnitAlive(attacker)) {
+    attacker.damage += damageDealt;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: defender.id,
+      abilityId: "commander-artifact-thorn-aura",
+      targetUnitId: attacker.id,
+      message: `Barbed Carapace returns ${damageDealt} damage to ${attacker.cardName}.`
+    });
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: defender.id, controllerId: defender.controllerId },
+      target: { type: "unit", unitId: attacker.id },
+      amount: damageDealt,
+      damageKind: "effect"
+    });
+    markUnitRemovedIfNeeded(state, attacker);
+  }
+
+  if (!isRetaliation && artifact.cleaveDamage > 0) {
+    const cleaveTarget = getUnitsAdjacentTo(combat, defender)
+      .filter((unit) => unit.controllerId !== attacker.controllerId && unit.id !== defender.id && isUnitAlive(unit))
+      .sort((left, right) => left.position - right.position)[0];
+    if (cleaveTarget) {
+      cleaveTarget.damage += artifact.cleaveDamage;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: attacker.id,
+        abilityId: "commander-artifact-stormcleaver",
+        targetUnitId: cleaveTarget.id,
+        message: `Stormcleaver cleaves ${cleaveTarget.cardName} for ${artifact.cleaveDamage} damage.`
+      });
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "unit", unitId: attacker.id, controllerId: attacker.controllerId },
+        target: { type: "unit", unitId: cleaveTarget.id },
+        amount: artifact.cleaveDamage,
+        damageKind: "effect"
+      });
+      markUnitRemovedIfNeeded(state, cleaveTarget);
+    }
+  }
+}
+
 function finishResolvedAttack(
   state: GameState,
   stackItem: ResolutionStackItem,
@@ -5407,7 +5579,17 @@ function finishResolvedAttack(
   // counts. Non-commanders (and Damage grade 0) roll nothing.
   const mightDiceCount = getMightDiceCount(details.attacker);
   if (mightDiceCount > 0 && stackItem.modifiers.mightRolls === undefined && state.combat) {
-    stackItem.modifiers.mightRolls = Array.from({ length: mightDiceCount }, () => rollAttackDie(state.combat!));
+    const rolled = Array.from({ length: mightDiceCount }, () => rollAttackDie(state.combat!));
+    const protectedDice = Math.min(
+      rolled.length,
+      commanderArtifactBonusesForUnit(state, details.attacker).nonNegativeMightDice
+    );
+    // Artifact-added dice are appended after the commander's native Damage-grade
+    // dice. Sword of Sharpness protects only its own added die from the -1 face.
+    for (let index = rolled.length - protectedDice; index < rolled.length; index += 1) {
+      rolled[index] = Math.max(0, rolled[index] ?? 0);
+    }
+    stackItem.modifiers.mightRolls = rolled;
   }
   const mightRolls = stackItem.modifiers.mightRolls ?? [];
   const mightBonus = mightDiceAttackBonus(mightRolls);
@@ -5422,7 +5604,8 @@ function finishResolvedAttack(
     // selected value of 0 while leaving the original negative face in `rolls`.
     ? { ...candidate, rolls: candidate.rolls.map(() => 0), roll: 0 }
     : candidate;
-  const minimumAttackDie = getMinimumAttackDie(details.attacker);
+  const abilityMinimumAttackDie = getMinimumAttackDie(details.attacker);
+  const minimumAttackDie = abilityMinimumAttackDie;
   let resolvedCandidate: AttackRollCandidate =
     minimumAttackDie !== null && uncappedCandidate.roll < minimumAttackDie
       ? {
@@ -5761,6 +5944,19 @@ function finishResolvedAttack(
     attackResult.damage
   );
   applyOnAttackPoisonCubes(state, details.attacker, details.defender, details.isRetaliation);
+  if (!details.isRetaliation && isUnitAlive(details.defender) && stackItem.modifiers.equipmentCorrosion) {
+    placeCombatToken(state, details.defender, "corrosion", 1, "Corrosion Edge");
+  }
+  if (!details.isRetaliation && isUnitAlive(details.defender) && stackItem.modifiers.equipmentPoison) {
+    details.defender.poisonCubes = (details.defender.poisonCubes ?? 0) + 1;
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: details.attacker.id,
+      abilityId: "equipment-wyvern-needle",
+      targetUnitId: details.defender.id,
+      message: `Wyvern Needle plants 1 poison cube on ${details.defender.cardName}.`
+    });
+  }
   // (Bulwark "Runes" are credited above, BEFORE the blow's damage, so a strike
   // that crosses a Rune threshold buffs THIS very hit — see gainRunesForAttack
   // before applyAttackDamageFromCandidate.)
@@ -5799,6 +5995,18 @@ function finishResolvedAttack(
       attackResult.roll,
       attackResult.damage
     );
+    if (
+      equipmentRound1ZeroStuns(
+        state,
+        details.attacker.controllerId,
+        details.isRetaliation,
+        attackResult.roll
+      ) &&
+      isUnitAlive(details.defender) &&
+      !unitImmuneToParalysis(state, details.defender)
+    ) {
+      placeCombatToken(state, details.defender, "paralysis", 0, "Little Busters Practice Bat");
+    }
   }
   applyOnAttackFireWall(state, details.attacker, details.defender, details.isRetaliation);
   // Fire Shield burns whoever STRUCK the shielded unit — a Retaliation Attack
@@ -5811,6 +6019,7 @@ function finishResolvedAttack(
   // damage (a fully-soaked 0-damage attack heals nothing — the distinction from
   // the Vampire above). Never on a Retaliation Attack.
   applyBloodSiphonSelfHeal(state, details.attacker, details.isRetaliation, attackResult.damage);
+  applyCommanderArtifactAfterAttack(state, details.attacker, details.defender, details.isRetaliation, attackResult.damage);
   // Rune Keeper commander: +1 Rune the first time it is attacked this combat.
   applyCommanderRuneRitual(state, details.defender, details.isRetaliation);
 
@@ -5818,6 +6027,15 @@ function finishResolvedAttack(
   // the Iron-Blood Sword / Black Tortoise Mail per-combat charges spent so only
   // this FIRST qualifying declared attack got the +1 / −1. Retaliations no-op.
   markEquipmentAttackResolved(state, details.attacker, details.defender, details.isRetaliation);
+  if (
+    !details.isRetaliation &&
+    details.attacker.type === "ranged" &&
+    details.attackKind === "melee" &&
+    equipmentIgnoresAdjacentRangedPenalty(state, details.attacker, false)
+  ) {
+    markEquipmentAdjacentRangedWaiverUsed(state, details.attacker);
+  }
+  markHeroGradeFirstBloodUsed(state, details.attacker.controllerId, details.isRetaliation);
   markMgqGranberiaAttackResolved(state, details.attacker, details.isRetaliation);
 
   if (details.isRetaliation) {
@@ -9474,6 +9692,32 @@ function applyActivationStartAbilities(state: GameState, unit: CombatUnitState):
   const combat = state.combat;
   if (!combat) {
     return;
+  }
+
+  const artifactPulse = commanderArtifactBonusesForUnit(state, unit).activationAdjacentDamage;
+  if (artifactPulse > 0) {
+    const targets = getUnitsAdjacentTo(combat, unit).filter(isUnitAlive);
+    if (targets.length > 0) {
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: unit.id,
+        abilityId: "commander-artifact-plague-censer",
+        message: `Plague Censer deals ${artifactPulse} damage to every unit surrounding ${unit.cardName}.`
+      });
+      for (const target of targets) {
+        target.damage += artifactPulse;
+        appendEvent(state, {
+          type: "DAMAGE_ASSIGNED",
+          source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+          target: { type: "unit", unitId: target.id },
+          amount: artifactPulse,
+          damageKind: "effect"
+        });
+        markUnitRemovedIfNeeded(state, target);
+      }
+      finishCombatIfNeeded(state);
+      if (combat.outcome) return;
+    }
   }
 
   // Factory Couatls: the activated invulnerability lasts "until its next
@@ -13337,6 +13581,13 @@ function payOptionCardCost(
     if (cost.costCardFilter === "power-source" && !cardCanBoostPower(cards[cardId])) {
       throw new Error(`${cardName} can only be paid with Power statistics or Spell cards.`);
     }
+    if (
+      cost.costCardFilter === "power-source" &&
+      playedCard.tags?.includes("meteor-shower") &&
+      !cardCanFuelSchoollessPower(cards[cardId])
+    ) {
+      throw new Error(`${cardName} cannot use Power that only boosts a School's Spells.`);
+    }
     const handLeft = handCounts.get(cardId) ?? 0;
     if (handLeft > 0) {
       handCounts.set(cardId, handLeft - 1);
@@ -14294,7 +14545,7 @@ function applyReactionPlayCore(
         );
       }
       reactingPlayer.discard = [...heldInFlight, ...playedCard];
-      drawCardsForPlayer(state, playerId, effect.drawCards, {
+      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
       });
     }
@@ -14761,7 +15012,7 @@ function applyReactionPlayCore(
     stackItem.modifiers.playedCardIds.push(play.cardId);
     recomputePowerScaledAttackInstants(stackItem);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards, {
+      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
       });
     }
@@ -15054,7 +15305,7 @@ function applyReactionPlayCore(
     }
 
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards, {
+      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
       });
     }
@@ -15290,7 +15541,7 @@ function applyReactionPlayCore(
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, playerId, effect.drawCards, {
+      drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
       });
     }
@@ -15520,7 +15771,7 @@ function applyReactionPlayCore(
         removeToken(state, unit, "paralysis", "dispelled");
       }
       if (effect.drawCards) {
-        drawCardsForPlayer(state, playerId, effect.drawCards, {
+        drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
           inFlightCardIds: reactionInFlightCardIds
         });
       }
@@ -16085,6 +16336,116 @@ function applyHeroSkillReaction(
     nodeId: node.id,
     message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"} this attack.`
   });
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+function applyEquipmentDefenseReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_EQUIPMENT_DEFENSE_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  const stackItem = state.stack.at(-1);
+  const defender = state.combat?.units[action.unitId];
+  if (
+    !window || window.priorityPlayerId !== action.playerId ||
+    window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" ||
+    window.triggerEvent.defenderId !== action.unitId ||
+    !stackItem || !defender || defender.controllerId !== action.playerId ||
+    !equipmentDefenseReactionAvailable(state, action.playerId)
+  ) {
+    throw new Error("Reactive Buckler is not available for this attack.");
+  }
+  stackItem.modifiers.defenseBonus += 1;
+  consumeEquipmentDefenseReaction(state, action.playerId);
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+function selectEquipmentCombatUnit(
+  state: GameState,
+  action: Extract<GameAction, { type: "SELECT_EQUIPMENT_COMBAT_UNIT" }>
+): void {
+  const offer = equipmentCombatUnitOffers(state, action.playerId).find(
+    (candidate) => candidate.equipmentId === action.equipmentId && candidate.unitId === action.unitId
+  );
+  const unit = state.combat?.units[action.unitId];
+  const stats = state.players[action.playerId]?.combatStats;
+  if (!offer || !unit || !stats) throw new Error("That equipment unit selection is not available.");
+  stats.equipmentSelections = { ...(stats.equipmentSelections ?? {}), [action.equipmentId]: action.unitId };
+  state.activeEffects.push(makeActiveEffect(
+    state,
+    {
+      name: offer.name,
+      duration: { type: "combat" },
+      scope: "unit",
+      modifiers: [{ type: offer.stat === "attack" ? "ATTACK_BONUS" : "INITIATIVE_BONUS", amount: offer.amount }]
+    },
+    { type: "system" },
+    action.playerId,
+    { type: "unit", unitId: action.unitId }
+  ));
+}
+
+function applyEquipmentAttackRider(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_EQUIPMENT_ATTACK_RIDER" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  const stackItem = state.stack.at(-1);
+  if (!window || window.priorityPlayerId !== action.playerId ||
+      window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.triggerEvent.isRetaliation ||
+      window.triggerEvent.attackerId !== action.unitId || !stackItem ||
+      !equipmentAttackRiderAvailable(state, action.playerId, action.equipmentId)) {
+    throw new Error("That equipment attack rider is not available.");
+  }
+  if (action.equipmentId === EQUIPMENT_IDS.corrosionEdge) stackItem.modifiers.equipmentCorrosion = true;
+  else if (action.equipmentId === EQUIPMENT_IDS.wyvernNeedle) stackItem.modifiers.equipmentPoison = true;
+  else throw new Error("Unknown equipment attack rider.");
+  consumeEquipmentCombatUse(state, action.playerId, action.equipmentId);
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+function applyEquipmentHealReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_EQUIPMENT_HEAL_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  const unit = state.combat?.units[action.unitId];
+  if (!window || window.priorityPlayerId !== action.playerId || !unit ||
+      unit.controllerId !== action.playerId || unit.damage <= 0 || unit.damage >= unit.maxHealth ||
+      !equipmentHealReactionAvailable(state, action.playerId)) {
+    throw new Error("Field Medic Kit is not available for that unit.");
+  }
+  healUnitDamage(state, { type: "system" }, { type: "unit", unitId: unit.id }, 1);
+  consumeEquipmentCombatUse(state, action.playerId, EQUIPMENT_IDS.fieldMedicKit);
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+function applyEquipmentGuardianReaction(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_EQUIPMENT_GUARDIAN_REACTION" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  const stackItem = state.stack.at(-1);
+  const unit = state.combat?.units[action.unitId];
+  if (!window || window.priorityPlayerId !== action.playerId ||
+      window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.triggerEvent.defenderId !== action.unitId ||
+      !stackItem || !unit || unit.controllerId !== action.playerId ||
+      !equipmentGuardianReactionAvailable(state, action.playerId)) {
+    throw new Error("Guardian Mirror is not available for this attack.");
+  }
+  stackItem.modifiers.attackDamageCap = 0;
+  state.activeEffects.push(makeActiveEffect(
+    state,
+    { name: "Guardian Mirror", duration: { type: "current-combat-round" }, scope: "unit", modifiers: [{ type: "CANNOT_RETALIATE" }] },
+    { type: "system" },
+    action.playerId,
+    { type: "unit", unitId: action.unitId }
+  ));
+  consumeEquipmentCombatUse(state, action.playerId, EQUIPMENT_IDS.guardianMirror);
   advanceReactionWindowAfterPlay(state, action.playerId, cards);
 }
 
@@ -17428,7 +17789,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Rion's Battlefield Medic: "Remove 1 damage … then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
         inFlightCardIds: playInFlightCardIds
       });
     }
@@ -17453,7 +17814,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Astra's Cure I: "… then draw 1 card."
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
         inFlightCardIds: playInFlightCardIds
       });
     }
@@ -17989,7 +18350,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     !state.reactionWindow &&
     state.stack.length === 0
   ) {
-    drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+    drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
       inFlightCardIds: playInFlightCardIds
     });
     if (effect.type === "ADD_SPELL_POWER" && state.combat) {
@@ -18280,7 +18641,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     }
     // Shield of Naval Glory (Sea side): the +1 movement comes with a card draw.
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
         inFlightCardIds: playInFlightCardIds
       });
     }
@@ -18614,9 +18975,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // deal damage to the target unit and that many units adjacent to it (friend or
   // foe; the caster picks when more are adjacent). Deemer's damage is power-scaled
   // (`amountByPower`, Power 0-1 → 1, 2-3 → 2, 4+ → 3): the Power brought is the
-  // caster's standing spell Power plus the printed Power VALUE of the power-source
-  // cards discarded to play it, so it scales like the Frost Ring Spell and is
-  // buffable by spell power. Adelaide's Frost Ring specialty keeps a fixed
+  // printed Power VALUE of the fuel cards chosen in its dedicated window. A
+  // Spell-only passive bonus never applies. Adelaide's Frost Ring keeps a fixed
   // `amount` and ignores the Power computation (short-circuited below).
   // When a threatened player holds a pre-hit heal (Cure / First Aid), the blast
   // is deferred onto the stack so they can mend before the damage lands.
@@ -18666,7 +19026,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       // is held out of the draw's own empty-deck reshuffle too, so it can never
       // be the card drawn even when nothing else is left anywhere.
       player.discard = playedCard;
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
         inFlightCardIds: playInFlightCardIds
       });
     }
@@ -18678,7 +19038,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "GAIN_RUNES") {
     gainRunes(state, action.playerId, effect.amount);
     if (effect.drawCards) {
-      drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+      drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
         inFlightCardIds: playInFlightCardIds
       });
     }
@@ -18899,7 +19259,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "MGQ_DRAW_AND_SPECIALTY_IMMUNITY" && nonDamageTarget) {
-    drawCardsForPlayer(state, action.playerId, effect.drawCards, {
+    drawCardsForPlayer(state, action.playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, action.playerId), {
       inFlightCardIds: playInFlightCardIds
     });
     createActiveEffect(
@@ -20775,6 +21135,17 @@ function rerollPendingChoice(
     }
   }
 
+  if (source.equipmentId && source.used === 1) {
+    const player = state.players[action.playerId];
+    if (player && source.equipmentUseScope === "round") {
+      player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [source.equipmentId]: state.round };
+    } else if (player && source.equipmentUseScope === "combat") {
+      player.combatStats.equipmentUsesThisCombat = [
+        ...new Set([...(player.combatStats.equipmentUsesThisCombat ?? []), source.equipmentId])
+      ];
+    }
+  }
+
   // Diplomat's Ring / Ambassador's Sash / Lucky E: playing the die half
   // discards the card. A card offering BOTH halves (Lucky E VI: reroll AND
   // set-die) is one physical card — spending either half retires the sibling
@@ -21144,6 +21515,40 @@ function resolveCommanderCast(state: GameState, caster: CombatUnitState, target:
     targetUnitId: target.id,
     message: `${caster.cardName} casts ${cast.name} (Power ${power}) on ${target.cardName}.`
   });
+
+  // A +1-cast-Power artifact that pushes the cast to Power 3 overflows as a
+  // mandatory lightning bolt: choose ANY living unit, then deal exactly 1
+  // effect damage. The follow-up is serialized as a normal target choice.
+  const castArtifact = commanderArtifactBonusesForUnit(state, caster);
+  if (power >= 3 && castArtifact.castPowerBonus > 0) {
+    const candidateUnitIds = Object.values(combat.units).filter(isUnitAlive).map((unit) => unit.id);
+    if (candidateUnitIds.length > 0) {
+      const choiceId = `choice_${nextEventNumber(state)}`;
+      state.pendingChoice = {
+        id: choiceId,
+        type: "ABILITY_TARGET_CHOICE",
+        playerId: caster.controllerId,
+        kind: "commander-overflow-zap",
+        abilityId: "commander-artifact-power-overflow",
+        abilityName: "Power Overflow",
+        prompt: "Power 3 overflow: choose any unit to take 1 lightning damage.",
+        sourceUnitId: caster.id,
+        anchorUnitId: null,
+        candidateUnitIds,
+        amount: 1
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = caster.controllerId;
+      appendEvent(state, {
+        type: "PENDING_CHOICE_CREATED",
+        choiceId,
+        choiceType: "ABILITY_TARGET_CHOICE",
+        playerId: caster.controllerId,
+        sourceEffectIds: [],
+        message: `${caster.cardName}'s Power 3 command overflows into lightning.`
+      });
+    }
+  }
 }
 
 function chooseAbilityTarget(
@@ -21213,6 +21618,35 @@ function chooseAbilityTarget(
       // User spec: casting a (non-reaction) command ability ends the commander's
       // movement for this activation — it may still attack, but no longer move.
       caster.movementLockedThisActivation = true;
+      finishCombatIfNeeded(state);
+    }
+    return;
+  }
+
+  if (choice.kind === "commander-overflow-zap") {
+    if (!isSkip) {
+      const caster = choice.sourceUnitId ? combat.units[choice.sourceUnitId] : undefined;
+      const target = combat.units[action.targetUnitId];
+      if (!caster || !target || !isUnitAlive(target)) {
+        throw new Error("That Power Overflow target is no longer available.");
+      }
+      const amount = choice.amount ?? 1;
+      target.damage += amount;
+      appendEvent(state, {
+        type: "UNIT_ABILITY_TRIGGERED",
+        unitId: caster.id,
+        abilityId: "commander-artifact-power-overflow",
+        targetUnitId: target.id,
+        message: `Power Overflow strikes ${target.cardName} for ${amount} lightning damage.`
+      });
+      appendEvent(state, {
+        type: "DAMAGE_ASSIGNED",
+        source: { type: "unit", unitId: caster.id, controllerId: caster.controllerId },
+        target: { type: "unit", unitId: target.id },
+        amount,
+        damageKind: "effect"
+      });
+      markUnitRemovedIfNeeded(state, target);
       finishCombatIfNeeded(state);
     }
     return;
@@ -21911,6 +22345,33 @@ function attackUnit(
   declareAttack(state, action, cards);
 }
 
+function healCommanderFromArtifactAction(
+  state: GameState,
+  unit: CombatUnitState,
+  action: "move" | "defend"
+): void {
+  if (!unit.commanderSlug || unit.damage <= 0 || !isUnitAlive(unit)) return;
+  const bonuses = commanderArtifactBonusesForUnit(state, unit);
+  const amount = action === "move" ? bonuses.healAfterMove : bonuses.healAfterDefend;
+  if (amount <= 0) return;
+  const healed = Math.min(amount, unit.damage);
+  unit.damage -= healed;
+  const abilityId = action === "move" ? "commander-artifact-travelers-salve" : "commander-artifact-bastion-heart";
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: unit.id,
+    abilityId,
+    targetUnitId: unit.id,
+    message: `${action === "move" ? "Traveler's Salve" : "Bastion Heart"} heals ${healed} damage from ${unit.cardName}.`
+  });
+  appendEvent(state, {
+    type: "DAMAGE_HEALED",
+    source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    target: { type: "unit", unitId: unit.id },
+    amount: healed
+  });
+}
+
 function moveAndAttackUnit(
   state: GameState,
   action: Extract<GameAction, { type: "MOVE_AND_ATTACK_UNIT" }>,
@@ -21964,6 +22425,7 @@ function moveAndAttackUnit(
     from,
     to: finalPosition
   });
+  healCommanderFromArtifactAction(state, attacker, "move");
 
   // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
   // swallowed it before it reached the target, ends the activation with no
@@ -22345,6 +22807,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     from,
     to: finalPosition
   });
+  healCommanderFromArtifactAction(state, unit, "move");
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
   applyCommanderRuneOnMove(state, unit);
@@ -22392,6 +22855,7 @@ function defendUnit(state: GameState, action: Extract<GameAction, { type: "DEFEN
   // Bulwark unit's controller +2 Runes (RUNE_GAIN_DEFEND) — the richest Rune
   // source.
   gainRunesForDefend(state, unit);
+  healCommanderFromArtifactAction(state, unit, "defend");
   appendExpiredEffectEvents(state, expireEffectsForActivationEnd(state, unit.id), "activation-ended");
 
   appendEvent(state, {
@@ -22430,6 +22894,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   }
 
   const finishedRound = state.combat.round;
+  expireHeroGradeFamiliars(state, finishedRound);
   state.combat.round += 1;
   resetCombatRound(state.combat);
   appendExpiredEffectEvents(state, expireEffectsForCombatRoundEnd(state, finishedRound), "combat-round-ended");
@@ -22456,6 +22921,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // effect" is a same-round reaction, so an unused copy offer expires with the
     // combat round.
     player.combatStats.eagleEyeCopySpellId = undefined;
+    player.combatStats.equipmentKillDrawsThisRound = 0;
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
     // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
     // a per-combat-round one. They are NOT reset here: a single battle's many
@@ -22481,6 +22947,10 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   // the first activation — keyed on the new `combat.round`. NEUTRAL fights only;
   // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
   applyCombatScriptRoundStart(state);
+  applyHeroGradeRoundStartDamage(state);
+  if (state.combat?.outcome) {
+    return;
+  }
 
   // Round-start war machines fire BEFORE any unit activates, so the first
   // activation is chosen only once they finish. Leave the active unit unset
@@ -23680,12 +24150,14 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   // and the actions touch only the actor's own state — so, like the choice
   // resolutions above, they skip the getLegalActions membership check.
   "COMMANDER_GRADE_UP",
+  "FORGE_COMMANDER_ARTIFACT",
   "REVIVE_COMMANDER",
   "COMMANDER_FIRST_AID",
   "COMMANDER_SET_STANCE",
   "COMMANDER_SET_BOND",
   "HERO_TRAIN",
   "HERO_GRADE_PICK",
+  "HERO_GRADE_SELL_ARTIFACT",
   "EQUIP_HERO_ITEM",
   "UNEQUIP_HERO_ITEM",
   // Unit Experience Drill: fully self-validated (rule on, own turn, map
@@ -23700,6 +24172,11 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   // they are fully self-validating and touch only the actor's own state.
   "SELECT_ARTIFACT_SET_UNIT",
   "USE_ARTIFACT_SET_POWER",
+  "USE_EQUIPMENT_DEFENSE_REACTION",
+  "SELECT_EQUIPMENT_COMBAT_UNIT",
+  "USE_EQUIPMENT_ATTACK_RIDER",
+  "USE_EQUIPMENT_HEAL_REACTION",
+  "USE_EQUIPMENT_GUARDIAN_REACTION",
   "USE_SCHOOL_FETCH_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
@@ -23863,6 +24340,11 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   }
 
   const startEventNumber = eventSeedNumber(nextState);
+  const livingArmyBefore = new Map(
+    Object.values(nextState.combat?.units ?? {})
+      .filter((unit) => isUnitAlive(unit) && Boolean(unit.armyUnitId) && !unit.temporary)
+      .map((unit) => [unit.id, unit.controllerId] as const)
+  );
 
   // Per-turn clock: which open-turn seats are PAUSED right now, read BEFORE the
   // handler runs — the action that lifts a pause (the blocker resolving their
@@ -24237,6 +24719,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "COMMANDER_GRADE_UP":
         commanderGradeUp(nextState, action);
         break;
+      case "FORGE_COMMANDER_ARTIFACT":
+        forgeCommanderArtifact(nextState, action);
+        break;
       case "REVIVE_COMMANDER":
         reviveCommander(nextState, action);
         break;
@@ -24248,6 +24733,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "HERO_GRADE_PICK":
         heroGradePick(nextState, action);
+        break;
+      case "HERO_GRADE_SELL_ARTIFACT":
+        heroGradeSellArtifact(nextState, action);
         break;
       case "EQUIP_HERO_ITEM":
         equipHeroItem(nextState, action);
@@ -24278,6 +24766,21 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_HERO_SKILL_REACTION":
         applyHeroSkillReaction(nextState, action, cards);
+        break;
+      case "USE_EQUIPMENT_DEFENSE_REACTION":
+        applyEquipmentDefenseReaction(nextState, action, cards);
+        break;
+      case "SELECT_EQUIPMENT_COMBAT_UNIT":
+        selectEquipmentCombatUnit(nextState, action);
+        break;
+      case "USE_EQUIPMENT_ATTACK_RIDER":
+        applyEquipmentAttackRider(nextState, action, cards);
+        break;
+      case "USE_EQUIPMENT_HEAL_REACTION":
+        applyEquipmentHealReaction(nextState, action, cards);
+        break;
+      case "USE_EQUIPMENT_GUARDIAN_REACTION":
+        applyEquipmentGuardianReaction(nextState, action, cards);
         break;
       case "COMMANDER_FIRST_AID":
         resolveCommanderFirstAid(nextState, action);
@@ -24541,6 +25044,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       code: "ACTION_NOT_LEGAL",
       message: error instanceof Error ? error.message : "The action could not be applied."
     });
+  }
+
+  if (nextState.combat) {
+    for (const [unitId, controllerId] of livingArmyBefore) {
+      const unit = nextState.combat.units[unitId];
+      if ((!unit || !isUnitAlive(unit)) && equipmentDrawsOnUnitLoss(nextState, controllerId)) {
+        drawCardsForPlayer(nextState, controllerId, 1);
+      }
+    }
   }
 
   // Disrupting Ray: refresh every unit's ability-suppression flag from the live

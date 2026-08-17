@@ -319,6 +319,20 @@ export const abilityFxPlans: Record<string, SpellFxPlan> = {
   // Phoenixes' Rebirth reuses the same Resurrection sheet when the killing blow
   // is shrugged off and the bird clings to life at 1 Health.
   "phoenix-rebirth": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
+  "commander-artifact-phoenix-plate": { affect: [{ key: "resurrection" }], sound: "spells/resurrection" },
+  "commander-artifact-power-overflow": {
+    affect: [{ key: "lightning-bolt" }, { key: "lightning-crackle", delayMs: 220 }],
+    sound: "spells/lightning-bolt"
+  },
+  "commander-artifact-thorn-aura": { affect: [{ key: "fire-shield" }], sound: "effects/fire-shield-hit" },
+  "commander-artifact-plague-censer": { affect: [{ key: "poison" }], sound: "spells/poison" },
+  "commander-artifact-corrosion": { hit: "acid-breath", hitSound: "effects/acid-breath" },
+  "commander-artifact-enfeeble": { affect: [{ key: "curse" }], sound: "spells/curse" },
+  "commander-artifact-slow": { affect: [{ key: "slow" }], sound: "spells/slow" },
+  "commander-artifact-vampiric-fang": { affect: [{ key: "vampire-life-drain" }], sound: "effects/drain-life" },
+  "commander-artifact-travelers-salve": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "commander-artifact-bastion-heart": { affect: [{ key: "cure" }], sound: "spells/cure" },
+  "commander-artifact-stormcleaver": { hit: "death-cloud", hitSound: "spells/death-cloud" },
   // Jotunn Warlord's start-of-activation Teleport: a sound-only plan, exactly
   // like the Teleport Spell (spell.teleport) — the relocated unit's card-glide
   // (UNIT_MOVED) is the visual, and this carries the same H3 teleport sound,

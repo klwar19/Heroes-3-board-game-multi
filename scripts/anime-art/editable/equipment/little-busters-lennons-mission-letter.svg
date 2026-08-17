@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#c7ccd6">GRADE I  ·  MINOR EQUIPMENT</text>
     <text x="371" y="654" class="slotText">ACCESSORY</text>
     <text x="371" y="688" class="enText">Thu Nhiem Vu cua Lennon</text>
-    <g id="editable-rules"><text x="371" y="794" class="ruleText">Accessory: +1 hand limit.</text><line x1="120" y1="831" x2="623" y2="831" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="837" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="868" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="794" class="ruleText">Accessory: +1 hand limit and −1 movement.</text><line x1="120" y1="831" x2="623" y2="831" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="837" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="868" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
   </g>
 </svg>

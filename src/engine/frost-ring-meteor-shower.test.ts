@@ -335,12 +335,9 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(result, "unit_p2_vampires")).toBe(2);
   });
 
-  // "Scales directly with spell power, similar to standard spells" (wiki): a
-  // standing +1 spell Power (Pandora's Bargain: Power) lifts the result so ONE
-  // discarded power source reaches Power 2 → 2 damage. This is the reported
-  // "can't be buffed by spell power" — it fails if the specialty ignores standing
-  // spell power.
-  it("I is buffed by standing spell power (Pandora's +1 → one discard deals 2)", () => {
+  // Meteor is a Specialty, not a Spell. Its dedicated window counts chosen
+  // fuel cards; effects whose wording only boosts Spells do not leak into it.
+  it("I ignores standing bonuses that only boost Spells", () => {
     const buffed = meteorState(["specialty.deemer.1", "stat.power"]);
     buffed.players.p1.permanents = ["pandora.power_or_morale"];
     const result = applyOk(buffed, {
@@ -352,10 +349,10 @@ describe("Deemer's Meteor Shower", () => {
       target: { type: "unit", unitId: "unit_p2_skeletons" },
       costCardIds: ["stat.power"]
     });
-    expect(damage(result, "unit_p2_skeletons")).toBe(2);
-    expect(damage(result, "unit_p2_vampires")).toBe(2);
+    expect(damage(result, "unit_p2_skeletons")).toBe(1);
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
 
-    // CONTROL: without the standing buff, the same single discard is only Power 1.
+    // CONTROL: without that Spell bonus, the same fuel gives the same result.
     const plain = meteorState(["specialty.deemer.1", "stat.power"]);
     const control = applyOk(plain, {
       type: "PLAY_CARD",
@@ -369,11 +366,8 @@ describe("Deemer's Meteor Shower", () => {
     expect(damage(control, "unit_p2_skeletons")).toBe(1);
   });
 
-  // INVARIANT: a Specialty belongs to no school of magic, so ONLY the flat
-  // Pandora-style spell-power bonus reaches it. A school-scoped School-of-Magic
-  // permanent (+1 to that school's spells) must NOT. Same shape as the Pandora's
-  // test above (1 stat.power discarded) — but here the result stays at Power 1 →
-  // 1 damage instead of reaching 2, because the school bonus is excluded.
+  // A school-scoped School-of-Magic permanent is another Spell-only bonus and
+  // likewise never enters the Meteor fuel total.
   it("I is NOT buffed by a school-scoped School-of-Magic permanent (a Specialty has no school)", () => {
     const state = meteorState(["specialty.deemer.1", "stat.power"]);
     state.players.p1.permanents = ["ability.water_magic"]; // +1 to WATER spells only
@@ -396,9 +390,9 @@ describe("Deemer's Meteor Shower", () => {
   // this deals LESS than the generic +2 source above (which reached 2). (The Orbs'
   // ONGOING side only DOUBLES a matching-school spell and never touches a
   // Specialty — see the Orb test below.)
-  it("I ignores a school-restricted power source's Power (a +3 water source contributes 0)", () => {
+  it("I refuses a source that only boosts a School's Spells", () => {
     const state = meteorState(["specialty.deemer.1", "ability.basic_water_magic"]);
-    const result = applyOk(state, {
+    const result = applyAction(state, {
       type: "PLAY_CARD",
       playerId: "p1",
       cardId: "specialty.deemer.1",
@@ -407,8 +401,30 @@ describe("Deemer's Meteor Shower", () => {
       target: { type: "unit", unitId: "unit_p2_skeletons" },
       costCardIds: ["ability.basic_water_magic"]
     });
-    expect(damage(result, "unit_p2_skeletons")).toBe(1);
-    expect(damage(result, "unit_p2_vampires")).toBe(1);
+    expect(result.errors.map((error) => error.message).join(" ")).toContain(
+      "only boosts a School's Spells"
+    );
+    expect(result.state.players.p1.hand).toContain("ability.basic_water_magic");
+  });
+
+  it("I accepts Spells, Power specialties, and other school-less +Power cards as fuel", () => {
+    const state = meteorState([
+      "specialty.deemer.1",
+      "spell.magic_arrow",
+      "specialty.deemer.4",
+      "stat.power"
+    ]);
+    const result = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.1",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      costCardIds: ["spell.magic_arrow", "specialty.deemer.4", "stat.power"]
+    });
+    expect(damage(result, "unit_p2_skeletons")).toBe(2);
+    expect(damage(result, "unit_p2_vampires")).toBe(2);
   });
 
   // The Magi pack's "+1 Power to the first spell you cast this round"

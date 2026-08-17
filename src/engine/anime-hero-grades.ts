@@ -26,6 +26,7 @@ import { animeModuleEnabled } from "./anime";
 import {
   BESPOKE_FACTION_GRADE_REGISTERS,
   HERO_GRADE_MAX,
+  HERO_GRADE_CHOICES_PER_TIER,
   HERO_GRADE_MERIT_THRESHOLDS,
   HERO_GRADE_NODES,
   HERO_GRADE_NODE_IDS,
@@ -200,6 +201,57 @@ export function heroGradeResourceRoundGold(state: GameState, playerId: PlayerId)
   return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.tactician) ? 2 : 0;
 }
 
+/** Crystal Dividend (tier 2): +1 valuable/crystal each Resources round. */
+export function heroGradeResourceRoundValuables(state: GameState, playerId: PlayerId): number {
+  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.crystalDividend) ? 1 : 0;
+}
+
+/** Forced March (tier 2): +1 main-hero movement each Resources round. */
+export function heroGradeResourceRoundMovement(state: GameState, playerId: PlayerId): number {
+  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.forcedMarch) ? 1 : 0;
+}
+
+/** Ore Divination (tier 1): +1 building material each Astrologers round. */
+export function heroGradeAstrologersRoundMaterials(state: GameState, playerId: PlayerId): number {
+  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.oreDivination) ? 1 : 0;
+}
+
+/** Whether the Astrologers-round 3-gold random Minor Artifact offer is owned. */
+export function heroGradeMinorArtifactOffer(state: GameState, playerId: PlayerId): boolean {
+  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.wanderingCurioDealer);
+}
+
+/** Whether start-turn hand refresh may draw one temporary over-limit card. */
+export function heroGradeOverdrawAvailable(state: GameState, playerId: PlayerId): boolean {
+  const hero = mainHeroOf(state, playerId);
+  return Boolean(
+    heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.overflowingInsight) &&
+      hero?.heroGradeOverdrawRound !== state.round
+  );
+}
+
+/** Mark Overflowing Insight's draw as used this turn/round. */
+export function markHeroGradeOverdrawUsed(state: GameState, playerId: PlayerId): void {
+  const hero = mainHeroOf(state, playerId);
+  if (hero) hero.heroGradeOverdrawRound = state.round;
+}
+
+/** First Blood: +2 on the first own declared attack of the combat. */
+export function heroGradeFirstBloodBonus(state: GameState, playerId: PlayerId, isRetaliation: boolean): number {
+  if (isRetaliation || !playerMainHeroInCombat(state, playerId)) return 0;
+  return heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.firstBlood) &&
+    heroSkillAvailableThisCombat(state, playerId, HERO_GRADE_NODE_IDS.firstBlood)
+    ? 2
+    : 0;
+}
+
+/** Consume First Blood only when its qualifying declared attack resolves. */
+export function markHeroGradeFirstBloodUsed(state: GameState, playerId: PlayerId, isRetaliation: boolean): void {
+  if (heroGradeFirstBloodBonus(state, playerId, isRetaliation) > 0) {
+    markHeroSkillUsedThisCombat(state, playerId, HERO_GRADE_NODE_IDS.firstBlood);
+  }
+}
+
 // ===========================================================================
 // Merit → grade advancement (the ONE shared arm)
 // ===========================================================================
@@ -252,6 +304,46 @@ export function heroGradeNodesForRegister(register: GradeRegisterKey): HeroGrade
   return [...shared, ...additions];
 }
 
+/** Stable 32-bit hash used to deal synchronized, seed-owned node choices. */
+function gradeChoiceHash(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * Exactly four candidates per tier for this hero. The deal varies by game seed,
+ * faction/town and hero id, but is deterministic on every client/server.
+ * Already-owned legacy nodes stay in the four so snapshots never lose a pick.
+ */
+export function heroGradeNodesForPlayer(state: GameState, playerId: PlayerId): HeroGradeNode[] {
+  const hero = mainHeroOf(state, playerId);
+  const faction = state.players[playerId]?.factionId ?? "core";
+  const register = heroGradeRegisterKey(state, playerId);
+  const catalog = heroGradeNodesForRegister(register);
+  const registerOwnedIds = new Set((HERO_GRADE_REGISTER_NODES[register] ?? []).map((node) => node.id));
+  const owned = new Set(heroGradeNodesOf(state, playerId));
+  const tiers = [...new Set(catalog.map((node) => node.tier))].sort((a, b) => a - b);
+  return tiers.flatMap((tier) => {
+    const tierNodes = catalog.filter((node) => node.tier === tier);
+    const ownedTier = tierNodes.filter((node) => owned.has(node.id));
+    const townTier = tierNodes.filter((node) => !owned.has(node.id) && registerOwnedIds.has(node.id));
+    const remaining = tierNodes
+      .filter((node) => !owned.has(node.id) && !registerOwnedIds.has(node.id))
+      .sort((a, b) =>
+        gradeChoiceHash(`${state.seed}|${faction}|${hero?.heroDefId ?? hero?.id ?? playerId}|${tier}|${a.id}`) -
+          gradeChoiceHash(`${state.seed}|${faction}|${hero?.heroDefId ?? hero?.id ?? playerId}|${tier}|${b.id}`) ||
+        a.id.localeCompare(b.id)
+      );
+    // A register-exclusive node is part of that town's identity, so reserve a
+    // slot for it; the rest of the four remains seed/hero/town-randomized.
+    return [...ownedTier, ...townTier, ...remaining].slice(0, HERO_GRADE_CHOICES_PER_TIER);
+  });
+}
+
 /** Look up any known node definition (undefined for an unknown id). */
 export function heroGradeNode(nodeId: string): HeroGradeNode | undefined {
   const shared = HERO_GRADE_NODES[nodeId];
@@ -277,7 +369,7 @@ export function heroGradePickableNodes(state: GameState, playerId: PlayerId): He
     return [];
   }
   return pickableNodesFrom(
-    heroGradeNodesForRegister(heroGradeRegisterKey(state, playerId)),
+    heroGradeNodesForPlayer(state, playerId),
     heroGradeOf(state, playerId),
     heroGradeNodesOf(state, playerId)
   );

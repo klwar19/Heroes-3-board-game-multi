@@ -1,8 +1,8 @@
 /**
  * Wake of Gods COMMANDER ARTIFACTS (`wog.artifacts` + `wog.commanders`, Task 2).
  *
- * Twelve WoG "commander artifacts" (8 authentic + 2 grade-fill weapons + 2
- * Heavenly Demon Palace bespoke items) — items worn by the commander, not the
+ * Commander artifacts (the original set plus the expanded Forge catalog) —
+ * items worn by the commander, not the
  * hero — adapted to the board game as PERMANENT slot bindings. Each artifact
  * prints its slot ("weapon" | "armor" | "trinket")
  * and a grade (minor/major/relic); a card is acquired from the shared Artifact
@@ -34,7 +34,7 @@
  * see `wogCommanderArtifact*Ids` consumed by `makeSharedDecks`. The definitions
  * live in the card library ALWAYS so lookups resolve.
  *
- * ART: all twelve ship with card faces (`public/assets/wog/artifacts/<slug>.webp`)
+ * ART: every entry ships with a card face (`public/assets/wog/artifacts/<slug>.webp`)
  * and slot icons (`public/assets/wog/artifacts/icons/<slug>.webp`).
  * New grade-fill weapons (Iron Cudgel / Doomsday Blade) and the two Heavenly
  * Demon bespoke items (Blood Patriarch's Saber / Demon Heart Talisman) ship
@@ -76,6 +76,34 @@ export interface CommanderArtifactSpec {
   castPowerBonus?: number;
   /** Helm: a commander that dies in combat revives FREE at combat end. */
   reviveFree?: boolean;
+  /** The commander's attacks roll two dice and keep the higher result. */
+  attackRollAdvantage?: boolean;
+  /** Floor applied to the commander's own Attack-die result. */
+  /** Number of this artifact's added Might dice whose negative face is treated as 0. */
+  nonNegativeMightDice?: number;
+  /** Enemy attacks against the commander roll with disadvantage. */
+  incomingAttackDisadvantage?: "round-1" | "combat";
+  /** Lasting combat debuffs applied by the commander's own resolved attacks. */
+  onAttackDefensePenalty?: number;
+  onAttackAttackPenalty?: number;
+  onAttackInitiativePenalty?: number;
+  /** Heal the commander after its own attack deals damage. */
+  healAfterDamagingAttack?: number;
+  /** Ignore this much effective Defense on the commander's attacks. */
+  defensePierce?: number;
+  /** Once per combat, lethal damage leaves the commander at 1 Health. */
+  combatRebirth?: boolean;
+  /** Heal after the commander performs the named action. */
+  healAfterMove?: number;
+  healAfterDefend?: number;
+  /** After an own attack, deal this effect damage to an enemy adjacent to the target. */
+  cleaveDamage?: number;
+  /** After taking attack damage, return the exact damage to the attacker. */
+  reflectAttackDamage?: boolean;
+  /** At activation start, deal this damage to every adjacent unit. */
+  activationAdjacentDamage?: number;
+  /** Map reward paid after every combat won by this commander's main hero. */
+  goldAfterWonCombat?: number;
 }
 
 export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
@@ -100,42 +128,43 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
   },
   "wog.artifact.sword_of_sharpness": {
     cardId: "wog.artifact.sword_of_sharpness",
-    slug: "sword_of_sharpness",
+    slug: "sword_of_sharpness_v2",
     name: "Sword of Sharpness",
     slot: "weapon",
-    tier: "major",
-    // Rides the existing Damage-grade Might-dice machinery: one extra attack die
-    // (a "+1" raises the attack, at most one "−1" lowers it) on every attack.
-    effectText: 'rolls +1 Might attack die on every attack (a "+1" raises the Attack).',
-    abilityIds: ["commander-might-1"]
+    tier: "minor",
+    effectText: "adds one Might die to every attack; its extra die can never resolve below 0.",
+    abilityIds: ["commander-might-1"],
+    nonNegativeMightDice: 1
   },
   "wog.artifact.doomsday_blade": {
     cardId: "wog.artifact.doomsday_blade",
-    slug: "doomsday_blade",
+    slug: "doomsday_blade_v2",
     name: "Doomsday Blade",
     slot: "weapon",
     tier: "relic",
-    effectText: "+3 Attack.",
-    attack: 3
+    effectText: "+2 Attack and the commander's attacks roll with advantage.",
+    attack: 2,
+    attackRollAdvantage: true
   },
   // Heavenly Demon Palace bespoke weapon — a flat-Attack fold (the Iron Cudgel /
   // Axe / Doomsday Blade family), demonic-flavoured. No new engine arm.
   "wog.artifact.blood_patriarch_saber": {
     cardId: "wog.artifact.blood_patriarch_saber",
-    slug: "blood_patriarch_saber",
+    slug: "blood_patriarch_saber_v2",
     name: "Blood Patriarch's Saber",
     slot: "weapon",
     tier: "major",
-    effectText: "+2 Attack.",
-    attack: 2
+    effectText: "+1 Attack and the commander's attacks roll with advantage.",
+    attack: 1,
+    attackRollAdvantage: true
   },
   // ---- Armor -------------------------------------------------------------
   "wog.artifact.hardened_shield": {
     cardId: "wog.artifact.hardened_shield",
-    slug: "hardened_shield",
+    slug: "hardened_shield_v2",
     name: "Hardened Shield",
     slot: "armor",
-    tier: "minor",
+    tier: "relic",
     effectText: "+1 Defense.",
     defense: 1
   },
@@ -160,12 +189,12 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
   // ---- Trinket -----------------------------------------------------------
   "wog.artifact.boots_of_haste": {
     cardId: "wog.artifact.boots_of_haste",
-    slug: "boots_of_haste",
+    slug: "boots_of_haste_v2",
     name: "Boots of Haste",
     slot: "trinket",
     tier: "minor",
-    effectText: "+1 Initiative.",
-    initiative: 1
+    effectText: "+2 Initiative.",
+    initiative: 2
   },
   "wog.artifact.pendant_of_sorcery": {
     cardId: "wog.artifact.pendant_of_sorcery",
@@ -200,6 +229,142 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     effectText: "command cast Power +1 AND +1 Initiative.",
     castPowerBonus: 1,
     initiative: 1
+  },
+  // ---- Expanded commander forge catalog ---------------------------------
+  "wog.artifact.vitality_ring": {
+    cardId: "wog.artifact.vitality_ring",
+    slug: "vitality_ring",
+    name: "Vitality Ring",
+    slot: "trinket",
+    tier: "minor",
+    effectText: "+1 Health.",
+    health: 1
+  },
+  "wog.artifact.duelist_guard": {
+    cardId: "wog.artifact.duelist_guard",
+    slug: "duelist_guard",
+    name: "Duelist Guard",
+    slot: "armor",
+    tier: "minor",
+    effectText: "enemy attacks against the commander roll with disadvantage during combat round 1.",
+    incomingAttackDisadvantage: "round-1"
+  },
+  "wog.artifact.victors_coin": {
+    cardId: "wog.artifact.victors_coin",
+    slug: "victors_coin",
+    name: "Victor's Coin",
+    slot: "trinket",
+    tier: "minor",
+    effectText: "+1 gold after every combat won by this commander's main hero.",
+    goldAfterWonCombat: 1
+  },
+  "wog.artifact.veil_of_dread": {
+    cardId: "wog.artifact.veil_of_dread",
+    slug: "veil_of_dread",
+    name: "Veil of Dread",
+    slot: "armor",
+    tier: "major",
+    effectText: "enemy attacks against the commander roll with disadvantage for the whole combat.",
+    incomingAttackDisadvantage: "combat"
+  },
+  "wog.artifact.corrosive_edge": {
+    cardId: "wog.artifact.corrosive_edge",
+    slug: "corrosive_edge",
+    name: "Corrosive Edge",
+    slot: "weapon",
+    tier: "major",
+    effectText: "after the commander's own attack, the target gets −1 Defense for the whole combat (minimum 0).",
+    onAttackDefensePenalty: 1
+  },
+  "wog.artifact.enfeebling_mace": {
+    cardId: "wog.artifact.enfeebling_mace",
+    slug: "enfeebling_mace",
+    name: "Enfeebling Mace",
+    slot: "weapon",
+    tier: "major",
+    effectText: "after the commander's own attack, the target gets −1 Attack for the whole combat.",
+    onAttackAttackPenalty: 1
+  },
+  "wog.artifact.chrono_pike": {
+    cardId: "wog.artifact.chrono_pike",
+    slug: "chrono_pike",
+    name: "Chrono Pike",
+    slot: "weapon",
+    tier: "major",
+    effectText: "after the commander's own attack, the target gets −3 Initiative for the whole combat.",
+    onAttackInitiativePenalty: 3
+  },
+  "wog.artifact.vampiric_fang": {
+    cardId: "wog.artifact.vampiric_fang",
+    slug: "vampiric_fang",
+    name: "Vampiric Fang",
+    slot: "weapon",
+    tier: "major",
+    effectText: "after the commander's own attack deals damage, heal 1 damage from the commander.",
+    healAfterDamagingAttack: 1
+  },
+  "wog.artifact.piercing_lance": {
+    cardId: "wog.artifact.piercing_lance",
+    slug: "piercing_lance",
+    name: "Piercing Lance",
+    slot: "weapon",
+    tier: "major",
+    effectText: "the commander's attacks ignore 1 Defense (stacks with other Defense reduction).",
+    defensePierce: 1
+  },
+  "wog.artifact.barbed_carapace": {
+    cardId: "wog.artifact.barbed_carapace",
+    slug: "barbed_carapace",
+    name: "Barbed Carapace",
+    slot: "armor",
+    tier: "major",
+    effectText: "Thorn Aura: after an attack damages the commander, return that exact damage to the attacker.",
+    reflectAttackDamage: true
+  },
+  "wog.artifact.plague_censer": {
+    cardId: "wog.artifact.plague_censer",
+    slug: "plague_censer",
+    name: "Plague Censer",
+    slot: "trinket",
+    tier: "major",
+    effectText: "when the commander activates, deal 1 damage to every adjacent unit.",
+    activationAdjacentDamage: 1
+  },
+  "wog.artifact.phoenix_plate": {
+    cardId: "wog.artifact.phoenix_plate",
+    slug: "phoenix_plate",
+    name: "Phoenix Plate",
+    slot: "armor",
+    tier: "relic",
+    effectText: "once per combat, when the commander reaches 0 Health, it revives immediately at 1 Health.",
+    combatRebirth: true
+  },
+  "wog.artifact.travelers_salve": {
+    cardId: "wog.artifact.travelers_salve",
+    slug: "travelers_salve",
+    name: "Traveler's Salve",
+    slot: "trinket",
+    tier: "relic",
+    effectText: "after the commander moves, heal 1 damage from it.",
+    healAfterMove: 1
+  },
+  "wog.artifact.bastion_heart": {
+    cardId: "wog.artifact.bastion_heart",
+    slug: "bastion_heart",
+    name: "Bastion Heart",
+    slot: "armor",
+    tier: "relic",
+    effectText: "after the commander Defends, heal 1 damage from it.",
+    healAfterDefend: 1
+  },
+  "wog.artifact.stormcleaver": {
+    cardId: "wog.artifact.stormcleaver",
+    slug: "stormcleaver",
+    name: "Stormcleaver",
+    slot: "weapon",
+    tier: "relic",
+    effectText: "after the commander's own attack, deal 1 damage to one enemy adjacent to the target.",
+    cleaveDamage: 1
   }
 };
 
@@ -264,6 +429,21 @@ export interface CommanderArtifactBonuses {
   abilityIds: string[];
   castPowerBonus: number;
   reviveFree: boolean;
+  attackRollAdvantage: boolean;
+  nonNegativeMightDice: number;
+  incomingAttackDisadvantage: "round-1" | "combat" | null;
+  onAttackDefensePenalty: number;
+  onAttackAttackPenalty: number;
+  onAttackInitiativePenalty: number;
+  healAfterDamagingAttack: number;
+  defensePierce: number;
+  combatRebirth: boolean;
+  healAfterMove: number;
+  healAfterDefend: number;
+  cleaveDamage: number;
+  reflectAttackDamage: boolean;
+  activationAdjacentDamage: number;
+  goldAfterWonCombat: number;
 }
 
 /** Sum the wired bonuses of every artifact bound onto a commander. */
@@ -277,7 +457,22 @@ export function aggregateCommanderArtifactBonuses(
     initiative: 0,
     abilityIds: [],
     castPowerBonus: 0,
-    reviveFree: false
+    reviveFree: false,
+    attackRollAdvantage: false,
+    nonNegativeMightDice: 0,
+    incomingAttackDisadvantage: null,
+    onAttackDefensePenalty: 0,
+    onAttackAttackPenalty: 0,
+    onAttackInitiativePenalty: 0,
+    healAfterDamagingAttack: 0,
+    defensePierce: 0,
+    combatRebirth: false,
+    healAfterMove: 0,
+    healAfterDefend: 0,
+    cleaveDamage: 0,
+    reflectAttackDamage: false,
+    activationAdjacentDamage: 0,
+    goldAfterWonCombat: 0
   };
   if (!artifacts) {
     return totals;
@@ -298,6 +493,24 @@ export function aggregateCommanderArtifactBonuses(
     if (spec.reviveFree) {
       totals.reviveFree = true;
     }
+    totals.attackRollAdvantage ||= Boolean(spec.attackRollAdvantage);
+    totals.nonNegativeMightDice += spec.nonNegativeMightDice ?? 0;
+    if (spec.incomingAttackDisadvantage === "combat") totals.incomingAttackDisadvantage = "combat";
+    else if (spec.incomingAttackDisadvantage === "round-1" && !totals.incomingAttackDisadvantage) {
+      totals.incomingAttackDisadvantage = "round-1";
+    }
+    totals.onAttackDefensePenalty += spec.onAttackDefensePenalty ?? 0;
+    totals.onAttackAttackPenalty += spec.onAttackAttackPenalty ?? 0;
+    totals.onAttackInitiativePenalty += spec.onAttackInitiativePenalty ?? 0;
+    totals.healAfterDamagingAttack += spec.healAfterDamagingAttack ?? 0;
+    totals.defensePierce += spec.defensePierce ?? 0;
+    totals.combatRebirth ||= Boolean(spec.combatRebirth);
+    totals.healAfterMove += spec.healAfterMove ?? 0;
+    totals.healAfterDefend += spec.healAfterDefend ?? 0;
+    totals.cleaveDamage += spec.cleaveDamage ?? 0;
+    totals.reflectAttackDamage ||= Boolean(spec.reflectAttackDamage);
+    totals.activationAdjacentDamage += spec.activationAdjacentDamage ?? 0;
+    totals.goldAfterWonCombat += spec.goldAfterWonCombat ?? 0;
     if (spec.abilityIds) {
       totals.abilityIds.push(...spec.abilityIds);
     }

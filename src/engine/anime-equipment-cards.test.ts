@@ -50,7 +50,7 @@ function openMap(state: GameState): GameState {
 
 describe("anime equipment CARDS — deck join + play", () => {
   it("every equipment id is a registered implemented artifact card with matching grade tier", () => {
-    expect(animeEquipmentCardIds.length).toBe(45);
+    expect(animeEquipmentCardIds.length).toBe(58);
     for (const id of animeEquipmentCardIds) {
       const card = cardLibrary[id];
       const def = getEquipmentDefinition(id)!;

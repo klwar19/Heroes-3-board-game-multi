@@ -29,6 +29,7 @@ import {
   resourceDieFaces,
   rulesetCardNote,
   spellBookPowerAvailable,
+  cardCanFuelSchoollessPower,
   spellPowerValueOfCard,
   setArtifactsEnabled,
   NEUTRAL_PLAYER_ID,
@@ -72,6 +73,7 @@ import {
   AfkVotePanel,
   ResetVotePanel,
   ReactionTray,
+  MeteorPowerWindow,
   RerollModal,
   SearchModal,
   DeckSearchModeModal,
@@ -375,6 +377,21 @@ function feedSoundCueKey(cue: FeedSoundCue): string {
 type PhoneMapTab = "map" | "hand" | "army" | "decks" | "menu";
 type PhoneCombatTab = "board" | "hand" | "menu";
 
+/** Meteor Shower / Rocket Launcher scale as school-less effects, not Spells. */
+function costCardEligibleForPlay(
+  payCardId: string,
+  playedCardId: string,
+  filter?: "spell" | "power-source"
+): boolean {
+  if (
+    filter === "power-source" &&
+    cardLibrary[playedCardId]?.tags?.includes("meteor-shower")
+  ) {
+    return cardCanFuelSchoollessPower(cardLibrary[payCardId]);
+  }
+  return costCardEligible(payCardId, filter);
+}
+
 /** Magnifier for the adventure hand; lives inside the CardZoomProvider. */
 function AdventureHandZoom({ cardId }: { cardId: string }) {
   const { zoomCard } = useCardZoom();
@@ -419,36 +436,63 @@ function CostPlayBar({
   const ready =
     pending.exact !== undefined ? pickedCount === pending.exact : pickedCount <= (pending.upTo ?? 0);
   return (
-    <div className="targetBanner costPicker" aria-label="Pay the card cost">
-      <Crosshair aria-hidden="true" size={15} />
-      <strong>{cardName(pending.action.cardId)}</strong>
-      <span>
-        {pending.exact !== undefined ? `Discard exactly ${pending.exact}` : `Discard up to ${pending.upTo ?? 0}`}
-        {pending.filter === "spell"
-          ? " (Spell cards only)"
-          : pending.filter === "power-source"
-            ? " (Power statistics or Spells)"
-            : ""}{" "}
-        — {pickedCount} picked
-      </span>
-      {hand.map((cardId, index) => {
+    <div className="costPlayBackdrop" role="presentation">
+      <section aria-label="Select cards to discard" aria-modal="true" className="costPlayWindow" role="dialog">
+        <header className="costPlayHeader">
+          <span className="costPlayGlyph" aria-hidden="true"><HandIcon size={24} /></span>
+          <div>
+            <small>{arming ? "Pay cost before targeting" : "Card payment"}</small>
+            <h2>{cardName(pending.action.cardId)}</h2>
+          </div>
+          <button aria-label="Cancel card payment" className="costPlayClose" onClick={onCancel} type="button">×</button>
+        </header>
+        <div className="costPlayInstruction">
+          <strong>{pending.exact !== undefined ? `Choose ${pending.exact} card${pending.exact === 1 ? "" : "s"} to discard` : `Choose up to ${pending.upTo ?? 0} cards to discard`}</strong>
+          <span>
+            {pending.filter === "spell"
+              ? "Spell cards only"
+              : pending.filter === "power-source"
+                ? "Power statistics or Spells only"
+                : arming
+                  ? "After payment, this window closes and legal battlefield targets will glow."
+                  : "Select the cards that pay this effect."}
+          </span>
+          <b>{pickedCount}/{pending.exact ?? pending.upTo ?? 0}</b>
+        </div>
+        <div className="costPlayCards" aria-label="Cards available to discard">
+        {hand.map((cardId, index) => {
         if (index === playedIndex) {
           return null;
         }
-        const eligible = costCardEligible(cardId, pending.filter);
+        const eligible = costCardEligibleForPlay(cardId, pending.action.cardId, pending.filter);
         const picked = pending.picks.includes(index);
+        const powerValue =
+          pending.filter === "power-source"
+            ? spellPowerValueOfCard(
+                cardLibrary[cardId],
+                cardLibrary[pending.action.cardId]?.spellSchools ?? []
+              )
+            : 0;
+        const image = cardLibrary[cardId]?.assets?.cardImage;
         return (
           <button
-            className={picked ? "selected" : ""}
+            aria-label={`${picked ? "Selected" : "Select"} ${cardName(cardId)} to discard`}
+            aria-pressed={picked}
+            className={`costPlayCard${picked ? " selected" : ""}`}
             disabled={!eligible && !picked}
             key={`${cardId}-${index}`}
             onClick={() => onPick(index, hand)}
             type="button"
           >
-            {cardName(cardId)}
+            {image ? <img alt="" src={assetUrl(image)} /> : <span className="costPlayCardFallback">{cardName(cardId)}</span>}
+            <strong>{cardName(cardId)}</strong>
+            {powerValue > 0 ? <small>+{powerValue} Power</small> : null}
+            <i aria-hidden="true">{picked ? "✓" : ""}</i>
           </button>
         );
       })}
+        </div>
+        <div className="costPlayModes">
       {pending.filter === "power-source"
         ? pending.picks.map((handIndex, pickIndex) => {
             const cardId = hand[handIndex];
@@ -493,12 +537,14 @@ function CostPlayBar({
           📖 {cardName(cardId)}
         </button>
       ))}
-      <button disabled={!ready} onClick={() => onConfirm(hand)} type="button">
-        {arming ? "Discard, then aim" : "Pay & play"}
-      </button>
-      <button onClick={onCancel} type="button">
-        Cancel
-      </button>
+        </div>
+        <footer className="costPlayFooter">
+          <button className="commandButton ghost" onClick={onCancel} type="button">Cancel</button>
+          <button className="commandButton primary" disabled={!ready} onClick={() => onConfirm(hand)} type="button">
+            {arming ? "Discard and choose target" : "Pay & play"}
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -701,6 +747,7 @@ export default function Home() {
    */
   const [serverSignature, setServerSignature] = useState<string | null>(null);
   const [selectedCardAction, setSelectedCardAction] = useState<CardBoardAction | null>(null);
+  const [pendingMeteorPowerAction, setPendingMeteorPowerAction] = useState<Extract<GameAction, { type: "PLAY_CARD" }> | null>(null);
   const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
   const [handMode, setHandMode] = useState<HandMode>(null);
   const [handDiscards, setHandDiscards] = useState<number[]>([]);
@@ -4661,6 +4708,10 @@ export default function Home() {
       setArmedCardPayment(null);
       return;
     }
+    if (action.type === "PLAY_CARD" && cardLibrary[action.cardId]?.tags?.includes("meteor-shower")) {
+      setPendingMeteorPowerAction(action);
+      return;
+    }
     const cost = boardCardDiscardCost(action, cardLibrary);
     if (cost && action.type === "PLAY_CARD") {
       setPendingCostPlay({
@@ -4741,6 +4792,7 @@ export default function Home() {
       console.error("Applying the reset snapshot failed.", ingestError);
     }
     setErrors([]);
+    setPendingMeteorPowerAction(null);
     setSelectedCardAction(null);
     setHandMode(null);
     setHandDiscards([]);
@@ -6595,7 +6647,11 @@ export default function Home() {
                     isPayingSource &&
                     handCards[index] !== undefined &&
                     index !== handCards.indexOf(pendingCostPlay!.action.cardId) &&
-                    costCardEligible(cardId, pendingCostPlay!.filter);
+                    costCardEligibleForPlay(
+                      cardId,
+                      pendingCostPlay!.action.cardId,
+                      pendingCostPlay!.filter
+                    );
                   const whyBlocked =
                     !actionable && helperCoach.enabled && !selecting && !isPayingSource
                       ? cardUnplayableReason(state, viewerPlayerId, cardId)
@@ -7325,11 +7381,31 @@ export default function Home() {
           also covers a guard's slide-in: the reaction window waits until the
           attacker has finished moving into range (a Harpy flies in BEFORE its
           attack window opens), never popping over the card still gliding. */}
-      {!dice.current && !combatPresenting ? (
+      {pendingMeteorPowerAction ? (
+        <MeteorPowerWindow
+          action={pendingMeteorPowerAction}
+          onAim={(action, payment) => {
+            setArmedCardPayment({
+              cardId: action.cardId,
+              optionIndex: action.optionIndex,
+              costCardIds: payment.costCardIds,
+              ...(payment.costCardModes ? { costCardModes: payment.costCardModes } : {})
+            });
+            setPendingMeteorPowerAction(null);
+            setSelectedCardAction(action);
+          }}
+          onCancel={() => setPendingMeteorPowerAction(null)}
+          state={state}
+          view={playerView}
+          viewerPlayerId={viewerPlayerId}
+        />
+      ) : null}
+      {!dice.current && !combatPresenting && !selectedCardAction && !pendingMeteorPowerAction ? (
         <ReactionTray
           key={`${state.reactionWindow?.id ?? "none"}:${state.reactionWindow?.priorityPlayerId ?? ""}`}
           legalActions={legalActions}
           onAction={submitAction}
+          onSelectCardAction={selectBoardCardAction}
           state={state}
           view={playerView}
           viewerPlayerId={viewerPlayerId}

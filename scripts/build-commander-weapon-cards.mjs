@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Compose commander-artifact card faces using the same ornate artifact frame
+ * Compose commander-artifact card faces and the Forge icon using the same ornate artifact frame
  * layout as equipment / Pháp Bảo cards — not naked image dumps.
  *
  * Sources:
@@ -12,6 +12,7 @@
  *   public/assets/wog/artifacts/<slug>.webp
  *
  * Run: node scripts/build-commander-weapon-cards.mjs
+ * Forge icon only: node scripts/build-commander-weapon-cards.mjs --forge-only
  */
 
 import { existsSync } from "node:fs";
@@ -41,25 +42,40 @@ const CARDS = [
     ]
   },
   {
+    slug: "sword_of_sharpness",
+    outputSlug: "sword_of_sharpness_v2",
+    en: "Sword of Sharpness",
+    tier: "minor",
+    tierLabel: "MINOR  ·  COMMANDER WEAPON",
+    tierColor: "#c7ccd6",
+    existingFace: true,
+    rules: [
+      "Commander weapon: add 1 Might die to every attack. This extra die cannot resolve as -1.",
+      "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."
+    ]
+  },
+  {
     slug: "doomsday_blade",
+    outputSlug: "doomsday_blade_v2",
     en: "Doomsday Blade",
     tier: "relic",
     tierLabel: "RELIC  ·  COMMANDER WEAPON",
     tierColor: "#6fa8ff",
     rules: [
-      "Commander weapon: +3 Attack.",
+      "Commander weapon: +2 Attack. Its attacks roll with advantage.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."
     ]
   },
   {
     slug: "blood_patriarch_saber",
+    outputSlug: "blood_patriarch_saber_v2",
     en: "Blood Patriarch's Saber",
     tier: "major",
     tierLabel: "MAJOR  ·  COMMANDER WEAPON",
     tierColor: "#e7b73c",
     rawMaster: "blood_patriarch_saber-master.png",
     rules: [
-      "Commander weapon: +2 Attack.",
+      "Commander weapon: +1 Attack. Its attacks roll with advantage.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."
     ]
   },
@@ -75,6 +91,91 @@ const CARDS = [
       "Commander trinket: command cast Power +1 AND +1 Initiative.",
       "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."
     ]
+  },
+  {
+    slug: "hardened_shield", outputSlug: "hardened_shield_v2", en: "Hardened Shield", tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER ARMOR", tierColor: "#6fa8ff", slotLabel: "ARMOR", existingFace: true,
+    rules: ["Commander armor: +1 Defense.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "boots_of_haste", outputSlug: "boots_of_haste_v2", en: "Boots of Haste", tier: "minor",
+    tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET", existingFace: true,
+    rules: ["Commander trinket: +2 Initiative.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "vitality_ring", en: "Vitality Ring", tier: "minor",
+    tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET", rawMaster: "vitality_ring-master.png",
+    rules: ["Commander trinket: +1 Health.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "duelist_guard", en: "Duelist Guard", tier: "minor",
+    tierLabel: "MINOR  ·  COMMANDER ARMOR", tierColor: "#c7ccd6", slotLabel: "ARMOR", rawMaster: "duelist_guard-master.png",
+    rules: ["Commander armor: enemy attacks against it roll with disadvantage during combat round 1.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "victors_coin", en: "Victor's Coin", tier: "minor",
+    tierLabel: "MINOR  ·  COMMANDER TRINKET", tierColor: "#c7ccd6", slotLabel: "TRINKET", rawMaster: "victors_coin-master.png",
+    rules: ["Commander trinket: +1 gold after every combat won by this commander's main hero.", "Bind permanently to your commander. This card leaves the game. Gain 1 Minor Artifact."]
+  },
+  {
+    slug: "veil_of_dread", en: "Veil of Dread", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER ARMOR", tierColor: "#e7b73c", slotLabel: "ARMOR", rawMaster: "veil_of_dread-master.png",
+    rules: ["Commander armor: enemy attacks against it roll with disadvantage for the whole combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "corrosive_edge", en: "Corrosive Edge", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "corrosive_edge-master.png",
+    rules: ["Commander weapon: after its attack, the target gets -1 Defense for the whole combat (minimum 0).", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "enfeebling_mace", en: "Enfeebling Mace", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "enfeebling_mace-master.png",
+    rules: ["Commander weapon: after its attack, the target gets -1 Attack for the whole combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "chrono_pike", en: "Chrono Pike", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "chrono_pike-master.png",
+    rules: ["Commander weapon: after its attack, the target gets -3 Initiative for the whole combat.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "vampiric_fang", en: "Vampiric Fang", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "vampiric_fang-master.png",
+    rules: ["Commander weapon: after its attack deals damage, heal 1 damage from it.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "piercing_lance", en: "Piercing Lance", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER WEAPON", tierColor: "#e7b73c", rawMaster: "piercing_lance-master.png",
+    rules: ["Commander weapon: its attacks ignore 1 Defense. This stacks with other Defense reduction.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "barbed_carapace", en: "Barbed Carapace", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER ARMOR", tierColor: "#e7b73c", slotLabel: "ARMOR", rawMaster: "barbed_carapace-master.png",
+    rules: ["Thorn Aura: after an attack damages the commander, return that exact damage to the attacker.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "plague_censer", en: "Plague Censer", tier: "major",
+    tierLabel: "MAJOR  ·  COMMANDER TRINKET", tierColor: "#e7b73c", slotLabel: "TRINKET", rawMaster: "plague_censer-master.png",
+    rules: ["Commander trinket: when it activates, deal 1 damage to every adjacent unit.", "Bind permanently to your commander. This card leaves the game. Gain 1 Major Artifact."]
+  },
+  {
+    slug: "phoenix_plate", en: "Phoenix Plate", tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER ARMOR", tierColor: "#6fa8ff", slotLabel: "ARMOR", rawMaster: "phoenix_plate-master.png",
+    rules: ["Once per combat, when the commander reaches 0 Health, revive it immediately at 1 Health.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "travelers_salve", en: "Traveler's Salve", tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER TRINKET", tierColor: "#6fa8ff", slotLabel: "TRINKET", rawMaster: "travelers_salve-master.png",
+    rules: ["Commander trinket: after the commander moves, heal 1 damage from it.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "bastion_heart", en: "Bastion Heart", tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER ARMOR", tierColor: "#6fa8ff", slotLabel: "ARMOR", rawMaster: "bastion_heart-master.png",
+    rules: ["Commander armor: after the commander Defends, heal 1 damage from it.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
+  },
+  {
+    slug: "stormcleaver", en: "Stormcleaver", tier: "relic",
+    tierLabel: "RELIC  ·  COMMANDER WEAPON", tierColor: "#6fa8ff", rawMaster: "stormcleaver-master.png",
+    rules: ["After the commander's attack, deal 1 damage to one enemy adjacent to the target.", "Bind permanently to your commander. This card leaves the game. Gain 1 Relic Artifact."]
   }
 ];
 
@@ -226,6 +327,8 @@ async function main() {
   const frameUri = await dataUri(keyedPath, "image/png");
 
   for (const card of CARDS) {
+    if (process.argv.includes("--forge-only")) break;
+    const outputSlug = card.outputSlug ?? card.slug;
     const masterPng = path.join(EDITABLE, `${card.slug}-master.png`);
     if (card.rawMaster) {
       const sourcePath = path.join(RAW, "commander-masters", card.rawMaster);
@@ -236,13 +339,24 @@ async function main() {
         .resize(windowRect.w * 2, windowRect.h * 2, { fit: "cover", position: "centre" })
         .png()
         .toFile(masterPng);
+    } else if (card.existingFace && !existsSync(masterPng)) {
+      const sourcePath = path.join(OUT, `${card.slug}.webp`);
+      if (!existsSync(sourcePath)) {
+        throw new Error(`Missing existing face: ${path.relative(ROOT, sourcePath)}`);
+      }
       await sharp(sourcePath)
-        .resize(128, 128, { fit: "cover", position: "centre" })
-        .webp(WEBP)
-        .toFile(path.join(OUT, "icons", `${card.slug}.webp`));
+        .extract({ left: windowRect.x, top: windowRect.y, width: windowRect.w, height: windowRect.h })
+        .resize(windowRect.w * 2, windowRect.h * 2, { fit: "cover" })
+        .png()
+        .toFile(masterPng);
     } else if (!existsSync(masterPng)) {
       throw new Error(`Missing editable master: ${path.relative(ROOT, masterPng)}`);
     }
+
+    await sharp(masterPng)
+      .resize(128, 128, { fit: "cover", position: "centre" })
+      .webp(WEBP)
+      .toFile(path.join(OUT, "icons", `${outputSlug}.webp`));
 
     const editableSvg = cardSvg(
       card,
@@ -255,12 +369,19 @@ async function main() {
     // Write via tmp dir + shell copy (Windows often locks public/ assets).
     const tmpDir = path.join(ROOT, "tmp", "commander-weapon-cards");
     await mkdir(tmpDir, { recursive: true });
-    const tmp = path.join(tmpDir, `${card.slug}.webp`);
+    const tmp = path.join(tmpDir, `${outputSlug}.webp`);
     await sharp(Buffer.from(renderSvg)).resize(CARD_WIDTH, CARD_HEIGHT, { fit: "fill" }).webp(WEBP).toFile(tmp);
-    const srcPath = path.join(OUT, `${card.slug}.webp`);
+    const srcPath = path.join(OUT, `${outputSlug}.webp`);
     await copyFile(tmp, srcPath);
-    console.log(`face  ${card.slug}.webp`);
+    console.log(`face  ${outputSlug}.webp`);
   }
+  const forgeMaster = path.join(ROOT, "scripts", "anime-art", "raw", "ui", "commander-forge-master.png");
+  if (!existsSync(forgeMaster)) throw new Error(`Missing Forge icon master: ${path.relative(ROOT, forgeMaster)}`);
+  await sharp(forgeMaster)
+    .resize(256, 256, { fit: "contain", position: "centre" })
+    .webp(WEBP)
+    .toFile(path.join(ROOT, "public", "assets", "ui", "commander-forge.webp"));
+  console.log("icon  commander-forge.webp");
   console.log("DONE commander weapon card faces");
 }
 

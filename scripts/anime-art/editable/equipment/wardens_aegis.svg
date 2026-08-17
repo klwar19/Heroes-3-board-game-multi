@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#6fa8ff">GRADE III  ·  RELIC EQUIPMENT</text>
     <text x="371" y="654" class="slotText">ARMOR</text>
     <text x="371" y="688" class="enText">Thuẫn Hộ Vệ</text>
-    <g id="editable-rules"><text x="371" y="753" class="ruleText">Armor: the first enemy attack against your</text><text x="371" y="782" class="ruleText">units each combat resolves at −1 Attack,</text><text x="371" y="811" class="ruleText">and that unit gains a Defense token after</text><text x="371" y="840" class="ruleText">the hit.</text><line x1="120" y1="875" x2="623" y2="875" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="881" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="910" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="768" class="ruleText">Armor: first incoming attack gets −1</text><text x="371" y="797" class="ruleText">Attack; its defender gains a Defense token</text><text x="371" y="826" class="ruleText">for the whole combat.</text><line x1="120" y1="861" x2="623" y2="861" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="867" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="896" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
   </g>
 </svg>

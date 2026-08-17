@@ -27,7 +27,7 @@ import {
   getEquipmentDefinition,
   type EquipmentContextRequirement
 } from "@/data/anime/equipment";
-import type { AnimeEquipmentSlot, CombatUnitState, GameState, HeroState, PlayerId } from "./state";
+import type { AnimeEquipmentSlot, AttackRerollSource, CombatUnitState, GameState, HeroState, PlayerId } from "./state";
 
 /** Whether the Equipment module is on (implies anime master enabled). */
 export function equipmentEnabled(state: Pick<GameState, "anime">): boolean {
@@ -155,40 +155,33 @@ export function playerOwnsEquipment(state: GameState, playerId: PlayerId, equipm
 // Lord's Ring = spell Power plus hand limit.
 const FIRST_ATTACK_ITEMS = [
   EQUIPMENT_IDS.ironBloodSword,
-  EQUIPMENT_IDS.crusadersPoleaxe,
-  EQUIPMENT_IDS.shinobiKunaiPouch,
-  EQUIPMENT_IDS.oxygenTorpedo,
   EQUIPMENT_IDS.retrofitBlueprint,
-  EQUIPMENT_IDS.demonBloodSaber,
   EQUIPMENT_IDS.littleBustersPracticeBat,
-  EQUIPMENT_IDS.mgqAngelHalo
 ] as const;
 const INCOMING_PENALTY_ITEMS = [EQUIPMENT_IDS.blackTortoiseMail, EQUIPMENT_IDS.wardensAegis] as const;
 const DEFENSE_TOKEN_ITEMS = [
   EQUIPMENT_IDS.stageCostume,
-  EQUIPMENT_IDS.ironbarkCuirass,
   EQUIPMENT_IDS.wardensAegis,
-  EQUIPMENT_IDS.repairToolkit,
-  EQUIPMENT_IDS.bonefiendPlate,
-  EQUIPMENT_IDS.littleBustersMiosParasol,
-  EQUIPMENT_IDS.mgqHeavenlyKnightsAegis
 ] as const;
-const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint, EQUIPMENT_IDS.littleBustersPracticeBat] as const;
-const FIRST_SPELL_POWER_ITEMS = [EQUIPMENT_IDS.neonMicrophone] as const;
-const SPELL_POWER_ITEMS = [
-  EQUIPMENT_IDS.cosmosPendant,
-  EQUIPMENT_IDS.spiritFocus,
+const ROUND1_ATTACK_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint] as const;
+const ROUND1_ZERO_STUN_ITEMS = [EQUIPMENT_IDS.littleBustersPracticeBat] as const;
+const ROUND1_RETALIATION_PENALTY_ITEMS = [EQUIPMENT_IDS.bladeOfTheTrial, EQUIPMENT_IDS.retrofitBlueprint] as const;
+const FIRST_SPELL_POWER_ITEMS = [
+  EQUIPMENT_IDS.neonMicrophone,
   EQUIPMENT_IDS.sageChakraCharm,
   EQUIPMENT_IDS.sgRadar,
   EQUIPMENT_IDS.demonHeartRelic,
-  EQUIPMENT_IDS.littleBustersFlightGoggles,
   EQUIPMENT_IDS.littleBustersRevolutionWatch,
   EQUIPMENT_IDS.mgqMonsterLordsRing
+] as const;
+const ROUND1_SPELL_POWER_ITEMS = [
+  EQUIPMENT_IDS.cosmosPendant,
+  EQUIPMENT_IDS.spiritFocus,
+  EQUIPMENT_IDS.littleBustersFlightGoggles
 ] as const;
 const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.guildIssueMail,
   EQUIPMENT_IDS.twinTailRibbon,
-  EQUIPMENT_IDS.eternalSash,
   EQUIPMENT_IDS.sageChakraCharm,
   EQUIPMENT_IDS.sgRadar,
   EQUIPMENT_IDS.demonHeartRelic,
@@ -196,23 +189,51 @@ const HAND_LIMIT_ITEMS = [
   EQUIPMENT_IDS.littleBustersRevolutionWatch,
   EQUIPMENT_IDS.mgqMonsterLordsRing
 ] as const;
-const WIN_GOLD_ITEMS = [
-  EQUIPMENT_IDS.adventurersBlade,
-  EQUIPMENT_IDS.luckyCoin,
-  EQUIPMENT_IDS.alchemistsSatchel,
-  EQUIPMENT_IDS.coinwardTalisman,
-  EQUIPMENT_IDS.hornOfPlenty,
-  EQUIPMENT_IDS.manjuuPiggyBank,
-  EQUIPMENT_IDS.littleBustersGlassMarbles
-] as const;
-const RESOURCE_MATERIALS_ITEMS = [EQUIPMENT_IDS.supplySatchel, EQUIPMENT_IDS.hornOfPlenty] as const;
-const RESOURCE_GOLD_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;
+const WIN_GOLD_ITEMS = [EQUIPMENT_IDS.adventurersBlade] as const;
+const RESOURCE_MATERIALS_ITEMS: readonly string[] = [];
+const RESOURCE_GOLD_ITEMS: readonly string[] = [];
 const MOVEMENT_ITEMS = [
   EQUIPMENT_IDS.windriderSaddle,
-  EQUIPMENT_IDS.coursersBarding,
   EQUIPMENT_IDS.bodyFlickerTabi,
   EQUIPMENT_IDS.beaverSquadTag
 ] as const;
+const HAND_LIMIT_MOVEMENT_PENALTY_ITEMS = [
+  EQUIPMENT_IDS.guildIssueMail,
+  EQUIPMENT_IDS.twinTailRibbon,
+  EQUIPMENT_IDS.littleBustersMissionLetter
+] as const;
+const ADJACENT_RANGED_IGNORE_ITEMS = [EQUIPMENT_IDS.shinobiKunaiPouch] as const;
+const ACTIVATED_TARGET_ATTACK_ITEMS = [EQUIPMENT_IDS.oxygenTorpedo] as const;
+const BRONZE_INITIATIVE_ITEMS = [EQUIPMENT_IDS.mgqAngelHalo] as const;
+const BACKLINE_DEFENSE_ITEMS = [EQUIPMENT_IDS.ironbarkCuirass] as const;
+const FRONTLINE_ROUND1_DEFENSE_ITEMS = [EQUIPMENT_IDS.bonefiendPlate] as const;
+const ROUND1_ADVANTAGE_ITEMS = [EQUIPMENT_IDS.eternalSash] as const;
+const SPELL_DAMAGE_REDUCTION_ITEMS = [EQUIPMENT_IDS.alchemistsSatchel] as const;
+const FIRST_ARMY_DAMAGE_PREVENTION_ITEMS = [EQUIPMENT_IDS.repairToolkit] as const;
+const ATTACK_REROLL_PER_ROUND_ITEMS = [EQUIPMENT_IDS.crusadersPoleaxe] as const;
+const ANY_DIE_REROLL_PER_ROUND_ITEMS = [EQUIPMENT_IDS.mgqHeavenlyKnightsAegis] as const;
+const MINUS_TO_PLUS_PER_COMBAT_ITEMS = [EQUIPMENT_IDS.demonBloodSaber] as const;
+const DRAW_ON_LOSS_ITEMS = [EQUIPMENT_IDS.manjuuPiggyBank] as const;
+const DRAW_ON_KILL_ITEMS = [EQUIPMENT_IDS.littleBustersMiosParasol] as const;
+const TRADE_DISCOUNT_ITEMS = [EQUIPMENT_IDS.coinwardTalisman] as const;
+const RECRUIT_DISCOUNT_ITEMS = [EQUIPMENT_IDS.hornOfPlenty] as const;
+const FREE_DRILL_ITEMS = [EQUIPMENT_IDS.littleBustersGlassMarbles] as const;
+const SEARCH_BONUS_ITEMS = [EQUIPMENT_IDS.supplySatchel] as const;
+const IGNORE_EMBARK_PENALTY_ITEMS = [EQUIPMENT_IDS.coursersBarding] as const;
+const MOVE_THROUGH_BLOCKERS_ITEMS = [EQUIPMENT_IDS.spiritCraneMount] as const;
+const END_TURN_STEP_ITEMS = [EQUIPMENT_IDS.pathfindersBoots] as const;
+const FREE_DISCOVERY_ITEMS = [EQUIPMENT_IDS.surveyorsLens] as const;
+const START_IN_TOWN_MOVEMENT_ITEMS = [EQUIPMENT_IDS.hearthboundHorseshoe] as const;
+const BANK_MOVEMENT_ITEMS = [EQUIPMENT_IDS.chronicleSpurs] as const;
+const ENEMY_FIRST_SPELL_DRAIN_ITEMS = [EQUIPMENT_IDS.spellwardBrooch] as const;
+const DEFENSE_REACTION_ITEMS = [EQUIPMENT_IDS.reactiveBuckler] as const;
+const COMBAT_UNIT_SELECTIONS = {
+  [EQUIPMENT_IDS.duelistInsignia]: { name: "Duelist Insignia", stat: "attack", amount: 1 },
+  [EQUIPMENT_IDS.clockworkSpurs]: { name: "Clockwork Spurs", stat: "initiative", amount: 2 }
+} as const;
+const ATTACK_RIDER_ITEMS = [EQUIPMENT_IDS.corrosionEdge, EQUIPMENT_IDS.wyvernNeedle] as const;
+const HEAL_REACTION_ITEMS = [EQUIPMENT_IDS.fieldMedicKit] as const;
+const GUARDIAN_REACTION_ITEMS = [EQUIPMENT_IDS.guardianMirror] as const;
 
 /** Whether the player's main hero wears ANY of the given equipment ids. */
 function playerHasAnyEquipment(state: GameState, playerId: PlayerId, ids: readonly string[]): boolean {
@@ -237,7 +258,8 @@ function countEquipment(state: GameState, playerId: PlayerId, ids: readonly stri
  * Hero-Grade seams.
  */
 export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): number {
-  return countEquipment(state, playerId, SPELL_POWER_ITEMS);
+  if (!playerMainHeroInCombat(state, playerId) || (state.combat?.round ?? 0) !== 1) return 0;
+  return countEquipment(state, playerId, ROUND1_SPELL_POWER_ITEMS);
 }
 
 /**
@@ -312,7 +334,7 @@ export function applyEquipmentStageCostumeDefenseToken(
  * (accessory-slot cap pinned in anime-equipment.test.ts).
  */
 export function equipmentHandLimitBonus(state: GameState, playerId: PlayerId): number {
-  return countEquipment(state, playerId, HAND_LIMIT_ITEMS);
+  return countEquipment(state, playerId, HAND_LIMIT_ITEMS) - countEquipment(state, playerId, MOVEMENT_ITEMS);
 }
 
 /**
@@ -352,7 +374,320 @@ export function equipmentResourceRoundGold(state: GameState, playerId: PlayerId)
 export function equipmentMovementBonus(state: GameState, playerId: PlayerId): number {
   // Windrider Saddle / Courser's Barding / Body-Flicker Tabi / Beaver Squad Tag
   // (all mount, one worn) → +1 MP.
-  return playerHasAnyEquipment(state, playerId, MOVEMENT_ITEMS) ? 1 : 0;
+  return (playerHasAnyEquipment(state, playerId, MOVEMENT_ITEMS) ? 1 : 0) -
+    countEquipment(state, playerId, HAND_LIMIT_MOVEMENT_PENALTY_ITEMS);
+}
+
+/** Blade of the Trial / Retrofit Blueprint: one deterministic allied army unit cannot retaliate in round 1. */
+export function equipmentRequiresRound1RetaliationPenalty(state: GameState, playerId: PlayerId): boolean {
+  return playerMainHeroInCombat(state, playerId) &&
+    playerHasAnyEquipment(state, playerId, ROUND1_RETALIATION_PENALTY_ITEMS);
+}
+
+/** Little Busters Practice Bat: a round-1 declared Attack-die result of 0 paralyzes its target. */
+export function equipmentRound1ZeroStuns(
+  state: GameState,
+  playerId: PlayerId,
+  isRetaliation: boolean,
+  roll: number
+): boolean {
+  return !isRetaliation && roll === 0 && state.combat?.round === 1 &&
+    playerMainHeroInCombat(state, playerId) &&
+    playerHasAnyEquipment(state, playerId, ROUND1_ZERO_STUN_ITEMS);
+}
+
+/** Kunai Pouch: ranged units ignore the adjacent-target penalty once each combat. */
+export function equipmentIgnoresAdjacentRangedPenalty(
+  state: GameState,
+  unit: CombatUnitState,
+  isRetaliation: boolean
+): boolean {
+  if (isRetaliation || unit.type !== "ranged" || !playerMainHeroInCombat(state, unit.controllerId)) return false;
+  const stats = state.players[unit.controllerId]?.combatStats;
+  return playerHasAnyEquipment(state, unit.controllerId, ADJACENT_RANGED_IGNORE_ITEMS) &&
+    !stats?.equipmentAdjacentRangedWaiverUsed;
+}
+
+/** Consume Kunai Pouch's one adjacent-ranged waiver only when an adjacent shot lands. */
+export function markEquipmentAdjacentRangedWaiverUsed(state: GameState, unit: CombatUnitState): void {
+  const stats = state.players[unit.controllerId]?.combatStats;
+  if (stats) stats.equipmentAdjacentRangedWaiverUsed = true;
+}
+
+/** Oxygen Torpedo: +1 Attack against a target that already activated, in round 1. */
+export function equipmentActivatedTargetAttackBonus(
+  state: GameState,
+  attacker: CombatUnitState,
+  defender: CombatUnitState,
+  isRetaliation: boolean
+): number {
+  return !isRetaliation && state.combat?.round === 1 && defender.activatedThisRound &&
+    playerMainHeroInCombat(state, attacker.controllerId) &&
+    playerHasAnyEquipment(state, attacker.controllerId, ACTIVATED_TARGET_ATTACK_ITEMS) ? 1 : 0;
+}
+
+/** Angel Halo: bronze army units enter combat with +2 Initiative. */
+export function equipmentBronzeInitiativeBonus(state: GameState, unit: CombatUnitState): number {
+  return unit.grade === "bronze" && playerMainHeroInCombat(state, unit.controllerId) &&
+    playerHasAnyEquipment(state, unit.controllerId, BRONZE_INITIATIVE_ITEMS) ? 2 : 0;
+}
+
+/** Eternal Sash: every round-1 attack roll has advantage. */
+export function equipmentRound1AttackAdvantage(state: GameState, unit: CombatUnitState): boolean {
+  return state.combat?.round === 1 && playerMainHeroInCombat(state, unit.controllerId) &&
+    playerHasAnyEquipment(state, unit.controllerId, ROUND1_ADVANTAGE_ITEMS);
+}
+
+/** Row armor bonuses use the owner's actual attacker/defender side. */
+export function equipmentRowDefenseBonus(state: GameState, unit: CombatUnitState): number {
+  const combat = state.combat;
+  if (!combat || unit.type !== "ground" || !playerMainHeroInCombat(state, unit.controllerId)) return 0;
+  const attackerSide = unit.controllerId === combat.attackerPlayerId;
+  const backline = attackerSide ? unit.position >= 16 && unit.position <= 19 : unit.position >= 0 && unit.position <= 3;
+  const frontline = attackerSide ? unit.position >= 12 && unit.position <= 15 : unit.position >= 4 && unit.position <= 7;
+  if (backline && playerHasAnyEquipment(state, unit.controllerId, BACKLINE_DEFENSE_ITEMS)) return 1;
+  if (frontline && combat.round === 1 && playerHasAnyEquipment(state, unit.controllerId, FRONTLINE_ROUND1_DEFENSE_ITEMS)) return 1;
+  return 0;
+}
+
+/** Alchemist's Satchel: every allied unit takes one less Spell damage. */
+export function equipmentSpellDamageReduction(state: GameState, playerId: PlayerId): number {
+  return playerMainHeroInCombat(state, playerId) &&
+    playerHasAnyEquipment(state, playerId, SPELL_DAMAGE_REDUCTION_ITEMS) ? 1 : 0;
+}
+
+/** Repair Toolkit: prevent the first point of army damage in each combat. */
+export function consumeEquipmentFirstDamagePrevention(state: GameState, unit: CombatUnitState): number {
+  if (!playerMainHeroInCombat(state, unit.controllerId) ||
+      !playerHasAnyEquipment(state, unit.controllerId, FIRST_ARMY_DAMAGE_PREVENTION_ITEMS)) return 0;
+  const stats = state.players[unit.controllerId]?.combatStats;
+  if (!stats || stats.equipmentFirstDamagePrevented) return 0;
+  stats.equipmentFirstDamagePrevented = true;
+  return 1;
+}
+
+/** Standing equipment sources injected into the shared Attack-die choice window. */
+export function equipmentAttackRerollSources(
+  state: GameState,
+  playerId: PlayerId,
+  includeAnyDie: boolean
+): AttackRerollSource[] {
+  if (!playerMainHeroInCombat(state, playerId)) return [];
+  const player = state.players[playerId];
+  if (!player) return [];
+  const sources: AttackRerollSource[] = [];
+  for (const equipmentId of ATTACK_REROLL_PER_ROUND_ITEMS) {
+    if (playerHasEquipment(state, playerId, equipmentId) && player.equipmentRoundUses?.[equipmentId] !== state.round) {
+      sources.push({ name: "Crusader's Poleaxe", equipmentId, equipmentUseScope: "round", remaining: 1, used: 0 });
+    }
+  }
+  if (includeAnyDie) {
+    for (const equipmentId of ANY_DIE_REROLL_PER_ROUND_ITEMS) {
+      if (playerHasEquipment(state, playerId, equipmentId) && player.equipmentRoundUses?.[equipmentId] !== state.round) {
+        sources.push({ name: "Heavenly Knight's Aegis", equipmentId, equipmentUseScope: "round", remaining: 1, used: 0 });
+      }
+    }
+  }
+  for (const equipmentId of MINUS_TO_PLUS_PER_COMBAT_ITEMS) {
+    if (playerHasEquipment(state, playerId, equipmentId) && !(player.combatStats.equipmentUsesThisCombat ?? []).includes(equipmentId)) {
+      sources.push({
+        name: "Blood Demon Saber",
+        equipmentId,
+        equipmentUseScope: "combat",
+        onlyOnRoll: -1,
+        setDieFace: 1,
+        remaining: 1,
+        used: 0
+      });
+    }
+  }
+  return sources;
+}
+
+/** Equipment ids that may reroll this map die once in the current game round. */
+export function equipmentAdventureDieRerollIds(
+  state: GameState,
+  playerId: PlayerId,
+  dice: "treasure" | "resource"
+): string[] {
+  const player = state.players[playerId];
+  if (!player || !equipmentEnabled(state)) return [];
+  const ids = [
+    ...(dice === "treasure" ? [EQUIPMENT_IDS.luckyCoin] : []),
+    ...ANY_DIE_REROLL_PER_ROUND_ITEMS
+  ];
+  return ids.filter((id) => playerHasEquipment(state, playerId, id) && player.equipmentRoundUses?.[id] !== state.round);
+}
+
+/** Manjuu Piggy Bank: draw one card whenever one of the army's units is removed. */
+export function equipmentDrawsOnUnitLoss(state: GameState, playerId: PlayerId): boolean {
+  return playerMainHeroInCombat(state, playerId) && playerHasAnyEquipment(state, playerId, DRAW_ON_LOSS_ITEMS);
+}
+
+/** Mio's Parasol: draw after a real enemy removal, capped at two per combat round. */
+export function consumeEquipmentKillDraw(state: GameState, playerId: PlayerId): number {
+  if (!playerMainHeroInCombat(state, playerId) || !playerHasAnyEquipment(state, playerId, DRAW_ON_KILL_ITEMS)) return 0;
+  const stats = state.players[playerId]?.combatStats;
+  if (!stats || (stats.equipmentKillDrawsThisRound ?? 0) >= 2) return 0;
+  stats.equipmentKillDrawsThisRound = (stats.equipmentKillDrawsThisRound ?? 0) + 1;
+  return 1;
+}
+
+/** Coinward Talisman: first gold-paid market trade each round costs 1 less gold. */
+export function equipmentTradeGoldDiscount(state: GameState, playerId: PlayerId): number {
+  const player = state.players[playerId];
+  const id = EQUIPMENT_IDS.coinwardTalisman;
+  return player && playerHasAnyEquipment(state, playerId, TRADE_DISCOUNT_ITEMS) &&
+    player.equipmentRoundUses?.[id] !== state.round ? 1 : 0;
+}
+
+export function consumeEquipmentTradeGoldDiscount(state: GameState, playerId: PlayerId): void {
+  if (equipmentTradeGoldDiscount(state, playerId) <= 0) return;
+  const player = state.players[playerId];
+  if (player) player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [EQUIPMENT_IDS.coinwardTalisman]: state.round };
+}
+
+/** Horn of Plenty: every unit recruit/reinforce costs 1 less gold. */
+export function equipmentRecruitGoldDiscount(state: GameState, playerId: PlayerId): number {
+  return playerHasAnyEquipment(state, playerId, RECRUIT_DISCOUNT_ITEMS) ? 1 : 0;
+}
+
+/** Haruka's Glass Marbles: one Drill each game round costs no gold or movement. */
+export function equipmentFreeDrillAvailable(state: GameState, playerId: PlayerId): boolean {
+  const id = EQUIPMENT_IDS.littleBustersGlassMarbles;
+  return playerHasAnyEquipment(state, playerId, FREE_DRILL_ITEMS) &&
+    state.players[playerId]?.equipmentRoundUses?.[id] !== state.round;
+}
+
+export function consumeEquipmentFreeDrill(state: GameState, playerId: PlayerId): void {
+  if (!equipmentFreeDrillAvailable(state, playerId)) return;
+  const player = state.players[playerId];
+  if (player) player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [EQUIPMENT_IDS.littleBustersGlassMarbles]: state.round };
+}
+
+/** Supply Satchel: every Search(X) reveals one additional card. */
+export function equipmentSearchCountBonus(state: GameState, playerId: PlayerId): number {
+  return playerHasAnyEquipment(state, playerId, SEARCH_BONUS_ITEMS) ? 1 : 0;
+}
+
+export function equipmentIgnoresEmbarkPenalty(state: GameState, playerId: PlayerId): boolean {
+  return playerHasAnyEquipment(state, playerId, IGNORE_EMBARK_PENALTY_ITEMS);
+}
+
+export function equipmentMovesThroughBlockers(state: GameState, playerId: PlayerId): boolean {
+  return playerHasAnyEquipment(state, playerId, MOVE_THROUGH_BLOCKERS_ITEMS);
+}
+
+export function equipmentEndTurnStepAvailable(state: GameState, playerId: PlayerId): boolean {
+  const id = EQUIPMENT_IDS.pathfindersBoots;
+  return playerHasAnyEquipment(state, playerId, END_TURN_STEP_ITEMS) &&
+    state.players[playerId]?.equipmentRoundUses?.[id] !== state.round;
+}
+
+export function consumeEquipmentEndTurnStep(state: GameState, playerId: PlayerId): void {
+  if (!equipmentEndTurnStepAvailable(state, playerId)) return;
+  const player = state.players[playerId];
+  if (player) player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [EQUIPMENT_IDS.pathfindersBoots]: state.round };
+}
+
+export function equipmentFreeDiscovery(state: GameState, playerId: PlayerId): boolean {
+  return playerHasAnyEquipment(state, playerId, FREE_DISCOVERY_ITEMS);
+}
+
+export function equipmentStartInTownMovementBonus(state: GameState, hero: HeroState): number {
+  if (hero.kind !== "main" || !hero.spaceId || !playerHasAnyEquipment(state, hero.controllerId, START_IN_TOWN_MOVEMENT_ITEMS)) return 0;
+  return Object.values(state.towns).some((town) => town.controllerId === hero.controllerId && town.fieldId === hero.spaceId) ? 1 : 0;
+}
+
+export function bankEquipmentMovementAtTurnEnd(state: GameState, playerId: PlayerId): void {
+  const id = EQUIPMENT_IDS.chronicleSpurs;
+  const player = state.players[playerId];
+  if (!player || !playerHasAnyEquipment(state, playerId, BANK_MOVEMENT_ITEMS) || player.equipmentRoundUses?.[id] === state.round) return;
+  player.bankedEquipmentMovement = (player.bankedEquipmentMovement ?? 0) + 1;
+  player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [id]: state.round };
+}
+
+/** Spellward Brooch: consume the defending side's first-enemy-Spell −1 Power ward. */
+export function consumeEquipmentEnemySpellDrain(state: GameState, casterId: PlayerId): number {
+  const combat = state.combat;
+  if (!combat) return 0;
+  for (const ownerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (ownerId === casterId || ownerId === "neutral") continue;
+    const stats = state.players[ownerId]?.combatStats;
+    if (stats && !stats.equipmentEnemySpellDrainUsed && playerHasAnyEquipment(state, ownerId, ENEMY_FIRST_SPELL_DRAIN_ITEMS)) {
+      stats.equipmentEnemySpellDrainUsed = true;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+export function equipmentDefenseReactionAvailable(state: GameState, playerId: PlayerId): boolean {
+  const id = EQUIPMENT_IDS.reactiveBuckler;
+  return playerMainHeroInCombat(state, playerId) && playerHasAnyEquipment(state, playerId, DEFENSE_REACTION_ITEMS) &&
+    state.players[playerId]?.equipmentRoundUses?.[id] !== state.round;
+}
+
+/** Folded Tactics Manual: the first printed card draw rider each game round gets +1. */
+export function consumeEquipmentDrawRiderBonus(state: GameState, playerId: PlayerId): number {
+  const id = EQUIPMENT_IDS.foldedTacticsManual;
+  const player = state.players[playerId];
+  if (!player || !playerHasEquipment(state, playerId, id) || player.equipmentRoundUses?.[id] === state.round) return 0;
+  player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [id]: state.round };
+  return 1;
+}
+
+export function consumeEquipmentDefenseReaction(state: GameState, playerId: PlayerId): void {
+  if (!equipmentDefenseReactionAvailable(state, playerId)) return;
+  const player = state.players[playerId];
+  if (player) player.equipmentRoundUses = { ...(player.equipmentRoundUses ?? {}), [EQUIPMENT_IDS.reactiveBuckler]: state.round };
+}
+
+function equipmentCombatUseAvailable(state: GameState, playerId: PlayerId, equipmentId: string): boolean {
+  return playerMainHeroInCombat(state, playerId) && playerHasEquipment(state, playerId, equipmentId) &&
+    !(state.players[playerId]?.combatStats.equipmentUsesThisCombat ?? []).includes(equipmentId);
+}
+
+export function consumeEquipmentCombatUse(state: GameState, playerId: PlayerId, equipmentId: string): void {
+  const stats = state.players[playerId]?.combatStats;
+  if (!stats) return;
+  stats.equipmentUsesThisCombat = [...new Set([...(stats.equipmentUsesThisCombat ?? []), equipmentId])];
+}
+
+export type EquipmentCombatUnitOffer = {
+  equipmentId: string;
+  name: string;
+  stat: "attack" | "initiative";
+  amount: number;
+  unitId: string;
+};
+
+/** Grade-II combat-long unit picks; each equipped item may select once per combat. */
+export function equipmentCombatUnitOffers(state: GameState, playerId: PlayerId): EquipmentCombatUnitOffer[] {
+  if (state.combat?.round !== 1 || !playerMainHeroInCombat(state, playerId)) return [];
+  const selections = state.players[playerId]?.combatStats.equipmentSelections ?? {};
+  const units = Object.values(state.combat.units).filter((unit) =>
+    unit.controllerId === playerId && Boolean(unit.armyUnitId) && unit.damage < unit.maxHealth
+  );
+  const offers: EquipmentCombatUnitOffer[] = [];
+  for (const [equipmentId, spec] of Object.entries(COMBAT_UNIT_SELECTIONS)) {
+    if (!playerHasEquipment(state, playerId, equipmentId) || selections[equipmentId]) continue;
+    for (const unit of units) offers.push({ equipmentId, ...spec, unitId: unit.id });
+  }
+  return offers;
+}
+
+export function equipmentAttackRiderAvailable(state: GameState, playerId: PlayerId, equipmentId: string): boolean {
+  return ATTACK_RIDER_ITEMS.includes(equipmentId as (typeof ATTACK_RIDER_ITEMS)[number]) &&
+    equipmentCombatUseAvailable(state, playerId, equipmentId);
+}
+
+export function equipmentHealReactionAvailable(state: GameState, playerId: PlayerId): boolean {
+  return HEAL_REACTION_ITEMS.some((id) => equipmentCombatUseAvailable(state, playerId, id));
+}
+
+export function equipmentGuardianReactionAvailable(state: GameState, playerId: PlayerId): boolean {
+  return GUARDIAN_REACTION_ITEMS.some((id) => equipmentCombatUseAvailable(state, playerId, id));
 }
 
 /**
@@ -363,7 +698,12 @@ export function equipmentMovementBonus(state: GameState, playerId: PlayerId): nu
  * the player who actually won and wears it.
  */
 export function equipmentVeteranBonusXp(state: GameState, playerId: PlayerId): number {
-  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.veteransStandard) ? 1 : 0;
+  return 0;
+}
+
+/** Veteran's Standard: the attacking army card gains +1 XP for a real enemy removal. */
+export function equipmentKillXpBonus(state: GameState, playerId: PlayerId): number {
+  return playerMainHeroInCombat(state, playerId) && playerHasEquipment(state, playerId, EQUIPMENT_IDS.veteransStandard) ? 1 : 0;
 }
 
 /**
@@ -384,6 +724,16 @@ export function equipmentGrantsCommanderSort(state: GameState, playerId: PlayerI
  */
 export function equipmentGrantsCommanderRevive(state: GameState, playerId: PlayerId): boolean {
   return playerHasEquipment(state, playerId, EQUIPMENT_IDS.spiritCraneMount);
+}
+
+/** Marshal's War Horn also gives its owner's commander +2 maximum Health. */
+export function equipmentCommanderHealthBonus(state: GameState, playerId: PlayerId): number {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.marshalsWarHorn) ? 2 : 0;
+}
+
+/** Spirit Crane Mount also gives its owner's commander +2 Initiative/Speed. */
+export function equipmentCommanderSpeedBonus(state: GameState, playerId: PlayerId): number {
+  return playerHasEquipment(state, playerId, EQUIPMENT_IDS.spiritCraneMount) ? 2 : 0;
 }
 
 // ===========================================================================

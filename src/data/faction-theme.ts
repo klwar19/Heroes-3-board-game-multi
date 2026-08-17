@@ -34,7 +34,7 @@ const ANIME: FactionUiLexicon = {
   register: "anime",
   level: "Lv",
   experience: "EXP",
-  grade: "Spirit Rank",
+  grade: "Hero Grade",
   equipment: "Mystic Loadout",
   commanderEquipment: "Command Relics",
   army: "Servant roster",

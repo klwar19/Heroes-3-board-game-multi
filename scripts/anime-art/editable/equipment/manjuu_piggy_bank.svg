@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#c7ccd6">GRADE I  ·  MINOR EQUIPMENT</text>
     <text x="371" y="654" class="slotText">ACCESSORY</text>
     <text x="371" y="688" class="enText">Heo Đất Manjuu</text>
-    <g id="editable-rules"><text x="371" y="778" class="ruleText">Accessory: gain +1 gold after each combat</text><text x="371" y="809" class="ruleText">you win.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="778" class="ruleText">Accessory: draw 1 card whenever one of</text><text x="371" y="809" class="ruleText">your real army units is defeated.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
   </g>
 </svg>

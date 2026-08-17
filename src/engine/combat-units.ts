@@ -15,6 +15,7 @@ import {
   isUnitDamageImmune
 } from "./unit-abilities";
 import { createSeededRandom } from "./random";
+import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
@@ -120,6 +121,26 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
   }
 
   if (unit.damage < unit.maxHealth) {
+    return;
+  }
+
+  // Phoenix Plate: the commander's once-per-combat immediate 1-Health revival
+  // shares the established Rebirth charge/order and therefore protects against
+  // every damage source that reaches this removal chokepoint.
+  if (
+    unit.commanderSlug &&
+    commanderArtifactBonusesForUnit(state, unit).combatRebirth &&
+    !unit.usedRebirthThisCombat
+  ) {
+    unit.usedRebirthThisCombat = true;
+    unit.damage = Math.max(0, unit.maxHealth - 1);
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: unit.id,
+      abilityId: "commander-artifact-phoenix-plate",
+      targetUnitId: unit.id,
+      message: `${unit.cardName}'s Phoenix Plate revives it at 1 Health.`
+    });
     return;
   }
 

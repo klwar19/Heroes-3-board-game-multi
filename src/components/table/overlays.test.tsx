@@ -10,6 +10,7 @@ import {
   FirstPlayerRollOverlay,
   MapDiceOverlay,
   MapNoticeOverlay,
+  MeteorPowerWindow,
   NeutralStepOverlay,
   ReactionTray,
   ResetVotePanel,
@@ -1291,27 +1292,28 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 
-  it("lets Meteor Shower use a Power card's crown side in an off-turn reaction window", () => {
-    const state = silverSkipWindow(["stat.power"]);
+  it("shows one Meteor Shower aim action and sends targeting to the battlefield", () => {
+    const state = silverSkipWindow(["stat.power", "ability.basic_water_magic"]);
     state.players.p1.hand[0] = "specialty.deemer.1";
     const onAction = vi.fn();
+    const onSelectCardAction = vi.fn();
+    const meteor = (unitId: string) => ({
+      label: `Meteor Shower at ${unitId}`,
+      action: {
+        type: "PLAY_CARD" as const,
+        playerId: "p1" as const,
+        cardId: "specialty.deemer.1",
+        mode: "basic" as const,
+        optionIndex: 0,
+        target: { type: "unit" as const, unitId }
+      }
+    });
     render(
       <CardZoomProvider>
         <ReactionTray
-          legalActions={[
-            {
-              label: "Meteor Shower at Skeletons",
-              action: {
-                type: "PLAY_REACTION",
-                playerId: "p1",
-                cardId: "specialty.deemer.1",
-                mode: "basic",
-                optionIndex: 0,
-                target: { type: "unit", unitId: "unit_p2_skeletons" }
-              }
-            }
-          ]}
+          legalActions={[meteor("unit_p2_skeletons"), meteor("unit_p2_vampires")]}
           onAction={onAction}
+          onSelectCardAction={onSelectCardAction}
           state={state}
           view={getPlayerView(state, "p1")}
           viewerPlayerId="p1"
@@ -1319,17 +1321,40 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
       </CardZoomProvider>
     );
 
-    const meteorTargets = screen.getAllByRole("button", { name: /Activate /i });
-    expect(meteorTargets.length).toBeGreaterThan(0);
-    act(() => fireEvent.click(meteorTargets[0]));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
-    act(() => fireEvent.click(screen.getByRole("button", { name: /Crown/i })));
-    act(() => fireEvent.click(confirmButton()));
+    const aim = screen.getAllByRole("button", { name: "Choose Power & target" });
+    expect(aim).toHaveLength(1);
+    expect(screen.queryByText(/Meteor Shower at/i)).toBeNull();
+    act(() => fireEvent.click(aim[0]));
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    const armedAction = onSelectCardAction.mock.calls[0][0];
+    cleanup();
 
-    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
-    expect(played.cardId).toBe("specialty.deemer.1");
-    expect(played.costCardIds).toEqual(["stat.power"]);
-    expect(played.costCardModes).toEqual(["expert"]);
+    const onAim = vi.fn();
+    render(
+      <CardZoomProvider>
+        <MeteorPowerWindow
+          action={armedAction}
+          onAim={onAim}
+          onCancel={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    expect(screen.getByRole("dialog", { name: /Meteor Shower I Power/i })).toBeTruthy();
+    expect(screen.queryByText("Basic Water Magic")).toBeNull();
+    expect(screen.queryByText(/Meteor Shower at/i)).toBeNull();
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^\+1 Power$/ })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /Use crown/i })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /Use Power & choose target/i })));
+    expect(onAction).not.toHaveBeenCalled();
+    expect(onAim).toHaveBeenCalledTimes(1);
+    expect(onAim.mock.calls[0][0].cardId).toBe("specialty.deemer.1");
+    expect(onAim.mock.calls[0][1]).toEqual({
+      costCardIds: ["stat.power"],
+      costCardModes: ["expert"]
+    });
   });
 
   it("CONTROL: with no crowns the +1 Power source shows no Crown toggle and cannot reach the skip", () => {

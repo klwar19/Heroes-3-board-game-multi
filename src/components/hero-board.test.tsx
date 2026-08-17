@@ -355,18 +355,19 @@ describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
     expect(container.querySelector(".hbGrade")?.textContent).not.toContain("Expert");
   });
 
-  it("renders a node picker with unspent points and dispatches HERO_GRADE_PICK on click", () => {
+  it("opens the grade window with unspent points and dispatches HERO_GRADE_PICK on click", () => {
     const state = gradesAdventure();
     const hero = getMainHero(state, "p1")!;
     hero.grade = 1;
     hero.gradePoints = 1;
     const dispatched: unknown[] = [];
-    const { container } = render(
+    render(
       <CardZoomProvider>
         <HeroBoard state={state} playerId="p1" onAction={(action) => dispatched.push(action)} />
       </CardZoomProvider>
     );
-    const pick = container.querySelector(".hbGradePick");
+    fireEvent.click(screen.getByRole("button", { name: /Hero Grade/i }));
+    const pick = document.querySelector(".heroGradeNode.available");
     expect(pick, "a pick button should render with an unspent point").toBeTruthy();
     fireEvent.click(pick as Element);
     expect(dispatched).toHaveLength(1);
@@ -390,6 +391,39 @@ describe("HeroBoard — anime Hero Grades chip + picker (§3.11)", () => {
     expect(available).toBeTruthy();
     fireEvent.click(available as Element);
     expect((dispatched[0] as { type: string }).type).toBe("HERO_GRADE_PICK");
+  });
+
+  it("uses Hero Grade wording for anime factions and exposes the ? rules panel", () => {
+    const state = createAdventureGameState({
+      seed: "hero-board-grade-help",
+      rollFirstPlayer: false,
+      anime: { enabled: true, heroGrades: true, isekaiTowns: true },
+      players: [
+        { id: "p1", name: "Bin", factionId: "fuyuki", heroDefId: "bin" },
+        { id: "p2", name: "Sandro", factionId: "necropolis", heroDefId: "sandro" }
+      ]
+    });
+    renderBoardState(state);
+    fireEvent.click(screen.getByRole("button", { name: /Hero Grade/i }));
+    expect(screen.getByRole("dialog", { name: "Hero Grade" })).toBeTruthy();
+    expect(screen.queryByText("Spirit Rank")).toBeNull();
+    const help = screen.getByRole("button", { name: "How Hero Grades work" });
+    fireEvent.click(help);
+    expect(screen.getByText("Earn Merit")).toBeTruthy();
+    expect(screen.getByText(/four stable random choices/i)).toBeTruthy();
+  });
+
+  it("renders generated grade and ability artwork in the polished tier buttons", () => {
+    const state = gradesAdventure();
+    getMainHero(state, "p1")!.grade = 1;
+    renderBoardState(state);
+    fireEvent.click(screen.getByRole("button", { name: /Hero Grade/i }));
+    const dialog = screen.getByRole("dialog", { name: "Hero Grade" });
+    expect(dialog.querySelector(".heroGradeEmblem")).toBeTruthy();
+    expect(dialog.querySelectorAll(".heroGradeAbilityEmblem").length).toBe(12);
+    expect(dialog.querySelectorAll(".heroGradeNode.tier-1")).toHaveLength(4);
+    expect(dialog.querySelectorAll(".heroGradeNode.tier-2")).toHaveLength(4);
+    expect(dialog.querySelectorAll(".heroGradeNode.tier-3")).toHaveLength(4);
   });
 
   it("CONTROL — with the module OFF, no grade chip renders", () => {

@@ -11,6 +11,7 @@ import {
   gradeForMerit,
   heroGradeLabel,
   heroGradeOf,
+  heroGradeNodesForPlayer,
   heroGradePickableNodes,
   heroGradeProgressOf,
   heroGradeRegisterKey,
@@ -25,7 +26,7 @@ import {
   type PlayerId
 } from "./index";
 import { beginFieldVisit, startAdventureRound } from "./adventure";
-import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
+import { finalizeAdventureCombat, placementCellsFor, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { scoreMapAction } from "./computer/map-policy";
@@ -41,6 +42,12 @@ import {
   type HeroGradeNode
 } from "@/data/anime/hero-grades";
 import { heroGradeWinGold } from "./anime-hero-grades";
+import {
+  applyHeroGradeRoundStartDamage,
+  expireHeroGradeFamiliars,
+  injectHeroGradeFamiliar,
+  STARWIND_FAMILIAR_CARD_IMAGE
+} from "./hero-grade-combat";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -250,7 +257,7 @@ describe("anime.heroGrades — Training Manual item", () => {
     expect(state.players.p1.removed).toContain(HERO_GRADE_TRAINING_MANUAL_CARD_ID);
   });
 
-  it("is sold at a guild shop for 2 gold (module ON); a module-OFF visit never offers it (CONTROL)", () => {
+  it("is sold at a guild shop for 5 gold (module ON); a module-OFF visit never offers it (CONTROL)", () => {
     // Module ON: the shop visit appends the manual PAY_TO offer.
     const on = adventure("hg-shop-on");
     on.players.p1.resources.gold = 10;
@@ -263,14 +270,14 @@ describe("anime.heroGrades — Training Manual item", () => {
     expect(payTo, "the Merchant Guild Post should sell the Training Manual").toBeTruthy();
 
     // Resolve the shop's own step (the Trading Post opens a menu — decline/finish),
-    // then pay for the manual. Drive to the PAY_TO and accept the 2-gold option.
+    // then pay for the manual. Drive to the PAY_TO and accept the 5-gold option.
     let state = on;
     let guard = 0;
     while (state.adventure?.pendingVisit && guard < 12) {
       guard += 1;
       const legal = getLegalActions(state, "p1");
       const pay = legal.find(
-        (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && /training manual|2 gold|pay/i.test(entry.label)
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && /training manual|5 gold|pay/i.test(entry.label)
       );
       const finishShop = legal.find(
         (entry) =>
@@ -283,7 +290,7 @@ describe("anime.heroGrades — Training Manual item", () => {
       if (state.players.p1.hand.includes(HERO_GRADE_TRAINING_MANUAL_CARD_ID)) break;
     }
     expect(state.players.p1.hand).toContain(HERO_GRADE_TRAINING_MANUAL_CARD_ID);
-    expect(state.players.p1.resources.gold).toBe(8); // 10 − 2
+    expect(state.players.p1.resources.gold).toBe(5); // 10 − 5
 
     // CONTROL: module OFF, the same shop visit never appends the manual offer.
     const off = adventure("hg-shop-off", DEFAULT_ANIME_OPTIONS);
@@ -383,6 +390,22 @@ describe("anime.heroGrades — grade thresholds", () => {
 // ===========================================================================
 
 describe("anime.heroGrades — tree pick gating", () => {
+  it("deals exactly four deterministic, varied choices per tier for each hero and town", () => {
+    const first = adventure("hg-deal-a");
+    const repeat = adventure("hg-deal-a");
+    const otherHero = adventure("hg-deal-a");
+    getMainHero(otherHero, "p1")!.heroDefId = "adelaide";
+    const other = adventure("hg-deal-b", GRADES_ON, { players: [
+      { id: "p1", name: "Azure", factionId: "azure_breeze", heroDefId: "qingyun" },
+      { id: "p2", name: "Fuyuki", factionId: "fuyuki", heroDefId: "bin" }
+    ] });
+    const dealt = heroGradeNodesForPlayer(first, "p1");
+    expect([1, 2, 3].map((tier) => dealt.filter((node) => node.tier === tier).length)).toEqual([4, 4, 4]);
+    expect(heroGradeNodesForPlayer(repeat, "p1").map((node) => node.id)).toEqual(dealt.map((node) => node.id));
+    expect(heroGradeNodesForPlayer(otherHero, "p1").map((node) => node.id)).not.toEqual(dealt.map((node) => node.id));
+    expect(heroGradeNodesForPlayer(other, "p1").map((node) => node.id)).not.toEqual(dealt.map((node) => node.id));
+  });
+
   it("offers only unlocked tiers, refuses a locked tier, a double-pick and an unknown node", () => {
     let state = adventure("hg-pick");
     state = startTurn(state);
@@ -390,7 +413,7 @@ describe("anime.heroGrades — tree pick gating", () => {
     hero.grade = 1;
     hero.gradePoints = 1;
 
-    // Only tier-1 nodes are pickable at grade 1 (3 classic + Encore).
+    // Each hero/town is dealt exactly four deterministic-random choices per tier.
     const pickable = heroGradePickableNodes(state, "p1");
     expect(pickable.every((node) => node.tier === 1)).toBe(true);
     expect(pickable.length).toBe(4);
@@ -404,8 +427,8 @@ describe("anime.heroGrades — tree pick gating", () => {
     expect(unknown.errors.length).toBeGreaterThan(0);
 
     // Pick a valid tier-1 node — the point is spent, the node recorded.
-    state = applyOk(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: HERO_GRADE_NODE_IDS.provisioner });
-    expect(getMainHero(state, "p1")!.gradeNodes).toEqual([HERO_GRADE_NODE_IDS.provisioner]);
+    state = applyOk(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: pickable[0].id });
+    expect(getMainHero(state, "p1")!.gradeNodes).toEqual([pickable[0].id]);
     expect(getMainHero(state, "p1")!.gradePoints).toBe(0);
 
     // With no point left, nothing is pickable.
@@ -416,7 +439,7 @@ describe("anime.heroGrades — tree pick gating", () => {
     const stillPickable = heroGradePickableNodes(state, "p1");
     expect(stillPickable.some((node) => node.tier === 1)).toBe(false);
     // A second tier-1 pick is refused at the handler too.
-    const doublePick = applyAction(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: HERO_GRADE_NODE_IDS.battleFocus });
+    const doublePick = applyAction(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: pickable[1].id });
     expect(doublePick.errors.length).toBeGreaterThan(0);
   });
 });
@@ -528,6 +551,65 @@ describe("anime.heroGrades — passive node effects", () => {
     }
     expect(power(true)).toBe(power(false) + 1);
   });
+
+  it("new round-economy nodes pay ore on Astrologers rounds and crystals on Resources rounds", () => {
+    const astrologers = adventure("hg-ore");
+    grantNodes(astrologers, "p1", [HERO_GRADE_NODE_IDS.oreDivination], 1);
+    astrologers.round = 2;
+    const oreBefore = astrologers.players.p1.resources.buildingMaterials;
+    startAdventureRound(astrologers);
+    expect(astrologers.players.p1.resources.buildingMaterials).toBe(oreBefore + 1);
+
+    const resources = adventure("hg-crystal");
+    grantNodes(resources, "p1", [HERO_GRADE_NODE_IDS.crystalDividend], 2);
+    resources.round = 3;
+    const crystalBefore = resources.players.p1.resources.valuables;
+    startAdventureRound(resources);
+    expect(resources.players.p1.resources.valuables).toBeGreaterThanOrEqual(crystalBefore + 1);
+  });
+
+  it("Overflowing Insight draws one over limit and immediately requires a discard back down", () => {
+    let state = adventure("hg-overdraw");
+    state.round = 2;
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.overflowingInsight], 1);
+    const player = state.players.p1;
+    player.hand = [];
+    player.canMulligan = true;
+    player.needsHandRefresh = false;
+    const limit = effectiveHandLimit(state, "p1");
+    state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    expect(state.players.p1.hand).toHaveLength(limit + 1);
+    expect(state.players.p1.needsHandRefresh).toBe(true);
+    state = applyOk(state, {
+      type: "REFRESH_HAND",
+      playerId: "p1",
+      discardCardIds: [state.players.p1.hand[0]]
+    });
+    expect(state.players.p1.hand).toHaveLength(limit);
+    expect(state.players.p1.needsHandRefresh).toBe(false);
+  });
+
+  it("Wandering Curio Dealer queues an optional 3-gold random Minor Artifact offer", () => {
+    const state = adventure("hg-curio");
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.wanderingCurioDealer], 2);
+    state.round = 2;
+    startAdventureRound(state);
+    const offer = state.adventure!.rewardQueue.find(
+      (reward) => reward.kind === "visit-steps" && reward.steps.some(
+        (step) => step.type === "PAY_TO" && step.costOptions.some((cost) => cost.gold === 3)
+      )
+    );
+    expect(offer).toBeTruthy();
+  });
+
+  it("Veteran Mentor grants every army card +1 XP at each game-round start", () => {
+    const state = adventure("hg-mentor", GRADES_ON, { unitExperience: true });
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.veteranMentor], 3);
+    const before = state.players.p1.army.map((unit) => unit.experience ?? 0);
+    state.round = 2;
+    startAdventureRound(state);
+    expect(state.players.p1.army.map((unit) => unit.experience ?? 0)).toEqual(before.map((xp) => xp + 1));
+  });
 });
 
 // ===========================================================================
@@ -584,6 +666,65 @@ function attack(state: GameState): GameState {
 }
 
 describe("anime.heroGrades — skill node effects", () => {
+  it("First Blood grants +2 only to the first declared attack of the combat", () => {
+    const control = resolveReactions(attack(combatState("hg-first-blood-control", [])));
+    const buffed = resolveReactions(attack(combatState("hg-first-blood", [HERO_GRADE_NODE_IDS.firstBlood])));
+    expect(initiatingAttackRolled(buffed).attackValue).toBe(initiatingAttackRolled(control).attackValue + 2);
+    expect(buffed.players.p1.combatStats.heroSkillsUsedThisCombat).toContain(HERO_GRADE_NODE_IDS.firstBlood);
+  });
+
+  it("Spirit Companion summons the framed, sortable 2/1/2/8 familiar for round 1, then it expires", () => {
+    const state = combatState("hg-familiar", [HERO_GRADE_NODE_IDS.spiritCompanion]);
+    const familiar = injectHeroGradeFamiliar(state, "p1", [16, 17, 18, 19]);
+    expect(familiar).toMatchObject({ attack: 2, defense: 1, maxHealth: 2, initiative: 8 });
+    expect(familiar?.assets?.cardImage).toBe(STARWIND_FAMILIAR_CARD_IMAGE);
+    expireHeroGradeFamiliars(state, 1);
+    expect(familiar?.damage).toBe(familiar?.maxHealth);
+  });
+
+  it("Spirit Companion is present during combat preparation and can be repositioned without consuming an army slot", () => {
+    let state = startTurn(adventure("hg-familiar-setup"));
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.spiritCompanion], 1);
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = "familiar-guard";
+    state.adventure!.fields[hero.spaceId] = {
+      spaceId: hero.spaceId,
+      tileInstanceId: "familiar-tile",
+      slot: 0,
+      location: "mine",
+      difficulty: 1,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    };
+    startNeutralEncounter(state, hero, state.adventure!.fields[hero.spaceId]);
+    const familiar = Object.values(state.combat!.units).find((unit) => unit.heroGradeExpiresAfterRound === 1)!;
+    expect(familiar).toBeTruthy();
+    expect(state.combat!.setup?.placedUnitIds.p1).toEqual([]);
+    const destination = placementCellsFor(state, "p1").find(
+      (cell) => !Object.values(state.combat!.units).some((unit) => unit.position === cell)
+    )!;
+    state = applyOk(state, {
+      type: "PLACE_COMBAT_UNIT",
+      playerId: "p1",
+      armyUnitId: familiar.armyUnitId!,
+      position: destination
+    });
+    expect(Object.values(state.combat!.units).find((unit) => unit.id === familiar.id)?.position).toBe(destination);
+    expect(state.combat!.setup?.placedUnitIds.p1).toEqual([]);
+  });
+
+  it("Falling Star damages the slowest enemy at combat-round start without a war-machine event", () => {
+    const state = combatState("hg-falling-star", [HERO_GRADE_NODE_IDS.fallingStar]);
+    const enemies = Object.values(state.combat!.units).filter((unit) => unit.controllerId === "p2");
+    enemies.forEach((unit, index) => { unit.initiative = index + 1; unit.maxHealth = 80; unit.damage = 0; });
+    const slowest = enemies[0];
+    applyHeroGradeRoundStartDamage(state);
+    expect(slowest.damage).toBe(1);
+    expect(state.eventLog.some((event) => event.type === "WAR_MACHINE_TRIGGERED")).toBe(false);
+  });
+
   it("War Cry (active): +1 Attack this activation, offered pre-attack (CONTROL: no node)", () => {
     function warCryAttackValue(withNode: boolean): number {
       let state = combatState(`hg-warcry-${withNode}`, withNode ? [HERO_GRADE_NODE_IDS.warCry] : []);
@@ -777,27 +918,16 @@ describe("anime.heroGrades — skill node effects", () => {
     expect(damageTaken(true)).toBe(control - 1); // the Defense token's Defend die soaked 1
   });
 
-  it("Forced March (map active): +1 movement, once per round (CONTROL fresh next round)", () => {
-    let state = adventure("hg-march");
-    state = startTurn(state);
+  it("Forced March (passive): +1 movement at the beginning of each Resources round", () => {
+    const state = adventure("hg-march");
+    const control = adventure("hg-march-control");
     grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.forcedMarch], 2);
-    const hero = getMainHero(state, "p1")!;
-    hero.spaceId = "start";
-    hero.movementPoints = 2;
-
-    const offer = getLegalActions(state, "p1").find(
-      (entry) => entry.action.type === "USE_HERO_SKILL" && entry.action.nodeId === HERO_GRADE_NODE_IDS.forcedMarch
-    );
-    expect(offer).toBeTruthy();
-    state = applyOk(state, offer!.action);
-    expect(getMainHero(state, "p1")!.movementPoints).toBe(3); // +1
-
-    // Once per round: not offered again this round.
+    state.round = 3;
+    control.round = 3;
+    startAdventureRound(control);
+    startAdventureRound(state);
+    expect(getMainHero(state, "p1")!.movementPoints).toBe(getMainHero(control, "p1")!.movementPoints + 1);
     expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "USE_HERO_SKILL")).toBe(false);
-    // Fresh next round.
-    state.round += 1;
-    getMainHero(state, "p1")!.movementPoints = 2;
-    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "USE_HERO_SKILL")).toBe(true);
   });
 
   it("CONTROL: combat skills are NOT offered when the main hero is not in the fight (garrison scope)", () => {

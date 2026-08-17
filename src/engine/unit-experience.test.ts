@@ -18,6 +18,7 @@ import {
   unitRankAbilityIcon
 } from "@/data/units/experience";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import { unitAbilities } from "@/data/units/abilities";
 import { mgqJobsForUnit } from "./mgq-jobs";
 import { getLegalMoveDestinations } from "./legal-actions";
@@ -25,6 +26,7 @@ import {
   applyAction,
   createAdventureGameState,
   createInitialGameState,
+  DEFAULT_ANIME_OPTIONS,
   getLegalActions,
   getMainHero,
   makeCombatUnitFromArmy,
@@ -61,7 +63,7 @@ function makeAdventure(
     unitExperience?: boolean;
     ruleset?: "legacy" | "binh";
     wog?: { enabled: boolean; unitExperience?: boolean; commanders?: boolean };
-    anime?: { enabled: boolean; unitExperience?: boolean; isekaiTowns?: boolean; xianxiaTowns?: boolean };
+    anime?: { enabled: boolean; unitExperience?: boolean; heroGrades?: boolean; isekaiTowns?: boolean; xianxiaTowns?: boolean };
     houseRules?: Record<string, boolean>;
     players?: { id: string; name: string; factionId: string; heroId?: string }[];
   } = {}
@@ -573,6 +575,19 @@ describe("Unit Experience — toggle surfaces", () => {
 });
 
 describe("Unit Experience — XP awards after combat", () => {
+  it("Combat Scholar adds 1 UNIT XP to each surviving deployed unit after a win", () => {
+    const state = makeAdventure("uxp-combat-scholar", {
+      unitExperience: true,
+      anime: { enabled: true, unitExperience: true, heroGrades: true }
+    });
+    state.anime = { ...DEFAULT_ANIME_OPTIONS, ...state.anime, enabled: true, heroGrades: true };
+    getMainHero(state, "p1")!.gradeNodes = [HERO_GRADE_NODE_IDS.combatScholar];
+    state.players.p1.army = [{ ...MARKSMEN }];
+    const survivor = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", "u_scholar", 0, "legacy")!;
+    finishNeutralCombat(state, { [survivor.id]: survivor }, "p1", { difficulty: 3 });
+    expect(state.players.p1.army[0].experience).toBe(4);
+  });
+
   it("a won neutral fight grants difficulty XP to SURVIVING deployed units only", () => {
     const state = makeAdventure("uxp-award", { unitExperience: true });
     state.players.p1.army = [{ ...MARKSMEN }, { ...GRIFFINS }, { ...ZEALOTS }];

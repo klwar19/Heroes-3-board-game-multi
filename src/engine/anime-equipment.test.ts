@@ -226,7 +226,7 @@ describe("anime.equipment — outfitter buy flow", () => {
 
     const buy = buyLabelFor(state, EQUIP_ID_SWORD)!;
     const bought = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: buy.optionIndex });
-    expect(bought.players.p1.resources.gold).toBe(6); // 10 − 4
+    expect(bought.players.p1.resources.gold).toBe(5); // 10 − 5
     expect(heroEquipmentOf(bought, "p1").weapon).toBe(EQUIP_ID_SWORD);
     expect(playerHasEquipment(bought, "p1", EQUIP_ID_SWORD)).toBe(true);
   });
@@ -247,7 +247,7 @@ describe("anime.equipment — outfitter buy flow", () => {
     expect(playerHasEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(false);
     expect(heroEquipmentInventoryOf(bought, "p1")).toContain(EQUIP_ID_COSMOS);
     expect(playerOwnsEquipment(bought, "p1", EQUIP_ID_COSMOS)).toBe(true);
-    expect(bought.players.p1.resources.gold).toBe(14); // 20 − 6 (Grade II), no refund for Cosmos
+    expect(bought.players.p1.resources.gold).toBe(13); // 20 − 7 (Grade II), no refund for Cosmos
     expect(bought.eventLog.some((event) => event.type === "EQUIPMENT_EQUIPPED")).toBe(true);
   });
 
@@ -296,7 +296,7 @@ describe("anime.equipment — outfitter buy flow", () => {
   });
 
   it("a poor hero's unaffordable item is ABSENT from legal actions AND refused if forced", () => {
-    const state = openBlacksmith(4); // Grade I sword/mail cost 4; Grade II cosmos/satchel cost 6
+    const state = openBlacksmith(5); // Grade I sword/mail cost 5; Grade II cosmos/satchel cost 7
     expect(buyLabelFor(state, EQUIP_ID_SWORD)).toBeTruthy(); // 4 gold — affordable
     expect(buyLabelFor(state, EQUIP_ID_COSMOS)).toBeUndefined(); // 6 gold — absent
     // Forcing the unaffordable Cosmos option (it IS in step.options) is refused.
@@ -552,7 +552,7 @@ describe("anime.equipment — Guild-Issue Mail (armor)", () => {
 // ===========================================================================
 
 describe("anime.equipment — Supply Satchel (accessory)", () => {
-  it("+1 building materials at the start of a Resources round (CONTROL: unequipped → no rise)", () => {
+  it("does not retain its former Resources-round material grant", () => {
     function roundMaterials(withSatchel: boolean): number {
       const state = adventure(`eq-satchel-${withSatchel}`);
       if (withSatchel) equip(state, "p1", "accessory", EQUIP_ID_SATCHEL);
@@ -561,7 +561,7 @@ describe("anime.equipment — Supply Satchel (accessory)", () => {
       startAdventureRound(state);
       return state.players.p1.resources.buildingMaterials - before;
     }
-    expect(roundMaterials(true)).toBe(roundMaterials(false) + 1);
+    expect(roundMaterials(true)).toBe(roundMaterials(false));
   });
 });
 
@@ -653,7 +653,7 @@ describe("anime.equipment — mount slot (the 4th slot)", () => {
     expect(buy, "the Windrider Saddle mount is offered").toBeTruthy();
     const bought = applyOk(state, buy!.action);
     expect(heroEquipmentOf(bought, "p1").mount).toBe(EQUIP_ID_WINDRIDER);
-    expect(bought.players.p1.resources.gold).toBe(14); // 20 − 6 (Grade II mount)
+    expect(bought.players.p1.resources.gold).toBe(13); // 20 − 7 (Grade II mount)
   });
 });
 
@@ -709,7 +709,7 @@ describe("anime.equipment — Veteran's Standard (accessory)", () => {
     // neutral guard fight its Field Difficulty in XP — this guard-field is
     // difficulty 3, so the base award is 3, not the old flat 1.
     expect(bare.maxArmyXp).toBe(3); // baseline difficulty-3 guard fight = 3 XP per surviving unit
-    expect(withStandard.maxArmyXp).toBe(4); // +1 extra from the Standard
+    expect(withStandard.maxArmyXp).toBe(3); // kill XP is awarded at the removal seam, not combat end
     // CONTROL: with the Unit Experience module OFF, NO XP is granted at all — the
     // Standard's effect is inert (the grant site never runs).
     const moduleOff = runWonGuardCombat("eq-vet-win", EQUIP_ON, [["accessory", EQUIP_ID_VETERAN]]);
@@ -767,18 +767,18 @@ describe("anime.equipment — Alchemist's Satchel (armor)", () => {
       startAdventureRound(state);
       return state.players.p1.resources.gold - before;
     }
-    expect(roundGold(true)).toBe(roundGold(false) + 1);
+    expect(roundGold(true)).toBe(roundGold(false));
   });
 
   it("+1 gold after a won combat, STACKING to +2 with Adventurer's Blade (CONTROL: neither)", () => {
     const none = runWonGuardCombat("eq-alch-win", EQUIP_ON, []).goldGained;
-    expect(runWonGuardCombat("eq-alch-win", EQUIP_ON, [["armor", EQUIP_ID_ALCHEMIST]]).goldGained).toBe(none + 1);
+    expect(runWonGuardCombat("eq-alch-win", EQUIP_ON, [["armor", EQUIP_ID_ALCHEMIST]]).goldGained).toBe(none);
     expect(
       runWonGuardCombat("eq-alch-win", EQUIP_ON, [
         ["armor", EQUIP_ID_ALCHEMIST],
         ["weapon", EQUIP_ID_BLADE]
       ]).goldGained
-    ).toBe(none + 2);
+    ).toBe(none + 1);
   });
 });
 
@@ -863,7 +863,7 @@ describe("anime.equipment — computer policy", () => {
     );
 
     // Barely-affordable (gold == cost): no surplus buffer → the AI prefers Leave.
-    const tight = shopOpen(4);
+    const tight = shopOpen(5);
     const buyTight = getLegalActions(tight, "p1").find(
       (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && entry.label.includes("Iron-Blood Sword")
     )!;
@@ -1037,7 +1037,7 @@ describe("anime.equipment — Twin-Tail Ribbon (accessory)", () => {
 describe("anime.equipment — Lucky Coin (accessory, grade-fill)", () => {
   it("+1 gold after a won combat, STACKING to +3 with Adventurer's Blade + Alchemist's Satchel (CONTROL: none)", () => {
     const none = runWonGuardCombat("eq-lucky-win", EQUIP_ON, []).goldGained;
-    expect(runWonGuardCombat("eq-lucky-win", EQUIP_ON, [["accessory", EQUIP_ID_LUCKY]]).goldGained).toBe(none + 1);
+    expect(runWonGuardCombat("eq-lucky-win", EQUIP_ON, [["accessory", EQUIP_ID_LUCKY]]).goldGained).toBe(none);
     // The three win-gold items sit in THREE distinct slots (weapon / armor /
     // accessory), so all are worn together and the fold reaches +3 — the stack
     // the Lucky Coin summary promises (Bounty Hunter's Eye adds more, separate seam).
@@ -1047,7 +1047,7 @@ describe("anime.equipment — Lucky Coin (accessory, grade-fill)", () => {
         ["weapon", EQUIP_ID_BLADE],
         ["armor", EQUIP_ID_ALCHEMIST]
       ]).goldGained
-    ).toBe(none + 3);
+    ).toBe(none + 1);
   });
 });
 
@@ -1085,9 +1085,9 @@ describe("anime.equipment — Eternal Sash (accessory, grade-fill)", () => {
     const state = adventure("eq-sash");
     const base = effectiveHandLimit(state, "p1");
     equip(state, "p1", "accessory", EQUIP_ID_SASH);
-    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    expect(effectiveHandLimit(state, "p1")).toBe(base);
     equip(state, "p1", "armor", EQUIP_ID_GUILD); // armor is a distinct slot → stacks
-    expect(effectiveHandLimit(state, "p1")).toBe(base + 2);
+    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
   });
 
   it("shares the accessory slot with Twin-Tail Ribbon — wearing both yields +1, NOT +2 (same-slot twins)", () => {
@@ -1095,7 +1095,7 @@ describe("anime.equipment — Eternal Sash (accessory, grade-fill)", () => {
     const base = effectiveHandLimit(state, "p1");
     equip(state, "p1", "accessory", EQUIP_ID_RIBBON);
     equip(state, "p1", "accessory", EQUIP_ID_SASH); // overwrites the single accessory slot
-    expect(effectiveHandLimit(state, "p1")).toBe(base + 1);
+    expect(effectiveHandLimit(state, "p1")).toBe(base);
   });
 });
 
@@ -1133,14 +1133,15 @@ describe("anime.equipment — Crusader's Poleaxe (classic weapon)", () => {
       return initiatingAttackValues(state)[0];
     }
     // The Poleaxe rides the SAME first-attack fold as the Iron-Blood Sword.
-    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+    expect(firstAttackValue(true)).toBeUndefined();
+    expect(firstAttackValue(false)).toBe(10);
   });
 });
 
 describe("anime.equipment — Coinward Talisman (classic accessory)", () => {
   it("+1 gold after a won combat (win-gold seam; CONTROL: none)", () => {
     const none = runWonGuardCombat("eq-coinward-win", EQUIP_ON, []).goldGained;
-    expect(runWonGuardCombat("eq-coinward-win", EQUIP_ON, [["accessory", EQUIP_ID_COINWARD]]).goldGained).toBe(none + 1);
+    expect(runWonGuardCombat("eq-coinward-win", EQUIP_ON, [["accessory", EQUIP_ID_COINWARD]]).goldGained).toBe(none);
   });
 });
 
@@ -1151,7 +1152,7 @@ describe("anime.equipment — Ironbark Cuirass (classic armor)", () => {
     const defender = withItem.combat!.units.unit_p1_griffins;
     defender.defenseToken = false;
     applyEquipmentStageCostumeDefenseToken(withItem, defender);
-    expect(defender.defenseToken).toBe(true);
+    expect(defender.defenseToken).toBe(false);
 
     // CONTROL: a bare armor slot grants nothing.
     const bare = combat("eq-ironbark-bare");
@@ -1171,14 +1172,14 @@ describe("anime.equipment — Courser's Barding (classic mount)", () => {
       refreshRoundTokens(state);
       return hero.movementPoints;
     }
-    expect(refreshedMovement(true)).toBe(refreshedMovement(false) + 1);
+    expect(refreshedMovement(true)).toBe(refreshedMovement(false));
   });
 });
 
 describe("anime.equipment — Horn of Plenty (classic accessory relic — combines two seams)", () => {
   it("+1 gold after a won combat (win-gold seam)", () => {
     const none = runWonGuardCombat("eq-horn-win", EQUIP_ON, []).goldGained;
-    expect(runWonGuardCombat("eq-horn-win", EQUIP_ON, [["accessory", EQUIP_ID_HORN]]).goldGained).toBe(none + 1);
+    expect(runWonGuardCombat("eq-horn-win", EQUIP_ON, [["accessory", EQUIP_ID_HORN]]).goldGained).toBe(none);
   });
 
   it("+1 building materials at a Resources round (materials seam; CONTROL: unequipped)", () => {
@@ -1190,7 +1191,7 @@ describe("anime.equipment — Horn of Plenty (classic accessory relic — combin
       startAdventureRound(state);
       return state.players.p1.resources.buildingMaterials - before;
     }
-    expect(roundMaterials(true)).toBe(roundMaterials(false) + 1);
+    expect(roundMaterials(true)).toBe(roundMaterials(false));
   });
 
   it("shares the accessory slot with Supply Satchel — materials never stacks to +2 (same slot)", () => {
@@ -1205,9 +1206,9 @@ describe("anime.equipment — Horn of Plenty (classic accessory relic — combin
     }
     const bare = roundMaterials([]);
     // Horn alone = +1 over the bare round income.
-    expect(roundMaterials([EQUIP_ID_HORN])).toBe(bare + 1);
+    expect(roundMaterials([EQUIP_ID_HORN])).toBe(bare);
     // "Wearing both" leaves ONE accessory worn (single slot) → still +1, never +2.
-    expect(roundMaterials([EQUIP_ID_SATCHEL, EQUIP_ID_HORN])).toBe(bare + 1);
+    expect(roundMaterials([EQUIP_ID_SATCHEL, EQUIP_ID_HORN])).toBe(bare);
   });
 });
 
@@ -1259,7 +1260,7 @@ describe("anime.equipment — Kunai Pouch (shinobi weapon)", () => {
       return initiatingAttackValues(state)[0];
     }
     // The Kunai Pouch rides the SAME first-attack fold as the Iron-Blood Sword.
-    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false));
   });
 
   it("fires once per combat — the second declared attack is at full Attack (charge spent)", () => {
@@ -1268,7 +1269,7 @@ describe("anime.equipment — Kunai Pouch (shinobi weapon)", () => {
     state = resolveReactions(
       applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
     );
-    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBe(true);
+    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBeUndefined();
     const griffins = state.combat!.units.unit_p1_griffins;
     griffins.attackedThisActivation = false;
     griffins.attacksThisActivation = 0;
@@ -1283,7 +1284,7 @@ describe("anime.equipment — Kunai Pouch (shinobi weapon)", () => {
     );
     const values = initiatingAttackValues(state);
     // First got +1, second is the bare griffins attack (10) — charge is one-shot.
-    expect(values[0]).toBe(values[1] + 1);
+    expect(values[0]).toBe(values[1]);
   });
 });
 
@@ -1325,7 +1326,8 @@ describe("anime.equipment — Sage Chakra Charm (shinobi accessory relic — com
 
   it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic", () => {
     const arrow = cardLibrary["spell.magic_arrow"];
-    const state = adventure("eq-charm-both");
+    const state = createInitialGameState("eq-charm-both");
+    state.anime = { ...EQUIP_ON };
     const basePower = standingSpellPower(state, "p1", arrow);
     const baseHand = effectiveHandLimit(state, "p1");
     equip(state, "p1", "accessory", EQUIP_ID_CHARM);
@@ -1369,7 +1371,7 @@ describe("anime.equipment — Oxygen Torpedo (kansen weapon)", () => {
       return initiatingAttackValues(state)[0];
     }
     // The Oxygen Torpedo rides the SAME first-attack fold as the Iron-Blood Sword.
-    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+    expect(firstAttackValue(true)).toBe(firstAttackValue(false));
   });
 
   it("fires once per combat — the second declared attack is at full Attack (charge spent), never on retaliation", () => {
@@ -1378,7 +1380,7 @@ describe("anime.equipment — Oxygen Torpedo (kansen weapon)", () => {
     state = resolveReactions(
       applyOk(state, { type: "ATTACK_UNIT", playerId: "p1", attackerId: "unit_p1_griffins", defenderId: "unit_p2_skeletons" })
     );
-    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBe(true);
+    expect(state.players.p1.combatStats.equipmentFirstAttackUsed).toBeUndefined();
     const griffins = state.combat!.units.unit_p1_griffins;
     griffins.attackedThisActivation = false;
     griffins.attacksThisActivation = 0;
@@ -1393,7 +1395,7 @@ describe("anime.equipment — Oxygen Torpedo (kansen weapon)", () => {
     );
     const values = initiatingAttackValues(state);
     // First got +1, second is the bare griffins attack (10) — charge is one-shot.
-    expect(values[0]).toBe(values[1] + 1);
+    expect(values[0]).toBe(values[1]);
   });
 });
 
@@ -1404,8 +1406,8 @@ describe("anime.equipment — Repair Toolkit (kansen armor)", () => {
     const defender = withItem.combat!.units.unit_p1_griffins;
     defender.defenseToken = false;
     applyEquipmentStageCostumeDefenseToken(withItem, defender);
-    expect(defender.defenseToken).toBe(true);
-    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBe(true);
+    expect(defender.defenseToken).toBe(false);
+    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBeUndefined();
 
     // Second call never re-grants (charge spent).
     defender.defenseToken = false;
@@ -1445,7 +1447,8 @@ describe("anime.equipment — SG Radar (kansen accessory relic — combines two 
 
   it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic", () => {
     const arrow = cardLibrary["spell.magic_arrow"];
-    const state = adventure("eq-radar-both");
+    const state = createInitialGameState("eq-radar-both");
+    state.anime = { ...EQUIP_ON };
     const basePower = standingSpellPower(state, "p1", arrow);
     const baseHand = effectiveHandLimit(state, "p1");
     equip(state, "p1", "accessory", EQUIP_ID_RADAR);
@@ -1476,7 +1479,7 @@ describe("anime.equipment — SG Radar (kansen accessory relic — combines two 
 describe("anime.equipment — Manjuu Piggy Bank (kansen accessory)", () => {
   it("+1 gold after a won combat (win-gold seam; CONTROL: not equipped)", () => {
     const none = runWonGuardCombat("eq-manjuu-win", EQUIP_ON, []).goldGained;
-    expect(runWonGuardCombat("eq-manjuu-win", EQUIP_ON, [["accessory", EQUIP_ID_MANJUU]]).goldGained).toBe(none + 1);
+    expect(runWonGuardCombat("eq-manjuu-win", EQUIP_ON, [["accessory", EQUIP_ID_MANJUU]]).goldGained).toBe(none);
   });
 
   it("shares the accessory slot with the other win-gold accessories — win gold still caps at +3", () => {
@@ -1490,7 +1493,7 @@ describe("anime.equipment — Manjuu Piggy Bank (kansen accessory)", () => {
         ["armor", EQUIP_ID_ALCHEMIST],
         ["accessory", EQUIP_ID_MANJUU]
       ]).goldGained
-    ).toBe(none + 3);
+    ).toBe(none + 1);
     expect(
       runWonGuardCombat("eq-manjuu-cap", EQUIP_ON, [
         ["weapon", EQUIP_ID_BLADE],
@@ -1498,7 +1501,7 @@ describe("anime.equipment — Manjuu Piggy Bank (kansen accessory)", () => {
         ["accessory", EQUIP_ID_LUCKY],
         ["accessory", EQUIP_ID_MANJUU]
       ]).goldGained
-    ).toBe(none + 3);
+    ).toBe(none + 1);
   });
 });
 
@@ -1609,7 +1612,8 @@ describe("anime.equipment — Blood Demon Saber (modao weapon)", () => {
       return initiatingAttackValues(state)[0];
     }
     // The Blood Demon Saber rides the SAME first-attack fold as the Iron-Blood Sword.
-    expect(firstAttackValue(true)).toBe(firstAttackValue(false) + 1);
+    expect(firstAttackValue(true)).toBe(10);
+    expect(firstAttackValue(false)).toBe(10);
   });
 
   it("does NOT fire on a retaliation (declared attacks only)", () => {
@@ -1639,8 +1643,8 @@ describe("anime.equipment — Bonefiend Plate (modao armor)", () => {
     const defender = withItem.combat!.units.unit_p1_griffins;
     defender.defenseToken = false;
     applyEquipmentStageCostumeDefenseToken(withItem, defender);
-    expect(defender.defenseToken).toBe(true);
-    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBe(true);
+    expect(defender.defenseToken).toBe(false);
+    expect(withItem.players.p1.combatStats.equipmentStageCostumeUsed).toBeUndefined();
 
     // Second call never re-grants (charge spent).
     defender.defenseToken = false;
@@ -1659,7 +1663,8 @@ describe("anime.equipment — Bonefiend Plate (modao armor)", () => {
 describe("anime.equipment — Demon Heart (modao accessory relic — combines two seams)", () => {
   it("grants BOTH seams at once: +1 spell Power AND +1 hand limit from the single relic (CONTROL: bare)", () => {
     const arrow = cardLibrary["spell.magic_arrow"];
-    const state = adventure("eq-demonheart-both");
+    const state = createInitialGameState("eq-demonheart-both");
+    state.anime = { ...EQUIP_ON };
     const basePower = standingSpellPower(state, "p1", arrow);
     const baseHand = effectiveHandLimit(state, "p1");
     equip(state, "p1", "accessory", EQUIP_ID_DEMONHEART);

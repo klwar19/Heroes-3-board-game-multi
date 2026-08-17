@@ -19,7 +19,12 @@ import {
   type CommanderSlug
 } from "@/data/commanders";
 import { aggregateCommanderArtifactBonuses } from "@/data/wog/commander-artifacts";
-import { equipmentGrantsCommanderRevive, equipmentGrantsCommanderSort } from "./anime-equipment";
+import {
+  equipmentCommanderHealthBonus,
+  equipmentCommanderSpeedBonus,
+  equipmentGrantsCommanderRevive,
+  equipmentGrantsCommanderSort
+} from "./anime-equipment";
 import { makeActiveEffect, unitImmuneToParalysis } from "./active-effects";
 import { isAdjacent } from "./battlefield";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
@@ -398,6 +403,8 @@ export function injectCommanderIntoCombat(
   if (!unit) {
     return null;
   }
+  unit.maxHealth += equipmentCommanderHealthBonus(state, playerId);
+  unit.initiative += equipmentCommanderSpeedBonus(state, playerId);
   combat.units[unit.id] = unit;
   return unit;
 }

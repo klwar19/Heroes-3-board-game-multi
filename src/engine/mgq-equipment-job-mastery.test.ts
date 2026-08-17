@@ -12,10 +12,10 @@ import {
   type GameState
 } from "./index";
 import {
-  applyEquipmentStageCostumeDefenseToken,
-  equipmentFirstAttackBonus,
-  equipmentIncomingAttackPenalty,
-  markEquipmentAttackResolved
+  equipmentAttackRerollSources,
+  equipmentBronzeInitiativeBonus,
+  equipmentFirstSpellPowerBonus,
+  markEquipmentFirstSpellCast
 } from "./anime-equipment";
 import {
   heroGradeNodesForRegister,
@@ -70,50 +70,41 @@ function gradeState(seed: string, factionId: "castle" | "mgq"): GameState {
 }
 
 describe("MGQ equipment fold reuses", () => {
-  it("Angel Halo grants +1 only to the first declared attack and spends that charge", () => {
+  it("Angel Halo grants +2 Initiative only to bronze allied units", () => {
     const state = createInitialGameState("mgq-angel-halo");
     state.anime = { ...EQUIPMENT_ON };
     equip(state, "weapon", EQUIPMENT_IDS.mgqAngelHalo);
     const attacker = state.combat!.units.unit_p1_griffins;
-    const defender = state.combat!.units.unit_p2_skeletons;
-
-    expect(equipmentFirstAttackBonus(state, attacker, false)).toBe(1);
-    expect(equipmentFirstAttackBonus(state, attacker, true)).toBe(0);
-    markEquipmentAttackResolved(state, attacker, defender, false);
-    expect(equipmentFirstAttackBonus(state, attacker, false)).toBe(0);
+    attacker.grade = "bronze";
+    expect(equipmentBronzeInitiativeBonus(state, attacker)).toBe(2);
+    attacker.grade = "silver";
+    expect(equipmentBronzeInitiativeBonus(state, attacker)).toBe(0);
   });
 
-  it("Heavenly Knight's Aegis grants the first-incoming Defense token and never the -1 Attack fold", () => {
+  it("Heavenly Knight's Aegis supplies one any-die reroll per game round", () => {
     const state = createInitialGameState("mgq-heavenly-aegis");
     state.anime = { ...EQUIPMENT_ON };
     equip(state, "armor", EQUIPMENT_IDS.mgqHeavenlyKnightsAegis);
-    const defender = state.combat!.units.unit_p1_griffins;
-    defender.defenseToken = false;
-
-    // Mutation control: putting Aegis in INCOMING_PENALTY_ITEMS would make this 1.
-    expect(equipmentIncomingAttackPenalty(state, defender, false)).toBe(0);
-    applyEquipmentStageCostumeDefenseToken(state, defender);
-    expect(defender.defenseToken).toBe(true);
-
-    const secondDefender = { controllerId: "p1" as const, id: "second-defender", defenseToken: false };
-    applyEquipmentStageCostumeDefenseToken(state, secondDefender);
-    expect(secondDefender.defenseToken).toBe(false);
+    const sources = equipmentAttackRerollSources(state, "p1", true);
+    expect(sources.map((source) => source.equipmentId)).toContain(EQUIPMENT_IDS.mgqHeavenlyKnightsAegis);
+    state.players.p1.equipmentRoundUses = { [EQUIPMENT_IDS.mgqHeavenlyKnightsAegis]: state.round };
+    expect(equipmentAttackRerollSources(state, "p1", true).map((source) => source.equipmentId))
+      .not.toContain(EQUIPMENT_IDS.mgqHeavenlyKnightsAegis);
   });
 
-  it("Monster Lord's Ring contributes +1 spell Power and +1 hand limit at once", () => {
-    const state = createAdventureGameState({
-      seed: "mgq-monster-lord-ring",
-      difficulty: "normal",
-      rollFirstPlayer: false,
-      anime: EQUIPMENT_ON
-    });
+  it("Monster Lord's Ring contributes +1 Power to the first combat Spell and +1 hand limit", () => {
+    const state = createInitialGameState("mgq-monster-lord-ring");
+    state.anime = { ...EQUIPMENT_ON };
     const spell = cardLibrary["spell.magic_arrow"];
     const basePower = standingSpellPower(state, "p1", spell);
     const baseHand = effectiveHandLimit(state, "p1");
 
     equip(state, "accessory", EQUIPMENT_IDS.mgqMonsterLordsRing);
     expect(standingSpellPower(state, "p1", spell)).toBe(basePower + 1);
+    expect(equipmentFirstSpellPowerBonus(state, "p1")).toBe(1);
     expect(effectiveHandLimit(state, "p1")).toBe(baseHand + 1);
+    markEquipmentFirstSpellCast(state, "p1");
+    expect(equipmentFirstSpellPowerBonus(state, "p1")).toBe(0);
   });
 });
 

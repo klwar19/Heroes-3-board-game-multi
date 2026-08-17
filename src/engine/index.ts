@@ -193,6 +193,7 @@ export {
   spellPowerSidesOfCard,
   spellPowerSourceDrawCards,
   spellPowerValueOfCard,
+  cardCanFuelSchoollessPower,
   spellTimingKind
 } from "./effects";
 export type { SpellLadderRow, SpellPowerSide, SpellTimingKind } from "./effects";
@@ -864,6 +865,7 @@ export {
   pickableNodesFrom,
   heroGradeNode,
   heroGradeNodesForRegister,
+  heroGradeNodesForPlayer,
   heroGradePickableNodes,
   heroGradeRegisterKey,
   heroGradeLabel,
@@ -874,6 +876,7 @@ export {
   HERO_GRADE_TIER_COUNT,
   HERO_GRADE_MAX,
   HERO_GRADE_PICKS_PER_TIER,
+  HERO_GRADE_CHOICES_PER_TIER,
   HERO_GRADE_REGISTERS,
   HERO_GRADE_REGISTER_NODES,
   MGQ_JOB_MASTERY_NODE

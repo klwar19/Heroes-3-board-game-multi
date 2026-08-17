@@ -10,7 +10,7 @@
       .gradeText { font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 20px; font-weight: 700; letter-spacing: 3px; text-anchor: middle; filter: url(#textShadow); }
       .slotText { fill: #a89868; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 18px; font-weight: 700; letter-spacing: 5px; text-anchor: middle; filter: url(#textShadow); }
       .enText { fill: #cfc6a6; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 22px; font-style: italic; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
-      .ruleText { fill: #efe3c2; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 22px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
+      .ruleText { fill: #efe3c2; font-family: "Times New Roman", "Liberation Serif", Georgia, serif; font-size: 24px; font-weight: 700; text-anchor: middle; filter: url(#textShadow); }
     </style>
   </defs>
 
@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#c7ccd6">GRADE I  ·  MINOR EQUIPMENT</text>
     <text x="371" y="654" class="slotText">WEAPON</text>
     <text x="371" y="688" class="enText">Ngư Lôi Dưỡng Khí</text>
-    <g id="editable-rules"><text x="371" y="768" class="ruleText">Weapon: your units' FIRST declared attack</text><text x="371" y="797" class="ruleText">each combat gets +1 Attack (main-hero</text><text x="371" y="826" class="ruleText">fights; not retaliations).</text><line x1="120" y1="861" x2="623" y2="861" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="867" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="896" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="778" class="ruleText">Weapon: +1 Attack against an</text><text x="371" y="809" class="ruleText">already-activated target during round 1.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Minor Artifact.</text></g>
   </g>
 </svg>

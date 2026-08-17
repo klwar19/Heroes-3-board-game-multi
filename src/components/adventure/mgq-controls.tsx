@@ -350,6 +350,10 @@ export function MgqBattleSpiritPicker({
     !playerMainHeroInCombat(state, playerId) ||
     (spiritActions.length === 0 && !player.mgqSpirit)
   ) return null;
+  const heroLevel = Object.values(state.heroes).find(
+    (hero) => hero.controllerId === playerId && hero.kind === "main"
+  )?.level ?? 1;
+  const advanced = heroLevel >= 4;
 
   return (
     <section className="mgqSpiritPanel mgqBattleSpiritPicker" aria-label="Choose one of the Four Spirits">
@@ -357,10 +361,11 @@ export function MgqBattleSpiritPicker({
         <b><img alt="" className="mgqMechanicIcon" src={assetUrl("/assets/anime/icons/mgq/mechanic-spirit-contract.webp")} /> Summon a Spirit</b>
         <small>{player.mgqSpirit ? `${MGQ_SPIRIT_LABELS[player.mgqSpirit]} will join this battle` : "Choose 1 of the 4 Spirits before readying up"}</small>
       </div>
-      <div className="mgqSpiritChoices">
+      <div className="mgqSpiritChoices mgqBattleSpiritChoices">
         {MGQ_SPIRITS.map((spirit) => {
           const selected = player.mgqSpirit === spirit;
           const legal = spiritActions.find((candidate) => candidate.action.spirit === spirit);
+          const rules = MGQ_SPIRIT_RULES[spirit];
           return (
             <button
               aria-pressed={selected}
@@ -368,10 +373,16 @@ export function MgqBattleSpiritPicker({
               disabled={selected || !legal}
               key={spirit}
               onClick={() => legal && onAction(legal.action)}
+              title={`Basic: ${rules.basic}\nAdvanced: ${rules.advanced}`}
               type="button"
             >
-              <span><img alt="" src={assetUrl(SPIRIT_ICONS[spirit])} />{selected ? <Check aria-hidden="true" size={13} /> : <Sparkles aria-hidden="true" size={13} />}{MGQ_SPIRIT_LABELS[spirit]}</span>
-              <small>Lv 1–3: {MGQ_SPIRIT_RULES[spirit].basic}<br />Lv 4–7: {MGQ_SPIRIT_RULES[spirit].advanced}</small>
+              <img alt="" className="mgqBattleSpiritArt" src={assetUrl(SPIRIT_ICONS[spirit])} />
+              <span className="mgqBattleSpiritName">
+                {selected ? <Check aria-hidden="true" size={15} /> : <Sparkles aria-hidden="true" size={15} />}
+                {MGQ_SPIRIT_LABELS[spirit]}
+              </span>
+              <small className="mgqBattleSpiritTier">Lv {heroLevel} · {advanced ? "Advanced" : "Basic"}</small>
+              <small className="mgqBattleSpiritRule">{advanced ? rules.advanced : rules.basic}</small>
             </button>
           );
         })}

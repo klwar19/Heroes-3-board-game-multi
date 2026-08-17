@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { Check, CircleOff, Crown, Dices, Hourglass, Layers, Plus, Sparkles, Sunrise, Swords, Undo2, Zap } from "lucide-react";
+import { Check, CircleOff, Crosshair, Crown, Dices, Hourglass, Layers, Plus, Sparkles, Sunrise, Swords, Undo2, Zap } from "lucide-react";
 import { assetUrl } from "@/lib/asset-url";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { RESOURCE_ICONS } from "@/data/assets/homm-assets";
@@ -18,6 +18,7 @@ import {
   turnClockPausedFor,
   turnClockRunningSeats,
   artifactSetIconImage,
+  cardCanFuelSchoollessPower,
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
@@ -48,6 +49,7 @@ import {
   formatDieFace,
   formatEvent,
   unitName,
+  type CardBoardAction,
   type NoticeReward
 } from "./utils";
 import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
@@ -455,18 +457,192 @@ function SpellBookSaveTile({
   );
 }
 
+/** Spell-style Power picker used by Deemer's Meteor Shower and Kud's Rocket Launcher. */
+export function MeteorPowerWindow({
+  action,
+  state,
+  view,
+  viewerPlayerId,
+  onAim,
+  onCancel
+}: {
+  action: Extract<GameAction, { type: "PLAY_CARD" }>;
+  state: GameState;
+  view: PlayerVisibleState;
+  viewerPlayerId: PlayerId;
+  onAim: (
+    action: Extract<GameAction, { type: "PLAY_CARD" }>,
+    payment: { costCardIds: string[]; costCardModes?: CardPlayMode[] }
+  ) => void;
+  onCancel: () => void;
+}) {
+  const { zoomCard } = useCardZoom();
+  const hand = view.players[viewerPlayerId]?.hand ?? [];
+  const [payIndexes, setPayIndexes] = useState<number[]>([]);
+  const [payModes, setPayModes] = useState<CardPlayMode[]>([]);
+  const [bookCardId, setBookCardId] = useState<string | undefined>();
+  const player = state.players[viewerPlayerId];
+  // This is a Specialty, not a Spell: spell-only standing bonuses do not fuel it.
+  const standing = 0;
+  const crownsAvailable = player
+    ? player.limits.expertUses +
+      (player.combatStats.expertUseBonusThisRound ?? 0) -
+      player.combatStats.expertUsesSpentThisRound
+    : 0;
+  const crownsSelected = payIndexes.filter(
+    (index, position) =>
+      payModes[position] === "expert" &&
+      !cardIsEmpoweredFor(hand[index], view.players[viewerPlayerId]?.empoweredAbilities)
+  ).length;
+  const eligible = hand
+    .map((cardId, index) => ({ cardId, index }))
+    .filter(({ cardId }) => cardCanFuelSchoollessPower(cardLibrary[cardId]));
+  const bookPowerUsable = Boolean(
+    spellBookRuleEnabled(state) && player && spellBookPowerAvailable(player)
+  );
+  const bookSpells = bookPowerUsable
+    ? [...new Set(view.players[viewerPlayerId]?.spellBook ?? [])].filter(
+        (cardId) => cardLibrary[cardId]?.kind === "spell"
+      )
+    : [];
+  const fromHand = payIndexes.reduce(
+    (sum, index, position) =>
+      sum + spellPowerValueOfCard(cardLibrary[hand[index]], [], payModes[position] ?? "basic"),
+    0
+  );
+  const power = standing + fromHand + (bookCardId ? 1 : 0);
+  const damage = power >= 4 ? 3 : power >= 2 ? 2 : 1;
+  const paymentCount = payIndexes.length + (bookCardId ? 1 : 0);
+  const canConfirm = paymentCount <= 4 && crownsSelected <= crownsAvailable;
+
+  const toggle = (index: number) => {
+    const at = payIndexes.indexOf(index);
+    if (at >= 0) {
+      setPayIndexes((current) => current.filter((value) => value !== index));
+      setPayModes((current) => current.filter((_, position) => position !== at));
+      return;
+    }
+    if (paymentCount >= 4) return;
+    setPayIndexes((current) => [...current, index]);
+    setPayModes((current) => [...current, "basic"]);
+  };
+
+  return (
+    <div className="reactionTray meteorPowerTray" role="dialog" aria-label={`${cardName(action.cardId)} Power`}>
+      <header>
+        <Zap aria-hidden="true" size={15} />
+        <strong>{cardName(action.cardId)}</strong>
+        <span>Choose Power, then click the target on the battlefield.</span>
+      </header>
+      <div className="trayTiles">
+        {eligible.length === 0 && bookSpells.length === 0 ? (
+          <div className="trayEmpty">No extra Power sources. You may aim at Power {standing}.</div>
+        ) : null}
+        {eligible.map(({ cardId, index }) => {
+          const pickedAt = payIndexes.indexOf(index);
+          const picked = pickedAt >= 0;
+          const mode = picked ? (payModes[pickedAt] ?? "basic") : "basic";
+          const basicValue = spellPowerValueOfCard(cardLibrary[cardId], [], "basic");
+          const expertValue = spellPowerValueOfCard(cardLibrary[cardId], [], "expert");
+          const empowered = cardIsEmpoweredFor(cardId, view.players[viewerPlayerId]?.empoweredAbilities);
+          const canExpert = expertValue > basicValue;
+          return (
+            <div className={`trayTile ${picked ? "selected" : ""}`} key={`${cardId}-${index}`}>
+              <CardFrame cardId={cardId} className="trayCardImage" empowered={empowered} />
+              <ZoomButton label={`Read ${cardName(cardId)}`} onZoom={() => zoomCard(cardId, empowered)} />
+              <div className="trayTileBody">
+                <strong>{cardName(cardId)}</strong>
+                <button
+                  aria-pressed={picked}
+                  className={`trayPick ${picked ? "picked" : ""}`}
+                  onClick={() => toggle(index)}
+                  type="button"
+                >
+                  <Check aria-hidden="true" size={13} />
+                  <span>+{mode === "expert" ? expertValue : basicValue} Power</span>
+                </button>
+                {picked && canExpert ? (
+                  <button
+                    aria-pressed={mode === "expert"}
+                    className={`trayExpert ${mode === "expert" ? "picked" : ""}`}
+                    disabled={mode !== "expert" && !empowered && crownsSelected >= crownsAvailable}
+                    onClick={() => {
+                      const next = [...payModes];
+                      next[pickedAt] = mode === "expert" ? "basic" : "expert";
+                      setPayModes(next);
+                    }}
+                    type="button"
+                  >
+                    <Crown aria-hidden="true" size={13} />
+                    <span>{mode === "expert" ? `Expert +${expertValue}` : `Use crown (+${expertValue})`}</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+        {bookSpells.map((cardId) => (
+          <div className={`trayTile scrollTile ${bookCardId === cardId ? "selected" : ""}`} key={`meteor-book-${cardId}`}>
+            <CardFrame cardId={cardId} className="trayCardImage" />
+            <div className="trayTileBody">
+              <strong>📖 {cardName(cardId)}</strong>
+              <button
+                aria-pressed={bookCardId === cardId}
+                className={`trayPick ${bookCardId === cardId ? "picked" : ""}`}
+                disabled={!bookCardId && paymentCount >= 4}
+                onClick={() => setBookCardId((current) => current === cardId ? undefined : cardId)}
+                type="button"
+              >
+                <Check aria-hidden="true" size={13} /> +1 Power
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <footer>
+        <div className="trayPreview">
+          <span>Power {power} → {damage} damage</span>
+          <span>{paymentCount}/4 sources</span>
+          <span className="crownMeter"><Crown aria-hidden="true" size={13} /> {crownsSelected}/{crownsAvailable}</span>
+        </div>
+        <button
+          className="trayConfirm"
+          disabled={!canConfirm}
+          onClick={() => {
+            const costCardIds = [...payIndexes.map((index) => hand[index]), ...(bookCardId ? [bookCardId] : [])];
+            const modes = [...payModes, ...(bookCardId ? (["basic"] as CardPlayMode[]) : [])];
+            onAim(action, {
+              costCardIds,
+              ...(modes.some((mode) => mode === "expert") ? { costCardModes: modes } : {})
+            });
+          }}
+          type="button"
+        >
+          <Crosshair aria-hidden="true" size={15} /> Use Power &amp; choose target
+        </button>
+        <button className="trayPass" onClick={onCancel} type="button">
+          <CircleOff aria-hidden="true" size={15} /> Back
+        </button>
+      </footer>
+    </div>
+  );
+}
+
 export function ReactionTray({
   state,
   view,
   viewerPlayerId,
   legalActions,
-  onAction
+  onAction,
+  onSelectCardAction
 }: {
   state: GameState;
   view: PlayerVisibleState;
   viewerPlayerId: PlayerId;
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
+  /** Arms one card, then lets the player choose its unit directly on the board. */
+  onSelectCardAction?: (action: CardBoardAction) => void;
 }) {
   // The parent keys this component by window id + priority player, so the
   // selection naturally resets whenever the timing window changes hands.
@@ -606,8 +782,24 @@ export function ReactionTray({
   // Tarnum-Dungeon's row blast) are ~20 offers, one per board cell — the tray does
   // not list twenty look-alike tiles; those keep the board's existing space-target
   // arming as their pick surface.
+  const isMeteorTargetPlay = (
+    legal: LegalAction
+  ): legal is LegalAction & { action: Extract<GameAction, { type: "PLAY_CARD" }> } =>
+    legal.action.type === "PLAY_CARD" &&
+    legal.action.target?.type === "unit" &&
+    Boolean(cardLibrary[legal.action.cardId]?.tags?.includes("meteor-shower"));
+  const meteorTargetPlays = legalActions.filter(isMeteorTargetPlay);
+  const meteorAimOffers = [...new Map(
+    meteorTargetPlays.map((legal) => [
+      `${legal.action.cardId}:${legal.action.optionIndex ?? -1}:${legal.action.mode ?? "basic"}`,
+      legal
+    ])
+  ).values()];
   const combatInstantJoins = legalActions.filter(
-    (legal) => legal.action.type === "PLAY_CARD" && legal.action.target?.type !== "space"
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.target?.type !== "space" &&
+      !isMeteorTargetPlay(legal)
   );
 
   // Polish Set Artifacts, the pop-up instants ("rolls 2 dice and resolves the
@@ -657,6 +849,7 @@ export function ReactionTray({
   if (state.pendingChoice) {
     return null;
   }
+
 
   // Group the viewer's legal reactions by card + option (+1-Power discards
   // are their own group), then expose one selectable tile per copy in hand.
@@ -1155,9 +1348,28 @@ export function ReactionTray({
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
         combatInstantJoins.length === 0 &&
+        meteorAimOffers.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {meteorAimOffers.map((legal) => {
+          const action = legal.action;
+          return (
+            <div className="trayTile permanentTile" key={`aim-${action.cardId}-${action.optionIndex ?? -1}`}>
+              <CardFrame cardId={action.cardId} className="trayCardImage" />
+              <div className="trayTileBody">
+                <strong>{cardName(action.cardId)}</strong>
+                <button
+                  className="trayInstant"
+                  onClick={() => onSelectCardAction?.(action)}
+                  type="button"
+                >
+                  Choose Power &amp; target
+                </button>
+              </div>
+            </div>
+          );
+        })}
         {combatInstantJoins.map((legal) => {
           const cardId = legal.action.type === "PLAY_CARD" ? legal.action.cardId : "";
           // The engine label describes the EFFECT, not the target, so several

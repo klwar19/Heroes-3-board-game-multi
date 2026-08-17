@@ -43,31 +43,45 @@ import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { cultivationEnabled, cultivationHandLimitBonus, maybeAdvanceCultivationRealm } from "./anime-cultivation";
 import {
   gainGradeProgress,
+  heroGradeAstrologersRoundMaterials,
   heroGradeHandLimitBonus,
+  heroGradeMinorArtifactOffer,
   heroGradeResourceRoundGold,
   heroGradeResourceRoundMaterials,
+  heroGradeResourceRoundMovement,
+  heroGradeResourceRoundValuables,
+  heroHasGradeNode,
   heroGradesEnabled
 } from "./anime-hero-grades";
 import {
   HERO_GRADE_MANUAL_SHOP_LOCATION_IDS,
   HERO_GRADE_MERIT_HEX_LOCATION_IDS,
+  HERO_GRADE_NODE_IDS,
   HERO_GRADE_TRAINING_MANUAL_CARD_ID
 } from "@/data/anime/hero-grades";
 import {
   equipEquipment,
+  equipmentAdventureDieRerollIds,
   equipmentContextAvailable,
   equipmentEnabled,
+  equipmentFreeDrillAvailable,
   equipmentHandLimitBonus,
+  equipmentIgnoresEmbarkPenalty,
   equipmentMovementBonus,
+  equipmentMovesThroughBlockers,
+  equipmentRecruitGoldDiscount,
   equipmentResourceRoundGold,
   equipmentResourceRoundMaterials,
+  equipmentStartInTownMovementBonus,
   playerOwnsEquipment
 } from "./anime-equipment";
 import {
   EQUIPMENT_GRADE_TO_ARTIFACT_TIER,
   EQUIPMENT_SHOP_SALES,
   equipmentRegisterLineFor,
-  getEquipmentDefinition
+  getEquipmentDefinition,
+  listEquipmentDefinitions,
+  type EquipmentGrade
 } from "@/data/anime/equipment";
 import {
   applyMoraleCardGain,
@@ -200,6 +214,7 @@ import {
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
+  grantArmyUnitExperience,
   neutralBankMirrorXp,
   neutralRankUpActive,
   unitExperienceActive,
@@ -1428,11 +1443,11 @@ const NO_MOVEMENT_CAPABILITIES: HeroMovementCapabilities = { moveThrough: false,
  * GAIN_HERO_MOVEMENT already applies to all of a player's heroes.
  */
 export function getHeroMovementCapabilities(state: GameState, hero: HeroState): HeroMovementCapabilities {
-  let moveThrough = false;
+  let moveThrough = equipmentMovesThroughBlockers(state, hero.controllerId);
   let waterWalk = false;
   let passEncounters = false;
   let passAnyField = false;
-  let crossSealedBorders = false;
+  let crossSealedBorders = equipmentMovesThroughBlockers(state, hero.controllerId);
   let crossLayers = false;
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== hero.controllerId) {
@@ -1655,6 +1670,10 @@ export function seaStepHalts(
   // halts the hero — it keeps moving. Disembarking follows the ruleset above. With
   // no sea tiles this branch is never reached, so "ignore with no sea" holds.
   if (!fromSea && toSea && getActiveAstrologersCard(state)?.effect.type === "SEA_CONTINUE_AFTER_EMBARK") {
+    return false;
+  }
+  const movingPlayerId = Object.values(state.heroes).find((hero) => hero.spaceId === from)?.controllerId;
+  if (!fromSea && toSea && movingPlayerId && equipmentIgnoresEmbarkPenalty(state, movingPlayerId)) {
     return false;
   }
   return true;
@@ -3070,6 +3089,11 @@ export function unitDrillGoldCost(armyUnit: ArmyUnitState): number {
   return DRILL_UNIT_GOLD_COST_BY_TIER[tier];
 }
 
+/** State-aware Drill price after the equipment free-use waiver. */
+export function unitDrillGoldCostFor(state: GameState, playerId: PlayerId, armyUnit: ArmyUnitState): number {
+  return equipmentFreeDrillAvailable(state, playerId) ? 0 : unitDrillGoldCost(armyUnit);
+}
+
 /** Drill uses per round scale with the main hero: 1 normally, 2 at IV, 3 at VII. */
 export function unitDrillLimit(state: GameState, playerId: PlayerId): number {
   const level = getMainHero(state, playerId)?.level ?? 1;
@@ -3086,7 +3110,7 @@ export function unitDrillMovementCost(state: GameState, playerId: PlayerId): 0 |
   const hero = getMainHero(state, playerId);
   if (!hero?.spaceId) return null;
   const location = state.adventure?.fields[hero.spaceId]?.location;
-  return location === "town" || location === "settlement" || location === "random_town" ? 0 : 1;
+  return equipmentFreeDrillAvailable(state, playerId) || location === "town" || location === "settlement" || location === "random_town" ? 0 : 1;
 }
 
 /**
@@ -3108,7 +3132,7 @@ export function unitDrillAvailable(state: GameState, playerId: PlayerId): boolea
     return false;
   }
   return drillableArmyUnits(state, playerId).some(
-    (armyUnit) => (player.resources.gold ?? 0) >= unitDrillGoldCost(armyUnit)
+    (armyUnit) => (player.resources.gold ?? 0) >= unitDrillGoldCostFor(state, playerId, armyUnit)
   );
 }
 
@@ -3751,6 +3775,10 @@ export function applyMineFlag(state: GameState, playerId: PlayerId, field: MapFi
 
   player.production[resource] += amount;
   appendEvent(state, { type: "PRODUCTION_CHANGED", playerId, resource, amount });
+
+  if (previousOwnerId !== playerId && heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.mineWindfall)) {
+    gainResources(state, playerId, { [resource]: amount }, "Mine Windfall");
+  }
 
   if (!field.everFlagged) {
     field.everFlagged = true;
@@ -6883,6 +6911,67 @@ function buildEquipmentShopStep(state: GameState, playerId: PlayerId, locationId
   return { type: "CHOOSE_ONE", prompt: "Outfitter — always-on equipment:", options };
 }
 
+/**
+ * Build a grade-limited equipment purchase offer from the complete catalog.
+ * This is shared by Resource rounds, Creature-Bank side rewards and high-level
+ * neutral victories, so every acquisition road applies the same ownership,
+ * context and affordability rules as an outfitter.
+ */
+export function buildEquipmentGradePurchaseStep(
+  state: GameState,
+  playerId: PlayerId,
+  grades: readonly EquipmentGrade[],
+  prompt: string
+): VisitStep | null {
+  if (!equipmentEnabled(state)) return null;
+  const allowed = new Set(grades);
+  const options = listEquipmentDefinitions()
+    .filter((def) => allowed.has(def.grade))
+    .filter((def) => !playerOwnsEquipment(state, playerId, def.id))
+    .filter((def) => !def.requiresContext || equipmentContextAvailable(state, def.requiresContext))
+    .map((def) => ({
+      label: `Buy ${def.name.en} (${def.name.vi}) — ${def.cost} gold · ${def.slot} · Grade ${def.grade}`,
+      steps: [{ type: "BUY_EQUIPMENT" as const, equipmentId: def.id }]
+    }));
+  if (options.length === 0) return null;
+  return {
+    type: "CHOOSE_ONE",
+    prompt,
+    options: [...options, { label: "Decline", steps: [] }]
+  };
+}
+
+/** Build a mandatory, free equipment choice for a Creature-Bank victory. */
+export function buildEquipmentGradeRewardStep(
+  state: GameState,
+  playerId: PlayerId,
+  grade: EquipmentGrade,
+  prompt: string
+): VisitStep | null {
+  if (!equipmentEnabled(state)) return null;
+  const options = listEquipmentDefinitions()
+    .filter((def) => def.grade === grade)
+    .filter((def) => !playerOwnsEquipment(state, playerId, def.id))
+    .filter((def) => !def.requiresContext || equipmentContextAvailable(state, def.requiresContext))
+    .map((def) => ({
+      label: `Take ${def.name.en} (${def.name.vi}) · ${def.slot} · Grade ${def.grade}`,
+      steps: [{ type: "GRANT_EQUIPMENT" as const, equipmentId: def.id }]
+    }));
+  return options.length > 0 ? { type: "CHOOSE_ONE", prompt, options } : null;
+}
+
+/** Queue one optional equipment purchase without interrupting a live visit. */
+export function queueEquipmentGradePurchase(
+  state: GameState,
+  playerId: PlayerId,
+  grades: readonly EquipmentGrade[],
+  prompt: string
+): void {
+  const step = buildEquipmentGradePurchaseStep(state, playerId, grades, prompt);
+  if (!step || !state.adventure) return;
+  state.adventure.rewardQueue.push({ playerId, kind: "visit-steps", steps: [step] });
+}
+
 export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSpaceId, revisit: boolean): void {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
@@ -7178,7 +7267,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   }
 
   // Anime Hero Grades (§3.11): the two guild shops sell the one-time Training
-  // Manual for 2 gold when the module is on. Appended (runtime-gated) as an
+  // Manual for 5 gold when the module is on. Appended (runtime-gated) as an
   // optional PAY_TO the visitor resolves after the shop's own menu; the PAY_TO
   // supplies the affordability gate + a Decline, and the inner GAIN_HAND_CARD
   // grants the item straight to hand.
@@ -7186,7 +7275,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     steps.push({
       type: "PAY_TO",
       prompt: "Buy the Training Manual (Học Vũ Kinh)?",
-      costOptions: [{ gold: 2 }],
+      costOptions: [{ gold: 5 }],
       steps: [{ type: "GAIN_HAND_CARD", cardId: HERO_GRADE_TRAINING_MANUAL_CARD_ID }]
     });
   }
@@ -7560,6 +7649,16 @@ export function processPendingVisit(state: GameState): void {
         const astrologers = getAstrologersState(state);
         if (astrologers && !astrologers.swiftWeaselUsedBy.includes(visit.playerId)) {
           astrologers.swiftWeaselUsedBy.push(visit.playerId);
+        }
+        break;
+      }
+      case "CONSUME_EQUIPMENT_ROUND_USE": {
+        const player = state.players[visit.playerId];
+        if (player) {
+          player.equipmentRoundUses = {
+            ...(player.equipmentRoundUses ?? {}),
+            [step.equipmentId]: state.round
+          };
         }
         break;
       }
@@ -8750,6 +8849,18 @@ export function processPendingVisit(state: GameState): void {
         if (def && player && hasResources(player, { gold: def.cost })) {
           spendResources(state, visit.playerId, { gold: def.cost }, `bought ${def.name.en}`);
           equipEquipment(state, visit.playerId, step.equipmentId);
+        }
+        break;
+      }
+      case "GRANT_EQUIPMENT": {
+        const def = getEquipmentDefinition(step.equipmentId);
+        if (def && !playerOwnsEquipment(state, visit.playerId, step.equipmentId)) {
+          equipEquipment(state, visit.playerId, step.equipmentId);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} receives ${def.name.en} for free.`,
+            visit.playerId
+          );
         }
         break;
       }
@@ -12610,6 +12721,22 @@ function diceResultCombinations<T>(items: readonly T[], choose: number): T[][] {
   return result;
 }
 
+/** Unordered die-face selections with replacement. Resource Mastery may set
+ * two dice to the same face (for example, 6 gold + 6 gold) without duplicate
+ * A+B / B+A menu entries. */
+function diceResultSelectionsWithReplacement<T>(items: readonly T[], choose: number): T[][] {
+  const result: T[][] = [];
+  const walk = (start: number, picked: T[]) => {
+    if (picked.length === choose) {
+      result.push(picked);
+      return;
+    }
+    for (let index = start; index < items.length; index += 1) walk(index, [...picked, items[index]]);
+  };
+  walk(0, []);
+  return result;
+}
+
 function setResourceDieOptions(
   state: Pick<GameState, "ruleset" | "adventure">,
   setEffect: ActiveEffectState,
@@ -12742,6 +12869,14 @@ function extraDieRerollOptions(
     options.push(rerollCard);
   }
 
+  for (const equipmentId of equipmentAdventureDieRerollIds(state, visit.playerId, dice)) {
+    const name = getEquipmentDefinition(equipmentId)?.name.en ?? "Equipment";
+    options.push({
+      label: `${name}: reroll the ${dice} ${count > 1 ? "dice" : "die"} (once per game round)`,
+      steps: [{ type: "CONSUME_EQUIPMENT_ROUND_USE", equipmentId }, rollStep]
+    });
+  }
+
   // Diplomat's Ring / Ambassador's Sash: their "Reroll a die" half is an instant
   // played in reaction to the roll you just saw — offer it from hand here, one
   // offer per distinct held copy. Taking it discards the artifact, then re-rolls.
@@ -12847,6 +12982,7 @@ function rollResourceDice(
   const luck = getLuckRerollEffect(state, visit.playerId, "resource");
   const extraOptions = extraDieRerollOptions(state, visit, "resource", count, resolveCount, origin);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
+  const gradeMastery = heroHasGradeNode(state, visit.playerId, HERO_GRADE_NODE_IDS.resourceMastery);
   const companionGroups = diceResultCombinations(rolls, Math.max(0, resolveCount - 1));
   const octaviaOptions = octaviaGoldReactionOptions(state, visit, companionGroups);
 
@@ -12855,6 +12991,7 @@ function rollResourceDice(
     !luck &&
     extraOptions.length === 0 &&
     !setEffect &&
+    !gradeMastery &&
     octaviaOptions.length === 0
   ) {
     for (const roll of rolls) {
@@ -12886,6 +13023,15 @@ function rollResourceDice(
   // your choice (the whole die-set effect is spent on the chosen option).
   if (setEffect) {
     options.push(...setResourceDieOptions(state, setEffect, companionGroups));
+  }
+  if (gradeMastery) {
+    const uniqueFaces = [...new Map(faces.map((face) => [`${face.resource}:${face.amount}`, face])).values()];
+    for (const group of diceResultSelectionsWithReplacement(uniqueFaces, resolveCount)) {
+      options.push({
+        label: `Resource Mastery: ${group.map(resourceDieLabel).join(" + ")}`,
+        steps: group.map((roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep)
+      });
+    }
   }
   // Octavia's Gold I: discard it to set one rolled Resource die to "6 gold".
   options.push(...octaviaOptions);
@@ -14492,6 +14638,26 @@ export function grantCreatureBankReward(
   // reward builder pays out — size Ⅳ simply means all four defenders were Stacked.
   const reward = bank.buildReward(stackedCount);
   const steps = interactionToSteps(reward, locationDiceBonusFor(state, playerId));
+  // This is a victory reward, never a shop. Far grants Grade I. Near rolls
+  // Grade II versus III at equal probability, then grants that grade for free.
+  // If the rolled grade is exhausted, use the other one so the win still pays.
+  let rewardGrade: EquipmentGrade = "I";
+  if (bank.tier === "near") {
+    const rolled: EquipmentGrade = createSeededRandom(
+      `${state.seed}#creature-bank-equipment#${fieldId}#${eventSeedNumber(state)}`
+    ).nextInt(0, 1) === 0 ? "II" : "III";
+    const alternate: EquipmentGrade = rolled === "II" ? "III" : "II";
+    rewardGrade = buildEquipmentGradeRewardStep(state, playerId, rolled, "probe") ? rolled : alternate;
+  }
+  const equipmentOffer = buildEquipmentGradeRewardStep(
+    state,
+    playerId,
+    rewardGrade,
+    bank.tier === "far"
+      ? "Far Creature Bank reward — take 1 Grade I equipment item for free:"
+      : `Near Creature Bank reward — Grade ${rewardGrade} won (50/50 roll); take 1 item for free:`
+  );
+  if (equipmentOffer) steps.push(equipmentOffer);
   if (steps.length === 0) {
     return;
   }
@@ -15103,7 +15269,7 @@ export function refreshRoundTokens(state: GameState): void {
   }
 
   for (const hero of Object.values(state.heroes)) {
-    hero.movementPoints = heroMovementMax(state, hero);
+    hero.movementPoints = heroMovementMax(state, hero) + equipmentStartInTownMovementBonus(state, hero);
     // Fresh movement clears any sea-halt from waking up on / wading into the sea.
     hero.movementHaltedThisTurn = false;
   }
@@ -15861,6 +16027,17 @@ export function startAdventureRound(state: GameState): void {
     if (Object.keys(setIncome).length > 0) {
       gainResources(state, playerId, setIncome, "Set Artifacts");
     }
+    if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.inspiringPresence)) {
+      changeMorale(state, playerId, 1);
+    }
+    if (
+      unitExperienceActive(state) &&
+      heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.veteranMentor)
+    ) {
+      for (const armyUnit of state.players[playerId]?.army ?? []) {
+        grantArmyUnitExperience(state, playerId, armyUnit, 1);
+      }
+    }
   }
   // Per-settlement hold-to-win: each full round of continuous control counts once
   // (restarts on recapture). May end the game here when the threshold is met.
@@ -15913,6 +16090,29 @@ export function startAdventureRound(state: GameState): void {
       const player = state.players[playerId];
       if (!player || playerId === NEUTRAL_PLAYER_ID) {
         continue;
+      }
+
+      const astrologersOre = heroGradeAstrologersRoundMaterials(state, playerId);
+      if (astrologersOre > 0) {
+        gainResources(state, playerId, { buildingMaterials: astrologersOre }, "Ore Divination");
+      }
+      if (heroGradeMinorArtifactOffer(state, playerId)) {
+        state.adventure?.rewardQueue.push({
+          playerId,
+          kind: "visit-steps",
+          steps: [{
+            type: "PAY_TO",
+            prompt: "Wandering Curio Dealer: buy a random Minor Artifact for 3 gold?",
+            costOptions: [{ gold: 3 }],
+            steps: [{ type: "REVEAL_UNTIL_MINOR_ARTIFACT" }]
+          }]
+        });
+      }
+      if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.volatileTreasury)) {
+        gainResources(state, playerId, { gold: 6 }, "Volatile Treasury");
+      }
+      if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.astrologersMorale)) {
+        changeMorale(state, playerId, 1);
       }
 
       const town = getTownOfPlayer(state, playerId);
@@ -15999,8 +16199,58 @@ export function startAdventureRound(state: GameState): void {
     // no-op when the module is off / unpicked.
     const gradeMaterials = heroGradeResourceRoundMaterials(state, playerId);
     const gradeGold = heroGradeResourceRoundGold(state, playerId);
-    if (gradeMaterials || gradeGold) {
-      gainResources(state, playerId, { buildingMaterials: gradeMaterials, gold: gradeGold }, "Hero Grade income");
+    const gradeValuables = heroGradeResourceRoundValuables(state, playerId);
+    if (gradeMaterials || gradeGold || gradeValuables) {
+      gainResources(
+        state,
+        playerId,
+        { buildingMaterials: gradeMaterials, gold: gradeGold, valuables: gradeValuables },
+        "Hero Grade income"
+      );
+    }
+    const gradeMovement = heroGradeResourceRoundMovement(state, playerId);
+    const gradeHero = getMainHero(state, playerId);
+    if (gradeMovement > 0 && gradeHero && gradeHero.spaceId !== null) {
+      gradeHero.movementPoints += gradeMovement;
+    }
+    if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.volatileTreasury)) {
+      const lost = Math.min(3, player.resources.gold);
+      player.resources.gold -= lost;
+      if (lost > 0) appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: { gold: lost } });
+    }
+    if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.resourceSacrifice) && player.hand.length > 0) {
+      state.adventure?.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [{
+          type: "CHOOSE_ONE",
+          prompt: "Resource Sacrifice: remove 1 card from your hand for 3 gold?",
+          options: [
+            ...player.hand.map((cardId) => ({
+              label: `Remove ${cardLibrary[cardId]?.name ?? cardId} → gain 3 gold`,
+              steps: [
+                { type: "REMOVE_CARD_FROM_PILE", cardId, source: "hand" } as VisitStep,
+                { type: "GAIN_RESOURCES", gold: 3 } as VisitStep
+              ]
+            })),
+            { label: "Skip", steps: [] }
+          ]
+        }]
+      });
+    }
+    if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.ancestralRecall) && player.discard.length > 0) {
+      state.adventure?.rewardQueue.push({
+        playerId,
+        kind: "visit-steps",
+        steps: [{
+          type: "CHOOSE_ONE",
+          prompt: "Ancestral Recall: return 1 chosen card from your discard pile to your hand?",
+          options: [
+            { label: "Choose a discarded card", steps: [{ type: "DISCARD_PICK", count: 1 }] },
+            { label: "Skip", steps: [] }
+          ]
+        }]
+      });
     }
 
     // Anime Equipment (§3.13): the Supply Satchel accessory grants +1 building
@@ -16064,6 +16314,22 @@ export function startAdventureRound(state: GameState): void {
         );
       }
     }
+
+    // Little Busters faction limit: collect the school contribution only after
+    // every automatic Resource-round income source has paid. Never creates debt
+    // — a player with fewer than 4 gold contributes everything they have.
+    if (player.factionId === "little_busters") {
+      const contribution = Math.min(4, player.resources.gold);
+      player.resources.gold -= contribution;
+      if (contribution > 0) {
+        appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: { gold: contribution } });
+      }
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId,
+        message: `School contribution fund: ${contribution} gold paid${contribution < 4 ? " (all available gold)" : ""}.`
+      });
+    }
   }
 
   // A designed Market day belongs after collection of resources. Queue only
@@ -16095,6 +16361,17 @@ export function startAdventureRound(state: GameState): void {
     if (!player || playerId === NEUTRAL_PLAYER_ID) {
       continue;
     }
+
+    // Hero Equipment: after Resource-round income and the mandatory Event/
+    // wave barrier, every player may buy at most one unowned Grade-I item.
+    // A single CHOOSE_ONE resolves to one BUY_EQUIPMENT step or Decline, so the
+    // limit is structural rather than a client-side convention.
+    queueEquipmentGradePurchase(
+      state,
+      playerId,
+      ["I"],
+      "Resource round equipment purchase — buy at most 1 Grade I item:"
+    );
 
     const town = getTownOfPlayer(state, playerId);
     for (const buildingId of town?.buildings ?? []) {
@@ -16889,6 +17166,11 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
       hero.movementPoints += 1;
       hero.wateringHoleBonusPending = false;
     }
+  }
+  const mainHero = getMainHero(state, playerId);
+  if (mainHero && (player.bankedEquipmentMovement ?? 0) > 0) {
+    mainHero.movementPoints += player.bankedEquipmentMovement ?? 0;
+    player.bankedEquipmentMovement = 0;
   }
 
   // The start-of-turn hand step is offered on EVERY turn, including the first:
@@ -18114,6 +18396,7 @@ export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, p
     // spent by `consumeRecruitVoucherFor`. 0 when the rule is off / already
     // spent this round.
     artifactSetRecruitGoldDiscount(state, playerId)
+    + equipmentRecruitGoldDiscount(state, playerId)
   );
 }
 

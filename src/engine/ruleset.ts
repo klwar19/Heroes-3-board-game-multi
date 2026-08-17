@@ -4,6 +4,7 @@ import { EVERSMOKING_RING_OF_SULFUR_ID, TORSO_OF_LEGION_ID } from "@/data/cards/
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
+import { equipmentSearchCountBonus } from "./anime-equipment";
 import type {
   ArtifactDeckAccess,
   CardId,
@@ -695,12 +696,12 @@ export function searchCountOverrideFor(
 export function applySearchCountEffects(state: GameState, playerId: PlayerId, baseCount: number): number {
   const override = searchCountOverrideFor(state, playerId, baseCount);
   if (!override) {
-    return baseCount;
+    return baseCount + equipmentSearchCountBonus(state, playerId);
   }
   if (!override.persist) {
     state.activeEffects = state.activeEffects.filter((candidate) => candidate.id !== override.effectId);
   }
-  return override.count;
+  return override.count + equipmentSearchCountBonus(state, playerId);
 }
 
 /**

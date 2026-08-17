@@ -82,21 +82,15 @@ describe("HeroActionsDock", () => {
     const onAction = vi.fn();
     const legalActions: LegalAction[] = [
       legal({ type: "HERO_TRAIN", playerId: "p1" }),
-      legal({ type: "USE_HERO_SKILL", playerId: "p1", nodeId: "forced-march" }),
       legal({ type: "HEAVEN_TRIBULATION", playerId: "p1" })
     ];
     render(<HeroActionsDock legalActions={legalActions} onAction={onAction} />);
 
-    // Three buttons, each carrying its EN + VI label.
+    // Two buttons, each carrying its EN + VI label. Forced March is now passive.
     expect(screen.getByText("Train")).toBeTruthy();
     expect(screen.getByText("Luyện tập")).toBeTruthy();
-    expect(screen.getByText("Forced March")).toBeTruthy();
-    expect(screen.getByText("Cưỡng hành")).toBeTruthy();
     expect(screen.getByText("Heavenly Tribulation")).toBeTruthy();
     expect(screen.getByText("Độ kiếp")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /Forced March/ }));
-    expect(onAction).toHaveBeenCalledWith({ type: "USE_HERO_SKILL", playerId: "p1", nodeId: "forced-march" });
 
     fireEvent.click(screen.getByRole("button", { name: /Heavenly Tribulation/ }));
     expect(onAction).toHaveBeenCalledWith({ type: "HEAVEN_TRIBULATION", playerId: "p1" });

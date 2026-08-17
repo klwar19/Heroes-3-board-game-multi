@@ -3752,6 +3752,17 @@ export type GameAction =
     }
   | {
       /**
+       * Commander Forge: buy one of the two deterministic, currently offered
+       * artifacts. Grade I is a separate once-per-game use from the shared
+       * once-per-game Grade II/III use.
+       */
+      type: "FORGE_COMMANDER_ARTIFACT";
+      playerId: PlayerId;
+      tier: "minor" | "major" | "relic";
+      cardId: CardId;
+    }
+  | {
+      /**
        * Anime Cultivation (anime.cultivation, §5.6): the main hero, at Core
        * Formation (realm 2) with level ≥ 7 and no won Tribulation yet, braves
        * the Heavenly Tribulation (Độ kiếp) — a seeded 3-Attack-die gauntlet on
@@ -3866,6 +3877,12 @@ export type GameAction =
       nodeId: string;
     }
   | {
+      /** Artifact Broker: sell one Artifact from hand for 4 gold; remove it. */
+      type: "HERO_GRADE_SELL_ARTIFACT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
       /**
        * Hero Equipment: move an owned inventory item onto its catalog-defined
        * body slot. If that slot is occupied the two items swap. This is the
@@ -3903,6 +3920,38 @@ export type GameAction =
       type: "USE_HERO_SKILL_REACTION";
       playerId: PlayerId;
       nodeId: string;
+      unitId: UnitId;
+    }
+  | {
+      /** Reactive Buckler: +1 Defense for the currently declared attack. */
+      type: "USE_EQUIPMENT_DEFENSE_REACTION";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
+  | {
+      /** Duelist Insignia / Clockwork Spurs: select their combat-long unit. */
+      type: "SELECT_EQUIPMENT_COMBAT_UNIT";
+      playerId: PlayerId;
+      equipmentId: string;
+      unitId: UnitId;
+    }
+  | {
+      /** Corrosion Edge / Wyvern Needle: arm one rider on this declared attack. */
+      type: "USE_EQUIPMENT_ATTACK_RIDER";
+      playerId: PlayerId;
+      equipmentId: string;
+      unitId: UnitId;
+    }
+  | {
+      /** Field Medic Kit: heal one allied unit for 1 in an open combat window. */
+      type: "USE_EQUIPMENT_HEAL_REACTION";
+      playerId: PlayerId;
+      unitId: UnitId;
+    }
+  | {
+      /** Guardian Mirror: cancel this attack's damage and suppress retaliation. */
+      type: "USE_EQUIPMENT_GUARDIAN_REACTION";
+      playerId: PlayerId;
       unitId: UnitId;
     }
   | { type: "DEFEND_UNIT"; playerId: PlayerId; unitId: UnitId }
@@ -7120,6 +7169,9 @@ export type ResolutionStackItem = {
      * damage seam alongside the printed unit damage caps.
      */
     attackDamageCap?: number;
+    /** Equipment attack riders armed for this single declared attack. */
+    equipmentCorrosion?: boolean;
+    equipmentPoison?: boolean;
     /**
      * The same cap's Power TABLE plus the caster, so Power pooled into this
      * window AFTER the card was played still re-derives the rung — the
@@ -7908,6 +7960,9 @@ export type CommanderPlayerState = {
    * finalizeCommandersAfterCombat.
    */
   artifacts?: Partial<Record<CommanderArtifactSlot, string>>;
+  /** Commander Forge lifetime budgets (optional for legacy snapshots). */
+  forgeMinorUsed?: boolean;
+  forgeHighUsed?: boolean;
 };
 
 export type PlayerState = {
@@ -8277,6 +8332,18 @@ export type PlayerState = {
      * Cleared at combat start (makeCombatShell). Absent === not yet spent.
      */
     equipmentIncomingAttackUsed?: boolean;
+    /** One adjacent ranged-penalty waiver spent this combat. */
+    equipmentAdjacentRangedWaiverUsed?: boolean;
+    /** Repair Toolkit prevented its first point of army damage this combat. */
+    equipmentFirstDamagePrevented?: boolean;
+    /** Equipment ids whose once-per-combat charge has been spent. */
+    equipmentUsesThisCombat?: string[];
+    /** Unit picked by a combat-start equipment item, keyed by equipment id. */
+    equipmentSelections?: Record<string, string>;
+    /** Number of equipment kill-draws made in the current combat round. */
+    equipmentKillDrawsThisRound?: number;
+    /** Spellward Brooch has reduced the first enemy Spell this combat. */
+    equipmentEnemySpellDrainUsed?: boolean;
     /** Granberia: her first-own-attack specialty uses a charge separate from equipment. */
     mgqGranberiaFirstAttackUsed?: boolean;
     /** Salamander: first own declared attack charge spent in this combat. */
@@ -8334,6 +8401,10 @@ export type PlayerState = {
    * tier-2 key).
    */
   artifactSetRoundUses?: Record<string, number>;
+  /** Equipment id -> game round for once-per-game-round powers. */
+  equipmentRoundUses?: Record<string, number>;
+  /** Chronicle Spurs movement stored at the previous turn end. */
+  bankedEquipmentMovement?: number;
   /**
    * Polish Set Artifacts: this player's PUBLIC set status as of the end of the
    * last action — one entry per set they hold at least one piece of. Re-derived
@@ -8760,6 +8831,8 @@ export type CombatUnitState = {
    * Combat). Whether it survived or died, the borrowed card is discarded.
    */
   temporary?: boolean;
+  /** Spirit Companion: the combat round after which this temporary familiar vanishes. */
+  heroGradeExpiresAfterRound?: number;
   /**
    * WOG Commanders module: this unit IS the controller's commander (the value
    * is its CommanderSlug). A commander has no army card, is tierless on both
@@ -8996,6 +9069,10 @@ export type CombatState = {
   context: CombatContext;
   /** Per-side Spirit Shrine choices frozen at setup for this combat. */
   mgqSpirits?: Partial<Record<PlayerId, MgqSpirit>>;
+  /** MGQ heroes who paid this combat's mandatory 1-card Spirit summon cost. */
+  mgqSpiritCostPaidPlayerIds?: PlayerId[];
+  /** Swift Host owners whose +1 Initiative was folded at combat start. */
+  heroGradeInitiativeAppliedFor?: PlayerId[];
   /**
    * MGQ Companion Recruitment: exact Neutral defender unit ids that were
    * eligible, living deck-backed cards when round 1 began. Qualifying MGQ
@@ -10009,6 +10086,14 @@ export type AdventureReward =
       steps: VisitStep[];
     }
   | {
+      /** Optional post-combat purchase of one offered commander artifact. */
+      playerId: PlayerId;
+      kind: "commander-artifact-offer";
+      cardIds: CardId[];
+      cost: number;
+      source: string;
+    }
+  | {
       /**
        * A post-combat field visit deferred behind the after-combat Necromancy
        * decision, so the field reward lands only AFTER Necromancy is paid for
@@ -10330,6 +10415,11 @@ export type VisitStep =
   | {
       /** Marks the Swift Weasel once-per-turn adventure-die reroll as used. */
       type: "CONSUME_WEASEL";
+    }
+  | {
+      /** Marks a once-per-game-round equipment die power as spent. */
+      type: "CONSUME_EQUIPMENT_ROUND_USE";
+      equipmentId: string;
     }
   | {
       /**
@@ -11368,6 +11458,11 @@ export type VisitStep =
        * affordable (gated in legal-actions + a reducer backstop, like PAY_TO).
        */
       type: "BUY_EQUIPMENT";
+      equipmentId: string;
+    }
+  | {
+      /** Creature-Bank reward: take one equipment item without spending gold. */
+      type: "GRANT_EQUIPMENT";
       equipmentId: string;
     }
   | {
@@ -14122,6 +14217,8 @@ export type HeroState = {
    * already trained this turn. Absent === never trained.
    */
   heroTrainedRound?: number;
+  /** Overflowing Insight: game round whose start-turn refresh already drew its extra card. */
+  heroGradeOverdrawRound?: number;
   /**
    * Anime Equipment (§3.13): the always-on items this MAIN hero has bought,
    * keyed by slot (weapon/armor/accessory/mount) → equipment id. Optional and
@@ -14234,6 +14331,9 @@ export type AttackRerollSource = {
    * source drops out for the rest of this combat.
    */
   cultivation?: boolean;
+  /** Standing equipment die power; reducer records the matching use scope when spent. */
+  equipmentId?: string;
+  equipmentUseScope?: "round" | "combat";
   /** Positive Morale card variant: using the reroll returns this card to the bottom of its deck. */
   moraleCardId?: CardId;
   /**
@@ -14408,7 +14508,9 @@ export type PendingChoice =
         | "grail-free-building"
         | "combat-remove-then-search"
         | "combat-remove-another"
+        | "commander-artifact-offer"
         | "polish-spell-or-cast";
+      commanderArtifactOffer?: { cardIds: CardId[]; cost: number; source: string };
       /**
        * grail-free-building: one free Town building after BUILD_GRAIL when
        * `grailBuildReward.freeBuilding` is set. `buildingIds` is index-aligned
@@ -14783,7 +14885,13 @@ export type PendingChoice =
       /** Found shared-deck Spell waiting for its take-or-discard decision. */
       eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };
       /** hand-discard: candidate hand cards (index-aligned with options) and how many still to discard (Charm of Mana / Shackles of War). */
-      handDiscard?: { cardIds: CardId[]; remaining: number; drawnOnly: boolean };
+      handDiscard?: {
+        cardIds: CardId[];
+        remaining: number;
+        drawnOnly: boolean;
+        /** Marks the mandatory MGQ pre-battle Spirit summoning payment. */
+        mgqSpiritCost?: boolean;
+      };
       /**
        * dimension-door: the Hero being teleported and the candidate destination
        * fields (index-aligned with the options; the final "Cancel (no teleport)"
@@ -15126,7 +15234,9 @@ export type PendingChoice =
         | "dreadnought-splash"
         // WOG commander command ability: pick the unit the cast lands on
         // (free during the commander's activation, once per combat round).
-        | "commander-cast";
+        | "commander-cast"
+        // Pendant/Talisman Power-3 overflow: pick any living unit for 1 damage.
+        | "commander-overflow-zap";
       abilityId: string | null;
       abilityName: string;
       prompt: string;

@@ -6,7 +6,6 @@ import { artifactSetTierAt, type GameAction, type LegalAction } from "@/engine";
 // Hero actions dock — the human click surface for MAP actions that have no
 // destination hex to click:
 //   - HERO_TRAIN (Anime Hero Grades §3.11): spend 2 movement → +1 Merit.
-//   - Forced March (the USE_HERO_SKILL map-active grade skill): +1 movement.
 //   - HEAVEN_TRIBULATION (Anime Cultivation §5.6): brave the tribulation dice.
 //   - REVISIT_FIELD: activate the location under a stationary Hero, including a
 //     Monolith at the beginning of the turn.
@@ -25,7 +24,7 @@ import { artifactSetTierAt, type GameAction, type LegalAction } from "@/engine";
 // no offer, so no button renders. Clicking dispatches the exact legal payload.
 // ---------------------------------------------------------------------------
 
-type HeroMapActionKey = "train" | "forced-march" | "tribulation" | "revisit" | "build" | "artifact-set";
+type HeroMapActionKey = "train" | "tribulation" | "revisit" | "build" | "artifact-set";
 
 /** EN/VI label + a one-line cost/effect tooltip per hero map action. */
 const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string; title: string }> = {
@@ -33,11 +32,6 @@ const HERO_MAP_ACTION_LABELS: Record<HeroMapActionKey, { en: string; vi: string;
     en: "Train",
     vi: "Luyện tập",
     title: "Spend 2 movement points → +1 Merit toward the next Hero Grade (once per turn)"
-  },
-  "forced-march": {
-    en: "Forced March",
-    vi: "Cưỡng hành",
-    title: "+1 movement point this turn (once per round)"
   },
   tribulation: {
     en: "Heavenly Tribulation",
@@ -87,11 +81,6 @@ function heroMapActionKey(action: GameAction): HeroMapActionKey | null {
   // two table screens are mounted.
   if (action.type === "USE_ARTIFACT_SET_POWER") {
     return artifactSetTierAt(action.setId, action.tier)?.timing === "attack-window" ? null : "artifact-set";
-  }
-  // Forced March is the only map-active grade skill: it uses USE_HERO_SKILL with
-  // no unitId (the combat War Cry / reactions carry a unitId).
-  if (action.type === "USE_HERO_SKILL" && action.nodeId === "forced-march") {
-    return "forced-march";
   }
   return null;
 }

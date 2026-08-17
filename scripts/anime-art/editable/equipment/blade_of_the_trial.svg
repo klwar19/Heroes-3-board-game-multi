@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#e7b73c">GRADE II  ·  MAJOR EQUIPMENT</text>
     <text x="371" y="654" class="slotText">WEAPON</text>
     <text x="371" y="688" class="enText">Thí Luyện Kiếm</text>
-    <g id="editable-rules"><text x="371" y="768" class="ruleText">Weapon: +1 Attack on your units' declared</text><text x="371" y="797" class="ruleText">attacks during combat ROUND 1 only (not</text><text x="371" y="826" class="ruleText">retaliations).</text><line x1="120" y1="861" x2="623" y2="861" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="867" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="896" class="ruleText">the game. Gain 1 Major Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="768" class="ruleText">Weapon: +1 Attack on round-1 declared</text><text x="371" y="797" class="ruleText">attacks; one random allied unit cannot</text><text x="371" y="826" class="ruleText">retaliate in round 1.</text><line x1="120" y1="861" x2="623" y2="861" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="867" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="896" class="ruleText">the game. Gain 1 Major Artifact.</text></g>
   </g>
 </svg>

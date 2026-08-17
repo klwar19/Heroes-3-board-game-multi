@@ -14131,6 +14131,38 @@ span.recruitThumb {
   opacity: 0.5;
 }
 
+/* Battle prep is a fast visual decision. Keep the full two-tier rules in the
+   town panel/tooltips and show only the currently active tier beneath big art. */
+.mgqBattleSpiritPicker { padding: 12px; }
+.mgqBattleSpiritChoices { grid-template-columns: repeat(4, minmax(92px, 1fr)); gap: 9px; }
+.mgqBattleSpiritChoices button { justify-items: center; padding: 8px; text-align: center; border-radius: 10px; }
+.mgqBattleSpiritChoices button .mgqBattleSpiritArt {
+  width: min(104px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 225 153 / 36%);
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 38%);
+}
+.mgqBattleSpiritName { justify-content: center; color: #fff0c4; font-size: .8rem; }
+.mgqBattleSpiritTier { color: #e2b9dc !important; font-size: .63rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.mgqBattleSpiritRule {
+  display: -webkit-box;
+  min-height: 2.5em;
+  overflow: hidden;
+  color: #cdbfd0 !important;
+  font-size: .64rem;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@media (max-width: 620px) {
+  .mgqBattleSpiritChoices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mgqBattleSpiritChoices button .mgqBattleSpiritArt { width: min(86px, 100%); }
+}
+
 .mgqCompanionPrompt {
   width: min(760px, calc(100vw - 24px));
 }
@@ -39021,6 +39053,129 @@ body:has(main.phoneMode) .difficultyChessBtn {
   animation: modSystemPulse 1.8s ease-in-out infinite;
 }
 
+/* Focused discard/payment window. Combat costs used to expand into a long row
+   of text buttons above the battlefield; card faces now carry the decision. */
+.costPlayBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 238;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(2 5 11 / 78%);
+  backdrop-filter: blur(7px);
+}
+
+.costPlayWindow {
+  width: min(820px, 96vw);
+  max-height: min(760px, 92dvh);
+  overflow: auto;
+  border: 1px solid rgb(207 170 91 / 64%);
+  border-radius: 18px;
+  color: #eee4cf;
+  background:
+    radial-gradient(circle at 18% 0%, rgb(74 112 150 / 22%), transparent 38%),
+    linear-gradient(155deg, #18202b, #090c12 72%);
+  box-shadow: 0 30px 90px rgb(0 0 0 / 78%), inset 0 0 0 1px rgb(255 255 255 / 5%);
+}
+
+.costPlayHeader {
+  display: grid;
+  grid-template-columns: 48px 1fr 38px;
+  gap: 13px;
+  align-items: center;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgb(207 170 91 / 25%);
+}
+.costPlayGlyph {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgb(207 170 91 / 55%);
+  border-radius: 13px;
+  color: #f1cc75;
+  background: rgb(128 88 30 / 18%);
+}
+.costPlayHeader small { color: #c7a966; text-transform: uppercase; letter-spacing: .12em; }
+.costPlayHeader h2 { margin: 2px 0 0; color: #fff1cf; font: 700 24px/1.1 Georgia, serif; }
+.costPlayClose {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 50%;
+  color: #ddd3c1;
+  background: rgb(0 0 0 / 28%);
+  font-size: 22px;
+  cursor: pointer;
+}
+.costPlayInstruction {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 16px;
+  padding: 14px 20px 10px;
+}
+.costPlayInstruction > strong { color: #f5e5c2; }
+.costPlayInstruction > span { grid-column: 1; color: #aeb8c5; font-size: 12px; }
+.costPlayInstruction > b { grid-column: 2; grid-row: 1 / 3; align-self: center; color: #f1cc75; font-size: 20px; }
+.costPlayCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 12px;
+  padding: 12px 20px 20px;
+}
+.costPlayCard {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 12px;
+  color: #e9dfcb;
+  background: rgb(0 0 0 / 28%);
+  cursor: pointer;
+  transition: transform 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+.costPlayCard:hover:not(:disabled) { transform: translateY(-3px); border-color: #d4ad59; }
+.costPlayCard.selected { border-color: #f0cb70; box-shadow: 0 0 22px rgb(226 179 71 / 35%); background: rgb(83 59 18 / 45%); }
+.costPlayCard:disabled { opacity: .32; cursor: not-allowed; filter: grayscale(.75); }
+.costPlayCard > img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; }
+.costPlayCard > strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.costPlayCard > small { color: #efc969; }
+.costPlayCard > i { position: absolute; top: 11px; right: 11px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: #151007; background: #f0cb70; font-style: normal; font-weight: 900; }
+.costPlayCardFallback { display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; padding: 8px; border-radius: 8px; background: #202734; text-align: center; }
+.costPlayModes { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 20px 12px; }
+.costPlayModes > button { padding: 7px 10px; border: 1px solid #665533; border-radius: 8px; color: #e7d9bc; background: #221c13; }
+.costPlayModes > button.selected { border-color: #e1b958; background: #5b4216; }
+.costPlayFooter { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px 18px; border-top: 1px solid rgb(207 170 91 / 20%); }
+
+@media (max-width: 560px) {
+  .costPlayBackdrop { padding: 7px; align-items: end; }
+  .costPlayWindow { max-height: 94dvh; border-radius: 17px 17px 0 0; }
+  .costPlayCards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; padding-inline: 12px; }
+  .costPlayHeader, .costPlayInstruction, .costPlayFooter { padding-inline: 14px; }
+}
+
+.heroGradeEmblem {
+  display: inline-block;
+  flex: none;
+  width: 72px;
+  height: 72px;
+  background-image: var(--grade-emblem-image);
+  background-position: var(--grade-emblem-x) var(--grade-emblem-y);
+  background-repeat: no-repeat;
+  background-size: 200% 200%;
+  filter: drop-shadow(0 7px 9px rgb(0 0 0 / 65%));
+}
+
+.heroGradeEmblem.compact {
+  width: 42px;
+  height: 42px;
+  margin: -5px 0;
+}
+
 @keyframes modSystemPulse {
   50% {
     box-shadow:
@@ -39167,6 +39322,34 @@ body:has(main.phoneMode) .difficultyChessBtn {
   cursor: pointer;
 }
 
+.heroSystemHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.gradeHelpButton {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--mod-line);
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--mod-accent-soft), rgb(0 0 0 / 44%));
+  color: var(--mod-accent);
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.gradeHelpButton:hover,
+.gradeHelpButton:focus-visible,
+.gradeHelpButton.active {
+  border-color: var(--mod-accent);
+  box-shadow: 0 0 18px var(--mod-accent-soft), inset 0 0 10px var(--mod-accent-soft);
+  outline: none;
+  transform: translateY(-1px);
+}
+
 .gradeWindowSummary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -39177,10 +39360,25 @@ body:has(main.phoneMode) .difficultyChessBtn {
 .gradeWindowSummary > span {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   padding: 12px 16px;
   border: 1px solid var(--mod-line);
   border-radius: 12px;
   background: rgb(0 0 0 / 22%);
+}
+
+.gradeWindowSummary > .gradeWindowCurrent {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-block: 5px;
+  background: radial-gradient(circle at 20% 50%, var(--mod-accent-soft), rgb(0 0 0 / 24%) 70%);
+}
+
+.gradeWindowCurrent > span:last-child {
+  display: flex;
+  flex-direction: column;
 }
 
 .gradeWindowSummary b {
@@ -39195,6 +39393,69 @@ body:has(main.phoneMode) .difficultyChessBtn {
 }
 .gradeWindowSummary .ready b {
   color: var(--mod-accent);
+}
+
+.gradeHelpPanel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 10px 28px 0;
+  padding: 14px;
+  border: 1px solid var(--mod-line);
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 5%), rgb(0 0 0 / 35%)),
+    radial-gradient(circle at 50% 0%, var(--mod-accent-soft), transparent 62%);
+  box-shadow: inset 0 0 30px rgb(0 0 0 / 35%);
+  animation: systemWindowIn 160ms ease-out;
+}
+
+.gradeHelpPanel > div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.gradeHelpPanel > div > b {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--mod-accent);
+  border-radius: 50%;
+  color: #fff1ca;
+  background: var(--mod-accent-soft);
+  box-shadow: 0 0 12px var(--mod-accent-soft);
+}
+
+.gradeHelpPanel > div > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gradeHelpPanel strong {
+  color: #f4e9d2;
+  font: 700 13px var(--mod-heading, Georgia, serif);
+}
+
+.gradeHelpPanel small {
+  color: #aaa08d;
+  font-size: 11px;
+  line-height: 1.42;
+}
+
+.gradeHelpPanel > p {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  color: #c9bda7;
+  font-size: 11px;
 }
 
 .heroGradeTree {
@@ -39233,26 +39494,81 @@ body:has(main.phoneMode) .difficultyChessBtn {
   letter-spacing: 0.12em;
 }
 
+.heroGradeTier h3 span,
+.heroGradeTier h3 small {
+  display: block;
+}
+
+.heroGradeTier h3 small {
+  margin-top: 3px;
+  color: #8f8677;
+  font: 600 9px/1 sans-serif;
+  letter-spacing: 0.18em;
+}
+
 .heroGradeNode {
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 6px 10px;
-  min-height: 122px;
-  padding: 14px;
-  border: 1px solid rgb(255 255 255 / 10%);
-  border-radius: 13px;
-  background: linear-gradient(145deg, rgb(255 255 255 / 5%), rgb(0 0 0 / 25%));
+  grid-template-columns: 58px 1fr;
+  gap: 7px 11px;
+  min-height: 138px;
+  padding: 15px 15px 14px 18px;
+  border: 0;
+  border-radius: 16px;
+  background-image:
+    linear-gradient(90deg, rgb(2 5 10 / 2%), rgb(2 5 10 / 12%)),
+    url("/assets/anime/hero-grades/tier-button-frames-atlas.png");
+  background-position: center, center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 300%;
+  box-shadow: 0 10px 18px rgb(0 0 0 / 28%);
   color: #dcd4c4;
   text-align: left;
+  overflow: hidden;
+  transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
+}
+
+.heroGradeNode.tier-2 {
+  background-position: center, center center;
+}
+
+.heroGradeNode.tier-3 {
+  background-position: center, center bottom;
 }
 
 .heroGradeNodeIcon {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  align-self: start;
+  filter: drop-shadow(0 5px 7px rgb(0 0 0 / 60%));
+}
+
+.heroGradeAbilityEmblem {
+  display: block;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background-image: var(--grade-ability-image);
+  background-position: var(--grade-ability-x) var(--grade-ability-y);
+  background-repeat: no-repeat;
+  background-size: 400% 400%;
+}
+
+.heroGradeNodeStatus {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   border: 1px solid currentColor;
   border-radius: 50%;
+  background: #080c13;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 70%);
 }
 
 .heroGradeNode > span:nth-child(2) {
@@ -39271,29 +39587,52 @@ body:has(main.phoneMode) .difficultyChessBtn {
 }
 .heroGradeNode p {
   grid-column: 1 / -1;
-  margin: 2px 0 0;
-  font-size: 12px;
+  margin: 0 3px 0 58px;
+  color: #c7bdad;
+  font-size: 11px;
   line-height: 1.45;
 }
 .heroGradeNode.locked {
-  opacity: 0.48;
-  filter: saturate(0.3);
+  opacity: 0.58;
+  filter: saturate(0.38) brightness(0.72);
 }
 .heroGradeNode.available {
-  border-color: var(--mod-accent);
   cursor: pointer;
-  box-shadow: 0 0 18px var(--mod-accent-soft);
+  filter: saturate(1.08) brightness(1.06);
+  box-shadow: 0 0 22px var(--mod-accent-soft), 0 12px 22px rgb(0 0 0 / 42%);
 }
-.heroGradeNode.available:hover {
-  transform: translateY(-2px);
-  background: var(--mod-accent-soft);
+.heroGradeNode.available:hover,
+.heroGradeNode.available:focus-visible {
+  transform: translateY(-3px) scale(1.012);
+  filter: saturate(1.2) brightness(1.15);
+  box-shadow: 0 0 30px var(--mod-accent-soft), 0 16px 26px rgb(0 0 0 / 50%);
+  outline: none;
 }
 .heroGradeNode.owned {
-  border-color: var(--mod-accent);
-  background: linear-gradient(145deg, var(--mod-accent-soft), rgb(0 0 0 / 20%));
+  filter: saturate(1.05);
+  box-shadow: 0 0 18px var(--mod-accent-soft), inset 0 0 22px var(--mod-accent-soft);
 }
 .heroGradeNode.owned .heroGradeNodeIcon {
   color: var(--mod-accent);
+}
+
+@media (max-width: 840px) {
+  .heroGradeTree {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .heroGradeTier:not(:last-child)::after {
+    display: none;
+  }
+
+  .gradeHelpPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .gradeWindowSummary {
+    grid-template-columns: 1fr;
+  }
 }
 
 .equipmentWindowBody {
@@ -39681,12 +40020,12 @@ body:has(main.phoneMode) .difficultyChessBtn {
 .commanderEquipButton {
   display: flex;
   align-items: center;
-  gap: 10px;
-  width: calc(100% - 40px);
-  margin: 42px 20px 6px;
-  padding: 11px 14px;
-  border: 1px solid var(--mod-line, rgb(228 189 104 / 40%));
-  border-radius: 10px;
+  gap: 14px;
+  width: calc(100% - 28px);
+  margin: 42px 14px 8px;
+  padding: 12px 14px 12px 11px;
+  border: 1px solid var(--mod-accent, rgb(228 189 104 / 58%));
+  border-radius: 14px;
   background: linear-gradient(
     135deg,
     var(--mod-accent-soft, rgb(228 189 104 / 15%)),
@@ -39694,7 +40033,21 @@ body:has(main.phoneMode) .difficultyChessBtn {
   );
   color: var(--mod-accent, #e4bd68);
   cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%), 0 8px 20px rgb(0 0 0 / 28%);
 }
+
+.commanderEquipButtonIcon {
+  display: grid !important;
+  flex: 0 0 62px !important;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  overflow: hidden;
+  border: 1px solid var(--mod-line, rgb(228 189 104 / 45%));
+  border-radius: 13px;
+  background: radial-gradient(circle at 50% 32%, var(--mod-accent-soft), rgb(0 0 0 / 45%));
+}
+.commanderEquipButtonIcon img { width: 54px; height: 54px; object-fit: contain; filter: drop-shadow(0 3px 7px rgb(0 0 0 / 75%)); }
 
 .commanderEquipButton > span {
   display: flex;
@@ -39705,13 +40058,15 @@ body:has(main.phoneMode) .difficultyChessBtn {
 .commanderEquipButton strong {
   color: #f5e5c3;
   font:
-    700 14px Georgia,
+    700 17px Georgia,
     serif;
 }
 .commanderEquipButton small {
   color: #aa9878;
-  font-size: 10px;
+  font-size: 11px;
 }
+.commanderEquipButton .commanderEquipEyebrow { color: var(--mod-accent, #e4bd68); font-size: 9px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.commanderEquipArrow { flex: 0 0 auto; transform: rotate(-90deg); }
 .commanderEquipButton.attention {
   box-shadow: 0 0 16px var(--mod-accent-soft, rgb(228 189 104 / 20%));
 }
@@ -40005,6 +40360,38 @@ body:has(main.phoneMode) .difficultyChessBtn {
   opacity: 0.62;
   cursor: default;
 }
+
+.commanderInventoryCard.unowned {
+  opacity: 0.52;
+}
+
+.commanderInventoryCard.equipped {
+  border-color: rgb(216 181 93 / 70%);
+}
+
+.commanderForgePanel {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 12px;
+  margin: 10px 0 14px;
+  padding: 12px;
+  border: 1px solid rgba(220, 174, 73, 0.62);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(38, 27, 17, 0.96), rgba(15, 18, 25, 0.96));
+  box-shadow: inset 0 0 22px rgba(218, 153, 47, 0.12), 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.commanderForgeIcon { width: 78px; height: 78px; object-fit: contain; filter: drop-shadow(0 2px 8px #000); }
+.commanderForgeContent { min-width: 0; }
+.commanderForgeContent > header { display: flex; justify-content: space-between; gap: 8px; color: #f1d68c; }
+.commanderForgeContent > p { margin: 5px 0 9px; color: #c8bfa9; font-size: 0.76rem; line-height: 1.35; }
+.commanderForgeTier { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.commanderForgeTier > span { min-width: 88px; color: #e8d7ad; font-size: 0.78rem; }
+.commanderForgeTier > small { color: #9f9785; }
+.commanderForgeTier > button { display: flex; align-items: center; gap: 7px; max-width: 260px; padding: 6px 8px; border: 1px solid #776137; border-radius: 7px; color: #efe3c4; background: #241e17; text-align: left; cursor: pointer; }
+.commanderForgeTier > button:hover { border-color: #d5aa4e; background: #342819; }
+.commanderForgeTier > button img { width: 34px; height: 34px; object-fit: cover; border-radius: 5px; }
+.commanderForgeTier > button span { display: grid; }
+.commanderForgeTier > button small { color: #bdb39f; font-size: 0.67rem; line-height: 1.2; }
 .commanderEquipmentWindow > footer {
   padding: 12px 24px 18px;
   border-top: 1px solid var(--mod-line);

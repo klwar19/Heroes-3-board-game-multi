@@ -2543,6 +2543,8 @@ export function scoreMapAction(
       // objective always outscores it — i.e. only when the seat would otherwise
       // end the turn with the 2 MP unspent. Legal only with ≥2 MP (heroTrainAvailable).
       return { score: 330, policy: "map.hero-train" };
+    case "HERO_GRADE_SELL_ARTIFACT":
+      return { score: 315, policy: "map.hero-grade-artifact-sale" };
     case "DRILL_UNIT": {
       // Unit Experience Drill: surplus-gold only; prefer silver/gold bodies and
       // cards close to the next rank when unit experience is on.

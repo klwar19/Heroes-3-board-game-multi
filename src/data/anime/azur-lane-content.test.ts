@@ -437,7 +437,7 @@ describe("Azur Lane Naval Base — behavioural: Prinz Eugen's real abilities cap
 // VISUAL register (so its CSS theme class stays theme-anime). Names only — this
 // pins the words + a fuyuki CONTROL proving the generic anime lexicon is the
 // fall-through (removing the azur_lane special-case makes these assertions read
-// Fuyuki's "Spirit Rank"/"Servant roster" and fail).
+// Fuyuki's "Hero Grade"/"Servant roster" and fail).
 // ---------------------------------------------------------------------------
 
 describe("Azur Lane Naval Base — themed UI lexicon (naval words, anime visual register)", () => {
@@ -457,7 +457,7 @@ describe("Azur Lane Naval Base — themed UI lexicon (naval words, anime visual 
   it("CONTROL: fuyuki (same anime register) keeps the GENERIC anime lexicon", () => {
     const fuyuki = factionUiLexicon("fuyuki");
     expect(fuyuki.register).toBe("anime");
-    expect(fuyuki.grade).toBe("Spirit Rank");
+    expect(fuyuki.grade).toBe("Hero Grade");
     expect(fuyuki.army).toBe("Servant roster");
     expect(fuyuki.equipment).toBe("Mystic Loadout");
     // Proves the two anime-register factions genuinely diverge in words.

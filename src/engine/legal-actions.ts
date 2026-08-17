@@ -51,7 +51,7 @@ import {
   townHasBuildingEffect,
   unlockedRecruitTiers,
   drillableArmyUnits,
-  unitDrillGoldCost,
+  unitDrillGoldCostFor,
   unitDrillMovementCost,
   unitDrillAvailable,
   heroHasFreeGateStep
@@ -130,6 +130,11 @@ import {
 } from "./commanders";
 import { RUNE_MAX } from "./runes";
 import {
+  COMMANDER_ARTIFACT_GOLD_COST,
+  commanderArtifactBonusesForUnit,
+  commanderForgeCandidates
+} from "./commander-artifacts";
+import {
   BATTLEFIELD_CELL_COUNT,
   BATTLEFIELD_COLUMNS,
   BATTLEFIELD_ROWS,
@@ -158,6 +163,7 @@ import {
   heroGradeSpellPowerBonus,
   heroGradePickableNodes,
   heroGradeNodesOf,
+  heroHasGradeNode,
   heroSkillAvailableThisCombat,
   heroSkillAvailableThisRound,
   heroTrainAvailable,
@@ -165,11 +171,20 @@ import {
 } from "./anime-hero-grades";
 import {
   equipmentEnabled,
+  equipmentAttackRiderAvailable,
+  equipmentCombatUnitOffers,
+  equipmentDefenseReactionAvailable,
   equipmentFirstSpellPowerBonus,
-  equipmentSpellPowerBonus
+  equipmentFreeDiscovery,
+  equipmentIgnoresAdjacentRangedPenalty,
+  equipmentRound1AttackAdvantage,
+  equipmentGuardianReactionAvailable,
+  equipmentHealReactionAvailable,
+  equipmentSpellPowerBonus,
+  equipmentTradeGoldDiscount
 } from "./anime-equipment";
-import { getEquipmentDefinition } from "@/data/anime/equipment";
-import { HERO_GRADE_NODES } from "@/data/anime/hero-grades";
+import { EQUIPMENT_IDS, getEquipmentDefinition } from "@/data/anime/equipment";
+import { HERO_GRADE_NODES, HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import {
   arrowTowerRefusesEffect,
   defenderOnFortification,
@@ -1369,7 +1384,9 @@ export function getAttackRollMode(
   // (`siegeRangedDamageReduction`), so a Magi exempt from one is exempt from both.
   const ignoresAllPenalties = ignoresAllRangedCombatPenalties(attacker, state, isRetaliation);
   const ignoresMeleePenalty =
-    ignoresAllPenalties || hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY");
+    ignoresAllPenalties ||
+    hasUnitAbilityEffect(attacker, "IGNORE_RANGED_MELEE_PENALTY") ||
+    Boolean(state && equipmentIgnoresAdjacentRangedPenalty(state, attacker, isRetaliation));
 
   // The ranged Combat penalty ("throw two Attack dice and apply the smaller
   // result", rulebook p.28): a ranged unit either attacking an adjacent enemy or
@@ -1406,6 +1423,15 @@ export function getAttackRollMode(
     return "disadvantage";
   }
 
+  // Commander armor is a defender-side forced disadvantage, so it has the
+  // same precedence as Fear and beats the attacker's own advantage.
+  if (state && !isRetaliation && defender.commanderSlug) {
+    const protection = commanderArtifactBonusesForUnit(state, defender).incomingAttackDisadvantage;
+    if (protection === "combat" || (protection === "round-1" && state.combat?.round === 1)) {
+      return "disadvantage";
+    }
+  }
+
   // "[unit_attack] Roll 2 Attack dice and resolve the higher one" (Factory
   // Halflings Few/Pack, the neutral Crusaders/Leprechaun/Halfling). Per the
   // board-game ruling this specific card ability OVERRIDES the general ranged
@@ -1423,6 +1449,9 @@ export function getAttackRollMode(
   if (unitHasAttackRollAdvantage(attacker, isRetaliation)) {
     return "advantage";
   }
+  if (state && commanderArtifactBonusesForUnit(state, attacker).attackRollAdvantage) {
+    return "advantage";
+  }
 
   // Polish Set Artifacts ("rolls 2 dice and resolves the higher result"): the
   // granted ATTACK_ROLL_ADVANTAGE effect is read on exactly the same terms as
@@ -1432,6 +1461,10 @@ export function getAttackRollMode(
   // variant it is NOT dropped on a retaliation: the printed set text says "rolls
   // 2 dice", with no attack-only icon.
   if (state && unitAttackRollAdvantaged(state, attacker)) {
+    return "advantage";
+  }
+
+  if (state && equipmentRound1AttackAdvantage(state, attacker)) {
     return "advantage";
   }
 
@@ -3931,8 +3964,8 @@ function addOptionPlays(
     // centre is legal only when all printed adjacent picks exist. This is scoped
     // to Deemer's Meteor Shower; Frost Ring and Fireball keep their own rules.
     if (
-      cardId.startsWith("specialty.deemer.") &&
-      option.effect.type === "AREA_DAMAGE_PICK_ADJACENT"
+      option.effect.type === "AREA_DAMAGE_PICK_ADJACENT" &&
+      option.effect.amountByPower !== undefined
     ) {
       const adjacentPicks = option.effect.adjacentPicks;
       targets = targets.filter((target) =>
@@ -4739,6 +4772,24 @@ function addCommanderMapActions(actions: LegalAction[], state: GameState, player
         action: { type: "COMMANDER_SET_BOND", playerId, armyUnitId: armyUnit.id }
       });
     }
+  }
+
+  // Two stable choices per grade. Grade I and the later shared Grade II/III
+  // purchase are independently once per game, and only empty slots are shown.
+  const addForgeTier = (tier: "minor" | "major" | "relic") => {
+    const cost = COMMANDER_ARTIFACT_GOLD_COST[tier];
+    if ((player.resources.gold ?? 0) < cost) return;
+    for (const spec of commanderForgeCandidates(state, playerId, tier)) {
+      actions.push({
+        label: `Commander Forge: ${spec.name} (${cost} gold)`,
+        action: { type: "FORGE_COMMANDER_ARTIFACT", playerId, tier, cardId: spec.cardId }
+      });
+    }
+  };
+  if (state.round >= 2 && !commander.forgeMinorUsed) addForgeTier("minor");
+  if (state.round >= 7 && !commander.forgeHighUsed) {
+    addForgeTier("major");
+    addForgeTier("relic");
   }
 }
 
@@ -7087,6 +7138,19 @@ function getLegalActionsCore(
     // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
     // forced, so ignoring every offer can never stall a seat. No-op when off.
     addArtifactSetActions(actions, state, playerId);
+    for (const offer of equipmentCombatUnitOffers(state, playerId)) {
+      const unit = state.combat?.units[offer.unitId];
+      if (!unit) continue;
+      actions.push({
+        label: `${offer.name}: ${unit.cardName} gains +${offer.amount} ${offer.stat === "attack" ? "Attack" : "Initiative"} this combat`,
+        action: {
+          type: "SELECT_EQUIPMENT_COMBAT_UNIT",
+          playerId,
+          equipmentId: offer.equipmentId,
+          unitId: offer.unitId
+        }
+      });
+    }
   }
 
   return actions;
@@ -8744,6 +8808,57 @@ export function getLegalReactionsForTrigger(
       }
     }
 
+    if (defenderUnit && equipmentDefenseReactionAvailable(state, defenderUnit.controllerId)) {
+      const owner = defenderUnit.controllerId;
+      result[owner] = [
+        ...(result[owner] ?? []),
+        {
+          label: `Reactive Buckler: ${defenderUnit.cardName} gets +1 Defense for this attack`,
+          action: { type: "USE_EQUIPMENT_DEFENSE_REACTION", playerId: owner, unitId: defenderUnit.id }
+        }
+      ];
+    }
+
+    if (defenderUnit && equipmentGuardianReactionAvailable(state, defenderUnit.controllerId)) {
+      const owner = defenderUnit.controllerId;
+      result[owner] = [
+        ...(result[owner] ?? []),
+        {
+          label: `Guardian Mirror: cancel all damage to ${defenderUnit.cardName}`,
+          action: { type: "USE_EQUIPMENT_GUARDIAN_REACTION", playerId: owner, unitId: defenderUnit.id }
+        }
+      ];
+    }
+
+    if (attackerUnit && !triggerEvent.isRetaliation) {
+      const owner = attackerUnit.controllerId;
+      for (const equipmentId of [EQUIPMENT_IDS.corrosionEdge, EQUIPMENT_IDS.wyvernNeedle]) {
+        if (!equipmentAttackRiderAvailable(state, owner, equipmentId)) continue;
+        const name = equipmentId === EQUIPMENT_IDS.corrosionEdge ? "Corrosion Edge" : "Wyvern Needle";
+        result[owner] = [
+          ...(result[owner] ?? []),
+          {
+            label: `${name}: apply its rider to this attack`,
+            action: { type: "USE_EQUIPMENT_ATTACK_RIDER", playerId: owner, equipmentId, unitId: attackerUnit.id }
+          }
+        ];
+      }
+    }
+
+    for (const owner of [state.combat?.attackerPlayerId, state.combat?.defenderPlayerId]) {
+      if (!owner || owner === NEUTRAL_PLAYER_ID || !equipmentHealReactionAvailable(state, owner)) continue;
+      for (const unit of Object.values(state.combat?.units ?? {})) {
+        if (unit.controllerId !== owner || unit.damage <= 0 || unit.damage >= unit.maxHealth) continue;
+        result[owner] = [
+          ...(result[owner] ?? []),
+          {
+            label: `Field Medic Kit: heal 1 damage on ${unit.cardName}`,
+            action: { type: "USE_EQUIPMENT_HEAL_REACTION", playerId: owner, unitId: unit.id }
+          }
+        ];
+      }
+    }
+
     // Polish Set Artifacts, the pop-up instants ("rolls 2 dice and resolves the
     // higher result" — Angelic Alliance 3, Power of the Dragon Father 2): offered
     // to the controller of the unit that is ABOUT TO ROLL, i.e. this window's
@@ -9188,6 +9303,7 @@ export function resolvedSpellPowerForStackItem(
   if (totalFloorDrain <= 0) {
     return drained;
   }
+
   const floor = Math.min(drained, spellMinUsefulPower(card));
   return Math.max(floor, drained - totalFloorDrain);
 }
@@ -9964,9 +10080,11 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
 
   if (step.type === "TRADING_POST") {
     for (const [rateIndex, rate] of TRADE_RATES.entries()) {
-      if (playerHasResources(player, rate.sell)) {
+      const discount = rate.sell.gold ? Math.min(rate.sell.gold, equipmentTradeGoldDiscount(state, playerId)) : 0;
+      const sell = discount > 0 ? { ...rate.sell, gold: Math.max(0, (rate.sell.gold ?? 0) - discount) } : rate.sell;
+      if (playerHasResources(player, sell)) {
         actions.push({
-          label: `Trade ${rate.label}`,
+          label: `Trade ${discount > 0 ? `${sell.gold} gold instead of ${rate.sell.gold} gold` : rate.label}`,
           action: { type: "TRADE_RESOURCES", playerId, rateIndex }
         });
       }
@@ -11989,8 +12107,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   }
 
   // Anime Hero Grades (§3.11): TRAIN for Merit (spend 2 MP → +1 Merit, once per
-  // turn), spend a grade point on a tree node, and use the Forced March map
-  // active (+1 movement, once per round). All no-ops when the module is off.
+  // turn) and spend a grade point on a tree node. All no-ops when the module is off.
   if (heroTrainAvailable(state, playerId)) {
     actions.push({
       label: "Train (2 movement → +1 Merit)",
@@ -12002,7 +12119,7 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
   // +1 XP. Towns, Settlements and Random Towns waive the 1-movement field cost.
   if (unitDrillAvailable(state, playerId)) {
     for (const armyUnit of drillableArmyUnits(state, playerId)) {
-      const cost = unitDrillGoldCost(armyUnit);
+      const cost = unitDrillGoldCostFor(state, playerId, armyUnit);
       if ((player.resources.gold ?? 0) < cost) continue;
       const unitName = coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId;
       const movementCost = unitDrillMovementCost(state, playerId) ?? 0;
@@ -12053,6 +12170,16 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
       label: `Grade up: learn ${node.name.en} (${node.name.vi})`,
       action: { type: "HERO_GRADE_PICK", playerId, nodeId: node.id }
     });
+  }
+  if (heroHasGradeNode(state, playerId, HERO_GRADE_NODE_IDS.artifactBroker)) {
+    for (const cardId of player.hand) {
+      if (cardLibrary[cardId]?.kind === "artifact") {
+        actions.push({
+          label: `Artifact Broker: sell ${cardLibrary[cardId]?.name ?? cardId} for 4 gold`,
+          action: { type: "HERO_GRADE_SELL_ARTIFACT", playerId, cardId }
+        });
+      }
+    }
   }
   for (const nodeId of heroGradeNodesOf(state, playerId)) {
     const node = HERO_GRADE_NODES[nodeId];
@@ -12107,6 +12234,17 @@ function getAdventureLegalActions(state: GameState, playerId: PlayerId, cards: C
           label: `Move hero to ${destination}`,
           action: { type: "MOVE_HERO", playerId, heroId: hero.id, to: destination }
         });
+      }
+    }
+
+    if (hero.movementPoints <= 0 && equipmentFreeDiscovery(state, playerId)) {
+      for (const tile of Object.values(adventure.tiles)) {
+        if (canHeroDiscoverAdjacentTile(state, hero, tile)) {
+          actions.push({
+            label: `Discover the face-down tile at (${tile.centerRow}, ${tile.centerCol}) (free)`,
+            action: { type: "DISCOVER_TILE", playerId, heroId: hero.id, tileInstanceId: tile.id }
+          });
+        }
       }
     }
 

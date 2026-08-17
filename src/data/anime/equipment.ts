@@ -10,9 +10,9 @@
  * never join a deck.
  *
  * GRADES (3 tiers, matching Artifact minor/major/relic):
- *   I   (minor)  — cost 4 gold, light standing bonuses
- *   II  (major)  — cost 6 gold, mid combat / economy
- *   III (relic)  — cost 8 gold, rare module-gated or dual-payoff items
+ *   I   (minor)  — cost 5 gold, light standing bonuses
+ *   II  (major)  — cost 7 gold, mid combat / economy
+ *   III (relic)  — cost 10 gold, rare module-gated or dual-payoff items
  * Cost is derived from grade so shops and UI stay consistent.
  *
  * Every `summary` states EXACTLY the wired behaviour (CLAUDE.md §2) — no
@@ -41,9 +41,9 @@ export const EQUIPMENT_GRADE_TO_ARTIFACT_TIER: Record<EquipmentGrade, ArtifactTi
 
 /** Canonical shop gold cost by grade. */
 export const EQUIPMENT_GRADE_COST: Record<EquipmentGrade, number> = {
-  I: 4,
-  II: 6,
-  III: 8
+  I: 5,
+  II: 7,
+  III: 10
 };
 
 /** Roman / short labels for UI chips. */
@@ -178,6 +178,19 @@ export const EQUIPMENT_IDS = {
   littleBustersMiosParasol: "anime.equip.little-busters-mios-parasol",
   littleBustersFlightGoggles: "anime.equip.little-busters-kuds-flight-goggles",
   littleBustersPracticeBat: "anime.equip.little-busters-little-busters-practice-bat",
+  pathfindersBoots: "anime.equip.pathfinders_boots",
+  surveyorsLens: "anime.equip.surveyors_lens",
+  hearthboundHorseshoe: "anime.equip.hearthbound_horseshoe",
+  spellwardBrooch: "anime.equip.spellward_brooch",
+  reactiveBuckler: "anime.equip.reactive_buckler",
+  duelistInsignia: "anime.equip.duelist_insignia",
+  clockworkSpurs: "anime.equip.clockwork_spurs",
+  corrosionEdge: "anime.equip.corrosion_edge",
+  wyvernNeedle: "anime.equip.wyvern_needle",
+  fieldMedicKit: "anime.equip.field_medic_kit",
+  foldedTacticsManual: "anime.equip.folded_tactics_manual",
+  guardianMirror: "anime.equip.guardian_mirror",
+  chronicleSpurs: "anime.equip.chronicle_spurs",
   littleBustersRevolutionWatch: "anime.equip.little-busters-school-revolution-watch",
   mgqAngelHalo: "anime.equip.mgq-angel-halo",
   mgqHeavenlyKnightsAegis: "anime.equip.mgq-heavenly-knights-aegis",
@@ -225,7 +238,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "I",
     name: { en: "Guild-Issue Mail", vi: "Giáp Công Hội" },
     package: "anime-isekai",
-    summary: "Armor · Grade I: +1 hand limit (stacks with Cultivation Foundation, Deep Pockets, Twin-Tail Ribbon, Eternal Sash)."
+    summary: "Armor · Grade I: +1 hand limit and −1 movement point at each turn refresh."
   }),
   [EQUIPMENT_IDS.twinTailRibbon]: equip({
     id: EQUIPMENT_IDS.twinTailRibbon,
@@ -233,7 +246,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "I",
     name: { en: "Twin-Tail Ribbon", vi: "Ruy Băng Đôi" },
     package: "anime-isekai",
-    summary: "Accessory · Grade I: +1 hand limit (stacks with Cultivation Foundation / Deep Pockets / Guild-Issue Mail (armor); shares the accessory slot with Eternal Sash — only one is worn)."
+    summary: "Accessory · Grade I: +1 hand limit and −1 movement point at each turn refresh."
   }),
   [EQUIPMENT_IDS.luckyCoin]: equip({
     id: EQUIPMENT_IDS.luckyCoin,
@@ -241,7 +254,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "I",
     name: { en: "Lucky Coin", vi: "Đồng Xu May Mắn" },
     package: "shared",
-    summary: "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade / Alchemist's Satchel / Bounty Hunter's Eye)."
+    summary: "Accessory · Grade I: once per game round, reroll one Treasure die."
   }),
 
   // ---- Grade II (major, 6g) -----------------------------------------------
@@ -251,7 +264,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Cosmos Pendant", vi: "Càn Khôn Bội" },
     package: "anime-xianxia",
-    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade Power; the isekai Spirit Focus is its same-slot accessory twin — only one is worn)."
+    summary: "Accessory · Grade II: +1 spell Power on your casts during combat round 1 only (your main hero's fights)."
   }),
   [EQUIPMENT_IDS.supplySatchel]: equip({
     id: EQUIPMENT_IDS.supplySatchel,
@@ -259,7 +272,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Supply Satchel", vi: "Túi Tiếp Tế" },
     package: "shared",
-    summary: "Accessory · Grade II: +1 building materials at the start of each Resources round."
+    summary: "Accessory · Grade II: your Search (X) reveals one extra card; take cards using the normal Search rules."
   }),
   [EQUIPMENT_IDS.windriderSaddle]: equip({
     id: EQUIPMENT_IDS.windriderSaddle,
@@ -267,7 +280,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Windrider Saddle", vi: "Yên Ngự Phong" },
     package: "shared",
-    summary: "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max)."
+    summary: "Mount · Grade II: +1 movement point to your main hero at each turn refresh and −1 hand limit."
   }),
   [EQUIPMENT_IDS.bladeOfTheTrial]: equip({
     id: EQUIPMENT_IDS.bladeOfTheTrial,
@@ -276,7 +289,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     name: { en: "Blade of the Trial", vi: "Thí Luyện Kiếm" },
     package: "shared",
     summary:
-      "Weapon · Grade II: +1 Attack on your units' declared attacks during combat ROUND 1 only (your main hero's fights; not on retaliations, gone from round 2)."
+      "Weapon · Grade II: +1 Attack on your units' declared attacks during combat round 1 (not retaliations); one seeded-random allied army unit cannot retaliate during round 1."
   }),
   [EQUIPMENT_IDS.veteransStandard]: equip({
     id: EQUIPMENT_IDS.veteransStandard,
@@ -286,7 +299,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     requiresContext: "anime.unitExperience",
     summary:
-      "Accessory · Grade II: your surviving units gain +1 EXTRA Unit-Experience XP per won combat (2 total). Needs the Unit Experience module; hidden at shops while it is off."
+      "Accessory · Grade II: an allied army card gains +1 Unit Experience whenever it defeats a real enemy unit. Needs the Unit Experience module; hidden at shops while it is off."
   }),
   [EQUIPMENT_IDS.neonMicrophone]: equip({
     id: EQUIPMENT_IDS.neonMicrophone,
@@ -312,7 +325,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "II",
     name: { en: "Spirit Focus", vi: "Tụ Linh Châu" },
     package: "anime-isekai",
-    summary: "Accessory · Grade II: +1 spell Power on your casts (stacks with Cultivation / Hero-Grade Power; the xianxia Cosmos Pendant is its same-slot accessory twin — only one is worn)."
+    summary: "Accessory · Grade II: +1 spell Power on your casts during combat round 1 only (your main hero's fights)."
   }),
 
   // ---- Grade III (relic, 8g) ----------------------------------------------
@@ -324,7 +337,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     requiresContext: "wog.commanders",
     summary:
-      "Accessory · Grade III: your Commander gains the pre-combat SORT window (reposition it in your deployment zone before round 1). Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
+      "Accessory · Grade III: your Commander gains the pre-combat SORT window and +2 maximum Health. Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
   }),
   [EQUIPMENT_IDS.spiritCraneMount]: equip({
     id: EQUIPMENT_IDS.spiritCraneMount,
@@ -334,7 +347,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     requiresContext: "wog.commanders",
     summary:
-      "Mount · Grade III: if your Commander dies in a fight, it REVIVES FREE at combat end (no death, no revive gold) — same free-revive branch as the Helm of Immortality. Needs the WOG Commanders module; hidden at shops while Commanders is off."
+      "Mount · Grade III: your Commander gets +2 Speed; if it dies, it revives free at combat end. Needs the WOG Commanders module; hidden at shops while Commanders is off."
   }),
   [EQUIPMENT_IDS.alchemistsSatchel]: equip({
     id: EQUIPMENT_IDS.alchemistsSatchel,
@@ -343,7 +356,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     name: { en: "Alchemist's Satchel", vi: "Túi Luyện Kim" },
     package: "shared",
     summary:
-      "Armor · Grade III: +1 gold at the start of each Resources round AND +1 gold after each combat you win (stacks with Adventurer's Blade / Lucky Coin / Bounty Hunter's Eye)."
+      "Armor · Grade III: all allied units take 1 less Spell damage in your main hero's combats."
   }),
   [EQUIPMENT_IDS.eternalSash]: equip({
     id: EQUIPMENT_IDS.eternalSash,
@@ -352,7 +365,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     name: { en: "Eternal Sash", vi: "Đới Trường Sinh" },
     package: "shared",
     summary:
-      "Accessory · Grade III: +1 hand limit (stacks with Guild-Issue Mail (armor) / Cultivation Foundation / Deep Pockets; shares the accessory slot with Twin-Tail Ribbon — only one is worn)."
+      "Accessory · Grade III: during combat round 1, every allied Attack roll has advantage (roll twice and resolve the higher result)."
   }),
 
   // ==== Classic register line (2026-07) ====================================
@@ -366,7 +379,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "classic",
     // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
     summary:
-      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword — only one is worn)."
+      "Weapon · Grade I: once per game round, reroll one Attack die."
   }),
   [EQUIPMENT_IDS.coinwardTalisman]: equip({
     id: EQUIPMENT_IDS.coinwardTalisman,
@@ -376,7 +389,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "classic",
     // Seam: equipmentWinGold (the Lucky Coin fold).
     summary:
-      "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor); shares the accessory slot with Lucky Coin / Horn of Plenty — only one is worn)."
+      "Accessory · Grade I: once per game round, the gold-paid side of one market trade costs 1 less gold."
   }),
 
   // ---- Grade II (major, 6g) -----------------------------------------------
@@ -388,7 +401,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "classic",
     // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume fold).
     summary:
-      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Stage Costume / Warden's Aegis — only one is worn)."
+      "Armor · Grade II: allied ground units standing on your back line gain +1 Defense."
   }),
   [EQUIPMENT_IDS.coursersBarding]: equip({
     id: EQUIPMENT_IDS.coursersBarding,
@@ -398,19 +411,19 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "classic",
     // Seam: equipmentMovementBonus (the Windrider Saddle fold).
     summary:
-      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle — only one is worn)."
+      "Mount · Grade II: moving from land to sea does not end your main hero's movement."
   }),
 
   // ---- Grade III (relic, 8g) — each COMBINES two proven seams -------------
   [EQUIPMENT_IDS.hornOfPlenty]: equip({
     id: EQUIPMENT_IDS.hornOfPlenty,
     slot: "accessory",
-    grade: "III",
+    grade: "II",
     name: { en: "Horn of Plenty", vi: "Tù Và Sung Túc" },
     package: "classic",
     // Seams: equipmentWinGold + equipmentResourceRoundMaterials.
     summary:
-      "Accessory · Grade III: +1 gold after each combat you win AND +1 building materials at the start of each Resources round (win-gold stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor); shares the accessory slot with Supply Satchel / Coinward Talisman / Lucky Coin — only one is worn)."
+      "Accessory · Grade II: recruiting or reinforcing one of your units costs 1 less gold."
   }),
   [EQUIPMENT_IDS.wardensAegis]: equip({
     id: EQUIPMENT_IDS.wardensAegis,
@@ -420,7 +433,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "classic",
     // Seams: equipmentIncomingAttackPenalty + applyEquipmentStageCostumeDefenseToken.
     summary:
-      "Armor · Grade III: the FIRST enemy attack against your units each combat resolves at −1 Attack, and that unit gains a Defense token after the hit (your main hero's fights; not vs retaliations; shares the armor slot with Black Tortoise Mail / Stage Costume — only one is worn)."
+      "Armor · Grade III: the first incoming attack resolves at −1 Attack; its defender then gains a Defense token for the whole combat (main-hero fights; not retaliations)."
   }),
 
   // ==== Hidden Leaf Village bespoke "shinobi" register line (§3.13) =========
@@ -437,7 +450,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shinobi",
     // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
     summary:
-      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe — only one is worn)."
+      "Weapon · Grade I: once per combat, one allied ranged unit ignores the adjacent-target ranged penalty."
   }),
 
   // ---- Grade II (major, 6g) -----------------------------------------------
@@ -449,7 +462,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shinobi",
     // Seam: equipmentMovementBonus (the Windrider Saddle fold).
     summary:
-      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle / Courser's Barding — only one is worn)."
+      "Mount · Grade II: +1 movement point to your main hero at each turn refresh and −1 hand limit."
   }),
 
   // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
@@ -461,7 +474,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shinobi",
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
-      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash) — only one accessory is worn, so same-slot twins never stack)."
+      "Accessory · Grade III: +1 spell Power on your first Spell each combat AND +1 hand limit."
   }),
 
   // ==== Azur Lane Naval Base bespoke "kansen" register line (§3.13) =========
@@ -478,7 +491,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "kansen",
     // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
     summary:
-      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch — only one is worn)."
+      "Weapon · Grade I: in combat round 1, gain +1 Attack while attacking a unit that has already activated this round."
   }),
 
   // ---- Grade II (major, 6g) -----------------------------------------------
@@ -491,7 +504,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume / Ironbark
     // Cuirass first-incoming-hit Defense-token fold).
     summary:
-      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Black Tortoise Mail / Stage Costume / Ironbark Cuirass / Guild-Issue Mail / Warden's Aegis — only one is worn)."
+      "Armor · Grade II: prevent the first point of damage your hero's army takes each combat."
   }),
 
   // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
@@ -503,7 +516,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "kansen",
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
-      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm) — only one accessory is worn, so same-slot twins never stack)."
+      "Accessory · Grade III: +1 spell Power on your first Spell each combat AND +1 hand limit."
   }),
 
   // ---- Grade I (minor, 4g) — accessory win-gold twin ----------------------
@@ -515,7 +528,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "kansen",
     // Seam: equipmentWinGold (the Lucky Coin fold).
     summary:
-      "Accessory · Grade I: gain +1 gold after each combat you win (stacks with Adventurer's Blade (weapon) / Alchemist's Satchel (armor) to the +3 win-gold cap = weapon + armor + ONE accessory; shares the accessory slot with Lucky Coin / Coinward Talisman / Horn of Plenty / SG Radar / the spell-power+hand-limit accessories — only one accessory is worn, so the win-gold cap stays +3)."
+      "Accessory · Grade I: whenever one of your real army units is defeated, draw 1 card."
   }),
 
   // ---- Grade II (major, 6g) — mount movement twin -------------------------
@@ -527,7 +540,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "kansen",
     // Seam: equipmentMovementBonus (the Windrider Saddle fold).
     summary:
-      "Mount · Grade II: +1 movement point to your main hero at each turn refresh (folded into the per-turn movement max; shares the mount slot with Windrider Saddle / Courser's Barding / Body-Flicker Tabi / Spirit Crane Mount — only one mount is worn)."
+      "Mount · Grade II: +1 movement point to your main hero at each turn refresh and −1 hand limit."
   }),
 
   // ---- Grade III (relic, 8g) — weapon relic COMBINING two attack seams ----
@@ -541,7 +554,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // (Blade of the Trial). Both weapon-slot folds, so the FIRST attack in round 1
     // stacks BOTH → +2; a same-slot weapon can never double either half.
     summary:
-      "Weapon · Grade III: your units' FIRST declared attack each combat gets +1 Attack AND your units' declared attacks during combat ROUND 1 get +1 Attack — so the FIRST attack in round 1 is +2 total (your main hero's fights; not on retaliations, the round-1 half is gone from round 2; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch / Oxygen Torpedo / Blade of the Trial — only one weapon is worn)."
+      "Weapon · Grade III: the first declared attack gets +1 Attack and all declared round-1 attacks get +1 Attack (not retaliations); one seeded-random allied army unit cannot retaliate during round 1."
   }),
 
   // ==== Heavenly Demon Palace bespoke "modao" register line (§3.13) =========
@@ -559,7 +572,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "modao",
     // Seam: equipmentFirstAttackBonus (the Iron-Blood Sword fold).
     summary:
-      "Weapon · Grade I: your units' FIRST declared attack each combat gets +1 Attack (your main hero's fights; not on retaliations; shares the weapon slot with Iron-Blood Sword / Crusader's Poleaxe / Kunai Pouch / Oxygen Torpedo — only one is worn)."
+      "Weapon · Grade I: once per combat, turn one −1 Attack-die result into +1."
   }),
 
   // ---- Grade II (major, 6g) -----------------------------------------------
@@ -572,7 +585,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     // Seam: applyEquipmentStageCostumeDefenseToken (the Stage Costume / Ironbark
     // Cuirass / Repair Toolkit first-incoming-hit Defense-token fold).
     summary:
-      "Armor · Grade II: the FIRST time one of your units is attacked each combat, that unit gains a Defense token after the attack resolves (your main hero's fights; shares the armor slot with Black Tortoise Mail / Stage Costume / Ironbark Cuirass / Repair Toolkit / Warden's Aegis — only one is worn)."
+      "Armor · Grade II: allied ground units on your front line gain +1 Defense during combat round 1."
   }),
 
   // ---- Grade III (relic, 8g) — COMBINES two proven seams ------------------
@@ -584,32 +597,97 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "modao",
     // Seams: equipmentSpellPowerBonus + equipmentHandLimitBonus (both accessory).
     summary:
-      "Accessory · Grade III: +1 spell Power on your casts AND +1 hand limit (spell Power stacks with Cultivation / Hero-Grade Power; hand limit stacks with Guild-Issue Mail (armor); shares the ONE accessory slot with the other spell-power / hand-limit accessories (Cosmos Pendant / Spirit Focus / Twin-Tail Ribbon / Eternal Sash / Sage Chakra Charm / SG Radar) — only one accessory is worn, so same-slot twins never stack)."
+      "Accessory · Grade III: +1 spell Power on your first Spell each combat AND +1 hand limit."
+  }),
+  [EQUIPMENT_IDS.pathfindersBoots]: equip({
+    id: EQUIPMENT_IDS.pathfindersBoots, slot: "mount", grade: "I",
+    name: { en: "Pathfinder's Boots", vi: "Ủng Dẫn Lối" }, package: "shared",
+    summary: "Mount · Grade I: once per game round, after ending your turn, you may move your main hero to an adjacent empty field."
+  }),
+  [EQUIPMENT_IDS.surveyorsLens]: equip({
+    id: EQUIPMENT_IDS.surveyorsLens, slot: "accessory", grade: "I",
+    name: { en: "Surveyor's Lens", vi: "Kính Trắc Địa" }, package: "shared",
+    summary: "Accessory · Grade I: discovering an ordinary adjacent map tile costs no movement."
+  }),
+  [EQUIPMENT_IDS.hearthboundHorseshoe]: equip({
+    id: EQUIPMENT_IDS.hearthboundHorseshoe, slot: "mount", grade: "I",
+    name: { en: "Hearthbound Horseshoe", vi: "Móng Ngựa Hồi Hương" }, package: "shared",
+    summary: "Mount · Grade I: +1 movement on a turn your main hero starts in your Town."
+  }),
+  [EQUIPMENT_IDS.spellwardBrooch]: equip({
+    id: EQUIPMENT_IDS.spellwardBrooch, slot: "accessory", grade: "I",
+    name: { en: "Spellward Brooch", vi: "Trâm Kháng Phép" }, package: "shared",
+    summary: "Accessory · Grade I: the first enemy Spell each combat resolves at −1 Power against you."
+  }),
+  [EQUIPMENT_IDS.reactiveBuckler]: equip({
+    id: EQUIPMENT_IDS.reactiveBuckler, slot: "armor", grade: "I",
+    name: { en: "Reactive Buckler", vi: "Khiên Phản Ứng" }, package: "shared",
+    summary: "Armor · Grade I: once per game round when your unit is attacked, give it +1 Defense for that attack."
+  }),
+  [EQUIPMENT_IDS.duelistInsignia]: equip({
+    id: EQUIPMENT_IDS.duelistInsignia, slot: "accessory", grade: "II",
+    name: { en: "Duelist Insignia", vi: "Huy Hiệu Đấu Sĩ" }, package: "shared",
+    summary: "Accessory · Grade II: select one allied army unit in round 1; it gains +1 Attack for the whole combat."
+  }),
+  [EQUIPMENT_IDS.clockworkSpurs]: equip({
+    id: EQUIPMENT_IDS.clockworkSpurs, slot: "mount", grade: "II",
+    name: { en: "Clockwork Spurs", vi: "Đinh Thúc Cơ Khí" }, package: "shared",
+    summary: "Mount · Grade II: select one allied army unit in round 1; it gains +2 Initiative for the whole combat."
+  }),
+  [EQUIPMENT_IDS.corrosionEdge]: equip({
+    id: EQUIPMENT_IDS.corrosionEdge, slot: "weapon", grade: "II",
+    name: { en: "Corrosion Edge", vi: "Lưỡi Kiếm Ăn Mòn" }, package: "shared",
+    summary: "Weapon · Grade II: once per combat, one declared attack may place a Corrosion token on its surviving target."
+  }),
+  [EQUIPMENT_IDS.wyvernNeedle]: equip({
+    id: EQUIPMENT_IDS.wyvernNeedle, slot: "weapon", grade: "II",
+    name: { en: "Wyvern Needle", vi: "Kim Độc Wyvern" }, package: "shared",
+    summary: "Weapon · Grade II: once per combat, one declared attack may place 1 poison cube on its surviving target."
+  }),
+  [EQUIPMENT_IDS.fieldMedicKit]: equip({
+    id: EQUIPMENT_IDS.fieldMedicKit, slot: "armor", grade: "II",
+    name: { en: "Field Medic Kit", vi: "Túi Quân Y" }, package: "shared",
+    summary: "Armor · Grade II: once per combat, heal 1 damage on any allied unit as an instant reaction."
+  }),
+  [EQUIPMENT_IDS.foldedTacticsManual]: equip({
+    id: EQUIPMENT_IDS.foldedTacticsManual, slot: "accessory", grade: "II",
+    name: { en: "Folded Tactics Manual", vi: "Cẩm Nang Chiến Thuật Gấp" }, package: "shared",
+    summary: "Accessory · Grade II: once per game round, when you resolve a card's draw rider, draw 1 extra card."
+  }),
+  [EQUIPMENT_IDS.guardianMirror]: equip({
+    id: EQUIPMENT_IDS.guardianMirror, slot: "armor", grade: "III",
+    name: { en: "Guardian Mirror", vi: "Gương Hộ Vệ" }, package: "shared",
+    summary: "Armor · Grade III: once per combat, cancel all damage from one enemy attack; its defender cannot retaliate this round."
+  }),
+  [EQUIPMENT_IDS.chronicleSpurs]: equip({
+    id: EQUIPMENT_IDS.chronicleSpurs, slot: "mount", grade: "III",
+    name: { en: "Chronicle Spurs", vi: "Đinh Thúc Biên Niên" }, package: "shared",
+    summary: "Mount · Grade III: once per game round after your main hero's turn ends, bank +1 movement for its next turn."
   }),
   [EQUIPMENT_IDS.littleBustersGlassMarbles]: equip({
     id: EQUIPMENT_IDS.littleBustersGlassMarbles, slot: "accessory", grade: "I",
     name: { en: "Haruka's Glass Marbles", vi: "Bi Thuy Tinh cua Haruka" }, package: "seishun",
-    summary: "Accessory · Grade I: gain +1 gold after each combat you win."
+    summary: "Accessory · Grade I: one Drill use per game round costs no gold or movement."
   }),
   [EQUIPMENT_IDS.littleBustersMissionLetter]: equip({
     id: EQUIPMENT_IDS.littleBustersMissionLetter, slot: "accessory", grade: "I",
     name: { en: "Lennon's Mission Letter", vi: "Thu Nhiem Vu cua Lennon" }, package: "seishun",
-    summary: "Accessory · Grade I: +1 hand limit."
+    summary: "Accessory · Grade I: +1 hand limit and −1 movement point at each turn refresh."
   }),
   [EQUIPMENT_IDS.littleBustersMiosParasol]: equip({
     id: EQUIPMENT_IDS.littleBustersMiosParasol, slot: "armor", grade: "II",
     name: { en: "Mio's Parasol", vi: "O cua Mio" }, package: "seishun",
-    summary: "Armor · Grade II: the first time one of your units is attacked each combat, it gains a Defense token after the attack."
+    summary: "Armor · Grade II: whenever an allied unit defeats a real enemy unit, draw 1 card, maximum 2 per combat round."
   }),
   [EQUIPMENT_IDS.littleBustersFlightGoggles]: equip({
     id: EQUIPMENT_IDS.littleBustersFlightGoggles, slot: "accessory", grade: "II",
     name: { en: "Kud's Flight Goggles", vi: "Kinh Bay cua Kud" }, package: "seishun",
-    summary: "Accessory · Grade II: +1 spell Power on your casts."
+    summary: "Accessory · Grade II: +1 spell Power on your casts during combat round 1 only."
   }),
   [EQUIPMENT_IDS.littleBustersPracticeBat]: equip({
     id: EQUIPMENT_IDS.littleBustersPracticeBat, slot: "weapon", grade: "III",
     name: { en: "Little Busters Practice Bat", vi: "Gay Tap Little Busters" }, package: "seishun",
-    summary: "Weapon · Grade III: your units' first declared attack each combat gets +1 Attack, and declared attacks in combat round 1 get +1 Attack."
+    summary: "Weapon · Grade III: the first declared attack each combat gets +1 Attack; during round 1, an Attack-die result of 0 paralyzes the target."
   }),
   [EQUIPMENT_IDS.mgqAngelHalo]: equip({
     id: EQUIPMENT_IDS.mgqAngelHalo,
@@ -617,7 +695,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "I",
     name: { en: "Angel Halo", vi: "Thien Than Quang Hoan" },
     package: "mgq",
-    summary: "Weapon - Grade I: your units' first declared attack each combat gets +1 Attack."
+    summary: "Weapon · Grade I: allied bronze units gain +2 Initiative."
   }),
   [EQUIPMENT_IDS.mgqHeavenlyKnightsAegis]: equip({
     id: EQUIPMENT_IDS.mgqHeavenlyKnightsAegis,
@@ -626,7 +704,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     name: { en: "Heavenly Knight's Aegis", vi: "Thien Ky Si Thanh Khien" },
     package: "mgq",
     summary:
-      "Armor - Grade II: the first time one of your units is attacked each combat, it gains a Defense token after the attack."
+      "Armor · Grade II: once per game round, reroll any one die."
   }),
   [EQUIPMENT_IDS.mgqMonsterLordsRing]: equip({
     id: EQUIPMENT_IDS.mgqMonsterLordsRing,
@@ -634,12 +712,12 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     grade: "III",
     name: { en: "Monster Lord's Ring", vi: "Nhan Ma Vuong" },
     package: "mgq",
-    summary: "Accessory - Grade III: +1 spell Power on your casts and +1 hand limit."
+    summary: "Accessory · Grade III: +1 spell Power on your first Spell each combat and +1 hand limit."
   }),
   [EQUIPMENT_IDS.littleBustersRevolutionWatch]: equip({
     id: EQUIPMENT_IDS.littleBustersRevolutionWatch, slot: "accessory", grade: "III",
     name: { en: "School Revolution Watch", vi: "Dong Ho Cach Mang Hoc Duong" }, package: "seishun",
-    summary: "Accessory · Grade III: +1 spell Power on your casts and +1 hand limit."
+    summary: "Accessory · Grade III: +1 spell Power on your first Spell each combat and +1 hand limit."
   })
 };
 
@@ -695,7 +773,20 @@ const SHARED_BOTH_SHOPS = [
   EQUIPMENT_IDS.windriderSaddle,
   EQUIPMENT_IDS.spiritCraneMount,
   EQUIPMENT_IDS.bladeOfTheTrial,
-  EQUIPMENT_IDS.alchemistsSatchel
+  EQUIPMENT_IDS.alchemistsSatchel,
+  EQUIPMENT_IDS.pathfindersBoots,
+  EQUIPMENT_IDS.surveyorsLens,
+  EQUIPMENT_IDS.hearthboundHorseshoe,
+  EQUIPMENT_IDS.spellwardBrooch,
+  EQUIPMENT_IDS.reactiveBuckler,
+  EQUIPMENT_IDS.duelistInsignia,
+  EQUIPMENT_IDS.clockworkSpurs,
+  EQUIPMENT_IDS.corrosionEdge,
+  EQUIPMENT_IDS.wyvernNeedle,
+  EQUIPMENT_IDS.fieldMedicKit,
+  EQUIPMENT_IDS.foldedTacticsManual,
+  EQUIPMENT_IDS.guardianMirror,
+  EQUIPMENT_IDS.chronicleSpurs
 ] as const;
 
 export const EQUIPMENT_SHOP_SALES: Record<string, readonly string[]> = {

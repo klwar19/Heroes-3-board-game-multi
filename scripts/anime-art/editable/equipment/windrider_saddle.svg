@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#e7b73c">GRADE II  ·  MAJOR EQUIPMENT</text>
     <text x="371" y="654" class="slotText">MOUNT</text>
     <text x="371" y="688" class="enText">Yên Ngự Phong</text>
-    <g id="editable-rules"><text x="371" y="778" class="ruleText">Mount: +1 movement point to your main hero</text><text x="371" y="809" class="ruleText">at each turn refresh.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Major Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="778" class="ruleText">Mount: +1 movement at turn refresh and −1</text><text x="371" y="809" class="ruleText">hand limit.</text><line x1="120" y1="846" x2="623" y2="846" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="852" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="883" class="ruleText">the game. Gain 1 Major Artifact.</text></g>
   </g>
 </svg>

@@ -4,13 +4,13 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, GripVertical, Lock, Medal, PackageOpen, Sparkles, X } from "lucide-react";
+import { Check, GripVertical, HelpCircle, Lock, Medal, PackageOpen, Sparkles, X } from "lucide-react";
 
 import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
-import { HERO_GRADE_NODES, heroGradeIconForFaction } from "@/data/anime/hero-grades";
+import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import {
   ANIME_EQUIPMENT_DEFINITIONS,
   EQUIPMENT_PACKAGE_LABEL,
@@ -45,6 +45,7 @@ import {
   heroGradePointsOf,
   heroGradeProgressOf,
   heroGradeNodesOf,
+  heroGradeNodesForPlayer,
   heroGradesEnabled,
   heroUnitId,
   makeHeroCombatUnit,
@@ -59,6 +60,75 @@ import { heroBattlefieldInfoZoomContent, useCardZoom } from "@/components/table/
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
+const HERO_GRADE_EMBLEM_ATLAS = "/assets/anime/hero-grades/grade-emblems-atlas.png";
+const HERO_GRADE_ABILITY_ATLAS = "/assets/anime/hero-grades/ability-emblems-atlas.png";
+
+const HERO_GRADE_ICON_CELLS: Record<string, readonly [number, number]> = {
+  [HERO_GRADE_NODE_IDS.bountyHuntersEye]: [0, 1],
+  [HERO_GRADE_NODE_IDS.provisioner]: [1, 1],
+  [HERO_GRADE_NODE_IDS.battleFocus]: [0, 0],
+  [HERO_GRADE_NODE_IDS.spiritCompanion]: [2, 2],
+  [HERO_GRADE_NODE_IDS.overflowingInsight]: [3, 0],
+  [HERO_GRADE_NODE_IDS.oreDivination]: [1, 1],
+  [HERO_GRADE_NODE_IDS.mineWindfall]: [1, 1],
+  [HERO_GRADE_NODE_IDS.volatileTreasury]: [0, 1],
+  [HERO_GRADE_NODE_IDS.artifactBroker]: [0, 2],
+  [HERO_GRADE_NODE_IDS.spellSavant]: [3, 1],
+  [HERO_GRADE_NODE_IDS.dualArcana]: [3, 1],
+  [HERO_GRADE_NODE_IDS.encore]: [3, 2],
+  [HERO_GRADE_NODE_IDS.deepPockets]: [3, 0],
+  [HERO_GRADE_NODE_IDS.ironWill]: [1, 0],
+  [HERO_GRADE_NODE_IDS.harmonyWard]: [1, 0],
+  [HERO_GRADE_NODE_IDS.forcedMarch]: [2, 0],
+  [HERO_GRADE_NODE_IDS.crystalDividend]: [2, 1],
+  [HERO_GRADE_NODE_IDS.wanderingCurioDealer]: [0, 2],
+  [HERO_GRADE_NODE_IDS.firstBlood]: [0, 0],
+  [HERO_GRADE_NODE_IDS.resourceSacrifice]: [3, 3],
+  [HERO_GRADE_NODE_IDS.combatScholar]: [2, 3],
+  [HERO_GRADE_NODE_IDS.astrologersMorale]: [1, 2],
+  [HERO_GRADE_NODE_IDS.resourceMastery]: [2, 1],
+  [HERO_GRADE_NODE_IDS.majorLegacy]: [0, 2],
+  [HERO_GRADE_NODE_IDS.arcaneInsight]: [3, 1],
+  [HERO_GRADE_NODE_IDS.warCry]: [0, 0],
+  [HERO_GRADE_NODE_IDS.tactician]: [0, 1],
+  [HERO_GRADE_NODE_IDS.standingOvation]: [1, 2],
+  [HERO_GRADE_NODE_IDS.fallingStar]: [0, 3],
+  [HERO_GRADE_NODE_IDS.veteranMentor]: [2, 3],
+  [HERO_GRADE_NODE_IDS.inspiringPresence]: [1, 2],
+  [HERO_GRADE_NODE_IDS.swiftHost]: [2, 0],
+  [HERO_GRADE_NODE_IDS.ancestralRecall]: [3, 3],
+  [HERO_GRADE_NODE_IDS.relicDestiny]: [0, 2]
+};
+
+function HeroGradeEmblem({ gradeValue, className = "" }: { gradeValue: number; className?: string }) {
+  const cell = Math.max(0, Math.min(3, gradeValue));
+  return (
+    <span
+      aria-hidden="true"
+      className={`heroGradeEmblem ${className}`}
+      style={{
+        "--grade-emblem-image": `url(${assetUrl(HERO_GRADE_EMBLEM_ATLAS)})`,
+        "--grade-emblem-x": `${(cell % 2) * 100}%`,
+        "--grade-emblem-y": `${Math.floor(cell / 2) * 100}%`
+      } as React.CSSProperties}
+    />
+  );
+}
+
+function HeroGradeAbilityEmblem({ nodeId }: { nodeId: string }) {
+  const [column = 1, row = 3] = HERO_GRADE_ICON_CELLS[nodeId] ?? [];
+  return (
+    <span
+      aria-hidden="true"
+      className="heroGradeAbilityEmblem"
+      style={{
+        "--grade-ability-image": `url(${assetUrl(HERO_GRADE_ABILITY_ATLAS)})`,
+        "--grade-ability-x": `${column * (100 / 3)}%`,
+        "--grade-ability-y": `${row * (100 / 3)}%`
+      } as React.CSSProperties}
+    />
+  );
+}
 /** Specialty cards sit at Ⅰ (starting deck), Ⅳ and Ⅵ — the laurelled numerals. */
 const SPECIALTY_TRACK_LEVELS = [1, ...SPECIALTY_LEVELS] as number[];
 
@@ -253,6 +323,7 @@ export function HeroBoard({
 }) {
   const { zoomCard, zoomContent } = useCardZoom();
   const [systemsOpen, setSystemsOpen] = useState<"grade" | "equipment" | "unitxp" | null>(null);
+  const [gradeHelpOpen, setGradeHelpOpen] = useState(false);
   const [draggedEquipmentId, setDraggedEquipmentId] = useState<string | null>(null);
   const player = state.players[playerId];
   const hero = getMainHero(state, playerId);
@@ -285,11 +356,11 @@ export function HeroBoard({
   const showGrade = heroGradesEnabled(state);
   const gradeValue = heroGradeOf(state, playerId);
   const grade = heroGradeLabel(state, playerId, gradeValue);
-  const gradeIcon = heroGradeIconForFaction(heroDef.faction, gradeValue);
   const merit = heroGradeProgressOf(state, playerId);
   const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
   const gradePoints = heroGradePointsOf(state, playerId);
   const pickableGradeNodes = heroGradePickableNodes(state, playerId);
+  const dealtGradeNodes = heroGradeNodesForPlayer(state, playerId);
   const ownedGradeNodes = new Set(heroGradeNodesOf(state, playerId));
   const pickableNodeIds = new Set(pickableGradeNodes.map((node) => node.id));
   // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
@@ -583,10 +654,13 @@ export function HeroBoard({
             {showGrade ? (
               <button
                 className={`heroSystemButton grade${gradePoints > 0 ? " attention" : ""}`}
-                onClick={() => setSystemsOpen("grade")}
+                onClick={() => {
+                  setGradeHelpOpen(false);
+                  setSystemsOpen("grade");
+                }}
                 type="button"
               >
-                {gradeIcon ? <img alt="" className="hbEquipIcon" src={assetUrl(gradeIcon)} /> : <Sparkles aria-hidden="true" size={18} />}
+                <HeroGradeEmblem className="compact" gradeValue={gradeValue} />
                 <span><strong>{lexicon.grade}</strong><small>{grade.en} · {gradePoints} point{gradePoints === 1 ? "" : "s"}</small></span>
               </button>
             ) : null}
@@ -608,33 +682,6 @@ export function HeroBoard({
           </div>
         ) : null}
 
-        {showGrade && gradePoints > 0 ? (
-          <div className="hbGradePicker hbGradePickerLegacy" aria-hidden="true">
-            <strong>Spend a grade point ({gradePoints}):</strong>
-            <ul>
-              {pickableGradeNodes.map((node) => (
-                <li key={node.id}>
-                  {onAction ? (
-                    <button
-                      type="button"
-                      className="hbGradePick"
-                      onClick={() => onAction({ type: "HERO_GRADE_PICK", playerId, nodeId: node.id })}
-                    >
-                      <span className="hbGradePickName">
-                        {node.kind === "passive" ? "◆" : "✦"} {node.name.en} · {node.name.vi} (Tier {node.tier})
-                      </span>
-                      <span className="hbGradePickText">{node.summary}</span>
-                    </button>
-                  ) : (
-                    <span className="hbGradePickName">
-                      {node.kind === "passive" ? "◆" : "✦"} {node.name.en} — {node.summary}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </section>
       {systemsOpen === "unitxp" && typeof document !== "undefined"
         ? createPortal(
@@ -663,17 +710,39 @@ export function HeroBoard({
                     <small>{faction?.name} · {heroDef.name}</small>
                     <h2>{systemsOpen === "grade" ? lexicon.grade : lexicon.equipment}</h2>
                   </div>
-                  <button aria-label="Close" className="heroSystemClose" onClick={() => setSystemsOpen(null)} type="button">
-                    <X size={20} />
-                  </button>
+                  <div className="heroSystemHeaderActions">
+                    {systemsOpen === "grade" ? (
+                      <button
+                        aria-expanded={gradeHelpOpen}
+                        aria-label="How Hero Grades work"
+                        className={`gradeHelpButton${gradeHelpOpen ? " active" : ""}`}
+                        onClick={() => setGradeHelpOpen((open) => !open)}
+                        title="Hero Grade rules"
+                        type="button"
+                      >
+                        <HelpCircle size={21} />
+                      </button>
+                    ) : null}
+                    <button aria-label="Close" className="heroSystemClose" onClick={() => setSystemsOpen(null)} type="button">
+                      <X size={20} />
+                    </button>
+                  </div>
                 </header>
                 {systemsOpen === "grade" ? (
                   <>
                     <div className="gradeWindowSummary">
-                      <span>{gradeIcon ? <img alt="" className="hbEquipIcon" src={assetUrl(gradeIcon)} /> : null}<b>{grade.en}</b><small>{grade.vi}</small></span>
+                      <span className="gradeWindowCurrent"><HeroGradeEmblem gradeValue={gradeValue} /><span><b>{grade.en}</b><small>{grade.vi}</small></span></span>
                       <span><b>{merit}{nextThreshold ? ` / ${nextThreshold}` : ""}</b><small>Merit</small></span>
                       <span className={gradePoints > 0 ? "ready" : ""}><b>{gradePoints}</b><small>Points available</small></span>
                     </div>
+                    {gradeHelpOpen ? (
+                      <aside className="gradeHelpPanel" role="note">
+                        <div><b>1</b><span><strong>Earn Merit</strong><small>Level up, train, visit enlightenment sites, or use a Training Manual.</small></span></div>
+                        <div><b>2</b><span><strong>Advance your Grade</strong><small>Reach 3 / 7 / 12 Merit to gain Grades 1–3 and one point each time.</small></span></div>
+                        <div><b>3</b><span><strong>Choose one bonus</strong><small>Each tier deals four stable random choices based on the game, town, and hero. Pick one per tier.</small></span></div>
+                        <p><Sparkles size={14} /> Glowing choices are available now. A check is learned; a lock needs a higher Grade or its tier is already chosen.</p>
+                      </aside>
+                    ) : null}
                     {heroDef.faction === "little_busters" ? (
                       <p className="hbGradePickText">
                         Battlefield hero bonus: {gradeValue === 0 ? "none" : gradeValue === 1 ? "+1 Health" : gradeValue === 2 ? "+1 Health, +1 Initiative" : "+1 Attack, +2 Health, +1 Initiative"}. If defeated, the hero returns at full Health next combat.
@@ -681,21 +750,24 @@ export function HeroBoard({
                     ) : null}
                     <div className="heroGradeTree" aria-label="Skill and passive tree">
                       {[1, 2, 3].map((tier) => (
-                        <div className="heroGradeTier" key={tier}>
-                          <h3>Tier {tier}</h3>
-                          {Object.values(HERO_GRADE_NODES).filter((node) => node.tier === tier).map((node) => {
+                        <div className={`heroGradeTier tier-${tier}`} key={tier}>
+                          <h3><span>Tier {tier}</span><small>{tier === 1 ? "Foundation" : tier === 2 ? "Mastery" : "Legacy"}</small></h3>
+                          {dealtGradeNodes.filter((node) => node.tier === tier).map((node) => {
                             const owned = ownedGradeNodes.has(node.id);
                             const available = pickableNodeIds.has(node.id) && Boolean(onAction);
                             return (
                               <button
-                                className={`heroGradeNode ${owned ? "owned" : available ? "available" : "locked"}`}
+                                className={`heroGradeNode tier-${tier} ${owned ? "owned" : available ? "available" : "locked"}`}
                                 disabled={!available}
                                 key={node.id}
                                 onClick={() => onAction?.({ type: "HERO_GRADE_PICK", playerId, nodeId: node.id })}
                                 type="button"
                               >
                                 <span className="heroGradeNodeIcon">
-                                  {owned ? <Check size={18} /> : available ? <Sparkles size={18} /> : <Lock size={16} />}
+                                  <HeroGradeAbilityEmblem nodeId={node.id} />
+                                  <span className="heroGradeNodeStatus">
+                                    {owned ? <Check size={15} /> : available ? <Sparkles size={15} /> : <Lock size={13} />}
+                                  </span>
                                 </span>
                                 <span><strong>{node.name.en}</strong><small>{node.kind === "passive" ? "Passive" : "Skill"} · {node.name.vi}</small></span>
                                 <p>{node.summary}</p>

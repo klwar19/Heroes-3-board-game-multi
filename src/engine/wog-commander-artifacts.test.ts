@@ -73,7 +73,7 @@ const WOG_ON = { enabled: true, commanders: true, newObjects: false, newCreature
 
 const AXE = "wog.artifact.axe_of_smashing"; // weapon, +2 Attack
 const SWORD = "wog.artifact.sword_of_sharpness"; // weapon, +1 Might attack die
-const SHIELD = "wog.artifact.hardened_shield"; // armor minor, +1 Defense
+const SHIELD = "wog.artifact.hardened_shield"; // armor relic, +1 Defense
 const MAIL = "wog.artifact.mithril_mail"; // armor major, +2 Health
 const HELM = "wog.artifact.helm_of_immortality"; // armor relic, free revive
 const BOOTS = "wog.artifact.boots_of_haste"; // trinket minor, +1 Initiative
@@ -164,8 +164,8 @@ describe("WOG Commander Artifacts — combat stat effects", () => {
     const might = withSword.eventLog.flatMap((e) => (e.type === "ATTACK_ROLLED" && e.mightRolls ? [e.mightRolls] : []));
     expect(might).toEqual([[1]]);
 
-    // A "−1" on the Might die instead LOWERS it: 2 − 1 = 1 (pins it is a real die).
-    expect(commanderMelee({ weapon: SWORD }, [0, -1]).combat!.units.unit_p2_skeletons.damage).toBe(1);
+    // Sword's own extra die cannot resolve to −1: the protected face becomes 0.
+    expect(commanderMelee({ weapon: SWORD }, [0, -1]).combat!.units.unit_p2_skeletons.damage).toBe(2);
   });
 
   it("Sword of Sharpness STACKS with a real Damage grade: grade 1 + sword rolls TWO Might dice", () => {
@@ -430,11 +430,13 @@ describe("WOG Commander Artifacts — Heavenly Demon bespoke items", () => {
     );
   }
 
-  it("Blood Patriarch's Saber (+2 Attack): the commander's hit lands 2 more damage (CONTROL: bare)", () => {
+  it("Blood Patriarch's Saber (+1 Attack + advantage): applies both printed effects", () => {
     // CONTROL: base Attack 2 + die 0 − defense 0 = 2 damage.
     expect(commanderMelee(undefined).combat!.units.unit_p2_skeletons.damage).toBe(2);
-    // Saber bound: the flat +2 folds into the unit's Attack → 4 damage.
-    expect(commanderMelee({ weapon: SABER }).combat!.units.unit_p2_skeletons.damage).toBe(4);
+    // Saber bound: flat +1 folds into the unit's Attack → 3 damage.
+    expect(commanderMelee({ weapon: SABER }).combat!.units.unit_p2_skeletons.damage).toBe(3);
+    // Advantage keeps the higher Attack die: 2 base +1 saber +1 die = 4.
+    expect(commanderMelee({ weapon: SABER }, [-1, 1]).combat!.units.unit_p2_skeletons.damage).toBe(4);
   });
 
   it("Demon Heart Talisman (+1 Initiative): flips the activation order against a same-speed enemy (CONTROL: bare)", () => {
@@ -517,6 +519,45 @@ describe("WOG Commander Artifacts — Heavenly Demon bespoke items", () => {
     expect(castThenStrike(undefined)).toBe(3);
     // Talisman bound: Power 2 Bloodlust → +2 → 2 + 2 = 4 damage (one tier higher).
     expect(castThenStrike({ trinket: TALISMAN })).toBe(4);
+  });
+
+  it("a +1 cast-Power artifact that reaches Power 3 opens the mandatory 1-damage lightning overflow", () => {
+    let state = sandboxWithCommander("brute", { magic: 3 }, 9, { trinket: TALISMAN });
+    const commander = state.combat!.units[commanderUnitId("p1")];
+    const ally = state.combat!.units.unit_p1_crusaders;
+    const victim = state.combat!.units.unit_p2_skeletons;
+    state.combat!.activeUnitId = commander.id;
+    state.activePlayerId = "p1";
+    const cast = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_UNIT_ABILITY" && legal.action.abilityId === commanderDefinitions.brute.cast.abilityId
+    );
+    expect(cast, "the Power-3 command cast should be offered").toBeTruthy();
+    state = apply(state, cast!.action);
+    const castChoice = state.pendingChoice;
+    expect(castChoice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (castChoice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("expected cast target choice");
+    state = apply(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: castChoice.id,
+      targetUnitId: ally.id
+    });
+    const overflow = state.pendingChoice;
+    expect(overflow?.type === "ABILITY_TARGET_CHOICE" ? overflow.kind : null).toBe("commander-overflow-zap");
+    if (overflow?.type !== "ABILITY_TARGET_CHOICE") throw new Error("expected overflow target choice");
+    const before = victim.damage;
+    state = apply(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: overflow.id,
+      targetUnitId: victim.id
+    });
+    expect(state.combat!.units[victim.id].damage).toBe(before + 1);
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "commander-artifact-power-overflow"
+      )
+    ).toBe(true);
   });
 
   it("both bespoke ids join the shared Artifact decks with the other commander artifacts (three-way gate)", () => {

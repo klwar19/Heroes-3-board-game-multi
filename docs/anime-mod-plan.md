@@ -491,29 +491,60 @@ grade).
    per own turn.
 4. **Training Manual** (`anime.item.training_manual`, kind artifact/minor) — NOT
    in any deck (declared in `animeNeverDeckedCardIds`, excluded from the
-   deck-coverage / sandbox invariants); bought for 2 gold at the Merchant Guild
+   deck-coverage / sandbox invariants); bought for 5 gold at the Merchant Guild
    Post AND Urahara's Shop (a module-gated appended `PAY_TO` → `GAIN_HAND_CARD`);
    played on the map → +2 Merit, then removed from the game (`removeSelf`).
 5. **Generic payload** — the `GAIN_GRADE_PROGRESS { amount }` effect kind the
    Manual uses is generic; any future card can carry it (that IS the arm).
 
-**The tree — 3 tiers × 3 nodes, pick 1 per tier** (`HERO_GRADE_PICK`,
-handler-validated: unspent point, tier ≤ grade, tier not full, node exists).
+**The tree — 3 tiers, exactly 4 dealt choices per tier, pick 1 per tier**
+(`HERO_GRADE_PICK`, handler-validated: unspent point, tier ≤ grade, tier not
+full, node exists). The deal is deterministic-random from the full shared pool,
+seeded by game seed + faction/town + main hero id: reloads are stable, while
+different games, towns, and heroes receive varied combinations. A town/register
+exclusive node (currently MGQ Job Mastery) reserves one of its tier's four slots;
+the other slots remain randomized.
 Passives are always-on; **skills are used actively / as reactions, NOT via
 cards**, with cooldowns:
 - Tier 1 — Bounty Hunter's Eye (P, +1 gold after a won combat), Provisioner (P,
   +1 building materials each Resources round), Battle Focus (S reaction, +1
-  Attack on your unit's declared attack, once/combat).
+  Attack on your unit's declared attack, once/combat), Encore (S, heal 1 once
+  per combat), Spirit Companion (P, add the framed 2/1/2/8 Starwind Familiar to
+  combat preparation so it can be formation-sorted; it lasts through combat
+  round 1), Overflowing Insight (P, draw one over limit then discard),
+  Ore Divination (P, +1 building material each Astrologers round), Mine
+  Windfall (P, newly captured mines immediately repeat their printed resource
+  payout), Volatile Treasury (P, -3 gold Resources / +6 gold Astrologers),
+  Artifact Broker (P, remove an Artifact from hand for 4 gold), Spell Savant
+  (P, spell searches reveal +1), and Dual Arcana (one-time random Basic + Expert
+  Spell; +1 gold only if neither deck can grant one).
 - Tier 2 — Deep Pockets (P, +1 hand limit — stacks observably with Cultivation
   Foundation, +2 total), Iron Will (S reaction, +1 Defense when your unit is
-  attacked, once/combat), Forced March (S map-active, +1 movement, once/round).
+  attacked, once/combat), Harmony Ward (S reaction, Defense token), Forced
+  March (P, +1 main-hero movement each Resources round), Crystal Dividend (P,
+  +1 valuable each Resources round), Wandering Curio Dealer (P, each
+  Astrologers round may pay 3 gold for a random Minor Artifact), and First Blood
+  (P, +2 Attack on the first declared attack each combat), Resource Sacrifice
+  (P, each Resources round may remove a hand card for 3 gold), Combat Scholar
+  (P, every surviving deployed unit gains +1 bonus Unit XP after a combat win,
+  through the Unit Experience rank system), Astrologers' Morale (P, +1 morale
+  each Astrologers round), Resource Mastery (P, each Resource die may be set to
+  any face, including the same face on multiple dice), and Major Legacy
+  (one-time random Major Artifact).
 - Tier 3 — Arcane Insight (P, +1 spell Power), War Cry (S combat-active during
   your unit's activation, +1 Attack this activation, once/combat), Tactician (P,
-  +2 gold each Resources round).
+  +2 gold each Resources round), Standing Ovation (P, +1 win gold), Falling Star
+  (P, 1 effect damage to the slowest enemy at each combat-round start; never a
+  Ballista), and Veteran Mentor (P, every army card gains +1 Unit XP each game
+  round while Unit Experience is enabled), Inspiring Presence (P, +1 morale
+  each game round), Swift Host (P, +1 initiative to all friendly units),
+  Ancestral Recall (P, each Resources round may choose 1 card from discard and
+  return it to hand), and Relic Destiny (one-time Relic search 5, choose 1;
+  explicitly bypasses ordinary random-artifact access rolls). MGQ also has its
+  exclusive Job Mastery Tier-3 node (free town Job changes).
 
 Skills are non-card offers: map/combat actives via legal-actions (`USE_HERO_SKILL`,
-surfaced as a combat command button / the map `HeroActionsDock` button for the
-Forced March map-active), reactions via
+surfaced as combat command buttons), reactions via
 `getLegalReactionsForTrigger` beside the commander defense reaction
 (`USE_HERO_SKILL_REACTION`, attribution + window advance exactly like
 `applyCommanderCastReaction`, rendered as a bespoke reaction-tray tile). Combat
@@ -555,20 +586,30 @@ point).
 
 **AI (no stalls).** `HERO_GRADE_PICK` scores high in map-policy (spend the point
 immediately, prefer a passive at the lowest tier — no window to freeze on);
-`HERO_TRAIN` / Forced March score just above `END_TURN` (taken only when idle);
+`HERO_TRAIN` scores just above `END_TURN` (taken only when idle);
 War Cry scores in combat-policy just above a real attack (buff then strike); the
 reaction skills score above `PASS_REACTION` in card-policy (use, don't hoard).
 Optional offers auto-pass on AFK/timeout with no extra wiring.
 
+**Grade window presentation.** Generated production art atlases under
+`public/assets/anime/hero-grades/` provide four progression medallions, distinct
+Tier 1/2/3 ornamental button frames, and sixteen semantic ability emblems. Each
+dealt bonus remains an accessible HTML button with learned / available / locked
+status, keyboard focus treatment, and responsive single-column fallback. A `?`
+control opens an in-window rules card explaining Merit thresholds, points, the
+four-choice deterministic deal, and pick-one-per-tier progression. All anime
+factions call this system **Hero Grade**; the obsolete `Spirit Rank` label is
+removed.
+
 **Adaptations / deliberate limits (leading with what does NOT run):** HERO_TRAIN
-and Forced March now have a human MAP button — the compact `HeroActionsDock`
-under the hero board (alongside the Cultivation Heavenly Tribulation), each shown
+has a human MAP button — the compact `HeroActionsDock` under the hero board
+(alongside the Cultivation Heavenly Tribulation), shown
 only while `getLegalActions` offers it and dispatching the exact payload (pinned
 in `hero-actions-dock.test.tsx`); the reaction/combat grade skills still ride the
 combat command dock. The AI does not specifically seek the Training Manual at a
 shop (it declines the optional PAY_TO from surplus by default; buying it is a
-human play). Per-package fancy grade-label fonts/art are deferred (the register
-text is bilingual plain text).
+human play). Register text stays bilingual plain text inside the shared generated
+visual frame so faction terminology remains readable and accessible.
 
 ### 3.12 Forced Battle Events (scripted combats) — SHIPPED (V1)
 

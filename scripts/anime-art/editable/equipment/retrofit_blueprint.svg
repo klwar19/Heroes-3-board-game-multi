@@ -28,6 +28,6 @@
     <text x="371" y="624" class="gradeText" fill="#6fa8ff">GRADE III  ·  RELIC EQUIPMENT</text>
     <text x="371" y="654" class="slotText">WEAPON</text>
     <text x="371" y="688" class="enText">Bản Vẽ Cải Tạo</text>
-    <g id="editable-rules"><text x="371" y="753" class="ruleText">Weapon: your units' FIRST declared attack</text><text x="371" y="782" class="ruleText">each combat +1 Attack AND all declared</text><text x="371" y="811" class="ruleText">attacks in combat ROUND 1 +1 Attack (first</text><text x="371" y="840" class="ruleText">attack in round 1 = +2; not retaliations).</text><line x1="120" y1="875" x2="623" y2="875" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="881" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="910" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
+    <g id="editable-rules"><text x="371" y="768" class="ruleText">Weapon: first declared attack +1 Attack;</text><text x="371" y="797" class="ruleText">all round-1 declared attacks +1; one</text><text x="371" y="826" class="ruleText">random ally cannot retaliate round 1.</text><line x1="120" y1="861" x2="623" y2="861" stroke="#6a5a32" stroke-width="1.5" opacity="0.55"/><text x="371" y="867" class="ruleText">Play: equip permanently. This card leaves</text><text x="371" y="896" class="ruleText">the game. Gain 1 Relic Artifact.</text></g>
   </g>
 </svg>

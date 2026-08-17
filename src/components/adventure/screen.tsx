@@ -3896,6 +3896,56 @@ function TownIcon({ factionId, size }: { factionId: string; size: number }) {
   );
 }
 
+function CommanderForgePanel({
+  state,
+  playerId,
+  legalActions,
+  onAction
+}: {
+  state: GameState;
+  playerId: PlayerId;
+  legalActions: LegalAction[];
+  onAction?: (action: GameAction) => void;
+}) {
+  const commander = state.players[playerId]?.commander;
+  if (!commander || !(state.wog?.enabled && state.wog?.commanders)) return null;
+  const offers = legalActions.filter(
+    (legal): legal is LegalAction & { action: Extract<GameAction, { type: "FORGE_COMMANDER_ARTIFACT" }> } =>
+      legal.action.type === "FORGE_COMMANDER_ARTIFACT"
+  );
+  const tiers = ["minor", "major", "relic"] as const;
+  return (
+    <section className="commanderForgePanel" aria-label="Commander Forge">
+      <img alt="" aria-hidden="true" className="commanderForgeIcon" src={assetUrl("/assets/ui/commander-forge.webp")} />
+      <div className="commanderForgeContent">
+        <header><strong>Commander Forge</strong><small>Two offers · choose one</small></header>
+        <p>Grade I: round 2, 5 gold. One Grade II or III purchase: round 7, 8 or 11 gold. Each budget is once per game; only empty slots are offered.</p>
+        {tiers.map((tier) => {
+          const tierOffers = offers.filter((offer) => offer.action.tier === tier);
+          const used = tier === "minor" ? commander.forgeMinorUsed : commander.forgeHighUsed;
+          const unlockRound = tier === "minor" ? 2 : 7;
+          const cost = tier === "minor" ? 5 : tier === "major" ? 8 : 11;
+          return (
+            <div className="commanderForgeTier" key={tier}>
+              <span><EquipGradeChip grade={tierToGrade(tier)} /> {cost} gold</span>
+              {used ? <small>Use spent</small> : state.round < unlockRound ? <small>Unlocks round {unlockRound}</small> : null}
+              {tierOffers.map((offer) => {
+                const spec = COMMANDER_ARTIFACT_SPECS[offer.action.cardId];
+                return (
+                  <button key={offer.action.cardId} onClick={() => onAction?.(offer.action)} type="button">
+                    {spec ? <img alt="" src={assetUrl(`/assets/wog/artifacts/icons/${spec.slug}.webp`)} /> : null}
+                    <span><strong>{spec?.name ?? offer.action.cardId}</strong><small>{spec?.effectText}</small></span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function playerFactionColor(factionId: string | undefined): string {
   return (factionId && coreFactionDefinitions[factionId]?.color) || "#b08d2f";
 }
@@ -4191,15 +4241,21 @@ export function TownHeroDock({
             {commanderArtifactsEnabled ? (
               <button
                 className={`commanderEquipButton${heldCommanderArtifacts.length > 0 ? " attention" : ""}`}
-                onClick={() => setCommanderEquipmentOpen(true)}
+                onClick={() => {
+                  setCommanderOpen(false);
+                  setCommanderEquipmentOpen(true);
+                }}
                 type="button"
               >
-                <Shield aria-hidden="true" size={18} />
-                <span>
-                  <strong>{lexicon.commanderEquipment}</strong>
-                  <small>{Object.keys(commander.artifacts ?? {}).length}/3 equipped · {heldCommanderArtifacts.length} in hand</small>
+                <span aria-hidden="true" className="commanderEquipButtonIcon">
+                  <img alt="" src={assetUrl("/assets/ui/commander-forge.webp")} />
                 </span>
-                <ChevronDown aria-hidden="true" size={16} />
+                <span>
+                  <small className="commanderEquipEyebrow">Equipment &amp; Forge</small>
+                  <strong>Open {lexicon.commanderEquipment}</strong>
+                  <small>{Object.keys(commander.artifacts ?? {}).length}/3 equipped · {heldCommanderArtifacts.length} ready to bind</small>
+                </span>
+                <ChevronDown aria-hidden="true" className="commanderEquipArrow" size={21} />
               </button>
             ) : null}
             <div style={{ maxHeight: "min(78vh, 900px)", overflowY: "auto", padding: 4 }}>
@@ -4328,31 +4384,38 @@ export function TownHeroDock({
               </div>
               <aside className="commanderArtifactInventory">
                 <div className="commanderInventoryHead">
-                  <h3>Artifact bag</h3>
+                  <h3>Artifact bag &amp; complete system</h3>
                   <small>
-                    Drag onto a body slot · {heldCommanderArtifacts.length} in hand ·{" "}
+                    All {COMMANDER_ARTIFACT_SPEC_LIST.length} items shown · {heldCommanderArtifacts.length} in hand ·{" "}
                     {Object.keys(commander.artifacts ?? {}).length}/3 bound
                   </small>
                 </div>
+                <CommanderForgePanel legalActions={legalActions} onAction={onAction} playerId={armyPlayer.id} state={state} />
                 {heldCommanderArtifacts.length === 0 ? (
                   <p className="commanderInventoryEmpty">
-                    No commander artifacts in hand. Find them in the shared Artifact decks, then bind them here.
+                    No commander artifacts in hand. The full catalog remains visible below for inspection.
                   </p>
-                ) : (
-                  heldCommanderArtifacts.map((cardId) => {
-                    const spec = COMMANDER_ARTIFACT_SPECS[cardId];
+                ) : null}
+                {COMMANDER_ARTIFACT_SPEC_LIST
+                  .slice()
+                  .sort((a, b) => a.slot.localeCompare(b.slot) || a.tier.localeCompare(b.tier) || a.name.localeCompare(b.name))
+                  .map((spec) => {
+                    const cardId = spec.cardId;
+                    const held = heldCommanderArtifacts.includes(cardId);
+                    const bound = Object.values(commander.artifacts ?? {}).includes(cardId);
                     const action = legalActions.find(
                       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === cardId
                     );
                     const occupied = Boolean(commander.artifacts?.[spec.slot]);
                     return (
                       <article
-                        className={`commanderInventoryCard ${occupied ? "blocked" : ""}`}
-                        draggable={Boolean(action && !occupied && onAction)}
+                        aria-label={`${spec.name}: ${bound ? "bound" : held ? "in hand" : "not owned"}`}
+                        className={`commanderInventoryCard ${occupied && !bound ? "blocked" : ""} ${bound ? "equipped" : held ? "owned" : "unowned"}`}
+                        draggable={Boolean(held && action && !occupied && onAction)}
                         key={cardId}
                         onDragEnd={() => setDraggedCommanderArtifactId(null)}
                         onDragStart={(event) => {
-                          if (!action || occupied || !onAction) return;
+                          if (!held || !action || occupied || !onAction) return;
                           event.dataTransfer.effectAllowed = "move";
                           event.dataTransfer.setData("text/plain", cardId);
                           setDraggedCommanderArtifactId(cardId);
@@ -4371,17 +4434,24 @@ export function TownHeroDock({
                           <strong>{spec.name}</strong>
                           <p>{spec.effectText}</p>
                           <button
-                            disabled={!action || occupied || !onAction}
+                            disabled={!held || !action || occupied || !onAction}
                             onClick={() => action && onAction?.(action.action)}
                             type="button"
                           >
-                            {occupied ? `${spec.slot} already filled` : action ? "Bind permanently" : "Unavailable now"}
+                            {bound
+                              ? "Bound"
+                              : occupied
+                                ? `${spec.slot} already filled`
+                                : held && action
+                                  ? "Bind permanently"
+                                  : held
+                                    ? "Unavailable now"
+                                    : "Not owned"}
                           </button>
                         </div>
                       </article>
                     );
-                  })
-                )}
+                  })}
               </aside>
             </div>
             <footer>Binding is permanent. The artifact remains equipped if the commander falls and is revived.</footer>
@@ -5031,6 +5101,7 @@ export function TownPanel({
           {player.townTokens.spellBook ? "📖" : "▫"}
         </small>
       </h3>
+      <CommanderForgePanel legalActions={legalActions} onAction={onAction} playerId={viewerPlayerId} state={state} />
       <div className="townBuildings">
         {faction.buildings.map((buildingId) => {
           const building = coreBuildingDefinitions[buildingId];
@@ -6117,6 +6188,10 @@ export function PromptTray({
     choice?.type === "OPTION_CHOICE" && choice.context === "discard-pick" && choice.playerId === viewerPlayerId
       ? choice.discardPick?.cardIds ?? null
       : null;
+  const handDiscardCards =
+    choice?.type === "OPTION_CHOICE" && choice.context === "hand-discard" && choice.playerId === viewerPlayerId
+      ? choice.handDiscard?.cardIds ?? null
+      : null;
   const subterraneanTileCandidates =
     choice?.type === "OPTION_CHOICE" &&
     choice.context === "subterranean-tile-pick" &&
@@ -6213,6 +6288,26 @@ export function PromptTray({
                 }
               : null;
             return { legal, art };
+          })
+      : handDiscardCards
+        ? body.map((legal) => {
+            const optionIndex =
+              legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                ? legal.action.optionIndex
+                : undefined;
+            const cardId = optionIndex !== undefined ? handDiscardCards[optionIndex] : undefined;
+            const card = cardId ? cardLibrary[cardId] : undefined;
+            return {
+              legal,
+              art: cardId
+                ? ({
+                    name: card?.name ?? cardId,
+                    image: card?.assets?.cardImage,
+                    caption: legal.label,
+                    cardId
+                  } as VisitRewardArt)
+                : null
+            };
           })
       : discardPickCards
         ? body.map((legal) => {
