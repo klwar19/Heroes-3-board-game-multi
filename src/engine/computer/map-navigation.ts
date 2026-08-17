@@ -25,6 +25,7 @@ import { hexSpaceId, tileFootprint } from "../hex";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
 import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
+import { playersAreAllied } from "./control";
 import type {
   GameState,
   HeroState,
@@ -551,7 +552,7 @@ function objectiveKind(
   if (victory) {
     // Still refuse to walk into an outmatched enemy hero standing on it.
     const occupant = heroAtSpace(state, field.spaceId, hero.id);
-    if (occupant && occupant.controllerId !== playerId) {
+    if (occupant && !playersAreAllied(state, occupant.controllerId, playerId)) {
       if (locationDefinitions[field.location]?.passive?.protectsFromAttack) {
         return null;
       }
@@ -577,7 +578,7 @@ function objectiveKind(
     if (
       adventureVictoryMode(state) !== "conquest" &&
       field.flagOwnerId &&
-      field.flagOwnerId !== playerId &&
+      !playersAreAllied(state, field.flagOwnerId, playerId) &&
       (locationDefinitions[field.location]?.category === "town" ||
         field.location === "settlement") &&
       !shouldAssaultEnemyHolding(state, playerId, field)
@@ -588,7 +589,7 @@ function objectiveKind(
   }
 
   const occupant = heroAtSpace(state, field.spaceId, hero.id);
-  if (occupant && occupant.controllerId !== playerId) {
+  if (occupant && !playersAreAllied(state, occupant.controllerId, playerId)) {
     // Sanctuary-protected heroes can never be attacked; an outmatched fight is
     // declined. Either way the enemy-occupied field is not an objective.
     if (locationDefinitions[field.location]?.passive?.protectsFromAttack) {
@@ -607,7 +608,7 @@ function objectiveKind(
   // Enemy-flagged holdings (no enemy hero on the hex):
   //  - bare mines / flaggables re-flag for free → always worth taking
   //  - towns / settlements may open a garrison fight → army-strength gate
-  if (field.flagOwnerId && field.flagOwnerId !== playerId) {
+  if (field.flagOwnerId && !playersAreAllied(state, field.flagOwnerId, playerId)) {
     if (category === "flaggable") {
       return "flaggable";
     }

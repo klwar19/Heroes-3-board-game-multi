@@ -272,6 +272,7 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, pvpNeutralControllerId } from "./neutral-control";
+import { playersAreAllied } from "./computer/control";
 import {
   DEFAULT_OBELISK_BONUS,
   GRAIL_OBELISKS_REQUIRED,
@@ -2271,7 +2272,7 @@ export function classifyHeroStep(
 
   const occupant = heroAtSpace(state, spaceId, hero.id);
   if (occupant) {
-    if (occupant.controllerId === playerId) {
+    if (playersAreAllied(state, occupant.controllerId, playerId)) {
       return "pass-only";
     }
     // Heroes inside a Sanctuary cannot be attacked; the rulebook lets
@@ -2360,7 +2361,7 @@ export function heroMoveStartsBattle(state: GameState, heroId: HeroId, to: MapSp
   const field = adventure.fields[to];
 
   const occupant = heroAtSpace(state, to, hero.id);
-  if (occupant && occupant.controllerId !== hero.controllerId) {
+  if (occupant && !playersAreAllied(state, occupant.controllerId, hero.controllerId)) {
     const location = field ? locationDefinitions[field.location] : undefined;
     // A hero inside a Sanctuary cannot be attacked — moving onto them is a
     // pass-only step the move offer never allows, so it is not a battle here.
@@ -4514,6 +4515,22 @@ export function adventureSeatCount(state: GameState): number {
 }
 
 /**
+ * Enemy seats this player had when the Scenario began. Allied seats are never
+ * military-victory targets: they cannot legally fight one another, so counting
+ * them would make Grail/Dragon hero-defeat victory impossible for an AI team.
+ */
+export function adventureRivalIds(state: GameState, playerId: PlayerId): PlayerId[] {
+  return Object.keys(state.players).filter(
+    (id) => id !== NEUTRAL_PLAYER_ID && id !== playerId && !playersAreAllied(state, id, playerId)
+  );
+}
+
+/** Same 1/2-opponent cap as the standard rule, applied to actual rivals. */
+export function requiredRivalHeroDefeats(state: GameState, playerId: PlayerId): number {
+  return Math.min(2, adventureRivalIds(state, playerId).length);
+}
+
+/**
  * One resource-gain "level" for the town-conquest reward. Valuables are the
  * scarcest track, materials the middle one, gold the most plentiful, so a level
  * is +5 gold, +2 building materials, or +1 valuables — the player's choice.
@@ -4991,16 +5008,22 @@ export function eliminatePlayer(
 
   if (state.adventure && !state.adventure.winnerPlayerId) {
     const remaining = humanPlayerIds(state).filter((id) => !state.players[id]?.eliminated);
-    if (remaining.length === 1) {
+    const oneAllianceRemains =
+      remaining.length > 0 &&
+      remaining.every((id) => id === remaining[0] || playersAreAllied(state, remaining[0]!, id));
+    if (oneAllianceRemains) {
       // Defeating every opponent COMPLETES the game. In Victory Points mode the
       // viaVictoryCondition flag routes this through endGameByVictoryPoints, so
-      // the table is SCORED right away (the survivor earns the completion VP and,
-      // as the only live seat, wins with a full breakdown) instead of playing out
-      // the remaining rounds — there is no opponent left to play against. With VP
-      // off the flag is ignored and this stays the classic instant win.
-      declareAdventureWinner(state, remaining[0], "the last faction standing", {
-        viaVictoryCondition: true
-      });
+      // table is SCORED right away instead of playing out rounds in which no legal
+      // enemy remains. The engine records one winner seat; for an allied team the
+      // first surviving teammate completes the shared elimination objective.
+      const alliedTeam = remaining.length > 1;
+      declareAdventureWinner(
+        state,
+        remaining[0]!,
+        alliedTeam ? "the last alliance standing" : "the last faction standing",
+        { viaVictoryCondition: true }
+      );
     }
   }
 }
@@ -5284,6 +5307,11 @@ function processHexEventOnVisit(
   const playerId = hero.controllerId;
   const event = entry.event;
   const mode = event.mode ?? "first";
+  // A stamped-but-unbeaten guard means this visit is the successful return
+  // from that exact ambush (fought win, Quick Combat, or Diplomacy). This is
+  // deliberately false on the initial spring and on an event that cannot host
+  // a fight, so a monster-hunt win always represents a real defeated guard.
+  const returnedAfterGuard = Boolean(entry.guardStamped && !entry.guardBeaten);
   // Already fired for this player (or, in "first" mode, for anyone)?
   if (mode === "first" && entry.firedPlayerIds.length > 0) {
     return null;
@@ -5333,6 +5361,11 @@ function processHexEventOnVisit(
     event.vp ?? 0,
     "a map event"
   );
+  if (event.winCondition && returnedAfterGuard) {
+    declareAdventureWinner(state, playerId, `defeated the monster at ${field.spaceId}`, {
+      viaVictoryCondition: true
+    });
+  }
   // One-shot events drop their record once spent (nothing left to hide);
   // each-player events keep it so later players can still fire.
   if (mode === "first" && state.adventure?.hexEvents) {
@@ -10484,7 +10517,10 @@ function teleportDestinationHeroGate(
   if (!occupant) {
     return { skip: false, enemyHero: false };
   }
-  if (travellerPlayerId === undefined || occupant.controllerId === travellerPlayerId) {
+  if (
+    travellerPlayerId === undefined ||
+    playersAreAllied(state, occupant.controllerId, travellerPlayerId)
+  ) {
     return { skip: true, enemyHero: false };
   }
   return { skip: false, enemyHero: true };

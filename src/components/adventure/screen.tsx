@@ -52,6 +52,7 @@ import {
   expertUsesAvailable,
   expertUsesTotalThisRound,
   mapObjectsModuleActive,
+  mapHasAuthoredGrailOrUtopia,
   DRAFT_FORMAT_LABELS,
   getDraftPhase,
   getActiveAstrologersCard,
@@ -9874,11 +9875,46 @@ function SeatCountControl({
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
   const scenario = scenarioDefinitions[options.scenarioId];
   const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
-  // Single-player: the selected map owns the deployment. This is deliberately
-  // read-only here—changing maps is the one source of truth for opponent count
-  // and starting locations, while multiplayer keeps its editable Players row.
   if (state.sessionMode === "single-player") {
     const current = lobby.seats.length - 1;
+    const authoredDeployment = singlePlayerMapDeployment(options.customMap, max - 1);
+    if (!authoredDeployment) {
+      const enemyCounts = Array.from({ length: Math.max(0, max - 1) }, (_, index) => index + 1);
+      return enemyCounts.length > 0 ? (
+        <>
+          <div className="optionRow">
+            <small title="Choose the exact number of computer enemies for this single-player game">
+              Computer enemies
+            </small>
+            <div className="optionButtons" role="group" aria-label="Number of computer enemies">
+              {enemyCounts.map((count) => (
+                <button
+                  aria-pressed={current === count}
+                  className={current === count ? "selected" : ""}
+                  key={count}
+                  onClick={() =>
+                    onAction({
+                      type: "SET_COMPUTER_OPPONENTS",
+                      playerId: viewerPlayerId,
+                      count
+                    })
+                  }
+                  title={`Fight ${count} computer ${count === 1 ? "enemy" : "enemies"}`}
+                  type="button"
+                >
+                  {count} {count === 1 ? "enemy" : "enemies"}
+                </button>
+              ))}
+            </div>
+            <small className="optionHint">
+              Opens exactly one human seat plus the selected computer enemies. You can customize each enemy’s Town
+              and hero below. A map with authored solo spawn Towns locks this choice to its designed enemy count.
+            </small>
+          </div>
+          {footer}
+        </>
+      ) : null;
+    }
     return (
       <>
       <div className="optionRow">
@@ -9891,8 +9927,8 @@ function SeatCountControl({
           </span>
         </div>
         <small className="optionHint">
-          Set by the selected map. Choose another map to change the number or positions; map authors configure solo
-          starts and individual AI bonuses in the Map Designer. These settings are ignored in multiplayer.
+          Locked by this map’s authored solo spawn Towns. Choose another map to select a different count, or change
+          the You / Enemy AI starting Town markers in Map Designer. These settings are ignored in multiplayer.
         </small>
       </div>
       {footer}
@@ -10002,6 +10038,10 @@ function GameOptionsPanel({
   }
 
   const options = lobby.options;
+  const mapOwnsGrailOrUtopia = mapHasAuthoredGrailOrUtopia(
+    options.customMap,
+    options.customMapPreset
+  );
   const viewerFactionId = lobby.seats.find((seat) => seat.playerId === viewerPlayerId)?.factionId ?? null;
   const send = (next: Partial<GameSetupOptions>) =>
     onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: next });
@@ -10452,16 +10492,25 @@ function GameOptionsPanel({
                 <button
                   aria-pressed={victoryMode === mode}
                   className={victoryMode === mode ? "selected" : ""}
+                  disabled={mapOwnsGrailOrUtopia && mode !== "conquest"}
                   key={mode}
                   onClick={() => send({ victoryMode: mode })}
-                  title={VICTORY_MODE_DESCRIPTIONS[mode]}
+                  title={
+                    mapOwnsGrailOrUtopia && mode !== "conquest"
+                      ? "Unavailable: the selected map already contains Hidden Grail / Dragon Utopia fields."
+                      : VICTORY_MODE_DESCRIPTIONS[mode]
+                  }
                   type="button"
                 >
                   {VICTORY_MODE_LABELS[mode]}
                 </button>
               ))}
             </div>
-            <small className="optionHint">{VICTORY_MODE_DESCRIPTIONS[victoryMode]}</small>
+            <small className="optionHint">
+              {mapOwnsGrailOrUtopia
+                ? "This map already owns its Hidden Grail / Dragon Utopia fields. Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective; use Conquest, custom wins, or Victory Points."
+                : VICTORY_MODE_DESCRIPTIONS[victoryMode]}
+            </small>
           </div>
         );
       })()}

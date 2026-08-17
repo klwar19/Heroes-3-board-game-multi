@@ -38,6 +38,7 @@ import {
   MAP_PRESET_OBELISK_BONUS_KINDS,
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
+  mapHasAuthoredGrailOrUtopia,
   TIMED_EFFECT_KIND_LABELS,
   TIMED_EFFECT_KINDS,
   VICTORY_POINT_OBJECTIVE_OPTIONS,
@@ -230,6 +231,13 @@ export function MapPresetEditor({
   pickArmed?: { kind: "object-plan"; objectKind: SpecificPickKind } | null;
 }) {
   const value = preset ?? {};
+  const authoredGrailOrUtopia = mapHasAuthoredGrailOrUtopia(tiles, value);
+  const soloHumanStarts = (tiles ?? []).filter(
+    (plan) => plan.group === "starting" && plan.singlePlayer?.role === "human"
+  ).length;
+  const soloComputerStarts = (tiles ?? []).filter(
+    (plan) => plan.group === "starting" && plan.singlePlayer?.role === "computer"
+  ).length;
   const summary = describeCustomMapPresetEntries(value);
   // Collapsed by default on a fresh/plain map so the tile board stays the
   // page's focus; opens itself when a map WITH conditions is loaded (0 → some),
@@ -500,7 +508,12 @@ export function MapPresetEditor({
     const next = { ...objectives };
     if (enabled) next.hiddenGrailUtopia = true;
     else delete next.hiddenGrailUtopia;
-    patchObjectives(next);
+    patch({
+      objectives: Object.keys(next).length > 0 ? next : undefined,
+      ...(enabled && value.victoryMode && value.victoryMode !== "conquest"
+        ? { victoryMode: undefined }
+        : {})
+    });
   };
 
   const victoryPoints = value.victoryPoints;
@@ -668,6 +681,9 @@ export function MapPresetEditor({
         ? 1
         : 0) +
       Object.keys(value.houseRules ?? {}).length,
+    singlePlayer:
+      (value.computerDiplomacy ? 1 : 0) +
+      (soloHumanStarts === 1 && soloComputerStarts > 0 ? 1 : 0),
     startingPosition:
       (value.startingResources ? 1 : 0) +
       (value.computerStartingBonus ? 1 : 0) +
@@ -952,6 +968,53 @@ export function MapPresetEditor({
       </MapPresetGroup>
 
       <MapPresetGroup
+        title="Single-player opponents"
+        glyphEmoji="🤖"
+        count={groupCounts.singlePlayer}
+      >
+        <section className="mapPresetSection" aria-label="Single-player enemy deployment">
+          <div className="mapPresetSectionLabel">Enemy count &amp; starting Towns</div>
+          <div className="mapPresetObjectiveRow">
+            <span className="mapPresetObjectiveLabel">
+              {soloHumanStarts === 1 && soloComputerStarts > 0
+                ? `Ready: You vs ${soloComputerStarts} computer${soloComputerStarts === 1 ? "" : "s"}`
+                : "Deployment not complete"}
+            </span>
+          </div>
+          <small className="mapPresetHint">
+            Click starting Town tiles on the map: mark exactly one as You and each required opponent as Enemy AI.
+            Those Town markers set the real solo enemy count and exact spawn hexes. Each Enemy AI Town also holds its
+            town type, personal war chest, starting army, and veteran XP. All of it is ignored in multiplayer.
+          </small>
+        </section>
+        <section className="mapPresetSection" aria-label="Computer diplomacy">
+          <div className="mapPresetSectionLabel">Computer diplomacy</div>
+          <div className="mapPresetChipRow" role="group" aria-label="Computer opponents relationship">
+            <button
+              aria-pressed={(value.computerDiplomacy ?? "free-for-all") === "free-for-all"}
+              className={`mapPresetChip${(value.computerDiplomacy ?? "free-for-all") === "free-for-all" ? " active" : ""}`}
+              onClick={() => patch({ computerDiplomacy: "free-for-all" })}
+              type="button"
+            >
+              Fight each other
+            </button>
+            <button
+              aria-pressed={value.computerDiplomacy === "allied"}
+              className={`mapPresetChip${value.computerDiplomacy === "allied" ? " active" : ""}`}
+              onClick={() => patch({ computerDiplomacy: "allied" })}
+              type="button"
+            >
+              Allied computers
+            </button>
+          </div>
+          <small className="mapPresetHint">
+            Allied computers share one team: they never attack one another, allied heroes can pass through each
+            other, and the combat engine rejects any allied PvP start. They remain enemies of the human player.
+          </small>
+        </section>
+      </MapPresetGroup>
+
+      <MapPresetGroup
         title="Starting position"
         glyphSrc={SECRET_FEATURE_ICONS.town}
         count={groupCounts.startingPosition}
@@ -1216,11 +1279,17 @@ export function MapPresetEditor({
             <button
               aria-pressed={value.victoryMode === opt.id}
               className={`mapPresetChip${value.victoryMode === opt.id ? " active" : ""}`}
+              disabled={authoredGrailOrUtopia && opt.id !== "conquest"}
               key={opt.id}
               onClick={() =>
                 patch({
                   victoryMode: value.victoryMode === opt.id ? undefined : (opt.id as VictoryMode)
                 })
+              }
+              title={
+                authoredGrailOrUtopia && opt.id !== "conquest"
+                  ? "Unavailable: this map already authors Hidden Grail / Dragon Utopia fields."
+                  : undefined
               }
               type="button"
             >
@@ -1229,8 +1298,9 @@ export function MapPresetEditor({
           ))}
         </div>
         <small className="mapPresetHint">
-          Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and
-          switching maps restores the scenario default.
+          {authoredGrailOrUtopia
+            ? "This map already authors Hidden Grail / Dragon Utopia fields, so Holy Grail, Dragon Hunt and Dragon Conqueror cannot add a second objective. Use Conquest, custom wins, or Victory Points."
+            : "Seeds the lobby when the map is picked — the host can still change it there (their choice wins), and switching maps restores the scenario default."}
         </small>
       </section>
 

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   applyAction,
+  classifyHeroStep,
   createAdventureGameState,
   createAdventureLobbyState,
+  eliminatePlayer,
   getLegalActions,
   hexSpaceId,
   mapForcedComputerFaction,
+  playersAreAllied,
+  requiredRivalHeroDefeats,
   scenarioDefinitions,
   singlePlayerMapDeployment,
   type CustomMapTilePlan,
@@ -127,6 +131,71 @@ describe("map-authored single-player deployment", () => {
     expect(state.players.p1.resources).toEqual({ gold: 10, buildingMaterials: 2, valuables: 1 });
     expect(state.players.p2.resources).toEqual({ gold: 15, buildingMaterials: 3, valuables: 2 });
     expect(state.players.p3.resources).toEqual({ gold: 12, buildingMaterials: 2, valuables: 4 });
+  });
+
+  it("can team all computer enemies without allying the human or changing multiplayer", () => {
+    const allied = createAdventureGameState({
+      seed: "solo-map-allies",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: SOLO_TOWNS,
+      customMapPreset: { computerDiplomacy: "allied" },
+      players: PLAYERS
+    });
+    expect(playersAreAllied(allied, "p2", "p3")).toBe(true);
+    expect(playersAreAllied(allied, "p1", "p2")).toBe(false);
+    expect(classifyHeroStep(allied, allied.heroes.hero_p2, allied.heroes.hero_p3.spaceId!)).toBe("pass-only");
+
+    const rivals = createAdventureGameState({
+      seed: "solo-map-rivals",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: SOLO_TOWNS,
+      customMapPreset: { computerDiplomacy: "free-for-all" },
+      players: PLAYERS
+    });
+    expect(playersAreAllied(rivals, "p2", "p3")).toBe(false);
+    expect(classifyHeroStep(rivals, rivals.heroes.hero_p2, rivals.heroes.hero_p3.spaceId!)).toBe("stop");
+
+    const multiplayer = createAdventureGameState({
+      seed: "solo-map-allies-mp-control",
+      scenarioId: "skirmish",
+      sessionMode: "multiplayer",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: SOLO_TOWNS,
+      customMapPreset: { computerDiplomacy: "allied" },
+      players: PLAYERS
+    });
+    expect(multiplayer.playerTeams).toBeUndefined();
+  });
+
+  it("lets the allied computer team finish elimination and excludes teammates from hero-defeat targets", () => {
+    const state = createAdventureGameState({
+      seed: "solo-map-allied-victory",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      rollFirstPlayer: false,
+      startingBonus: false,
+      customMap: SOLO_TOWNS,
+      customMapPreset: { computerDiplomacy: "allied" },
+      players: PLAYERS
+    });
+
+    expect(requiredRivalHeroDefeats(state, "p2")).toBe(1);
+    expect(requiredRivalHeroDefeats(state, "p1")).toBe(2);
+
+    eliminatePlayer(state, "p1", "defeated by the computer alliance", false);
+    expect(state.adventure?.winnerPlayerId).toBe("p2");
+    expect(state.eventLog.at(-1)).toMatchObject({
+      type: "GAME_WON",
+      playerId: "p2",
+      reason: "the last alliance standing"
+    });
   });
 
   // A solo map that FORCES p2's enemy town type (its tile is deployment.computers[0]).

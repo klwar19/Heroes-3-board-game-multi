@@ -2194,7 +2194,7 @@ export function MapDesigner({
             return event;
           }
           const next: CustomHexEvent = { ...event, ...changes };
-          for (const key of ["message", "reward", "vp", "guard", "mode", "replaceVisit"] as const) {
+          for (const key of ["message", "reward", "vp", "guard", "winCondition", "mode", "replaceVisit"] as const) {
             if (next[key] === undefined) {
               delete next[key];
             }
@@ -7068,7 +7068,12 @@ export function MapDesigner({
               compact
               guard={selectedHexEvent.guard}
               noneLabel="None"
-              onChange={(guard) => patchHexEvent(selectedHexEvent.id, { guard })}
+              onChange={(guard) =>
+                patchHexEvent(selectedHexEvent.id, {
+                  guard,
+                  ...(guard ? {} : { winCondition: undefined })
+                })
+              }
             />
             <div className="popoverSectionLabel">Reward &amp; Victory Points</div>
             <FieldRewardEditor
@@ -7078,6 +7083,25 @@ export function MapDesigner({
               reward={selectedHexEvent.reward}
               vp={selectedHexEvent.vp}
             />
+            <label className="mapPresetToggle">
+              <input
+                aria-label="Defeating this event monster wins the game"
+                checked={Boolean(selectedHexEvent.winCondition)}
+                disabled={!selectedHexEvent.guard}
+                onChange={(event) =>
+                  patchHexEvent(selectedHexEvent.id, {
+                    winCondition: event.target.checked ? true : undefined
+                  })
+                }
+                type="checkbox"
+              />
+              <span>Defeating this monster wins the game</span>
+            </label>
+            <small className="popoverHint">
+              This is the location-specific monster objective. Choose a normal level-table guard or an exact custom
+              army above, drag this marker to the required hex, then set an instant win and/or Victory Points. The
+              reward and win fire only after that guard is actually defeated.
+            </small>
             <div className="popoverGuardRow" role="group" aria-label="Hidden event options">
               <button
                 aria-pressed={(selectedHexEvent.mode ?? "first") === "first"}

@@ -46,6 +46,18 @@ export function isComputerPlayer(
   );
 }
 
+/** Equal persisted team ids are allies. A missing id never creates an alliance. */
+export function playersAreAllied(
+  state: GameState,
+  left: PlayerId,
+  right: PlayerId,
+): boolean {
+  if (left === right) return true;
+  if (left === NEUTRAL_PLAYER_ID || right === NEUTRAL_PLAYER_ID) return false;
+  const team = state.playerTeams?.[left];
+  return Boolean(team && team === state.playerTeams?.[right]);
+}
+
 export function computerPlayerIds(state: GameState): PlayerId[] {
   return state.turnOrder.filter(
     (playerId) =>

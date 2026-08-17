@@ -4765,6 +4765,26 @@ describe("MapDesigner — specific object plans & hex events", () => {
     expect(container.querySelector(".designerHexEventPopover")).toBeNull();
   });
 
+  it("a guarded hidden event exposes the real location-specific monster win objective", () => {
+    const { container, get } = renderHexEventDesigner(
+      [{ row: town.row, col: town.col, group: "starting", faceDown: false }],
+      [
+        {
+          id: "hunt",
+          placement: { row: town.row, col: town.col },
+          guard: { level: 4 }
+        }
+      ]
+    );
+    fireEvent.click(container.querySelector(".designerHexEventToken")!);
+    const checkbox = within(container.querySelector(".designerHexEventPopover") as HTMLElement).getByLabelText(
+      "Defeating this event monster wins the game"
+    );
+    expect((checkbox as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(checkbox);
+    expect(get()[0]).toMatchObject({ guard: { level: 4 }, winCondition: true });
+  });
+
   it("dragging a marker moves the event to another hex (id + settings preserved); the trailing click never opens the editor", () => {
     const restore = installIdentitySvgPolyfills();
     try {

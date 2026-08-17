@@ -771,6 +771,38 @@ describe("start block — conflicting designs are refused", () => {
     expect(result.errors, result.errors.map((e) => e.message).join("; ")).toHaveLength(0);
     expect(result.state.phase).toBe("player-turn");
   });
+
+  it("an authored Hidden Grail/Utopia map cannot also select a Grail or Dragon preset", () => {
+    let state = createAdventureLobbyState({ seed: "vii-owned-objective", scenarioId: "skirmish" });
+    const picked = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: {
+        customMap: [
+          ...startPlans(),
+          {
+            row: CENTER.row,
+            col: CENTER.col,
+            group: "center",
+            faceDown: true,
+            viiFields: ["grail", "dragon_utopia"]
+          }
+        ],
+        customMapPreset: { objectives: { hiddenGrailUtopia: true }, victoryMode: "dragon-hunt" }
+      }
+    });
+    expect(picked.errors).toHaveLength(0);
+    state = picked.state;
+    expect(state.setupLobby?.options.victoryMode).toBe("conquest");
+
+    const forbidden = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { victoryMode: "grail" }
+    });
+    expect(forbidden.errors.some((error) => /already contains Hidden Grail/i.test(error.message))).toBe(true);
+    expect(forbidden.state.setupLobby?.options.victoryMode).toBe("conquest");
+  });
 });
 
 // ---------------------------------------------------------------------------

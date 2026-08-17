@@ -24,6 +24,8 @@ export type GamePhase =
 
 export type GameMode = "combat-sandbox" | "adventure";
 export type GameSessionMode = "multiplayer" | "single-player";
+/** How map-authored computer opponents relate to one another in solo play. */
+export type ComputerDiplomacy = "free-for-all" | "allied";
 export type ComputerDifficulty = "standard";
 export type PlayerController =
   | { kind: "human" }
@@ -12715,6 +12717,13 @@ export type CustomRaidBossDef = {
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
   /**
+   * SOLO ONLY: whether computer seats may attack one another. "allied" makes
+   * every computer seat one team (heroes may pass through one another and can
+   * never open PvP combat); "free-for-all"/absent keeps normal rival AI play.
+   * The human is never included in the computer alliance.
+   */
+  computerDiplomacy?: ComputerDiplomacy;
+  /**
    * Map-authored presentation/army theme for all optional PvE encounters.
    * It overrides the mod-window pick only when this designed map is played.
    */
@@ -13388,6 +13397,12 @@ export type CustomHexEvent = {
   vp?: number;
   /** Ambush guard — fought before the reward; beaten once, globally. */
   guard?: CustomGuardSpec;
+  /**
+   * Monster-hunt objective: defeating this event's guard wins immediately.
+   * Requires `guard`; sanitization drops the flag from an unguarded event.
+   * Victory-Points mode routes the completion through normal VP scoring.
+   */
+  winCondition?: boolean;
   /**
    * "first" (default): fires once, for the first player to step on the hex.
    * "each-player": message/reward/VP pay once PER player (guard still once).
@@ -15370,6 +15385,11 @@ export type GameState = {
   mode: GameMode;
   sessionMode?: GameSessionMode;
   controllers?: Record<PlayerId, PlayerController>;
+  /**
+   * Optional team ids. Equal non-empty ids are allies and cannot fight. Map
+   * authored computer teams are created only in single-player.
+   */
+  playerTeams?: Record<PlayerId, string>;
   /**
    * Single-player computer policy memory keyed by seat. Optional; missing means
    * empty/default memory for that seat (see `src/engine/computer/memory.ts`).

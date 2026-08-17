@@ -1114,15 +1114,16 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     return el as HTMLDetailsElement;
   };
 
-  it("groups the conditions into seven ordered, separated collapsible groups", () => {
+  it("groups the conditions into eight ordered, separated collapsible groups", () => {
     render(<MapPresetEditor preset={undefined} onChange={() => {}} />);
     const groups = Array.from(document.querySelectorAll("details.mapPresetGroup"));
-    expect(groups.length).toBe(7);
+    expect(groups.length).toBe(8);
     const order = groups.map(
       (g) => (g.querySelector(".mapPresetGroupTitle") as HTMLElement).textContent
     );
     expect(order).toEqual([
       "Match setup",
+      "Single-player opponents",
       "Starting position",
       "Victory & scoring",
       "Map objects",
@@ -1146,7 +1147,7 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(within(groupByTitle("Match setup")).getByText("1 active")).toBeTruthy();
     expect(within(groupByTitle("Timed events")).getByText("1 active")).toBeTruthy();
     // The four groups with nothing set carry NO count badge (absent, not "0").
-    for (const title of ["Starting position", "Victory & scoring", "Map objects", "Designer note"]) {
+    for (const title of ["Single-player opponents", "Starting position", "Victory & scoring", "Map objects", "Designer note"]) {
       expect(groupByTitle(title).querySelector(".mapPresetGroupCount")).toBeNull();
     }
   });

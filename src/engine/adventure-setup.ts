@@ -97,6 +97,7 @@ import {
   customMapPresetIsActive,
   MAX_GATES_PER_PAIR,
   mergeCustomWinConditions,
+  mapHasAuthoredGrailOrUtopia,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
@@ -2862,7 +2863,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     dungeonDescentCandidate === 0 || dungeonDescentCandidate === 2
       ? dungeonDescentCandidate
       : 1;
-  const victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
+  let victoryMode: VictoryMode = setupOptions.victoryMode ?? "conquest";
   const polishGrailUtopiaOn = houseRules["polish-grail-utopia"];
   const pvpTroopLoss: PvpTroopLoss = setupOptions.pvpTroopLoss ?? "normal";
   const dragonUtopiaGuards: DragonUtopiaGuards = setupOptions.dragonUtopiaGuards ?? "by-difficulty";
@@ -2956,7 +2957,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // feature). This only flips `hiddenGrailUtopia`; it does NOT trigger the house
   // rule's extra per-seat objective overflow (gated on `polishGrailUtopiaOn`),
   // so the designer's explicit placement stands.
-  const mapPreset =
+  let mapPreset =
     customMapHasGrailUtopiaDesignation(customMap) &&
     victoryMode !== "grail" &&
     !resolvedMapPreset?.objectives?.hiddenGrailUtopia
@@ -2965,6 +2966,18 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           objectives: { ...(resolvedMapPreset?.objectives ?? {}), hiddenGrailUtopia: true }
         }
       : resolvedMapPreset;
+
+  // Direct engine construction (campaigns/tests/imported saves) must enforce
+  // the same invariant as the lobby: a map that authors Hidden Grail/Utopia
+  // fields cannot also inject a second scenario objective preset.
+  if (victoryMode !== "conquest" && mapHasAuthoredGrailOrUtopia(customMap, mapPreset)) {
+    victoryMode = "conquest";
+    if (mapPreset?.victoryMode && mapPreset.victoryMode !== "conquest") {
+      const cleaned = { ...mapPreset };
+      delete cleaned.victoryMode;
+      mapPreset = customMapPresetIsActive(cleaned) ? cleaned : null;
+    }
+  }
 
   const adventure: AdventureState = {
     difficulty,
@@ -3143,6 +3156,15 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     mode: "adventure",
     ...(options.sessionMode ? { sessionMode: options.sessionMode } : {}),
     ...(configuredControllers ? { controllers: configuredControllers } : {}),
+    ...(options.sessionMode === "single-player" && mapPreset?.computerDiplomacy === "allied"
+      ? {
+          playerTeams: Object.fromEntries(
+            playerConfigs
+              .filter((config) => configuredControllers?.[config.id]?.kind === "computer")
+              .map((config) => [config.id, "solo-computers"])
+          )
+        }
+      : {}),
     ruleset,
     wog,
     anime,
@@ -4566,6 +4588,14 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     if (!validVictoryModes.includes(next.victoryMode)) {
       throw new Error("Unknown win condition.");
     }
+    if (
+      next.victoryMode !== "conquest" &&
+      mapHasAuthoredGrailOrUtopia(lobby.options.customMap, lobby.options.customMapPreset)
+    ) {
+      throw new Error(
+        "This designed map already contains Hidden Grail / Dragon Utopia fields. Holy Grail, Dragon Hunt and Dragon Conqueror cannot add another objective."
+      );
+    }
     lobby.options.victoryMode = next.victoryMode;
     changes.push(`win condition ${VICTORY_MODE_LABELS[next.victoryMode]}`);
   }
@@ -5121,6 +5151,19 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
     } else {
       changes.push("map conditions cleared");
     }
+  }
+
+  // Picking/updating a designed map can introduce its own hidden Grail/Utopia
+  // package in the same payload. Such a map owns that content: scenario presets
+  // that would inject another objective are reset authoritatively, not merely
+  // hidden in the client. This also repairs legacy saved maps carrying both.
+  if (
+    lobby.options.victoryMode &&
+    lobby.options.victoryMode !== "conquest" &&
+    mapHasAuthoredGrailOrUtopia(lobby.options.customMap, lobby.options.customMapPreset)
+  ) {
+    lobby.options.victoryMode = "conquest";
+    changes.push("win condition Conquest (map already owns its Hidden Grail / Dragon Utopia fields)");
   }
 
   if (changes.length === 0) {
@@ -6044,6 +6087,14 @@ export function startAdventureFromLobby(
     const scenario = getScenario(lobby.options.scenarioId);
     const acceptedPlan = validateCustomMapPlan(lobby.options.customMap, scenario, lobby.seats.length).accepted;
     const conflicts = victoryDesignConflicts(acceptedPlan, lobby.options.victoryMode);
+    if (
+      (lobby.options.victoryMode ?? "conquest") !== "conquest" &&
+      mapHasAuthoredGrailOrUtopia(acceptedPlan, lobby.options.customMapPreset)
+    ) {
+      throw new Error(
+        "This designed map already contains Hidden Grail / Dragon Utopia fields. Use Conquest, custom wins, or Victory Points instead of a second Grail/Utopia preset."
+      );
+    }
     if (conflicts.length > 0) {
       throw new Error(conflicts[0]);
     }

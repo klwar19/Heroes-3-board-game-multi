@@ -37,6 +37,7 @@ import type {
   VisitStep,
 } from "../state";
 import { cardKeepValue } from "./card-policy";
+import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
@@ -744,12 +745,17 @@ function moveScore(
   // cannot beat. Bare enemy mines re-flag free (flaggable) and may be stepped
   // through / toward without this penalty.
   const opposingHero = Object.values(state.heroes).some(
-    (other) => other.spaceId === action.to && other.controllerId !== observation.playerId,
+    (other) =>
+      other.spaceId === action.to &&
+      !playersAreAllied(state, other.controllerId, observation.playerId),
   );
   if (opposingHero) {
     return 200;
   }
-  if (field.flagOwnerId && field.flagOwnerId !== observation.playerId) {
+  if (
+    field.flagOwnerId &&
+    !playersAreAllied(state, field.flagOwnerId, observation.playerId)
+  ) {
     const cat = locationDefinitions[field.location]?.category;
     if (cat !== "flaggable") {
       return 200;

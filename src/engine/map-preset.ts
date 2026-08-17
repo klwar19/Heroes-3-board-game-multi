@@ -932,11 +932,11 @@ export function sanitizeSettlementFieldPlan(input: unknown): CustomMapSettlement
   }
   const raw = input as {
     guard?: unknown;
+    winCondition?: unknown;
     reward?: unknown;
     vp?: unknown;
     holdRoundsToWin?: unknown;
     holdRequiresGrail?: unknown;
-    winCondition?: unknown;
   };
   const plan: CustomMapSettlementFieldPlan = {};
   const guard = sanitizeCustomGuardSpec(raw.guard);
@@ -1633,6 +1633,7 @@ export function sanitizeHexEvent(input: unknown): CustomHexEvent | null {
     reward?: unknown;
     vp?: unknown;
     guard?: unknown;
+    winCondition?: unknown;
     mode?: unknown;
     replaceVisit?: unknown;
   };
@@ -1666,6 +1667,9 @@ export function sanitizeHexEvent(input: unknown): CustomHexEvent | null {
   const guard = sanitizeCustomGuardSpec(raw.guard);
   if (guard) {
     event.guard = guard;
+  }
+  if (guard && raw.winCondition === true) {
+    event.winCondition = true;
   }
   if (raw.mode === "each-player") {
     event.mode = "each-player";
@@ -1731,6 +1735,9 @@ export function describeHexEvent(event: CustomHexEvent): string {
   }
   if ((event.vp ?? 0) > 0) {
     parts.push(`+${event.vp} VP`);
+  }
+  if (event.winCondition) {
+    parts.push("defeat guard to WIN");
   }
   if (event.message) {
     parts.push(`“${event.message.length > 32 ? `${event.message.slice(0, 32)}…` : event.message}”`);
@@ -2048,6 +2055,9 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (typeof raw.victoryMode === "string" && VICTORY_MODES.has(raw.victoryMode as VictoryMode)) {
     preset.victoryMode = raw.victoryMode as VictoryMode;
   }
+  if (raw.computerDiplomacy === "allied" || raw.computerDiplomacy === "free-for-all") {
+    preset.computerDiplomacy = raw.computerDiplomacy;
+  }
   if (raw.pveTheme === "classic" || raw.pveTheme === "doom" || raw.pveTheme === "random") {
     preset.pveTheme = raw.pveTheme;
   }
@@ -2250,6 +2260,7 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      preset.computerDiplomacy ||
       preset.pveTheme ||
       preset.difficulty ||
       preset.farTileOpening !== undefined ||
@@ -2746,6 +2757,15 @@ export function describeCustomMapPresetEntries(
     entries.push({
       icon: "🤖",
       text: `Single-player AI base bonus: +${formatResources(preset.computerStartingBonus)} (ignored in multiplayer)`
+    });
+  }
+  if (preset.computerDiplomacy) {
+    entries.push({
+      icon: "🤝",
+      text:
+        preset.computerDiplomacy === "allied"
+          ? "Single-player computers: allied with each other"
+          : "Single-player computers: fight each other"
     });
   }
   if (preset.startingProduction) {
@@ -3306,6 +3326,30 @@ function centerCanYield(plan: CustomMapTilePlan, designation: "grail" | "dragon_
     return plan.secretFeature === "objective";
   }
   return true;
+}
+
+/**
+ * A designed map already owns the combined Hidden Grail / Dragon Utopia
+ * package when it turns on that preset or explicitly places both identities.
+ * In that case the three scenario presets that inject another Grail/Utopia
+ * objective are unavailable; Conquest/custom/VP objectives remain valid.
+ */
+export function mapHasAuthoredGrailOrUtopia(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  preset?: CustomMapPreset | null
+): boolean {
+  if (preset?.objectives?.hiddenGrailUtopia) return true;
+  let grail = false;
+  let utopia = false;
+  for (const plan of plans ?? []) {
+    const choices = plan.viiFields ?? (plan.viiField ? [plan.viiField] : []);
+    grail ||= choices.includes("grail");
+    utopia ||= choices.includes("dragon_utopia");
+  }
+  // The named Hidden Grail / Dragon Utopia package contains BOTH identities.
+  // A single explicit Grail/Utopia used as the matching scenario objective is
+  // not the hidden package and remains compatible with its legacy preset.
+  return grail && utopia;
 }
 
 /**

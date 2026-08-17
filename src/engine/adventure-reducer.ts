@@ -93,7 +93,6 @@ import {
   createSecondaryHero,
   secondaryHeroPlacementFields,
   secondaryHeroPlacementStep,
-  adventureSeatCount,
   declareAdventureWinner,
   drawFromNeutralDeck,
   drawDungeonArmy,
@@ -131,7 +130,7 @@ import {
   tournamentMoraleSearchAgainEnabled,
   getSecondaryHero,
   humanPlayerIds,
-  requiredHeroDefeats,
+  requiredRivalHeroDefeats,
   tryDeliverGrail,
   applyMineFlag,
   applySettlementResource,
@@ -276,7 +275,7 @@ import {
   playerHasLivingFirstAidCommander,
   type CommanderFirstAidOption
 } from "./commanders";
-import { isComputerPlayer } from "./computer/control";
+import { isComputerPlayer, playersAreAllied } from "./computer/control";
 import { fightingHeroIdForPlayer, injectHeroIntoCombat } from "./heroes";
 import {
   STARWIND_FAMILIAR_ARMY_UNIT_PREFIX,
@@ -1423,7 +1422,7 @@ function resolveHeroArrival(
   const adventure = requireAdventure(state);
 
   const enemyHero = heroAtSpace(state, to, hero.id);
-  if (enemyHero && enemyHero.controllerId !== hero.controllerId) {
+  if (enemyHero && !playersAreAllied(state, enemyHero.controllerId, hero.controllerId)) {
     startPlayerCombat(state, hero, enemyHero, to);
     return;
   }
@@ -1511,7 +1510,11 @@ function garrisonDefenderFor(state: GameState, attacker: HeroState, field: MapFi
       Object.values(state.towns).find((town) => town.fieldId === field.spaceId)?.controllerId ??
       null
     : field.flagOwnerId;
-  if (!ownerId || ownerId === attacker.controllerId || ownerId === NEUTRAL_PLAYER_ID) {
+  if (
+    !ownerId ||
+    playersAreAllied(state, ownerId, attacker.controllerId) ||
+    ownerId === NEUTRAL_PLAYER_ID
+  ) {
     return null;
   }
 
@@ -4174,7 +4177,7 @@ setDungeonEncounterHook((state, heroId, floor) => {
 setTeleportArrivalHook((state, hero, field, originSpaceId) => {
   const playerId = hero.controllerId;
   const enemyHero = heroAtSpace(state, field.spaceId, hero.id);
-  if (enemyHero && enemyHero.controllerId !== playerId) {
+  if (enemyHero && !playersAreAllied(state, enemyHero.controllerId, playerId)) {
     startPlayerCombat(state, hero, enemyHero, field.spaceId);
     return;
   }
@@ -9161,6 +9164,9 @@ export function startPlayerCombat(
   if (!defenderPlayerId) {
     throw new Error("A player combat needs a defending player.");
   }
+  if (playersAreAllied(state, attacker.controllerId, defenderPlayerId)) {
+    throw new Error("Allied players cannot attack one another.");
+  }
 
   // Sanctuary (Astrologers): "During this round, Heroes cannot attack one
   // another." Reject a Hero-vs-Hero attack outright — and do it BEFORE
@@ -12818,10 +12824,10 @@ export function finalizeAdventureCombat(state: GameState): void {
         if (!beaten.includes(loserId)) {
           beaten.push(loserId);
         }
-        // Seat count includes eliminated observers so a mid-game elimination
-        // never lowers the threshold (3-player still needs 2 defeats; 4-player
-        // still needs 2 of 3).
-        if (beaten.length >= requiredHeroDefeats(adventureSeatCount(state))) {
+        // Allied computers are not enemy targets and cannot legally fight each
+        // other. Count only actual rivals, while still including eliminated
+        // observers so the threshold never shrinks during play.
+        if (beaten.length >= requiredRivalHeroDefeats(state, winnerId)) {
           declareAdventureWinner(state, winnerId, "defeated the required enemy heroes", {
             viaVictoryCondition: true
           });

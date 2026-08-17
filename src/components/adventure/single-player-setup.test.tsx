@@ -8,7 +8,7 @@
  */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAdventureLobbyState } from "@/engine";
+import { createAdventureLobbyState, scenarioDefinitions } from "@/engine";
 import { SetupLobbyScreen } from "./screen";
 
 vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
@@ -40,17 +40,48 @@ describe("SetupLobbyScreen — single-player", () => {
     expect(screen.getByText("You", { selector: ".computerSeatBadge" })).toBeTruthy();
   });
 
-  it("shows the map-driven solo count without an enemy-count control", () => {
+  it("lets the player choose the exact computer-enemy count in Heroes & Draft", () => {
     const onAction = renderSinglePlayer();
     openHeroes();
 
     expect(screen.queryByText("Players", { selector: ".optionRow small" })).toBeNull();
+    const row = screen.getByText("Computer enemies").closest(".optionRow") as HTMLElement;
+    expect(within(row).getByRole("button", { name: "2 enemies" }).getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(within(row).getByRole("button", { name: "3 enemies" }));
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_COMPUTER_OPPONENTS",
+      playerId: "p1",
+      count: 3
+    });
+  });
+
+  it("locks the count when the map authors exact human and enemy spawn Towns", () => {
+    const onAction = vi.fn();
+    const state = createAdventureLobbyState({
+      seed: "sp-authored-count-ui",
+      scenarioId: "skirmish",
+      sessionMode: "single-player",
+      computerOpponents: 2
+    });
+    const starts = scenarioDefinitions.skirmish.layout.starts;
+    state.setupLobby!.options.customMap = starts.map((plan, index) => ({
+      ...plan,
+      group: "starting" as const,
+      faceDown: false,
+      ...(index < 3
+        ? { singlePlayer: { role: index === 0 ? ("human" as const) : ("computer" as const) } }
+        : {})
+    }));
+    render(<SetupLobbyScreen onAction={onAction} state={state} viewerPlayerId="p1" />);
+    openHeroes();
+
     const row = screen.getByText("Solo deployment").closest(".optionRow") as HTMLElement;
     expect(within(row).getByLabelText("Map-selected computer opponents").textContent).toContain(
       "2 computer opponents"
     );
     expect(within(row).queryByRole("button")).toBeNull();
-    expect(row.textContent).toContain("ignored in multiplayer");
+    expect(row.textContent).toContain("Locked by this map");
     expect(onAction).not.toHaveBeenCalled();
   });
 

@@ -134,6 +134,7 @@ describe("sanitizeObjectPlans", () => {
         id: "amb",
         placement: { row: 1, col: 2 },
         guard: { units: ["neutral.skeletons", "garbage"] },
+        winCondition: true,
         reward: { gold: 3, searchArtifact: 2, searchArtifactTimes: 2 },
         mode: "each-player",
         replaceVisit: true
@@ -142,6 +143,7 @@ describe("sanitizeObjectPlans", () => {
       id: "amb",
       placement: { row: 1, col: 2 },
       guard: { units: ["neutral.skeletons"] },
+      winCondition: true,
       reward: { gold: 3, searchArtifact: 2, searchArtifactTimes: 2 },
       mode: "each-player",
       replaceVisit: true
@@ -174,6 +176,14 @@ describe("sanitizeObjectPlans", () => {
       }
     });
     expect(sanitizeHexEvents("garbage" as never)).toEqual([]);
+    expect(
+      sanitizeHexEvent({
+        id: "no-monster",
+        placement: { row: 2, col: 4 },
+        message: "No fight",
+        winCondition: true
+      })?.winCondition
+    ).toBeUndefined();
   });
 });
 
@@ -382,6 +392,54 @@ describe("designer hex events", () => {
     expect(isFieldGuarded(field)).toBe(false);
     expect(field.customGuardUnits).toBeUndefined();
     expect(state.adventure!.hexEvents?.["50,50"]).toBeUndefined();
+  });
+
+  it("monster objective declares the guard's actual defeater (and not the initial trigger)", () => {
+    const { state } = gameWithEvent("hex-monster-win", {
+      message: "Slay the marked monster!",
+      guard: { units: ["neutral.skeletons"] },
+      winCondition: true
+    });
+    visitWithMainHero(state, "p1", "50,50");
+    expect(state.adventure!.winnerPlayerId).toBeNull();
+    expect(state.combat).toBeTruthy();
+
+    const combat = state.combat!;
+    combat.setup = null;
+    combat.units.n0 = {
+      id: "n0",
+      controllerId: NEUTRAL_PLAYER_ID,
+      name: "Skeletons",
+      cardName: "Neutral Skeletons",
+      variant: "neutral",
+      grade: "bronze",
+      type: "melee",
+      attack: 1,
+      defense: 0,
+      maxHealth: 2,
+      damage: 2,
+      initiative: 1,
+      position: 0,
+      unitDefId: "neutral.skeletons",
+      bankGuard: true,
+      abilities: []
+    } as never;
+    combat.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "victory"
+    } as never;
+    finalizeAdventureCombat(state);
+
+    expect(state.adventure!.winnerPlayerId).toBe("p1");
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "GAME_WON" &&
+          "reason" in event &&
+          String(event.reason).includes("defeated the monster at 50,50")
+      )
+    ).toBe(true);
   });
 
   it("RETREATING from a sprung ambush returns the hero WHENCE THEY CAME (not onto the ambush hex)", () => {
