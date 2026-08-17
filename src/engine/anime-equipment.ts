@@ -27,6 +27,7 @@ import {
   getEquipmentDefinition,
   type EquipmentContextRequirement
 } from "@/data/anime/equipment";
+import { NEUTRAL_PLAYER_ID } from "./state";
 import type { AnimeEquipmentSlot, AttackRerollSource, CombatUnitState, GameState, HeroState, PlayerId } from "./state";
 
 /** Whether the Equipment module is on (implies anime master enabled). */
@@ -596,7 +597,16 @@ export function equipmentFreeDiscovery(state: GameState, playerId: PlayerId): bo
 
 export function equipmentStartInTownMovementBonus(state: GameState, hero: HeroState): number {
   if (hero.kind !== "main" || !hero.spaceId || !playerHasAnyEquipment(state, hero.controllerId, START_IN_TOWN_MOVEMENT_ITEMS)) return 0;
-  return Object.values(state.towns).some((town) => town.controllerId === hero.controllerId && town.fieldId === hero.spaceId) ? 1 : 0;
+  // Town CONTROL is flag-first (the engine never flips TownState.controllerId
+  // on capture — see the Castle Gate / WOG Mirror rule): the field's flag owner
+  // decides, with controllerId only as the unflagged fallback. This keeps a
+  // CAPTURED Town working for its captor and off for its former owner.
+  const field = state.adventure?.fields[hero.spaceId];
+  return Object.values(state.towns).some(
+    (town) =>
+      town.fieldId === hero.spaceId &&
+      (field?.flagOwnerId ? field.flagOwnerId === hero.controllerId : town.controllerId === hero.controllerId)
+  ) ? 1 : 0;
 }
 
 export function bankEquipmentMovementAtTurnEnd(state: GameState, playerId: PlayerId): void {
@@ -612,7 +622,7 @@ export function consumeEquipmentEnemySpellDrain(state: GameState, casterId: Play
   const combat = state.combat;
   if (!combat) return 0;
   for (const ownerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
-    if (ownerId === casterId || ownerId === "neutral") continue;
+    if (ownerId === casterId || ownerId === NEUTRAL_PLAYER_ID) continue;
     const stats = state.players[ownerId]?.combatStats;
     if (stats && !stats.equipmentEnemySpellDrainUsed && playerHasAnyEquipment(state, ownerId, ENEMY_FIRST_SPELL_DRAIN_ITEMS)) {
       stats.equipmentEnemySpellDrainUsed = true;

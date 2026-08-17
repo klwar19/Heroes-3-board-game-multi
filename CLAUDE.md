@@ -644,24 +644,43 @@ Leading with the adaptations / deliberate limits:
   `commander-card.test.tsx`, `commander-level-up-layout.test.ts`); voices keyed by
   slug in `commanderVoices` (`unit-sounds.test.ts`).
 
-### Commander Artifacts (`wog.artifacts` + `wog.commanders`) — 10 slot items
+### Commander Artifacts (`wog.artifacts` + `wog.commanders`) — expanded Forge catalog (2026-08-17)
 
-Ten artifacts bound PERMANENTLY into weapon / armor / trinket slots. Single registry
-`src/data/wog/commander-artifacts.ts` (`COMMANDER_ARTIFACT_SPECS`); state
-`CommanderPlayerState.artifacts`; folds in `commanders.ts`; the map-only
+Artifacts bound PERMANENTLY into weapon / armor / trinket slots. Single registry
+`src/data/wog/commander-artifacts.ts` (`COMMANDER_ARTIFACT_SPECS`, now ~25 specs:
+the original ten — retuned — plus the expanded Forge catalog); state
+`CommanderPlayerState.artifacts`; folds in `commanders.ts` + the per-arm reads in
+`src/engine/commander-artifacts.ts` (`commanderArtifactBonusesForUnit`); the map-only
 `BIND_COMMANDER_ARTIFACT` (`cost.removeSelf`) also grants one REGULAR same-grade
 Artifact (`grantRegularArtifactOfSameGrade` — a forced grant, deliberately outside
 the BINH tier gate and the Polish Random Artifacts roll). Deck gate:
 `wog.enabled && wog.artifacts && wog.commanders`. Pinned in
-`wog-commander-artifacts.test.ts`, `commander-card.test.ts`.
+`wog-commander-artifacts.test.ts`, `commander-artifact-expansion.test.ts`,
+`commander-card.test.ts`.
+ACQUISITION beyond the shared decks (98cf9b08, all engine-granted and each card
+UNIQUE game-wide — `grantCommanderArtifactCard` pulls the copy out of the shared
+decks): the **Commander Forge** (`FORGE_COMMANDER_ARTIFACT`, two seed-stable offers
+per tier in the Town panel / commander window; Grade I from round 2 for 5 gold,
+ONE Grade II/III purchase from round 7 for 8/11 gold, each budget once per game);
+an optional post-victory PURCHASE offer after difficulty 3–5 neutral wins
+(`queueNeutralCommanderArtifactOffer`); and FREE drops from Raid-Boss kills (relic)
+and Dungeon-floor wins (`commanderArtifactTierForDungeonFloor`).
+RETUNES (deliberate, faces regenerated as `*_v2` slugs): Doomsday Blade +2 Attack
++ roll advantage; Blood Patriarch's Saber +1 Attack + advantage; Sword of Sharpness
+is MINOR and its added Might die can never resolve below 0; Hardened Shield is
+RELIC; Boots of Haste +2 Initiative. New arms: incoming-attack disadvantage
+(Duelist Guard round 1 / Veil of Dread whole combat), on-attack combat-long
+−Defense/−Attack/−Initiative debuffs (Corrosive Edge / Enfeebling Mace / Chrono
+Pike), Vampiric Fang heal-after-damaging-attack, Piercing Lance 1 Defense pierce,
+Barbed Carapace exact-damage reflect, Plague Censer 1 damage to every adjacent
+unit at activation, Phoenix Plate once-per-combat 1-Health rebirth, Traveler's
+Salve / Bastion Heart heal-after-move/Defend, Stormcleaver adjacent cleave,
+Victor's Coin +1 gold per won main-hero combat (queued behind Necromancy), and the
+Pendant/Talisman Power-3 cast OVERFLOW (a mandatory choose-any-unit 1-damage zap,
+`commander-overflow-zap`).
 LIMITS: WoG's per-victory INCREMENTAL bonuses are NOT modeled (fixed printed bonus);
 Bow of Seeking and Slava's Ring of Power are NOT shipped; binding is permanent (no
 unbind/swap, one per slot) and survives death + revive.
-The ten: `iron_cudgel` +1 Attack · `axe_of_smashing` +2 Attack · `doomsday_blade` +3
-Attack · `sword_of_sharpness` +1 Might die · `hardened_shield` +1 Defense ·
-`mithril_mail` +2 Health · `helm_of_immortality` free revive at combat end ·
-`boots_of_haste` +1 Initiative · `pendant_of_sorcery` cast Power +1 ·
-`dragon_eye_ring` line attack (`dragon-line-attack-3`).
 
 ### WOG Artifacts (optional module, BINH-only) — what runs vs. adaptations
 
@@ -1107,6 +1126,22 @@ REMOVED), the AI banks two home payoffs on turn 1 and enters an opened Ⅱ–Ⅲ
 turn 3 (`bestHomeOpeningObjective`), and a hero on a STANDALONE Monolith is
 selectable again. `frost-ring-meteor-shower.test.ts`, `catapult-siege.test.ts`,
 `map-navigation.test.ts`, `single-player-opening.test.ts`.
+
+## Meteor Shower / Rocket Launcher are FUEL-only Power effects with a dedicated window (2026-08-17, protocol v37)
+
+The `meteor-shower`-tagged specialties (Deemer I/VI, Kud's Rocket Launcher) changed
+reading: their Power is EXACTLY the printed Power value of the fuel cards chosen in
+the play (`playCardSpellPower` short-circuits `standingSpellPower` for the tag) —
+Spell-only standing bonuses (Pandora's Power, School-of-Magic permanents, Magi
+first-spell) never apply, and a source that only boosts a named School's Spells is
+REFUSED as fuel (`cardCanFuelSchoollessPower`, enforced in `payOptionCardCost`).
+UI: one "Choose Power & target" tray tile opens the dedicated `MeteorPowerWindow`
+(hand sources + Book Spells + crowns, live damage preview), then targeting arms the
+battlefield — never a wall of per-target buttons; the shared cost-discard picker is
+also a card-face window now (`CostPlayBar` → `.costPlayWindow`). The Deemer-only
+adjacency gate generalized to EVERY `AREA_DAMAGE_PICK_ADJACENT` effect with
+`amountByPower` (Kud included). `frost-ring-meteor-shower.test.ts`,
+`overlays.test.tsx`.
 
 ## AI opening is Ⅱ–Ⅲ-first: tile Ⅰ rotation + band-first discovery (2026-08-14)
 
@@ -1634,23 +1669,48 @@ types + lobby state only — `docs/anime-mod-plan.md` is the contract):**
   `src/engine/anime-cultivation.ts`, `anime-cultivation.test.ts`. ADAPTATIONS: no
   Foundation-Pill path, Core Formation gates on `player.bankWins`, the toll is a card
   loss/flip, and realm NAMES are presentation-only and faction-owned.
-- **`anime.heroGrades`** — a shared Merit→grade 0–3 track plus a 3-tier × 3-node tree
-  (`src/data/anime/hero-grades.ts`, `src/engine/anime-hero-grades.ts`). Five Merit
+- **`anime.heroGrades`** — a shared Merit→grade 0–3 track plus a 3-tier tree over a
+  LARGE node pool (2026-08-17): each hero is DEALT exactly FOUR deterministic-random
+  choices per tier (`heroGradeNodesForPlayer`, seeded by game seed + faction/town +
+  main-hero id — stable across reloads/clients; a register-exclusive node like MGQ
+  Job Mastery reserves one of its tier's four slots, and already-owned legacy nodes
+  always stay dealt), pick 1 per tier (`src/data/anime/hero-grades.ts`,
+  `src/engine/anime-hero-grades.ts`, `src/engine/hero-grade-combat.ts`). Five Merit
   sources funnel through ONE arm `gainGradeProgress`; crossing a threshold (`[3,7,12]`,
   a DATA array) auto-grades-up. Nodes are passives and non-card SKILLS reusing the
-  commander cast machinery. Grade NAMES wear faction-owned REGISTERS resolved by
-  `heroGradeRegisterKey` — an enabled town flag never relabels another faction's hero.
-  LIMITS: label art is deferred; combat skills are the MAIN hero's fights only.
+  commander cast machinery; the one-time rewards (Major Legacy / Dual Arcana / Relic
+  Destiny) fire exactly at the pick (`applyHeroGradeOneTimeReward`) and FALL BACK to
+  the combined Spell/Artifact decks when `split-decks` is off (they used to no-op
+  there). Forced March is now a PASSIVE (+1 movement each Resources round; the
+  map-active `USE_HERO_SKILL` button is gone). Grade NAMES wear faction-owned
+  REGISTERS (`heroGradeRegisterKey`); the anime register label is **Hero Grade**
+  (the old "Spirit Rank" is removed). Node effects pinned in
+  `anime-hero-grades.test.ts` (including the expanded audit-coverage block) +
+  `unit-experience.test.ts` (Combat Scholar).
+  LIMITS: combat skills are the MAIN hero's fights only; the Spirit Companion
+  familiar is a synthetic setup handle (never a real army card, expires after
+  combat round 1).
 - **`anime.equipment`** — always-on hero ITEMS in four slots (one per slot; buying into
-  an occupied slot REPLACES with no refund). 36 items in three GRADES costing 4/6/8
-  gold (`EQUIPMENT_GRADE_COST`), each BOTH a slot item AND an Artifact-deck CARD
+  an occupied slot REPLACES with no refund). 58 items in three GRADES costing 5/7/10
+  gold (`EQUIPMENT_GRADE_COST`, 2026-08-17 redesign: most effects were REWORKED —
+  per-item truth lives in each definition's `summary` + the per-item tests; several
+  items now carry DRAWBACKS like −1 hand limit on mounts or a seeded-random
+  cannot-retaliate ally in round 1), each BOTH a slot item AND an Artifact-deck CARD
   (`equipment-cards.ts`, joined only with the flag) played as a mapOnly
   `EQUIP_HERO_EQUIPMENT` that also grants a REGULAR same-grade Artifact. Read layer
   `src/engine/anime-equipment.ts`; pinned in `anime-equipment.test.ts`,
-  `anime-equipment-cards.test.ts`, `equipment.test.ts`. Every fold REUSES a proven seam.
-  LIMITS: **same-slot twins do NOT stack** (the equipment spell-power fold tops out at
-  +1 and hand-limit at +2); buying is ONLY through the two outfitter Field Overrides;
-  combat items are the MAIN hero's fights only; 9 icons are procedural placeholders.
+  `anime-equipment-expanded.test.ts`, `anime-equipment-cards.test.ts`,
+  `equipment.test.ts`, `mgq-equipment-job-mastery.test.ts`.
+  ACQUISITION beyond the two outfitters (2026-08-17): every Resource round each
+  player may buy at most ONE unowned Grade-I item (a queued CHOOSE_ONE), a won
+  Creature Bank grants one item FREE (Far = Grade I; Near = a 50/50 Grade II/III
+  roll), and a fought win over a level VI/VII field guard offers one Grade-III
+  purchase (`buildEquipmentGradePurchaseStep` / `buildEquipmentGradeRewardStep` /
+  `queueEquipmentGradePurchase` — one shared builder, so every road applies the
+  same ownership/context/affordability rules).
+  LIMITS: **same-slot twins do NOT stack**; equipment combat folds are the MAIN
+  hero's fights only; Hearthbound Horseshoe's "your Town" is FLAG-first (a captured
+  Town pays its captor, not its former owner); 9 icons are procedural placeholders.
   REGISTER-AWARE SHOPS: either outfitter also offers the VISITING hero's register line
   (`equipmentRegisterLineFor`), with `equipmentPackagesForFaction` special-casing
   hidden_leaf → `shinobi`, azur_lane → `kansen`, heavenly_demon → `modao` AHEAD of the
@@ -1705,6 +1765,13 @@ and a WOG commander. Data `src/data/anime/towns.ts`; pinned in `towns.test.ts`,
 `azur-lane-live.test.ts`, `heavenly-demon-live.test.ts`.
 LIMITS: the Battle-Test sandbox never offers an anime faction; Hidden Leaf ships 3
 heroes, not the plan's 6; 9 equipment icons remain procedural placeholders.
+FACTION LIMITS (2026-08-17, protocol v37 — server-authoritative costs): a
+**Little Busters** seat pays up to 4 gold ("school contribution fund") at the END
+of every Resource-round income, never creating debt
+(`little-busters-content.test.ts`); an **MGQ** main hero must discard 1 chosen
+hand card before confirming combat deployment (a `hand-discard` choice with
+`mgqSpiritCost`, receipt on `combat.mgqSpiritCostPaidPlayerIds` so a reopened
+setup never double-charges; an empty hand waives it — `mgq-spirits.test.ts`).
 The dedicated NEW engine arms: Fuyuki Casters' `casters-damage-cap` (≤1 damage per
 single attack OR Spell, `CAP_DAMAGE_PER_ATTACK.includeSpells` —
 `fuyuki-casters.test.ts`); Hidden Leaf's `jinchuriki-chakra-burst`

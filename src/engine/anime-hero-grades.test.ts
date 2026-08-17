@@ -25,8 +25,14 @@ import {
   type GameState,
   type PlayerId
 } from "./index";
-import { beginFieldVisit, startAdventureRound } from "./adventure";
-import { finalizeAdventureCombat, placementCellsFor, startNeutralEncounter } from "./adventure-reducer";
+import { applyMineFlag, beginFieldVisit, processPendingVisit, startAdventureRound } from "./adventure";
+import {
+  applyHeroGradeOneTimeReward,
+  finalizeAdventureCombat,
+  placementCellsFor,
+  pumpAdventureQueues,
+  startNeutralEncounter
+} from "./adventure-reducer";
 import { finishCombatIfNeeded } from "./combat-units";
 import { chooseComputerAction } from "./computer/policy";
 import { scoreMapAction } from "./computer/map-policy";
@@ -43,6 +49,7 @@ import {
 } from "@/data/anime/hero-grades";
 import { heroGradeWinGold } from "./anime-hero-grades";
 import {
+  applyHeroGradeArmyInitiative,
   applyHeroGradeRoundStartDamage,
   expireHeroGradeFamiliars,
   injectHeroGradeFamiliar,
@@ -1255,5 +1262,329 @@ describe("anime.heroGrades — computer policy", () => {
     }
     expect(spentPoint).toBe(true);
     expect(steps).toBeLessThan(40);
+  });
+});
+
+// ===========================================================================
+// Expanded node effects — audit coverage for the 2026-08-17 node batch. Every
+// claim asserts the observable game outcome with a CONTROL (no node / wrong
+// round / enemy side), per CLAUDE.md rule 1a.
+// ===========================================================================
+
+describe("anime.heroGrades — expanded node effects (audit coverage)", () => {
+  it("Mine Windfall pays the mine's printed production once on capture (CONTROL: no node; re-flagging own mine pays nothing)", () => {
+    const state = adventure("hg-windfall");
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.mineWindfall], 1);
+    const field = injectField(state, "mine");
+    field.resource = "buildingMaterials";
+    field.amount = 2;
+    field.everFlagged = true; // isolate the windfall from the first-flag bonus
+    const before = state.players.p1.resources.buildingMaterials;
+    applyMineFlag(state, "p1", field);
+    expect(state.players.p1.resources.buildingMaterials).toBe(before + 2);
+    const owned = state.players.p1.resources.buildingMaterials;
+    applyMineFlag(state, "p1", field); // re-flagging your own mine is not a capture
+    expect(state.players.p1.resources.buildingMaterials).toBe(owned);
+
+    const control = adventure("hg-windfall-control");
+    const controlField = injectField(control, "mine");
+    controlField.resource = "buildingMaterials";
+    controlField.amount = 2;
+    controlField.everFlagged = true;
+    const controlBefore = control.players.p1.resources.buildingMaterials;
+    applyMineFlag(control, "p1", controlField);
+    expect(control.players.p1.resources.buildingMaterials).toBe(controlBefore);
+  });
+
+  it("Volatile Treasury: -3 gold each Resources round (floored at 0) and +6 gold each Astrologers round", () => {
+    function roundGoldDelta(round: number, startGold: number): number {
+      const withNode = adventure("hg-volatile");
+      const control = adventure("hg-volatile");
+      grantNodes(withNode, "p1", [HERO_GRADE_NODE_IDS.volatileTreasury], 1);
+      for (const state of [withNode, control]) {
+        state.players.p1.resources.gold = startGold;
+        state.round = round;
+        startAdventureRound(state);
+      }
+      return withNode.players.p1.resources.gold - control.players.p1.resources.gold;
+    }
+    expect(roundGoldDelta(3, 10)).toBe(-3); // Resources round
+    expect(roundGoldDelta(2, 10)).toBe(6); // Astrologers round
+    // Floor: with 1 gold at collection time the loss stops at 0, never debt.
+    const poor = adventure("hg-volatile-floor");
+    grantNodes(poor, "p1", [HERO_GRADE_NODE_IDS.volatileTreasury], 1);
+    poor.players.p1.resources.gold = 0;
+    poor.players.p1.production.gold = 1;
+    poor.round = 3;
+    startAdventureRound(poor);
+    expect(poor.players.p1.resources.gold).toBe(0);
+  });
+
+  it("Auspicious Stars adds morale on Astrologers rounds only; Inspiring Presence on every round", () => {
+    function moraleDelta(nodeId: string, round: number): number {
+      const withNode = adventure(`hg-morale-${nodeId}-${round}`);
+      const control = adventure(`hg-morale-${nodeId}-${round}`);
+      grantNodes(withNode, "p1", [nodeId], 3);
+      for (const state of [withNode, control]) {
+        state.players.p1.morale = 0;
+        state.round = round;
+        startAdventureRound(state);
+      }
+      return withNode.players.p1.morale - control.players.p1.morale;
+    }
+    expect(moraleDelta(HERO_GRADE_NODE_IDS.astrologersMorale, 2)).toBe(1);
+    expect(moraleDelta(HERO_GRADE_NODE_IDS.astrologersMorale, 3)).toBe(0); // CONTROL: not a Resources-round income
+    expect(moraleDelta(HERO_GRADE_NODE_IDS.inspiringPresence, 2)).toBe(1);
+    expect(moraleDelta(HERO_GRADE_NODE_IDS.inspiringPresence, 3)).toBe(1);
+  });
+
+  it("Artifact Broker sells one hand Artifact for 4 gold and removes it (CONTROL: refused without the node)", () => {
+    let state = startTurn(adventure("hg-broker"));
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.artifactBroker], 1);
+    state.players.p1.hand.push("wog.artifact.magic_wand");
+    const gold = state.players.p1.resources.gold;
+    const offer = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "HERO_GRADE_SELL_ARTIFACT" && entry.action.cardId === "wog.artifact.magic_wand"
+    );
+    expect(offer, "the broker sale should be offered for a held Artifact").toBeTruthy();
+    state = applyOk(state, offer!.action);
+    expect(state.players.p1.resources.gold).toBe(gold + 4);
+    expect(state.players.p1.hand).not.toContain("wog.artifact.magic_wand");
+    expect(state.players.p1.removed).toContain("wog.artifact.magic_wand");
+
+    const control = startTurn(adventure("hg-broker-control"));
+    control.players.p1.hand.push("wog.artifact.magic_wand");
+    const refused = applyAction(control, {
+      type: "HERO_GRADE_SELL_ARTIFACT",
+      playerId: "p1",
+      cardId: "wog.artifact.magic_wand"
+    });
+    expect(refused.errors.length).toBeGreaterThan(0);
+  });
+
+  it("Resource Sacrifice: taking the queued Resources-round offer removes the card and pays 3 gold", () => {
+    const state = adventure("hg-sacrifice");
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.resourceSacrifice], 2);
+    state.players.p1.hand = ["stat.attack"];
+    state.round = 3;
+    startAdventureRound(state);
+    const reward = state.adventure!.rewardQueue.find(
+      (entry) => entry.kind === "visit-steps" &&
+        entry.playerId === "p1" &&
+        entry.steps.some((step) => step.type === "CHOOSE_ONE" && step.prompt.includes("Resource Sacrifice"))
+    );
+    expect(reward, "the Resources-round sacrifice offer should queue").toBeTruthy();
+    if (reward?.kind !== "visit-steps") throw new Error("unreachable");
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.rewardQueue.length = 0;
+    state.adventure!.pendingVisit = { heroId: hero.id, playerId: "p1", fieldId: hero.spaceId!, steps: reward.steps };
+    const gold = state.players.p1.resources.gold;
+    const resolved = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(resolved.players.p1.resources.gold).toBe(gold + 3);
+    expect(resolved.players.p1.hand).not.toContain("stat.attack");
+    expect(resolved.players.p1.removed).toContain("stat.attack");
+
+    // CONTROL: without the node no sacrifice offer queues.
+    const control = adventure("hg-sacrifice-control");
+    control.players.p1.hand = ["stat.attack"];
+    control.round = 3;
+    startAdventureRound(control);
+    expect(control.adventure!.rewardQueue.some(
+      (entry) => entry.kind === "visit-steps" &&
+        entry.steps.some((step) => step.type === "CHOOSE_ONE" && step.prompt.includes("Resource Sacrifice"))
+    )).toBe(false);
+  });
+
+  it("Ancestral Recall: the queued Resources-round offer returns a chosen discard to hand", () => {
+    const state = adventure("hg-recall");
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.ancestralRecall], 3);
+    state.players.p1.discard = ["stat.defense"];
+    state.round = 3;
+    startAdventureRound(state);
+    const reward = state.adventure!.rewardQueue.find(
+      (entry) => entry.kind === "visit-steps" &&
+        entry.playerId === "p1" &&
+        entry.steps.some((step) => step.type === "CHOOSE_ONE" && step.prompt.includes("Ancestral Recall"))
+    );
+    expect(reward, "the Resources-round recall offer should queue").toBeTruthy();
+    if (reward?.kind !== "visit-steps") throw new Error("unreachable");
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.rewardQueue.length = 0;
+    state.adventure!.pendingVisit = { heroId: hero.id, playerId: "p1", fieldId: hero.spaceId!, steps: reward.steps };
+    let resolved = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    // DISCARD_PICK opens the discard-pick choice; take the only candidate.
+    const choice = resolved.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    resolved = applyOk(resolved, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: 0
+    });
+    expect(resolved.players.p1.hand).toContain("stat.defense");
+    expect(resolved.players.p1.discard).not.toContain("stat.defense");
+  });
+
+  it("Swift Host: +1 Initiative on every own unit exactly once at combat start (CONTROL: enemies untouched, re-run inert)", () => {
+    const state = combatState("hg-swift", [HERO_GRADE_NODE_IDS.swiftHost]);
+    const own = state.combat!.units.unit_p1_griffins.initiative;
+    const enemy = state.combat!.units.unit_p2_skeletons.initiative;
+    applyHeroGradeArmyInitiative(state);
+    expect(state.combat!.units.unit_p1_griffins.initiative).toBe(own + 1);
+    expect(state.combat!.units.unit_p2_skeletons.initiative).toBe(enemy);
+    applyHeroGradeArmyInitiative(state); // combat-start re-entry must not stack
+    expect(state.combat!.units.unit_p1_griffins.initiative).toBe(own + 1);
+  });
+
+  it("Spell Savant reveals one extra card on a Spell-deck Search (CONTROL: a non-Spell deck is untouched)", () => {
+    function revealedCount(nodeIds: string[], deckId: string): number {
+      let state = startTurn(adventure(`hg-savant-${deckId}-${nodeIds.length}`));
+      grantNodes(state, "p1", nodeIds, 1);
+      state.adventure!.rewardQueue.push({ playerId: "p1", kind: "shared-deck-search", deckId, count: 2 });
+      pumpAdventureQueues(state);
+      if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "deck-search-mode") {
+        state = applyOk(state, {
+          type: "CHOOSE_OPTION",
+          playerId: "p1",
+          choiceId: state.pendingChoice.id,
+          optionIndex: 0
+        });
+      }
+      expect(state.pendingChoice?.type).toBe("DECK_SEARCH");
+      return state.pendingChoice?.type === "DECK_SEARCH" ? state.pendingChoice.revealedCardIds.length : 0;
+    }
+    expect(revealedCount([HERO_GRADE_NODE_IDS.spellSavant], "spells")).toBe(3);
+    expect(revealedCount([], "spells")).toBe(2); // CONTROL: no node
+    expect(revealedCount([HERO_GRADE_NODE_IDS.spellSavant], "abilities")).toBe(2); // CONTROL: not a Spell deck
+  });
+
+  it("Resource Mastery may set the rolled Resource dice to any faces, including the same face twice", () => {
+    const state = adventure("hg-mastery");
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.resourceMastery], 2);
+    const hero = getMainHero(state, "p1")!;
+    state.adventure!.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: hero.spaceId!,
+      steps: [{ type: "ROLL_RESOURCE_DICE", count: 2, resolveCount: 2 }]
+    };
+    processPendingVisit(state);
+    const step = state.adventure!.pendingVisit?.steps[0];
+    expect(step?.type).toBe("CHOOSE_ONE");
+    if (step?.type !== "CHOOSE_ONE") throw new Error("unreachable");
+    const masteryOptions = step.options
+      .map((option, index) => ({ option, index }))
+      .filter(({ option }) => option.label.startsWith("Resource Mastery:"));
+    expect(masteryOptions.length).toBeGreaterThan(0);
+    const goldOf = (option: (typeof step.options)[number]) =>
+      option.steps.reduce((sum, inner) => sum + (inner.type === "GAIN_RESOURCES" ? inner.gold ?? 0 : 0), 0);
+    const best = masteryOptions.reduce((a, b) => (goldOf(b.option) > goldOf(a.option) ? b : a));
+    expect(goldOf(best.option)).toBe(12); // 6 gold + 6 gold — the same face on BOTH dice
+    const gold = state.players.p1.resources.gold;
+    const resolved = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: best.index });
+    expect(resolved.players.p1.resources.gold).toBe(gold + 12);
+
+    // CONTROL: without the node the roll offers no mastery picks.
+    const control = adventure("hg-mastery-control");
+    const controlHero = getMainHero(control, "p1")!;
+    control.adventure!.pendingVisit = {
+      heroId: controlHero.id,
+      playerId: "p1",
+      fieldId: controlHero.spaceId!,
+      steps: [{ type: "ROLL_RESOURCE_DICE", count: 2, resolveCount: 2 }]
+    };
+    processPendingVisit(control);
+    const controlStep = control.adventure!.pendingVisit?.steps[0];
+    if (controlStep?.type === "CHOOSE_ONE") {
+      expect(controlStep.options.some((option) => option.label.startsWith("Resource Mastery:"))).toBe(false);
+    }
+  });
+
+  it("one-time rewards grant REAL cards on split decks: Major Legacy, Dual Arcana, Relic Destiny", () => {
+    const legacy = startTurn(adventure("hg-onetime-major"));
+    const before = legacy.players.p1.hand.length;
+    applyHeroGradeOneTimeReward(legacy, "p1", HERO_GRADE_NODE_IDS.majorLegacy);
+    expect(legacy.players.p1.hand.length).toBe(before + 1);
+    expect(cardLibrary[legacy.players.p1.hand.at(-1)!]?.kind).toBe("artifact");
+
+    const arcana = startTurn(adventure("hg-onetime-arcana"));
+    const arcanaBefore = arcana.players.p1.hand.length;
+    applyHeroGradeOneTimeReward(arcana, "p1", HERO_GRADE_NODE_IDS.dualArcana);
+    expect(arcana.players.p1.hand.length).toBe(arcanaBefore + 2);
+    for (const cardId of arcana.players.p1.hand.slice(-2)) {
+      expect(cardLibrary[cardId]?.kind).toBe("spell");
+    }
+
+    let relic = startTurn(adventure("hg-onetime-relic"));
+    applyHeroGradeOneTimeReward(relic, "p1", HERO_GRADE_NODE_IDS.relicDestiny);
+    expect(relic.adventure!.polishArtifactAccess).toEqual({ minor: false, major: false, relic: true });
+    pumpAdventureQueues(relic);
+    if (relic.pendingChoice?.type === "OPTION_CHOICE" && relic.pendingChoice.context === "deck-search-mode") {
+      relic = applyOk(relic, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: relic.pendingChoice.id,
+        optionIndex: 0
+      });
+    }
+    expect(relic.pendingChoice?.type).toBe("DECK_SEARCH");
+    if (relic.pendingChoice?.type === "DECK_SEARCH") {
+      expect(relic.pendingChoice.deckId).toBe("artifacts-relic");
+      expect(relic.pendingChoice.revealedCardIds).toHaveLength(5);
+    }
+  });
+
+  it("one-time rewards fall back to the COMBINED decks when split-decks is off (they used to no-op)", () => {
+    const combined = () => {
+      const state = startTurn(adventure("hg-onetime-combined", GRADES_ON, { houseRules: { "split-decks": false } }));
+      expect(state.decks["artifacts-major"]).toBeUndefined();
+      return state;
+    };
+    const major = combined();
+    const before = major.players.p1.hand.length;
+    applyHeroGradeOneTimeReward(major, "p1", HERO_GRADE_NODE_IDS.majorLegacy);
+    expect(major.players.p1.hand.length).toBe(before + 1);
+    expect(cardLibrary[major.players.p1.hand.at(-1)!]?.kind).toBe("artifact");
+
+    const arcana = combined();
+    const arcanaBefore = arcana.players.p1.hand.length;
+    applyHeroGradeOneTimeReward(arcana, "p1", HERO_GRADE_NODE_IDS.dualArcana);
+    expect(arcana.players.p1.hand.length).toBe(arcanaBefore + 2);
+
+    const relic = combined();
+    applyHeroGradeOneTimeReward(relic, "p1", HERO_GRADE_NODE_IDS.relicDestiny);
+    const search = relic.adventure!.rewardQueue.find((entry) => entry.kind === "shared-deck-search");
+    expect(search?.kind === "shared-deck-search" ? search.deckId : null).toBe("artifacts");
+
+    // Dual Arcana pays 1 gold ONLY when no Spell can be granted at all.
+    const dry = combined();
+    dry.decks.spells.drawPile = [];
+    dry.decks.spells.discardPile = [];
+    const dryGold = dry.players.p1.resources.gold;
+    applyHeroGradeOneTimeReward(dry, "p1", HERO_GRADE_NODE_IDS.dualArcana);
+    expect(dry.players.p1.resources.gold).toBe(dryGold + 1);
+  });
+
+  it("HERO_GRADE_PICK itself fires the one-time reward (pick wiring, not just the helper)", () => {
+    // The four-choice deal is seed-owned; scan seeds until Major Legacy is dealt
+    // on tier 2, then pick it through the REAL action pipeline.
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const state = startTurn(adventure(`hg-pick-onetime-${attempt}`));
+      const dealt = heroGradeNodesForPlayer(state, "p1");
+      if (!dealt.some((node) => node.id === HERO_GRADE_NODE_IDS.majorLegacy)) continue;
+      const hero = getMainHero(state, "p1")!;
+      hero.grade = 2;
+      hero.gradePoints = 1;
+      const before = state.players.p1.hand.length;
+      const picked = applyOk(state, {
+        type: "HERO_GRADE_PICK",
+        playerId: "p1",
+        nodeId: HERO_GRADE_NODE_IDS.majorLegacy
+      });
+      expect(picked.players.p1.hand.length).toBe(before + 1);
+      expect(cardLibrary[picked.players.p1.hand.at(-1)!]?.kind).toBe("artifact");
+      return;
+    }
+    throw new Error("no seed in 80 attempts dealt Major Legacy — the deal or the catalog changed");
   });
 });

@@ -6,8 +6,7 @@ import { heroHasGradeNode, playerMainHeroInCombat } from "./anime-hero-grades";
 import { noteUnitDamagedForTokens } from "./tokens";
 import type { CombatUnitState, GameState, PlayerId } from "./state";
 
-export const STARWIND_FAMILIAR_IMAGE = "/assets/anime/units/starwind-familiar.png";
-export const STARWIND_FAMILIAR_CARD_IMAGE = "/assets/anime/units/starwind-familiar-card.png";
+export const STARWIND_FAMILIAR_CARD_IMAGE = "/assets/anime/units/starwind-familiar-card.webp";
 export const STARWIND_FAMILIAR_ARMY_UNIT_PREFIX = "hero_grade_starwind_familiar_";
 
 /** Add the Tier-1 familiar to setup so its owner can arrange it normally. */

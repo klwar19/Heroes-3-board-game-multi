@@ -11,7 +11,8 @@ import {
   equipmentAttackRerollSources,
   equipmentBronzeInitiativeBonus,
   equipmentCombatUnitOffers,
-  equipmentRowDefenseBonus
+  equipmentRowDefenseBonus,
+  equipmentStartInTownMovementBonus
 } from "./anime-equipment";
 import { DEFAULT_ANIME_OPTIONS } from "./anime";
 import type { GameAction, GameState } from "./state";
@@ -234,5 +235,45 @@ describe("expanded anime equipment effects", () => {
     equip(state, "armor", EQUIPMENT_IDS.repairToolkit);
     expect(consumeEquipmentFirstDamagePrevention(state, griffins)).toBe(1);
     expect(consumeEquipmentFirstDamagePrevention(state, griffins)).toBe(0);
+  });
+});
+
+describe("Hearthbound Horseshoe — town ownership is FLAG-first (the captured-town rule)", () => {
+  function townState(seed: string): GameState {
+    const state = createAdventureGameState({ seed, rollFirstPlayer: false, anime });
+    const hero = getMainHero(state, "p1")!;
+    hero.equipment = { ...(hero.equipment ?? {}), mount: EQUIPMENT_IDS.hearthboundHorseshoe };
+    return state;
+  }
+
+  it("+1 movement when the main hero starts on its OWN flagged Town field (CONTROL: no mount / not a town)", () => {
+    const state = townState("hh-own-town");
+    const hero = getMainHero(state, "p1")!;
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    hero.spaceId = town.fieldId!;
+    expect(equipmentStartInTownMovementBonus(state, hero)).toBe(1);
+
+    hero.equipment = {};
+    expect(equipmentStartInTownMovementBonus(state, hero)).toBe(0);
+    hero.equipment = { mount: EQUIPMENT_IDS.hearthboundHorseshoe };
+    hero.spaceId = Object.values(state.towns).find((candidate) => candidate.controllerId === "p2")!.fieldId!;
+    expect(equipmentStartInTownMovementBonus(state, hero)).toBe(0);
+  });
+
+  it("a Town CAPTURED by the enemy (flag moved) grants nothing to its former owner, and pays the captor", () => {
+    const state = townState("hh-captured-town");
+    const hero = getMainHero(state, "p1")!;
+    const ownTown = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    // Capture: control lives on field.flagOwnerId (TownState.controllerId is
+    // deliberately never flipped on capture).
+    state.adventure!.fields[ownTown.fieldId!]!.flagOwnerId = "p2";
+    hero.spaceId = ownTown.fieldId!;
+    expect(equipmentStartInTownMovementBonus(state, hero)).toBe(0);
+
+    // The captor standing in the captured Town DOES qualify with the mount.
+    const enemyHero = getMainHero(state, "p2")!;
+    enemyHero.equipment = { mount: EQUIPMENT_IDS.hearthboundHorseshoe };
+    enemyHero.spaceId = ownTown.fieldId!;
+    expect(equipmentStartInTownMovementBonus(state, enemyHero)).toBe(1);
   });
 });

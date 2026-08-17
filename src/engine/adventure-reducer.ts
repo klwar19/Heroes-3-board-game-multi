@@ -17758,15 +17758,22 @@ function grantRandomSharedCard(state: GameState, playerId: PlayerId, deckId: str
   return true;
 }
 
-/** Rewards whose "one time" timing is exactly the irreversible node pick. */
-function applyHeroGradeOneTimeReward(state: GameState, playerId: PlayerId, nodeId: string): void {
+/** Rewards whose "one time" timing is exactly the irreversible node pick.
+ * DECK IDS: the split-deck ids exist only with the `split-decks` house rule
+ * (OFF in Legacy, toggleable in BINH; the Polish Spell Book keeps ONE combined
+ * Spell deck even with split Artifact decks) — without the fallback to the
+ * combined deck these rewards silently granted NOTHING on such tables. */
+export function applyHeroGradeOneTimeReward(state: GameState, playerId: PlayerId, nodeId: string): void {
+  const presentDeck = (preferred: string, combined: string) => (state.decks[preferred] ? preferred : combined);
   if (nodeId === HERO_GRADE_NODE_IDS.majorLegacy) {
-    grantRandomSharedCard(state, playerId, ARTIFACT_DECK_MAJOR);
+    grantRandomSharedCard(state, playerId, presentDeck(ARTIFACT_DECK_MAJOR, "artifacts"));
     return;
   }
   if (nodeId === HERO_GRADE_NODE_IDS.dualArcana) {
     const basic = grantRandomSharedCard(state, playerId, SPELL_DECK_BASIC);
-    const expert = grantRandomSharedCard(state, playerId, SPELL_DECK_EXPERT);
+    // A combined-Spell-deck table has no Expert deck: the second random Spell
+    // simply comes from the same combined deck instead of no-opping.
+    const expert = grantRandomSharedCard(state, playerId, presentDeck(SPELL_DECK_EXPERT, SPELL_DECK_BASIC));
     if (!basic && !expert) gainResources(state, playerId, { gold: 1 }, "Dual Arcana fallback");
     return;
   }
@@ -17780,7 +17787,7 @@ function applyHeroGradeOneTimeReward(state: GameState, playerId: PlayerId, nodeI
     state.adventure?.rewardQueue.push({
       playerId,
       kind: "shared-deck-search",
-      deckId: ARTIFACT_DECK_RELIC,
+      deckId: presentDeck(ARTIFACT_DECK_RELIC, "artifacts"),
       count: 5
     });
   }

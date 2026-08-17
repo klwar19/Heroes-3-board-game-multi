@@ -39516,7 +39516,7 @@ body:has(main.phoneMode) .difficultyChessBtn {
   border-radius: 16px;
   background-image:
     linear-gradient(90deg, rgb(2 5 10 / 2%), rgb(2 5 10 / 12%)),
-    url("/assets/anime/hero-grades/tier-button-frames-atlas.png");
+    url("/assets/anime/hero-grades/tier-button-frames-atlas.webp");
   background-position: center, center top;
   background-repeat: no-repeat;
   background-size: 100% 100%, 100% 300%;

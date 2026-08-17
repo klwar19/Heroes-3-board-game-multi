@@ -60,8 +60,8 @@ import { heroBattlefieldInfoZoomContent, useCardZoom } from "@/components/table/
 import { specialtyIconSrc } from "@/components/specialty-card-data";
 
 const ROMAN = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"];
-const HERO_GRADE_EMBLEM_ATLAS = "/assets/anime/hero-grades/grade-emblems-atlas.png";
-const HERO_GRADE_ABILITY_ATLAS = "/assets/anime/hero-grades/ability-emblems-atlas.png";
+const HERO_GRADE_EMBLEM_ATLAS = "/assets/anime/hero-grades/grade-emblems-atlas.webp";
+const HERO_GRADE_ABILITY_ATLAS = "/assets/anime/hero-grades/ability-emblems-atlas.webp";
 
 const HERO_GRADE_ICON_CELLS: Record<string, readonly [number, number]> = {
   [HERO_GRADE_NODE_IDS.bountyHuntersEye]: [0, 1],
