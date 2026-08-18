@@ -10363,6 +10363,10 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // removed from the game again at combat end (finalizeAdventureCombat).
   // Idempotent across finalizeCombatStart re-entries; see combat-boost.ts.
   applyComputerCombatBoost(state);
+  // FO redesign wave 2 — Đài Luyện Khí "Temper the body": a fighting player who
+  // banked `pendingCombatAttackBoost` on the map spends it HERE. Idempotent across
+  // finalizeCombatStart re-entries because the flag is consumed.
+  applyTemperedBodyAttackBoost(state);
   // Commander combat-start specialties (Mana Magician charges, Rune Ritual,
   // Charming, Pacifist) resolve after unit abilities and BEFORE the first
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
@@ -10380,6 +10384,62 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
   startWarMachineRound(state);
+}
+
+/**
+ * FO redesign wave 2 — Đài Luyện Khí (`anime.dai_luyen_khi`) "Temper the body".
+ * A player who spent 1 hero movement at the platform banked
+ * `PlayerState.pendingCombatAttackBoost`; the FIRST combat they then fight (any
+ * kind — neutral guard, Creature Bank, PvP) consumes it and every one of their
+ * non-commander, non-boss, non-bank units gains +1 Attack for combat ROUND 1
+ * only (a real `current-combat-round` ATTACK_BONUS active effect, so
+ * `getActiveAttackBonus` — and with it the whole attack fold — genuinely moves,
+ * and the ordinary round-expiry machinery removes it before round 2).
+ *
+ * Deliberate scope: only the two FIGHTING players are checked, so a banked boost
+ * survives someone else's battle. The commander is excluded (the platform tempers
+ * the ARMY), matching the equipment drawback's own unit filter.
+ */
+function applyTemperedBodyAttackBoost(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.round !== 1) return;
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    const player = playerId ? state.players[playerId] : undefined;
+    if (!player?.pendingCombatAttackBoost) continue;
+    delete player.pendingCombatAttackBoost;
+    const units = Object.values(combat.units).filter(
+      (unit) =>
+        unit.controllerId === playerId &&
+        !unit.commanderSlug &&
+        !unit.bossUnit &&
+        !unit.bankUnit
+    );
+    if (units.length === 0) continue;
+    for (const unit of units) {
+      const effect = makeActiveEffect(
+        state,
+        {
+          name: "Tempered body (Qi Refinement Platform)",
+          scope: "unit",
+          duration: { type: "current-combat-round" },
+          polarity: "positive",
+          removable: true,
+          modifiers: [{ type: "ATTACK_BONUS", amount: 1 }]
+        },
+        { type: "system" },
+        playerId!,
+        { type: "unit", unitId: unit.id }
+      );
+      state.activeEffects.push(effect);
+      appendEvent(state, {
+        type: "ACTIVE_EFFECT_CREATED",
+        effectId: effect.id,
+        controllerId: playerId!,
+        name: effect.name,
+        duration: effect.duration
+      });
+    }
+  }
 }
 
 /**

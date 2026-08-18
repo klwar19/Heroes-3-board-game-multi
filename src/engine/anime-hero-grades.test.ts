@@ -67,6 +67,12 @@ function applyOk(state: GameState, action: GameAction): GameState {
 }
 
 const GRADES_ON = { ...DEFAULT_ANIME_OPTIONS, enabled: true, heroGrades: true };
+/**
+ * The anime mod ON with ONLY heroGrades off — the correct CONTROL for a Merit
+ * rider that sits on an anime CONTENT hex whose reward is itself gated on the
+ * anime map-objects content (FO redesign 2026-08-19, wave 2).
+ */
+const GRADES_OFF = { ...DEFAULT_ANIME_OPTIONS, enabled: true, heroGrades: false };
 
 function adventure(seed: string, anime = GRADES_ON, extra: Record<string, unknown> = {}): GameState {
   return createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false, anime, ...extra });
@@ -141,7 +147,14 @@ describe("anime.heroGrades — module OFF is inert", () => {
   });
 
   it("CONTROL: the enlightenment hex grants NO Merit with the module off (reward still fires)", () => {
-    const state = adventure("hg-hex-off", DEFAULT_ANIME_OPTIONS);
+    // REWRITTEN for the Field Override redesign (2026-08-19, wave 2): Ngộ Đạo
+    // Thạch's reward is no longer a static location interaction — it is built at
+    // visit time by `buildAnimeFieldVisitSteps`, which is gated on the anime
+    // map-objects CONTENT being on. So the heroGrades-OFF control keeps anime
+    // enabled and turns only heroGrades off; the previous version disabled the
+    // whole anime mod, which now (correctly) leaves the hex inert and could no
+    // longer discriminate the Merit rider.
+    const state = adventure("hg-hex-off", GRADES_OFF);
     injectField(state, "anime.ngo_dao_thach");
     visit(state);
     // The printed reward (a Search of the Ability deck) still queues.
@@ -195,8 +208,11 @@ describe("anime.heroGrades — Merit from enlightenment hexes", () => {
       visit(on);
       expect(getMainHero(on, "p1")!.gradeProgress).toBe(1);
 
-      // Module OFF CONTROL — same reward, no Merit.
-      const off = adventure(`hg-hex-on-${hex}`, DEFAULT_ANIME_OPTIONS);
+      // Module OFF CONTROL — same reward, no Merit. REWRITTEN for the FO redesign
+      // (2026-08-19, wave 2): both hexes now build their reward at visit time off
+      // the anime map-objects content, so the control turns off heroGrades ONLY
+      // (a fully anime-off table has no such hex to compare).
+      const off = adventure(`hg-hex-on-${hex}`, GRADES_OFF);
       injectField(off, hex);
       visit(off);
       expect(getMainHero(off, "p1")!.gradeProgress).toBeUndefined();

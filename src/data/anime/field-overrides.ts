@@ -41,8 +41,12 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     package: "anime-xianxia",
     tileGroups: ["far", "near"],
     terrain: "land",
+    // FO redesign 2026-08-19: the mound is GUARDED Ⅱ (stamped at carve, like
+    // thi_luyen_thap); its reward is the post-win visit.
+    guard: 2,
     implementationStatus: "implemented",
-    summary: "Draw 1 Artifact (Search 1); take −1 Morale from lingering sword intent.",
+    summary:
+      "Guarded Ⅱ by the mound's sword spirits. The win draws 1 Artifact (Search 1) and — with the Unit Experience rule on — teaches one chosen army unit card +2 unit XP (no such arm without that rule). No morale penalty.",
     image: art("kiem_trung")
   },
   linh_tuyen: {
@@ -57,7 +61,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "+1 Movement this round (cleanse of negative tokens: planned follow-up).",
+    summary:
+      "Bathe: EVERY negative Morale token you hold washes away (nothing to cleanse ⇒ +1 Morale instead), then +1 Movement this turn.",
     image: art("linh_tuyen")
   },
   ngo_dao_thach: {
@@ -69,7 +74,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Search (2) the Ability deck — keep 1, shuffle the rest back.",
+    summary:
+      "Your FIRST visit: Search (2) the Ability deck AND gain 1 Ability Empower token. Later visits (only reachable after a designer cube clear): Search (1) the Ability deck.",
     image: art("ngo_dao_thach")
   },
   /**
@@ -87,7 +93,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center", "subterranean"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Joins the Monolith teleport network (Array art + real Monolith travel).",
+    summary:
+      "Joins the Monolith teleport network (Array art + real Monolith travel). Once per player, ever, you may attune to the array before travelling for +1 Movement.",
     image: art("tran_phap_truyen_tong")
   },
 
@@ -105,7 +112,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Revisitable Trading Post — trade resources at market rates any turn.",
+    summary:
+      "Revisitable Trading Post — trade resources at market rates any turn. Plus a guild contract: each game round the post wants ONE resource kind (building materials or valuables), and once per round each player may sell 1 of it for DOUBLE the market gold rate.",
     glyph: "🏪",
     image: art("thuong_hoi_tram")
   },
@@ -125,10 +133,11 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     image: art("song_bac_quan")
   },
   /**
-   * Qi Refinement Platform. V1 REUSE reading (plan §0 rule 4): the original
-   * sketch ("pay 1 MP → +1 Attack token for next combat") needs a NEW engine
-   * arm, so V1 offers a Meditate/Breakthrough CHOOSE_ONE built from existing
-   * vocabulary (morale vs an experience gamble). Documented at the location def.
+   * Qi Refinement Platform. FO redesign 2026-08-19: the original sketch ("pay 1 MP
+   * → +1 Attack for the next combat") IS the shipped reading now — the engine arm
+   * exists (`pendingCombatAttackBoost` → a round-1 ATTACK_BONUS active effect on
+   * every one of that player's non-commander units). The old Attack-die
+   * experience gamble is retired. Documented at the location def.
    */
   dai_luyen_khi: {
     id: "dai_luyen_khi",
@@ -139,7 +148,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Choose: meditate for +1 morale, or gamble a breakthrough on the Attack die for experience.",
+    summary:
+      "Choose: meditate for +1 Morale, or temper the body — spend 1 hero Movement so all your units gain +1 Attack during ROUND 1 of your next combat (arm absent with no movement left or one already banked).",
     glyph: "🧘",
     image: art("dai_luyen_khi")
   },
@@ -170,7 +180,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     guard: 1,
     implementationStatus: "implemented",
     summary:
-      "Escalating fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win pays a bigger reward (+2 gold, then Search (1) Spell, then +1 hero XP) and re-guards one higher; cleared after the 3rd win.",
+      "Escalating fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win pays a bigger reward (+2 gold; then +3 unit XP to a chosen army unit card with the Unit Experience rule on, otherwise Search (1) Spell; then +2 hero XP) and re-guards one higher; cleared after the 3rd win.",
     image: art("thi_luyen_thap")
   },
   /**
@@ -288,7 +298,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the xianxia items plus the shared wave-2 gear.",
+    summary:
+      "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the xianxia items plus the shared wave-2 gear. Reforge bench: pay 2 gold to trade one owned item for a different item of the SAME grade (the old item leaves the game).",
     glyph: "⚒",
     image: art("ren_binh_cac")
   },
@@ -302,7 +313,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the isekai items plus the shared wave-2 gear.",
+    summary:
+      "Outfitter: buy always-on hero equipment (weapon / armor / accessory / mount) — the isekai items plus the shared wave-2 gear. Reforge bench: pay 2 gold to trade one owned item for a different item of the SAME grade (the old item leaves the game).",
     glyph: "🎒",
     image: art("adventurer_outfitter")
   }

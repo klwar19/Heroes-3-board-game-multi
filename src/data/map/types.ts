@@ -100,6 +100,15 @@ export type LocationInteraction =
   | { type: "GAIN_MORALE"; amount: number }
   | {
       /**
+       * FO redesign wave 2 — Linh Tuyền (Spirit Spring): discard ALL of the
+       * visitor's NEGATIVE morale tokens (morale < 0 → 0); with nothing to
+       * cleanse it pays +1 morale instead. Maps 1:1 to the
+       * CLEANSE_NEGATIVE_MORALE visit step.
+       */
+      type: "CLEANSE_NEGATIVE_MORALE";
+    }
+  | {
+      /**
        * Add a unit card to the visiting player's army for free (Creature Bank
        * "gain a unit" rewards, Garden of Life). `side` is the printed side to
        * grant. `side: "bank"` selects the dedicated Creature Bank face/stats,

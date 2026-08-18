@@ -75,13 +75,20 @@ damage exists).
   (nothing to cleanse ⇒ +1 morale instead) + 1 movement. Visitable (cube).
 - **ngo_dao_thach** — first visit per player (claim latch): Search(2) the
   Ability deck AND gain one Ability Empower token (the Creature-Bank grant
-  reused). Later visits: Search(1) Ability.
+  reused). Later visits: Search(1) Ability. WAVE-2 AMENDMENT: the hex STAYS
+  `visitable` (Black Cube) — flipping to revisitable would open Hero-Grade
+  Merit farming (`HERO_GRADE_MERIT_HEX_LOCATION_IDS` pays +1 Merit on every
+  fresh visit, no per-player latch). So in practice ONE player gets the
+  first-visit reward; the "later visit" branch is reachable only after a
+  designer `clear_tile_cubes` event. Conscious trade-off, documented in the
+  summary.
 - **tran_phap_truyen_tong** — Monolith travel unchanged; NEW: once per player
   (claim latch) an "Attune" arm grants +1 movement.
 - **thuong_hoi_tram** — Trading Post unchanged; NEW appended "contract" arm:
   each game round the post wants ONE seeded resource kind (seed: game seed +
   round); once per player per round (round latch), sell 1 of that resource for
-  DOUBLE the market gold rate.
+  DOUBLE the market gold rate. WAVE-2 AMENDMENT: the wanted kind is building
+  materials or valuables only (gold has no sell rate), payout 2 or 6 gold.
 - **song_bac_quan** — choose a stake of 1 / 3 / 5 gold (affordable arms only).
   Attack die: +1 → win 2×stake + the POT (pot then clears); 0 → stake back;
   −1 → the stake joins `denGoldPot`. Pot is public and persists on the hex.
@@ -100,7 +107,9 @@ damage exists).
 - **ren_binh_cac** — shop unchanged; NEW "reforge" arm shared with the
   outfitter: pay 2 gold → swap ONE owned equipment item for a different
   same-grade item (ownership/context filters as any shop; replaced item is
-  removed, not inventoried — a trade, not a purchase).
+  removed, not inventoried — a trade, not a purchase). WAVE-2 AMENDMENT:
+  same-GRADE, any slot; an item displaced from the destination slot goes to
+  the bag via the normal equip path (only the traded-away item leaves the game).
 
 ### Isekai (anime-isekai)
 - **capsule_lab** — War Machine shop unchanged; NEW once per player per game

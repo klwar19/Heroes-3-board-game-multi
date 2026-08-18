@@ -10449,6 +10449,50 @@ export type VisitStep =
        */
       type: "MARK_FIELD_ROUND_CLAIMED";
     }
+  | {
+      /**
+       * FO redesign wave 2 — grant unit EXPERIENCE to ONE named army unit card
+       * (`ArmyUnitState.experience`, through the same `grantArmyUnitExperience`
+       * primitive DRILL_UNIT uses, so a crossed rank threshold emits UNIT_RANK_UP).
+       * Only ever built while `unitExperienceActive(state)` — a stale step from a
+       * snapshot whose rule is off is a no-op. Auto-resolves.
+       * Sites: Kiếm Trủng post-win (+2), Thí Luyện Tháp 2nd win (+3).
+       */
+      type: "GAIN_UNIT_XP";
+      armyUnitId: string;
+      amount: number;
+    }
+  | {
+      /**
+       * FO redesign wave 2 — Linh Tuyền (`anime.linh_tuyen`): remove ALL of the
+       * visitor's NEGATIVE morale tokens (morale < 0 → 0, stepped through
+       * `changeMorale` so every step emits MORALE_CHANGED). Nothing to cleanse
+       * (morale ≥ 0) ⇒ +1 morale instead. Auto-resolves.
+       */
+      type: "CLEANSE_NEGATIVE_MORALE";
+    }
+  | {
+      /**
+       * FO redesign wave 2 — Đài Luyện Khí "Temper the body": bank
+       * `PlayerState.pendingCombatAttackBoost`. Consumed at the player's next
+       * combat start (`finalizeCombatStart` → applyTemperedBodyAttackBoost),
+       * where every non-commander unit of theirs gains +1 Attack for combat
+       * ROUND 1 only. Auto-resolves.
+       */
+      type: "BANK_COMBAT_ATTACK_BOOST";
+    }
+  | {
+      /**
+       * FO redesign wave 2 — the outfitters' REFORGE arm (`anime.ren_binh_cac` /
+       * `anime.adventurer_outfitter`): trade one OWNED equipment item for a
+       * different item of the SAME grade. The old item is REMOVED from the game
+       * (slot and bag) — it is a trade, not a purchase, so it is never
+       * inventoried. The fee is paid by the enclosing PAY_TO. Auto-resolves.
+       */
+      type: "REFORGE_EQUIPMENT";
+      fromEquipmentId: string;
+      toEquipmentId: string;
+    }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {
       /**

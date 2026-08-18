@@ -45,51 +45,64 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   },
 
   /**
-   * Kiếm Trủng (*Sword Mound*) — Warrior's Tomb soft twin.
-   * Free Search(1) Artifact + −1 morale (sword intent).
+   * Kiếm Trủng (*Sword Mound*) — Warrior's Tomb soft twin, GUARDED Ⅱ since the
+   * FO redesign (2026-08-19): the mound's sword spirits must be beaten first
+   * (`guard: 2` on the override def, stamped at carve; the generic Field
+   * Override branch of `beginFieldVisit` clears the beaten guard on the win
+   * visit). The win pays the static Search(1) Artifact below, and — with the
+   * Unit Experience rule ON — `buildAnimeFieldVisitSteps` appends a CHOOSE_ONE
+   * granting +2 unit XP to one chosen army unit card (arm absent with the rule
+   * off). The old −1 morale forfeit is GONE.
    */
   "anime.kiem_trung": {
     id: "anime.kiem_trung",
     name: "Kiếm Trủng (Sword Mound)",
     category: "visitable",
-    interaction: {
-      type: "SEQUENCE",
-      interactions: [
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 },
-        { type: "GAIN_MORALE", amount: -1 }
-      ]
-    },
+    // engine: the printed Search runs from here; the Unit-Experience teaching
+    // arm is appended at visit time (buildAnimeFieldVisitSteps).
+    interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 },
     implementationStatus: "implemented",
     source: animeSource("kiem_trung")
   },
 
   /**
-   * Linh Tuyền (*Spirit Spring*) — Fountain of Youth twin.
-   * V1 engine reading: +1 movement. Full "remove all negative status tokens
-   * from the army" needs a dedicated cleanse step (map-side combat tokens do
-   * not persist); negative morale discard is planned as a follow-up visit
-   * step, not faked with +morale here.
+   * Linh Tuyền (*Spirit Spring*) — Fountain of Youth twin. FO redesign
+   * (2026-08-19): the cleanse is REAL now — CLEANSE_NEGATIVE_MORALE discards
+   * EVERY negative morale token the visitor holds (morale < 0 → 0, one step at a
+   * time through `changeMorale`, so each step is a MORALE_CHANGED event); with
+   * nothing to cleanse it pays +1 morale instead. Then +1 movement, either way.
+   * Visitable (takes a Black Cube). Combat status tokens are still out of scope:
+   * they do not persist between combats, so there is nothing map-side to remove.
    */
   "anime.linh_tuyen": {
     id: "anime.linh_tuyen",
     name: "Linh Tuyền (Spirit Spring)",
     category: "visitable",
-    // engine: GAIN_MOVEMENT only for V1; cleanse of negative morale/tokens is
-    // NOT wired yet (see docs/anime-mod-plan.md §5.8).
-    interaction: { type: "GAIN_MOVEMENT", amount: 1 },
+    interaction: {
+      type: "SEQUENCE",
+      interactions: [{ type: "CLEANSE_NEGATIVE_MORALE" }, { type: "GAIN_MOVEMENT", amount: 1 }]
+    },
     implementationStatus: "implemented",
     source: animeSource("linh_tuyen")
   },
 
   /**
    * Ngộ Đạo Thạch (*Enlightenment Stone*) — Learning Stone / Scholar hybrid.
-   * Search(2) Ability deck (look 2, keep 1) = sudden enlightenment.
+   * FO redesign (2026-08-19): the menu is built at visit time
+   * (`buildAnimeFieldVisitSteps`) off the generic per-player once-ever latch
+   * `field.fieldClaimedBy`. A player's FIRST visit is the sudden enlightenment —
+   * Search (2) the Ability deck AND one Ability Empower token (the Creature-Bank
+   * grant reused) — and latches; any later visit is a plain Search (1) Ability.
+   * KNOWN LIMIT: the stone stays `visitable`, so its Black Cube normally means
+   * only ONE visit ever happens; the "later visits" branch is reachable only
+   * after a designer `clear_tile_cubes` timed event re-opens the hex.
    */
   "anime.ngo_dao_thach": {
     id: "anime.ngo_dao_thach",
     name: "Ngộ Đạo Thạch (Enlightenment Stone)",
     category: "visitable",
-    interaction: { type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 2 },
+    // engine: the first-visit / later-visit branches are built at visit time.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("ngo_dao_thach")
   },
@@ -101,6 +114,13 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
    * catalog) so travel is the existing TOKEN_TELEPORT path — no parallel
    * half-wired network. This definition exists for display / future separate
    * network stretch only; V1 override kind points at `monolith`.
+   *
+   * FO redesign (2026-08-19): travel is UNCHANGED. A once-per-player-ever
+   * "Attune" arm (+1 movement, latched on `field.fieldClaimedBy`) is UNSHIFTED
+   * ahead of the TOKEN_TELEPORT step in `beginFieldVisit` — it must be answered
+   * before travelling, because a resolved teleport moves the hero off this hex.
+   * Once claimed the builder returns null and the visit is byte-identical to the
+   * old pure-travel one.
    */
   "anime.tran_phap_truyen_tong": {
     id: "anime.tran_phap_truyen_tong",
@@ -124,6 +144,14 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
    * it shares the `trading_post` behaviour verbatim: resource exchange at
    * TRADE_RATES plus the sell-a-card / war-machine options until the first
    * trade. NOT `tradesOnly` — a full Guild Post, unlike the Marketplace Event.
+   *
+   * FO redesign (2026-08-19): the market is UNCHANGED; a "guild contract" arm is
+   * APPENDED at visit time (`buildAnimeFieldVisitSteps`). Each game round the
+   * post wants ONE resource kind — building materials or valuables, seeded off
+   * the game seed + round, so every player sees the same want all round — and
+   * once per player per round (`field.fieldRoundClaims`) they may sell 1 of it
+   * for DOUBLE the market gold rate (`marketGoldValueOf`). Arm absent once
+   * filled this round or with none of the wanted kind in hand.
    */
   "anime.thuong_hoi_tram": {
     id: "anime.thuong_hoi_tram",
@@ -156,36 +184,22 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
 
   /**
    * Đài Luyện Khí (*Qi Refinement Platform*).
-   * V1 REUSE reading (docs/anime-mod-plan.md §0 rule 4 / §5.8): the earlier
-   * sketch's "pay 1 MP → +1 Attack token for next combat" would need a NEW
-   * engine arm (a persisted map-side combat token), so V1 does NOT ship that.
-   * Instead it offers a CHOOSE_ONE built from existing vocabulary — meditate
-   * for a morale token, or gamble a breakthrough on the Attack die for
-   * experience (with a morale cost on a failed push). Swap to the token reading
-   * only once that arm exists.
+   * FO redesign (2026-08-19): the original sketch's "pay 1 MP → +1 Attack for the
+   * next combat" NOW EXISTS as a real engine arm, so the Attack-die experience
+   * gamble is retired. The menu is built at visit time
+   * (`buildAnimeFieldVisitSteps`): "Meditate" (+1 morale, always) or "Temper the
+   * body" — SPEND_HERO_MOVEMENT 1 → BANK_COMBAT_ATTACK_BOOST, i.e.
+   * `PlayerState.pendingCombatAttackBoost`, consumed at this player's next combat
+   * start where all their non-commander units gain +1 Attack for combat ROUND 1
+   * only (`applyTemperedBodyAttackBoost`, adventure-reducer.ts). The temper arm is
+   * absent with no movement left or one already banked.
    */
   "anime.dai_luyen_khi": {
     id: "anime.dai_luyen_khi",
     name: "Đài Luyện Khí (Qi Refinement Platform)",
     category: "visitable",
-    interaction: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Tĩnh tọa điều tức (Meditate) — gain 1 positive morale",
-          interaction: { type: "GAIN_MORALE", amount: 1 }
-        },
-        {
-          label: "Xung kích cảnh giới (Push a breakthrough) — gamble the Attack die",
-          interaction: {
-            type: "ATTACK_DIE_TABLE",
-            plus: { type: "GAIN_EXPERIENCE", amount: 2 },
-            zero: { type: "GAIN_EXPERIENCE", amount: 1 },
-            minus: { type: "GAIN_MORALE", amount: -1 }
-          }
-        }
-      ]
-    },
+    // engine: the meditate / temper menu is built at visit time.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("dai_luyen_khi")
   },
@@ -193,8 +207,10 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   /**
    * Thí Luyện Tháp (*Trial Tower*) — a xianxia escalating repeatable fight, the
    * WOG Adventure Cave's twin. Guarded Ⅰ is stamped by the Field Override
-   * definition; the reward ladder (win 1: +2 gold, win 2: Search (1) Spell, win
-   * 3: +1 hero XP + optional cultivation/commander riders) and the re-guard one
+   * definition; the reward ladder (FO redesign 2026-08-19 — win 1: +2 gold, win
+   * 2: +3 unit XP to a chosen army unit card with Unit Experience ON, otherwise
+   * the previous Search (1) Spell, win 3: +2 hero XP + optional
+   * cultivation/commander riders) and the re-guard one
    * higher (Ⅰ→Ⅱ→Ⅲ, cleared after the 3rd win) are engine code in
    * `beginFieldVisit` (`handleAnimeTrialTowerVisit` → the shared
    * `handleEscalatingFightVisit`, keyed off `field.animeTrialWins`) — no static
@@ -346,6 +362,13 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
    * gated like PAY_TO), gated on `anime.equipment`. With the module off the
    * field carves as an inert revisitable hex (no steps), so no interaction is
    * declared here beyond NONE.
+   *
+   * FO redesign (2026-08-19): a REFORGE bench is appended beside the shop
+   * (`buildEquipmentReforgeStep`, shared verbatim with the Adventurer Outfitter):
+   * pay 2 gold, pick one owned item, then pick a DIFFERENT item of the SAME grade
+   * — the traded-away item leaves the game (not bagged: it is a trade, not a
+   * purchase). Absent with no owned item, too little gold, or no legal same-grade
+   * replacement.
    */
   "anime.ren_binh_cac": {
     id: "anime.ren_binh_cac",

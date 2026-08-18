@@ -3561,6 +3561,8 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
       return [{ type: "GAIN_MOVEMENT", amount: interaction.amount }];
     case "GAIN_MORALE":
       return [{ type: "GAIN_MORALE", amount: interaction.amount }];
+    case "CLEANSE_NEGATIVE_MORALE":
+      return [{ type: "CLEANSE_NEGATIVE_MORALE" }];
     case "GAIN_UNIT":
       return [
         {
@@ -6619,11 +6621,13 @@ function handleWogAdventureCaveVisit(
 /**
  * Anime Field Override — Thí Luyện Tháp / Trial Tower (`anime.thi_luyen_thap`).
  * The xianxia twin of the Adventure Cave over the SAME machinery, with its own
- * reward ladder: win 1 → +2 gold, win 2 → Search (1) the Spell deck, win 3 →
- * +1 hero XP. On the 3rd win two cross-object riders fire: with `anime.cultivation`
- * on, the hero banks "one fewer die" for their NEXT Heavenly Tribulation
- * (`nextTribulationDiceRelief`); and (Task 2) with the WOG Commanders module on,
- * a bindable commander artifact drops into hand (a no-op otherwise).
+ * reward ladder (FO redesign wave 2, 2026-08-19): win 1 → +2 gold, win 2 → with
+ * Unit Experience ON a chosen army unit card gains +3 unit XP (rule OFF ⇒ the
+ * previous Search (1) Spell), win 3 → +2 hero XP. On the 3rd win two cross-object
+ * riders fire: with `anime.cultivation` on, the hero banks "one fewer die" for
+ * their NEXT Heavenly Tribulation (`nextTribulationDiceRelief`); and with the WOG
+ * Commanders module on, a bindable commander artifact drops into hand (a no-op
+ * otherwise).
  */
 function handleAnimeTrialTowerVisit(
   state: GameState,
@@ -6634,12 +6638,21 @@ function handleAnimeTrialTowerVisit(
   handleEscalatingFightVisit(state, playerId, heroId, field, {
     winsProp: "animeTrialWins",
     maxWins: 3,
-    rewardStepsForWin: (wins) =>
-      wins === 1
-        ? [{ type: "GAIN_RESOURCES", gold: 2 }]
-        : wins === 2
-          ? [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }]
-          : [{ type: "GAIN_EXPERIENCE", amount: 1 }],
+    rewardStepsForWin: (wins) => {
+      if (wins === 1) {
+        return [{ type: "GAIN_RESOURCES", gold: 2 }];
+      }
+      if (wins === 2) {
+        const teach = armyUnitXpChoiceStep(
+          state,
+          playerId,
+          TRIAL_TOWER_UNIT_XP,
+          "Thí Luyện Tháp — the second floor drills one of your unit cards:"
+        );
+        return teach ? [teach] : [{ type: "SEARCH_SHARED_DECK", deckId: "spells", count: 1 }];
+      }
+      return [{ type: "GAIN_EXPERIENCE", amount: 2 }];
+    },
     onFinalWin: (hero) => {
       // Xianxia cross-object boon: with Cultivation on, the hero's NEXT Heavenly
       // Tribulation rolls one fewer die (banked, consumed on that attempt).
@@ -6987,19 +7000,27 @@ function animeMapObjectsEnabled(state: GameState): boolean {
 }
 
 /**
- * Anime Field Override (`anime.mapObjects`): build the visit MENU for an anime
- * single-hex object with a dynamic/context-filtered menu (Guild Bounty Board),
- * or null when the module is off / the location has no dynamic menu. Mirrors
- * `buildWogFieldVisitStep` — these objects carve as NONE-interaction bases and
- * the menu is appended here so an arm can be gated against live state (here the
- * board's per-player once-ever bounty latch). Paid arms use PAY_TO.
+ * Anime Field Override (`anime.mapObjects`): build the visit STEPS for an anime
+ * single-hex object with a dynamic/context-filtered menu (Guild Bounty Board,
+ * and every FO-redesign object below), or null when the module is off / the
+ * location has no dynamic menu. Mirrors `buildWogFieldVisitStep` — these objects
+ * carve as NONE-interaction (or thin static) bases and their menu is appended in
+ * `beginFieldVisit` so an arm can be gated against live state (a per-player
+ * once-ever / once-per-round latch, the Unit Experience rule, a hero's remaining
+ * movement). Paid arms use PAY_TO.
+ *
+ * Returns an ARRAY (FO redesign wave 2) so an object can emit a SEQUENCE of
+ * auto-resolving steps — Ngộ Đạo Thạch's "Search (2) + an Empower token + latch"
+ * needs no player decision, and forcing it through a one-armed CHOOSE_ONE would
+ * be a dead prompt.
  */
-function buildAnimeFieldVisitStep(
+function buildAnimeFieldVisitSteps(
   state: GameState,
   playerId: PlayerId,
+  heroId: HeroId,
   locationId: string,
   field: MapFieldState
-): VisitStep | null {
+): VisitStep[] | null {
   if (!animeMapObjectsEnabled(state) || !ANIME_FIELD_OVERRIDE_LOCATION_IDS.has(locationId)) {
     return null;
   }
@@ -7043,11 +7064,13 @@ function buildAnimeFieldVisitStep(
       });
     }
     options.push({ label: "Leave", steps: [] });
-    return {
-      type: "CHOOSE_ONE",
-      prompt: `Sòng Bạc Quán — the house pot holds ${pot} gold. Pick your stake:`,
-      options
-    };
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Sòng Bạc Quán — the house pot holds ${pot} gold. Pick your stake:`,
+        options
+      }
+    ];
   }
 
   if (locationId === "anime.linh_dien") {
@@ -7055,62 +7078,70 @@ function buildAnimeFieldVisitStep(
     // (+3 valuables +1 materials); any OTHER player may raid a planted field
     // for +1 valuables, trampling the crop. Revisitable, no cube.
     if (!field.plantedBy) {
-      return {
-        type: "CHOOSE_ONE",
-        prompt: "Linh Điền (Spirit Field) — the terraces lie fallow.",
-        options: [
-          {
-            label: "Plant spirit seeds — pay 2 gold (harvest in 3 rounds; rivals can raid it)",
-            steps: [
-              {
-                type: "PAY_TO",
-                prompt: "Pay 2 gold to plant the Spirit Field?",
-                costOptions: [{ gold: 2 }],
-                steps: [{ type: "MARK_FIELD_PLANTED" }]
-              }
-            ]
-          },
-          { label: "Leave", steps: [] }
-        ]
-      };
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Linh Điền (Spirit Field) — the terraces lie fallow.",
+          options: [
+            {
+              label: "Plant spirit seeds — pay 2 gold (harvest in 3 rounds; rivals can raid it)",
+              steps: [
+                {
+                  type: "PAY_TO",
+                  prompt: "Pay 2 gold to plant the Spirit Field?",
+                  costOptions: [{ gold: 2 }],
+                  steps: [{ type: "MARK_FIELD_PLANTED" }]
+                }
+              ]
+            },
+            { label: "Leave", steps: [] }
+          ]
+        }
+      ];
     }
     if (field.plantedBy !== playerId) {
-      return {
-        type: "CHOOSE_ONE",
-        prompt: "Linh Điền (Spirit Field) — a rival's crop is growing here.",
-        options: [
-          {
-            label: "Raid the field — gain 1 valuables (tramples the crop)",
-            steps: [{ type: "GAIN_RESOURCES", valuables: 1 }, { type: "CLEAR_FIELD_PLANTED" }]
-          },
-          { label: "Leave", steps: [] }
-        ]
-      };
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Linh Điền (Spirit Field) — a rival's crop is growing here.",
+          options: [
+            {
+              label: "Raid the field — gain 1 valuables (tramples the crop)",
+              steps: [{ type: "GAIN_RESOURCES", valuables: 1 }, { type: "CLEAR_FIELD_PLANTED" }]
+            },
+            { label: "Leave", steps: [] }
+          ]
+        }
+      ];
     }
     const readyRound = (field.plantedRound ?? state.round) + 3;
     if (state.round >= readyRound) {
-      return {
-        type: "CHOOSE_ONE",
-        prompt: "Linh Điền (Spirit Field) — your crop is ripe.",
-        options: [
-          {
-            label: "Harvest — gain 3 valuables and 1 building materials",
-            steps: [
-              { type: "GAIN_RESOURCES", valuables: 3, buildingMaterials: 1 },
-              { type: "CLEAR_FIELD_PLANTED" }
-            ]
-          },
-          { label: "Leave it growing", steps: [] }
-        ]
-      };
+      return [
+        {
+          type: "CHOOSE_ONE",
+          prompt: "Linh Điền (Spirit Field) — your crop is ripe.",
+          options: [
+            {
+              label: "Harvest — gain 3 valuables and 1 building materials",
+              steps: [
+                { type: "GAIN_RESOURCES", valuables: 3, buildingMaterials: 1 },
+                { type: "CLEAR_FIELD_PLANTED" }
+              ]
+            },
+            { label: "Leave it growing", steps: [] }
+          ]
+        }
+      ];
     }
-    return {
-      type: "CHOOSE_ONE",
-      prompt: `Linh Điền (Spirit Field) — your crop needs ${readyRound - state.round} more round${
-        readyRound - state.round === 1 ? "" : "s"
-      }.`,
-      options: [{ label: "Leave", steps: [] }]
-    };
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Linh Điền (Spirit Field) — your crop needs ${readyRound - state.round} more round${
+          readyRound - state.round === 1 ? "" : "s"
+        }.`,
+        options: [{ label: "Leave", steps: [] }]
+      }
+    ];
   }
 
   if (locationId === "anime.guild_bounty") {
@@ -7136,11 +7167,266 @@ function buildAnimeFieldVisitStep(
       ]
     });
     options.push({ label: "Leave", steps: [] });
-    return { type: "CHOOSE_ONE", prompt: "Guild Bounty Board:", options };
+    return [{ type: "CHOOSE_ONE", prompt: "Guild Bounty Board:", options }];
+  }
+
+  // -------------------------------------------------------------------------
+  // FO redesign wave 2 — the rest of the xianxia objects.
+  // -------------------------------------------------------------------------
+
+  if (locationId === "anime.kiem_trung") {
+    // Kiếm Trủng (Sword Mound), guard Ⅱ. The static interaction pays the
+    // Search (1) Artifact; the lingering sword intent now TEACHES instead of
+    // demoralising — with Unit Experience on, one army card takes +2 unit XP.
+    // With the rule off there is no arm at all (never a dead prompt).
+    const teach = armyUnitXpChoiceStep(
+      state,
+      playerId,
+      KIEM_TRUNG_UNIT_XP,
+      "Kiếm Trủng — the sword intent lingers. One of your unit cards learns from it:"
+    );
+    return teach ? [teach] : null;
+  }
+
+  if (locationId === "anime.ngo_dao_thach") {
+    // Ngộ Đạo Thạch (Enlightenment Stone): the FIRST visit by each player is the
+    // sudden enlightenment — Search (2) the Ability deck AND one Ability Empower
+    // token (the Creature-Bank grant reused verbatim, `force` so it does not need
+    // the bank house rule) — then the per-player once-ever latch closes. Every
+    // later visit is a plain Search (1). No decision, so a SEQUENCE of
+    // auto-resolving steps, not a one-armed prompt.
+    if (!field.fieldClaimedBy?.includes(playerId)) {
+      return [
+        { type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 2 },
+        { type: "GAIN_ABILITY_EMPOWER_TOKEN", force: true },
+        { type: "MARK_FIELD_CLAIMED" }
+      ];
+    }
+    return [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }];
+  }
+
+  if (locationId === "anime.tran_phap_truyen_tong") {
+    // Trận Pháp Truyền Tống (Teleportation Array): travel is untouched (the
+    // location's TOKEN_TELEPORT). NEW — once per player, ever, the traveller may
+    // attune to the array for +1 movement. Absent once claimed, so a later
+    // arrival is byte-identical to the old pure-travel visit. Ordering matters:
+    // beginFieldVisit UNSHIFTS this menu ahead of the teleport step (see there).
+    if (field.fieldClaimedBy?.includes(playerId)) {
+      return null;
+    }
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Trận Pháp Truyền Tống — the array's qi answers a first-time visitor.",
+        options: [
+          {
+            label: "Attune to the array — gain 1 movement this turn (once per player, ever)",
+            steps: [{ type: "GAIN_MOVEMENT", amount: 1 }, { type: "MARK_FIELD_CLAIMED" }]
+          },
+          { label: "Step straight onto the array (no attunement)", steps: [] }
+        ]
+      }
+    ];
+  }
+
+  if (locationId === "anime.thuong_hoi_tram") {
+    // Trạm Thương Hội (Merchant Guild Post): the Trading Post is untouched. NEW —
+    // each GAME ROUND the post wants ONE resource kind (seeded off the game seed
+    // + round, so it is stable within the round for every player and does NOT
+    // consume the event-seeded adventure randomness). Once per player per round
+    // (the generic round latch) they may sell 1 of it at DOUBLE the market gold
+    // rate. The arm is absent when already filled this round or the visitor holds
+    // none of the wanted kind.
+    const wanted = guildContractResourceFor(state);
+    const alreadyFilled =
+      field.fieldRoundClaims?.round === state.round &&
+      (field.fieldRoundClaims.playerIds.includes(playerId) ?? false);
+    if (alreadyFilled || (player.resources[wanted] ?? 0) < 1) {
+      return null;
+    }
+    const payout = GUILD_CONTRACT_RATE_MULTIPLIER * marketGoldValueOf(wanted);
+    const label = RESOURCE_KIND_LABELS[wanted];
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `Trạm Thương Hội — this round's guild contract wants ${label}.`,
+        options: [
+          {
+            label: `Fill the contract — sell 1 ${label} for ${payout} gold (double the market rate)`,
+            steps: [
+              {
+                type: "PAY_TO",
+                prompt: `Hand over 1 ${label} for ${payout} gold?`,
+                costOptions: [{ [wanted]: 1 }],
+                steps: [
+                  { type: "GAIN_RESOURCES", gold: payout },
+                  { type: "MARK_FIELD_ROUND_CLAIMED" }
+                ]
+              }
+            ]
+          },
+          { label: "Leave", steps: [] }
+        ]
+      }
+    ];
+  }
+
+  if (locationId === "anime.dai_luyen_khi") {
+    // Đài Luyện Khí (Qi Refinement Platform): meditate for morale, OR temper the
+    // body — spend 1 hero movement to bank +1 Attack for ROUND 1 of this player's
+    // next combat. The temper arm is absent with no movement left or one already
+    // banked (never a dead button, never a silently overwritten bank).
+    const hero = state.heroes[heroId];
+    const options: { label: string; steps: VisitStep[] }[] = [
+      {
+        label: "Tĩnh tọa điều tức (Meditate) — gain 1 positive morale",
+        steps: [{ type: "GAIN_MORALE", amount: 1 }]
+      }
+    ];
+    if (hero && hero.movementPoints >= 1 && !player.pendingCombatAttackBoost) {
+      options.push({
+        label:
+          "Luyện thể (Temper the body) — spend 1 movement: your units gain +1 Attack during round 1 of your next combat",
+        steps: [
+          { type: "SPEND_HERO_MOVEMENT", heroId, amount: 1 },
+          { type: "BANK_COMBAT_ATTACK_BOOST" }
+        ]
+      });
+    }
+    options.push({ label: "Leave", steps: [] });
+    return [{ type: "CHOOSE_ONE", prompt: "Đài Luyện Khí (Qi Refinement Platform):", options }];
   }
 
   return null;
 }
+
+/** Kiếm Trủng's post-win teaching (Unit Experience on only). */
+const KIEM_TRUNG_UNIT_XP = 2;
+/** Thí Luyện Tháp's 2nd-win teaching (Unit Experience on only). */
+const TRIAL_TOWER_UNIT_XP = 3;
+/** The Guild Post contract pays DOUBLE the market gold rate. */
+const GUILD_CONTRACT_RATE_MULTIPLIER = 2;
+/** The resource kinds a Guild Post contract can ask for (gold-for-gold is no trade). */
+const GUILD_CONTRACT_RESOURCES = ["buildingMaterials", "valuables"] as const;
+
+/**
+ * FO redesign wave 2 — the resource kind the Merchant Guild Post wants THIS game
+ * round. Deliberately a DIRECT `createSeededRandom` off the game seed + round
+ * (never `adventureRandom`): the value must be identical for every player and
+ * every read within the round, and must not advance the event-seeded adventure
+ * stream that other rolls depend on.
+ */
+function guildContractResourceFor(state: GameState): (typeof GUILD_CONTRACT_RESOURCES)[number] {
+  const random = createSeededRandom(`${state.seed}#guild-contract#${state.round}`);
+  return GUILD_CONTRACT_RESOURCES[random.nextInt(0, GUILD_CONTRACT_RESOURCES.length - 1)];
+}
+
+/**
+ * FO redesign wave 2 — a "one of your army unit cards gains +N unit XP" choice,
+ * or null when the Unit Experience rule is OFF (or the army is empty), in which
+ * case the caller offers nothing at all rather than a dead prompt. The payoff
+ * rides GAIN_UNIT_XP → `grantArmyUnitExperience`, the same primitive DRILL_UNIT
+ * uses. A Decline arm keeps AI/AFK seats safe.
+ */
+function armyUnitXpChoiceStep(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  prompt: string
+): VisitStep | null {
+  if (!unitExperienceActive(state)) {
+    return null;
+  }
+  const army = state.players[playerId]?.army ?? [];
+  if (army.length === 0) {
+    return null;
+  }
+  const options: { label: string; steps: VisitStep[] }[] = army.map((unit) => ({
+    label: `${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side}) — +${amount} unit XP`,
+    steps: [{ type: "GAIN_UNIT_XP" as const, armyUnitId: unit.id, amount }]
+  }));
+  options.push({ label: "Decline the teaching", steps: [] });
+  return { type: "CHOOSE_ONE", prompt, options };
+}
+
+/**
+ * FO redesign wave 2 — the outfitters' REFORGE arm (`anime.ren_binh_cac` and
+ * `anime.adventurer_outfitter` share it verbatim). Pay 2 gold to trade ONE owned
+ * item for a DIFFERENT item of the SAME grade; the traded-away item is removed
+ * from the game (a trade, not a purchase). Both levels are built here — visits
+ * are exclusive, so nothing can change between build and resolution.
+ *
+ * Absent (null) when: the equipment module is off, this location is not an
+ * outfitter, the hero owns nothing, the purse cannot cover the fee, or no owned
+ * item has a legal same-grade replacement (never a dead button). Replacements
+ * honour the SAME filters `buildEquipmentShopStep` uses — already-owned items and
+ * items whose `requiresContext` module is off are dropped.
+ */
+function buildEquipmentReforgeStep(state: GameState, playerId: PlayerId, locationId: string): VisitStep | null {
+  if (!equipmentEnabled(state) || !EQUIPMENT_SHOP_SALES[locationId]) {
+    return null;
+  }
+  const player = state.players[playerId];
+  if (!player || (player.resources.gold ?? 0) < EQUIPMENT_REFORGE_GOLD_COST) {
+    return null;
+  }
+  const hero = getMainHero(state, playerId);
+  const owned = [
+    ...Object.values(hero?.equipment ?? {}),
+    ...(hero?.equipmentInventory ?? [])
+  ].filter((id): id is string => Boolean(id));
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (const ownedId of [...new Set(owned)]) {
+    const from = getEquipmentDefinition(ownedId);
+    if (!from) {
+      continue;
+    }
+    const replacements = listEquipmentDefinitions()
+      .filter((def) => def.grade === from.grade && def.id !== from.id)
+      .filter((def) => !playerOwnsEquipment(state, playerId, def.id))
+      .filter((def) => !def.requiresContext || equipmentContextAvailable(state, def.requiresContext));
+    if (replacements.length === 0) {
+      continue;
+    }
+    options.push({
+      label: `Reforge ${from.name.en} (Grade ${from.grade}) — pay ${EQUIPMENT_REFORGE_GOLD_COST} gold`,
+      steps: [
+        {
+          type: "PAY_TO",
+          prompt: `Pay ${EQUIPMENT_REFORGE_GOLD_COST} gold to reforge ${from.name.en}?`,
+          costOptions: [{ gold: EQUIPMENT_REFORGE_GOLD_COST }],
+          steps: [
+            {
+              type: "CHOOSE_ONE",
+              prompt: `The forge melts down ${from.name.en} — take one Grade-${from.grade} item in its place:`,
+              options: [
+                ...replacements.map((def) => ({
+                  label: `Take ${def.name.en} (${def.name.vi}) · ${def.slot} · Grade ${def.grade}`,
+                  steps: [
+                    {
+                      type: "REFORGE_EQUIPMENT" as const,
+                      fromEquipmentId: from.id,
+                      toEquipmentId: def.id
+                    }
+                  ]
+                })),
+                { label: `Keep ${from.name.en} after all (the fee is spent)`, steps: [] }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+  }
+  if (options.length === 0) {
+    return null;
+  }
+  options.push({ label: "Leave the forge", steps: [] });
+  return { type: "CHOOSE_ONE", prompt: "Reforge — trade one item for another of the same grade:", options };
+}
+
+/** The outfitters' reforge fee. */
+const EQUIPMENT_REFORGE_GOLD_COST = 2;
 
 /**
  * Anime Equipment (§3.13): build the outfitter shop menu for a visit, or null.
@@ -7573,6 +7859,14 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     steps.push(equipmentShopStep);
   }
 
+  // FO redesign wave 2: the same two outfitters also run a REFORGE bench — pay 2
+  // gold to trade an owned item for another of the same grade. Appended after the
+  // shop so buying and reforging are two independent arms of one visit.
+  const reforgeStep = buildEquipmentReforgeStep(state, playerId, location.id);
+  if (reforgeStep) {
+    steps.push(reforgeStep);
+  }
+
   // WOG New Objects (`wog.newObjects`): the Emerald Tower / Mirror of the
   // Home-Way / Junk Merchant carve as NONE-interaction revisitable bases and
   // append their context-filtered menu here (mirrors the equipment shop).
@@ -7584,9 +7878,18 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // Anime Field Override (`anime.mapObjects`): the Guild Bounty Board carves as a
   // NONE-interaction revisitable base and appends its per-player-gated menu here
   // (mirrors the wog objects / equipment shop).
-  const animeFieldStep = buildAnimeFieldVisitStep(state, playerId, location.id, field);
-  if (animeFieldStep) {
-    steps.push(animeFieldStep);
+  const animeFieldSteps = buildAnimeFieldVisitSteps(state, playerId, heroId, location.id, field);
+  if (animeFieldSteps) {
+    // ORDERING (FO redesign wave 2): the Teleportation Array's once-per-player
+    // attune arm must be answered BEFORE the location's own TOKEN_TELEPORT step —
+    // a resolved teleport moves the hero off this hex, so anything queued after
+    // it would be answered from the destination. Every other anime menu appends
+    // after the printed interaction (search / trade / shop first).
+    if (location.id === "anime.tran_phap_truyen_tong") {
+      steps.unshift(...animeFieldSteps);
+    } else {
+      steps.push(...animeFieldSteps);
+    }
   }
 
   if (steps.length === 0) {
@@ -7877,6 +8180,100 @@ export function processPendingVisit(state: GameState): void {
             claims.playerIds = [...claims.playerIds, visit.playerId];
           }
           claimField.fieldRoundClaims = claims;
+        }
+        break;
+      }
+      case "GAIN_UNIT_XP": {
+        // FO redesign wave 2 — Kiếm Trủng / Thí Luyện Tháp teaching. The rule gate
+        // lives at menu build time; re-checked here so a stale step from a
+        // snapshot whose Unit Experience rule is off is a clean no-op. Grants
+        // through the SAME primitive DRILL_UNIT uses, so a crossed rank threshold
+        // emits UNIT_RANK_UP and every read side folds the new rank.
+        const xpPlayer = state.players[visit.playerId];
+        const armyUnit = xpPlayer?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (unitExperienceActive(state) && xpPlayer && armyUnit && step.amount > 0) {
+          grantArmyUnitExperience(state, visit.playerId, armyUnit, step.amount);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)}: ${
+              coreUnitDefinitions[armyUnit.unitDefId]?.name ?? armyUnit.unitDefId
+            } gains ${step.amount} unit experience (now ${armyUnit.experience ?? 0}).`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "CLEANSE_NEGATIVE_MORALE": {
+        // FO redesign wave 2 — Linh Tuyền: the spring washes away EVERY negative
+        // morale token. Stepped through changeMorale so each step emits
+        // MORALE_CHANGED (and the Necropolis "ignores morale" rule still holds).
+        // Nothing to cleanse (morale ≥ 0) ⇒ the printed +1 morale instead.
+        const springPlayer = state.players[visit.playerId];
+        if (springPlayer) {
+          if (springPlayer.morale < 0) {
+            const owed = -springPlayer.morale;
+            changeMorale(state, visit.playerId, owed);
+            eventNote(
+              state,
+              `${eventPlayerName(state, visit.playerId)} bathes in the Spirit Spring — ${owed} negative morale token${
+                owed === 1 ? "" : "s"
+              } wash away.`,
+              visit.playerId
+            );
+          } else {
+            changeMorale(state, visit.playerId, 1);
+          }
+        }
+        break;
+      }
+      case "BANK_COMBAT_ATTACK_BOOST": {
+        // FO redesign wave 2 — Đài Luyện Khí "Temper the body". Consumed at this
+        // player's next combat start (applyTemperedBodyAttackBoost).
+        const temperedPlayer = state.players[visit.playerId];
+        if (temperedPlayer && !temperedPlayer.pendingCombatAttackBoost) {
+          temperedPlayer.pendingCombatAttackBoost = true;
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} tempers the body at the Qi Refinement Platform — their units strike at +1 Attack during round 1 of their next combat.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "REFORGE_EQUIPMENT": {
+        // FO redesign wave 2 — the outfitters' reforge bench. The old item leaves
+        // the game entirely (slot AND bag) before the new one is equipped, so it
+        // is never bagged by equipEquipment's own replace path. The 2-gold fee was
+        // already paid by the enclosing PAY_TO.
+        const fromDef = getEquipmentDefinition(step.fromEquipmentId);
+        const toDef = getEquipmentDefinition(step.toEquipmentId);
+        const forgeHero = getMainHero(state, visit.playerId);
+        if (
+          equipmentEnabled(state) &&
+          fromDef &&
+          toDef &&
+          forgeHero &&
+          fromDef.id !== toDef.id &&
+          fromDef.grade === toDef.grade &&
+          playerOwnsEquipment(state, visit.playerId, fromDef.id) &&
+          !playerOwnsEquipment(state, visit.playerId, toDef.id)
+        ) {
+          const slots = { ...(forgeHero.equipment ?? {}) };
+          for (const [slot, itemId] of Object.entries(slots)) {
+            if (itemId === fromDef.id) {
+              delete slots[slot as keyof typeof slots];
+            }
+          }
+          forgeHero.equipment = slots;
+          forgeHero.equipmentInventory = (forgeHero.equipmentInventory ?? []).filter(
+            (id) => id !== fromDef.id
+          );
+          equipEquipment(state, visit.playerId, toDef.id);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} reforges ${fromDef.name.en} into ${toDef.name.en} (Grade ${toDef.grade}).`,
+            visit.playerId
+          );
         }
         break;
       }

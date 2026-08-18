@@ -45,13 +45,22 @@ const FIELD_ID = "50,50";
 const NEW_KINDS = ["thi_luyen_thap", "linh_dien", "dungeon_gate", "guild_bounty"] as const;
 
 function animeGame(
-  opts: { seed?: string; cultivation?: boolean; commanders?: boolean; faction?: string; hero?: string } = {}
+  opts: {
+    seed?: string;
+    cultivation?: boolean;
+    commanders?: boolean;
+    faction?: string;
+    hero?: string;
+    /** FO redesign wave 2: the Trial Tower's 2nd-win reward branches on this. */
+    unitExperience?: boolean;
+  } = {}
 ): GameState {
   const anime = {
     ...DEFAULT_ANIME_OPTIONS,
     enabled: true,
     mapObjects: true,
-    cultivation: opts.cultivation ?? false
+    cultivation: opts.cultivation ?? false,
+    unitExperience: opts.unitExperience ?? false
   };
   return createAdventureGameState({
     seed: opts.seed ?? "anime-parity",
@@ -267,7 +276,10 @@ describe("Anime WOG-parity objects — package gating", () => {
 // 3. Thí Luyện Tháp (Trial Tower) — escalating Ⅰ→Ⅱ→Ⅲ fight + reward ladder
 // ===========================================================================
 describe("Trial Tower (anime.thi_luyen_thap)", () => {
-  it("escalates Ⅰ→Ⅱ→Ⅲ, pays +2 gold / Search Spell / +1 XP, then clears for good", () => {
+  // REWRITTEN for the Field Override redesign (2026-08-19, wave 2): the 2nd-win
+  // reward is a Spell Search only while the Unit Experience rule is OFF (this
+  // game), and the 3rd win pays +2 hero XP, not +1.
+  it("escalates Ⅰ→Ⅱ→Ⅲ, pays +2 gold / Search Spell (Unit Experience off) / +2 XP, then clears for good", () => {
     const state = animeGame({ seed: "tt-escalate" });
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
@@ -292,11 +304,11 @@ describe("Trial Tower (anime.thi_luyen_thap)", () => {
     expect(queuedSearches(state, "spells")).toBe(spellSearchesBefore + 1);
     expect(state.adventure!.pendingVisit).toBeNull();
 
-    // --- Win 3: +1 hero XP, cleared for good ---
+    // --- Win 3: +2 hero XP (FO redesign wave 2; was +1), cleared for good ---
     visit(state);
     expect(field.animeTrialWins).toBe(3);
     expect(field.difficulty).toBeFalsy();
-    expect(hero.experience).toBe(1);
+    expect(hero.experience).toBe(2);
 
     // --- A later peaceful re-entry is inert (no reward, still cleared) ---
     const goldAfter = player.resources.gold;
@@ -316,6 +328,41 @@ describe("Trial Tower (anime.thi_luyen_thap)", () => {
     visit(state);
     expect(player.resources.gold).toBe(2);
     expect(queuedSearches(state, "spells")).toBe(0); // NOT the 2nd-win reward
+  });
+
+  // FO redesign wave 2 (2026-08-19): the 2nd win teaches instead of searching
+  // whenever the Unit Experience rule is on.
+  it("Unit Experience ON: the 2nd win gives a CHOSEN army unit card exactly +3 unit XP and queues NO Spell Search (only the picked card moves)", () => {
+    const state = animeGame({ seed: "tt-ue-on", unitExperience: true });
+    state.players.p1.army = [
+      { id: "army_0", unitDefId: "castle.halberdiers", side: "few" },
+      { id: "army_1", unitDefId: "castle.marksmen", side: "few" }
+    ];
+    carveAt(state, "thi_luyen_thap");
+    visit(state); // win 1 (+2 gold)
+    const spellsBefore = queuedSearches(state, "spells");
+
+    visit(state); // win 2 → the teaching menu
+    const step = menu(state);
+    expect(step.options.some((o) => o.label.startsWith("Decline")), "AI-safe decline arm").toBe(true);
+    chooseByLabel(state, (l) => l.includes("Marksmen"));
+
+    const army = state.players.p1.army;
+    expect(army.find((u) => u.id === "army_1")!.experience).toBe(3);
+    expect(army.find((u) => u.id === "army_0")!.experience ?? 0).toBe(0); // CONTROL: only the pick
+    expect(queuedSearches(state, "spells")).toBe(spellsBefore); // the rule-off reward did NOT fire
+  });
+
+  it("CONTROL: Unit Experience OFF keeps the printed Search (1) Spell on the 2nd win (no teaching menu)", () => {
+    const state = animeGame({ seed: "tt-ue-off" });
+    state.players.p1.army = [{ id: "army_0", unitDefId: "castle.halberdiers", side: "few" }];
+    carveAt(state, "thi_luyen_thap");
+    visit(state); // win 1
+    const spellsBefore = queuedSearches(state, "spells");
+    visit(state); // win 2
+    expect(queuedSearches(state, "spells")).toBe(spellsBefore + 1);
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(state.players.p1.army[0].experience ?? 0).toBe(0);
   });
 });
 
