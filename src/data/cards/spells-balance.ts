@@ -213,6 +213,8 @@ export const polishBalanceSpellCards: CardLibrary = {
       basicRerolls: 2,
       rerollsByPower: { 0: 2, 1: 3, 2: 4 },
       adventureDice: true,
+      // "Resolve the result of your choice" — free pick among the rolled candidates.
+      chooseResult: true,
       duration: { type: "current-turn" },
       consumeEffectOnUse: true
     }

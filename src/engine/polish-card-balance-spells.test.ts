@@ -329,13 +329,13 @@ describe("Balance Pack — number ladders", () => {
     const on = cast(combat(true), "spell.fortune", 0, { type: "none" });
     const fortuneOn = on.activeEffects.find((effect) => effect.name === "Fortune")!;
     expect(fortuneOn.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 2, consumeEffectOnUse: true }])
+      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 2, consumeEffectOnUse: true, chooseResult: true }])
     );
 
     const off = cast(combat(false), "spell.fortune", 0, { type: "none" });
     const fortuneOff = off.activeEffects.find((effect) => effect.name === "Fortune")!;
     expect(fortuneOff.modifiers).toEqual(
-      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true }])
+      expect.arrayContaining([{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: true, chooseResult: true }])
     );
   });
 

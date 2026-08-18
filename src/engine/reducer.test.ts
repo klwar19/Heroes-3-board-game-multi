@@ -1286,6 +1286,96 @@ describe("rules engine prototype", () => {
     expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: -1 });
   });
 
+  // A reroll effect carrying `chooseResult` (Fortune) — otherwise identical to
+  // Luck — but the player may KEEP the original roll after rerolling. Its control
+  // is the Luck case above, which forces the latest roll.
+  function fortuneRerollState(chooseResult: boolean): GameState {
+    const state = createInitialGameState();
+    if (!state.combat) {
+      throw new Error("Expected combat setup.");
+    }
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.activeEffects.push({
+      id: "effect_fortune",
+      name: chooseResult ? "Fortune" : "PlainReroll",
+      scope: "player",
+      duration: { type: "current-turn" },
+      polarity: "positive",
+      removable: false,
+      modifiers: [{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: false, chooseResult }],
+      source: { type: "system" },
+      controllerId: "p1",
+      startedRound: state.round,
+      startedCombatRound: state.combat.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: []
+    });
+    setActiveUnit(state, "p1", "unit_p1_crusaders");
+    // Original rolls +1 (so the Crusader 'every 0' reroll never triggers — only
+    // Fortune's reroll is in play), then the reroll rolls -1.
+    scriptDice(state, [1, -1]);
+    const moved = applyOk(state, {
+      type: "MOVE_UNIT",
+      playerId: "p1",
+      unitId: "unit_p1_crusaders",
+      destination: 10
+    });
+    return applyOk(moved, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_crusaders",
+      defenderId: "unit_p2_vampires"
+    });
+  }
+
+  it("Fortune lets the player KEEP the original roll after rerolling (choose the result)", () => {
+    const pending = fortuneRerollState(true);
+    expect(pending.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+
+    // Reroll the +1 into a -1; Fortune unlocks the free pick.
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    expect(
+      (rerolled.pendingChoice as { freeCandidateChoice?: boolean } | null)?.freeCandidateChoice,
+      "Fortune unlocks a free pick among candidates"
+    ).toBe(true);
+
+    // Keep the ORIGINAL +1 (candidate 0), not the latest -1 — the player's choice.
+    const resolved = applyOk(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 0
+    });
+    expect(resolved.pendingChoice).toBeNull();
+    expect(findEvent(resolved, "ATTACK_ROLLED")).toMatchObject({ roll: 1 });
+  });
+
+  it("CONTROL: without chooseResult a reroll forces the latest roll — the original is unpickable", () => {
+    const pending = fortuneRerollState(false);
+    const rerolled = applyOk(pending, {
+      type: "REROLL_PENDING_CHOICE",
+      playerId: "p1",
+      choiceId: pending.pendingChoice?.id ?? ""
+    });
+    expect((rerolled.pendingChoice as { freeCandidateChoice?: boolean } | null)?.freeCandidateChoice).toBeFalsy();
+    // Picking the original (candidate 0) is REJECTED — only the latest roll counts.
+    const result = applyAction(rerolled, {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      choiceId: rerolled.pendingChoice?.id ?? "",
+      candidateIndex: 0
+    });
+    expect(result.errors.length, "the original roll cannot be kept without Fortune").toBeGreaterThan(0);
+    // The choice is still open / unresolved — the pick did not take.
+    expect(result.state.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+  });
+
   it("never opens the Crusader reroll when the die shows anything but 0", () => {
     const state = createInitialGameState();
     if (!state.combat) {

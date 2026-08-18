@@ -792,6 +792,14 @@ export type ActiveEffectModifier =
       type: "ATTACK_DIE_REROLL";
       maxUsesPerRoll: number;
       consumeEffectOnUse: boolean;
+      /**
+       * Fortune: "resolve the result of your choice." Spending this reroll unlocks
+       * a FREE pick among every candidate rolled this window (the original roll and
+       * each reroll), instead of the rulebook's "only the latest roll counts". The
+       * player therefore chooses the result rather than being forced to keep — or
+       * auto-take — the highest.
+       */
+      chooseResult?: boolean;
     }
   | {
       // The First Aid Tent always heals exactly this much once per combat round.
@@ -2819,6 +2827,12 @@ export type EffectDefinition =
        * the same card works in combat (Attack die) and on the map.
        */
       adventureDice?: boolean;
+      /**
+       * Fortune: "resolve the result of your choice." The reroll it grants unlocks
+       * a free pick among all candidates rolled this window (see the matching flag
+       * on the ATTACK_DIE_REROLL modifier) rather than forcing the latest roll.
+       */
+      chooseResult?: boolean;
       duration: EffectDurationDefinition;
       /**
        * Mirth: the duration scales with the Power paid rather than the reroll
@@ -14468,6 +14482,14 @@ export type AttackRerollSource = {
    * roll counts".
    */
   rollExtraCandidates?: number;
+  /**
+   * Fortune: spending this reroll unlocks a FREE pick among every candidate
+   * rolled this window (`freeCandidateChoice`), so the player chooses the result
+   * instead of the rulebook's "only the latest roll counts". Unlike
+   * `rollExtraCandidates` it adds no extra rolls — the player rerolls as normal
+   * and then keeps whichever candidate they want.
+   */
+  chooseResult?: boolean;
   remaining: number;
   used: number;
 };

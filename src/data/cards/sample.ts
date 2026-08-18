@@ -479,6 +479,10 @@ export const sampleCards: CardLibrary = {
         2: 3
       },
       adventureDice: true,
+      // "Resolve the result of your choice": the reroll unlocks a free pick among
+      // the candidates rolled, so the player keeps the result they choose (not the
+      // forced latest roll and not an auto-highest).
+      chooseResult: true,
       duration: { type: "current-turn" },
       consumeEffectOnUse: true
     },

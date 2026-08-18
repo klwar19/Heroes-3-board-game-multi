@@ -2555,7 +2555,10 @@ function createAttackRerollEffectFromCard(
     {
       type: "ATTACK_DIE_REROLL",
       maxUsesPerRoll,
-      consumeEffectOnUse: card.effect.consumeEffectOnUse
+      consumeEffectOnUse: card.effect.consumeEffectOnUse,
+      // Fortune ("resolve the result of your choice"): its reroll unlocks a free
+      // pick among the rolled candidates instead of forcing the latest roll.
+      chooseResult: card.effect.chooseResult
     }
   ];
   // Fortune also rerolls the adventure-map Treasure and Resource dice, sharing
@@ -4321,6 +4324,14 @@ function getRerollUsesForEffect(effect: ActiveEffectState): number {
     .reduce((best, modifier) => Math.max(best, modifier.maxUsesPerRoll), 0);
 }
 
+/** Fortune: its ATTACK_DIE_REROLL modifier carries `chooseResult`, letting the
+ * player keep any rolled candidate rather than the forced latest roll. */
+function effectRerollChoosesResult(effect: ActiveEffectState): boolean {
+  return effect.modifiers.some(
+    (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.chooseResult === true
+  );
+}
+
 const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
 /** Cards of Prophecy — its Balance-Pack reprint is the 3-roll die instant. */
 const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
@@ -4469,7 +4480,8 @@ function buildRerollSources(
       name: effect.name,
       effectId: effect.id,
       remaining: getRerollUsesForEffect(effect),
-      used: 0
+      used: 0,
+      chooseResult: effectRerollChoosesResult(effect)
     })),
     ...artifactSources,
     ...luckyESources,
@@ -21204,6 +21216,13 @@ function rerollPendingChoice(
       }
       extraCandidates.push(extra);
     }
+    choice.freeCandidateChoice = true;
+  }
+  // Fortune ("resolve the result of your choice"): spending its reroll unlocks a
+  // free pick among every candidate rolled this window — the original roll and
+  // each reroll — so the player keeps the result they choose, not the forced
+  // latest one. Unlike Cards of Prophecy it adds no extra rolls.
+  if (source.chooseResult) {
     choice.freeCandidateChoice = true;
   }
   // A fresh face may be the first "+1" of this attack — the holder's own
