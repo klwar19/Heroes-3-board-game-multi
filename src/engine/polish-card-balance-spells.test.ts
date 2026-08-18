@@ -14,7 +14,14 @@
  * reducer under both readings of the rule.
  */
 import { describe, expect, it } from "vitest";
-import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import {
+  applyAction,
+  createAdventureGameState,
+  createInitialGameState,
+  describeCardEffect,
+  getLegalActions,
+  spellPowerLadder
+} from "./index";
 import { getUnitMoveRange } from "./legal-actions";
 import { hasToken } from "./tokens";
 import { nextTurnTimeoutAction } from "./afk-drop";
@@ -185,6 +192,51 @@ describe("Balance Pack — Bless", () => {
     expect(targets.has("unit_p1_marksmen")).toBe(false);
     // And nothing of the opponent's.
     expect([...targets].every((id) => id.startsWith("unit_p1_"))).toBe(true);
+  });
+
+  // The discriminating guard for the 0/1/3 ladder: the army-wide top effect
+  // unlocks at EXACTLY Power 3. One SP short (Power 2) still buffs only the
+  // chosen unit — so a mutation of `allGroundFlyingAtPower` from 3 to 2 fails
+  // here while the Power-3 test above stays green.
+  it("Power 2 buffs ONLY the selected unit — the army-wide effect needs a full 3 SP", () => {
+    const state = cast(combat(true), "spell.bless", 2, { type: "unit", unitId: "unit_p1_griffins" });
+    const blessed = state.activeEffects.filter((effect) => effect.name === "Bless");
+    const targets = new Set(blessed.map((effect) => (effect.target?.type === "unit" ? effect.target.unitId : "")));
+    expect(targets).toEqual(new Set(["unit_p1_griffins"]));
+    // The single-unit rung still skips the Attack die and grants +1.
+    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Bless")!;
+    expect(buff.modifiers).toEqual(
+      expect.arrayContaining([{ type: "ATTACK_BONUS", amount: 1 }, { type: "IGNORE_ATTACK_DIE_ROLL" }])
+    );
+  });
+
+  // The bug the author hit: the spellbook DESCRIPTION hid what 3 SP buys, so the
+  // top effect looked like a wasted "+1". The Power ladder + one-line summary now
+  // read the 0/1/3 tiers with the die-skip and the army-wide top rung.
+  it("spellbook description surfaces the 0/1/3 tiers, the die-skip and the army-wide top effect", () => {
+    const bless = polishBalanceSpellCards["spell.bless"];
+    const ladder = spellPowerLadder(bless);
+    expect(ladder.map((row) => row.power)).toEqual([0, 1, 3]);
+    const byPower = new Map(ladder.map((row) => [row.power, row.text]));
+    // Power 0: the base rung is the die-skip, NOT a misleading "+0 attack".
+    expect(byPower.get(0)).toBe("ignore the Attack die");
+    expect(byPower.get(0)).not.toContain("+0");
+    // Power 1: die-skip + single-unit +1.
+    expect(byPower.get(1)).toBe("ignore the Attack die, +1 attack");
+    // Power 3 (top effect): distinct from Power 1 — it names the army-wide reach.
+    expect(byPower.get(3)).toContain("all your ground/flying units");
+    expect(byPower.get(3)).not.toBe(byPower.get(1));
+
+    const summary = describeCardEffect(bless);
+    expect(summary).toContain("ignore the Attack die");
+    expect(summary).toContain("3:+1 (all ground/flying)");
+  });
+
+  it("CONTROL: classic (rule-off) Bless keeps its +1/+2 single-unit ladder, no army-wide rung", () => {
+    const classic = cardLibrary["spell.bless"];
+    const ladder = spellPowerLadder(classic);
+    expect(ladder.map((row) => row.power)).toEqual([0, 1, 2]);
+    expect(ladder.every((row) => !row.text.includes("all your ground/flying units"))).toBe(true);
   });
 
   it("CONTROL: with the rule OFF Bless is a reaction instant with no own-turn cast", () => {

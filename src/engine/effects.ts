@@ -693,7 +693,10 @@ export interface SpellLadderRow {
 /** Sorted rows of a `Record<number, T>` power table, each formatted to a summary string. */
 function ladderFromTable<T>(
   table: Record<number, T> | undefined,
-  format: (value: T) => string
+  // The tier's Power is passed through so a rung whose meaning changes at a
+  // breakpoint (Bless: single-unit → whole-army at `allGroundFlyingAtPower`) can
+  // read it; the common case ignores it.
+  format: (value: T, power: number) => string
 ): SpellLadderRow[] {
   if (!table) {
     return [];
@@ -702,7 +705,7 @@ function ladderFromTable<T>(
     .map(([power, value]) => ({ power: Number(power), value }))
     .filter((entry) => Number.isFinite(entry.power))
     .sort((left, right) => left.power - right.power)
-    .map((entry) => ({ power: entry.power, text: format(entry.value) }));
+    .map((entry) => ({ power: entry.power, text: format(entry.value, entry.power) }));
 }
 
 const signed = (value: number): string => (value >= 0 ? `+${value}` : `${value}`);
@@ -754,7 +757,23 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
     case "CREATE_INITIATIVE_BUFF":
       return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} initiative`);
     case "CREATE_ATTACK_BUFF":
-      return ladderFromTable(effect.amountByPower, (amount) => `${signed(amount)} attack`);
+      return ladderFromTable(effect.amountByPower, (amount, power) => {
+        // Balance-Pack Bless: each rung also skips the Attack die roll, and at
+        // `allGroundFlyingAtPower` the buff lands on EVERY ground/flying unit you
+        // control — so the top rung reads as its distinct (army-wide) effect
+        // instead of an identical "+1 attack" that hides why the tier costs more.
+        const parts: string[] = [];
+        if (effect.ignoreAttackDie) {
+          parts.push("ignore the Attack die");
+        }
+        const armyWide = effect.allGroundFlyingAtPower !== undefined && power >= effect.allGroundFlyingAtPower;
+        if (amount > 0) {
+          parts.push(armyWide ? `${signed(amount)} attack to all your ground/flying units` : `${signed(amount)} attack`);
+        } else if (parts.length === 0) {
+          parts.push(`${signed(amount)} attack`);
+        }
+        return parts.join(", ");
+      });
     case "CREATE_DEFENSE_BUFF": {
       const vs =
         effect.vsAttackerType === "ranged"
@@ -1096,14 +1115,21 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CREATE_ATTACK_BUFF") {
+    // Balance-Pack Bless prefixes the Attack-die skip and marks the army-wide
+    // top rung so the description conveys what each SP tier actually unlocks.
+    const dieSkip = card.effect.ignoreAttackDie ? "ignore the Attack die; " : "";
     if (card.effect.amountByPower) {
+      const army = card.effect.allGroundFlyingAtPower;
       const breakpoints = Object.entries(card.effect.amountByPower)
-        .map(([power, amount]) => `${power}:+${amount}`)
+        .map(([power, amount]) => {
+          const armyTag = army !== undefined && Number(power) >= army ? " (all ground/flying)" : "";
+          return `${power}:+${amount}${armyTag}`;
+        })
         .join(", ");
-      return `${card.effect.name} attack by power (${breakpoints})`;
+      return `${dieSkip}${card.effect.name} attack by power (${breakpoints})`;
     }
 
-    return `${card.effect.name} +${card.effect.amount ?? 0} attack`;
+    return `${dieSkip}${card.effect.name} +${card.effect.amount ?? 0} attack`;
   }
 
   if (card.effect.type === "CREATE_DEFENSE_BUFF") {
