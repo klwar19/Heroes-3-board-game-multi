@@ -5,7 +5,13 @@
  * resolves. Placement is gated by the wog package (`wog.enabled &&
  * wog.newObjects`) / designer pins — see `src/data/wog/field-overrides.ts`.
  *
- * All three carry `interaction: NONE`: their visit MENUS are built dynamically
+ * FO REDESIGN WAVE 4 (2026-08-19, docs/field-override-redesign-plan.md): every
+ * object below gained a new arm or a new price, and the Fishing Well left its
+ * static interaction entirely — so ALL SEVEN now carry `interaction: NONE` and
+ * build their menu in `buildWogFieldVisitStep` / a dedicated `beginFieldVisit`
+ * branch.
+ *
+ * All seven carry `interaction: NONE`: their visit MENUS are built dynamically
  * in `beginFieldVisit` (`buildWogFieldVisitStep`), because each arm is
  * context-filtered against live state (commander presence, controlled Towns,
  * hand Artifacts) exactly like a City-Hall choice — a static LocationInteraction
@@ -14,26 +20,42 @@
  *
  * Board-adaptation notes (deliberate, leading with the limits):
  *  - Emerald Tower: WoG enchants a creature stack; here it TRAINS the WOG
- *    commander (a commander stat point) or the hero (experience) — no creature
- *    enchant arm.
+ *    commander (a commander stat point), the hero (experience) or — with the Unit
+ *    Experience rule on — ONE army unit card (pay 4 gold for +2 unit XP; the arm
+ *    is absent with the rule off or an empty army). No creature enchant arm.
  *  - Mirror of the Home-Way: WoG's full Town-Portal price/movement table is
- *    reduced to a flat pay-2-gold Town/Settlement teleport.
+ *    reduced to TWO fares by destination band — 1 gold to a Town/Settlement on a
+ *    starting or Ⅱ–Ⅲ tile, 3 gold to a Ⅳ+/centre one (subterranean, sea and an
+ *    unresolvable tile are priced at the dearer tier). One PAY_TO arm per fare.
  *  - Junk Merchant: WoG's 32-artifact fixed trade table is reduced to
- *    tier-priced sells (minor 2 / major 3 / relic 4) plus a paid Artifact search.
- *  - Fishing Well: WoG's variable catch is a fixed pay-1-gold Attack-die gamble
- *    (a STATIC PAY_TO + ATTACK_DIE_TABLE — no dynamic menu; +1 valuables / 2 gold
- *    back / nothing). Revisitable, once per visit.
+ *    tier-priced sells (minor 2 / major 3 / relic 4), a per-card TRADE-IN (swap a
+ *    hand Artifact for the face-up top of that tier's Artifact discard + 1 gold;
+ *    nothing leaves the game), a once-per-player MYSTERY CRATE (pay 5 gold, one
+ *    Attack die: +1 → Search (1) Artifact + 2 gold back, 0 → Search (1) Artifact,
+ *    −1 → just the 2 gold back) plus the paid Artifact search.
+ *  - Fishing Well: WoG's variable catch is a STREAK ladder — pay 1 gold, once per
+ *    player per GAME ROUND; catch 1 → +1 valuables, a second consecutive round →
+ *    +2 valuables, a third → one Treasure die AND the well runs dry for EVERYONE
+ *    (`wogWellDry`, mirroring the smashed skull). A skipped round restarts the
+ *    streak at 1. Revisitable; the whole menu is dynamic.
  *  - Living Skull: WoG's scripted lore is a Search/Smash CHOOSE_ONE; smashing
- *    sets a permanent per-field destruction latch (`wogSkullSmashed`) making the
- *    hex INERT for everyone. Listen (Search 1 Ability) is repeatable until smash.
+ *    sets a permanent per-field destruction latch (`wogSkullSmashed`) AND leaves
+ *    an angry spirit guarding the hex at Ⅱ. Whoever beats that spirit collects one
+ *    Search (1) Ability, and the hex is then inert for everyone forever. Listen
+ *    (Search 1 Ability) is repeatable until the smash.
  *  - Adventure Cave: an escalating repeatable fight (guarded Ⅰ→Ⅱ→Ⅲ). Each win
  *    scales the reward and re-guards one higher; cleared after the 3rd win. The
- *    whole reward/re-guard flow is engine code in `beginFieldVisit`, not a static
- *    interaction (the location carries NONE).
+ *    2nd win places a FIXED Stack Token (the player picks the card and the stat)
+ *    on a token-free army unit card, falling back to a Treasure die when no card
+ *    is eligible. The whole reward/re-guard flow is engine code in
+ *    `beginFieldVisit`, not a static interaction (the location carries NONE).
  *  - Altar of the Gods: pay 3 valuables → choose +1 morale / +2 hero XP /
  *    (Commanders module) +1 commander stat point. A per-round latch was
  *    deliberately NOT added — plain revisitable (1 MP), gated only by the
- *    3-valuables cost each visit.
+ *    3-valuables cost each visit. A GREATER SACRIFICE arm (only with ≥2 army unit
+ *    cards, so it can never strand an army) permanently removes one chosen unit
+ *    card — the CARD leaves the game, a Pack does not flip — for either +1
+ *    commander stat point AND +1 morale (Commanders module) or +4 hero XP.
  */
 
 import type { LocationDefinition } from "@/data/map/types";
@@ -96,25 +118,20 @@ export const wogLocationDefinitions: Record<string, LocationDefinition> = {
   },
 
   /**
-   * Fishing Well — pay 1 gold to gamble on one Attack die: +1 → +1 valuables,
-   * 0 → 2 gold back (net even), −1 → nothing. STATIC PAY_TO + ATTACK_DIE_TABLE
-   * (the Gambling Den's machinery); no dynamic menu branch. Revisitable, once
-   * per visit (declining or a broke hero pays nothing).
+   * Fishing Well — pay 1 gold to fish, once per player per GAME ROUND. The catch
+   * grows with that player's CONSECUTIVE-round streak (1 → +1 valuables, 2 → +2
+   * valuables, 3 → one Treasure die AND the well runs dry for everyone). Built
+   * at visit time (`buildWogFieldVisitStep` + `ADVANCE_FISHING_STREAK`), because
+   * the payout depends on live per-player field state — hence NONE here, not the
+   * old static PAY_TO + ATTACK_DIE_TABLE.
    */
   "wog.fishing_well": {
     id: "wog.fishing_well",
     name: "Fishing Well",
     category: "revisitable",
-    interaction: {
-      type: "PAY_TO",
-      costOptions: [{ gold: 1 }],
-      interaction: {
-        type: "ATTACK_DIE_TABLE",
-        plus: { type: "GAIN_RESOURCES", valuables: 1 },
-        zero: { type: "GAIN_RESOURCES", gold: 2 },
-        minus: { type: "NONE" }
-      }
-    },
+    // engine: the streak-priced fishing menu is built at visit time; a dry well
+    // (field.wogWellDry) and a player who already fished this round get no menu.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: wogSource
   },

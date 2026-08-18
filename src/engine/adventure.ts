@@ -6349,7 +6349,7 @@ function wogMirrorTownDestinations(
   state: GameState,
   playerId: PlayerId,
   heroId: HeroId
-): { label: string; spaceId: MapSpaceId }[] {
+): { label: string; spaceId: MapSpaceId; price: number }[] {
   const adventure = state.adventure;
   const hero = state.heroes[heroId];
   if (!adventure || !hero) {
@@ -6357,7 +6357,7 @@ function wogMirrorTownDestinations(
   }
   const fieldHasOtherHero = (spaceId: string) =>
     Object.values(state.heroes).some((other) => other.id !== hero.id && other.spaceId === spaceId);
-  const destinations: { label: string; spaceId: MapSpaceId }[] = [];
+  const destinations: { label: string; spaceId: MapSpaceId; price: number }[] = [];
   for (const town of Object.values(state.towns)) {
     // Flag-first Town ownership via the shared read — a Town captured from an
     // opponent IS a destination, a Town captured FROM this player is not.
@@ -6367,7 +6367,11 @@ function wogMirrorTownDestinations(
       town.fieldId !== hero.spaceId &&
       !fieldHasOtherHero(town.fieldId)
     ) {
-      destinations.push({ label: `Town (${town.factionId ?? town.id})`, spaceId: town.fieldId });
+      destinations.push({
+        label: `Town (${town.factionId ?? town.id})`,
+        spaceId: town.fieldId,
+        price: wogMirrorTravelPrice(state, town.fieldId)
+      });
     }
   }
   for (const field of Object.values(adventure.fields)) {
@@ -6377,10 +6381,33 @@ function wogMirrorTownDestinations(
       field.spaceId !== hero.spaceId &&
       !fieldHasOtherHero(field.spaceId)
     ) {
-      destinations.push({ label: "Settlement", spaceId: field.spaceId });
+      destinations.push({
+        label: "Settlement",
+        spaceId: field.spaceId,
+        price: wogMirrorTravelPrice(state, field.spaceId)
+      });
     }
   }
   return destinations;
+}
+
+/** The two Mirror of the Home-Way price tiers (FO redesign wave 4). */
+const WOG_MIRROR_NEAR_PRICE = 1;
+const WOG_MIRROR_FAR_PRICE = 3;
+
+/**
+ * FO redesign wave 4 — the Mirror of the Home-Way prices a jump by the
+ * DESTINATION's tile band: {@link WOG_MIRROR_NEAR_PRICE} gold to a
+ * Town/Settlement standing on a `starting` or `far` (Ⅱ–Ⅲ) tile,
+ * {@link WOG_MIRROR_FAR_PRICE} gold to a `near` (Ⅳ–Ⅴ) or `center` (Ⅵ–Ⅶ) one.
+ * `subterranean` and `sea` tiles — and a destination whose tile cannot be
+ * resolved at all (a legacy or hand-built snapshot) — are priced at the DEARER
+ * tier: missing data must never hand out a discount.
+ */
+function wogMirrorTravelPrice(state: GameState, spaceId: MapSpaceId): number {
+  const field = state.adventure?.fields[spaceId];
+  const group = field ? state.adventure?.tiles[field.tileInstanceId]?.group : undefined;
+  return group === "starting" || group === "far" ? WOG_MIRROR_NEAR_PRICE : WOG_MIRROR_FAR_PRICE;
 }
 
 /**
@@ -6594,9 +6621,54 @@ function handleEscalatingFightVisit(
 }
 
 /**
+ * FO redesign wave 4 — the Adventure Cave's 2nd-win Stack Token: a CHOOSE_ONE of
+ * every army unit card that does NOT already carry a fixed Stack Token, each
+ * opening a stat pick (+1 Attack / Defense / Health or +2 Initiative). Returns
+ * null when nothing is eligible (empty army, or every card is already Stacked),
+ * in which case the caller falls back to the old Treasure die — never a dead
+ * prompt. The outer level carries a Decline arm (AI/AFK safe); the inner stat
+ * pick has none on purpose — every one of its four arms is a pure gain, and the
+ * player already declined at the level where refusing means something.
+ */
+function caveStackTokenChoiceStep(state: GameState, playerId: PlayerId): VisitStep | null {
+  const eligible = (state.players[playerId]?.army ?? []).filter((unit) => !unit.stackToken);
+  if (eligible.length === 0) {
+    return null;
+  }
+  const statLabels: Record<StackTokenStat, string> = {
+    attack: "+1 Attack",
+    defense: "+1 Defense",
+    health: "+1 Health",
+    initiative: "+2 Initiative"
+  };
+  return {
+    type: "CHOOSE_ONE",
+    prompt: "Adventure Cave — the second expedition hauls out a Stack Token. Which unit card takes it?",
+    options: [
+      ...eligible.map((unit) => ({
+        label: `${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+        steps: [
+          {
+            type: "CHOOSE_ONE" as const,
+            prompt: `Which Stack Token stat for ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId}?`,
+            options: (Object.keys(statLabels) as StackTokenStat[]).map((stat) => ({
+              label: statLabels[stat],
+              steps: [{ type: "GRANT_STACK_TOKEN" as const, armyUnitId: unit.id, stat }]
+            }))
+          }
+        ]
+      })),
+      { label: "Leave the token behind", steps: [] }
+    ]
+  };
+}
+
+/**
  * WOG New Objects — Adventure Cave (`wog.adventure_cave`). The wog reward ladder
- * over the shared escalating-fight machinery: win 1 → +3 gold, win 2 → a Treasure
- * die, win 3 → Search (1) the Artifact deck + the commander-artifact bonus.
+ * over the shared escalating-fight machinery: win 1 → +3 gold, win 2 → a FIXED
+ * Stack Token of the player's chosen stat onto a chosen token-free army unit card
+ * (FO redesign wave 4; the old Treasure die remains the fall-back when no card is
+ * eligible), win 3 → Search (1) the Artifact deck + the commander-artifact bonus.
  */
 function handleWogAdventureCaveVisit(
   state: GameState,
@@ -6607,12 +6679,16 @@ function handleWogAdventureCaveVisit(
   handleEscalatingFightVisit(state, playerId, heroId, field, {
     winsProp: "wogCaveWins",
     maxWins: 3,
-    rewardStepsForWin: (wins) =>
-      wins === 1
-        ? [{ type: "GAIN_RESOURCES", gold: 3 }]
-        : wins === 2
-          ? [{ type: "ROLL_TREASURE_DICE", count: 1 }]
-          : [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }],
+    rewardStepsForWin: (wins) => {
+      if (wins === 1) {
+        return [{ type: "GAIN_RESOURCES", gold: 3 }];
+      }
+      if (wins === 2) {
+        const token = caveStackTokenChoiceStep(state, playerId);
+        return token ? [token] : [{ type: "ROLL_TREASURE_DICE", count: 1 }];
+      }
+      return [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }];
+    },
     // Task 2: the deepest win ALSO drops a bindable commander artifact into hand.
     onFinalWin: () => grantCommanderArtifactReward(state, playerId)
   });
@@ -6863,6 +6939,29 @@ function buildWogFieldVisitStep(
         }
       ]
     });
+    // FO redesign wave 4 — the DRILL arm: with the Unit Experience rule on (and
+    // at least one army card), pay 4 gold to teach one chosen unit card +2 unit
+    // XP. Absent with the rule off or an empty army (armyUnitXpChoiceStep
+    // returns null) — never a dead prompt.
+    const drill = armyUnitXpChoiceStep(
+      state,
+      playerId,
+      EMERALD_TOWER_UNIT_XP,
+      "Emerald Tower — the tower's masters drill one of your unit cards:"
+    );
+    if (drill) {
+      options.push({
+        label: `Pay 4 gold: one of your army unit cards gains +${EMERALD_TOWER_UNIT_XP} unit XP`,
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Pay 4 gold to drill one of your unit cards?",
+            costOptions: [{ gold: 4 }],
+            steps: [drill]
+          }
+        ]
+      });
+    }
     options.push({ label: "Leave", steps: [] });
     return { type: "CHOOSE_ONE", prompt: "Emerald Tower — train:", options };
   }
@@ -6870,21 +6969,33 @@ function buildWogFieldVisitStep(
   if (locationId === "wog.mirror_home_way") {
     const destinations = wogMirrorTownDestinations(state, playerId, heroId);
     const options: { label: string; steps: VisitStep[] }[] = [];
-    // Pay-2-gold teleport arm — present ONLY when at least one Town/Settlement
-    // is reachable (never on your current field, never onto another hero).
-    if (destinations.length > 0) {
+    // FO redesign wave 4 — the fare is set by the DESTINATION's tile band, so
+    // there is ONE PAY_TO arm per price tier actually reachable (a flat single
+    // price could not express two fares). Each arm carries the destination
+    // CHOOSE_ONE for its own tier only. Present only when that tier has a
+    // reachable Town/Settlement (never your current field, never onto another
+    // hero) — a tier with no destination has no arm.
+    for (const price of [WOG_MIRROR_NEAR_PRICE, WOG_MIRROR_FAR_PRICE]) {
+      const tierDestinations = destinations.filter((destination) => destination.price === price);
+      if (tierDestinations.length === 0) {
+        continue;
+      }
+      const tierLabel =
+        price === WOG_MIRROR_NEAR_PRICE
+          ? "on a home or Ⅱ–Ⅲ tile"
+          : "deep in the map (Ⅳ+ / centre / underground / sea tile)";
       options.push({
-        label: "Pay 2 gold: teleport your Hero to one of your Towns",
+        label: `Pay ${price} gold: teleport your Hero to one of your Towns ${tierLabel}`,
         steps: [
           {
             type: "PAY_TO",
-            prompt: "Pay 2 gold to travel the Mirror of the Home-Way?",
-            costOptions: [{ gold: 2 }],
+            prompt: `Pay ${price} gold to travel the Mirror of the Home-Way?`,
+            costOptions: [{ gold: price }],
             steps: [
               {
                 type: "CHOOSE_ONE",
                 prompt: "Mirror of the Home-Way: move your Hero to…",
-                options: destinations.map((destination) => ({
+                options: tierDestinations.map((destination) => ({
                   label: destination.label,
                   steps: [{ type: "TELEPORT_HERO" as const, heroId, spaceId: destination.spaceId }]
                 }))
@@ -6913,6 +7024,46 @@ function buildWogFieldVisitStep(
         label: `Sell ${card.name} (${tier}): gain ${gold} gold`,
         steps: [{ type: "SELL_HAND_ARTIFACT", cardId, gold }]
       });
+      // FO redesign wave 4 — TRADE-IN: swap this hand Artifact for the face-up
+      // TOP card of the Artifact discard it belongs to, plus 1 gold. Offered
+      // only while that discard actually has a top card (never a dead button);
+      // the swap itself is re-read at resolution.
+      const tradeDeckId = sharedDeckIdForCard(state, cardId);
+      const topId = state.decks[tradeDeckId]?.discardPile.at(-1);
+      if (topId) {
+        options.push({
+          label: `Trade in ${card.name} for ${cardLibrary[topId]?.name ?? topId} + ${JUNK_TRADE_IN_GOLD} gold`,
+          steps: [{ type: "TRADE_IN_HAND_ARTIFACT", cardId }]
+        });
+      }
+    }
+    // FO redesign wave 4 — MYSTERY CRATE, once per player per game (the generic
+    // claim latch). The latch is the FIRST step inside the PAY_TO, so it is set
+    // the moment the 5 gold is actually spent and is impossible to lose on any
+    // die face; a Decline never latches (the PAY_TO's steps do not run).
+    if (!field.fieldClaimedBy?.includes(playerId)) {
+      options.push({
+        label: `Mystery crate — pay ${JUNK_CRATE_GOLD_COST} gold for whatever is inside (once per player, ever)`,
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: `Pay ${JUNK_CRATE_GOLD_COST} gold for the unopened crate?`,
+            costOptions: [{ gold: JUNK_CRATE_GOLD_COST }],
+            steps: [
+              { type: "MARK_FIELD_CLAIMED" },
+              {
+                type: "ATTACK_DIE_TABLE",
+                plus: [
+                  { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 },
+                  { type: "GAIN_RESOURCES", gold: JUNK_CRATE_REFUND_GOLD }
+                ],
+                zero: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }],
+                minus: [{ type: "GAIN_RESOURCES", gold: JUNK_CRATE_REFUND_GOLD }]
+              }
+            ]
+          }
+        ]
+      });
     }
     options.push({
       label: "Pay 4 gold: Search (1) the Artifact deck",
@@ -6929,6 +7080,44 @@ function buildWogFieldVisitStep(
     return { type: "CHOOSE_ONE", prompt: "Junk Merchant:", options };
   }
 
+  if (locationId === "wog.fishing_well") {
+    // FO redesign wave 4 — the static PAY_TO + Attack-die gamble is replaced by
+    // an ESCALATING CATCH keyed off the visitor's consecutive-round streak. A
+    // DRY well is inert for everyone (mirrors the smashed skull), and the arm is
+    // once per player per GAME ROUND (the generic round latch) so a second visit
+    // in the same round can neither fish again nor advance the streak.
+    if (field.wogWellDry) {
+      return null;
+    }
+    const claimedThisRound =
+      field.fieldRoundClaims?.round === state.round &&
+      field.fieldRoundClaims.playerIds.includes(playerId);
+    if (claimedThisRound) {
+      return null;
+    }
+    const streak = wogFishingNextStreak(field, playerId, state.round);
+    return {
+      type: "CHOOSE_ONE",
+      prompt: `Fishing Well — your catch would be the ${
+        streak === 1 ? "1st" : streak === 2 ? "2nd" : "3rd"
+      } in as many rounds.`,
+      options: [
+        {
+          label: `Fish (pay ${WOG_FISHING_GOLD_COST} gold) — ${wogFishingCatchLabel(streak)}`,
+          steps: [
+            {
+              type: "PAY_TO",
+              prompt: `Pay ${WOG_FISHING_GOLD_COST} gold to cast a line?`,
+              costOptions: [{ gold: WOG_FISHING_GOLD_COST }],
+              steps: [{ type: "ADVANCE_FISHING_STREAK" }, { type: "MARK_FIELD_ROUND_CLAIMED" }]
+            }
+          ]
+        },
+        { label: "Leave the well alone", steps: [] }
+      ]
+    };
+  }
+
   if (locationId === "wog.living_skull") {
     // A smashed skull is INERT for everyone — no menu, no visit.
     if (field.wogSkullSmashed) {
@@ -6943,8 +7132,11 @@ function buildWogFieldVisitStep(
           steps: [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }]
         },
         {
-          // +2 gold, then set the permanent destruction latch (SMASH_WOG_SKULL).
-          label: "Smash it: gain 2 gold (silences it for everyone forever)",
+          // +2 gold, then SMASH_WOG_SKULL sets the permanent destruction latch
+          // AND (FO redesign wave 4) stamps the angry spirit's Ⅱ guard on the
+          // hex — both inside the one step, so latch and guard can never desync.
+          label:
+            "Smash it: gain 2 gold (silences it for everyone forever — but an angry spirit re-guards the hex at Ⅱ)",
           steps: [{ type: "GAIN_RESOURCES", gold: 2 }, { type: "SMASH_WOG_SKULL" }]
         },
         { label: "Leave", steps: [] }
@@ -6966,24 +7158,58 @@ function buildWogFieldVisitStep(
         steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }]
       });
     }
-    return {
-      type: "CHOOSE_ONE",
-      prompt: "Altar of the Gods:",
-      options: [
-        {
-          label: "Make an offering: pay 3 valuables for a blessing",
-          steps: [
-            {
-              type: "PAY_TO",
-              prompt: "Offer 3 valuables at the Altar of the Gods?",
-              costOptions: [{ valuables: 3 }],
-              steps: [{ type: "CHOOSE_ONE", prompt: "The gods grant a blessing:", options: blessings }]
-            }
-          ]
-        },
-        { label: "Leave", steps: [] }
-      ]
-    };
+    const options: { label: string; steps: VisitStep[] }[] = [
+      {
+        label: "Make an offering: pay 3 valuables for a blessing",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Offer 3 valuables at the Altar of the Gods?",
+            costOptions: [{ valuables: 3 }],
+            steps: [{ type: "CHOOSE_ONE", prompt: "The gods grant a blessing:", options: blessings }]
+          }
+        ]
+      }
+    ];
+    // FO redesign wave 4 — GREATER SACRIFICE. Offered only with ≥2 army unit
+    // cards, so the altar can never strand an army (re-gated at resolution).
+    // The chosen CARD leaves the game (a Pack does NOT flip to Few here), then a
+    // second CHOOSE_ONE picks the boon; the commander arm is context-filtered
+    // exactly like the ordinary blessing.
+    if (player.army.length >= 2) {
+      const boons: { label: string; steps: VisitStep[] }[] = [];
+      if (commandersModuleEnabled(state) && player.commander) {
+        boons.push({
+          label: "+1 commander stat point AND +1 morale",
+          steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }, { type: "GAIN_MORALE", amount: 1 }]
+        });
+      }
+      boons.push({
+        label: `+${ALTAR_SACRIFICE_HERO_XP} hero experience`,
+        steps: [{ type: "GAIN_EXPERIENCE", amount: ALTAR_SACRIFICE_HERO_XP }]
+      });
+      options.push({
+        label: "Greater sacrifice: give up one army unit card FOREVER",
+        steps: [
+          {
+            type: "CHOOSE_ONE",
+            prompt: "Which unit card do you lay on the altar? (the card leaves the game for good)",
+            options: [
+              ...player.army.map((unit) => ({
+                label: `Sacrifice ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+                steps: [
+                  { type: "SACRIFICE_ARMY_UNIT" as const, armyUnitId: unit.id },
+                  { type: "CHOOSE_ONE" as const, prompt: "The gods accept the sacrifice:", options: boons }
+                ]
+              })),
+              { label: "Sacrifice nothing", steps: [] }
+            ]
+          }
+        ]
+      });
+    }
+    options.push({ label: "Leave", steps: [] });
+    return { type: "CHOOSE_ONE", prompt: "Altar of the Gods:", options };
   }
 
   return null;
@@ -7437,6 +7663,39 @@ function buildAnimeFieldVisitSteps(
   return null;
 }
 
+/** FO redesign wave 4 — the Emerald Tower's paid drill (Unit Experience on only). */
+const EMERALD_TOWER_UNIT_XP = 2;
+/** FO redesign wave 4 — the Junk Merchant's trade-in sweetener and mystery crate. */
+const JUNK_TRADE_IN_GOLD = 1;
+const JUNK_CRATE_GOLD_COST = 5;
+const JUNK_CRATE_REFUND_GOLD = 2;
+/** FO redesign wave 4 — the Fishing Well's stake and the Altar's sacrifice boon. */
+const WOG_FISHING_GOLD_COST = 1;
+/** FO redesign wave 4 — the guard the smashed Living Skull's spirit leaves behind. */
+const LIVING_SKULL_SPIRIT_GUARD_LEVEL = 2;
+const ALTAR_SACRIFICE_HERO_XP = 4;
+
+/**
+ * FO redesign wave 4 — the streak this player's NEXT catch at this Fishing Well
+ * would be. The streak continues only when their recorded round is EXACTLY the
+ * previous game round; a skipped round (or a first visit) restarts at 1, and it
+ * is capped at 3 because the 3rd catch drains the well for everyone. Shared by
+ * the menu label and the `ADVANCE_FISHING_STREAK` payout so the two can never
+ * disagree.
+ */
+function wogFishingNextStreak(field: MapFieldState, playerId: PlayerId, round: number): number {
+  const record = field.wogFishingStreaks?.[playerId];
+  const next = record && record.round === round - 1 ? record.streak + 1 : 1;
+  return Math.min(3, Math.max(1, next));
+}
+
+/** The printed catch for a streak (label half — must match the payout). */
+function wogFishingCatchLabel(streak: number): string {
+  if (streak <= 1) return "1 valuables";
+  if (streak === 2) return "2 valuables (a second round running)";
+  return "1 Treasure die — and the well runs dry for EVERYONE";
+}
+
 /** Kiếm Trủng's post-win teaching (Unit Experience on only). */
 const KIEM_TRUNG_UNIT_XP = 2;
 /** Thí Luyện Tháp's 2nd-win teaching (Unit Experience on only). */
@@ -7830,6 +8089,31 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // that generic clear.
   if (location.id === "wog.adventure_cave") {
     handleWogAdventureCaveVisit(state, playerId, heroId, field);
+    return;
+  }
+  // FO redesign wave 4 — the Living Skull's ANGRY SPIRIT. Smashing the skull
+  // stamps a Ⅱ guard on the hex (inside SMASH_WOG_SKULL). Reaching a visit with
+  // the smashed latch AND that guard still standing means it was just BEATEN
+  // (beginFieldVisit runs only on a win / Quick-Combat win / Diplomacy skip —
+  // the escalating-fight convention): pay the spirit's secret and clear the
+  // guard, after which the hex is inert for good (the latch already suppresses
+  // the listen/smash menu, and nothing re-stamps the guard). This branch must
+  // run BEFORE the generic Field-Override guard clear below, which would
+  // otherwise wipe the spirit without paying anything.
+  if (location.id === "wog.living_skull" && field.wogSkullSmashed && field.difficulty) {
+    clearCustomGuard(field);
+    eventNote(
+      state,
+      `${eventPlayerName(state, playerId)} lays the Living Skull's angry spirit to rest — it whispers one last secret.`,
+      playerId
+    );
+    adventure.pendingVisit = {
+      heroId,
+      playerId,
+      fieldId: field.spaceId,
+      steps: [{ type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }]
+    };
+    processPendingVisit(state);
     return;
   }
   // Anime Field Override — Trial Tower: the xianxia twin of the Adventure Cave,
@@ -8277,9 +8561,16 @@ export function processPendingVisit(state: GameState): void {
         const smashedField = adventure.fields[visit.fieldId];
         if (smashedField) {
           smashedField.wogSkullSmashed = true;
+          // FO redesign wave 4: the shattered skull releases an ANGRY SPIRIT that
+          // re-guards the hex at Ⅱ. Stamped HERE, inside the same step that sets
+          // the latch, so the two can never desync (a smashed skull always has a
+          // spirit; a spirit only ever exists on a smashed skull). Whoever beats
+          // it collects a Search (1) Ability in beginFieldVisit, then the hex is
+          // inert for good.
+          applyCustomGuardToField(smashedField, { level: LIVING_SKULL_SPIRIT_GUARD_LEVEL });
           eventNote(
             state,
-            `${eventPlayerName(state, visit.playerId)} smashes the Living Skull — it falls silent forever.`,
+            `${eventPlayerName(state, visit.playerId)} smashes the Living Skull — it falls silent forever, and an angry spirit (Ⅱ) rises to guard the hex.`,
             visit.playerId
           );
         }
@@ -8453,6 +8744,113 @@ export function processPendingVisit(state: GameState): void {
           eventNote(
             state,
             `${eventPlayerName(state, visit.playerId)} spends a positive morale token on a guild quest.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "TRADE_IN_HAND_ARTIFACT": {
+        // FO redesign wave 4 — the Junk Merchant's trade-in. ZONE DANCE: the top
+        // of the matching Artifact discard is POPPED into the hand, then the
+        // traded-away card is PUSHED onto that same discard (so it becomes the
+        // new face-up top a later search/trade can take). No card leaves the
+        // game — unlike SELL_HAND_ARTIFACT, which removes it. Re-read here, so an
+        // emptied discard is a clean no-op (the hand keeps its card).
+        const trader = state.players[visit.playerId];
+        const handIndex = trader?.hand.indexOf(step.cardId) ?? -1;
+        const deckId = sharedDeckIdForCard(state, step.cardId);
+        const deck = state.decks[deckId];
+        const topId = deck?.discardPile.at(-1);
+        if (trader && deck && handIndex >= 0 && topId) {
+          deck.discardPile.pop();
+          trader.hand.splice(handIndex, 1);
+          trader.hand.push(topId);
+          deck.discardPile.push(step.cardId);
+          gainResources(
+            state,
+            visit.playerId,
+            { gold: JUNK_TRADE_IN_GOLD },
+            `traded ${cardLibrary[step.cardId]?.name ?? step.cardId} for ${
+              cardLibrary[topId]?.name ?? topId
+            } at the Junk Merchant`
+          );
+        }
+        break;
+      }
+      case "ADVANCE_FISHING_STREAK": {
+        // FO redesign wave 4 — the Fishing Well's escalating catch. The streak is
+        // recomputed from the field's own record (the same helper the menu label
+        // used), written back for THIS round, and the catch paid: 1 → +1
+        // valuables, 2 → +2 valuables, 3 → one Treasure die AND the well runs dry
+        // for EVERYONE (the global latch, mirroring the smashed skull).
+        const wellField = adventure.fields[visit.fieldId];
+        if (wellField && !wellField.wogWellDry) {
+          const streak = wogFishingNextStreak(wellField, visit.playerId, state.round);
+          wellField.wogFishingStreaks = {
+            ...(wellField.wogFishingStreaks ?? {}),
+            [visit.playerId]: { round: state.round, streak }
+          };
+          const name = eventPlayerName(state, visit.playerId);
+          if (streak >= 3) {
+            wellField.wogWellDry = true;
+            eventNote(
+              state,
+              `${name} lands a monster on their third round running at the Fishing Well — the well is fished out for everyone.`,
+              visit.playerId
+            );
+            visit.steps.unshift({ type: "ROLL_TREASURE_DICE", count: 1 });
+          } else {
+            gainResources(
+              state,
+              visit.playerId,
+              { valuables: streak },
+              `fished the Fishing Well (round ${streak} of a streak)`
+            );
+          }
+        }
+        break;
+      }
+      case "GRANT_STACK_TOKEN": {
+        // FO redesign wave 4 — the Adventure Cave's 2nd-win Stack Token. Fixed
+        // stat (the player picked it), on a card that must still be token-free:
+        // re-gated so a stale step can never overwrite an existing token.
+        const tokenPlayer = state.players[visit.playerId];
+        const tokenUnit = tokenPlayer?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (tokenUnit && !tokenUnit.stackToken) {
+          tokenUnit.stackToken = step.stat;
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)}: ${
+              coreUnitDefinitions[tokenUnit.unitDefId]?.name ?? tokenUnit.unitDefId
+            } gains a Stack Token (${step.stat}).`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "SACRIFICE_ARMY_UNIT": {
+        // FO redesign wave 4 — the Altar's GREATER SACRIFICE. The CARD leaves the
+        // army for good (a Pack does not flip to Few here); a Neutral-side card
+        // recycles to its tier's Neutral discard pile, the same semantics as the
+        // Heavenly Tribulation toll. Re-gated on ≥2 cards so the altar can never
+        // strand an empty army even from a stale step.
+        const altarPlayer = state.players[visit.playerId];
+        const sacrifice = altarPlayer?.army.find((candidate) => candidate.id === step.armyUnitId);
+        if (altarPlayer && sacrifice && altarPlayer.army.length >= 2) {
+          altarPlayer.army = altarPlayer.army.filter((candidate) => candidate.id !== step.armyUnitId);
+          if (sacrifice.side === "neutral") {
+            const tier = (coreUnitDefinitions[sacrifice.unitDefId]?.tier ?? "bronze") as
+              | "bronze"
+              | "silver"
+              | "gold"
+              | "azure";
+            state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(sacrifice.unitDefId);
+          }
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} lays ${
+              coreUnitDefinitions[sacrifice.unitDefId]?.name ?? sacrifice.unitDefId
+            } on the Altar of the Gods — the card leaves the game.`,
             visit.playerId
           );
         }

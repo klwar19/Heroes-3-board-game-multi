@@ -152,31 +152,69 @@ damage exists).
 ### WoG (wog.newObjects)
 - **emerald_tower** — guard Ⅲ unchanged. Arms: commander point (unchanged),
   2g hero XP (unchanged), NEW with UE active: pay 4 gold → a chosen army unit
-  card gains +2 unit XP.
+  card gains +2 unit XP (the shared `armyUnitXpChoiceStep`, so the arm is absent
+  with the rule off OR an empty army).
 - **mirror_home_way** — price by destination band: 1 gold to a Town/Settlement
   on a starting/far tile, 3 gold to near/center. Same teleport machinery.
+  WAVE-4 AMENDMENTS: the fare cannot ride one PAY_TO, so the menu carries ONE
+  PAY_TO arm PER PRICE TIER reachable, each containing only its own tier's
+  destination CHOOSE_ONE. `subterranean`/`sea` — and a destination whose tile
+  cannot be resolved at all (legacy / hand-built snapshots) — are priced at the
+  DEARER tier: missing data must never hand out a discount.
 - **junk_merchant** — sells + 4g search unchanged; NEW "trade-in": swap a hand
   Artifact for the TOP card of the Artifact discard + 1 gold (arm absent with
   no hand Artifact or an empty discard); NEW once per player per game (claim
   latch) "mystery crate": pay 5 gold → Attack die: +1 → Search(1) Artifact +
   2 gold back; 0 → Search(1) Artifact; −1 → 2 gold back only.
+  WAVE-4 AMENDMENTS: the trade-in is ONE arm per hand Artifact and uses
+  `sharedDeckIdForCard`, so on BINH's SPLIT piles the swap happens inside that
+  card's own TIER pile; the ZONE DANCE is pop-then-push (the old top goes to
+  hand, the traded card becomes the new face-up top) so nothing leaves the game
+  and the pile depth is unchanged — unlike `SELL_HAND_ARTIFACT`, which removes.
+  The crate's `MARK_FIELD_CLAIMED` is the FIRST step INSIDE its PAY_TO: it
+  therefore latches on every die face (no per-branch duplication to forget) but
+  never on a Decline, since a declined PAY_TO runs none of its steps.
 - **fishing_well** — escalating catch: pay 1 gold to fish (once per visit);
   your catch grows with YOUR consecutive-round streak (`wogFishingStreaks`:
   per-player {round, streak}; a skipped round resets to 1): streak 1 → +1
   valuables; 2 → +2 valuables; 3 → 1 Treasure die AND the well runs dry for
   EVERYONE (`wogWellDry` global latch). Static die table replaced by a dynamic
   menu.
+  WAVE-4 AMENDMENTS: "once per visit" is implemented as once per player per
+  GAME ROUND (`fieldRoundClaims`) — a second visit in the same round gets NO
+  menu at all, so it can neither fish again nor advance the streak. The location
+  leaves its static PAY_TO + ATTACK_DIE_TABLE for `interaction: NONE`; no
+  Attack die is rolled by this object any more. The streak and the payout are
+  both computed by ONE helper (`wogFishingNextStreak`) at menu-build AND at
+  resolution, so the label can never drift from the catch.
 - **living_skull** — Listen unchanged. Smash: +2 gold, the skull falls silent
   (latch kept) AND an angry spirit re-guards the hex at Ⅱ; whoever beats it
   gets Search(1) Ability and the hex is then inert for good.
+  WAVE-4 AMENDMENTS: the Ⅱ guard is stamped INSIDE `SMASH_WOG_SKULL` (not as a
+  sibling step) so latch and guard can never desync. The spirit's reward is a
+  dedicated `beginFieldVisit` branch placed BEFORE the generic Field-Override
+  guard clear (which would otherwise wipe the spirit and pay nothing), reading
+  "smashed latch + guard still standing" as "just beaten" — the same convention
+  `handleEscalatingFightVisit` uses. Nothing re-stamps the guard, so the hex is
+  inert for good afterwards; a smashed skull whose spirit nobody fought simply
+  stays a guarded hex under normal movement rules.
 - **adventure_cave** — ladder: win 1 +3 gold; win 2 a FIXED Stack Token
   (player picks the stat: +1 Attack/Defense/Health or +2 Initiative) onto a
   chosen army unit card without one; win 3 Search(1) Artifact + the
   commander-artifact rider (unchanged).
+  WAVE-4 AMENDMENTS: the pick is NESTED (card, then stat). The outer level
+  carries a Decline arm; the inner stat pick deliberately does not — all four
+  arms are a pure gain and the refusal already happened one level up. With no
+  eligible card (empty army, or every card already Stacked) the old Treasure die
+  remains the fall-back.
 - **altar_of_gods** — offering menu unchanged, plus a GREATER SACRIFICE arm
   (needs ≥2 army unit cards — never strands an army): permanently remove one
   chosen army unit card → choose: (+1 commander stat point AND +1 morale)
   [commander arm filtered as today] or +4 hero XP.
+  WAVE-4 AMENDMENT: removal reuses the Heavenly Tribulation toll's semantics
+  (`TRIBULATION_LOSE_UNIT`) — the CARD leaves `player.army` (a Pack does NOT
+  flip to Few) and a Neutral-side card recycles to its tier's Neutral discard
+  pile. The ≥2 gate is re-checked at resolution.
 
 ## Rollout waves
 1. New props/steps + flagships: wager (bi_canh, dungeon_gate), pot den, planted

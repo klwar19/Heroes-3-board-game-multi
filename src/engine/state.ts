@@ -10517,6 +10517,62 @@ export type VisitStep =
        */
       type: "SPEND_MORALE_TOKEN";
     }
+  | {
+      /**
+       * FO redesign wave 4 — Junk Merchant (`wog.junk_merchant`) "trade-in":
+       * SWAP this hand Artifact for the face-up TOP card of the shared Artifact
+       * discard pile it belongs to (`sharedDeckIdForCard`, so a split-deck game
+       * trades within the same tier pile) and gain 1 gold. Zone dance at
+       * resolution: the discard's top card is POPPED into the hand, then the
+       * traded-away card is PUSHED onto that same discard (becoming the new
+       * face-up top). Nothing leaves the game. Re-read at resolution, so an
+       * emptied discard is a clean no-op. Auto-resolves.
+       */
+      type: "TRADE_IN_HAND_ARTIFACT";
+      cardId: CardId;
+    }
+  | {
+      /**
+       * FO redesign wave 4 — Fishing Well (`wog.fishing_well`): advance the
+       * visitor's CONSECUTIVE-round fishing streak on the visited field
+       * ({@link MapFieldState.wogFishingStreaks}) and pay the catch for the new
+       * streak: 1 → +1 valuables, 2 → +2 valuables, 3 → one Treasure die AND
+       * {@link MapFieldState.wogWellDry} (the well is inert for EVERYONE from
+       * then on, mirroring the smashed skull). The streak continues only when
+       * the recorded round is exactly the previous game round; anything else
+       * restarts at 1. Everything is recomputed here, so the menu label and the
+       * payout can never drift. Auto-resolves (the 3rd catch unshifts the
+       * standard Treasure-die pick).
+       */
+      type: "ADVANCE_FISHING_STREAK";
+    }
+  | {
+      /**
+       * FO redesign wave 4 — Adventure Cave (`wog.adventure_cave`) 2nd win:
+       * place a FIXED rulebook Stack Token of the CHOSEN stat on one army unit
+       * card that has none ({@link ArmyUnitState.stackToken} — +1 Attack /
+       * Defense / Health or +2 Initiative, folded by `makeCombatUnitFromArmy`
+       * and absorbing one lethal blow). Validated at resolution: the card must
+       * still exist and still be token-free. Auto-resolves.
+       */
+      type: "GRANT_STACK_TOKEN";
+      armyUnitId: string;
+      stat: StackTokenStat;
+    }
+  | {
+      /**
+       * FO redesign wave 4 — Altar of the Gods (`wog.altar_of_gods`) GREATER
+       * SACRIFICE: permanently remove one chosen army unit card from
+       * `player.army`. A Pack does NOT flip to Few here — the CARD leaves. Same
+       * removal semantics as the Heavenly Tribulation toll
+       * (`TRIBULATION_LOSE_UNIT`): a Neutral-side card recycles to its tier's
+       * Neutral discard pile. Only ever built while the army holds ≥2 cards, and
+       * re-gated here, so a sacrifice can never strand an empty army.
+       * Auto-resolves.
+       */
+      type: "SACRIFICE_ARMY_UNIT";
+      armyUnitId: string;
+    }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {
       /**
