@@ -114,20 +114,38 @@ damage exists).
 ### Isekai (anime-isekai)
 - **capsule_lab** — War Machine shop unchanged; NEW once per player per game
   (claim latch): "Prototype gadget" — pay 3 gold → roll 2 Treasure dice.
+  WAVE-3 AMENDMENTS: `ROLL_TREASURE_DICE count: 2` is the engine's standard
+  roll-2-keep-1 pick (the player chooses one result), and the arm is hidden at
+  MENU-BUILD time when unaffordable (matching the wave-2 build-time filters)
+  rather than shown as a PAY_TO with only Decline.
 - **urahara_shop** — paid arms unchanged (3g artifact search / 1g treasure
   die); NEW "free curio, on credit": Search(1) Artifact now + `uraharaDebt`
   latch on the player; at the player's next Resource-round income the debt
   collects — pay 3 gold, or (if short) a seeded-random hand card is discarded.
-  Arm absent while a debt is outstanding.
+  Arm absent while a debt is outstanding. WAVE-3 AMENDMENTS: the discarded card
+  goes to the player's OWN discard pile (it does not leave the game); the two
+  PAID arms keep their PAY_TO affordability gate (present even when broke, with
+  Decline only) since the wave brief demanded they be reproduced exactly; and a
+  debtor with NEITHER 3 gold NOR a card in hand has the debt FORGIVEN (cleared
+  with a feed note) — a debt is never collected twice and never becomes a tax.
 - **onsen_ryokan** — "Full course" (once per player per game round, round
   latch): +1 morale AND +1 movement. Always available: "Quick dip" +1 movement.
+  WAVE-3 AMENDMENT: the inn moves from `visitable` to `revisitable` — a
+  once-per-ROUND arm is dead on a hex that takes a Black Cube after one visit.
+  It is not in `HERO_GRADE_MERIT_HEX_LOCATION_IDS`, so the flip opens no Merit
+  farming; the visitable/revisitable category pins were rewritten accordingly.
 - **dungeon_gate** — WAGER Ⅰ–Ⅳ. Ladder: Ⅰ +2 gold; Ⅱ 1 Treasure die; Ⅲ
   Search(1) Artifact; Ⅳ one Grade-II equipment grant (equipment module on;
   otherwise Search(1) Artifact + 2 gold). One clear, then spent.
 - **guild_bounty** — small job unchanged (+2 gold once per player, ever;
   legacy `animeBountyClaimedBy` latch kept). Paid search unchanged. NEW "guild
   quest" arm, offered only while the visitor holds a POSITIVE morale token:
-  spend 1 morale → +4 gold and Search(1) Ability.
+  spend 1 morale → +4 gold and Search(1) Ability. WAVE-3 AMENDMENT: the spend is
+  a dedicated `SPEND_MORALE_TOKEN` step, NOT `GAIN_MORALE: -1` — the GAIN_MORALE
+  visit-step case consumes the Crest of Valor's ignore-a-FIELD-negative shield,
+  which would have made the quest free for a Crest holder. LIMIT: with the
+  optional Morale Cards rule ON `player.morale` is pinned to 0 (tokens become
+  cards), so the arm never appears in a Morale-Cards game.
 - **adventurer_outfitter** — shop unchanged + the shared reforge arm (see
   ren_binh_cac).
 

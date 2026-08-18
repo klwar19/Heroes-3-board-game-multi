@@ -7155,6 +7155,23 @@ function buildAnimeFieldVisitSteps(
         steps: [{ type: "GAIN_RESOURCES", gold: 2 }, { type: "MARK_ANIME_BOUNTY_CLAIMED" }]
       });
     }
+    // FO redesign wave 3 — the GUILD QUEST arm: repeatable (no latch), but it
+    // costs a POSITIVE MORALE TOKEN, so it is offered only while the visitor
+    // actually holds one (`player.morale >= 1`; never a dead button, and the
+    // held-token cap of +1 means at most one quest per token gained). The spend
+    // rides the dedicated SPEND_MORALE_TOKEN step, NOT `GAIN_MORALE: -1` —
+    // the GAIN_MORALE case burns the Crest of Valor's field-negative-morale
+    // shield, which would hand a Crest holder the quest for free.
+    if (player.morale >= 1) {
+      options.push({
+        label: "Take a guild quest — spend 1 positive morale: gain 4 gold and Search (1) the Ability deck",
+        steps: [
+          { type: "SPEND_MORALE_TOKEN" },
+          { type: "GAIN_RESOURCES", gold: GUILD_QUEST_GOLD_REWARD },
+          { type: "SEARCH_SHARED_DECK", deckId: "abilities", count: 1 }
+        ]
+      });
+    }
     options.push({
       label: "Pay 2 gold: Search (1) the Ability deck",
       steps: [
@@ -7297,6 +7314,126 @@ function buildAnimeFieldVisitSteps(
     return [{ type: "CHOOSE_ONE", prompt: "Đài Luyện Khí (Qi Refinement Platform):", options }];
   }
 
+  // -------------------------------------------------------------------------
+  // FO redesign wave 3 — the isekai objects (dungeon_gate is a wager site, see
+  // handleWagerObjectVisit; guild_bounty's quest arm is in its branch above).
+  // -------------------------------------------------------------------------
+
+  if (locationId === "anime.capsule_lab") {
+    // Capsule Corp Lab: the WAR_MACHINE_SHOP (the location's own printed
+    // interaction) is UNTOUCHED — this arm is APPENDED beside it. Once per
+    // player, EVER (the generic claim latch): pay 3 gold for a prototype
+    // capsule → roll 2 Treasure dice. Hidden once claimed OR unaffordable, so
+    // the visit is byte-identical to the old pure-shop one in both cases
+    // (matching the wave-2 build-time affordability filters — Sòng Bạc Quán's
+    // stakes, the reforge bench — rather than a PAY_TO with only Decline).
+    if (
+      field.fieldClaimedBy?.includes(playerId) ||
+      (player.resources.gold ?? 0) < CAPSULE_GADGET_GOLD_COST
+    ) {
+      return null;
+    }
+    return [
+      {
+        type: "CHOOSE_ONE",
+        prompt: "Capsule Corp Lab — Bulma has one experimental capsule on the bench.",
+        options: [
+          {
+            label: `Prototype gadget — pay ${CAPSULE_GADGET_GOLD_COST} gold to roll ${CAPSULE_GADGET_TREASURE_DICE} Treasure dice and keep one result (once per player, ever)`,
+            steps: [
+              {
+                type: "PAY_TO",
+                prompt: `Pay ${CAPSULE_GADGET_GOLD_COST} gold for the prototype capsule?`,
+                costOptions: [{ gold: CAPSULE_GADGET_GOLD_COST }],
+                steps: [
+                  { type: "ROLL_TREASURE_DICE", count: CAPSULE_GADGET_TREASURE_DICE },
+                  { type: "MARK_FIELD_CLAIMED" }
+                ]
+              }
+            ]
+          },
+          { label: "Leave the bench alone", steps: [] }
+        ]
+      }
+    ];
+  }
+
+  if (locationId === "anime.urahara_shop") {
+    // Urahara's Shop: the two PAID arms are reproduced here VERBATIM from the
+    // old static CHOOSE_ONE (3 gold → Search (1) Artifact; 1 gold → 1 Treasure
+    // die), including their PAY_TO affordability gate — a broke visitor still
+    // sees the arm and is offered only Decline inside it. The location moved to
+    // a NONE base purely so the NEW credit arm can be gated on live state.
+    const options: { label: string; steps: VisitStep[] }[] = [
+      {
+        label: "Buy a curio — pay 3 gold to Search (1) the Artifact deck",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Pay 3 gold for a curio?",
+            costOptions: [{ gold: 3 }],
+            steps: [{ type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }]
+          }
+        ]
+      },
+      {
+        label: "Bargain bin — pay 1 gold to roll 1 Treasure die",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Pay 1 gold to rummage the bargain bin?",
+            costOptions: [{ gold: 1 }],
+            steps: [{ type: "ROLL_TREASURE_DICE", count: 1 }]
+          }
+        ]
+      }
+    ];
+    // NEW — "free curio, on credit": the Search happens NOW and the debt latches
+    // on the PLAYER (not the field), collected at their next Resource-round
+    // income. Absent while a debt is still outstanding, so credit can never be
+    // stacked.
+    if (!player.uraharaDebt) {
+      options.push({
+        label:
+          "Take a curio on credit — Search (1) the Artifact deck now; Urahara collects 3 gold (or one random hand card) at your next Resources round",
+        steps: [
+          { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 },
+          { type: "SET_URAHARA_DEBT" }
+        ]
+      });
+    }
+    options.push({ label: "Leave", steps: [] });
+    return [{ type: "CHOOSE_ONE", prompt: "Urahara's Shop:", options }];
+  }
+
+  if (locationId === "anime.onsen_ryokan") {
+    // Hot Spring Inn: the full course is once per player per GAME ROUND (the
+    // generic round latch), so the hex had to leave the `visitable` (Black Cube)
+    // class — a once-per-round arm is meaningless on a hex that cubes forever
+    // after one visit. It is `revisitable` now (1 MP to reuse, no cube); it is
+    // NOT in HERO_GRADE_MERIT_HEX_LOCATION_IDS, so no Merit farming opens up.
+    const claimedThisRound =
+      field.fieldRoundClaims?.round === state.round &&
+      field.fieldRoundClaims.playerIds.includes(playerId);
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    if (!claimedThisRound) {
+      options.push({
+        label: "Full onsen course — gain 1 positive morale AND 1 movement (once per game round)",
+        steps: [
+          { type: "GAIN_MORALE", amount: 1 },
+          { type: "GAIN_MOVEMENT", amount: 1 },
+          { type: "MARK_FIELD_ROUND_CLAIMED" }
+        ]
+      });
+    }
+    options.push({
+      label: "Quick dip — gain 1 movement this turn",
+      steps: [{ type: "GAIN_MOVEMENT", amount: 1 }]
+    });
+    options.push({ label: "Leave", steps: [] });
+    return [{ type: "CHOOSE_ONE", prompt: "Hot Spring Inn (Onsen):", options }];
+  }
+
   return null;
 }
 
@@ -7304,6 +7441,13 @@ function buildAnimeFieldVisitSteps(
 const KIEM_TRUNG_UNIT_XP = 2;
 /** Thí Luyện Tháp's 2nd-win teaching (Unit Experience on only). */
 const TRIAL_TOWER_UNIT_XP = 3;
+/** FO redesign wave 3 — the Capsule Corp Lab prototype bench (once per player, ever). */
+const CAPSULE_GADGET_GOLD_COST = 3;
+const CAPSULE_GADGET_TREASURE_DICE = 2;
+/** FO redesign wave 3 — the Guild Bounty Board's morale-funded quest payout. */
+const GUILD_QUEST_GOLD_REWARD = 4;
+/** FO redesign wave 3 — Urahara's credit: gold owed at the next Resources round. */
+const URAHARA_DEBT_GOLD = 3;
 /** The Guild Post contract pays DOUBLE the market gold rate. */
 const GUILD_CONTRACT_RATE_MULTIPLIER = 2;
 /** The resource kinds a Guild Post contract can ask for (gold-for-gold is no trade). */
@@ -7319,6 +7463,61 @@ const GUILD_CONTRACT_RESOURCES = ["buildingMaterials", "valuables"] as const;
 function guildContractResourceFor(state: GameState): (typeof GUILD_CONTRACT_RESOURCES)[number] {
   const random = createSeededRandom(`${state.seed}#guild-contract#${state.round}`);
   return GUILD_CONTRACT_RESOURCES[random.nextInt(0, GUILD_CONTRACT_RESOURCES.length - 1)];
+}
+
+/**
+ * FO redesign wave 3 — collect Urahara's credit at a player's Resource-round
+ * income. Called for EVERY player from the same chokepoint as the Little Busters
+ * school contribution (after every automatic income source has paid), never
+ * gated on a faction. No debt ⇒ an exact no-op.
+ *
+ * The shopkeeper takes `URAHARA_DEBT_GOLD` when the purse covers it; short of
+ * gold he takes ONE seeded-random card out of the hand into the player's OWN
+ * discard pile (recoverable by the normal reshuffle/search paths — it does not
+ * leave the game). The seed is a DIRECT `createSeededRandom` off the game seed +
+ * round + player, never `adventureRandom`: income runs for every seat in one
+ * pass and must not consume the shared event-seeded stream.
+ *
+ * DOCUMENTED LIMIT: an empty hand AND too little gold ⇒ the debt is simply
+ * FORGIVEN (cleared with a feed note). Nothing carries over — a debt is never
+ * collected twice and never becomes a permanent tax.
+ */
+function collectUraharaDebt(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  if (!player?.uraharaDebt) {
+    return;
+  }
+  delete player.uraharaDebt;
+  const name = eventPlayerName(state, playerId);
+  if ((player.resources.gold ?? 0) >= URAHARA_DEBT_GOLD) {
+    player.resources.gold -= URAHARA_DEBT_GOLD;
+    appendEvent(state, { type: "RESOURCES_SPENT", playerId, cost: { gold: URAHARA_DEBT_GOLD } });
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${name} settles Urahara's account: ${URAHARA_DEBT_GOLD} gold collected.`
+    });
+    return;
+  }
+  if (player.hand.length > 0) {
+    const random = createSeededRandom(`${state.seed}#urahara-debt#${state.round}#${playerId}`);
+    const index = random.nextInt(0, player.hand.length - 1);
+    const [cardId] = player.hand.splice(index, 1);
+    player.discard.push(cardId);
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${name} cannot pay Urahara's ${URAHARA_DEBT_GOLD} gold — he takes ${
+        cardLibrary[cardId]?.name ?? cardId
+      } from their hand instead (discarded).`
+    });
+    return;
+  }
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    playerId,
+    message: `${name} has neither gold nor cards — Urahara writes the debt off.`
+  });
 }
 
 /**
@@ -8223,6 +8422,39 @@ export function processPendingVisit(state: GameState): void {
           } else {
             changeMorale(state, visit.playerId, 1);
           }
+        }
+        break;
+      }
+      case "SET_URAHARA_DEBT": {
+        // FO redesign wave 3 — Urahara's Shop, "free curio on credit". The latch
+        // rides the PLAYER (not the field), so walking away does not shake it;
+        // it is collected at this player's next Resource-round income
+        // (collectUraharaDebt, called from the Little Busters contribution seam).
+        const debtor = state.players[visit.playerId];
+        if (debtor && !debtor.uraharaDebt) {
+          debtor.uraharaDebt = true;
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} takes a curio from Urahara on credit — ${URAHARA_DEBT_GOLD} gold (or a random card) comes due at their next Resources round.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "SPEND_MORALE_TOKEN": {
+        // FO redesign wave 3 — the Guild Bounty Board's quest cost. Straight
+        // through `changeMorale`, deliberately NOT the GAIN_MORALE case: that one
+        // consumes the Crest of Valor's "ignore a FIELD's negative morale" shield,
+        // and this token is a cost the player CHOSE to pay, not a field penalty.
+        // Re-gated here so a stale step can never push a player below zero.
+        const spender = state.players[visit.playerId];
+        if (spender && spender.morale >= 1) {
+          changeMorale(state, visit.playerId, -1);
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} spends a positive morale token on a guild quest.`,
+            visit.playerId
+          );
         }
         break;
       }
@@ -17190,6 +17422,12 @@ export function startAdventureRound(state: GameState): void {
         message: `School contribution fund: ${contribution} gold paid${contribution < 4 ? " (all available gold)" : ""}.`
       });
     }
+
+    // FO redesign wave 3 — Urahara's Shop credit. Collected at the SAME income
+    // chokepoint as the Little Busters contribution (after every automatic
+    // Resource-round source has paid) but for EVERY player carrying a debt,
+    // whatever their faction.
+    collectUraharaDebt(state, playerId);
   }
 
   // A designed Market day belongs after collection of resources. Queue only

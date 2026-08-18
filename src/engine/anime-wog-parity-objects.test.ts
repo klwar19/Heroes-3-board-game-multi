@@ -39,6 +39,7 @@ import { beginFieldVisit, getMainHero } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { getLegalActions } from "./legal-actions";
 import { chooseComputerAction } from "./computer/policy";
+import { consumeIgnoreFieldNegativeMorale, makeActiveEffect } from "./active-effects";
 import type { GameAction, GameState, MapFieldState, PlayerId, VisitStep } from "./state";
 
 const FIELD_ID = "50,50";
@@ -574,6 +575,101 @@ describe("Guild Bounty Board (anime.guild_bounty)", () => {
     expect(resolves.some((a) => (a.action as { optionIndex?: number }).optionIndex !== undefined)).toBe(false);
     expect(resolves.some((a) => (a.action as { decline?: boolean }).decline === true)).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // FO redesign wave 3 — the GUILD QUEST arm: spend a positive morale token for
+  // +4 gold and Search (1) Ability. Repeatable (no latch), offered only while
+  // the visitor holds a token.
+  // -------------------------------------------------------------------------
+  it("Guild quest: morale 1 → 0, +4 gold, one Ability search queued", () => {
+    const state = animeGame({ seed: "gq-basic" });
+    const player = state.players.p1;
+    player.resources = { gold: 1, buildingMaterials: 0, valuables: 0 };
+    player.morale = 1;
+    injectField(state, "anime.guild_bounty");
+
+    visit(state);
+    chooseByLabel(state, (l) => l.includes("guild quest"));
+
+    expect(player.morale).toBe(0); // the token was genuinely spent
+    expect(player.resources.gold).toBe(5); // +4
+    expect(queuedSearches(state, "abilities")).toBe(1);
+  });
+
+  it("CONTROL: with no positive morale token the quest arm is absent", () => {
+    const state = animeGame({ seed: "gq-nomorale" });
+    const player = state.players.p1;
+    player.resources = { gold: 1, buildingMaterials: 0, valuables: 0 };
+    player.morale = 0;
+    injectField(state, "anime.guild_bounty");
+
+    visit(state);
+    expect(menu(state).options.some((o) => o.label.includes("guild quest"))).toBe(false);
+    // The untouched arms are still there.
+    expect(menu(state).options.some((o) => o.label.includes("Claim"))).toBe(true);
+    expect(menu(state).options.some((o) => o.label.includes("Pay 2 gold"))).toBe(true);
+  });
+
+  it("repeatable: two tokens fund two quests (+8 gold, two searches, morale back to 0)", () => {
+    const state = animeGame({ seed: "gq-repeat" });
+    const player = state.players.p1;
+    player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    // The positive token caps at +1, so a second quest needs a token re-gained
+    // between the two visits — that is what "repeatable, no latch" means here.
+    player.morale = 1;
+    injectField(state, "anime.guild_bounty");
+
+    visit(state);
+    chooseByLabel(state, (l) => l.includes("guild quest"));
+    expect(player.morale).toBe(0);
+    player.morale = 1; // token re-gained (a second morale token)
+
+    visit(state);
+    expect(menu(state).options.some((o) => o.label.includes("guild quest")), "no once-ever latch").toBe(true);
+    chooseByLabel(state, (l) => l.includes("guild quest"));
+
+    expect(player.morale).toBe(0);
+    expect(player.resources.gold).toBe(8);
+    expect(queuedSearches(state, "abilities")).toBe(2);
+  });
+
+  it("the quest costs the token even for a CREST OF VALOR holder (it is not a field penalty)", () => {
+    // DECISION (FO redesign wave 3): the quest spend rides a dedicated
+    // SPEND_MORALE_TOKEN step, NOT `GAIN_MORALE: -1`. The GAIN_MORALE case
+    // consumes the Crest of Valor's "ignore ONE negative morale token from a
+    // Field" shield, which would have handed a Crest holder +4 gold and a search
+    // for free. The Crest is a shield against a field's PENALTY; this token is a
+    // price the player chose to pay, so the shield must stay unspent.
+    const state = animeGame({ seed: "gq-crest" });
+    const player = state.players.p1;
+    player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    player.morale = 1;
+    // Arm a REAL Crest of Valor shield (the same active effect the card creates).
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Crest of Valor",
+          scope: "player",
+          duration: { type: "current-turn" },
+          polarity: "positive",
+          modifiers: [{ type: "IGNORE_FIELD_NEGATIVE_MORALE" }]
+        },
+        { type: "card", cardId: "artifact.crest_of_valor", controllerId: "p1" },
+        "p1"
+      )
+    );
+    injectField(state, "anime.guild_bounty");
+
+    visit(state);
+    chooseByLabel(state, (l) => l.includes("guild quest"));
+
+    expect(player.morale, "the Crest did NOT absorb the quest's cost").toBe(0);
+    expect(player.resources.gold).toBe(4);
+    // No shield charge was burned — it is still armed for a real field penalty.
+    expect(state.eventLog.some((e) => e.type === "FIELD_MORALE_IGNORED")).toBe(false);
+    expect(consumeIgnoreFieldNegativeMorale(state, "p1"), "the shield is intact").toBe(true);
+  });
 });
 
 // ===========================================================================
@@ -686,6 +782,17 @@ describe("computer policy resolves the anime WOG-parity menus (no stall)", () =>
       const action = decideOn(state);
       expect(action?.type, kind).toBe("RESOLVE_VISIT_STEP");
     }
+  });
+
+  it("resolves the Guild Bounty menu with the wave-3 QUEST arm present (no stall)", () => {
+    const state = animeGame({ seed: "ai-gq" });
+    state.round = 3;
+    state.players.p1.resources = { gold: 20, buildingMaterials: 0, valuables: 0 };
+    state.players.p1.morale = 1;
+    injectField(state, "anime.guild_bounty");
+    visit(state);
+    expect(menu(state).options.some((o) => o.label.includes("guild quest"))).toBe(true);
+    expect(decideOn(state)?.type).toBe("RESOLVE_VISIT_STEP");
   });
 
   it("the escalating reward auto-resolves without a player window (Trial Tower); a won wager floor Ⅰ does too (Dungeon Gate)", () => {

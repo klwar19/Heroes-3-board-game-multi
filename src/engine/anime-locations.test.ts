@@ -3,7 +3,8 @@ import type { GameAction, GameState, MapFieldState, VisitStep } from "./state";
 import {
   beginFieldVisit,
   classifyHeroStep,
-  getMainHero
+  getMainHero,
+  startAdventureRound
 } from "./adventure";
 import { carveFieldOverride } from "./field-overrides";
 import { resolveVisitStep, startNeutralEncounter } from "./adventure-reducer";
@@ -122,6 +123,18 @@ function lastAttackRoll(state: GameState): number {
 }
 
 /** Anime map-objects content gate ON (the dynamic FO menus require it). */
+/** How many Treasure dice the last Treasure roll actually threw (event log). */
+function lastTreasureRollCount(state: GameState): number {
+  const rolled = [...state.eventLog]
+    .reverse()
+    .find((e) => e.type === "ADVENTURE_DICE_ROLLED" && (e as { dice?: string }).dice === "treasure");
+  const rolls = (rolled as { treasureRolls?: unknown[] } | undefined)?.treasureRolls;
+  if (!rolls) {
+    throw new Error("no Treasure-die roll in the event log");
+  }
+  return rolls.length;
+}
+
 function enableAnime(state: GameState): void {
   (state as { anime?: { enabled: boolean } }).anime = { enabled: true };
 }
@@ -283,26 +296,38 @@ describe("Qi Refinement Platform (anime.dai_luyen_khi)", () => {
 });
 
 // ===========================================================================
-// Hot Spring Inn / Onsen — CHOOSE_ONE (morale vs movement) distinct outcomes
+// Hot Spring Inn / Onsen — FO redesign wave 3 (2026-08-19).
+// The old pins ("Long soak raises morale but NOT movement" / "Quick dip raises
+// movement but NOT morale") described the RETIRED static CHOOSE_ONE. The inn now
+// builds its menu at visit time: a "Full onsen course" pays BOTH (+1 morale AND
+// +1 movement) once per player per GAME ROUND (field.fieldRoundClaims), and the
+// "Quick dip" (+1 movement) is always available. The hex also LEFT the
+// `visitable` (Black Cube) class for `revisitable` — a once-per-round arm is
+// meaningless on a hex that closes forever after one visit.
 // ===========================================================================
 describe("Hot Spring Inn (anime.onsen_ryokan)", () => {
-  it("Long soak raises morale but NOT movement", () => {
-    const state = makeGame("onsen-soak");
+  it("Full onsen course pays +1 morale AND +1 movement, and latches the round", () => {
+    const state = makeGame("onsen-course");
+    enableAnime(state);
+    state.round = 4;
     const player = state.players.p1;
     player.morale = 0;
     const hero = getMainHero(state, "p1")!;
     hero.movementPoints = 3;
-    injectField(state, "anime.onsen_ryokan");
+    const field = injectField(state, "anime.onsen_ryokan");
 
     visit(state);
-    chooseByLabel(state, (l) => l.includes("Long soak"));
+    chooseByLabel(state, (l) => l.includes("Full onsen course"));
 
     expect(player.morale).toBe(1);
-    expect(hero.movementPoints).toBe(3); // CONTROL: the movement branch did not run
+    expect(hero.movementPoints).toBe(4); // BOTH halves ran (the wave-3 change)
+    expect(field.fieldRoundClaims).toEqual({ round: 4, playerIds: ["p1"] });
   });
 
-  it("Quick dip raises movement but NOT morale (the distinct sibling outcome)", () => {
-    const state = makeGame("onsen-dip");
+  it("CONTROL: the same round the full course is GONE; the quick dip still pays movement only", () => {
+    const state = makeGame("onsen-relatch");
+    enableAnime(state);
+    state.round = 4;
     const player = state.players.p1;
     player.morale = 0;
     const hero = getMainHero(state, "p1")!;
@@ -310,10 +335,49 @@ describe("Hot Spring Inn (anime.onsen_ryokan)", () => {
     injectField(state, "anime.onsen_ryokan");
 
     visit(state);
-    chooseByLabel(state, (l) => l.includes("Quick dip"));
+    chooseByLabel(state, (l) => l.includes("Full onsen course"));
+    expect(player.morale).toBe(1);
 
-    expect(hero.movementPoints).toBe(4);
-    expect(player.morale).toBe(0); // CONTROL: the morale branch did not run
+    // Same game round, second visit: only the quick dip + Leave remain.
+    player.morale = 0;
+    visit(state);
+    const menu = firstStep(state) as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(menu.options.some((o) => o.label.includes("Full onsen course"))).toBe(false);
+    expect(menu.options.some((o) => o.label.includes("Quick dip"))).toBe(true);
+    chooseByLabel(state, (l) => l.includes("Quick dip"));
+    expect(hero.movementPoints).toBe(5);
+    expect(player.morale).toBe(0); // CONTROL: the dip never pays morale
+  });
+
+  it("the NEXT game round re-offers the full course (the latch is per round, not per game)", () => {
+    const state = makeGame("onsen-next-round");
+    enableAnime(state);
+    state.round = 4;
+    state.players.p1.morale = 0;
+    injectField(state, "anime.onsen_ryokan");
+
+    visit(state);
+    chooseByLabel(state, (l) => l.includes("Full onsen course"));
+    state.players.p1.morale = 0;
+
+    state.round = 5;
+    visit(state);
+    const menu = firstStep(state) as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(menu.options.some((o) => o.label.includes("Full onsen course"))).toBe(true);
+    chooseByLabel(state, (l) => l.includes("Full onsen course"));
+    expect(state.players.p1.morale).toBe(1);
+  });
+
+  it("the inn NEVER takes a black cube (it left the visitable class in the redesign)", () => {
+    const state = makeGame("onsen-nocube");
+    enableAnime(state);
+    const field = carveAt(state, "onsen_ryokan");
+    const hero = getMainHero(state, "p1")!;
+    visit(state);
+    expect(field.blackCube).toBe(false);
+    chooseByLabel(state, (l) => l.includes("Quick dip"));
+    expect(field.blackCube).toBe(false);
+    expect(classifyHeroStep(state, hero, FIELD_ID)).toBe("stop"); // reusable, never inert
   });
 });
 
@@ -365,14 +429,78 @@ describe("Capsule Corp Lab (anime.capsule_lab)", () => {
     expect(next.players.p1.hand).toContain("war_machine.ballista");
     expect(next.players.p1.resources.gold).toBeLessThan(7); // paid for it
   });
+
+  // FO redesign wave 3: the prototype bench appended BESIDE the untouched shop.
+  it("Prototype gadget: the shop step is still first, then 3 gold buys exactly TWO Treasure dice and latches", () => {
+    const state = makeGame("capsule-gadget");
+    enableAnime(state);
+    const player = state.players.p1;
+    player.resources = { gold: 9, buildingMaterials: 0, valuables: 0 };
+    const field = injectField(state, "anime.capsule_lab");
+
+    visit(state);
+    // The printed WAR_MACHINE_SHOP is untouched and still resolves FIRST.
+    expect(firstStep(state)?.type).toBe("WAR_MACHINE_SHOP");
+    expect(state.adventure!.pendingVisit!.steps[1]?.type).toBe("CHOOSE_ONE");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true }); // leave the factory
+
+    chooseByLabel(state, (l) => l.includes("Prototype gadget"));
+    expect(firstStep(state)?.type).toBe("PAY_TO");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 }); // pay 3
+
+    expect(player.resources.gold).toBe(6); // exactly 3 gold left the purse
+    expect(lastTreasureRollCount(state), "exactly 2 Treasure dice thrown").toBe(2);
+    // Count 2 / resolve 1: the engine opens the standard "choose one result" pick.
+    chooseByLabel(state, () => true);
+    expect(field.fieldClaimedBy, "the once-ever latch closed").toEqual(["p1"]);
+  });
+
+  it("CONTROL: the same player's next visit has no gadget arm (shop only); ANOTHER player is still offered it", () => {
+    const state = makeGame("capsule-latch");
+    enableAnime(state);
+    state.players.p1.resources = { gold: 9, buildingMaterials: 0, valuables: 0 };
+    state.players.p2.resources = { gold: 9, buildingMaterials: 0, valuables: 0 };
+    const field = injectField(state, "anime.capsule_lab");
+    field.fieldClaimedBy = ["p1"]; // p1 already used the bench
+
+    visit(state);
+    expect(state.adventure!.pendingVisit!.steps.map((s) => s.type)).toEqual(["WAR_MACHINE_SHOP"]);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true });
+
+    const p2Hero = getMainHero(state, "p2")!;
+    p2Hero.spaceId = FIELD_ID;
+    beginFieldVisit(state, p2Hero.id, FIELD_ID, false);
+    const steps = state.adventure!.pendingVisit!.steps;
+    expect(steps.map((s) => s.type)).toEqual(["WAR_MACHINE_SHOP", "CHOOSE_ONE"]);
+    expect(
+      (steps[1] as Extract<VisitStep, { type: "CHOOSE_ONE" }>).options.some((o) =>
+        o.label.includes("Prototype gadget")
+      ),
+      "the latch is per player"
+    ).toBe(true);
+  });
+
+  it("CONTROL: under 3 gold the gadget arm is absent (the visit is the old pure shop)", () => {
+    const state = makeGame("capsule-broke");
+    enableAnime(state);
+    state.players.p1.resources = { gold: 2, buildingMaterials: 0, valuables: 0 };
+    injectField(state, "anime.capsule_lab");
+    visit(state);
+    expect(state.adventure!.pendingVisit!.steps.map((s) => s.type)).toEqual(["WAR_MACHINE_SHOP"]);
+  });
 });
 
 // ===========================================================================
-// Urahara's Shop — CHOOSE_ONE of two PAY_TO arms (curio / bargain bin)
+// Urahara's Shop — the two PAY_TO arms (curio / bargain bin) are UNCHANGED by
+// the FO redesign wave 3; the location just moved from a static CHOOSE_ONE to a
+// dynamically built one so the NEW "on credit" arm can be gated on live state.
+// The two pins below are the ORIGINAL ones, kept verbatim except for the
+// module gate (a dynamic menu needs `anime.mapObjects`).
 // ===========================================================================
 describe("Urahara's Shop (anime.urahara_shop)", () => {
   it("Buy a curio: pay 3 gold → an Artifact Search is queued", () => {
     const state = makeGame("urahara-curio");
+    enableAnime(state);
     const player = state.players.p1;
     player.resources.gold = 10;
     injectField(state, "anime.urahara_shop");
@@ -388,6 +516,7 @@ describe("Urahara's Shop (anime.urahara_shop)", () => {
 
   it("Bargain bin GATES a broke hero: paying is not offered, only Decline", () => {
     const state = makeGame("urahara-broke");
+    enableAnime(state);
     const player = state.players.p1;
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
     injectField(state, "anime.urahara_shop");
@@ -401,14 +530,127 @@ describe("Urahara's Shop (anime.urahara_shop)", () => {
     ).toBe(false);
     expect(resolves.some((a) => (a.action as { decline?: boolean }).decline === true)).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // FO redesign wave 3 — the free curio ON CREDIT + its Resource-round collection.
+  // -------------------------------------------------------------------------
+  it("Credit arm: the Search is queued FREE and the debt latches on the player", () => {
+    const state = makeGame("urahara-credit");
+    enableAnime(state);
+    const player = state.players.p1;
+    player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    injectField(state, "anime.urahara_shop");
+
+    visit(state);
+    chooseByLabel(state, (l) => l.includes("on credit"));
+
+    expect(queuedSearches(state, "artifacts")).toBe(1);
+    expect(player.resources.gold).toBe(0); // nothing paid now
+    expect(player.uraharaDebt).toBe(true);
+
+    // CONTROL: while the debt is outstanding the credit arm is absent.
+    visit(state);
+    const menu = firstStep(state) as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(menu.options.some((o) => o.label.includes("on credit")), "no stacking credit").toBe(false);
+    expect(menu.options.some((o) => o.label.includes("Buy a curio"))).toBe(true);
+  });
+
+  it("collection at the next Resources round: exactly 3 gold leaves a solvent debtor and the debt clears", () => {
+    const state = makeGame("urahara-collect-gold");
+    state.pendingChoice = null;
+    const player = state.players.p1;
+    player.uraharaDebt = true;
+    player.resources.gold = 5;
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    state.players.p2.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    const handBefore = [...player.hand];
+    state.round = 3;
+
+    startAdventureRound(state);
+
+    expect(player.resources.gold).toBe(2); // exactly 3 collected
+    expect(player.hand).toEqual(handBefore); // no card taken while gold covers it
+    expect(player.uraharaDebt).toBeUndefined();
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "EVENT_NOTE" && (e as { message: string }).message.includes("3 gold collected")
+      )
+    ).toBe(true);
+  });
+
+  it("collection short of gold: exactly ONE hand card moves to the player's OWN discard, gold untouched", () => {
+    const state = makeGame("urahara-collect-card");
+    state.pendingChoice = null;
+    const player = state.players.p1;
+    player.uraharaDebt = true;
+    player.resources.gold = 2; // under the 3-gold price
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    state.players.p2.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    player.hand = ["stat.attack", "stat.defense", "stat.power"];
+    const discardBefore = player.discard.length;
+    state.round = 3;
+
+    startAdventureRound(state);
+
+    expect(player.resources.gold).toBe(2); // gold untouched
+    expect(player.hand).toHaveLength(2); // hand −1
+    expect(player.discard).toHaveLength(discardBefore + 1);
+    const taken = ["stat.attack", "stat.defense", "stat.power"].find((id) => !player.hand.includes(id))!;
+    expect(player.discard, "the taken card's NEW zone is the owner's discard").toContain(taken);
+    expect(player.uraharaDebt).toBeUndefined(); // cleared either way
+  });
+
+  it("CONTROL: a debt-free player pays nothing at the same income seam", () => {
+    const state = makeGame("urahara-no-debt");
+    state.pendingChoice = null;
+    const player = state.players.p1;
+    player.resources.gold = 5;
+    player.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    state.players.p2.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+    player.hand = ["stat.attack", "stat.defense"];
+    state.round = 3;
+
+    startAdventureRound(state);
+
+    expect(player.resources.gold).toBe(5);
+    expect(player.hand).toHaveLength(2);
+    expect(
+      state.eventLog.some(
+        (e) => e.type === "EVENT_NOTE" && (e as { message: string }).message.includes("Urahara")
+      )
+    ).toBe(false);
+  });
+
+  it("collects for a NON-Little-Busters seat and for EVERY debtor in the same pass", () => {
+    const state = makeGame("urahara-collect-all");
+    state.pendingChoice = null;
+    for (const id of ["p1", "p2"] as const) {
+      const pl = state.players[id];
+      pl.uraharaDebt = true;
+      pl.resources.gold = 4;
+      pl.production = { gold: 0, buildingMaterials: 0, valuables: 0 };
+      expect(pl.factionId).not.toBe("little_busters"); // the seam is faction-agnostic
+    }
+    state.round = 3;
+
+    startAdventureRound(state);
+
+    expect(state.players.p1.resources.gold).toBe(1);
+    expect(state.players.p2.resources.gold).toBe(1);
+    expect(state.players.p1.uraharaDebt).toBeUndefined();
+    expect(state.players.p2.uraharaDebt).toBeUndefined();
+  });
 });
 
 // ===========================================================================
 // Category invariant: revisitable stays open, visitable cubes out
 // ===========================================================================
 describe("category behaviour (carved via the real Field Override path)", () => {
-  it("revisitable kinds (guild post / capsule lab) never cube and keep stopping heroes", () => {
-    for (const kind of ["thuong_hoi_tram", "capsule_lab"]) {
+  it("revisitable kinds (guild post / capsule lab / onsen) never cube and keep stopping heroes", () => {
+    // FO redesign 2026-08-19 (wave 3): onsen_ryokan JOINED this set — its full
+    // course is once per GAME ROUND, which a one-visit Black Cube would make
+    // dead. Its own describe pins the round latch and the never-cubes claim.
+    for (const kind of ["thuong_hoi_tram", "capsule_lab", "onsen_ryokan"]) {
       const state = makeGame(`revisit-${kind}`);
       state.players.p1.resources = { gold: 30, buildingMaterials: 5, valuables: 5 };
       const field = carveAt(state, kind);
@@ -420,14 +662,18 @@ describe("category behaviour (carved via the real Field Override path)", () => {
     }
   });
 
-  it("visitable kinds (onsen) cube on visit and become inert walk-throughs", () => {
-    // FO redesign 2026-08-19: the Gambling Den left this class (it is a
-    // revisitable stake-and-pot den now, pinned in its own describe above).
-    for (const kind of ["onsen_ryokan"]) {
+  it("visitable kinds (kiem_trung) cube on visit and become inert walk-throughs", () => {
+    // FO redesign 2026-08-19: the Gambling Den left this class in wave 1 (it is a
+    // revisitable stake-and-pot den now) and the Hot Spring Inn left it in wave 3
+    // (its full course is once per GAME ROUND, which a one-visit cube would make
+    // dead). Kiếm Trủng is the surviving visitable member: a guarded mound whose
+    // reward is paid once and then closed.
+    for (const kind of ["kiem_trung"]) {
       const state = makeGame(`cube-${kind}`);
       state.players.p1.resources = { gold: 30, buildingMaterials: 5, valuables: 5 };
       const field = carveAt(state, kind);
       const hero = getMainHero(state, "p1")!;
+      field.difficulty = undefined; // stand on the mound with the guard already beaten
       visit(state);
       expect(field.blackCube, kind).toBe(true);
       // Resolve whatever pended, then confirm a re-visit does nothing (walk-through).
@@ -479,8 +725,9 @@ describe("computer policy resolves the new visit menus (no stall)", () => {
     expect((action as { optionIndex?: number }).optionIndex).toBeGreaterThanOrEqual(0);
   });
 
-  it("picks a resolving option for the Onsen CHOOSE_ONE", () => {
+  it("picks a resolving option for the Onsen CHOOSE_ONE (full course / quick dip)", () => {
     const state = makeGame("ai-onsen");
+    enableAnime(state);
     state.round = 3;
     injectField(state, "anime.onsen_ryokan");
     visit(state);
@@ -488,6 +735,37 @@ describe("computer policy resolves the new visit menus (no stall)", () => {
     const action = decideOn(state);
     expect(action?.type).toBe("RESOLVE_VISIT_STEP");
     expect((action as { optionIndex?: number }).optionIndex).toBeGreaterThanOrEqual(0);
+  });
+
+  it("picks a resolving option for Urahara's Shop menu (credit arm included)", () => {
+    const state = makeGame("ai-urahara");
+    enableAnime(state);
+    state.round = 3;
+    state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    injectField(state, "anime.urahara_shop");
+    visit(state);
+    const menu = firstStep(state) as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(menu.type).toBe("CHOOSE_ONE");
+    expect(menu.options.some((o) => o.label.includes("on credit"))).toBe(true);
+    const action = decideOn(state);
+    expect(action?.type).toBe("RESOLVE_VISIT_STEP");
+  });
+
+  it("picks a resolving action for the Capsule Lab (shop step, then the gadget menu)", () => {
+    const state = makeGame("ai-capsule");
+    enableAnime(state);
+    state.round = 3;
+    state.players.p1.resources = { gold: 12, buildingMaterials: 0, valuables: 0 };
+    injectField(state, "anime.capsule_lab");
+    visit(state);
+    expect(firstStep(state)?.type).toBe("WAR_MACHINE_SHOP");
+    const shopAction = decideOn(state);
+    expect(shopAction).not.toBeNull();
+    expect(["BUY_WAR_MACHINE", "RESOLVE_VISIT_STEP"]).toContain(shopAction?.type);
+    // Close the shop step by hand, then the appended gadget menu must also resolve.
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", decline: true });
+    expect(firstStep(state)?.type).toBe("CHOOSE_ONE");
+    expect(decideOn(state)?.type).toBe("RESOLVE_VISIT_STEP");
   });
 
   it("picks a resolving action (trade or leave) for the Merchant Guild Post", () => {

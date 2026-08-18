@@ -273,6 +273,15 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
    * player — a once-ever claim tracked by the field's `animeBountyClaimedBy`
    * latch (mirrors `extraFlagOwnerIds`) — beside a repeatable pay-2-gold Search
    * (1) of the Ability deck. Carves as a NONE base (the menu is appended).
+   *
+   * FO redesign (2026-08-19): both of those arms are UNCHANGED; a third
+   * "guild quest" arm is offered only while the visitor holds a POSITIVE MORALE
+   * TOKEN (`player.morale >= 1`) — spend it for +4 gold and Search (1) Ability,
+   * repeatable (no latch). The spend rides the dedicated SPEND_MORALE_TOKEN step
+   * rather than `GAIN_MORALE: -1`, because the GAIN_MORALE case burns the Crest
+   * of Valor's ignore-a-field-negative shield and would make the quest free for a
+   * Crest holder. LIMIT: with the optional Morale Cards rule ON `player.morale`
+   * is pinned to 0 (tokens become cards), so the arm never appears there.
    */
   "anime.guild_bounty": {
     id: "anime.guild_bounty",
@@ -289,11 +298,22 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
    * Capsule Corp Lab (*Dragon Ball*) — the War Machine Factory reskinned.
    * Revisitable shop (no cube, 1 MP to reuse): buy a war machine at the lower
    * factory price, sharing `war_machine_factory` behaviour verbatim.
+   *
+   * FO redesign (2026-08-19): the WAR_MACHINE_SHOP below is UNCHANGED; a
+   * "Prototype gadget" arm is APPENDED at visit time
+   * (`buildAnimeFieldVisitSteps`, the same append pattern the Guild Post's
+   * contract uses beside its TRADING_POST) — pay 3 gold → roll 2 Treasure dice
+   * and keep one result (the standard ROLL_TREASURE_DICE count-2 reading),
+   * once per player EVER (`field.fieldClaimedBy` + MARK_FIELD_CLAIMED). The arm
+   * is absent once that player has claimed it or with under 3 gold, so the visit
+   * is then byte-identical to the old pure-shop one.
    */
   "anime.capsule_lab": {
     id: "anime.capsule_lab",
     name: "Capsule Corp Lab",
     category: "revisitable",
+    // engine: the shop runs from here; the once-per-player prototype bench is
+    // appended at visit time (buildAnimeFieldVisitSteps).
     interaction: { type: "WAR_MACHINE_SHOP" },
     implementationStatus: "implemented",
     source: animeSource("capsule_lab")
@@ -301,55 +321,51 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
 
   /**
    * Urahara's Shop (*Bleach*) — a paid curio counter. Revisitable (1 MP, no
-   * cube): CHOOSE_ONE between a 3-gold Search(1) of the Artifact deck (the
-   * curio) or a 1-gold single Treasure-die roll (the bargain bin). Both arms
-   * are PAY_TO gates, so an unaffordable pick offers only Decline.
+   * cube).
+   *
+   * FO redesign (2026-08-19): the menu moved to a DYNAMIC build
+   * (`buildAnimeFieldVisitSteps`) so the new credit arm can be gated on live
+   * player state; the two PAID arms are reproduced there VERBATIM — 3 gold →
+   * Search (1) Artifact, 1 gold → 1 Treasure die, both still PAY_TO gates, so an
+   * unaffordable pick offers only Decline. NEW: "take a curio on credit" —
+   * Search (1) Artifact NOW plus `PlayerState.uraharaDebt` (SET_URAHARA_DEBT);
+   * at that player's next Resource-round income the shopkeeper collects 3 gold,
+   * or — short of gold — ONE seeded-random hand card into their own discard pile
+   * (`collectUraharaDebt`, called from the Little Busters contribution seam for
+   * EVERY player). The credit arm is absent while a debt is outstanding, so
+   * credit can never be stacked.
    */
   "anime.urahara_shop": {
     id: "anime.urahara_shop",
     name: "Urahara's Shop",
     category: "revisitable",
-    interaction: {
-      type: "CHOOSE_ONE",
-      options: [
-        {
-          label: "Buy a curio — pay 3 gold to Search (1) the Artifact deck",
-          interaction: {
-            type: "PAY_TO",
-            costOptions: [{ gold: 3 }],
-            interaction: { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1 }
-          }
-        },
-        {
-          label: "Bargain bin — pay 1 gold to roll 1 Treasure die",
-          interaction: {
-            type: "PAY_TO",
-            costOptions: [{ gold: 1 }],
-            interaction: { type: "ROLL_TREASURE_DICE", count: 1 }
-          }
-        }
-      ]
-    },
+    // engine: the whole menu (both paid arms + the credit arm) is built at visit
+    // time (buildAnimeFieldVisitSteps) — there is no static interaction.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("urahara_shop")
   },
 
   /**
-   * Hot Spring Inn (*Onsen*) — a softer Fountain-of-Youth twin. Visitable
-   * (cubes on visit): CHOOSE_ONE between a long soak (+1 morale token) and a
-   * quick dip (+1 movement this turn). No "youth"/cleanse arm — pure reuse.
+   * Hot Spring Inn (*Onsen*) — a softer Fountain-of-Youth twin.
+   *
+   * FO redesign (2026-08-19): the menu is built at visit time
+   * (`buildAnimeFieldVisitSteps`): a "Full onsen course" — +1 morale AND +1
+   * movement, once per player per GAME ROUND (`field.fieldRoundClaims` +
+   * MARK_FIELD_ROUND_CLAIMED) — beside the always-available "Quick dip"
+   * (+1 movement) and Leave.
+   *
+   * CATEGORY CHANGE: the inn was `visitable` (Black Cube on the first visit); a
+   * once-per-ROUND arm is meaningless on a hex that closes forever after one
+   * visit, so it is `revisitable` now (1 MP to reuse, never cubes). It is NOT in
+   * `HERO_GRADE_MERIT_HEX_LOCATION_IDS`, so the flip opens no Merit farming.
    */
   "anime.onsen_ryokan": {
     id: "anime.onsen_ryokan",
     name: "Hot Spring Inn (Onsen)",
-    category: "visitable",
-    interaction: {
-      type: "CHOOSE_ONE",
-      options: [
-        { label: "Long soak — gain 1 positive morale", interaction: { type: "GAIN_MORALE", amount: 1 } },
-        { label: "Quick dip — gain 1 movement this turn", interaction: { type: "GAIN_MOVEMENT", amount: 1 } }
-      ]
-    },
+    category: "revisitable",
+    // engine: the full-course / quick-dip menu is built at visit time.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("onsen_ryokan")
   },

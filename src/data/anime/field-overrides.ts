@@ -215,7 +215,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Revisitable War Machine Factory — buy a war machine at the lower price any turn.",
+    summary:
+      "Revisitable War Machine Factory (buy a war machine at the lower price any turn), plus a prototype bench: once per player ever, pay 3 gold to roll 2 Treasure dice and keep one result.",
     glyph: "🚀",
     image: art("capsule_lab")
   },
@@ -228,7 +229,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near", "center"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Revisitable: pay 3 gold to Search (1) an Artifact, or 1 gold for a Treasure-die roll.",
+    summary:
+      "Revisitable: pay 3 gold to Search (1) an Artifact, pay 1 gold for a Treasure-die roll, or take a curio ON CREDIT — Search (1) Artifact now, then 3 gold (or, short of gold, one random hand card) is collected at your next Resources round. No credit while a debt is outstanding.",
     glyph: "🏮",
     image: art("urahara_shop")
   },
@@ -241,7 +243,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Choose: a long soak for +1 morale, or a quick dip for +1 movement this turn.",
+    summary:
+      "Revisitable (never cubes): the full onsen course pays +1 morale AND +1 movement, once per player per game round; a quick dip is always +1 movement.",
     glyph: "♨",
     image: art("onsen_ryokan")
   },
@@ -278,7 +281,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     terrain: "land",
     implementationStatus: "implemented",
     summary:
-      "Claim the bounty for +2 gold (once per player, ever), or pay 2 gold to Search (1) the Ability deck.",
+      "Claim the bounty for +2 gold (once per player, ever), pay 2 gold to Search (1) the Ability deck, or — while holding a positive morale token — spend it on a guild quest for +4 gold and Search (1) the Ability deck (repeatable).",
     image: art("guild_bounty")
   },
 

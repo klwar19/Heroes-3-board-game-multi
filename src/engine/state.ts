@@ -10493,6 +10493,30 @@ export type VisitStep =
       fromEquipmentId: string;
       toEquipmentId: string;
     }
+  | {
+      /**
+       * FO redesign wave 3 — Urahara's Shop (`anime.urahara_shop`) "free curio,
+       * on credit": latch `PlayerState.uraharaDebt`. Collected at this player's
+       * NEXT Resource-round income (the Little Busters contribution seam in
+       * `startAdventureRound`): 3 gold when they hold 3+, otherwise ONE
+       * seeded-random hand card goes to their own discard pile. The credit arm is
+       * absent while a debt is outstanding. Auto-resolves.
+       */
+      type: "SET_URAHARA_DEBT";
+    }
+  | {
+      /**
+       * FO redesign wave 3 — Guild Bounty Board (`anime.guild_bounty`) "guild
+       * quest": SPEND the visitor's positive morale token. Deliberately NOT
+       * `GAIN_MORALE` with a negative amount — that case consumes the Crest of
+       * Valor's ignore-a-FIELD-negative-morale shield, which would make the
+       * quest's cost free for a Crest holder. This step is a genuine cost the
+       * player CHOSE to pay, so it goes straight through `changeMorale` and only
+       * ever fires while `player.morale >= 1` (the same gate the arm is built
+       * behind). Auto-resolves.
+       */
+      type: "SPEND_MORALE_TOKEN";
+    }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {
       /**
