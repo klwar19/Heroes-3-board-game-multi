@@ -3102,6 +3102,13 @@ export type EffectDefinition =
        * by this much (floored at 0). Undefined/0 = pay full price.
        */
       goldReduction?: number;
+      /**
+       * Polish Balance reprints of the Diplomacy ARTIFACTS (Diplomat's Ring /
+       * Ambassador's Sash): never open the Azure Neutral deck even with a Gold
+       * Dwelling. Undefined/false = a Gold Dwelling also draws an Azure card
+       * (Cyra / Oidana and the base artifacts).
+       */
+      excludeAzure?: boolean;
     }
   | {
       /**

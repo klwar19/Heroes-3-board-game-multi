@@ -18773,7 +18773,8 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       action.playerId,
       effect.maxDraws,
       effect.goldReduction,
-      action.cardId
+      action.cardId,
+      effect.excludeAzure
     );
   }
 

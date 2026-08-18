@@ -5827,12 +5827,15 @@ function recruitCostLabel(cost: ResourceCost): string {
 
 function diplomacyDwellingDrawTiers(
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
+  excludeAzure = false
 ): ("bronze" | "silver" | "gold" | "azure")[] {
   const tiers: ("bronze" | "silver" | "gold" | "azure")[] = [];
   for (const tier of playerDwellingTiers(state, playerId)) {
     tiers.push(tier);
-    if (tier === "gold") {
+    // A Gold Dwelling also opens the Azure Neutral deck — EXCEPT for the Polish
+    // Balance Diplomacy artifacts, which never ask about Azure creatures.
+    if (tier === "gold" && !excludeAzure) {
       tiers.push("azure");
     }
   }
@@ -5853,10 +5856,12 @@ export function openDiplomacyRecruit(
   maxDraws?: number,
   goldReduction?: number,
   /** Card just spent into the discard — refunded when nothing can be drawn. */
-  spentCardId?: string
+  spentCardId?: string,
+  /** Polish Balance Diplomacy artifacts: never draw an Azure card. */
+  excludeAzure?: boolean
 ): void {
   const draws: { unitDefId: string; tier: "bronze" | "silver" | "gold" | "azure" }[] = [];
-  for (const tier of diplomacyDwellingDrawTiers(state, playerId)) {
+  for (const tier of diplomacyDwellingDrawTiers(state, playerId, excludeAzure)) {
     // Oidana caps the draw at a fixed number of cards (1 at I, 2 at IV); Cyra's
     // base ability leaves maxDraws undefined and draws one per Dwelling.
     if (maxDraws !== undefined && draws.length >= maxDraws) {

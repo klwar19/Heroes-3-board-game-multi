@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, getLegalActions } from "./index";
-import { beginFieldVisit, getMainHero, getTownOfPlayer } from "./adventure";
+import { beginFieldVisit, getMainHero, getTownOfPlayer, NEUTRAL_DECK_IDS } from "./adventure";
 import { resolveVisitStep } from "./adventure-reducer";
 import { artifactDeckBinhMajor, artifactDeckLegacy, REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { cardLibrary } from "@/data/cards/library";
@@ -658,6 +658,54 @@ describe("Diplomat's Ring / Ambassador's Sash — Dwelling recruit", () => {
     expect(play).toBeTruthy();
     state = applyOk(state, play!);
     expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("diplomacy-recruit");
+  });
+
+  // A Gold Dwelling normally ALSO opens the Azure Neutral deck. The Polish
+  // Balance reprints of the two Diplomacy ARTIFACTS never ask about Azure.
+  function withGoldDwelling(seed: string, cardId: string, balance: boolean): GameState {
+    const state = mapState(seed);
+    (state.adventure as unknown as { houseRules: Record<string, boolean> }).houseRules = {
+      ...((state.adventure as unknown as { houseRules?: Record<string, boolean> }).houseRules ?? {}),
+      "polish-card-balance": balance
+    };
+    const player = state.players.p1;
+    player.resources.gold = 50;
+    player.resources.buildingMaterials = 50;
+    player.resources.valuables = 50;
+    player.hand = [cardId];
+    const town = getTownOfPlayer(state, "p1")!;
+    town.buildings = town.buildings.filter(
+      (id) => id !== "castle.dwelling_bronze" && id !== "castle.dwelling_silver"
+    );
+    if (!town.buildings.includes("castle.dwelling_gold")) {
+      town.buildings.push("castle.dwelling_gold");
+    }
+    // Pin the Azure Neutral deck so a draw from it is unmistakable.
+    state.decks[NEUTRAL_DECK_IDS.azure]!.drawPile = ["neutral.azure_dragons"];
+    return state;
+  }
+
+  function drawnUnitsFromPlay(state: GameState, cardId: string): string[] {
+    const play = findPlay(state, cardId, 0);
+    expect(play, "the Dwelling recruit option should be offered with a Gold Dwelling").toBeTruthy();
+    const after = applyOk(state, play!);
+    const event = after.eventLog.find((e) => e.type === "DIPLOMACY_NEUTRALS_DRAWN");
+    return event && event.type === "DIPLOMACY_NEUTRALS_DRAWN" ? event.unitDefIds : [];
+  }
+
+  it("Polish Balance: Diplomat's Ring never draws an Azure card (a Gold Dwelling doesn't open Azure)", () => {
+    const drawn = drawnUnitsFromPlay(withGoldDwelling("ring-azure-off", "artifact.diplomats_ring", true), "artifact.diplomats_ring");
+    expect(drawn, "the Azure deck must be untouched by the balance artifact").not.toContain("neutral.azure_dragons");
+  });
+
+  it("CONTROL: with the Polish rule OFF, Diplomat's Ring DOES open Azure from a Gold Dwelling", () => {
+    const drawn = drawnUnitsFromPlay(withGoldDwelling("ring-azure-on", "artifact.diplomats_ring", false), "artifact.diplomats_ring");
+    expect(drawn, "the base artifact still opens the Azure deck").toContain("neutral.azure_dragons");
+  });
+
+  it("Polish Balance: Ambassador's Sash also never draws an Azure card", () => {
+    const drawn = drawnUnitsFromPlay(withGoldDwelling("sash-azure-off", "artifact.ambassadors_sash", true), "artifact.ambassadors_sash");
+    expect(drawn).not.toContain("neutral.azure_dragons");
   });
 
   it("without a Dwelling the recruit is gated out, but the reroll reaction still fires after a roll", () => {

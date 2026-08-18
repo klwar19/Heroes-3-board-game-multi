@@ -748,7 +748,8 @@ export const polishBalanceArtifactCards: CardLibrary = {
         {
           label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
           mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3 }
+          // Polish balance: the Diplomacy ARTIFACTS never ask about Azure creatures.
+          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3, excludeAzure: true }
         }
       ]
     }
@@ -766,7 +767,8 @@ export const polishBalanceArtifactCards: CardLibrary = {
         {
           label: "Map: draw 1 Neutral Unit card per Dwelling, then recruit one (3 gold off)",
           mapOnly: true,
-          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3 }
+          // Polish balance: the Diplomacy ARTIFACTS never ask about Azure creatures.
+          effect: { type: "DIPLOMACY_RECRUIT", goldReduction: 3, excludeAzure: true }
         }
       ]
     }
