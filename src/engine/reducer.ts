@@ -5175,15 +5175,27 @@ function resolveBalanceSpellChoice(
 
   if (choice.context === "dispel-scope" && state.combat && card) {
     if (picked === 1) {
-      // "ALL effects in the combat": every removable ongoing effect, both sides.
+      // "ALL effects in the combat": every removable ongoing effect, both sides,
+      // AND every battlefield obstacle/trap token (Fire Wall, Force Field,
+      // Quicksand, Land Mine) — those live on combat.battlefieldTokens, not
+      // state.activeEffects, so they must be cleared explicitly or they survive.
       const removed = state.activeEffects.filter((effect) => effect.removable !== false);
       if (removed.length > 0) {
         const removedIds = new Set(removed.map((effect) => effect.id));
         state.activeEffects = state.activeEffects.filter((effect) => !removedIds.has(effect.id));
         stripCombatHealthBonusFromRemovedEffects(state, removed);
+      }
+      const tokenPositions = [
+        ...new Set((state.combat.battlefieldTokens ?? []).map((token) => token.position))
+      ];
+      let clearedTokens = 0;
+      for (const position of tokenPositions) {
+        clearedTokens += clearBattlefieldTokensAt(state, state.combat, position);
+      }
+      if (removed.length > 0 || clearedTokens > 0) {
         appendEvent(state, {
           type: "EVENT_NOTE",
-          message: `${card.name} clears every ongoing effect in the Combat (${removed.length}).`
+          message: `${card.name} clears every ongoing effect in the Combat (${removed.length + clearedTokens}).`
         });
       }
     } else if (payload.target) {
@@ -6744,7 +6756,10 @@ function applyOnAttackFireWall(
     kind: "fire_wall",
     position: defender.position,
     controllerId: attacker.controllerId,
-    damage
+    damage,
+    // The Hell Steed drops its wall on the target's OWN space; it only bites when
+    // that unit's activation comes round, so it must burn at activation.
+    burnsAtActivation: true
   });
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
@@ -19084,7 +19099,10 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       kind: "fire_wall",
       position: action.target.position,
       controllerId: action.playerId,
-      damage: effect.damage
+      damage: effect.damage,
+      // Luna's Fire Wall (unlike the base spell) burns a unit that begins its
+      // activation standing on it — the printed card says "starting its turn here".
+      burnsAtActivation: true
     });
   }
 
@@ -22658,15 +22676,15 @@ function dealBattlefieldTokenDamage(
 }
 
 /**
- * A unit that BEGINS its activation standing on a Fire Wall is burned by it: the
- * wall "takes effect at that unit's turn" (a Hell Steed drops its Fire Wall on
- * the target's occupied space, and the target only feels it when its own turn
- * comes round). Beginning an activation on a Fire Wall burns ANY unit, flyers
- * included. A flyer is otherwise burned only when it STOPS on a wall while
- * moving (walkMoveThroughTokens); crossing over one mid-move spares it. Ground
- * and ranged units are burned by any movement onto or through a wall. Returns
- * true when the burn removed the unit (its activation is then skipped by the
- * caller).
+ * A unit that BEGINS its activation standing on a Fire Wall marked
+ * `burnsAtActivation` is burned by it: the wall "takes effect at that unit's
+ * turn" (a Hell Steed drops its Fire Wall on the target's occupied space, and
+ * the target only feels it when its own turn comes round; Luna's specialty
+ * likewise reads "starting its turn here"). The BASE Fire Wall spell does NOT
+ * burn at activation — it burns only on move-through/stop (walkMoveThroughTokens)
+ * — so tokens without the flag are skipped here. When it does burn, it hits ANY
+ * unit, flyers included. Returns true when the burn removed the unit (its
+ * activation is then skipped by the caller).
  */
 function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boolean {
   const combat = state.combat;
@@ -22674,7 +22692,7 @@ function applyFireWallAtActivation(state: GameState, unit: CombatUnitState): boo
     return false;
   }
   for (const token of tokensAtPosition(combat, unit.position)) {
-    if (token.kind !== "fire_wall") {
+    if (token.kind !== "fire_wall" || !token.burnsAtActivation) {
       continue;
     }
     dealBattlefieldTokenDamage(state, token, unit, token.damage ?? 0);

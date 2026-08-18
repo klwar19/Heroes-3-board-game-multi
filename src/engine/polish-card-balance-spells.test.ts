@@ -565,6 +565,12 @@ describe("Balance Pack — the post-cast picks", () => {
     state = cast(state, "spell.haste", 0, { type: "unit", unitId: "unit_p1_marksmen" });
     state = cast(readyToCastAgain(state), "spell.slow", 0, { type: "unit", unitId: "unit_p2_vampires" });
     expect(state.activeEffects.length).toBeGreaterThanOrEqual(2);
+    // Plus two battlefield obstacles sitting on OTHER (empty) spaces, NOT on the
+    // dispel target — so only the board-wide "ALL" clear can lift them.
+    state.combat!.battlefieldTokens = [
+      { id: "bft_fw", kind: "fire_wall", position: 9, controllerId: "p2", damage: 3 },
+      { id: "bft_ff", kind: "force_field", position: 3, controllerId: "p2" }
+    ];
 
     state = cast(readyToCastAgain(state), "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" });
     expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
@@ -576,6 +582,28 @@ describe("Balance Pack — the post-cast picks", () => {
       optionIndex: 1
     });
     expect(cleared.activeEffects.filter((effect) => effect.removable !== false)).toEqual([]);
+    // Firewall and Force Field are cleared too (they live on battlefieldTokens).
+    expect(cleared.combat!.battlefieldTokens ?? []).toEqual([]);
+  });
+
+  it("DISCRIMINATOR: the single-target Dispel pick leaves a Firewall on a distant space", () => {
+    let state = combat(true);
+    state.combat!.units.unit_p2_vampires.grade = "bronze";
+    // Vampires at their own space; a Fire Wall sits elsewhere (space 9).
+    const vampiresPos = state.combat!.units.unit_p2_vampires.position;
+    state.combat!.battlefieldTokens = [
+      { id: "bft_fw_far", kind: "fire_wall", position: vampiresPos === 9 ? 3 : 9, controllerId: "p2", damage: 3 }
+    ];
+    state = cast(readyToCastAgain(state), "spell.dispel", 2, { type: "unit", unitId: "unit_p2_vampires" });
+    // Pick option 0 = the printed unit/space cleanse (only the target's own space).
+    const cleared = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    // The distant wall survives — only the board-wide "ALL" pick clears it.
+    expect((cleared.combat!.battlefieldTokens ?? []).some((token) => token.kind === "fire_wall")).toBe(true);
   });
 
   it("CONTROL: with the rule OFF Dispel opens no scope pick and clears only its target", () => {

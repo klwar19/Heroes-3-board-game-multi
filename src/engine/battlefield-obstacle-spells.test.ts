@@ -12,10 +12,11 @@ import type { BattlefieldTokenState, GameAction, GameState, UnitId } from "./sta
  *  - Force Field (Basic Earth) — places a blocking Obstacle for a Power-scaled
  *    span (this round / next round / whole combat).
  *  - Fire Wall  (Basic Fire)  — a lasting Effect Obstacle: burns a GROUND or
- *    RANGED unit that passes through OR stops on it, a FLYING unit that STOPS on
- *    it, and ANY unit that BEGINS its activation on it. Only a flyer CROSSING
- *    the wall mid-move is spared. It is NEVER consumed — it stays the whole
- *    combat.
+ *    RANGED unit that passes through OR stops on it, and a FLYING unit that STOPS
+ *    on it. Only a flyer CROSSING the wall mid-move is spared. It is NEVER
+ *    consumed — it stays the whole combat. The BASE spell does NOT burn a unit
+ *    that merely begins its activation on it; only a wall flagged
+ *    `burnsAtActivation` (Luna's specialty, the WoG Hell Steed) does that too.
  *  - Quicksand  (Basic Earth) — face-down traps; an armed one ends the entering
  *    unit's movement AND activation, a decoy does nothing. A sprung trap is
  *    REMOVED, and armed/decoy stays hidden from the opponent throughout.
@@ -260,11 +261,11 @@ describe("Fire Wall spell", () => {
     expect(landedOn.combat!.units.unit_p1_griffins.damage).toBe(2);
   });
 
-  it("burns ANY unit — a flyer included — that BEGINS its activation standing on the wall", () => {
-    // Drive a real activation start: everyone has acted except a prior unit
-    // (about to Defend) and the flying griffins (standing on the wall). When the
-    // griffins activates, the wall bites even though it is a flyer.
-    const state = createInitialGameState("fw-fly-activation");
+  // Drives a real activation start: everyone has acted except a prior unit
+  // (about to Defend) and the flying griffins (standing on the wall). When the
+  // griffins activates, the wall either bites or not depending on the flag.
+  function runActivationBurn(seed: string, tokenExtra: Partial<BattlefieldTokenState>): GameState {
+    const state = createInitialGameState(seed);
     const combat = state.combat!;
     combat.units.unit_p1_griffins.position = 9;
     combat.units.unit_p1_griffins.maxHealth = 40;
@@ -276,11 +277,27 @@ describe("Fire Wall spell", () => {
     state.activePlayerId = "p1";
     state.players.p1.hand = [];
     state.players.p2.hand = [];
-    injectToken(state, { kind: "fire_wall", position: 9, controllerId: "p2", damage: 2 });
-
-    const after = passAllReactions(
+    injectToken(state, { kind: "fire_wall", position: 9, controllerId: "p2", damage: 2, ...tokenExtra });
+    return passAllReactions(
       applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_crusaders" })
     );
+  }
+
+  it("the BASE Fire Wall does NOT burn a unit that begins its activation on it", () => {
+    const after = runActivationBurn("fw-base-activation", {});
+    expect(after.combat!.activeUnitId).toBe("unit_p1_griffins");
+    // No activation burn for a plain (spell) wall — only move-through/stop burns.
+    expect(after.combat!.units.unit_p1_griffins.damage).toBe(0);
+    expect(
+      after.eventLog.some(
+        (event) => event.type === "BATTLEFIELD_TOKEN_TRIGGERED" && event.kind === "fire_wall"
+      )
+    ).toBe(false);
+    expect((after.combat!.battlefieldTokens ?? []).filter((token) => token.kind === "fire_wall")).toHaveLength(1);
+  });
+
+  it("a burnsAtActivation Fire Wall (Luna / Hell Steed) burns ANY unit — a flyer included — that begins its activation on it", () => {
+    const after = runActivationBurn("fw-flagged-activation", { burnsAtActivation: true });
     expect(after.combat!.activeUnitId).toBe("unit_p1_griffins");
     expect(after.combat!.units.unit_p1_griffins.damage).toBe(2);
     expect(

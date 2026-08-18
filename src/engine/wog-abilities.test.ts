@@ -238,7 +238,9 @@ describe("WOG abilities in two-player combat", () => {
     // Exactly attack − defense (2), NOT the un-reduced elemental 5.
     expect(state.combat!.units[target.id].damage).toBe(2);
     expect(state.combat!.battlefieldTokens).toEqual(
-      expect.arrayContaining([expect.objectContaining({ kind: "fire_wall", position: 9, damage: 1 })])
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "fire_wall", position: 9, damage: 1, burnsAtActivation: true })
+      ])
     );
   });
 
@@ -415,7 +417,8 @@ describe("WOG abilities in two-player combat", () => {
       unit.activatedThisRound = unit.id !== prior.id && unit.id !== victim.id;
     }
     combat.battlefieldTokens = [
-      { id: "bftoken_fw", kind: "fire_wall", position: 9, controllerId: "p1", damage: 1 }
+      // The Hell Steed's wall burns at activation (unlike the base Fire Wall spell).
+      { id: "bftoken_fw", kind: "fire_wall", position: 9, controllerId: "p1", damage: 1, burnsAtActivation: true }
     ];
     state.players.p1.hand = [];
     state.players.p2.hand = [];

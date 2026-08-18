@@ -8571,10 +8571,11 @@ export type BattlefieldTokenKind = "force_field" | "fire_wall" | "quicksand" | "
  *  - force_field — an Obstacle: blocks non-flying movement and bars stopping
  *    on it, until `expiresAtCombatRoundEnd` (absent = the whole Combat).
  *  - fire_wall   — an Effect Obstacle: units may enter, but stopping on it (any
- *    type) or passing through it (ground/ranged only) costs `damage`, and a unit
- *    of ANY type that BEGINS its activation standing on it is burned too. A
- *    flyer is spared only when it CROSSES a wall mid-move, never when it stops.
- *    Lasts the whole Combat.
+ *    type) or passing through it (ground/ranged only) costs `damage`. A flyer is
+ *    spared only when it CROSSES a wall mid-move, never when it stops. Lasts the
+ *    whole Combat. The base Fire Wall spell burns ONLY on move-through/stop; a
+ *    wall with `burnsAtActivation` (Luna's specialty, the WoG Hell Steed) ALSO
+ *    burns any unit of ANY type that BEGINS its activation standing on it.
  *  - quicksand / land_mine — a face-down trap: `armed` true for a real token,
  *    false for a decoy ("empty"). `armed` is hidden from non-controllers (see
  *    getPlayerView) — only the caster ever knows which are real. The instant a
@@ -8592,6 +8593,12 @@ export type BattlefieldTokenState = {
   controllerId: PlayerId;
   /** fire_wall / land_mine: damage dealt to a caught unit. */
   damage?: number;
+  /**
+   * fire_wall only: when true, the wall ALSO burns a unit that begins its
+   * activation standing on it (Luna's specialty, the WoG Hell Steed). The base
+   * Fire Wall spell omits this — it burns only on move-through/stop.
+   */
+  burnsAtActivation?: boolean;
   /** quicksand / land_mine: true = real trap, false = decoy. Hidden from non-controllers. */
   armed?: boolean;
   /** force_field: combat round at whose end it lifts; absent = lasts the whole Combat. */
