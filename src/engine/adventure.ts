@@ -20,7 +20,6 @@ import {
   CREATURE_BANKS,
   CREATURE_BANK_UNIT_SIDES,
   BINH_STACK_TOKEN_PLACEMENT_PERCENT,
-  STACK_TOKEN_STATS,
   STACK_TOKENS_BY_DIFFICULTY,
   rollStackTokenStat,
   stackTokenDelta,
@@ -8247,28 +8246,6 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "RECRUIT_FREE": {
-        // A qualifying Hive/Conservatory reward pauses BEFORE minting the card:
-        // the player chooses which physical Stack Token rides the dedicated
-        // Creature Bank card. The chosen leaf returns here with stackToken set.
-        if (step.side === "bank" && step.stacked && !step.stackToken) {
-          visit.steps.unshift({
-            type: "CHOOSE_ONE",
-            prompt: `${coreUnitDefinitions[step.unitDefId]?.name ?? "Creature Bank unit"}: choose its Stack Token bonus`,
-            options: STACK_TOKEN_STATS.map((stackToken) => ({
-              label:
-                stackToken === "attack"
-                  ? "+1 Attack"
-                  : stackToken === "defense"
-                    ? "+1 Defense"
-                    : stackToken === "health"
-                      ? "+1 Health"
-                      : "+2 Initiative",
-              steps: [{ ...step, stacked: false, stackToken }]
-            }))
-          });
-          break;
-        }
-
         // Add a unit to the army for free: a Few (Garden of Life), Pack, Neutral,
         // or the dedicated Creature Bank card. Optional `stacks` only
         // apply when army Unit Stacks are active (polish-unit-stacks / anime
@@ -8288,11 +8265,15 @@ export function processPendingVisit(state: GameState): void {
               added.stacks = layers;
             }
           }
-          // Dragon Fly Hive / Griffin Conservatory: the selected rulebook token
-          // rides the bank card and remains independent of Polish Stack layers.
-          const stackToken = step.stackToken;
-          if (stackToken) {
-            added.stackToken = stackToken;
+          // Dragon Fly Hive / Griffin Conservatory (X≥2): the Stacked reward carries
+          // a RANDOM Stack Token that re-rolls EVERY fight — user rule 2026-08-18, no
+          // longer a one-time player pick. The flag rides the army card; the per-fight
+          // stat is rolled at combat start (rollRandomBankRewardStackTokens). A
+          // legacy step that still carries a fixed `step.stackToken` keeps it.
+          if (step.stackToken) {
+            added.stackToken = step.stackToken;
+          } else if (step.side === "bank" && step.stacked) {
+            added.stackTokenRandom = true;
           }
           appendEvent(state, {
             type: "UNIT_RECRUITED",
@@ -8300,7 +8281,7 @@ export function processPendingVisit(state: GameState): void {
             unitDefId: step.unitDefId,
             kind: "recruit",
             cost: {},
-            ...(stackToken ? { stackToken } : {})
+            ...(step.stackToken ? { stackToken: step.stackToken } : {})
           });
         }
         break;

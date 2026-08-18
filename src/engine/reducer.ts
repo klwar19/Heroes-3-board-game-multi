@@ -467,6 +467,7 @@ import {
   getOffTurnCombatReactions,
   healDrawOnlyRider,
   drawRiderThenDiscard,
+  bankAwareTierGateRank,
   instantDrawOnlyRider,
   isAdjacent,
   isHandLockedInCombat,
@@ -1935,7 +1936,8 @@ function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState
     table,
     attackPowerFor(stackItem, caster) + (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0)
   );
-  return reached !== null && gradeRankOfUnit(defender) <= gradeRank(reached);
+  // A bank defender is pierced at its underlying grade (user ruling 2026-08-18).
+  return reached !== null && bankAwareTierGateRank(defender, "IGNORE_DEFENSE") <= gradeRank(reached);
 }
 
 /**
@@ -12024,7 +12026,9 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      // Anti-Magic may protect a bank unit (guard OR won reward card) at its
+      // underlying grade — bankAwareTierGateRank, user ruling 2026-08-18.
+      if (target && maxGrade && bankAwareTierGateRank(target, "CREATE_SPELL_IMMUNITY") <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -12092,7 +12096,8 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const power = getCurrentSpellPower(state, stackItem, cards);
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
-      if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      // Blind may Paralyse a bank unit at its underlying grade (user ruling).
+      if (target && maxGrade && bankAwareTierGateRank(target, "PLACE_PARALYSIS") <= gradeRank(maxGrade)) {
         if (unitImmuneToParalysis(state, target)) {
           appendEvent(state, {
             type: "UNIT_ABILITY_TRIGGERED",
@@ -12328,7 +12333,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         card.effect.defenseChoice !== undefined &&
         target &&
         maxGrade &&
-        gradeRankOfUnit(target) <= gradeRank(maxGrade)
+        bankAwareTierGateRank(target, "DISRUPTING_RAY") <= gradeRank(maxGrade)
       ) {
         openBalanceSpellChoice(state, stackItem.action.playerId, "disrupting-ray-mode", {
           cardId: card.id,
@@ -12339,7 +12344,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           { label: `${target.cardName} cannot use its special ability` },
           { label: `${target.cardName} suffers -${card.effect.defenseChoice} Defense` }
         ]);
-      } else if (target && maxGrade && gradeRankOfUnit(target) <= gradeRank(maxGrade)) {
+      } else if (target && maxGrade && bankAwareTierGateRank(target, "DISRUPTING_RAY") <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -14838,7 +14843,7 @@ function applyReactionPlayCore(
     const triggerEvent = state.reactionWindow?.triggerEvent;
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && effect.grade && gradeRankOfUnit(unit) <= gradeRank(effect.grade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && bankAwareTierGateRank(unit, "SKIP_ACTIVATION") <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -15522,7 +15527,7 @@ function applyReactionPlayCore(
         : getSchoolPowerBonus(state, playerId, card);
     } else if (effect.grade) {
       const defender = state.combat?.units[stackItem.action.defenderId];
-      if (defender && gradeRankOfUnit(defender) <= gradeRank(effect.grade)) {
+      if (defender && bankAwareTierGateRank(defender, "IGNORE_DEFENSE") <= gradeRank(effect.grade)) {
         stackItem.modifiers.ignoreDefense = true;
       }
     }
@@ -15906,7 +15911,20 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   // has no such tail — would leave the window paused forever. A future choice
   // type reaching this seam therefore keeps the old close-and-resolve behaviour
   // rather than freezing the table; give it a resume tail before adding it here.
-  if (state.pendingChoice?.type === "OPTION_CHOICE" || state.pendingChoice?.type === "DECK_SEARCH") {
+  // Since 2026-08-18 the "area-pick" ABILITY_TARGET_CHOICE joins the pause set:
+  // a Meteor Shower / Frost Ring instant fired INSIDE an attack/retaliation window
+  // (combatAnytime) opens it when more units are adjacent to the blast centre than
+  // it may hit. The pick sets pendingChoice + priority to the caster; without this
+  // pause the close-and-resolve tail below clobbered it, so the 2nd/3rd target was
+  // stranded ("can't pick 2 or 3 targets" fired before an attack). Its resume tail
+  // lives in `chooseAbilityTarget`'s area-pick branch, which re-enters this
+  // function once every pick is answered. Other ABILITY_TARGET_CHOICE kinds have
+  // no such tail, so only area-pick is paused here (see the comment above).
+  if (
+    state.pendingChoice?.type === "OPTION_CHOICE" ||
+    state.pendingChoice?.type === "DECK_SEARCH" ||
+    (state.pendingChoice?.type === "ABILITY_TARGET_CHOICE" && state.pendingChoice.kind === "area-pick")
+  ) {
     state.reactionWindow.passedPlayerIds = [];
     state.reactionWindow.priorityPlayerId = playerId;
     state.priorityPlayerId = playerId;
@@ -21798,6 +21816,16 @@ function chooseAbilityTarget(
     );
     applyAdjacentPicks(state, choice.playerId, blastCard, rest, (choice.picksRemaining ?? 1) - 1, amount);
     finishCombatIfNeeded(state);
+    // Resume tail for a blast fired INSIDE a reaction window (Meteor Shower /
+    // Frost Ring played before an attack/retaliation). The window was paused
+    // under this area-pick (advanceReactionWindowAfterPlay). Once no further pick
+    // reopened it and combat is still live, hand priority back to the caster and
+    // re-derive/close the window so the parked attack resumes — the blast's damage
+    // has already landed, so it resolves BEFORE the attack, as intended.
+    if (!state.pendingChoice && state.combat && state.reactionWindow) {
+      state.phase = "reaction";
+      advanceReactionWindowAfterPlay(state, choice.playerId, cards);
+    }
     return;
   }
 

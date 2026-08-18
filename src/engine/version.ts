@@ -376,14 +376,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // an MGQ main hero must discard one chosen hand card before confirming combat
 // deployment, recorded per combat so it cannot be charged twice. A v36 worker
 // would silently omit both costs and reject the resulting choice action.
-// v38 (2026-08-18): the Polish Balance Pack's First Aid EXPERT (+2 Health)
-// option gained `combatAnytime`, so the unit about to be hit may play it as an
-// instant reaction inside the open attack window (a defensive overheal before
-// the hit), exactly like the v35 instant-face batch. A v37 edge refuses that
-// window join a new client offers (same "not legal" symptom without this bump).
-// Offer stays gated on polish-card-balance + a First Aid Tent + a payable crown,
-// so rule-off / Tent-less tables are byte-identical. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 38;
+// v38 (2026-08-18): three server-authoritative resolution changes a v37 edge
+// answers DIFFERENTLY. (1) A won Creature-Bank reward's Stack Token is now rolled
+// at RANDOM at combat start (rollRandomBankRewardStackTokens) and no longer picked
+// — a v37 edge fields the card with NO token / opens the retired CHOOSE_ONE pick,
+// diverging on the unit's live stats. (2) A Meteor Shower / Frost Ring blast fired
+// inside an attack window pauses that window under its area-pick and resumes it
+// after every pick — a v37 edge strands the 2nd/3rd target and resolves the attack
+// early. (3) Sorrow/Anti-Magic/Blind/Frenzy/Disrupting Ray may now target a tierless
+// Creature-Bank unit at its underlying grade — a v37 edge rejects the same cast as
+// illegal. `npm run deploy:partykit` owed.
+// v39 (2026-08-18): merges the Polish Balance Pack fix batch — both this batch and
+// the v38 above independently bumped 37->38 in parallel, so the merged engine gets
+// a distinct v39 to avoid an undetected client/edge skew between the two v38s. New
+// server-authoritative behavior in the balance batch a v38 edge answers differently:
+// Cards of Prophecy map dice roll-3-keep-1 (prophecyThreePick visit-step flag) and
+// its positive next-activation duration fix; the Polish Balance First Aid EXPERT
+// (+2 Health) gaining `combatAnytime` (playable as a pre-hit attack-window reaction);
+// Learning's standalone drawOnly hand play; and map Mysticism refreshing the just-cast
+// Book Spell under polish-spell-book. All gated on the relevant house rules, so
+// rule-off tables are byte-identical. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 39;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

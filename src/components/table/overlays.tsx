@@ -831,6 +831,17 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE"
   );
 
+  // WOG Commander instant-reaction casts (USE_COMMANDER_CAST_REACTION) — the
+  // defense-buff casts that fire when your unit is attacked: Rampart Hierophant's
+  // Shield, Stronghold Ogre Leader's Stone Skin, Little Busters Kyousuke's Mission
+  // Start. The engine offers, resolves and AI-uses them, but they are neither
+  // PLAY_REACTION cards nor any other listed tray type, so without this tile a
+  // human could NEVER cast a commander instant reaction — the tray showed only
+  // "No playable instants — pass" ("commander instant like rampart never works").
+  const commanderCastReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_COMMANDER_CAST_REACTION"
+  );
+
   if (!window) {
     return null;
   }
@@ -1360,11 +1371,24 @@ export function ReactionTray({
         artifactSetReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
+        commanderCastReactions.length === 0 &&
         combatInstantJoins.length === 0 &&
         meteorAimOffers.length === 0 &&
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {commanderCastReactions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>
+                <Sunrise aria-hidden="true" size={15} /> Commander cast
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {meteorAimOffers.map((legal) => {
           const action = legal.action;
           return (

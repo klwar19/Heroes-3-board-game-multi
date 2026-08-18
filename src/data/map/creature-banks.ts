@@ -367,7 +367,8 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
       "Gain 1 Dragon Flies (Stacked if there were at least 2 Stacked defenders), then gain 1 Ability Empower token (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the dedicated Dragon Flies Creature Bank card. When 2+ defenders
-    // were Stacked, the player first chooses its rulebook Stack Token bonus.
+    // were Stacked, it carries a Stack Token that is re-ROLLED at RANDOM every
+    // fight (USER RULE 2026-08-18 — no longer a one-time player pick).
     // It is never a faction/Neutral-deck card or Polish Unit-Stack layer, even with
     // polish-unit-stacks on. (The wiki notes the Stacked version needs at least
     // Normal difficulty — Easy rolls a single token, so X can never reach 2.)
@@ -458,8 +459,8 @@ export const CREATURE_BANKS: Record<CreatureBankId, CreatureBankDefinition> = {
       "Gain 1 Griffins (Stacked if there were at least 2 Stacked defenders), then gain 1 Ability Empower token (HOUSE RULE).",
     rewardStatus: "implemented",
     // Gain the dedicated Griffins Creature Bank card. When 2+ defenders were
-    // Stacked, the player first chooses its rulebook Stack Token bonus — never
-    // a faction/Neutral-deck card or Polish Unit-Stack layer. HOUSE RULE bonus: Ability
+    // Stacked, it carries a Stack Token re-ROLLED at RANDOM every fight (USER RULE
+    // 2026-08-18) — never a faction/Neutral-deck card or Polish Unit-Stack layer. HOUSE RULE bonus: Ability
     // Empower token (max 1; spend anytime to Empower one Ability in hand — Expert
     // then costs no crown).
     buildReward: (x) => ({

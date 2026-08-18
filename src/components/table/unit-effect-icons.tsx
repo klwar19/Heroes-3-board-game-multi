@@ -147,7 +147,23 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
       effect.duration.type !== "instant" &&
       effectAppliesToUnit(effect, unit)
   );
-  for (const effect of ongoingCardEffects) {
+  // PLAYER- and GLOBAL-scoped card effects (Mirth's Attack-die reroll, Archery, a
+  // global artifact aura…) have no single unit to sit on, so before this branch a
+  // player could cast Mirth and see NOTHING on the board — no marker, no duration.
+  // Show them on every unit the effect actually touches (its owner's units for a
+  // player scope; both armies for a global one), reusing the same card-icon +
+  // duration-counter treatment as a directly-targeted ongoing effect ("like Fire
+  // Shield", user request). Set passives keep their own panel (artifactSetId
+  // excluded); the per-unit `scope: "unit"` branch above never overlaps these.
+  const broadScopeCardEffects = state.activeEffects.filter(
+    (effect) =>
+      !effect.artifactSetId &&
+      effect.source.type === "card" &&
+      (effect.scope === "player" || effect.scope === "global") &&
+      effect.duration.type !== "instant" &&
+      effectAppliesToUnit(effect, unit)
+  );
+  for (const effect of [...ongoingCardEffects, ...broadScopeCardEffects]) {
     const card = effect.source.type === "card" ? cardLibrary[effect.source.cardId] : undefined;
     const rounds =
       effect.expiresAtCombatRoundEnd !== undefined && state.combat
@@ -173,7 +189,9 @@ export function unitEffectIcons(state: GameState, unit: CombatUnitState): UnitEf
   const displayedEffectCarries = (type: ActiveEffectModifier["type"]) =>
     setEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === type));
   const ongoingCarries = (type: ActiveEffectModifier["type"]) =>
-    ongoingCardEffects.some((effect) => effect.modifiers.some((modifier) => modifier.type === type));
+    [...ongoingCardEffects, ...broadScopeCardEffects].some((effect) =>
+      effect.modifiers.some((modifier) => modifier.type === type)
+    );
   if (unitAttackRollAdvantaged(state, unit) && !displayedEffectCarries("ATTACK_ROLL_ADVANTAGE") && !ongoingCarries("ATTACK_ROLL_ADVANTAGE")) {
     icons.push({
       key: "roll-advantage",

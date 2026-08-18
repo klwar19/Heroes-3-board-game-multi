@@ -35,7 +35,7 @@ import {
   grantCommanderArtifactCard,
   queueNeutralCommanderArtifactOffer
 } from "./commander-artifacts";
-import { CREATURE_BANKS, type CreatureBankId } from "@/data/map/creature-banks";
+import { CREATURE_BANKS, rollStackTokenStat, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
 import {
@@ -10202,6 +10202,41 @@ export function resolveWayfarerParalysisChoice(state: GameState, playerId: Playe
   finalizeCombatStart(state);
 }
 
+/**
+ * Won Creature-Bank REWARD cards (Dragon Fly Hive / Griffin Conservatory, X≥2)
+ * carry a RANDOM Stack Token that re-rolls EVERY fight (USER RULE 2026-08-18 — no
+ * longer a one-time player pick). Roll it once at combat start: deterministic and
+ * reproducible on every client (seeded on the game seed + this combat's id, no
+ * entropy salt via `{ salt: false }`) yet different each fight (a fresh combat id).
+ * The rolled stat lands on the COMBAT unit only (never persisted to the army card —
+ * see the sync-back in finalizeAdventureCombat), and the re-fold bakes its bonus
+ * into the live stats. Idempotent: a unit that already rolled this fight (its
+ * `stackToken` is set) is skipped, so re-entry (a Bounty-Hunter / Disciplinary
+ * pre-combat window) never re-rolls. Neutral bank GUARDS never match (no
+ * `armyUnitId` / no `stackTokenRandom` army card), so their tokens are untouched.
+ */
+function rollRandomBankRewardStackTokens(state: GameState): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
+  const random = createSeededRandom(`${state.seed}#bank-reward-stack#${combat.id}`, { salt: false });
+  const ruleset = getRuleset(state);
+  const overrides = unitSideRuleOverrides(state);
+  // Stable iteration order so the seeded draw sequence is reproducible.
+  for (const unit of Object.values(combat.units).sort((a, b) => a.id.localeCompare(b.id))) {
+    if (!unit.bankUnit || !unit.armyUnitId || unit.stackToken) {
+      continue;
+    }
+    const armyUnit = state.players[unit.controllerId]?.army.find((entry) => entry.id === unit.armyUnitId);
+    if (!armyUnit?.stackTokenRandom) {
+      continue;
+    }
+    unit.stackToken = rollStackTokenStat(random);
+    applyUnitCurrentSide(unit, ruleset, overrides);
+  }
+}
+
 function finalizeCombatStart(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
@@ -10279,6 +10314,10 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   combat.pendingCommanderPlacement = null;
   state.phase = "combat";
   state.priorityPlayerId = null;
+
+  // Won Creature-Bank reward cards roll their RANDOM Stack Token now (idempotent),
+  // before any start-of-combat stat read. See rollRandomBankRewardStackTokens.
+  rollRandomBankRewardStackTokens(state);
 
   // Little Busters Disciplinary Committee Pack is a real mandatory target
   // choice, not an automatic strongest-target shortcut. Resolve every Pack on
@@ -12269,7 +12308,11 @@ export function finalizeAdventureCombat(state: GameState): void {
     // card already left the army in the branch above, so this only touches
     // survivors.
     if (unit.damage < unit.maxHealth) {
-      if (unit.stackToken) {
+      if (armyUnit.stackTokenRandom) {
+        // A per-fight RANDOM reward token (user rule 2026-08-18) is NEVER persisted
+        // — it re-rolls next fight. Keep the flag; carry no fixed token between fights.
+        delete armyUnit.stackToken;
+      } else if (unit.stackToken) {
         armyUnit.stackToken = unit.stackToken;
       } else {
         delete armyUnit.stackToken;

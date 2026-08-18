@@ -673,6 +673,40 @@ function maxTierGateRank(effect: EffectDefinition): number {
 }
 
 /**
+ * USER RULING (2026-08-18): the control / enchantment spells below MAY be cast on a
+ * tierless Creature-Bank unit — a bank GUARD (e.g. the Nagas defending a Naga Bank)
+ * AND a won "gain a unit" bank REWARD card (e.g. Dragon Flies). For these effects a
+ * bank unit is gated at its UNDERLYING grade (capped at gold), NOT the gradeless ∞ —
+ * so enough Power still matters against a high-tier guard (a gold Naga needs a
+ * gold-reaching cast) while a low-tier reward (bronze Dragon Flies) is reachable at
+ * low Power. This is the SOLE, deliberate exception to "tier-gated spells never touch
+ * a bank unit"; it does NOT extend to WOG commanders / heroes, and Berserk / Teleport
+ * / Clone / tier-gated damage spells stay blocked on every bank unit.
+ */
+export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["type"]> = new Set([
+  "CREATE_SPELL_IMMUNITY", // Anti-Magic
+  "PLACE_PARALYSIS", // Blind
+  "DISRUPTING_RAY", // Disrupting Ray
+  "IGNORE_DEFENSE", // Frenzy
+  "SKIP_ACTIVATION" // Sorrow
+]);
+
+/**
+ * Tier-gate rank of a unit AGAINST a specific effect type. Identical to
+ * `gradeRankOfUnit` for every unit EXCEPT a Creature-Bank unit under one of the
+ * `BANK_TARGETABLE_TIER_GATED_EFFECTS`, which is ranked by its underlying grade
+ * (capped at gold) instead of ∞. Every non-allowlisted effect — and every non-bank
+ * unit — is byte-identical to `gradeRankOfUnit`. Mirrored in the reducer via this
+ * exported helper so the OFFER and the RESOLUTION agree.
+ */
+export function bankAwareTierGateRank(unit: CombatUnitState, effectType: EffectDefinition["type"]): number {
+  if (unit.bankUnit && BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)) {
+    return Math.min(gradeRank(unit.grade), gradeRank("gold"));
+  }
+  return gradeRankOfUnit(unit);
+}
+
+/**
  * Orb of Vulnerability (option A): while its combat-wide effect is on the
  * table, every unit's innate spell-related ability is switched off. Read at
  * each such ability's site so a single grant covers both armies for the Combat.
@@ -1854,7 +1888,10 @@ function getTargetsForCard(
         return true;
       }
       const unit = state.combat?.units[candidate.unitId];
-      return !unit || gradeRankOfUnit(unit) <= ceiling;
+      // bankAwareTierGateRank keeps ∞ for a bank unit under every effect EXCEPT the
+      // control/enchantment allowlist (Anti-Magic / Blind / Disrupting Ray here),
+      // which the user ruled may reach a bank unit at its underlying grade.
+      return !unit || bankAwareTierGateRank(unit, card.effect.type) <= ceiling;
     });
   }
 
@@ -9649,7 +9686,9 @@ export function isEffectLegalForTrigger(
       return false;
     }
     const unit = state.combat?.units[triggerEvent.unitId];
-    return Boolean(unit && isUnitAlive(unit) && gradeRankOfUnit(unit) === gradeRank(effect.grade));
+    // A bank guard (e.g. Nagas) is Sorrow-able at its underlying grade, so the
+    // matching grade option (gold for a gold Naga) is offered — user ruling.
+    return Boolean(unit && isUnitAlive(unit) && bankAwareTierGateRank(unit, effect.type) === gradeRank(effect.grade));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.
@@ -9859,18 +9898,17 @@ export function isEffectLegalForTrigger(
     // is always offered). The legacy fixed-grade form is offered only when its
     // grade reaches the defender, keeping a wasted pierce off the menu.
     if (effect.type === "IGNORE_DEFENSE") {
-      // A Creature Bank defender has no tier, so Frenzy can never pierce it —
-      // never offer it (the Power-scaled form would otherwise always appear).
-      if (defender.bankUnit) {
-        return false;
-      }
+      // User ruling (2026-08-18): Frenzy MAY pierce a Creature Bank defender, at its
+      // underlying grade (bankAwareTierGateRank). The Power-scaled form is offered
+      // whenever you attack (its pierced grade is decided at resolution); the fixed
+      // form only when its grade reaches the defender's underlying grade.
       if (effect.gradeByPower) {
         return attacker.controllerId === playerId;
       }
       return (
         attacker.controllerId === playerId &&
         effect.grade !== undefined &&
-        gradeRankOfUnit(defender) <= gradeRank(effect.grade)
+        bankAwareTierGateRank(defender, effect.type) <= gradeRank(effect.grade)
       );
     }
 
