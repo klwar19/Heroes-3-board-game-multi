@@ -632,6 +632,98 @@ describe("Deemer's Meteor Shower", () => {
     );
     expect(offered, "Meteor Shower IV's +1 Power should boost a spell you cast").toBe(true);
   });
+
+  // The reported bug: fired as an INSTANT before an attack/retaliation, Meteor
+  // Shower "can't pick 2 or 3 targets" — the area-pick opened under an attack
+  // window was clobbered by the window's close-and-resolve tail and stranded.
+  // The on-turn pick above (no open window) always worked, which is why the old
+  // engine tests were green. This pins the in-window path end to end.
+  it("VI fired INSIDE an attack window opens the pick, resolves it, then the attack lands", () => {
+    const state = meteorState(["specialty.deemer.6"]);
+    // ONE geometry drives BOTH the attack and the blast: griffins(8) attacks
+    // skeletons(9) — the meteor centre — whose living neighbours are griffins(8),
+    // vampires(10) and dread_knights(13): three, so VI (2 picks) must open a pick.
+    state.combat!.units.unit_p1_griffins.position = 8;
+    state.combat!.units.unit_p2_skeletons.position = 9;
+    state.combat!.units.unit_p2_vampires.position = 10;
+    state.combat!.units.unit_p2_dread_knights.position = 13;
+
+    // Declare the attack → an instant window opens (Meteor Shower is combatAnytime).
+    let result = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.reactionWindow, "the declared attack opens an instant window").toBeTruthy();
+    expect(
+      getLegalActions(result, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "specialty.deemer.6"
+      ),
+      "Meteor Shower joins the open attack window"
+    ).toBe(true);
+
+    // Play it centred on skeletons(9): the centre takes its hit, then — 3 neighbours
+    // > 2 picks — the area-pick opens INSIDE the window instead of being stranded.
+    result = applyOk(result, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "specialty.deemer.6",
+      mode: "basic",
+      optionIndex: 0,
+      target: { type: "unit", unitId: "unit_p2_skeletons" }
+    });
+    const choice = result.pendingChoice;
+    expect(choice?.type, "the 2nd/3rd-target pick is NOT stranded by the window").toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    expect(choice.kind).toBe("area-pick");
+    expect(choice.picksRemaining).toBe(2);
+    // The DISCRIMINATOR: the window is PAUSED under the pick, not closed. Without
+    // the fix, advanceReactionWindowAfterPlay ran its close-and-resolve tail here,
+    // firing the parked attack BEFORE the picks (skeletons taking > 1) and leaving
+    // the pick dangling with the window gone.
+    expect(result.reactionWindow, "the window is paused under the pick, not closed").toBeTruthy();
+    expect(damage(result, "unit_p2_skeletons"), "only the meteor centre so far — attack still parked").toBe(1);
+
+    // Answer both picks.
+    result = applyOk(result, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_vampires"
+    });
+    const second = result.pendingChoice;
+    expect(second?.type, "the second pick reopens").toBe("ABILITY_TARGET_CHOICE");
+    if (second?.type !== "ABILITY_TARGET_CHOICE") {
+      return;
+    }
+    result = applyOk(result, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: second.id,
+      targetUnitId: "unit_p2_dread_knights"
+    });
+
+    // The blast resolved fully and BEFORE the attack: both picks took their 1 damage.
+    expect(result.pendingChoice, "the pick chain completed — nothing stranded").toBeNull();
+    expect(damage(result, "unit_p2_vampires")).toBe(1);
+    expect(damage(result, "unit_p2_dread_knights")).toBe(1);
+    expect(damage(result, "unit_p2_skeletons"), "the centre took the blast").toBeGreaterThanOrEqual(1);
+
+    // The window RESUMED and settled — no frozen table. Drain any residual
+    // reactions; the parked griffins→skeletons attack then resolves normally.
+    let safety = 30;
+    while (result.reactionWindow && safety-- > 0) {
+      result = applyOk(result, {
+        type: "PASS_REACTION",
+        playerId: result.reactionWindow.priorityPlayerId
+      });
+    }
+    expect(result.reactionWindow, "the window resumed and closed — the table is not frozen").toBeNull();
+    expect(result.pendingChoice).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

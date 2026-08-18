@@ -1143,6 +1143,55 @@ adjacency gate generalized to EVERY `AREA_DAMAGE_PICK_ADJACENT` effect with
 `amountByPower` (Kud included). `frost-ring-meteor-shower.test.ts`,
 `overlays.test.tsx`.
 
+## Commander instant · Meteor pick-in-window · Mirth marker · random bank token · spells on bank units (2026-08-18)
+
+Six reported fixes; each is engine-enforced (or UI-wired) AND has a mutation-checked test.
+No protocol bump (no serialized-state shape change beyond the additive `stackTokenRandom`).
+
+- **WOG Commander instant reactions finally reach the human** (`overlays.tsx`
+  `ReactionTray`). The engine already OFFERED `USE_COMMANDER_CAST_REACTION` (the
+  defense-buff casts — Rampart Hierophant's Shield, Stronghold Ogre Leader's Stone
+  Skin, Little Busters Kyousuke's Mission Start) and the AI used it, but the reaction
+  tray renders only an ALLOW-LIST of action types and this one was on none, so a human
+  saw "No playable instants — pass" ("commander instant like rampart never works"). A
+  `commanderCastReactions` tile now renders it (label + one-click dispatch). ENGINE
+  UNCHANGED — the instant-reaction set is still `commanderCastIsInstantReaction`
+  (defense-buff only). `overlays.test.tsx` ("commander instant reaction has a button").
+- **Meteor Shower / Frost Ring fired INSIDE an attack window can pick 2–3 targets**
+  (`reducer.ts`). A `combatAnytime` blast played as a reaction opened its area-pick
+  (`openAreaPickChoice`) when more units were adjacent than it may hit, but
+  `advanceReactionWindowAfterPlay`'s close-and-resolve tail then fired the parked
+  attack early and stranded the pick. FIX: the `area-pick` `ABILITY_TARGET_CHOICE`
+  joins the pause set (with `OPTION_CHOICE`/`DECK_SEARCH`), and `chooseAbilityTarget`'s
+  area-pick branch RESUMES the window once every pick is answered — so the blast
+  resolves BEFORE the attack. On-turn (no window) was always fine, which is why the old
+  tests were green. `frost-ring-meteor-shower.test.ts` ("VI fired INSIDE an attack
+  window …", mutation-checked: the window stays paused, skeletons takes only the centre).
+- **Mirth (and any player/global card effect) now wears a board marker + duration**
+  (`unit-effect-icons.tsx`). A player-scoped effect has no unit to sit on, so casting
+  Mirth left NOTHING on the board. The effect rail now also hangs player- and
+  global-scoped card effects on every unit they touch (its owner's units for a player
+  scope), reusing the ongoing-card icon + duration counter "like Fire Shield". Set
+  passives keep their own panel (`artifactSetId` excluded). `unit-effect-icons.test.tsx`.
+- **A won Creature-Bank reward's Stack Token is RANDOM every fight, not a pick**
+  (`adventure.ts` grant, `adventure-reducer.ts` `rollRandomBankRewardStackTokens` at
+  combat start, sync-back). The Dragon Fly Hive / Griffin Conservatory Stacked reward
+  (X≥2) no longer opens a `CHOOSE_ONE` pick; the card carries `stackTokenRandom`
+  (`state.ts`) and rolls a fresh stat EACH fight — deterministic per fight
+  (`createSeededRandom(seed#combat.id, {salt:false})`), landing on the COMBAT unit only
+  and NEVER persisted back to the army card. `creature-bank-combat.test.ts` (variance +
+  determinism + fold + non-persistence), `polish-bank-sizes.test.ts`.
+- **Sorrow / Anti-Magic / Blind / Frenzy / Disrupting Ray CAN be cast on a tierless
+  Creature-Bank unit** — a bank GUARD (Nagas in a Naga Bank) AND a won bank REWARD card
+  (own Dragon Flies) (`legal-actions.ts` + `reducer.ts`, USER RULE). One shared helper
+  `bankAwareTierGateRank(unit, effectType)`: for exactly these five control/enchantment
+  effect types a bank unit is ranked by its UNDERLYING grade (capped at gold) instead of
+  the gradeless ∞ — so Power still matters (a gold Naga needs a gold-reaching cast, a
+  bronze Dragon Flies is reachable at 2 SP). This is the SOLE exception to "tier-gated
+  spells never touch a bank unit"; Berserk / Teleport / Clone / tier-gated damage stay
+  ∞-blocked (CONTROL-pinned), and it never extends to commanders / heroes.
+  `bank-unit-spell-targeting.test.ts` (grade-discriminating, Berserk control).
+
 ## AI opening is Ⅱ–Ⅲ-first: tile Ⅰ rotation + band-first discovery (2026-08-14)
 
 Score layer only (engine rules untouched, no protocol change). LIMITS FIRST: on the

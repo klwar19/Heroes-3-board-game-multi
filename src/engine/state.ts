@@ -7815,20 +7815,29 @@ export type ArmyUnitState = {
    */
   stacks?: number;
   /**
-   * Rulebook Stack Token (Naval Battles p.67) riding this army card between
-   * combats — the ACTUAL game "Stacked" version of a Dragon Fly Hive / Griffin
-   * Conservatory reward unit (source: those two banks' `stacked` GAIN_UNIT
-   * reward). One player-chosen stat bonus (+1 Attack/Defense/Health or +2 Initiative)
-   * is folded into the card every combat (makeCombatUnitFromArmy /
-   * applyUnitCurrentSide) and mirrored onto `CombatUnitState.stackToken`, so the
-   * EXISTING absorb path (markUnitRemovedIfNeeded) discards it — FOREVER — to
-   * soak one lethal blow; the survivor's token syncs back at combat end.
-   * DELIBERATELY separate from the Polish
-   * `stacks` layers above: a different mechanism (this is NOT a Polish layer),
-   * never granted by these banks even with polish-unit-stacks on, and a card may
-   * carry neither, either, or both. Absent otherwise.
+   * A FIXED rulebook Stack Token (Naval Battles p.67) riding this army card between
+   * combats — one stat bonus (+1 Attack/Defense/Health or +2 Initiative) folded in
+   * every combat (makeCombatUnitFromArmy / applyUnitCurrentSide) and mirrored onto
+   * `CombatUnitState.stackToken`, so the EXISTING absorb path
+   * (markUnitRemovedIfNeeded) discards it — FOREVER — to soak one lethal blow; the
+   * survivor's token syncs back at combat end. Since 2026-08-18 a WON Dragon Fly
+   * Hive / Griffin Conservatory reward uses `stackTokenRandom` instead (a per-fight
+   * RANDOM roll, never persisted); a `stackToken` here is now only a fixed
+   * (legacy / designer / manually-built) token. DELIBERATELY separate from the
+   * Polish `stacks` layers above: a different mechanism (this is NOT a Polish
+   * layer), and a card may carry neither, either, or both. Absent otherwise.
    */
   stackToken?: StackTokenStat;
+  /**
+   * A won Creature-Bank reward card (Dragon Fly Hive / Griffin Conservatory, X≥2)
+   * whose Stack Token is re-ROLLED at RANDOM every fight (USER RULE 2026-08-18 —
+   * no longer a one-time player pick). While this flag is set the card carries NO
+   * fixed `stackToken` between combats; the per-fight stat is rolled at combat
+   * start (`rollRandomBankRewardStackTokens`, seeded per combat) onto
+   * `CombatUnitState.stackToken` only and NEVER synced back, so the next fight
+   * rolls fresh. Absent on every ordinary card and on a fixed-token legacy reward.
+   */
+  stackTokenRandom?: boolean;
   /**
    * Unit Experience (optional rule, WoG UES board adaptation): total experience
    * this unit card has earned from combats won alongside the hero (survivors

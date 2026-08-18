@@ -2569,3 +2569,80 @@ describe("ReactionTray — a PAUSED window (Scholar's discard pick) yields to th
     expect(screen.queryByText(/No playable instants/i), "the recovered card has a tile").toBeNull();
   });
 });
+
+describe("ReactionTray — WOG commander instant reaction has a button", () => {
+  /** Opens a real instant window (a Magic Arrow cast) so the tray renders. */
+  function openWindow(seed: string) {
+    let state = createInitialGameState(seed);
+    state.players.p1.hand = ["spell.magic_arrow", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.combat!.units.unit_p1_griffins.activatedThisRound = false;
+    const target = state.combat!.units.unit_p2_skeletons;
+    const cast = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.magic_arrow" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === target.id
+    );
+    state = applyAction(state, cast!.action).state;
+    expect(state.reactionWindow, "an instant window is open").toBeTruthy();
+    return { state, targetId: target.id };
+  }
+
+  it("renders a clickable tile for USE_COMMANDER_CAST_REACTION and dispatches it", () => {
+    // The engine OFFER is pinned in wog-commander-casts.test.ts. This pins the UI
+    // half the bug lived in: the human reaction tray renders only an allow-list of
+    // action types, and USE_COMMANDER_CAST_REACTION was on none of them — so a
+    // commander instant (Rampart Hierophant's Shield…) "never worked", the tray
+    // showing only "No playable instants — pass".
+    const { state, targetId } = openWindow("tray-commander-cast");
+    const commanderAction: GameAction = {
+      type: "USE_COMMANDER_CAST_REACTION",
+      playerId: "p1",
+      commanderUnitId: "unit_p1_griffins",
+      targetUnitId: targetId
+    };
+    const legalActions = [
+      { action: commanderAction, label: "Hierophant: cast Shield (Power 3) on Skeletons" }
+    ] as unknown as LegalAction[];
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={legalActions}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    const button = screen.getByRole("button", { name: /Hierophant: cast Shield \(Power 3\) on Skeletons/i });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith(commanderAction);
+    expect(
+      screen.queryByText(/No playable instants/i),
+      "the commander cast is a real tile, not the empty state"
+    ).toBeNull();
+  });
+
+  it("CONTROL: with no commander cast offered, the tray shows the empty state", () => {
+    const { state } = openWindow("tray-commander-cast-control");
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={[]}
+          onAction={vi.fn()}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    expect(screen.getByText(/No playable instants/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /cast Shield/i })).toBeNull();
+  });
+});

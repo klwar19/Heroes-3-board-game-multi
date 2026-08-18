@@ -412,3 +412,44 @@ describe("battlefield effect icons — ongoing Spell markers", () => {
     expect(unitEffectIcons(state, unit).some((icon) => icon.kind === "ongoing-card")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PLAYER-scoped card effects (Mirth) — the marker the user asked for.
+// A player-scoped effect has no unit to sit on, so before the fix Mirth left no
+// mark on the board at all. It now hangs on every unit its owner controls, with
+// its duration counter, "like Fire Shield".
+// ---------------------------------------------------------------------------
+describe("player-scoped card effect markers (Mirth)", () => {
+  it("shows a Mirth marker + duration on the caster's units, not the enemy's", () => {
+    const state = makeState(false, "effect-icons-mirth");
+    stageCombat(state);
+    const own = state.combat!.units.u_own_0; // p1
+    const foe = state.combat!.units.u_foe_0; // NEUTRAL
+    state.activeEffects.push(
+      makeActiveEffect(
+        state,
+        {
+          name: "Mirth",
+          duration: { type: "current-combat-round" },
+          scope: "player",
+          modifiers: [{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: false }]
+        },
+        { type: "card", cardId: "spell.mirth", controllerId: "p1" },
+        "p1",
+        undefined
+      )
+    );
+    const ownIcon = unitEffectIcons(state, own).find((icon) => icon.kind === "ongoing-card");
+    expect(ownIcon, "the caster's own unit wears the Mirth marker").toBeTruthy();
+    expect(ownIcon!.counter, "the token shows how many rounds it lasts").toBe("1");
+    expect(ownIcon!.label).toMatch(/Mirth/);
+    // CONTROL: a different controller never wears the player-scoped marker.
+    expect(
+      unitEffectIcons(state, foe).some((icon) => icon.kind === "ongoing-card"),
+      "the enemy unit does NOT wear the caster's Mirth"
+    ).toBe(false);
+    // CONTROL: gone the instant the effect ends.
+    state.activeEffects = [];
+    expect(unitEffectIcons(state, own).some((icon) => icon.kind === "ongoing-card")).toBe(false);
+  });
+});

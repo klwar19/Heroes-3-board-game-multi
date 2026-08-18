@@ -1166,17 +1166,17 @@ describe("Creature Bank combat lifecycle", () => {
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
 
-    // The reward grants a unit card, not resources.
+    // The reward grants a unit card, not resources. The Stacked token is now a
+    // per-fight RANDOM roll (user rule 2026-08-18), so there is NO pick step — the
+    // card joins the army immediately, flagged for a random token but carrying no
+    // fixed stat between fights.
     expect(state.players.p1.resources).toEqual(resourcesBefore);
-    if (stacked >= 2) {
-      // The card does not enter the army until its token stat is chosen.
-      expect(state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id))).toHaveLength(0);
-      const labels = getLegalActions(state, "p1")
-        .filter((entry) => entry.action.type === "RESOLVE_VISIT_STEP")
-        .map((entry) => entry.label);
-      expect(labels).toEqual(["+1 Attack", "+1 Defense", "+1 Health", "+2 Initiative"]);
-      state = chooseVisitOption(state, /^\+1 Attack$/);
-    }
+    expect(
+      getLegalActions(state, "p1").some(
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP" && /Stack Token bonus|\+1 Attack/.test(entry.label)
+      ),
+      "the deliberate Stack Token pick is gone"
+    ).toBe(false);
 
     // Exactly one dedicated Dragon Flies bank card joined the army.
     const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
@@ -1184,16 +1184,17 @@ describe("Creature Bank combat lifecycle", () => {
     expect(gained[0].unitDefId).toBe("neutral.dragon_flies");
     expect(gained[0].side).toBe("bank");
     expect(gained[0].stacks).toBeUndefined();
+    expect(gained[0].stackToken, "no FIXED token — it is rolled fresh each fight").toBeUndefined();
     if (stacked >= 2) {
-      expect(gained[0].stackToken).toBe("attack");
+      expect(gained[0].stackTokenRandom, "a Stacked reward rolls a random token each fight").toBe(true);
     } else {
-      expect(gained[0].stackToken, "fewer than 2 Stacked → plain bank card, no token").toBeUndefined();
+      expect(gained[0].stackTokenRandom, "fewer than 2 Stacked → plain bank card, no token").toBeUndefined();
     }
     expect(state.adventure!.fields["bank-field"].blackCube).toBe(true);
     expect(state.combat).toBeNull();
   });
 
-  it("Griffin Conservatory grants its bank card after the player chooses the Stack bonus", () => {
+  it("Griffin Conservatory grants its bank card with a per-fight RANDOM Stack Token", () => {
     let state = createAdventureGameState({
       seed: "bank-conservatory-reward",
       difficulty: "normal",
@@ -1224,27 +1225,87 @@ describe("Creature Bank combat lifecycle", () => {
     finishCombatIfNeeded(state);
     finalizeAdventureCombat(state);
 
-    expect(state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id))).toHaveLength(0);
-    expect(state.adventure?.pendingVisit?.steps[0]).toMatchObject({
-      type: "CHOOSE_ONE",
-      prompt: "Griffins: choose its Stack Token bonus"
-    });
-    state = chooseVisitOption(state, /^\+2 Initiative$/);
-
+    // No deliberate pick anymore: the card joins the army at once, flagged for a
+    // random per-fight token (rolled at combat start, not persisted).
+    expect(state.adventure?.pendingVisit?.steps ?? []).not.toContainEqual(
+      expect.objectContaining({ type: "CHOOSE_ONE", prompt: "Griffins: choose its Stack Token bonus" })
+    );
     const gained = state.players.p1.army.filter((unit) => !armyIdsBefore.has(unit.id));
     expect(gained).toHaveLength(1);
     expect(gained[0]).toMatchObject({
       unitDefId: "neutral.griffins",
       side: "bank",
-      stackToken: "initiative"
+      stackTokenRandom: true
     });
+    expect(gained[0].stackToken, "no fixed token rides the card between fights").toBeUndefined();
     expect(gained[0].stacks, "the reward is never a Polish layer").toBeUndefined();
 
+    // The factory itself adds NO token (the roll happens at combat start), so a
+    // freshly built unit carries the plain bank-side initiative.
     const deployed = makeCombatUnitFromArmy(gained[0], "p1", "reward-griffins", 0)!;
     expect(deployed.bankUnit).toBe(true);
     expect(deployed.assets?.cardImage).toBe("/assets/units-creature-bank-griffins.webp");
     expect(deployed.cardName).toBe("Griffins (Creature Bank)");
-    expect(deployed.initiative).toBe(CREATURE_BANK_UNIT_SIDES["neutral.griffins"].initiative + 2);
+    expect(deployed.initiative).toBe(CREATURE_BANK_UNIT_SIDES["neutral.griffins"].initiative);
+  });
+
+  it("rolls a RANDOM Stack Token at combat start (varies by fight), never persisted", () => {
+    // A won reward card already in the army, flagged for a per-fight random token.
+    function startFightWithRandomReward(seed: string): GameState {
+      let state = createAdventureGameState({ seed, difficulty: "normal", rollFirstPlayer: false });
+      state = state.players.p1.needsHandRefresh || state.players.p1.canMulligan
+        ? apply(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] })
+        : state;
+      state.players.p1.army = [
+        { id: "reward-df", unitDefId: "neutral.dragon_flies", side: "bank", stackTokenRandom: true }
+      ];
+      placeBankUnderHero(state, "dragon_fly_hive", 7);
+      const hero = getMainHero(state, "p1")!;
+      startNeutralEncounter(state, hero, state.adventure!.fields["bank-field"]);
+      const place = getLegalActions(state, "p1").find((entry) => entry.action.type === "PLACE_COMBAT_UNIT");
+      state = apply(state, place!.action);
+      return apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+    }
+    const rewardOf = (state: GameState) =>
+      Object.values(state.combat!.units).find((unit) => unit.armyUnitId === "reward-df")!;
+
+    const STATS = ["attack", "defense", "health", "initiative"];
+    const seeds = ["rnd-a", "rnd-b", "rnd-c", "rnd-d", "rnd-e", "rnd-f", "rnd-g", "rnd-h"];
+    const rolled = seeds.map((seed) => rewardOf(startFightWithRandomReward(seed)).stackToken);
+
+    // Every fight lands SOME valid Stack Token — the roll actually fires.
+    for (const token of rolled) {
+      expect(STATS, "a random Stack Token is rolled onto the reward unit each fight").toContain(token);
+    }
+    // It is RANDOM, not constant: distinct fights produce distinct stats. (If the
+    // roll were broken/hardcoded, all eight would match — this fails.)
+    expect(new Set(rolled).size, "the token varies fight to fight").toBeGreaterThan(1);
+
+    // Deterministic within a fight: the SAME seed reproduces the SAME roll (so
+    // every client agrees — no desync).
+    expect(rewardOf(startFightWithRandomReward("rnd-a")).stackToken).toBe(rolled[0]);
+
+    // The rolled stat actually folds into the live stats (bakes off the bank side).
+    const state = startFightWithRandomReward("rnd-a");
+    const reward = rewardOf(state);
+    const side = CREATURE_BANK_UNIT_SIDES["neutral.dragon_flies"];
+    const delta = (stat: "attack" | "defense" | "health" | "initiative") =>
+      reward.stackToken === stat ? stackTokenDelta(stat) : 0;
+    expect(reward.attack).toBe(side.attack + delta("attack"));
+    expect(reward.initiative).toBe(side.initiative + delta("initiative"));
+
+    // NEVER persisted: after the fight the survivor's army card keeps the random
+    // FLAG but carries no fixed token — the next fight rolls fresh.
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.controllerId === "neutrals") {
+        unit.damage = unit.maxHealth;
+      }
+    }
+    finishCombatIfNeeded(state);
+    finalizeAdventureCombat(state);
+    const card = state.players.p1.army.find((unit) => unit.id === "reward-df")!;
+    expect(card.stackTokenRandom, "the random flag rides the card into the next fight").toBe(true);
+    expect(card.stackToken, "no fixed token is ever written back").toBeUndefined();
   });
 
   it("Pyramid: a Stacked win grants the base Search plus a remove-a-card-then-Search(5) per Stacked defender", () => {

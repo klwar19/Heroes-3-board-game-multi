@@ -224,7 +224,7 @@ export function applyUnitCurrentSide(
   }
 
   // Creature Bank units fight from their own card. A Stacked unit adds one
-  // Stack Token bonus (won cards use the player's choice; bank defenders use
+  // Stack Token bonus (won cards roll a random token each fight; bank defenders use
   // the setup result, and Polish Bank Sizes can guarantee the token count).
   if (unit.bankUnit && unit.unitDefId) {
     const bankSide = CREATURE_BANK_UNIT_SIDES[unit.unitDefId];

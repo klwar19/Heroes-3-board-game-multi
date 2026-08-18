@@ -376,7 +376,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // an MGQ main hero must discard one chosen hand card before confirming combat
 // deployment, recorded per combat so it cannot be charged twice. A v36 worker
 // would silently omit both costs and reject the resulting choice action.
-export const ENGINE_PROTOCOL_VERSION = 37;
+// v38 (2026-08-18): three server-authoritative resolution changes a v37 edge
+// answers DIFFERENTLY. (1) A won Creature-Bank reward's Stack Token is now rolled
+// at RANDOM at combat start (rollRandomBankRewardStackTokens) and no longer picked
+// — a v37 edge fields the card with NO token / opens the retired CHOOSE_ONE pick,
+// diverging on the unit's live stats. (2) A Meteor Shower / Frost Ring blast fired
+// inside an attack window pauses that window under its area-pick and resumes it
+// after every pick — a v37 edge strands the 2nd/3rd target and resolves the attack
+// early. (3) Sorrow/Anti-Magic/Blind/Frenzy/Disrupting Ray may now target a tierless
+// Creature-Bank unit at its underlying grade — a v37 edge rejects the same cast as
+// illegal. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 38;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
