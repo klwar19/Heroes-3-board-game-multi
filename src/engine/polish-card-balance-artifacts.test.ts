@@ -12,6 +12,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
+import { expireEffectsForActivationEnd, makeActiveEffect } from "./active-effects";
 import { getUnitMoveRange } from "./legal-actions";
 import { searchCountOverrideFor } from "./ruleset";
 import { nextTurnTimeoutAction } from "./afk-drop";
@@ -375,6 +376,156 @@ describe("Balance Pack artifacts — Cards of Prophecy", () => {
       candidateIndex: 0
     });
     expect(forged.errors.length, "an earlier throw stays unreachable").toBeGreaterThan(0);
+  });
+
+  it("option A lasts until the unit's NEXT activation — it SURVIVES the caster's own activation-end", () => {
+    // Cast on the CURRENTLY ACTIVE unit (the realistic play: buff your own unit as
+    // it acts). "Until its activation in the next round" must cover EVERY attack in
+    // between, so the buff cannot be consumed by the activation already in progress.
+    // The fix gives such a buff one extra activation to live through.
+    const on = playOption(combat(true), "artifact.cards_of_prophecy", 0, "unit_p1_griffins");
+    const buff = effectsOn(on, "unit_p1_griffins").find((effect) => effect.name === "Cards of Prophecy")!;
+    // The fix: laid on the active unit, it must survive one extra activation-end.
+    expect(buff.activationsRemaining).toBe(2);
+
+    on.combat!.units.unit_p1_griffins.attack = 5;
+    on.combat!.units.unit_p2_skeletons.defense = 0;
+
+    // Its own blow this activation is advantaged: two dice, keeps the "+1" → 6.
+    on.combat!.units.unit_p2_skeletons.damage = 0;
+    expect(attackDamage(on, [-1, 1]).damage).toBe(6);
+
+    // The caster's activation ENDS (the exact call the reducer makes at every
+    // activation-end). The buff must survive it — otherwise no retaliation before
+    // the unit acts again would be covered.
+    expireEffectsForActivationEnd(on, "unit_p1_griffins");
+    expect(
+      effectsOn(on, "unit_p1_griffins").some((effect) => effect.name === "Cards of Prophecy"),
+      "the buff survives the caster's own activation-end"
+    ).toBe(true);
+    // OBSERVABLE: an attack after that activation-end is still advantaged → 6.
+    on.combat!.units.unit_p2_skeletons.damage = 0;
+    expect(attackDamage(on, [-1, 1]).damage).toBe(6);
+
+    // The unit ACTS AGAIN (next round) → the second activation-end expires it.
+    expireEffectsForActivationEnd(on, "unit_p1_griffins");
+    expect(effectsOn(on, "unit_p1_griffins").some((effect) => effect.name === "Cards of Prophecy")).toBe(false);
+    // OBSERVABLE: now the single first die (−1) resolves → 4.
+    on.combat!.units.unit_p2_skeletons.damage = 0;
+    expect(attackDamage(on, [-1, 1]).damage).toBe(4);
+  });
+
+  it("option A gives a RETALIATION after the caster's activation-end roll-advantage; a plain unit's does not", () => {
+    const buffedRetaliation = (buff: boolean): number => {
+      const on = buff
+        ? playOption(combat(true), "artifact.cards_of_prophecy", 0, "unit_p1_griffins")
+        : combat(true);
+      on.combat!.units.unit_p1_griffins.attack = 5;
+      on.combat!.units.unit_p1_griffins.defense = 0;
+      on.combat!.units.unit_p2_skeletons.defense = 0;
+      on.combat!.units.unit_p2_skeletons.attack = 1;
+
+      // The griffins' OWN activation has ENDED (it acted, then it is p2's turn) —
+      // the exact moment a naive "next-activation" buff would already be gone. The
+      // retaliation below must still be covered.
+      expireEffectsForActivationEnd(on, "unit_p1_griffins");
+      if (buff) {
+        expect(
+          effectsOn(on, "unit_p1_griffins").some((effect) => effect.name === "Cards of Prophecy"),
+          "the buff survives the caster's own activation-end"
+        ).toBe(true);
+      }
+
+      // p2's skeletons now attack the griffins → the griffins RETALIATE.
+      on.combat!.units.unit_p2_skeletons.damage = 0;
+      on.combat!.units.unit_p1_griffins.damage = 0;
+      on.combat!.units.unit_p1_griffins.retaliatedThisRound = false;
+      on.combat!.units.unit_p1_griffins.position = 13;
+      on.combat!.units.unit_p2_skeletons.position = 14;
+      on.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+      on.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+      on.combat!.activeUnitId = "unit_p2_skeletons";
+      on.activePlayerId = "p2";
+      // scripted: [skeletons' attack die, griffins' retaliation dice...].
+      on.combat!.dice.scriptedRolls = [0, -1, 1];
+      on.combat!.dice.rollCount = 0;
+
+      let next = passAllReactions(
+        applyOk(on, {
+          type: "ATTACK_UNIT",
+          playerId: "p2",
+          attackerId: "unit_p2_skeletons",
+          defenderId: "unit_p1_griffins"
+        })
+      );
+      let safety = 6;
+      while (next.pendingChoice?.type === "ATTACK_DIE_REROLL" && safety > 0) {
+        safety -= 1;
+        const keep = getLegalActions(next, next.pendingChoice.playerId).find(
+          (legal) => legal.action.type === "CHOOSE_PENDING_ROLL"
+        );
+        if (!keep) break;
+        next = passAllReactions(applyOk(next, keep.action));
+      }
+      return next.combat!.units.unit_p2_skeletons.damage;
+    };
+
+    // Buffed: the retaliation rolls two dice [-1, 1] and keeps the "+1" → 6 damage.
+    expect(buffedRetaliation(true)).toBe(6);
+    // CONTROL: with no buff the retaliation rolls the single first die (−1) → 4.
+    expect(buffedRetaliation(false)).toBe(4);
+  });
+
+  it("CONTROL: the survive-one-more-activation rule is POSITIVE-only — a negative debuff on the active unit is not extended", () => {
+    // The "next-activation on the active unit survives one extra activation-end"
+    // rule is scoped to POSITIVE buffs (Cards of Prophecy A / Prayer, laid on your
+    // own unit meaning "until your next-round activation"). A NEGATIVE debuff —
+    // classic Shaman's Puppet shape — is naturally laid on the enemy WHILE it is
+    // the active unit (a mid-attack reaction) and reads "until the end of its
+    // activation", so it must NOT gain the extra activation.
+    const state = combat(false);
+    state.combat!.activeUnitId = "unit_p2_skeletons";
+
+    const positive = makeActiveEffect(
+      state,
+      {
+        name: "Positive next-activation buff",
+        scope: "unit",
+        duration: { type: "next-activation" },
+        polarity: "positive",
+        removable: true,
+        modifiers: [{ type: "ATTACK_ROLL_ADVANTAGE" }]
+      },
+      { type: "card", cardId: "artifact.cards_of_prophecy" as CardId, controllerId: "p2" },
+      "p2",
+      { type: "unit", unitId: "unit_p2_skeletons" }
+    );
+    // Shaman's-Puppet-shaped negative debuff on the SAME (active) unit.
+    const negative = makeActiveEffect(
+      state,
+      {
+        name: "Shaman's Puppet",
+        scope: "unit",
+        duration: { type: "next-activation" },
+        polarity: "negative",
+        removable: true,
+        modifiers: [{ type: "ATTACK_ROLL_DISADVANTAGE" }]
+      },
+      { type: "card", cardId: "artifact.shamans_puppet" as CardId, controllerId: "p1" },
+      "p1",
+      { type: "unit", unitId: "unit_p2_skeletons" }
+    );
+
+    // The positive buff gains the extra activation; the negative debuff does not.
+    expect(positive.activationsRemaining).toBe(2);
+    expect(negative.activationsRemaining).toBeUndefined();
+
+    state.activeEffects.push(positive, negative);
+    // End that unit's CURRENT activation once. The debuff expires here (its
+    // classic "until the end of its activation"); the positive buff survives.
+    expireEffectsForActivationEnd(state, "unit_p2_skeletons");
+    expect(state.activeEffects.some((effect) => effect.name === "Shaman's Puppet")).toBe(false);
+    expect(state.activeEffects.some((effect) => effect.name === "Positive next-activation buff")).toBe(true);
   });
 });
 

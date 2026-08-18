@@ -7600,7 +7600,7 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "ROLL_RESOURCE_DICE":
-        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount);
+        rollResourceDice(state, visit, step.count, step.capHighValues, step.origin, step.resolveCount, step.prophecyThreePick);
         break;
       case "RESUME_FIELD_VISIT":
         beginFieldVisit(state, step.heroId, step.fieldId, step.revisit);
@@ -7650,7 +7650,7 @@ export function processPendingVisit(state: GameState): void {
         });
         break;
       case "ROLL_TREASURE_DICE":
-        rollTreasureDice(state, visit, step.count, step.resolveCount);
+        rollTreasureDice(state, visit, step.count, step.resolveCount, step.prophecyThreePick);
         break;
       case "CONSUME_LUCK":
         consumeLuckReroll(state, step.effectId, step.dice);
@@ -12858,6 +12858,10 @@ function moraleRerollCardOption(
   };
 }
 
+/** Cards of Prophecy — the only reroll artifact whose Balance-Pack reprint turns
+ * its map-die reroll into the "roll it 3 times, keep one" pick. */
+const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
+
 /**
  * Optional rerolls of an adventure die beyond Luck: the positive morale token
  * ("Reroll any Die you have thrown") and the Swift Weasel Astrologers card
@@ -12917,11 +12921,25 @@ function extraDieRerollOptions(
   // played in reaction to the roll you just saw — offer it from hand here, one
   // offer per distinct held copy. Taking it discards the artifact, then re-rolls.
   const hand = state.players[visit.playerId]?.hand ?? [];
+  const prophecyThreePick =
+    houseRuleEnabled(state, "polish-card-balance");
   for (const cardId of REROLL_REACTION_ARTIFACT_IDS) {
     if (hand.includes(cardId)) {
+      // Polish Balance Pack Cards of Prophecy option B: "roll it 3 times and
+      // resolve 1 chosen result" — its reroll re-throws the die with ONE face
+      // getting three candidates and a free pick, instead of the plain single
+      // reroll every other artifact (and the classic Prophecy) takes.
+      const threePick = cardId === PROPHECY_CARD_ID && prophecyThreePick;
+      const rollStepForCard: VisitStep = threePick
+        ? dice === "resource"
+          ? { type: "ROLL_RESOURCE_DICE", count, resolveCount, prophecyThreePick: true, ...(origin ? { origin } : {}) }
+          : { type: "ROLL_TREASURE_DICE", count, resolveCount, prophecyThreePick: true }
+        : rollStep;
       options.push({
-        label: `Play ${cardLibrary[cardId]?.name ?? cardId}: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
-        steps: [{ type: "CONSUME_REROLL_ARTIFACT", cardId } as VisitStep, rollStep]
+        label: threePick
+          ? `Play ${cardLibrary[cardId]?.name ?? cardId}: roll the ${dice} ${count > 1 ? "die 3 times" : "die 3 times"} and keep one`
+          : `Play ${cardLibrary[cardId]?.name ?? cardId}: reroll the ${dice} ${count > 1 ? "dice" : "die"}`,
+        steps: [{ type: "CONSUME_REROLL_ARTIFACT", cardId } as VisitStep, rollStepForCard]
       });
     }
   }
@@ -12988,7 +13006,8 @@ function rollResourceDice(
   count: number,
   capHighValues = false,
   origin?: "treasure",
-  requestedResolveCount = 1
+  requestedResolveCount = 1,
+  prophecyThreePick = false
 ): void {
   const random = adventureRandom(state, "resource-die");
   const faces = resourceDieFaces(state);
@@ -13006,12 +13025,19 @@ function rollResourceDice(
   const rolls = Array.from({ length: count }, rollFace);
   const resolveCount = Math.max(1, Math.min(requestedResolveCount, rolls.length));
 
+  // Cards of Prophecy option B: ONE die (die 0) gets two EXTRA candidate faces
+  // rolled from the same seeded stream — three faces in all, of which the player
+  // picks one. Every other die keeps its single random face.
+  const prophecyExtras: ResourceDieRoll[] = prophecyThreePick
+    ? [rollFace(), rollFace()]
+    : [];
+
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
     playerId: visit.playerId,
     dice: "resource",
-    results: rolls.map(resourceDieLabel),
-    resourceRolls: rolls.map((roll) => ({ resource: roll.resource, amount: roll.amount })),
+    results: [...rolls, ...prophecyExtras].map(resourceDieLabel),
+    resourceRolls: [...rolls, ...prophecyExtras].map((roll) => ({ resource: roll.resource, amount: roll.amount })),
     ...(origin ? { origin } : {})
   });
 
@@ -13023,6 +13049,7 @@ function rollResourceDice(
   const octaviaOptions = octaviaGoldReactionOptions(state, visit, companionGroups);
 
   if (
+    !prophecyThreePick &&
     resolveCount === rolls.length &&
     !luck &&
     extraOptions.length === 0 &&
@@ -13036,14 +13063,29 @@ function rollResourceDice(
     return;
   }
 
-  const options: { label: string; steps: VisitStep[] }[] = diceResultCombinations(rolls, resolveCount).map(
-    (group) => ({
+  // The base result options. Normally one per combination of the rolled dice.
+  // Under the Prophecy 3-pick, die 0 expands to its three candidate faces, so a
+  // combination is built per candidate (the other dice stay put); duplicate
+  // outcomes (same label) collapse to one entry.
+  const baseRollSets: ResourceDieRoll[][] = prophecyThreePick
+    ? [rolls[0], ...prophecyExtras].map((candidate) => [candidate, ...rolls.slice(1)])
+    : [rolls];
+  const seenBaseLabels = new Set<string>();
+  const options: { label: string; steps: VisitStep[] }[] = baseRollSets
+    .flatMap((set) => diceResultCombinations(set, resolveCount))
+    .map((group) => ({
       label: group.map(resourceDieLabel).join(" + "),
       steps: group.map(
         (roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep
       )
-    })
-  );
+    }))
+    .filter((option) => {
+      if (seenBaseLabels.has(option.label)) {
+        return false;
+      }
+      seenBaseLabels.add(option.label);
+      return true;
+    });
 
   if (luck) {
     options.push({
@@ -13077,7 +13119,7 @@ function rollResourceDice(
     prompt:
       resolveCount > 1
         ? `Choose ${resolveCount} resource die results`
-        : rolls.length > 1
+        : rolls.length > 1 || prophecyThreePick
           ? "Choose one resource die result"
           : "Resource die result",
     options
@@ -13110,7 +13152,13 @@ function treasureFaceLabel(face: TreasureDieFace): string {
   }
 }
 
-function rollTreasureDice(state: GameState, visit: PendingVisit, count: number, requestedResolveCount = 1): void {
+function rollTreasureDice(
+  state: GameState,
+  visit: PendingVisit,
+  count: number,
+  requestedResolveCount = 1,
+  prophecyThreePick = false
+): void {
   // Negative Morale "when you are about to roll at least 2 Treasure dice, roll
   // 1 die less": resolves the held card on the first ≥2-dice Treasure roll.
   // Applied before the roll (and before the Luck-reroll option is built, so a
@@ -13119,32 +13167,49 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number, 
     count -= 1;
   }
   const random = adventureRandom(state, "treasure-die");
-  const rolls = Array.from({ length: count }, () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)]);
+  const rollFace = () => TREASURE_DIE_FACES[random.nextInt(0, TREASURE_DIE_FACES.length - 1)];
+  const rolls = Array.from({ length: count }, rollFace);
   const resolveCount = Math.max(1, Math.min(requestedResolveCount, rolls.length));
+
+  // Cards of Prophecy option B: die 0 gets two EXTRA candidate faces from the
+  // same seeded stream (three in all), the player picks one; the other dice keep
+  // their single random face.
+  const prophecyExtras: TreasureDieFace[] = prophecyThreePick ? [rollFace(), rollFace()] : [];
 
   appendEvent(state, {
     type: "ADVENTURE_DICE_ROLLED",
     playerId: visit.playerId,
     dice: "treasure",
-    results: rolls.map(treasureFaceLabel),
-    treasureRolls: [...rolls]
+    results: [...rolls, ...prophecyExtras].map(treasureFaceLabel),
+    treasureRolls: [...rolls, ...prophecyExtras]
   });
 
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
   const extraOptions = extraDieRerollOptions(state, visit, "treasure", count, resolveCount);
   const setEffect = getDieSetEffect(state, visit.playerId, "treasure");
 
-  if (resolveCount === rolls.length && !luck && extraOptions.length === 0 && !setEffect) {
+  if (!prophecyThreePick && resolveCount === rolls.length && !luck && extraOptions.length === 0 && !setEffect) {
     visit.steps.unshift(...rolls.flatMap(treasureFaceSteps));
     return;
   }
 
-  const options: { label: string; steps: VisitStep[] }[] = diceResultCombinations(rolls, resolveCount).map(
-    (group) => ({
+  const baseRollSets: TreasureDieFace[][] = prophecyThreePick
+    ? [rolls[0], ...prophecyExtras].map((candidate) => [candidate, ...rolls.slice(1)])
+    : [rolls];
+  const seenBaseLabels = new Set<string>();
+  const options: { label: string; steps: VisitStep[] }[] = baseRollSets
+    .flatMap((set) => diceResultCombinations(set, resolveCount))
+    .map((group) => ({
       label: group.map(treasureFaceLabel).join(" + "),
       steps: group.flatMap(treasureFaceSteps)
-    })
-  );
+    }))
+    .filter((option) => {
+      if (seenBaseLabels.has(option.label)) {
+        return false;
+      }
+      seenBaseLabels.add(option.label);
+      return true;
+    });
 
   if (luck) {
     options.push({
@@ -13168,7 +13233,7 @@ function rollTreasureDice(state: GameState, visit: PendingVisit, count: number, 
     prompt:
       resolveCount > 1
         ? `Choose ${resolveCount} treasure die results`
-        : rolls.length > 1
+        : rolls.length > 1 || prophecyThreePick
           ? "Choose one treasure die result"
           : "Treasure die result",
     options

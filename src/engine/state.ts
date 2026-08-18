@@ -10337,6 +10337,14 @@ export type VisitStep =
        * but capped to the low faces. Default false (normal Resource-die roll).
        */
       capHighValues?: boolean;
+      /**
+       * Polish Balance Pack Cards of Prophecy option B ("roll it 3 times and
+       * resolve 1 chosen result"): when the artifact's reroll reaction is taken
+       * under the `polish-card-balance` rule, ONE die of this roll gets THREE
+       * candidate faces and the player picks which to keep — the others stay their
+       * normal single random face. Default false (a plain single reroll).
+       */
+      prophecyThreePick?: boolean;
     }
   | { type: "RESUME_FIELD_VISIT"; heroId: HeroId; fieldId: MapSpaceId; revisit: boolean }
   | {
@@ -10344,6 +10352,12 @@ export type VisitStep =
       count: number;
       /** Number of rolled results to resolve (default 1). */
       resolveCount?: number;
+      /**
+       * Polish Balance Pack Cards of Prophecy option B — see the same field on
+       * ROLL_RESOURCE_DICE. ONE die of this Treasure roll gets three candidate
+       * faces and the player picks which to keep.
+       */
+      prophecyThreePick?: boolean;
     }
   | {
       /**

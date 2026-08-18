@@ -9,7 +9,7 @@ import {
   expireEffectsForTurnEnd,
   makeActiveEffect
 } from "./active-effects";
-import type { GameAction, GameState, VisitStep } from "./state";
+import type { GameAction, GameEvent, GameState, VisitStep } from "./state";
 
 // ---------------------------------------------------------------------------
 // Three Major wiki artifacts that manipulate dice / recruit Neutral Units:
@@ -232,6 +232,113 @@ describe("Reroll-any-die option (map adventure die)", () => {
     // No reroll/set effect and no held reroll artifact: the single die resolves
     // immediately, no pending visit.
     expect(state.adventure!.pendingVisit).toBeNull();
+  });
+});
+
+// ===========================================================================
+// Cards of Prophecy option B on the MAP — "roll it 3 times, resolve 1 chosen"
+// (Polish Balance Pack). Under the rule the artifact's map-die reroll throws the
+// die THREE times and lets the owner keep any of the three, instead of the plain
+// single re-throw every other reroll artifact (and the classic Prophecy) takes.
+// ===========================================================================
+
+/** Latest map-dice event of a kind, for reading how many candidate faces a roll threw. */
+function lastDiceEvent(state: GameState, dice: "resource" | "treasure") {
+  return [...state.eventLog]
+    .reverse()
+    .find((event) => event.type === "ADVENTURE_DICE_ROLLED" && event.dice === dice) as
+    | Extract<GameEvent, { type: "ADVENTURE_DICE_ROLLED" }>
+    | undefined;
+}
+
+describe("Cards of Prophecy option B on the map — roll 3 times, keep one (polish-card-balance)", () => {
+  function balanceHold(cardId: string, location: string, seed: string, treasureDice?: 1 | 2): GameState {
+    const state = mapState(seed);
+    (state.adventure as unknown as { houseRules: Record<string, boolean> }).houseRules = {
+      ...((state.adventure as unknown as { houseRules?: Record<string, boolean> }).houseRules ?? {}),
+      "polish-card-balance": true
+    };
+    state.players.p1.hand = [cardId];
+    injectField(state, location);
+    if (treasureDice !== undefined) {
+      state.adventure!.fields[SPACE].treasureDice = treasureDice;
+    }
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
+    return state;
+  }
+
+  it("a single Resource die is thrown THREE times and the owner keeps a CHOSEN one", () => {
+    // Seed pins the three candidate faces to 1 valuables / 3 gold / 6 gold — three
+    // distinct outcomes, so the pick is real, not a formality.
+    const state = balanceHold("artifact.cards_of_prophecy", "resource_symbol", "pfx-resource_symbol-0");
+
+    // The offer names the 3-throw pick, NOT the plain single reroll.
+    expect(visitChoice(state).options.some((option) => /roll the Resource die 3 times/i.test(option.label))).toBe(true);
+    expect(visitChoice(state).options.some((option) => /reroll the Resource die/i.test(option.label))).toBe(false);
+
+    resolveByLabel(state, (label) => /roll the Resource die 3 times/i.test(label));
+
+    // The re-throw event carries THREE candidate faces (one die, rolled thrice).
+    const rerollEvent = lastDiceEvent(state, "resource");
+    expect(rerollEvent?.results).toEqual(["1 valuables", "3 gold", "6 gold"]);
+
+    // All three are pickable — an ordinary reroll would offer only the latest.
+    const pick = visitChoice(state);
+    expect(pick.options.map((option) => option.label)).toEqual(
+      expect.arrayContaining(["1 valuables", "3 gold", "6 gold"])
+    );
+
+    // OBSERVABLE: keep the 6-gold candidate and only that resource lands.
+    const goldBefore = state.players.p1.resources.gold;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    resolveByLabel(state, (label) => label === "6 gold");
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 6);
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore);
+  });
+
+  it("CONTROL: with the rule OFF the Resource-die reroll is a single re-throw (one face), no pick", () => {
+    const state = mapState("pfx-resource_symbol-0");
+    state.players.p1.hand = ["artifact.cards_of_prophecy"];
+    injectField(state, "resource_symbol");
+    beginFieldVisit(state, getMainHero(state, "p1")!.id, SPACE, false);
+
+    // Classic reroll wording, and no 3-throw offer.
+    expect(visitChoice(state).options.some((option) => /roll the Resource die 3 times/i.test(option.label))).toBe(false);
+    expect(visitChoice(state).options.some((option) => /reroll the Resource die/i.test(option.label))).toBe(true);
+
+    resolveByLabel(state, (label) => /reroll the Resource die/i.test(label));
+    // One die, one re-throw: exactly one candidate face.
+    expect(lastDiceEvent(state, "resource")?.results).toHaveLength(1);
+  });
+
+  it("CONTROL: Diplomat's Ring under the rule still does a single re-throw (only Prophecy gets the 3-pick)", () => {
+    const state = balanceHold("artifact.diplomats_ring", "resource_symbol", "pfx-resource_symbol-0");
+    expect(visitChoice(state).options.some((option) => /roll the Resource die 3 times/i.test(option.label))).toBe(false);
+    expect(visitChoice(state).options.some((option) => /Diplomat's Ring: reroll the Resource die/i.test(option.label))).toBe(
+      true
+    );
+    resolveByLabel(state, (label) => /Diplomat's Ring: reroll the Resource die/i.test(label));
+    expect(lastDiceEvent(state, "resource")?.results).toHaveLength(1);
+  });
+
+  it("2-die roll: exactly ONE die becomes the 3-pick, the other keeps its single face", () => {
+    // Two Treasure dice (treasureDice = 2). Seed pins die 0 = Search-the-Artifact-deck,
+    // die 1 = Roll-1-Resource-die, with die 0's two extra candidates both "Gain 1
+    // experience". So die 1 stays a lone option while die 0 offers three faces.
+    const state = balanceHold("artifact.cards_of_prophecy", "treasure_symbol", "t2-1", 2);
+    resolveByLabel(state, (label) => /roll the Treasure die 3 times/i.test(label));
+
+    // TWO base dice + TWO extra candidates for ONE of them = 4 faces total. A
+    // whole-roll re-throw ×3 would be 6 — this proves only one die was tripled.
+    const rerollEvent = lastDiceEvent(state, "treasure");
+    expect(rerollEvent?.results).toHaveLength(4);
+
+    // The untouched second die's face is still a standalone option (it "stays
+    // random"), alongside die 0's expanded candidates.
+    const labels = visitChoice(state).options.map((option) => option.label);
+    expect(labels).toContain("Roll 1 Resource die"); // die 1, kept as-is
+    expect(labels).toContain("Search (2) the Artifact deck"); // die 0, candidate 1
+    expect(labels).toContain("Gain 1 experience"); // die 0, candidates 2-3
   });
 });
 

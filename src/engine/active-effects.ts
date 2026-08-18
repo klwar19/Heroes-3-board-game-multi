@@ -66,6 +66,26 @@ export function makeActiveEffect(
   controllerId: PlayerId,
   target?: TargetRef
 ): ActiveEffectState {
+  // A POSITIVE "next-activation" buff laid on the CURRENTLY ACTIVE unit must not
+  // be consumed by the activation already in progress — "next" means the unit's
+  // NEXT activation, in a later round. This is the Polish Balance Pack Cards of
+  // Prophecy option A / balance Prayer case ("Until its activation in the next
+  // round … for its every attack"): laid on your own attacking unit, it has to
+  // survive the rest of this activation AND every retaliation in between, and
+  // only expire when the unit acts again. Surviving ONE extra activation-end
+  // (activationsRemaining + 1) does exactly that.
+  //
+  // Scoped to POSITIVE polarity on purpose: a NEGATIVE next-activation debuff
+  // (Shaman's Puppet, Forgetfulness, Berserk, Zilare) reads "until the end of
+  // its activation" and is naturally laid on the ENEMY target mid-attack — i.e.
+  // WHILE it is the active unit. Bumping those would extend the debuff a whole
+  // activation past its printed wording, so they keep the classic single
+  // activation.
+  const nextActivationOnActiveUnit =
+    effect.duration.type === "next-activation" &&
+    effect.polarity === "positive" &&
+    target?.type === "unit" &&
+    state.combat?.activeUnitId === target.unitId;
   return {
     ...effect,
     id: `effect_${state.activeEffects.length + 1}_${nextEventNumber(state)}`,
@@ -87,6 +107,9 @@ export function makeActiveEffect(
         : effect.duration.type === "next-activation"
           ? (target?.type === "unit" ? target.unitId : undefined)
           : undefined,
+    activationsRemaining: nextActivationOnActiveUnit
+      ? (Math.min(2, (effect.activationsRemaining ?? 1) + 1) as 1 | 2)
+      : effect.activationsRemaining,
     usedRollEventIds: [],
     usedChoiceIds: [],
     usedCombatRoundNumbers: []
