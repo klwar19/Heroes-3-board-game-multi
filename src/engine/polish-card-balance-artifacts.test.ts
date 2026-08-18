@@ -230,6 +230,57 @@ describe("Balance Pack artifacts — the Discard-X relics gain a flat +1 base", 
     expect(boosted).toBe(plain.combat!.units.unit_p2_skeletons.damage + 1);
   });
 
+  it("Celestial Necklace of Bliss: discarding 2 cards adds +3 attack (base 1 + 1 per discard)", () => {
+    const build = () => {
+      const state = combat(true);
+      state.combat!.units.unit_p1_griffins.attack = 5;
+      state.combat!.units.unit_p2_skeletons.defense = 0;
+      state.players.p1.hand = [
+        "artifact.celestial_necklace_of_bliss" as CardId,
+        "stat.power" as CardId,
+        "stat.power" as CardId
+      ];
+      state.combat!.units.unit_p1_griffins.position = 13;
+      state.combat!.units.unit_p2_skeletons.position = 14;
+      state.combat!.dice.scriptedRolls = [0, 0];
+      state.combat!.dice.rollCount = 0;
+      return state;
+    };
+
+    const declared = applyOk(build(), {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const offer = getLegalActions(declared, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "artifact.celestial_necklace_of_bliss" &&
+        (legal.action.optionIndex ?? 0) === 0
+    );
+    expect(offer, "the Discard-X side is offered").toBeTruthy();
+    // Pay TWO discards: the observable blow must move by base(1) + 1×2 = 3, not
+    // by 2 (which is all a base-less reprint would grant).
+    const paid = passAllReactions(
+      applyOk(declared, {
+        ...(offer!.action as Extract<GameAction, { type: "PLAY_REACTION" }>),
+        costCardIds: ["stat.power", "stat.power"] as CardId[]
+      })
+    );
+    const plain = passAllReactions(
+      applyOk(build(), {
+        type: "ATTACK_UNIT",
+        playerId: "p1",
+        attackerId: "unit_p1_griffins",
+        defenderId: "unit_p2_skeletons"
+      })
+    );
+    expect(paid.combat!.units.unit_p2_skeletons.damage).toBe(
+      plain.combat!.units.unit_p2_skeletons.damage + 3
+    );
+  });
+
   it("every Discard-X side reads +1 base (the reprint) instead of +0 (the printed card)", () => {
     const sides: { cardId: string; optionIndex: number }[] = [
       { cardId: "artifact.celestial_necklace_of_bliss", optionIndex: 0 },

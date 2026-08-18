@@ -821,6 +821,77 @@ describe("ReactionTray — in-progress selection survives only until the hand ch
   });
 });
 
+describe("ReactionTray — Balance-Pack Celestial Necklace shows its +1 base", () => {
+  // User report (screenshot): the reaction bar read "Discard X cards: +X attack"
+  // and a "+0 Attack" total — the classic printed face — while the engine (which
+  // reads the reprint) actually grants +1 + X. The tray must resolve the
+  // Balance-Pack reprint for the label AND the running total.
+  function necklaceWindow(balance: boolean): GameState {
+    const state = createInitialGameState(`necklace-tray-${balance}`);
+    // The combat sandbox has no adventure; freeze one carrying the rule flag so
+    // houseRuleEnabled reads it (getPlayerView needs tiles/playerFarTiles).
+    state.adventure = {
+      houseRules: { "polish-card-balance": balance },
+      tiles: {},
+      playerFarTiles: {}
+    } as unknown as GameState["adventure"];
+    state.players.p1.hand = ["artifact.celestial_necklace_of_bliss", "spell.haste"];
+    state.players.p2.hand = [];
+    state.combat!.units.unit_p1_griffins.position = 13;
+    state.combat!.units.unit_p2_skeletons.position = 14;
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  function tray(state: GameState) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={() => {}}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("labels the option '+1 attack …' and totals '+1 Attack' with nothing discarded (rule ON)", () => {
+    const state = necklaceWindow(true);
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    render(tray(state));
+
+    // The reprint label carries the +1 base; the classic label never does.
+    const pick = screen.getByRole("button", { name: /\+1 attack.*discard/i });
+    act(() => {
+      fireEvent.click(pick);
+    });
+    // Running total with zero cards discarded: the base alone, +1 — not +0.
+    expect(screen.getByText("+1 Attack")).toBeTruthy();
+  });
+
+  it("CONTROL: with the rule OFF the tray shows the classic '+0 Attack' base", () => {
+    const state = necklaceWindow(false);
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    render(tray(state));
+
+    // The classic printed option has no +1 base — its label is "Discard X …".
+    expect(screen.queryByRole("button", { name: /\+1 attack.*discard/i })).toBeNull();
+    const pick = screen.getByRole("button", { name: /discard x cards: \+x attack/i });
+    act(() => {
+      fireEvent.click(pick);
+    });
+    expect(screen.getByText("+0 Attack")).toBeTruthy();
+  });
+});
+
 describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => {
   // User bug ("cannot play the expert effect (+3 sp)"): the in-play Basic X
   // Magic fetch permanent's +3 is a standalone USE_SCHOOL_FETCH_EXPERT action

@@ -25,6 +25,7 @@ import {
   getPendingReactionPower,
   getSpellDamageAmount,
   getSpellDiceRollCount,
+  houseRuleEnabled,
   PRINTED_RESOURCE_DIE_FACES,
   resourceDieFaces,
   spellBookPowerAvailable,
@@ -56,6 +57,7 @@ import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
+import { polishBalanceCardForDisplay } from "@/engine/polish-balance-spells";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 
@@ -109,11 +111,15 @@ type TraySelection = {
   costBookCardId?: string;
 };
 
-function selectionPreview(selections: TraySelection[]): string[] {
+function selectionPreview(selections: TraySelection[], balanceEnabled: boolean): string[] {
   const totals = new Map<string, number>();
 
   for (const selection of selections) {
-    const card = cardLibrary[selection.cardId];
+    // Polish Balance Pack reprints a card's WHOLE definition (e.g. Celestial
+    // Necklace of Bliss "+1 attack, then +X per discard" vs the classic "+X").
+    // The engine reads the reprint, so the running total must resolve it too or
+    // the tray would show "+0 Attack" while the engine actually grants +1.
+    const card = polishBalanceCardForDisplay(balanceEnabled, selection.cardId);
     if (!card) {
       continue;
     }
@@ -647,6 +653,10 @@ export function ReactionTray({
   // The parent keys this component by window id + priority player, so the
   // selection naturally resets whenever the timing window changes hands.
   const window = state.reactionWindow;
+  // Polish Balance Pack reprints some reaction cards' whole definition (labels,
+  // amounts). Resolve those for every displayed label/total or the tray shows
+  // the classic text while the engine runs the reprint.
+  const balanceEnabled = houseRuleEnabled(state, "polish-card-balance");
   const [selections, setSelections] = useState<TraySelection[]>([]);
   /**
    * Cast-window Power gate dialog: when the caster tries to Pass while under
@@ -863,7 +873,10 @@ export function ReactionTray({
     // dispatch the wrong one.
     const drawOnlyKey = action.drawOnly ? "#drawOnly" : "";
     const key = `${action.cardId}#${action.optionIndex ?? -1}#${action.asPowerBoost ? "boost" : "play"}${targetKey}${drawOnlyKey}`;
-    const card = cardLibrary[action.cardId];
+    // Resolve the Balance-Pack reprint so the option LABEL ("+1 attack, discard
+    // X cards: +X more attack") matches what the engine runs, not the classic
+    // "Discard X cards: +X attack".
+    const card = polishBalanceCardForDisplay(balanceEnabled, action.cardId);
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = action.asPowerBoost
       ? true
@@ -1235,7 +1248,7 @@ export function ReactionTray({
     onAction({ type: "PLAY_REACTIONS", playerId: viewerPlayerId, plays: selections.map(toPlay) });
   };
 
-  const preview = selectionPreview(selections);
+  const preview = selectionPreview(selections, balanceEnabled);
   const crownsOver = crownsSelected > crownsAvailable;
 
   // Pending CAST_SPELL Power bounds for the viewing caster (Pass gating).
