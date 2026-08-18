@@ -8114,6 +8114,21 @@ export type PlayerState = {
   /** WOG Santa Gremlin: Resource dice owed before the next conquered field visit. */
   pendingWogResourceDice?: number;
   /**
+   * FO redesign 2026-08-19 — Urahara's Shop (`anime.urahara_shop`): the player
+   * took the free curio ON CREDIT. Collected at this player's next
+   * Resource-round income (the Little Busters contribution seam): pay 3 gold,
+   * or — short of gold — a seeded-random hand card is discarded. The credit arm
+   * is absent while a debt is outstanding. Absent === no debt.
+   */
+  uraharaDebt?: boolean;
+  /**
+   * FO redesign — Đài Luyện Khí (`anime.dai_luyen_khi`): the hero "tempered the
+   * body" (paid 1 hero movement). Consumed at the player's next combat start:
+   * all their units gain +1 Attack during combat ROUND 1 only. Not offered
+   * while one is already banked. Absent === none banked.
+   */
+  pendingCombatAttackBoost?: boolean;
+  /**
    * Scenario starting units, restored when the unit deck empties. `neutral` is
    * permitted so a designer's per-enemy custom starting army (which may field
    * Neutral-side cards) restocks with the same side it started with.
@@ -9884,6 +9899,54 @@ export type MapFieldState = {
    * absent for a player already in this set. Absent === nobody has claimed it.
    */
   animeBountyClaimedBy?: PlayerId[];
+  /**
+   * FO redesign 2026-08-19 — Wager Guard sites (`anime.bi_canh`,
+   * `anime.dungeon_gate`): set once the wagered trial has been WON and its
+   * ladder reward paid. The site is spent — no menu ever again (mirrors
+   * {@link wogSkullSmashed}). Absent === not yet cleared.
+   */
+  wagerCleared?: boolean;
+  /**
+   * FO redesign — Sòng Bạc Quán (`anime.song_bac_quan`): gold lost to the house
+   * accumulates HERE, on the hex; the next +1 winner takes the pot on top of
+   * their 2×stake payout (then it clears). Public state — a visible lure.
+   * Absent === 0.
+   */
+  denGoldPot?: number;
+  /**
+   * FO redesign — Linh Điền / Spirit Field (`anime.linh_dien`): who planted the
+   * current crop, and in which game round. The planter may harvest at
+   * `plantedRound + 3` or later; any OTHER player's visit may raid (a small cut,
+   * the crop is trampled). Both absent === unplanted.
+   */
+  plantedBy?: PlayerId;
+  plantedRound?: number;
+  /**
+   * FO redesign — GENERIC per-player once-EVER claim latch (the generalized
+   * {@link animeBountyClaimedBy}): players who have used this field's
+   * once-per-player arm (Ngộ Đạo Thạch first-visit enlightenment, the Array
+   * attune, Capsule Lab prototype gadget, the Junk Merchant mystery crate).
+   * One latch per field — no field offers two DIFFERENT once-ever arms.
+   */
+  fieldClaimedBy?: PlayerId[];
+  /**
+   * FO redesign — GENERIC per-player once-per-GAME-ROUND claim latch (Onsen full
+   * course, the Guild Post contract). Entries from another round are stale:
+   * readers compare `round` to `state.round` and treat a mismatch as unclaimed.
+   */
+  fieldRoundClaims?: { round: number; playerIds: PlayerId[] };
+  /**
+   * FO redesign — Fishing Well (`wog.fishing_well`): per-player consecutive-round
+   * fishing streaks. A player's catch grows with their streak (1/2/3); fishing in
+   * round R with a recorded `round === R-1` continues the streak, anything else
+   * restarts at 1. The third catch drains the well for everyone ({@link wogWellDry}).
+   */
+  wogFishingStreaks?: Record<PlayerId, { round: number; streak: number }>;
+  /**
+   * FO redesign — Fishing Well: set when a third-streak catch drains the well.
+   * A dry well is INERT for everyone (mirrors {@link wogSkullSmashed}).
+   */
+  wogWellDry?: boolean;
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
   viiReward?: ViiFieldReward;
   /** @deprecated Pre-centerHex snapshots only; the grant path reads both. */
@@ -10333,6 +10396,58 @@ export type VisitStep =
        * Auto-resolves (no player input).
        */
       type: "MARK_ANIME_BOUNTY_CLAIMED";
+    }
+  | {
+      /**
+       * FO redesign — Wager Guard (`anime.bi_canh` / `anime.dungeon_gate`): the
+       * visitor picked a trial depth. Stamps a `level`-difficulty guard on the
+       * visited field and opens the fight IMMEDIATELY through the hex-event
+       * encounter hook (until the hook is registered the guard simply stands —
+       * the next entry fights it through the normal guarded-field flow, the
+       * same safe fallback as a hex-event ambush). Auto-resolves.
+       */
+      type: "WAGER_GUARD_FIGHT";
+      level: number;
+    }
+  | {
+      /**
+       * FO redesign — Sòng Bạc Quán: a lost stake joins the hex's public house
+       * pot (`field.denGoldPot`). Auto-resolves.
+       */
+      type: "ADD_FIELD_GOLD_POT";
+      amount: number;
+    }
+  | {
+      /** FO redesign — Sòng Bạc Quán: a +1 winner just took the pot; clear it. */
+      type: "CLEAR_FIELD_GOLD_POT";
+    }
+  | {
+      /**
+       * FO redesign — Linh Điền: record the visitor as the planter
+       * (`field.plantedBy` + the current game round). Auto-resolves.
+       */
+      type: "MARK_FIELD_PLANTED";
+    }
+  | {
+      /** FO redesign — Linh Điền: the crop was harvested or trampled; clear it. */
+      type: "CLEAR_FIELD_PLANTED";
+    }
+  | {
+      /**
+       * FO redesign — generic once-EVER per-player latch: push the visitor into
+       * `field.fieldClaimedBy` (the arm is absent for a player already in the
+       * set). Paired AFTER the arm's payoff steps, mirroring
+       * MARK_ANIME_BOUNTY_CLAIMED. Auto-resolves.
+       */
+      type: "MARK_FIELD_CLAIMED";
+    }
+  | {
+      /**
+       * FO redesign — generic once-per-GAME-ROUND per-player latch: record the
+       * visitor in `field.fieldRoundClaims` for the CURRENT round (a stale
+       * other-round record is replaced whole). Auto-resolves.
+       */
+      type: "MARK_FIELD_ROUND_CLAIMED";
     }
   | { type: "GAIN_MOVEMENT"; amount: number }
   | {

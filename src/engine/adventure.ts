@@ -6658,6 +6658,143 @@ function handleAnimeTrialTowerVisit(
   });
 }
 
+/** Roman glyph for a guard difficulty (labels only). */
+const WAGER_DEPTH_GLYPHS = ["", "Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ"] as const;
+
+/**
+ * FO redesign 2026-08-19 — the two WAGER GUARD sites (`anime.bi_canh` Ⅲ–Ⅶ,
+ * `anime.dungeon_gate` Ⅰ–Ⅳ). They carve UNGUARDED; the first visit opens a
+ * depth pick whose chosen arm stamps the guard and opens the fight immediately
+ * (WAGER_GUARD_FIGHT → the hex-event encounter hook). The post-win re-visit —
+ * `field.difficulty` still standing, mirroring `handleEscalatingFightVisit` —
+ * pays the ladder reward FOR THAT DEPTH, clears the guard and spends the site
+ * for good (`field.wagerCleared`). A retreat leaves the stamped guard: the next
+ * arrival fights the SAME depth through the normal guarded-field flow (no
+ * re-pick). Reward ladders: docs/field-override-redesign-plan.md.
+ */
+function handleWagerObjectVisit(
+  state: GameState,
+  playerId: PlayerId,
+  heroId: HeroId,
+  field: MapFieldState,
+  locationId: "anime.bi_canh" | "anime.dungeon_gate"
+): void {
+  const adventure = state.adventure;
+  // Content-module gate, like every other anime FO menu: with the anime
+  // map-objects content off a carved wager site is an inert hex. The post-win
+  // branch cannot be reached with the module off either — only this menu can
+  // stamp the wager guard in the first place.
+  if (!adventure || field.wagerCleared || !animeMapObjectsEnabled(state)) {
+    return;
+  }
+
+  if (field.difficulty) {
+    // Just-won re-visit: pay the depth's ladder, then the site is spent.
+    const depth = field.difficulty;
+    const steps = wagerRewardStepsFor(state, playerId, locationId, depth);
+    clearCustomGuard(field);
+    field.wagerCleared = true;
+    // The Secret Realm keeps its documented Commanders cross-mod rider, now
+    // gated to its OLD guard level and deeper (Ⅴ+): a shallow Ⅲ wager must not
+    // pay the reward the fixed Ⅴ guard used to (a no-op with the module off).
+    if (locationId === "anime.bi_canh" && depth >= 5) {
+      grantCommanderArtifactReward(state, playerId);
+    }
+    eventNote(
+      state,
+      `${eventPlayerName(state, playerId)} conquers the depth-${depth} trial at ${fieldName(state, field.spaceId)}.`,
+      playerId
+    );
+    adventure.pendingVisit = { heroId, playerId, fieldId: field.spaceId, steps };
+    processPendingVisit(state);
+    return;
+  }
+
+  // First visit: mandatory-to-fight-but-refusable depth pick. Labels carry the
+  // reward so the wager is an informed one; "Leave" keeps AI/AFK seats safe.
+  const [minDepth, maxDepth] = locationId === "anime.bi_canh" ? [3, 7] : [1, 4];
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  for (let level = minDepth; level <= maxDepth; level += 1) {
+    options.push({
+      label: `Enter at depth ${WAGER_DEPTH_GLYPHS[level]} — win: ${wagerRewardLabelFor(locationId, level)}`,
+      steps: [{ type: "WAGER_GUARD_FIGHT", level }]
+    });
+  }
+  options.push({ label: "Leave — no trial today", steps: [] });
+  adventure.pendingVisit = {
+    heroId,
+    playerId,
+    fieldId: field.spaceId,
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt:
+          locationId === "anime.bi_canh"
+            ? "Bí Cảnh (Secret Realm) — choose how deep you dare to go. The guardians match your wager; the site is spent after one clear."
+            : "Dungeon Gate — choose your floor. The delve matches your wager; the gate is spent after one clear.",
+        options
+      }
+    ]
+  };
+  processPendingVisit(state);
+}
+
+/** The printed reward for one wager depth (label half — must match the steps). */
+function wagerRewardLabelFor(locationId: "anime.bi_canh" | "anime.dungeon_gate", depth: number): string {
+  if (locationId === "anime.bi_canh") {
+    if (depth <= 3) return "Search (1) the Artifact deck";
+    if (depth === 4) return "Search (1) Artifact + 3 valuables";
+    if (depth === 5) return "two Search (1) of the Artifact deck";
+    if (depth === 6) return "two Search (1) Artifact + a free Grade-II equipment pick";
+    return "two Search (1) Artifact + a Search (3) of the Artifact deck";
+  }
+  if (depth <= 1) return "2 gold";
+  if (depth === 2) return "1 Treasure die";
+  if (depth === 3) return "Search (1) the Artifact deck";
+  return "a free Grade-II equipment pick";
+}
+
+/** The steps half of the wager ladder (docs/field-override-redesign-plan.md). */
+function wagerRewardStepsFor(
+  state: GameState,
+  playerId: PlayerId,
+  locationId: "anime.bi_canh" | "anime.dungeon_gate",
+  depth: number
+): VisitStep[] {
+  const artifactSearch = (count: number): VisitStep => ({
+    type: "SEARCH_SHARED_DECK",
+    deckId: "artifacts",
+    count
+  });
+  if (locationId === "anime.bi_canh") {
+    if (depth <= 3) return [artifactSearch(1)];
+    if (depth === 4) return [artifactSearch(1), { type: "GAIN_RESOURCES", valuables: 3 }];
+    if (depth === 5) return [artifactSearch(1), artifactSearch(1)];
+    if (depth === 6) {
+      const gear = buildEquipmentGradeRewardStep(
+        state,
+        playerId,
+        "II",
+        "The Secret Realm's vault — take one Grade-II item:"
+      );
+      // Equipment module off (or nothing left to grant): the two searches still
+      // pay; the gear half is simply absent — never a dead button.
+      return gear ? [artifactSearch(1), artifactSearch(1), gear] : [artifactSearch(1), artifactSearch(1)];
+    }
+    return [artifactSearch(1), artifactSearch(1), artifactSearch(3)];
+  }
+  if (depth <= 1) return [{ type: "GAIN_RESOURCES", gold: 2 }];
+  if (depth === 2) return [{ type: "ROLL_TREASURE_DICE", count: 1 }];
+  if (depth === 3) return [artifactSearch(1)];
+  const gear = buildEquipmentGradeRewardStep(
+    state,
+    playerId,
+    "II",
+    "The dungeon's hoard — take one Grade-II item:"
+  );
+  return gear ? [gear] : [artifactSearch(1), { type: "GAIN_RESOURCES", gold: 2 }];
+}
+
 /**
  * WOG New Objects (`wog.newObjects`): build the visit MENU for a Wake of Gods
  * single-hex object with a dynamic/context-filtered menu (Emerald Tower / Mirror
@@ -6866,8 +7003,114 @@ function buildAnimeFieldVisitStep(
   if (!animeMapObjectsEnabled(state) || !ANIME_FIELD_OVERRIDE_LOCATION_IDS.has(locationId)) {
     return null;
   }
-  if (!state.players[playerId]) {
+  const player = state.players[playerId];
+  if (!player) {
     return null;
+  }
+
+  if (locationId === "anime.song_bac_quan") {
+    // FO redesign — choose-your-stake gamble with a persistent HOUSE POT: a
+    // lost stake joins field.denGoldPot; a later +1 winner takes 2×stake + the
+    // whole pot. The payout table is built AT MENU TIME (visits are exclusive,
+    // so the pot cannot change between build and resolution) and every roll
+    // goes through the ordinary ATTACK_DIE_TABLE step, keeping the dice cues.
+    const pot = field.denGoldPot ?? 0;
+    const options: { label: string; steps: VisitStep[] }[] = [];
+    for (const stake of [1, 3, 5]) {
+      if (player.resources.gold < stake) {
+        continue;
+      }
+      options.push({
+        label: `Stake ${stake} gold — +1 wins ${2 * stake + pot}, 0 returns the stake, −1 feeds the pot`,
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: `Stake ${stake} gold at the Gambling Den?`,
+            costOptions: [{ gold: stake }],
+            steps: [
+              {
+                type: "ATTACK_DIE_TABLE",
+                plus: [
+                  { type: "GAIN_RESOURCES", gold: 2 * stake + pot },
+                  { type: "CLEAR_FIELD_GOLD_POT" }
+                ],
+                zero: [{ type: "GAIN_RESOURCES", gold: stake }],
+                minus: [{ type: "ADD_FIELD_GOLD_POT", amount: stake }]
+              }
+            ]
+          }
+        ]
+      });
+    }
+    options.push({ label: "Leave", steps: [] });
+    return {
+      type: "CHOOSE_ONE",
+      prompt: `Sòng Bạc Quán — the house pot holds ${pot} gold. Pick your stake:`,
+      options
+    };
+  }
+
+  if (locationId === "anime.linh_dien") {
+    // FO redesign — PLANTED REWARD: plant for 2 gold, harvest ≥3 rounds later
+    // (+3 valuables +1 materials); any OTHER player may raid a planted field
+    // for +1 valuables, trampling the crop. Revisitable, no cube.
+    if (!field.plantedBy) {
+      return {
+        type: "CHOOSE_ONE",
+        prompt: "Linh Điền (Spirit Field) — the terraces lie fallow.",
+        options: [
+          {
+            label: "Plant spirit seeds — pay 2 gold (harvest in 3 rounds; rivals can raid it)",
+            steps: [
+              {
+                type: "PAY_TO",
+                prompt: "Pay 2 gold to plant the Spirit Field?",
+                costOptions: [{ gold: 2 }],
+                steps: [{ type: "MARK_FIELD_PLANTED" }]
+              }
+            ]
+          },
+          { label: "Leave", steps: [] }
+        ]
+      };
+    }
+    if (field.plantedBy !== playerId) {
+      return {
+        type: "CHOOSE_ONE",
+        prompt: "Linh Điền (Spirit Field) — a rival's crop is growing here.",
+        options: [
+          {
+            label: "Raid the field — gain 1 valuables (tramples the crop)",
+            steps: [{ type: "GAIN_RESOURCES", valuables: 1 }, { type: "CLEAR_FIELD_PLANTED" }]
+          },
+          { label: "Leave", steps: [] }
+        ]
+      };
+    }
+    const readyRound = (field.plantedRound ?? state.round) + 3;
+    if (state.round >= readyRound) {
+      return {
+        type: "CHOOSE_ONE",
+        prompt: "Linh Điền (Spirit Field) — your crop is ripe.",
+        options: [
+          {
+            label: "Harvest — gain 3 valuables and 1 building materials",
+            steps: [
+              { type: "GAIN_RESOURCES", valuables: 3, buildingMaterials: 1 },
+              { type: "CLEAR_FIELD_PLANTED" }
+            ]
+          },
+          { label: "Leave it growing", steps: [] }
+        ]
+      };
+    }
+    return {
+      type: "CHOOSE_ONE",
+      prompt: `Linh Điền (Spirit Field) — your crop needs ${readyRound - state.round} more round${
+        readyRound - state.round === 1 ? "" : "s"
+      }.`,
+      options: [{ label: "Leave", steps: [] }]
+    };
   }
 
   if (locationId === "anime.guild_bounty") {
@@ -7111,6 +7354,13 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     handleAnimeTrialTowerVisit(state, playerId, heroId, field);
     return;
   }
+  // FO redesign — the two Wager Guard sites own their whole visit flow (depth
+  // pick / just-won ladder / spent-site inertness). Before the generic FO
+  // guard-clear below, which would wipe a beaten wager guard without paying.
+  if (location.id === "anime.bi_canh" || location.id === "anime.dungeon_gate") {
+    handleWagerObjectVisit(state, playerId, heroId, field, location.id);
+    return;
+  }
   // Raid Bosses (§6.5): a Rift Lair field opens the confirm-and-challenge
   // menu (the boss fight is rebuilt from its REMAINING layers each attempt).
   if (location.id === "calamity_gate") {
@@ -7146,11 +7396,12 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     field.difficulty
   ) {
     // Task 2: a guarded REWARD Field Override that grants a commander-artifact
-    // BONUS on its guard win — WoG's Emerald Tower and the anime Secret Realm
-    // (Bí Cảnh) — drops a bindable commander artifact into the winner's hand (a
-    // no-op with the Commanders module off). `field.difficulty` here means the
-    // guard was just beaten (the win visit); the shared helper de-dups the card.
-    if (location.id === "wog.emerald_tower" || location.id === "anime.bi_canh") {
+    // BONUS on its guard win — WoG's Emerald Tower — drops a bindable commander
+    // artifact into the winner's hand (a no-op with the Commanders module off).
+    // `field.difficulty` here means the guard was just beaten (the win visit).
+    // The Secret Realm's twin rider moved into handleWagerObjectVisit (Ⅴ+ only)
+    // with the 2026-08-19 wager redesign — bi_canh never reaches this branch.
+    if (location.id === "wog.emerald_tower") {
       grantCommanderArtifactReward(state, playerId);
     }
     clearCustomGuard(field);
@@ -7539,6 +7790,93 @@ export function processPendingVisit(state: GameState): void {
         const bountyField = adventure.fields[visit.fieldId];
         if (bountyField && !bountyField.animeBountyClaimedBy?.includes(visit.playerId)) {
           bountyField.animeBountyClaimedBy = [...(bountyField.animeBountyClaimedBy ?? []), visit.playerId];
+        }
+        break;
+      }
+      case "WAGER_GUARD_FIGHT": {
+        // FO redesign — Wager Guard: stamp the chosen depth and open the fight
+        // NOW through the hex-event encounter hook (same registered hook the
+        // designer ambush uses; unregistered ⇒ the guard stands and the next
+        // entry fights it through the normal guarded-field flow — safe fallback).
+        const wagerField = adventure.fields[visit.fieldId];
+        const wagerHero = state.heroes[visit.heroId];
+        if (wagerField && wagerHero && !wagerField.wagerCleared && !wagerField.difficulty) {
+          applyCustomGuardToField(wagerField, { level: step.level });
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} wagers on a depth-${step.level} trial at ${fieldName(state, visit.fieldId)} — the guardians answer!`,
+            visit.playerId
+          );
+          if (hexEventEncounterHook && isFieldGuarded(wagerField)) {
+            hexEventEncounterHook(state, wagerHero, wagerField);
+          }
+        }
+        break;
+      }
+      case "ADD_FIELD_GOLD_POT": {
+        // FO redesign — Sòng Bạc Quán: the lost stake joins the hex's house pot.
+        const potField = adventure.fields[visit.fieldId];
+        if (potField && step.amount > 0) {
+          potField.denGoldPot = (potField.denGoldPot ?? 0) + step.amount;
+          eventNote(
+            state,
+            `The house keeps the stake — the Gambling Den's pot grows to ${potField.denGoldPot} gold.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "CLEAR_FIELD_GOLD_POT": {
+        const potField = adventure.fields[visit.fieldId];
+        if (potField) {
+          delete potField.denGoldPot;
+        }
+        break;
+      }
+      case "MARK_FIELD_PLANTED": {
+        // FO redesign — Linh Điền: record the planter + round. Harvest at +3.
+        const plantField = adventure.fields[visit.fieldId];
+        if (plantField && !plantField.plantedBy) {
+          plantField.plantedBy = visit.playerId;
+          plantField.plantedRound = state.round;
+          eventNote(
+            state,
+            `${eventPlayerName(state, visit.playerId)} plants spirit seeds at the Spirit Field — harvest from round ${state.round + 3}.`,
+            visit.playerId
+          );
+        }
+        break;
+      }
+      case "CLEAR_FIELD_PLANTED": {
+        const plantField = adventure.fields[visit.fieldId];
+        if (plantField) {
+          delete plantField.plantedBy;
+          delete plantField.plantedRound;
+        }
+        break;
+      }
+      case "MARK_FIELD_CLAIMED": {
+        // FO redesign — generic once-EVER per-player latch (Ngộ Đạo Thạch /
+        // Array attune / Capsule gadget / mystery crate).
+        const claimField = adventure.fields[visit.fieldId];
+        if (claimField && !claimField.fieldClaimedBy?.includes(visit.playerId)) {
+          claimField.fieldClaimedBy = [...(claimField.fieldClaimedBy ?? []), visit.playerId];
+        }
+        break;
+      }
+      case "MARK_FIELD_ROUND_CLAIMED": {
+        // FO redesign — generic once-per-GAME-ROUND latch. A record from another
+        // round is stale and replaced whole.
+        const claimField = adventure.fields[visit.fieldId];
+        if (claimField) {
+          const claims =
+            claimField.fieldRoundClaims?.round === state.round
+              ? claimField.fieldRoundClaims
+              : { round: state.round, playerIds: [] as PlayerId[] };
+          if (!claims.playerIds.includes(visit.playerId)) {
+            claims.playerIds = [...claims.playerIds, visit.playerId];
+          }
+          claimField.fieldRoundClaims = claims;
         }
         break;
       }

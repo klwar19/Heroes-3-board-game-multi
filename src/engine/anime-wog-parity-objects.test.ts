@@ -195,9 +195,11 @@ describe("Anime WOG-parity objects — registry", () => {
   });
 
   it("the guarded kinds stamp their designed guard on carve; the unguarded kinds do not", () => {
+    // FO redesign 2026-08-19: dungeon_gate is a WAGER site now — it carves
+    // UNGUARDED (the visitor picks the floor at the visit).
     for (const [kind, guard] of [
       ["thi_luyen_thap", 1],
-      ["dungeon_gate", 1],
+      ["dungeon_gate", undefined],
       ["linh_dien", undefined],
       ["guild_bounty", undefined]
     ] as const) {
@@ -390,48 +392,34 @@ describe("Trial Tower cultivation rider (anime.cultivation)", () => {
 // 4. Linh Điền (Spirit Field) — pay-1-gold harvest CHOOSE_ONE
 // ===========================================================================
 describe("Spirit Field (anime.linh_dien)", () => {
-  it("pay 1 → harvest materials gives +1 building materials (valuables untouched)", () => {
-    const state = animeGame({ seed: "sf-mat" });
-    const player = state.players.p1;
-    player.resources = { gold: 5, buildingMaterials: 0, valuables: 0 };
-    injectField(state, "anime.linh_dien");
+  // FO redesign 2026-08-19: the Spirit Field is a PLANTED REWARD now (plant 2
+  // gold → harvest at +3 rounds → +3 valuables +1 materials; rival raids
+  // trample). The full plant/immature/harvest/raid ladder incl. CONTROLs is
+  // pinned in anime-locations.test.ts ("Spirit Field — planted reward"); this
+  // file keeps the angle unique to its harness: no double-plant.
+  it("a planted field never offers Plant again (and a rival sees Raid, not Plant)", () => {
+    const state = animeGame({ seed: "sf-noreplant" });
+    state.players.p1.resources = { gold: 5, buildingMaterials: 0, valuables: 0 };
+    const field = injectField(state, "anime.linh_dien");
 
     visit(state);
-    expect(firstStep(state)?.type).toBe("PAY_TO");
-    pay(state); // pay 1 gold → opens the harvest CHOOSE_ONE
-    chooseByLabel(state, (l) => l.toLowerCase().includes("herbs"));
+    chooseByLabel(state, (l) => l.startsWith("Plant"));
+    pay(state); // pay the 2 gold
+    expect(field.plantedBy).toBe("p1");
+    expect(state.players.p1.resources.gold).toBe(3);
 
-    expect(player.resources.gold).toBe(4); // paid 1
-    expect(player.resources.buildingMaterials).toBe(1);
-    expect(player.resources.valuables).toBe(0); // CONTROL: the other branch did not run
-  });
-
-  it("pay 1 → harvest spirit-fruit gives +1 valuables (materials untouched — distinct sibling)", () => {
-    const state = animeGame({ seed: "sf-val" });
-    const player = state.players.p1;
-    player.resources = { gold: 5, buildingMaterials: 0, valuables: 0 };
-    injectField(state, "anime.linh_dien");
-
+    // The planter's re-visit (immature): no Plant arm, no Harvest arm.
     visit(state);
-    pay(state);
-    chooseByLabel(state, (l) => l.toLowerCase().includes("fruit"));
+    expect(menu(state).options.some((o) => o.label.startsWith("Plant"))).toBe(false);
+    expect(menu(state).options.some((o) => o.label.startsWith("Harvest"))).toBe(false);
+    state.adventure!.pendingVisit = null;
 
-    expect(player.resources.gold).toBe(4);
-    expect(player.resources.valuables).toBe(1);
-    expect(player.resources.buildingMaterials).toBe(0);
-  });
-
-  it("CONTROL: a broke hero is only offered Decline (the 1-gold stake gates it)", () => {
-    const state = animeGame({ seed: "sf-broke" });
-    const player = state.players.p1;
-    player.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
-    injectField(state, "anime.linh_dien");
-
-    visit(state);
-    expect(firstStep(state)?.type).toBe("PAY_TO");
-    const resolves = getLegalActions(state, "p1").filter((a) => a.action.type === "RESOLVE_VISIT_STEP");
-    expect(resolves.some((a) => (a.action as { optionIndex?: number }).optionIndex !== undefined)).toBe(false);
-    expect(resolves.some((a) => (a.action as { decline?: boolean }).decline === true)).toBe(true);
+    // A rival sees Raid — never Plant on an occupied terrace.
+    const p2Hero = getMainHero(state, "p2")!;
+    p2Hero.spaceId = FIELD_ID;
+    beginFieldVisit(state, p2Hero.id, FIELD_ID, false);
+    expect(menu(state).options.some((o) => o.label.startsWith("Raid"))).toBe(true);
+    expect(menu(state).options.some((o) => o.label.startsWith("Plant"))).toBe(false);
   });
 });
 
@@ -439,40 +427,33 @@ describe("Spirit Field (anime.linh_dien)", () => {
 // 5. Dungeon Gate (isekai) — guarded gamble; the Attack die picks the loot
 // ===========================================================================
 describe("Dungeon Gate (anime.dungeon_gate)", () => {
-  it("the guard is cleared on the win, and the Attack die drives the loot: +1 → Treasure, 0 → +2 gold, −1 → +1 morale", () => {
-    const seen = new Set<number>();
-    for (let i = 0; i < 40 && seen.size < 3; i += 1) {
-      const state = animeGame({ seed: `dg-${i}` });
-      const player = state.players.p1;
-      player.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-      player.morale = 0;
-      const field = carveAt(state, "dungeon_gate");
-      expect(field.difficulty, `dg-${i}`).toBe(1); // guarded Ⅰ before the win
+  // FO redesign 2026-08-19: a WAGER delve now (pick floor Ⅰ–Ⅳ, fight it, the
+  // floor keys the reward, the gate is spent). Floors Ⅰ and Ⅳ (fallback) are
+  // pinned in anime-locations.test.ts; this file completes the ladder with Ⅱ
+  // and pins the spent-gate inertness in its own harness.
+  it("a floor-Ⅱ win rolls exactly one Treasure die, then the gate is SPENT for good", () => {
+    const state = animeGame({ seed: "dg-floor2" });
+    const player = state.players.p1;
+    player.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
+    const field = carveAt(state, "dungeon_gate");
+    field.difficulty = 2; // simulate the just-won floor-Ⅱ re-visit
 
-      const eventsBefore = state.eventLog.length;
-      visit(state); // the post-win visit
-      // The beaten guard is cleared and the visitable hex cubes (one delve).
-      expect(field.difficulty, `dg-${i}`).toBeFalsy();
-      expect(field.blackCube, `dg-${i}`).toBe(true);
-
-      const roll = lastAttackRoll(state);
-      seen.add(roll);
-      const rolledTreasure = state.eventLog
+    const eventsBefore = state.eventLog.length;
+    visit(state);
+    expect(
+      state.eventLog
         .slice(eventsBefore)
-        .some((e) => e.type === "ADVENTURE_DICE_ROLLED" && (e as { dice?: string }).dice === "treasure");
-      if (roll === 1) {
-        expect(rolledTreasure, `dg-${i} (+1)`).toBe(true);
-      } else if (roll === 0) {
-        expect(player.resources.gold, `dg-${i} (0)`).toBe(12); // +2 gold
-        expect(player.morale, `dg-${i} (0)`).toBe(0);
-        expect(rolledTreasure, `dg-${i} (0)`).toBe(false);
-      } else {
-        expect(player.morale, `dg-${i} (−1)`).toBe(1); // +1 morale
-        expect(player.resources.gold, `dg-${i} (−1)`).toBe(10); // gold untouched
-      }
-      expect(state.adventure!.pendingVisit, `dg-${i} auto-resolves`).toBeNull();
-    }
-    expect(seen, "all three Attack-die branches exercised").toEqual(new Set([-1, 0, 1]));
+        .filter((e) => e.type === "ADVENTURE_DICE_ROLLED" && (e as { dice?: string }).dice === "treasure")
+    ).toHaveLength(1);
+    expect(field.difficulty).toBeFalsy();
+    expect(field.wagerCleared).toBe(true);
+
+    // Spent: a later visit offers NOTHING (CONTROL — no second delve).
+    state.adventure!.pendingVisit = null;
+    const goldAfter = player.resources.gold;
+    visit(state);
+    expect(state.adventure!.pendingVisit).toBeNull();
+    expect(player.resources.gold).toBe(goldAfter);
   });
 });
 
@@ -552,7 +533,9 @@ describe("Guild Bounty Board (anime.guild_bounty)", () => {
 // 7. Cross-mod commander-artifact BONUS (Task 2)
 // ===========================================================================
 describe("Commander-artifact bonus on anime reward locations (Task 2)", () => {
-  it("Bí Cảnh guard win grants ONE not-in-play commander artifact into hand (anime + WOG Commanders ON)", () => {
+  it("Bí Cảnh: a depth-Ⅴ wager win grants ONE commander artifact (anime + WOG Commanders ON); a depth-Ⅲ win does NOT (the rider is gated to Ⅴ+)", () => {
+    // FO redesign 2026-08-19: bi_canh is a wager site; the documented Commanders
+    // cross-mod rider survives, gated to its OLD fixed guard level (Ⅴ) and up.
     const state = animeGame({ seed: "bc-artifact", commanders: true, faction: "castle" });
     const player = state.players.p1;
     player.hand = [];
@@ -560,26 +543,37 @@ describe("Commander-artifact bonus on anime reward locations (Task 2)", () => {
     expect(commanderArtifactsInHand(state)).toHaveLength(0);
 
     const field = carveAt(state, "bi_canh");
-    expect(field.difficulty).toBe(5); // guarded before the win
-    visit(state); // the guard win fires the grant + the Secret-Realm reward
+    field.difficulty = 5; // the just-won depth-Ⅴ re-visit
+    visit(state);
 
     const gained = commanderArtifactsInHand(state);
     expect(gained, "one commander artifact granted").toHaveLength(1);
     expect(bindableCommanderArtifact(gained[0])).toBe(true); // the normal bindable card
-    // The Secret Realm's own reward still runs (2 Artifact searches queued) — the
+    // The depth-Ⅴ ladder reward still runs (2 Artifact searches queued) — the
     // bonus is IN ADDITION to the printed reward, not instead of it.
     expect(queuedSearches(state, "artifacts")).toBe(2);
     expect(field.difficulty).toBeFalsy(); // guard cleared on the win
+
+    // CONTROL — a SHALLOW (Ⅲ) wager win pays its ladder but NO rider, even
+    // with Commanders ON: the gate is the depth, not just the module.
+    const shallow = animeGame({ seed: "bc-shallow", commanders: true, faction: "castle" });
+    shallow.players.p1.hand = [];
+    const shallowField = carveAt(shallow, "bi_canh");
+    shallowField.difficulty = 3;
+    visit(shallow);
+    expect(commanderArtifactsInHand(shallow)).toHaveLength(0);
+    expect(queuedSearches(shallow, "artifacts")).toBe(1); // the Ⅲ ladder reward intact
   });
 
-  it("CONTROL: with WOG Commanders OFF the Bí Cảnh grants NO commander artifact (reward unchanged)", () => {
+  it("CONTROL: with WOG Commanders OFF a depth-Ⅴ Bí Cảnh win grants NO commander artifact (reward unchanged)", () => {
     const state = animeGame({ seed: "bc-noart", faction: "castle" });
     const player = state.players.p1;
     player.hand = [];
     player.resources = { gold: 0, buildingMaterials: 0, valuables: 20 };
     expect(player.commander).toBeUndefined();
 
-    carveAt(state, "bi_canh");
+    const field = carveAt(state, "bi_canh");
+    field.difficulty = 5;
     visit(state);
 
     expect(commanderArtifactsInHand(state)).toHaveLength(0);
@@ -629,28 +623,36 @@ describe("computer policy resolves the anime WOG-parity menus (no stall)", () =>
     return decision?.action ?? null;
   }
 
-  it("picks a resolving action for the interactive menus (Spirit Field PAY_TO, Guild Bounty CHOOSE_ONE)", () => {
-    for (const [kind, seed, firstType] of [
-      ["anime.linh_dien", "ai-sf", "PAY_TO"],
-      ["anime.guild_bounty", "ai-gb", "CHOOSE_ONE"]
+  it("picks a resolving action for the interactive menus (Spirit Field and Guild Bounty CHOOSE_ONEs)", () => {
+    // FO redesign 2026-08-19: the Spirit Field's first step is a CHOOSE_ONE
+    // now (Plant / Leave) — still an ordinary scored visit menu.
+    for (const [kind, seed] of [
+      ["anime.linh_dien", "ai-sf"],
+      ["anime.guild_bounty", "ai-gb"]
     ] as const) {
       const state = animeGame({ seed });
       state.round = 3;
       state.players.p1.resources = { gold: 20, buildingMaterials: 2, valuables: 5 };
       injectField(state, kind);
       visit(state);
-      expect(firstStep(state)?.type, kind).toBe(firstType);
+      expect(firstStep(state)?.type, kind).toBe("CHOOSE_ONE");
       const action = decideOn(state);
       expect(action?.type, kind).toBe("RESOLVE_VISIT_STEP");
     }
   });
 
-  it("the guarded/escalating rewards auto-resolve without a player window (Trial Tower, Dungeon Gate)", () => {
-    for (const kind of ["thi_luyen_thap", "dungeon_gate"]) {
+  it("the escalating reward auto-resolves without a player window (Trial Tower); a won wager floor Ⅰ does too (Dungeon Gate)", () => {
+    for (const [kind, wonDifficulty] of [
+      ["thi_luyen_thap", undefined],
+      ["dungeon_gate", 1]
+    ] as const) {
       const state = animeGame({ seed: `ai-${kind}` });
       state.round = 3;
       state.players.p1.resources = { gold: 0, buildingMaterials: 0, valuables: 0 };
-      carveAt(state, kind);
+      const field = carveAt(state, kind);
+      if (wonDifficulty) {
+        field.difficulty = wonDifficulty; // wager site: simulate the just-won re-visit
+      }
       visit(state); // simulate the post-win visit
       expect(state.adventure!.pendingVisit, `${kind} reward auto-resolved`).toBeNull();
     }

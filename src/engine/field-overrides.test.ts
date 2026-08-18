@@ -362,9 +362,18 @@ describe("carve + placement", () => {
     const field = Object.values(state.adventure!.fields).find(
       (f) => f.location !== "town" && !f.difficulty
     )!;
+    // FO redesign 2026-08-19: Bí Cảnh is a WAGER site — it carves UNGUARDED
+    // (the visitor picks the depth at the visit; the def carries no `guard`).
     carveFieldOverride(state.adventure!, field.spaceId, "bi_canh");
     expect(state.adventure!.fields[field.spaceId]?.location).toBe("anime.bi_canh");
-    expect(state.adventure!.fields[field.spaceId]?.difficulty).toBe(5);
+    expect(state.adventure!.fields[field.spaceId]?.difficulty).toBeUndefined();
+    // CONTROL — the guard-stamp carve path itself still works: the Trial
+    // Tower's printed Ⅰ guard lands on carve.
+    const second = Object.values(state.adventure!.fields).find(
+      (f) => f.location !== "town" && !f.difficulty && f.spaceId !== field.spaceId && !f.location.startsWith("anime.")
+    )!;
+    carveFieldOverride(state.adventure!, second.spaceId, "thi_luyen_thap");
+    expect(state.adventure!.fields[second.spaceId]?.difficulty).toBe(1);
   });
 
   it("pool stamps pending on face-down far when anime content is available", () => {

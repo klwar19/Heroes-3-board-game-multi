@@ -28,22 +28,18 @@ function animeSource(slug: string) {
  */
 export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   /**
-   * Bí Cảnh (*Secret Realm*) — Dragon Utopia lite as a single hex.
-   * Guard difficulty is stamped by the Field Override definition (default 5),
-   * not by this interaction. On visit (post-win): keep two Artifacts + 5 valuables.
+   * Bí Cảnh (*Secret Realm*) — a WAGER GUARD trial (FO redesign 2026-08-19).
+   * Carves UNGUARDED; the whole flow (depth pick Ⅲ–Ⅶ → immediate fight →
+   * depth-keyed ladder reward → the site is spent, `field.wagerCleared`) is
+   * engine code in `handleWagerObjectVisit` (adventure.ts) — no static
+   * interaction. Ladder: docs/field-override-redesign-plan.md.
    */
   "anime.bi_canh": {
     id: "anime.bi_canh",
     name: "Bí Cảnh (Secret Realm)",
-    category: "visitable",
-    interaction: {
-      type: "SEQUENCE",
-      interactions: [
-        // times:2 → two independent Search(1) keeps → two Artifacts kept.
-        { type: "SEARCH_SHARED_DECK", deckId: "artifacts", count: 1, times: 2 },
-        { type: "GAIN_RESOURCES", valuables: 5 }
-      ]
-    },
+    category: "revisitable",
+    // engine: the wager flow is handled in beginFieldVisit (handleWagerObjectVisit).
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("bi_canh")
   },
@@ -148,17 +144,12 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   "anime.song_bac_quan": {
     id: "anime.song_bac_quan",
     name: "Sòng Bạc Quán (Gambling Den)",
-    category: "visitable",
-    interaction: {
-      type: "PAY_TO",
-      costOptions: [{ gold: 2 }],
-      interaction: {
-        type: "ATTACK_DIE_TABLE",
-        plus: { type: "GAIN_RESOURCES", gold: 5 },
-        zero: { type: "GAIN_RESOURCES", gold: 2 },
-        minus: { type: "GAIN_MORALE", amount: -1 }
-      }
-    },
+    category: "revisitable",
+    // engine (FO redesign 2026-08-19): choose-your-stake gamble with the
+    // persistent HOUSE POT — the menu is built at visit time
+    // (buildAnimeFieldVisitStep) because the payout table reads
+    // field.denGoldPot. Revisitable: the den never cubes.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("song_bac_quan")
   },
@@ -228,23 +219,11 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
     id: "anime.linh_dien",
     name: "Linh Điền (Spirit Field)",
     category: "revisitable",
-    interaction: {
-      type: "PAY_TO",
-      costOptions: [{ gold: 1 }],
-      interaction: {
-        type: "CHOOSE_ONE",
-        options: [
-          {
-            label: "Harvest spirit herbs — gain 1 building materials",
-            interaction: { type: "GAIN_RESOURCES", buildingMaterials: 1 }
-          },
-          {
-            label: "Harvest spirit-fruit — gain 1 valuables",
-            interaction: { type: "GAIN_RESOURCES", valuables: 1 }
-          }
-        ]
-      }
-    },
+    // engine (FO redesign 2026-08-19): PLANTED REWARD — plant 2 gold, harvest
+    // ≥3 rounds later (+3 valuables +1 materials); a rival's visit may raid
+    // (+1 valuables, crop trampled). Menu built at visit time
+    // (buildAnimeFieldVisitStep) off field.plantedBy / field.plantedRound.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("linh_dien")
   },
@@ -261,13 +240,11 @@ export const animeLocationDefinitions: Record<string, LocationDefinition> = {
   "anime.dungeon_gate": {
     id: "anime.dungeon_gate",
     name: "Dungeon Gate",
-    category: "visitable",
-    interaction: {
-      type: "ATTACK_DIE_TABLE",
-      plus: { type: "ROLL_TREASURE_DICE", count: 1 },
-      zero: { type: "GAIN_RESOURCES", gold: 2 },
-      minus: { type: "GAIN_MORALE", amount: 1 }
-    },
+    category: "revisitable",
+    // engine (FO redesign 2026-08-19): a WAGER GUARD delve — pick your floor
+    // Ⅰ–Ⅳ, fight it immediately, the win pays that floor's reward and spends
+    // the gate (`field.wagerCleared`). Flow in handleWagerObjectVisit.
+    interaction: { type: "NONE" },
     implementationStatus: "implemented",
     source: animeSource("dungeon_gate")
   },

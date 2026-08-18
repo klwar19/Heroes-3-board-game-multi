@@ -18,6 +18,8 @@ const art = (slug: string) => `/assets/anime/field-overrides/${slug}.webp`;
  * so it joins the real Monolith network with no new travel code.
  */
 export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefinition> = {
+  // FO redesign 2026-08-19: WAGER GUARD — no carve guard; the visitor picks the
+  // trial depth and the reward scales with what they dared.
   bi_canh: {
     id: "bi_canh",
     locationId: "anime.bi_canh",
@@ -26,9 +28,9 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     package: "anime-xianxia",
     tileGroups: ["far", "near", "center"],
     terrain: "land",
-    guard: 5,
     implementationStatus: "implemented",
-    summary: "Guarded Secret Realm — defeat the guard for 2 Artifacts + 5 valuables.",
+    summary:
+      "Wager trial: choose depth Ⅲ–Ⅶ, fight it immediately. Deeper wins pay more — from Search (1) Artifact (Ⅲ) up to two Search (1) + a Search (3) of the Artifact deck (Ⅶ); Ⅵ adds a free Grade-II equipment pick (Equipment module). One clear, then the realm is spent.",
     image: art("bi_canh")
   },
   kiem_trung: {
@@ -117,7 +119,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Pay 2 gold to gamble on the Attack die: +1 wins 5 gold, 0 returns 2, −1 costs morale.",
+    summary:
+      "Stake 1, 3 or 5 gold on the Attack die: +1 wins double the stake PLUS the house pot, 0 returns the stake, −1 feeds the stake into the pot (which waits on the hex for the next winner).",
     glyph: "🀄",
     image: art("song_bac_quan")
   },
@@ -184,7 +187,8 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     tileGroups: ["far", "near"],
     terrain: "land",
     implementationStatus: "implemented",
-    summary: "Pay 1 gold to harvest: choose +1 building materials or +1 valuables. Revisitable.",
+    summary:
+      "Plant for 2 gold; harvest 3 rounds later for 3 valuables + 1 building materials. A rival visiting your crop may raid it for 1 valuables, trampling it. Revisitable.",
     image: art("linh_dien")
   },
 
@@ -235,14 +239,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
   // -------------------------------------------------------------------------
   // Wave 3 — isekai (WOG-parity objects). Real 512×512 hex art (no placeholder).
   // -------------------------------------------------------------------------
-  /**
-   * Dungeon Gate (isekai) — a "gamble fight" delve. Guarded Ⅰ; the Attack die
-   * decides the loot on the WIN (a rolled-guard-then-reward flow cannot be
-   * expressed in one visit — the combat resolves OUTSIDE the visit — so the
-   * board-adaptation fixes the guard at Ⅰ and lets the die pick the reward tier:
-   * +1 → a Treasure die, 0 → +2 gold, −1 → Positive Morale). Visitable (one delve, then
-   * a Black Cube). Static ATTACK_DIE_TABLE interaction.
-   */
+  // FO redesign 2026-08-19: WAGER GUARD — the isekai "dive deeper?" fantasy.
   dungeon_gate: {
     id: "dungeon_gate",
     locationId: "anime.dungeon_gate",
@@ -250,10 +247,9 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
     package: "anime-isekai",
     tileGroups: ["far", "near", "center"],
     terrain: "land",
-    guard: 1,
     implementationStatus: "implemented",
     summary:
-      "Defeat the level-I guard, then roll 1 Attack die for the reward: +1 — roll 1 Treasure die; 0 — gain 2 gold; −1 — gain Positive Morale.",
+      "Wager delve: choose floor Ⅰ–Ⅳ, fight it immediately. Rewards by floor: Ⅰ 2 gold · Ⅱ 1 Treasure die · Ⅲ Search (1) Artifact · Ⅳ a free Grade-II equipment pick (without the Equipment module: Search (1) Artifact + 2 gold). One clear, then the gate is spent.",
     image: art("dungeon_gate")
   },
   /**
