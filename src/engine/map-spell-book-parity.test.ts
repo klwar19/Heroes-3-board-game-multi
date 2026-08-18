@@ -322,6 +322,92 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
     expect(state.players.p1.spellBook).not.toContain("spell.view_air");
   });
 
+  it("Mysticism REFRESHES the just-cast Book Spell (and returns Cast a Spell)", () => {
+    let state = polishBookGame("polish-book-mysticism-refresh");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism"];
+    state.players.p1.spellBook = ["spell.view_air"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.limits.expertUses = 0;
+
+    state = castViewAirFrom(state, true);
+    state = resolveBoostNow(state);
+
+    // After the cast the Book Spell is USED and the enabler is spent.
+    expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
+    expect(state.players.p1.spellBook).not.toContain("spell.view_air");
+    expect(state.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+
+    // The recall CHOOSE_ONE offers a Mysticism REFRESH option (not "stays used").
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    expect(recall).toMatchObject({ type: "CHOOSE_ONE" });
+    if (recall?.type === "CHOOSE_ONE") {
+      expect(recall.options[0]!.label).toMatch(/refresh the cast Spell/i);
+    }
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    // OBSERVABLE OUTCOME: the cast Spell is back on the refreshed (castable) side,
+    // the enabler is back in hand, Mysticism is spent, and the once-per-round
+    // refresh budget for this Spell is now used.
+    expect(state.players.p1.spellBook).toContain("spell.view_air");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.view_air");
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.hand).not.toContain("ability.mysticism");
+    expect(state.players.p1.polishSpellsRefreshedThisRound).toContain("spell.view_air");
+  });
+
+  it("a SECOND Mysticism refresh of the same Spell that round is blocked (stays used)", () => {
+    let state = polishBookGame("polish-book-mysticism-once-per-round");
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "ability.mysticism", "ability.mysticism"];
+    state.players.p1.spellBook = ["spell.view_air"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.limits.expertUses = 0;
+
+    // First cast + Mysticism → refreshed (once-per-round budget spent).
+    state = castViewAirFrom(state, true);
+    state = resolveBoostNow(state);
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(state.players.p1.spellBook).toContain("spell.view_air");
+
+    // Cast it again this same round (the enabler came back), then try Mysticism.
+    state = castViewAirFrom(state, true);
+    state = resolveBoostNow(state);
+    expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    // Blocked by the once-per-round gate: the Spell STAYS used; only the enabler
+    // returns. (Remove the refresh gate and this Spell would refresh twice.)
+    expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
+    expect(state.players.p1.spellBook).not.toContain("spell.view_air");
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+  });
+
+  it("CONTROL: with polish-spell-book OFF, Mysticism returns the Spell CARD to hand", () => {
+    let state = createAdventureGameState({
+      seed: "no-polish-mysticism-map",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      spellBook: false,
+      houseRules: { "polish-spell-book": false }
+    });
+    state = finishHandStep(state);
+    state.players.p1.hand = ["spell.view_air", "ability.mysticism"];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.limits.expertUses = 0;
+
+    state = castViewAirFrom(state, false);
+    state = resolveBoostNow(state);
+    expect(state.players.p1.discard).toContain("spell.view_air");
+
+    state = applyOk(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    // Classic reading: the printed "take the Spell card back into your hand".
+    expect(state.players.p1.hand).toContain("spell.view_air");
+    expect(state.players.p1.discard).not.toContain("spell.view_air");
+    expect(state.players.p1.spellBook).not.toContain("spell.view_air");
+    expect(state.players.p1.polishSpellsRefreshedThisRound ?? []).not.toContain("spell.view_air");
+  });
+
   it("an empty-deck cast draw cannot steal the enabler before Knowledge recalls it", () => {
     let state = polishBookGame("polish-book-empty-draw-recall");
     state.players.p1.hand = [CAST_A_SPELL_CARD_ID, "stat.knowledge"];

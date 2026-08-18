@@ -7585,8 +7585,18 @@ function offerMapSpellKnowledgeRecall(
     if (!recallEffect) {
       continue;
     }
+    // Under Polish Spell Book, Mysticism (no limit bonus) additionally REFRESHES
+    // the just-cast Book Spell — the reference-sheet reading, matching combat.
+    // Knowledge (carries a limit bonus) only hands the "Cast a Spell" enabler
+    // back and leaves the Book Spell used. The engine refreshes once per game
+    // round via the shared refresh gate; the map handler enforces it.
+    const isPolishMysticismRecall =
+      polishBookCast && !recallEffect.basicSpellLimitBonus && !recallEffect.expertSpellLimitBonus;
+    const cardReturnLabel = isPolishMysticismRecall
+      ? "return Cast a Spell to your hand and refresh the cast Spell (once per round)"
+      : returnLabel;
     options.push({
-      label: `Use ${card.name}: ${returnLabel}`,
+      label: `Use ${card.name}: ${cardReturnLabel}`,
       steps: [
         {
           type: "KNOWLEDGE_RECALL_MAP_SPELL",
@@ -7609,7 +7619,7 @@ function offerMapSpellKnowledgeRecall(
       (recallCrownFree || mapSpellCrownsLeft(state, playerId) > 0)
     ) {
       options.push({
-        label: `Use ${card.name} expert (${recallCrownFree ? "Empowered — no crown" : "1 crown"}): ${returnLabel} and recover the other cast cards`,
+        label: `Use ${card.name} expert (${recallCrownFree ? "Empowered — no crown" : "1 crown"}): ${cardReturnLabel} and recover the other cast cards`,
         steps: [
           {
             type: "KNOWLEDGE_RECALL_MAP_SPELL",

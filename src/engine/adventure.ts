@@ -148,7 +148,9 @@ import {
   eventZoneMatches,
   gainOwnedCard,
   isOwnedSpellCard,
+  markPolishSpellRefreshedThisRound,
   partitionPolishBookAtRoundStart,
+  polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
   removeCardFromPlayerZone,
   type PolishCardZone
@@ -7775,6 +7777,47 @@ export function processPendingVisit(state: GameState): void {
         if (step.castEnablerCardId) {
           player.discard.splice(castEnablerIndex, 1);
           player.hand.push(step.castEnablerCardId);
+          // Polish Spell Book: Mysticism (a RECALL_SPELL with no limit bonus —
+          // Knowledge carries one) also REFRESHES the just-cast Book Spell, the
+          // reference-sheet reading, matching combat's refreshPolishUsedSpell.
+          // Gated by the shared once-per-round refresh rule, like Dimension Door:
+          // a Book Spell already refreshed this round (or still in effect) is left
+          // used and a note is emitted. The enabler still returns above either way.
+          const isPolishMysticism =
+            !effect.basicSpellLimitBonus && !effect.expertSpellLimitBonus;
+          if (isPolishMysticism) {
+            const used = player.spellBookUsed ?? [];
+            const usedIndex = used.lastIndexOf(step.spellCardId);
+            if (usedIndex !== -1) {
+              const blocked = polishBookSpellRefreshBlocked(
+                state,
+                player.id,
+                step.spellCardId,
+                player
+              );
+              if (blocked) {
+                appendEvent(state, {
+                  type: "EVENT_NOTE",
+                  playerId: player.id,
+                  message:
+                    blocked === "in-effect"
+                      ? `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} is still in effect and cannot be refreshed yet.`
+                      : `${cardLibrary[step.spellCardId]?.name ?? step.spellCardId} has already been refreshed this round.`
+                });
+              } else {
+                used.splice(usedIndex, 1);
+                player.spellBookUsed = used;
+                player.spellBook.push(step.spellCardId);
+                markPolishSpellRefreshedThisRound(player, step.spellCardId);
+                appendEvent(state, {
+                  type: "SPELL_RETURNED_TO_HAND",
+                  playerId: player.id,
+                  cardId: step.spellCardId,
+                  reason: "Polish Spell Book refresh"
+                });
+              }
+            }
+          }
         } else if (ongoing) {
           // Fly / Water Walk and any future lasting map spell cannot be cast a
           // second time while active. Knowledge marks the held card to come
