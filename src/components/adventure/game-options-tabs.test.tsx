@@ -566,6 +566,7 @@ describe("Game options — tabbed layout", () => {
       "torso-of-legion-major": true,
       "eversmoking-ring-of-sulfur-major": true,
       "polish-set-artifacts": true,
+      "polish-bank-unit-spells": true,
       "polish-card-balance": true
     };
     const onAction = openOptionsWith((state) => {
@@ -602,6 +603,7 @@ describe("Game options — tabbed layout", () => {
         "torso-of-legion-major": true,
         "eversmoking-ring-of-sulfur-major": true,
         "polish-set-artifacts": true,
+        "polish-bank-unit-spells": true,
         "polish-card-balance": true,
         "discovery-border-gate": true
       };
