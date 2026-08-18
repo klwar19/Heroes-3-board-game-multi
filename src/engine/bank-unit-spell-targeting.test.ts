@@ -273,6 +273,104 @@ describe("Blind on a bank guard", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Frenzy on an enemy bank GUARD — the attacker's Defense-ignore reaction.
+// Unlike the four control spells above, Frenzy is not a CAST on the target: it
+// is an attack-window reaction whose pierced grade is decided at RESOLUTION from
+// the caster's pooled Power (`frenzyPierces`). We assert the OBSERVABLE outcome
+// (the defender's Defense was ignored — measurable extra damage), not a flag,
+// by comparing damage with Frenzy played vs. the same seed with it passed.
+// Uses the Polish Balance reprint ladder {0:bronze,1:silver,3:gold}.
+// ---------------------------------------------------------------------------
+
+describe("Frenzy on a bank guard", () => {
+  /** p1's griffins declare an attack on `targetId`, with `power` standing Power. */
+  function declareFrenzyAttack(targetId: UnitId, power: number, bankSpells = true): GameState {
+    const state = createInitialGameState(`bank-frenzy-${targetId}-${power}-${bankSpells}`);
+    state.adventure = {
+      houseRules: { "polish-card-balance": true, "polish-bank-unit-spells": bankSpells }
+    } as unknown as GameState["adventure"];
+    makeBankUnit(state, targetId);
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.damage = 0;
+      unit.maxHealth = 30;
+    }
+    const attacker = state.combat!.units.unit_p1_griffins;
+    const defender = state.combat!.units[targetId];
+    defender.defense = 4;
+    attacker.position = 9;
+    defender.position = 10;
+    attacker.activatedThisRound = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    state.players.p1.hand = ["spell.frenzy"];
+    state.players.p2.hand = [];
+    if (power > 0) {
+      state.activeEffects.push({
+        id: `effect_power_p1_${power}`,
+        name: "Test Power",
+        scope: "player",
+        controllerId: "p1",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SPELL_POWER_BONUS", amount: power }],
+        source: { type: "system" },
+        startedRound: state.round,
+        usedRollEventIds: [],
+        usedChoiceIds: [],
+        usedCombatRoundNumbers: []
+      } as unknown as GameState["activeEffects"][number]);
+    }
+    const attack = getLegalActions(state, "p1").find(
+      (legal) =>
+        (legal.action.type === "ATTACK_UNIT" || legal.action.type === "MOVE_AND_ATTACK_UNIT") &&
+        "defenderId" in legal.action &&
+        legal.action.defenderId === targetId
+    );
+    expect(attack, "griffins should be able to attack the bank guard").toBeTruthy();
+    return applyOk(state, attack!.action);
+  }
+
+  function frenzyOffer(state: GameState) {
+    return getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.frenzy"
+    );
+  }
+
+  /** Extra damage the Frenzy pierce dealt vs. the same attack with it passed. */
+  function pierceDelta(targetId: UnitId, power: number, bankSpells = true): number {
+    const withFrenzy = declareFrenzyAttack(targetId, power, bankSpells);
+    const offer = frenzyOffer(withFrenzy);
+    if (!offer) {
+      return -1; // caller distinguishes "not even offered" from "offered, no pierce"
+    }
+    const played = passAllReactions(applyOk(withFrenzy, offer.action));
+    const passed = passAllReactions(declareFrenzyAttack(targetId, power, bankSpells));
+    return played.combat!.units[targetId].damage - passed.combat!.units[targetId].damage;
+  }
+
+  it("pierces a GOLD bank guard at Power 3 (gold), but NOT at Power 1 (silver)", () => {
+    // dread_knights = p2 gold. Polish ladder reaches gold at Power 3 only.
+    expect(pierceDelta("unit_p2_dread_knights", 3), "gold Power pierces the gold bank guard").toBeGreaterThan(0);
+    expect(pierceDelta("unit_p2_dread_knights", 1), "silver Power cannot pierce the gold bank guard").toBe(0);
+  });
+
+  it("pierces a BRONZE bank guard at Power 0 (the low-tier reward case)", () => {
+    // skeletons = p2 bronze. Power 0 already reaches bronze.
+    expect(pierceDelta("unit_p2_skeletons", 0), "Power 0 pierces the bronze bank guard").toBeGreaterThan(0);
+  });
+
+  it("CONTROL: with the Polish rule OFF, Frenzy never pierces a bank guard, even at Power 3", () => {
+    // Offered whenever you attack (Power-scaled form), but resolution keeps the
+    // bank guard at ∞ without the rule, so the pierce fizzles — 0 extra damage.
+    expect(
+      pierceDelta("unit_p2_dread_knights", 3, false),
+      "without polish-bank-unit-spells a bank guard's Defense is never ignored"
+    ).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CONTROL: a NON-allowlisted tier-gated spell (Berserk) stays blocked
 // ---------------------------------------------------------------------------
 

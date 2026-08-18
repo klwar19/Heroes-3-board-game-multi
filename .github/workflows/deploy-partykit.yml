@@ -37,6 +37,27 @@
 #
 # NOTE: the trigger branch below must match the branch Vercel deploys to
 # production. Change `main` if your Vercel production branch is different.
+#
+# WHY THE DEPLOY IS GATED ON THE ENGINE SUITE, NOT THE WHOLE TEST RUN
+# ------------------------------------------------------------------
+# The recurring "room server out of date" banner had a second, worse cause than
+# the lockfile drift below: the deploy job gated on the ENTIRE `npm test` run,
+# which includes UI-component tests (src/components, src/app — jsdom) and media
+# ASSET-size gates (src/data/**-art) that CANNOT affect the room server at all.
+# party/index.ts imports only `@/engine` and `@/server`, so a placeholder webp
+# that is a few KB too small, or a jsdom UI regression, would fail `npm test`
+# and STRAND the authoritative rules engine at an old protocol version while
+# Vercel (which never gates on tests) kept shipping the new UI. That asymmetry
+# is exactly the "server out of date" pain, and no amount of retrying fixes it
+# because those failures are unrelated to the engine.
+#
+# So the `deploy` job below gates on the tests that actually protect the room
+# server — `src/engine` + `src/server` — plus a full typecheck. The full test
+# suite still runs, in a SEPARATE `full-suite` job that is NON-blocking
+# (continue-on-error) purely for signal: UI/art debt shows up as an annotation
+# without ever holding the engine hostage. This keeps the stated safety intent
+# ("never ship a room server that fails the RULES tests or typecheck") while
+# making the auto-deploy actually reliable.
 
 name: Deploy PartyKit
 
@@ -75,9 +96,13 @@ jobs:
       # repair is ephemeral (not committed); the tests below still gate the deploy.
       - name: Install dependencies (resilient to optional-dep lockfile drift)
         run: npm ci || (echo "::warning::npm ci rejected the lockfile (likely cross-platform optional-dep drift) — repairing with npm install" && npm install --no-audit --no-fund)
-      # Gate the deploy on a green engine: never ship a room server that fails
-      # the rules tests or typecheck.
-      - run: npm test
+      # Gate the deploy on a green ROOM SERVER: the room server is party/index.ts,
+      # which imports only `@/engine` and `@/server`, so those two trees' tests —
+      # not the UI/art suites — are what must be green to ship it safely. See the
+      # header comment for why gating on the whole `npm test` run kept stranding
+      # the server. The full suite still runs (non-blocking) in `full-suite` below.
+      - name: Engine + server rules tests (the room-server gate)
+        run: npx vitest run src/engine src/server
       - run: npm run typecheck
       # Pass the edge its runtime vars. Without HOMM3BG_APP_URL the edge cannot
       # verify a signed-in player cross-origin, so admins can't moderate rooms
@@ -102,3 +127,22 @@ jobs:
           HOMM3BG_APP_URL: ${{ secrets.HOMM3BG_APP_URL }}
           HOMM3BG_ADMIN_KEY: ${{ secrets.HOMM3BG_ADMIN_KEY }}
           HOMM3BG_MATCH_REPORT_KEY: ${{ secrets.HOMM3BG_MATCH_REPORT_KEY }}
+
+  # Non-blocking full test suite (UI + art + everything else) purely for signal.
+  # It runs in parallel with `deploy-partykit` and NEVER blocks it: a UI-component
+  # regression or a too-small placeholder art file will annotate this job red
+  # WITHOUT stranding the authoritative room server. Fix what it surfaces, but the
+  # engine ships either way.
+  full-suite:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies (resilient to optional-dep lockfile drift)
+        run: npm ci || (echo "::warning::npm ci rejected the lockfile — repairing with npm install" && npm install --no-audit --no-fund)
+      - name: Full test suite (non-blocking signal)
+        run: npm test
