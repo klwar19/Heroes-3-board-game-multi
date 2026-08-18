@@ -376,7 +376,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // an MGQ main hero must discard one chosen hand card before confirming combat
 // deployment, recorded per combat so it cannot be charged twice. A v36 worker
 // would silently omit both costs and reject the resulting choice action.
-export const ENGINE_PROTOCOL_VERSION = 37;
+// v38 (2026-08-18): the Polish Balance Pack's First Aid EXPERT (+2 Health)
+// option gained `combatAnytime`, so the unit about to be hit may play it as an
+// instant reaction inside the open attack window (a defensive overheal before
+// the hit), exactly like the v35 instant-face batch. A v37 edge refuses that
+// window join a new client offers (same "not legal" symptom without this bump).
+// Offer stays gated on polish-card-balance + a First Aid Tent + a payable crown,
+// so rule-off / Tent-less tables are byte-identical. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 38;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

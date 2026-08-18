@@ -476,6 +476,13 @@ describe("the new offers never strand a window", () => {
  */
 const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "ability.artillery", optionIndex: 0 },
+  // Balance Pack First Aid EXPERT: +2 Health, an overheal buff played
+  // defensively before a hit lands. Its offer stays gated on polish-card-balance
+  // + a First Aid Tent in play + a payable crown (addOptionPlays), so it is
+  // absent from a rule-off / Tent-less fixture — the in-window sweep below skips
+  // it as an unmet-prerequisite face, and first-aid-instant-when-attacked pins
+  // the real reaction.
+  { cardId: "ability.first_aid", optionIndex: 2 },
   { cardId: "specialty.deemer.1", optionIndex: 0 },
   { cardId: "specialty.deemer.6", optionIndex: 0 },
   { cardId: "specialty.adelaide.1", optionIndex: 0 },

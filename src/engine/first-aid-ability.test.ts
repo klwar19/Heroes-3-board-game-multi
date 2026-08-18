@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { putPermanentIntoPlay } from "./permanents";
 import { abilityDeckBinh, abilityDeckLegacy } from "@/data/cards/abilities-extra";
 import { cardLibrary } from "@/data/cards/library";
 import { healFxPlans } from "@/data/fx";
-import type { GameAction, GameEvent, GameState } from "./state";
+import type { CardId, GameAction, GameEvent, GameState } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -210,5 +211,126 @@ describe("First Aid expert — Tent heal 3× against the same target", () => {
       (legal) => legal.action.type === "USE_ACTIVE_EFFECT" && legal.action.mode === "expert"
     );
     expect(offered).toHaveLength(0);
+  });
+});
+
+// ===========================================================================
+// Balance Pack expert side — +2 Health for the current life — is a BONUS/overheal
+// arm that must be playable on a fully-HEALTHY unit (the game-author bug: "now I
+// cannot play the Expert effect if no damage was taken — wrong").
+//
+// The card's CARD-LEVEL target is `{ friendly-unit, damagedOnly: true }` (the
+// basic remove-1-damage side needs a wound). The balance-expert option carries
+// its OWN `{ type: "friendly-unit" }` target with NO `damagedOnly`, and the
+// engine honours per-option targeting (addOptionPlays passes `option.target`
+// into getTargetsForCard). So the +2 Health arm must NOT inherit the card-level
+// `damagedOnly` and must be offered even when NO friendly unit is wounded.
+//
+// These pin the OBSERVABLE outcome and each has a mode-off / no-tent / no-wound
+// CONTROL (CLAUDE.md #1a). Removing the `option.target` override in
+// addOptionPlays makes the first case fail (verified by mutation).
+// ===========================================================================
+
+describe("First Aid balance-expert (+2 Health) — reachable with NO wounded unit", () => {
+  function balanceCombat(opts: { balance?: boolean; crowns?: number; tent?: boolean } = {}): GameState {
+    const { balance = true, crowns = 1, tent = true } = opts;
+    const state = createInitialGameState("first-aid-balance-nodmg");
+    // A combat sandbox has no adventure; houseRuleEnabled reads
+    // adventure.houseRules, so stamp a minimal stub (the shared test pattern).
+    state.adventure = {
+      houseRules: { "polish-card-balance": balance }
+    } as unknown as GameState["adventure"];
+    state.players.p1.hand = ["ability.first_aid"] as CardId[];
+    state.players.p2.hand = [];
+    state.players.p1.limits.expertUses = crowns;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+
+    const combat = state.combat!;
+    const own = Object.values(combat.units).find((unit) => unit.controllerId === "p1")!;
+    combat.activeUnitId = own.id;
+    own.activatedThisRound = false;
+    own.attackedThisActivation = false;
+    state.activePlayerId = "p1";
+    // EVERY unit at full health — there is nothing to heal anywhere on the board.
+    for (const unit of Object.values(combat.units)) {
+      unit.damage = 0;
+    }
+    if (tent) {
+      state.players.p1.hand.push("war_machine.first_aid_tent" as CardId);
+      putPermanentIntoPlay(state, "p1", "war_machine.first_aid_tent" as CardId);
+    }
+    return state;
+  }
+
+  const ownUnitId = (state: GameState) =>
+    Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!.id;
+
+  it("is offered on a full-health unit and raises its current life by 2 (spends the crown)", () => {
+    const state = balanceCombat();
+    const own = ownUnitId(state);
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.optionIndex === 2 &&
+        legal.action.mode === "expert" &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === own
+    );
+    expect(play, "balance-expert +2 Health must be offered with every unit at full health").toBeTruthy();
+
+    const before = state.combat!.units[own].maxHealth;
+    const after = applyOk(state, play!.action);
+    // The observable outcome: current life went up by 2, and a crown was spent.
+    expect(after.combat!.units[own].maxHealth, "+2 current-life Health").toBe(before + 2);
+    expect(after.players.p1.combatStats.expertUsesSpentThisRound, "one crown spent").toBe(1);
+  });
+
+  it("CONTROL: without a First Aid Tent in play the +2 Health arm is never offered", () => {
+    const state = balanceCombat({ tent: false });
+    const offered = getLegalActions(state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.optionIndex === 2
+    );
+    expect(offered).toBe(false);
+  });
+
+  it("CONTROL: the basic remove-1-damage side stays gated on a WOUNDED unit", () => {
+    const state = balanceCombat();
+    // No wound anywhere -> the basic HEAL_DAMAGE arm (index 0) is not offered.
+    const healOfferedNoWound = getLegalActions(state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.optionIndex === 0
+    );
+    expect(healOfferedNoWound, "basic heal must NOT be offered with nothing to heal").toBe(false);
+
+    // Wound the own unit -> the basic arm appears on exactly that unit.
+    const own = ownUnitId(state);
+    state.combat!.units[own].maxHealth = 6;
+    state.combat!.units[own].damage = 2;
+    const healOfferedWound = getLegalActions(state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.optionIndex === 0 &&
+        legal.action.target?.type === "unit" &&
+        legal.action.target.unitId === own
+    );
+    expect(healOfferedWound, "basic heal appears once a unit is wounded").toBe(true);
+  });
+
+  it("CONTROL: with the balance rule OFF the +2 Health arm never appears", () => {
+    const state = balanceCombat({ balance: false });
+    const offered = getLegalActions(state, "p1").some(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.first_aid" &&
+        legal.action.optionIndex === 2
+    );
+    expect(offered).toBe(false);
   });
 });

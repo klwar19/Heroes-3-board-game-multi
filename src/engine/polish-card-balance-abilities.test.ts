@@ -1145,6 +1145,13 @@ describe("Balance Pack — First Aid", () => {
     // The Tent must be in play — the printed gate.
     on.players.p1.hand.push("war_machine.first_aid_tent" as CardId);
     putPermanentIntoPlay(on, "p1", "war_machine.first_aid_tent" as CardId);
+    // The +2 Health arm is a BONUS/overheal, offerable with NOTHING to heal: the
+    // card-level `damagedOnly` target gates only the basic remove-1 side, never
+    // this option's own `{ friendly-unit }` target. Make that explicit — with
+    // every unit at full health, the arm must still be offered below.
+    for (const unit of Object.values(combat.units)) {
+      unit.damage = 0;
+    }
 
     const play = playsOf(on, "p1", "ability.first_aid").find(
       (legal) =>

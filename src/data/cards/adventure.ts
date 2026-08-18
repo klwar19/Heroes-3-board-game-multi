@@ -1399,10 +1399,19 @@ export const adventureCards: CardLibrary = {
           // Balance Pack expert: gated on a First Aid Tent actually in play (the
           // Jeremy-Cannon `requiresWarMachine` gate), and it targets ANY of your
           // units — not only a damaged one — so it carries its own target.
+          // INSTANT (any time during Combat): a +2-Health buff is naturally used
+          // DEFENSIVELY, before a hit lands, so it joins the open attack window
+          // like the other pre-hit reactions (`combatAnytime` — the standing user
+          // ruling that instant abilities are reaction-playable "before counter
+          // attack, when attack and when defend"). The offer stays gated on the
+          // house rule + Tent + a payable crown in addOptionPlays, so rule-off and
+          // Tent-less games are byte-identical; the unit about to be hit opens the
+          // window with it (combatAnytimeInstantWindowJoins / reactionOfferOpensWindow).
           label: "Balance expert (spend a crown; First Aid Tent in play): one unit gains +2 Health for its current life",
           requiresHouseRule: "polish-card-balance",
           requiresWarMachine: "war_machine.first_aid_tent",
           combatOnly: true,
+          combatAnytime: true,
           expertOnly: true,
           target: { type: "friendly-unit" },
           effect: { type: "ADD_UNIT_MAX_HEALTH", amount: 2, currentUnitLifeOnly: true }
