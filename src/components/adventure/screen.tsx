@@ -73,6 +73,7 @@ import {
   hexDistance,
   hexSpaceId,
   hexToPixel,
+  houseRuleEnabled,
   inCombatPrep,
   isMapObjectLocation,
   isParallelActor,
@@ -6986,12 +6987,18 @@ export function LearningOfferModal({
     return null;
   }
 
+  // Balance Pack: the reprint fires on ANY experience gain (even a half level or
+  // at the cap), so the wording is "gaining experience". Classic Learning fires
+  // only on a level crossing, so it keeps the byte-identical "about to level up".
+  const balance = houseRuleEnabled(state, "polish-card-balance");
+  const gainingLabel = balance ? "gaining experience" : "about to level up";
+
   // While another player is deciding, show a quiet waiting strip instead.
   if (choice.playerId !== viewerPlayerId) {
     return (
       <div className="reactionStrip waiting" role="status">
         <ChevronsUp aria-hidden="true" size={15} />
-        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is about to level up…</span>
+        <span>{state.players[choice.playerId]?.name ?? choice.playerId} is {gainingLabel}…</span>
       </div>
     );
   }
@@ -7009,10 +7016,10 @@ export function LearningOfferModal({
   const cardImage = card?.assets?.cardImage;
 
   return (
-    <div className="modalBackdrop" role="dialog" aria-label="Learning — about to level up">
+    <div className="modalBackdrop" role="dialog" aria-label={`Learning — ${gainingLabel}`}>
       <div className="searchModal learningOfferModal">
         <header>
-          <strong>Your Hero is about to level up!</strong>
+          <strong>{balance ? "Your Hero is gaining Experience!" : "Your Hero is about to level up!"}</strong>
           <span>You hold Learning. Play it now to advance even further — or keep it for later.</span>
         </header>
         <div className="learningOfferBody">

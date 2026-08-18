@@ -45,6 +45,31 @@ describe("LearningOfferModal", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("under the Balance Pack the wording is 'gaining experience' (fires on any gain, not just a level-up)", () => {
+    // The reprint opens on ANY experience gain, so the header/aria reflect that
+    // instead of the classic "about to level up".
+    const state = createAdventureGameState({
+      seed: "learning-ui-balance",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-card-balance": true }
+    });
+    const hero = getMainHero(state, "p1")!;
+    hero.experience = 5;
+    hero.level = levelOfExperience(5);
+    state.players.p1.hand = ["ability.learning"];
+    gainExperience(state, "p1", 1);
+    pumpAdventureQueues(state);
+
+    render(
+      <LearningOfferModal legalActions={getLegalActions(state, "p1")} onAction={vi.fn()} state={state} viewerPlayerId="p1" />
+    );
+    const dialog = screen.getByRole("dialog", { name: /gaining experience/i });
+    expect(within(dialog).getByText(/gaining Experience/i)).toBeTruthy();
+    // The classic "about to level up" wording is gone under the rule.
+    expect(within(dialog).queryByText(/about to level up/i)).toBeNull();
+  });
+
   it("pops up showing the Learning card and both the basic and expert (crown) plays", () => {
     const state = gameOnLearningOffer(5); // exp 6 (lvl 4), an expert use available
     render(

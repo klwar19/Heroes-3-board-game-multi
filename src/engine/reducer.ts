@@ -17576,10 +17576,24 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   if (effect.type === "DIPLOMACY_SKIP_COMBAT") {
     throw new Error("Diplomacy's skip is offered when your hero meets matching-level Neutral Units.");
   }
-  // Learning is never played from hand: the engine offers it when the Hero is
-  // about to level up (see the "learning-level-up" pending choice).
+  // Classic Learning is never played from hand: the engine offers it when the
+  // Hero is about to level up (see the "learning-level-up" pending choice).
+  // Polish Balance Pack EXCEPTION: Learning's reprint may be played standalone
+  // from hand — on the map OR during a combat — purely to draw 1 card (its "OR
+  // draw a card instead of its effect" side). It leaves hand for the discard and
+  // draws 1; it NEVER advances Experience from hand (that stays the level-up
+  // window). Flagged `drawOnly`, so the draw runs in the drawOnly branch below;
+  // PLAY_CARD is offer-validated, so this mirrors the legal-actions gate.
   if (effect.type === "ADVANCE_EXPERIENCE") {
-    throw new Error("Learning is played when your Hero is about to level up, not from hand.");
+    const learningDrawPlay =
+      Boolean(action.drawOnly) &&
+      action.cardId === "ability.learning" &&
+      houseRuleEnabled(state, "polish-card-balance");
+    if (!learningDrawPlay) {
+      throw new Error("Learning is played when your Hero is about to level up, not from hand.");
+    }
+    // Fall through: the card moves to the discard, CARD_PLAYED fires, and the
+    // `action.drawOnly` branch draws the single card.
   }
   // Artillery's expert side is not played from hand: it is offered when this
   // player's Ballista fires at the start of a combat round (see permanents.ts).
@@ -17748,7 +17762,11 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (action.drawOnly) {
-    const drawAmount = instantDrawOnlyRider(effect, mode);
+    // Learning's standalone play (Balance Pack) draws exactly 1: its effect is
+    // ADVANCE_EXPERIENCE, which carries no draw rider, so its draw is fixed here
+    // (the ADVANCE_EXPERIENCE guard above already gated it to the rule + card).
+    const drawAmount =
+      effect.type === "ADVANCE_EXPERIENCE" ? 1 : instantDrawOnlyRider(effect, mode);
     if (drawAmount <= 0) {
       throw new Error(`${card.name} has no unconditional card-draw rider.`);
     }

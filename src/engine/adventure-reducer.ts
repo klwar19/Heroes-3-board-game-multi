@@ -6140,10 +6140,11 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
   const effect = card.effect;
   // The Expert side spends an expert use (crown), so it is only offered when one
   // is available — unless Learning has been Empowered, which makes its Expert
-  // side free of a crown.
-  const modes: ("basic" | "basic-draw" | "expert")[] = balance
-    ? ["basic", "basic-draw"]
-    : ["basic"];
+  // side free of a crown. The reprint's "OR draw a card instead" is NOT a window
+  // mode: the basic side already draws a card, so an in-window "draw instead"
+  // would be strictly dominated — the standalone hand play (a PLAY_CARD drawOnly,
+  // offered any time under the balance rule) covers "draw without advancing".
+  const modes: ("basic" | "expert")[] = ["basic"];
   if (expertUsesAvailable(player) > 0 || abilityExpertIsCrownFree(player, "ability.learning")) {
     modes.push("expert");
   }
@@ -6162,8 +6163,6 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
             ? balance
               ? `Play Learning — advance a half level (+${effect.amount} Experience) and draw 1 card`
               : `Play Learning — advance a half level (+${effect.amount} Experience)`
-            : mode === "basic-draw"
-              ? "Play Learning — draw 1 card instead of advancing Experience"
             : `Play Learning (expert) — advance a full level (+${effect.expertAmount} Experience), then remove it`
       })),
       { label: "Decline" }
@@ -6203,12 +6202,11 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
   // The trailing option (or anything out of range) declines; if the card or an
   // expert use slipped away since the offer opened, decline rather than misfire.
   const canPlay =
-    (mode === "basic" || mode === "basic-draw" || mode === "expert") &&
+    (mode === "basic" || mode === "expert") &&
     player &&
     handIndex !== -1 &&
     card?.effect.type === "ADVANCE_EXPERIENCE" &&
     (mode === "basic" ||
-      mode === "basic-draw" ||
       expertUsesAvailable(player) > 0 ||
       abilityExpertIsCrownFree(player, "ability.learning"));
 
@@ -6238,19 +6236,18 @@ export function resolveLearningLevelUpChoice(state: GameState, playerId: PlayerI
     mode: mode === "expert" ? "expert" : "basic"
   });
 
-  // Polish Balance Pack: the reprinted BASIC side reads "…then/or draw 1 card".
+  // Polish Balance Pack: the reprinted BASIC side reads "…and draw 1 card".
   // Drawn BEFORE the Experience so the draw lands even when the gain re-offers
   // Learning (a second copy) or ends the turn's queue pumping.
-  if ((mode === "basic" || mode === "basic-draw") && houseRuleEnabled(state, "polish-card-balance")) {
+  if (mode === "basic" && houseRuleEnabled(state, "polish-card-balance")) {
     drawCardsForPlayer(state, playerId, 1);
   }
 
   // The bonus Experience runs through gainExperience, so advancing into another
   // level resolves its searches/specialties (and may even re-offer Learning when
-  // the player holds a second copy).
-  if (mode !== "basic-draw") {
-    gainExperience(state, playerId, mode === "expert" ? card.effect.expertAmount : card.effect.amount);
-  }
+  // the player holds a second copy). Both window modes advance now — the "draw
+  // instead of advancing" reading is the standalone hand play, not a window mode.
+  gainExperience(state, playerId, mode === "expert" ? card.effect.expertAmount : card.effect.amount);
 
   pumpAdventureQueues(state);
 }

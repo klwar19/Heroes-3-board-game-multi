@@ -14993,10 +14993,12 @@ export type PendingChoice =
       /**
        * learning-level-up: the Learning play modes offered, index-aligned with
        * the options. The final "decline" option carries no mode. Resolving a
-       * mode discards (basic/basic-draw) or removes (expert) one Learning card
-       * from hand. Basic advances and draws; basic-draw only draws; expert advances.
+       * mode discards (basic) or removes (expert) one Learning card from hand.
+       * Basic advances a half level AND draws 1 card (Balance Pack); expert
+       * advances a full level. The "draw a card instead of advancing" reading is
+       * the standalone hand play (a PLAY_CARD drawOnly), never a window mode.
        */
-      learningLevelUp?: { modes: ("basic" | "basic-draw" | "expert")[] };
+      learningLevelUp?: { modes: ("basic" | "expert")[] };
       /**
        * visions-boost: paying Visions' Power on the map. `spellCardIds` are the
        * power-source Spells in hand offered to discard for +1 card each (index-

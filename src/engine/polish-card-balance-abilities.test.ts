@@ -870,31 +870,95 @@ describe("Balance Pack — Learning", () => {
     expect(offPlayed.players.p1.deck.length, "no draw").toBe(2);
   });
 
-  it("offers the printed OR reading: draw a card instead of advancing the half level", () => {
-    const on = offerAfterGain(learner("balance-learning-draw-only", true), 1);
-    const hero = getMainHero(on, "p1")!;
-    const experienceBefore = hero.experience;
-    const labels = on.pendingChoice?.type === "OPTION_CHOICE"
-      ? on.pendingChoice.options.map((option) => option.label)
-      : [];
-    const drawOnlyIndex = labels.findIndex((label) => label.includes("draw 1 card instead"));
-    expect(drawOnlyIndex).toBeGreaterThan(0);
-    const played = applyOk(on, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId: on.pendingChoice!.id,
-      optionIndex: drawOnlyIndex
-    });
-    expect(getMainHero(played, "p1")!.experience, "draw-only does not add the half level").toBe(experienceBefore);
-    expect(played.players.p1.deck.length, "one card was drawn").toBe(1);
-    expect(played.players.p1.discard).toContain("ability.learning");
+  it("the level-up window offers exactly basic + expert + decline — NO in-window draw-instead mode", () => {
+    // A crown is available so the expert side is offered; the window should still
+    // carry only the two real plays + Decline (the crossed-out "draw instead").
+    const on = learner("balance-learning-window-modes", true);
+    on.players.p1.limits.expertUses = 1;
+    on.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    offerAfterGain(on, 1);
+    expect(on.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (on.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the learning-level-up window");
+    }
+    expect(on.pendingChoice.context).toBe("learning-level-up");
+    // Modes are exactly basic + expert (the trailing option is Decline).
+    expect(on.pendingChoice.learningLevelUp?.modes).toEqual(["basic", "expert"]);
+    const labels = on.pendingChoice.options.map((option) => option.label);
+    expect(labels.some((label) => label.includes("draw 1 card instead"))).toBe(false);
+    // The basic label still advertises its half level AND the printed draw.
+    expect(labels.some((label) => /advance a half level/.test(label) && /draw 1 card/.test(label))).toBe(true);
+    expect(labels.some((label) => /advance a full level/.test(label))).toBe(true);
+    expect(labels.at(-1)).toBe("Decline");
+  });
 
-    // CONTROL: normal Learning still has only its printed level advance + decline.
-    const off = offerAfterGain(learner("balance-learning-draw-only-off", false), 2);
-    const offLabels = off.pendingChoice?.type === "OPTION_CHOICE"
-      ? off.pendingChoice.options.map((option) => option.label)
-      : [];
-    expect(offLabels.some((label) => label.includes("draw 1 card instead"))).toBe(false);
+  // Mode 1 ("draw a card instead of its effect") is now a STANDALONE hand play,
+  // offered any time under the rule — no board level-up trigger required.
+  it("standalone hand play (MAP): draws exactly 1 card and discards Learning, no XP gain", () => {
+    const on = openTurn("balance-learning-standalone-map", true);
+    on.players.p1.hand = ["ability.learning" as CardId];
+    on.players.p1.deck = ["stat.attack", "stat.defense"] as CardId[];
+    const experienceBefore = getMainHero(on, "p1")!.experience;
+
+    const play = playsOf(on, "p1", "ability.learning")[0];
+    expect(play, "the standalone draw play must be offered on the map").toBeTruthy();
+    const after = applyOk(on, play!.action);
+
+    expect(after.players.p1.hand, "Learning left the hand").not.toContain("ability.learning");
+    expect(after.players.p1.discard, "Learning went to the discard, not removed").toContain("ability.learning");
+    expect(after.players.p1.removed).not.toContain("ability.learning");
+    expect(after.players.p1.deck.length, "exactly 1 card drawn off the deck").toBe(1);
+    // The drawn card is now in hand (hand: learning gone, 1 drawn = length 1).
+    expect(after.players.p1.hand).toHaveLength(1);
+    expect(after.players.p1.hand[0]).not.toBe("ability.learning");
+    expect(getMainHero(after, "p1")!.experience, "no Experience advance from the hand play").toBe(experienceBefore);
+
+    // CONTROL: with the rule off Learning is NEVER a hand play on the map.
+    const off = openTurn("balance-learning-standalone-map-off", false);
+    off.players.p1.hand = ["ability.learning" as CardId];
+    expect(playsOf(off, "p1", "ability.learning")).toHaveLength(0);
+    const forged = applyAction(off, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "ability.learning" as CardId,
+      mode: "basic",
+      drawOnly: true,
+      target: { type: "none" }
+    });
+    expect(forged.errors.length, "the reducer backstop rejects the forged rule-off play").toBeGreaterThan(0);
+  });
+
+  it("standalone hand play (COMBAT): drawable during a fight, draws 1 and discards Learning", () => {
+    const on = sandbox("balance-learning-standalone-combat", true, ["ability.learning"]);
+    on.players.p1.deck = ["stat.attack", "stat.defense"] as CardId[];
+    // Open the holder's own unit activation (the combat draw-only window).
+    const own = Object.values(on.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    on.combat!.activeUnitId = own.id;
+    own.activatedThisRound = false;
+    own.movedThisActivation = false;
+    own.attackedThisActivation = false;
+    on.activePlayerId = "p1";
+
+    const play = playsOf(on, "p1", "ability.learning")[0];
+    expect(play, "the standalone draw play must be offered during combat").toBeTruthy();
+    if (play!.action.type !== "PLAY_CARD" || !play!.action.drawOnly) {
+      throw new Error("expected a drawOnly Learning play");
+    }
+    const after = applyOk(on, play!.action);
+    expect(after.players.p1.hand, "Learning left the hand").not.toContain("ability.learning");
+    expect(after.players.p1.discard, "Learning went to the discard").toContain("ability.learning");
+    expect(after.players.p1.deck.length, "exactly 1 card drawn").toBe(1);
+    expect(after.players.p1.hand).toHaveLength(1);
+
+    // CONTROL: with the rule off Learning is never offered in combat either.
+    const off = sandbox("balance-learning-standalone-combat-off", false, ["ability.learning"]);
+    const offOwn = Object.values(off.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    off.combat!.activeUnitId = offOwn.id;
+    offOwn.activatedThisRound = false;
+    offOwn.movedThisActivation = false;
+    offOwn.attackedThisActivation = false;
+    off.activePlayerId = "p1";
+    expect(playsOf(off, "p1", "ability.learning")).toHaveLength(0);
   });
 });
 

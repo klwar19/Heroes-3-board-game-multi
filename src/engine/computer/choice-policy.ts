@@ -688,7 +688,6 @@ function scorePositionOption(
           ? CHOICE_BASE + 42
           : CHOICE_BASE + 30;
       }
-      if (mode === "basic-draw") return CHOICE_BASE + 28;
       return CHOICE_BASE + 35;
     }
     // Legacy payload-less fallback: prefer a real benefit over skipping.

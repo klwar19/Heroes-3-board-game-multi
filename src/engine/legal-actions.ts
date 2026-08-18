@@ -2871,6 +2871,33 @@ function addPlayableCardActions(
       continue;
     }
 
+    // Polish Balance Pack: Learning's ONLY hand play is the standalone "draw 1
+    // card" (its reprint's OR side) — offered on the holder's own unit
+    // activation, like the medic combat draw-only twin. Its ADVANCE_EXPERIENCE
+    // effect never advances from hand; the generic play path below would demand
+    // an enemy target and then throw, so Learning is handled here and skipped.
+    // With the rule OFF it is never a hand play (classic = the level-up window).
+    if (card.effect.type === "ADVANCE_EXPERIENCE") {
+      if (
+        ownActivationOpen &&
+        cardId === "ability.learning" &&
+        houseRuleEnabled(state, "polish-card-balance")
+      ) {
+        actions.push({
+          label: `Play ${card.name} (draw 1 card)`,
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            drawOnly: true,
+            target: { type: "none" }
+          }
+        });
+      }
+      continue;
+    }
+
     // Permanents are played like activation cards: during one of your own
     // unit's activations, before it attacks. They enter play instead of
     // resolving (replacing the previous permanent — the one-permanent limit
@@ -4331,6 +4358,28 @@ function addTurnCardActions(
       continue;
     }
     if (card.kind === "spell" && spellEffectIsAlreadyOngoing(state, playerId, cardId)) {
+      continue;
+    }
+
+    // Polish Balance Pack: Learning's standalone hand play — draw 1 card (its
+    // reprint's OR side) on the map (in combat it is offered by
+    // addPlayableCardActions). Its ADVANCE_EXPERIENCE effect is not map-playable,
+    // so the generic pass below skips it; the draw play is added here. With the
+    // rule OFF Learning is never a hand play (classic = the level-up window only).
+    if (card.effect.type === "ADVANCE_EXPERIENCE") {
+      if (!fromSpellBook && cardId === "ability.learning" && houseRuleEnabled(state, "polish-card-balance")) {
+        actions.push({
+          label: `Play ${card.name} (draw 1 card)`,
+          action: {
+            type: "PLAY_CARD",
+            playerId,
+            cardId,
+            mode: "basic",
+            drawOnly: true,
+            target: { type: "none" }
+          }
+        });
+      }
       continue;
     }
 
