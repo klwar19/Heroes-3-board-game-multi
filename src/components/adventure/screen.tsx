@@ -6247,6 +6247,21 @@ export function PromptTray({
     choice.diplomacyRecruit
       ? choice.diplomacyRecruit.recruitable
       : null;
+  // A Tome / Eagle Eye dig (EAGLE_EYE_DIG) revealed ONE spell to take-or-discard;
+  // the take AND the discard button are about the SAME found card, so both show
+  // its face. The Pendant of Second Sight's Search (DECK_DIG_KEEP_ONE) revealed
+  // several of the player's OWN deck cards to keep one — each "Keep X" option is
+  // index-aligned with that revealed card. Both name the gettable card id(s), so
+  // render each option's card face — "SHOW THE ICON OF CARDS THAT U CAN GET"
+  // (author): the cards already exist under public/assets and rendered blank.
+  const eagleEyeCard =
+    choice?.type === "OPTION_CHOICE" && choice.context === "eagle-eye" && choice.playerId === viewerPlayerId
+      ? choice.eagleEye?.cardId ?? null
+      : null;
+  const ownDeckPickCards =
+    choice?.type === "OPTION_CHOICE" && choice.context === "own-deck-pick" && choice.playerId === viewerPlayerId
+      ? choice.ownDeckPick?.cardIds ?? null
+      : null;
   // Scenario starting bonus (rulebook p.10): its options carry no card id, so
   // give each kind a representative glyph (artifact / resource die) — scoped to
   // the "Starting bonus" prompt so no other resource-dice / Search prompt changes.
@@ -6401,7 +6416,36 @@ export function PromptTray({
                     art: draw ? { ...rewardArtForId(draw.unitDefId), caption: legal.label } : null
                   };
                 })
-            : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
+            : ownDeckPickCards
+              ? body.map((legal) => {
+                  const optionIndex =
+                    legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                      ? legal.action.optionIndex
+                      : undefined;
+                  const cardId =
+                    optionIndex !== undefined && optionIndex < ownDeckPickCards.length
+                      ? ownDeckPickCards[optionIndex]
+                      : undefined;
+                  const card = cardId ? cardLibrary[cardId] : undefined;
+                  const art: VisitRewardArt | null = cardId
+                    ? { name: card?.name ?? cardId, image: card?.assets?.cardImage, caption: legal.label, cardId }
+                    : null;
+                  return { legal, art };
+                })
+              : eagleEyeCard
+                ? body.map((legal) => {
+                    // Both offered actions (Take / Discard) are about the one found
+                    // card, so every option button shows that same card face.
+                    const card = cardLibrary[eagleEyeCard];
+                    const art: VisitRewardArt = {
+                      name: card?.name ?? eagleEyeCard,
+                      image: card?.assets?.cardImage,
+                      caption: legal.label,
+                      cardId: eagleEyeCard
+                    };
+                    return { legal, art };
+                  })
+                : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const displayedRewardOptions =
     balanceArt && visitStep?.type === "CHOOSE_ONE" && visitStep.prompt.startsWith("Logistics:")
       ? rewardOptions.filter(({ legal }) => /stay/i.test(legal.label))
