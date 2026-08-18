@@ -23,6 +23,7 @@ import {
   spellPowerLadder
 } from "./index";
 import { getUnitMoveRange } from "./legal-actions";
+import { expireEffectsForActivationEnd } from "./active-effects";
 import { hasToken } from "./tokens";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { chooseComputerAction } from "./computer/policy";
@@ -716,6 +717,101 @@ describe("Balance Pack — the remaining reprints", () => {
         (action) => action.type === "CAST_SPELL" && action.optionIndex === 0
       )
     ).toEqual([]);
+  });
+
+  // The author's ruling: "Prayer effect is ongoing — until the next activation of
+  // the unit (so all counter-attacks are covered too). It ends when the unit
+  // activates the next combat round." Laid on the CURRENTLY ACTIVE unit, the buff
+  // must survive the rest of that activation AND every retaliation the unit makes
+  // before it acts again (into the next round), then expire when it next acts —
+  // the same makeActiveEffect "survive one extra activation-end" rule Cards of
+  // Prophecy option A relies on. These pin the OBSERVABLE retaliation damage, not
+  // the effect fields; each fails if that survival rule reverts.
+
+  it("Prayer laid on the active unit survives its own activation-end and never expires at round-end", () => {
+    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
+    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Prayer")!;
+    // Cast on the active unit → it must live through ONE extra activation-end so
+    // "next activation" means the unit's NEXT-ROUND activation, not this one.
+    expect(buff.activationsRemaining).toBe(2);
+    // A next-activation buff never rides the combat-round-end clock, so a round
+    // reset (which does not touch activeEffects) can never drop it early.
+    expect(buff.expiresAtCombatRoundEnd).toBeUndefined();
+
+    // The unit's OWN activation ends (the exact call the reducer makes at every
+    // activation-end). The buff must survive it.
+    expireEffectsForActivationEnd(state, "unit_p1_griffins");
+    expect(
+      effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer"),
+      "Prayer survives the buffed unit's own activation-end"
+    ).toBe(true);
+  });
+
+  /**
+   * p2's skeletons strike the (Prayer-buffed) p1 griffins → the griffins RETALIATE.
+   * Griffins attack 5, defender defense 0, scripted die 0 → the retaliation deals
+   * 5 + (Prayer +attack) damage. `endedActivations` activation-ends are applied to
+   * the griffins BEFORE the retaliation, so 1 = "already acted this round, one more
+   * to go" and 2 = "acted again next round" (buff gone).
+   */
+  function prayerRetaliationDamage(endedActivations: number): number {
+    const on = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
+    const griffins = on.combat!.units.unit_p1_griffins;
+    const skeletons = on.combat!.units.unit_p2_skeletons;
+    griffins.attack = 5;
+    griffins.defense = 0;
+    griffins.abilities = [];
+    griffins.damage = 0;
+    griffins.retaliatedThisRound = false;
+    griffins.position = 13;
+    skeletons.attack = 1; // a light poke the griffins survive to retaliate
+    skeletons.defense = 0;
+    skeletons.abilities = [];
+    skeletons.damage = 0;
+    skeletons.position = 14;
+    skeletons.activatedThisRound = false;
+    skeletons.attackedThisActivation = false;
+    on.combat!.activeUnitId = "unit_p2_skeletons";
+    on.activePlayerId = "p2";
+    on.combat!.dice.scriptedRolls = [0, 0, 0, 0]; // skeletons die, then griffins retaliation die
+    on.combat!.dice.rollCount = 0;
+
+    for (let i = 0; i < endedActivations; i += 1) {
+      expireEffectsForActivationEnd(on, "unit_p1_griffins");
+    }
+
+    const resolved = passAllReactions(
+      applyOk(on, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_griffins"
+      })
+    );
+    return resolved.combat!.units.unit_p2_skeletons.damage;
+  }
+
+  it("Prayer covers the buffed unit's retaliation after it has acted (into the next round), then ends when it acts again", () => {
+    // The griffins already activated this round (one activation-end); a retaliation
+    // before it acts again still carries Prayer's +1 attack → 5 + 1 = 6 damage.
+    expect(prayerRetaliationDamage(1)).toBe(6);
+    // CONTROL: once the unit ACTS AGAIN (the second activation-end expires the
+    // buff), the same retaliation is unbuffed → 5 damage. This is exactly the
+    // difference the "survive one extra activation-end" rule makes: revert it and
+    // the very first activation-end drops Prayer, so the 6-damage case above falls
+    // to 5 and the test fails.
+    expect(prayerRetaliationDamage(2)).toBe(5);
+  });
+
+  it("CONTROL: Prayer laid on a NON-active unit is a plain next-activation buff (one activation-end clears it)", () => {
+    // The one-extra-activation survival is scoped to the CURRENTLY ACTIVE target
+    // (the griffins is active in the fixture; the crusaders are not). On a
+    // non-active unit Prayer is an ordinary next-activation buff.
+    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" });
+    const buff = effectsOn(state, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
+    expect(buff.activationsRemaining ?? 1).toBe(1);
+    expireEffectsForActivationEnd(state, "unit_p1_crusaders");
+    expect(effectsOn(state, "unit_p1_crusaders").some((effect) => effect.name === "Prayer")).toBe(false);
   });
 
   it("Remove Obstacle clears 2 at Power 0 (the classic spell clears 1)", () => {
