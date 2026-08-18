@@ -124,6 +124,8 @@ import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setu
 import { HelperCoachLobbyPrompt, HelperCoachStrip } from "@/components/table/helper-coach-ui";
 import { PhoneTabBar, type PhoneTab } from "@/components/table/phone-tab-bar";
 import { UiModePrompt, UiModeToggle } from "@/components/table/ui-mode-prompt";
+import { AnimationToggle } from "@/components/table/animation-toggle";
+import { useSkipAnimationsPreference } from "@/lib/animation-preference";
 import { useUiModePreference } from "@/lib/ui-mode-preference";
 import { cardUnplayableReason } from "@/components/table/helper-coach";
 import { useHelperCoachPreference } from "@/lib/helper-coach-preference";
@@ -829,6 +831,10 @@ export default function Home() {
    */
   const uiModePref = useUiModePreference();
   const phoneUi = uiModePref.uiMode === "phone";
+  // "Skip animations" preference: when on, presentations are cut immediately so
+  // the table jumps to the result (reaction/instant windows are engine state,
+  // not presentation, so they stay reachable).
+  const { skipAnimations } = useSkipAnimationsPreference();
   /** Phone mode: the active full-screen panel per surface (local, never sent). */
   const [phoneMapTab, setPhoneMapTab] = useState<PhoneMapTab>("map");
   const [phoneCombatTab, setPhoneCombatTab] = useState<PhoneCombatTab>("board");
@@ -3998,12 +4004,15 @@ export default function Home() {
       return;
     }
     presentationStartedAtRef.current ??= metricNow();
+    // "Skip animations" on: cut every presentation on the next tick (a 0ms
+    // timeout, so a cue that arms interactive state this render still settles
+    // first) instead of waiting out its full hold.
     const timer = window.setTimeout(
       () => skipPresentation("watchdog"),
-      presentationWatchdogDelay(presentationStartedAtRef.current, metricNow(), MAX_PRESENTATION_MS)
+      skipAnimations ? 0 : presentationWatchdogDelay(presentationStartedAtRef.current, metricNow(), MAX_PRESENTATION_MS)
     );
     return () => window.clearTimeout(timer);
-  }, [presentationActive, skipPresentation]);
+  }, [presentationActive, skipPresentation, skipAnimations]);
 
   // One live connection per room: PartyKit edge socket when configured,
   // otherwise the built-in API + SSE stream. No connection while in the lobby.
@@ -5313,6 +5322,8 @@ export default function Home() {
         </small>
         <ConnectionQualityChip sample={connectionQuality} />
         <MusicToggle />
+        {/* Per-browser "skip animations" switch (jump straight to results). */}
+        <AnimationToggle />
         {/* Per-browser layout switch (also the escape hatch out of phone mode). */}
         <UiModeToggle />
       </div>
