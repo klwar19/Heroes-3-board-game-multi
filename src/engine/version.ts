@@ -396,7 +396,31 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Learning's standalone drawOnly hand play; and map Mysticism refreshing the just-cast
 // Book Spell under polish-spell-book. All gated on the relevant house rules, so
 // rule-off tables are byte-identical. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 39;
+// v40 (2026-08-18): a user-reported balance/UX batch with server-authoritative
+// rule changes a v39 edge answers DIFFERENTLY (same action ids, silently
+// different game state — the exact skew the banner exists to surface):
+// (1) the BASE Fire Wall spell no longer burns a unit that merely BEGINS its
+// activation on it — a `burnsAtActivation` flag now gates the activation burn to
+// Luna's specialty and the WoG Hell Steed only; a v39 edge still burns everyone
+// at activation. (2) Dispel's Power-2 "clear ALL ongoing effects" pick now also
+// clears every battlefield obstacle/trap token (Fire Wall, Force Field,
+// Quicksand, Land Mine); a v39 edge leaves them standing. (3) The
+// bank-unit control-spell targeting (Sorrow/Anti-Magic/Blind/Frenzy/Disrupting
+// Ray reaching a tierless Creature-Bank unit at its underlying grade) is now
+// gated behind the NEW `polish-bank-unit-spells` house rule — a v39 edge's
+// `resolveHouseRules` doesn't know the key and its old code ran the targeting
+// ALWAYS-ON, so it offers the cast a new (rule-off) client refuses, and vice
+// versa. (4) Fortune's combat reroll now unlocks a free candidate pick
+// (`chooseResult` on the ATTACK_DIE_REROLL modifier → `freeCandidateChoice`); a
+// v39 edge forces the latest roll and rejects a `CHOOSE_PENDING_ROLL` on any
+// non-latest candidate. (5) The Polish Balance Diplomacy artifacts (Diplomat's
+// Ring / Ambassador's Sash) never open the Azure Neutral deck
+// (`DIPLOMACY_RECRUIT.excludeAzure`); a v39 edge still draws an Azure card from a
+// Gold Dwelling. Every persisted addition is optional/additive
+// (`BattlefieldTokenState.burnsAtActivation`, the reroll `chooseResult`,
+// `DIPLOMACY_RECRUIT.excludeAzure`, the new house-rule key), so legacy snapshots
+// read exactly as before. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 40;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
