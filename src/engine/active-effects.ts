@@ -1159,6 +1159,12 @@ export function holdLiveOngoingCardsFromDiscard(state: GameState): void {
     if (effect.source.type !== "card" || effect.duration.type === "instant" || alreadyHeld.has(effect.id)) {
       continue;
     }
+    // Polish Balance Pack Intelligence (one-shot): a `keepSourceInDiscard` effect
+    // deliberately leaves its card in the discard pile (spent) — it is never
+    // parked in the "Permanents & Ongoing" tray.
+    if (effect.keepSourceInDiscard) {
+      continue;
+    }
     const ownerId = effect.source.controllerId;
     if (!state.players[ownerId]) {
       continue;

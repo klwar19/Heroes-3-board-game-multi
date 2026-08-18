@@ -26,6 +26,7 @@ import {
 } from "./adventure-reducer";
 import { spellLimitFor } from "./ruleset";
 import { activeSpellPowerBonus, playerHasSpellTimingFreedom } from "./active-effects";
+import { CAST_A_SPELL_CARD_ID } from "./polish-spell-book";
 import { gainExperience, getHeroMovementCapabilities } from "./adventure";
 import { playerCanUseFirstAidVolley, putPermanentIntoPlay, startWarMachineRound } from "./permanents";
 import { applyUnitCurrentSide } from "./unit-transforms";
@@ -193,6 +194,131 @@ describe("Balance Pack — Intelligence is a START-of-combat cast", () => {
         (legal) => legal.action.type === "CAST_SPELL" && legal.action.castEnablerCardId === "ability.intelligence"
       )
     ).toBe(false);
+  });
+});
+
+// ===========================================================================
+// Intelligence — the reprint is a ONE-SHOT free cast (not a combat-long ongoing
+// effect): spent to the discard pile the instant you cast, never parked in the
+// Ongoing tray, and free of a Cast a Spell card only for that ONE cast.
+// ===========================================================================
+
+describe("Balance Pack — Intelligence is a ONE-SHOT free cast", () => {
+  function passAllReactions(state: GameState): GameState {
+    let current = state;
+    let safety = 20;
+    while (current.reactionWindow && safety > 0) {
+      safety -= 1;
+      current = applyOk(current, {
+        type: "PASS_REACTION",
+        playerId: current.reactionWindow.priorityPlayerId
+      });
+    }
+    return current;
+  }
+
+  /** A polish-spell-book sandbox combat where p1 holds Intelligence + a Book. */
+  function bookSandbox(seed: string, balance: boolean, hand: string[] = [], crowns = 0): GameState {
+    const state = sandbox(seed, balance, ["ability.intelligence", ...hand], crowns);
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-spell-book": true };
+    state.players.p1.spellBook = ["spell.magic_arrow", "spell.lightning_bolt"] as CardId[];
+    state.players.p1.spellBookUsed = [];
+    return state;
+  }
+
+  function playIntelligence(state: GameState, mode: "basic" | "expert"): GameState {
+    const play = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_CARD" &&
+        legal.action.cardId === "ability.intelligence" &&
+        legal.action.mode === mode
+    );
+    expect(play, `Intelligence (${mode}) is playable at the start of the combat`).toBeTruthy();
+    return applyOk(state, play!.action);
+  }
+
+  function bookCastOf(state: GameState, spellId: string, free: boolean) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === spellId &&
+        legal.action.fromSpellBook === true &&
+        (free ? !legal.action.castEnablerCardId : legal.action.castEnablerCardId === CAST_A_SPELL_CARD_ID)
+    );
+  }
+
+  function hasTimingEffect(state: GameState): boolean {
+    return state.activeEffects.some(
+      (effect) =>
+        effect.controllerId === "p1" &&
+        effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME")
+    );
+  }
+
+  it("plays to the DISCARD pile, never the Ongoing tray", () => {
+    const state = playIntelligence(bookSandbox("int-tray", true, [], 1), "basic");
+    expect(state.players.p1.discard).toContain("ability.intelligence");
+    expect(
+      state.players.p1.ongoingCards ?? [],
+      "the one-shot Intelligence is spent, not parked as an ongoing card"
+    ).toHaveLength(0);
+    // The freedom is live until the free cast is used.
+    expect(hasTimingEffect(state)).toBe(true);
+  });
+
+  it("BASIC: the free cast spends Intelligence (no Cast a Spell) and IS the round's one Spell", () => {
+    let state = bookSandbox("int-basic", true, [CAST_A_SPELL_CARD_ID], 0);
+    state = playIntelligence(state, "basic");
+    const free = bookCastOf(state, "spell.magic_arrow", true);
+    expect(free, "the free cast is offered without a Cast a Spell card").toBeTruthy();
+    state = passAllReactions(applyOk(state, free!.action));
+
+    // No Cast a Spell was consumed, and the one-shot freedom is spent.
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+    expect(hasTimingEffect(state), "the one-shot effect is consumed by the first cast").toBe(false);
+    // Basic Intelligence's free cast counts as the round's one Spell.
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    // The round's Spell is spent — no second cast, even holding a Cast a Spell.
+    expect(bookCastOf(state, "spell.lightning_bolt", true)).toBeFalsy();
+    expect(bookCastOf(state, "spell.lightning_bolt", false)).toBeFalsy();
+  });
+
+  it("EXPERT: the free cast is off-limit and one-shot — a 2nd Spell needs a Cast a Spell card", () => {
+    let state = bookSandbox("int-expert", true, [CAST_A_SPELL_CARD_ID], 1);
+    state = playIntelligence(state, "expert");
+    // Expert side spent a crown to play.
+    expect(crownsSpent(state)).toBe(1);
+
+    const free = bookCastOf(state, "spell.magic_arrow", true);
+    expect(free).toBeTruthy();
+    state = passAllReactions(applyOk(state, free!.action));
+
+    // The one free cast did NOT count toward the limit, so the ordinary
+    // one-Spell allowance is intact — and the free-cast effect is spent.
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(0);
+    expect(hasTimingEffect(state)).toBe(false);
+    expect(state.players.p1.hand).toContain(CAST_A_SPELL_CARD_ID);
+
+    // A SECOND Spell in the same window is no longer free: it needs the enabler.
+    expect(bookCastOf(state, "spell.lightning_bolt", true), "no more free casts").toBeFalsy();
+    const viaEnabler = bookCastOf(state, "spell.lightning_bolt", false);
+    expect(viaEnabler, "a 2nd Spell needs a Cast a Spell card again").toBeTruthy();
+    state = passAllReactions(applyOk(state, viaEnabler!.action));
+    expect(state.players.p1.discard).toContain(CAST_A_SPELL_CARD_ID);
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+  });
+
+  it("CONTROL: with polish-card-balance OFF the classic card is combat-long and parks in the Ongoing tray", () => {
+    let state = bookSandbox("int-classic", false, [], 1);
+    state = playIntelligence(state, "expert");
+    // Classic: held in the Ongoing tray, not left spent in the discard.
+    expect(state.players.p1.ongoingCards?.some((held) => held.cardId === "ability.intelligence")).toBe(true);
+
+    state = passAllReactions(applyOk(state, bookCastOf(state, "spell.magic_arrow", true)!.action));
+    // The effect persists all combat, so a 2nd cast is STILL free (the classic
+    // combat-long freedom this reprint deliberately replaced).
+    expect(hasTimingEffect(state)).toBe(true);
+    expect(bookCastOf(state, "spell.lightning_bolt", true), "classic Intelligence keeps casting free").toBeTruthy();
   });
 });
 

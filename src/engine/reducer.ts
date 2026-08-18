@@ -2211,6 +2211,31 @@ function noteSpellCast(
   countsTowardLimit = true,
   inFlightCardIds: readonly CardId[] = []
 ): void {
+  // Polish Balance Pack Intelligence (one-shot): the reprinted card grants
+  // EXACTLY ONE free cast at the start of the Combat. Consume the effect on the
+  // first Spell the holder casts, so a second Spell needs the ordinary
+  // allowance. The EXPERT rider (`ignoreSpellLimit`) waives the per-round limit
+  // for ONLY that one free cast — so this cast must not itself count toward the
+  // limit, leaving the player's normal one-Spell allowance intact for a later
+  // Spell. The classic card leaves `oneShot` unset and is never touched here.
+  const oneShotIntelligence = state.activeEffects.find(
+    (effect) =>
+      effect.controllerId === player.id &&
+      effect.modifiers.some((modifier) => modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true)
+  );
+  let effectiveCountsTowardLimit = countsTowardLimit;
+  if (oneShotIntelligence) {
+    const waivesLimit =
+      !balanceIntelligenceWindowClosed(state) &&
+      oneShotIntelligence.modifiers.some(
+        (modifier) =>
+          modifier.type === "SPELL_CAST_ANYTIME" && modifier.oneShot === true && modifier.ignoreSpellLimit === true
+      );
+    if (waivesLimit) {
+      effectiveCountsTowardLimit = false;
+    }
+    state.activeEffects = state.activeEffects.filter((effect) => effect.id !== oneShotIntelligence.id);
+  }
   // Neon Microphone: consume the first-spell +1 Power charge on any real spell cast.
   markEquipmentFirstSpellCast(state, player.id);
   // Free bonus casts (Helm of the Alabaster Unicorn Spell-deck cast, Spell Scroll
@@ -2218,7 +2243,7 @@ function noteSpellCast(
   // consume the one-Spell-per-combat-round limit (spellsCastThisRound), so a later
   // normal Spell is still allowed. They still count as a Spell cast this turn and
   // fire "on Spell cast" draw effects.
-  if (countsTowardLimit) {
+  if (effectiveCountsTowardLimit) {
     player.combatStats.spellsCastThisRound += 1;
 
     // Temple Guardian commander ("Mana Magician"): a cast that lands ABOVE the
@@ -12596,7 +12621,15 @@ function holdOngoingCardIfEffectCreated(
 
   const createdEffects = state.activeEffects
     .slice(effectCountBefore)
-    .filter((effect) => effect.source.type === "card" && effect.source.cardId === cardId);
+    .filter(
+      (effect) =>
+        effect.source.type === "card" &&
+        effect.source.cardId === cardId &&
+        // Polish Balance Pack Intelligence (one-shot): a `keepSourceInDiscard`
+        // effect deliberately leaves its card spent in the discard pile — it is
+        // never pulled into the "Permanents & Ongoing" tray.
+        !effect.keepSourceInDiscard
+    );
   if (createdEffects.length === 0) {
     return false;
   }

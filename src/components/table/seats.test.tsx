@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandFan, OpponentBar, PermanentSlot, RuneTrack, SeatNameplate } from "./seats";
 import { CardZoomProvider } from "./zoom";
+import { PolishBalanceArtProvider } from "./polish-balance-art";
 import * as sound from "@/lib/sound";
 import { cardLibrary } from "@/data/cards/library";
 import {
@@ -843,6 +844,141 @@ describe("HandFan — Polish Cast a Spell offers Open Spell Book / List the spel
     expect(card.className, "no glow off your activation for combat-timing Book spells").not.toMatch(
       /\bplayable\b/
     );
+  });
+});
+
+describe("HandFan — Balance Pack Intelligence: play Basic/Expert, then pick the ONE free cast", () => {
+  /** A polish-spell-book + polish-card-balance combat at the START window. */
+  function balanceIntelligenceState(options: { played?: boolean } = {}): GameState {
+    const state = createInitialGameState("balance-intelligence-ui");
+    const adventure = createAdventureGameState({
+      seed: "balance-intelligence-ui-rules",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true, "polish-card-balance": true }
+    });
+    state.adventure = adventure.adventure;
+    state.ruleset = "binh";
+    state.players.p1.spellBook = ["spell.lightning_bolt"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.limits.expertUses = 1;
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    if (options.played) {
+      // Intelligence already PLAYED (expert): its one-shot freedom is live and
+      // the card is spent to the discard (never the Ongoing tray).
+      state.players.p1.hand = [CAST_A_SPELL_CARD_ID];
+      state.players.p1.discard = ["ability.intelligence"];
+      state.activeEffects.push({
+        id: "effect_intelligence_ui",
+        name: "Expert Intelligence",
+        scope: "player",
+        controllerId: "p1",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: false,
+        keepSourceInDiscard: true,
+        modifiers: [{ type: "SPELL_CAST_ANYTIME", ignoreSpellLimit: true, oneShot: true }],
+        source: { type: "card", cardId: "ability.intelligence", controllerId: "p1" },
+        startedRound: state.round,
+        usedRollEventIds: [],
+        usedChoiceIds: [],
+        usedCombatRoundNumbers: []
+      });
+    } else {
+      state.players.p1.hand = ["ability.intelligence"];
+    }
+    return state;
+  }
+
+  function renderHand(
+    state: GameState,
+    handlers: { onSelectCardAction?: (a: unknown) => void; onAction?: (a: unknown) => void }
+  ) {
+    render(
+      <PolishBalanceArtProvider enabled>
+        <CardZoomProvider>
+          <HandFan
+            view={getPlayerView(state, "p1")}
+            state={state}
+            viewerPlayerId="p1"
+            legalActions={getLegalActions(state, "p1")}
+            selectedCardAction={null}
+            trayActive={false}
+            onSelectCardAction={handlers.onSelectCardAction ?? (() => {})}
+            onAction={handlers.onAction ?? (() => {})}
+          />
+        </CardZoomProvider>
+      </PolishBalanceArtProvider>
+    );
+  }
+
+  it("the popover shows Basic / Expert (not 'Use'), and clicking Basic plays Intelligence", () => {
+    const onAction = vi.fn();
+    renderHand(balanceIntelligenceState(), { onAction });
+    // Open the Intelligence popover.
+    fireEvent.click(screen.getByRole("button", { name: /Intelligence ability card/i }));
+    // The reprint's play sides read Basic / Expert, not the generic Use / Use expert.
+    const basic = screen.getByRole("button", { name: /^Basic$/ });
+    expect(screen.getByRole("button", { name: /^Expert$/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Use$/ })).toBeNull();
+    // No standalone "List the spells"/"Open Spell Book" enabler surface on the
+    // balance Intelligence card (that path could spend a Cast a Spell card).
+    expect(screen.queryByRole("button", { name: /List the spells/i })).toBeNull();
+
+    fireEvent.click(basic);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "PLAY_CARD", cardId: "ability.intelligence", mode: "basic" })
+    );
+  });
+
+  it("once played, the free-cast picker lists the Book Spell and arms it WITHOUT a Cast a Spell card", () => {
+    const state = balanceIntelligenceState({ played: true });
+    // Sanity: the engine offers the free book cast (no enabler) while the
+    // one-shot freedom is live, and it is NOT parked in the Ongoing tray.
+    expect(state.players.p1.discard).toContain("ability.intelligence");
+    expect(state.players.p1.ongoingCards ?? []).toHaveLength(0);
+    const freeOffer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.lightning_bolt" &&
+        legal.action.fromSpellBook === true &&
+        !legal.action.castEnablerCardId
+    );
+    expect(freeOffer, "engine offers the enabler-free Intelligence cast").toBeTruthy();
+
+    const onSelectCardAction = vi.fn();
+    renderHand(state, { onSelectCardAction });
+    // The standalone "cast one Spell free" picker is shown automatically.
+    const shortcut = screen.getByRole("button", { name: /Cast Lightning Bolt/i });
+    fireEvent.click(shortcut);
+    // It arms the FREE cast (fromSpellBook, no Cast a Spell enabler consumed).
+    expect(onSelectCardAction).toHaveBeenCalledTimes(1);
+    const armed = onSelectCardAction.mock.calls[0]![0] as { fromSpellBook?: boolean; castEnablerCardId?: string };
+    expect(armed.fromSpellBook).toBe(true);
+    expect(armed.castEnablerCardId, "the free cast spends Intelligence, never a Cast a Spell card").toBeUndefined();
+  });
+
+  it("CONTROL: with the balance rule OFF the free-cast picker is not shown", () => {
+    const state = balanceIntelligenceState({ played: true });
+    // Drop the balance rule; keep the (now classic) Spell Book flow.
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-card-balance": false };
+    render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+    expect(screen.queryByRole("menu", { name: /Cast one Spell free/i })).toBeNull();
   });
 });
 

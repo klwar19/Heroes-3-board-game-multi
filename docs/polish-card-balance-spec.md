@@ -63,11 +63,24 @@ Per-card NEW text (verbatim from `NEW Ability`; ⏎ = printed line break removed
   round." OLD: Basic "During Combat, before any unit activates, play a Spell
   card. You can still only play a Spell card during a Combat round." / Expert
   same + no-limit rider. CHANGES: the play is scoped to the START of combat
-  (before any unit activates), and under the Polish Book the cast needs NO
-  "Cast a Spell" enabler (extends the existing `consumePolishSpellBookCast`
-  Intelligence exception — already partially implemented; verify + align).
-  Non-book game: the cast consumes no extra enabler anyway (spells are cards);
-  the timing scope change applies in both.
+  (before any unit activates), and it is a ONE-SHOT free cast — the reprint
+  (`src/data/cards/abilities-balance.ts`) grants EXACTLY ONE Spell. The effect's
+  `SPELL_CAST_ANYTIME` modifier carries `oneShot`, so `noteSpellCast` consumes
+  it the instant the holder casts a Spell; a SECOND Spell in the same window
+  needs the ordinary "Cast a Spell" allowance again. The effect also carries
+  `keepSourceInDiscard`, so the Intelligence card is SPENT to the discard pile
+  and is NEVER parked in the "Permanents & Ongoing" tray (both
+  `holdOngoingCardIfEffectCreated` and `holdLiveOngoingCardsFromDiscard` skip
+  it). Under the Polish Book the free cast needs NO "Cast a Spell" enabler and
+  consumes none — the Intelligence card is the thing spent (the classic combat's
+  `consumePolishSpellBookCast` freedom branch applies for exactly that one cast).
+  The EXPERT rider is likewise one-shot: only that single free cast is off-limit
+  (it does not increment `spellsCastThisRound`), so the player's ordinary
+  one-Spell allowance stays intact for a later Spell. The classic card
+  (rule OFF) keeps its whole-combat freedom byte-identically. Non-book game: the
+  cast consumes no extra enabler anyway (spells are cards); the timing scope
+  change applies in both. Pinned in `polish-card-balance-abilities.test.ts`
+  ("Balance Pack — Intelligence is a ONE-SHOT free cast").
 - **Interference** — keeps its instant +1/+2 Defense and spell-damage reduction.
   As the printed OR arm, Basic may instead reduce an enemy Spell's Power by up
   to 2 and Expert by up to 4, never below that Spell's weakest effect.

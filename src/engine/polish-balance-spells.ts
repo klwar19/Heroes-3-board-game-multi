@@ -9,17 +9,27 @@ import {
   polishBalanceSpecialtyCards,
   POLISH_BALANCE_SPECIALTY_IDS
 } from "@/data/cards/specialties-balance";
+import {
+  polishBalanceAbilityCards,
+  POLISH_BALANCE_ABILITY_IDS
+} from "@/data/cards/abilities-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import type { CardDefinition, CardLibrary, GameState } from "./state";
 
-export { POLISH_BALANCE_SPELL_IDS, POLISH_BALANCE_ARTIFACT_IDS, POLISH_BALANCE_SPECIALTY_IDS };
+export {
+  POLISH_BALANCE_SPELL_IDS,
+  POLISH_BALANCE_ARTIFACT_IDS,
+  POLISH_BALANCE_SPECIALTY_IDS,
+  POLISH_BALANCE_ABILITY_IDS
+};
 
 /** Every card id the Balance Pack REPRINTS as a whole definition. */
 const REPRINTED_CARDS: CardLibrary = {
   ...polishBalanceSpellCards,
   ...polishBalanceArtifactCards,
-  ...polishBalanceSpecialtyCards
+  ...polishBalanceSpecialtyCards,
+  ...polishBalanceAbilityCards
 };
 const REPRINTED_IDS: readonly string[] = Object.keys(REPRINTED_CARDS);
 

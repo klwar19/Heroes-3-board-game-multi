@@ -1060,9 +1060,16 @@ export type ActiveEffectModifier =
        * (it lifts the activation-timing gate, not the open-window rule). The
        * expert side also sets `ignoreSpellLimit`, so the per-combat-round Spell
        * limit no longer applies to that player.
+       *
+       * Polish Balance Pack (`polish-card-balance`): the reprinted Intelligence
+       * sets `oneShot`, so the freedom grants EXACTLY ONE free Spell cast — the
+       * effect is consumed by the first Spell the holder casts (noteSpellCast),
+       * after which a second Spell needs the ordinary allowance again. The
+       * classic card leaves `oneShot` unset and keeps its whole-window freedom.
        */
       type: "SPELL_CAST_ANYTIME";
       ignoreSpellLimit?: boolean;
+      oneShot?: boolean;
     }
   | {
       /**
@@ -1344,6 +1351,15 @@ export type ActiveEffectDefinition = {
   appliesOnlyToGrades?: UnitGrade[];
   /** Optional side gate: the effect applies only to enemies of its controller. */
   appliesOnlyToEnemies?: boolean;
+  /**
+   * Polish Balance Pack (`polish-card-balance`) Intelligence: keep the source
+   * card in the DISCARD pile instead of the "Permanents & Ongoing" tray while
+   * this effect lives. `holdLiveOngoingCardsFromDiscard` skips it, so a one-shot
+   * enabler (spent the instant it is played) never parks a physical card in the
+   * ongoing pile. Absent on every other effect, so the tray behaviour of every
+   * classic ongoing card is unchanged.
+   */
+  keepSourceInDiscard?: boolean;
 };
 
 export type EffectDefinition =

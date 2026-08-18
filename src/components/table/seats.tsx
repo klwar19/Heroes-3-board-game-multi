@@ -19,6 +19,7 @@ import {
   isCastASpellCard,
   playerSpellCastsIgnoreLimit,
   polishSpellBookEnabled,
+  houseRuleEnabled,
   seatPickSummary,
   spellBookRuleEnabled,
   spellCastRestrictionNotices,
@@ -706,6 +707,22 @@ export function HandFan({
     })
     .filter((entry) => entry.board || entry.immediate);
 
+  // Polish Balance Pack Intelligence (one-shot free cast): once the card is
+  // played (Basic/Expert), its start-of-combat SPELL_CAST_ANYTIME freedom is
+  // live and Book casts are offered WITHOUT a Cast a Spell enabler
+  // (`castEnablerCardId` stripped by the offer gate). Detect that free state and
+  // surface the castable Book Spells as a standalone picker below — so the
+  // player immediately chooses their ONE free Spell after choosing Basic/Expert,
+  // reusing the Cast a Spell "List the spells" markup (no new CSS). Under the
+  // Polish Book a plain enabler cast always carries `castEnablerCardId`, so a
+  // fromSpellBook cast WITHOUT one is unambiguously the Intelligence free cast.
+  const balanceRuleOn = houseRuleEnabled(state, "polish-card-balance");
+  const intelligenceFreeCastLive =
+    balanceRuleOn &&
+    polishBook &&
+    !trayActive &&
+    bookCastActions.some((legal) => legal.action.fromSpellBook === true && !legal.action.castEnablerCardId);
+
   return (
     <div className={`handFan ${trayActive ? "muted" : ""}`} aria-label="Your hand" data-fx-anchor={`hand:${viewerPlayerId}`}>
       {showSpellBook || scrolls.length > 0 ? (() => {
@@ -807,6 +824,32 @@ export function HandFan({
         );
         return shelfHost ? createPortal(shelf, shelfHost) : shelf;
       })() : null}
+      {intelligenceFreeCastLive && bookCastShortcuts.length > 0 ? (
+        // Balance Pack Intelligence: the one free cast is armed — pick the Spell.
+        // Reuses the Cast a Spell "List the spells" markup so no new CSS is added.
+        <div className="castASpellChoice" aria-label="Intelligence free cast">
+          <div className="castASpellSpells" role="menu" aria-label="Cast one Spell free (Intelligence)">
+            <small>Intelligence — cast one Spell free:</small>
+            {bookCastShortcuts.map(({ spellId, board, immediate }) => (
+              <button
+                key={spellId}
+                onClick={() => {
+                  if (board) {
+                    onSelectCardAction(sameCardSelection(selectedCardAction, board) ? null : board);
+                  } else if (immediate) {
+                    onAction(immediate.action);
+                  }
+                  setCastListIndex(null);
+                  setOpenIndex(null);
+                }}
+                type="button"
+              >
+                {`Cast ${cardName(spellId)}`}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {entries.length === 0 ? <div className="handEmpty">Empty hand</div> : null}
       {entries.map((entry, entryIndex) => {
         const card = cardLibrary[entry.cardId];
@@ -817,8 +860,19 @@ export function HandFan({
         // stays grey/"blocked" for the whole fight even while Magic Arrow is
         // legal on your unit's activation, which reads as "cannot cast".
         const isPolishCastEnabler = polishBook && isCastASpellCard(entry.cardId);
+        // Balance Pack Intelligence is NOT a direct Cast-a-Spell-style enabler:
+        // it must be PLAYED (Basic/Expert) to arm its one-shot free cast, which
+        // then spends Intelligence and consumes NO Cast a Spell card. Offering
+        // the old in-hand "List the spells" enabler surface here would let the
+        // offer gate spend a held Cast a Spell card instead (the task-8 bug), so
+        // that surface is suppressed while the balance rule is on — the
+        // Basic/Expert plays below are the sole entry, and the standalone free
+        // picker above lists the Spells once the card is played.
         const isPolishIntelligenceEnabler =
-          polishBook && entry.cardId === "ability.intelligence" && bookCastShortcuts.length > 0;
+          polishBook &&
+          !balanceRuleOn &&
+          entry.cardId === "ability.intelligence" &&
+          bookCastShortcuts.length > 0;
         const polishCastReady = (isPolishCastEnabler || isPolishIntelligenceEnabler) && bookCastShortcuts.length > 0;
         const playable =
           !trayActive &&
@@ -949,8 +1003,19 @@ export function HandFan({
                     ))}
                     {entry.immediateActions.map((legal) => {
                       const action = legal.action as CardBoardAction;
-                      const label =
-                        action.type === "CAST_SPELL" && action.useSchoolExpert
+                      // Polish Balance Pack Intelligence: the play chooses which
+                      // ONE free start-of-combat cast you get — a plain "Basic"
+                      // or "Expert (spell ignores the round limit)". After the
+                      // choice the free cast is picked from the Spell list / Book
+                      // like any Cast a Spell. Label it accordingly instead of the
+                      // generic "Use" / "Use expert".
+                      const isBalanceIntelligence =
+                        balanceArt && entry.cardId === "ability.intelligence" && action.type === "PLAY_CARD";
+                      const label = isBalanceIntelligence
+                        ? action.mode === "expert"
+                          ? "Expert"
+                          : "Basic"
+                        : action.type === "CAST_SPELL" && action.useSchoolExpert
                           ? "Cast + School of Magic (+3)"
                           : action.type === "CAST_SPELL" && action.useSchoolFetchExpert
                           ? "Cast + Basic Magic (+3)"
@@ -964,9 +1029,20 @@ export function HandFan({
                       return (
                         <button
                           key={actionKey(action)}
-                          // Arm a Confirm step instead of playing immediately, so an
-                          // accidental click can always be cancelled.
-                          onClick={() => setArmed({ handIndex: entry.handIndex, action, label: label ?? "Use" })}
+                          onClick={() => {
+                            // Balance Pack Intelligence: play the chosen side
+                            // straight away so its one-shot free cast arms, then
+                            // the standalone "cast one Spell free" picker opens
+                            // for the player to pick the Spell. Every other card
+                            // arms a Confirm step first so an accidental click is
+                            // always cancellable.
+                            if (isBalanceIntelligence) {
+                              onAction(action);
+                              setOpenIndex(null);
+                              return;
+                            }
+                            setArmed({ handIndex: entry.handIndex, action, label: label ?? "Use" });
+                          }}
                           type="button"
                         >
                           {label}
