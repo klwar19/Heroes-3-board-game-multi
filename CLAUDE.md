@@ -702,16 +702,25 @@ SEVEN authentic-WoG map objects shipped as single-hex Field Overrides
 (`src/data/wog/field-overrides.ts` package `"wog"`, `src/data/wog/locations.ts`,
 menus built by `buildWogFieldVisitStep`). Default OFF ⇒ byte-identical. Pinned in
 `src/engine/wog-objects.test.ts`.
-Each is a board-adapted READING (the printed `summary` states what runs): Emerald
-Tower (guarded Ⅲ, then pay 3 gold for +1 commander stat point — only with
-`wog.commanders` — or 2 gold for +1 hero XP); Mirror of the Home-Way (flat
-pay-2-gold Town teleport); Junk Merchant (tier-priced sells 2/3/4 + a paid
-Search (1)); Fishing Well (PAY_TO 1 gold → `ATTACK_DIE_TABLE`); Living Skull (Listen
-= Search (1) Ability, or Smash = +2 gold and `SMASH_WOG_SKULL` latching the hex
-inert for everyone); Adventure Cave (escalating Ⅰ→Ⅱ→Ⅲ, `field.wogCaveWins`, cleared
-after the 3rd win); Altar of the Gods (3 valuables → +1 morale / +2 XP / +1
-commander point). Emerald Tower's win and the Cave's 3rd win also drop a random
-not-in-play commander-artifact card (`grantCommanderArtifactReward`). All seven are
+REDESIGNED 2026-08-19 (`docs/field-override-redesign-plan.md` is the design
+authority; every printed `summary` states exactly what runs): Emerald Tower
+(guarded Ⅲ; pay 3 gold → +1 commander point [Commanders module], 2 gold → +1
+hero XP, or — Unit Experience on — 4 gold → +2 unit XP to a chosen army card);
+Mirror of the Home-Way (destination-BAND priced Town/Settlement teleport: 1 gold
+starting/far, 3 gold near/center, unknown tile = dear); Junk Merchant
+(tier-priced sells 2/3/4, the 4-gold Search (1), a TRADE-IN — swap a hand
+Artifact for the shared discard's top + 1 gold — and a once-per-player 5-gold
+Mystery crate on the Attack die); Fishing Well (once per player per round, the
+catch grows with your CONSECUTIVE-round streak 1/2/3 → +1/+2 valuables/Treasure
+die, the 3rd catch DRAINING the well for everyone, `wogWellDry`); Living Skull
+(Listen = Search (1) Ability; Smash = +2 gold + an angry difficulty-Ⅱ spirit
+guard — whoever beats it gets Search (1) Ability, then the hex is inert);
+Adventure Cave (escalating Ⅰ→Ⅱ→Ⅲ; win 2 now grants a FIXED Stack Token of a
+chosen stat to a chosen untokened army card, Treasure-die fallback); Altar of
+the Gods (3 valuables → blessing, or the GREATER SACRIFICE — permanently remove
+a chosen army card [needs ≥2] for +1 commander point AND +1 morale, or +4 hero
+XP). Emerald Tower's win and the Cave's 3rd win still drop a random not-in-play
+commander-artifact card (`grantCommanderArtifactReward`). All seven are
 Location-Token protected.
 
 ## Unit Experience / veterancy (OPTIONAL rule; lobby toggle + WOG module + anime module) — what runs vs. limits
@@ -1700,9 +1709,26 @@ hex is Location-Token protected. Pinned in `field-overrides.test.ts`,
 `tile-hex-placements.test.ts`, `map-tokens.test.ts`, `map-designer.test.tsx`,
 `anime-locations.test.ts`, `anime-field-override-board.test.tsx`.
 LIMITS: pool kinds stamped on face-down tiles are readable in raw snapshots (no
-player-view masking in V1); no standalone off-tile override objects; `linh_tuyen` is +1
-movement only; no override kind may claim `starting` tiles;
-`FIELD_OVERRIDE_ART_PLACEHOLDERS` is EMPTY (a future art-less kind must be declared).
+player-view masking in V1); no standalone off-tile override objects; no override kind
+may claim `starting` tiles; `FIELD_OVERRIDE_ART_PLACEHOLDERS` is EMPTY (a future
+art-less kind must be declared).
+**ALL 20 override objects were EFFECT-REDESIGNED 2026-08-19** — the design authority
+is `docs/field-override-redesign-plan.md` (per-object effects + wave amendments) and
+every kind's `summary` states exactly what runs. Highlights: WAGER GUARD sites
+(Bí Cảnh Ⅲ–Ⅶ / Dungeon Gate Ⅰ–Ⅳ carve unguarded, the visitor picks the depth, fights
+immediately via the hex-event encounter hook, the ladder reward keys off the beaten
+depth, one clear then `field.wagerCleared`); the Gambling Den's cross-player HOUSE POT
+(`field.denGoldPot`); the plantable/raidable Spirit Field (`plantedBy`/`plantedRound`);
+Linh Tuyền cleanses ALL negative morale; the temper-the-body round-1 Attack boost
+(`player.pendingCombatAttackBoost`, consumed at `finalizeCombatStart`); Urahara's
+credit debt (`player.uraharaDebt`, collected at Resource-round income); the generic
+per-player latches `field.fieldClaimedBy` (once ever) / `field.fieldRoundClaims`
+(once per round) behind Ngộ Đạo Thạch / Array attune / Capsule gadget / Mystery
+crate / Onsen full course / Guild Post contract; the Guild quest spends a positive
+morale token via `SPEND_MORALE_TOKEN` (deliberately NOT the Crest-shielded
+GAIN_MORALE path). Effects pinned in `anime-locations.test.ts`,
+`anime-wog-parity-objects.test.ts`, `wog-objects.test.ts` (each with CONTROLs and
+applied-and-reverted mutation checks).
 
 **Also shipped (anime modules on the same spine; every OTHER `AnimeModOptions` flag is
 types + lobby state only — `docs/anime-mod-plan.md` is the contract):**

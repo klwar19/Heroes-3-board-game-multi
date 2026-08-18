@@ -420,7 +420,23 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // (`BattlefieldTokenState.burnsAtActivation`, the reroll `chooseResult`,
 // `DIPLOMACY_RECRUIT.excludeAzure`, the new house-rule key), so legacy snapshots
 // read exactly as before. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 40;
+//
+// v40 -> v41 (2026-08-19): the Field Override object EFFECT REDESIGN
+// (docs/field-override-redesign-plan.md, 4 waves) — every anime + WoG override
+// object changed behaviour, so a v40 edge answers the SAME visit actions with
+// the OLD menus/rewards (Bí Cảnh's fixed Ⅴ guard vs the wager depth pick, the
+// Gambling Den's flat 2-gold gamble vs stakes+pot, the old Mirror flat-2 price,
+// the old cave/tower ladders, …) and rejects the NEW visit-step kinds
+// (WAGER_GUARD_FIGHT, ADD/CLEAR_FIELD_GOLD_POT, MARK/CLEAR_FIELD_PLANTED,
+// MARK_FIELD_CLAIMED, MARK_FIELD_ROUND_CLAIMED, GAIN_UNIT_XP,
+// CLEANSE_NEGATIVE_MORALE, BANK_COMBAT_ATTACK_BOOST, REFORGE_EQUIPMENT,
+// SET_URAHARA_DEBT, SPEND_MORALE_TOKEN, TRADE_IN_HAND_ARTIFACT,
+// ADVANCE_FISHING_STREAK, GRANT_STACK_TOKEN, SACRIFICE_ARMY_UNIT). Every
+// persisted addition is optional/additive (field: wagerCleared, denGoldPot,
+// plantedBy/plantedRound, fieldClaimedBy, fieldRoundClaims, wogFishingStreaks,
+// wogWellDry; player: uraharaDebt, pendingCombatAttackBoost), so legacy
+// snapshots read as before. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 41;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
