@@ -63,7 +63,7 @@ const lines: string[] = [
   "",
   "R1 default: units receive one small reward: +1 HP, +1 Initiative, +1 Attack while attacking, +1 Attack while retaliating, or +1 Defense while being attacked. The approved exception pool may receive permanent +1 Defense, but a unit with printed Defense 3 never gains additional permanent Defense. Explicitly designed unit abilities may replace this default.",
   "",
-  "XP thresholds: Bronze 3/6/10/14; Silver 4/8/13/18; Gold and Azure 5/10/16/22.",
+  `XP thresholds: Bronze ${UNIT_RANK_THRESHOLDS.bronze.join("/")}; Silver ${UNIT_RANK_THRESHOLDS.silver.join("/")}; Gold and Azure ${UNIT_RANK_THRESHOLDS.gold.join("/")}.`,
   "",
   `Total base unit definitions: **${units.length}**.`,
   ""

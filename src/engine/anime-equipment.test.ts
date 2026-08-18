@@ -578,12 +578,16 @@ describe("anime.equipment — Supply Satchel (accessory)", () => {
 function runWonGuardCombat(
   seed: string,
   anime: typeof EQUIP_ON,
-  equipItems: Array<["weapon" | "armor" | "accessory" | "mount", string]>
+  equipItems: Array<["weapon" | "armor" | "accessory" | "mount", string]>,
+  { heroLevel = 1, difficulty = 3 }: { heroLevel?: number; difficulty?: number } = {}
 ): { goldGained: number; maxArmyXp: number } {
   let state = adventure(seed, anime);
   state = startTurn(state);
   const hero = getMainHero(state, "p1")!;
-  hero.level = 1;
+  // heroLevel stays BELOW the field difficulty so no level auto-win fires (the
+  // gold-seam tests rely on a fought combat); the base-XP-≤-hero-level cap then
+  // resolves to heroLevel, so a test that wants a specific base award raises both.
+  hero.level = heroLevel;
   hero.spaceId = "guard-field";
   for (const [slot, id] of equipItems) {
     equip(state, "p1", slot, id);
@@ -593,7 +597,7 @@ function runWonGuardCombat(
     tileInstanceId: "t",
     slot: 0,
     location: "mine",
-    difficulty: 3,
+    difficulty,
     blackCube: false,
     flagOwnerId: null,
     everFlagged: false,
@@ -703,12 +707,15 @@ describe("anime.equipment — Windrider Saddle (mount)", () => {
 
 describe("anime.equipment — Veteran's Standard (accessory)", () => {
   it("surviving units gain +1 EXTRA XP per win (4 total) vs 3 without (CONTROL: unitExperience OFF → 0)", () => {
-    const bare = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, []);
-    const withStandard = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, [["accessory", EQUIP_ID_VETERAN]]);
+    // Hero level 3 vs a difficulty-5 field: a fought combat (level < difficulty, no
+    // auto-win) whose base award is min(5, 3) = 3 under the hero-level XP cap.
+    const capOpts = { heroLevel: 3, difficulty: 5 };
+    const bare = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, [], capOpts);
+    const withStandard = runWonGuardCombat("eq-vet-win", { ...EQUIP_ON, unitExperience: true }, [["accessory", EQUIP_ID_VETERAN]], capOpts);
     // The unified Unit Experience machinery (remote WoG UES adaptation) awards a
-    // neutral guard fight its Field Difficulty in XP — this guard-field is
-    // difficulty 3, so the base award is 3, not the old flat 1.
-    expect(bare.maxArmyXp).toBe(3); // baseline difficulty-3 guard fight = 3 XP per surviving unit
+    // neutral guard fight its Field Difficulty in XP, capped at the hero's level —
+    // here min(5, 3) = 3, not the old flat 1.
+    expect(bare.maxArmyXp).toBe(3); // difficulty-5 field, level-3 cap = 3 XP per surviving unit
     expect(withStandard.maxArmyXp).toBe(3); // kill XP is awarded at the removal seam, not combat end
     // CONTROL: with the Unit Experience module OFF, NO XP is granted at all — the
     // Standard's effect is inert (the grant site never runs).

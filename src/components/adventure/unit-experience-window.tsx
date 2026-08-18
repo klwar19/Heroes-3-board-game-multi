@@ -226,7 +226,7 @@ export function UnitExperienceWindow({
               Click a unit to inspect its ranks: stats, abilities, or a signature combination. Survive won fights or{" "}
               {lexicon.train} for +1 XP (1–3 gold). Drill costs no movement at a Town,
               Settlement, or Random Town; elsewhere it costs 1 movement. Levels IV/VII allow 2/3 drills per round.
-              Reinforce halves XP; Stacks cost 1 XP; Quick Combat grants none. Veteran/Elite neutral guards add +1/+2 XP.
+              Reinforce halves XP; Stacks cost 3 XP; Quick Combat grants none. Veteran/Elite neutral guards add +1/+2 XP.
             </p>
             <div className="unitXpPicker" aria-label="Army unit list">
               {army.map((unit) => {

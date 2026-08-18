@@ -596,11 +596,11 @@ describe("Heavenly Demon Palace — Demon-path veterancy: resolved rank schedule
         "legacy"
       )!;
 
-    // gold thresholds 5/10/16/22 → R1 at 5 XP, R2 at 10 XP, R3 at 16 XP.
+    // gold thresholds 8/13/19/25 → R1 at 8 XP, R2 at 13 XP, R3 at 19 XP.
     const plain = build();
-    const r1 = build(5);
-    const r2 = build(10);
-    const r3 = build(16);
+    const r1 = build(8);
+    const r2 = build(13);
+    const r3 = build(19);
 
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);

@@ -687,10 +687,10 @@ describe("Azur Lane Naval Base — Fleet veterancy: resolved rank schedules", ()
         "legacy"
       )!;
 
-    // silver thresholds 4/8/13/18 → R1 at 4 XP (stats), R2 at 8 XP (ability slot1).
+    // silver thresholds 6/10/15/20 → R1 at 6 XP (stats), R2 at 10 XP (ability slot1).
     const plain = build();
-    const r1 = build(4);
-    const r2 = build(8);
+    const r1 = build(6);
+    const r2 = build(10);
 
     expect(r1.unitRank).toBe(1);
     expect(r2.unitRank).toBe(2);

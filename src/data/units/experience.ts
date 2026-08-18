@@ -83,10 +83,10 @@ export function unitRankStatVariantName(bonus: {
 
 /** Higher tiers rank slower — they do not get stronger rewards. */
 export const UNIT_RANK_THRESHOLDS: Record<UnitTier, readonly [number, number, number, number]> = {
-  bronze: [3, 6, 10, 14],
-  silver: [4, 8, 13, 18],
-  gold: [5, 10, 16, 22],
-  azure: [5, 10, 16, 22]
+  bronze: [5, 9, 13, 17],
+  silver: [6, 10, 15, 20],
+  gold: [8, 13, 19, 25],
+  azure: [8, 13, 19, 25]
 };
 
 /** @deprecated Live fold uses UNIT_STAT_STEPS + schedule. */
@@ -120,6 +120,9 @@ export const UNIT_RANK_STAT_BONUSES = {
 export const UNIT_XP_PVP_WIN = 2;
 export const UNIT_XP_BANK_MIN = 2;
 export const DRILL_UNIT_XP = 1;
+
+/** XP a card loses per Polish Unit Stack layer bought (dilution). */
+export const POLISH_STACK_LAYER_XP_COST = 3;
 
 /** Drill price by printed unit tier. Recruited Neutral cards always cost 1. */
 export const DRILL_UNIT_GOLD_COST_BY_TIER: Record<UnitTier, number> = {

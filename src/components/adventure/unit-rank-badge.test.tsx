@@ -27,8 +27,8 @@ function makeState(unitExperience: boolean, seed: string): GameState {
     ...(unitExperience ? { unitExperience: true } : {})
   } as Parameters<typeof createAdventureGameState>[0]);
   // Halberdiers (generator-served A A S A): R1/R2 are ability ranks, so the
-  // per-unit ladder's FIRST stat step (+1 Attack) lands at R3 — 10 XP = rank 3.
-  state.players.p1.army = [{ id: "vets", unitDefId: "castle.halberdiers", side: "few", experience: 10 }];
+  // per-unit ladder's FIRST stat step (+1 Attack) lands at R3 — 13 XP = rank 3.
+  state.players.p1.army = [{ id: "vets", unitDefId: "castle.halberdiers", side: "few", experience: 13 }];
   return state;
 }
 
@@ -132,7 +132,7 @@ describe("ArmyPanel veteran rank badge (unit experience)", () => {
     expect(text).toContain("4 · Legend");
     expect(text).toContain("STATS");
     expect(text).toContain("ABILITY");
-    expect(text).toContain("at 3 XP");
+    expect(text).toContain("at 5 XP");
     // Halberdiers' resolved ability ranks — name + full rules text.
     expect(text).toContain("Aggressive Drill"); // R1
     expect(text).toContain("Charge"); // R2
@@ -249,8 +249,8 @@ describe("ArmyPanel — full faction roster (owned + unowned) with costs", () =>
     expect(row, "the won bank card renders as an owned row").toBeTruthy();
     expect(row?.textContent).toContain("Creature Bank");
     const bankSide = CREATURE_BANK_UNIT_SIDES["neutral.griffins"]!;
-    const rankInfo = armyUnitRankInfo({ unitDefId: "neutral.griffins", side: "bank", experience: 14 })!;
-    expect(rankInfo.rank, "bronze def: 14 XP = max rank").toBe(4);
+    const rankInfo = armyUnitRankInfo({ unitDefId: "neutral.griffins", side: "bank", experience: 17 })!;
+    expect(rankInfo.rank, "bronze def: 17 XP = max rank").toBe(4);
     const stats = row?.querySelector("small")?.textContent ?? "";
     // Bank face + the +1 Attack Stack Token + the veteran rank fold.
     expect(stats).toContain(`A${bankSide.attack + 1 + rankInfo.bonus.attack}`);

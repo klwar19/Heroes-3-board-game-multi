@@ -106,9 +106,9 @@ describe("Neutral Rank-Up — ROUNDS half (constants + rank math)", () => {
   });
 
   it("mirrors each explicit round rank onto the real XP thresholds", () => {
-    expect(neutralRoundsMirrorXp("bronze", 30)).toBe(10);
-    expect(neutralRoundsMirrorXp("bronze", 5)).toBe(6);
-    expect(neutralRoundsMirrorXp("gold", 99)).toBe(16);
+    expect(neutralRoundsMirrorXp("bronze", 30)).toBe(13);
+    expect(neutralRoundsMirrorXp("bronze", 5)).toBe(9);
+    expect(neutralRoundsMirrorXp("gold", 99)).toBe(19);
   });
 });
 
@@ -312,7 +312,7 @@ describe("Neutral Rank-Up — Creature Bank round schedules", () => {
   it("uses Far 4/6/9 and Near 6/8/12 for Seasoned/Veteran/Elite", () => {
     expect([3, 4, 6, 9, 30].map((round) => neutralBankRoundsRank("far", round))).toEqual([0, 1, 2, 3, 3]);
     expect([5, 6, 8, 12, 30].map((round) => neutralBankRoundsRank("near", round))).toEqual([0, 1, 2, 3, 3]);
-    expect(neutralBankMirrorXp("neutral.nagas", "near", 12)).toBe(16);
+    expect(neutralBankMirrorXp("neutral.nagas", "near", 12)).toBe(19);
   });
 
   it("ranks every Far-bank defender by round, whether Stacked or not", () => {

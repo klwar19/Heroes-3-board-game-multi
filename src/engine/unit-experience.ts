@@ -13,7 +13,7 @@ import {
   type RankStep,
   type UnitRankStatBonus
 } from "@/data/units/experience";
-import { UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
+import { POLISH_STACK_LAYER_XP_COST, UNIT_XP_BANK_MIN, UNIT_XP_PVP_WIN } from "@/data/units/experience";
 import { animeModuleEnabled } from "./anime";
 import { equipmentVeteranBonusXp } from "./anime-equipment";
 import { heroHasGradeNode } from "./anime-hero-grades";
@@ -574,8 +574,18 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
   if (!player) {
     return;
   }
+  // USER RULE: the BASE XP of a neutral guard field / Creature Bank win can never
+  // exceed the winner's main-hero level (bonuses below still stack on top).
+  let base = unitExperienceForWonCombat(combat.context);
+  if (combat.context.kind === "neutral") {
+    const mainHero = Object.values(state.heroes).find(
+      (hero) => hero.controllerId === winnerId && hero.kind === "main"
+    );
+    const heroLevel = Math.max(1, Math.trunc(mainHero?.level ?? 1));
+    base = Math.min(base, heroLevel);
+  }
   const gained =
-    unitExperienceForWonCombat(combat.context) +
+    base +
     equipmentVeteranBonusXp(state, winnerId) +
     (heroHasGradeNode(state, winnerId, HERO_GRADE_NODE_IDS.combatScholar) ? 1 : 0) +
     neutralGuardExperienceBonusAfterCombat(state);
@@ -660,7 +670,8 @@ export function diluteUnitExperienceForUpgrade(
   if (xp <= 0) {
     return;
   }
-  const remaining = reason === "reinforce" ? Math.floor(xp / 2) : Math.max(0, xp - Math.max(1, layers));
+  const remaining =
+    reason === "reinforce" ? Math.floor(xp / 2) : Math.max(0, xp - POLISH_STACK_LAYER_XP_COST * Math.max(1, layers));
   if (remaining === xp) {
     return;
   }

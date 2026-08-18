@@ -200,17 +200,17 @@ describe("Anime Unit Experience — the second road into one machinery", () => {
 });
 
 describe("Anime Unit Experience — tier-scaled rank data (bronze)", () => {
-  it("bronze XP ladder 3/6/10/14; pure stat steps Defense-first (not schedule)", () => {
+  it("bronze XP ladder 5/9/13/17; pure stat steps Defense-first (not schedule)", () => {
     expect(unitRankForExperience("bronze", 1)).toBe(0);
-    expect(unitRankForExperience("bronze", 2)).toBe(0);
-    expect(unitRankForExperience("bronze", 3)).toBe(1);
-    expect(unitRankStatBonuses("bronze", 1)).toEqual({ attack: 0, defense: 1, health: 0, initiative: 0 });
+    expect(unitRankForExperience("bronze", 4)).toBe(0);
     expect(unitRankForExperience("bronze", 5)).toBe(1);
-    expect(unitRankForExperience("bronze", 6)).toBe(2);
+    expect(unitRankStatBonuses("bronze", 1)).toEqual({ attack: 0, defense: 1, health: 0, initiative: 0 });
+    expect(unitRankForExperience("bronze", 8)).toBe(1);
+    expect(unitRankForExperience("bronze", 9)).toBe(2);
     expect(unitRankStatBonuses("bronze", 2)).toEqual({ attack: 1, defense: 1, health: 0, initiative: 0 });
-    expect(unitRankForExperience("bronze", 10)).toBe(3);
+    expect(unitRankForExperience("bronze", 13)).toBe(3);
     expect(unitRankStatBonuses("bronze", 3)).toEqual({ attack: 1, defense: 1, health: 1, initiative: 1 });
-    expect(unitRankForExperience("bronze", 14)).toBe(4);
+    expect(unitRankForExperience("bronze", 17)).toBe(4);
     // Pure step table caps at 3 steps (no 4th step — gold does not get more)
     expect(unitRankStatBonuses("bronze", 4)).toEqual({ attack: 1, defense: 1, health: 1, initiative: 1 });
   });
@@ -234,12 +234,12 @@ describe("Anime Unit Experience — gain", () => {
     expect(state.players.p1.army.some((entry) => entry.id === "dead")).toBe(false);
   });
 
-  it("crossing a rank threshold on a win emits UNIT_RANK_UP (bronze 2 XP → 3 = rank 1)", () => {
+  it("crossing a rank threshold on a win emits UNIT_RANK_UP (bronze 4 XP → 5 = rank 1)", () => {
     const state = animeGame({ unitExperience: true }, "xp-rankup");
-    state.players.p1.army = [{ id: "vet", unitDefId: "castle.griffins", side: "pack", experience: 2 }];
+    state.players.p1.army = [{ id: "vet", unitDefId: "castle.griffins", side: "pack", experience: 4 }];
     const u = combatUnit(state, state.players.p1.army[0], "cu_rankup");
-    finishNeutralCombat(state, [u], "p1"); // +1 XP → 3 = bronze rank 1
-    expect(state.players.p1.army[0].experience).toBe(3);
+    finishNeutralCombat(state, [u], "p1"); // +1 XP → 5 = bronze rank 1
+    expect(state.players.p1.army[0].experience).toBe(5);
     expect(
       state.eventLog.some((event) => event.type === "UNIT_RANK_UP" && event.unitDefId === "castle.griffins")
     ).toBe(true);
@@ -282,21 +282,21 @@ describe("Anime Unit Experience — rank bonus folds onto both sides", () => {
     const rookie = combatUnit(state, { id: "r", unitDefId: "castle.griffins", side: "pack" }, "cu_rookie");
     // castle.griffins is generator-served (flying flavour): stats at R1/R3 with
     // the STAT payload coming from the per-unit ladder, abilities at R2/R4.
-    const elite = combatUnit(state, { id: "l", unitDefId: "castle.griffins", side: "pack", experience: 10 }, "cu_elite");
+    const elite = combatUnit(state, { id: "l", unitDefId: "castle.griffins", side: "pack", experience: 13 }, "cu_elite");
     expect(elite.maxHealth - rookie.maxHealth).toBe(1); // R1
     expect(elite.defense - rookie.defense).toBe(1); // R3
     expect(elite.attack - rookie.attack).toBe(0); // R2 was the ability rank
-    expect(elite.unitExperience).toBe(10);
+    expect(elite.unitExperience).toBe(13);
     expect(elite.unitRank).toBe(3);
     expect(elite.abilities).toContain("commander-charge"); // R2
 
-    const legend = combatUnit(state, { id: "l4", unitDefId: "castle.griffins", side: "pack", experience: 14 }, "cu_legend");
+    const legend = combatUnit(state, { id: "l4", unitDefId: "castle.griffins", side: "pack", experience: 17 }, "cu_legend");
     expect(legend.unitRank).toBe(4);
     expect(legend.attack - elite.attack).toBe(0); // R4 is an ability rank
     expect(legend.abilities).toContain("veteran-soul-feast"); // R4
 
     // The identical fold lands on the FEW side too.
-    const eliteFew = combatUnit(state, { id: "lf", unitDefId: "castle.griffins", side: "few", experience: 10 }, "cu_elite_few");
+    const eliteFew = combatUnit(state, { id: "lf", unitDefId: "castle.griffins", side: "few", experience: 13 }, "cu_elite_few");
     const rookieFew = combatUnit(state, { id: "rf", unitDefId: "castle.griffins", side: "few" }, "cu_rookie_few");
     expect(eliteFew.maxHealth - rookieFew.maxHealth).toBe(1);
     expect(eliteFew.defense - rookieFew.defense).toBe(1);
@@ -319,9 +319,9 @@ describe("Anime Unit Experience — cross-seam with Unit Stacks", () => {
     const plain = combatUnit(state, { ...centaurs, stacks: 0 }, "cu_plain2");
     // Centaurs strong: R1 stats (+1 Def), R2 ability — rank 2 has no attack fold.
     // Use R3 (xp 10) = second stats step (+1 Atk) + stack.
-    const both = combatUnit(state, { ...centaurs, stacks: 1, experience: 10 }, "cu_both");
+    const both = combatUnit(state, { ...centaurs, stacks: 1, experience: 13 }, "cu_both");
     expect(both.armyStacks).toBe(1);
-    expect(both.unitExperience).toBe(10);
+    expect(both.unitExperience).toBe(13);
     expect(both.unitRank).toBe(3);
     expect(both.attack - plain.attack).toBe(2); // +1 stack, +1 rank stats Attack
   });

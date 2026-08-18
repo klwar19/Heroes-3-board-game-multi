@@ -726,11 +726,14 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
 `unit-rank-badge.test.tsx`, `board.test.tsx`, `game-options-tabs.test.tsx`.
 - XP: after a WON combat the surviving DEPLOYED cards gain
   `unitExperienceForWonCombat` (guard = Field Difficulty, bank = max(2, Stacked),
-  PvP = 2), riding the CARD (`ArmyUnitState.experience`). A fight against any
-  neutral-owned Veteran guard adds +1 XP; Elite adds +2 XP (highest rank wins,
-  once per fight), including Far/Near Creature-Bank defenders.
-- Four ranks (`UNIT_RANK_THRESHOLDS` bronze 3/6/10/14, silver 4/8/13/18, gold+azure
-  5/10/16/22); each unit has a 4-step schedule (`rankScheduleFor`) whose steps are
+  PvP = 2), riding the CARD (`ArmyUnitState.experience`). USER RULE: the neutral
+  guard / bank BASE award is CAPPED at the winner's main-hero level
+  (`awardUnitExperienceAfterCombat`; PvP's flat 2 is uncapped) — the Veteran/Elite
+  and Equipment/Combat-Scholar bonuses stack ON TOP of the capped base. A fight
+  against any neutral-owned Veteran guard adds +1 XP; Elite adds +2 XP (highest
+  rank wins, once per fight), including Far/Near Creature-Bank defenders.
+- Four ranks (`UNIT_RANK_THRESHOLDS` bronze 5/9/13/17, silver 6/10/15/20, gold+azure
+  8/13/19/25); each unit has a 4-step schedule (`rankScheduleFor`) whose steps are
   EITHER stats OR one already-implemented ability appended at runtime by
   `withRankAbilities` (printed card data is never edited).
 - **Schedule resolution has exactly TWO tiers**: an explicit per-unit OVERRIDE
@@ -757,7 +760,7 @@ reinforce/Stack site. Pinned in `unit-experience.test.ts`,
   the next choice. Both are library-wide INVARIANT sweeps in `unit-experience.test.ts`.
   Protocol v33 (`npm run deploy:partykit` owed).
 - Dilution: a Few→Pack reinforce HALVES the XP at every site and each Polish Stack
-  layer costs 1, always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
+  layer costs 3 XP (`POLISH_STACK_LAYER_XP_COST`), always emitting `UNIT_XP_DILUTED`; the Hierophant First Aid flip-up
   never dilutes. Drill works ANYWHERE on the map (2026-08-16, `b1b91c8b`,
   protocol v35): free at any Town / Settlement / Random Town (ownership NOT
   required — `unitDrillMovementCost`), 1 hero movement anywhere else; it costs

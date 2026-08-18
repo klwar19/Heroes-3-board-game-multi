@@ -90,9 +90,14 @@ function finishNeutralCombat(
   state: GameState,
   units: CombatState["units"],
   outcomeWinner: "p1" | typeof NEUTRAL_PLAYER_ID,
-  context?: Partial<Extract<CombatState["context"], { kind: "neutral" }>>
+  context?: Partial<Extract<CombatState["context"], { kind: "neutral" }>>,
+  heroLevel = 10
 ): void {
   const hero = getMainHero(state, "p1")!;
+  // Default the winner's hero high enough that the base-XP-≤-hero-level cap does
+  // not bind — the difficulty/bank award assertions test the base amount, and
+  // the cap has its own focused test (which passes an explicit low heroLevel).
+  hero.level = heroLevel;
   state.phase = "combat";
   state.combat = {
     attackerPlayerId: "p1",
@@ -123,16 +128,16 @@ const ZEALOTS = { id: "xp_zealots", unitDefId: "castle.zealots", side: "few" as 
 const HALBERDIERS = { id: "xp_halbs", unitDefId: "castle.halberdiers", side: "few" as const };
 
 describe("Unit Experience — rank math & either/or rewards", () => {
-  it("tier-scaled even ladder XP: bronze 3/6/10/14 (gold ranks slower, not stronger)", () => {
-    expect(UNIT_RANK_THRESHOLDS.bronze).toEqual([3, 6, 10, 14]);
-    expect(UNIT_RANK_THRESHOLDS.gold).toEqual([5, 10, 16, 22]);
+  it("tier-scaled even ladder XP: bronze 5/9/13/17 (gold ranks slower, not stronger)", () => {
+    expect(UNIT_RANK_THRESHOLDS.bronze).toEqual([5, 9, 13, 17]);
+    expect(UNIT_RANK_THRESHOLDS.gold).toEqual([8, 13, 19, 25]);
     expect(MAX_UNIT_RANK).toBe(4);
-    expect(unitRankForExperience("bronze", 3)).toBe(1);
-    expect(unitRankForExperience("bronze", 6)).toBe(2);
-    expect(unitRankForExperience("bronze", 10)).toBe(3);
-    expect(unitRankForExperience("bronze", 14)).toBe(4);
-    expect(unitRankForExperience("gold", 4)).toBe(0);
-    expect(unitRankForExperience("gold", 5)).toBe(1);
+    expect(unitRankForExperience("bronze", 5)).toBe(1);
+    expect(unitRankForExperience("bronze", 9)).toBe(2);
+    expect(unitRankForExperience("bronze", 13)).toBe(3);
+    expect(unitRankForExperience("bronze", 17)).toBe(4);
+    expect(unitRankForExperience("gold", 7)).toBe(0);
+    expect(unitRankForExperience("gold", 8)).toBe(1);
   });
 
   it("the LIVE stat ladder is per-unit (unitStatStepsFor), not the tier table", () => {
@@ -600,8 +605,8 @@ describe("Unit Experience — XP awards after combat", () => {
       "legacy"
     )!;
     casualty.damage = casualty.maxHealth;
-    finishNeutralCombat(state, { [survivor.id]: survivor, [casualty.id]: casualty }, "p1", { difficulty: 3 });
-    expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience).toBe(3);
+    finishNeutralCombat(state, { [survivor.id]: survivor, [casualty.id]: casualty }, "p1", { difficulty: 5 });
+    expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience).toBe(5);
     expect(state.players.p1.army.find((unit) => unit.id === GRIFFINS.id)).toBeUndefined();
     expect(state.players.p1.army.find((unit) => unit.id === ZEALOTS.id)?.experience).toBeUndefined();
     const rankUp = state.eventLog.find((event) => event.type === "UNIT_RANK_UP");
@@ -660,6 +665,33 @@ describe("Unit Experience — XP awards after combat", () => {
     awardUnitExperienceAfterCombat(pvp);
     expect(pvp.players.p1.army[0].experience).toBe(UNIT_XP_PVP_WIN);
     expect(pvp.players.p2.army[0].experience).toBeUndefined();
+  });
+
+  it("caps the neutral guard / bank BASE XP at the winner's main-hero level", () => {
+    // Guard field: difficulty 5, but a level-2 hero caps the base at 2.
+    const guard = makeAdventure("uxp-cap-guard", { unitExperience: true });
+    guard.players.p1.army = [{ ...MARKSMEN }];
+    const gUnit = makeCombatUnitFromArmy(guard.players.p1.army[0], "p1", "u_cap_g", 0, "legacy")!;
+    finishNeutralCombat(guard, { [gUnit.id]: gUnit }, "p1", { difficulty: 5 }, 2);
+    expect(guard.players.p1.army[0].experience).toBe(2);
+
+    // Creature Bank: Stacked 4, but a level-1 hero caps the base at 1.
+    const bank = makeAdventure("uxp-cap-bank", { unitExperience: true });
+    bank.players.p1.army = [{ ...MARKSMEN }];
+    const bUnit = makeCombatUnitFromArmy(bank.players.p1.army[0], "p1", "u_cap_b", 0, "legacy")!;
+    finishNeutralCombat(bank, { [bUnit.id]: bUnit }, "p1", {
+      difficulty: 0,
+      bankId: "crypt",
+      bankStackCount: 4
+    }, 1);
+    expect(bank.players.p1.army[0].experience).toBe(1);
+
+    // CONTROL — a hero level at or above the base does not cap it.
+    const uncapped = makeAdventure("uxp-cap-control", { unitExperience: true });
+    uncapped.players.p1.army = [{ ...MARKSMEN }];
+    const uUnit = makeCombatUnitFromArmy(uncapped.players.p1.army[0], "p1", "u_cap_c", 0, "legacy")!;
+    finishNeutralCombat(uncapped, { [uUnit.id]: uUnit }, "p1", { difficulty: 5 }, 5);
+    expect(uncapped.players.p1.army[0].experience).toBe(5);
   });
 });
 
@@ -748,7 +780,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const seasoned = resolveArmyAttack("uxp-r1-attack", {
       unitDefId: "castle.halberdiers",
       side: "few",
-      experience: 3
+      experience: 5
     });
     expect(seasoned.combat!.units.unit_p2_skeletons.damage).toBe(
       control.combat!.units.unit_p2_skeletons.damage + 1
@@ -759,12 +791,12 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const rank1 = resolveArmyAttack("uxp-atk-r1", {
       unitDefId: "castle.champions",
       side: "few",
-      experience: 5
+      experience: 8
     });
     const rank2 = resolveArmyAttack("uxp-atk-r2", {
       unitDefId: "castle.champions",
       side: "few",
-      experience: 10
+      experience: 13
     });
     const d1 = rank1.combat!.units.unit_p2_skeletons.damage;
     expect(d1).toBeGreaterThan(0);
@@ -779,20 +811,20 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     // cavalry capstone rotation, whose first choice is ignores-retaliation.
     const control = resolveArmyAttack(
       "uxp-elite-ctl",
-      { unitDefId: "castle.champions", side: "few", experience: 16 },
+      { unitDefId: "castle.champions", side: "few", experience: 19 },
       undefined,
       6
     );
     const elite = resolveArmyAttack(
       "uxp-elite",
-      { unitDefId: "castle.champions", side: "few", experience: 22 },
+      { unitDefId: "castle.champions", side: "few", experience: 25 },
       undefined,
       6
     );
     expect(control.combat!.units.unit_p1_griffins.damage, "rank 3 still takes retaliation").toBeGreaterThan(0);
     expect(elite.combat!.units.unit_p1_griffins.damage, "rank 4 no retaliation").toBe(0);
     expect(makeCombatUnitFromArmy(
-      { id: "c", unitDefId: "castle.champions", side: "few", experience: 22 },
+      { id: "c", unitDefId: "castle.champions", side: "few", experience: 25 },
       "p1",
       "u_c",
       0,
@@ -803,7 +835,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
 
   it("marksmen R3 has 2 stats steps (+1 Def +1 Atk) but NOT HP/Init (those need a 3rd stats rank)", () => {
     const plain = makeCombatUnitFromArmy({ ...MARKSMEN }, "p1", "u_plain", 0, "legacy")!;
-    const r3 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 10 }, "p1", "u_r3", 0, "legacy")!;
+    const r3 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 13 }, "p1", "u_r3", 0, "legacy")!;
     expect(r3.unitRank).toBe(3);
     expect(r3.defense).toBe(plain.defense + 1);
     expect(r3.attack).toBe(plain.attack + 1);
@@ -813,8 +845,8 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
   });
 
   it("marksmen R4 grants Legend ability (no extra stats over R3)", () => {
-    const r3 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 10 }, "p1", "u_r3b", 0, "legacy")!;
-    const r4 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 14 }, "p1", "u_r4", 0, "legacy")!;
+    const r3 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 13 }, "p1", "u_r3b", 0, "legacy")!;
+    const r4 = makeCombatUnitFromArmy({ ...MARKSMEN, experience: 17 }, "p1", "u_r4", 0, "legacy")!;
     expect(r4.unitRank).toBe(4);
     expect(r4.attack).toBe(r3.attack);
     expect(r4.defense).toBe(r3.defense);
@@ -823,14 +855,14 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
 
   it("Black Dragons R3 gain +2 Initiative and +1 Attack against a slower target", () => {
     const veteran = makeCombatUnitFromArmy(
-      { id: "bd2", unitDefId: "dungeon.black_dragons", side: "few", experience: 10 },
+      { id: "bd2", unitDefId: "dungeon.black_dragons", side: "few", experience: 13 },
       "p1",
       "bd2",
       0,
       "legacy"
     )!;
     const elite = makeCombatUnitFromArmy(
-      { id: "bd3", unitDefId: "dungeon.black_dragons", side: "few", experience: 16 },
+      { id: "bd3", unitDefId: "dungeon.black_dragons", side: "few", experience: 19 },
       "p1",
       "bd3",
       0,
@@ -842,26 +874,26 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const control = resolveArmyAttack("uxp-black-dragon-r2", {
       unitDefId: "dungeon.black_dragons",
       side: "few",
-      experience: 10
+      experience: 13
     });
     const rank3 = resolveArmyAttack("uxp-black-dragon-r3", {
       unitDefId: "dungeon.black_dragons",
       side: "few",
-      experience: 16
+      experience: 19
     });
     expect(rank3.combat!.units.unit_p2_skeletons.damage).toBe(
       control.combat!.units.unit_p2_skeletons.damage + 1
     );
     const fasterControl = resolveArmyAttack(
       "uxp-black-dragon-fast-r2",
-      { unitDefId: "dungeon.black_dragons", side: "few", experience: 10 },
+      { unitDefId: "dungeon.black_dragons", side: "few", experience: 13 },
       undefined,
       0,
       99
     );
     const fasterRank3 = resolveArmyAttack(
       "uxp-black-dragon-fast-r3",
-      { unitDefId: "dungeon.black_dragons", side: "few", experience: 16 },
+      { unitDefId: "dungeon.black_dragons", side: "few", experience: 19 },
       undefined,
       0,
       99
@@ -874,14 +906,14 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
   it("Behemoths R3 use real flying movement to cross a blocking unit", () => {
     const state = createInitialGameState("uxp-behemoth-flying");
     const ground = makeCombatUnitFromArmy(
-      { id: "behemoth-r2", unitDefId: "stronghold.behemoths", side: "few", experience: 10 },
+      { id: "behemoth-r2", unitDefId: "stronghold.behemoths", side: "few", experience: 13 },
       "p1",
       "behemoth-r2",
       0,
       "legacy"
     )!;
     const flying = makeCombatUnitFromArmy(
-      { id: "behemoth-r3", unitDefId: "stronghold.behemoths", side: "few", experience: 16 },
+      { id: "behemoth-r3", unitDefId: "stronghold.behemoths", side: "few", experience: 19 },
       "p1",
       "behemoth-r3",
       0,
@@ -910,7 +942,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
     const moved = resolveArmyAttack(
       "uxp-champion-pierce-moved",
-      { unitDefId: "castle.champions", side: "few", experience: 5 },
+      { unitDefId: "castle.champions", side: "few", experience: 8 },
       undefined,
       0,
       undefined,
@@ -919,7 +951,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const unmoved = resolveArmyAttack("uxp-champion-pierce-unmoved", {
       unitDefId: "castle.champions",
       side: "few",
-      experience: 5
+      experience: 8
     });
     expect(moved.combat!.units.unit_p2_skeletons.damage).toBe(
       control.combat!.units.unit_p2_skeletons.damage + 1
@@ -932,14 +964,14 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
   it("Champions R3 gain +2 Initiative and one real movement space", () => {
     const state = createInitialGameState("uxp-champion-mobility");
     const rank2 = makeCombatUnitFromArmy(
-      { id: "champ-r2", unitDefId: "castle.champions", side: "few", experience: 10 },
+      { id: "champ-r2", unitDefId: "castle.champions", side: "few", experience: 13 },
       "p1",
       "champ-r2",
       0,
       "legacy"
     )!;
     const rank3 = makeCombatUnitFromArmy(
-      { id: "champ-r3", unitDefId: "castle.champions", side: "few", experience: 16 },
+      { id: "champ-r3", unitDefId: "castle.champions", side: "few", experience: 19 },
       "p1",
       "champ-r3",
       0,
@@ -955,7 +987,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
   it("Archangels R3 draw when their attack defeats a Pack side", () => {
     const rank2 = resolveArmyAttack(
       "uxp-archangel-layer-control",
-      { unitDefId: "castle.archangels", side: "few", experience: 10 },
+      { unitDefId: "castle.archangels", side: "few", experience: 13 },
       { unitDefId: "castle.griffins", side: "pack" },
       0,
       undefined,
@@ -963,7 +995,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     );
     const rank3 = resolveArmyAttack(
       "uxp-archangel-layer-draw",
-      { unitDefId: "castle.archangels", side: "few", experience: 16 },
+      { unitDefId: "castle.archangels", side: "few", experience: 19 },
       { unitDefId: "castle.griffins", side: "pack" },
       0,
       undefined,
@@ -978,12 +1010,12 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const rank3 = resolveArmyAttack("uxp-crusader-r3", {
       unitDefId: "castle.crusaders",
       side: "few",
-      experience: 13
+      experience: 15
     });
     const rank4 = resolveArmyAttack("uxp-crusader-r4", {
       unitDefId: "castle.crusaders",
       side: "few",
-      experience: 18
+      experience: 20
     });
     expect(rank4.combat!.units.unit_p2_skeletons.damage).toBe(
       rank3.combat!.units.unit_p2_skeletons.damage * 2
@@ -994,14 +1026,14 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     // Generator-served end to end (A / A / S / A): R1 and R2 are abilities, so
     // the FIRST stat step of the per-unit ladder (+1 Attack) lands at R3.
     const plain = makeCombatUnitFromArmy({ ...HALBERDIERS }, "p1", "u_h0", 0, "legacy")!;
-    const r2 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 6 }, "p1", "u_h2", 0, "legacy")!;
-    const r3 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 10 }, "p1", "u_h3", 0, "legacy")!;
+    const r2 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 9 }, "p1", "u_h2", 0, "legacy")!;
+    const r3 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 13 }, "p1", "u_h3", 0, "legacy")!;
     expect(unitRankStep("castle.halberdiers", 2)?.kind).toBe("ability");
     expect(r2.attack).toBe(plain.attack);
     expect(r2.abilities).toContain("commander-charge");
     expect(r3.attack).toBe(plain.attack + 1);
     expect(r3.defense).toBe(plain.defense);
-    const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 14 }, "p1", "u_h4", 0, "legacy")!;
+    const r4 = makeCombatUnitFromArmy({ ...HALBERDIERS, experience: 17 }, "p1", "u_h4", 0, "legacy")!;
     expect(r4.attack).toBe(r3.attack);
     expect(r4.abilities).toContain("veteran-defense-pierce");
   });
@@ -1011,7 +1043,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
     const packDef = coreUnitDefinitions[GRIFFINS.unitDefId]!.pack!;
     const fewDef = coreUnitDefinitions[GRIFFINS.unitDefId]!.few!;
     // Griffins R1 = +1 HP, and the fold must remain after Pack→Few.
-    const unit = makeCombatUnitFromArmy({ ...GRIFFINS, experience: 3 }, "p1", "u_mid", 0, "legacy")!;
+    const unit = makeCombatUnitFromArmy({ ...GRIFFINS, experience: 5 }, "p1", "u_mid", 0, "legacy")!;
     expect(unit.maxHealth).toBe(packDef.health + 1);
     unit.damage = unit.maxHealth;
     markUnitRemovedIfNeeded(state, unit);
@@ -1022,8 +1054,8 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
   it("silver crusaders separate retaliation training from their R3 Initiative stat", () => {
     const CRUSADERS = { id: "xp_crusaders", unitDefId: "castle.crusaders", side: "few" as const };
     const plain = makeCombatUnitFromArmy({ ...CRUSADERS }, "p1", "u_s0", 0, "legacy")!;
-    const r1 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 4 }, "p1", "u_s1", 0, "legacy")!;
-    const r3 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 13 }, "p1", "u_s3", 0, "legacy")!;
+    const r1 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 6 }, "p1", "u_s1", 0, "legacy")!;
+    const r3 = makeCombatUnitFromArmy({ ...CRUSADERS, experience: 15 }, "p1", "u_s3", 0, "legacy")!;
     expect(r1.abilities).toContain("veteran-retaliation-fury");
     expect(r1.defense).toBe(plain.defense);
     expect(r1.attack).toBe(plain.attack);
@@ -1035,7 +1067,7 @@ describe("Unit Experience — observable redesigned effects in combat", () => {
 });
 
 describe("Unit Experience — upgrade dilution", () => {
-  it("reinforcing Few→Pack halves XP; Stack layer costs 1 XP; First Aid does not dilute", () => {
+  it("reinforcing Few→Pack halves XP; Stack layer costs 3 XP; First Aid does not dilute", () => {
     const state = makeAdventure("uxp-dilute", { unitExperience: true });
     state.players.p1.townTokens.population = true;
     state.players.p1.resources = { gold: 100, buildingMaterials: 10, valuables: 10 };
@@ -1062,7 +1094,7 @@ describe("Unit Experience — upgrade dilution", () => {
     stack.players.p1.resources = { gold: 500, buildingMaterials: 10, valuables: 10 };
     const town = Object.values(stack.towns).find((candidate) => candidate.controllerId === "p1")!;
     if (!town.buildings.includes("castle.citadel")) town.buildings.push("castle.citadel");
-    stack.players.p1.army = [{ id: "vet_pack", unitDefId: "castle.griffins", side: "pack", experience: 5 }];
+    stack.players.p1.army = [{ id: "vet_pack", unitDefId: "castle.griffins", side: "pack", experience: 8 }];
     const afterStack = applyOk(stack, {
       type: "POPULATION_ACTION",
       playerId: "p1",
@@ -1071,7 +1103,8 @@ describe("Unit Experience — upgrade dilution", () => {
         { kind: "stack", unitDefId: "castle.griffins", armyUnitId: "vet_pack" }
       ]
     });
-    expect(afterStack.players.p1.army[0].experience).toBe(3);
+    // Two layers × 3 XP each = 6 lost, so 8 → 2.
+    expect(afterStack.players.p1.army[0].experience).toBe(2);
 
     const aid = makeAdventure("uxp-firstaid", { unitExperience: true });
     aid.players.p1.army = [{ id: "aid_griffins", unitDefId: "castle.griffins", side: "few", experience: 6 }];
@@ -1101,7 +1134,7 @@ describe("Unit Experience — Drill", () => {
     state.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
     state.players.p1.army = [
       { ...MARKSMEN },
-      { id: "maxed", unitDefId: "castle.halberdiers", side: "few", experience: 14 }
+      { id: "maxed", unitDefId: "castle.halberdiers", side: "few", experience: 17 }
     ];
     return state;
   }
@@ -1125,8 +1158,8 @@ describe("Unit Experience — Drill", () => {
     expect(state.adventure?.neutralRankUp).toBeUndefined();
     state.players.p1.army = [{ id: "recruited_naga", unitDefId: "neutral.nagas", side: "neutral" }];
     const naga = makeCombatUnitFromArmy(state.players.p1.army[0], "p1", "u_recruited_naga", 0, "legacy")!;
-    finishNeutralCombat(state, { [naga.id]: naga }, "p1", { difficulty: 5 });
-    expect(state.players.p1.army[0].experience).toBe(5);
+    finishNeutralCombat(state, { [naga.id]: naga }, "p1", { difficulty: 8 });
+    expect(state.players.p1.army[0].experience).toBe(8);
     expect(state.players.p1.army[0].side).toBe("neutral");
     expect(armyUnitRankInfo(state.players.p1.army[0])?.rank).toBe(1);
   });
@@ -1246,14 +1279,14 @@ describe("Unit Experience — a won Creature Bank card trains on the veteran tra
   const BANK_FLIES = { id: "xp_bank_flies", unitDefId: "neutral.dragon_flies", side: "bank" as const };
 
   it("the READ side folds a bank card's XP off its definition's tier", () => {
-    const loaded = { ...BANK_FLIES, experience: 14 };
+    const loaded = { ...BANK_FLIES, experience: 17 };
     const info = armyUnitRankInfo(loaded);
     expect(info, "a bank face now has a veteran track").not.toBeNull();
-    expect(info!.rank, "bronze thresholds: 14 XP = max rank").toBe(MAX_UNIT_RANK);
+    expect(info!.rank, "bronze thresholds: 17 XP = max rank").toBe(MAX_UNIT_RANK);
     const plain = makeCombatUnitFromArmy(BANK_FLIES, "p1", "u_bank_plain", 0, "legacy")!;
     const veteran = makeCombatUnitFromArmy(loaded, "p1", "u_bank_vet", 0, "legacy")!;
     expect(veteran.unitRank).toBe(MAX_UNIT_RANK);
-    expect(veteran.unitExperience).toBe(14);
+    expect(veteran.unitExperience).toBe(17);
     // The fold is observable on the combat card, not just a rank number.
     expect(
       veteran.attack + veteran.defense + veteran.maxHealth + veteran.abilities.length
@@ -1277,11 +1310,11 @@ describe("Unit Experience — a won Creature Bank card trains on the veteran tra
     const marksmen = makeCombatUnitFromArmy(state.players.p1.army[1], "p1", "u_marks", 1, "legacy")!;
     bankCard.damage = 0;
     marksmen.damage = 0;
-    finishNeutralCombat(state, { [bankCard.id]: bankCard, [marksmen.id]: marksmen }, "p1", { difficulty: 3 });
+    finishNeutralCombat(state, { [bankCard.id]: bankCard, [marksmen.id]: marksmen }, "p1", { difficulty: 5 });
 
-    expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience, "CONTROL").toBe(3);
-    expect(state.players.p1.army.find((unit) => unit.id === BANK_FLIES.id)?.experience).toBe(3);
-    // Crossing bronze rank-1 (3 XP) announces the rank-up for the bank card too.
+    expect(state.players.p1.army.find((unit) => unit.id === MARKSMEN.id)?.experience, "CONTROL").toBe(5);
+    expect(state.players.p1.army.find((unit) => unit.id === BANK_FLIES.id)?.experience).toBe(5);
+    // Crossing bronze rank-1 (5 XP) announces the rank-up for the bank card too.
     expect(
       state.eventLog.some((event) => event.type === "UNIT_RANK_UP" && event.unitDefId === "neutral.dragon_flies")
     ).toBe(true);
@@ -1308,7 +1341,7 @@ describe("Unit Experience — a won Creature Bank card trains on the veteran tra
     const maxedTown = Object.values(maxed.towns).find((candidate) => candidate.controllerId === "p1")!;
     getMainHero(maxed, "p1")!.spaceId = maxedTown.fieldId ?? null;
     maxed.players.p1.resources = { gold: 10, buildingMaterials: 0, valuables: 0 };
-    maxed.players.p1.army = [{ ...BANK_FLIES, experience: 14 }];
+    maxed.players.p1.army = [{ ...BANK_FLIES, experience: 17 }];
     expect(
       getLegalActions(maxed, "p1").filter((legal) => legal.action.type === "DRILL_UNIT")
     ).toEqual([]);

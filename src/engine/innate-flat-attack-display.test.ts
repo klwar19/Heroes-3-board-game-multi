@@ -134,7 +134,7 @@ function flipDown(state: GameState, unit: CombatUnitState): void {
 
 describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with", () => {
   it("shows the Vengeance +2 on top of the veteran Aggressive Drill +1 after a real mid-combat flip", () => {
-    // Gold tier at 10 XP = rank 2. Under the veterancy redesign cove.haspids'
+    // Gold tier at 13 XP = rank 2. Under the veterancy redesign cove.haspids'
     // R1 and R2 are both ABILITY ranks, and R2 grants Aggressive Drill
     // (veteran-attack-when-attacking) — an INNATE flat own-attack bonus. So the
     // veteran +1 arrives through the ability list rather than the printed stat,
@@ -142,7 +142,7 @@ describe("Haspid Pack→Few: the displayed Attack is the Attack it strikes with"
     const { state, attacker, defender } = duel({
       unitDefId: "cove.haspids",
       side: "pack",
-      experience: 10
+      experience: 13
     });
     expect(attacker.unitRank).toBe(2);
 

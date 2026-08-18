@@ -106,12 +106,12 @@ describe("a flipped Haspid's Vengeance +2 is visible on the battlefield card", (
 
 describe("the inspector's LIVE TOTALS row reads the flipped Haspid's real Attack", () => {
   it("shows Attack 8 (base 5) once the veteran Aggressive Drill +1 and the Vengeance +2 are both live", () => {
-    // 10 XP = gold rank 2. Under the veterancy redesign cove.haspids' R1 and R2
+    // 13 XP = gold rank 2. Under the veterancy redesign cove.haspids' R1 and R2
     // are ABILITY ranks, and R2's Aggressive Drill
     // (veteran-attack-when-attacking) is an INNATE flat own-attack bonus — so
     // the veteran +1 rides the ability list, not the printed stat, and the base
     // stays the printed Few Attack. Both bonuses must still reach the readout.
-    const state = boardWith({ unitDefId: "cove.haspids", side: "pack", experience: 10 });
+    const state = boardWith({ unitDefId: "cove.haspids", side: "pack", experience: 13 });
     flipDown(state);
     const { container } = renderInspect(state);
 
