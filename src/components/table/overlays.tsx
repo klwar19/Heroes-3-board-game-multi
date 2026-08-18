@@ -2000,6 +2000,13 @@ export type DiceCue = {
    */
   modifiers?: { source: string; text: string }[];
   /**
+   * Dice force-rerolled after the throw (Hourglass of the Evil Hour's curse; the
+   * Negative-Morale reroll_plus_one card): each "+1" is rerolled once. When set,
+   * the overlay settles on the "+1" faces first, then re-tumbles those dice to
+   * their kept faces so the reroll is SEEN rather than only stated in a chip.
+   */
+  rerollBeats?: { index: number; from: number; to: number }[];
+  /**
    * How long the settled dice hold before the overlay dismisses itself.
    * Defaults to DICE_READ_MS; ability rolls use the shorter
    * ABILITY_DICE_READ_MS so a Death Stare after every attack stays snappy.
@@ -2031,6 +2038,16 @@ export const DICE_PRESENT_MS = DICE_ROLL_MS + DICE_READ_MS;
  */
 export const ABILITY_DICE_READ_MS = 1500;
 
+/**
+ * Reroll replay (Hourglass of the Evil Hour / Negative-Morale reroll_plus_one):
+ * after the throw settles on the "+1" faces, hold them briefly (FLASH), then
+ * re-tumble only the rerolled dice (TUMBLE) before the kept faces read out. The
+ * whole replay fits inside DICE_READ_MS so the global dice clock (and the strike
+ * FX pinned to it) is untouched.
+ */
+export const REROLL_FLASH_MS = 520;
+export const REROLL_TUMBLE_MS = 700;
+
 /** How long each first-player attempt's dice clatter before the faces reveal. */
 export const FIRST_ROLL_TUMBLE_MS = 1300;
 
@@ -2050,9 +2067,20 @@ const FINAL_ROTATION: Record<number, string> = {
   [-1]: "rotateX(-8deg) rotateY(174deg)"
 };
 
-function DieCube({ value, rolling, dimmed }: { value: number; rolling: boolean; dimmed: boolean }) {
+function DieCube({
+  value,
+  rolling,
+  dimmed,
+  rerolled = false
+}: {
+  value: number;
+  rolling: boolean;
+  dimmed: boolean;
+  /** A forced-reroll die: highlighted so the "+1" → kept-face swap reads. */
+  rerolled?: boolean;
+}) {
   return (
-    <div className={`dieScene ${dimmed ? "dimmed" : ""}`}>
+    <div className={`dieScene ${dimmed ? "dimmed" : ""}${rerolled ? " rerolled" : ""}`}>
       <div
         className={`dieCube ${rolling ? "tumbling" : "settled"}`}
         style={rolling ? undefined : { transform: FINAL_ROTATION[value] ?? FINAL_ROTATION[0] }}
@@ -2072,8 +2100,29 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
   const preDelay = cue.preDelayMs ?? 0;
   const readMs = cue.readMs ?? DICE_READ_MS;
   const diceCount = cue.rolls.length + (cue.mightRolls?.length ?? 0);
+  // A forced "+1" reroll (Hourglass / Negative Morale) replays inside the read
+  // window: the dice settle on the "+1" faces (preReroll), hold, then only the
+  // rerolled dice re-tumble (rerolling) to their kept faces. Skipped for spell
+  // rolls and when the read window is too short to fit the replay.
+  const rerollBeats = useMemo(
+    () => (!cue.spellMode ? (cue.rerollBeats ?? []) : []),
+    [cue.spellMode, cue.rerollBeats]
+  );
+  const hasReroll = rerollBeats.length > 0 && readMs >= REROLL_FLASH_MS + REROLL_TUMBLE_MS + 200;
+  const rerolledIndexes = useMemo(() => new Set(rerollBeats.map((beat) => beat.index)), [rerollBeats]);
+  const fromByIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const beat of rerollBeats) {
+      if (!map.has(beat.index)) {
+        map.set(beat.index, beat.from);
+      }
+    }
+    return map;
+  }, [rerollBeats]);
   // "waiting": board visible while a guard finishes sliding into range.
-  const [phase, setPhase] = useState<"waiting" | "rolling" | "settled">(preDelay > 0 ? "waiting" : "rolling");
+  const [phase, setPhase] = useState<"waiting" | "rolling" | "preReroll" | "rerolling" | "settled">(
+    preDelay > 0 ? "waiting" : "rolling"
+  );
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -2086,7 +2135,21 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
     } else {
       beginRoll();
     }
-    timers.push(setTimeout(() => setPhase("settled"), preDelay + DICE_ROLL_MS));
+    if (hasReroll) {
+      // Land on the "+1" faces, hold, re-tumble the rerolled dice, then settle.
+      timers.push(setTimeout(() => setPhase("preReroll"), preDelay + DICE_ROLL_MS));
+      timers.push(
+        setTimeout(() => {
+          setPhase("rerolling");
+          playDiceRoll(rerolledIndexes.size, REROLL_TUMBLE_MS - 80);
+        }, preDelay + DICE_ROLL_MS + REROLL_FLASH_MS)
+      );
+      timers.push(
+        setTimeout(() => setPhase("settled"), preDelay + DICE_ROLL_MS + REROLL_FLASH_MS + REROLL_TUMBLE_MS)
+      );
+    } else {
+      timers.push(setTimeout(() => setPhase("settled"), preDelay + DICE_ROLL_MS));
+    }
     timers.push(setTimeout(onDone, preDelay + DICE_ROLL_MS + readMs));
 
     return () => {
@@ -2094,14 +2157,17 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
         clearTimeout(timer);
       }
     };
-  }, [onDone, preDelay, readMs, diceCount]);
+  }, [onDone, preDelay, readMs, diceCount, hasReroll, rerolledIndexes]);
 
   // During the pre-attack pause keep the board clear so the guard's move reads.
   if (phase === "waiting") {
     return null;
   }
 
+  // The initial throw is tumbling; the breakdown/chips reveal only once the
+  // whole sequence (including any reroll replay) has settled.
   const rolling = phase === "rolling";
+  const settled = phase === "settled";
 
   return (
     <div
@@ -2123,16 +2189,24 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
           {cue.rollMode !== "normal" ? <span className="rollMode">{cue.rollMode}</span> : null}
         </header>
         <div className="diceRow">
-          {cue.rolls.map((roll, index) => (
-            <DieCube
-              // Summed rolls (Slayer / Inferno / "apply both") keep every die lit —
-              // only an advantage/disadvantage keep-one roll dims the unused face.
-              dimmed={!rolling && !cue.sumAllDice && cue.rolls.length > 1 && roll !== cue.roll}
-              key={index}
-              rolling={rolling}
-              value={roll}
-            />
-          ))}
+          {cue.rolls.map((roll, index) => {
+            const isRerolled = hasReroll && rerolledIndexes.has(index);
+            // During the "+1" hold the rerolled die shows its pre-reroll face;
+            // during the re-tumble only the rerolled dice spin again.
+            const tumbling = rolling || (phase === "rerolling" && isRerolled);
+            const shownValue = phase === "preReroll" && isRerolled ? (fromByIndex.get(index) ?? roll) : roll;
+            return (
+              <DieCube
+                // Summed rolls (Slayer / Inferno / "apply both") keep every die lit —
+                // only an advantage/disadvantage keep-one roll dims the unused face.
+                dimmed={settled && !cue.sumAllDice && cue.rolls.length > 1 && roll !== cue.roll}
+                key={index}
+                rerolled={isRerolled && phase !== "rolling"}
+                rolling={tumbling}
+                value={shownValue}
+              />
+            );
+          })}
           {cue.dieMultiplier !== 1 && !rolling ? (
             <span className="dieMultiplier" title="Centaur's Axe: the outcome counts three times">
               ×{cue.dieMultiplier}
@@ -2149,7 +2223,7 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
             </>
           ) : null}
         </div>
-        <div className={`diceBreakdown ${rolling ? "hidden" : ""}`}>
+        <div className={`diceBreakdown ${settled ? "" : "hidden"}`}>
           {cue.spellMode ? (
             <strong
               className={`damageResult ${cue.tone ? (cue.tone === "good" ? "hit" : "blocked") : cue.roll > 0 ? "hit" : "blocked"}`}
@@ -2174,7 +2248,10 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
             </>
           )}
         </div>
-        {!rolling && (cue.defendRoll !== undefined || (cue.modifiers?.length ?? 0) > 0) ? (
+        {settled &&
+        (cue.defendRoll !== undefined ||
+          (cue.modifiers?.length ?? 0) > 0 ||
+          rerollBeats.length > 0) ? (
           <div className="diceModifiers">
             {cue.defendRoll !== undefined ? (
               <span className="diceModChip shield">
@@ -2182,6 +2259,11 @@ export function DiceOverlay({ cue, onDone }: { cue: DiceCue; onDone: () => void 
                 {cue.defendRoll === 1 ? " → +1 Defense" : ""}
               </span>
             ) : null}
+            {rerollBeats.map((beat, index) => (
+              <span className="diceModChip reroll" data-testid="dice-reroll-beat" key={`reroll-${index}`}>
+                🎲 {formatDieFace(beat.from)} rerolled → {formatDieFace(beat.to)}
+              </span>
+            ))}
             {cue.modifiers?.map((modifier, index) => (
               <span className="diceModChip" key={index}>
                 <strong>{modifier.source}</strong> — {modifier.text}

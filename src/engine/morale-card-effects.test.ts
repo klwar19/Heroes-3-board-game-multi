@@ -463,6 +463,9 @@ describe("Negative Morale: Reroll +1", () => {
     const rolled = lastAttackRoll(state);
     expect(rolled.roll).toBe(0);
     expect(rolled.damage).toBe(2);
+    // The reroll carries its overlay-replay payload: the "+1" (die 0) that was
+    // thrown away and the face it landed on — same channel the Hourglass uses.
+    expect(rolled.rerollBeats).toEqual([{ index: 0, from: 1, to: 0 }]);
     expect(state.players.p1.moraleCards?.negative).toHaveLength(0);
     expect(state.decks[MORALE_NEGATIVE_DECK_ID].drawPile[0]).toBe(MORALE_CARD_IDS.rerollPlusOne);
   });
@@ -475,6 +478,8 @@ describe("Negative Morale: Reroll +1", () => {
     state = attack(state);
 
     expect(lastAttackRoll(state).roll).toBe(0);
+    // CONTROL: nothing was rerolled, so no overlay-replay payload is attached.
+    expect(lastAttackRoll(state).rerollBeats).toBeUndefined();
     expect(state.players.p1.moraleCards?.negative).toEqual([MORALE_CARD_IDS.rerollPlusOne]);
   });
 

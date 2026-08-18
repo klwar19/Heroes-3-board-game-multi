@@ -21,7 +21,7 @@ import { openSharedDeckSearch } from "./adventure-reducer";
 import type { ComputerObservation } from "./computer/types";
 import { cardLibrary } from "@/data/cards/library";
 import { polishBalanceArtifactCards } from "@/data/cards/artifacts-balance";
-import type { CardId, GameAction, GameState, UnitId } from "./state";
+import type { CardId, GameAction, GameEvent, GameState, UnitId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -683,6 +683,72 @@ describe("Balance Pack artifacts — Hourglass of the Evil Hour", () => {
     expect(curse!.duration.type).toBe("current-combat-round");
     // The enemy's "+1" is thrown away and the next scripted face (-1) stands.
     expect(strike(on)).toBe(4);
+  });
+
+  it("carries the rerolled '+1' on ATTACK_ROLLED so the dice overlay can replay it", () => {
+    const on = playOption(combat(true), "artifact.hourglass_of_the_evil_hour", 1);
+    on.combat!.units.unit_p2_skeletons.attack = 5;
+    on.combat!.units.unit_p1_griffins.defense = 0;
+    on.combat!.dice.scriptedRolls = [1, -1]; // roll "+1", the curse rerolls it to -1
+    on.combat!.dice.rollCount = 0;
+    on.combat!.units.unit_p2_skeletons.position = 14;
+    on.combat!.units.unit_p1_griffins.position = 13;
+    on.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    on.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+    on.combat!.activeUnitId = "unit_p2_skeletons";
+    on.activePlayerId = "p2";
+    const next = passAllReactions(
+      applyOk(on, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_griffins"
+      })
+    );
+    const rolled = [...next.eventLog]
+      .reverse()
+      .find(
+        (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+          event.type === "ATTACK_ROLLED" && event.attackerId === "unit_p2_skeletons"
+      );
+    expect(rolled, "the attack roll event exists").toBeTruthy();
+    // The reroll beat (die index / the "+1" thrown away / the kept face) is what
+    // the overlay needs to REPLAY the reroll instead of only landing on -1.
+    expect(rolled!.rerollBeats).toEqual([{ index: 0, from: 1, to: -1 }]);
+    // The kept face is what the event reports and what the damage reflects — the
+    // outcome is byte-identical to before, only the animation payload is new.
+    expect(rolled!.rolls).toEqual([-1]);
+    expect(next.combat!.units.unit_p1_griffins.damage).toBe(4);
+  });
+
+  it("CONTROL: a plain '+1' that is NOT rerolled carries no reroll beat", () => {
+    const on = combat(true); // curse NOT played this time
+    on.combat!.units.unit_p2_skeletons.attack = 5;
+    on.combat!.units.unit_p1_griffins.defense = 0;
+    on.combat!.dice.scriptedRolls = [1];
+    on.combat!.dice.rollCount = 0;
+    on.combat!.units.unit_p2_skeletons.position = 14;
+    on.combat!.units.unit_p1_griffins.position = 13;
+    on.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    on.combat!.units.unit_p2_skeletons.attackedThisActivation = false;
+    on.combat!.activeUnitId = "unit_p2_skeletons";
+    on.activePlayerId = "p2";
+    const next = passAllReactions(
+      applyOk(on, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_griffins"
+      })
+    );
+    const rolled = [...next.eventLog]
+      .reverse()
+      .find(
+        (event): event is Extract<GameEvent, { type: "ATTACK_ROLLED" }> =>
+          event.type === "ATTACK_ROLLED" && event.attackerId === "unit_p2_skeletons"
+      );
+    expect(rolled!.rerollBeats).toBeUndefined();
+    expect(next.combat!.units.unit_p1_griffins.damage).toBe(6); // the "+1" stands
   });
 
   it("CONTROL: with the rule OFF the second side is the morale gamble and the '+1' stands", () => {

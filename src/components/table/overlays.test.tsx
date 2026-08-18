@@ -12,6 +12,8 @@ import {
   MapNoticeOverlay,
   MeteorPowerWindow,
   NeutralStepOverlay,
+  REROLL_FLASH_MS,
+  REROLL_TUMBLE_MS,
   ReactionTray,
   ResetVotePanel,
   RerollModal,
@@ -574,6 +576,52 @@ describe("DiceOverlay — roll modifiers, Defend die and Might dice", () => {
     act(() => vi.advanceTimersByTime(2000));
     expect(container.querySelector(".diceModifiers")).toBeNull();
     expect(container.querySelector(".mightDiceTag")).toBeNull();
+  });
+});
+
+describe("DiceOverlay — forced '+1' reroll replay (Hourglass / Negative Morale)", () => {
+  it("replays the reroll: flags the die then reveals the '+1' → kept face, on the SAME clock as a normal roll", () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    const { container } = render(
+      <DiceOverlay
+        cue={diceCue({ rolls: [-1], roll: -1, damage: 0, rerollBeats: [{ index: 0, from: 1, to: -1 }] })}
+        onDone={onDone}
+      />
+    );
+    // While the dice tumble the breakdown and the reroll chip stay hidden.
+    expect(container.querySelector(".diceBreakdown.hidden")).toBeTruthy();
+    expect(container.querySelector("[data-testid='dice-reroll-beat']")).toBeNull();
+
+    // The throw lands on the "+1" and holds — the rerolled die is flagged, but
+    // the outcome (chip + breakdown) is NOT revealed until the replay finishes.
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 50));
+    expect(container.querySelector(".dieScene.rerolled")).toBeTruthy();
+    expect(container.querySelector("[data-testid='dice-reroll-beat']")).toBeNull();
+    expect(container.querySelector(".diceBreakdown.hidden")).toBeTruthy();
+
+    // Flash + re-tumble complete → the kept face reads out and the chip names
+    // the "+1" that was thrown away and the face it landed on.
+    act(() => vi.advanceTimersByTime(REROLL_FLASH_MS + REROLL_TUMBLE_MS));
+    const chip = container.querySelector("[data-testid='dice-reroll-beat']");
+    expect(chip?.textContent).toMatch(/rerolled/i);
+    expect(container.querySelector(".diceBreakdown.hidden")).toBeNull();
+
+    // The replay is contained inside the read window: dismissal is on the exact
+    // same DICE_ROLL_MS + DICE_READ_MS clock a plain roll uses — never later.
+    expect(onDone).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(DICE_PRESENT_MS));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONTROL: a plain roll settles in one step, no reroll marker or chip", () => {
+    vi.useFakeTimers();
+    const { container } = render(<DiceOverlay cue={diceCue()} onDone={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 50));
+    expect(container.querySelector(".dieScene.rerolled")).toBeNull();
+    expect(container.querySelector("[data-testid='dice-reroll-beat']")).toBeNull();
+    // Settled immediately after the single tumble — the breakdown is shown.
+    expect(container.querySelector(".diceBreakdown.hidden")).toBeNull();
   });
 });
 

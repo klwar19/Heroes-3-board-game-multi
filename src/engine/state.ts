@@ -5289,6 +5289,14 @@ export type GameEvent =
        * dice overlay lists these so the player can see WHY the roll changed.
        */
       rollModifiers?: AttackRollModifierNote[];
+      /**
+       * Dice force-rerolled after the throw (Hourglass of the Evil Hour's
+       * `REROLL_ENEMY_PLUS_ONE` curse; the Negative-Morale `reroll_plus_one`
+       * card): each "+1" is rerolled once. Present only when a die was actually
+       * rerolled, so the dice overlay can replay the "+1" → kept-face reroll.
+       * Display-only — `rolls`/`roll` already hold the final faces.
+       */
+      rerollBeats?: AttackDieRerollBeat[];
       attackValue: number;
       defenseValue: number;
       damage: number;
@@ -14299,6 +14307,16 @@ export type AttackRollCandidate = {
    * already reflect every adjustment.
    */
   modifierNotes?: AttackRollModifierNote[];
+  /**
+   * Dice this candidate FORCE-REROLLED after the throw — Hourglass of the Evil
+   * Hour's `REROLL_ENEMY_PLUS_ONE` curse and the Negative-Morale
+   * `reroll_plus_one` card each reroll every "+1" once. Each entry names the die
+   * index, the "+1" it showed (`from`) and the face it landed on (`to`). Carried
+   * onto ATTACK_ROLLED so the dice overlay can REPLAY the reroll (show the "+1",
+   * then re-tumble the die to the kept face). Display-only — `rolls`/`roll`
+   * already hold the final faces.
+   */
+  rerollBeats?: AttackDieRerollBeat[];
 };
 
 /** One morale/artifact/spell adjustment that visibly changed an Attack roll. */
@@ -14307,6 +14325,19 @@ export type AttackRollModifierNote = {
   source: string;
   /** Plain-words description of the change (e.g. "−1 to this Attack roll"). */
   text: string;
+};
+
+/**
+ * One forced attack-die reroll, so the dice overlay can replay it: the die at
+ * `index` showed `from` (a "+1"), was rerolled once, and landed on `to`.
+ */
+export type AttackDieRerollBeat = {
+  /** Position of the die in the roll's `rolls` array. */
+  index: number;
+  /** The face the die showed before the forced reroll (always a "+1"). */
+  from: number;
+  /** The face the die landed on after the reroll (already reflected in `rolls`). */
+  to: number;
 };
 
 /**

@@ -4394,6 +4394,27 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   opacity: 0.35;
 }
 
+/* A force-rerolled die (Hourglass of the Evil Hour / Negative Morale): a warm
+   ring + pulse marks the "+1" being thrown away and rolled again. */
+.dieScene.rerolled {
+  animation: dieRerollPulse 620ms ease-in-out 2;
+}
+
+.dieScene.rerolled::after {
+  border-color: rgb(224 96 72 / 85%);
+  box-shadow: 0 0 14px rgb(224 96 72 / 55%);
+}
+
+@keyframes dieRerollPulse {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: brightness(1.35) saturate(1.2);
+  }
+}
+
 .dieCube {
   position: relative;
   width: 100%;
@@ -4613,6 +4634,11 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
 .diceModChip.shield {
   border-color: rgb(120 111 166 / 60%);
   color: var(--violet);
+}
+
+.diceModChip.reroll {
+  border-color: rgb(224 96 72 / 60%);
+  color: rgb(240 176 152);
 }
 
 /* "Might" divider tag before a WOG commander's extra attack dice. */

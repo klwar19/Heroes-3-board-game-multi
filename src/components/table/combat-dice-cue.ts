@@ -69,6 +69,7 @@ export function makeCombatDiceCue(
     ...(event.defendRoll !== undefined ? { defendRoll: event.defendRoll } : {}),
     ...(event.mightRolls?.length ? { mightRolls: event.mightRolls } : {}),
     ...(event.rollModifiers?.length ? { modifiers: event.rollModifiers } : {}),
+    ...(event.rerollBeats?.length ? { rerollBeats: event.rerollBeats } : {}),
     ...(preDelayMs > 0 ? { preDelayMs } : {})
   };
 }

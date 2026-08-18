@@ -82,4 +82,39 @@ describe("combat dice cues for printed follow-up attacks", () => {
     if (firstRoll.type !== "ATTACK_ROLLED") throw new Error("expected attack roll");
     expect(makeCombatDiceCue(state, firstRoll).abilityAttack).toBeUndefined();
   });
+
+  it("carries a forced '+1' reroll onto the cue so the overlay can replay it", () => {
+    const state = createInitialGameState("reroll-beat-cue");
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    const defender = state.combat!.units.unit_p1_griffins;
+    appendEvent(state, {
+      type: "UNIT_ATTACK_DECLARED",
+      playerId: "p2",
+      attackerId: attacker.id,
+      defenderId: defender.id,
+      isRetaliation: false,
+      attackKind: "melee",
+      rollMode: "normal"
+    });
+    const rolled = appendEvent(state, {
+      type: "ATTACK_ROLLED",
+      attackerId: attacker.id,
+      defenderId: defender.id,
+      rolls: [-1],
+      roll: -1,
+      rollMode: "normal",
+      attackBonus: 0,
+      defenseBonus: 0,
+      attackValue: 4,
+      defenseValue: 0,
+      damage: 4,
+      isRetaliation: false,
+      rerollBeats: [{ index: 0, from: 1, to: -1 }]
+    });
+    if (rolled.type !== "ATTACK_ROLLED") throw new Error("expected attack roll");
+    expect(makeCombatDiceCue(state, rolled).rerollBeats).toEqual([{ index: 0, from: 1, to: -1 }]);
+    // A roll with no forced reroll leaves the field off the cue entirely.
+    const plain = { ...rolled, rerollBeats: undefined };
+    expect(makeCombatDiceCue(state, plain).rerollBeats).toBeUndefined();
+  });
 });

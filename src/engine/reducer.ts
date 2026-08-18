@@ -1491,6 +1491,16 @@ function pushRollModifierNote(candidate: AttackRollCandidate, source: string, te
   candidate.modifierNotes.push({ source, text });
 }
 
+/**
+ * Record that a die was force-rerolled (a "+1" → a new face), so the dice
+ * overlay can REPLAY the reroll instead of only landing on the kept face. The
+ * curse/card already mutated `candidate.rolls[index]`; this is display-only.
+ */
+function pushRerollBeat(candidate: AttackRollCandidate, index: number, from: number, to: number): void {
+  candidate.rerollBeats ??= [];
+  candidate.rerollBeats.push({ index, from, to });
+}
+
 function aggregateCandidateRoll(rolls: number[], aggregation: MoraleDiceAggregation): number {
   if (rolls.length === 0) {
     return 0;
@@ -1551,7 +1561,10 @@ function applyEnemyPlusOneRerolls(
       if (roll !== 1) {
         return;
       }
-      candidate.rolls[index] = rollAttackDie(combat);
+      const to = rollAttackDie(combat);
+      candidate.rolls[index] = to;
+      // Record the "+1" → kept-face swap so the dice overlay replays it.
+      pushRerollBeat(candidate, index, roll, to);
       rerolled = true;
     });
     if (rerolled) {
@@ -1600,8 +1613,11 @@ function applyMoraleDiceCurses(
   ) {
     consumeHeldMoraleCard(state, controllerId, MORALE_CARD_IDS.rerollPlusOne);
     const index = candidate.rolls.indexOf(1);
-    candidate.rolls[index] = rollAttackDie(combat);
+    const to = rollAttackDie(combat);
+    candidate.rolls[index] = to;
     candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+    // Same "+1" → kept-face reroll as the Hourglass curse: let the overlay replay it.
+    pushRerollBeat(candidate, index, 1, to);
     pushRollModifierNote(candidate, "Negative Morale", 'a "+1" is forcibly rerolled');
   }
 
@@ -3564,6 +3580,7 @@ function applyAttackDamageFromCandidate(
       ...(defendRoll !== undefined ? { defendRoll } : {}),
       ...(mightRolls.length > 0 ? { mightRolls } : {}),
       ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
+      ...(!skipDieCinematic && candidate.rerollBeats?.length ? { rerollBeats: candidate.rerollBeats } : {}),
       rollMode,
       attackBonus: reportedAttackBonus,
       defenseBonus: reportedDefenseBonus,
@@ -3603,6 +3620,7 @@ function applyAttackDamageFromCandidate(
     ...(defendRoll !== undefined ? { defendRoll } : {}),
     ...(mightRolls.length > 0 ? { mightRolls } : {}),
     ...(candidate.modifierNotes?.length ? { rollModifiers: candidate.modifierNotes } : {}),
+    ...(!skipDieCinematic && candidate.rerollBeats?.length ? { rerollBeats: candidate.rerollBeats } : {}),
     rollMode,
     attackBonus: reportedAttackBonus,
     defenseBonus: reportedDefenseBonus,
