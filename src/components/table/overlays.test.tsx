@@ -1175,6 +1175,62 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
   });
 
+  it("offers Frenzy (a target-less instant buff) to the attacker as a clickable tile that dispatches PLAY_REACTION", () => {
+    const state = createInitialGameState("tray-frenzy-seed");
+    state.players.p1.hand = ["spell.frenzy"];
+    state.players.p2.hand = [];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.abilities = [];
+    skeletons.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    // The attacker holds priority in the just-opened attack window and Frenzy is offered.
+    expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
+    expect(
+      getLegalActions(declared.state, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.frenzy"
+      ),
+      "Frenzy must be offered to the attacker"
+    ).toBe(true);
+
+    const dispatched: GameAction[] = [];
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(declared.state, "p1")}
+          onAction={(action) => dispatched.push(action)}
+          state={declared.state}
+          view={getPlayerView(declared.state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    // Frenzy is not a CHOOSE_ONE, so its group renders the generic "Add to play".
+    const add = screen.getByRole("button", { name: /add to play/i });
+    act(() => fireEvent.click(add));
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled, "confirming a lone target-less Frenzy is legal").toBe(false);
+    act(() => fireEvent.click(confirm));
+    expect(
+      dispatched.some(
+        (action) => action.type === "PLAY_REACTION" && (action as { cardId?: string }).cardId === "spell.frenzy"
+      ),
+      "clicking play must dispatch PLAY_REACTION for Frenzy"
+    ).toBe(true);
+  });
+
   it("plays an EMPOWERED ability's Expert side with 0 crowns (does not count it against the crown budget)", () => {
     // Empowered abilities (Dragon Fly Hive / Griffin Conservatory bonus) play
     // their Expert side crown-free. The engine offers Offense-expert at 0 crowns,
