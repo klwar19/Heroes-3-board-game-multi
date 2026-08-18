@@ -1,6 +1,6 @@
 "use client";
 
-import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, StepForward, Swords } from "lucide-react";
+import { Castle, CheckCircle2, Crosshair, Crown, Eye, Hand as HandIcon, Layers, Lock, Map as MapIcon, Maximize2, Menu as MenuIcon, Minimize2, Sparkles, StepForward, Swords } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   astrologersCardDefinitions,
@@ -175,6 +175,7 @@ import { isDemoTrayEnabled, seedDemoTrayCards } from "@/lib/demo-tray-seed";
 import {
   moveIntoBattleWithTroopsToBuy,
   actionKey,
+  cardIsEmpoweredFor,
   cardName,
   costCardEligible,
   formatEvent,
@@ -6633,6 +6634,9 @@ export default function Home() {
                 {handCards.length === 0 ? <small className="emptyHand">No cards in hand.</small> : null}
                 {handCards.map((cardId, index) => {
                   const plays = playActionsByCard.get(cardId) ?? [];
+                  // Empowered abilities (and intrinsic Empowered Statistics) wear
+                  // the same purple ring + badge on the MAP hand as in combat.
+                  const empowered = cardIsEmpoweredFor(cardId, viewer?.empoweredAbilities);
                   // Spell Book (house rule): a Spell can be stashed into the Book.
                   const stashAction = stashActionByCard.get(cardId);
                   // Polish Spell Book: a Cast a Spell card opens a two-option menu
@@ -6754,10 +6758,15 @@ export default function Home() {
                         }
                         type="button"
                       >
-                        <CardFrame cardId={cardId} className="handCardImage" />
+                        <CardFrame cardId={cardId} className="handCardImage" empowered={empowered} />
                         {whyBlocked ? (
                           <span className="helperBlockedBadge" aria-hidden="true" title={whyBlocked}>
                             ?
+                          </span>
+                        ) : null}
+                        {empowered ? (
+                          <span className="empoweredBadge empoweredBadgeOverlay">
+                            <Sparkles aria-hidden="true" size={9} /> Empowered
                           </span>
                         ) : null}
                       </button>
