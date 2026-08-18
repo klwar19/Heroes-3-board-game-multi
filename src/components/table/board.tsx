@@ -809,6 +809,35 @@ export function BattlefieldBoard({
   const armedSetPower = setPowerArming.armedKey
     ? setPowerGroups.find((group) => group.key === setPowerArming.armedKey) ?? null
     : null;
+  // Remove Obstacle: instead of a wall of text buttons, the obstacle / wall /
+  // gate / token cells themselves become clickable. Derived straight from the
+  // open "remove-obstacle" choice (index-aligned items) and the CHOOSE_OPTION
+  // offers, so a click dispatches the very pick the tray would. The tray text
+  // list stays as the accessible fallback and for any ambiguous overlap.
+  const removeObstacleTargets = useMemo(() => {
+    const map = new Map<number, { action: GameAction; label: string }>();
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "remove-obstacle" || !choice.removeObstacle) {
+      return map;
+    }
+    const items = choice.removeObstacle.items;
+    for (const legal of legalActions) {
+      if (legal.action.type !== "CHOOSE_OPTION" || legal.action.choiceId !== choice.id) {
+        continue;
+      }
+      const item = items[legal.action.optionIndex];
+      if (!item) {
+        continue;
+      }
+      const what = item.kind === "wall" ? "Wall" : item.kind === "gate" ? "Gate" : "obstacle";
+      map.set(item.position, {
+        action: legal.action,
+        label: `Remove the ${what} at ${getBattlefieldLabel(item.position)}`
+      });
+    }
+    return map;
+  }, [state.pendingChoice, legalActions]);
+
   const activeUnitId = combat?.activeUnitId ?? null;
   // Auto-disarm the moment the armed power stops being offered (it was used, the
   // combat round rolled on, the fight ended) so no stale glow is ever left.
@@ -1402,6 +1431,8 @@ export function BattlefieldBoard({
           // Polish Set Artifacts: while a multi-target set power is armed from
           // the set-powers window, its legal units glow and a click uses it.
           const setPowerAction = unit ? armedSetPower?.targets.get(unit.id) : undefined;
+          // Remove Obstacle: this cell holds a removable obstacle/wall/gate/token.
+          const removeObstacleTarget = removeObstacleTargets.get(index);
           const isActive = Boolean(unit && combat?.activeUnitId === unit.id);
           const isFlipping = Boolean(unit && flippedUnitIds?.has(unit.id));
           // Deployment: empty own-row cells only. Formation sort: empty cells OR
@@ -1856,6 +1887,28 @@ export function BattlefieldBoard({
                 }
               }
             : {};
+
+          // Remove Obstacle: click the obstacle / wall / gate / token itself to
+          // remove it. An exclusive pendingChoice, so nothing else is clickable
+          // here — but it still outranks every other branch to be safe.
+          if (removeObstacleTarget) {
+            return (
+              <button
+                aria-label={removeObstacleTarget.label}
+                className={`${className} removeObstacleTarget`}
+                data-fx-cell={index}
+                data-fx-unit={unit?.id}
+                key={index}
+                onClick={() => onAction(removeObstacleTarget.action)}
+                onMouseEnter={unit ? () => onInspect(unit.id) : undefined}
+                style={cellStyle}
+                title={removeObstacleTarget.label}
+                type="button"
+              >
+                {content}
+              </button>
+            );
+          }
 
           // Polish Set Artifacts: an armed set power is a deliberate, explicit
           // aim opened from the set-powers window, so its targets outrank every

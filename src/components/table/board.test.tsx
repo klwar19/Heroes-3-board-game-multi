@@ -729,6 +729,68 @@ describe("BattlefieldBoard — area spells target occupied spaces", () => {
   });
 });
 
+describe("BattlefieldBoard — Remove Obstacle is a board click, not a wall of text", () => {
+  function removeObstacleState(): GameState {
+    const state = createInitialGameState("board-remove-obstacle");
+    // A Fire Wall obstacle sits on an empty cell (position 9 has no unit).
+    state.combat!.battlefieldTokens = [
+      { id: "bft_fw", kind: "fire_wall", position: 9, controllerId: "p2", damage: 2 }
+    ];
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    state.pendingChoice = {
+      id: "choice_ro",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Choose an obstacle to remove",
+      options: [{ label: "Remove the obstacle at column C, row 3" }],
+      context: "remove-obstacle",
+      removeObstacle: { items: [{ position: 9, kind: "token", tokenId: "bft_fw" }], remaining: 1 },
+      returnPhase: "combat"
+    } as unknown as GameState["pendingChoice"];
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+    return state;
+  }
+
+  it("renders the obstacle cell as a clickable button that dispatches the CHOOSE_OPTION pick", () => {
+    const state = removeObstacleState();
+    const legalActions = getLegalActions(state, "p1");
+    // The engine offers the pick as a CHOOSE_OPTION for this choice.
+    const pick = legalActions.find(
+      (legal) =>
+        legal.action.type === "CHOOSE_OPTION" &&
+        legal.action.choiceId === "choice_ro" &&
+        legal.action.optionIndex === 0
+    );
+    expect(pick, "the remove-obstacle pick should be a legal CHOOSE_OPTION").toBeTruthy();
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={legalActions}
+          selectedCardAction={null}
+          onAction={onAction}
+          onInspect={() => {}}
+        />
+      </CardZoomProvider>
+    );
+
+    const cell = document.querySelector<HTMLButtonElement>('button[data-fx-cell="9"]');
+    expect(cell, "the obstacle cell should be a button").toBeTruthy();
+    expect(cell!.getAttribute("aria-label")).toMatch(/remove the/i);
+    // A cell with no obstacle is NOT a remove button (control).
+    const emptyCell = document.querySelector<HTMLButtonElement>('button[data-fx-cell="3"]');
+    expect(emptyCell?.getAttribute("aria-label") ?? "").not.toMatch(/remove the/i);
+
+    fireEvent.click(cell!);
+    expect(onAction).toHaveBeenCalledWith(pick!.action);
+  });
+});
+
 describe("BattlefieldBoard — PvP Neutral Control pre-battle formation sort", () => {
   // The controller sees the Neutral guards as draggable (to sort the formation),
   // the empty defender cells as drop targets, and a "Ready for battle" command —
