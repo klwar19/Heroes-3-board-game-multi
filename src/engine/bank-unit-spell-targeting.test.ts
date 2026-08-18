@@ -3,15 +3,17 @@ import { applyAction, createInitialGameState, getLegalActions } from "./index";
 import type { GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
- * USER RULING (2026-08-18): the control / enchantment spells — Anti-Magic, Blind,
- * Frenzy, Sorrow, Disrupting Ray — MAY be cast on a tierless Creature-Bank unit (a
- * bank GUARD such as the Nagas in a Naga Bank, AND a won "gain a unit" bank REWARD
- * card such as Dragon Flies). Before, every tier-gated spell treated a `bankUnit`
- * as gradeless ∞ and silently dropped it from the target list. The fix
- * (`bankAwareTierGateRank`) ranks a bank unit at its UNDERLYING grade (capped at
- * gold) for exactly these five effects — so Power still matters against a high-tier
- * guard — while EVERY other tier-gated spell (Berserk, Teleport, Clone, damage) stays
- * blocked on a bank unit.
+ * POLISH BALANCE RULE (`polish-card-balance`): the control / enchantment spells —
+ * Anti-Magic, Blind, Frenzy, Sorrow, Disrupting Ray — MAY be cast on a tierless
+ * Creature-Bank unit (a bank GUARD such as the Nagas in a Naga Bank, AND a won
+ * "gain a unit" bank REWARD card such as Dragon Flies). By default every tier-gated
+ * spell treats a `bankUnit` as gradeless ∞ and silently drops it from the target
+ * list; only with the Polish Balance Pack on does `bankAwareTierGateRank` rank a
+ * bank unit at its UNDERLYING grade (capped at gold) for exactly these five effects
+ * — so Power still matters against a high-tier guard — while EVERY other tier-gated
+ * spell (Berserk, Teleport, Clone, damage) stays blocked on a bank unit. Each
+ * "reachable" test below is paired with a rule-OFF CONTROL proving the spell is NOT
+ * offered on the bank unit without the Polish rule.
  *
  * Sandbox grades (createInitialGameState):
  *   p1 marksmen bronze/ranged, griffins bronze/flying, crusaders silver/ground;
@@ -62,13 +64,27 @@ function makeBankUnit(state: GameState, unitId: UnitId): void {
   unit.bankUnit = true;
 }
 
+/**
+ * Freezes the `polish-bank-unit-spells` flag onto the sandbox. `houseRuleEnabled`
+ * reads `state.adventure?.houseRules` and nothing else, and a sandbox combat never
+ * runs the adventure finalize path, so this is enough to drive the rule. It does
+ * NOT enable the Balance Pack reprints, so the spell cards keep their base Power
+ * ladders here.
+ */
+function withPolishBalance(state: GameState, enabled = true): GameState {
+  state.adventure = {
+    houseRules: { "polish-bank-unit-spells": enabled }
+  } as unknown as GameState["adventure"];
+  return state;
+}
+
 // ---------------------------------------------------------------------------
 // Anti-Magic on your OWN bank reward unit (models a bronze Dragon Flies card)
 // ---------------------------------------------------------------------------
 
 describe("Anti-Magic on a bank unit", () => {
-  function castAntiMagic(targetUnitId: UnitId, power: number): GameState {
-    const state = createInitialGameState("bank-antimagic");
+  function castAntiMagic(targetUnitId: UnitId, power: number, balance = true): GameState {
+    const state = withPolishBalance(createInitialGameState("bank-antimagic"), balance);
     makeBankUnit(state, targetUnitId);
     state.players.p1.hand = ["spell.anti_magic", "stat.power", "stat.power"];
     state.players.p2.hand = [];
@@ -93,7 +109,7 @@ describe("Anti-Magic on a bank unit", () => {
 
   it("can ward a BRONZE bank reward unit at 2 Power (the reported Dragon Flies case)", () => {
     // marksmen = p1 bronze. bronze(0) <= silver ceiling(power 2) => reachable.
-    const state = createInitialGameState("bank-antimagic");
+    const state = withPolishBalance(createInitialGameState("bank-antimagic"));
     makeBankUnit(state, "unit_p1_marksmen");
     state.players.p1.hand = ["spell.anti_magic", "stat.power", "stat.power"];
     state.activePlayerId = "p1";
@@ -105,6 +121,18 @@ describe("Anti-Magic on a bank unit", () => {
 
     const resolved = castAntiMagic("unit_p1_marksmen", 2);
     expect(spellImmuneMaxGrade(resolved, "unit_p1_marksmen"), "the ward actually lands, up to silver").toBe("silver");
+  });
+
+  it("CONTROL: with the Polish rule OFF, Anti-Magic is NOT castable on the bank unit", () => {
+    const state = withPolishBalance(createInitialGameState("bank-antimagic"), false);
+    makeBankUnit(state, "unit_p1_marksmen");
+    state.players.p1.hand = ["spell.anti_magic", "stat.power", "stat.power"];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(
+      findCast(state, "p1", "spell.anti_magic", "unit_p1_marksmen"),
+      "without polish-card-balance a bank unit stays ∞-blocked"
+    ).toBeUndefined();
   });
 
   it("still needs enough Power: a SILVER bank unit is NOT warded at 0 Power", () => {
@@ -124,8 +152,8 @@ describe("Anti-Magic on a bank unit", () => {
 // ---------------------------------------------------------------------------
 
 describe("Sorrow on a bank guard", () => {
-  function aboutToActivate(targetId: UnitId, p1Hand: string[]): GameState {
-    const state = createInitialGameState("bank-sorrow");
+  function aboutToActivate(targetId: UnitId, p1Hand: string[], balance = true): GameState {
+    const state = withPolishBalance(createInitialGameState("bank-sorrow"), balance);
     makeBankUnit(state, targetId);
     state.players.p1.hand = [...p1Hand];
     state.players.p2.hand = [];
@@ -159,8 +187,39 @@ describe("Sorrow on a bank guard", () => {
       ...gold!.action,
       costCardIds: ["stat.power", "stat.power", "stat.power", "stat.power"]
     } as GameAction);
-    expect(state.combat!.units.unit_p2_dread_knights.activatedThisRound, "its activation is skipped").toBe(true);
+    // The observable outcome: the gold guard's activation was SKIPPED — a Sorrow
+    // skip event fired against it, and it never took its turn (the active unit
+    // moved off it). It was the last unit to act, so the round then rolled over.
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "UNIT_ABILITY_TRIGGERED" &&
+          event.unitId === "unit_p2_dread_knights" &&
+          typeof event.message === "string" &&
+          event.message.includes("skips")
+      ),
+      "the gold Sorrow skipped the gold bank guard's activation"
+    ).toBe(true);
+    // The guard never got to attack — its activation was skipped, not spent.
+    expect(
+      state.eventLog.some(
+        (event) => event.type === "UNIT_ATTACK_DECLARED" && event.attackerId === "unit_p2_dread_knights"
+      )
+    ).toBe(false);
     expect(state.combat!.activeUnitId).not.toBe("unit_p2_dread_knights");
+  });
+
+  it("CONTROL: with the Polish rule OFF, no Sorrow skip is offered on the bank guard", () => {
+    const state = aboutToActivate(
+      "unit_p2_dread_knights",
+      ["spell.sorrow", "stat.power", "stat.power", "stat.power", "stat.power"],
+      false
+    );
+    expect(state.combat!.activeUnitId).toBe("unit_p2_dread_knights");
+    // No grade option reaches a ∞-ranked bank guard without the rule.
+    expect(reactionFor(state, "p1", "spell.sorrow", 0)).toBeUndefined();
+    expect(reactionFor(state, "p1", "spell.sorrow", 1)).toBeUndefined();
+    expect(reactionFor(state, "p1", "spell.sorrow", 2)).toBeUndefined();
   });
 });
 
@@ -169,8 +228,8 @@ describe("Sorrow on a bank guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("Blind on a bank guard", () => {
-  function castBlind(power: number): GameState {
-    const state = createInitialGameState("bank-blind");
+  function castBlind(power: number, balance = true): GameState {
+    const state = withPolishBalance(createInitialGameState("bank-blind"), balance);
     makeBankUnit(state, "unit_p2_dread_knights");
     state.players.p1.hand = ["spell.blind", "stat.power", "stat.power"];
     state.players.p2.hand = [];
@@ -198,6 +257,19 @@ describe("Blind on a bank guard", () => {
     const silver = castBlind(1);
     expect(hasParalysis(silver, "unit_p2_dread_knights"), "silver Power cannot reach the gold bank guard").toBe(false);
   });
+
+  it("CONTROL: with the Polish rule OFF, Blind is NOT castable on the bank guard", () => {
+    const state = withPolishBalance(createInitialGameState("bank-blind"), false);
+    makeBankUnit(state, "unit_p2_dread_knights");
+    state.players.p1.hand = ["spell.blind", "stat.power", "stat.power"];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_marksmen";
+    expect(
+      findCast(state, "p1", "spell.blind", "unit_p2_dread_knights"),
+      "without polish-card-balance a bank guard stays ∞-blocked"
+    ).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -205,8 +277,8 @@ describe("Blind on a bank guard", () => {
 // ---------------------------------------------------------------------------
 
 describe("bank unit tier-gate exception is scoped", () => {
-  it("Berserk is STILL never castable on a bank unit (deliberate exclusion)", () => {
-    const state = createInitialGameState("bank-berserk");
+  it("Berserk is STILL never castable on a bank unit (deliberate exclusion), even with the Polish rule ON", () => {
+    const state = withPolishBalance(createInitialGameState("bank-berserk"));
     makeBankUnit(state, "unit_p2_skeletons");
     // Plenty of Power so only the bankUnit ∞-rank could be blocking it.
     state.players.p1.hand = ["spell.berserk", "stat.power", "stat.power", "stat.power", "stat.power"];

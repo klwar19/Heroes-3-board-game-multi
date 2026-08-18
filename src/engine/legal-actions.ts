@@ -698,9 +698,19 @@ export const BANK_TARGETABLE_TIER_GATED_EFFECTS: ReadonlySet<EffectDefinition["t
  * (capped at gold) instead of ∞. Every non-allowlisted effect — and every non-bank
  * unit — is byte-identical to `gradeRankOfUnit`. Mirrored in the reducer via this
  * exported helper so the OFFER and the RESOLUTION agree.
+ *
+ * This bank-targeting exception is a POLISH BALANCE change: it only applies when
+ * `bankTargetingEnabled` (the `polish-card-balance` house rule) is on. With it
+ * off the function is byte-identical to `gradeRankOfUnit` for every unit, so a
+ * bank unit stays ∞-blocked exactly as before. The flag is required so a missed
+ * call site fails to compile rather than silently defaulting the behaviour on.
  */
-export function bankAwareTierGateRank(unit: CombatUnitState, effectType: EffectDefinition["type"]): number {
-  if (unit.bankUnit && BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)) {
+export function bankAwareTierGateRank(
+  unit: CombatUnitState,
+  effectType: EffectDefinition["type"],
+  bankTargetingEnabled: boolean
+): number {
+  if (bankTargetingEnabled && unit.bankUnit && BANK_TARGETABLE_TIER_GATED_EFFECTS.has(effectType)) {
     return Math.min(gradeRank(unit.grade), gradeRank("gold"));
   }
   return gradeRankOfUnit(unit);
@@ -1891,7 +1901,7 @@ function getTargetsForCard(
       // bankAwareTierGateRank keeps ∞ for a bank unit under every effect EXCEPT the
       // control/enchantment allowlist (Anti-Magic / Blind / Disrupting Ray here),
       // which the user ruled may reach a bank unit at its underlying grade.
-      return !unit || bankAwareTierGateRank(unit, card.effect.type) <= ceiling;
+      return !unit || bankAwareTierGateRank(unit, card.effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) <= ceiling;
     });
   }
 
@@ -9688,7 +9698,7 @@ export function isEffectLegalForTrigger(
     const unit = state.combat?.units[triggerEvent.unitId];
     // A bank guard (e.g. Nagas) is Sorrow-able at its underlying grade, so the
     // matching grade option (gold for a gold Naga) is offered — user ruling.
-    return Boolean(unit && isUnitAlive(unit) && bankAwareTierGateRank(unit, effect.type) === gradeRank(effect.grade));
+    return Boolean(unit && isUnitAlive(unit) && bankAwareTierGateRank(unit, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) === gradeRank(effect.grade));
   }
 
   // Card draws are timing-free instants: they fit inside any open window.
@@ -9908,7 +9918,7 @@ export function isEffectLegalForTrigger(
       return (
         attacker.controllerId === playerId &&
         effect.grade !== undefined &&
-        bankAwareTierGateRank(defender, effect.type) <= gradeRank(effect.grade)
+        bankAwareTierGateRank(defender, effect.type, houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)
       );
     }
 

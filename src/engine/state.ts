@@ -259,6 +259,12 @@ export type HouseRuleId =
   // a choice. Data in `src/data/cards/artifact-sets.ts`, read layer in
   // `src/engine/artifact-sets.ts`.
   | "polish-set-artifacts"
+  // Polish house rule (default OFF in BOTH modes): the control / enchantment
+  // spells (Anti-Magic, Blind, Frenzy, Sorrow, Disrupting Ray) MAY be cast on a
+  // tierless Creature-Bank unit — a bank guard OR a won "gain a unit" reward card
+  // — at its UNDERLYING grade (capped at gold), so Power still gates them. Off:
+  // every tier-gated spell treats a bank unit as gradeless ∞ and cannot reach it.
+  | "polish-bank-unit-spells"
   // Polish house rule (default OFF in BOTH modes): the "Balance Pack" reprints.
   // Each covered card plays its NEW printed text and renders its balance-pack
   // FACE; with the rule off every card is byte-identical to before. The covered

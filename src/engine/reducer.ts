@@ -1919,7 +1919,11 @@ function addAttackPower(stackItem: ResolutionStackItem, playerId: PlayerId, amou
  * defender's grade. Fixed-grade Frenzy sets ignoreDefense outright and is not
  * handled here.
  */
-function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState): boolean {
+function frenzyPierces(
+  stackItem: ResolutionStackItem,
+  defender: CombatUnitState,
+  bankTargetingEnabled: boolean
+): boolean {
   const table = stackItem.modifiers.ignoreDefenseGradeByPower;
   if (!table) {
     return false;
@@ -1936,8 +1940,8 @@ function frenzyPierces(stackItem: ResolutionStackItem, defender: CombatUnitState
     table,
     attackPowerFor(stackItem, caster) + (stackItem.modifiers.ignoreDefenseSchoolPowerBonus ?? 0)
   );
-  // A bank defender is pierced at its underlying grade (user ruling 2026-08-18).
-  return reached !== null && bankAwareTierGateRank(defender, "IGNORE_DEFENSE") <= gradeRank(reached);
+  // A bank defender is pierced at its underlying grade (Polish balance rule).
+  return reached !== null && bankAwareTierGateRank(defender, "IGNORE_DEFENSE", bankTargetingEnabled) <= gradeRank(reached);
 }
 
 /**
@@ -4298,7 +4302,7 @@ function getAttackStackDetails(
     ignoreDefense:
       dealsElemental ||
       Boolean(stackItem.modifiers.ignoreDefense) ||
-      frenzyPierces(stackItem, defender) ||
+      frenzyPierces(stackItem, defender, houseRuleEnabled(state, "polish-bank-unit-spells")) ||
       hasActiveIgnoresDefense(state, attacker),
     // Lord Haart (Necropolis) Dread Knights I/VI: an instant the defender's
     // controller played in this retaliation's window soaks `amount` less damage
@@ -12043,7 +12047,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const target = state.combat.units[stackItem.action.target.unitId];
       // Anti-Magic may protect a bank unit (guard OR won reward card) at its
       // underlying grade — bankAwareTierGateRank, user ruling 2026-08-18.
-      if (target && maxGrade && bankAwareTierGateRank(target, "CREATE_SPELL_IMMUNITY") <= gradeRank(maxGrade)) {
+      if (target && maxGrade && bankAwareTierGateRank(target, "CREATE_SPELL_IMMUNITY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -12112,7 +12116,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       const maxGrade = gradeAtPower(card.effect.gradeByPower, power);
       const target = state.combat.units[stackItem.action.target.unitId];
       // Blind may Paralyse a bank unit at its underlying grade (user ruling).
-      if (target && maxGrade && bankAwareTierGateRank(target, "PLACE_PARALYSIS") <= gradeRank(maxGrade)) {
+      if (target && maxGrade && bankAwareTierGateRank(target, "PLACE_PARALYSIS", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
         if (unitImmuneToParalysis(state, target)) {
           appendEvent(state, {
             type: "UNIT_ABILITY_TRIGGERED",
@@ -12348,7 +12352,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         card.effect.defenseChoice !== undefined &&
         target &&
         maxGrade &&
-        bankAwareTierGateRank(target, "DISRUPTING_RAY") <= gradeRank(maxGrade)
+        bankAwareTierGateRank(target, "DISRUPTING_RAY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)
       ) {
         openBalanceSpellChoice(state, stackItem.action.playerId, "disrupting-ray-mode", {
           cardId: card.id,
@@ -12359,7 +12363,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
           { label: `${target.cardName} cannot use its special ability` },
           { label: `${target.cardName} suffers -${card.effect.defenseChoice} Defense` }
         ]);
-      } else if (target && maxGrade && bankAwareTierGateRank(target, "DISRUPTING_RAY") <= gradeRank(maxGrade)) {
+      } else if (target && maxGrade && bankAwareTierGateRank(target, "DISRUPTING_RAY", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(maxGrade)) {
         createActiveEffect(
           state,
           {
@@ -14858,7 +14862,7 @@ function applyReactionPlayCore(
     const triggerEvent = state.reactionWindow?.triggerEvent;
     const unit =
       triggerEvent?.type === "UNIT_ACTIVATION_STARTED" ? state.combat?.units[triggerEvent.unitId] : undefined;
-    if (unit && isUnitAlive(unit) && effect.grade && bankAwareTierGateRank(unit, "SKIP_ACTIVATION") <= gradeRank(effect.grade)) {
+    if (unit && isUnitAlive(unit) && effect.grade && bankAwareTierGateRank(unit, "SKIP_ACTIVATION", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)) {
       appendEvent(state, {
         type: "UNIT_ABILITY_TRIGGERED",
         unitId: unit.id,
@@ -15542,7 +15546,7 @@ function applyReactionPlayCore(
         : getSchoolPowerBonus(state, playerId, card);
     } else if (effect.grade) {
       const defender = state.combat?.units[stackItem.action.defenderId];
-      if (defender && bankAwareTierGateRank(defender, "IGNORE_DEFENSE") <= gradeRank(effect.grade)) {
+      if (defender && bankAwareTierGateRank(defender, "IGNORE_DEFENSE", houseRuleEnabled(state, "polish-bank-unit-spells")) <= gradeRank(effect.grade)) {
         stackItem.modifiers.ignoreDefense = true;
       }
     }
