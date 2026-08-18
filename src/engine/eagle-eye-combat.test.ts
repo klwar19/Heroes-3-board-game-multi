@@ -227,6 +227,78 @@ describe("Eagle Eye dig is deterministic (the first matching spell, not random)"
   });
 });
 
+describe("Polish Balance Pack Eagle Eye auto-takes but NAMES the added spell", () => {
+  // The reprinted Eagle Eye has no discard arm, so the find is taken silently
+  // (a one-button prompt would be a dead click). The author asked to "show which
+  // spell is added to the Spell Book": the auto-take must emit a feed line that
+  // names the specific spell. Assert the OUTCOME (a named EVENT_NOTE + the spell
+  // owned), with a rule-off CONTROL that still opens the naming pendingChoice.
+  function balanceEagle(seed: string): GameState {
+    const state = combatWithEagle(seed);
+    // Freeze the balance pack on. combatWithEagle's sandbox has no adventure,
+    // and houseRuleEnabled reads adventure.houseRules first.
+    state.adventure = { ...(state.adventure ?? {}), houseRules: { "polish-card-balance": true } } as GameState["adventure"];
+    return state;
+  }
+
+  it("emits a feed line naming the dug spell, and the spell is owned", () => {
+    const state = balanceEagle("eagle-balance-name");
+    state.decks.spells.drawPile = ["spell.bless", "spell.haste"]; // top = Haste
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    expect(basic).toBeTruthy();
+    // Balance Eagle Eye asks Basic/Expert first (the spell-deck-pick window),
+    // then auto-takes — never the take/discard "eagle-eye" choice.
+    const picked = applyOk(state, basic!);
+    const pick = picked.pendingChoice as { id: string; context: string };
+    expect(pick.context).toBe("spell-deck-pick");
+
+    const taken = applyOk(picked, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: pick.id,
+      optionIndex: 0 // Basic
+    });
+
+    // No take/discard prompt was opened — it was taken outright.
+    expect(taken.pendingChoice).toBeNull();
+    // The specific spell is owned (hand or Spell Book).
+    const owned = [
+      ...taken.players.p1.hand,
+      ...taken.players.p1.spellBook,
+      ...taken.players.p1.deck
+    ];
+    expect(owned).toContain("spell.haste");
+    // The feedback the author asked for: a feed line that NAMES Haste.
+    const note = taken.eventLog.find(
+      (event) =>
+        event.type === "EVENT_NOTE" &&
+        /Eagle Eye added/.test((event as { message: string }).message) &&
+        /Haste/.test((event as { message: string }).message)
+    );
+    expect(note, "the balance Eagle Eye must announce the spell by name").toBeTruthy();
+  });
+
+  it("CONTROL: with the balance rule OFF, the same dig opens the naming take/discard prompt (no feed line)", () => {
+    const state = combatWithEagle("eagle-balance-control");
+    state.decks.spells.drawPile = ["spell.haste"];
+    state.decks.spells.discardPile = [];
+
+    const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
+    const dug = applyOk(state, basic!);
+    // The classic path still shows the name via its "Eagle Eye found {name}"
+    // pendingChoice — and never emits the balance feed line.
+    const choice = dug.pendingChoice as { context: string };
+    expect(choice.context).toBe("eagle-eye");
+    expect(
+      dug.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && /Eagle Eye added/.test((event as { message: string }).message)
+      )
+    ).toBe(false);
+  });
+});
+
 describe("Eagle Eye never hands the hero a duplicate Spell it already owns", () => {
   // House rule (CLAUDE.md): a hero never keeps two copies of the same Spell.
   // The shared-deck Search redraws past an owned card; Eagle Eye's dig must do

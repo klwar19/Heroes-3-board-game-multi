@@ -19830,8 +19830,21 @@ function performSpellDig(
   // There is no discard arm on the reprint, so the find is TAKEN with no prompt
   // (a one-button window would be a dead click). A Tome's School dig keeps its
   // printed take-or-discard choice in every mode.
+  //
+  // The take is silent, so — unlike the non-balance path, whose "Eagle Eye found
+  // {name}" pendingChoice names the find on screen — the player would otherwise
+  // never see WHICH Spell was added. Announce it with a named feed line (the
+  // channel the log already renders; it opens no window, so no AI/AFK seat can
+  // stall on it), stating the destination it actually landed in.
   if (!school && houseRuleEnabled(state, "polish-card-balance")) {
-    gainOwnedCard(state, playerId, foundCardId, cards);
+    const destination = gainOwnedCard(state, playerId, foundCardId, cards);
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `Eagle Eye added ${cards[foundCardId]?.name ?? foundCardId} to your ${
+        destination === "spellBook" ? "Spell Book" : "hand"
+      }.`
+    });
     return;
   }
 
