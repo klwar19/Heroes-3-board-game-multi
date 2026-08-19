@@ -748,7 +748,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Vanguard Marshal",
-      text: "At combat setup you may sort the commander together with allied units in your deployment zone. While the commander stands on your FRONT LINE (the row nearest the enemy), it has +1 Attack; moving on or off that line changes the bonus immediately."
+      text: "At combat setup you may sort the commander together with allied units in your deployment zone. If it is on your FRONT LINE (the row nearest the enemy) during combat round 1, it has +1 Attack that round; moving on or off that line changes the bonus immediately."
     },
     cardImage: "/assets/units-commander-corsair.webp"
   },
@@ -822,7 +822,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Unbroken Contract",
-      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. While the Regent stands on your front line, it has +1 Attack."
+      text: "At combat setup you may sort the Regent together with allied units in your deployment zone. If the Regent is on your front line during combat round 1, it has +1 Attack that round."
     },
     cardImage: "/assets/units-commander-ruler.webp"
   },
@@ -953,7 +953,7 @@ export const commanderDefinitions: Record<CommanderSlug, CommanderDefinition> = 
     specialty: {
       id: "vanguard-marshal",
       name: "Team Captain",
-      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. While he stands on your front line, he has +1 Attack."
+      text: "At combat setup you may sort Kyousuke together with allied units in your deployment zone. If he is on your front line during combat round 1, he has +1 Attack that round."
     },
     cardImage: "/assets/units-commander-kyousuke_natsume.webp"
   },

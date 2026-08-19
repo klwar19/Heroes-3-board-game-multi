@@ -2368,6 +2368,21 @@ export function classifyHeroStep(
     return passAnyField(movement) ? "encounter" : "stop";
   }
 
+  // Subterranean-Gate "one Field" occupancy (house rule): the two linked halves
+  // are ONE field for the END of a move, so a hero may never STOP on an
+  // otherwise-empty half whose linked twin already holds ANOTHER hero — it may
+  // only pass through. Checked here, AFTER the guard/enemy-hero stop reasons, so
+  // it only downgrades a PEACEFUL landing (a guarded gate half is still fought,
+  // and the mover's own free hop between its halves is unaffected — heroAtSpace
+  // excludes the mover). An enemy parked on the twin is NOT fought across the
+  // gate; to attack it, step onto the half it actually stands on.
+  if (field.location === "subterranean_gate" && field.gateLinkSpaceId) {
+    const twin = adventure.fields[field.gateLinkSpaceId];
+    if (gateFieldsLinked(field, twin) && heroAtSpace(state, field.gateLinkSpaceId, hero.id)) {
+      return "pass-only";
+    }
+  }
+
   if (!location || location.category === "empty") {
     return "open";
   }
@@ -3923,12 +3938,12 @@ export function applySettlementResource(
 }
 
 /**
- * Enemy-owned Mine fields within `range` straight-line hexes of the player's
- * main Hero — the candidates the View Earth spell may capture. A Mine counts
- * only when another player's Faction cube is on it (an unflagged or own Mine is
- * skipped). Sorted by space id so every client builds the same option list.
- * Shared by the legal-action gate and the spell's resolver so the offer and the
- * capture can never disagree.
+ * Enemy-owned Mine fields within `range` straight-line hexes of EITHER of the
+ * player's Heroes (main OR secondary) — the candidates the View Earth spell may
+ * capture. A Mine counts only when another player's Faction cube is on it (an
+ * unflagged or own Mine is skipped). Sorted by space id so every client builds
+ * the same option list. Shared by the legal-action gate and the spell's
+ * resolver so the offer and the capture can never disagree.
  */
 export function capturableEnemyMinesWithin(
   state: GameState,
@@ -3936,9 +3951,13 @@ export function capturableEnemyMinesWithin(
   range: number
 ): MapSpaceId[] {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  const origin = hero?.spaceId ? parseHexSpaceId(hero.spaceId) : null;
-  if (!adventure || !origin || range <= 0) {
+  if (!adventure || range <= 0) {
+    return [];
+  }
+  // The spell scries from whichever of the player's Heroes are on the map, so a
+  // Mine near the SECONDARY Hero is reachable even when the main Hero is far.
+  const origins = viewEarthHeroOrigins(state, playerId);
+  if (origins.length === 0) {
     return [];
   }
 
@@ -3952,12 +3971,29 @@ export function capturableEnemyMinesWithin(
       continue;
     }
     const coord = parseHexSpaceId(field.spaceId);
-    if (!coord || hexDistance(origin, coord) > range) {
+    if (!coord || !origins.some((origin) => hexDistance(origin, coord) <= range)) {
       continue;
     }
     mines.push(field.spaceId);
   }
   return mines.sort();
+}
+
+/**
+ * The parsed hex coordinates of the player's Heroes (main first, then
+ * secondary) that are placed on the map — the origins View Earth measures its
+ * reach from. Both the reach gate and the choice's distance labels read this so
+ * they never disagree about which Hero a Mine is "near".
+ */
+export function viewEarthHeroOrigins(state: GameState, playerId: PlayerId): HexCoord[] {
+  const origins: HexCoord[] = [];
+  for (const hero of [getMainHero(state, playerId), getSecondaryHero(state, playerId)]) {
+    const coord = hero?.spaceId ? parseHexSpaceId(hero.spaceId) : null;
+    if (coord) {
+      origins.push(coord);
+    }
+  }
+  return origins;
 }
 
 function applyTownFlag(state: GameState, playerId: PlayerId, field: MapFieldState): void {

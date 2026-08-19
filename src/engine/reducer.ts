@@ -4160,11 +4160,12 @@ function getAttackStackDetails(
   const chargeAttackBonus =
     !isRetaliation && attacker.movedThisActivation ? getAttackBonusAfterMove(attacker) : 0;
 
-  // WOG commander live positional/stance Attack: the Vanguard Marshal (Cove)
-  // front-line +1 (a live position read) and the Superior Combat (Shaman) +1
-  // Attack stance while it holds (combat rounds 1-2). Positional/stance, not
-  // attack-type — applies on the commander's own attacks AND its retaliations —
-  // and added UNCLAMPED like the other innate commander bonuses.
+  // WOG commander live positional/stance Attack: the SORT-ability commanders'
+  // (Cove Sea Marshal / Bulwark Ruler / Kyousuke / Marshal's War Horn) front-line
+  // +1 during combat ROUND 1 (a live position read) and the Superior Combat
+  // (Shaman) +1 Attack stance while it holds (combat rounds 1-2). Positional/
+  // stance, not attack-type — applies on the commander's own attacks AND its
+  // retaliations — and added UNCLAMPED like the other innate commander bonuses.
   const commanderPositionalAttackBonus = commanderLiveAttackBonus(state, attacker);
 
   // WOG commander Haste/Slow riders: signed Attack shift on the buffed/slowed
@@ -10315,18 +10316,18 @@ function applyActivationDamageSpell(
   target: CombatUnitState,
   ability: { abilityId: string; abilityName: string; amount: number }
 ): void {
-  // The Faerie Bolt is spell DAMAGE, so the golems' / Unicorns' "reduce any
-  // damage from spells" passives soften it (reducedSpellDamage). It is NOT a
-  // Spell CARD, so — by deliberate design — spell-school IMMUNITY does not turn
-  // it aside: IMMUNE_TO_SPELL_SCHOOLS is scoped to "any Spell card whose school
-  // …", and the bolt has no card and no school. Hence a unit "Immune to all
-  // Spells" (Azure/Black Dragons) is still a legal target and still takes the
-  // bolt (only reduced if it also reduces spell damage), unlike a real cast,
-  // which excludes immune units at targeting. This split is intentional; do not
-  // add a unitImmuneToSpellSchools gate here without a confirmed ruling.
+  // The Faerie Bolt is a magic ATTACK — "a spell that does not count towards
+  // your spell limit" — so it behaves like a real cast for both reduction AND
+  // immunity (USER RULING 2026-08-20: "its magic attack, and can be reduced or
+  // immune to"). It has no school, so it is treated as the school-less "any"
+  // (Magic Arrow's school): only a unit immune to ALL Spells (Azure/Black
+  // Dragons Pack "immune-all-spells", or an artifact-granted all-school
+  // immunity) turns it aside — a single-school immunity does not. Orb of
+  // Vulnerability still lifts printed immunity (spellAbilitiesSuppressed).
+  // The golems' / Unicorns' / Black-Dragons-Few "reduce any damage from spells"
+  // passives soften a bolt that does land (reducedSpellDamage, below).
   // A Factory Couatl with its invulnerability up "ignores all damage" — that
-  // DAMAGE ward (distinct from spell-school immunity above) does turn the bolt
-  // aside.
+  // DAMAGE ward (distinct from spell-school immunity) also turns the bolt aside.
   if (isUnitDamageImmune(target)) {
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -10334,6 +10335,20 @@ function applyActivationDamageSpell(
       abilityId: getInvulnerabilityActivation(target)?.abilityId ?? "couatl-invulnerability",
       targetUnitId: target.id,
       message: `${target.cardName} is invulnerable and ignores ${ability.abilityName}.`
+    });
+    return;
+  }
+  const boltSchools: readonly SpellSchool[] = ["any"];
+  if (
+    unitImmuneToSpellSchoolsByEffect(state, target, boltSchools) ||
+    (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, boltSchools))
+  ) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: target.id,
+      abilityId: "immune-all-spells",
+      targetUnitId: target.id,
+      message: `${target.cardName} is immune to Spells and ignores ${ability.abilityName}.`
     });
     return;
   }
@@ -20187,7 +20202,12 @@ function applyUnitAbilityAction(
         return (
           sideOk &&
           isUnitAlive(candidate) &&
-          !isArrowTowerUnit(candidate) &&
+          // The Arrow Tower is a legal target for a DEBUFF token (the Cove
+          // Sorceresses' Weakness token — it is always an enemy to a besieger),
+          // but never for a friendly BUFF (Ogres' Bloodlust): a besieger's own
+          // units are never the tower, and it is not a relocation the tower
+          // refuses. Every other placement still skips the off-board tower.
+          (effect.targets === "enemy" || !isArrowTowerUnit(candidate)) &&
           (!effect.adjacentOnly || isAdjacent(unit.position, candidate.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(candidate.type))
         );

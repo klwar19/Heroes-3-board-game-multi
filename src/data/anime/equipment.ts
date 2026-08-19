@@ -337,7 +337,7 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     package: "shared",
     requiresContext: "wog.commanders",
     summary:
-      "Accessory · Grade III: your Commander gains the pre-combat SORT window and +2 maximum Health. Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
+      "Accessory · Grade III: your Commander gains the pre-combat SORT window and +2 maximum Health, and — like the Vanguard Marshal specialty — while on your front line it has +2 Speed for the fight and +1 Attack during combat round 1. Needs the WOG Commanders module + a commander in the fight; hidden at shops while Commanders is off."
   }),
   [EQUIPMENT_IDS.spiritCraneMount]: equip({
     id: EQUIPMENT_IDS.spiritCraneMount,

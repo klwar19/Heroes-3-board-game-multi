@@ -455,6 +455,58 @@ describe("neutral Faerie Dragons zap a target then act", () => {
     expect((target?.damage ?? 0)).toBeGreaterThanOrEqual(2);
   });
 
+  it("does NOT hit a target immune to all Spells (Black/Azure Dragons) — the bolt is a magic attack", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 0; // isolate the Ice Bolt from the melee attack
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    // The player's unit is "Immune to all Spells" (Black Dragons Pack).
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const preyId = prey.id;
+    prey.abilities = ["immune-all-spells"];
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    // The bolt was turned aside: no faerie-dragon-spell cast, an immunity event
+    // fired instead, and the immune unit took 0 damage from it.
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(0);
+    expect(abilityEvents(state, "immune-all-spells").some((event) => event.targetUnitId === preyId)).toBe(true);
+    expect(state.combat!.units[preyId].damage).toBe(0);
+  });
+
+  it("is REDUCED (not blocked) by a spell-damage-reduction passive", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 0;
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    // The player's unit reduces spell damage by 1 (not immune): the 2-damage
+    // bolt lands for 1 — proving reduction applies without turning it aside.
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const preyId = prey.id;
+    prey.abilities = ["reduce-spell-damage-1"];
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(1);
+    expect(state.combat!.units[preyId].damage).toBe(1);
+  });
+
   it("logs the Ice Bolt cast AND its damage BEFORE the dragon moves (the order the FX preamble needs)", () => {
     // The FX layer presents the cast first and holds the glide behind it, relying
     // on the engine logging cast -> spell damage -> move within the one pump. If

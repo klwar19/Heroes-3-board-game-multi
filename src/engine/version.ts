@@ -456,7 +456,23 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // armyStacks + bossUnit, all already persisted), so legacy snapshots read as
 // before — but a v42 edge would mint the OLD (weaker, no-boss) wave army, so the
 // bump forces the room server current. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 43;
+// v43 -> v44 (2026-08-20): five USER-RULE engine-behaviour fixes a v43 edge
+// computes differently (no new state SHAPE — all reads/derivations — so legacy
+// snapshots read as before, but the bump forces a skewed room server current).
+// (1) A sort-ability commander (Vanguard Marshal specialty OR Marshal's War Horn)
+// on its own FRONT LINE gains +1 Attack during combat ROUND 1 only — was an
+// all-rounds Vanguard-Marshal-only read that never covered the War Horn. (2) The
+// Faerie Bolt (ON_ACTIVATION_DAMAGE_SPELL) is now turned aside by all-spell
+// immunity (Azure/Black Dragons "immune-all-spells", or artifact-granted), still
+// reduced by reduce-spell-damage — a v43 edge would still damage an immune unit.
+// (3) View Earth measures its reach from EITHER of the player's Heroes (main OR
+// secondary), so a Mine near the secondary Hero becomes capturable. (4) A
+// Subterranean Gate's two linked halves are ONE field for the END of a move: a
+// hero may not STOP on a half whose twin holds another hero (guarded halves are
+// still fought; the mover's own free hop is unaffected). (5) The Cove
+// Sorceresses' Weakness DEBUFF token may target the Arrow Tower (friendly BUFF
+// tokens still skip it). `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 44;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

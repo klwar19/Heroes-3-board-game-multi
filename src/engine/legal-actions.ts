@@ -5629,7 +5629,10 @@ function addUnitAbilityActions(actions: LegalAction[], state: GameState, playerI
         return (
           sideOk &&
           isUnitAlive(target) &&
-          !isArrowTowerUnit(target) &&
+          // Enemy-DEBUFF tokens (Sorceresses' Weakness) may land on the Arrow
+          // Tower; friendly BUFFS (Ogres' Bloodlust) still skip the off-board
+          // tower. Matches the enforcement in reducer.ts.
+          (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
           (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
           (!effect.targetTypes || effect.targetTypes.includes(target.type))
         );
@@ -5996,7 +5999,9 @@ function addControlledNeutralTokenActions(
       return (
         sideOk &&
         isUnitAlive(target) &&
-        !isArrowTowerUnit(target) &&
+        // Enemy-DEBUFF tokens (Sorceresses' Weakness) may land on the Arrow
+        // Tower; friendly BUFFS still skip it. Matches the enforcement above.
+        (effect.targets === "enemy" || !isArrowTowerUnit(target)) &&
         (!effect.adjacentOnly || isAdjacent(activeUnit.position, target.position)) &&
         (!effect.targetTypes || effect.targetTypes.includes(target.type))
       );

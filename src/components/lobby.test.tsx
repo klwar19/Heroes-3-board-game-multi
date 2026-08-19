@@ -192,6 +192,21 @@ describe("LobbyScreen", () => {
     expect(handlers.onCreate).toHaveBeenLastCalledWith("Casual Match", true, false);
   });
 
+  it("greys out (disables) the Open table option while Ranked is selected", () => {
+    renderLobby();
+    const openTable = screen.getByRole("radio", { name: /^Open table/i }) as HTMLButtonElement;
+    // Normal game (default): Open table is selectable.
+    expect(openTable.disabled).toBe(false);
+    // Selecting Ranked disables Open (ranked cannot run on an open table) and
+    // forces the Closed table on.
+    fireEvent.click(screen.getByRole("radio", { name: /Ranked game/i }));
+    expect(openTable.disabled).toBe(true);
+    expect(screen.getByRole("radio", { name: /^Closed table/i }).getAttribute("aria-checked")).toBe("true");
+    // Back to Normal re-enables it.
+    fireEvent.click(screen.getByRole("radio", { name: /Normal game/i }));
+    expect(openTable.disabled).toBe(false);
+  });
+
   it("shows each room's match type so everyone in the lobby can see it", () => {
     renderLobby({
       rooms: [

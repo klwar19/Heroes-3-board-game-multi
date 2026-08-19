@@ -766,6 +766,51 @@ describe("subterranean gate: crossing it with the real move action", () => {
 });
 
 // ---------------------------------------------------------------------------
+// The two linked halves count as ONE field for the END of a move: two heroes
+// may never both stop on the gate (house rule). A hero may still PASS through a
+// half whose twin is occupied, and the SAME hero's free hop between its own
+// halves is unaffected.
+// ---------------------------------------------------------------------------
+describe("subterranean gate: the two linked halves are ONE field for end-of-move occupancy", () => {
+  it("a hero may not STOP on a gate half whose twin already holds another hero (allied OR enemy) — only pass through", () => {
+    const state = makeGame();
+    const { surface, underground } = placePair(state);
+    setAllEmpty(state, surface);
+    setAllEmpty(state, underground);
+    recomputeSubterraneanGates(adv(state));
+    const gate = gateHalfTo(state, underground.id)!; // the surface half
+    const entrance = gateHalfTo(state, surface.id)!; // the linked underground twin
+    expect(gateFieldsLinked(adv(state).fields[gate.spaceId], adv(state).fields[entrance.spaceId])).toBe(true);
+
+    const mover = state.heroes.hero_p1;
+
+    // CONTROL: with the twin empty the surface half is a normal landing.
+    expect(classifyHeroStep(state, mover, gate.spaceId)).toBe("open");
+
+    // Park an ALLIED (own secondary) hero on the twin: the surface half is now a
+    // pass-through only — you cannot END there (one field, one hero).
+    state.heroes.hero_p1_secondary = {
+      ...mover,
+      id: "hero_p1_secondary",
+      kind: "secondary",
+      spaceId: entrance.spaceId
+    };
+    expect(classifyHeroStep(state, mover, gate.spaceId)).toBe("pass-only");
+
+    // An ENEMY hero on the twin blocks the landing the same way (it is NOT
+    // fought across the gate — attacking means stepping onto its own half).
+    state.heroes.hero_p1_secondary.controllerId = "p2";
+    expect(classifyHeroStep(state, mover, gate.spaceId)).toBe("pass-only");
+
+    // The mover's OWN free hop is unaffected: standing on one half, its empty
+    // twin is still a legal landing.
+    delete state.heroes.hero_p1_secondary;
+    mover.spaceId = gate.spaceId;
+    expect(classifyHeroStep(state, mover, entrance.spaceId)).toBe("open");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // One gate per tile (BINH house rule): a single map tile hosts AT MOST one
 // Subterranean Gate Token half. A tile that already opened a gate to one
 // neighbour never accepts a second to another — the extra gate is simply never

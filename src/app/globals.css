@@ -24052,6 +24052,19 @@ img.cardBack {
   color: var(--text);
 }
 
+/* Ranked matches cannot run on an open table, so the Open option is greyed
+   out (and non-interactive) while Ranked is selected. */
+.lobbyModeOption:disabled,
+.lobbyModeOption.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lobbyModeOption:disabled:hover,
+.lobbyModeOption.disabled:hover {
+  border-color: var(--line);
+}
+
 .lobbyModeName {
   font-size: 12.5px;
   font-weight: 800;

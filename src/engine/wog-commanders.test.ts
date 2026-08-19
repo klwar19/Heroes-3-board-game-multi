@@ -38,7 +38,11 @@ import {
   DEFAULT_ANIME_OPTIONS,
   EQUIPMENT_IDS
 } from "./index";
-import { COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME, finalizeCommandersAfterCombat } from "./commanders";
+import {
+  COMMANDER_FRONT_LINE_SPEED_EFFECT_NAME,
+  commanderLiveAttackBonus,
+  finalizeCommandersAfterCombat
+} from "./commanders";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { warMachinesForSale } from "./permanents";
 import { hasBallistaChooseTarget, effectiveInitiative } from "./active-effects";
@@ -1275,14 +1279,18 @@ describe("WOG commanders — specialties", () => {
 // is the only source today).
 // ===========================================================================
 
-describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
+describe("WOG commanders — sort-ability front-line +1 Attack (round 1)", () => {
   // The attacker's front line on the 4x5 board is the row nearest the enemy
   // (cells 12-15); the backline is 16-19, the middle row 8-11.
   const ATTACKER_FRONT = [12, 13, 14, 15];
 
-  /** Commander (base Attack 2) at `pos`, attacking a stripped adjacent enemy. */
-  function commanderAttackDamage(slug: CommanderSlug, pos: number, enemyPos: number): number {
+  /**
+   * Commander (base Attack 2) at `pos`, attacking a stripped adjacent enemy in
+   * combat `round` (default 1). The front-line +1 is a round-1-only read.
+   */
+  function commanderAttackDamage(slug: CommanderSlug, pos: number, enemyPos: number, round = 1): number {
     const state = sandboxWithCommander(slug, {}, pos);
+    state.combat!.round = round;
     const skeletons = state.combat!.units.unit_p2_skeletons;
     skeletons.abilities = [];
     skeletons.position = enemyPos;
@@ -1305,7 +1313,7 @@ describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
     return next.combat!.units.unit_p2_skeletons.damage;
   }
 
-  it("grants +1 Attack while the commander stands on its own front line, and none off it", () => {
+  it("grants +1 Attack while the commander stands on its own front line in round 1, and none off it", () => {
     // On the front line (13) attacking an adjacent enemy (14): base 2 + 1 = 3.
     expect(commanderAttackDamage("corsair", 13, 14)).toBe(3);
     // CONTROL: off the front line (middle row 9, backline 17): base 2 only.
@@ -1313,7 +1321,14 @@ describe("WOG commanders — Vanguard Marshal front-line +1 Attack", () => {
     expect(commanderAttackDamage("corsair", 17, 18)).toBe(2);
   });
 
-  it("applies the same live +1 Attack to every commander sharing Vanguard Marshal", () => {
+  it("is gated to combat ROUND 1 — the front-line +1 is gone from round 2 on", () => {
+    // Same front cell (13 → 14): round 1 base 2 + 1 = 3, round 2 the bonus has
+    // expired → base 2. This delta fails if the round-1 gate is removed.
+    expect(commanderAttackDamage("corsair", 13, 14, 1)).toBe(3);
+    expect(commanderAttackDamage("corsair", 13, 14, 2)).toBe(2);
+  });
+
+  it("applies the same round-1 +1 Attack to every commander sharing Vanguard Marshal", () => {
     const shared = COMMANDER_SLUGS.filter((slug) => commanderDefinitions[slug].specialty.id === "vanguard-marshal");
     expect(new Set(shared)).toEqual(new Set<CommanderSlug>(["corsair", "ruler", "kyousuke_natsume"]));
     for (const slug of shared) {
@@ -2370,6 +2385,25 @@ describe("WOG commanders — Speed grade unlocks the pre-combat sort", () => {
     const bareUnit = bare.combat!.units[commanderUnitId("p1")];
     expect(commanderSortAbilitySource(bare, "p1")).toBe(false);
     expect(effectiveInitiative(bareUnit, bare.activeEffects, bare.combat)).toBe(bareUnit.initiative);
+  });
+
+  it("Marshal's War Horn (a sort ABILITY source) also grants the round-1 front-line +1 Attack", () => {
+    const state = adventureWithCommanders("cmd-front-horn-attack");
+    state.anime = { ...ANIME_EQUIP_ON };
+    getMainHero(state, "p1")!.equipment = { accessory: EQUIPMENT_IDS.marshalsWarHorn };
+    const front = fightWithCommanderAt(state, 13);
+    expect(commanderSortAbilitySource(front, "p1")).toBe(true);
+    const unit = front.combat!.units[commanderUnitId("p1")];
+    expect(commanderOnOwnFrontLine(front, unit)).toBe(true);
+    // Round 1 on the front line: +1 Attack from the horn's sort-ability source.
+    expect(commanderLiveAttackBonus(front, unit)).toBe(1);
+    // Round 2: expired.
+    front.combat!.round = 2;
+    expect(commanderLiveAttackBonus(front, unit)).toBe(0);
+    // Off the front line in round 1: no bonus (live positional read).
+    front.combat!.round = 1;
+    unit.position = 17;
+    expect(commanderLiveAttackBonus(front, unit)).toBe(0);
   });
 
   it("the buff is laid ONCE and holds for the whole combat (walking off the line keeps it)", () => {

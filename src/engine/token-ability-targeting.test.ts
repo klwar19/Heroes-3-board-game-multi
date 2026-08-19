@@ -146,6 +146,35 @@ describe("Sorceresses' Weakness token — DEBUFF enemy only", () => {
     expect(placed.combat!.units.unit_p1_marksmen.activatedThisRound).toBe(true);
     expect(placed.pendingChoice).toBeNull();
   });
+
+  it("CAN land the Weakness DEBUFF on the enemy Arrow Tower (a siege target)", () => {
+    const state = placerState("sorc-tower", "unit_p1_marksmen", ["sorceress-weakness-few"]);
+    // A besieging Sorceresses faces the town's Arrow Tower (an enemy unit at the
+    // off-board position -1). It is a legal Weakness target — a stat debuff, not
+    // a relocation the tower refuses.
+    state.combat!.units.unit_p2_arrow_tower = {
+      ...state.combat!.units.unit_p2_skeletons,
+      id: "unit_p2_arrow_tower",
+      abilities: ["siege-arrow-tower"],
+      position: -1
+    };
+
+    const picking = applyOk(state, openTokenPicker(state, "unit_p1_marksmen", "sorceress-weakness-few")[0].action);
+    const choice = picking.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    expect(choice.candidateUnitIds).toContain("unit_p2_arrow_tower");
+
+    const placed = applyOk(picking, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: pendingChoiceId(picking),
+      targetUnitId: "unit_p2_arrow_tower"
+    });
+    const tower = placed.combat!.units.unit_p2_arrow_tower;
+    expect(getUnitTokens(tower).find((token) => token.kind === "weakness")?.amount).toBe(-2);
+    expect(tokenAttackBonus(tower)).toBe(-2);
+  });
 });
 
 describe("Ogres' Bloodlust token — BUFF friendly ground/flying only", () => {
@@ -173,6 +202,25 @@ describe("Ogres' Bloodlust token — BUFF friendly ground/flying only", () => {
     expect(firstAttackValue(runBloodlustDuel("ogre-fx-base", null))).toBe(3);
     // Buffed: the Ogres place +2 on the griffins first → attackValue 5 (3 + 2).
     expect(firstAttackValue(runBloodlustDuel("ogre-fx-buff", "ogres-attack-token-pack"))).toBe(5);
+  });
+
+  it("CONTROL: a friendly BUFF token still skips the Arrow Tower (only enemy debuffs reach it)", () => {
+    const state = placerState("ogre-tower", "unit_p1_crusaders", ["ogres-attack-token-pack"]);
+    // A friendly (own-side) Arrow Tower — flying-eligible for Bloodlust in every
+    // way EXCEPT that a BUFF still never targets the off-board tower. If the
+    // arrow-tower guard were lifted for friendly buffs too, this would fail.
+    state.combat!.units.unit_p1_arrow_tower = {
+      ...state.combat!.units.unit_p1_griffins,
+      id: "unit_p1_arrow_tower",
+      abilities: ["siege-arrow-tower"],
+      position: -1
+    };
+
+    const picking = applyOk(state, openTokenPicker(state, "unit_p1_crusaders", "ogres-attack-token-pack")[0].action);
+    const choice = picking.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") return;
+    expect(choice.candidateUnitIds).not.toContain("unit_p1_arrow_tower");
   });
 });
 

@@ -372,6 +372,49 @@ describe("View Earth captures an enemy Mine", () => {
     expect(state.pendingChoice).toBeNull();
   });
 
+  it("reaches a Mine near the SECONDARY Hero even when the main Hero is far away", () => {
+    let state = withHand(makeGame(), ["spell.view_earth"]);
+    const hero = heroP1(state);
+    // The Mine is 5 fields east of the main Hero (well beyond the Power-0 range
+    // of 1), but only 1 field from where the secondary Hero will stand.
+    const mineSpace = spaceAtDistance(hero.spaceId!, 5);
+    const secondarySpace = spaceAtDistance(hero.spaceId!, 4); // distance 1 from the Mine
+    expect(hexDistance(parseHexSpaceId(mineSpace)!, parseHexSpaceId(secondarySpace)!)).toBe(1);
+    placeMine(state, mineSpace, "p2", "gold", 2);
+
+    // CONTROL: with no secondary Hero the main Hero cannot reach the Mine at
+    // Power 0, so the spell is not offered.
+    expect(viewEarthCasts(state)).toBe(0);
+
+    // Field the secondary Hero one field from the Mine.
+    state.heroes.hero_p1_secondary = {
+      ...hero,
+      id: "hero_p1_secondary",
+      kind: "secondary",
+      spaceId: secondarySpace
+    };
+
+    // Now the scry reaches the Mine (within 1 of the secondary Hero) and the
+    // spell is offered.
+    expect(viewEarthCasts(state)).toBe(1);
+
+    const p2ProdBefore = state.players.p2.production.gold;
+    state = play(state, "spell.view_earth", 0);
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "view-earth") {
+      throw new Error("expected a view-earth choice");
+    }
+    const mineIds = choice.viewEarth?.mineSpaceIds ?? [];
+    expect(mineIds).toEqual([mineSpace]);
+    // The distance label is measured from the NEAREST Hero (the secondary, 1 away).
+    expect(choice.options[0]?.label).toMatch(/Gold Mine \(1 field away\)/i);
+
+    state = choose(state, mineIds.indexOf(mineSpace));
+    expect(state.adventure!.fields[mineSpace].flagOwnerId).toBe("p1");
+    expect(state.players.p1.production.gold).toBeGreaterThan(0);
+    expect(state.players.p2.production.gold).toBe(p2ProdBefore - 2);
+  });
+
   it("the Cancel option leaves the enemy Mine untouched", () => {
     let state = withHand(makeGame(), ["spell.view_earth"]);
     const hero = heroP1(state);

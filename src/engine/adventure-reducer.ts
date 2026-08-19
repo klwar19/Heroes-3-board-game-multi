@@ -145,6 +145,7 @@ import {
   isBankStyleGuardLocation,
   isTeleportObjectGuardLocation,
   capturableEnemyMinesWithin,
+  viewEarthHeroOrigins,
   freeSpellBookActive,
   abilityRollRerollActive,
   gainExperience,
@@ -1927,8 +1928,10 @@ function resourceMineLabel(resource: ResourceKind | undefined): string {
  */
 export function openViewEarthChoice(state: GameState, playerId: PlayerId, range: number): void {
   const adventure = state.adventure;
-  const hero = getMainHero(state, playerId);
-  if (!adventure || !hero || !hero.spaceId) {
+  // The spell scries from either Hero, so anchor on the main Hero when it is on
+  // the map, otherwise the secondary one.
+  const anchor = getMainHero(state, playerId) ?? getSecondaryHero(state, playerId);
+  if (!adventure || !anchor) {
     return;
   }
 
@@ -1936,7 +1939,9 @@ export function openViewEarthChoice(state: GameState, playerId: PlayerId, range:
   if (mineSpaceIds.length === 0) {
     return;
   }
-  const origin = parseHexSpaceId(hero.spaceId);
+  // Measure each Mine's distance from whichever of the player's Heroes is
+  // NEAREST — the same origins the reach gate used.
+  const origins = viewEarthHeroOrigins(state, playerId);
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -1947,16 +1952,19 @@ export function openViewEarthChoice(state: GameState, playerId: PlayerId, range:
       ...mineSpaceIds.map((spaceId) => ({
         label: (() => {
           const coord = parseHexSpaceId(spaceId);
-          const distance = origin && coord ? hexDistance(origin, coord) : null;
+          const distance =
+            coord && origins.length > 0
+              ? Math.min(...origins.map((origin) => hexDistance(origin, coord)))
+              : null;
           return `Capture the ${resourceMineLabel(adventure.fields[spaceId]?.resource)} Mine${
-            distance ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : ""
+            distance !== null ? ` (${distance} field${distance === 1 ? "" : "s"} away)` : ""
           }`;
         })()
       })),
       { label: "Cancel (no capture)" }
     ],
     context: "view-earth",
-    viewEarth: { heroId: hero.id, mineSpaceIds },
+    viewEarth: { heroId: anchor.id, mineSpaceIds },
     returnPhase: "player-turn"
   };
   state.phase = "choice";

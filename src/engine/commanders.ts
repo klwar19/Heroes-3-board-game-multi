@@ -623,8 +623,13 @@ function commanderStanceRoundActive(state: GameState): boolean {
  * (folded into getAttackStackDetails). Positional / stance-based, not
  * attack-type-based, so it applies on the commander's own attacks AND its
  * retaliations. Two sources:
- *  - Vanguard Marshal (Cove Sea Marshal): +1 while the commander stands on its
- *    own FRONT LINE (a live position read — walking on/off it flips the bonus).
+ *  - The SORT-granting abilities (Vanguard Marshal — Cove Sea Marshal, Bulwark
+ *    Ruler, Little Busters Kyousuke — and the Marshal's War Horn equipment, the
+ *    same set that carries the +2 front-line Speed): +1 Attack while the
+ *    commander stands on its own FRONT LINE during combat ROUND 1 only (a live
+ *    position read — walking on/off it flips the bonus; from round 2 it is gone).
+ *    The Speed-grade sort unlock deliberately grants no combat bonus, mirroring
+ *    `commanderFrontLineSpeedBonusActive`.
  *  - Superior Combat (Shaman): the chosen +1 Attack stance, but ONLY during
  *    combat rounds 1-2 (from round 3 the stance is gone).
  * 0 for any non-commander unit.
@@ -638,7 +643,11 @@ export function commanderLiveAttackBonus(state: GameState, unit: CombatUnitState
     return 0;
   }
   let bonus = 0;
-  if (commanderIsVanguardMarshal(commander) && commanderOnOwnFrontLine(state, unit)) {
+  if (
+    commanderSortAbilitySource(state, unit.controllerId) &&
+    commanderOnOwnFrontLine(state, unit) &&
+    (state.combat?.round ?? 1) === 1
+  ) {
     bonus += 1;
   }
   if (

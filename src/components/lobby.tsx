@@ -216,14 +216,20 @@ export function LobbyScreen({
           <div className="lobbyCreateMode" role="radiogroup" aria-label="Table type">
             <button
               aria-checked={!createHosted}
-              className={`lobbyModeOption ${!createHosted ? "active" : ""}`}
+              // Ranked matches need seat identity for W/L reporting, so an open
+              // table cannot be ranked — grey the Open option out while Ranked
+              // is selected (Ranked already forces the closed table below).
+              className={`lobbyModeOption ${!createHosted ? "active" : ""} ${createRanked ? "disabled" : ""}`}
+              disabled={createRanked}
               onClick={() => setCreateHosted(false)}
               role="radio"
               type="button"
             >
               <Eye aria-hidden="true" size={14} />
               <span className="lobbyModeName">Open table</span>
-              <span className="lobbyModeHint">Anyone can pick any seat</span>
+              <span className="lobbyModeHint">
+                {createRanked ? "Ranked requires a closed table" : "Anyone can pick any seat"}
+              </span>
             </button>
             <button
               aria-checked={createHosted}
