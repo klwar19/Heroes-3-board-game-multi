@@ -8946,22 +8946,23 @@ export function processPendingVisit(state: GameState): void {
         break;
       }
       case "GAIN_MORALE": {
-        // Crest of Valor (map side): a held shield negates ONE negative-morale
-        // token from a Field. Multi-token fields (Warrior's Tomb = two negatives)
-        // must apply token-by-token so the shield only cancels a single token
-        // and the second still lands. Positive morale and combat-loss morale
-        // are untouched — only a Field's own negative token is ignored here.
+        // Crest of Valor (map side): a held shield negates the ENTIRE negative
+        // morale effect a Field would hand this player. The card reads "Ignore
+        // the negative morale effect from a field" — the whole effect, so a
+        // Warrior's Tomb (-2) is fully ignored (morale stays put), not merely
+        // one of its two tokens. One shield cancels one field's negative step.
+        // Positive morale and combat-loss morale are untouched.
+        if (step.amount < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
+          appendEvent(state, {
+            type: "FIELD_MORALE_IGNORED",
+            playerId: visit.playerId,
+            fieldId: visit.fieldId
+          });
+          break;
+        }
         const tokenDelta = step.amount > 0 ? 1 : -1;
         for (let i = 0; i < Math.abs(step.amount); i += 1) {
-          if (tokenDelta < 0 && consumeIgnoreFieldNegativeMorale(state, visit.playerId)) {
-            appendEvent(state, {
-              type: "FIELD_MORALE_IGNORED",
-              playerId: visit.playerId,
-              fieldId: visit.fieldId
-            });
-          } else {
-            changeMorale(state, visit.playerId, tokenDelta);
-          }
+          changeMorale(state, visit.playerId, tokenDelta);
         }
         break;
       }

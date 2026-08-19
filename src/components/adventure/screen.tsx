@@ -3090,20 +3090,52 @@ export function HexMapBoard({
           ? designedGuardPreview(destField)
           : null;
       const quickCombat = destField ? polishQuickCombatFieldInfo(state, myHero, destField) : null;
+      // Show the destination map object's effect BEFORE the player commits to
+      // moving there. Override/PvE-site hexes are reachable move targets now, so
+      // clicking them opens THIS float rather than the click-to-inspect card —
+      // without this the object's summary was no longer visible before moving.
+      const moveOverride = destField ? mapObjectPresentation(destField.location, adventure?.pveTheme) : null;
       mapFloats.push({
         key: "move-confirm-float",
         mapPoint: hexToPixel(coord, HEX_SIZE),
         cardWidth: 236,
         cardHeight:
-          (alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104) + (quickCombat ? 52 : 0),
+          (alteredGuard ? 148 + (alteredGuard.units.length > 0 ? 16 : 0) : 104) +
+          (quickCombat ? 52 : 0) +
+          (moveOverride ? 78 : 0),
         gap: HEX_SIZE * 0.62,
         render: () => (
           <div
             aria-label="Confirm movement"
-            className={`mapFloatCard moveConfirmFloat${alteredGuard ? " alteredGuardConfirm" : ""}`}
+            className={`mapFloatCard moveConfirmFloat${alteredGuard ? " alteredGuardConfirm" : ""}${
+              moveOverride ? " fieldOverrideInspectFloat" : ""
+            }`}
             onPointerDown={(event) => event.stopPropagation()}
             role="dialog"
           >
+            {moveOverride ? (
+              <>
+                <span className="fieldOverrideInspectHead">
+                  {moveOverride.image ? (
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="fieldOverrideInspectArt"
+                      src={assetUrl(moveOverride.image)}
+                    />
+                  ) : moveOverride.glyph ? (
+                    <span aria-hidden="true" className="fieldOverrideInspectGlyph">
+                      {moveOverride.glyph}
+                    </span>
+                  ) : null}
+                  <span className="fieldOverrideInspectName">
+                    {moveOverride.name}
+                    <span className="fieldOverrideInspectTag">{moveOverride.packageTag}</span>
+                  </span>
+                </span>
+                <span className="fieldOverrideInspectSummary">{moveOverride.summary}</span>
+              </>
+            ) : null}
             <span className="mapFloatLabel">
               <span aria-hidden="true">🐎</span> Move {cost} field{cost === 1 ? "" : "s"} ({cost} MP)
             </span>
@@ -4006,7 +4038,15 @@ export function TownHeroDock({
       )
     : undefined;
   const commanderGradeUps = commander?.gradePoints ?? 0;
-  const commanderArtifactsEnabled = Boolean(state.wog?.enabled && state.wog?.artifacts && state.wog?.commanders);
+  // The commander Equipment & Forge window is reachable whenever the Commanders
+  // module is on: the engine offers the Commander Forge and every reward/bind
+  // path gated ONLY on a commander existing (addCommanderMapActions /
+  // availableCommanderArtifactSpecs never check `wog.artifacts` — that flag only
+  // decides whether the artifact CARDS also join the shared decks). Requiring it
+  // here hid the "Open Equipment & Forge" button from Commanders-on / deck-off
+  // games even though the player could forge — the reported "no access". Align
+  // the surface with the engine so the window matches what is actually playable.
+  const commanderArtifactsEnabled = Boolean(state.wog?.enabled && state.wog?.commanders);
   const heldCommanderArtifacts = armyPlayer
     ? armyPlayer.hand
         .filter((cardId) => Boolean(COMMANDER_ARTIFACT_SPECS[cardId]))
@@ -7912,6 +7952,10 @@ export function PreBattlePanel({
   /** Opens the Town window so preparation shopping stays one click away. */
   onOpenTown?: () => void;
 }) {
+  // Collapse the (non-modal) prep window out of the way so the player can reach
+  // the board, town rail and hand tray to buy/equip before accepting. State only
+  // — the fight is unaffected; restoring shows the Accept button again.
+  const [minimized, setMinimized] = useState(false);
   const combat = state.combat;
   const prep = combat?.prep;
   if (!combat || !prep || combat.context.kind !== "player") {
@@ -7955,14 +7999,39 @@ export function PreBattlePanel({
   );
 
   return (
-    <div aria-label="Prepare for battle" aria-modal="false" className="preBattlePanel" role="dialog">
+    <div
+      aria-label="Prepare for battle"
+      aria-modal="false"
+      className={`preBattlePanel${minimized ? " minimized" : ""}`}
+      role="dialog"
+    >
       <div className="preBattleHeader">
         <Swords aria-hidden="true" size={16} />
         <strong>
           Battle! {attackerName} attacks {defenderName}
           {siege ? " (siege)" : ""}
         </strong>
+        <button
+          aria-expanded={!minimized}
+          aria-label={minimized ? "Restore the battle preparation window" : "Minimize the battle preparation window"}
+          className="preBattleMinimize"
+          onClick={() => setMinimized((value) => !value)}
+          title={
+            minimized
+              ? "Restore — show the Accept button again"
+              : "Minimize — buy or equip on the board, then restore to accept"
+          }
+          type="button"
+        >
+          {minimized ? <ChevronsUp aria-hidden="true" size={15} /> : <Minus aria-hidden="true" size={15} />}
+        </button>
       </div>
+      {minimized ? (
+        <small className="prepNote prepMinimizedHint">
+          Preparing — buy or equip, then restore to accept.
+        </small>
+      ) : (
+      <>
       <div className="prepReadyRow">
         {readyChip(attackerId, attackerName, "attacker")}
         {readyChip(defenderId, defenderName, "defender")}
@@ -8060,6 +8129,8 @@ export function PreBattlePanel({
         <small className="prepNote">
           {attackerName} and {defenderName} are preparing for battle on the map…
         </small>
+      )}
+      </>
       )}
     </div>
   );

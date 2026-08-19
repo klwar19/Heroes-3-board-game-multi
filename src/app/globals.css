@@ -8649,6 +8649,37 @@ button.hbSlot:disabled {
   font-size: 14px;
 }
 
+.preBattleMinimize {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(220, 190, 130, 0.5);
+  background: rgba(40, 28, 16, 0.6);
+  color: #f1d9a8;
+  cursor: pointer;
+}
+
+.preBattleMinimize:hover {
+  background: rgba(70, 50, 26, 0.75);
+}
+
+/* Collapsed: keep only the title bar + a one-line hint, out of the way of the
+   board, town rail and hand tray so shopping/equipping stays reachable. */
+.preBattlePanel.minimized {
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
+  gap: 4px;
+}
+
+.prepMinimizedHint {
+  font-size: 11px;
+}
+
 .prepReadyRow {
   display: flex;
   flex-wrap: wrap;
@@ -37394,6 +37425,17 @@ details.mapPresetGroup > summary::-webkit-details-marker {
     overflow: auto;
     transform: translateX(-50%);
     animation: preBattleNoticePop 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+
+  /* Minimized: tuck the title bar into the top-right so the centered board,
+     the left town rail and the bottom hand tray are all reachable for
+     buying/equipping before the fight. */
+  .adventureRoot:not(.phoneMode) > .preBattlePanel.minimized {
+    width: max-content;
+    max-width: min(420px, calc(100vw - 32px));
+    left: auto;
+    right: var(--desktop-edge);
+    transform: none;
   }
 
   @media (prefers-reduced-motion: reduce) {

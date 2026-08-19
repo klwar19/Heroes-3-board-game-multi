@@ -2556,6 +2556,10 @@ export const COMMAND_ACTION_TYPES = new Set<GameAction["type"]>([
   "SURRENDER_COMBAT",
   "RETREAT_FROM_COMBAT",
   "GIVE_UP_COMBAT",
+  // PvP anti-Little-Busters counters: three optional pay-1-gold effects a
+  // fighter facing a Little Busters seat may spend during the fight. Each
+  // renders as a labelled command button (legal-actions carries the label).
+  "LITTLE_BUSTERS_COUNTER",
   "ACKNOWLEDGE_COMBAT_END",
   // After-combat Necromancy is a now-or-never window: the player either plays the
   // ability from hand or clicks this Skip button (the field reward is withheld

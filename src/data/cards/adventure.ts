@@ -4629,16 +4629,16 @@ export const adventureCards: CardLibrary = {
       "instant",
       "sephinroth",
       "valuables",
-      "Pay 2 gold to gain 1 valuables. — OR — Draw 1 card."
+      "Pay 1 gold to gain 1 valuables. — OR — Draw 1 card."
     ],
     target: { type: "none" },
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Pay 2 gold to gain 1 valuables",
+          label: "Pay 1 gold to gain 1 valuables",
           mapOnly: true,
-          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 }, goldCost: 2 }
+          effect: { type: "GAIN_RESOURCES", gain: { valuables: 1 }, goldCost: 1 }
         },
         {
           label: "Draw 1 card",

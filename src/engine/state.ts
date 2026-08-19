@@ -3913,6 +3913,18 @@ export type GameAction =
     }
   | {
       /**
+       * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
+       * pays 1 gold for one of three effects — the LB seat discards a random hand
+       * card ("discard"), the LB campus hero unit takes 3 effect damage ("damage"),
+       * or the spender draws a card ("draw"). Each is offered once per combat.
+       * Handler-validated (self-validating; no window opens).
+       */
+      type: "LITTLE_BUSTERS_COUNTER";
+      playerId: PlayerId;
+      counter: "discard" | "damage" | "draw";
+    }
+  | {
+      /**
        * Anime Hero Grades: spend one unspent grade point to pick a tree node
        * (one node per tier, tier ≤ current grade). Handler-validated
        * (self-validating; the node is baked into the action, so no window opens).
@@ -9155,6 +9167,14 @@ export type CombatState = {
   mgqSpirits?: Partial<Record<PlayerId, MgqSpirit>>;
   /** MGQ heroes who paid this combat's mandatory 1-card Spirit summon cost. */
   mgqSpiritCostPaidPlayerIds?: PlayerId[];
+  /**
+   * PvP anti-Little-Busters counters (see little-busters-counters.ts): the
+   * per-player list of pay-1-gold counters already spent this combat, so each
+   * ("discard" / "damage" / "draw") is offered at most once per fighter per fight.
+   */
+  littleBustersCountersUsed?: Partial<Record<PlayerId, string[]>>;
+  /** Opponents of an MGQ fighter who already took this combat's free battle-start draw. */
+  mgqOpponentBattleStartDrawDone?: PlayerId[];
   /** Swift Host owners whose +1 Initiative was folded at combat start. */
   heroGradeInitiativeAppliedFor?: PlayerId[];
   /**

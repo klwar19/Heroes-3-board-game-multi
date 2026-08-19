@@ -430,6 +430,7 @@ import {
   reshuffleSharedDeckIfEmpty,
   shuffleCards
 } from "./decks";
+import { applyLittleBustersCounter } from "./little-busters-counters";
 import { maybeReturnFirstSpellToHand, noteMapSpellCast } from "./spell-lifecycle";
 import {
   cancelSpellAllowsSchoolAndLevel,
@@ -24912,6 +24913,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_ARTIFACT_SET_POWER":
         applyArtifactSetPower(nextState, action, cards);
+        break;
+      case "LITTLE_BUSTERS_COUNTER":
+        applyLittleBustersCounter(nextState, action);
         break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);

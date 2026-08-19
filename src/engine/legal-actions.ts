@@ -257,6 +257,7 @@ import {
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
+import { availableLittleBustersCounters } from "./little-busters-counters";
 import {
   polishArmyUnitCanBuyStack,
   polishArmyUnitStackCost,
@@ -11866,6 +11867,15 @@ function getCombatInteractionActions(
       // once-per-combat buffs / debuffs / zaps). All OPTIONAL — nothing is ever
       // forced, so ignoring every offer can never stall a seat. No-op when off.
       addArtifactSetActions(actions, state, playerId);
+      // PvP anti-Little-Busters counters: a fighter facing a Little Busters seat
+      // may spend 1 gold on each of three one-off effects this combat. Optional;
+      // no-op in every other fight. Same shared read the handler re-validates.
+      for (const offer of availableLittleBustersCounters(state, playerId)) {
+        actions.push({
+          label: offer.label,
+          action: { type: "LITTLE_BUSTERS_COUNTER", playerId, counter: offer.counter }
+        });
+      }
       addPvpEscapeActions(actions, state, playerId);
       // Give up (concede) is available throughout the fight, not just the
       // start-of-combat escape window.

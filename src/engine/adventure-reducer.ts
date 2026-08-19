@@ -10372,6 +10372,10 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // war-machine round, so a charmed/fled defender never soaks a Ballista shot.
   applyCommanderCombatStart(state);
   applyMgqHeroCombatStart(state);
+  // PvP (USER RULE): a fighter facing a Monster Girl Quest seat draws 1 card at
+  // battle start — the campus's monster lore tips the opponent off. One-time,
+  // opponents-of-MGQ only, PvP fights only.
+  applyMgqOpponentBattleStartDraw(state);
   // Forced Battle Events (Anime mod, §3.12): a fought field's combat-start
   // script events (environment mist, an obstacle formation, an opening pulse)
   // settle LAST — after the commander package, before the first war-machine
@@ -10384,6 +10388,28 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
     return;
   }
   startWarMachineRound(state);
+}
+
+/**
+ * PvP anti-Monster-Girl-Quest battle-start draw (USER RULE): the OPPONENT of a
+ * Monster Girl Quest fighter draws 1 card as the battle begins. One-time per
+ * combat per opponent (guarded by `combat.mgqOpponentBattleStartDrawDone` so a
+ * re-entry into the combat-start package never double-draws), PvP fights only,
+ * and only the non-MGQ side benefits (in an MGQ mirror both sides draw). The
+ * MGQ seat itself never draws from this.
+ */
+function applyMgqOpponentBattleStartDraw(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.context.kind !== "player") return;
+  const done = combat.mgqOpponentBattleStartDrawDone ?? [];
+  for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
+    if (playerId === NEUTRAL_PLAYER_ID || done.includes(playerId)) continue;
+    const opponentId = playerId === combat.attackerPlayerId ? combat.defenderPlayerId : combat.attackerPlayerId;
+    if (state.players[opponentId]?.factionId !== "mgq") continue;
+    drawCardsForPlayer(state, playerId, 1);
+    done.push(playerId);
+  }
+  combat.mgqOpponentBattleStartDrawDone = done;
 }
 
 /**

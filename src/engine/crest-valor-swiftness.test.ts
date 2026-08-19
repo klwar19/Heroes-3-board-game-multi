@@ -172,10 +172,11 @@ describe("Crest of Valor", () => {
     expect(consumeIgnoreFieldNegativeMorale(positive, "p1")).toBe(false);
   });
 
-  it("Warrior's Tomb (-2): the shield cancels only ONE of the two negative tokens", () => {
-    // Previously a single GAIN_MORALE amount:-2 step let Crest ignore the whole
-    // field effect (both tokens). Token-by-token application leaves the second
-    // negative to land — from neutral that is 0 → (ignore first) stay 0 → -1.
+  it("Warrior's Tomb (-2): the shield ignores the WHOLE field morale effect", () => {
+    // The card reads "Ignore the negative morale effect from a field" — the
+    // whole effect, so a Warrior's Tomb (-2) leaves morale untouched (from
+    // neutral, stays 0), spending one shield and logging one ignore. Regression
+    // guard for the user report "after visiting tomb I still got -1 morale".
     const state = valorAdventure("valor-tomb");
     const play = findPlay(state, "p1", "artifact.crest_of_valor", 1);
     const armed = applyOk(state, play!);
@@ -184,7 +185,7 @@ describe("Crest of Valor", () => {
     queueFieldMorale(armed, -2);
     processPendingVisit(armed);
 
-    expect(armed.players.p1.morale).toBe(-1);
+    expect(armed.players.p1.morale).toBe(0);
     expect(armed.players.p1.discardHandAtTurnEnd ?? false).toBe(false);
     expect(armed.eventLog.filter((event) => event.type === "FIELD_MORALE_IGNORED")).toHaveLength(1);
     expect(

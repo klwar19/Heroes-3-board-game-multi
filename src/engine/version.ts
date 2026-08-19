@@ -436,7 +436,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // plantedBy/plantedRound, fieldClaimedBy, fieldRoundClaims, wogFishingStreaks,
 // wogWellDry; player: uraharaDebt, pendingCombatAttackBoost), so legacy
 // snapshots read as before. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 41;
+//
+// v41 -> v42 (2026-08-19): two faction-specific PvP rules add server-side
+// behaviour a v41 edge lacks — a fighter facing a Little Busters seat gets the
+// three pay-1-gold combat counters (the NEW `LITTLE_BUSTERS_COUNTER` action a
+// v41 edge would REJECT), and the opponent of a Monster Girl Quest seat draws 1
+// card at battle start (a combat-start effect a v41 edge never runs). Also the
+// Crest of Valor map side now ignores a Field's WHOLE negative-morale effect
+// (Warrior's Tomb -2 -> 0, not -1). Persisted additions are optional/additive
+// (combat: littleBustersCountersUsed, mgqOpponentBattleStartDrawDone), so legacy
+// snapshots read as before. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 42;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

@@ -623,7 +623,7 @@ describe("Tarnum (Dungeon)'s Dragons specialty", () => {
 // ===========================================================================
 
 describe("Sephinroth's Valuables specialty", () => {
-  it("I option A pays 2 gold to gain 1 valuables on the map; hidden when unaffordable", () => {
+  it("I option A pays 1 gold to gain 1 valuables on the map; hidden when unaffordable", () => {
     const state = adventureFor("seph-1", "sephinroth", "dungeon");
     state.players.p1.hand = ["specialty.sephinroth.1"];
     state.players.p1.resources.gold = 5;
@@ -631,12 +631,12 @@ describe("Sephinroth's Valuables specialty", () => {
     const play = findPlay(state, "specialty.sephinroth.1", 0);
     expect(play, "the pay-gold option is offered with enough gold").toBeTruthy();
     const after = applyOk(state, play!.action);
-    expect(after.players.p1.resources.gold, "2 gold spent").toBe(3);
+    expect(after.players.p1.resources.gold, "1 gold spent").toBe(4);
     expect(after.players.p1.resources.valuables, "1 valuables gained").toBe(1);
 
     const broke = adventureFor("seph-1-broke", "sephinroth", "dungeon");
     broke.players.p1.hand = ["specialty.sephinroth.1"];
-    broke.players.p1.resources.gold = 1; // < 2
+    broke.players.p1.resources.gold = 0; // < 1
     expect(findPlay(broke, "specialty.sephinroth.1", 0), "pay-gold hidden when too poor").toBeFalsy();
   });
 
