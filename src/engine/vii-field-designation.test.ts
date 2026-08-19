@@ -349,7 +349,13 @@ describe("Ⅶ designation — face-down center slot", () => {
     // token) — only the designation set is secret.
   });
 
-  it("balances hidden Grail/Utopia pairs across editor-authored positions", () => {
+  // USER RULE 2026-08-19: a Grail/Utopia MYSTERY PAIR is a GRAIL at setup —
+  // never a pre-assigned Utopia. The extras turn into Utopias only when a Grail
+  // is TAKEN (the existing dig conversion). This superseded the "balanced pool"
+  // (2 Grails + 2 Utopias) AND the face-up position-hash pick, whose
+  // seed-independent hash could leave a whole map with NO Grail (reported:
+  // "one map with 3 such fields — ALL 3 were Utopias").
+  it("every hidden Grail/Utopia mystery pair resolves to a GRAIL at setup", () => {
     const pairedPlan = (row: number, col: number): CustomMapTilePlan => ({
       row,
       col,
@@ -357,42 +363,90 @@ describe("Ⅶ designation — face-down center slot", () => {
       faceDown: true,
       viiFields: ["grail", "dragon_utopia"]
     });
-    const countsFor = (seed: string, count: 3 | 4) => {
-      const positions = [
-        [24, 20],
-        [24, 30],
-        [34, 20],
-        [34, 30]
-      ].slice(0, count);
-      const state = createAdventureGameState({
-        seed,
-        difficulty: "normal",
-        rollFirstPlayer: false,
-        victoryMode: "conquest",
-        customMap: [
-          ...startPlans(),
-          ...positions.map(([row, col]) => pairedPlan(row, col))
-        ],
-        customMapPreset: { objectives: { hiddenGrailUtopia: true } }
-      });
-      const designated = Object.values(state.adventure!.tiles)
-        .filter((tile) => tile.group === "center")
-        .map((tile) => tile.viiField);
-      return {
-        grail: designated.filter((entry) => entry === "grail").length,
-        utopia: designated.filter((entry) => entry === "dragon_utopia").length
-      };
-    };
-
-    expect(countsFor("designer-balanced-four", 4)).toEqual({ grail: 2, utopia: 2 });
-    const threeSplits = new Set<string>();
-    for (let index = 0; index < 12; index += 1) {
-      const counts = countsFor(`designer-balanced-three-${index}`, 3);
-      expect(counts.grail + counts.utopia).toBe(3);
-      expect([1, 2]).toContain(counts.grail);
-      threeSplits.add(`${counts.grail}:${counts.utopia}`);
+    const positions = [
+      [24, 20],
+      [24, 30],
+      [34, 20],
+      [34, 30]
+    ];
+    for (const count of [3, 4] as const) {
+      for (let index = 0; index < 6; index += 1) {
+        const state = createAdventureGameState({
+          seed: `designer-all-grail-${count}-${index}`,
+          difficulty: "normal",
+          rollFirstPlayer: false,
+          victoryMode: "conquest",
+          customMap: [
+            ...startPlans(),
+            ...positions.slice(0, count).map(([row, col]) => pairedPlan(row, col))
+          ],
+          customMapPreset: { objectives: { hiddenGrailUtopia: true } }
+        });
+        const designated = Object.values(state.adventure!.tiles)
+          .filter((tile) => tile.group === "center")
+          .map((tile) => tile.viiField);
+        expect(designated, `${count} pairs, seed ${index}`).toEqual(
+          Array.from({ length: count }, () => "grail")
+        );
+      }
     }
-    expect(threeSplits).toEqual(new Set(["1:2", "2:1"]));
+  });
+
+  it("a FACE-UP pinned mystery pair resolves to a GRAIL too (the old position hash picked Utopia)", () => {
+    // Row/col chosen so the old |row·31 + col·17| % 2 hash lands on index 1
+    // (dragon_utopia) — this test fails if the hash pick comes back.
+    const state = createAdventureGameState({
+      seed: "faceup-pair-grail",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        {
+          row: 3,
+          col: 12,
+          group: "center",
+          faceDown: false,
+          tileDefId: "C1",
+          viiFields: ["grail", "dragon_utopia"]
+        }
+      ]
+    });
+    const tile = Object.values(state.adventure!.tiles).find((entry) => entry.group === "center")!;
+    expect(tile.viiField).toBe("grail");
+    const objective = Object.values(state.adventure!.fields).find(
+      (field) => field.tileInstanceId === tile.id && field.difficulty === 7
+    );
+    expect(objective?.location).toBe("grail");
+  });
+
+  it("CONTROL: an explicit Utopia designation and the reveal-time player pick are untouched", () => {
+    const state = createAdventureGameState({
+      seed: "pair-rule-controls",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      victoryMode: "conquest",
+      customMap: [
+        ...startPlans(),
+        // Explicit single designation: the designer MAY still author a Utopia.
+        { row: 24, col: 20, group: "center", faceDown: true, viiField: "dragon_utopia" },
+        // Player pick on reveal: the pair stays a pair for the player to answer.
+        {
+          row: 34,
+          col: 30,
+          group: "center",
+          faceDown: true,
+          viiFields: ["grail", "dragon_utopia"],
+          playerViiPick: true
+        }
+      ]
+    });
+    const centers = Object.values(state.adventure!.tiles).filter((tile) => tile.group === "center");
+    const explicit = centers.find((tile) => tile.viiField === "dragon_utopia");
+    expect(explicit, "an authored Utopia stays a Utopia").toBeDefined();
+    const pick = centers.find((tile) => tile.playerViiPick);
+    expect(pick?.viiFields).toEqual(["grail", "dragon_utopia"]);
+    expect(pick?.viiField).toBeUndefined();
   });
 
   it("CONTROL: a face-down center pinned to a Utopia tile keeps the Utopia when NOT designated", () => {
@@ -418,16 +472,18 @@ describe("Ⅶ designation — face-down center slot", () => {
 // 2b. An UNPINNED Ⅶ slot's designation must land on a tile that PRINTS it.
 //
 // REPORTED BUG 2026-08-09, verbatim: "2nd tile - Grail - was mix of utopia and
-// grail". The hidden Grail & Dragon Utopia package assigns a balanced 2 Grails +
-// 2 Utopias across the paired face-down centre slots, but each slot used to draw
-// an ARBITRARY centre tile: a "grail" slot could land on C1 (which PRINTS a
-// Dragon Utopia) or on &C1 (an Airship Yard). materializeTileFields then forced
-// the FIELD to the designation while the board still showed the printed tile —
-// the hex pictured a Dragon Utopia / Airship Yard and acted as a Grail, and the
-// rotation preview (which draws the printed field def) said the same. One tile,
-// two identities. A slot that carries the designation now draws a tile whose own
-// printed Ⅶ objective IS that designation whenever the pool still holds one, so
-// art, printed field, guards and rewards all agree.
+// grail". A designated slot used to draw an ARBITRARY centre tile: a "grail"
+// slot could land on C1 (which PRINTS a Dragon Utopia) or on &C1 (an Airship
+// Yard). materializeTileFields then forced the FIELD to the designation while
+// the board still showed the printed tile — one tile, two identities. A slot
+// that carries the designation now draws a tile whose own printed Ⅶ objective
+// IS that designation whenever the pool still holds one.
+//
+// USER RULE 2026-08-19 amends the mystery-pair half: every pair is a GRAIL at
+// setup, and the shipped catalog prints only TWO Grail centre tiles — so pairs
+// beyond those two draw a Dragon-Utopia-printing tile instead (that hex really
+// becomes a Utopia the moment the Grail is dug, so the art agrees from then on;
+// pre-dig the field is FORCED to the Grail).
 // ---------------------------------------------------------------------------
 describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its objective", () => {
   /** The four centre slots of the reported map: 4 paired mystery Ⅶ objectives. */
@@ -463,34 +519,33 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
     return allTileDefinitions[tileDefId]?.fields.find((field) => field.difficulty === 7)?.location;
   }
 
-  it("the hidden package's 2 Grails + 2 Utopias each sit on a tile that prints that objective", () => {
+  it("four mystery pairs are ALL Grails, drawn onto Grail-printing tiles first, then Utopia-printing ones", () => {
     for (const seed of ["mystery-a", "mystery-b", "mystery-c", "mystery-d"]) {
       const state = mysteryGame(seed);
       const centers = Object.values(state.adventure!.tiles).filter((tile) => tile.group === "center");
       expect(centers).toHaveLength(4);
-      const designations = centers.map((tile) => tile.viiField);
-      // The balanced pool contract: four paired slots = 2 Grails + 2 Utopias.
-      expect(designations.filter((entry) => entry === "grail")).toHaveLength(2);
-      expect(designations.filter((entry) => entry === "dragon_utopia")).toHaveLength(2);
+      // USER RULE 2026-08-19: no pre-assigned Utopia — all four are Grails.
+      expect(centers.map((tile) => tile.viiField)).toEqual(["grail", "grail", "grail", "grail"]);
+
+      // The shipped catalog prints only two Grail centre tiles, so two slots sit
+      // on them and the remaining two prefer Dragon-Utopia-printing tiles (those
+      // hexes BECOME Utopias once the Grail is dug, so the art agrees then).
+      const printedKinds = centers.map((tile) => printedVii(tile.tileDefId)).sort();
+      expect(printedKinds).toEqual(["dragon_utopia", "dragon_utopia", "grail", "grail"]);
 
       for (const tile of centers) {
-        expect(
-          printedVii(tile.tileDefId),
-          `${seed}: tile ${tile.tileDefId} designated ${tile.viiField} must PRINT that objective`
-        ).toBe(tile.viiField);
-        // …and materializing is then a pure no-op override: the live field agrees
-        // with both the designation and the printed tile.
+        // Materializing FORCES every objective field to the Grail designation.
         tile.faceDown = false;
         materializeTileFields(state.adventure!, tile);
         const objective = Object.values(state.adventure!.fields).find(
           (field) => field.tileInstanceId === tile.id && field.difficulty === 7
         );
-        expect(objective?.location).toBe(tile.viiField);
+        expect(objective?.location, `${seed}: ${tile.tileDefId}`).toBe("grail");
       }
     }
   });
 
-  it("a designated Grail really fights and pays as a Grail (no Utopia guards, no artifacts)", () => {
+  it("mystery Grails fight/pay as Grails; TAKING the Grail turns the rest into paying Utopias", () => {
     const state = mysteryGame("mystery-behaviour");
     for (const tile of Object.values(state.adventure!.tiles)) {
       if (tile.faceDown) {
@@ -499,10 +554,7 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
       }
     }
     const objectives = Object.values(state.adventure!.fields).filter((field) => field.difficulty === 7);
-    const grails = objectives.filter((field) => field.location === "grail");
-    const utopias = objectives.filter((field) => field.location === "dragon_utopia");
-    expect(grails).toHaveLength(2);
-    expect(utopias).toHaveLength(2);
+    expect(objectives.map((field) => field.location)).toEqual(["grail", "grail", "grail", "grail"]);
 
     const hero = getMainHero(state, "p1")!;
     const artifactSearches = () =>
@@ -510,9 +562,9 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
         (reward) => reward.kind === "shared-deck-search" && String(reward.deckId).startsWith("artifact")
       ).length;
 
-    // A Grail: plain Ⅶ neutral guards (the Utopia draw appends a Black Dragon),
-    // no artifact ladder, and the dig is armed.
-    const grail = grails[0];
+    // Pre-dig, EVERY mystery field is a real Grail: plain Ⅶ neutral guards (the
+    // Utopia draw appends a Black Dragon), no artifact ladder, the dig armed.
+    const grail = objectives[0];
     expect(
       drawGuardArmy(state, grail, 7).some((draw) => draw.unitDefId === "neutral.black_dragons")
     ).toBe(false);
@@ -522,8 +574,22 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
     expect(artifactSearches(), "a Grail field pays NO artifacts").toBe(searchesBefore);
     expect(grail.grailDiggable).toBe(true);
 
-    // CONTROL: the Utopia on the same map pays its full package and never digs.
-    const utopia = utopias[0];
+    // TAKE the Grail (the package waives the Obelisk count): the moment it is
+    // dug, every OTHER mystery field converts into a Dragon Utopia — the dug
+    // site never turns.
+    beginFieldVisit(state, hero.id, grail.spaceId, true);
+    expect(state.adventure!.grail?.status).toBe("carried");
+    expect(grail.location).toBe("grail");
+    const converted = objectives.filter((field) => field !== grail);
+    for (const field of converted) {
+      expect(field.location).toBe("dragon_utopia");
+      expect(field.grailConverted).toBe(true);
+      expect(field.grailDiggable ?? false).toBe(false);
+    }
+
+    // A converted field now fights as a Utopia (Black Dragon appended) and pays
+    // exactly ONE Utopia bundle: two Artifact Searches, no dig.
+    const utopia = converted[0];
     expect(
       drawGuardArmy(state, utopia, 7).some((draw) => draw.unitDefId === "neutral.black_dragons")
     ).toBe(true);
@@ -531,6 +597,9 @@ describe("Ⅶ designation — an unpinned slot draws a tile that PRINTS its obje
     beginFieldVisit(state, hero.id, utopia.spaceId, false);
     expect(artifactSearches()).toBe(searchesBefore + 2);
     expect(utopia.grailDiggable ?? false).toBe(false);
+    // …and a re-visit re-pays NOTHING (the reported "searches twice" class).
+    beginFieldVisit(state, hero.id, utopia.spaceId, false);
+    expect(artifactSearches(), "one clear pays once — never twice").toBe(searchesBefore + 2);
   });
 
   it("SCOPE: a FACE-UP slot always names its own tile, so nothing there is swapped", () => {

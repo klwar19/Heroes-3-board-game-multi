@@ -6,8 +6,10 @@ import {
   instantiateTile,
   materializeTileFields
 } from "./adventure";
+import { finalizeAdventureCombat } from "./adventure-reducer";
 import { createAdventureGameState } from "./adventure-setup";
-import type { GameState, MapFieldState } from "./state";
+import { applyAction } from "./index";
+import type { CombatState, GameState, MapFieldState } from "./state";
 
 // Grail-to-Utopia rules, pinned below on BOTH surfaces (the `polish-grail-utopia`
 // house rule and the map-editor `hiddenGrailUtopia` package) plus the designer
@@ -15,7 +17,9 @@ import type { GameState, MapFieldState } from "./state";
 //   1. conversion fires at the DIG, never when a Grail's guards merely fall;
 //   2. the dug field NEVER converts;
 //   3. a converted field is a real Ⅶ fight paying the normal Utopia bundle;
-//   4. its Artifact payout is exactly three cards: Search 3, Search 5, Search 5.
+//   4. its Artifact payout is exactly the Ⅶ FIELD ladder: two Search (3) — two
+//      Artifact cards (user-confirmed 2026-08-19: "current is right") — paid
+//      ONCE, including through the real combat finalize + Necromancy window.
 // The Creature-Bank `dragon_utopia` TOKEN is a different code path and is covered
 // by creature-bank-guards / creature-banks tests.
 
@@ -286,6 +290,76 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       expect(freshParts.extra.blackCube).toBe(false);
     });
   }
+
+  // REPORTED 2026-08-19: "the Grail field that changed to a Utopia gives too big
+  // a reward — I believe it searches twice all the searches". This pins the LIVE
+  // path (real combat finalize → atomic Necromancy window → deferred field
+  // visit) paying the bundle exactly ONCE, and a repeat finalize/visit on the
+  // same field paying NOTHING.
+  it("a converted Utopia cleared through the REAL combat finalize pays ONE bundle — never twice", () => {
+    const state = editorGame("finalize-single-pay");
+    // The NECROPOLIS seat wins holding Necromancy, so the (faction-gated)
+    // deferred-reward window really opens.
+    state.players.p2.hand = ["ability.necromancy"];
+    state.players.p2.army = [{ id: "army_skel", unitDefId: "necropolis.skeletons", side: "few" }];
+    const { dug, extra } = twoGrails(state, "finalize");
+    const hero = getMainHero(state, "p2")!;
+    hero.spaceId = dug.spaceId;
+    fightAndDig(state, hero.id, dug.spaceId);
+    expect(extra.location).toBe("dragon_utopia");
+
+    const goldBefore = state.players.p2.resources.gold;
+    const searchesBefore = artifactSearches(state).length;
+    const choicesBefore = tokenChoices(state);
+    hero.spaceId = extra.spaceId;
+    state.activePlayerId = "p2";
+    state.phase = "player-turn";
+    const wonCombat = () =>
+      ({
+        context: {
+          kind: "neutral",
+          heroId: hero.id,
+          fieldId: extra.spaceId,
+          difficulty: 7,
+          hasAzure: true
+        },
+        outcome: {
+          winnerPlayerId: "p2",
+          defeatedPlayerId: "neutral",
+          reason: "all-enemy-units-defeated"
+        },
+        endAcknowledged: true,
+        units: {}
+      }) as unknown as CombatState;
+    state.combat = wonCombat();
+    finalizeAdventureCombat(state);
+
+    // The reward is withheld WHOLE behind the atomic Necromancy window…
+    expect(state.adventure!.pendingNecromancy?.playerId).toBe("p2");
+    expect(state.players.p2.resources.gold).toBe(goldBefore);
+    expect(artifactSearches(state).length).toBe(searchesBefore);
+
+    // …and Resolve pays it exactly once: 20 gold + two Search (3) + one token pick.
+    const resolved = applyAction(state, { type: "SKIP_NECROMANCY", playerId: "p2" });
+    expect(resolved.errors.map((error) => error.message).join("; ")).toBe("");
+    Object.assign(state, resolved.state);
+    expect(state.players.p2.resources.gold).toBe(goldBefore + 20);
+    expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 3]);
+    expect(tokenChoices(state)).toBe(choicesBefore + 1);
+    expect(state.adventure!.fields[extra.spaceId].blackCube).toBe(true);
+
+    // A repeat finalize on the same field (the "twice" class) pays NOTHING.
+    state.combat = wonCombat();
+    finalizeAdventureCombat(state);
+    if (state.adventure!.pendingNecromancy) {
+      const again = applyAction(state, { type: "SKIP_NECROMANCY", playerId: "p2" });
+      Object.assign(state, again.state);
+    }
+    beginFieldVisit(state, hero.id, extra.spaceId, false);
+    expect(state.players.p2.resources.gold).toBe(goldBefore + 20);
+    expect(artifactSearches(state).slice(searchesBefore)).toEqual([3, 3]);
+    expect(tokenChoices(state)).toBe(choicesBefore + 1);
+  });
 
   it("re-materializing the DUG field's own tile leaves it a spent Grail", () => {
     // Rule 2 is enforced by field id, so even a rotation-driven re-materialize of

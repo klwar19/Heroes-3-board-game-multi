@@ -1272,6 +1272,33 @@ LIMITS: `grailAsUtopia: "always"` is a LEGACY ALIAS of `after-dig-utopia` and sw
 guards before a dig; a converted site never feeds the `defeat-dragon-utopia` VP
 objective, the Dragon-Hunt win or a Dragon-Conqueror capture.
 
+### Designer "random Ⅶ field" mystery pairs are ALL GRAILS at setup (2026-08-19)
+
+USER RULE: an editor-authored Grail/Dragon-Utopia MYSTERY PAIR
+(`viiFields: ["grail","dragon_utopia"]`, no `playerViiPick`) resolves to a **GRAIL**
+at setup — the game never pre-assigns a Utopia, so a map with N mystery fields
+ALWAYS holds a diggable Grail; the extras become Dragon Utopias only when a Grail
+is TAKEN (the existing dig conversion above). ONE rule
+(`planResolvesGrailUtopiaPair` / `isHiddenGrailUtopiaPair`, adventure-setup.ts)
+covers BOTH former resolution seams, each a reported bug: the seeded "balanced
+pool" (2 Grails + 2 Utopias pre-assigned) and `applyDesignedViiField`'s face-up
+position hash (|row·31+col·17| % 2 — SEED-INDEPENDENT, so a map's every pair could
+land Utopia: "3 such fields, ALL 3 were Utopias, no Grail in the map"). Tile draw:
+the shipped catalog prints only TWO Grail centre tiles (C2/C4), so pairs beyond
+those draw a Dragon-Utopia-PRINTING tile (the field is forced to Grail pre-dig and
+that hex genuinely becomes a Utopia at the dig — `designationCenterTile`'s
+mystery-pair fallback). Pinned in `vii-field-designation.test.ts` (all-grail,
+face-up hash CONTROL, explicit-Utopia + playerViiPick CONTROLs, the dig-converts
+end-to-end) and `grail-converted-utopia.test.ts` ("REAL combat finalize pays ONE
+bundle — never twice": finalize → atomic Necromancy → deferred visit pays 20 gold
++ two Search (3) + one token pick exactly once; a repeat finalize/visit pays
+NOTHING — the reported "searches twice" class).
+LIMITS: `playerViiPick` (face-down) still lets the revealing player deliberately
+pick the Utopia; an explicit single `viiField: "dragon_utopia"` designation is an
+authored Utopia and stays one; other multi-sets (e.g. town/settlement mixes) keep
+the deterministic position-hash pick; server-built setup, so
+`npm run deploy:partykit` is owed for live tables.
+
 ## A Subterranean Gate crossing SLIPS PAST the far guard — it never clears it (2026-08-07)
 
 USER RULE: travelling through the gate means no combat on the other side, but staying
