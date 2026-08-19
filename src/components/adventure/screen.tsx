@@ -146,7 +146,7 @@ import {
   whirlpoolTokenImage
 } from "@/data/assets/homm-assets";
 import { fieldOverrideGlyph, fieldOverrideImage } from "@/data/map/field-overrides";
-import { fieldOverridePresentation } from "@/data/map/field-override-presentation";
+import { fieldOverridePresentation, mapObjectPresentation } from "@/data/map/field-override-presentation";
 // Side-effect: register Anime + Wake of Gods Field Override kinds into the global
 // catalog, so their names/summaries/glyphs resolve for the board tooltip + inspect.
 import "@/data/anime/field-overrides";
@@ -156,6 +156,7 @@ import { CommanderCard, CommanderLevelUpOverlay } from "@/components/commander-c
 import { EquipGradeChip, tierToGrade } from "@/components/equip-grade-chip";
 import { commanderDefinitions, commanderReviveCost, type CommanderSlug } from "@/data/commanders";
 import { COMMANDER_ARTIFACT_SPECS, COMMANDER_ARTIFACT_SPEC_LIST } from "@/data/wog/commander-artifacts";
+import { getEquipmentDefinition, equipmentImage } from "@/data/anime/equipment";
 import { UNIT_RANK_THRESHOLDS, unitRankBadgeImage } from "@/data/units/experience";
 import { factionUiLexicon } from "@/data/faction-theme";
 import { CARD_BACK_IMAGES, getDeckBack } from "@/data/decks";
@@ -1823,10 +1824,13 @@ export function HexMapBoard({
       // glyph so an art-less carve is a visible hex in icon mode (art wins once
       // it ships — fieldOverrideGlyph returns undefined then).
       const glyph = LOCATION_GLYPHS[field.location] ?? fieldOverrideGlyph(field.location) ?? "";
-      // Field Override (WOG / anime) hex: resolve its name + printed summary from
-      // the registry so the hover tooltip and the click-to-inspect float can tell
-      // the player what visiting does — data-driven, so every kind is covered.
-      const overrideInfo = fieldOverridePresentation(field.location);
+      // Field Override (WOG / anime) hex OR a PvE-module site (Calamity Gate /
+      // Rift Lair / The Dungeon): resolve its name + printed summary so the
+      // hover tooltip and the click-to-inspect float can tell the player what
+      // visiting does — data-driven, so every kind is covered. (The module
+      // sites previously showed NO description anywhere — the 2026-08-19
+      // "Dungeon shows no description at all" report.)
+      const overrideInfo = mapObjectPresentation(field.location, adventure.pveTheme);
       const isSelected = selectedTarget?.spaceId === spaceId;
 
       cells.push(
@@ -2969,7 +2973,7 @@ export function HexMapBoard({
   if (inspectGuardAt) {
     const coord = parseHexSpaceId(inspectGuardAt);
     const field = adventure?.fields[inspectGuardAt];
-    const overrideInspect = field ? fieldOverridePresentation(field.location) : null;
+    const overrideInspect = field ? mapObjectPresentation(field.location, adventure?.pveTheme) : null;
     const preview = designedGuardPreview(field);
     const inspectGuarded = Boolean(field && isFieldGuarded(field));
     const inspectQuickCombat = field && myHero ? polishQuickCombatFieldInfo(state, myHero, field) : null;
@@ -5259,6 +5263,12 @@ type VisitRewardArt = {
   tileRotation?: number;
   /** Short caption under the thumb (degrees, unit side, …) when the full legal label is long. */
   caption?: string;
+  /**
+   * The pick's wired EFFECT text, shown as a second line under the label —
+   * Hero Equipment `summary` / commander-artifact `effectText`. These items are
+   * icons (not printed card faces), so without this line the buyer picks blind.
+   */
+  detail?: string;
 };
 
 /**
@@ -5331,6 +5341,27 @@ function rewardArtFromVisitSteps(
             caption: def?.name ?? armyUnit.unitDefId
           };
         }
+      }
+    }
+    // Hero Equipment offers — every acquisition road (outfitter shop BUY, the
+    // Resource-round Grade-I purchase, the Creature-Bank / VI-VII victory
+    // GRANT/purchase, a reforge replacement): show the ITEM's icon and its
+    // wired effect (`summary`), so the buyer never picks from bare names.
+    const equipmentId =
+      typeof step.equipmentId === "string" && step.equipmentId
+        ? step.equipmentId
+        : typeof step.toEquipmentId === "string" && step.toEquipmentId
+          ? step.toEquipmentId
+          : null;
+    if (equipmentId) {
+      const def = getEquipmentDefinition(equipmentId);
+      if (def) {
+        return {
+          image: equipmentImage(equipmentId),
+          name: def.name.en,
+          caption: `${def.name.en} · ${def.slot} · Grade ${def.grade}`,
+          detail: def.summary
+        };
       }
     }
     if (typeof step.cardId === "string" && step.cardId) {
@@ -6248,6 +6279,16 @@ export function PromptTray({
     choice.diplomacyRecruit
       ? choice.diplomacyRecruit.recruitable
       : null;
+  // The post-victory / drop commander-artifact purchase offer: its cardIds are
+  // index-aligned with the options (the trailing Decline has none), and each is
+  // a real deck card with a printed face — show it plus the spec's effect text,
+  // matching the Commander Forge panel ("show picture and effect", 2026-08-19).
+  const commanderArtifactOfferCards =
+    choice?.type === "OPTION_CHOICE" &&
+    choice.context === "commander-artifact-offer" &&
+    choice.playerId === viewerPlayerId
+      ? choice.commanderArtifactOffer?.cardIds ?? null
+      : null;
   // A Tome / Eagle Eye dig (EAGLE_EYE_DIG) revealed ONE spell to take-or-discard;
   // the take AND the discard button are about the SAME found card, so both show
   // its face. The Pendant of Second Sight's Search (DECK_DIG_KEEP_ONE) revealed
@@ -6446,6 +6487,28 @@ export function PromptTray({
                     };
                     return { legal, art };
                   })
+                : commanderArtifactOfferCards
+                  ? body.map((legal) => {
+                      const optionIndex =
+                        legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex !== undefined
+                          ? legal.action.optionIndex
+                          : undefined;
+                      const cardId =
+                        optionIndex !== undefined && optionIndex < commanderArtifactOfferCards.length
+                          ? commanderArtifactOfferCards[optionIndex]
+                          : undefined;
+                      const spec = cardId ? COMMANDER_ARTIFACT_SPECS[cardId] : undefined;
+                      const art: VisitRewardArt | null = cardId
+                        ? {
+                            name: spec?.name ?? cardLibrary[cardId]?.name ?? cardId,
+                            image: cardLibrary[cardId]?.assets?.cardImage,
+                            caption: legal.label,
+                            cardId,
+                            detail: spec?.effectText
+                          }
+                        : null;
+                      return { legal, art };
+                    })
                 : body.map((legal) => ({ legal, art: null as VisitRewardArt | null }));
   const displayedRewardOptions =
     balanceArt && visitStep?.type === "CHOOSE_ONE" && visitStep.prompt.startsWith("Logistics:")
@@ -6908,7 +6971,7 @@ export function PromptTray({
               className={`promptRewardCard${art.tileRotation !== undefined ? " tileThumb" : ""}${art.resource ? " resourceReward" : ""}`}
               key={actionKey(legal.action)}
               onClick={() => onAction(legal.action)}
-              title={legal.label}
+              title={art.detail ? `${legal.label} — ${art.detail}` : legal.label}
               type="button"
             >
               {art.image ? (
@@ -6941,6 +7004,7 @@ export function PromptTray({
               <small>
                 {art.resource || (art.caption && art.caption.endsWith("°")) ? art.caption : legal.label}
               </small>
+              {art.detail ? <small className="promptRewardDetail">{art.detail}</small> : null}
             </button>
           ) : (
             <button

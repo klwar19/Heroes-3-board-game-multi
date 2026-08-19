@@ -840,6 +840,17 @@ assaults once a winner is set. Each wave carries a deterministic BATTLE EVENT
 (`waveBattleEventFor`) folded in at `revealNeutralArmy`, CANCELLED for a seat whose
 `wavePreparedFor` matches — set by the **Calamity Gate** (the first revealed
 Far-band Blocked Field, `placeCalamityGate`, no Creature Banks option needed).
+**A wave finalize RESTORES `activePlayerId` to the round's first live seat**
+(2026-08-19): every combat activation publishes the acting side as
+`activePlayerId` (the manual-neutral-control read in reducer.ts), so a wave
+fight ending after a NEUTRAL activation left the neutral sentinel holding the
+turn — the first player "lost their turn" and, with every offer gated on the
+active turn, could not even take the start-of-turn draw. Merely SKIPPING the
+overwrite (the older fix) preserved the corruption; the wave branch of
+`finalizeAdventureCombat` now hands the table back explicitly. Pinned by the
+REAL round-wrap-flow test in `monster-waves.test.ts` (real END_TURNs, real
+deployment, a real neutral activation — the older tests never activate a unit,
+which is why they stayed green while real tables froze).
 
 **Raid Bosses**: multi-layer world bosses minted gradeless (`bankUnit` + `bossUnit`)
 whose `armyStacks` ARE the health bars, shed by the boss branch of
@@ -868,6 +879,18 @@ kinds are auto-resolving, so no AI or AFK seat can stall. LIMITS: a 5-floor
 expedition never reaches the floor-10 relic rung; FREE descent removes the movement
 limiter; a hand-edited warden typo fields a PLAIN party (never a stall); the plan's
 bank-corner formation and spike-pit tokens are NOT modeled.
+
+**PvE-site description cards (2026-08-19)**: the three module hexes (Calamity
+Gate / Rift Lair / The Dungeon) get the SAME hover-tooltip + click-to-inspect
+card the Field Override hexes have, served by `pveSitePresentation` /
+`mapObjectPresentation` (`src/data/map/field-override-presentation.ts`) — they
+previously showed NO description anywhere ("Dungeon: hard to understand").
+COLLISION NOTE: the isekai WAGER override's kind id is also `dungeon_gate`
+(its carved hexes are `anime.dungeon_gate`), and `fieldOverridePresentation`
+falls back to a by-kind match on the bare string — so the combined seam
+consults the PvE table FIRST, or the module's Dungeon hex shows the wager
+site's summary. The board's border-suppression pass keeps reading the pure
+`fieldOverridePresentation`. Pinned in `field-override-presentation.test.ts`.
 
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
@@ -1331,7 +1354,8 @@ Dragon Utopia fields are covered.
   (`TileFieldDefinition.treasureDice` → `MapFieldState.treasureDice`; a designer field
   rolls 1) — `reported-bugs-regression.test.ts`. Also: `&N1`'s "?" cabin is a Trading
   Post, `#N1`'s Tree of Knowledge is level Ⅳ, neutral Minotaurs are Few 6 / Neutral 7
-  Initiative, a wave assault no longer overwrites `activePlayerId`, and
+  Initiative, a wave assault no longer overwrites `activePlayerId` (SUPERSEDED
+  2026-08-19: preserving was not enough — see the Calamity Waves section), and
   `computerDecisionOwner` drives a COMPUTER PvP-Neutral-Control seat's guard placement.
 
 ## Torosar's Ballista specialty is the PRINTED card again (2026-08-11)
@@ -1785,7 +1809,13 @@ types + lobby state only — `docs/anime-mod-plan.md` is the contract):**
   roll), and a fought win over a level VI/VII field guard offers one Grade-III
   purchase (`buildEquipmentGradePurchaseStep` / `buildEquipmentGradeRewardStep` /
   `queueEquipmentGradePurchase` — one shared builder, so every road applies the
-  same ownership/context/affordability rules).
+  same ownership/context/affordability rules). EVERY equipment offer (buy,
+  grant, reforge replacement) and the commander-artifact purchase offer render
+  as ART TILES with the item's icon/card face plus its wired effect line
+  (2026-08-19: `rewardArtFromVisitSteps`' `equipmentId`/`toEquipmentId` branch +
+  the `commander-artifact-offer` branch in `PromptTray`, the effect in
+  `VisitRewardArt.detail` — `equipment-offer-art.test.tsx`; jsdom pins the DOM
+  contract only).
   LIMITS: **same-slot twins do NOT stack**; equipment combat folds are the MAIN
   hero's fights only; Hearthbound Horseshoe's "your Town" is FLAG-first (a captured
   Town pays its captor, not its former owner); 9 icons are procedural placeholders.

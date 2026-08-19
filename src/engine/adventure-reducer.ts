@@ -12680,9 +12680,24 @@ export function finalizeAdventureCombat(state: GameState): void {
     }
 
     state.combat = null;
-    // Wave fights interrupt round start; they are not player turns. Preserve
-    // the real first player even when the final queued assault belongs to p2+.
-    if (!context.waveAssault) {
+    // Wave fights interrupt round start; they are not player turns. Merely
+    // PRESERVING activePlayerId is not enough: every combat activation
+    // publishes the acting side as activePlayerId (reducer.ts, the
+    // manual-neutral-control read), so a fight that ends after a NEUTRAL
+    // activation leaves the neutral sentinel holding the turn — the round's
+    // first player "loses their turn" and, with every offer gated on the
+    // active turn, cannot even take the start-of-turn draw. Waves resolve at
+    // ROUND START (before anyone acted), so hand the table back to the
+    // round's first live seat explicitly.
+    if (context.waveAssault) {
+      const firstLive = state.turnOrder.find(
+        (id) => id !== NEUTRAL_PLAYER_ID && !state.players[id]?.eliminated
+      );
+      if (firstLive) {
+        state.activePlayerId = firstLive;
+        state.turn.observingPlayerId = firstLive;
+      }
+    } else {
       state.activePlayerId = playerId ?? state.activePlayerId;
     }
     state.priorityPlayerId = null;

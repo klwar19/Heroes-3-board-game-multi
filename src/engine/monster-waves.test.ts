@@ -449,6 +449,93 @@ describe("Calamity Waves — the wave round", () => {
     expect(state.combat).toBeNull();
     expect(state.adventure?.eventResolution ?? null).toBeNull();
   });
+
+  it("REAL round-wrap flow: player 1 keeps the turn AND the start-of-turn draw after the wave round (a neutral activation mid-fight must not steal activePlayerId)", () => {
+    // Regression (user report 2026-08-19, "player 1 still lost their turn …
+    // and then can't draw cards"): every combat activation publishes the acting
+    // side as activePlayerId — during a wave fight that is often the NEUTRAL
+    // seat — and the wave finalize used to merely PRESERVE the value instead of
+    // restoring the round's first player. The older tests above never activate
+    // a unit (they force the outcome straight after placement), so they stayed
+    // green while the real table froze: activePlayerId === "neutrals" hid every
+    // offer, including p1's mandatory draw. This test drives the REAL path:
+    // real END_TURN round wrap, real deployment, a real neutral activation.
+    let state = createAdventureGameState({
+      seed: "wave-real-flow",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      events: false,
+      wog: { enabled: true, monsterWaves: true, waveCadence: 3 }
+    });
+    state.decks.astrologers!.drawPile.push("astrologers.dead_silence");
+
+    // Rounds 1–2: both seats take + end their turns for real.
+    for (const playerId of ["p1", "p2", "p1", "p2"] as const) {
+      state = apply(state, { type: "REFRESH_HAND", playerId, discardCardIds: [] });
+      state = apply(state, { type: "END_TURN", playerId });
+    }
+    expect(state.round).toBe(3); // cadence 3 → wave 1 fires at this round start
+    expect(state.combat?.attackerPlayerId).toBe("p1");
+
+    const settleReal = (winner: PlayerId) => {
+      const fighter = state.combat!.attackerPlayerId;
+      const placement = getLegalActions(state, fighter).find(
+        (entry) => entry.action.type === "PLACE_COMBAT_UNIT"
+      );
+      expect(placement, `placement offer for ${fighter}`).toBeTruthy();
+      state = apply(state, placement!.action);
+      state = apply(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: fighter });
+      // Answer any activation-order tie so the fight really begins — a neutral
+      // activation then publishes the NEUTRAL seat as activePlayerId (the bug's
+      // trigger; asserted below so this test can never silently stop covering it).
+      while (state.pendingChoice && state.combat) {
+        const choice = state.pendingChoice;
+        state = apply(state, {
+          type: "CHOOSE_OPTION",
+          playerId: choice.playerId,
+          choiceId: choice.id,
+          optionIndex: 0
+        });
+      }
+      expect(state.activePlayerId).toBe(NEUTRAL_PLAYER_ID);
+      state.combat!.outcome = {
+        winnerPlayerId: winner,
+        defeatedPlayerId: NEUTRAL_PLAYER_ID,
+        reason: "all-enemy-units-defeated"
+      };
+      finalizeAdventureCombat(state);
+      pumpAdventureQueues(state);
+      // Resolve the deferred-reward Necromancy window when it opened.
+      for (let i = 0; i < 3 && !state.combat; i += 1) {
+        const skip = getLegalActions(state, winner).find(
+          (entry) => entry.action.type === "SKIP_NECROMANCY"
+        );
+        if (!skip) {
+          break;
+        }
+        state = apply(state, skip.action);
+      }
+    };
+
+    settleReal("p1");
+    expect(state.combat?.attackerPlayerId).toBe("p2");
+    settleReal("p2");
+
+    // The table is handed back to the round's first player…
+    expect(state.combat).toBeNull();
+    expect(state.adventure?.eventResolution ?? null).toBeNull();
+    expect(state.activePlayerId).toBe("p1");
+    // …whose mandatory start-of-turn draw is armed AND actually offered.
+    expect(state.players.p1.canMulligan).toBe(true);
+    const p1Actions = getLegalActions(state, "p1");
+    expect(
+      p1Actions.some(
+        (entry) => entry.action.type === "REFRESH_HAND" && entry.action.playerId === "p1"
+      ),
+      "p1's start-of-turn draw must be offered after the wave round"
+    ).toBe(true);
+    expect(p1Actions.some((entry) => entry.action.type === "END_TURN")).toBe(true);
+  });
 });
 
 describe("Calamity Waves — outcomes", () => {

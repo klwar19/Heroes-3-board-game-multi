@@ -18,7 +18,9 @@ import {
   fieldOverrideDefinitionForLocation,
   fieldOverridePackageTag,
   fieldOverridePresentation,
-  fieldOverrideTooltipClause
+  fieldOverrideTooltipClause,
+  mapObjectPresentation,
+  pveSitePresentation
 } from "./field-override-presentation";
 
 describe("fieldOverridePresentation — every registered kind resolves", () => {
@@ -71,6 +73,51 @@ describe("fieldOverridePresentation — every registered kind resolves", () => {
     // A WOG override reports the WOG tag; an anime one an Anime tag (spot check).
     expect(fieldOverridePresentation("wog.junk_merchant")!.packageTag).toBe("WOG");
     expect(fieldOverridePresentation("anime.bi_canh")!.packageTag).toContain("Anime");
+  });
+
+  it("the three PvE-module sites (Calamity Gate / Rift Lair / The Dungeon) get a description card too", () => {
+    // User report 2026-08-19: "Dungeon: shows no description at all". These are
+    // NOT Field Overrides, so the override seam alone left them blank.
+    for (const [locationId, name] of [
+      ["calamity_gate", "Calamity Gate"],
+      ["rift_lair", "Rift Lair"],
+      ["dungeon_gate", "The Dungeon"]
+    ] as const) {
+      const info = pveSitePresentation(locationId);
+      expect(info, locationId).not.toBeNull();
+      expect(info!.name).toBe(name);
+      expect(info!.summary.trim().length, `${locationId} summary`).toBeGreaterThan(40);
+      expect(info!.packageTag).toBe("PvE module");
+      // Theme-aware painted art, matching pveThemeFieldArt's path scheme.
+      expect(info!.image).toBe(`/assets/bosses/${locationId}_classic.webp`);
+      expect(pveSitePresentation(locationId, "doom")!.image).toBe(
+        `/assets/bosses/${locationId}_doom.webp`
+      );
+      // The combined seam (what the board tooltip + inspect float read) serves it.
+      expect(mapObjectPresentation(locationId)?.summary).toBe(info!.summary);
+    }
+    // The Dungeon summary explains the actual loop (rooms, floor guard, descent).
+    expect(pveSitePresentation("dungeon_gate")!.summary).toMatch(/two rooms/i);
+    expect(pveSitePresentation("dungeon_gate")!.summary).toMatch(/floor/i);
+  });
+
+  it("PvE sites vs the override registry (CONTROL — the board's border pass reads fieldOverridePresentation as 'is an override hex')", () => {
+    expect(fieldOverridePresentation("calamity_gate")).toBeNull();
+    expect(fieldOverridePresentation("rift_lair")).toBeNull();
+    // KNOWN COLLISION: the isekai WAGER override's kind id is also
+    // "dungeon_gate" (carved hexes are "anime.dungeon_gate"), so the bare
+    // string resolves by kind here. That is exactly why mapObjectPresentation
+    // consults the PvE table FIRST — the module's Dungeon hex must show the
+    // module summary, never the wager site's.
+    expect(fieldOverridePresentation("dungeon_gate")?.name).toBe("Dungeon Gate");
+    expect(mapObjectPresentation("dungeon_gate")?.name).toBe("The Dungeon");
+    // The wager site's own carved hexes keep their own summary.
+    expect(mapObjectPresentation("anime.dungeon_gate")?.name).toBe("Dungeon Gate");
+    // And plain locations stay null through the combined seam too.
+    expect(pveSitePresentation("empty_field")).toBeNull();
+    expect(mapObjectPresentation("mine")).toBeNull();
+    // The combined seam still resolves real overrides.
+    expect(mapObjectPresentation("wog.junk_merchant")?.packageTag).toBe("WOG");
   });
 
   it("the equipment-gated outfitters still resolve a presentation (listing gate is separate)", () => {

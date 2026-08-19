@@ -7773,6 +7773,18 @@ button.hbSlot:disabled {
   color: #ecd7ab;
 }
 
+/* The pick's wired EFFECT (Hero Equipment summary / commander-artifact effect
+   text) — a dimmer second line under the label, clamped so a long summary
+   cannot blow the tile up (the full text rides the button's title tooltip). */
+.promptRewardCard .promptRewardDetail {
+  font-size: 9.5px;
+  color: #c9b083;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ---- Pandora card decisions (scry keep/discard · Polish Pandora Search) ----
    Both prompts used to be word-only lists. Every tile shows the real card face
    with that card's own buttons, and the ROW SCROLLS SIDEWAYS (flex-wrap: nowrap
