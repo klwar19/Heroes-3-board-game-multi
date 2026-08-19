@@ -840,6 +840,36 @@ assaults once a winner is set. Each wave carries a deterministic BATTLE EVENT
 (`waveBattleEventFor`) folded in at `revealNeutralArmy`, CANCELLED for a seat whose
 `wavePreparedFor` matches — set by the **Calamity Gate** (the first revealed
 Far-band Blocked Field, `placeCalamityGate`, no Creature Banks option needed).
+The event rotation (USER RULE 2026-08-19) is wave 1/4/7 → +1 Attack, wave
+2/5/8 → **+2 Initiative**, wave 3/6/9 → **+1 Defense** (the Initiative/Defense
+rotations SWAPPED from the old order — do not "restore" wave-2 Defense).
+**Composition variety** (USER RULE 2026-08-19, `src/engine/monster-waves.ts` pure
+planning + `applyWaveUnitAugments`/`mintWaveMiniBoss` in adventure-reducer.ts,
+`drawWaveArmy` warband branch in adventure.ts): a CLASSIC-theme wave from wave 2
+may arrive as a themed faction WARBAND (real Few/Pack town units via
+`resolveLevelPackGuardDraws`, same level-table body count) instead of loose
+Neutrals — seeded 50/50, Doom waves never warband; from wave 3 some invaders
+carry a Stack Token (extra absorbed blow + stat, `waveStackTokenCount` = wave−2
+capped 3); from wave 4 every rank-and-file invader fights at a Veteran rank
+(`waveVeteranRank` 0/1/2/3, folded via `unit.unitExperience`+`applyUnitCurrentSide`,
+taking the MAX with the Neutral Rank-Up round rank so it never double-folds — a
+harder fight AND the Veteran/Elite bonus XP the player earns); and from wave 4 a
+MINI-BOSS leads the assault — a layered warden minted like a raid boss
+(`makeRaidBossCombatUnit` from the theme's `WAVE_MINIBOSS_POOLS`, the shipped
+2-layer Dungeon wardens, so real HP layers + a real ability + real art), ridden
+as a pre-minted `extraUnits` body with NO `raidBossId` (no per-layer gold, no
+persisted wounds — fresh each wave). **Repelling a wave drills every surviving
+deployed unit +1 XP** (`WAVE_WIN_UNIT_XP`, Unit Experience only; stacks on top of
+the hero-level-capped neutral base + the Veteran/Elite bonus, itself uncapped).
+Winning STILL opens the after-combat Necromancy window (the `{kind:"wave"}`
+deferred reward) but NEVER the neutral commander-artifact purchase offer
+(`queueNeutralCommanderArtifactOffer` is gated `!context.waveAssault`). Pinned in
+`monster-waves.test.ts` + `unit-experience.test.ts`; protocol v42→v43,
+`npm run deploy:partykit` owed. LIMITS: the mini-boss reuses the Dungeon-warden
+art (no bespoke wave-boss art); warband/rank/token/boss are only on the standard
+(non-designer) draw — a designer `monsterWaves.waves[n]` exact/level override still
+REPLACES the whole army; the AI fights a wave boss like any neutral (no new
+policy).
 **A wave finalize RESTORES `activePlayerId` to the round's first live seat**
 (2026-08-19): every combat activation publishes the acting side as
 `activePlayerId` (the manual-neutral-control read in reducer.ts), so a wave

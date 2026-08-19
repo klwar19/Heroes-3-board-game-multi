@@ -21,6 +21,7 @@ import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
 import { appendEvent } from "./events";
 import { mgqEffectiveJob, mgqJobSignatureAbilityId } from "./mgq-jobs";
 import { getBonusUnitExperience } from "./unit-abilities";
+import { WAVE_WIN_UNIT_XP } from "./monster-waves";
 import {
   NEUTRAL_PLAYER_ID,
   type ArmyUnitState,
@@ -408,6 +409,18 @@ export function neutralRoundsMirrorXp(tier: UnitTier, round: number): number {
   return rank <= 0 ? 0 : thresholds[rank - 1];
 }
 
+/**
+ * The real XP threshold that MIRRORS an explicit rank (1–3) onto a tier's veteran
+ * track, so setting `unit.unitExperience` to it and re-deriving the side (the
+ * canonical fold in applyUnitCurrentSide) reproduces exactly that rank. Rank 0
+ * (or an out-of-range rank) mirrors 0. Shared by the wave-invader augment.
+ */
+export function rankMirrorXp(tier: UnitTier, rank: number): number {
+  const thresholds = UNIT_RANK_THRESHOLDS[tier] ?? UNIT_RANK_THRESHOLDS.gold;
+  const capped = Math.max(0, Math.min(thresholds.length, Math.trunc(rank)));
+  return capped <= 0 ? 0 : thresholds[capped - 1]!;
+}
+
 /** The Seasoned/Veteran/Elite rank for a Far or Near Creature Bank this round. */
 export function neutralBankRoundsRank(bankTier: "far" | "near", round: number): number {
   const currentRound = Math.max(1, Math.trunc(round));
@@ -584,8 +597,14 @@ export function awardUnitExperienceAfterCombat(state: GameState): void {
     const heroLevel = Math.max(1, Math.trunc(mainHero?.level ?? 1));
     base = Math.min(base, heroLevel);
   }
+  // Calamity Waves (USER RULE 2026-08-19): a repelled assault drills survivors a
+  // flat +1 XP ON TOP of the (hero-level-capped) neutral base and the ranked-guard
+  // bonus — a fixed wave reward, deliberately outside the base cap.
+  const waveBonus =
+    combat.context.kind === "neutral" && combat.context.waveAssault ? WAVE_WIN_UNIT_XP : 0;
   const gained =
     base +
+    waveBonus +
     equipmentVeteranBonusXp(state, winnerId) +
     (heroHasGradeNode(state, winnerId, HERO_GRADE_NODE_IDS.combatScholar) ? 1 : 0) +
     neutralGuardExperienceBonusAfterCombat(state);

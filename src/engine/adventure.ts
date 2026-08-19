@@ -188,6 +188,7 @@ import {
 import { createSeededRandom } from "./random";
 import {
   designedWaveSpec,
+  waveArmyIsWarband,
   waveBattleEventOf,
   waveArmyLevel,
   waveDefeatLimitOf,
@@ -15783,7 +15784,27 @@ export function drawWaveArmy(state: GameState, wave: number): NeutralDraw[] {
     }
     return drawPveThemedArmy(state, spec.level, `wave-${wave}-designed-level`);
   }
-  return drawPveThemedArmy(state, waveArmyLevel(wave), `wave-${wave}`);
+  const level = waveArmyLevel(wave);
+  // Variety (USER RULE 2026-08-19 — "monster not just neutral, can have few or
+  // pack units of towns"). A Doom-theme wave always mints Doom cards; a
+  // classic-theme wave from wave 2 on MAY instead arrive as a themed faction
+  // WARBAND — real Few/Pack town units drawn at the SAME Field-Difficulty row
+  // (identical body count, so balance is anchored to the level table). Falls
+  // back to the loose-Neutral draw when no playable faction exists.
+  if (state.adventure?.pveTheme !== "doom") {
+    const playable = PLAYABLE_FACTIONS.filter((faction) => isPlayableFaction(faction, state.anime));
+    if (playable.length > 0 && waveArmyIsWarband(wave, adventureRandom(state, `wave-army-style-${wave}`))) {
+      const composition =
+        NEUTRAL_ARMY_TABLE[neutralArmyDifficulty(state)]?.[level] ??
+        NEUTRAL_ARMY_TABLE.normal[level] ??
+        NEUTRAL_ARMY_TABLE.normal[1];
+      return resolveLevelPackGuardDraws(composition, adventureRandom(state, `wave-army-warband-${wave}`), {
+        packFaction: "random",
+        playableFactions: playable
+      }) as NeutralDraw[];
+    }
+  }
+  return drawPveThemedArmy(state, level, `wave-${wave}`);
 }
 
 /** Theme-aware Dungeon party; the floor and theme seed one shared layout/army. */

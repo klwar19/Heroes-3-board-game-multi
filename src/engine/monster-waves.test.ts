@@ -27,9 +27,23 @@ import {
   setTileRotation,
   startNeutralEncounter
 } from "./adventure-reducer";
-import { waveArmyLevel, waveNumberForRound } from "./monster-waves";
+import {
+  listWaveMiniBossDefIds,
+  waveArmyLevel,
+  waveMiniBossDefId,
+  waveMiniBossLayers,
+  waveMiniBossPresent,
+  waveNumberForRound,
+  waveStackTokenCount,
+  waveVeteranRank,
+  WAVE_MINIBOSS_DEFS
+} from "./monster-waves";
+import { waveBattleEventFor } from "./pve-content";
+import { createSeededRandom } from "./random";
+import { queueNeutralCommanderArtifactOffer } from "./commander-artifacts";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { coreUnitDefinitions } from "@/data/factions/units";
+import { unitAbilities } from "@/data/units/abilities";
 
 /**
  * Calamity Waves (§6.6) — every claim engine-enforced with CONTROLs:
@@ -305,26 +319,26 @@ describe("Calamity Waves — shared map object", () => {
   });
 
   it("the Defense / Initiative rotations are real too, and the Gate prepares the NEXT numbered wave", () => {
-    // Waves 2 and 3 rotate in Shield Wall (+1 Defense) and Stampede (+2
-    // Initiative) — one deterministic rotation, so every wave carries a
-    // mechanically real modifier.
+    // USER RULE 2026-08-19 — the rotation swapped: wave 2 now Stampede (+2
+    // Initiative) and wave 3 now Shield Wall (+1 Defense). One deterministic
+    // rotation, so every wave still carries a mechanically real modifier.
     const bare = wavesGame("waves-event-rotation");
     const baseline = neutralStats(revealWaveArmy(openWave(bare, 6)));
 
-    const shielded = wavesGame("waves-event-rotation");
-    shielded.players.p1.wavePreparedFor = 2;
-    const shieldedUnits = neutralStats(revealWaveArmy(openWave(shielded, 6)));
-    expect(baseline.map((unit) => unit.defense)).toEqual(
-      shieldedUnits.map((unit) => unit.defense + 1)
+    const rushed = wavesGame("waves-event-rotation");
+    rushed.players.p1.wavePreparedFor = 2;
+    const rushedUnits = neutralStats(revealWaveArmy(openWave(rushed, 6)));
+    expect(baseline.map((unit) => unit.initiative)).toEqual(
+      rushedUnits.map((unit) => unit.initiative + 2)
     );
 
-    const rushed = wavesGame("waves-event-rotation-3");
-    const rushedBase = neutralStats(revealWaveArmy(openWave(rushed, 9)));
-    const rushedPrepared = wavesGame("waves-event-rotation-3");
-    rushedPrepared.players.p1.wavePreparedFor = 3;
-    const rushedUnits = neutralStats(revealWaveArmy(openWave(rushedPrepared, 9)));
-    expect(rushedBase.map((unit) => unit.initiative)).toEqual(
-      rushedUnits.map((unit) => unit.initiative + 2)
+    const shielded = wavesGame("waves-event-rotation-3");
+    const shieldedBase = neutralStats(revealWaveArmy(openWave(shielded, 9)));
+    const shieldedPrepared = wavesGame("waves-event-rotation-3");
+    shieldedPrepared.players.p1.wavePreparedFor = 3;
+    const shieldedUnits = neutralStats(revealWaveArmy(openWave(shieldedPrepared, 9)));
+    expect(shieldedBase.map((unit) => unit.defense)).toEqual(
+      shieldedUnits.map((unit) => unit.defense + 1)
     );
 
     // The Gate's arithmetic: on round 4 (cadence 3) wave 1 has already fired, so
@@ -880,5 +894,168 @@ describe("Calamity Waves — themes and pressure", () => {
     expect(control.players.p1.eliminated).not.toBe(true);
     expect(control.adventure?.winnerPlayerId ?? null).toBeNull();
     expect(control.combat?.attackerPlayerId).toBe("p2");
+  });
+});
+
+describe("Calamity Waves — the battle-event rotation swap (USER RULE 2026-08-19)", () => {
+  it("wave 1/4/7 → +1 Attack, wave 2/5/8 → +2 Initiative, wave 3/6/9 → +1 Defense", () => {
+    for (const theme of ["classic", "doom"] as const) {
+      expect(waveBattleEventFor(theme, 1).neutralAttack, theme).toBe(1);
+      expect(waveBattleEventFor(theme, 2).neutralInitiative, theme).toBe(2);
+      expect(waveBattleEventFor(theme, 3).neutralDefense, theme).toBe(1);
+      // The rotation repeats every three waves.
+      expect(waveBattleEventFor(theme, 4).neutralAttack, theme).toBe(1);
+      expect(waveBattleEventFor(theme, 5).neutralInitiative, theme).toBe(2);
+      expect(waveBattleEventFor(theme, 6).neutralDefense, theme).toBe(1);
+      // The old order is gone: wave 2 no longer grants Defense, wave 3 no longer Initiative.
+      expect(waveBattleEventFor(theme, 2).neutralDefense ?? 0, theme).toBe(0);
+      expect(waveBattleEventFor(theme, 3).neutralInitiative ?? 0, theme).toBe(0);
+    }
+  });
+});
+
+describe("Calamity Waves — composition variety (pure planning)", () => {
+  it("veteran rank ramps 0/1/2/3 from wave 4, capped", () => {
+    expect(waveVeteranRank(1)).toBe(0);
+    expect(waveVeteranRank(3)).toBe(0);
+    expect(waveVeteranRank(4)).toBe(1);
+    expect(waveVeteranRank(5)).toBe(1);
+    expect(waveVeteranRank(6)).toBe(2);
+    expect(waveVeteranRank(8)).toBe(3);
+    expect(waveVeteranRank(20)).toBe(3);
+  });
+
+  it("stack-token count ramps from wave 3, capped at 3", () => {
+    expect(waveStackTokenCount(2)).toBe(0);
+    expect(waveStackTokenCount(3)).toBe(1);
+    expect(waveStackTokenCount(4)).toBe(2);
+    expect(waveStackTokenCount(5)).toBe(3);
+    expect(waveStackTokenCount(9)).toBe(3);
+  });
+
+  it("a mini-boss appears from wave 4; its pooled defs are real, implemented, layered wardens", () => {
+    expect(waveMiniBossPresent(3)).toBe(false);
+    expect(waveMiniBossPresent(4)).toBe(true);
+    const random = createSeededRandom("wave-mini-boss-pool", { salt: false });
+    for (const theme of ["classic", "doom"] as const) {
+      const id = waveMiniBossDefId(6, random, theme);
+      expect(WAVE_MINIBOSS_DEFS[id], `${theme}:${id}`).toBeDefined();
+    }
+    for (const id of listWaveMiniBossDefIds()) {
+      const def = WAVE_MINIBOSS_DEFS[id];
+      expect(def, id).toBeDefined();
+      expect(def!.layers).toBeGreaterThanOrEqual(1);
+      // CLAUDE.md §2: the boss's abilities are the complete list of IMPLEMENTED effects.
+      expect(def!.abilities.length).toBeGreaterThan(0);
+      for (const abilityId of def!.abilities) {
+        expect(unitAbilities[abilityId]?.implementationStatus, abilityId).toBe("implemented");
+      }
+    }
+  });
+
+  it("mini-boss layers grow with the wave but never exceed the def's printed cap", () => {
+    expect(waveMiniBossLayers(4, 3)).toBe(2);
+    expect(waveMiniBossLayers(6, 3)).toBe(3);
+    expect(waveMiniBossLayers(8, 3)).toBe(3);
+    expect(waveMiniBossLayers(20, 2)).toBe(2);
+  });
+});
+
+describe("Calamity Waves — a hardened later wave (engine-enforced)", () => {
+  it("wave 4 invaders fight at Veteran rank, some carry Stack Tokens, and a mini-boss leads them", () => {
+    const state = wavesGame("waves-hardened");
+    const fought = revealWaveArmy(openWave(state, 12)); // cadence 3 → wave 4
+    const invaders = Object.values(fought.combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    const boss = invaders.find((unit) => unit.bossUnit);
+    const rankAndFile = invaders.filter((unit) => !unit.bossUnit);
+
+    // A mini-boss with real HP layers + a real ability leads the wave, keeping
+    // its OWN minted stats (never veteran-ranked).
+    expect(boss, "wave 4 should be led by a mini-boss").toBeTruthy();
+    expect((boss!.armyStacks ?? 0) + 1).toBeGreaterThanOrEqual(2);
+    expect(boss!.abilities.length).toBeGreaterThan(0);
+    expect(boss!.unitRank ?? 0).toBe(0);
+
+    // Every rank-and-file invader is Seasoned (rank 1) at wave 4 — a real fold,
+    // so its stats are genuinely above the printed side.
+    expect(rankAndFile.length).toBeGreaterThan(0);
+    for (const unit of rankAndFile) {
+      expect(unit.unitRank).toBe(1);
+    }
+    // Exactly min(2, count) rank-and-file invaders carry a Stack Token.
+    const tokened = rankAndFile.filter((unit) => Boolean(unit.stackToken));
+    expect(tokened.length).toBe(Math.min(2, rankAndFile.length));
+  });
+
+  it("CONTROL: wave 1 fields no boss, no ranks and no Stack Tokens", () => {
+    const state = wavesGame("waves-hardened-control");
+    const fought = revealWaveArmy(openWave(state, 3)); // wave 1
+    const invaders = Object.values(fought.combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID
+    );
+    expect(invaders.some((unit) => unit.bossUnit)).toBe(false);
+    expect(invaders.some((unit) => (unit.unitRank ?? 0) > 0)).toBe(false);
+    expect(invaders.some((unit) => Boolean(unit.stackToken))).toBe(false);
+  });
+
+  it("a themed faction WARBAND can replace loose Neutrals on a classic wave (variety), never on Doom", () => {
+    // The style is a deterministic 50/50 from wave 2; sweep a few seeds so at
+    // least one classic wave arrives as real Few/Pack town units (factionPack /
+    // factionFew), proving the warband path actually fires.
+    let sawWarband = false;
+    for (let i = 0; i < 12 && !sawWarband; i += 1) {
+      const state = wavesGame(`waves-warband-${i}`);
+      const draws = drawWaveArmy(state, 4);
+      if (draws.some((draw) => draw.factionPack || draw.factionFew)) {
+        sawWarband = true;
+        // A warband is the same body count as the level table it draws from.
+        expect(draws.length).toBeGreaterThan(0);
+      }
+    }
+    expect(sawWarband, "expected at least one classic wave to arrive as a faction warband").toBe(true);
+
+    // CONTROL: a Doom wave always mints Doom cards, never a town warband.
+    for (let i = 0; i < 6; i += 1) {
+      const doom = wavesGame(`waves-warband-doom-${i}`, {
+        anime: { enabled: true, monsterWaves: true, waveCadence: 3, pveTheme: "doom" }
+      });
+      const draws = drawWaveArmy(doom, 4);
+      expect(draws.every((draw) => draw.unitDefId.startsWith("doom."))).toBe(true);
+      expect(draws.some((draw) => draw.factionPack || draw.factionFew)).toBe(false);
+    }
+  });
+});
+
+describe("Calamity Waves — win rewards (necromancy yes, commander recruit no)", () => {
+  it("a wave win never queues the neutral commander-artifact purchase, though it is otherwise available to that seat", () => {
+    const state = wavesGame("waves-no-commander-offer", {
+      wog: { enabled: true, monsterWaves: true, waveCadence: 3, commanders: true, artifacts: true }
+    });
+    state.players.p1.resources.gold = 999;
+    // Sanity: the level-3 neutral-victory offer IS available to this seat…
+    expect(queueNeutralCommanderArtifactOffer(state, "p1", 3)).toBe(true);
+    // …so its ABSENCE after a wave win is the exclusion, not an empty catalog.
+    state.adventure!.rewardQueue = [];
+    startRound(state, 3);
+    settleWaveCombat(state, { winner: "p1", loser: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" });
+    expect(
+      state.adventure!.rewardQueue.some((reward) => reward.kind === "commander-artifact-offer")
+    ).toBe(false);
+  });
+
+  it("a Necropolis winner's wave repel opens the after-combat Necromancy window", () => {
+    const state = wavesGame("waves-necromancy", {
+      players: [
+        { id: "p1", name: "P1", factionId: "necropolis" },
+        { id: "p2", name: "P2", factionId: "castle" }
+      ]
+    });
+    state.players.p1.hand.push("ability.necromancy");
+    startRound(state, 3);
+    settleWaveCombat(state, { winner: "p1", loser: NEUTRAL_PLAYER_ID, reason: "all-enemy-units-defeated" });
+    expect(state.adventure?.pendingNecromancy?.playerId).toBe("p1");
+    expect(state.adventure?.pendingNecromancy?.deferredReward).toMatchObject({ kind: "wave", wave: 1 });
   });
 });

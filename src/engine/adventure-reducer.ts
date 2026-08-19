@@ -7,6 +7,8 @@ import {
   diluteUnitExperienceForUpgrade,
   grantArmyUnitExperience,
   neutralRankUpActive,
+  neutralRoundsRank,
+  rankMirrorXp,
   unitExperienceActive,
   unitRankForExperience
 } from "./unit-experience";
@@ -322,7 +324,14 @@ import {
   RAID_BOSS_KILL_GOLD,
   resolveBossDefinition
 } from "./raid-bosses";
-import { waveBattleEventOf } from "./monster-waves";
+import {
+  waveBattleEventOf,
+  waveMiniBossDefId,
+  waveMiniBossLayers,
+  waveMiniBossPresent,
+  waveStackTokenCount,
+  waveVeteranRank
+} from "./monster-waves";
 import {
   dungeonBossId,
   dungeonFloorCapOf,
@@ -8199,7 +8208,13 @@ export function revealNeutralArmy(
   // veterancy uses. No-op while the module is off (byte-identical) and on
   // rounds 1-3 (below every tier's first threshold). Applied before placement
   // so the ranked Initiative orders the guards.
-  if (neutralRankUpActive(state)) {
+  // Calamity Waves fold their OWN rank + Stack Token augment (which already takes
+  // the max with the Neutral Rank-Up round rank), so they must not ALSO run the
+  // generic rounds-rank loop below — that would double-fold. A wave with no
+  // augment (early waves, tokenCount 0, rank 0) is a clean no-op either way.
+  if (combat.context.waveAssault) {
+    applyWaveUnitAugments(state, neutralUnits, combat.context.waveAssault.wave);
+  } else if (neutralRankUpActive(state)) {
     for (const unit of neutralUnits) {
       applyNeutralRoundsRank(unit, state.round);
     }
@@ -8338,6 +8353,102 @@ function openMonsterWaveAssault(state: GameState, playerId: PlayerId, wave: numb
   beginNeutralCombatPlacement(state, hero, field, 0, {
     unlimitedRounds: true,
     waveAssault: { wave }
+  });
+}
+
+/**
+ * Calamity Waves (USER RULE 2026-08-19): from wave 4 the assault is LED by a
+ * mini-boss — a layered warden minted exactly like a raid/dungeon boss
+ * (`makeRaidBossCombatUnit`, so its HP layers, its combat ability and its board
+ * art are all real), drawn from the frozen theme's pool. It rides the wave as a
+ * pre-minted `extraUnits` body (back-center), so the wave battle event buffs it
+ * with the rest; it carries NO `raidBossId`, so its layers pay no per-break gold
+ * and no wounds persist (a fresh boss each wave). Null before wave 4.
+ */
+function mintWaveMiniBoss(state: GameState, wave: number): CombatUnitState | null {
+  if (!waveMiniBossPresent(wave)) {
+    return null;
+  }
+  const theme = state.adventure?.pveTheme ?? "classic";
+  const random = createSeededRandom(
+    `${state.combat?.dice.seed ?? state.seed}#wave-miniboss#${wave}`,
+    { salt: false }
+  );
+  const def = resolveBossDefinition(state, waveMiniBossDefId(wave, random, theme));
+  if (!def) {
+    return null;
+  }
+  return makeRaidBossCombatUnit(
+    def,
+    waveMiniBossLayers(wave, def.layers),
+    `wave_boss_${def.id}`,
+    DEFENDER_BACKLINE[1]
+  );
+}
+
+/**
+ * Calamity Waves (USER RULE 2026-08-19 — "monster can vary more"): fold the
+ * wave's Veteran rank (from wave 4) and its Stack Tokens (from wave 3) onto the
+ * NON-boss invaders in place, through the canonical `applyUnitCurrentSide`
+ * re-derivation (which reads `unit.unitExperience` for the rank and
+ * `unit.stackToken` for the token, so a single call bakes BOTH — the exact seam
+ * the bank builder uses). The rank is the max of the wave rank and the Neutral
+ * Rank-Up module's round rank (when that module is also on), so the two never
+ * double-fold. The mini-boss (a bankUnit in `extraUnits`) is deliberately
+ * untouched — it keeps its own minted stats. Doom-theme invaders are ordinary
+ * printed-side units, so they augment identically.
+ */
+function applyWaveUnitAugments(
+  state: GameState,
+  units: CombatUnitState[],
+  wave: number
+): void {
+  const ruleset = getRuleset(state);
+  const overrides = unitSideRuleOverrides(state);
+  const baseRank = waveVeteranRank(wave);
+  const tokenCount = Math.min(waveStackTokenCount(wave), units.length);
+  const random = createSeededRandom(
+    `${state.combat?.dice.seed ?? state.seed}#wave-augment#${wave}`,
+    { salt: false }
+  );
+  // Pick `tokenCount` DISTINCT token recipients (partial Fisher–Yates).
+  const order = units.map((_, index) => index);
+  for (let i = 0; i < tokenCount; i += 1) {
+    const j = random.nextInt(i, order.length - 1);
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  const tokenIndices = new Set(order.slice(0, tokenCount));
+  // No one statistic token more than twice in a wave (mirrors the bank rule).
+  const tokenCounts: Partial<Record<string, number>> = {};
+  units.forEach((unit, index) => {
+    if (unit.bankUnit || !unit.unitDefId) {
+      return;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    if (!def) {
+      return;
+    }
+    let changed = false;
+    let rank = baseRank;
+    if (neutralRankUpActive(state)) {
+      rank = Math.max(rank, neutralRoundsRank(def.tier, state.round));
+    }
+    if (rank > 0) {
+      unit.unitExperience = rankMirrorXp(def.tier, rank);
+      changed = true;
+    }
+    if (tokenIndices.has(index)) {
+      let stat = rollStackTokenStat(random);
+      for (let guard = 0; (tokenCounts[stat] ?? 0) >= 2 && guard < 64; guard += 1) {
+        stat = rollStackTokenStat(random);
+      }
+      tokenCounts[stat] = (tokenCounts[stat] ?? 0) + 1;
+      unit.stackToken = stat;
+      changed = true;
+    }
+    if (changed) {
+      applyUnitCurrentSide(unit, ruleset, overrides);
+    }
   });
 }
 
@@ -9844,7 +9955,9 @@ export function finishCombatPlacement(state: GameState, action: Extract<GameActi
     // No pre-battle swap windows on a surprise assault — Judge Dread / Satyr /
     // Visions / Rule 111 stay ordinary-guard offers.
     if (combat.context.waveAssault) {
-      revealNeutralArmy(state, drawWaveArmy(state, combat.context.waveAssault.wave));
+      const wave = combat.context.waveAssault.wave;
+      const boss = mintWaveMiniBoss(state, wave);
+      revealNeutralArmy(state, drawWaveArmy(state, wave), boss ? [boss] : []);
       return;
     }
     // Raid Boss (§6.5): the layered boss (rebuilt from its REMAINING layers —

@@ -60,6 +60,10 @@ export type WaveBattleEvent = {
   neutralInitiative?: number;
 };
 
+// The rotation order IS the wave→event map (waveBattleEventFor indexes by
+// wave−1): wave 1/4/7 → Attack, wave 2/5/8 → Initiative, wave 3/6/9 → Defense
+// (USER RULE 2026-08-19 — the Initiative and Defense rotations swapped so the
+// early waves come at a run before the later ones dig in).
 const CLASSIC_WAVE_EVENTS: readonly WaveBattleEvent[] = [
   {
     id: "war_drums",
@@ -68,16 +72,16 @@ const CLASSIC_WAVE_EVENTS: readonly WaveBattleEvent[] = [
     neutralAttack: 1
   },
   {
-    id: "shield_wall",
-    name: "Shield Wall",
-    description: "The invaders close ranks: every invading unit gains +1 Defense.",
-    neutralDefense: 1
-  },
-  {
     id: "stampede",
     name: "Stampede",
     description: "The assault begins at a run: every invading unit gains +2 Initiative.",
     neutralInitiative: 2
+  },
+  {
+    id: "shield_wall",
+    name: "Shield Wall",
+    description: "The invaders close ranks: every invading unit gains +1 Defense.",
+    neutralDefense: 1
   }
 ];
 
@@ -89,16 +93,16 @@ const DOOM_WAVE_EVENTS: readonly WaveBattleEvent[] = [
     neutralAttack: 1
   },
   {
-    id: "infernal_hide",
-    name: "Infernal Hide",
-    description: "Hellfire hardens the assault: every demon gains +1 Defense.",
-    neutralDefense: 1
-  },
-  {
     id: "teleport_ambush",
     name: "Teleport Ambush",
     description: "The gate spits the host into striking range: every demon gains +2 Initiative.",
     neutralInitiative: 2
+  },
+  {
+    id: "infernal_hide",
+    name: "Infernal Hide",
+    description: "Hellfire hardens the assault: every demon gains +1 Defense.",
+    neutralDefense: 1
   }
 ];
 

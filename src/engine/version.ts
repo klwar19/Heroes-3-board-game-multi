@@ -446,7 +446,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // (Warrior's Tomb -2 -> 0, not -1). Persisted additions are optional/additive
 // (combat: littleBustersCountersUsed, mgqOpponentBattleStartDrawDone), so legacy
 // snapshots read as before. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 42;
+// v42 -> v43 (2026-08-19): Calamity Waves redesign adds server-side wave
+// composition a v42 edge lacks — the battle-event rotation swapped (wave 2/5/8
+// now +2 Initiative, wave 3/6/9 now +1 Defense), a classic wave may arrive as a
+// themed faction WARBAND (Few/Pack town units), invaders carry Stack Tokens from
+// wave 3 and Veteran ranks from wave 4, a mini-boss (a layered warden) leads
+// from wave 4, and a repelled assault drills survivors +1 unit XP. No new
+// serialized-state SHAPE (reuses combat-unit stackToken/unitExperience/unitRank/
+// armyStacks + bossUnit, all already persisted), so legacy snapshots read as
+// before — but a v42 edge would mint the OLD (weaker, no-boss) wave army, so the
+// bump forces the room server current. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 43;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

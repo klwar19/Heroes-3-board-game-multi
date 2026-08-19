@@ -693,6 +693,38 @@ describe("Unit Experience — XP awards after combat", () => {
     finishNeutralCombat(uncapped, { [uUnit.id]: uUnit }, "p1", { difficulty: 5 }, 5);
     expect(uncapped.players.p1.army[0].experience).toBe(5);
   });
+
+  it("a repelled Calamity Wave drills survivors +1 XP ON TOP of the (capped) base", () => {
+    // USER RULE 2026-08-19: winning a wave assault pays a fixed +1 unit XP beyond
+    // the neutral base. A difficulty-0 wave's base is max(1, 0) = 1 (capped at the
+    // hero level, ≥1), so a survivor with no prior XP lands on 1 + 1 = 2.
+    const wave = makeAdventure("uxp-wave", { unitExperience: true });
+    wave.players.p1.army = [{ ...MARKSMEN }];
+    const wUnit = makeCombatUnitFromArmy(wave.players.p1.army[0], "p1", "u_wave", 0, "legacy")!;
+    finishNeutralCombat(wave, { [wUnit.id]: wUnit }, "p1", {
+      difficulty: 0,
+      waveAssault: { wave: 1 }
+    });
+    expect(wave.players.p1.army[0].experience).toBe(2);
+
+    // CONTROL — an ordinary difficulty-1 guard fight (no waveAssault) pays the
+    // base alone, so the SAME survivor lands on 1. This is the +1 the wave adds.
+    const guard = makeAdventure("uxp-wave-control", { unitExperience: true });
+    guard.players.p1.army = [{ ...MARKSMEN }];
+    const gUnit = makeCombatUnitFromArmy(guard.players.p1.army[0], "p1", "u_wave_ctl", 0, "legacy")!;
+    finishNeutralCombat(guard, { [gUnit.id]: gUnit }, "p1", { difficulty: 1 });
+    expect(guard.players.p1.army[0].experience).toBe(1);
+
+    // CONTROL — with Unit Experience OFF a wave win trains nobody.
+    const off = makeAdventure("uxp-wave-off");
+    off.players.p1.army = [{ ...MARKSMEN }];
+    const oUnit = makeCombatUnitFromArmy(off.players.p1.army[0], "p1", "u_wave_off", 0, "legacy")!;
+    finishNeutralCombat(off, { [oUnit.id]: oUnit }, "p1", {
+      difficulty: 0,
+      waveAssault: { wave: 1 }
+    });
+    expect(off.players.p1.army[0].experience).toBeUndefined();
+  });
 });
 
 function resolveArmyAttack(
