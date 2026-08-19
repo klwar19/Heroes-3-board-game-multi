@@ -160,14 +160,35 @@ describe("a map tile definition can never be placed twice", () => {
     ).toBe(true);
   });
 
-  it("CONTROL: a list that collides with nothing still draws exactly its seeded pick (no behaviour change)", () => {
-    // The de-duplication must not reshuffle an ordinary single-list map: the
-    // pick is still the first entry of the same seeded shuffle it always was.
+  it("CONTROL: a lone mixed Grail/Utopia list draws the first GRAIL-printing candidate of its seeded shuffle (the balanced-Ⅶ preference), still unique", () => {
+    // SUPERSEDED premise (bf74c63b, Random-Ⅶ redesign — USER RULE 2026-08-19):
+    // this used to pin the raw shuffle's first entry, but a one-of list mixing
+    // Grail-printing (C2/C4) and Utopia-printing (C1/C3) candidates is now a
+    // random Ⅶ slot: a LONE slot is guaranteed the Grail by the balanced pool,
+    // and the pick prefers a candidate whose printed Ⅶ objective IS that
+    // assignment so art and field agree. The de-duplication itself still never
+    // reshuffles — the preference is a stable partition of the SAME seeded
+    // shuffle order.
     const seed = "oneof-single-slot";
     const list = ["C1", "C2", "C3", "C4"];
     const state = build(centerSlotMap([{ oneOfTileDefIds: list }]), seed);
-    const expected = shuffleCards(list, `${seed}#tilechoice#4#0`)[0];
+    const ordered = shuffleCards(list, `${seed}#tilechoice#4#0`);
+    const printsGrail = (id: string) =>
+      Boolean(
+        allTileDefinitions[id]?.fields.some(
+          (fieldDef) => fieldDef.difficulty === 7 && fieldDef.location === "grail"
+        )
+      );
+    const expected = ordered.find(printsGrail);
     expect(placedCenters(state)).toEqual([expected]);
+    // Discriminating on THIS seed: the raw shuffle leads with a Utopia-printing
+    // tile, so reverting the balanced-Ⅶ preference (falling back to plain
+    // shuffle order) fails this test.
+    expect(
+      printsGrail(ordered[0]!),
+      `seed ${seed} must lead with a Utopia-printing tile to discriminate`
+    ).toBe(false);
+    expect(placedCenters(state)).not.toEqual([ordered[0]]);
     expectUniqueTileDefs(state, seed);
   });
 
