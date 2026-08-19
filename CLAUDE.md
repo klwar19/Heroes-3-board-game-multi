@@ -1261,43 +1261,70 @@ LIMIT: the bronze pick opens a window only for a HUMAN defense controller — th
 every single-player table take `randomTownDefaultBronzePackId` (highest printed Pack
 cost); the printed multiplayer faction-PICK roll is NOT modeled.
 
-## Grail → Utopia conversion: at the DIG, never the dug field, full reward (2026-08-09)
+## Grail → Utopia conversion: at the BATTLE WIN, never the chosen field, full reward (2026-08-19)
 
-The conversion fires when a Grail is TAKEN (dug), the dug field never turns
-(`adventure.grailTakenFieldId`), and a converted extra Grail pays the NORMAL Utopia
-reward. Engine `applyGrailTakenConversion` / `grailTakenConversionTarget` /
-`grailConversionActive` + the `materializeTileFields` reveal branch (protocol v23);
-`grail-converted-utopia.test.ts`, `polish-grail-utopia.test.ts`, `grail-mode.test.ts`.
-LIMITS: `grailAsUtopia: "always"` is a LEGACY ALIAS of `after-dig-utopia` and swaps NO
-guards before a dig; a converted site never feeds the `defeat-dragon-utopia` VP
-objective, the Dragon-Hunt win or a Dragon-Conqueror capture.
+USER RULE 2026-08-19 ("both are grail fields, but after winning a battle vs a Ⅶ
+Grail field the other changes its status to a Ⅶ Utopia field" — supersedes the
+2026-08-07 dig-time trigger): the conversion fires the moment a Ⅶ Grail field's
+battle is WON. That field becomes THE Grail (its dig armed, `grailTakenFieldId`
+is the conversion pivot set at the WIN) and every OTHER Grail field converts
+right then; the dig later only collects the token (and re-runs the conversion as
+an idempotent legacy-snapshot backstop). After the dig the chosen field stays a
+SPENT, empty dig site forever — it NEVER becomes a fresh Utopia. A converted
+extra Grail pays the NORMAL Utopia bundle (20 gold + two Search (3) + the
+Morale/Empower pick), exactly ONCE — pinned through the real combat finalize →
+atomic Necromancy → deferred-visit path. Engine `handleGrailVisit` (!revisit
+branch) / `applyGrailTakenConversion` / `grailTakenConversionTarget` /
+`grailConversionActive` + the `materializeTileFields` reveal branch;
+`grail-converted-utopia.test.ts`, `polish-grail-utopia.test.ts`,
+`grail-mode.test.ts`, `vii-field-designation.test.ts`.
+LIMITS: classic mode (no package/knob) still converts nothing; `grailAsUtopia:
+"always"` stays a legacy alias; a converted site never feeds the
+`defeat-dragon-utopia` VP objective, the Dragon-Hunt win or a Dragon-Conqueror
+capture; whichever Grail is battle-won FIRST is the map's one Grail (symmetric).
 
-### Designer "random Ⅶ field" mystery pairs are ALL GRAILS at setup (2026-08-19)
+### Designer "random Ⅶ field" slots: ONE balanced pool, never zero Grails (2026-08-19)
 
-USER RULE: an editor-authored Grail/Dragon-Utopia MYSTERY PAIR
-(`viiFields: ["grail","dragon_utopia"]`, no `playerViiPick`) resolves to a **GRAIL**
-at setup — the game never pre-assigns a Utopia, so a map with N mystery fields
-ALWAYS holds a diggable Grail; the extras become Dragon Utopias only when a Grail
-is TAKEN (the existing dig conversion above). ONE rule
-(`planResolvesGrailUtopiaPair` / `isHiddenGrailUtopiaPair`, adventure-setup.ts)
-covers BOTH former resolution seams, each a reported bug: the seeded "balanced
-pool" (2 Grails + 2 Utopias pre-assigned) and `applyDesignedViiField`'s face-up
-position hash (|row·31+col·17| % 2 — SEED-INDEPENDENT, so a map's every pair could
-land Utopia: "3 such fields, ALL 3 were Utopias, no Grail in the map"). Tile draw:
-the shipped catalog prints only TWO Grail centre tiles (C2/C4), so pairs beyond
-those draw a Dragon-Utopia-PRINTING tile (the field is forced to Grail pre-dig and
-that hex genuinely becomes a Utopia at the dig — `designationCenterTile`'s
-mystery-pair fallback). Pinned in `vii-field-designation.test.ts` (all-grail,
-face-up hash CONTROL, explicit-Utopia + playerViiPick CONTROLs, the dig-converts
-end-to-end) and `grail-converted-utopia.test.ts` ("REAL combat finalize pays ONE
-bundle — never twice": finalize → atomic Necromancy → deferred visit pays 20 gold
-+ two Search (3) + one token pick exactly once; a repeat finalize/visit pays
-NOTHING — the reported "searches twice" class).
-LIMITS: `playerViiPick` (face-down) still lets the revealing player deliberately
-pick the Utopia; an explicit single `viiField: "dragon_utopia"` designation is an
-authored Utopia and stays one; other multi-sets (e.g. town/settlement mixes) keep
-the deterministic position-hash pick; server-built setup, so
-`npm run deploy:partykit` is owed for live tables.
+USER RULE ("at the beginning utopia are utopia but the grail fields are grail"):
+every RANDOM Grail/Utopia slot — an authored `viiFields: ["grail","dragon_utopia"]`
+mystery pair (face-up AND face-down) **and a "one of these tiles" list mixing
+Grail-printing and Utopia-printing candidates (the live maps use one-of C1–C4)** —
+resolves through ONE balanced pool at setup (`balancedRandomViiAssignments`,
+adventure-setup.ts): 4 slots = 2 Grails + 2 Utopias, 3 = 2+1/1+2, and **at least
+one slot is ALWAYS the Grail** (a lone random slot is guaranteed it). This killed
+two reported bugs: the face-up position hash (|row·31+col·17| % 2, SEED-INDEPENDENT)
+and the raw one-of draw, either of which could resolve a map's every random slot
+to Utopia ("3 such fields, ALL 3 were Utopias, no Grail in the map"). A balanced
+one-of slot prefers a candidate PRINTING its assignment so art and field agree;
+pool-draw pair slots keep `designationCenterTile`'s print-matched draw (2+2
+matches the catalog's C2/C4 + C1/C3 exactly). The Obelisk Grail-clue reads the
+EFFECTIVE objective (`faceDownPossibleViiObjectives` — designation override + the
+active conversion), so a designated Grail on a Utopia-printing tile scries as a
+Grail, and after a won Grail battle the hidden "Grail" tiles stop gating/reporting
+as Grails (they materialize as Utopias). Pinned in `vii-field-designation.test.ts`
++ `obelisk-house-rule.test.ts`.
+LIMITS: `playerViiPick` (face-down) stays the revealing player's explicit choice;
+an explicit single `viiField`/single-kind one-of list is authored and untouched;
+other multi-sets (town/settlement mixes) keep the position-hash pick;
+server-built setup ⇒ `npm run deploy:partykit` owed.
+
+### Ⅶ Grail/Utopia objectives pay AT MOST 2 Artifacts (2026-08-19)
+
+USER RULE ("I should get 2 artifacts at most… no bug with rewards gain"): on a Ⅶ
+Grail / Dragon-Utopia objective field the built-in ladder is the ONLY Artifact
+source — a designer centre-hex reward's `searchArtifact`/`searchArtifactTimes`
+portion is DROPPED (live maps had stamped e.g. `searchArtifact 3 × 5` on their
+random Ⅶ slots, stacking to 7 artifacts per clear while the old build only
+WARNED via `viiRewardStackWarnings`), and a hex event on that hex takes the same
+cap. Enforced at THREE seams: the `materializeTileFields` centre-hex stamp, the
+PAY-time fold in `grantCenterHexBonus` (covers legacy snapshots + mid-game
+conversions), and `processHexEventOnVisit` — all through
+`dropArtifactSearchesOnGrailUtopiaObjective` (adventure.ts). Every other reward
+component (gold, dice, Spell/Ability searches, morale, VP, guard override) still
+pays, any OTHER field keeps its authored artifacts, and the explicit
+banner-advertised `objectives.utopiaBonusSearch` knob is deliberately NOT capped.
+`vii-field-designation.test.ts` ("DROPS the designer reward's Artifact
+Searches"), `vii-objective-reward-stacking.test.ts` (updated matrix + CONTROLs).
 
 ## A Subterranean Gate crossing SLIPS PAST the far guard — it never clears it (2026-08-07)
 

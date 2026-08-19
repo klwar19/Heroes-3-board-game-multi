@@ -502,6 +502,33 @@ function latchDesignerRewardClaimed(field: MapFieldState): void {
 }
 
 /**
+ * USER RULE 2026-08-19 ("I SHOULD GET 2 ARTIFACTS AT MOST"): on a Ⅶ Grail /
+ * Dragon-Utopia objective field a designer reward package drops its
+ * Artifact-Search portion — the objective's built-in ladder (two Search (3) on
+ * a Utopia; a Grail pays no artifacts at all) is the field's ONLY Artifact
+ * source. Live maps had e.g. `searchArtifact 3 × 5` stamped on their random Ⅶ
+ * slots, stacking to seven artifacts per clear while the old build only WARNED
+ * (`viiRewardStackWarnings`). Every other reward component still pays, any
+ * other field keeps its authored artifacts, and the explicit
+ * `objectives.utopiaBonusSearch` knob (banner-advertised) is deliberately not
+ * covered here.
+ */
+function dropArtifactSearchesOnGrailUtopiaObjective<
+  T extends { searchArtifact?: number; searchArtifactTimes?: number }
+>(reward: T, field: MapFieldState): T {
+  const isGrailUtopiaObjective =
+    field.difficulty === 7 &&
+    (field.location === "grail" || field.location === "dragon_utopia");
+  if (!isGrailUtopiaObjective || (!reward.searchArtifact && !reward.searchArtifactTimes)) {
+    return reward;
+  }
+  const rest = { ...reward };
+  delete rest.searchArtifact;
+  delete rest.searchArtifactTimes;
+  return rest;
+}
+
+/**
  * Locations whose designed guard fights BANK-style (rulebook Creature-Bank
  * semantics — "the fight is unlimited, as in Banks"): no Quick Combat, no
  * experience (combat difficulty 0) and no Round limit / MP-to-extend. The
@@ -1071,8 +1098,35 @@ export function materializeTileFields(
     // those too so a mid-flight game keeps its designed bonus.
     if (fieldDef.difficulty === 7) {
       const centerHex = tile.centerHex;
-      if (centerHex?.reward) {
-        field.centerHexReward = centerHex.reward;
+      // USER RULE 2026-08-19 ("I should get 2 Artifacts AT MOST"): on a Grail /
+      // Dragon Utopia objective the designer centre-hex reward's ARTIFACT
+      // Searches are DROPPED — they used to STACK on the field's built-in two
+      // Search (3), so live maps that authored e.g. `searchArtifact 3 × 5` on
+      // the hex paid seven artifacts per clear (the old behaviour only WARNED
+      // via viiRewardStackWarnings). Every other reward component (gold, dice,
+      // Ability/Spell searches, morale, VP, the guard override) still pays.
+      // Applied at the ONE stamping seam so every path is covered: designated,
+      // printed, player-picked on reveal, and a Grail already CONVERTED to a
+      // Utopia by this very materialize (the reveal-path conversion above).
+      const isGrailUtopiaObjective =
+        fieldDef.location === "grail" || fieldDef.location === "dragon_utopia";
+      const capArtifacts = <T extends { searchArtifact?: number; searchArtifactTimes?: number }>(
+        reward: T | undefined
+      ): T | undefined => {
+        if (!reward || !isGrailUtopiaObjective) {
+          return reward;
+        }
+        if (!reward.searchArtifact && !reward.searchArtifactTimes) {
+          return reward;
+        }
+        const rest = { ...reward };
+        delete rest.searchArtifact;
+        delete rest.searchArtifactTimes;
+        return rest;
+      };
+      const cappedReward = capArtifacts(centerHex?.reward);
+      if (cappedReward && Object.keys(cappedReward).length > 0) {
+        field.centerHexReward = cappedReward;
       }
       if (centerHex?.vp !== undefined) {
         field.centerHexVp = centerHex.vp;
@@ -1084,6 +1138,8 @@ export function materializeTileFields(
       // designer-altered exactly like a token / settlement / obelisk guard.
       applyCustomGuardToField(field, centerHex?.guard);
       if (tile.viiField) {
+        // Legacy `viiFieldReward` is resources-only (gold/materials/valuables),
+        // so the artifact cap above can never apply to it.
         if (tile.viiFieldReward && !field.centerHexReward) {
           field.centerHexReward = tile.viiFieldReward;
         }
@@ -5095,11 +5151,18 @@ function grantCenterHexBonus(state: GameState, playerId: PlayerId, field: MapFie
   if (designerRewardAlreadyClaimed(field)) {
     return;
   }
-  const reward: CustomCenterHexReward = {
-    ...(field.viiReward ?? {}),
-    ...(field.centerHexReward ?? {}),
-    ...(field.designerReward ?? {})
-  };
+  // PAY-time enforcement of the Grail/Utopia artifact cap too (the materialize
+  // stamp already strips new games; this half covers a legacy snapshot whose
+  // field was stamped before the 2026-08-19 rule, and a Grail converted to a
+  // Utopia mid-game with an old artifact reward still on it).
+  const reward: CustomCenterHexReward = dropArtifactSearchesOnGrailUtopiaObjective(
+    {
+      ...(field.viiReward ?? {}),
+      ...(field.centerHexReward ?? {}),
+      ...(field.designerReward ?? {})
+    },
+    field
+  );
   const vp = field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0;
   const paid = payDesignerFieldReward(state, playerId, reward, vp, "the designer field reward");
   if (paid) {
@@ -5360,7 +5423,12 @@ function processHexEventOnVisit(
   payDesignerFieldReward(
     state,
     playerId,
-    event.reward ?? {},
+    // USER RULE 2026-08-19 ("2 Artifacts at most"): a hex event sitting on the
+    // Ⅶ Grail / Dragon-Utopia objective hex drops its Artifact-Search portion —
+    // the built-in two Search (3) stays the field's only Artifact source. Every
+    // other component (gold, dice, Spell/Ability searches, VP…) pays as
+    // authored, and events on any OTHER hex are untouched.
+    dropArtifactSearchesOnGrailUtopiaObjective(event.reward ?? {}, field),
     event.vp ?? 0,
     "a map event"
   );
@@ -5501,10 +5569,22 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (grail.status === "uncollected") {
       field.grailDiggable = true;
     }
-    // USER RULE 2026-08-07: beating a Grail's GUARDS converts NOTHING — an
-    // extra Grail field only starts behaving like a Utopia once a Grail has
-    // actually been TAKEN (the dig below). Until then every Grail field on the
-    // map is a plain Grail dig site in every mode.
+    // USER RULE 2026-08-19 ("both are grail fields, but after WINNING A BATTLE
+    // vs a Ⅶ Grail field the other changes its status to a Ⅶ Utopia field"):
+    // winning this fight CHOOSES this field as THE Grail — every OTHER Grail
+    // site on the map converts RIGHT NOW, not at the later dig. This
+    // supersedes the 2026-08-07 dig-time trigger; the dig below keeps only the
+    // token collection (and re-runs the conversion as an idempotent backstop).
+    // `grailTakenFieldId` is the conversion pivot: the fought field itself
+    // never turns, here or on any later reveal/re-materialize.
+    if (
+      grail.status === "uncollected" &&
+      !grailConversionActive(adventure) &&
+      grailTakenConversionTarget(state)
+    ) {
+      adventure.grailTakenFieldId = field.spaceId;
+      applyGrailTakenConversion(state, field.spaceId);
+    }
     return;
   }
 
@@ -5529,9 +5609,10 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
     if (digReward) {
       gainResources(state, hero.controllerId, digReward, "dug the Grail");
     }
-    // USER RULE 2026-08-07: the Grail has been TAKEN — this is the ONE moment
-    // any extra Grail field may convert, and this field is the one that never
-    // does. `grailTakenFieldId` records both facts for every later reveal.
+    // The conversion normally already fired when this field's BATTLE was won
+    // (USER RULE 2026-08-19 above). Re-stamp + re-run here as an idempotent
+    // backstop so a legacy snapshot whose guards fell under the old dig-time
+    // rule still converts at its dig.
     adventure.grailTakenFieldId = field.spaceId;
     // Legacy mirror only (see AdventureState.grailFieldCleared).
     adventure.grailFieldCleared = true;
@@ -5540,11 +5621,12 @@ function handleGrailVisit(state: GameState, hero: HeroState, field: MapFieldStat
 }
 
 /**
- * Which conversion an EXTRA Grail field takes once a Grail has been TAKEN.
- * `null` = classic (an extra Grail stays a dig site).
+ * Which conversion an EXTRA Grail field takes once THE Grail field is chosen —
+ * i.e. the moment a Ⅶ Grail field's battle is WON (USER RULE 2026-08-19; the
+ * dig re-runs it as a legacy backstop). `null` = classic (an extra Grail stays
+ * a dig site).
  *
- * USER RULE 2026-08-07 ("if grail is taken, other grail should turn to behave
- * like utopia … only act like utopia AFTER A GRAIL IS TAKEN"): both the Grail /
+ * SUPERSEDED TIMING: the 2026-08-07 rule fired this at the dig only; both the Grail /
  * Dragon Utopia field package (the `polish-grail-utopia` house rule AND the
  * map-editor `hiddenGrailUtopia` flag) and the designer `grailAsUtopia` knob
  * resolve here, so the two surfaces cannot drift. "always" is a deprecated alias
@@ -5563,10 +5645,11 @@ function grailTakenConversionTarget(state: GameState): "dragon_utopia" | "empty_
 }
 
 /**
- * Whether extra Grail fields convert from now on — i.e. whether a Grail has been
- * TAKEN. Read by {@link materializeTileFields} so a Grail site revealed AFTER
- * the dig converts too (its tile was face-down / still in the Far supply at dig
- * time, so the field-sweep below could not reach it).
+ * Whether extra Grail fields convert from now on — i.e. whether THE Grail field
+ * has been chosen (its battle WON; 2026-08-19 — or, legacy, its token dug).
+ * Read by {@link materializeTileFields} so a Grail site revealed AFTER that
+ * moment converts too (its tile was face-down / still in the Far supply, so
+ * the field-sweep below could not reach it).
  *
  * Legacy fallback: snapshots written before `grailTakenFieldId` existed set
  * `grailFieldCleared` when the GUARDS fell, so it only counts once the Grail
@@ -5583,12 +5666,13 @@ export function grailConversionActive(adventure: AdventureState): boolean {
 }
 
 /**
- * Convert every OTHER still-undug Grail field the moment the Grail is TAKEN:
- * a Dragon Utopia (`grailConverted`) or an empty field.
+ * Convert every OTHER Grail field the moment THE Grail field is chosen — its
+ * battle WON (2026-08-19), or at the dig for a legacy snapshot: a Dragon
+ * Utopia (`grailConverted`) or an empty field.
  *
- * ONE field is deliberately skipped: `dugFieldId`, the site the Grail came from
+ * ONE field is deliberately skipped: `dugFieldId`, the chosen Grail site
  * (USER RULE: "THE ORIGINAL GRAIL FIELD THAT PLAYER DIG TO GET: WONT TURN"). It
- * stays a spent dig site.
+ * stays the map's one dig site.
  *
  * An extra Grail whose GUARDS ALREADY FELL converts too (USER REPORT 2026-08-09:
  * "this field was an empty grail field (but it should have changed to utopia
@@ -5954,28 +6038,56 @@ function obeliskConfigVisitSteps(config: CustomMapObeliskConfig | undefined): Vi
 }
 
 /**
- * Whether a face-down tile's authoritative face can still resolve to one of the
- * given Ⅶ objective kinds. Mirrors materializeTileFields exactly: a designation
- * FORCES the Ⅶ objective whatever the tile prints, so the designation is checked
- * FIRST and the printed field only decides when no designation exists. A
- * multi-select (`viiFields`) tile MIGHT still become one of them, so it counts.
+ * Every Ⅶ objective a face-down tile can still ACTUALLY materialize. Mirrors
+ * materializeTileFields exactly: a designation FORCES the Ⅶ objective whatever
+ * the tile prints (a `playerViiPick` multi-select lists each possible pick),
+ * the printed field decides only when no designation exists — and an ACTIVE
+ * Grail conversion (a Ⅶ Grail battle already won / the token dug) then turns
+ * every remaining Grail into the frozen target, exactly as the reveal will.
+ * Without this last fold the Obelisk clue kept offering / reporting "grail" on
+ * tiles that materialize as Dragon Utopias (or empty fields) the moment they
+ * are flipped.
  */
-function faceDownViiObjectiveCandidate(tile: MapTileState, kinds: readonly string[]): boolean {
+function faceDownPossibleViiObjectives(
+  adventure: AdventureState,
+  tile: MapTileState
+): string[] {
+  const def = allTileDefinitions[tile.tileDefId];
+  if (!def) {
+    return [];
+  }
+  let base: string[];
+  if (tile.viiField) {
+    base = [VII_FIELD_LOCATION[tile.viiField]];
+  } else if (tile.viiFields?.length) {
+    base = tile.viiFields.map((kind) => VII_FIELD_LOCATION[kind]);
+  } else {
+    base = def.fields
+      .filter((field) => field.difficulty === 7)
+      .map((field) => field.location);
+  }
+  const conversion = grailConversionActive(adventure)
+    ? adventure.grailTakenConversion ?? "dragon_utopia"
+    : null;
+  if (!conversion) {
+    return base;
+  }
+  return base.map((kind) => (kind === "grail" ? conversion : kind));
+}
+
+/**
+ * Whether a face-down tile's authoritative face can still resolve to one of the
+ * given Ⅶ objective kinds (see {@link faceDownPossibleViiObjectives}).
+ */
+function faceDownViiObjectiveCandidate(
+  adventure: AdventureState,
+  tile: MapTileState,
+  kinds: readonly string[]
+): boolean {
   if (!tile.faceDown) {
     return false;
   }
-  const def = allTileDefinitions[tile.tileDefId];
-  if (!def) {
-    return false;
-  }
-  if (tile.viiField) {
-    return kinds.includes(tile.viiField);
-  }
-  // The hidden Grail & Dragon Utopia package: the tile MIGHT be one of them.
-  if (tile.viiFields?.some((kind) => kinds.includes(kind))) {
-    return true;
-  }
-  return def.fields.some((field) => field.difficulty === 7 && kinds.includes(field.location));
+  return faceDownPossibleViiObjectives(adventure, tile).some((kind) => kinds.includes(kind));
 }
 
 /**
@@ -5984,8 +6096,8 @@ function faceDownViiObjectiveCandidate(tile: MapTileState, kinds: readonly strin
  * mode leaves a Grail field a real dig site until a Grail is TAKEN, so it stays
  * a real clue target.
  */
-function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
-  return faceDownViiObjectiveCandidate(tile, ["grail"]);
+function isFaceDownGrailClueCandidate(adventure: AdventureState, tile: MapTileState): boolean {
+  return faceDownViiObjectiveCandidate(adventure, tile, ["grail"]);
 }
 
 /**
@@ -5998,18 +6110,18 @@ function isFaceDownGrailClueCandidate(tile: MapTileState): boolean {
  * without learning WHICH of them is the Grail, which is exactly what the scry
  * then answers. Filtering to Grail alone would make the pick pointless.
  */
-function isFaceDownGrailClueChoice(tile: MapTileState): boolean {
-  return faceDownViiObjectiveCandidate(tile, ["grail", "dragon_utopia"]);
+function isFaceDownGrailClueChoice(adventure: AdventureState, tile: MapTileState): boolean {
+  return faceDownViiObjectiveCandidate(adventure, tile, ["grail", "dragon_utopia"]);
 }
 
 /** Build the private, positional Obelisk clue picker when a face-down Grail exists. */
 function grailClueStep(adventure: AdventureState): VisitStep | null {
   const tiles = Object.values(adventure.tiles);
   // The rule exists only if a hidden Grail is really on this map.
-  if (!tiles.some((tile) => isFaceDownGrailClueCandidate(tile))) {
+  if (!tiles.some((tile) => isFaceDownGrailClueCandidate(adventure, tile))) {
     return null;
   }
-  const candidates = tiles.filter((tile) => isFaceDownGrailClueChoice(tile));
+  const candidates = tiles.filter((tile) => isFaceDownGrailClueChoice(adventure, tile));
   // Defensive: a gate hit with no choosable tile must never open a dead prompt
   // an AI seat / the AFK driver would have to answer with nothing to pick.
   // (Unreachable today — every Grail candidate is also a Ⅶ objective candidate.)
@@ -8480,7 +8592,19 @@ export function processPendingVisit(state: GameState): void {
         if (!tile || !tile.faceDown) {
           break;
         }
-        const locations = allTileDefinitions[tile.tileDefId]?.fields.map((field) => field.location).join(", ") ?? "";
+        // Report what the tile will ACTUALLY materialize, not just its print: a
+        // designation FORCES the Ⅶ objective, and an active Grail conversion
+        // turns a still-hidden Grail into a Utopia / empty field on reveal —
+        // the clue must never promise a Grail the flip won't deliver.
+        const effectiveVii = faceDownPossibleViiObjectives(adventure, tile);
+        const locations =
+          allTileDefinitions[tile.tileDefId]?.fields
+            .map((field) =>
+              field.difficulty === 7 && effectiveVii.length > 0
+                ? effectiveVii.join(" / ")
+                : field.location
+            )
+            .join(", ") ?? "";
         visit.steps.unshift({
           type: "CHOOSE_ONE",
           prompt: `Grail clue — tile at row ${tile.centerRow}, col ${tile.centerCol} is ${tile.tileDefId} (${locations}). Memorize it, then hide it again.`,

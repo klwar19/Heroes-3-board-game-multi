@@ -147,7 +147,7 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     expect(cells).toEqual([...CREATURE_BANK_ATTACKER_CELLS].sort((a, b) => a - b));
   });
 
-  it("clears for XP only, then digs for 1 MP/20 gold and a 3-VP token — converting other Grails AT THE DIG", () => {
+  it("clears for XP only, then digs for 1 MP/20 gold and a 3-VP token — converting other Grails AT THE WIN", () => {
     const state = game("polish-grail-flow");
     const hero = getMainHero(state, "p1")!;
     const first = field("grail", "30,30");
@@ -160,14 +160,14 @@ describe("Polish Grail / Dragon Utopia house rule", () => {
     beginFieldVisit(state, hero.id, first.spaceId, false);
     expect(state.players.p1.resources.gold, "fight itself has no field payout").toBe(goldBefore);
     expect(first.grailDiggable).toBe(true);
-    // USER RULE 2026-08-07: beating the GUARDS converts nothing — an extra Grail
-    // only turns once a Grail has been TAKEN (see grail-converted-utopia.test.ts).
-    expect(second.location, "not yet — no Grail has been taken").toBe("grail");
+    // USER RULE 2026-08-19: WINNING the battle is the conversion trigger — the
+    // other Grail turns right now, before any dig (see
+    // grail-converted-utopia.test.ts for the full timing matrix).
+    expect(second.location, "the battle WIN is the conversion trigger").toBe("dragon_utopia");
+    expect(second.grailConverted, "…and the converted origin is recorded").toBe(true);
     expect(canDigGrail(state, "p1")).toBe(true);
 
     beginFieldVisit(state, hero.id, first.spaceId, true);
-    expect(second.location, "the dig is the conversion trigger").toBe("dragon_utopia");
-    expect(second.grailConverted, "…and the converted origin is recorded").toBe(true);
     expect(first.location, "the DUG site itself never turns").toBe("grail");
     expect(state.players.p1.resources.gold).toBe(goldBefore + 20);
     expect(state.adventure!.grail).toMatchObject({ status: "carried", carrierHeroId: hero.id });
@@ -357,29 +357,32 @@ describe("Map Editor hidden Grail / Dragon Utopia rules", () => {
     }
   });
 
-  it("converts a second Grail revealed after the DIG — not after a mere guard clear", () => {
+  it("converts a second Grail revealed after a WON Grail battle — not before any battle", () => {
     const state = editorGame("hidden-second-grail");
     const hero = getMainHero(state, "p1")!;
     const first = field("grail", "32,32");
     state.adventure!.fields[first.spaceId] = first;
     hero.spaceId = first.spaceId;
 
-    // CONTROL (USER RULE 2026-08-07): guards down, Grail NOT yet taken — a Grail
-    // tile revealed now stays a Grail dig site.
-    beginFieldVisit(state, hero.id, first.spaceId, false);
+    // CONTROL: NO Grail battle won anywhere — a Grail tile revealed now stays a
+    // Grail dig site.
     expect(state.adventure!.grailTakenFieldId).toBeUndefined();
     const early = instantiateTile(state.adventure!, "C2", { row: 40, col: 40 }, 0, true);
     early.faceDown = false;
     materializeTileFields(state.adventure!, early);
-    expect(
-      Object.values(state.adventure!.fields).find(
-        (candidate) => candidate.tileInstanceId === early.id && candidate.difficulty === 7
-      )?.location
-    ).toBe("grail");
+    const earlyObjective = Object.values(state.adventure!.fields).find(
+      (candidate) => candidate.tileInstanceId === early.id && candidate.difficulty === 7
+    );
+    expect(earlyObjective?.location).toBe("grail");
 
-    // Now TAKE the Grail; a later reveal converts to a normally rewarded Utopia.
-    beginFieldVisit(state, hero.id, first.spaceId, true);
+    // USER RULE 2026-08-19: WIN the battle on the first Grail — the already
+    // revealed second Grail converts right then, and a tile revealed even
+    // later converts on its reveal too. No dig needed.
+    beginFieldVisit(state, hero.id, first.spaceId, false);
     expect(state.adventure!.grailTakenFieldId).toBe(first.spaceId);
+    expect(state.adventure!.grail?.status, "won, not dug").toBe("uncollected");
+    expect(earlyObjective?.location).toBe("dragon_utopia");
+    expect(earlyObjective?.grailConverted).toBe(true);
     const hiddenSecond = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);
     hiddenSecond.faceDown = false;
     materializeTileFields(state.adventure!, hiddenSecond);

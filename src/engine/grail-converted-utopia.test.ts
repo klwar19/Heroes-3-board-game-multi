@@ -14,8 +14,11 @@ import type { CombatState, GameState, MapFieldState } from "./state";
 // Grail-to-Utopia rules, pinned below on BOTH surfaces (the `polish-grail-utopia`
 // house rule and the map-editor `hiddenGrailUtopia` package) plus the designer
 // `grailAsUtopia` knob:
-//   1. conversion fires at the DIG, never when a Grail's guards merely fall;
-//   2. the dug field NEVER converts;
+//   1. USER RULE 2026-08-19: WINNING THE BATTLE on a Grail field converts every
+//      OTHER Grail field right then (supersedes the 2026-08-07 dig-time rule;
+//      the dig re-runs the conversion only as a legacy-snapshot backstop);
+//   2. the chosen/dug field NEVER converts — after the dig it stays a spent,
+//      empty dig site forever (never a fresh Utopia);
 //   3. a converted field is a real Ⅶ fight paying the normal Utopia bundle;
 //   4. its Artifact payout is exactly the Ⅶ FIELD ladder: two Search (3) — two
 //      Artifact cards (user-confirmed 2026-08-19: "current is right") — paid
@@ -105,37 +108,45 @@ function tokenChoices(state: GameState): number {
   return state.adventure!.rewardQueue.filter((reward) => reward.kind === "visit-steps").length;
 }
 
-describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () => {
+describe("Grail → Utopia conversion fires when a Grail BATTLE is won", () => {
   for (const [label, make] of [
     ["Polish house rule", polishGame],
     ["map-editor package", editorGame]
   ] as const) {
-    it(`${label}: beating an extra Grail-neighbour's guards converts NOTHING; the dig does`, () => {
+    it(`${label}: WINNING the battle on a Grail field converts every OTHER Grail right then`, () => {
+      // USER RULE 2026-08-19 ("both are grail fields, but after winning a
+      // battle vs a Ⅶ Grail field the other changes its status to a Ⅶ Utopia
+      // field") — supersedes the 2026-08-07 dig-time trigger.
       const state = make(`${label}-trigger`);
       const { hero, dug, extra } = twoGrails(state, "trigger");
       hero.spaceId = dug.spaceId;
 
-      // RULE 1: guards fall on the first Grail — the extra Grail is untouched.
-      beginFieldVisit(state, hero.id, dug.spaceId, false);
-      expect(dug.grailDiggable, "the fought site arms its dig").toBe(true);
-      expect(extra.location, "an extra Grail must NOT turn before a Grail is taken").toBe("grail");
-      expect(extra.grailConverted ?? false).toBe(false);
-      expect(state.adventure!.grailTakenFieldId).toBeUndefined();
-      // …and it still fights as a Grail: the package's Grail draw carries NO
-      // Black Dragon (the Utopia draw appends exactly one).
+      // BEFORE any battle both fields are plain Grails: the extra fights Grail
+      // guards (the Utopia draw appends a Black Dragon; the Grail draw never).
       expect(
         drawGuardArmy(state, extra, 7).some((draw) => draw.unitDefId === "neutral.black_dragons"),
-        "pre-dig, an extra Grail fights Grail guards, not Utopia dragons"
+        "pre-battle, every Grail field fights Grail guards, not Utopia dragons"
       ).toBe(false);
-      // Visiting it pre-dig is Grail bookkeeping (arms a dig), never a payout.
-      const goldBefore = state.players.p1.resources.gold;
-      const queueBefore = state.adventure!.rewardQueue.length;
-      const secondHero = getMainHero(state, "p2")!;
-      secondHero.spaceId = extra.spaceId;
-      beginFieldVisit(state, secondHero.id, extra.spaceId, false);
       expect(extra.location).toBe("grail");
-      expect(state.players.p1.resources.gold).toBe(goldBefore);
-      expect(state.adventure!.rewardQueue.length).toBe(queueBefore);
+
+      // The guards fall on the first Grail: THIS field becomes THE Grail (its
+      // dig armed, it never turns), and the extra converts IMMEDIATELY —
+      // before any dig, the moment the battle is won.
+      beginFieldVisit(state, hero.id, dug.spaceId, false);
+      expect(dug.grailDiggable, "the fought site arms its dig").toBe(true);
+      expect(dug.location, "the fought site stays THE Grail").toBe("grail");
+      expect(state.adventure!.grailTakenFieldId, "the conversion pivot is the fought field").toBe(
+        dug.spaceId
+      );
+      expect(state.adventure!.grail?.status, "the token is NOT collected yet").toBe("uncollected");
+      expect(extra.location, "the other Grail turns at the battle WIN").toBe("dragon_utopia");
+      expect(extra.grailConverted).toBe(true);
+      expect(extra.grailDiggable ?? false).toBe(false);
+      expect(extra.blackCube, "an unfought converted site is a fresh Utopia fight").toBe(false);
+      // …and it now really fights as a Utopia.
+      expect(
+        drawGuardArmy(state, extra, 7).filter((draw) => draw.unitDefId === "neutral.black_dragons")
+      ).toHaveLength(1);
     });
 
     it(`${label}: the DUG field never turns — only the other extra Grail field does`, () => {
@@ -203,28 +214,30 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
       expect(state.adventure!.vpLedger?.p1?.utopiaDefeatedFieldIds ?? []).toContain(real.spaceId);
     });
 
-    it(`${label}: a Grail tile revealed AFTER the dig converts; revealed BEFORE it does not`, () => {
-      // The extra Grail's tile is still face-down at dig time, so the field sweep
-      // cannot reach it — materializeTileFields converts it on reveal instead.
+    it(`${label}: a Grail tile revealed AFTER a won Grail battle converts; revealed BEFORE it does not`, () => {
+      // CONTROL: no Grail battle has been won anywhere — a revealed Grail tile
+      // stays a Grail.
       const before = make(`${label}-late-before`);
-      const beforeHero = getMainHero(before, "p1")!;
       const beforeDug = field("grail", "late-before-dug");
       before.adventure!.fields[beforeDug.spaceId] = beforeDug;
-      beforeHero.spaceId = beforeDug.spaceId;
-      // CONTROL: guards down but NOT dug — a revealed Grail tile stays a Grail.
-      beginFieldVisit(before, beforeHero.id, beforeDug.spaceId, false);
       const hiddenEarly = instantiateTile(before.adventure!, "C2", { row: 50, col: 50 }, 0, true);
       hiddenEarly.faceDown = false;
       materializeTileFields(before.adventure!, hiddenEarly);
       const earlyObjective = Object.values(before.adventure!.fields).find(
         (candidate) => candidate.tileInstanceId === hiddenEarly.id && candidate.difficulty === 7
       );
-      expect(earlyObjective?.location, "no dig yet ⇒ a revealed Grail stays a Grail").toBe("grail");
+      expect(
+        earlyObjective?.location,
+        "no Grail battle won yet ⇒ a revealed Grail stays a Grail"
+      ).toBe("grail");
 
+      // USER RULE 2026-08-19: the WIN is the trigger — a tile still face-down /
+      // in the Far supply at that moment converts on reveal, no dig needed.
       const state = make(`${label}-late-after`);
       const { hero, dug } = twoGrails(state, "late-after");
       hero.spaceId = dug.spaceId;
-      fightAndDig(state, hero.id, dug.spaceId);
+      beginFieldVisit(state, hero.id, dug.spaceId, false);
+      expect(state.adventure!.grail?.status, "won, not yet dug").toBe("uncollected");
       const hidden = instantiateTile(state.adventure!, "C2", { row: 50, col: 50 }, 0, true);
       hidden.faceDown = false;
       materializeTileFields(state.adventure!, hidden);
@@ -248,36 +261,52 @@ describe("Grail → Utopia conversion fires only when the Grail is TAKEN", () =>
     ["Polish house rule", polishGame],
     ["map-editor package", editorGame]
   ] as const) {
-    it(`${label}: an extra Grail whose guards ALREADY fell converts too — and stays spent`, () => {
-      const state = make(`${label}-spent-extra`);
+    it(`${label}: the FIRST won Grail battle picks THE Grail — and a legacy-cleared extra converts SPENT`, () => {
+      // NEW-TIMING half: whichever Grail's battle is won FIRST becomes the
+      // map's one Grail; the other converts at that moment (symmetric — it does
+      // not matter which of the two the players reach first).
+      const state = make(`${label}-first-win-picks`);
       const { hero, dug, extra } = twoGrails(state, "spent");
-
-      // Clear BOTH Grails' guards first (both arm a dig — the package lets any
-      // Grail be dug), then take the Token from one of them.
       hero.spaceId = extra.spaceId;
       beginFieldVisit(state, hero.id, extra.spaceId, false);
       expect(extra.blackCube, "its guards are down").toBe(true);
-      expect(extra.grailDiggable).toBe(true);
-
-      hero.spaceId = dug.spaceId;
-      fightAndDig(state, hero.id, dug.spaceId);
+      expect(extra.grailDiggable, "the won site IS the Grail").toBe(true);
+      expect(extra.location).toBe("grail");
+      expect(state.adventure!.grailTakenFieldId).toBe(extra.spaceId);
+      // The OTHER Grail converts into a fresh, fightable Utopia…
+      expect(dug.location).toBe("dragon_utopia");
+      expect(dug.grailConverted).toBe(true);
+      expect(dug.blackCube).toBe(false);
+      // …and the Grail is still dug from the WON site afterwards.
+      state.adventure!.grail!.obelisksVisited = { p1: ["obelisk-a", "obelisk-b"] };
+      beginFieldVisit(state, hero.id, extra.spaceId, true);
       expect(state.adventure!.grail?.status).toBe("carried");
+      expect(extra.location, "the dug site never turns — it stays a spent dig site").toBe("grail");
+      expect(extra.grailConverted ?? false).toBe(false);
+      expect(extra.blackCube).toBe(true);
 
-      // It "changed to utopia" for every read…
-      expect(extra.location).toBe("dragon_utopia");
-      expect(extra.grailConverted).toBe(true);
-      expect(extra.grailDiggable ?? false).toBe(false);
-      // …but a beaten site is never resurrected: it stays cleared, so nobody
-      // re-fights it and it pays nothing on a later visit.
-      expect(extra.blackCube, "a spent site keeps its Black Cube").toBe(true);
-      const goldBefore = state.players.p1.resources.gold;
-      const searchesBefore = artifactSearches(state).length;
-      const choicesBefore = tokenChoices(state);
-      hero.spaceId = extra.spaceId;
-      beginFieldVisit(state, hero.id, extra.spaceId, false);
-      expect(state.players.p1.resources.gold).toBe(goldBefore);
-      expect(artifactSearches(state).length).toBe(searchesBefore);
-      expect(tokenChoices(state)).toBe(choicesBefore);
+      // LEGACY half (snapshots written under the old dig-time rule could hold
+      // TWO already-cleared Grails): a cleared extra still converts — but stays
+      // SPENT, so nobody re-fights it for a second reward.
+      const legacy = make(`${label}-legacy-spent`);
+      const legacyParts = twoGrails(legacy, "legacy");
+      legacyParts.extra.blackCube = true;
+      legacyParts.extra.grailDiggable = true;
+      legacyParts.hero.spaceId = legacyParts.dug.spaceId;
+      fightAndDig(legacy, legacyParts.hero.id, legacyParts.dug.spaceId);
+      expect(legacy.adventure!.grail?.status).toBe("carried");
+      expect(legacyParts.extra.location).toBe("dragon_utopia");
+      expect(legacyParts.extra.grailConverted).toBe(true);
+      expect(legacyParts.extra.grailDiggable ?? false).toBe(false);
+      expect(legacyParts.extra.blackCube, "a spent site keeps its Black Cube").toBe(true);
+      const goldBefore = legacy.players.p1.resources.gold;
+      const searchesBefore = artifactSearches(legacy).length;
+      const choicesBefore = tokenChoices(legacy);
+      legacyParts.hero.spaceId = legacyParts.extra.spaceId;
+      beginFieldVisit(legacy, legacyParts.hero.id, legacyParts.extra.spaceId, false);
+      expect(legacy.players.p1.resources.gold).toBe(goldBefore);
+      expect(artifactSearches(legacy).length).toBe(searchesBefore);
+      expect(tokenChoices(legacy)).toBe(choicesBefore);
 
       // CONTROL: on the same rule, an UNFOUGHT extra Grail converts into a real,
       // still-fightable Utopia — so the cube above is the spent state travelling

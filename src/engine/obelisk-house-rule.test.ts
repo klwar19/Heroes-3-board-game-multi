@@ -194,6 +194,71 @@ describe("Obelisk house rule", () => {
     expect(offered).not.toContain(undesignated.id);
   });
 
+  it("the scry reports the EFFECTIVE Ⅶ objective (a designated Grail on a Utopia-printing tile scries as a Grail)", () => {
+    const state = makeGame();
+    state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };
+    // The balanced random-slot machinery stamps designations onto whatever tile
+    // the one-of list drew — C1 PRINTS a Dragon Utopia but PLAYS as a Grail
+    // here, and the clue must say so (the old scry read only the print).
+    const designated = instantiateTile(state.adventure!, "C1", { row: 60, col: 60 }, 0, true);
+    designated.viiField = "grail";
+
+    const picker = openCluePicker(state);
+    if (!picker) throw new Error("expected Grail clue picker");
+    const index = picker.options.findIndex(
+      (option) =>
+        option.steps[0]?.type === "GRAIL_TILE_SCRY" && option.steps[0].tileInstanceId === designated.id
+    );
+    expect(index).toBeGreaterThanOrEqual(0);
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: index });
+    const reveal = state.adventure!.pendingVisit?.steps[0];
+    if (reveal?.type !== "CHOOSE_ONE") throw new Error("expected private Grail reveal");
+    expect(reveal.prompt, "the clue names the EFFECTIVE objective").toContain("grail");
+    expect(reveal.prompt, "…never the overridden printed Utopia").not.toContain("dragon_utopia");
+  });
+
+  it("after a WON Grail battle the hidden 'Grail' tiles are Utopias-to-be: no clue, no false Grail report", () => {
+    // USER RULE 2026-08-19: winning the battle on a Grail field converts every
+    // other Grail. A tile still face-down at that moment materializes as a
+    // Dragon Utopia on reveal — so the Obelisk must stop treating it as a
+    // hidden Grail (no clue gate, no "grail" scry text).
+    const state = makeGame();
+    state.adventure!.mapPreset = {
+      obelisks: { role: "victory-only" },
+      objectives: { hiddenGrailUtopia: true }
+    };
+    instantiateTile(state.adventure!, "C2", { row: 60, col: 60 }, 0, true); // prints grail
+    // CONTROL: before any battle the hidden Grail print gates the clue open.
+    const before = openCluePicker(state);
+    expect(before, "pre-battle: the hidden Grail is a real clue target").not.toBeNull();
+    // Consume the offer (one per player per Obelisk) by declining it.
+    const skip = before!.options.findIndex((option) => option.label === "Do not inspect a tile");
+    resolveVisitStep(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: skip });
+
+    // WIN the battle on a revealed Grail field (no dig — the win converts).
+    const grailField: MapFieldState = {
+      spaceId: "61,61",
+      tileInstanceId: "t-grail-fight",
+      slot: 0,
+      location: "grail",
+      difficulty: 7,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as MapFieldState;
+    state.adventure!.fields[grailField.spaceId] = grailField;
+    const hero = getMainHero(state, "p1")!;
+    hero.spaceId = grailField.spaceId;
+    beginFieldVisit(state, hero.id, grailField.spaceId, false);
+    expect(state.adventure!.grailTakenFieldId).toBe(grailField.spaceId);
+
+    // A SECOND Obelisk now offers no clue at all: the map holds no hidden
+    // Grail any more (the face-down C2 will materialize as a Dragon Utopia).
+    const after = openCluePicker(state);
+    expect(after, "post-win: no hidden Grail, no clue").toBeNull();
+  });
+
   it("offers no clue at all when no face-down tile can host the Grail (no dead prompt)", () => {
     const state = makeGame();
     state.adventure!.mapPreset = { obelisks: { role: "victory-only" } };

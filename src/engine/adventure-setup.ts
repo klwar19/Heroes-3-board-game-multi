@@ -2148,15 +2148,12 @@ function applyDesignedViiField(
     if (plan.playerViiPick && plan.faceDown) {
       tile.viiFields = multi;
       tile.playerViiPick = true;
-    } else if (isHiddenGrailUtopiaPair(multi)) {
-      // USER RULE 2026-08-19: a Grail/Utopia mystery pair is a GRAIL until a
-      // Grail is taken (see planResolvesGrailUtopiaPair — this is the same rule
-      // for a plan that reaches here uncollapsed, e.g. a face-up slot). The old
-      // position hash below was seed-independent, so a map's every pair could
-      // land Utopia and no Grail exist anywhere.
-      tile.viiField = "grail";
     } else {
       // Deterministic pick from the multi-set (seeded by plan position).
+      // NOTE: a Grail/Utopia MYSTERY PAIR never reaches this hash any more —
+      // `balancedRandomViiAssignments` collapses it (face-up AND face-down) to
+      // a single balanced designation before this function is called. The hash
+      // survives only for other multi-sets (e.g. town/settlement mixes).
       const idx =
         Math.abs((plan.row ?? 0) * 31 + (plan.col ?? 0) * 17) % multi.length;
       tile.viiField = multi[idx];
@@ -2391,27 +2388,6 @@ function popTileMatchingFeature(
  */
 type GrailUtopiaCounts = { grail: number; dragon_utopia: number };
 
-/**
- * USER RULE 2026-08-19 ("both are grail fields, but after winning [and digging]
- * a Ⅶ Grail field the other changes its status to a Ⅶ Utopia field"): an
- * editor-authored Grail/Dragon-Utopia MYSTERY PAIR resolves to a GRAIL at
- * setup — the game never pre-assigns a Utopia, so a map with N mystery fields
- * ALWAYS holds a diggable Grail. The extras become Dragon Utopias the moment a
- * Grail is TAKEN, through the existing Grail-taken conversion
- * (`applyGrailTakenConversion` + the `materializeTileFields` reveal branch),
- * which the designer package auto-activates for these maps.
- *
- * This replaces both older resolutions of the pair, each a reported bug:
- * the seeded "balanced pool" (four paired fields became 2 Grails + 2 Utopias —
- * pre-assigned Utopias the user's concept forbids) and the face-up
- * position-hash pick in `applyDesignedViiField`, which was SEED-INDEPENDENT
- * (|row·31 + col·17| % 2) and could resolve EVERY pair on a map to a Utopia
- * (reported 2026-08-19: "one map with 3 such fields — ALL 3 were Utopias,
- * there was no Grail in the map").
- *
- * The ONLY exception is an explicit reveal-time player pick (`playerViiPick`
- * on a face-down slot): the player may still deliberately choose the Utopia.
- */
 function isHiddenGrailUtopiaPair(
   viiFields: CustomMapTilePlan["viiFields"]
 ): boolean {
@@ -2419,12 +2395,72 @@ function isHiddenGrailUtopiaPair(
   return choices.size === 2 && choices.has("grail") && choices.has("dragon_utopia");
 }
 
-/** Whether this plan's mystery pair resolves to a Grail at setup (no player pick). */
-function planResolvesGrailUtopiaPair(plan: CustomMapTilePlan): boolean {
-  return (
-    plan.group === "center" &&
-    isHiddenGrailUtopiaPair(plan.viiFields) &&
-    !(plan.playerViiPick && plan.faceDown)
+/**
+ * The SAME mystery, authored the other common way: a center "one of these
+ * tiles" list mixing Grail-PRINTING and Utopia-PRINTING candidates (the live
+ * maps put all of C1–C4 in one list). The raw one-of pick used to decide the
+ * objective by whichever tile it happened to draw — a map whose every list
+ * drew a Utopia tile held NO Grail at all (reported 2026-08-19: "one map with
+ * 3 such fields — ALL 3 were Utopias, there was no Grail in the map"). These
+ * slots now join the SAME balanced pool as the `viiFields` pairs. An explicit
+ * `viiField` / `viiFields` on the plan wins as before, and a list printing
+ * only one of the two kinds is an authored single-kind choice.
+ */
+function oneOfListMixesGrailUtopia(plan: CustomMapTilePlan): boolean {
+  if (plan.group !== "center" || plan.tileDefId) return false;
+  if (plan.viiField || plan.viiFields?.length) return false;
+  const counts = objectiveCountsInTiles(plan.oneOfTileDefIds ?? []);
+  return counts.grail > 0 && counts.dragon_utopia > 0;
+}
+
+/**
+ * A center slot whose Ⅶ objective is RANDOM ("grail or utopia"): an authored
+ * mystery pair (face-up or face-down — the old face-up position hash was
+ * SEED-INDEPENDENT and is gone) or a mixed one-of list. A face-down
+ * `playerViiPick` pair stays the revealing player's explicit choice.
+ */
+function isRandomGrailUtopiaSlot(plan: CustomMapTilePlan): boolean {
+  if (plan.group !== "center") return false;
+  if (isHiddenGrailUtopiaPair(plan.viiFields) && !(plan.playerViiPick && plan.faceDown)) {
+    return true;
+  }
+  return oneOfListMixesGrailUtopia(plan);
+}
+
+/**
+ * Resolve every RANDOM Grail/Utopia slot as ONE balanced pool instead of an
+ * independent roll per tile: four random fields become 2 Grails + 2 Utopias;
+ * three become 2+1 or 1+2. The shuffled order hides which position got which
+ * result while staying reproducible from the game seed.
+ *
+ * USER RULES 2026-08-19: at the beginning "utopia are utopia" — the assigned
+ * Utopias are real Utopias from round 1 — but the map may NEVER end up with
+ * ZERO Grails (at least one slot is always assigned the Grail, so a lone
+ * random slot is guaranteed to be it), and the assigned GRAIL fields are all
+ * real Grails until a battle on one of them is WON, when the others convert
+ * (see handleGrailVisit / applyGrailTakenConversion in adventure.ts).
+ */
+function balancedRandomViiAssignments(
+  plans: readonly CustomMapTilePlan[],
+  seed: string
+): Map<CustomMapTilePlan, "grail" | "dragon_utopia"> {
+  const slots = plans.filter(isRandomGrailUtopiaSlot);
+  if (slots.length === 0) return new Map();
+
+  const random = createSeededRandom(`${seed}#designer-hidden-grail-utopia-count`);
+  const grailCount = Math.max(
+    1,
+    Math.floor(slots.length / 2) + (slots.length % 2 === 1 ? random.nextInt(0, 1) : 0)
+  );
+  const shuffled = shuffleCards(
+    slots.map((_, index) => String(index)),
+    `${seed}#designer-hidden-grail-utopia-positions`
+  ).map((index) => slots[Number(index)]);
+  return new Map(
+    shuffled.map((plan, index) => [
+      plan,
+      index < grailCount ? "grail" as const : "dragon_utopia" as const
+    ])
   );
 }
 
@@ -3446,9 +3482,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           ? popSubTile(plan.subBand)
           : pools[plan.group]?.pop();
 
+    const randomViiAssignments = balancedRandomViiAssignments(customMap, seed);
     const effectiveViiPlan = (plan: CustomMapTilePlan): CustomMapTilePlan => {
-      return planResolvesGrailUtopiaPair(plan)
-        ? { ...plan, viiField: "grail", viiFields: undefined, playerViiPick: undefined }
+      const designation = randomViiAssignments.get(plan);
+      return designation
+        ? { ...plan, viiField: designation, viiFields: undefined, playerViiPick: undefined }
         : plan;
     };
 
@@ -3473,10 +3511,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
      * the ordinary draw. When the pool holds no matching tile left the draw falls
      * back to today's behaviour and the override forces the field as before.
      */
-    const designationCenterTile = (
-      plan: CustomMapTilePlan,
-      mysteryPair = false
-    ): string | undefined => {
+    const designationCenterTile = (plan: CustomMapTilePlan): string | undefined => {
       if (plan.group !== "center" || effectiveExactTileDefId(plan)) {
         return undefined;
       }
@@ -3484,16 +3519,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       if (designation !== "grail" && designation !== "dragon_utopia") {
         return undefined;
       }
-      const printed = takeCenterTileWith(centerPool, designation);
-      if (printed || !mysteryPair) {
-        return printed;
-      }
-      // A mystery-pair Grail beyond the pool's Grail-printing tiles (the shipped
-      // catalog prints only two): prefer a Dragon-Utopia-printing tile. The field
-      // is FORCED to a Grail now, and this very hex turns into a real Utopia the
-      // moment the Grail is taken, so the printed art agrees with the field for
-      // the rest of the game.
-      return takeCenterTileWith(centerPool, "dragon_utopia");
+      return takeCenterTileWith(centerPool, designation);
     };
 
     // "One of these tiles" (map designer): a slot may name a LIST of candidate
@@ -3529,7 +3555,22 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         continue;
       }
       const ordered = shuffleCards(choices, `${seed}#tilechoice#${plan.row}#${plan.col}`);
-      const pick = ordered.find((id) => !claimedTileDefIds.has(id));
+      // A random Grail/Utopia one-of slot follows its BALANCED pool assignment:
+      // prefer a candidate whose printed Ⅶ objective IS the assigned kind, so
+      // art and field agree. When every matching candidate is already claimed
+      // the ordinary pick stands and the viiField FORCE below still wins.
+      const assignment = randomViiAssignments.get(plan);
+      const printsAssignment = (id: string): boolean =>
+        Boolean(
+          assignment &&
+            allTileDefinitions[id]?.fields.some(
+              (fieldDef) => fieldDef.difficulty === 7 && fieldDef.location === assignment
+            )
+        );
+      const preferred = assignment
+        ? [...ordered.filter(printsAssignment), ...ordered.filter((id) => !printsAssignment(id))]
+        : ordered;
+      const pick = preferred.find((id) => !claimedTileDefIds.has(id));
       if (!pick) {
         // Graceful exhaustion: every candidate is already on the map, so this
         // slot falls back to an ordinary random draw of its own group (a
@@ -3695,7 +3736,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           // Holy Grail otherwise fills up to two unpinned face-down Center slots
           // with Grail dig sites; further Center slots stay a random draw.
           tileDefId =
-            designationCenterTile(effectiveViiPlan(plan), planResolvesGrailUtopiaPair(plan)) ??
+            designationCenterTile(effectiveViiPlan(plan)) ??
             forcedCenters[forcedCenterIndex++] ??
             centerPool.pop();
         } else if (

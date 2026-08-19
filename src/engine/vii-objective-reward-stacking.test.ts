@@ -160,15 +160,19 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(paid.goldGained).toBe(20);
   });
 
-  it("STACK A — centre-hex reward pays ON TOP of the built-in ladder, exactly once", () => {
+  it("STACK A — centre-hex reward pays ON TOP exactly once, but its ARTIFACT Searches are DROPPED (USER RULE 2026-08-19)", () => {
+    // "I SHOULD GET 2 ARTIFACTS AT MOST": live maps stamped huge artifact
+    // Searches onto their Ⅶ slots and got them stacked on the built-in two
+    // Search (3). On a Grail/Utopia objective the artifact portion of the
+    // centre-hex reward is dropped now; everything else still pays once.
     const state = centreObjectiveMap("stack-center", {
       centerHex: { reward: { gold: 25, searchArtifact: 5, treasureDice: 2 }, vp: 4 }
     });
     const paid = clearObjectiveOnce(state);
-    // Both halves land for the same clear: the Utopia's own two Search (3) …
+    // The Utopia's own two Search (3) are the ONLY artifact source…
     expect(paid.artifactSearches).toEqual([3, 3]);
-    // … plus the designer package (an extra Artifact Search + 2 Treasure dice).
-    expect(paid.visitStepSearches).toEqual([5]);
+    expect(paid.visitStepSearches).toEqual([]);
+    // …while the non-artifact designer components pay as authored.
     expect(paid.visitStepTypes).toContain("ROLL_TREASURE_DICE");
     expect(paid.goldGained).toBe(45);
     expect(paid.field.centerHexClaimed).toBe(true);
@@ -180,13 +184,26 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(again.visitStepSearches).toEqual([]);
   });
 
-  it("STACK B — a hidden hex event on the objective's own hex pays ON TOP too", () => {
+  it("STACK B — a hidden hex event on the objective's own hex pays ON TOP too (its artifact portion capped)", () => {
     const state = centreObjectiveMap("stack-hexevent", {});
     state.adventure!.hexEvents = hexEvent(CENTER_FIELD_ID) as never;
     const paid = clearObjectiveOnce(state);
     expect(paid.artifactSearches).toEqual([3, 3]);
-    expect(paid.visitStepSearches).toEqual([3]);
+    // The event's gold pays; its searchArtifact is dropped on THIS hex (the
+    // same 2026-08-19 cap the centre-hex reward takes).
+    expect(paid.visitStepSearches).toEqual([]);
     expect(paid.goldGained).toBe(35);
+
+    // CONTROL: the identical event on any OTHER hex keeps its artifact Search.
+    const elsewhere = centreObjectiveMap("stack-hexevent-else", {});
+    const plainField = Object.values(elsewhere.adventure!.fields).find(
+      (candidate) => candidate.location === "empty_field"
+    )!;
+    elsewhere.adventure!.hexEvents = hexEvent(plainField.spaceId) as never;
+    const hero = getMainHero(elsewhere, "p1")!;
+    hero.spaceId = plainField.spaceId;
+    beginFieldVisit(elsewhere, hero.id, plainField.spaceId, false);
+    expect(queuedVisitStepSearchCounts(elsewhere)).toEqual([3]);
   });
 
   it("STACK C — the opt-in utopiaBonusSearch adds an EXTRA Search on a DESIGNATED Ⅶ Utopia (BUG FIX)", () => {
@@ -205,7 +222,7 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     expect(clearObjectiveOnce(control).artifactSearches).toEqual([3, 3]);
   });
 
-  it("ALL THREE stack for one clear — the fully loaded Ⅶ Utopia", () => {
+  it("the fully loaded Ⅶ Utopia — designer artifact stacks are CAPPED, only the explicit knob still adds", () => {
     const state = centreObjectiveMap(
       "stack-all",
       { centerHex: { reward: { gold: 25, searchArtifact: 5 } } },
@@ -213,12 +230,13 @@ describe("Ⅶ Dragon Utopia — the reward-stacking matrix (one clear)", () => {
     );
     state.adventure!.hexEvents = hexEvent(CENTER_FIELD_ID) as never;
     const paid = clearObjectiveOnce(state);
-    // Built-in ladder + the bonus Search as top-level rewards…
+    // Built-in ladder + the EXPLICIT banner-advertised knob…
     expect(paid.artifactSearches).toEqual([3, 3, 2]);
-    // …the hex event's Search(3) and the centre-hex Search(5) as designer packages…
-    expect(paid.visitStepSearches.sort()).toEqual([3, 5]);
-    // …and both gold packages (20 + 15 + 25). FIVE Artifact Searches from one clear:
-    // deliberate, but the two warning surfaces below now say so up front.
+    // …while the centre-hex Search(5) and the hex event's Search(3) are dropped
+    // on this hex (USER RULE 2026-08-19 — the old build paid FIVE artifact
+    // Searches from one clear and only warned about it)…
+    expect(paid.visitStepSearches).toEqual([]);
+    // …and every gold package still pays (20 + 15 + 25).
     expect(paid.goldGained).toBe(60);
   });
 
