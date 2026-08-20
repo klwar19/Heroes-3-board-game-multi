@@ -29,7 +29,7 @@ import {
   grantRegularArtifactOfSameGrade
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
-import { balanceCardLibrary } from "./community-balance-cards";
+import { balanceCardLibrary, COMMUNITY_REPRINTED_CARDS } from "./community-balance-cards";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
@@ -695,6 +695,20 @@ export type ReducerOptions = {
 
 type ConcreteEffect = Exclude<EffectDefinition, { type: "CHOOSE_ONE" }>;
 type CreateActiveEffectCardEffect = Extract<ConcreteEffect, { type: "CREATE_ACTIVE_EFFECT" }>;
+
+/**
+ * Morale a `GAIN_MORALE` effect grants in `mode`. Printed cards grant the same
+ * `amount` on both sides; the Community Balance Change's Leadership reprint
+ * prints "Draw 2 cards." with NO morale token on its expert side, so it declares
+ * `expertAmount: 0`. Reading it here (instead of at the two resolution sites)
+ * keeps the card the single source of truth.
+ */
+function gainMoraleAmount(
+  effect: { amount: number; expertAmount?: number },
+  mode: CardPlayMode | undefined
+): number {
+  return mode === "expert" && effect.expertAmount !== undefined ? effect.expertAmount : effect.amount;
+}
 
 function cloneState(state: GameState): GameState {
   return JSON.parse(JSON.stringify(state)) as GameState;
@@ -11713,10 +11727,17 @@ function finalizeSpellCardDestination(
   const playerId = stackItem.action.playerId;
   const cardId = stackItem.action.cardId;
   const recall = stackItem.modifiers.recallSpell;
-  const expertSupportCards = expertRecallSupportCardIds(
+  const allSupportCards = expertRecallSupportCardIds(
     stackItem.modifiers.playedCardIds,
     recall?.sourceCardId
   );
+  // Community Mysticism (basic) recalls only the FIRST N cards played alongside
+  // the Spell ("… as well as 1 card played alongside it"); the printed Expert
+  // recall has no limit and takes them all.
+  const expertSupportCards =
+    recall?.recallPlayedCardLimit !== undefined
+      ? allSupportCards.slice(0, recall.recallPlayedCardLimit)
+      : allSupportCards;
   if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
     if (recall?.polishRefreshSpell) {
       refreshPolishUsedSpell(state, playerId, cardId);
@@ -15278,7 +15299,7 @@ function applyReactionPlayCore(
         inFlightCardIds: reactionInFlightCardIds
       });
     }
-    changeMorale(state, playerId, effect.amount);
+    changeMorale(state, playerId, gainMoraleAmount(effect, mode));
   }
 
   // Scholar's combat-use house rule: resolve its discard recovery immediately
@@ -15796,9 +15817,15 @@ function applyReactionPlayCore(
     // comes straight back, an ongoing spell (Summon/Clone-style) only after
     // its effect ends — Knowledge cannot loop it onto the table twice. A Spell
     // cast from the Spell Book returns to the Book (a private zone), not hand.
+    // Community Balance Change's Mysticism BASIC: "… take it back into your hand
+    // as well as 1 card played alongside it." Same machinery as the Expert
+    // recall, capped at `basicRecallPlayedCards`.
+    const basicAlongside = mode === "expert" ? 0 : (effect.basicRecallPlayedCards ?? 0);
     stackItem.modifiers.recallSpell = {
       toHand: true,
-      recallPlayedCards: mode === "expert" && Boolean(effect.expertRecallPlayedCards),
+      recallPlayedCards:
+        (mode === "expert" && Boolean(effect.expertRecallPlayedCards)) || basicAlongside > 0,
+      ...(basicAlongside > 0 ? { recallPlayedCardLimit: basicAlongside } : {}),
       sourceCardId: play.cardId,
       toSpellBook: Boolean(stackItem.action.fromSpellBook) && !polishBookCast,
       ...(isPolishMysticism ? { polishRefreshSpell: true } : {}),
@@ -18656,7 +18683,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         inFlightCardIds: playInFlightCardIds
       });
     }
-    changeMorale(state, action.playerId, effect.amount);
+    changeMorale(state, action.playerId, gainMoraleAmount(effect, mode));
   }
 
   if (effect.type === "NECROMANCY_REINFORCE") {
@@ -18715,8 +18742,14 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       });
     }
     // BINH house rule: Estates is nerfed to 2 / 4 gold (toggle: estates-nerf).
+    // EXCEPTION — the Community Balance Change REPRINTS Estates (2 / 4 printed
+    // on the card face), so while that pack is on the card's own `gain` /
+    // `expertGain` are authoritative and this seam steps aside; otherwise a
+    // reprint could never move the number, whichever way `estates-nerf` is set.
+    const communityEstates =
+      card.id === "ability.estates" && Boolean(COMMUNITY_REPRINTED_CARDS[card.id]) && houseRuleEnabled(state, "community-card-balance");
     const gain =
-      card.id === "ability.estates"
+      card.id === "ability.estates" && !communityEstates
         ? { gold: estatesGold(getRuleset(state), mode, houseRuleEnabled(state, "estates-nerf")) }
         : mode === "expert" && effect.expertGain
           ? effect.expertGain

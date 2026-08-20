@@ -51,12 +51,19 @@ describe("communityBalanceCardLibrary — the gate", () => {
     expect(balanceCardLibrary(stateWith({}), base, syntheticReprint())).toBe(base);
   });
 
-  it("with the rule ON and the SHIPPED (empty) table, still returns the same object", () => {
-    // Step-1 reality check: turning the rule on today changes nothing at all.
+  it("with the rule ON and the SHIPPED table, swaps exactly the reprinted cards", () => {
     const base: CardLibrary = { ...cardLibrary };
-    expect(Object.keys(COMMUNITY_REPRINTED_CARDS).length).toBe(0);
-    expect(communityBalanceCardLibrary(stateWith({ community: true }), base)).toBe(base);
-    expect(balanceCardLibrary(stateWith({ community: true }), base)).toBe(base);
+    // The Abilities family has landed; nothing outside it is touched.
+    expect(Object.keys(COMMUNITY_REPRINTED_CARDS).length).toBeGreaterThan(0);
+    const swapped = communityBalanceCardLibrary(stateWith({ community: true }), base);
+    for (const cardId of Object.keys(base)) {
+      const expected = COMMUNITY_REPRINTED_CARDS[cardId] ?? base[cardId];
+      expect(swapped[cardId], `${cardId} swapped unexpectedly`).toBe(expected);
+    }
+    // CONTROL: rule off, same shipped table — the caller's own object, identity
+    // included, so a default table is byte-identical.
+    expect(communityBalanceCardLibrary(stateWith({}), base)).toBe(base);
+    expect(balanceCardLibrary(stateWith({}), base)).toBe(base);
   });
 
   it("swaps a reprint in ONLY while the rule is on", () => {

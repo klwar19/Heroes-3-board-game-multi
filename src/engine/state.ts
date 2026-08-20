@@ -886,6 +886,14 @@ export type ActiveEffectModifier =
        * the once-per-die-type model applies instead.
        */
       rerolls?: number;
+      /**
+       * Community Balance Change's Luck reprint ("This turn, you may reroll EACH
+       * treasure or resource die once"): the budget for a die kind is the NUMBER
+       * OF DICE in the roll being offered, not one per die kind for the whole
+       * effect. Tracked per use as `luck:<dice>:<n>` in `usedChoiceIds`, so a
+       * later roll of the same kind this turn is offered again.
+       */
+      perDie?: boolean;
     }
   | {
       /**
@@ -1673,7 +1681,19 @@ export type EffectDefinition =
       type: "SET_SPELL_POWER_MAX";
       schoolOnly: Exclude<SpellSchool, "any">;
     }
-  | { type: "GAIN_MORALE"; amount: number; expertDrawCards?: number }
+  | {
+      type: "GAIN_MORALE";
+      amount: number;
+      /**
+       * Morale the EXPERT side grants, when it differs from `amount`. Absent =
+       * the expert side grants the same `amount` (every printed card). The
+       * Community Balance Change's Leadership reprint drops the morale token from
+       * its expert side entirely ("Draw 2 cards." — no `<positive_morale>`), so it
+       * sets `expertAmount: 0`.
+       */
+      expertAmount?: number;
+      expertDrawCards?: number;
+    }
   | {
       /**
        * Pandora's Gift: Recruits — "Draw `count` cards from the Neutral Unit deck.
@@ -2634,6 +2654,13 @@ export type EffectDefinition =
        */
       type: "FIRST_AID_TENT_VOLLEY";
       heals: number;
+      /**
+       * Community Balance Change: its First Aid reprint adds "Draw a card." to
+       * the Tent volley. Read off the ACTIVE (balanced) card definition in
+       * `spendFirstAidExpert`, so the card stays the source of truth and the
+       * printed card (no `drawCards`) draws nothing.
+       */
+      drawCards?: number;
     }
   | {
       /**
@@ -2860,6 +2887,13 @@ export type EffectDefinition =
       basicSpellLimitBonus?: number;
       /** Mysticism expert: also recall every card played with the spell. */
       expertRecallPlayedCards?: boolean;
+      /**
+       * Community Balance Change's Mysticism reprint: the BASIC recall also
+       * returns this many of the cards played alongside the Spell ("… as well as
+       * 1 card played alongside it"). Absent on every printed card, so a basic
+       * recall returns the Spell alone as before.
+       */
+      basicRecallPlayedCards?: number;
     }
   | {
       /** Generic Polish Cast-a-Spell enabler; actual Spell is chosen separately. */
@@ -7407,6 +7441,11 @@ export type ResolutionStackItem = {
     recallSpell?: {
       toHand: boolean;
       recallPlayedCards: boolean;
+      /**
+       * Community Mysticism (basic): cap on how many alongside cards return.
+       * Absent = no cap (the printed Expert recall, which takes them all).
+       */
+      recallPlayedCardLimit?: number;
       /** The Mysticism/Knowledge card itself; Expert recall never returns it. */
       sourceCardId?: CardId;
       toSpellBook?: boolean;

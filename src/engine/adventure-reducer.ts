@@ -11253,6 +11253,11 @@ function swappableTacticsUnits(combat: CombatState, playerId: PlayerId) {
  * the combat — is filtered out by the caller, since Tactics is a hero ability.)
  */
 function eligibleForTacticsSetup(state: GameState, combat: CombatState, playerId: PlayerId): boolean {
+  // Community Balance Change: the reprint has NO start-of-Combat side at all —
+  // its basic side is the mid-combat swap — so the setup window never opens.
+  if (houseRuleEnabled(state, "community-card-balance")) {
+    return false;
+  }
   const player = state.players[playerId];
   if (!player || !player.hand.includes("ability.tactics")) {
     return false;
@@ -11494,17 +11499,27 @@ export function swapCombatUnits(state: GameState, action: Extract<GameAction, { 
   } else if (state.phase === "combat") {
     // Expert: your turn, before your active unit has moved or attacked.
     const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
-    if (!active || active.controllerId !== action.playerId) {
+    const community = houseRuleEnabled(state, "community-card-balance");
+    // COMMUNITY BALANCE CHANGE — which SIDE this swap is comes from the board,
+    // so no new action shape was needed: BASIC ("During Combat…", crown-free)
+    // when your OWN unit is the one about to act, EXPERT ("Play when a unit is
+    // about to activate", crown) when the unit about to act is somebody else's.
+    const communityBasic = community && active?.controllerId === action.playerId;
+    if (!active || (!community && active.controllerId !== action.playerId)) {
       throw new Error("Tactics can only be used during combat on your own turn.");
     }
     if (active.movedThisActivation || active.attackedThisActivation) {
       throw new Error("Tactics must be used before your active unit moves or attacks.");
     }
     // An Empowered Tactics may be used without a crown.
-    if (expertUsesAvailable(player) <= 0 && !abilityExpertIsCrownFree(player, "ability.tactics")) {
+    if (
+      !communityBasic &&
+      expertUsesAvailable(player) <= 0 &&
+      !abilityExpertIsCrownFree(player, "ability.tactics")
+    ) {
       throw new Error("No expert uses are available this combat round.");
     }
-    mode = "expert";
+    mode = communityBasic ? "basic" : "expert";
   } else {
     throw new Error("There is no Tactics swap available right now.");
   }
@@ -17849,6 +17864,23 @@ const SCOUTING_BASIC_COUNT = 3;
  */
 const SCOUTING_BALANCE_DELTA = 2;
 const SCOUTING_EXPERT_COUNT = 5;
+/**
+ * Community Balance Change (`community-card-balance`): the reprinted Scouting is
+ * FLAT again — Search (4) basic, Search (5) expert — and its Expert side REMOVES
+ * the card from the game instead of discarding it. It wins over the Polish
+ * reprint's relative Search (X+2) / persist reading whenever both packs are on.
+ */
+const SCOUTING_COMMUNITY_BASIC_COUNT = 4;
+
+/** Whether the Community Balance Change's Scouting reprint is the one in play. */
+function communityScouting(state: GameState): boolean {
+  return houseRuleEnabled(state, "community-card-balance");
+}
+
+/** The basic Search size this table's Scouting printing grants. */
+function scoutingBasicCount(state: GameState): number {
+  return communityScouting(state) ? SCOUTING_COMMUNITY_BASIC_COUNT : SCOUTING_BASIC_COUNT;
+}
 
 /** Whether the player already holds a Search-size override (a pre-played Scouting). */
 function hasSearchCountOverride(state: GameState, playerId: PlayerId): boolean {
@@ -17931,8 +17963,10 @@ function scoutingPromptFor(
   // Balance Pack: both sides are Search (X+2), so they ALWAYS beat the base count
   // — the "would this tier even help?" filter that hides a flat 3 on a Search (4)
   // has nothing to hide. Expert stays crown-gated.
-  const balance = houseRuleEnabled(state, "polish-card-balance");
-  const offerBasic = balance || SCOUTING_BASIC_COUNT > baseCount;
+  // COMMUNITY WINS: its flat 4 / 5 replace the Polish relative widen, so the
+  // "would this tier even help?" filter is back on both sides.
+  const balance = houseRuleEnabled(state, "polish-card-balance") && !communityScouting(state);
+  const offerBasic = balance || scoutingBasicCount(state) > baseCount;
   const offerExpert =
     (balance || SCOUTING_EXPERT_COUNT > baseCount) && canPlayExpertMode(player, SCOUTING_CARD_ID);
   if (!offerBasic && !offerExpert && !offerWisdom && !offerSpeculum) {
@@ -17964,7 +17998,7 @@ function openScoutingPrompt(
 ): void {
   // Balance Pack: the reprint is RELATIVE, so the label must say base+2 (and that
   // the Expert widen lasts the turn) rather than the classic flat 3 / 5.
-  const balancePrint = houseRuleEnabled(state, "polish-card-balance");
+  const balancePrint = houseRuleEnabled(state, "polish-card-balance") && !communityScouting(state);
   const options: { label: string }[] = [
     { label: balancePrint ? `Search (${baseCount})` : `Search (${baseCount}) — don't use Scouting` }
   ];
@@ -17972,14 +18006,16 @@ function openScoutingPrompt(
     options.push({
       label: balancePrint
         ? `Play Scouting — Search (${baseCount + SCOUTING_BALANCE_DELTA})`
-        : `Play Scouting — Search (${SCOUTING_BASIC_COUNT})`
+        : `Play Scouting — Search (${scoutingBasicCount(state)})`
     });
   }
   if (offer.offerExpert) {
     options.push({
       label: balancePrint
         ? `Play Expert Scouting — Search (${baseCount + SCOUTING_BALANCE_DELTA}) for every Search this turn (spend a crown)`
-        : `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)`
+        : communityScouting(state)
+          ? `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}), then Remove this card (spend a crown)`
+          : `Play Expert Scouting — Search (${SCOUTING_EXPERT_COUNT}) (spend a crown)`
     });
   }
   // Balance Pack (Wisdom's "you built the Mage Guild" widen) — the LAST option,
@@ -18033,12 +18069,19 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
     return;
   }
   player.hand.splice(index, 1);
-  player.discard.push(SCOUTING_CARD_ID);
+  // Community Balance Change: the EXPERT side reads "… then remove this card",
+  // so it leaves the game instead of joining the discard pile.
+  if (communityScouting(state) && mode === "expert") {
+    player.removed.push(SCOUTING_CARD_ID);
+  } else {
+    player.discard.push(SCOUTING_CARD_ID);
+  }
 
   if (mode === "expert" && !abilityExpertIsCrownFree(player, SCOUTING_CARD_ID)) {
     player.combatStats.expertUsesSpentThisRound += 1;
   }
 
+  const community = communityScouting(state);
   state.activeEffects.push(
     makeActiveEffect(
       state,
@@ -18051,10 +18094,18 @@ export function playScoutingCard(state: GameState, playerId: PlayerId, mode: "ba
         modifiers: [
           {
             type: "SEARCH_COUNT_OVERRIDE",
-            count: mode === "expert" ? SCOUTING_EXPERT_COUNT : SCOUTING_BASIC_COUNT,
-            // Both printings ride the same modifier; the reader picks by rule.
-            balanceDelta: SCOUTING_BALANCE_DELTA,
-            balancePersist: mode === "expert"
+            count:
+              mode === "expert"
+                ? SCOUTING_EXPERT_COUNT
+                : community
+                  ? SCOUTING_COMMUNITY_BASIC_COUNT
+                  : SCOUTING_BASIC_COUNT,
+            // Both CLASSIC printings ride the same modifier and the reader picks
+            // by rule. The COMMUNITY printing is flat on both sides, so it omits
+            // the Polish relative/persist riders entirely — that is what makes it
+            // win when both packs are on (searchCountOverrideFor falls back to
+            // `count` whenever `balanceDelta` is absent).
+            ...(community ? {} : { balanceDelta: SCOUTING_BALANCE_DELTA, balancePersist: mode === "expert" })
           }
         ]
       },

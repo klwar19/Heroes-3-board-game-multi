@@ -487,7 +487,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // Artifacts difficulty-I acquisition is a guaranteed Minor with no roll; and the
 // skeleton necro-reinforce offers a free Stack layer under polish-unit-stacks.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 45;
+// v45 -> v46 (2026-08-20): the Community Balance Change's ABILITY reprints
+// (`community-card-balance`, default OFF ⇒ a table without it is byte-identical).
+// The reprinted definitions live server-side and change what the reducer and the
+// legal-action layer compute, so a v45 edge would offer and resolve the CLASSIC
+// cards while the client shows the community faces — the classic skew symptom.
+// Behaviour a stale worker computes differently: Estates 2/4 gold (the reprint
+// now OVERRIDES the `estates-nerf` seam), Leadership's expert side granting no
+// Morale token (new optional `GAIN_MORALE.expertAmount`), Scouting's flat
+// Search (4)/(5) with the Expert side REMOVED from the game, Artillery's basic
+// side hitting any enemy (and its instant reaction withheld) while its expert
+// volley grants the Ballista aim, Ballistics' paid two-adjacent-target bombard
+// becoming playable mid-combat plus the Catapult double, First Aid drawing a card
+// on both sides (new optional `FIRST_AID_TENT_VOLLEY.drawCards`) with the volley
+// back on a crown, Wisdom becoming a combat +Power instant, Luck lasting the TURN
+// with a per-die reroll budget (new optional `ADVENTURE_DIE_REROLL.perDie` and
+// `luck:<dice>:<n>` keys in `usedChoiceIds`), Mysticism's basic recall taking one
+// alongside card (new optional `RECALL_SPELL.basicRecallPlayedCards` and
+// `recallSpell.recallPlayedCardLimit`), and Tactics losing its start-of-combat
+// window while its two sides re-derive from the active unit.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 46;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

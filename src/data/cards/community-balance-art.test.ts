@@ -10,10 +10,10 @@
  * unimplemented, and no unimplemented entry secretly ships a face (which would
  * let a face advertise a rule the engine does not run).
  *
- * STEP 1: both registries are EMPTY, so the loops below are vacuous today; they
- * are written so the FIRST content step is pinned the moment an id lands. The
- * directory-listing check is the one that bites immediately: a committed face
- * without a wired id fails right now.
+ * SCOPE TODAY: the ABILITIES family — ten wired reprints plus the two the pack
+ * deliberately does not run (Necromancy, Intelligence). The directory-listing
+ * check is the sharp one: a committed face without a wired id fails, and so does
+ * a wired id with no face.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -84,7 +84,7 @@ describe("Community Balance Change art", () => {
       expect(statSync(file).size, `${cardId} empowered community face looks like a stub`).toBeGreaterThan(40 * 1024);
     }
     // A card outside the empowered list resolves nothing.
-    expect(communityBalanceEmpoweredCardImage("ability.estates")).toBeUndefined();
+    expect(communityBalanceEmpoweredCardImage("ability.logistics")).toBeUndefined();
     expect(communityBalanceEmpoweredCardImage(undefined)).toBeUndefined();
   });
 });
@@ -118,20 +118,49 @@ describe("Community Balance Change registries", () => {
     }
   });
 
-  it("STEP 1: the pack is empty on purpose — nothing swaps yet", () => {
-    // Non-vacuity marker for the loops above: when the first content step lands
-    // it must delete/flip this expectation consciously, not silently.
-    expect(COMMUNITY_BALANCE_CARD_IDS.length).toBe(0);
-    expect(Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED).length).toBe(0);
-    expect(COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(0);
+  it("covers the sheet's twelve Abilities — ten wired, two declared unimplemented", () => {
+    // Non-vacuity marker for the loops above: the ABILITIES family is complete,
+    // so every one of the sheet's 12 ability ids is accounted for on exactly one
+    // side of the contract. A later family (spells / artifacts / units / war
+    // machines) must extend this list consciously, not silently.
+    const sheetAbilities = [
+      "ability.artillery",
+      "ability.ballistics",
+      "ability.estates",
+      "ability.first_aid",
+      "ability.intelligence",
+      "ability.leadership",
+      "ability.luck",
+      "ability.mysticism",
+      "ability.necromancy",
+      "ability.scouting",
+      "ability.tactics",
+      "ability.wisdom"
+    ];
+    const accounted = new Set([...COMMUNITY_BALANCE_CARD_IDS, ...Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED)]);
+    for (const cardId of sheetAbilities) {
+      expect(accounted.has(cardId), `${cardId} is on neither side of the contract`).toBe(true);
+    }
+    expect([...COMMUNITY_BALANCE_CARD_IDS].sort()).toEqual(
+      sheetAbilities.filter((id) => id !== "ability.intelligence" && id !== "ability.necromancy").sort()
+    );
+    expect(Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED).sort()).toEqual([
+      "ability.intelligence",
+      "ability.necromancy"
+    ]);
+    // Mysticism has no Expert side, so the sheet ships no Empowered printing for
+    // it; every OTHER wired ability has one.
+    expect([...COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS].sort()).toEqual(
+      [...COMMUNITY_BALANCE_CARD_IDS].filter((id) => id !== "ability.mysticism").sort()
+    );
   });
 });
 
 describe("communityBalanceCardImage / communityBalanceFaceImage", () => {
   it("CONTROL: a card outside the pack resolves no community face and keeps its printed one", () => {
-    expect(isCommunityBalanceCard("ability.estates")).toBe(false);
-    expect(communityBalanceCardImage("ability.estates")).toBeUndefined();
-    expect(communityBalanceFaceImage("ability.estates")).toBe(cardLibrary["ability.estates"]?.assets?.cardImage);
+    expect(isCommunityBalanceCard("ability.logistics")).toBe(false);
+    expect(communityBalanceCardImage("ability.logistics")).toBeUndefined();
+    expect(communityBalanceFaceImage("ability.logistics")).toBe(cardLibrary["ability.logistics"]?.assets?.cardImage);
   });
 
   it("resolves nothing at all for no card", () => {

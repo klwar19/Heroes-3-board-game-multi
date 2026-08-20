@@ -64,8 +64,30 @@ const DEFAULT_SRC = path.join(
  * EMPTY in step 1 — the reprints land in later steps.
  */
 const SOURCES = {
-  // "abilities-artillery.webp": "ability.artillery",
-  // "abilities-artillery-empowered.webp": "ability.artillery#empowered",
+  // ---- Abilities -----------------------------------------------------------
+  // Necromancy and Intelligence are deliberately ABSENT: their reprints are
+  // declared in COMMUNITY_BALANCE_NOT_IMPLEMENTED, so shipping their faces would
+  // print rules the engine does not run.
+  "abilities-artillery.webp": "ability.artillery",
+  "abilities-artillery-empowered.webp": "ability.artillery#empowered",
+  "abilities-ballistics.webp": "ability.ballistics",
+  "abilities-ballistics-empowered.webp": "ability.ballistics#empowered",
+  "abilities-estates.webp": "ability.estates",
+  "abilities-estates-empowered.webp": "ability.estates#empowered",
+  "abilities-first_aid.webp": "ability.first_aid",
+  "abilities-first_aid-empowered.webp": "ability.first_aid#empowered",
+  "abilities-leadership.webp": "ability.leadership",
+  "abilities-leadership-empowered.webp": "ability.leadership#empowered",
+  "abilities-luck.webp": "ability.luck",
+  "abilities-luck-empowered.webp": "ability.luck#empowered",
+  // Mysticism has no Expert side, so the sheet ships no Empowered printing.
+  "abilities-mysticism.webp": "ability.mysticism",
+  "abilities-scouting.webp": "ability.scouting",
+  "abilities-scouting-empowered.webp": "ability.scouting#empowered",
+  "abilities-tactics.webp": "ability.tactics",
+  "abilities-tactics-empowered.webp": "ability.tactics#empowered",
+  "abilities-wisdom.webp": "ability.wisdom",
+  "abilities-wisdom-empowered.webp": "ability.wisdom#empowered"
 };
 
 /** The committed basename for a table entry's target id. */

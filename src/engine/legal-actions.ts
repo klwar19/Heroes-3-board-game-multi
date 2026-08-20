@@ -5215,6 +5215,12 @@ export function artilleryCardReactions(state: GameState, playerId: PlayerId): Le
   if (!player.hand.includes(ARTILLERY_ABILITY_CARD_ID)) {
     return [];
   }
+  // Community Balance Change: its Artillery basic side is a ➡️ own-activation
+  // play ("Deal 1 damage to an enemy unit"), NOT an instant — so the classic
+  // in-window reaction is withheld while that reprint is the card in play.
+  if (houseRuleEnabled(state, "community-card-balance")) {
+    return [];
+  }
   const card = cardLibrary[ARTILLERY_ABILITY_CARD_ID];
   if (!card || card.implementationStatus !== "implemented") {
     return [];
@@ -10686,26 +10692,41 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
     return;
   }
   const player = state.players[playerId];
-  // Tactics is Expert-only; an Empowered Tactics may be used without a crown.
-  if (!player || !player.hand.includes("ability.tactics") || !canPlayExpertMode(player, "ability.tactics")) {
+  if (!player || !player.hand.includes("ability.tactics")) {
     return;
   }
   const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
-  if (!active || active.controllerId !== playerId || active.movedThisActivation || active.attackedThisActivation) {
+  if (!active || active.movedThisActivation || active.attackedThisActivation) {
     return;
   }
+  // COMMUNITY BALANCE CHANGE: the reprint's BASIC side is this very window and
+  // costs no crown while YOUR unit is the one about to act; its EXPERT side
+  // (crown) widens the moment to ANY unit about to activate. Classic / Polish
+  // Tactics keeps its own-unit-only, crown-gated Expert reading.
+  const community = houseRuleEnabled(state, "community-card-balance");
+  const communityBasic = community && active.controllerId === playerId;
+  if (!communityBasic) {
+    if (!community && active.controllerId !== playerId) {
+      return;
+    }
+    // Tactics is Expert-only here; an Empowered Tactics needs no crown.
+    if (!canPlayExpertMode(player, "ability.tactics")) {
+      return;
+    }
+  }
+  const sideLabel = communityBasic ? "Tactics" : "Tactics (expert)";
 
   const units = tacticsSwappableUnits(combat, playerId);
   for (let i = 0; i < units.length; i += 1) {
     for (let j = i + 1; j < units.length; j += 1) {
       actions.push({
-        label: `Tactics (expert): switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
+        label: `${sideLabel}: switch ${units[i].cardName} (${getBattlefieldLabel(units[i].position)}) and ${units[j].cardName} (${getBattlefieldLabel(units[j].position)})`,
         action: { type: "SWAP_COMBAT_UNITS", playerId, unitIdA: units[i].id, unitIdB: units[j].id }
       });
     }
   }
 
-  addTacticsMoveActions(actions, state, playerId, units, "Tactics (expert)");
+  addTacticsMoveActions(actions, state, playerId, units, sideLabel);
 }
 
 function addTownActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {

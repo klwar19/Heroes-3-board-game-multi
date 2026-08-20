@@ -14187,7 +14187,14 @@ export function unreachableUndergroundCenters(tiles: ReadonlyArray<TilePlacement
 function getLuckRerollEffect(
   state: GameState,
   playerId: PlayerId,
-  dice: "treasure" | "resource"
+  dice: "treasure" | "resource",
+  /**
+   * How many dice this roll threw. Only the Community Balance Change's `perDie`
+   * Luck reads it: its budget for a die kind is one reroll PER DIE in the roll
+   * ("you may reroll each treasure or resource die once"), so a two-die roll may
+   * be rerolled twice. Defaults to 1, which is also every printed roll's size.
+   */
+  dieCount = 1
 ): ActiveEffectState | null {
   return (
     state.activeEffects.find((effect) => {
@@ -14206,6 +14213,15 @@ function getLuckRerollEffect(
       if (modifier.rerolls !== undefined) {
         const used = effect.usedChoiceIds.filter((id) => id.startsWith("reroll:")).length;
         return used < modifier.rerolls;
+      }
+      // Community Luck: one reroll PER DIE of this roll, and the tally is reset
+      // by the effect's own `current-turn` duration rather than lasting a whole
+      // game round. Keys are `luck:<dice>:<n>` so they never collide with the
+      // classic per-die-type key below.
+      if (modifier.perDie) {
+        const prefix = `luck:${dice}:`;
+        const used = effect.usedChoiceIds.filter((id) => id.startsWith(prefix)).length;
+        return used < Math.max(1, dieCount);
       }
       // Luck: one reroll per die type, tracked separately.
       return !effect.usedChoiceIds.includes(`luck:${dice}`);
@@ -14247,6 +14263,17 @@ function consumeLuckReroll(state: GameState, effectId: string, dice: "treasure" 
   // dice across every fight this round — handled on the combat side, where its
   // reroll source is not consumed (consumeEffectOnUse: false). The effect only
   // leaves play when the game round ends (expiresAtGameRound).
+  // Community Luck spends one of its PER-DIE rerolls for this die kind.
+  const perDie = effect.modifiers.some(
+    (modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.perDie === true
+  );
+  if (perDie) {
+    const prefix = `luck:${dice}:`;
+    const used = effect.usedChoiceIds.filter((id) => id.startsWith(prefix)).length;
+    effect.usedChoiceIds.push(`${prefix}${used}`);
+    return;
+  }
+
   effect.usedChoiceIds.push(`luck:${dice}`);
 }
 
@@ -14592,7 +14619,7 @@ function rollResourceDice(
     ...(origin ? { origin } : {})
   });
 
-  const luck = getLuckRerollEffect(state, visit.playerId, "resource");
+  const luck = getLuckRerollEffect(state, visit.playerId, "resource", rolls.length);
   const extraOptions = extraDieRerollOptions(state, visit, "resource", count, resolveCount, origin);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
   const gradeMastery = heroHasGradeNode(state, visit.playerId, HERO_GRADE_NODE_IDS.resourceMastery);
@@ -14735,7 +14762,7 @@ function rollTreasureDice(
     treasureRolls: [...rolls, ...prophecyExtras]
   });
 
-  const luck = getLuckRerollEffect(state, visit.playerId, "treasure");
+  const luck = getLuckRerollEffect(state, visit.playerId, "treasure", rolls.length);
   const extraOptions = extraDieRerollOptions(state, visit, "treasure", count, resolveCount);
   const setEffect = getDieSetEffect(state, visit.playerId, "treasure");
 

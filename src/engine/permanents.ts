@@ -16,6 +16,8 @@ import { defenderOnFortification, destroyFortification, fortificationTargets, pa
 import { noteUnitDamagedForTokens } from "./tokens";
 import { abilityExpertIsCrownFree, canPlayExpertMode, expertUsesAvailable } from "./ruleset";
 import { houseRuleEnabled } from "./house-rules";
+import { balanceCard } from "./community-balance-cards";
+import { drawCardsForPlayer } from "./decks";
 import { appendEvent, nextEventNumber } from "./events";
 import type {
   CardDefinition,
@@ -1068,7 +1070,10 @@ export const BALLISTICS_CATAPULT_SHOTS = 2;
 export function playerCanUseBallisticsCatapultDouble(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
   return Boolean(
-    houseRuleEnabled(state, "polish-card-balance") &&
+    // The Community Balance Change reprints the SAME expert clause ("When using
+    // the catapult, resolve its effect twice ignoring the stone cost"), so its
+    // rule opens the identical offer. Either pack alone is enough.
+    (houseRuleEnabled(state, "polish-card-balance") || houseRuleEnabled(state, "community-card-balance")) &&
       player &&
       player.hand.includes(BALLISTICS_ABILITY_ID) &&
       canPlayExpertMode(player, BALLISTICS_ABILITY_ID)
@@ -1116,7 +1121,16 @@ function spendBallisticsExpert(state: GameState, playerId: PlayerId): void {
  * end of this combat" buys.
  */
 export function grantBalanceBallistaAim(state: GameState, playerId: PlayerId): boolean {
-  if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
+  // The Community Balance Change prints the aim on its EXPERT side only ("…
+  // resolve its effect against the same target 3 times. You may select the
+  // target."), which is exactly the call from `spendArtilleryExpert`. Its BASIC
+  // side is a plain DEAL_DAMAGE and never reaches the other call site (the
+  // printed `DAMAGE_LOWEST_INITIATIVE_ENEMY` branch, which only the classic /
+  // Polish Artillery resolves).
+  if (
+    (!houseRuleEnabled(state, "polish-card-balance") && !houseRuleEnabled(state, "community-card-balance")) ||
+    !state.combat
+  ) {
     return false;
   }
   if (!getPermanentCardIds(state, playerId).includes(BALLISTA_CARD_ID)) {
@@ -1196,7 +1210,30 @@ export function firstAidVolleyHeals(): number {
  * `expertUnlessHouseRule: "polish-card-balance"`), so no crown is needed or spent.
  */
 function firstAidVolleyIsBasic(state: GameState): boolean {
+  // COMMUNITY WINS over Polish for a card both packs reprint: the Community
+  // Balance Change keeps the Tent volley on the EXPERT side (⚡, crown) and only
+  // adds "Draw a card." — so with both rules on the volley costs a crown again.
+  if (houseRuleEnabled(state, "community-card-balance")) {
+    return false;
+  }
   return houseRuleEnabled(state, "polish-card-balance");
+}
+
+/**
+ * Cards drawn by the First Aid Tent volley, read off the ACTIVE card definition
+ * (the Community Balance Change reprint prints "Draw a card."; the printed and
+ * Polish cards print none).
+ */
+function firstAidVolleyDraws(state: GameState): number {
+  const effect = balanceCard(state, FIRST_AID_ABILITY_ID)?.effect;
+  if (effect?.type === "CHOOSE_ONE") {
+    for (const option of effect.options) {
+      if (option.effect.type === "FIRST_AID_TENT_VOLLEY") {
+        return option.effect.drawCards ?? 0;
+      }
+    }
+  }
+  return 0;
 }
 
 export function playerCanUseFirstAidVolley(state: GameState, playerId: PlayerId): boolean {
@@ -1232,6 +1269,14 @@ export function spendFirstAidExpert(state: GameState, playerId: PlayerId): void 
     timing: cardLibrary[FIRST_AID_ABILITY_ID]?.timing ?? "instant",
     mode: firstAidVolleyIsBasic(state) ? "basic" : "expert"
   });
+  // Community Balance Change: "… resolve its effect against the same target 3
+  // times. Draw a card." The draw happens as the card is played (before the
+  // heals resolve), and the card itself is already in the discard, so it can
+  // never be drawn back by its own rider.
+  const draws = firstAidVolleyDraws(state);
+  if (draws > 0) {
+    drawCardsForPlayer(state, playerId, draws);
+  }
 }
 
 /**
