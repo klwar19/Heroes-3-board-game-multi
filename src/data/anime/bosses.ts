@@ -270,7 +270,14 @@ export const RAID_BOSS_ABILITY_CHOICES: readonly string[] = [
   "teleport-move",
   "nix-damage-cap",
   "commander-defense-token",
-  "attack-roll-advantage-passive"
+  "attack-roll-advantage-passive",
+  // PvE monster-caster rotations (variant expansion §A3). Self-contained: they
+  // read only the combat's units and the fighter's hand, open no window and no
+  // reaction, so they satisfy this list's stated contract.
+  "boss-spell-necrotic",
+  "boss-spell-frost",
+  "boss-spell-infernal",
+  "boss-spell-mindflay"
 ];
 
 /** Every shipped boss (raid + dungeon floors), for data tests and art builds. */

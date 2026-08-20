@@ -209,6 +209,16 @@ import {
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
+import {
+  monsterSpellAbility,
+  monsterSpellAllies,
+  monsterSpellCasters,
+  monsterSpellEnemies,
+  monsterSpellForRound,
+  monsterSpellTarget,
+  setMonsterSpellRoundStartHook
+} from "./monster-spells";
+import type { MonsterSpellDefinition } from "@/data/anime/monster-spells";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
   combatUnitDecisionOwnerId,
@@ -10615,6 +10625,216 @@ function applyActivationDamageSpell(
   markUnitRemovedIfNeeded(state, target);
   finishCombatIfNeeded(state);
 }
+
+/**
+ * PvE monster CASTER resolution (variant expansion §A2). Lives here — beside
+ * `applyActivationDamageSpell` — because a `shadow_bolt` must take the SAME
+ * reduction/immunity gates a Faerie Bolt does, and `reducedSpellDamage` is
+ * module-private to this file.
+ *
+ * Hard rules (all mandatory, all pinned by `monster-spells.test.ts`):
+ *  - NO window, NO pendingChoice, NO reaction window is ever opened. Damage is
+ *    dealt directly (the Faerie-Bolt / `damage-pulse` precedent), so pre-hit
+ *    heal reactions do NOT fire. This is the anti-stall guarantee.
+ *  - Casters resolve in ascending `position`; each is re-checked ALIVE before it
+ *    casts (a bolt could, in principle, kill an ally-side caster later).
+ *  - After the whole pass `finishCombatIfNeeded` runs: a bolt that kills the
+ *    last enemy unit must end the fight before any activation opens.
+ *  - Idempotent per `unitId#round` (`combat.monsterSpells.fired`), because
+ *    `finalizeCombatStart` is re-entrant.
+ */
+function monsterSpellEnemyControllerId(
+  combat: CombatState,
+  caster: CombatUnitState
+): PlayerId | null {
+  const side =
+    caster.controllerId === combat.attackerPlayerId
+      ? combat.defenderPlayerId
+      : combat.attackerPlayerId;
+  // The Neutral seat holds no hand. In a PvP-Neutral-Control fight the guards
+  // are still controlled by NEUTRAL_PLAYER_ID, so this resolves to the FIGHTER
+  // (the attacker), never the human steering the guards.
+  return side === NEUTRAL_PLAYER_ID ? null : side;
+}
+
+function applyMonsterSpellEffect(
+  state: GameState,
+  combat: CombatState,
+  caster: CombatUnitState,
+  abilityId: string,
+  spell: MonsterSpellDefinition
+): void {
+  const note = (message: string, targetUnitId?: UnitId): void => {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: caster.id,
+      abilityId,
+      ...(targetUnitId ? { targetUnitId } : {}),
+      message: `${caster.cardName} casts ${spell.name} — ${message}.`
+    });
+  };
+  const kind = spell.kind;
+
+  if (kind.k === "spell-damage") {
+    const target = monsterSpellTarget(combat, caster, spell, state.activeEffects);
+    if (!target) {
+      note("no living target");
+      return;
+    }
+    // A Factory Couatl's invulnerability (a DAMAGE ward) turns it aside whole.
+    if (isUnitDamageImmune(target)) {
+      note(`${target.cardName} is invulnerable and ignores it`, target.id);
+      return;
+    }
+    // School-less, so the "any" reading: only an ALL-school immunity (printed or
+    // artifact-granted) blocks it — a single-school immunity does not.
+    const schools: readonly SpellSchool[] = ["any"];
+    if (
+      unitImmuneToSpellSchoolsByEffect(state, target, schools) ||
+      (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, schools))
+    ) {
+      note(`${target.cardName} is immune to Spells and ignores it`, target.id);
+      return;
+    }
+    const dealt = reducedSpellDamage(state, target, kind.amount);
+    note(`${dealt} Spell damage to ${target.cardName}`, target.id);
+    if (dealt <= 0) {
+      return;
+    }
+    target.damage += dealt;
+    noteUnitDamagedForTokens(state, target, dealt);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: caster.id, controllerId: caster.controllerId },
+      target: { type: "unit", unitId: target.id },
+      amount: dealt,
+      damageKind: "spell"
+    });
+    markUnitRemovedIfNeeded(state, target);
+    return;
+  }
+
+  if (kind.k === "self-heal") {
+    if (caster.damage <= 0) {
+      note("it is already unwounded");
+      return;
+    }
+    const restored = Math.min(kind.amount, caster.damage);
+    // `armyStacks` is deliberately untouched: a shed health BAR never returns.
+    caster.damage -= restored;
+    note(`it heals ${restored} damage (health bars are never restored)`, caster.id);
+    return;
+  }
+
+  if (kind.k === "hand-drain") {
+    const victimId = monsterSpellEnemyControllerId(combat, caster);
+    const victim = victimId ? state.players[victimId] : undefined;
+    if (!victim || victim.hand.length === 0) {
+      note("there is no hand to drain");
+      return;
+    }
+    let discarded = 0;
+    for (let index = 0; index < kind.count; index += 1) {
+      if (discardRandomCardFromHand(state, victim.id) === null) {
+        break;
+      }
+      discarded += 1;
+    }
+    note(`${victim.name} discards ${discarded} random card${discarded === 1 ? "" : "s"}`);
+    return;
+  }
+
+  const modifier =
+    kind.k === "ally-buff"
+      ? ({ type: "DEFENSE_BONUS", amount: kind.amount } as const)
+      : kind.stat === "attack"
+        ? ({ type: "ATTACK_BONUS", amount: kind.amount } as const)
+        : ({ type: "INITIATIVE_BONUS", amount: kind.amount } as const);
+  const targets =
+    kind.k === "ally-buff"
+      ? monsterSpellAllies(combat, caster)
+      : kind.scope === "all"
+        ? monsterSpellEnemies(combat, caster)
+        : [monsterSpellTarget(combat, caster, spell, state.activeEffects)].filter(
+            (unit): unit is CombatUnitState => unit !== null
+          );
+  if (targets.length === 0) {
+    note("no living target");
+    return;
+  }
+  for (const target of targets) {
+    const effect = makeActiveEffect(
+      state,
+      {
+        name: spell.name,
+        scope: "unit",
+        duration: { type: "current-combat-round" },
+        polarity: kind.k === "ally-buff" ? "positive" : "negative",
+        removable: true,
+        modifiers: [modifier]
+      },
+      { type: "unit", unitId: caster.id, controllerId: caster.controllerId },
+      caster.controllerId,
+      { type: "unit", unitId: target.id }
+    );
+    state.activeEffects.push(effect);
+    appendEvent(state, {
+      type: "ACTIVE_EFFECT_CREATED",
+      effectId: effect.id,
+      controllerId: caster.controllerId,
+      name: effect.name,
+      duration: effect.duration
+    });
+  }
+  note(
+    `${modifier.amount > 0 ? "+" : ""}${modifier.amount} ${
+      kind.k === "ally-buff" ? "Defense" : kind.stat === "attack" ? "Attack" : "Initiative"
+    } on ${targets.map((target) => target.cardName).join(", ")} this round`,
+    targets.length === 1 ? targets[0].id : undefined
+  );
+}
+
+export function resolveMonsterSpellRoundStart(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.outcome) {
+    return;
+  }
+  const casters = monsterSpellCasters(combat);
+  if (casters.length === 0) {
+    return;
+  }
+  const round = combat.round;
+  combat.monsterSpells ??= { fired: [] };
+  for (const planned of casters) {
+    if (combat.outcome) {
+      break;
+    }
+    // Re-read from the live map and re-check alive: an earlier caster's bolt
+    // could have removed this one (impossible today, possible with a future
+    // friendly-fire spell).
+    const caster = combat.units[planned.id];
+    if (!caster || caster.damage >= caster.maxHealth) {
+      continue;
+    }
+    const key = `${caster.id}#${round}`;
+    if (combat.monsterSpells.fired.includes(key)) {
+      continue;
+    }
+    const ability = monsterSpellAbility(caster);
+    const spell = monsterSpellForRound(caster, round);
+    if (!ability || !spell) {
+      continue;
+    }
+    combat.monsterSpells.fired.push(key);
+    applyMonsterSpellEffect(state, combat, caster, ability.id, spell);
+  }
+  // A cast that wiped the last unit of a side ends the fight before any turn.
+  finishCombatIfNeeded(state);
+}
+
+// Register the resolver for `adventure-reducer.ts`'s combat-start call site
+// (see the hook note in monster-spells.ts — that edge must not import reducer).
+setMonsterSpellRoundStartHook(resolveMonsterSpellRoundStart);
 
 /**
  * Polish Balance Pack — resolve the Eagle Eye EXPERT copy of a unit's bolt:
@@ -23635,6 +23855,9 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
   // a lethal pulse ends the fight via the trailing finishCombatIfNeeded below.
   applyCombatScriptRoundStart(state);
   applyHeroGradeRoundStartDamage(state);
+  // PvE monster casters (variant expansion §A2): every BOSS_SPELL_ROTATION unit
+  // resolves this round's spell here — automatic, no window, no reaction.
+  resolveMonsterSpellRoundStart(state);
   if (state.combat?.outcome) {
     return;
   }

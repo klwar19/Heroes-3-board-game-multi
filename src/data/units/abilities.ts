@@ -1,6 +1,21 @@
+import { monsterSpellRotationText, type MonsterSpellId } from "@/data/anime/monster-spells";
 import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType } from "@/engine/state";
 
 export type UnitAbilityEffectDefinition =
+  | {
+      /**
+       * PvE monster caster (dungeon/raid-boss variant expansion §A1): at the
+       * START of every combat round this unit automatically resolves ONE spell
+       * from `spells`, indexed by the combat round (round 1 → spells[0], round 2
+       * → spells[1], wrapping). Fully automatic and target-deterministic — NO
+       * window, NO choice, NO RNG, and no reaction window is ever opened (the
+       * anti-stall guarantee; damage is dealt directly, the Faerie-Bolt /
+       * damage-pulse precedent). Resolved by `applyMonsterSpellRoundStart`
+       * (reducer.ts) off the pure planning in `src/engine/monster-spells.ts`.
+       */
+      type: "BOSS_SPELL_ROTATION";
+      spells: MonsterSpellId[];
+    }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
@@ -2538,6 +2553,41 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     text: "While this boss is on its LAST health layer, its Attack gains +2 (attacks and Retaliation Attacks).",
     effect: { type: "FLAT_ATTACK_BONUS", amount: 2 },
     requiresLayersAtMost: 1,
+    implementationStatus: "implemented"
+  },
+  // ——— PvE monster CASTER arms (variant expansion §A3). Each is a fixed
+  // ROTATION of `src/data/anime/monster-spells.ts` entries resolved
+  // automatically at every combat round's start; the printed text is generated
+  // from that table so the card can never drift from what runs (CLAUDE.md §2).
+  "boss-spell-necrotic": {
+    id: "boss-spell-necrotic",
+    name: "Necrotic Litany",
+    text: monsterSpellRotationText(["shadow_bolt", "siphon_thought", "mend_flesh"]),
+    effect: { type: "BOSS_SPELL_ROTATION", spells: ["shadow_bolt", "siphon_thought", "mend_flesh"] },
+    implementationStatus: "implemented"
+  },
+  "boss-spell-frost": {
+    id: "boss-spell-frost",
+    name: "Rime Chant",
+    text: monsterSpellRotationText(["chill_of_the_deep", "withering_curse", "ward_of_ash"]),
+    effect: {
+      type: "BOSS_SPELL_ROTATION",
+      spells: ["chill_of_the_deep", "withering_curse", "ward_of_ash"]
+    },
+    implementationStatus: "implemented"
+  },
+  "boss-spell-infernal": {
+    id: "boss-spell-infernal",
+    name: "Infernal Cantos",
+    text: monsterSpellRotationText(["shadow_bolt", "withering_curse"]),
+    effect: { type: "BOSS_SPELL_ROTATION", spells: ["shadow_bolt", "withering_curse"] },
+    implementationStatus: "implemented"
+  },
+  "boss-spell-mindflay": {
+    id: "boss-spell-mindflay",
+    name: "Mindflay",
+    text: monsterSpellRotationText(["siphon_thought", "chill_of_the_deep"]),
+    effect: { type: "BOSS_SPELL_ROTATION", spells: ["siphon_thought", "chill_of_the_deep"] },
     implementationStatus: "implemented"
   },
   "archangel-lethal-save": {

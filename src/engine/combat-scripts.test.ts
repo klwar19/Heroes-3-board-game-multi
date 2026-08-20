@@ -357,7 +357,13 @@ describe("Forced Battle Events — registry hygiene", () => {
       expect(script.id, `${script.id} matches its registry key`).toBe(
         ANIME_COMBAT_SCRIPT_DEFINITIONS[script.id].id
       );
-      expect(locationDefinitions[script.locationId], `${script.id} → ${script.locationId} resolves`).toBeTruthy();
+      // A location-keyed (unscoped) script must name a real location; only a
+      // `scope: "pve-encounter"` script may omit it.
+      expect(script.locationId, `${script.id} names a location`).toBeTruthy();
+      expect(
+        locationDefinitions[script.locationId ?? ""],
+        `${script.id} → ${script.locationId} resolves`
+      ).toBeTruthy();
       expect(script.name.en.length, `${script.id} EN name`).toBeGreaterThan(0);
       expect(script.name.vi.length, `${script.id} VI name`).toBeGreaterThan(0);
       expect(script.events.length, `${script.id} has events`).toBeGreaterThan(0);

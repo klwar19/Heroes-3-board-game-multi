@@ -9702,6 +9702,14 @@ export type CombatState = {
     startApplied?: boolean;
     roundsFired?: number[];
   };
+  /**
+   * PvE monster CASTER bookkeeping (variant expansion §A2): the `unitId#round`
+   * keys whose automatic `BOSS_SPELL_ROTATION` cast has already resolved. The
+   * combat-start pass runs inside the re-entrant `finalizeCombatStart`, so this
+   * idempotence guard is load-bearing. Absent in every combat without a caster
+   * (and in every legacy snapshot) — read defensively.
+   */
+  monsterSpells?: { fired: string[] };
 };
 
 export type DeckState = {

@@ -22,12 +22,21 @@
 
 // Side-effect: register the Anime package's combat scripts into the catalog.
 import "@/data/anime/combat-scripts";
+// Side-effect + tables: the optional PvE director's encounter-scoped scripts.
+import {
+  pveFloorBand,
+  PVE_FLOOR_SCRIPT_IDS,
+  PVE_LAIR_SCRIPT_IDS
+} from "@/data/anime/pve-combat-scripts";
 import {
   combatScriptsForLocation,
+  getCombatScriptDefinition,
   type CombatScriptDefinition,
   type CombatScriptEvent
 } from "@/data/map/combat-scripts";
 import { animeEnabled, animeModuleEnabled } from "./anime";
+import { isPveEncounterCombat } from "./combat-board-art";
+import { createSeededRandom } from "./random";
 import { finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { appendEvent } from "./events";
 import { noteUnitDamagedForTokens } from "./tokens";
@@ -89,7 +98,47 @@ function foughtFieldLocation(state: GameState, combat: CombatState): string | nu
  */
 export function combatScriptsActiveForCombat(state: GameState, combat: CombatState): CombatScriptDefinition[] {
   const location = foughtFieldLocation(state, combat);
-  return combatScriptsForLocation(location).filter((script) => scriptModuleActive(state, script));
+  return [
+    ...combatScriptsForLocation(location).filter((script) => scriptModuleActive(state, script)),
+    ...pveEncounterScriptsForCombat(state, combat)
+  ];
+}
+
+/**
+ * The optional PvE director's scripts for this combat, chosen by ENCOUNTER
+ * IDENTITY rather than by the fought field's location (every rift lair shares
+ * the `rift_lair` location and every dungeon floor the `dungeon_gate` one).
+ *
+ * Returns `[]` — a single boolean check — unless the combat is a PvE encounter,
+ * so with the PvE modules OFF this is byte-identical to the old behaviour.
+ * WAVE assaults are deliberately excluded even though `isPveEncounterCombat` is
+ * true for them: a wave already carries its own battle-event rotation.
+ */
+export function pveEncounterScriptsForCombat(
+  state: GameState,
+  combat: CombatState
+): CombatScriptDefinition[] {
+  if (!isPveEncounterCombat(combat) || combat.context.kind !== "neutral") {
+    return [];
+  }
+  const context = combat.context;
+  if (context.waveAssault) {
+    return [];
+  }
+  const ids: string[] = [];
+  if (context.raidBossId) {
+    const defId = state.adventure?.raidBosses?.[context.raidBossId]?.defId;
+    if (defId) {
+      ids.push(...(PVE_LAIR_SCRIPT_IDS[defId] ?? []));
+    }
+  }
+  if (context.dungeonFloor !== undefined) {
+    const theme = state.adventure?.pveTheme === "doom" ? "doom" : "classic";
+    ids.push(...(PVE_FLOOR_SCRIPT_IDS[theme][pveFloorBand(context.dungeonFloor)] ?? []));
+  }
+  return ids
+    .map((id) => getCombatScriptDefinition(id))
+    .filter((script): script is CombatScriptDefinition => Boolean(script));
 }
 
 /** Map a unit to its side identity for a script predicate. */
@@ -198,6 +247,80 @@ function applyScriptObstacles(combat: CombatState, cells: number[], count: numbe
   combat.obstacles = [...placed].sort((left, right) => left - right);
 }
 
+/**
+ * Heal each LIVING unit of a side (the §E2 `side-heal` kind). `armyStacks` is
+ * deliberately untouched: a boss can mend the bar it stands on, never regain a
+ * shed one. One feed line per PASS, not per unit.
+ */
+function applyScriptSideHeal(
+  state: GameState,
+  combat: CombatState,
+  side: "attacker" | "defender",
+  amount: number,
+  bossOnly: boolean
+): void {
+  if (amount <= 0) {
+    return;
+  }
+  const targetPlayerId: PlayerId = side === "attacker" ? combat.attackerPlayerId : combat.defenderPlayerId;
+  const healed: string[] = [];
+  let total = 0;
+  for (const unit of Object.values(combat.units)) {
+    if (unit.controllerId !== targetPlayerId || unit.damage >= unit.maxHealth) {
+      continue;
+    }
+    if (bossOnly && !unit.bossUnit) {
+      continue;
+    }
+    const restored = Math.min(amount, unit.damage);
+    if (restored <= 0) {
+      continue;
+    }
+    unit.damage -= restored;
+    total += restored;
+    healed.push(unit.cardName);
+  }
+  if (healed.length === 0) {
+    return;
+  }
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    message: `The field mends ${healed.join(", ")} for ${total} damage.`
+  });
+}
+
+/**
+ * Place `count` obstacles on seeded-random EMPTY cells (the §E2
+ * `random-obstacle` kind). Seeded per (combat dice seed, round) with
+ * `salt: false`, so every client and every replay agrees.
+ */
+function applyScriptRandomObstacles(combat: CombatState, count: number): void {
+  if (count <= 0) {
+    return;
+  }
+  const occupied = new Set<number>(combat.obstacles ?? []);
+  for (const unit of Object.values(combat.units)) {
+    if (unit.damage < unit.maxHealth) {
+      occupied.add(unit.position);
+    }
+  }
+  const empty: number[] = [];
+  for (let cell = 0; cell < COMBAT_BOARD_CELLS; cell += 1) {
+    if (!occupied.has(cell)) {
+      empty.push(cell);
+    }
+  }
+  const random = createSeededRandom(`${combat.dice.seed}#pve-obstacle#${combat.round}`, {
+    salt: false
+  });
+  // Fisher–Yates over the empty set, then take the first `count`.
+  for (let index = empty.length - 1; index > 0; index -= 1) {
+    const swap = random.nextInt(0, index);
+    [empty[index], empty[swap]] = [empty[swap], empty[index]];
+  }
+  applyScriptObstacles(combat, empty.slice(0, count), count);
+}
+
 /** Fire one script event: announce it, then resolve every effect. */
 function fireScriptEvent(
   state: GameState,
@@ -237,6 +360,12 @@ function fireScriptEvent(
         break;
       case "place-obstacles":
         applyScriptObstacles(combat, effect.cells, effect.count);
+        break;
+      case "side-heal":
+        applyScriptSideHeal(state, combat, effect.side, effect.amount, Boolean(effect.bossOnly));
+        break;
+      case "random-obstacle":
+        applyScriptRandomObstacles(combat, effect.count);
         break;
       case "announce":
         // The feed line above IS the announcement — no mechanical change.

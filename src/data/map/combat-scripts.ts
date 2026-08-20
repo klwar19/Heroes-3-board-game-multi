@@ -65,6 +65,28 @@ export type CombatScriptEffect =
     }
   | {
       /**
+       * Heal N damage on each LIVING unit of a side. Never restores a shed boss
+       * health BAR (`armyStacks` is untouched) — a boss can only ever mend the
+       * bar it is standing on.
+       */
+      kind: "side-heal";
+      side: "attacker" | "defender";
+      amount: number;
+      /** Only units carrying `bossUnit` (the layered monster), never the escort. */
+      bossOnly?: boolean;
+    }
+  | {
+      /**
+       * Place `count` obstacles on seeded-random EMPTY cells (0–19). Unlike
+       * `place-obstacles` the designer names no cells: the pass shuffles the
+       * currently-empty set with a per-(combat, round) seed, so it is
+       * deterministic for every client and unrerollable.
+       */
+      kind: "random-obstacle";
+      count: number;
+    }
+  | {
+      /**
        * Pure flavor. The event's `announce` line is the whole effect — no
        * mechanical change. Always available; listed as a kind for completeness.
        */
@@ -83,8 +105,22 @@ export type CombatScriptEvent = {
 export type CombatScriptDefinition = {
   id: string;
   name: CombatScriptText;
-  /** The fought field's location id that triggers this script (must exist in locationDefinitions). */
-  locationId: string;
+  /**
+   * The fought field's location id that triggers this script (must exist in
+   * locationDefinitions). OPTIONAL only when `scope` is set — a scoped script is
+   * selected by encounter identity, never by the field it happens to stand on.
+   */
+  locationId?: string;
+  /**
+   * Selection scope. Omitted = the classic LOCATION-keyed script
+   * (`combatScriptsForLocation`). `"pve-encounter"` = chosen by the optional PvE
+   * director instead (`pveEncounterScriptsForCombat`, keyed on the raid boss's
+   * def id or the dungeon floor band) — because every rift lair shares the
+   * `rift_lair` location and every floor the `dungeon_gate` one, so a
+   * location-keyed script would fire identically on every boss and every floor.
+   * A scoped script is NEVER returned by `combatScriptsForLocation`.
+   */
+  scope?: "pve-encounter";
   /**
    * Anime module gate. Omit for a core (always-on) script. Anime combat scripts
    * use the `"combatEvents"` content flag (LEGACY SEMANTICS — absent === ON;
@@ -128,5 +164,7 @@ export function combatScriptsForLocation(
   if (!locationId) {
     return [];
   }
-  return Object.values(REGISTRY).filter((def) => def.locationId === locationId);
+  // `!def.scope` keeps every PvE-encounter script out of the location path even
+  // if one ever also carries a locationId.
+  return Object.values(REGISTRY).filter((def) => !def.scope && def.locationId === locationId);
 }
