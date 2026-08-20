@@ -34,6 +34,33 @@ generous safe margins; no text, frame, UI, numbers or watermark.
   shoulder rocket cannon, asymmetric flesh/metal body and industrial hell
   chamber.
 
+PvE variant bosses (added 2026-08-20, same shared boss direction):
+
+- `lich_archon.png`: crowned skeletal archmage in tattered indigo funeral silk,
+  green witchfire eye sockets, hand raised over a floating grimoire, ruined crypt.
+- `hydra_matriarch.png`: vast swamp hydra, nine scarred serpentine heads rising
+  from black fen water, moss-caked scales, moonlit mist.
+- `basilisk_queen.png`: crowned six-legged basilisk with molten amber eyes coiled
+  in a garden of half-petrified warriors, dusty gold light.
+- `wailing_banshee.png`: translucent shrieking spectre in trailing grey funeral
+  veils over frost-cracked gravestones, moonlight.
+- `archvile_ascendant.png`: original gaunt burning demon priest, elongated limbs
+  and bone crown, arms raised summoning a green-orange hellfire pillar,
+  industrial hell corridor.
+- `mother_demon.png`: original hulking bloated demon matriarch with a distended
+  brood-sac torso and clawed forelimbs, spawn crawling from her, flesh-and-steel
+  hell nest.
+- `warden_gorgon_matron.png`: massive bronze-hided gorgon matriarch with a bull
+  skull and glowing white eyes, chained horns, torchlit dungeon hall.
+- `warden_stone_choir.png`: three fused granite statue-mages sharing one plinth,
+  blue runes crawling over their robes, cold cavern light.
+- `warden_bone_colossus.png`: towering giant of fused skeletons and rib-cage
+  armour, green marrow-light in its chest, deep bone pit.
+- `doom_hell_knight_warden.png`: original brown-hided horned demon knight
+  mid-charge, fists wreathed in green plasma, rusted industrial corridor.
+- `doom_archvile_warden.png`: original tall skeletal fire-priest demon with a
+  crown of horns, both hands raised summoning a green flame pillar, hell foundry.
+
 Shared map-object direction: square painted map object, centered and readable
 at thumbnail size, slight elevated three-quarter view, 12% safe margin for the
 runtime hex crop, no text/UI/watermark.
