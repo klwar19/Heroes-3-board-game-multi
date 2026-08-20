@@ -125,6 +125,7 @@ function webpQualityFor(r) {
   if (/^assets\/set-artifacts\//.test(r)) return 85; // Polish set card faces + icons
   if (/^assets\/polish-balance\//.test(r)) return 85; // Polish Balance Pack reprinted card faces
   if (/^assets\/community-balance\//.test(r)) return 85; // Community Balance Change reprinted card faces
+  if (/^assets\/bosses\//.test(r)) return 85; // Raid Boss / Dungeon warden ornate card faces
   // q80 — scenery / panorama / board / portrait / background
   if (/^assets\/board\//.test(r)) return 80;
   if (/^assets\/town-board\//.test(r)) return 80;
