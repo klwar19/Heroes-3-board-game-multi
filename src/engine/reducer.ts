@@ -10715,6 +10715,9 @@ function applyMonsterSpellEffect(
       unitId: caster.id,
       abilityId,
       ...(targetUnitId ? { targetUnitId } : {}),
+      // Presentation handle: the client keys this cast's FX + cue off the
+      // SPELL, not the rotation ability (one ability casts several spells).
+      monsterSpellId: spell.id,
       message: `${caster.cardName} casts ${spell.name} — ${message}.`
     });
   };

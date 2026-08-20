@@ -5871,6 +5871,14 @@ export type GameEvent =
        * gets, headed `label` with `caption` as the outcome read-out.
        */
       dice?: AbilityDiceRoll;
+      /**
+       * PRESENTATION ONLY. Set exactly when this trigger is a PvE monster
+       * caster's automatic round-start cast (`BOSS_SPELL_ROTATION`): the
+       * `MonsterSpellId` that just resolved. The client keys the cast's FX
+       * sprite/sound and its on-screen cue off it (`monsterSpellFxPlan`,
+       * `buildMonsterSpellCues`) — no engine rule reads it.
+       */
+      monsterSpellId?: string;
     }
   | {
       id: string;

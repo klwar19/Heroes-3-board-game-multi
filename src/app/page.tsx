@@ -118,6 +118,12 @@ import {
   isMoraleCardEvent,
   type MoraleCardCue
 } from "@/components/table/morale-card-cue";
+import {
+  buildMonsterSpellCues,
+  isMonsterSpellCastEvent,
+  type MonsterSpellCue
+} from "@/components/table/monster-spell-cue";
+import { MonsterSpellCueOverlay } from "@/components/table/monster-spell-cue-overlay";
 import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
@@ -237,6 +243,7 @@ import {
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { commanderCastFxPlan, commanderSpecialtySound } from "@/data/commander-fx";
+import { monsterSpellFxPlan } from "@/data/monster-spell-fx";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   playLibrarySound,
@@ -957,6 +964,13 @@ export default function Home() {
     current: null,
     queue: []
   });
+  // PvE monster caster casts (BOSS_SPELL_ROTATION): non-blocking banners naming
+  // the spell and what it just did. Several may be live at once (one per cast in
+  // a round-start pass); each removes itself on its own timer.
+  const [monsterSpellCues, setMonsterSpellCues] = useState<MonsterSpellCue[]>([]);
+  const dismissMonsterSpellCue = useCallback((id: string) => {
+    setMonsterSpellCues((current) => current.filter((cue) => cue.id !== id));
+  }, []);
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [mapEventCue, setMapEventCue] = useState<MapEventCue | null>(null);
@@ -1071,6 +1085,8 @@ export default function Home() {
   // Morale-card events already popped as the big MoraleCardOverlay — one pop
   // per event, never replayed on reconnect.
   const seenMoraleCueIdsRef = useRef<Set<string>>(new Set());
+  // PvE monster-spell casts already banner-popped — never replayed on reconnect.
+  const seenMonsterSpellIdsRef = useRef<Set<string>>(new Set());
   // House rule (BINH) notices, popped once per event and pre-seeded on reconnect:
   //  - Dracon reaching level IV (his new Few-of-Magi recruit option).
   //  - A Gelu-recruited Sharpshooters joining the army with its +1 Attack BUFF.
@@ -1441,6 +1457,7 @@ export default function Home() {
     );
     const fxEvents = presentationEvents.filter((event) => FX_EVENT_TYPES.has(event.type));
     const moraleCardEvents = presentationEvents.filter((event) => isMoraleCardEvent(event));
+    const monsterSpellEvents = presentationEvents.filter((event) => isMonsterSpellCastEvent(event));
 
     if (!seenRollIdsRef.current) {
       // Fresh room connection: forget the previous room's units.
@@ -1471,6 +1488,7 @@ export default function Home() {
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
       seenMoraleCueIdsRef.current = new Set(moraleCardEvents.map((event) => event.id));
+      seenMonsterSpellIdsRef.current = new Set(monsterSpellEvents.map((event) => event.id));
       // A mid-game join must not re-pop past hero level-ups or buffed recruits.
       seenLevelNoticeIdsRef.current = new Set(
         presentationEvents.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
@@ -1660,6 +1678,23 @@ export default function Home() {
             const queue = [...current.queue, ...cues];
             return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
           });
+        }
+      }
+
+      // PvE monster caster: the boss's automatic round-start spell has no card,
+      // no dice and no window, so it gets a transient banner naming the spell
+      // and repeating the engine's own "what just happened" line. Presentation
+      // only — the banner dispatches nothing and takes no input.
+      const freshMonsterSpellEvents = monsterSpellEvents.filter(
+        (event) => !seenMonsterSpellIdsRef.current.has(event.id)
+      );
+      for (const event of freshMonsterSpellEvents) {
+        seenMonsterSpellIdsRef.current.add(event.id);
+      }
+      if (freshMonsterSpellEvents.length > 0) {
+        const cues = buildMonsterSpellCues(freshMonsterSpellEvents, nextState);
+        if (cues.length > 0) {
+          setMonsterSpellCues((current) => [...current, ...cues]);
         }
       }
 
@@ -3323,6 +3358,26 @@ export default function Home() {
                   combatFxActive = true;
                   combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 1200);
                 }
+              }
+              // A PvE monster caster's automatic round-start spell
+              // (BOSS_SPELL_ROTATION). It has no card, no dice and no window, so
+              // without this it resolved invisibly: play the reused H3 spell's
+              // sprite + sound from the caster onto whatever it singled out (or
+              // onto itself for a self-heal / side-wide buff). The WORDS ride the
+              // separate MonsterSpellCueOverlay.
+              if (isMonsterSpellCastEvent(event) && event.monsterSpellId) {
+                const monsterPlan = monsterSpellFxPlan(event.monsterSpellId);
+                queueBoardFx(
+                  monsterPlan,
+                  `${event.id}-monster-spell`,
+                  `unit:${event.unitId}`,
+                  event.targetUnitId ?? event.unitId
+                );
+                if (inCombat) {
+                  combatFxActive = true;
+                  combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);
+                }
+                break;
               }
               const plan = abilityFxPlans[event.abilityId];
               if (!plan) {
@@ -7049,6 +7104,9 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && !mapDice.current && moraleCue.current ? (
             <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
           ) : null}
+          {/* PvE monster caster: the boss's automatic spell says what it did.
+              Non-blocking, so it never waits on another overlay. */}
+          <MonsterSpellCueOverlay cues={monsterSpellCues} onDone={dismissMonsterSpellCue} />
           {/* WOG Commanders: the one-time "how your commander is placed" card.
               Pure presentation and self-gating — module off / no commander /
               already seen this game ⇒ it renders nothing. */}
@@ -7504,6 +7562,9 @@ export default function Home() {
       {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && moraleCue.current ? (
         <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
       ) : null}
+      {/* PvE monster caster banners over the battlefield — the usual home for a
+          BOSS_SPELL_ROTATION cast. Non-blocking. */}
+      <MonsterSpellCueOverlay cues={monsterSpellCues} onDone={dismissMonsterSpellCue} />
       {/* Same one-time Commanders card on the battle screen (a direct-link
           joiner may land straight in a fight). */}
       <CommanderIntroOverlay state={state} viewerPlayerId={viewerPlayerId} />
