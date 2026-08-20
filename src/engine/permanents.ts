@@ -561,7 +561,12 @@ export function cardMayEnterPlay(card: CardDefinition): boolean {
  */
 export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardId: CardId): void {
   const player = state.players[playerId];
-  const card = cardLibrary[cardId];
+  // Balance packs: the COMMUNITY Endless Sack of Gold turns its instant "gain 5
+  // gold" side into "♾️ At the beginning of each Resource round, gain 4 gold",
+  // so the printed definition carries no ENTER_PLAY option and `cardMayEnterPlay`
+  // would refuse the very play the reprint offers. Read the definition the rest
+  // of the engine resolves with. With every pack off this is `cardLibrary[cardId]`.
+  const card = balanceCard(state, cardId);
   if (!player || !card || !cardMayEnterPlay(card)) {
     throw new Error("That card is not a permanent.");
   }
@@ -1756,7 +1761,12 @@ export function warMachinesForSale(
   const tinkerer = playerId ? state.players[playerId]?.commander : undefined;
   const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 5 : 0;
   return supply.flatMap((cardId) => {
-    const card = cardLibrary[cardId];
+    // Community Balance Change: the sheet re-prices the Ammo Cart, the Ballista
+    // and the First Aid Tent at BOTH shops, so this shop menu must read the
+    // BALANCE definition — a raw `cardLibrary` read would show (and charge) the
+    // printed price while the pack is on. `buyWarMachine` re-derives its price
+    // from this very function, so the label and the spend can never disagree.
+    const card = balanceCard(state, cardId);
     const costs = card?.warMachineCosts;
     if (!card || !costs) {
       return [];

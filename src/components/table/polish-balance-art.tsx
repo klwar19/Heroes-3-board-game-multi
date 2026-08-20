@@ -5,7 +5,8 @@ import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { polishBalanceCardImage, polishBalanceEmpoweredCardImage } from "@/data/cards/polish-balance-art";
 import {
   communityBalanceCardImage,
-  communityBalanceEmpoweredCardImage
+  communityBalanceEmpoweredCardImage,
+  communityBalanceUnitFaceImage
 } from "@/data/cards/community-balance-art";
 
 // ---------------------------------------------------------------------------
@@ -134,4 +135,36 @@ export function resolveCardFaceImage(
 /** `resolveCardFaceImage` with both rules read from context — the usual surface. */
 export function useCardFaceImage(cardId: string | undefined, empowered: boolean): string | undefined {
   return resolveCardFaceImage(useBalanceArtFlags(), cardId, empowered);
+}
+
+/**
+ * The ONE face-precedence rule for a UNIT SIDE (a unit side has no card id, so
+ * `resolveCardFaceImage` cannot serve it).
+ *
+ * Only the COMMUNITY pack reprints unit sides — the Polish Balance Pack does
+ * not — so the ordering is just: the community face when that pack is ON and
+ * THIS side has a wired reprint, else the printed `side.cardImage` the caller
+ * passes in. With the pack off (the default context) it returns `printed`
+ * unchanged, so every surface is byte-identical.
+ */
+export function resolveUnitFaceImage(
+  flags: boolean | BalanceArtFlags,
+  unitDefId: string | undefined,
+  side: string | undefined,
+  printed: string | undefined
+): string | undefined {
+  const community = typeof flags === "boolean" ? flags : flags.community;
+  if (!community) {
+    return printed;
+  }
+  return communityBalanceUnitFaceImage(unitDefId, side) ?? printed;
+}
+
+/** `resolveUnitFaceImage` with the rule read from context. */
+export function useUnitFaceImage(
+  unitDefId: string | undefined,
+  side: string | undefined,
+  printed: string | undefined
+): string | undefined {
+  return resolveUnitFaceImage(useBalanceArtFlags(), unitDefId, side, printed);
 }

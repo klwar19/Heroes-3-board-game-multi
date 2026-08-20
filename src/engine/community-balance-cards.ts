@@ -4,9 +4,17 @@ import {
   COMMUNITY_BALANCE_ABILITY_IDS
 } from "@/data/cards/community-abilities-balance";
 import {
+  communityBalanceArtifactCards,
+  COMMUNITY_BALANCE_ARTIFACT_IDS
+} from "@/data/cards/community-artifacts-balance";
+import {
   communityBalanceSpellCards,
   COMMUNITY_BALANCE_SPELL_IDS
 } from "@/data/cards/community-spells-balance";
+import {
+  communityBalanceWarMachineCards,
+  COMMUNITY_BALANCE_WAR_MACHINE_IDS
+} from "@/data/cards/community-war-machines-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import { polishBalanceCard, polishBalanceCardForDisplay, polishBalanceCardLibrary } from "./polish-balance-spells";
@@ -29,16 +37,53 @@ import type { CardDefinition, CardLibrary, GameState } from "./state";
  * site (`balanceCardLibrary` below is the composed read), so with both rules on
  * the COMMUNITY reprint wins for a card both packs cover.
  *
- * SCOPE: the ABILITIES and SPELLS families have landed. Later steps merge the
- * remaining per-family reprint modules (artifacts, units, war machines) in here
- * the same way.
+ * SCOPE: every CARD family of the sheet — abilities, spells, artifacts and war
+ * machines. The sheet's UNITS tab is NOT here and cannot be: a unit side is not
+ * a library card, so it is a runtime side override in `applyUnitSideRules`
+ * (`src/engine/ruleset.ts`) keyed off the same house rule.
  */
 export const COMMUNITY_REPRINTED_CARDS: CardLibrary = {
   ...communityBalanceAbilityCards,
-  ...communityBalanceSpellCards
+  ...communityBalanceSpellCards,
+  ...communityBalanceArtifactCards,
+  ...communityBalanceWarMachineCards
 };
 
-export { COMMUNITY_BALANCE_ABILITY_IDS, COMMUNITY_BALANCE_SPELL_IDS };
+export {
+  COMMUNITY_BALANCE_ABILITY_IDS,
+  COMMUNITY_BALANCE_SPELL_IDS,
+  COMMUNITY_BALANCE_ARTIFACT_IDS,
+  COMMUNITY_BALANCE_WAR_MACHINE_IDS
+};
+
+/**
+ * Community Balance Change — the two artifacts whose printed "Reroll a die" HALF
+ * the reprint replaces with something else, so their engine-side reroll offer
+ * must disappear with them:
+ *  - Ambassador's Sash option B becomes "⚡ Gain <positive_morale>".
+ *  - Cards of Prophecy option A becomes the pre-Search "Search (4) instead".
+ *
+ * The reroll never lived on the card `effect` (it is offered from hand in the die
+ * window, keyed off `REROLL_REACTION_ARTIFACT_IDS`), so swapping the definition
+ * alone would leave a ghost reroll the printed face no longer promises. Both die
+ * windows read `balanceRerollReactionArtifactIds` instead of the raw list.
+ * Diplomat's Ring is untouched — the community sheet does not reprint it.
+ */
+const COMMUNITY_REROLL_HALVES_REPLACED: readonly string[] = [
+  "artifact.cards_of_prophecy",
+  "artifact.ambassadors_sash"
+];
+
+/** The reroll-from-hand artifact list as this table's rules read it. */
+export function balanceRerollReactionArtifactIds(
+  state: GameState,
+  printed: readonly string[]
+): readonly string[] {
+  if (!houseRuleEnabled(state, "community-card-balance")) {
+    return printed;
+  }
+  return printed.filter((cardId) => !COMMUNITY_REROLL_HALVES_REPLACED.includes(cardId));
+}
 
 /** Memoized per base library (stable identity for repeated calls in one action). */
 const merged = new WeakMap<CardLibrary, CardLibrary>();

@@ -16184,6 +16184,12 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         action.optionIndex === tiers.length + 1 + (prompt.offerWisdom ? 1 : 0)
       ) {
         playSpeculumSearchWiden(state, action.playerId);
+      } else if (
+        prompt.offerProphecy &&
+        action.optionIndex ===
+          tiers.length + 1 + (prompt.offerWisdom ? 1 : 0) + (prompt.offerSpeculum ? 1 : 0)
+      ) {
+        playProphecySearchWiden(state, action.playerId);
       } else {
         throw new Error("That Scouting option is not available.");
       }
@@ -16333,6 +16339,15 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     const pick = choice.discardPick;
     const cardId = pick?.cardIds[action.optionIndex];
     const player = state.players[action.playerId];
+    // Community Balance Change Crown of Dragontooth ("select UP TO 2"): the
+    // trailing "Take no cards" option sits one past the last candidate. Taking
+    // it closes the pick and requeues nothing — the remaining takes are waived.
+    if (pick?.optional && player && action.optionIndex === pick.cardIds.length) {
+      state.pendingChoice = null;
+      state.phase = choice.returnPhase;
+      state.priorityPlayerId = null;
+      return;
+    }
     if (!pick || !cardId || !player) {
       throw new Error("Pick one of the offered discard cards.");
     }
@@ -16401,7 +16416,8 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
         filter: pick.filter,
         fromTop: pick.fromTop,
         shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
-        excludeCardIds: pick.excludeCardIds
+        excludeCardIds: pick.excludeCardIds,
+        ...(pick.optional ? { optional: true } : {})
       });
       pumpAdventureQueues(state);
     }
@@ -17100,6 +17116,32 @@ function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
   return true;
 }
 
+/**
+ * Community Balance Change — the "🔄 At the end of your turn gain X" ongoing
+ * artifacts (Endless Bag of Gold +3 gold, Everpouring Vial of Mercury +1
+ * valuables, Inexhaustible Cart of Lumber +2 building materials).
+ *
+ * ONE chokepoint: every live PLAYER-scoped `TURN_END_RESOURCE_GAIN` modifier the
+ * ending player controls pays out here. The effects are created with
+ * `duration: { type: "permanent" }`, so the card sits in the owner's
+ * "Permanents & Ongoing" tray (holdLiveOngoingCardsFromDiscard) and keeps paying
+ * until it is ended (`DISCARD_ONGOING_CARD`) or dispelled.
+ *
+ * No-op with the pack off: nothing in the shipped library creates the modifier.
+ */
+export function payTurnEndOngoingIncome(state: GameState, playerId: PlayerId): void {
+  for (const effect of state.activeEffects) {
+    if (effect.scope !== "player" || effect.controllerId !== playerId) {
+      continue;
+    }
+    for (const modifier of effect.modifiers) {
+      if (modifier.type === "TURN_END_RESOURCE_GAIN" && modifier.amount > 0) {
+        gainResources(state, playerId, { [modifier.resource]: modifier.amount }, effect.name);
+      }
+    }
+  }
+}
+
 export function endTurnAdventure(state: GameState, action: Extract<GameAction, { type: "END_TURN" }>): void {
   assertActiveTurn(state, action.playerId);
   const endingPlayer = state.players[action.playerId];
@@ -17134,6 +17176,11 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
   }
 
   bankEquipmentMovementAtTurnEnd(state, action.playerId);
+
+  // Community Balance Change "🔄 At the end of your turn gain X" artifacts. Paid
+  // here — AFTER every early-returning end-of-turn prompt above, so a turn that
+  // re-enters END_TURN to answer Pandora upkeep / Logistics pays exactly once.
+  payTurnEndOngoingIncome(state, action.playerId);
 
   const player = endingPlayer;
   if (player) {
@@ -18021,6 +18068,9 @@ function performSchoolFetchFromDecks(
  */
 const SCOUTING_CARD_ID = "ability.scouting" as CardId;
 const SPECULUM_CARD_ID = "artifact.speculum" as CardId;
+/** Community Balance Change Cards of Prophecy: its pre-Search arm is a flat Search (4). */
+const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
+const PROPHECY_COMMUNITY_SEARCH_COUNT = 4;
 /** Search sizes the Scouting card grants ("do Search (N) instead"). */
 const SCOUTING_BASIC_COUNT = 3;
 /**
@@ -18097,7 +18147,13 @@ function scoutingPromptFor(
   playerId: PlayerId,
   baseCount: number,
   deckId?: string
-): { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean; offerSpeculum?: boolean } | null {
+): {
+  offerBasic: boolean;
+  offerExpert: boolean;
+  offerWisdom?: boolean;
+  offerSpeculum?: boolean;
+  offerProphecy?: boolean;
+} | null {
   const player = state.players[playerId];
   if (!player || hasSearchCountOverride(state, playerId)) {
     return null;
@@ -18118,13 +18174,23 @@ function scoutingPromptFor(
   // then persists as Search (X+1) for every later Search this turn.
   const offerSpeculum =
     houseRuleEnabled(state, "polish-card-balance") && player.hand.includes(SPECULUM_CARD_ID);
+  // Community Balance Change Cards of Prophecy (option A): "Play this card
+  // before taking a Search action, then do Search (4) instead." This pre-Search
+  // pop-up is the ONE surface for it (an ordinary map play is withheld by
+  // `searchStartOnly`). Withheld when the base Search is already 4+, the same
+  // "would this tier even help?" filter the classic Scouting sides use.
+  const offerProphecy =
+    houseRuleEnabled(state, "community-card-balance") &&
+    player.hand.includes(PROPHECY_CARD_ID) &&
+    PROPHECY_COMMUNITY_SEARCH_COUNT > baseCount;
   if (!player.hand.includes(SCOUTING_CARD_ID)) {
-    return offerWisdom || offerSpeculum
+    return offerWisdom || offerSpeculum || offerProphecy
       ? {
           offerBasic: false,
           offerExpert: false,
           ...(offerWisdom ? { offerWisdom: true } : {}),
-          ...(offerSpeculum ? { offerSpeculum: true } : {})
+          ...(offerSpeculum ? { offerSpeculum: true } : {}),
+          ...(offerProphecy ? { offerProphecy: true } : {})
         }
       : null;
   }
@@ -18137,14 +18203,15 @@ function scoutingPromptFor(
   const offerBasic = balance || scoutingBasicCount(state) > baseCount;
   const offerExpert =
     (balance || SCOUTING_EXPERT_COUNT > baseCount) && canPlayExpertMode(player, SCOUTING_CARD_ID);
-  if (!offerBasic && !offerExpert && !offerWisdom && !offerSpeculum) {
+  if (!offerBasic && !offerExpert && !offerWisdom && !offerSpeculum && !offerProphecy) {
     return null;
   }
   return {
     offerBasic,
     offerExpert,
     ...(offerWisdom ? { offerWisdom: true } : {}),
-    ...(offerSpeculum ? { offerSpeculum: true } : {})
+    ...(offerSpeculum ? { offerSpeculum: true } : {}),
+    ...(offerProphecy ? { offerProphecy: true } : {})
   };
 }
 
@@ -18159,7 +18226,13 @@ function openScoutingPrompt(
   playerId: PlayerId,
   deckId: string,
   baseCount: number,
-  offer: { offerBasic: boolean; offerExpert: boolean; offerWisdom?: boolean; offerSpeculum?: boolean },
+  offer: {
+    offerBasic: boolean;
+    offerExpert: boolean;
+    offerWisdom?: boolean;
+    offerSpeculum?: boolean;
+    offerProphecy?: boolean;
+  },
   allowRemove = false,
   modeResolved = false,
   ignoreDiscardTopOnce = false
@@ -18196,6 +18269,11 @@ function openScoutingPrompt(
       label: `Play Speculum — Search (${baseCount + 1}); every Search is Search (X+1) this turn`
     });
   }
+  // Community Balance Change Cards of Prophecy — always the LAST option, after
+  // every pre-existing one, so no stored option index changes meaning.
+  if (offer.offerProphecy) {
+    options.push({ label: `Play Cards of Prophecy — Search (${PROPHECY_COMMUNITY_SEARCH_COUNT})` });
+  }
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
@@ -18212,6 +18290,7 @@ function openScoutingPrompt(
       offerExpert: offer.offerExpert,
       ...(offer.offerWisdom ? { offerWisdom: true } : {}),
       ...(offer.offerSpeculum ? { offerSpeculum: true } : {}),
+      ...(offer.offerProphecy ? { offerProphecy: true } : {}),
       ...(allowRemove ? { allowRemove: true } : {}),
       ...(modeResolved ? { modeResolved: true } : {}),
       ...(ignoreDiscardTopOnce ? { ignoreDiscardTopOnce: true } : {})
@@ -18351,6 +18430,45 @@ export function heroGradeSellArtifact(
   player.hand.splice(index, 1);
   player.removed.push(action.cardId);
   gainResources(state, action.playerId, { gold: 4 }, "Artifact Broker sale");
+}
+
+/**
+ * Community Balance Change Cards of Prophecy (option A) played at the start of a
+ * Search: discard the card and leave the SAME one-shot `SEARCH_COUNT_OVERRIDE`
+ * Scouting uses, at the printed flat 4 (consumed by the next reveal). No crown —
+ * the reprint's arm is free.
+ */
+function playProphecySearchWiden(state: GameState, playerId: PlayerId): void {
+  const player = state.players[playerId];
+  const index = player?.hand.indexOf(PROPHECY_CARD_ID) ?? -1;
+  if (!player || index === -1 || !houseRuleEnabled(state, "community-card-balance")) {
+    return;
+  }
+  player.hand.splice(index, 1);
+  player.discard.push(PROPHECY_CARD_ID);
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      {
+        name: "Cards of Prophecy",
+        scope: "player",
+        duration: { type: "current-turn" },
+        polarity: "positive",
+        removable: false,
+        modifiers: [{ type: "SEARCH_COUNT_OVERRIDE", count: PROPHECY_COMMUNITY_SEARCH_COUNT }]
+      },
+      { type: "card", cardId: PROPHECY_CARD_ID, controllerId: playerId },
+      playerId
+    )
+  );
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: PROPHECY_CARD_ID,
+    timing: "instant",
+    mode: "basic",
+    optionLabel: `Before a Search: do Search (${PROPHECY_COMMUNITY_SEARCH_COUNT}) instead`
+  });
 }
 
 /** Plays Speculum's Balance-Pack +1 arm at the start of a Search. */
@@ -18780,6 +18898,13 @@ export function openDiscardPickChoice(
      * per round"). Book-gated at the follow-up seam.
      */
     polishRefreshAfter?: boolean;
+    /**
+     * Community Balance Change Crown of Dragontooth: "Select UP TO 2 Spell cards
+     * from your discard pile" (the classic printing takes exactly 2). Adds a
+     * trailing "Take no (more) cards" option that closes the pick without
+     * requeueing the remaining takes.
+     */
+    optional?: boolean;
   }
 ): boolean {
   const player = state.players[playerId];
@@ -18969,13 +19094,17 @@ export function openDiscardPickChoice(
     type: "OPTION_CHOICE",
     playerId,
     prompt,
-    options: entries.map((entry) =>
-      entry.source === "polish-used"
-        ? { label: `Refresh ${cardLibrary[entry.cardId]?.name ?? entry.cardId} in the Spell Book` }
-        : entry.destination === "spellBook"
-        ? { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId} → Spell Book` }
-        : { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId}` }
-    ),
+    options: [
+      ...entries.map((entry) =>
+        entry.source === "polish-used"
+          ? { label: `Refresh ${cardLibrary[entry.cardId]?.name ?? entry.cardId} in the Spell Book` }
+          : entry.destination === "spellBook"
+          ? { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId} → Spell Book` }
+          : { label: `Take ${cardLibrary[entry.cardId]?.name ?? entry.cardId}` }
+      ),
+      // Community Balance Change Crown of Dragontooth: "select UP TO 2".
+      ...(pick.optional ? [{ label: "Take no cards" }] : [])
+    ],
     context: "discard-pick",
     discardPick: {
       cardIds: entries.map((entry) => entry.cardId),
@@ -18986,7 +19115,8 @@ export function openDiscardPickChoice(
       fromTop: pick.fromTop,
       shuffleRestIntoDeck: pick.shuffleRestIntoDeck,
       excludeCardIds: pick.excludeCardIds,
-      ...(pick.polishRefreshAfter ? { polishRefreshAfter: true } : {})
+      ...(pick.polishRefreshAfter ? { polishRefreshAfter: true } : {}),
+      ...(pick.optional ? { optional: true } : {})
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
@@ -19279,7 +19409,8 @@ export function pumpAdventureQueues(state: GameState): void {
           shuffleRestIntoDeck: reward.shuffleRestIntoDeck,
           polishRecoveryLimit: reward.polishRecoveryLimit,
           excludeCardIds: reward.excludeCardIds,
-          polishRefreshAfter: reward.polishRefreshAfter
+          polishRefreshAfter: reward.polishRefreshAfter,
+          optional: reward.optional
         })
       ) {
         return;

@@ -20,7 +20,9 @@ import {
 } from "@/data/cards/polish-balance-art";
 import { empoweredCardImage } from "@/data/cards/empowered-card-art";
 import { CardFrame } from "./seats";
-import { PolishBalanceArtProvider, resolveCardFaceImage } from "./polish-balance-art";
+import { PolishBalanceArtProvider, resolveCardFaceImage, resolveUnitFaceImage } from "./polish-balance-art";
+import { COMMUNITY_BALANCE_UNIT_FACES } from "@/data/cards/community-balance-art";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import { cardZoomContent } from "./zoom";
 
 afterEach(cleanup);
@@ -150,5 +152,42 @@ describe("balance zoom description", () => {
       "gain morale on a 0"
     );
     expect(cardZoomContent("ability.ballistics", false, false).lines.join(" ")).not.toContain("destroy 2 Walls");
+  });
+});
+
+describe("resolveUnitFaceImage — the Community Balance Change's reprinted UNIT SIDES", () => {
+  it("swaps ONLY a wired side, ONLY under the community pack (truth table)", () => {
+    const printedGriffinsFew = coreUnitDefinitions["castle.griffins"]!.few!.cardImage;
+    const communityGriffinsFew = "/assets/community-balance/unit-castle-griffins-few.webp";
+
+    for (const { unitDefId, side } of COMMUNITY_BALANCE_UNIT_FACES) {
+      const printed = coreUnitDefinitions[unitDefId]?.[side]?.cardImage;
+      expect(printed, `${unitDefId} ${side} needs a printed scan to swap away from`).toBeTruthy();
+      const community = `/assets/community-balance/unit-${unitDefId.replaceAll(".", "-")}-${side}.webp`;
+      // Community ON ⇒ the reprinted face.
+      expect(resolveUnitFaceImage({ polish: false, community: true }, unitDefId, side, printed)).toBe(community);
+      // CONTROL: community OFF ⇒ the printed scan, whatever the POLISH flag says
+      // (the Polish pack reprints no unit side at all).
+      expect(resolveUnitFaceImage({ polish: false, community: false }, unitDefId, side, printed)).toBe(printed);
+      expect(resolveUnitFaceImage({ polish: true, community: false }, unitDefId, side, printed)).toBe(printed);
+    }
+
+    // CONTROL: an UNCHANGED side of a covered unit, and an uncovered unit.
+    const halberdiersFew = coreUnitDefinitions["castle.halberdiers"]!.few!.cardImage;
+    expect(resolveUnitFaceImage({ polish: false, community: true }, "castle.halberdiers", "few", halberdiersFew)).toBe(
+      halberdiersFew
+    );
+    const crusadersPack = coreUnitDefinitions["castle.crusaders"]!.pack!.cardImage;
+    expect(resolveUnitFaceImage({ polish: false, community: true }, "castle.crusaders", "pack", crusadersPack)).toBe(
+      crusadersPack
+    );
+    // No unit / no side / no printed face resolves nothing new.
+    expect(resolveUnitFaceImage({ polish: false, community: true }, undefined, "few", undefined)).toBeUndefined();
+    expect(resolveUnitFaceImage({ polish: false, community: true }, "castle.griffins", undefined, printedGriffinsFew)).toBe(
+      printedGriffinsFew
+    );
+    // The bare-boolean form is the community flag (the unit half has no polish rung).
+    expect(resolveUnitFaceImage(true, "castle.griffins", "few", printedGriffinsFew)).toBe(communityGriffinsFew);
+    expect(resolveUnitFaceImage(false, "castle.griffins", "few", printedGriffinsFew)).toBe(printedGriffinsFew);
   });
 });

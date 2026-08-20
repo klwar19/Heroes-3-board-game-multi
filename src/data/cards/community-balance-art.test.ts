@@ -20,7 +20,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { cardLibrary } from "@/data/cards/library";
+import { coreUnitDefinitions } from "@/data/factions/units";
 import {
+  COMMUNITY_BALANCE_UNIT_FACES,
+  COMMUNITY_BALANCE_UNIT_FACE_NAMES,
+  communityBalanceUnitFaceImage,
   COMMUNITY_BALANCE_CARD_IDS,
   COMMUNITY_BALANCE_NOT_IMPLEMENTED,
   COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS,
@@ -65,9 +69,57 @@ describe("Community Balance Change art", () => {
       : new Set<string>();
     const wired = new Set([
       ...COMMUNITY_BALANCE_CARD_IDS.map((id) => id.replaceAll(".", "-")),
-      ...COMMUNITY_BALANCE_EMPOWERED_FACE_NAMES
+      ...COMMUNITY_BALANCE_EMPOWERED_FACE_NAMES,
+      // Unit SIDES are not cards, so they contribute their own basenames — the
+      // listing must cover them or a committed unit face could sit on disk with
+      // no wired reprint behind it (and vice versa).
+      ...COMMUNITY_BALANCE_UNIT_FACE_NAMES
     ]);
     expect([...shipped].sort()).toEqual([...wired].sort());
+  });
+
+  it("ships a real 743×1040 face for every reprinted UNIT SIDE, at the derived path", async () => {
+    // The Units tab is exactly these four sides; a face for any OTHER side would
+    // be a printed-rules lie (that side is unchanged).
+    expect(COMMUNITY_BALANCE_UNIT_FACES.map((entry) => `${entry.unitDefId}#${entry.side}`)).toEqual([
+      "castle.halberdiers#pack",
+      "castle.marksmen#pack",
+      "castle.griffins#few",
+      "castle.griffins#pack"
+    ]);
+    for (const { unitDefId, side } of COMMUNITY_BALANCE_UNIT_FACES) {
+      // The side must be a real printed side of a real unit.
+      const def = coreUnitDefinitions[unitDefId];
+      expect(def, `${unitDefId} is not a unit definition`).toBeTruthy();
+      expect(def?.[side], `${unitDefId} has no ${side} side`).toBeTruthy();
+      const url = communityBalanceUnitFaceImage(unitDefId, side);
+      expect(url).toBe(`/assets/community-balance/unit-${unitDefId.replaceAll(".", "-")}-${side}.webp`);
+      const file = toFile(url!);
+      expect(existsSync(file), `missing community unit face for ${unitDefId} ${side}: ${file}`).toBe(true);
+      const meta = await sharp(file).metadata();
+      expect([unitDefId, side, meta.format, meta.width, meta.height]).toEqual([unitDefId, side, "webp", 743, 1040]);
+      expect(statSync(file).size, `${unitDefId} ${side} face looks like a stub`).toBeGreaterThan(40 * 1024);
+    }
+    // CONTROL: an UNCHANGED side of a covered unit, and an uncovered unit, resolve nothing.
+    expect(communityBalanceUnitFaceImage("castle.halberdiers", "few")).toBeUndefined();
+    expect(communityBalanceUnitFaceImage("castle.marksmen", "few")).toBeUndefined();
+    expect(communityBalanceUnitFaceImage("castle.crusaders", "pack")).toBeUndefined();
+    expect(communityBalanceUnitFaceImage(undefined, "pack")).toBeUndefined();
+    expect(communityBalanceUnitFaceImage("castle.griffins", undefined)).toBeUndefined();
+  });
+
+  it("covers the sheet's three re-priced War Machines and nothing else", () => {
+    const sheetMachines = ["war_machine.ammo_cart", "war_machine.ballista", "war_machine.first_aid_tent"];
+    for (const cardId of sheetMachines) {
+      expect(isCommunityBalanceCard(cardId), `${cardId} is not wired`).toBe(true);
+      expect(cardLibrary[cardId]?.kind).toBe("war-machine");
+    }
+    // CONTROL: the two machines the sheet does NOT touch stay off the pack.
+    expect(isCommunityBalanceCard("war_machine.catapult")).toBe(false);
+    expect(isCommunityBalanceCard("war_machine.cannon")).toBe(false);
+    expect(
+      [...COMMUNITY_BALANCE_CARD_IDS].filter((id) => id.startsWith("war_machine.")).sort()
+    ).toEqual([...sheetMachines].sort());
   });
 
   it("ships a real 743×1040 EMPOWERED face for every empowered ability id", async () => {

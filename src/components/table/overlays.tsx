@@ -834,6 +834,9 @@ export function ReactionTray({
   // ignore the just-rolled Attack die. A standalone legal action (one offer per
   // discardable card, worded by the engine), so the card-tile path never
   // surfaces it — without these tiles only the AI could ever Parry.
+  // Community Balance Change: the reprinted Pack pays NO discard, so its single
+  // offer carries no `discardCardId` — the tile below already renders the card
+  // frame conditionally, so it degrades to a bare labelled button.
   const dieCancelReactions = legalActions.filter(
     (legal) => legal.action.type === "USE_UNIT_DIE_IGNORE"
   );

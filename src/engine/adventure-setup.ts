@@ -3247,7 +3247,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
         wog.enabled && wog.artifacts && wog.commanders,
         animeModuleEnabled({ anime }, "equipment"),
         houseRules["torso-of-legion-major"],
-        houseRules["eversmoking-ring-of-sulfur-major"]
+        // Community Balance Change: the sheet moves the Eversmoking Ring of
+        // Sulfur from MINOR to MAJOR, so the pack forces the Major DECK exactly
+        // as it forces the Major tier READ (`effectiveArtifactTier`). Composed
+        // with the BINH toggle — Major whenever EITHER is on.
+        houseRules["eversmoking-ring-of-sulfur-major"] || houseRules["community-card-balance"]
       ),
       ...makeNeutralDecks(seed, wog, anime),
       [ASTROLOGERS_DECK_ID]: makeAstrologersDeck(seed, eventsOn),

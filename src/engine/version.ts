@@ -529,7 +529,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // the raw printed library — which also fixes the Polish pack's map reprints.
 // `npm run deploy:partykit` owed.
 //
-// v48 (2026-08-20): the Dungeon & Raid Boss VARIANT expansion (design authority
+// v48 (2026-08-20): the Community Balance Change UNITS and WAR MACHINES tabs
+// complete the pack. SERIALIZED shape a stale worker cannot read:
+// `USE_UNIT_DIE_IGNORE.discardCardId` becomes OPTIONAL — the reprinted
+// Halberdier Pack Parry (`halberdier-die-ignore-free`) has no discard cost, so
+// its frame carries no card id and a v47 worker rejects it as illegal
+// (`player.hand.includes(undefined)`). Behaviour a stale worker computes
+// differently on top of that: `applyUnitSideRules` gains its `communityBalance`
+// arm (Griffins Few+Pack 1 defense, Marksmen Pack 3 health, the Halberdier Pack
+// ability swap) and the two war-machine shop-price seams
+// (`warMachinesForSale`, the Wandering Merchant's discount offer) read the
+// BALANCED definition, so Ammo Cart 3/5, Ballista 4/6 and First Aid Tent 5/7
+// are charged instead of the printed prices. `npm run deploy:partykit` owed.
+//
+// v49 (2026-08-20): the Dungeon & Raid Boss VARIANT expansion (design authority
 // docs/dungeon-raid-boss-variants-plan.md). New SERIALIZED shapes a stale
 // worker cannot read: `CombatState.monsterSpells` (the BOSS_SPELL_ROTATION
 // idempotence ledger) and `PlayerState.raidBossTrophyClaimed` (the one
@@ -544,8 +557,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // first-kill trophy CHOOSE_ONE, and 6 new dungeon rooms behind the seeded
 // door pick (a stale worker deals doors from the OLD 5-room pool).
 // All content sits behind the existing PvE module flags (default OFF ⇒
-// byte-identical). `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 48;
+// byte-identical). `npm run deploy:partykit` owed. NOTE: reconciled from a
+// concurrent v48 collision (the Community Balance units/war-machines batch
+// pushed first) — the two different engines take DISTINCT numbers, the
+// 19749a33/v39 precedent, so a client/edge skew is always detected.
+export const ENGINE_PROTOCOL_VERSION = 49;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

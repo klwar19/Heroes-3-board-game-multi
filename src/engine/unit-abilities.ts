@@ -1776,6 +1776,24 @@ export function getDiscardToIgnoreAttackDieAbility(unit: CombatUnitState): strin
   return null;
 }
 
+/**
+ * Community Balance Change Halberdiers (Pack): the FREE version of the same
+ * Parry — the defender may ignore the attacker's settled Attack die at NO cost.
+ * Returns the ability id when this unit carries it, else null.
+ *
+ * The two never coexist on a side: `applyUnitSideRules` REPLACES the printed
+ * `halberdier-die-ignore` with `halberdier-die-ignore-free` while the pack is
+ * on, so a unit is offered exactly one of the two reactions.
+ */
+export function getFreeIgnoreAttackDieAbility(unit: CombatUnitState): string | null {
+  for (const ability of getAbilitiesWithEffect(unit, "IGNORE_ATTACK_DIE_WHEN_TARGETED")) {
+    if (ability.effect?.type === "IGNORE_ATTACK_DIE_WHEN_TARGETED") {
+      return ability.id;
+    }
+  }
+  return null;
+}
+
 /** Azure / Black Dragons (Pack): no damage from Specialty cards (non-damage Specialty still applies). */
 export function hasImmuneToSpecialtyDamage(unit: CombatUnitState): boolean {
   return hasUnitAbilityEffect(unit, "IMMUNE_TO_SPECIALTY_DAMAGE");
