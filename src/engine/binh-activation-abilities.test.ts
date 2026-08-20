@@ -8,7 +8,7 @@ import {
 } from "./index";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
-import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
+import type { CardId, CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -202,6 +202,72 @@ describe("Faerie Dragons activation damage-spell", () => {
     expect(state.combat!.units.unit_p1_marksmen.activationAbilityDone).toBe(true);
     const acts = getLegalActions(state, "p1");
     expect(acts.some((legal) => legal.action.type === "ATTACK_UNIT" || legal.action.type === "MOVE_UNIT")).toBe(true);
+  });
+
+  // Polish Balance Pack — Eagle Eye EXPERT reaches SPELL-CASTING UNITS (user
+  // ruling 2026-08-20). A Faerie Dragon's bolt against your unit lets you "cast
+  // back" the same damage at a new enemy unit.
+  it("balance Eagle Eye copies a Faerie bolt: the damaged owner casts back 2 damage at a new target", () => {
+    let state = faerieSandbox();
+    // p2 (the unit the bolt will hit) holds Eagle Eye with a crown, balance ON.
+    state.adventure = { houseRules: { "polish-card-balance": true } } as GameState["adventure"];
+    state.players.p2.hand = ["ability.eagle_eye" as CardId];
+    state.players.p2.limits.expertUses = 1;
+    // A second p2 body is irrelevant; add a p1 unit to cast BACK at.
+    state.combat!.units.unit_p1_griffins.damage = 0;
+    state.combat!.units.unit_p1_griffins.maxHealth = 10;
+
+    state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
+    const choice = state.pendingChoice;
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("expected the faerie target choice");
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+
+    // The bolt dealt 2 → p2 banked a copy of exactly that amount.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
+    expect(state.players.p2.combatStats.eagleEyeCopyUnitBolt?.amount).toBe(2);
+
+    // p2 is offered the copy at the p1 griffins (a NEW enemy target).
+    const copy = getLegalActions(state, "p2").find(
+      (legal) =>
+        legal.action.type === "USE_EAGLE_EYE_UNIT_COPY" && legal.action.targetUnitId === "unit_p1_griffins"
+    );
+    expect(copy, "the unit-bolt copy is offered to the damaged owner").toBeTruthy();
+
+    const after = applyOk(state, copy!.action);
+    // The copied bolt deals 2 to the new target, spends the crown, discards Eagle
+    // Eye, and the opportunity is consumed.
+    expect(after.combat!.units.unit_p1_griffins.damage).toBe(2);
+    expect(after.players.p2.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(after.players.p2.discard).toContain("ability.eagle_eye");
+    expect(after.players.p2.combatStats.eagleEyeCopyUnitBolt ?? null).toBeNull();
+    // No copy is offered a second time.
+    expect(
+      getLegalActions(after, "p2").some((legal) => legal.action.type === "USE_EAGLE_EYE_UNIT_COPY")
+    ).toBe(false);
+  });
+
+  it("CONTROL: with the balance rule OFF a Faerie bolt banks no Eagle Eye copy", () => {
+    let state = faerieSandbox();
+    state.players.p2.hand = ["ability.eagle_eye" as CardId];
+    state.players.p2.limits.expertUses = 1;
+    state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
+    const choice = state.pendingChoice;
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") throw new Error("expected the faerie target choice");
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    expect(state.players.p2.combatStats.eagleEyeCopyUnitBolt ?? null).toBeNull();
+    expect(
+      getLegalActions(state, "p2").some((legal) => legal.action.type === "USE_EAGLE_EYE_UNIT_COPY")
+    ).toBe(false);
   });
 });
 

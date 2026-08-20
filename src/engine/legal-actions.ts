@@ -2392,6 +2392,41 @@ function spellEffectIsAlreadyOngoing(state: GameState, playerId: PlayerId, cardI
   );
 }
 
+/**
+ * Polish Balance Pack — offer the Eagle Eye EXPERT copy of a spell-casting
+ * UNIT's bolt: one `USE_EAGLE_EYE_UNIT_COPY` per legal enemy-unit target, when
+ * this player has a banked bolt (`eagleEyeCopyUnitBolt`) and still holds Eagle
+ * Eye with a crown. Optional off-turn actions — a computer seat simply never
+ * takes them (no window opens, so nothing can stall).
+ */
+function addEagleEyeUnitCopyActions(actions: LegalAction[], state: GameState, playerId: PlayerId): void {
+  if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
+    return;
+  }
+  const player = state.players[playerId];
+  const bolt = player?.combatStats.eagleEyeCopyUnitBolt;
+  if (
+    !player ||
+    !bolt ||
+    !player.hand.includes("ability.eagle_eye" as CardId) ||
+    !canPlayExpertMode(player, "ability.eagle_eye" as CardId)
+  ) {
+    return;
+  }
+  for (const target of Object.values(state.combat.units)) {
+    // A NEW target: any living unit that is not the copier's own. Immunity /
+    // reduction is applied at resolution (reducedSpellDamage), exactly like the
+    // bolt that triggered this.
+    if (target.controllerId === playerId || !isUnitAlive(target)) {
+      continue;
+    }
+    actions.push({
+      action: { type: "USE_EAGLE_EYE_UNIT_COPY", playerId, targetUnitId: target.id },
+      label: `Eagle Eye: cast back ${bolt.amount} damage at ${target.cardName}`
+    });
+  }
+}
+
 function addSpellActions(
   actions: LegalAction[],
   state: GameState,
@@ -2406,6 +2441,12 @@ function addSpellActions(
   if (!player) {
     return;
   }
+
+  // Polish Balance Pack — Eagle Eye EXPERT copy of a spell-casting UNIT's bolt
+  // (Faerie Dragons). Not a hand cast, so it sits ABOVE the spell-lock / limit
+  // gates below: a banked bolt copy is offered per legal enemy-unit target.
+  addEagleEyeUnitCopyActions(actions, state, playerId);
+
   // The one-Spell-per-combat-round limit blocks hand / Book casts. Spell Scroll
   // casts and the Helm of the Alabaster Unicorn cast are free bonuses that do
   // not count toward the limit, so they are still offered even once the limit

@@ -10383,8 +10383,124 @@ function applyActivationDamageSpell(
     amount: dealt,
     damageKind: "spell"
   });
+  // Polish Balance Pack — the reprinted Eagle Eye EXPERT reaches SPELL-CASTING
+  // UNITS too (Faerie Dragons): a bolt that dealt spell damage to an opponent's
+  // unit lets that opponent (holding Eagle Eye + a crown) "cast back" the same
+  // damage to a new enemy unit. The bolt has no spell card, so bank the AMOUNT.
+  if (dealt > 0) {
+    noteEagleEyeUnitCopyOpportunity(state, target.controllerId, dealt, ability.abilityName);
+  }
   markUnitRemovedIfNeeded(state, target);
   finishCombatIfNeeded(state);
+}
+
+/**
+ * Polish Balance Pack — resolve the Eagle Eye EXPERT copy of a unit's bolt:
+ * deal the banked spell damage to a chosen new enemy unit, spending the Eagle
+ * Eye card (+ a crown unless Empowered). Over the round limit, free of a
+ * unit-active requirement (a reaction to the enemy bolt). Mirrors the immunity /
+ * reduction gates of `applyActivationDamageSpell`, since it re-casts that bolt.
+ */
+function applyEagleEyeUnitCopy(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_EAGLE_EYE_UNIT_COPY" }>
+): void {
+  const player = state.players[action.playerId];
+  const combat = state.combat;
+  const bolt = player?.combatStats.eagleEyeCopyUnitBolt;
+  if (!player || !combat || !bolt) {
+    throw new Error("There is no Eagle Eye unit-bolt copy to cast right now.");
+  }
+  if (!player.hand.includes(EAGLE_EYE_ABILITY_ID) || !canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)) {
+    throw new Error("Eagle Eye's Expert copy is not available.");
+  }
+  const target = combat.units[action.targetUnitId];
+  if (!target || target.controllerId === action.playerId || !(target.damage < target.maxHealth)) {
+    throw new Error("Choose a living enemy unit to cast the copied bolt at.");
+  }
+
+  // Spend the Eagle Eye card (to discard) and a crown unless the ability is
+  // Empowered — exactly like the spell-copy path.
+  if (!abilityExpertIsCrownFree(player, EAGLE_EYE_ABILITY_ID)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  const handIndex = player.hand.indexOf(EAGLE_EYE_ABILITY_ID);
+  if (handIndex >= 0) {
+    player.hand.splice(handIndex, 1);
+    player.discard.push(EAGLE_EYE_ABILITY_ID);
+  }
+  // Consume the opportunity — one copy only.
+  player.combatStats.eagleEyeCopyUnitBolt = undefined;
+
+  // Immunity gates identical to the bolt itself (a magic attack with no school =
+  // the school-less "any"): only ALL-spell immunity or a damage ward turns it
+  // aside; a single-school immunity does not.
+  const boltSchools: readonly SpellSchool[] = ["any"];
+  if (
+    isUnitDamageImmune(target) ||
+    unitImmuneToSpellSchoolsByEffect(state, target, boltSchools) ||
+    (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, boltSchools))
+  ) {
+    appendEvent(state, {
+      type: "UNIT_ABILITY_TRIGGERED",
+      unitId: target.id,
+      abilityId: "immune-all-spells",
+      targetUnitId: target.id,
+      message: `${target.cardName} is immune and ignores the copied ${bolt.label}.`
+    });
+    return;
+  }
+
+  const dealt = reducedSpellDamage(state, target, bolt.amount);
+  appendEvent(state, {
+    type: "UNIT_ABILITY_TRIGGERED",
+    unitId: target.id,
+    abilityId: "eagle-eye-copy",
+    targetUnitId: target.id,
+    message: `${player.name} copies ${bolt.label} with Eagle Eye at ${target.cardName} for ${dealt} damage.`
+  });
+  target.damage += dealt;
+  noteUnitDamagedForTokens(state, target, dealt);
+  appendEvent(state, {
+    type: "DAMAGE_ASSIGNED",
+    source: { type: "card", cardId: EAGLE_EYE_ABILITY_ID, controllerId: action.playerId },
+    target: { type: "unit", unitId: target.id },
+    amount: dealt,
+    damageKind: "spell"
+  });
+  markUnitRemovedIfNeeded(state, target);
+  finishCombatIfNeeded(state);
+}
+
+/**
+ * Latch the Balance-Pack Eagle Eye EXPERT copy for a unit's spell bolt. The
+ * damaged unit's owner may, if they hold Eagle Eye and can play its Expert side,
+ * deal `amount` spell damage to a new enemy unit once (over the round limit) —
+ * the unit-ability analogue of `noteEagleEyeCopyOpportunity`. Never latches for
+ * the neutral seat or the bolt's own caster's side.
+ */
+function noteEagleEyeUnitCopyOpportunity(
+  state: GameState,
+  damagedControllerId: PlayerId,
+  amount: number,
+  label: string
+): void {
+  if (!houseRuleEnabled(state, "polish-card-balance") || !state.combat) {
+    return;
+  }
+  if (damagedControllerId === NEUTRAL_PLAYER_ID) {
+    return;
+  }
+  const player = state.players[damagedControllerId];
+  if (
+    player &&
+    player.hand.includes(EAGLE_EYE_ABILITY_ID) &&
+    canPlayExpertMode(player, EAGLE_EYE_ABILITY_ID)
+  ) {
+    // A single bolt may hit several of a player's units; keep the FIRST (largest
+    // is not meaningfully different for a flat bolt) — one copy per opportunity.
+    player.combatStats.eagleEyeCopyUnitBolt ??= { amount, label };
+  }
 }
 
 /**
@@ -23097,6 +23213,7 @@ function advanceCombatRound(state: GameState, byPlayerId: PlayerId): void {
     // effect" is a same-round reaction, so an unused copy offer expires with the
     // combat round.
     player.combatStats.eagleEyeCopySpellId = undefined;
+    player.combatStats.eagleEyeCopyUnitBolt = undefined;
     player.combatStats.equipmentKillDrawsThisRound = 0;
     // Expert uses (crowns) and the "+1 expert use this round" bonus (Pendant of
     // Courage / Helm of Heavenly Enlightenment) are a per-GAME-ROUND budget, not
@@ -24699,6 +24816,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_UNIT_MAGIC_MIRROR":
         applyUnitMagicMirror(nextState, action, cards);
+        break;
+      case "USE_EAGLE_EYE_UNIT_COPY":
+        applyEagleEyeUnitCopy(nextState, action);
         break;
       case "USE_UNIT_DIE_IGNORE":
         applyUnitDieIgnore(nextState, action, cards);

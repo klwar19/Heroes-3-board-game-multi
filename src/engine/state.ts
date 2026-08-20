@@ -4132,6 +4132,17 @@ export type GameAction =
       targetUnitId: UnitId;
     }
   | {
+      /**
+       * Polish Balance Pack — Eagle Eye EXPERT copy of a spell-casting UNIT's
+       * bolt (Faerie Dragons): deal the banked `eagleEyeCopyUnitBolt.amount`
+       * spell damage to `targetUnitId`, once, over the round limit. Spends the
+       * Eagle Eye card (+ a crown unless Empowered).
+       */
+      type: "USE_EAGLE_EYE_UNIT_COPY";
+      playerId: PlayerId;
+      targetUnitId: UnitId;
+    }
+  | {
       /** WOG War Zealot: free innate Magic Mirror, without a card or spell-limit cost. */
       type: "USE_UNIT_MAGIC_MIRROR";
       playerId: PlayerId;
@@ -8370,6 +8381,17 @@ export type PlayerState = {
      * Cleared when used and at the start of each combat / combat round.
      */
     eagleEyeCopySpellId?: CardId;
+    /**
+     * Polish Balance Pack — the reprinted Eagle Eye EXPERT, extended to
+     * SPELL-CASTING UNITS (user ruling 2026-08-20 — "should also work for spell
+     * casting units like Faerie Dragons; you just cast back 2 damage"). A unit's
+     * spell ability (Faerie Bolt, an `ON_ACTIVATION_DAMAGE_SPELL`) has no spell
+     * card to copy, so this instead banks the DAMAGE it dealt to one of this
+     * player's units. If they hold Eagle Eye with a crown, they may deal that
+     * many spell damage to a new enemy unit once, over the round limit. Cleared
+     * when used and at the start of each combat / combat round.
+     */
+    eagleEyeCopyUnitBolt?: { amount: number; label: string };
     /**
      * Sorcery played outside a spell-cast window (draw-only during own
      * activation): banked Power for the NEXT spell this player casts. Wiki:
