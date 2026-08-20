@@ -225,7 +225,13 @@ function delveFloor(state: GameState, fieldId: MapSpaceId): GameState {
   if (menu?.type !== "CHOOSE_ONE") {
     throw new Error("expected the door menu");
   }
-  const pick = menu.options.findIndex((option, index) => index < 2 && !/shrine/i.test(option.label));
+  // Skip the rooms that PAUSE (a PAY_TO or a nested CHOOSE_ONE — the shrine and
+  // the §F4 forge). Detected STRUCTURALLY, not by label, so a new room cannot
+  // silently break this helper.
+  const pick = menu.options.findIndex(
+    (option, index) =>
+      index < 2 && !option.steps.some((step) => step.type === "PAY_TO" || step.type === "CHOOSE_ONE")
+  );
   expect(pick).toBeGreaterThanOrEqual(0);
   const after = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: pick });
   expect(after.combat, "expected the den fight to open").toBeTruthy();

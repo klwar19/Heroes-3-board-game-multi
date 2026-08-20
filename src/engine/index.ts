@@ -594,8 +594,10 @@ export {
   dungeonEnabled,
   dungeonFloorCapOf,
   dungeonFloorDifficulty,
-  dungeonFloorOf
+  dungeonFloorOf,
+  dungeonTreasureThemeOf
 } from "./dungeon";
+export type { DungeonTreasureTheme } from "./dungeon";
 export type {
   CustomRaidBossDef,
   DungeonDepth,

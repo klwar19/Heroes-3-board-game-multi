@@ -12490,6 +12490,33 @@ function resolveRaidBossVictory(state: GameState, playerId: PlayerId, bossInstan
     count: 1
   });
   grantEncounterCommanderArtifact(state, playerId, "relic", `Raid Boss ${def?.name ?? boss.defId}`);
+  // Variant expansion §F2 — the FIRST-KILL TROPHY. The printed reward above is
+  // untouched (RAID_BOSS_KILL_GOLD + the relic search stay byte-identical, and
+  // the search stays at the queue FRONT); this appends ONE small pick, offered
+  // once per player per game. The latch is set HERE, at the queue, so a seat
+  // that ignores/AFKs the prompt still spends its one trophy — the payout can
+  // never be farmed by killing a second boss. All three arms are existing
+  // auto-resolvable VisitStep kinds, so an AI/AFK seat answers it through the
+  // ordinary CHOOSE_ONE path and nothing can stall.
+  const slayer = state.players[playerId];
+  if (slayer && !slayer.raidBossTrophyClaimed) {
+    slayer.raidBossTrophyClaimed = true;
+    adventure.rewardQueue.push({
+      playerId,
+      kind: "visit-steps",
+      steps: [
+        {
+          type: "CHOOSE_ONE",
+          prompt: `Claim a trophy from ${def?.name ?? "the rift boss"} (once per game).`,
+          options: [
+            { label: "Its severed crest — +1 morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] },
+            { label: "Its hoard — roll 1 Treasure die", steps: [{ type: "ROLL_TREASURE_DICE", count: 1 }] },
+            { label: "Its secrets — +2 hero experience", steps: [{ type: "GAIN_EXPERIENCE", amount: 2 }] }
+          ]
+        }
+      ]
+    });
+  }
   appendEvent(state, {
     type: "RAID_BOSS_SLAIN",
     bossInstanceId,
@@ -12517,7 +12544,7 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
     playerId,
     kind: "visit-steps",
     steps: [
-      ...dungeonFloorRewardSteps(state, floor, { repeat }),
+      ...dungeonFloorRewardSteps(state, floor, { repeat, playerId }),
       { type: "DUNGEON_CONTINUE" }
     ]
   });

@@ -18,13 +18,21 @@ import {
   DUNGEON_FLOOR_CAP,
   DUNGEON_WARDEN_POOLS,
   dungeonBossId,
+  dungeonDoorsForFloor,
   dungeonFloorDifficulty,
   dungeonFloorRewardSteps,
-  dungeonWardenIdFor
+  dungeonRoomPool,
+  dungeonTreasureThemeOf,
+  dungeonWardenIdFor,
+  type DungeonTreasureTheme
 } from "./dungeon";
+import { makeCombatUnitFromArmy } from "./adventure";
+import { houseRuleEnabled } from "./house-rules";
+import { createSeededRandom } from "./random";
 import { DUNGEON_FLOOR_BOSSES, RAID_BOSSES } from "@/data/anime/bosses";
+import { stackTokenDelta } from "@/data/map/creature-banks";
 import { WAVE_MINIBOSS_POOLS } from "./monster-waves";
-import { NEUTRAL_PLAYER_ID, type CombatState, type MapSpaceId } from "./state";
+import { NEUTRAL_PLAYER_ID, type CombatState, type MapSpaceId, type VisitStep } from "./state";
 
 /**
  * The Dungeon (§6.7.3 + the door-room/dialogue enrichment) — every claim
@@ -93,7 +101,13 @@ function delveFloor(state: GameState, fieldId: MapSpaceId): GameState {
   if (menu?.type !== "CHOOSE_ONE") {
     throw new Error("expected the door menu");
   }
-  const pick = menu.options.findIndex((option, index) => index < 2 && !/shrine/i.test(option.label));
+  // Skip the rooms that PAUSE (a PAY_TO or a nested CHOOSE_ONE — the shrine and
+  // the hot forge). Detected STRUCTURALLY, not by label, so new rooms cannot
+  // silently break this helper.
+  const pick = menu.options.findIndex(
+    (option, index) =>
+      index < 2 && !option.steps.some((step) => step.type === "PAY_TO" || step.type === "CHOOSE_ONE")
+  );
   expect(pick).toBeGreaterThanOrEqual(0);
   const after = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: pick });
   expect(after.combat, "expected the den fight to open").toBeTruthy();
@@ -406,10 +420,14 @@ describe("The Dungeon — delving floors", () => {
     expect(wonFight.players.p1.dungeonFloor).toBe(2);
     const first = wonFight.adventure!.rewardQueue[0];
     expect(first?.kind).toBe("visit-steps");
-    expect(
-      first?.kind === "visit-steps" &&
-        first.steps.some((step) => step.type === "GAIN_RESOURCES" && step.gold === 2)
-    ).toBe(true);
+    // The ladder rung itself is theme-dependent now (§F1), so assert the queue
+    // really carries THIS game's floor-1 rung (plus the continue step) rather
+    // than one theme's literal payout.
+    expect(first?.kind === "visit-steps" && first.steps).toEqual([
+      ...dungeonFloorRewardSteps(wonFight, 1, { playerId: "p1" }),
+      { type: "DUNGEON_CONTINUE" }
+    ]);
+    expect(first?.kind === "visit-steps" && first.steps.length).toBeGreaterThan(1);
     expect(wonFight.eventLog.some((event) => event.type === "DUNGEON_FLOOR_CLEARED")).toBe(true);
 
     const loss = dungeonGame("dungeon-loss");
@@ -795,5 +813,268 @@ describe("The Dungeon — escorts (§D1 yes, §D2 never)", () => {
       expect(RAID_BOSSES.mother_demon.escortPool!, unit.unitDefId).toContain(unit.unitDefId);
       expect(unit.stackToken ?? null, `${unit.unitDefId} must be plain in the Dungeon`).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §F1 / §F3 / §F4 — treasure themes, repeat clears, new rooms
+// ---------------------------------------------------------------------------
+
+/**
+ * A game whose seeded treasure theme is exactly `theme`. Scanning for a seed
+ * (rather than stubbing the function) keeps every assertion below on the REAL
+ * seeded derivation — a constant theme fails the variety test in the same file.
+ */
+function themedDungeonGame(
+  theme: DungeonTreasureTheme,
+  options: Record<string, unknown> = {},
+  tag = "theme"
+): GameState {
+  for (let index = 0; index < 400; index += 1) {
+    const state = dungeonGame(`${tag}-probe-${theme}-${index}`, options);
+    if (dungeonTreasureThemeOf(state) === theme) {
+      return state;
+    }
+  }
+  throw new Error(`no seed produced the ${theme} treasure theme`);
+}
+
+/** Every step KIND in a step tree, descending into CHOOSE_ONE / PAY_TO arms. */
+function stepKinds(steps: VisitStep[]): string[] {
+  const kinds: string[] = [];
+  for (const step of steps) {
+    kinds.push(step.type);
+    if (step.type === "CHOOSE_ONE") {
+      for (const option of step.options) {
+        kinds.push(...stepKinds(option.steps));
+      }
+    } else if (step.type === "PAY_TO") {
+      kinds.push(...stepKinds(step.steps));
+    }
+  }
+  return kinds;
+}
+
+const ALL_TREASURE_THEMES: DungeonTreasureTheme[] = ["hoard", "arsenal", "lore"];
+const ARTIFACT_FLOORS = [3, 5, 7, 10];
+const THEMED_FLOORS = [1, 2, 4, 6, 8, 9];
+
+describe("The Dungeon — treasure themes (§F1)", () => {
+  it("the theme is STABLE per seed and really VARIES across games", () => {
+    expect(dungeonTreasureThemeOf(dungeonGame("theme-stable"))).toBe(
+      dungeonTreasureThemeOf(dungeonGame("theme-stable"))
+    );
+    const rolled = new Set(
+      Array.from({ length: 8 }, (_, index) => dungeonTreasureThemeOf(dungeonGame(`theme-variety-${index}`)))
+    );
+    expect(rolled.size, `rolled: ${[...rolled].join(", ")}`).toBeGreaterThanOrEqual(2);
+    for (const theme of rolled) {
+      expect(ALL_TREASURE_THEMES).toContain(theme);
+    }
+  });
+
+  it("ANTI-INFLATION: the Artifact rungs (3/5/7/10) are IDENTICAL in all three themes", () => {
+    const ladders = ALL_TREASURE_THEMES.map((theme) =>
+      themedDungeonGame(theme, { unitExperience: true, wog: { enabled: true, dungeon: true, commanders: true } })
+    );
+    for (const floor of ARTIFACT_FLOORS) {
+      const rungs = ladders.map((state) => dungeonFloorRewardSteps(state, floor, { playerId: "p1" }));
+      // The shipped ladder: exactly ONE Artifact search on every artifact rung.
+      expect(rungs[0].filter((step) => step.type === "SEARCH_SHARED_DECK").length, `floor ${floor}`).toBe(1);
+      expect(rungs[1], `floor ${floor} arsenal`).toEqual(rungs[0]);
+      expect(rungs[2], `floor ${floor} lore`).toEqual(rungs[0]);
+    }
+    // ...and no theme ever adds an Artifact search to a NON-artifact rung.
+    for (const state of ladders) {
+      for (const floor of THEMED_FLOORS) {
+        expect(
+          stepKinds(dungeonFloorRewardSteps(state, floor, { playerId: "p1" })),
+          `floor ${floor}`
+        ).not.toContain("SEARCH_SHARED_DECK");
+      }
+    }
+  });
+
+  it("the NON-artifact rungs really diverge: hoard vs lore differ on at least 4 floors", () => {
+    const options = { unitExperience: true, wog: { enabled: true, dungeon: true, commanders: true } };
+    const hoard = themedDungeonGame("hoard", options);
+    const lore = themedDungeonGame("lore", options);
+    const differing = THEMED_FLOORS.filter(
+      (floor) =>
+        JSON.stringify(dungeonFloorRewardSteps(hoard, floor, { playerId: "p1" })) !==
+        JSON.stringify(dungeonFloorRewardSteps(lore, floor, { playerId: "p1" }))
+    );
+    expect(differing.length, `differing floors: ${differing.join(", ")}`).toBeGreaterThanOrEqual(4);
+  });
+
+  it("an arsenal game REALLY pays unit XP — the card's experience moves, not just the step shape", () => {
+    const state = themedDungeonGame("arsenal", { unitExperience: true }, "arsenal-effect");
+    const unit = state.players.p1.army[0];
+    expect(unit, "expected a starting army").toBeTruthy();
+    const xpBefore = unit.experience ?? 0;
+
+    // Floor 2 in arsenal is the unit-XP rung: a CHOOSE_ONE naming each card.
+    const rung = dungeonFloorRewardSteps(state, 2, { playerId: "p1" });
+    const pick = rung.find((step) => step.type === "CHOOSE_ONE");
+    expect(pick?.type === "CHOOSE_ONE" && pick.options[0].steps[0]).toEqual({
+      type: "GAIN_UNIT_XP",
+      armyUnitId: unit.id,
+      amount: 2
+    });
+
+    const fieldId = placeSiteUnderHero(state);
+    state.adventure!.pendingVisit = { heroId: "hero_p1", playerId: "p1", fieldId, steps: rung };
+    const opened = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(opened.players.p1.army[0].experience ?? 0).toBe(xpBefore + 2);
+  });
+
+  it("CONTROL: with Unit Experience and Commanders OFF, every module-gated rung falls back to a real, non-empty payout", () => {
+    for (const theme of ALL_TREASURE_THEMES) {
+      const state = themedDungeonGame(theme, {}, "fallback");
+      expect(state.adventure?.unitExperience).toBeFalsy();
+      expect(state.wog?.commanders).toBeFalsy();
+      for (const floor of [2, 6, 8, 9]) {
+        const rung = dungeonFloorRewardSteps(state, floor, { playerId: "p1" });
+        expect(rung.length, `${theme} floor ${floor}`).toBeGreaterThan(0);
+        const kinds = stepKinds(rung);
+        expect(kinds, `${theme} floor ${floor}`).not.toContain("GAIN_UNIT_XP");
+        expect(kinds, `${theme} floor ${floor}`).not.toContain("GAIN_COMMANDER_POINTS");
+      }
+    }
+    // And an arsenal Stack-Token rung with EVERY card already Stacked falls
+    // back too (the enumeration gate, not a module gate).
+    const stacked = themedDungeonGame("arsenal", {}, "stacked");
+    for (const unit of stacked.players.p1.army) {
+      unit.stackToken = "attack";
+    }
+    for (const floor of [4, 9]) {
+      const rung = dungeonFloorRewardSteps(stacked, floor, { playerId: "p1" });
+      expect(rung.length, `stacked floor ${floor}`).toBeGreaterThan(0);
+      expect(stepKinds(rung), `stacked floor ${floor}`).not.toContain("GRANT_STACK_TOKEN");
+    }
+  });
+
+  it("§F3: a repeat bottom-floor clear teaches a card with Unit Experience ON — and is byte-identical with it OFF (CONTROL)", () => {
+    const off = dungeonGame("repeat-off");
+    expect(dungeonFloorRewardSteps(off, 10, { repeat: true, playerId: "p1" })).toEqual([
+      { type: "ROLL_TREASURE_DICE", count: 1 },
+      { type: "GAIN_RESOURCES", gold: 3 }
+    ]);
+
+    const on = dungeonGame("repeat-on", { unitExperience: true });
+    const repeat = dungeonFloorRewardSteps(on, 10, { repeat: true, playerId: "p1" });
+    // Gold and dice UNCHANGED — the only addition is the teaching.
+    expect(repeat.slice(0, 2)).toEqual([
+      { type: "ROLL_TREASURE_DICE", count: 1 },
+      { type: "GAIN_RESOURCES", gold: 3 }
+    ]);
+    expect(stepKinds(repeat)).toContain("GAIN_UNIT_XP");
+    // The theme never touches the repeat fallback (anti-inflation).
+    for (const theme of ALL_TREASURE_THEMES) {
+      const themed = themedDungeonGame(theme, {}, "repeat-theme");
+      expect(dungeonFloorRewardSteps(themed, 10, { repeat: true, playerId: "p1" })).toEqual([
+        { type: "ROLL_TREASURE_DICE", count: 1 },
+        { type: "GAIN_RESOURCES", gold: 3 }
+      ]);
+    }
+  });
+});
+
+describe("The Dungeon — new rooms (§F4)", () => {
+  it("both themes ship the forge and the pit, and EVERY room step is one the visit pump can resolve", () => {
+    // The pump either resolves a step outright or PAUSES on it and offers a
+    // RESOLVE_VISIT_STEP; anything else would strand a delver.
+    const resolvable = new Set([
+      "GAIN_RESOURCES",
+      "GAIN_MORALE",
+      "GAIN_MOVEMENT",
+      "GAIN_EXPERIENCE",
+      "ROLL_TREASURE_DICE",
+      "PLAY_STORY_SCENE",
+      "GAIN_UNIT_XP",
+      "GRANT_STACK_TOKEN",
+      "CHOOSE_ONE",
+      "PAY_TO"
+    ]);
+    const state = dungeonGame("rooms-kinds");
+    for (const theme of ["classic", "doom"] as const) {
+      for (let floor = 1; floor <= DUNGEON_FLOOR_CAP; floor += 1) {
+        const pool = dungeonRoomPool(floor, theme, { state, playerId: "p1" });
+        expect(pool.length, `${theme} floor ${floor}`).toBe(8);
+        expect(
+          pool.some((room) => room.key === "forge"),
+          theme
+        ).toBe(true);
+        expect(
+          pool.some((room) => room.key === "pit"),
+          theme
+        ).toBe(true);
+        for (const room of pool) {
+          expect(room.steps.length, `${theme} ${room.key}`).toBeGreaterThan(0);
+          for (const kind of stepKinds(room.steps)) {
+            expect([...resolvable], `${theme} ${room.key} → ${kind}`).toContain(kind);
+          }
+        }
+      }
+    }
+  });
+
+  it("every floor 1..10 × both themes offers TWO DIFFERENT room objects", () => {
+    const state = dungeonGame("rooms-doors");
+    for (const theme of ["classic", "doom"] as const) {
+      for (let floor = 1; floor <= DUNGEON_FLOOR_CAP; floor += 1) {
+        const rng = createSeededRandom(`${state.seed}#dungeon-doors-${theme}-${floor}`);
+        const [left, right] = dungeonDoorsForFloor(rng, floor, theme, { state, playerId: "p1" });
+        expect(left, `${theme} floor ${floor}`).not.toBe(right);
+        expect(left.label, `${theme} floor ${floor}`).not.toBe(right.label);
+      }
+    }
+  });
+
+  it("the FORGE really mints a rulebook Stack Token — the OPEN QUESTION: it works with polish-unit-stacks OFF", () => {
+    const state = dungeonGame("forge-effect");
+    // CONTROL on the premise: the Polish persistent-layer rule is OFF here, and
+    // the token still lands and still folds — GRANT_STACK_TOKEN writes the
+    // RULEBOOK Stack Token, which is a different mechanism from polish layers.
+    expect(houseRuleEnabled(state, "polish-unit-stacks")).toBe(false);
+    const unit = state.players.p1.army[0];
+    expect(unit.stackToken ?? null).toBeNull();
+
+    const forge = dungeonRoomPool(1, "classic", { state, playerId: "p1" }).find((room) => room.key === "forge")!;
+    expect(forge.steps[0].type).toBe("PAY_TO");
+
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.resources.gold = 10;
+    state.adventure!.pendingVisit = { heroId: "hero_p1", playerId: "p1", fieldId, steps: [...forge.steps] };
+    // Pay → pick the card → pick the stat (attack is option 0).
+    let next = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(next.players.p1.resources.gold).toBe(7);
+    next = apply(next, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    next = apply(next, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+
+    const tokened = next.players.p1.army.find((candidate) => candidate.id === unit.id)!;
+    expect(tokened.stackToken).toBe("attack");
+    // The OUTCOME, not the field: the token really folds into the combat body.
+    const withToken = makeCombatUnitFromArmy(tokened, "p1", "forge_probe", 0)!;
+    const plain = makeCombatUnitFromArmy(
+      { ...tokened, stackToken: undefined },
+      "p1",
+      "plain_probe",
+      1
+    )!;
+    expect(withToken.attack).toBe(plain.attack + stackTokenDelta("attack"));
+  });
+
+  it("CONTROL: with every army card already Stacked the forge goes COLD — no dead PAY_TO, a flat 3-gold refund instead", () => {
+    const state = dungeonGame("forge-cold");
+    for (const unit of state.players.p1.army) {
+      unit.stackToken = "health";
+    }
+    const forge = dungeonRoomPool(1, "classic", { state, playerId: "p1" }).find((room) => room.key === "forge")!;
+    expect(forge.steps).toEqual([{ type: "GAIN_RESOURCES", gold: 3 }]);
+    expect(forge.label).toMatch(/cold/i);
+    // Same with NO context at all (a caller that cannot name an army).
+    const contextless = dungeonRoomPool(1, "classic").find((room) => room.key === "forge")!;
+    expect(contextless.steps).toEqual([{ type: "GAIN_RESOURCES", gold: 3 }]);
   });
 });

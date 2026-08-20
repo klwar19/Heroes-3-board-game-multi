@@ -16,7 +16,7 @@ import {
   type MonsterSpellDefinition,
   type MonsterSpellId
 } from "@/data/anime/monster-spells";
-import type { UnitAbilityDefinition } from "@/data/units/abilities";
+import { unitAbilities, type UnitAbilityDefinition } from "@/data/units/abilities";
 import { effectiveInitiative } from "./active-effects";
 import { getUnitAbilityDefinitions } from "./unit-abilities";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState } from "./state";
@@ -73,6 +73,23 @@ export function monsterSpellAbility(unit: CombatUnitState): UnitAbilityDefinitio
         ability.effect.spells.length > 0
     ) ?? null
   );
+}
+
+/**
+ * Presentation (§F5): does this ability-id list carry a `BOSS_SPELL_ROTATION`?
+ * DERIVED from the ability registry — never a hand-written id list, so a new
+ * caster ability lights up every prompt that reads this with no edit here.
+ * Used by the Rift Lair prompt to append ", and it casts every round".
+ */
+export function abilityIdsCastMonsterSpells(abilityIds: readonly string[]): boolean {
+  return abilityIds.some((id) => {
+    const ability = unitAbilities[id];
+    return (
+      ability?.implementationStatus === "implemented" &&
+      ability.effect?.type === "BOSS_SPELL_ROTATION" &&
+      ability.effect.spells.length > 0
+    );
+  });
 }
 
 /** The spell this unit casts at `round`, or null. Deterministic in (unit, round). */

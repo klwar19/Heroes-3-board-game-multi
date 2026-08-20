@@ -8643,6 +8643,15 @@ export type PlayerState = {
   /** The Dungeon: floor 10 cleared — the Conqueror title (relic paid once). */
   dungeonConquered?: boolean;
   /**
+   * Raid Bosses (variant expansion §F2): this player has already taken the
+   * ONE first-kill trophy pick of the game. Additive + optional — absent on
+   * every legacy snapshot, which is exactly right: a player who killed a boss
+   * before this field existed is offered the trophy on their next kill, and
+   * never again. Set at the trophy QUEUE, not at the pick, so declining still
+   * spends it (one pick per player per game, whatever they choose).
+   */
+  raidBossTrophyClaimed?: true;
+  /**
    * DEAD FIELD (legacy snapshots only). It used to be the Dungeon's
    * once-per-turn latch (the round this player last OPENED a floor fight).
    * The Dungeon now charges 1 MOVEMENT per floor instead, so NOTHING writes or

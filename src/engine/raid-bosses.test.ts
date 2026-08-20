@@ -9,7 +9,15 @@ import { beginFieldVisit, startAdventureRound } from "./adventure";
 import { DEFENDER_BACKLINE, finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { RAID_BOSSES, type RaidBossDefinition } from "@/data/anime/bosses";
-import { DOOM_RAID_BOSS_IDS, makeRaidBossCombatUnit, scheduledBossPool } from "./raid-bosses";
+import {
+  DOOM_RAID_BOSS_IDS,
+  RAID_BOSS_KILL_GOLD,
+  makeRaidBossCombatUnit,
+  scheduledBossPool
+} from "./raid-bosses";
+import { abilityIdsCastMonsterSpells } from "./monster-spells";
+import { standardComputerController } from "./computer/control";
+import { computerDecisionOwner } from "./computer/window";
 import { MAX_CUSTOM_WAVE_OVERRIDES, sanitizeCustomMapPreset } from "./map-preset";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { stackTokenDelta } from "@/data/map/creature-banks";
@@ -658,5 +666,159 @@ describe("Raid Bosses — a full seeded lair fight reaches an outcome (no stall)
       state = apply(state, pick!.action);
     }
     expect(state.combat?.outcome ?? "settled").toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §F2 / §F5 — the first-kill trophy and the caster prompt
+// ---------------------------------------------------------------------------
+
+/** Drive an open lair fight to a WIN through the real finalize. */
+function slayTheBoss(state: GameState): GameState {
+  state.combat!.outcome = {
+    winnerPlayerId: "p1",
+    defeatedPlayerId: NEUTRAL_PLAYER_ID,
+    reason: "all-enemy-units-defeated"
+  };
+  finalizeAdventureCombat(state);
+  return state;
+}
+
+/** Re-arm the SAME lair for a SECOND real kill down the same code path. */
+function rearmLair(state: GameState, instanceId: string, fieldId: string): void {
+  const record = state.adventure!.raidBosses![instanceId];
+  record.slainBy = undefined;
+  record.layersLeft = 1;
+  const field = state.adventure!.fields[fieldId];
+  field.riftLair = instanceId;
+  field.blackCube = false;
+  state.adventure!.rewardQueue = [];
+}
+
+/** The queued trophy pick, or undefined. */
+function trophyEntry(state: GameState) {
+  return (state.adventure!.rewardQueue ?? []).find(
+    (entry) =>
+      entry.kind === "visit-steps" &&
+      entry.steps[0]?.type === "CHOOSE_ONE" &&
+      /Claim a trophy/i.test(entry.steps[0].prompt ?? "")
+  );
+}
+
+describe("Raid Bosses — the first-kill trophy (§F2)", () => {
+  it("the FIRST kill queues a 3-option trophy and taking the crest REALLY moves morale by +1 — the base 5 gold + relic search untouched", () => {
+    const state = raidGame("raid-trophy-first");
+    const { fieldId } = spawnLair(state);
+    const after = challengeLair(state, fieldId);
+    const goldBefore = after.players.p1.resources.gold;
+    const moraleBefore = after.players.p1.morale;
+
+    slayTheBoss(after);
+
+    // Base reward BYTE-IDENTICAL: exactly RAID_BOSS_KILL_GOLD, relic search
+    // still at the queue FRONT.
+    expect(after.players.p1.resources.gold).toBe(goldBefore + RAID_BOSS_KILL_GOLD);
+    expect(after.adventure!.rewardQueue[0]?.kind).toBe("shared-deck-search");
+
+    const trophy = trophyEntry(after);
+    expect(trophy, "expected the first-kill trophy").toBeTruthy();
+    const menu = trophy?.kind === "visit-steps" ? trophy.steps[0] : null;
+    expect(menu?.type === "CHOOSE_ONE" && menu.options.length).toBe(3);
+    expect(menu?.type === "CHOOSE_ONE" && menu.options.map((option) => option.steps[0]?.type)).toEqual([
+      "GAIN_MORALE",
+      "ROLL_TREASURE_DICE",
+      "GAIN_EXPERIENCE"
+    ]);
+
+    // Resolve it for real: drop the unrelated relic SEARCH (a separate
+    // interaction) so the pump reaches the trophy, then take the crest.
+    after.adventure!.rewardQueue = after.adventure!.rewardQueue.filter(
+      (entry) => entry.kind !== "shared-deck-search"
+    );
+    pumpAdventureQueues(after);
+    expect(after.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+    const picked = apply(after, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
+    expect(picked.players.p1.morale).toBe(moraleBefore + 1);
+  });
+
+  it("CONTROL: a SECOND kill down the SAME path queues NO trophy and pays the identical base reward", () => {
+    const state = raidGame("raid-trophy-second");
+    const { instanceId, fieldId } = spawnLair(state);
+    const first = challengeLair(state, fieldId);
+    slayTheBoss(first);
+    expect(trophyEntry(first), "the first kill IS the trophy kill").toBeTruthy();
+    expect(first.players.p1.raidBossTrophyClaimed).toBe(true);
+
+    rearmLair(first, instanceId, fieldId);
+    const goldBefore = first.players.p1.resources.gold;
+    const again = challengeLair(first, fieldId);
+    slayTheBoss(again);
+
+    expect(again.players.p1.resources.gold).toBe(goldBefore + RAID_BOSS_KILL_GOLD);
+    expect(again.adventure!.rewardQueue[0]?.kind).toBe("shared-deck-search");
+    expect(trophyEntry(again), "a second kill must NOT re-offer the trophy").toBeUndefined();
+  });
+
+  it("a COMPUTER seat answers the trophy through the ordinary visit-step path — no stall", () => {
+    const state = raidGame("raid-trophy-ai");
+    const { fieldId } = spawnLair(state);
+    const after = challengeLair(state, fieldId);
+    slayTheBoss(after);
+    after.adventure!.rewardQueue = after.adventure!.rewardQueue.filter(
+      (entry) => entry.kind !== "shared-deck-search"
+    );
+    pumpAdventureQueues(after);
+    expect(trophyEntry(after) ?? after.adventure!.pendingVisit, "the trophy must be open").toBeTruthy();
+
+    // Only NOW hand the seat to a computer: the window is already open, and the
+    // question is whether the AI pump owns and can answer it.
+    after.controllers = { ...(after.controllers ?? {}), p1: standardComputerController() };
+    after.sessionMode = "single-player";
+    expect(computerDecisionOwner(after)).toBe("p1");
+    const offers = getLegalActions(after, "p1").filter(
+      (entry) => entry.action.type === "RESOLVE_VISIT_STEP"
+    );
+    expect(offers.length, "the AI must see every trophy arm").toBe(3);
+    const resolved = applyAction(after, offers[0].action, { computerActorPlayerId: "p1" });
+    expect(resolved.errors.map((error) => error.message).join("; ")).toBe("");
+    expect(resolved.state.adventure!.pendingVisit).toBeNull();
+    // The WINDOW really closed — no visit-step offer is owed any more (the seat
+    // still owns its ordinary turn, which is not a stall).
+    expect(
+      getLegalActions(resolved.state, "p1").filter(
+        (entry) => entry.action.type === "RESOLVE_VISIT_STEP"
+      )
+    ).toEqual([]);
+  });
+});
+
+describe("Raid Bosses — the caster line on the lair prompt (§F5)", () => {
+  it("a boss carrying a BOSS_SPELL_ROTATION ability warns 'it casts every round'; a non-caster boss does NOT (CONTROL)", () => {
+    const casterId = Object.keys(RAID_BOSSES).find((id) =>
+      abilityIdsCastMonsterSpells(RAID_BOSSES[id].abilities)
+    );
+    const plainId = Object.keys(RAID_BOSSES).find(
+      (id) => !abilityIdsCastMonsterSpells(RAID_BOSSES[id].abilities)
+    );
+    expect(casterId, "expected at least one shipped caster boss").toBeTruthy();
+    expect(plainId, "expected at least one shipped non-caster boss").toBeTruthy();
+
+    const promptFor = (defId: string): string => {
+      const state = raidGame(`raid-caster-${defId}`);
+      const { fieldId } = spawnLair(state);
+      const record = Object.values(state.adventure!.raidBosses!)[0];
+      record.defId = defId;
+      const hero = state.heroes.hero_p1;
+      state.adventure!.lastVisitedField[hero.id] = hero.spaceId!;
+      hero.spaceId = fieldId;
+      beginFieldVisit(state, hero.id, fieldId, false);
+      const step = state.adventure!.pendingVisit?.steps[0];
+      return step?.type === "CHOOSE_ONE" ? (step.prompt ?? "") : "";
+    };
+
+    expect(promptFor(casterId!)).toMatch(/casts every round/);
+    expect(promptFor(plainId!)).not.toMatch(/casts every round/);
+    // Both prompts still carry the unchanged reward wording.
+    expect(promptFor(plainId!)).toMatch(/Challenge it\?/);
   });
 });

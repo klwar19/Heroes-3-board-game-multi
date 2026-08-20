@@ -215,6 +215,7 @@ import {
   dungeonFloorOf,
   dungeonThemeOf
 } from "./dungeon";
+import { abilityIdsCastMonsterSpells } from "./monster-spells";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
@@ -17659,7 +17660,7 @@ function handleDungeonGateVisit(
 
   const theme = dungeonThemeOf(state);
   const rng = createSeededRandom(`${state.seed}#dungeon-doors-${theme}-${floor}`);
-  const [left, right] = dungeonDoorsForFloor(rng, floor, theme);
+  const [left, right] = dungeonDoorsForFloor(rng, floor, theme, { state, playerId });
   adventure.pendingVisit = {
     heroId,
     playerId,
@@ -17711,9 +17712,13 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
     steps: [
       {
         type: "CHOOSE_ONE",
+        // §F5: the caster warning is DERIVED from the boss's own ability array
+        // (abilityIdsCastMonsterSpells reads the registry), never a hand-listed
+        // set of boss ids — a new BOSS_SPELL_ROTATION ability lights it up here
+        // with no edit.
         prompt: `${def.name} lairs here — ${boss.layersLeft} health bar${boss.layersLeft === 1 ? "" : "s"} remain${
           boss.layersLeft === 1 ? "s" : ""
-        }. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)`,
+        }${abilityIdsCastMonsterSpells(def.abilities) ? ", and it casts every round" : ""}. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)`,
         options: [
           {
             label: `Challenge ${def.name}`,
