@@ -1264,6 +1264,12 @@ export function describeCardEffect(card: CardDefinition): string {
   }
 
   if (card.effect.type === "CAST_FROM_SPELL_DISCARD") {
+    // Community Balance Change Intelligence: any Spell in your OWN discard pile.
+    if (card.effect.anySpell) {
+      return card.effect.countsTowardSpellLimit
+        ? "play a spell from your discard pile"
+        : "play a spell from your discard pile (it does not count toward your Spell limit)";
+    }
     if (card.effect.spellId) {
       const name = card.effect.spellId
         .replace(/^spell\./, "")

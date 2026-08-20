@@ -120,19 +120,18 @@ function activeCard(state: GameState, cardId: string) {
 // The pack's SCOPE — the two abilities it deliberately does not run
 // ===========================================================================
 
-describe("Community pack — the two abilities it does NOT reprint", () => {
-  it("leaves Necromancy and Intelligence at their classic definitions with the rule ON", () => {
-    const state = sandbox("community-scope", { community: true }, []);
-    // Same object identity as the printed card: nothing about them changes.
-    expect(activeCard(state, "ability.necromancy")).toBe(cardLibrary["ability.necromancy"]);
-    expect(activeCard(state, "ability.intelligence")).toBe(cardLibrary["ability.intelligence"]);
-    // …and their engine markers are untouched, so the after-combat window and
-    // the timing freedom still work exactly as before.
+describe("Community pack — scope", () => {
+  it("leaves the classic definitions alone with the rule OFF, Necromancy and Intelligence included", () => {
+    const off = sandbox("community-scope", {}, []);
+    // Same object identity as the printed card: nothing changes with the rule off.
+    expect(activeCard(off, "ability.necromancy")).toBe(cardLibrary["ability.necromancy"]);
+    expect(activeCard(off, "ability.intelligence")).toBe(cardLibrary["ability.intelligence"]);
+    // The printed engine markers, for reference in the reprint cases below.
     expect(cardLibrary["ability.necromancy"]!.effect.type).toBe("NECROMANCY_REINFORCE");
     expect(cardLibrary["ability.intelligence"]!.effect.type).toBe("CREATE_ACTIVE_EFFECT");
   });
 
-  it("DOES swap the ten it covers (non-vacuity for every case below)", () => {
+  it("DOES swap all TWELVE it covers (non-vacuity for every case below)", () => {
     const on = sandbox("community-scope-on", { community: true }, []);
     const off = sandbox("community-scope-off", {}, []);
     for (const cardId of [
@@ -140,9 +139,11 @@ describe("Community pack — the two abilities it does NOT reprint", () => {
       "ability.ballistics",
       "ability.estates",
       "ability.first_aid",
+      "ability.intelligence",
       "ability.leadership",
       "ability.luck",
       "ability.mysticism",
+      "ability.necromancy",
       "ability.scouting",
       "ability.tactics",
       "ability.wisdom"

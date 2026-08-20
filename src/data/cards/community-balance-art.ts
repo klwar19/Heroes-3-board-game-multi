@@ -39,14 +39,16 @@ import { cardLibrary } from "@/data/cards/library";
  * summary and `community-balance-art.test.ts` for the on-disk + wiring pins.
  */
 export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
-  // ---- Abilities (10 of the sheet's 12; see NOT_IMPLEMENTED for the other 2) --
+  // ---- Abilities (all TWELVE of the sheet's ability cards are wired) --------
   "ability.artillery",
   "ability.ballistics",
   "ability.estates",
   "ability.first_aid",
+  "ability.intelligence",
   "ability.leadership",
   "ability.luck",
   "ability.mysticism",
+  "ability.necromancy",
   "ability.scouting",
   "ability.tactics",
   "ability.wisdom"
@@ -60,10 +62,11 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
  * `COMMUNITY_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  */
 export const COMMUNITY_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {
-  "ability.necromancy":
-    "Reprint: \"You can RECRUIT or Reinforce a bronze/silver (Expert: any) unit THAT YOU HAVE THE CORRESPONDING DWELLING FOR, paying half the gold cost (rounded down).\" Two clauses have no engine home. (1) RECRUIT at a discount: every recruit-at-a-price path in the engine is a town POPULATION_ACTION purchase of a faction-roster unit at full cost, or a NEUTRAL-deck offer at half cost rounded UP (halfRecruitCostRoundedUp); the reinforcement-discount bank that Necromancy actually uses (ReinforcementDiscountBank / REDEEM_REINFORCEMENT_DISCOUNT, keyed on an armyUnitId) can only upgrade a Few you already own, so a roster recruit needs a new priced offer, a new redeem payload and a protocol bump. (2) The DWELLING gate is a genuinely NEW restriction on the reinforce arm too — queueNecromancyReinforce and reinforcementDiscountCostFor deliberately consult no town at all (the printed card needs no Citadel, Dwelling or Population token). Shipping half of this would either hand out a free recruit or silently tighten the printed card, so the classic Necromancy is kept whole and no face is shipped.",
-  "ability.intelligence":
-    "Reprint: \"Play a spell from your discard pile.\" (Expert also: it does not count toward your spell limit.) The engine can cast one NAMED spell out of a player's own discard (CAST_FROM_SPELL_DISCARD with `ownDiscard`, used by Ciele IV), but only that: legal-actions offers just the TOP of the pile when no `spellId` filter is given, while the reducer's forgery check (castSpell) REFUSES any cast whose enabler does not name the exact spell — so an \"any spell in your discard\" arm would be offered and then rejected. Making it real needs an `anySpell` authorisation on both sides of that seam plus a per-MODE enabler path (the basic side counts toward the Spell limit, the expert side does not, and `castFromSpellDiscardOption` picks one option with no notion of mode), i.e. a new CAST_SPELL field and a protocol bump. Until then the classic Intelligence (its start-of-combat timing freedom) is kept whole and no face is shipped."
+  // EMPTY for the ABILITIES family: all twelve sheet abilities are wired. The
+  // last two (Necromancy's Recruit-or-Reinforce dwelling gate and Intelligence's
+  // "play a spell from your discard pile") landed with the `anySpell` /
+  // `castEnablerMode` cast seam and the `RECRUIT_FEW_AT_COST` visit step. Keep
+  // this registry so a future family's unwired reprint is a conscious entry.
 };
 
 const COVERED = new Set<string>(COMMUNITY_BALANCE_CARD_IDS);
@@ -101,8 +104,10 @@ export const COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS: readonly string[] = [
   "ability.ballistics",
   "ability.estates",
   "ability.first_aid",
+  "ability.intelligence",
   "ability.leadership",
   "ability.luck",
+  "ability.necromancy",
   "ability.scouting",
   "ability.tactics",
   "ability.wisdom"

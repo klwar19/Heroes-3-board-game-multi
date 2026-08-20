@@ -60,8 +60,27 @@ export function combatStartWindowOpen(combat: CombatState): boolean {
  * combat play and the freedom is only ever read mid-fight.
  */
 export function balanceIntelligenceWindowClosed(state: GameState): boolean {
-  if (!houseRuleEnabled(state, "polish-card-balance")) {
+  if (!polishIntelligenceHandReadingActive(state)) {
     return false;
   }
   return Boolean(state.combat) && !combatStartWindowOpen(state.combat!);
+}
+
+/**
+ * Whether the POLISH pack owns the Intelligence card right now.
+ *
+ * Both balance packs reprint Intelligence, and the COMMUNITY reprint wins when
+ * both are on (`balanceCardLibrary` applies community last). The community card
+ * is not an active-effect play at all — it is a cast-from-your-discard enabler —
+ * so every seam that reads "Intelligence sitting in hand" for the POLISH reading
+ * (its start-of-combat timing freedom and the Polish-Book "Cast a Spell" waiver)
+ * must go dark while the community pack is on, or a holder would get BOTH cards.
+ *
+ * ONE shared read, so `balanceIntelligenceWindowClosed` and the hand-reading
+ * seams in `ruleset.ts` / `reducer.ts` / `legal-actions.ts` can never disagree.
+ */
+export function polishIntelligenceHandReadingActive(state: GameState): boolean {
+  return (
+    houseRuleEnabled(state, "polish-card-balance") && !houseRuleEnabled(state, "community-card-balance")
+  );
 }

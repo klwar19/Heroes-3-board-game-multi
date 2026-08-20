@@ -257,7 +257,7 @@ import {
   WISDOM_BALANCE_SEARCH_DELTA
 } from "./ruleset";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
-import { balanceIntelligenceWindowClosed } from "./combat-timing";
+import { balanceIntelligenceWindowClosed, polishIntelligenceHandReadingActive } from "./combat-timing";
 import { artifactSetAttackWindowOffers, artifactSetPowerOffers } from "./artifact-sets";
 import { availableLittleBustersCounters } from "./little-busters-counters";
 import {
@@ -2357,6 +2357,24 @@ function cardEnablesSpellDeckCast(card: CardDefinition | undefined): boolean {
 }
 
 /**
+ * Community Balance Change INTELLIGENCE: an enabler whose cast-from-discard arms
+ * are `anySpell` — every Spell in the caster's OWN discard pile is castable, and
+ * the card prints one side per Spell-limit reading. Such an enabler is handled by
+ * its own offer block (and skipped by the single-arm Helm/Ciele loop), because
+ * that loop resolves exactly one option and one source spell per enabler.
+ */
+function cardOffersAnySpellDiscardCast(card: CardDefinition | undefined): boolean {
+  return Boolean(
+    card &&
+      card.implementationStatus === "implemented" &&
+      card.effect.type === "CHOOSE_ONE" &&
+      card.effect.options.some(
+        (option) => option.effect.type === "CAST_FROM_SPELL_DISCARD" && option.effect.anySpell === true
+      )
+  );
+}
+
+/**
  * Whether an ACTIVATION-timing Spell (Magic Arrow, Fireball, Haste…) may be cast
  * by this player right now: one of their own units is active and has not yet
  * attacked — or they hold Intelligence, which lifts the timing gate entirely.
@@ -2376,7 +2394,10 @@ export function playerActivationSpellWindowOpen(state: GameState, playerId: Play
         !activeUnit.attackedThisActivation
     ) ||
     playerHasSpellTimingFreedom(state, playerId) ||
-    (houseRuleEnabled(state, "polish-card-balance") &&
+    // POLISH-only: the community reprint replaces Intelligence with a
+    // cast-from-your-discard enabler that grants no timing freedom at all, so
+    // this hand reading goes dark while the community pack owns the card.
+    (polishIntelligenceHandReadingActive(state) &&
       !balanceIntelligenceWindowClosed(state) &&
       Boolean(state.players[playerId]?.hand.includes("ability.intelligence")))
   );
@@ -2496,6 +2517,13 @@ function addSpellActions(
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
     eagleEyeCopy?: boolean;
+    /**
+     * Community Intelligence: which printed side authorises this cast-from-your-
+     * discard (basic counts toward the limit, expert does not and pays a crown).
+     * Its presence also marks the candidate as that printed ⚡ INSTANT, which is
+     * exempt from the "one of your own units must be active" activation gate.
+     */
+    discardCastMode?: "basic" | "expert";
   }[] = [
     ...(spellLimitReached
       ? []
@@ -2536,6 +2564,50 @@ function addSpellActions(
     castCandidates.push({ cardId, tarnumReturn: "discard" });
   }
 
+  // Community Balance Change INTELLIGENCE: "Play a spell from your discard
+  // pile." An `anySpell` enabler authorises EVERY implemented Spell card sitting
+  // in the caster's OWN discard pile, and it prints TWO sides — basic (counts
+  // toward the per-Combat-round Spell limit) and expert (does not, and spends a
+  // crown unless the ability is Empowered). It gets its own block because the
+  // single-arm loop below resolves exactly ONE option and ONE source spell per
+  // enabler. The reducer re-validates all of this (`castSpell`'s anySpell arm).
+  for (const enablerId of [...new Set(player.hand)].filter((id) => cardOffersAnySpellDiscardCast(cards[id]))) {
+    const enabler = cards[enablerId];
+    const options = enabler?.effect.type === "CHOOSE_ONE" ? enabler.effect.options : [];
+    for (const option of options) {
+      const optionEffect = option.effect;
+      if (optionEffect.type !== "CAST_FROM_SPELL_DISCARD" || optionEffect.anySpell !== true) {
+        continue;
+      }
+      if (option.requiresHouseRule && !houseRuleEnabled(state, option.requiresHouseRule)) {
+        continue;
+      }
+      if (option.forbidsHouseRule && houseRuleEnabled(state, option.forbidsHouseRule)) {
+        continue;
+      }
+      const discardCastMode: "basic" | "expert" = option.expertOnly ? "expert" : "basic";
+      if (discardCastMode === "expert" && !canPlayExpertMode(player, enablerId)) {
+        continue;
+      }
+      // The basic side counts toward the limit, so it disappears once spent;
+      // the expert side is a bonus cast and stays offered.
+      if (optionEffect.countsTowardSpellLimit === true && spellLimitReached) {
+        continue;
+      }
+      for (const spellId of new Set(player.discard)) {
+        if (cards[spellId]?.kind !== "spell") {
+          continue;
+        }
+        castCandidates.push({
+          cardId: spellId,
+          fromSpellDeck: enablerId,
+          fromOwnDiscard: true,
+          discardCastMode
+        });
+      }
+    }
+  }
+
   // Helm of the Alabaster Unicorn (option B): cast the top card of the shared
   // Spell-deck discard pile. Offered like a scroll cast — the spell is sourced
   // from that discard, not the hand — and the Helm that enables it is removed by
@@ -2547,7 +2619,9 @@ function addSpellActions(
   // `spellId` — instead casts that specific Spell found anywhere in the discard
   // pile. Both are free bonus casts sourced from the Spell-deck discard pile and
   // consume the enabling card (see performSpellCast).
-  for (const enablerId of [...new Set(player.hand)].filter((id) => cardEnablesSpellDeckCast(cards[id]))) {
+  for (const enablerId of [...new Set(player.hand)].filter(
+    (id) => cardEnablesSpellDeckCast(cards[id]) && !cardOffersAnySpellDiscardCast(cards[id])
+  )) {
     const enabler = cards[enablerId];
     // The card may print SEVERAL cast arms gated on a house rule (the Balance
     // Pack Ciele I/IV carry a Polish-Book arm AND the classic one) — take the
@@ -2614,7 +2688,8 @@ function addSpellActions(
     fromOwnDiscard,
     fromSpellBook,
     tarnumReturn,
-    eagleEyeCopy
+    eagleEyeCopy,
+    discardCastMode
   } of castCandidates) {
     const card = cards[cardId];
     if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
@@ -2639,8 +2714,11 @@ function addSpellActions(
     // Activation spells need one of your own units active, pre-attack. The
     // Balance-Pack Eagle Eye copy is a printed REACTION to the enemy's cast, so
     // it is exempt (the copy is offered while the opponent's unit is active).
+    // The Community Intelligence cast is likewise exempt: its printed ⚡ makes
+    // the play an INSTANT, so the spell it pulls out of the discard is castable
+    // off-turn without one of the caster's own units being active.
     const needsOwnActivation = card.timing === "combat" || card.timing === "action";
-    if (needsOwnActivation && !ownActivationOpen && !eagleEyeCopy) {
+    if (needsOwnActivation && !ownActivationOpen && !eagleEyeCopy && !discardCastMode) {
       continue;
     }
 
@@ -2661,7 +2739,8 @@ function addSpellActions(
         fromSpellDeck,
         fromOwnDiscard,
         fromSpellBook,
-        tarnumReturn
+        tarnumReturn,
+        castEnablerMode: discardCastMode
       });
       continue;
     }
@@ -2764,6 +2843,12 @@ function addSpellActions(
           ? `Copy ${card.name} with Eagle Eye (expert; Power 0, new target)`
           : fromScroll
           ? `Cast ${card.name} (Scroll)`
+          : discardCastMode
+            ? `${cards[fromSpellDeck!]?.name ?? "Intelligence"}${
+                discardCastMode === "expert" ? " (expert, crown)" : ""
+              }: play ${card.name} from your discard pile${
+                discardCastMode === "expert" ? " — it does not count toward your Spell limit" : ""
+              }`
           : fromOwnDiscard
             ? `Cast ${card.name} from your discard pile (free)`
             : fromSpellDeck
@@ -2783,7 +2868,8 @@ function addSpellActions(
           ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(fromSpellBook ? { fromSpellBook: true } : {}),
           ...(tarnumReturn ? { tarnumReturn } : {}),
-          ...(eagleEyeCopy ? { eagleEyeCopy: true } : {})
+          ...(eagleEyeCopy ? { eagleEyeCopy: true } : {}),
+          ...(discardCastMode ? { castEnablerMode: discardCastMode } : {})
         }
       });
 
@@ -2863,6 +2949,8 @@ function addChooseOneSpellInstantCasts(
     fromOwnDiscard?: boolean;
     fromSpellBook?: boolean;
     tarnumReturn?: "deck-top" | "discard";
+    /** Community Intelligence: which side of the enabler authorised this cast. */
+    castEnablerMode?: "basic" | "expert";
   }
 ): void {
   if (card.effect.type !== "CHOOSE_ONE") {
@@ -2897,7 +2985,8 @@ function addChooseOneSpellInstantCasts(
           ...(source.fromSpellDeck ? { fromSpellDeck: source.fromSpellDeck } : {}),
           ...(source.fromOwnDiscard ? { fromOwnDiscard: true } : {}),
           ...(source.fromSpellBook ? { fromSpellBook: true } : {}),
-          ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {})
+          ...(source.tarnumReturn ? { tarnumReturn: source.tarnumReturn } : {}),
+          ...(source.castEnablerMode ? { castEnablerMode: source.castEnablerMode } : {})
         }
       });
     }
@@ -6712,7 +6801,7 @@ function applyPolishSpellBookActionGate(
   const hasEnabler = Boolean(player?.hand.includes(CAST_A_SPELL_CARD_ID));
   const hasIntelligenceEnabler = Boolean(
     player?.hand.includes("ability.intelligence") &&
-      houseRuleEnabled(state, "polish-card-balance") &&
+      polishIntelligenceHandReadingActive(state) &&
       !balanceIntelligenceWindowClosed(state)
   );
   // Intelligence (combat-long): the ability stands in for the Cast a Spell

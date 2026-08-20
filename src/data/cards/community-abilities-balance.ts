@@ -21,10 +21,10 @@ import { sampleCards } from "./sample";
  * When BOTH balance packs are on the COMMUNITY definition wins (the community
  * swap is applied after the polish one at every seam).
  *
- * SCOPE — the abilities NOT reprinted here keep their classic/Polish text and
- * are listed with their reason in `COMMUNITY_BALANCE_NOT_IMPLEMENTED`
- * (`src/data/cards/community-balance-art.ts`). A reprint lands here only once
- * the engine really runs its new text.
+ * SCOPE — all TWELVE of the sheet's abilities are reprinted here and wired;
+ * `COMMUNITY_BALANCE_NOT_IMPLEMENTED` (`src/data/cards/community-balance-art.ts`)
+ * is EMPTY for this family. A reprint lands here only once the engine really
+ * runs its new text.
  */
 
 /** The printed definition a community reprint is cloned from. */
@@ -300,6 +300,65 @@ export const communityBalanceAbilityCards: CardLibrary = {
         }
       ]
     }
+  },
+
+  // -----------------------------------------------------------------------
+  // INTELLIGENCE — "Play a spell from your discard pile." Expert also: it does
+  // not count toward your Spell limit per Combat round.
+  // -----------------------------------------------------------------------
+  "ability.intelligence": {
+    ...printed("ability.intelligence"),
+    tags: [
+      "ability",
+      "magic",
+      "spell-recast",
+      "Basic (Instant, Combat): Play a spell from your discard pile. Expert: the same, and this spell does not count toward your Spell limit per Combat round.",
+      "Community pack: Intelligence stops granting a timing FREEDOM (the classic combat-long SPELL_CAST_ANYTIME and the Polish start-of-combat window are both gone — with this pack on, the polish hand readings go dark via `polishIntelligenceHandReadingActive`). It is now a cast enabler: the offer layer lists EVERY implemented Spell card sitting in your OWN discard pile as a `fromOwnDiscard` CAST_SPELL naming this card (`anySpell`), and the cast runs the ORDINARY spell pipeline — full Power, Power sources, tier gates, targeting, the SPELL_CAST_STARTED reaction window. It is never played from hand as a PLAY_CARD (both sides are CAST_FROM_SPELL_DISCARD markers, which `isOptionEffectPlayable` refuses), and the card is DISCARDED by the cast. The printed ⚡ is wired as: playable on your own activation AND off-turn while an opponent's unit is active, and exempt from the \"one of your own units must be active\" gate an activation-timing Spell normally has. LIMIT (deliberate, not printed): a cast is NOT offered while a reaction window is already open — `isCombatCardWindowOpen` refuses every CAST_SPELL there, for Scrolls, the Helm and Ciele alike, and nesting a whole spell cast inside an open window is not a surface this engine has. BASIC counts toward the one-Spell-per-Combat-round limit (so it is withheld once the limit is spent); EXPERT does not and spends a crown, waived while the ability is EMPOWERED. LIMIT: with `polish-spell-book` on, \"your discard pile\" is read PLAINLY — the caster's own discard pile, never the Spell Book (a Book Spell is refreshed/used, not discarded, so it is a different zone)."
+    ],
+    effect: {
+      type: "CHOOSE_ONE",
+      options: [
+        {
+          // Never played from hand (isOptionEffectPlayable refuses
+          // CAST_FROM_SPELL_DISCARD, and playCard throws). Surfaced by
+          // addSpellActions as a `fromOwnDiscard` CAST_SPELL per castable spell
+          // in the caster's discard pile.
+          label: "Play a spell from your discard pile",
+          combatOnly: true,
+          effect: {
+            type: "CAST_FROM_SPELL_DISCARD",
+            ownDiscard: true,
+            anySpell: true,
+            // The basic side prints no "does not count" clause.
+            countsTowardSpellLimit: true
+          }
+        },
+        {
+          label: "Expert: play a spell from your discard pile — it does not count toward your Spell limit per Combat round",
+          combatOnly: true,
+          expertOnly: true,
+          effect: { type: "CAST_FROM_SPELL_DISCARD", ownDiscard: true, anySpell: true }
+        }
+      ]
+    }
+  },
+
+  // -----------------------------------------------------------------------
+  // NECROMANCY — Recruit OR Reinforce a unit you have the Dwelling for, at
+  // half the gold cost (rounded down). Expert: any unit.
+  // -----------------------------------------------------------------------
+  "ability.necromancy": {
+    ...printed("ability.necromancy"),
+    tags: [
+      "ability",
+      "map",
+      "necropolis-only",
+      "Basic: Play after winning Combat other than Quick Combat. You can Recruit or Reinforce a bronze or silver unit that you have the corresponding Dwelling for, paying half the gold cost (rounded down). Expert: any unit.",
+      "Community pack: two real changes to the after-combat window, both inside `queueNecromancyReinforce` (adventure.ts) keyed off the house rule. (1) A RECRUIT arm: every unit on your own faction roster whose Dwelling you have BUILT (any of your towns — `unlockedRecruitTiers`), in the mode's tiers, not already in your army, is offered as a new Few at HALF its printed gold ROUNDED DOWN (other resources unchanged), then every standing recruit discount. It runs the normal recruit gate (`playerCanRecruitFewNow`: faction roster, Dwelling tier, the one-card-per-unit rule, the Factory Couatls/Juggernauts conflict, the MGQ Gold Contract) at BOTH offer and resolve time, so nothing illegal can be minted. (2) The REINFORCE arm is now DWELLING-GATED too — the printed \"needs no Citadel, Dwelling or Population token\" is gone; a Few whose tier you have no Dwelling for is not offered. NOT ELIGIBLE, and that IS the printed gate: recruited Neutrals and won Creature-Bank cards, which are on no faction roster and have no Dwelling. LIMIT (deliberate): the community Necromancy always resolves INSIDE the after-combat window and never BANKS a discount — `REDEEM_REINFORCEMENT_DISCOUNT` carries an owned armyUnitId and cannot express a roster recruit, so the `immediate-reinforcement-prompts` house rule is IGNORED while this pack is on (the classic card still banks with the pack off). The card is spent only if you really Recruit / Reinforce / buy a Stack; Skip keeps it. Polish Unit Stacks keep their half-gold Stack arm, likewise dwelling-gated now."
+    ],
+    // Same engine marker as the printed card — the reprint's new behaviour lives
+    // in queueNecromancyReinforce's community branch, which reads the house rule.
+    effect: { type: "NECROMANCY_REINFORCE" }
   },
 
   // -----------------------------------------------------------------------

@@ -30,7 +30,7 @@ import {
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
 import { balanceCardLibrary, COMMUNITY_REPRINTED_CARDS } from "./community-balance-cards";
-import { balanceIntelligenceWindowClosed } from "./combat-timing";
+import { balanceIntelligenceWindowClosed, polishIntelligenceHandReadingActive } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
   applyUnitCurrentSide,
@@ -1141,7 +1141,7 @@ function consumePolishSpellBookCast(
 
   const intelligenceEnabler =
     castEnablerCardId === "ability.intelligence" &&
-    houseRuleEnabled(state, "polish-card-balance") &&
+    polishIntelligenceHandReadingActive(state) &&
     !balanceIntelligenceWindowClosed(state);
   if (castEnablerCardId !== CAST_A_SPELL_CARD_ID && !intelligenceEnabler) {
     return {
@@ -1201,7 +1201,7 @@ function assertPolishBookCastEnabled(
     viaIntelligence ||
     ((action.castEnablerCardId === CAST_A_SPELL_CARD_ID ||
       (action.castEnablerCardId === "ability.intelligence" &&
-        houseRuleEnabled(state, "polish-card-balance") &&
+        polishIntelligenceHandReadingActive(state) &&
         !balanceIntelligenceWindowClosed(state))) &&
       Boolean(caster?.hand.includes(action.castEnablerCardId)));
   if (!enablerOk || !caster?.spellBook.includes(action.cardId)) {
@@ -13065,48 +13065,72 @@ function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_S
   if (action.fromOwnDiscard) {
     const caster = state.players[action.playerId];
     const enablerId = action.fromSpellDeck;
-    const castOption = enablerId ? castFromSpellDiscardOption(state, cards, enablerId) : undefined;
+    const castOption = enablerId
+      ? castFromSpellDiscardOption(state, cards, enablerId, action.castEnablerMode)
+      : undefined;
     const authorisedSpellId = castOption?.ownDiscard === true ? castOption.spellId : undefined;
-    // Polish Balance Pack Ciele I/IV: the reprint sources the Spell from the
-    // caster's USED Book side (refreshing it) with a Cast a Spell enabler in the
-    // discard pile as the condition. Validate THAT surface instead of the classic
-    // own-discard one — this cast is free of a hand enabler, so an unchecked
-    // client could otherwise cast any spell.
-    const refreshFromBook =
-      castOption?.polishRefreshFromBook === true && polishSpellBookEnabled(state);
-    const sourceHoldsSpell = refreshFromBook
-      ? Boolean(caster?.spellBookUsed?.includes(action.cardId)) &&
-        Boolean(caster?.discard.includes(CAST_A_SPELL_CARD_ID)) &&
-        polishBookSpellRefreshBlocked(state, action.playerId, action.cardId, caster) === null
-      : polishSpellBookEnabled(state)
-      ? Boolean(caster?.spellBook.includes(action.cardId))
-      : Boolean(caster?.discard.includes(action.cardId));
-    if (
-      !caster ||
-      !enablerId ||
-      !caster.hand.includes(enablerId) ||
-      authorisedSpellId === undefined ||
-      authorisedSpellId !== action.cardId ||
-      !sourceHoldsSpell
-    ) {
-      throw new Error("That Spell cannot be cast from your discard pile.");
-    }
-    // Refresh it: the printed "Refresh up to 1 Magic Arrow spell and cast it"
-    // really moves the card off the used side, marked so the shared once-per-round
-    // Polish limit sees it.
-    if (refreshFromBook) {
-      const used = caster.spellBookUsed ?? [];
-      const index = used.lastIndexOf(action.cardId);
-      if (index !== -1) {
-        used.splice(index, 1);
-        caster.spellBook.push(action.cardId);
-        markPolishSpellRefreshedThisRound(caster, action.cardId);
-        appendEvent(state, {
-          type: "SPELL_RETURNED_TO_HAND",
-          playerId: action.playerId,
-          cardId: action.cardId,
-          reason: "refreshed in the Spell Book"
-        });
+    // Community Balance Change INTELLIGENCE: "Play a spell from your discard
+    // pile." `anySpell` authorises ANY Spell card, so the forgery surface moves
+    // from "this exact id" to "a real Spell, really in YOUR discard pile, with
+    // the enabler in hand" — plus the crown for the expert side. Deliberately a
+    // PLAIN-discard reading: with polish-spell-book on the Book is a different
+    // zone (refreshed / used), never "your discard pile".
+    if (castOption?.ownDiscard === true && castOption.anySpell === true) {
+      const anyCaster = state.players[action.playerId];
+      const enablerHeld = Boolean(enablerId && anyCaster?.hand.includes(enablerId));
+      if (!anyCaster || !enablerHeld || cards[action.cardId]?.kind !== "spell") {
+        throw new Error("That Spell cannot be cast from your discard pile.");
+      }
+      if (!anyCaster.discard.includes(action.cardId)) {
+        throw new Error("That Spell is not in your discard pile.");
+      }
+      if (action.castEnablerMode === "expert" && !canPlayExpertMode(anyCaster, enablerId)) {
+        throw new Error("That expert cast needs a crown.");
+      }
+      // The crown is spent (and the enabler consumed) in performSpellCast, with
+      // the rest of the cast, so a rejected cast pays nothing.
+    } else {
+      // Polish Balance Pack Ciele I/IV: the reprint sources the Spell from the
+      // caster's USED Book side (refreshing it) with a Cast a Spell enabler in the
+      // discard pile as the condition. Validate THAT surface instead of the classic
+      // own-discard one — this cast is free of a hand enabler, so an unchecked
+      // client could otherwise cast any spell.
+      const refreshFromBook =
+        castOption?.polishRefreshFromBook === true && polishSpellBookEnabled(state);
+      const sourceHoldsSpell = refreshFromBook
+        ? Boolean(caster?.spellBookUsed?.includes(action.cardId)) &&
+          Boolean(caster?.discard.includes(CAST_A_SPELL_CARD_ID)) &&
+          polishBookSpellRefreshBlocked(state, action.playerId, action.cardId, caster) === null
+        : polishSpellBookEnabled(state)
+        ? Boolean(caster?.spellBook.includes(action.cardId))
+        : Boolean(caster?.discard.includes(action.cardId));
+      if (
+        !caster ||
+        !enablerId ||
+        !caster.hand.includes(enablerId) ||
+        authorisedSpellId === undefined ||
+        authorisedSpellId !== action.cardId ||
+        !sourceHoldsSpell
+      ) {
+        throw new Error("That Spell cannot be cast from your discard pile.");
+      }
+      // Refresh it: the printed "Refresh up to 1 Magic Arrow spell and cast it"
+      // really moves the card off the used side, marked so the shared once-per-round
+      // Polish limit sees it.
+      if (refreshFromBook) {
+        const used = caster.spellBookUsed ?? [];
+        const index = used.lastIndexOf(action.cardId);
+        if (index !== -1) {
+          used.splice(index, 1);
+          caster.spellBook.push(action.cardId);
+          markPolishSpellRefreshedThisRound(caster, action.cardId);
+          appendEvent(state, {
+            type: "SPELL_RETURNED_TO_HAND",
+            playerId: action.playerId,
+            cardId: action.cardId,
+            reason: "refreshed in the Spell Book"
+          });
+        }
       }
     }
   }
@@ -13360,17 +13384,44 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // cost (it leaves the game), while Ciele's Magic Arrow IV is a hero-specialty,
     // so it cycles to the discard pile to be redrawn. No enemy-spell hand tax —
     // nothing left the hand as a normal cast.
-    const enablerIsSpecialty = cardLibrary[action.fromSpellDeck]?.kind === "hero-specialty";
+    const enablerKind = cardLibrary[action.fromSpellDeck]?.kind;
+    // A hero-specialty cycles to the discard to be redrawn; so does an ABILITY
+    // (Community Intelligence) — only the Helm prints "Remove this card".
+    const enablerCycles = enablerKind === "hero-specialty" || enablerKind === "ability";
+    const anySpellCast =
+      castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode)?.anySpell === true;
+    // Community Intelligence EXPERT ("does not count toward your Spell limit"):
+    // pay the crown, waived while the ability is Empowered. Spent HERE, with the
+    // rest of the cast, so a cast that throws earlier costs nothing.
+    if (anySpellCast && action.castEnablerMode === "expert") {
+      const expertCaster = state.players[action.playerId];
+      if (!abilityExpertIsCrownFree(expertCaster, action.fromSpellDeck)) {
+        expertCaster.combatStats.expertUsesSpentThisRound += 1;
+      }
+    }
     const removeError = moveCardFromHandToDiscard(
       state,
       action.playerId,
       action.fromSpellDeck,
-      enablerIsSpecialty ? "discard" : "removed"
+      enablerCycles ? "discard" : "removed"
     );
     if (removeError) {
       throw new Error(removeError.message);
     }
-    if (action.fromOwnDiscard && polishSpellBookEnabled(state)) {
+    if (anySpellCast) {
+      appendEvent(state, {
+        type: "CARD_PLAYED",
+        playerId: action.playerId,
+        cardId: action.fromSpellDeck,
+        timing: cardLibrary[action.fromSpellDeck]?.timing ?? "instant",
+        mode: action.castEnablerMode ?? "basic",
+        optionLabel: `Play ${card.name} from your discard pile`
+      });
+    }
+    // Ciele's own-discard cast under the Polish Book reads the BOOK as the
+    // source; the Community Intelligence deliberately does NOT (its printed
+    // "your discard pile" is the plain discard, where the Spell stays).
+    if (action.fromOwnDiscard && !anySpellCast && polishSpellBookEnabled(state)) {
       const caster = state.players[action.playerId];
       const bookIndex = caster?.spellBook.indexOf(action.cardId) ?? -1;
       if (!caster || bookIndex === -1) {
@@ -13424,9 +13475,12 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
   // Polish Balance Pack Ciele I: the ONE CAST_FROM_SPELL_DISCARD arm that DOES
   // consume the per-round limit — only her level IV prints "does not count
   // toward your Spell limit per Combat round".
+  // Community Intelligence prints BOTH readings, so the side named on the action
+  // decides: basic counts toward the limit, expert does not.
   const spellDeckCastCountsLimit =
     action.fromSpellDeck
-      ? castFromSpellDiscardOption(state, cards, action.fromSpellDeck)?.countsTowardSpellLimit === true
+      ? castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode)
+          ?.countsTowardSpellLimit === true
       : false;
   noteSpellCast(
     state,
@@ -13459,7 +13513,7 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // your Spellbook." BOOK-GATED — with the Polish Book on, the cast Spell
     // leaves the shared Spell-deck discard and is inscribed (refreshed) into the
     // caster's Book instead of staying there.
-    const castOption = castFromSpellDiscardOption(state, cards, action.fromSpellDeck);
+    const castOption = castFromSpellDiscardOption(state, cards, action.fromSpellDeck, action.castEnablerMode);
     if (
       castOption?.addToSpellBook === true &&
       polishSpellBookEnabled(state) &&
@@ -14132,10 +14186,37 @@ function resolveDeckDigKeepOne(
  * spell-limit reading and its Balance-Pack Book refresh, so those can never
  * disagree about which arm authorised the cast.
  */
+/**
+ * Whether Necromancy resolves its half-cost offer INSIDE the after-combat window
+ * (the blocking pick-and-pay prompt) instead of banking a discount for later.
+ *
+ * TWO readings answer yes, and the ONE shared read keeps them in lockstep with
+ * the deferred-discard rule (the card is spent only on a real upgrade — which
+ * only the in-window prompt can express):
+ *   • the OLD BINH toggle `immediate-reinforcement-prompts`;
+ *   • the Community Balance Change, whose reprint also offers a RECRUIT of a
+ *     roster unit — something a banked `ReinforcementDiscountBank` (keyed on an
+ *     armyUnitId you already own) cannot express at all.
+ */
+function necromancyResolvesInWindow(state: GameState): boolean {
+  return (
+    houseRuleEnabled(state, "immediate-reinforcement-prompts") ||
+    houseRuleEnabled(state, "community-card-balance")
+  );
+}
+
 function castFromSpellDiscardOption(
   state: GameState,
   cards: CardLibrary,
-  enablerId: CardId
+  enablerId: CardId,
+  /**
+   * Community Balance Change INTELLIGENCE prints TWO cast-from-discard sides
+   * (basic counts toward the Spell limit, expert does not). When the action
+   * names a side, pick the option with the matching `expertOnly`-ness; every
+   * other enabler prints one side and leaves this undefined, so the old
+   * first-match behaviour is byte-identical for them.
+   */
+  mode?: "basic" | "expert"
 ): Extract<ConcreteEffect, { type: "CAST_FROM_SPELL_DISCARD" }> | undefined {
   const enabler = cards[enablerId];
   if (enabler?.effect.type !== "CHOOSE_ONE") {
@@ -14148,7 +14229,8 @@ function castFromSpellDiscardOption(
     (entry) =>
       entry.effect.type === "CAST_FROM_SPELL_DISCARD" &&
       !(entry.requiresHouseRule && !houseRuleEnabled(state, entry.requiresHouseRule)) &&
-      !(entry.forbidsHouseRule && houseRuleEnabled(state, entry.forbidsHouseRule))
+      !(entry.forbidsHouseRule && houseRuleEnabled(state, entry.forbidsHouseRule)) &&
+      (mode === undefined || Boolean(entry.expertOnly) === (mode === "expert"))
   );
   return option?.effect.type === "CAST_FROM_SPELL_DISCARD" ? option.effect : undefined;
 }
@@ -17946,8 +18028,7 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // upgrade succeeds. New default: the card resolves to discard normally and
   // leaves behind a non-blocking reinforcement bank until movement.
   const deferNecromancyDiscard =
-    effect.type === "NECROMANCY_REINFORCE" &&
-    houseRuleEnabled(state, "immediate-reinforcement-prompts");
+    effect.type === "NECROMANCY_REINFORCE" && necromancyResolvesInWindow(state);
   if (deferNecromancyDiscard && !state.players[action.playerId]?.hand.includes(action.cardId)) {
     throw new Error(`${card.name} is not in your hand.`);
   }
@@ -18692,7 +18773,12 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     // banks the half-gold opportunity instead, releases the map, and lets the
     // player add distinct Legion pieces before redeeming it.
     const reinforcementMode = effect.forceMode ?? mode;
-    if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
+    // Community Balance Change: the reprint also offers a RECRUIT of a roster
+    // unit whose Dwelling is built. A banked ReinforcementDiscountBank is keyed
+    // on an armyUnitId you ALREADY own and cannot express that, so the community
+    // Necromancy always resolves inside the after-combat window — the
+    // `immediate-reinforcement-prompts` toggle is ignored while the pack is on.
+    if (necromancyResolvesInWindow(state)) {
       // Old rule: pass the held card so only a successful immediate upgrade
       // consumes it.
       queueNecromancyReinforce(state, action.playerId, reinforcementMode, action.cardId);

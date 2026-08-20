@@ -10,10 +10,10 @@
  * unimplemented, and no unimplemented entry secretly ships a face (which would
  * let a face advertise a rule the engine does not run).
  *
- * SCOPE TODAY: the ABILITIES family — ten wired reprints plus the two the pack
- * deliberately does not run (Necromancy, Intelligence). The directory-listing
- * check is the sharp one: a committed face without a wired id fails, and so does
- * a wired id with no face.
+ * SCOPE TODAY: the ABILITIES family — all TWELVE sheet abilities are wired, so
+ * `COMMUNITY_BALANCE_NOT_IMPLEMENTED` is empty. The directory-listing check is
+ * the sharp one: a committed face without a wired id fails, and so does a wired
+ * id with no face.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -141,13 +141,10 @@ describe("Community Balance Change registries", () => {
     for (const cardId of sheetAbilities) {
       expect(accounted.has(cardId), `${cardId} is on neither side of the contract`).toBe(true);
     }
-    expect([...COMMUNITY_BALANCE_CARD_IDS].sort()).toEqual(
-      sheetAbilities.filter((id) => id !== "ability.intelligence" && id !== "ability.necromancy").sort()
-    );
-    expect(Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED).sort()).toEqual([
-      "ability.intelligence",
-      "ability.necromancy"
-    ]);
+    // All twelve are WIRED now (Necromancy and Intelligence landed last), so the
+    // unimplemented registry is empty for this family.
+    expect([...COMMUNITY_BALANCE_CARD_IDS].sort()).toEqual([...sheetAbilities].sort());
+    expect(Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED)).toEqual([]);
     // Mysticism has no Expert side, so the sheet ships no Empowered printing for
     // it; every OTHER wired ability has one.
     expect([...COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS].sort()).toEqual(

@@ -7,6 +7,7 @@ import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
   coreHeroDefinitions,
+  factoryGoldUnitConflict,
   isRecruitableNeutralUnit,
   isPlayableFaction,
   neutralUnitIdsByFaction
@@ -185,6 +186,7 @@ import {
   tileTouchNeighbors,
   type HexCoord
 } from "./hex";
+import { isMgqGoldUnit, mgqGoldContractAllows } from "./mgq-contracts";
 import { createSeededRandom } from "./random";
 import {
   designedWaveSpec,
@@ -10544,6 +10546,60 @@ export function processPendingVisit(state: GameState): void {
         }
         break;
       }
+      case "RECRUIT_FEW_AT_COST": {
+        // Community Balance Change Necromancy's RECRUIT arm. Self-guarding: the
+        // whole normal recruit gate is re-asked here (a town could have been
+        // lost, the unit bought, the Factory twin taken since the offer was
+        // built), and the price is RE-DERIVED rather than trusted, so a stale
+        // pick is a clean no-op that keeps `consumeCardId` in hand.
+        const player = state.players[visit.playerId];
+        if (!player || !playerCanRecruitFewNow(state, visit.playerId, step.unitDefId)) {
+          break;
+        }
+        const def = coreUnitDefinitions[step.unitDefId];
+        const fewSide = getUnitSide(step.unitDefId, "few");
+        if (!def || !fewSide) {
+          break;
+        }
+        const cost = applyRecruitGoldDiscount(
+          state,
+          visit.playerId,
+          { kind: "recruit", unitDefId: step.unitDefId },
+          { ...fewSide.cost, gold: Math.floor((fewSide.cost.gold ?? 0) / 2) }
+        );
+        if (!hasRecruitResources(state, visit.playerId, cost)) {
+          break;
+        }
+        if (Object.values(cost).some((amount) => (amount ?? 0) > 0)) {
+          spendRecruitResources(state, visit.playerId, cost, `${step.source} (recruit ${def.name})`);
+        }
+        addArmyUnit(player, step.unitDefId, "few");
+        consumeRecruitVoucherFor(state, visit.playerId, { kind: "recruit", unitDefId: step.unitDefId });
+        appendEvent(state, {
+          type: "UNIT_RECRUITED",
+          playerId: visit.playerId,
+          unitDefId: step.unitDefId,
+          kind: "recruit",
+          cost
+        });
+        // The card is spent ONLY because a unit really joined the army — the
+        // same semantics REINFORCE_HALF_GOLD / BUY_UNIT_STACK use.
+        if (step.consumeCardId) {
+          const handIndex = player.hand.indexOf(step.consumeCardId);
+          if (handIndex !== -1) {
+            player.hand.splice(handIndex, 1);
+            player.discard.push(step.consumeCardId);
+            appendEvent(state, {
+              type: "CARD_PLAYED",
+              playerId: visit.playerId,
+              cardId: step.consumeCardId,
+              timing: cardLibrary[step.consumeCardId]?.timing ?? "instant",
+              mode: "basic"
+            });
+          }
+        }
+        break;
+      }
       case "REINFORCE_FLAT_GOLD":
         // Cove Pub: flat gold discount on one reinforcement (no halving).
         // The Pub discounts a normal reinforcement; it does not replace the
@@ -16770,6 +16826,46 @@ export function unlockedRecruitTiers(state: GameState, playerId: PlayerId): Set<
 }
 
 /**
+ * Whether `playerId` could legally recruit a NEW Few of `unitDefId` right now,
+ * by the ordinary town-recruit rules — own faction roster, the unit's tier
+ * unlocked by a built Dwelling in any of their towns, the "each unit card exists
+ * once" rule, the Factory Couatls/Juggernauts exclusivity and the MGQ Gold
+ * Contract. Resources are NOT checked (the caller prices its own offer).
+ *
+ * Mirrors `populationAction`'s recruit gate (adventure-reducer.ts), which throws
+ * a distinct message per rule; this is the boolean form the Community Balance
+ * Necromancy's recruit arm reads at BOTH offer time and resolve time, so a stale
+ * pick can never mint a unit the town screen would refuse.
+ */
+export function playerCanRecruitFewNow(state: GameState, playerId: PlayerId, unitDefId: string): boolean {
+  const player = state.players[playerId];
+  if (!player) {
+    return false;
+  }
+  const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  if (!faction?.units.includes(unitDefId)) {
+    return false;
+  }
+  const def = coreUnitDefinitions[unitDefId];
+  if (!def || !getUnitSide(unitDefId, "few")) {
+    return false;
+  }
+  if (!unlockedRecruitTiers(state, playerId).has(def.tier)) {
+    return false;
+  }
+  if (player.army.some((unit) => unit.side !== "bank" && unit.unitDefId === unitDefId)) {
+    return false;
+  }
+  if (factoryGoldUnitConflict(player.army, unitDefId)) {
+    return false;
+  }
+  if (isMgqGoldUnit(unitDefId) && !mgqGoldContractAllows(player, unitDefId)) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Cyra's Diplomacy: the tier of every Dwelling the player controls, *with*
  * multiplicity across all of their towns (a player holding two towns each with
  * a bronze Dwelling draws two bronze cards). A Dwelling is a building whose
@@ -20930,6 +21026,16 @@ export function hasFreeBronzeReinforceTarget(state: GameState, playerId: PlayerI
  * the gold cost (rounded down)." Queues a unit-choice prompt over the
  * player's Few units of the allowed tiers — no Citadel, Dwelling or
  * Population token needed.
+ *
+ * COMMUNITY BALANCE CHANGE (`community-card-balance`): the reprint reads
+ * "You can Recruit or Reinforce a … unit THAT YOU HAVE THE CORRESPONDING
+ * DWELLING FOR". Two additions, both here:
+ *   • a RECRUIT arm — every roster unit whose Dwelling is built and that the
+ *     ordinary recruit rules allow (`playerCanRecruitFewNow`), at half its
+ *     printed gold rounded DOWN, resolved by `RECRUIT_FEW_AT_COST`;
+ *   • the DWELLING gate on the reinforce and Polish-Stack arms as well.
+ * Neutral recruits and won Creature-Bank cards therefore drop out — they are on
+ * no faction roster and have no Dwelling, which IS the printed gate.
  */
 export function queueNecromancyReinforce(
   state: GameState,
@@ -20963,14 +21069,62 @@ export function queueNecromancyReinforce(
   };
 
   const allowedTiers = mode === "expert" ? ["bronze", "silver", "gold"] : ["bronze", "silver"];
+  // Community Balance Change: "…a unit THAT YOU HAVE THE CORRESPONDING DWELLING
+  // FOR". A genuinely NEW gate — the printed card needs no Citadel, Dwelling or
+  // Population token — so it applies to the reinforce and Stack arms too, and it
+  // is what makes a recruited Neutral / won Creature-Bank card ineligible (they
+  // are on no faction roster and have no Dwelling).
+  const communityDwellingGate = houseRuleEnabled(state, "community-card-balance");
+  const dwellingTiers = communityDwellingGate ? unlockedRecruitTiers(state, playerId) : null;
+  const tierAllowed = (tier: string): boolean =>
+    allowedTiers.includes(tier) && (!dwellingTiers || dwellingTiers.has(tier));
   const options: { label: string; steps: VisitStep[] }[] = [];
+
+  // Community Balance Change RECRUIT arm: a NEW Few of any roster unit whose
+  // Dwelling is built, at half its printed gold ROUNDED DOWN (other resources
+  // unchanged), then every standing recruit discount. `playerCanRecruitFewNow`
+  // is the same gate the handler re-asks at resolve time.
+  if (communityDwellingGate) {
+    const faction = player.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+    for (const unitDefId of faction?.units ?? []) {
+      const def = coreUnitDefinitions[unitDefId];
+      const fewSide = getUnitSide(unitDefId, "few");
+      if (!def || !fewSide || !tierAllowed(def.tier)) {
+        continue;
+      }
+      if (!playerCanRecruitFewNow(state, playerId, unitDefId)) {
+        continue;
+      }
+      const cost = applyRecruitGoldDiscount(
+        state,
+        playerId,
+        { kind: "recruit", unitDefId },
+        { ...fewSide.cost, gold: Math.floor((fewSide.cost.gold ?? 0) / 2) }
+      );
+      if (!hasRecruitResources(state, playerId, cost)) {
+        continue;
+      }
+      const costLabel =
+        Object.entries(cost)
+          .filter(([, amount]) => amount)
+          .map(([resource, amount]) => `${amount} ${resource}`)
+          .join(" + ") || "free";
+      options.push({
+        label: `Recruit few ${def.name} (${costLabel})`,
+        steps: [
+          { type: "RECRUIT_FEW_AT_COST", unitDefId, cost, source: "Necromancy", consumeCardId }
+        ]
+      });
+    }
+  }
+
   for (const unit of player.army) {
     if (unit.side !== "few") {
       continue;
     }
     const def = coreUnitDefinitions[unit.unitDefId];
     const packSide = getUnitSide(unit.unitDefId, "pack");
-    if (!def || !packSide || !allowedTiers.includes(def.tier)) {
+    if (!def || !packSide || !tierAllowed(def.tier)) {
       continue;
     }
 
@@ -20996,7 +21150,7 @@ export function queueNecromancyReinforce(
   // gold (rounded down, its printed rounding) — bronze/silver on basic, any
   // tier on expert, the same ladder as its reinforce. The card is spent only
   // if the Stack is really added (consumeCardId, like the reinforce options).
-  for (const target of stackOfferTargets(state, playerId, allowedTiers)) {
+  for (const target of stackOfferTargets(state, playerId, allowedTiers.filter(tierAllowed))) {
     const option = stackOfferOption(
       state,
       playerId,
@@ -21016,7 +21170,9 @@ export function queueNecromancyReinforce(
     queueChoice([
       {
         type: "CHOOSE_ONE",
-        prompt: "Necromancy: no unit you can afford to reinforce — the card is kept.",
+        prompt: communityDwellingGate
+          ? "Necromancy: no unit you have the Dwelling for and can afford — the card is kept."
+          : "Necromancy: no unit you can afford to reinforce — the card is kept.",
         options: [{ label: "OK", steps: [] }]
       }
     ]);
@@ -21028,7 +21184,11 @@ export function queueNecromancyReinforce(
   queueChoice([
     {
       type: "CHOOSE_ONE",
-      prompt: `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
+      prompt: communityDwellingGate
+        ? `Necromancy: Recruit or Reinforce a ${
+            mode === "expert" ? "" : "bronze or silver "
+          }unit you have the Dwelling for, for half the gold cost (rounded down)`
+        : `Necromancy: reinforce a ${mode === "expert" ? "" : "bronze or silver "}unit for half the gold cost (rounded down)`,
       options
     }
   ]);

@@ -61,13 +61,11 @@ const DEFAULT_SRC = path.join(
  * written as `<id with dots→dashes>-empowered.webp`, so give it the pseudo-id
  * `"<cardId>#empowered"` and this script emits that basename.
  *
- * EMPTY in step 1 — the reprints land in later steps.
+ * The ABILITIES family is COMPLETE (all 12 of the sheet's ability cards); the
+ * remaining families add their rows in later steps.
  */
 const SOURCES = {
-  // ---- Abilities -----------------------------------------------------------
-  // Necromancy and Intelligence are deliberately ABSENT: their reprints are
-  // declared in COMMUNITY_BALANCE_NOT_IMPLEMENTED, so shipping their faces would
-  // print rules the engine does not run.
+  // ---- Abilities (all twelve) ----------------------------------------------
   "abilities-artillery.webp": "ability.artillery",
   "abilities-artillery-empowered.webp": "ability.artillery#empowered",
   "abilities-ballistics.webp": "ability.ballistics",
@@ -76,12 +74,16 @@ const SOURCES = {
   "abilities-estates-empowered.webp": "ability.estates#empowered",
   "abilities-first_aid.webp": "ability.first_aid",
   "abilities-first_aid-empowered.webp": "ability.first_aid#empowered",
+  "abilities-intelligence.webp": "ability.intelligence",
+  "abilities-intelligence-empowered.webp": "ability.intelligence#empowered",
   "abilities-leadership.webp": "ability.leadership",
   "abilities-leadership-empowered.webp": "ability.leadership#empowered",
   "abilities-luck.webp": "ability.luck",
   "abilities-luck-empowered.webp": "ability.luck#empowered",
   // Mysticism has no Expert side, so the sheet ships no Empowered printing.
   "abilities-mysticism.webp": "ability.mysticism",
+  "abilities-necromancy.webp": "ability.necromancy",
+  "abilities-necromancy-empowered.webp": "ability.necromancy#empowered",
   "abilities-scouting.webp": "ability.scouting",
   "abilities-scouting-empowered.webp": "ability.scouting#empowered",
   "abilities-tactics.webp": "ability.tactics",

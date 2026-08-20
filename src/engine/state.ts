@@ -2043,6 +2043,14 @@ export type EffectDefinition =
       /** Ciele IV: only a Spell with this id may be cast (e.g. spell.magic_arrow). */
       spellId?: string;
       /**
+       * Community Balance Change INTELLIGENCE: "Play a spell from your discard
+       * pile." ANY Spell card sitting in the source pile is authorised, not one
+       * named `spellId` — the offer layer enumerates every castable spell there
+       * and the reducer's forgery check accepts any of them (it still demands the
+       * enabler in hand and the spell really in the pile).
+       */
+      anySpell?: boolean;
+      /**
        * Ciele IV: source the spell from the caster's OWN discard pile
        * (PlayerState.discard) rather than the shared Spell-deck discard. Magic
        * Arrow is STARTING_ONLY, so a cast copy only ever lands in the player's own
@@ -3672,6 +3680,14 @@ export type GameAction =
        * spell in the shared discard), and the specialty cycles to discard.
        */
       fromOwnDiscard?: boolean;
+      /**
+       * Community Balance Change INTELLIGENCE: which SIDE of the enabling card
+       * authorises this cast-from-discard. "basic" (the default) counts toward
+       * the per-Combat-round Spell limit; "expert" does not and spends a crown
+       * (waived while the ability is Empowered). Every other cast-from-discard
+       * enabler prints one side only and leaves this undefined.
+       */
+      castEnablerMode?: "basic" | "expert";
       /**
        * Spell Book (house rule): the Spell is cast from the player's Spell Book
        * (PlayerState.spellBook), not the hand. It casts at the caster's normal
@@ -11534,6 +11550,24 @@ export type VisitStep =
        * play or a declined reinforce leaves the card in hand (house rule: you
        * lose Necromancy only when it upgrades something).
        */
+      consumeCardId?: CardId;
+    }
+  | {
+      /**
+       * Community Balance Change NECROMANCY: recruit a FEW of `unitDefId` at the
+       * pre-priced `cost` (its printed gold halved and rounded DOWN, then every
+       * standing recruit discount). The handler re-validates the whole normal
+       * recruit gate (`playerCanRecruitFewNow` — own faction roster, the tier's
+       * Dwelling built, the unit card not already in the army, the Factory gold
+       * conflict, the MGQ Gold Contract) and re-prices, so a stale pick is a
+       * clean no-op that mints nothing illegal and keeps `consumeCardId` in hand.
+       */
+      type: "RECRUIT_FEW_AT_COST";
+      unitDefId: string;
+      cost: ResourceCost;
+      /** Feed/spend label naming the source (e.g. "Necromancy"). */
+      source: string;
+      /** Discard the played card ONLY when the recruit really happens. */
       consumeCardId?: CardId;
     }
   | {
