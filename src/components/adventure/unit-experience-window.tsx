@@ -34,6 +34,7 @@ import {
   type PlayerId
 } from "@/engine";
 import { DrillUnitButton } from "@/components/adventure/drill-unit-button";
+import { resolveUnitFaceImage, useBalanceArtFlags } from "@/components/table/polish-balance-art";
 
 export function armyUnitPrintedSide(
   def: UnitDefinition | undefined,
@@ -115,6 +116,9 @@ export function UnitExperienceWindow({
 
   const ruleset = getRuleset(state);
   const sideOverrides = unitSideRuleOverrides(state);
+  // Community Balance Change: the four reprinted Castle unit sides show their
+  // community face here too (rule off ⇒ the printed scan, byte-identically).
+  const balanceArt = useBalanceArtFlags();
   const rankSteps = Array.from({ length: MAX_UNIT_RANK }, (_, i) => i + 1);
   const army = useMemo(() => player?.army ?? [], [player]);
 
@@ -183,6 +187,10 @@ export function UnitExperienceWindow({
 
   if (!player) return null;
 
+  const detailFace = detail
+    ? resolveUnitFaceImage(balanceArt, detail.unit.unitDefId, detail.unit.side, detail.side?.cardImage)
+    : undefined;
+
   return (
     <div className={`heroSystemBackdrop theme-${lexicon.register}`} onMouseDown={onClose}>
       <section
@@ -247,8 +255,13 @@ export function UnitExperienceWindow({
                     onClick={() => setSelectedUnitId(unit.id)}
                     type="button"
                   >
-                    {side?.cardImage ? (
-                      <img alt="" className="unitXpPickerArt" loading="lazy" src={assetUrl(side.cardImage)} />
+                    {resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage) ? (
+                      <img
+                        alt=""
+                        className="unitXpPickerArt"
+                        loading="lazy"
+                        src={assetUrl(resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage)!)}
+                      />
                     ) : (
                       <span aria-hidden="true" className="unitXpPickerArt fallback" />
                     )}
@@ -278,8 +291,8 @@ export function UnitExperienceWindow({
         ) : (
           <div className="unitXpDetail" aria-label={`${detail.def.name} experience detail`}>
             <div className="unitXpDetailHero">
-              {detail.side?.cardImage ? (
-                <img alt="" className="unitXpDetailArt" src={assetUrl(detail.side.cardImage)} />
+              {detailFace ? (
+                <img alt="" className="unitXpDetailArt" src={assetUrl(detailFace)} />
               ) : (
                 <span aria-hidden="true" className="unitXpDetailArt fallback" />
               )}

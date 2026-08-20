@@ -11,6 +11,10 @@ import {
   communityBalanceSpellCards,
   COMMUNITY_BALANCE_SPELL_IDS
 } from "@/data/cards/community-spells-balance";
+import {
+  communityBalanceWarMachineCards,
+  COMMUNITY_BALANCE_WAR_MACHINE_IDS
+} from "@/data/cards/community-war-machines-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import { polishBalanceCard, polishBalanceCardForDisplay, polishBalanceCardLibrary } from "./polish-balance-spells";
@@ -33,17 +37,24 @@ import type { CardDefinition, CardLibrary, GameState } from "./state";
  * site (`balanceCardLibrary` below is the composed read), so with both rules on
  * the COMMUNITY reprint wins for a card both packs cover.
  *
- * SCOPE: the ABILITIES, SPELLS and ARTIFACTS families have landed. Later steps merge the
- * remaining per-family reprint modules (units, war machines) in here
- * the same way.
+ * SCOPE: every CARD family of the sheet — abilities, spells, artifacts and war
+ * machines. The sheet's UNITS tab is NOT here and cannot be: a unit side is not
+ * a library card, so it is a runtime side override in `applyUnitSideRules`
+ * (`src/engine/ruleset.ts`) keyed off the same house rule.
  */
 export const COMMUNITY_REPRINTED_CARDS: CardLibrary = {
   ...communityBalanceAbilityCards,
   ...communityBalanceSpellCards,
-  ...communityBalanceArtifactCards
+  ...communityBalanceArtifactCards,
+  ...communityBalanceWarMachineCards
 };
 
-export { COMMUNITY_BALANCE_ABILITY_IDS, COMMUNITY_BALANCE_SPELL_IDS, COMMUNITY_BALANCE_ARTIFACT_IDS };
+export {
+  COMMUNITY_BALANCE_ABILITY_IDS,
+  COMMUNITY_BALANCE_SPELL_IDS,
+  COMMUNITY_BALANCE_ARTIFACT_IDS,
+  COMMUNITY_BALANCE_WAR_MACHINE_IDS
+};
 
 /**
  * Community Balance Change — the two artifacts whose printed "Reroll a die" HALF

@@ -28,8 +28,12 @@ import { cardLibrary } from "@/data/cards/library";
  * Empowered holder must still read the NEW card. The Empowered cue stays the
  * gold ring/badge the render surfaces already draw on top.
  *
- * STEP 1 (scaffolding): both registries below are EMPTY on purpose — the pack's
- * card content lands in later steps. Nothing swaps yet, on or off.
+ * SCOPE: the pack is COMPLETE — all twelve Abilities (plus their Empowered
+ * printings), twenty-six Spells, thirty-four Artifacts and the three re-priced
+ * War Machines are listed below, and the four changed UNIT SIDES have their own
+ * registry (`COMMUNITY_BALANCE_UNIT_FACES`) because a unit side is not a library
+ * card. `COMMUNITY_BALANCE_NOT_IMPLEMENTED` is EMPTY, and stays here so a future
+ * unwired reprint is a conscious entry rather than silence.
  */
 
 /**
@@ -120,8 +124,28 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
   "artifact.scales_of_the_greater_basilisk",
   "artifact.speculum",
   "artifact.spirit_of_oppression",
-  "artifact.torso_of_legion"
+  "artifact.torso_of_legion",
+  // ---- War machines (all THREE of the sheet's re-priced machines) ----------
+  // The Catapult and the Cannon are NOT on the sheet and keep their printed
+  // prices and faces.
+  "war_machine.ammo_cart",
+  "war_machine.ballista",
+  "war_machine.first_aid_tent"
 ] as const;
+
+/**
+ * The reprinted UNIT-SIDE faces live in the LEAF module
+ * `community-balance-unit-art.ts` (no imports) so `src/engine/ruleset.ts` can
+ * stamp a community face onto an overridden unit side without pulling the card
+ * library into the engine graph. Re-exported here so the pack still reads as
+ * ONE registry file.
+ */
+export {
+  COMMUNITY_BALANCE_UNIT_FACES,
+  COMMUNITY_BALANCE_UNIT_FACE_NAMES,
+  communityBalanceUnitFaceName,
+  communityBalanceUnitFaceImage
+} from "./community-balance-unit-art";
 
 /**
  * Community-Balance cards that are DELIBERATELY not reprinted: their new printed

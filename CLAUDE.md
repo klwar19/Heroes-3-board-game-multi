@@ -2405,6 +2405,119 @@ PvP prep; and "gold development" means recruiting an actual Gold unit — non-Go
 is suppressed until it is recruited, with the seeded premium-rush benchmarks asserting real
 `UNIT_RECRUITED` events.
 
+## Community Balance Change pack (`community-card-balance`, OPTIONAL, default OFF)
+
+The "Heroes 3 Board Game Community Balance Change" spreadsheet, shipped COMPLETE
+behind ONE house rule (category `community`, **default OFF in BOTH modes** ⇒ a
+default table is byte-identical, faces included). Commits `e9e6285e` (foundation),
+`72987355` + `fb917a53` (the 12 abilities), `7591dbdc` (26 spells, protocol v47),
+`9b80ba6f` (34 artifacts) and this step (4 unit sides + 3 war-machine prices,
+protocol v48). Machine truth: `COMMUNITY_BALANCE_CARD_IDS` /
+`COMMUNITY_BALANCE_NOT_IMPLEMENTED` / `COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS` /
+`COMMUNITY_BALANCE_UNIT_FACES` in `src/data/cards/community-balance-art.ts` (the
+unit half lives in the leaf `community-balance-unit-art.ts` so the ENGINE can
+import it). `COMMUNITY_BALANCE_NOT_IMPLEMENTED` is EMPTY — nothing in the sheet
+is a stub — and it stays so the next unwired reprint is a conscious entry.
+
+Leading with the DELIBERATE NON-LITERAL READINGS and the limits (each is stated on
+its own card's tags / registry comment and pinned by the named test):
+
+- **Fortune / Misfortune SET a die, they do not reroll it** — Fortune sets an own
+  Attack die to "+1" (1/2/3 uses; its MAP Treasure/Resource half still rerolls),
+  Misfortune is an ongoing that SETS the next 1/2/3 ENEMY attack rolls
+  (`SET_ENEMY_ATTACK_DIE` + `dieSetsRemaining`).
+- **Intelligence opens NO nested window**: it is a cast enabler (play a Spell from
+  your OWN discard at your normal Power through the ordinary pipeline), and like
+  every other cast it is NOT offered while a reaction window is already open.
+- **Necromancy never BANKS a discount** — it always resolves inside the
+  after-combat window, so the `immediate-reinforcement-prompts` toggle is ignored
+  while this pack is on; and both its arms are DWELLING-gated (a recruited Neutral
+  or a won Creature-Bank card is no longer reinforceable through it).
+- **Celestial Necklace of Bliss' scaling half lays Defense on YOUR OWN unit** for
+  the combat round: a blow's `defenseBonus` belongs to the DEFENDER, so paying it
+  onto the attack would have buffed the enemy.
+- **Hourglass of the Evil Hour option B is GLOBAL** (both armies, the printed
+  "all") and ignores only the die's NUMERIC result — abilities keyed off the "+1"
+  FACE still fire.
+- **Centaur's Axe moved to the post-roll window** (`afterAttackRoll`), the ONE
+  attacker-side offer in `ATTACK_DIE_SETTLED`.
+- **Estates is a BINH no-op**: the reprint's 2 / 4 gold is exactly what the BINH
+  `estates-nerf` toggle already pays, so on a default BINH table the card's
+  behaviour does not move (it does in Legacy).
+- **Halberdier Parry is a cost REMOVAL, not an addition.** The sheet lists the
+  Pack's current ability as "(no ability)", but THIS repo's printed card already
+  carries Parry WITH a discard cost; the reprint removes the cost. It stays an
+  OPTIONAL reaction offered only on a "+1" face (ignoring a 0 / "−1" could only
+  hurt the defender), so there is no auto-fold, no new window and no AI/AFK stall
+  surface — a computer seat passes it like any reaction.
+- **Griffins compose, they do not overwrite**: the community +1 Defense holds
+  whatever `griffin-buff` / `marksman-buff` say, and `griffin-buff`'s Few +1
+  ATTACK still applies on top (both on ⇒ Few 3 Attack / 1 Defense).
+- Other limits: only CASTLE units are on the sheet (no other faction moves);
+  the Catapult, the Cannon and every 5-gold `GAIN_WAR_MACHINE` specialty grant
+  keep their printed prices; jsdom cannot compute CSS, so the face swaps are
+  pinned by the `src` that reaches the DOM, never by a pixel, and there is no
+  e2e spec.
+
+What runs, and the seams:
+
+- **CARD reprints** — one merged library swap. `COMMUNITY_REPRINTED_CARDS`
+  (`src/engine/community-balance-cards.ts`) merges the per-family modules
+  `community-abilities-balance.ts` / `-spells-` / `-artifacts-` /
+  `-war-machines-balance.ts`; `balanceCardLibrary(state, cards)` = polish first,
+  then community on top, threaded through every engine entry point, with
+  `balanceCard` / `balanceCardForDisplay` for the few direct `cardLibrary` reads.
+  **PRECEDENCE: COMMUNITY WINS** over Polish for a card both packs cover, in the
+  engine AND in `resolveCardFaceImage`.
+- **WAR MACHINE prices** (the sheet's War Machines tab): Ammo Cart 5→3 gold at
+  the Blacksmith / War Machine Factory and 8→5 at the Trading Post, Ballista
+  7→4 / 10→6, First Aid Tent 3→5 / 6→7 (a price RISE). Only the
+  `warMachineCosts` change; the machines' combat behaviour is untouched. The two
+  price-reading seams now take the BALANCE definition: `warMachinesForSale`
+  (`permanents.ts` — `buyWarMachine` re-derives its price from it, so label and
+  spend cannot disagree) and the Wandering Merchant's `WAR_MACHINE_DISCOUNT_OFFER`
+  (`adventure.ts`, whose discount subtracts from the new base). The shop tile in
+  `screen.tsx` reads `balanceCardForDisplay` for the same reason.
+- **UNIT sides** (the sheet's Units tab) are NOT library cards, so they are a
+  runtime override in `applyUnitSideRules` (`ruleset.ts`) behind the new
+  `communityBalance` flag from `unitSideRuleOverrides` — printed data in
+  `src/data/factions/units.ts` is never edited (CLAUDE.md #2). Griffins FEW and
+  PACK gain 1 Defense (printed 0); Marksmen PACK has 3 Health (printed 2); the
+  Halberdiers PACK's `halberdier-die-ignore` is REPLACED by the new free
+  `halberdier-die-ignore-free` (`IGNORE_ATTACK_DIE_WHEN_TARGETED`, read by
+  `getFreeIgnoreAttackDieAbility`, offered in the post-roll die-cancel window and
+  resolved by the same `USE_UNIT_DIE_IGNORE` / `attackDieCancelled` arm with no
+  discard). The two Parry ids never coexist on a side.
+- **FACES.** Card faces: `communityBalanceCardImage` (path DERIVED from the id)
+  through `resolveCardFaceImage`, with a dedicated `-empowered` face for 11 of the
+  12 abilities (Mysticism has no Expert side) that beats the printed `-empowered`
+  scan, because that scan prints the OLD text. Unit faces: the reprinted
+  `cardImage` rides the OVERRIDDEN SIDE itself, so the combat unit's
+  `assets.cardImage` (board, zoom, inspector, initiative strip, drag ghosts) and
+  every stat-folded panel paint it with no per-surface change; the surfaces that
+  read a PRINTED side instead (the hero dock's unit-deck thumb, the town /
+  roster `RecruitUnitView`, the Unit Experience window, the prompt-tray reward
+  tiles via `VisitRewardArt.unitDefId` + `rewardArtImage`) go through the ONE
+  display resolver `resolveUnitFaceImage` / `useUnitFaceImage`. Art pipeline:
+  `node scripts/build-community-balance-art.mjs --src <masters>`; its `SOURCES`
+  table is the contract (a unit side uses the `unit:<unitDefId>#<side>`
+  pseudo-id), and the masters are deliberately not committed.
+- **Tests**: `src/data/cards/community-balance-art.test.ts` (the exact
+  directory listing — a committed face with no wired entry fails, and so does a
+  wired entry with no face — plus the 743×1040 / 40KB gates),
+  `src/engine/community-card-balance-abilities.test.ts`,
+  `-intelligence-necromancy.test.ts`, `-spells.test.ts`, `-artifacts.test.ts`,
+  `-units.test.ts` (this step: damage deltas for the Griffin defense, the
+  Pack-of-Marksmen flip that no longer happens, the free Parry really zeroing a
+  "+1" with an empty hand, the composition matrix against
+  `griffin-buff` / `marksman-buff`, and the war-machine prices really CHARGED at
+  both shops), and `src/components/table/polish-balance-face-swap.test.tsx` (the
+  unit-face resolver truth table). Every claim carries a rule-OFF CONTROL on the
+  same setup.
+- **Protocol v47 → v48** (`USE_UNIT_DIE_IGNORE.discardCardId` is now OPTIONAL —
+  a v47 worker rejects the free Parry's frame — plus the unit-side overrides and
+  the two war-machine price seams). **`npm run deploy:partykit` is OWED.**
+
 ## Polish Set Artifacts (OPTIONAL house rule, default OFF) — engine + UI (2026-08-07)
 
 Eleven Artifact SETS. A player's PIECE COUNT is how many DISTINCT member cards they still

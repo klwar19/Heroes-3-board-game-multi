@@ -551,6 +551,7 @@ import {
   getFlatDamageFollowUps,
   getForcedAttackerDie,
   getDiscardToIgnoreAttackDieAbility,
+  getFreeIgnoreAttackDieAbility,
   getIgnoreTargetCardDefenseAbility,
   getKnockbackAbility,
   getLethalSaveUnitAbility,
@@ -17264,26 +17265,39 @@ function applyUnitDieIgnore(
   if (!combat || !defender || !pendingAttack || !player) {
     throw new Error("That die-cancel cannot be used now.");
   }
+  // Community Balance Change: the reprinted Parry has NO discard cost, and
+  // `applyUnitSideRules` swaps the free ability id in for the printed one, so
+  // exactly one of these two is ever present on a defender.
+  const freeAbilityId = getFreeIgnoreAttackDieAbility(defender);
+  const printedAbilityId = getDiscardToIgnoreAttackDieAbility(defender);
   if (
     defender.controllerId !== action.playerId ||
-    !getDiscardToIgnoreAttackDieAbility(defender) ||
+    !(freeAbilityId || printedAbilityId) ||
     pendingAttack.modifiers.attackDieCancelled ||
     window.triggerEvent.roll <= 0 ||
-    !player.hand.includes(action.discardCardId)
+    // The printed ability MUST name a card in hand; the free one must NOT try to
+    // pay a cost it no longer has.
+    (printedAbilityId && !freeAbilityId && (!action.discardCardId || !player.hand.includes(action.discardCardId))) ||
+    (freeAbilityId && action.discardCardId)
   ) {
     throw new Error("That unit cannot ignore the Attack die now.");
   }
 
-  // Pay the cost (one card discarded from hand), then treat the settled die as
-  // ignored (0) — the same arm Shield of the Dwarven Lords uses.
-  discardNamedCardFromHand(state, action.playerId, action.discardCardId);
+  // Pay the cost (one card discarded from hand) unless the community reprint
+  // removed it, then treat the settled die as ignored (0) — the same arm Shield
+  // of the Dwarven Lords uses.
+  if (!freeAbilityId && action.discardCardId) {
+    discardNamedCardFromHand(state, action.playerId, action.discardCardId);
+  }
   pendingAttack.modifiers.attackDieCancelled = true;
   appendEvent(state, {
     type: "UNIT_ABILITY_TRIGGERED",
     unitId: defender.id,
-    abilityId: "halberdier-die-ignore",
+    abilityId: freeAbilityId ?? "halberdier-die-ignore",
     targetUnitId: defender.id,
-    message: `${defender.cardName} discards ${cards[action.discardCardId]?.name ?? action.discardCardId} to ignore the Attack die.`
+    message: freeAbilityId
+      ? `${defender.cardName} ignores the Attack die.`
+      : `${defender.cardName} discards ${cards[action.discardCardId!]?.name ?? action.discardCardId} to ignore the Attack die.`
   });
 
   advanceReactionWindowAfterPlay(state, action.playerId, cards);

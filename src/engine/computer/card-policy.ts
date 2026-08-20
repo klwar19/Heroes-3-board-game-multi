@@ -1238,13 +1238,6 @@ export function scoreCardAction(
       return { score: 1_155, policy: "combat.use-innate-magic-mirror" };
     case "USE_UNIT_DIE_IGNORE": {
       const defender = observation.state.combat?.units[action.defenderUnitId];
-      const hand = observation.state.players[observation.playerId]?.hand ?? [];
-      const averageKeep = hand.length
-        ? hand.reduce(
-            (sum, cardId) => sum + cardKeepValue(cardId, observation),
-            0,
-          ) / hand.length
-        : 100;
       const pending = pendingAttackValues(observation);
       const trigger = observation.state.reactionWindow?.triggerEvent;
       const roll = trigger?.type === "ATTACK_DIE_SETTLED" ? trigger.roll : 0;
@@ -1262,9 +1255,10 @@ export function scoreCardAction(
           marginal = 1_060;
         }
       }
-      const discardKeep = action.discardCardId
-        ? cardKeepValue(action.discardCardId, observation)
-        : averageKeep;
+      // No `discardCardId` = the Community Balance Change's FREE Parry
+      // (`halberdier-die-ignore-free`): there is no card to weigh, so the ignore
+      // costs nothing and scores at its full marginal value.
+      const discardKeep = action.discardCardId ? cardKeepValue(action.discardCardId, observation) : 0;
       const score = marginal - Math.round(discardKeep * 0.35);
       return { score, policy: "combat.discard-to-ignore-positive-die" };
     }

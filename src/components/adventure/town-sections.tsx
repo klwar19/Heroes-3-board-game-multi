@@ -35,6 +35,7 @@ import {
 import { assetUrl } from "@/lib/asset-url";
 import { actionKey, formatCost } from "@/components/table/utils";
 import { useOptionalCardZoom } from "@/components/table/zoom";
+import { useUnitFaceImage } from "@/components/table/polish-balance-art";
 import {
   MgqGoldContractPanel,
   MgqSpiritShrinePanel,
@@ -373,7 +374,9 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
   const def = coreUnitDefinitions[unitDefId];
   const unitSide =
     side === "pack" ? def?.pack : side === "neutral" ? def?.neutral : def?.few;
-  const image = unitSide?.cardImage;
+  // Community Balance Change: four Castle unit sides are reprinted, so this
+  // shared recruit/roster thumb (and its zoom) must read the balance face.
+  const image = useUnitFaceImage(unitDefId, side, unitSide?.cardImage);
   const sideLabel = side === "pack" ? "Pack" : side === "neutral" ? "Neutral" : "Few";
   const thumb = image ? (
     <img alt="" aria-hidden="true" className="recruitThumbImg" loading="lazy" src={assetUrl(image)} />
@@ -393,7 +396,7 @@ function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" |
         event.stopPropagation();
         zoom.zoomContent({
           title: `${sideLabel} ${def.name}`,
-          image: unitSide.cardImage,
+          image,
           subtitle: `${def.tier} ${def.type}`,
           lines: [
             `Attack ${unitSide.attack} · Defense ${unitSide.defense} · HP ${unitSide.health} · Initiative ${unitSide.initiative}`,

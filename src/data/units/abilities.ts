@@ -1044,6 +1044,19 @@ export type UnitAbilityEffectDefinition =
     }
   | {
       /**
+       * Community Balance Change Castle Halberdiers (Pack): "⌛ When the unit is
+       * targeted by any attack, you can ignore the Attack die's roll result."
+       * The printed card's Parry with its DISCARD COST REMOVED — the same
+       * defender-side optional reaction in the post-roll die-cancel window, and
+       * the same `attackDieCancelled` arm, but free and therefore reachable with
+       * an empty hand. Never on the printed card: the community house rule
+       * SWAPS this in for `DISCARD_TO_IGNORE_ATTACK_DIE` at
+       * `applyUnitSideRules`.
+       */
+      type: "IGNORE_ATTACK_DIE_WHEN_TARGETED";
+    }
+  | {
+      /**
        * Azure Dragons / Black Dragons (Pack): "ignore damage from Specialty."
        * This unit takes no damage from Hero Specialty cards; non-damage
        * Specialty effects (buffs/debuffs) still apply.
@@ -2988,6 +3001,16 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     name: "Parry",
     text: "[unit_passive] When this unit is targeted by an attack, you may discard a card to ignore the Attack die's roll result (treat it as 0). Offered in the post-roll window when the die came up \"+1\".",
     effect: { type: "DISCARD_TO_IGNORE_ATTACK_DIE" },
+    implementationStatus: "implemented"
+  },
+  // Community Balance Change ONLY (`community-card-balance`). No printed unit
+  // side lists this id: `applyUnitSideRules` swaps it in for
+  // `halberdier-die-ignore` on the Castle Halberdiers PACK while the pack is on.
+  "halberdier-die-ignore-free": {
+    id: "halberdier-die-ignore-free",
+    name: "Parry",
+    text: "[unit_passive] When this unit is targeted by an attack, you may ignore the Attack die's roll result (treat it as 0) — no discard. Offered in the post-roll window when the die came up \"+1\".",
+    effect: { type: "IGNORE_ATTACK_DIE_WHEN_TARGETED" },
     implementationStatus: "implemented"
   },
   "familiar-spell-tax": {

@@ -1761,7 +1761,12 @@ export function warMachinesForSale(
   const tinkerer = playerId ? state.players[playerId]?.commander : undefined;
   const goldDiscount = tinkerer && !tinkerer.dead && tinkerer.slug === "factory" ? 5 : 0;
   return supply.flatMap((cardId) => {
-    const card = cardLibrary[cardId];
+    // Community Balance Change: the sheet re-prices the Ammo Cart, the Ballista
+    // and the First Aid Tent at BOTH shops, so this shop menu must read the
+    // BALANCE definition — a raw `cardLibrary` read would show (and charge) the
+    // printed price while the pack is on. `buyWarMachine` re-derives its price
+    // from this very function, so the label and the spend can never disagree.
+    const card = balanceCard(state, cardId);
     const costs = card?.warMachineCosts;
     if (!card || !costs) {
       return [];

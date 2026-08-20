@@ -159,11 +159,35 @@ const SOURCES = {
   "artifacts_minor-scales_of_the_greater_basilisk.webp": "artifact.scales_of_the_greater_basilisk",
   "artifacts_minor-speculum.webp": "artifact.speculum",
   "artifacts_minor-spirit_of_oppression.webp": "artifact.spirit_of_oppression",
-  "artifacts_minor-torso_of_legion.webp": "artifact.torso_of_legion"
+  "artifacts_minor-torso_of_legion.webp": "artifact.torso_of_legion",
+
+  // ---- War machines (the three re-priced machines) --------------------------
+  // The Catapult and the Cannon are NOT on the sheet and keep their scans.
+  "war_machines-ammo_cart.webp": "war_machine.ammo_cart",
+  "war_machines-ballista.webp": "war_machine.ballista",
+  "war_machines-first_aid_tent.webp": "war_machine.first_aid_tent",
+
+  // ---- Units (the four changed SIDES) ---------------------------------------
+  // A unit side has no card id, so it uses the `unit:<unitDefId>#<side>`
+  // pseudo-id and lands at the basename `communityBalanceUnitFaceName` derives
+  // (`unit-<unitDefId dots→dashes>-<side>`). Only the CHANGED sides ship a face:
+  // Halberdiers Pack, Marksmen Pack, Griffins Few AND Pack.
+  "units-castle-bronze-halberdiers_pack.webp": "unit:castle.halberdiers#pack",
+  "units-castle-bronze-marksmen_pack.webp": "unit:castle.marksmen#pack",
+  "units-castle-bronze-griffins_few.webp": "unit:castle.griffins#few",
+  "units-castle-bronze-griffins_pack.webp": "unit:castle.griffins#pack"
 };
 
 /** The committed basename for a table entry's target id. */
 function outBasename(cardId) {
+  // A UNIT SIDE (`unit:<unitDefId>#<side>`) is not a card: it lands at
+  // `unit-<unitDefId dots→dashes>-<side>`, the exact basename
+  // `communityBalanceUnitFaceName` (src/data/cards/community-balance-unit-art.ts)
+  // derives, so the file and the registry cannot drift.
+  if (cardId.startsWith("unit:")) {
+    const [unitDefId, side] = cardId.slice("unit:".length).split("#");
+    return `unit-${unitDefId.replaceAll(".", "-")}-${side}`;
+  }
   const [id, variant] = cardId.split("#");
   return `${id.replaceAll(".", "-")}${variant === "empowered" ? "-empowered" : ""}`;
 }

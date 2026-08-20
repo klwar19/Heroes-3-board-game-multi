@@ -167,7 +167,13 @@ import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "
 // non-member card, so a default table keeps its exact DOM.
 import { CardSetCornerBadge, CardSetFrame } from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
-import { resolveCardFaceImage, useBalanceArtFlags } from "@/components/table/polish-balance-art";
+import {
+  resolveCardFaceImage,
+  resolveUnitFaceImage,
+  useBalanceArtFlags,
+  type BalanceArtFlags
+} from "@/components/table/polish-balance-art";
+import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
@@ -4016,6 +4022,7 @@ export function TownHeroDock({
   const [commanderEquipmentOpen, setCommanderEquipmentOpen] = useState(false);
   const [commanderEquipHelpOpen, setCommanderEquipHelpOpen] = useState(false);
   const [draggedCommanderArtifactId, setDraggedCommanderArtifactId] = useState<string | null>(null);
+  const balanceArt = useBalanceArtFlags();
   const player = state.players[viewerPlayerId];
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
 
@@ -4178,8 +4185,11 @@ export function TownHeroDock({
                 unit.side === "bank"
                   ? CREATURE_BANK_UNIT_SIDES[unit.unitDefId]
                   : armyUnitPrintedSide(def, unit.side, unit.unitDefId);
-              return side?.cardImage ? (
-                <img alt="" className="dockUnitThumb" decoding="async" key={unit.id} loading="lazy" src={assetUrl(side.cardImage)} style={{ zIndex: 3 - index }} />
+              // Community Balance Change reprints four Castle unit sides; every
+              // surface that paints `side.cardImage` reads the same resolver.
+              const face = resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage);
+              return face ? (
+                <img alt="" className="dockUnitThumb" decoding="async" key={unit.id} loading="lazy" src={assetUrl(face)} style={{ zIndex: 3 - index }} />
               ) : (
                 <span className={`dockUnitThumb fallback tier-${def?.tier ?? "bronze"}`} key={unit.id} style={{ zIndex: 3 - index }} />
               );
@@ -4698,6 +4708,7 @@ export function ArmyPanel({
   onAction?: (action: GameAction) => void;
 }) {
   const { zoomContent } = useCardZoom();
+  const balanceArt = useBalanceArtFlags();
   const [xpBoardOpen, setXpBoardOpen] = useState(false);
   const [xpBoardUnitId, setXpBoardUnitId] = useState<string | null>(null);
   const player = state.players[playerId];
@@ -4833,6 +4844,9 @@ export function ArmyPanel({
               ? printed
               : applyUnitSideRules(ruleset, unit.unitDefId, unit.side, printed, sideOverrides)
             : printed;
+          // Community Balance Change reprints four Castle unit sides — the same
+          // resolver every unit-face surface reads (rule off ⇒ the printed scan).
+          const unitFace = resolveUnitFaceImage(balanceArt, unit.unitDefId, unit.side, side?.cardImage);
           const stackAttack =
             sideOverrides.polishUnitStacks &&
             (unit.side === "pack" || unit.side === "neutral") &&
@@ -4928,7 +4942,7 @@ export function ArmyPanel({
                             ? "Neutral"
                             : "Pack of"
                     } ${def?.name ?? unit.unitDefId}`,
-                    image: side?.cardImage,
+                    image: unitFace,
                     subtitle: def ? `${def.tier} ${def.type}` : undefined,
                     lines: [
                       side ? `Attack ${shownAttack} · Defense ${shownDefense} · HP ${shownHealth} · Initiative ${shownInitiative}` : "",
@@ -4947,8 +4961,8 @@ export function ArmyPanel({
                 {/* Neutral-only cards (no Few/Pack faces) keep their single-face
                     thumb here, since the both-faces display above is skipped. */}
                 {unit.side === "bank" || (!def?.few && !def?.pack) ? (
-                  side?.cardImage ? (
-                    <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(side.cardImage)} />
+                  unitFace ? (
+                    <img alt="" aria-hidden="true" className="armyUnitThumb" loading="lazy" src={assetUrl(unitFace)} />
                   ) : (
                     <span className={`armyUnitThumb fallback tier-${def?.tier ?? "bronze"}`} />
                   )
@@ -5297,6 +5311,14 @@ type VisitRewardArt = {
    * options (whose step carries an artifact `cardId` that is NOT what is drawn).
    */
   cardId?: string;
+  /**
+   * The UNIT SIDE this art IS, when the option shows a unit portrait. A unit
+   * side has no card id, so the Community Balance Change's reprinted unit faces
+   * need this pair the same way `cardId` serves reprinted CARD faces — see
+   * `rewardArtImage`.
+   */
+  unitDefId?: string;
+  unitSide?: string;
   /** Compact resource-symbol option rather than a card scan. */
   resource?: boolean;
   /** Map-tile options (Disruption): rotation in 60° turns, for the thumb. */
@@ -5310,6 +5332,20 @@ type VisitRewardArt = {
    */
   detail?: string;
 };
+
+/**
+ * The face a reward tile should paint: the balance packs' reprinted CARD face
+ * when the art is a card, their reprinted UNIT-SIDE face when it is a unit
+ * portrait, else the printed image the art already carries. ONE helper so every
+ * tray tile reads the identical precedence (with both packs off it returns
+ * `art.image` unchanged).
+ */
+function rewardArtImage(flags: BalanceArtFlags, art: VisitRewardArt): string | undefined {
+  if (art.cardId) {
+    return resolveCardFaceImage(flags, art.cardId, false) ?? art.image;
+  }
+  return resolveUnitFaceImage(flags, art.unitDefId, art.unitSide, art.image);
+}
 
 /**
  * Pull the reward identity out of a visit option's steps so the tray can show
@@ -5377,6 +5413,8 @@ function rewardArtFromVisitSteps(
           const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
           return {
             image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+            unitDefId: armyUnit.unitDefId,
+            unitSide: armyUnit.side,
             name: def?.name ?? armyUnit.unitDefId,
             caption: def?.name ?? armyUnit.unitDefId
           };
@@ -5424,6 +5462,8 @@ function rewardArtFromVisitSteps(
         const side = armyUnitPrintedSide(def, armyUnit.side, armyUnit.unitDefId);
         return {
           image: side?.cardImage ?? def?.few?.cardImage ?? def?.pack?.cardImage ?? def?.neutral?.cardImage,
+          unitDefId: armyUnit.unitDefId,
+          unitSide: armyUnit.side,
           name: def?.name ?? armyUnit.unitDefId,
           caption: def?.name ?? armyUnit.unitDefId
         };
@@ -5487,8 +5527,14 @@ function rewardArtForId(cardId: string): VisitRewardArt {
   }
   const unit = coreUnitDefinitions[cardId];
   if (unit) {
+    // A bare unit-def id (a free recruit / drawn Neutral offer) names no side,
+    // so the portrait is whichever face exists — tag THAT side so a reprinted
+    // community face can replace it (`rewardArtImage`).
+    const portraitSide = unit.neutral?.cardImage ? "neutral" : unit.few?.cardImage ? "few" : "pack";
     return {
       image: unit.neutral?.cardImage ?? unit.few?.cardImage ?? unit.pack?.cardImage,
+      unitDefId: cardId,
+      unitSide: portraitSide,
       name: unit.name,
       caption: unit.name
     };
@@ -6216,11 +6262,12 @@ export function PromptTray({
           <div className="eventPoolPreview" data-testid="event-pool-preview" aria-label="Cards on offer">
             {faceUpPool.map((entry, index) => {
               const art = rewardArtForId(entry.cardId);
+              const artImage = rewardArtImage(balanceArt, art);
               return (
                 <div className="eventPoolCard" key={`${entry.cardId}-${index}`}>
-                  {art.image ? (
+                  {artImage ? (
                     <CardSetFrame cardId={entry.cardId}>
-                      <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(art.image)} />
+                      <img alt={art.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(artImage)} />
                     </CardSetFrame>
                   ) : (
                     <span className="marketCardFallback">{art.name}</span>
@@ -6957,7 +7004,8 @@ export function PromptTray({
             <div className="rule111GuardArt">
               {rule111Draws.map((draw, index) => {
                 const art = rewardArtForId(draw.unitDefId);
-                return art.image ? (
+                const artImage = rewardArtImage(balanceArt, art);
+                return artImage ? (
                   <img
                     alt={art.name}
                     className="rule111GuardImage"
@@ -6965,7 +7013,7 @@ export function PromptTray({
                     key={index}
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    src={assetUrl(art.image)}
+                    src={assetUrl(artImage)}
                   />
                 ) : (
                   <span className="marketCardFallback" key={index}>
@@ -7030,11 +7078,7 @@ export function PromptTray({
                       draggable={false}
                       loading="lazy"
                       referrerPolicy="no-referrer"
-                      src={assetUrl(
-                        art.cardId
-                          ? (resolveCardFaceImage(balanceArt, art.cardId, false) ?? art.image)
-                          : art.image
-                      )}
+                      src={assetUrl(rewardArtImage(balanceArt, art))}
                     />
                   </CardSetFrame>
                 </span>
@@ -7391,14 +7435,20 @@ export function MarketPanel({
         {supply.length === 0 ? <small>The war machine supply is empty.</small> : null}
         <div className="marketMachineRow">
           {supply.map((cardId) => {
-            const card = cardLibrary[cardId];
+            // Community Balance Change re-prices three machines at both shops
+            // and reprints their faces, so the shop tile must read the BALANCE
+            // definition — the engine's own offer (`warMachinesForSale`) already
+            // does, and a raw library read here would print a price the buy
+            // button does not charge.
+            const card = balanceCardForDisplay(balanceArt.polish, balanceArt.community, cardId);
             const cost = card?.warMachineCosts?.[pricing];
+            const machineFace = resolveCardFaceImage(balanceArt, cardId, false) ?? card?.assets?.cardImage;
             const buy = buyActions.find((legal) => legal.action.cardId === cardId);
             const blocked = traded;
             return (
               <div className={`marketMachine ${buy && !blocked ? "" : "unavailable"}`} key={cardId}>
-                {card?.assets?.cardImage ? (
-                  <img alt={card.name} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(card.assets.cardImage)} />
+                {machineFace ? (
+                  <img alt={card?.name ?? cardId} loading="lazy" referrerPolicy="no-referrer" src={assetUrl(machineFace)} />
                 ) : (
                   <span className="marketCardFallback">{card?.name ?? cardId}</span>
                 )}

@@ -528,7 +528,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `resolveMapSpellBoostChoice`) now reading the BALANCED definition instead of
 // the raw printed library — which also fixes the Polish pack's map reprints.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 47;
+//
+// v48 (2026-08-20): the Community Balance Change UNITS and WAR MACHINES tabs
+// complete the pack. SERIALIZED shape a stale worker cannot read:
+// `USE_UNIT_DIE_IGNORE.discardCardId` becomes OPTIONAL — the reprinted
+// Halberdier Pack Parry (`halberdier-die-ignore-free`) has no discard cost, so
+// its frame carries no card id and a v47 worker rejects it as illegal
+// (`player.hand.includes(undefined)`). Behaviour a stale worker computes
+// differently on top of that: `applyUnitSideRules` gains its `communityBalance`
+// arm (Griffins Few+Pack 1 defense, Marksmen Pack 3 health, the Halberdier Pack
+// ability swap) and the two war-machine shop-price seams
+// (`warMachinesForSale`, the Wandering Merchant's discount offer) read the
+// BALANCED definition, so Ammo Cart 3/5, Ballista 4/6 and First Aid Tent 5/7
+// are charged instead of the printed prices. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 48;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

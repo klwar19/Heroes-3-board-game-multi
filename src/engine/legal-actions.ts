@@ -305,6 +305,7 @@ import {
   getActivationSpellPowerBoost,
   getAstrologersRoundFrenzy,
   getDiscardToIgnoreAttackDieAbility,
+  getFreeIgnoreAttackDieAbility,
   getEnemySpellPowerReduction,
   getLethalSaveUnitAbility,
   getSpendCubeAttackAgain,
@@ -7556,8 +7557,26 @@ function getDieCancelReactions(
   const attackerOffers = getAfterRollAttackerReactions(state, attackerId, cards);
 
   const reactions: LegalAction[] = [];
-  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+  if (!player || playerId === NEUTRAL_PLAYER_ID) {
     return attackerOffers;
+  }
+  // Community Balance Change Halberdiers (Pack): the reprinted Parry is a pure
+  // UNIT ability with no cost, so — unlike every offer below it — a locked hand
+  // (a units-only garrison defense) does not withhold it. Offered BEFORE that
+  // gate for exactly that reason. Still gated on a "+1" face: the sheet's "you
+  // can ignore" is optional, and ignoring a 0 / "−1" would only hurt the
+  // defender, so the engine never offers it there — no auto-fold, no new window
+  // and no AI/AFK stall surface (a computer seat passes it like any reaction).
+  // Mutually exclusive with the printed discard Parry below by construction:
+  // `applyUnitSideRules` REPLACES the ability id while the pack is on.
+  if (roll > 0 && getFreeIgnoreAttackDieAbility(defender)) {
+    reactions.push({
+      label: `${defender.cardName}: ignore the Attack die`,
+      action: { type: "USE_UNIT_DIE_IGNORE", playerId, defenderUnitId: defender.id }
+    });
+  }
+  if (isHandLockedInCombat(state, playerId)) {
+    return reactions.length > 0 ? { ...attackerOffers, [playerId]: reactions } : attackerOffers;
   }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
@@ -7601,6 +7620,9 @@ function getDieCancelReactions(
       });
     }
   }
+
+  // (The Community Balance Change's FREE Parry is pushed ABOVE the hand-lock
+  // gate — it is a unit ability with no cost.)
 
   return reactions.length > 0 ? { ...attackerOffers, [playerId]: reactions } : attackerOffers;
 }

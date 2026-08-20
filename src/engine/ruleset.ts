@@ -2,6 +2,7 @@ import type { UnitSideDefinition } from "@/data/factions/types";
 import { cardLibrary } from "@/data/cards/library";
 import { EVERSMOKING_RING_OF_SULFUR_ID, TORSO_OF_LEGION_ID } from "@/data/cards/artifacts";
 import { STARTING_ONLY_SPELLS } from "@/data/cards/spells";
+import { communityBalanceUnitFaceImage } from "@/data/cards/community-balance-unit-art";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { armyUnitStacksActive, houseRuleEnabled } from "./house-rules";
 import { equipmentSearchCountBonus } from "./anime-equipment";
@@ -104,11 +105,76 @@ export function applyUnitSideRules(
    * existing caller keeps its old behaviour; live callers pass the resolved
    * `griffin-buff` / `marksman-buff` flags so a table can flip either alone.
    */
-  overrides?: { griffinBuff?: boolean; marksmanBuff?: boolean; phoenixPackRebirth?: boolean }
+  overrides?: {
+    griffinBuff?: boolean;
+    marksmanBuff?: boolean;
+    phoenixPackRebirth?: boolean;
+    /** `community-card-balance` — the Community Balance Change's Units tab. */
+    communityBalance?: boolean;
+  }
 ): UnitSideDefinition {
   const griffinBuff = overrides?.griffinBuff ?? ruleset === "binh";
   const marksmanBuff = overrides?.marksmanBuff ?? ruleset === "binh";
   const phoenixPackRebirth = overrides?.phoenixPackRebirth ?? ruleset === "binh";
+  // The Community Balance Change is a plain OFF-by-default house rule in both
+  // modes, so — unlike the three BINH tweaks above — it never falls back to the
+  // bundled mode default.
+  const communityBalance = overrides?.communityBalance ?? false;
+
+  // ---- Community Balance Change: the Units tab ------------------------------
+  // The reprinted FACE rides the overridden side itself, so every consumer of a
+  // rules-applied side — the combat unit's `assets.cardImage` (board, zoom,
+  // inspector, initiative strip, drag ghosts), the army panel, the Unit
+  // Experience board — paints the community card with no per-surface change.
+  // Printed unit data in `units.ts` is never edited; this is a runtime override
+  // exactly like the stat arms below.
+  if (communityBalance) {
+    const communityFace = communityBalanceUnitFaceImage(unitDefId, side);
+    if (communityFace) {
+      definition = { ...definition, cardImage: communityFace };
+    }
+  }
+
+  // COMPOSITION IS DELIBERATE AND ORDERED FIRST: the community sheet's four
+  // changed sides overlap the older `griffin-buff` / `marksman-buff` toggles,
+  // and the community values must hold WHATEVER those toggles say. So each arm
+  // below applies the community value regardless of the older rule, and the
+  // older arms then find nothing left to change (their targets already carry
+  // the same numbers), which makes the composition idempotent in either order.
+  //  - Griffins FEW: defense 0 → 1. `griffin-buff` gives the FEW +1 ATTACK
+  //    (a different stat), so with both on the Few is attack 3 AND defense 1.
+  //  - Griffins PACK: defense 0 → 1 — the same value `griffin-buff` already
+  //    gives the Pack, so with the older rule OFF the community rule still
+  //    delivers it.
+  //  - Marksmen PACK: health 2 → 3, again the same value as `marksman-buff`.
+  if (communityBalance && unitDefId === "castle.griffins" && (side === "few" || side === "pack")) {
+    const withDefense = { ...definition, defense: 1 };
+    // Fall through to the griffin-buff arm below for the Few's +1 attack.
+    if (griffinBuff && side === "few") {
+      return { ...withDefense, attack: 3 };
+    }
+    return withDefense;
+  }
+  if (communityBalance && unitDefId === "castle.marksmen" && side === "pack") {
+    return { ...definition, health: 3 };
+  }
+  // Halberdiers PACK: the printed Parry ("discard a card and ignore the Attack
+  // die") loses its discard cost — the sheet's "⌛ you can ignore the Attack
+  // die's roll result". A REPLACEMENT, not an addition: the free ability id
+  // takes the printed one's place so the defender is never offered both.
+  if (
+    communityBalance &&
+    unitDefId === "castle.halberdiers" &&
+    side === "pack" &&
+    definition.abilities.includes("halberdier-die-ignore")
+  ) {
+    return {
+      ...definition,
+      abilities: definition.abilities.map((id) =>
+        id === "halberdier-die-ignore" ? "halberdier-die-ignore-free" : id
+      )
+    };
+  }
 
   if (griffinBuff && unitDefId === "castle.griffins" && side === "few") {
     return { ...definition, attack: 3 };
@@ -149,10 +215,15 @@ export function unitSideRuleOverrides(
   polishUnitStacks: boolean;
   neutralRankUp: boolean;
   phoenixPackRebirth: boolean;
+  communityBalance: boolean;
 } {
   return {
     griffinBuff: houseRuleEnabled(state, "griffin-buff"),
     marksmanBuff: houseRuleEnabled(state, "marksman-buff"),
+    // Community Balance Change (default OFF in BOTH modes): the sheet's Units
+    // tab — Griffins Few+Pack 1 defense, Marksmen Pack 3 health, and the
+    // Halberdier Pack's Parry losing its discard cost.
+    communityBalance: houseRuleEnabled(state, "community-card-balance"),
     // Army Stack layers: the Polish house rule OR the anime `unitStacks` module
     // (one machinery — see armyUnitStacksActive).
     polishUnitStacks: armyUnitStacksActive(state),

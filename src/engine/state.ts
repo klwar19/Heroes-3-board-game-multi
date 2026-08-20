@@ -4410,8 +4410,18 @@ export type GameAction =
       type: "USE_UNIT_DIE_IGNORE";
       playerId: PlayerId;
       defenderUnitId: UnitId;
-      /** The controller chooses which card pays the printed discard cost. */
-      discardCardId: CardId;
+      /**
+       * The controller chooses which card pays the printed discard cost.
+       *
+       * OMITTED for the Community Balance Change's FREE Parry
+       * (`halberdier-die-ignore-free`, `community-card-balance`): that reprint
+       * removes the discard cost entirely, so the ignore must also be reachable
+       * with an empty hand. The reducer requires the card id whenever the
+       * defender carries the PRINTED (discard-cost) ability and refuses it
+       * whenever the defender carries the free one, so the two can never be
+       * confused.
+       */
+      discardCardId?: CardId;
     }
   | { type: "SEARCH_DECK"; playerId: PlayerId; deckId: DeckId; count: number }
   | { type: "RESOLVE_DECK_SEARCH"; playerId: PlayerId; choiceId: string; pick: DeckSearchPick }

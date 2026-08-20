@@ -11291,7 +11291,10 @@ export function processPendingVisit(state: GameState): void {
         }
         const options: { label: string; steps: VisitStep[] }[] = [];
         for (const cardId of supply) {
-          const card = cardLibrary[cardId];
+          // Community Balance Change re-prices three machines at the Trading
+          // Post; the Merchant's discount subtracts from the BALANCE base, so
+          // this must not be a raw `cardLibrary` read (see warMachinesForSale).
+          const card = balanceCard(state, cardId);
           const base = card?.warMachineCosts?.tradingPost;
           if (!card || !base) {
             continue;
