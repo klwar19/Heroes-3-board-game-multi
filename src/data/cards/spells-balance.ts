@@ -333,11 +333,11 @@ export const polishBalanceSpellCards: CardLibrary = {
   "spell.slayer": reprint("spell.slayer", {
     tags: tags(
       "spell.slayer",
-      "Instant: when attacking a gold OR azure unit, roll an Attack die X times and apply all the results except a '-1'; after resolving the attack, draw 1 card: Power 0: 3 dice; Power 2: 5; Power 4: 7."
+      "Instant: when attacking a gold OR azure unit, roll an Attack die X times and apply all the results except a '-1'; after resolving the attack, draw 1 card: Power 0: 3 dice; Power 2: 5; Power 3: 7."
     ),
     effect: {
       type: "SLAYER_ATTACK",
-      rollsByPower: { 0: 3, 2: 5, 4: 7 },
+      rollsByPower: { 0: 3, 2: 5, 3: 7 },
       targetGrades: ["gold", "azure"]
     }
   }),

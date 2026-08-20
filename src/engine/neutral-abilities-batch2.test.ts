@@ -635,6 +635,46 @@ describe("Skeletons necro-reinforce", () => {
     expect(state.players.p1.resources.gold).toBe(goldBefore);
   });
 
+  it("with polish-unit-stacks ON, also offers a FREE Stack layer (user ruling 2026-08-20)", () => {
+    const state = createAdventureGameState({
+      seed: "skeleton-stack",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      houseRules: { "polish-unit-stacks": true }
+    });
+    // A Stack layer lands on a Pack/Neutral unit (a Few takes a Pack flip, not a
+    // layer), so seed a bronze Pack unit for the stack option.
+    state.players.p1.army.push({ id: "bones_pack", unitDefId: "necropolis.skeletons", side: "pack" });
+    const goldBefore = state.players.p1.resources.gold;
+
+    openSkeletonReinforceChoice(state, "p1");
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("OPTION_CHOICE");
+    if (choice?.type !== "OPTION_CHOICE") return;
+    const stackTargets = choice.skeletonReinforce?.stackTargetIds ?? [];
+    expect(stackTargets.length, "a free Stack option is offered under polish-unit-stacks").toBeGreaterThan(0);
+    expect(choice.options.some((option) => option.label.startsWith("Add a Stack"))).toBe(true);
+
+    // The first Stack option sits right after the Few→Pack flips.
+    const targetId = stackTargets[0]!;
+    const before = state.players.p1.army.find((unit) => unit.id === targetId)!.stacks ?? 0;
+    resolveSkeletonReinforceChoice(state, "p1", choice.skeletonReinforce!.armyUnitIds.length);
+    const after = state.players.p1.army.find((unit) => unit.id === targetId)!.stacks ?? 0;
+    expect(after, "one free Stack layer is added").toBe(before + 1);
+    expect(state.players.p1.resources.gold, "the Stack layer costs nothing").toBe(goldBefore);
+  });
+
+  it("CONTROL: with polish-unit-stacks OFF, no Stack option is offered", () => {
+    const state = createAdventureGameState({ seed: "skeleton-nostack", difficulty: "normal", rollFirstPlayer: false });
+    state.players.p1.army.push({ id: "bones_pack", unitDefId: "necropolis.skeletons", side: "pack" });
+    state.players.p1.army.push({ id: "bones_few", unitDefId: "necropolis.skeletons", side: "few" });
+    openSkeletonReinforceChoice(state, "p1");
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected an OPTION_CHOICE");
+    expect(choice.skeletonReinforce?.stackTargetIds ?? []).toEqual([]);
+    expect(choice.options.some((option) => option.label.startsWith("Add a Stack"))).toBe(false);
+  });
+
   it("mid-combat pop-up is a no-op when the player has no bronze Few unit", () => {
     const state = createAdventureGameState({ seed: "skeleton-none", difficulty: "normal", rollFirstPlayer: false });
     // Remove any bronze Few from the starting army so nothing is eligible.

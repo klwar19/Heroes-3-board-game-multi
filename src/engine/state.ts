@@ -5782,7 +5782,13 @@ export type GameEvent =
       id: string;
       type: "ACTIVE_EFFECT_EXPIRED";
       effectId: string;
-      reason: "combat-round-ended" | "turn-ended" | "combat-ended" | "game-round-ended" | "activation-ended";
+      reason:
+        | "combat-round-ended"
+        | "turn-ended"
+        | "combat-ended"
+        | "game-round-ended"
+        | "activation-ended"
+        | "activation-started";
     }
   | {
       id: string;
@@ -7620,6 +7626,16 @@ export type ActiveEffectState = ActiveEffectDefinition & {
    * to the active unit at creation, "next-activation" to the target unit).
    */
   expiresAtActivationEndUnitId?: UnitId;
+  /**
+   * Unit whose activation START (in a LATER combat round than the one this
+   * effect was created in) expires it — BEFORE that unit acts. Set for a
+   * POSITIVE "next-activation" buff laid on the currently active unit (Polish
+   * Balance Pack Prayer / Cards of Prophecy option A: "until its activation in
+   * the next combat round"). It covers every retaliation in between but ends the
+   * instant the unit next activates, so the unit never attacks twice buffed
+   * (user ruling 2026-08-20).
+   */
+  expiresAtActivationStartUnitId?: UnitId;
   /**
    * Polish Balance Pack Forgetfulness (Power 2): "for 2 activations". Counted
    * DOWN at each activation end of `expiresAtActivationEndUnitId`; the effect
@@ -15237,8 +15253,14 @@ export type PendingChoice =
         tileInstanceId: string;
         viiFields?: ViiFieldDesignation[];
       };
-      /** skeleton-reinforce: the bronze Few army units that may be flipped free. */
-      skeletonReinforce?: { armyUnitIds: string[] };
+      /**
+       * skeleton-reinforce: the bronze Few army units that may be flipped free,
+       * plus (with polish-unit-stacks) the bronze/silver units that may take a
+       * FREE Stack layer instead. Options are rendered Few-flips first, then
+       * stack targets, then Skip — so resolution indexes into the two lists in
+       * that order.
+       */
+      skeletonReinforce?: { armyUnitIds: string[]; stackTargetIds?: string[] };
       /** discard-pick: the candidate cards (index-aligned with options). */
       discardPick?: {
         cardIds: CardId[];

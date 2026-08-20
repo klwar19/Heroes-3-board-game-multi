@@ -115,13 +115,16 @@ export function polishArtifactBaseAccess(band: PolishArtifactBand): ArtifactDeck
 /**
  * Apply the Attack-die roll to the band's base access.
  *
- * Sheet:
- *  - Starting / Far: +1 unlocks Major
- *  - Near: +1 unlocks Relic
- *  - Central: 0 or +1 unlocks Relic; −1 keeps Relic locked
+ * Sheet (user ruling 2026-08-20):
+ *  - Starting (Tile I): a flat Minor — NO roll and NO upgrade
+ *  - Far (II–III): +1 unlocks Major
+ *  - Near (IV–V): +1 unlocks Relic
+ *  - Central (VI–VII): 0 or +1 unlocks Relic; −1 keeps Relic locked
  *
  * A +1 always upgrades one class above the base (Minor→Major, Major→Relic).
- * On the center band, 0 also unlocks Relic (and −1 never does).
+ * On the center band, 0 also unlocks Relic (and −1 never does). The starting
+ * band never rolls in practice (`maybeApplyPolishRandomArtifactRoll`
+ * short-circuits it); this guard keeps any direct caller consistent.
  */
 export function polishArtifactAccessAfterRoll(
   band: PolishArtifactBand,
@@ -129,6 +132,11 @@ export function polishArtifactAccessAfterRoll(
 ): ArtifactDeckAccess {
   const base = polishArtifactBaseAccess(band);
   const access: ArtifactDeckAccess = { ...base };
+
+  if (band === "starting") {
+    // Difficulty I is a guaranteed Minor — the die never upgrades it.
+    return access;
+  }
 
   if (band === "center") {
     // Central / VI–VII: Relic on 0 or +1 only.

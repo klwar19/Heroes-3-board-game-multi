@@ -23,7 +23,7 @@ import {
   spellPowerLadder
 } from "./index";
 import { getUnitMoveRange } from "./legal-actions";
-import { expireEffectsForActivationEnd } from "./active-effects";
+import { expireEffectsForActivationEnd, expireEffectsForActivationStart } from "./active-effects";
 import { hasToken } from "./tokens";
 import { nextTurnTimeoutAction } from "./afk-drop";
 import { chooseComputerAction } from "./computer/policy";
@@ -433,6 +433,24 @@ describe("Balance Pack — reaction reprints", () => {
     expect(reactionOffers(off, "spell.slayer", "p1")).toEqual([]);
   });
 
+  it("Slayer's top rung is Power 3 → 7 dice (the Excel ladder 0/2/3 → 3/5/7)", () => {
+    // The printed reprint ladder tops out at SP 3, not 4: a Power-3 cast rolls
+    // the full 7 dice. Under the old {4:7} keying a Power-3 cast fell back to the
+    // Power-2 rung (5 dice), so this fails if the breakpoint is not 3.
+    const on = declaredAttack(true, (s) => {
+      s.combat!.units.unit_p2_vampires.grade = "gold";
+      s.players.p1.hand = ["spell.slayer" as CardId];
+      grantPower(s, "p1", 3);
+    });
+    const offers = reactionOffers(on, "spell.slayer", "p1");
+    expect(offers.length).toBeGreaterThan(0);
+    const played = passAllReactions(applyOk(on, offers[0]!.action));
+    const rolled = played.eventLog.find(
+      (event) => event.type === "UNIT_ABILITY_TRIGGERED" && event.abilityId === "slayer"
+    ) as { message: string } | undefined;
+    expect(rolled?.message).toContain("7 Attack dice");
+  });
+
   it("Sorrow's silver skip costs 1 Power (the classic card charges 2)", () => {
     const priceOf = (card: CardDefinition | undefined) => {
       expect(card?.effect.type).toBe("CHOOSE_ONE");
@@ -818,6 +836,32 @@ describe("Balance Pack — the remaining reprints", () => {
     );
     return resolved.combat!.units.unit_p2_skeletons.damage;
   }
+
+  it("Prayer ENDS at the buffed unit's next-round activation START — before it acts (user ruling 2026-08-20)", () => {
+    // Cast on the active griffins in combat round 1.
+    const state = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_griffins" });
+    const buff = effectsOn(state, "unit_p1_griffins").find((effect) => effect.name === "Prayer")!;
+    // makeActiveEffect must bind the activation-START expiry to the unit (fails if
+    // the field is not set for a positive next-activation buff on the active unit).
+    expect(buff.expiresAtActivationStartUnitId).toBe("unit_p1_griffins");
+    expect(buff.startedCombatRound).toBe(1);
+
+    // Same round: an activation START must NOT clear it (a same-round Polish-Wait
+    // re-activation, or the activation it was cast during). The buff still covers
+    // this round's retaliations.
+    expireEffectsForActivationStart(state, "unit_p1_griffins");
+    expect(
+      effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer"),
+      "Prayer survives a SAME-round activation start"
+    ).toBe(true);
+
+    // Next combat round: the unit activates → the buff is gone BEFORE it acts, so
+    // its own attack this round is unbuffed (it cannot attack twice buffed).
+    state.combat!.round = 2;
+    const expired = expireEffectsForActivationStart(state, "unit_p1_griffins");
+    expect(expired.length, "the buff expires at the next-round activation start").toBe(1);
+    expect(effectsOn(state, "unit_p1_griffins").some((effect) => effect.name === "Prayer")).toBe(false);
+  });
 
   it("Prayer covers the buffed unit's retaliation after it has acted (into the next round), then ends when it acts again", () => {
     // The griffins already activated this round (one activation-end); a retaliation

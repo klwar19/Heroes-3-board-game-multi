@@ -107,6 +107,15 @@ export function makeActiveEffect(
         : effect.duration.type === "next-activation"
           ? (target?.type === "unit" ? target.unitId : undefined)
           : undefined,
+    // A positive next-activation buff cast on the currently active unit ("until
+    // its activation in the next combat round") ALSO ends at that unit's next
+    // activation START, before it acts — so it never attacks twice buffed. It
+    // still lives through the current activation and every retaliation, expiring
+    // only at a LATER combat round's activation (guarded in
+    // expireEffectsForActivationStart). Scoped to the same case as the
+    // activation-end +1 bump above.
+    expiresAtActivationStartUnitId:
+      nextActivationOnActiveUnit && target?.type === "unit" ? target.unitId : undefined,
     activationsRemaining: nextActivationOnActiveUnit
       ? (Math.min(2, (effect.activationsRemaining ?? 1) + 1) as 1 | 2)
       : effect.activationsRemaining,
@@ -1039,6 +1048,29 @@ export function expireEffectsForActivationEnd(state: GameState, unitId: UnitId):
     state.activeEffects = state.activeEffects.filter((effect) => !expiredIds.has(effect.id));
   }
 
+  return expired;
+}
+
+/**
+ * Expires a POSITIVE next-activation buff (Prayer / Cards of Prophecy option A)
+ * at the START of its bound unit's activation — but ONLY in a LATER combat round
+ * than the one it was cast in, so the activation it was cast during (and a
+ * same-round Polish-Wait re-activation) never clears it early. Called at the top
+ * of `setActiveUnit`, before the unit acts, so "until its activation in the next
+ * round" ends the buff the moment the unit next activates (it still covered
+ * every retaliation in between). See `expiresAtActivationStartUnitId`.
+ */
+export function expireEffectsForActivationStart(state: GameState, unitId: UnitId): ActiveEffectState[] {
+  const currentCombatRound = state.combat?.round ?? 0;
+  const expired = state.activeEffects.filter(
+    (effect) =>
+      effect.expiresAtActivationStartUnitId === unitId &&
+      (effect.startedCombatRound ?? currentCombatRound) < currentCombatRound
+  );
+  if (expired.length > 0) {
+    const expiredIds = new Set(expired.map((effect) => effect.id));
+    state.activeEffects = state.activeEffects.filter((effect) => !expiredIds.has(effect.id));
+  }
   return expired;
 }
 

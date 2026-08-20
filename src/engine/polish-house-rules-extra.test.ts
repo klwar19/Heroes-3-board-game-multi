@@ -34,6 +34,7 @@ import {
   polishReducedStartingBonusVisitSteps,
   polishSurrenderGoldCost
 } from "./polish-house-rules";
+import { maybeApplyPolishRandomArtifactRoll } from "./polish-random-artifacts";
 import { HOUSE_RULES, resolveHouseRules } from "./house-rules";
 import type { GameAction, GameState, PlayerId } from "./state";
 
@@ -74,8 +75,22 @@ describe("polish random artifact access", () => {
     expect(polishArtifactBandFromHeroLevel(7)).toBe("center");
   });
 
-  it("Starting/Far: Minor only; +1 unlocks Major (CONTROL: 0/-1 stay Minor)", () => {
+  it("Starting (Tile I): a flat Minor — the die never upgrades it (user ruling 2026-08-20)", () => {
+    // Difficulty I is a guaranteed Minor: even a +1 must NOT unlock Major.
     expect(polishArtifactAccessAfterRoll("starting", 1)).toEqual({
+      minor: true,
+      major: false,
+      relic: false
+    });
+    expect(polishArtifactAccessAfterRoll("starting", 0)).toEqual({
+      minor: true,
+      major: false,
+      relic: false
+    });
+  });
+
+  it("Far (II–III): Minor only; +1 unlocks Major (CONTROL: 0/-1 stay Minor)", () => {
+    expect(polishArtifactAccessAfterRoll("far", 1)).toEqual({
       minor: true,
       major: true,
       relic: false
@@ -923,6 +938,44 @@ describe("polish-random-artifacts access latch", () => {
       after.adventure!.polishArtifactAccess,
       "taking the discard top must clear the latch — a stale roll would silently gate the NEXT acquisition"
     ).toBeNull();
+  });
+
+  it("Tile I (starting band): a GUARANTEED Minor with NO die roll (user ruling 2026-08-20)", () => {
+    const state = createAdventureGameState({
+      seed: "polish-ra-tile-one",
+      rollFirstPlayer: false,
+      houseRules: { "polish-random-artifacts": true, "split-decks": true }
+    });
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    const eventsBefore = state.eventLog.length;
+
+    const die = maybeApplyPolishRandomArtifactRoll(state, "p1", hero, "tile");
+    // No die is rolled on the starting band.
+    expect(die, "Tile I must not roll a die").toBeNull();
+    expect(state.adventure!.polishRandomArtifactDie ?? null).toBeNull();
+    // Access is a flat Minor — Major/Relic stay locked whatever a die would show.
+    expect(state.adventure!.polishArtifactAccess).toEqual({ minor: true, major: false, relic: false });
+    // ...and no ADVENTURE_DICE_ROLLED event was emitted.
+    expect(
+      state.eventLog.slice(eventsBefore).some((event) => event.type === "ADVENTURE_DICE_ROLLED")
+    ).toBe(false);
+  });
+
+  it("CONTROL: a level-band II–III (far) acquisition DOES roll for Major", () => {
+    const state = createAdventureGameState({
+      seed: "polish-ra-far-rolls",
+      rollFirstPlayer: false,
+      houseRules: { "polish-random-artifacts": true, "split-decks": true }
+    });
+    const hero = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    hero.level = 3; // level 2–3 → "far" band on the level path
+    const eventsBefore = state.eventLog.length;
+
+    const die = maybeApplyPolishRandomArtifactRoll(state, "p1", hero, "level");
+    expect(die, "the far band rolls a real die").not.toBeNull();
+    expect(
+      state.eventLog.slice(eventsBefore).some((event) => event.type === "ADVENTURE_DICE_ROLLED")
+    ).toBe(true);
   });
 
   it("eliminating the owner of an open artifact DECK_SEARCH clears the latch", () => {

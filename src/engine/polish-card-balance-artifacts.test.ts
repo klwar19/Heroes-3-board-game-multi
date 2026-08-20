@@ -1150,9 +1150,12 @@ describe("Balance Pack artifacts — Helm of the Alabaster Unicorn inscribes its
     return passAllReactions(applyOk(state, cast!.action));
   };
 
-  it("moves the cast Spell into the caster's Spellbook", () => {
+  it("moves the cast Spell into the caster's Spellbook — the USED side (it was just cast)", () => {
     const next = castFromDiscard(true);
-    expect(next.players.p1.spellBook).toContain("spell.lightning_bolt");
+    // User ruling 2026-08-20: the inscribed Spell was CAST, so it lands on the
+    // USED side and cannot be cast again this round; it refreshes at round start.
+    expect(next.players.p1.spellBookUsed ?? []).toContain("spell.lightning_bolt");
+    expect(next.players.p1.spellBook).not.toContain("spell.lightning_bolt");
     expect(next.decks.spells?.discardPile).not.toContain("spell.lightning_bolt");
   });
 

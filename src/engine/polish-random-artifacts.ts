@@ -99,6 +99,16 @@ export function maybeApplyPolishRandomArtifactRoll(
     band = polishArtifactBandFromTileGroup(tile?.group);
   }
 
+  // User ruling 2026-08-20: a difficulty-I ("starting") acquisition is a
+  // GUARANTEED Minor with NO die roll — the roll only begins at II–III ("far")
+  // for Majors, and so on up the bands. Set the flat Minor access and skip the
+  // die (and its ADVENTURE_DICE_ROLLED event) entirely.
+  if (band === "starting") {
+    adventure.polishArtifactAccess = { minor: true, major: false, relic: false };
+    adventure.polishRandomArtifactDie = null;
+    return null;
+  }
+
   const random = createSeededRandom(
     bakeEntropy(`${state.seed}-polish-random-artifact-${eventSeedNumber(state)}`)
   );

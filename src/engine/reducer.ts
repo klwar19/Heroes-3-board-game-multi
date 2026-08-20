@@ -365,6 +365,7 @@ import {
   unitAttackRollDisadvantaged,
   unitImmuneToSpellSchoolsByEffect,
   expireEffectsForActivationEnd,
+  expireEffectsForActivationStart,
   expireEffectsForCombatRoundEnd,
   expireEffectsForTurnEnd,
   discardOngoingCardVoluntarily,
@@ -9559,6 +9560,19 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // change effectiveInitiative and drop this unit out of its speed tier.
   activeUnit.activationInitiative = effectiveInitiative(activeUnit, state.activeEffects, state.combat);
 
+  // Prayer / Cards of Prophecy option A ("until its activation in the NEXT
+  // combat round"): a positive next-activation buff laid on this unit while it
+  // was the active unit ends the instant the unit next activates — BEFORE it
+  // acts — so it can never attack twice buffed (user ruling 2026-08-20). Guarded
+  // on a LATER combat round than the one it was cast in, so the activation it was
+  // cast during and a same-round Polish-Wait re-activation never clear it early;
+  // every retaliation before this next activation was still covered.
+  appendExpiredEffectEvents(
+    state,
+    expireEffectsForActivationStart(state, activeUnit.id),
+    "activation-started"
+  );
+
   // Polish Wait: this activation is the unit's deferred RE-activation, not a
   // fresh one. The unit already went through its start-of-activation package
   // when it first became active this round (before it chose Wait) — re-running
@@ -11530,8 +11544,11 @@ function finalizeSpellCardDestination(
     // Polish Balance Pack Helm of the Alabaster Unicorn: "Add casted Spell to
     // your Spellbook." The Spell was cast FROM a shared Spell-deck discard pile
     // and normally stays there; with the Book on it is pulled out and inscribed
-    // (refreshed) into the caster's Book instead. Any split deck may hold it, so
-    // the pile is found by id.
+    // into the caster's Book instead. Any split deck may hold it, so the pile is
+    // found by id. It is inscribed onto the USED side (`spellBookUsed`), not the
+    // refreshed side (user ruling 2026-08-20): the Spell was just CAST, so it is
+    // already spent this round — it refreshes at the next round start like any
+    // other used Book Spell, and can NOT be cast again immediately.
     if (stackItem.modifiers.inscribeCastToSpellBook) {
       const caster = state.players[stackItem.action.playerId];
       const cardId = stackItem.action.cardId;
@@ -11540,11 +11557,11 @@ function finalizeSpellCardDestination(
         const index = deck.discardPile.lastIndexOf(cardId);
         if (index >= 0) {
           deck.discardPile.splice(index, 1);
-          caster.spellBook.push(cardId);
+          (caster.spellBookUsed ??= []).push(cardId);
           appendEvent(state, {
             type: "EVENT_NOTE",
             playerId: stackItem.action.playerId,
-            message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook.`
+            message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook (used).`
           });
         }
       }

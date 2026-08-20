@@ -782,7 +782,23 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
       armyUnitIds.push(unit.id);
     }
   }
-  if (armyUnitIds.length === 0) {
+  // Polish Unit Stacks: the free reinforce may instead add a FREE Stack layer to
+  // any eligible bronze/silver army unit (user ruling 2026-08-20 — "killing
+  // skeletons should work with polish stacks"), exactly like the settlement
+  // capture menu's stack option.
+  const stackTargetIds = armyUnitStacksActive(state)
+    ? player.army
+        .filter((unit) => {
+          const tier = coreUnitDefinitions[unit.unitDefId]?.tier;
+          return (
+            (tier === "bronze" || tier === "silver") &&
+            polishArmyUnitCanBuyStack(unit) &&
+            Boolean(polishArmyUnitStackCost(unit))
+          );
+        })
+        .map((unit) => unit.id)
+    : [];
+  if (armyUnitIds.length === 0 && stackTargetIds.length === 0) {
     return;
   }
 
@@ -796,10 +812,14 @@ export function openSkeletonReinforceChoice(state: GameState, playerId: PlayerId
         const unitDefId = player.army.find((unit) => unit.id === id)?.unitDefId ?? "";
         return { label: `Reinforce ${coreUnitDefinitions[unitDefId]?.name ?? "unit"} (free)` };
       }),
+      ...stackTargetIds.map((id) => {
+        const unitDefId = player.army.find((unit) => unit.id === id)?.unitDefId ?? "";
+        return { label: `Add a Stack to ${coreUnitDefinitions[unitDefId]?.name ?? "unit"} (free)` };
+      }),
       { label: "Skip" }
     ],
     context: "skeleton-reinforce",
-    skeletonReinforce: { armyUnitIds },
+    skeletonReinforce: { armyUnitIds, stackTargetIds },
     returnPhase: "combat"
   };
   state.phase = "choice";
@@ -813,10 +833,33 @@ export function resolveSkeletonReinforceChoice(state: GameState, playerId: Playe
     throw new Error("There is no Skeletons reinforce choice to resolve.");
   }
 
-  const armyUnitId = choice.skeletonReinforce.armyUnitIds[optionIndex];
+  const { armyUnitIds, stackTargetIds = [] } = choice.skeletonReinforce;
+  const armyUnitId = armyUnitIds[optionIndex];
+  const stackTargetId = stackTargetIds[optionIndex - armyUnitIds.length];
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
+
+  // Polish Unit Stacks: the picked option is a FREE Stack layer, not a Few→Pack
+  // flip. Add one layer to the army card (its persistent property) and dilute
+  // the unit's Experience like any other Stack upgrade.
+  if (!armyUnitId && stackTargetId) {
+    const player = state.players[playerId];
+    const stackTarget = player?.army.find((unit) => unit.id === stackTargetId);
+    if (stackTarget) {
+      stackTarget.stacks = (stackTarget.stacks ?? 0) + 1;
+      diluteUnitExperienceForUpgrade(state, playerId, stackTarget, "stack");
+      appendEvent(state, {
+        type: "ARMY_STACK_PURCHASED",
+        playerId,
+        armyUnitId: stackTarget.id,
+        unitDefId: stackTarget.unitDefId,
+        stacks: stackTarget.stacks,
+        cost: {}
+      });
+    }
+    return;
+  }
 
   if (armyUnitId) {
     reinforceArmyUnit(state, playerId, armyUnitId, false, false, false, true);
