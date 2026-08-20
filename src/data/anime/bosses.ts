@@ -17,6 +17,7 @@
  * `src/engine/raid-bosses.test.ts` enforces every id resolves implemented.
  */
 
+import { unitAbilities } from "@/data/units/abilities";
 import type { UnitType } from "@/engine/state";
 
 export type RaidBossDefinition = {
@@ -39,11 +40,31 @@ export type RaidBossDefinition = {
   /** Escort minions accompanying the boss: N draws at a NEUTRAL_ARMY_TABLE row. */
   minionCount: number;
   minionLevel: number;
+  /**
+   * Themed escort (variant expansion §D1): the `minionCount` escort bodies are
+   * built by cycling THESE unit def ids (seeded start index) instead of the
+   * `drawPveThemedArmy` level draw. Absent = today's level draw, unchanged. An
+   * id that does not resolve to a unit definition falls the WHOLE escort back
+   * to the level draw (never an empty escort).
+   */
+  escortPool?: readonly string[];
   cardImage: string;
   summary: string;
 };
 
 const art = (slug: string) => `/assets/bosses/${slug}.webp`;
+
+/**
+ * The printed ability text of a boss/warden, built from the WIRED abilities'
+ * own `unitAbilities` texts (the `customBossToDefinition` precedent). Derived,
+ * so a card can never advertise something the engine does not run
+ * (CLAUDE.md §2) — used by every definition added by the variant expansion.
+ */
+const abilityTextFor = (ids: readonly string[]): string =>
+  ids
+    .map((id) => unitAbilities[id]?.text)
+    .filter(Boolean)
+    .join(" ");
 
 /** The five §6.5 world bosses, keyed by id. */
 export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
@@ -172,6 +193,134 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     minionLevel: 4,
     cardImage: art("spider_overmind"),
     summary: "5 layers; suppressing fire lashes the whole formation while armor absorbs hits."
+  },
+
+  // ——— Variant expansion §B: six more world bosses ————————————————————————
+  // Every ability below is an EXISTING implemented arm (four of them the PvE
+  // caster rotations shipped in Phase 1); `abilityText` is derived from those
+  // arms' own printed texts, so nothing decorative can ship here.
+  lich_archon: {
+    id: "lich_archon",
+    name: "Lich Archon",
+    title: "Tongue of the Cold Grave",
+    attack: 4,
+    defense: 2,
+    health: 3,
+    initiative: 6,
+    type: "ground",
+    layers: 5,
+    abilities: ["boss-spell-necrotic", "zombie-resilience"],
+    abilityText: abilityTextFor(["boss-spell-necrotic", "zombie-resilience"]),
+    minionCount: 3,
+    minionLevel: 3,
+    escortPool: [
+      "neutral.skeletons",
+      "neutral.zombies",
+      "neutral.wraiths",
+      "neutral.mummies",
+      "neutral.liches"
+    ],
+    cardImage: art("lich_archon"),
+    summary:
+      "5 layers; the flagship caster — every round it bolts your toughest unit, drains your hand or mends itself, and chip damage bounces off it. Its escort is always undead."
+  },
+  hydra_matriarch: {
+    id: "hydra_matriarch",
+    name: "Hydra Matriarch",
+    title: "Nine Jaws of the Fen",
+    attack: 5,
+    defense: 2,
+    health: 4,
+    initiative: 3,
+    type: "ground",
+    layers: 4,
+    abilities: ["hydra-multi-attack", "boss-enrage"],
+    abilityText: abilityTextFor(["hydra-multi-attack", "boss-enrage"]),
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("hydra_matriarch"),
+    summary:
+      "4 layers, very slow (Initiative 3); each attack also mauls a second adjacent unit, and its last bar enrages."
+  },
+  basilisk_queen: {
+    id: "basilisk_queen",
+    name: "Basilisk Queen",
+    title: "Gaze of the Stone Garden",
+    attack: 5,
+    defense: 3,
+    health: 3,
+    initiative: 5,
+    type: "ground",
+    layers: 4,
+    abilities: ["azure-dragon-paralysis", "manticore-ignore-defense"],
+    abilityText: abilityTextFor(["azure-dragon-paralysis", "manticore-ignore-defense"]),
+    minionCount: 3,
+    minionLevel: 3,
+    escortPool: ["neutral.lizardmen", "neutral.basilisks", "neutral.medusas", "neutral.gorgons"],
+    cardImage: art("basilisk_queen"),
+    summary:
+      "4 layers; its strikes ignore printed Defense entirely and a \"-1\" petrifies the target. Its escort is always reptilian."
+  },
+  wailing_banshee: {
+    id: "wailing_banshee",
+    name: "Wailing Banshee",
+    title: "Chorus of the Unmourned",
+    attack: 4,
+    defense: 1,
+    health: 3,
+    initiative: 9,
+    type: "flying",
+    layers: 4,
+    abilities: ["boss-spell-mindflay", "ghost-dragon-morale-drain"],
+    abilityText: abilityTextFor(["boss-spell-mindflay", "ghost-dragon-morale-drain"]),
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("wailing_banshee"),
+    summary:
+      "4 fragile layers, fastest thing in the lair; it burns your hand, your morale token and your fastest unit's Initiative — kill it quickly."
+  },
+  archvile_ascendant: {
+    id: "archvile_ascendant",
+    name: "Archvile Ascendant",
+    title: "Choir of the Furnace",
+    attack: 5,
+    defense: 2,
+    health: 4,
+    initiative: 7,
+    type: "ground",
+    layers: 5,
+    abilities: ["boss-spell-infernal", "wog-hell-steed-fire-wall"],
+    abilityText: abilityTextFor(["boss-spell-infernal", "wog-hell-steed-fire-wall"]),
+    minionCount: 3,
+    minionLevel: 4,
+    escortPool: ["doom.demon", "doom.cacodemon", "doom.hell_knight", "doom.baron_of_hell"],
+    cardImage: art("archvile_ascendant"),
+    summary:
+      "The Doom caster: 5 layers, a round-start bolt or mass curse plus a Fire Wall burning the space it strikes. Its escort is always Hell's own."
+  },
+  mother_demon: {
+    id: "mother_demon",
+    name: "Mother Demon",
+    title: "She Who Spawns",
+    attack: 6,
+    defense: 2,
+    health: 3,
+    initiative: 5,
+    type: "ground",
+    // BALANCE GUARD (§B6): the plan's 6 layers were conditional on the summon
+    // arm capping the summoned population. `SUMMON_UNIT_ON_ATTACK`
+    // (reducer.ts summonUnitOnAttack) has NO population cap — it is bounded
+    // only by empty battlefield spaces — so this ships at the plan's stated
+    // fallback of 5 layers.
+    layers: 5,
+    abilities: ["doom-pain-elemental-summon-lost-soul", "boss-devour"],
+    abilityText: abilityTextFor(["doom-pain-elemental-summon-lost-soul", "boss-devour"]),
+    minionCount: 2,
+    minionLevel: 3,
+    escortPool: ["doom.imp", "doom.lost_soul", "doom.former_human"],
+    cardImage: art("mother_demon"),
+    summary:
+      "5 layers of attrition: every attack spawns another Lost Soul and may devour a bronze unit whole. Its printed escort starts small because it grows."
   }
 };
 
@@ -248,6 +397,101 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     minionLevel: 4,
     cardImage: art("doom_cyberdemon_tyrant"),
     summary: "The Doom floor-10 tyrant: three layers, line-breaking rockets, no retaliation."
+  },
+
+  // ——— Variant expansion §C2: warden variety for the seeded floor pools ————
+  // HARD CAP (see §0 of the design and WAVE_MINIBOSS_POOLS): every warden keeps
+  // `layers <= 3` and `minionCount <= 3`, because the Calamity-Wave mini-boss
+  // pool draws from THIS catalog — a fatter warden silently inflates wave 4+.
+  warden_gorgon_matron: {
+    id: "warden_gorgon_matron",
+    name: "Gorgon Matron",
+    title: "Warden of Floor 5",
+    attack: 5,
+    defense: 2,
+    health: 3,
+    initiative: 5,
+    type: "ground",
+    layers: 2,
+    abilities: ["gorgon-death-stare", "veteran-guarded-stance"],
+    abilityText: abilityTextFor(["gorgon-death-stare", "veteran-guarded-stance"]),
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("warden_gorgon_matron"),
+    summary:
+      "A floor-5 warden: 2 layers, +1 Defense against every incoming attack, and a double \"-1\" after its attack kills outright."
+  },
+  warden_stone_choir: {
+    id: "warden_stone_choir",
+    name: "The Stone Choir",
+    title: "Warden of Floor 5",
+    attack: 4,
+    defense: 3,
+    health: 4,
+    initiative: 4,
+    type: "ground",
+    layers: 2,
+    abilities: ["boss-spell-frost", "doom-baron-damage-cap"],
+    abilityText: abilityTextFor(["boss-spell-frost", "doom-baron-damage-cap"]),
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("warden_stone_choir"),
+    summary:
+      "The caster warden: 2 layers, low Attack, but every round it chills your fastest unit, curses all your Attack or armours its own side — and no single attack takes more than 4 off it."
+  },
+  warden_bone_colossus: {
+    id: "warden_bone_colossus",
+    name: "Bone Colossus",
+    title: "Warden of Floor 10",
+    attack: 6,
+    defense: 2,
+    health: 4,
+    initiative: 4,
+    type: "ground",
+    layers: 3,
+    abilities: ["behemoth-defense-crush-few", "automaton-detonate"],
+    abilityText: abilityTextFor(["behemoth-defense-crush-few", "automaton-detonate"]),
+    minionCount: 3,
+    minionLevel: 4,
+    cardImage: art("warden_bone_colossus"),
+    summary:
+      "A floor-10 warden: 3 layers, its blows shave 1 Defense off the target, and its final death blasts 2 damage into everything adjacent — do not crowd it."
+  },
+  doom_hell_knight_warden: {
+    id: "doom_hell_knight_warden",
+    name: "Hell Knight Warden",
+    title: "Keeper of Infernal Floor 5",
+    attack: 6,
+    defense: 1,
+    health: 3,
+    initiative: 7,
+    type: "ground",
+    layers: 2,
+    abilities: ["ignores-retaliation", "commander-charge"],
+    abilityText: abilityTextFor(["ignores-retaliation", "commander-charge"]),
+    minionCount: 2,
+    minionLevel: 3,
+    cardImage: art("doom_hell_knight_warden"),
+    summary:
+      "A Doom floor-5 warden: 2 thin layers, fast, never retaliated against, and +1 Attack whenever it charges in after moving."
+  },
+  doom_archvile_warden: {
+    id: "doom_archvile_warden",
+    name: "Archvile Warden",
+    title: "Keeper of Infernal Floor 10",
+    attack: 5,
+    defense: 2,
+    health: 4,
+    initiative: 6,
+    type: "ground",
+    layers: 3,
+    abilities: ["boss-spell-infernal", "wog-fire-shield-1"],
+    abilityText: abilityTextFor(["boss-spell-infernal", "wog-fire-shield-1"]),
+    minionCount: 3,
+    minionLevel: 4,
+    cardImage: art("doom_archvile_warden"),
+    summary:
+      "The Doom caster warden: 3 layers, a round-start bolt or mass curse, and 1 damage back to every adjacent attacker."
   }
 };
 

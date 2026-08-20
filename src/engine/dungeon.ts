@@ -7,6 +7,7 @@
  * NOTHING here imports adventure.ts (no cycles).
  */
 
+import { createSeededRandom } from "./random";
 import type {
   DungeonDepth,
   DungeonDescentCost,
@@ -31,14 +32,58 @@ export function dungeonThemeOf(state: GameState): ResolvedPveEncounterTheme {
   return state.adventure?.pveTheme ?? "classic";
 }
 
+/**
+ * Warden variety (variant expansion §C1): which wardens each theme's boss
+ * floors can field. The FIRST entry of every pool is the historically shipped
+ * warden, so nothing that already existed can become unreachable.
+ *
+ * CAP: every id here also has to obey the wave coupling (§0) — the Calamity
+ * Wave mini-boss pool draws from the same catalog.
+ */
+export const DUNGEON_WARDEN_POOLS: Record<
+  ResolvedPveEncounterTheme,
+  Record<5 | 10, readonly string[]>
+> = {
+  classic: {
+    5: ["minotaur_of_the_depths", "warden_gorgon_matron", "warden_stone_choir"],
+    10: ["floor_wyrm", "warden_bone_colossus"]
+  },
+  doom: {
+    5: ["doom_baron_warden", "doom_hell_knight_warden"],
+    10: ["doom_cyberdemon_tyrant", "doom_archvile_warden"]
+  }
+};
+
+/**
+ * Which warden THIS GAME's floor N fields. Seeded once per (game seed, theme,
+ * floor) with the same `{ salt: false }` construction `dungeonDoorsForFloor`'s
+ * caller uses, so it is identical for every player and every reload and cannot
+ * be rerolled by leaving and re-entering. Variety is across GAMES, never across
+ * attempts (§C3) — the fight has to stay learnable.
+ */
+export function dungeonWardenIdFor(
+  seed: string,
+  theme: ResolvedPveEncounterTheme,
+  floor: 5 | 10
+): string {
+  const pool = DUNGEON_WARDEN_POOLS[theme][floor];
+  const random = createSeededRandom(`${seed}#dungeon-warden-${theme}-${floor}`, { salt: false });
+  return pool[random.nextInt(0, pool.length - 1)] ?? pool[0];
+}
+
 export function dungeonBossId(state: GameState, floor: number): string | undefined {
   const designed = state.adventure?.dungeonSite?.floorBosses?.[floor as 5 | 10];
   if (designed) {
     return designed;
   }
-  return (dungeonThemeOf(state) === "doom"
-    ? DOOM_DUNGEON_BOSS_FLOORS
-    : DUNGEON_BOSS_FLOORS)[floor];
+  const theme = dungeonThemeOf(state);
+  // The two tables still decide WHICH floors carry a warden at all (and name
+  // the historical default); the seeded pool decides which warden it is.
+  const shipped = (theme === "doom" ? DOOM_DUNGEON_BOSS_FLOORS : DUNGEON_BOSS_FLOORS)[floor];
+  if (!shipped) {
+    return undefined;
+  }
+  return dungeonWardenIdFor(state.seed, theme, floor as 5 | 10);
 }
 
 /** Frozen campaign length; older snapshots and unconfigured games remain ten floors. */

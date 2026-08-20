@@ -14,8 +14,16 @@ import {
   setTileRotation
 } from "./adventure-reducer";
 import { combatQualifiesForComputerGuaranteedWin } from "./computer/guaranteed-wins";
-import { DUNGEON_FLOOR_CAP, dungeonFloorDifficulty, dungeonFloorRewardSteps } from "./dungeon";
-import { DUNGEON_FLOOR_BOSSES } from "@/data/anime/bosses";
+import {
+  DUNGEON_FLOOR_CAP,
+  DUNGEON_WARDEN_POOLS,
+  dungeonBossId,
+  dungeonFloorDifficulty,
+  dungeonFloorRewardSteps,
+  dungeonWardenIdFor
+} from "./dungeon";
+import { DUNGEON_FLOOR_BOSSES, RAID_BOSSES } from "@/data/anime/bosses";
+import { WAVE_MINIBOSS_POOLS } from "./monster-waves";
 import { NEUTRAL_PLAYER_ID, type CombatState, type MapSpaceId } from "./state";
 
 /**
@@ -430,21 +438,24 @@ describe("The Dungeon — delving floors", () => {
       throw new Error("expected the boss confirm");
     }
     expect(menu.options.length).toBe(2);
-    expect(menu.prompt).toMatch(/Minotaur of the Depths/);
+    // Which classic floor-5 warden this seed fields comes from the seeded pool
+    // (§C1); every entry is a 2-layer warden with a printed escort.
+    const wardenDef = DUNGEON_FLOOR_BOSSES[dungeonWardenIdFor(state.seed, "classic", 5)];
+    expect(menu.prompt).toMatch(wardenDef.name);
 
     let fight = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     fight = revealFloorArmy(fight);
 
     const boss = Object.values(fight.combat!.units).find((unit) => unit.bossUnit);
     expect(boss, "expected the floor boss on the board").toBeTruthy();
-    expect(boss!.armyStacks).toBe(1); // 2 layers = body + 1 stack bar
+    expect(boss!.armyStacks).toBe(wardenDef.layers - 1); // layers = body + stack bars
     expect(boss!.bankUnit).toBe(true);
     expect(boss!.position).toBe(DEFENDER_BACKLINE[1]);
     const minions = Object.values(fight.combat!.units).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && !unit.bossUnit
     );
     expect(minions.length).toBeGreaterThan(0);
-    expect(minions.length).toBeLessThanOrEqual(DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths.minionCount);
+    expect(minions.length).toBeLessThanOrEqual(wardenDef.minionCount);
   });
 
   it("a designed map's floor WARDEN replaces the theme default on the board (an unknown id degrades to a plain party)", () => {
@@ -474,8 +485,11 @@ describe("The Dungeon — delving floors", () => {
     if (menu?.type !== "CHOOSE_ONE") {
       throw new Error("expected the warden confirm");
     }
+    // CONTROL for §C1: the designer floorBosses entry still WINS over the
+    // seeded warden pool, whichever warden that pool would have picked.
+    const pooled = dungeonWardenIdFor(state.seed, "classic", 5);
     expect(menu.prompt).toMatch(/Gloomfang/);
-    expect(menu.prompt).not.toMatch(/Minotaur/);
+    expect(menu.prompt).not.toMatch(DUNGEON_FLOOR_BOSSES[pooled].name);
     let fight = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     fight = revealFloorArmy(fight);
     const warden = Object.values(fight.combat!.units).find((unit) => unit.bossUnit);
@@ -492,7 +506,7 @@ describe("The Dungeon — delving floors", () => {
     if (controlMenu?.type !== "CHOOSE_ONE") {
       throw new Error("expected the default boss confirm");
     }
-    expect(controlMenu.prompt).toMatch(/Minotaur of the Depths/);
+    expect(controlMenu.prompt).toMatch(DUNGEON_FLOOR_BOSSES[pooled].name);
     let controlFight = apply(control, {
       type: "RESOLVE_VISIT_STEP",
       playerId: "p1",
@@ -501,7 +515,7 @@ describe("The Dungeon — delving floors", () => {
     controlFight = revealFloorArmy(controlFight);
     expect(
       Object.values(controlFight.combat!.units).find((unit) => unit.bossUnit)?.unitDefId
-    ).toBe("boss.minotaur_of_the_depths");
+    ).toBe(`boss.${pooled}`);
 
     // DOCUMENTED LIMIT: the sanitizer keeps any 40-char string, so a hand-edited
     // (typo'd) warden id cannot be resolved — the floor then fields a PLAIN
@@ -551,7 +565,11 @@ describe("The Dungeon — delving floors", () => {
     if (menu?.type !== "CHOOSE_ONE") {
       throw new Error("expected the Doom boss confirm");
     }
-    expect(menu.prompt).toMatch(/Baron Warden/);
+    // Warden variety (§C1): which of the DOOM floor-5 wardens this seed fields
+    // is the seeded pool pick — but it is always a DOOM one, never a classic.
+    const wardenId = dungeonWardenIdFor(state.seed, "doom", 5);
+    expect(DUNGEON_WARDEN_POOLS.doom[5]).toContain(wardenId);
+    expect(menu.prompt).toMatch(DUNGEON_FLOOR_BOSSES[wardenId].name);
 
     let fight = apply(state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: 0 });
     fight = revealFloorArmy(fight);
@@ -559,7 +577,7 @@ describe("The Dungeon — delving floors", () => {
     const minions = Object.values(fight.combat!.units).filter(
       (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && !unit.bossUnit
     );
-    expect(boss?.unitDefId).toBe("boss.doom_baron_warden");
+    expect(boss?.unitDefId).toBe(`boss.${wardenId}`);
     expect(minions.length).toBeGreaterThan(0);
     expect(minions.every((unit) => unit.unitDefId?.startsWith("doom."))).toBe(true);
   });
@@ -663,5 +681,119 @@ describe("The Dungeon — delving floors", () => {
     const repeat = dungeonFloorRewardSteps(state, 10, { repeat: true });
     expect(repeat.some((step) => step.type === "ROLL_TREASURE_DICE")).toBe(true);
     expect(repeat.some((step) => step.type === "SEARCH_SHARED_DECK")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §C1 — warden variety (a seeded pool per theme and floor)
+// ---------------------------------------------------------------------------
+
+describe("The Dungeon — warden variety (§C1)", () => {
+  it("the pick is STABLE per (seed, theme, floor) and really VARIES across games", () => {
+    for (const theme of ["classic", "doom"] as const) {
+      for (const floor of [5, 10] as const) {
+        expect(dungeonWardenIdFor("warden-stable", theme, floor)).toBe(
+          dungeonWardenIdFor("warden-stable", theme, floor)
+        );
+        const rolled = new Set(
+          Array.from({ length: 8 }, (_, index) => dungeonWardenIdFor(`warden-seed-${index}`, theme, floor))
+        );
+        // Real variety, not a constant: at least two of eight fixed seeds differ.
+        expect(rolled.size, `${theme} floor ${floor}`).toBeGreaterThan(1);
+        for (const id of rolled) {
+          expect(DUNGEON_WARDEN_POOLS[theme][floor]).toContain(id);
+        }
+      }
+    }
+  });
+
+  it("the historically shipped warden stays reachable as each pool's first entry", () => {
+    expect(DUNGEON_WARDEN_POOLS.classic[5][0]).toBe("minotaur_of_the_depths");
+    expect(DUNGEON_WARDEN_POOLS.classic[10][0]).toBe("floor_wyrm");
+    expect(DUNGEON_WARDEN_POOLS.doom[5][0]).toBe("doom_baron_warden");
+    expect(DUNGEON_WARDEN_POOLS.doom[10][0]).toBe("doom_cyberdemon_tyrant");
+  });
+
+  it("a classic game never fields a Doom warden and vice versa (across 8 seeds, through the real dungeonBossId)", () => {
+    const doomPool = new Set([...DUNGEON_WARDEN_POOLS.doom[5], ...DUNGEON_WARDEN_POOLS.doom[10]]);
+    const classicPool = new Set([
+      ...DUNGEON_WARDEN_POOLS.classic[5],
+      ...DUNGEON_WARDEN_POOLS.classic[10]
+    ]);
+    for (let index = 0; index < 8; index += 1) {
+      const classic = dungeonGame(`warden-theme-classic-${index}`);
+      const doom = dungeonGame(`warden-theme-doom-${index}`, {
+        anime: { enabled: true, dungeon: true, pveTheme: "doom" }
+      });
+      for (const floor of [5, 10] as const) {
+        const classicId = dungeonBossId(classic, floor)!;
+        const doomId = dungeonBossId(doom, floor)!;
+        expect(classicPool.has(classicId), classicId).toBe(true);
+        expect(doomPool.has(classicId), classicId).toBe(false);
+        expect(doomPool.has(doomId), doomId).toBe(true);
+        expect(classicPool.has(doomId), doomId).toBe(false);
+      }
+      // The precedence rung really reads the pool (not the old fixed table):
+      // dungeonBossId agrees with the seeded pick for this game's seed.
+      expect(dungeonBossId(classic, 5)).toBe(dungeonWardenIdFor(classic.seed, "classic", 5));
+      expect(dungeonBossId(doom, 10)).toBe(dungeonWardenIdFor(doom.seed, "doom", 10));
+      // Non-boss floors still field no warden at all.
+      expect(dungeonBossId(classic, 4)).toBeUndefined();
+    }
+  });
+
+  it("CONTROL: a designer floorBosses entry still WINS over the seeded pool", () => {
+    const state = dungeonGame("warden-designed-wins", {
+      customMapPreset: { dungeon: { floorBosses: { 5: "floor_wyrm", 10: "minotaur_of_the_depths" } } }
+    });
+    expect(dungeonBossId(state, 5)).toBe("floor_wyrm");
+    expect(dungeonBossId(state, 10)).toBe("minotaur_of_the_depths");
+  });
+
+  it("every warden the wave mini-boss pool can draw stays inside the wave caps, and the caster warden is EXCLUDED", () => {
+    for (const theme of ["classic", "doom"] as const) {
+      for (const id of WAVE_MINIBOSS_POOLS[theme]) {
+        const def = DUNGEON_FLOOR_BOSSES[id];
+        expect(def, `${theme} → ${id}`).toBeTruthy();
+        // §0 coupling: a fatter warden here silently inflates Calamity Wave 4+.
+        expect(def.layers, `${id} layers`).toBeLessThanOrEqual(3);
+        expect(def.minionCount, `${id} minions`).toBeLessThanOrEqual(3);
+      }
+      // §C4: the Rime Chant warden never leads a wave — its round-start caster
+      // rotation would stack with the wave's own battle event.
+      expect(WAVE_MINIBOSS_POOLS[theme]).not.toContain("warden_stone_choir");
+    }
+    // …and it IS a real, reachable dungeon warden (the exclusion is deliberate,
+    // not an id that simply does not exist).
+    expect(DUNGEON_WARDEN_POOLS.classic[5]).toContain("warden_stone_choir");
+    expect(DUNGEON_FLOOR_BOSSES.warden_stone_choir.abilities).toContain("boss-spell-frost");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §D — the Dungeon takes the themed escort but NEVER tokens
+// ---------------------------------------------------------------------------
+
+describe("The Dungeon — escorts (§D1 yes, §D2 never)", () => {
+  it("a warden with an escortPool fields it, and NO dungeon escort ever carries a Stack Token (CONTROL for the raid-only §D2)", () => {
+    // `mother_demon` is a 5-layer boss WITH an escort pool — at a raid lair that
+    // layer count would hand out 2 Stack Tokens (§D2). Named as a designed floor
+    // warden it proves both halves at once.
+    const state = dungeonGame("dungeon-escort-pool", {
+      customMapPreset: { dungeon: { floorBosses: { 5: "mother_demon" } } }
+    });
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.dungeonFloor = 5;
+    let fight = visitGate(state, fieldId, 0);
+    fight = revealFloorArmy(fight);
+
+    const escorts = Object.values(fight.combat!.units).filter(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && !unit.bossUnit
+    );
+    expect(escorts.length).toBe(RAID_BOSSES.mother_demon.minionCount);
+    for (const unit of escorts) {
+      expect(RAID_BOSSES.mother_demon.escortPool!, unit.unitDefId).toContain(unit.unitDefId);
+      expect(unit.stackToken ?? null, `${unit.unitDefId} must be plain in the Dungeon`).toBeNull();
+    }
   });
 });

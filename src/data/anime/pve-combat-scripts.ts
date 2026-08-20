@@ -294,16 +294,11 @@ export const PVE_COMBAT_SCRIPT_DEFINITIONS: Record<string, CombatScriptDefinitio
  * already belongs to exactly one theme, and a DESIGNER lair may place any boss
  * in any themed game — a theme-keyed table would silently drop its script).
  * A boss with no entry fights clean.
- *
- * The four ids marked PHASE 2 name bosses that do not exist yet (they ship with
- * §B/§C). An entry for an id that never fights simply never fires, so listing
- * them now keeps Phase 2 data-only.
  */
 export const PVE_LAIR_SCRIPT_IDS: Record<string, readonly string[]> = {
   abyss_kraken: ["pve_lair_flooded"],
   calamity_dragon: ["pve_lair_ash_storm"],
   avatar_of_erebos: ["pve_lair_unmaking_presence"],
-  // PHASE 2 bosses (§B) — inert until those definitions ship.
   lich_archon: ["pve_lair_healing_miasma"],
   mother_demon: ["pve_lair_thickening_nest"]
 };

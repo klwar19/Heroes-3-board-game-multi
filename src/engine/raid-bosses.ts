@@ -48,10 +48,21 @@ const CLASSIC_RAID_BOSS_IDS = [
   "colossal_titan",
   "abyss_kraken",
   "calamity_dragon",
-  "avatar_of_erebos"
+  "avatar_of_erebos",
+  // Variant expansion §B1–B4.
+  "lich_archon",
+  "hydra_matriarch",
+  "basilisk_queen",
+  "wailing_banshee"
 ] as const;
 /** Exported for the theme-pool test: a classic game must never roll these. */
-export const DOOM_RAID_BOSS_IDS = ["cyberdemon_prime", "spider_overmind"] as const;
+export const DOOM_RAID_BOSS_IDS = [
+  "cyberdemon_prime",
+  "spider_overmind",
+  // Variant expansion §B5–B6.
+  "archvile_ascendant",
+  "mother_demon"
+] as const;
 
 /** Whether the Raid Bosses module is ON for this game (presence = frozen ON). */
 export function raidBossesEnabled(state: GameState): boolean {

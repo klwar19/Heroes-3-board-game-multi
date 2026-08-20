@@ -37,6 +37,7 @@ import {
   grantCommanderArtifactCard,
   queueNeutralCommanderArtifactOffer
 } from "./commander-artifacts";
+import type { RaidBossDefinition } from "@/data/anime/bosses";
 import { CREATURE_BANKS, rollStackTokenStat, type CreatureBankId } from "@/data/map/creature-banks";
 import { isMarketLocation, locationDefinitions, TRADE_RATES } from "@/data/map/locations";
 import { recordVpHeroDefeat, recordVpSurrender, recordVpUtopiaDefeat } from "./victory-points";
@@ -8242,7 +8243,14 @@ export function revealNeutralArmy(
    * cell (back-center) instead of the initiative auto-placement; a drawn
    * guard auto-placed onto that cell moves to the next free defender cell.
    */
-  extraUnits: CombatUnitState[] = []
+  extraUnits: CombatUnitState[] = [],
+  /**
+   * Optional augment applied to the DRAWN guards only (never the pre-minted
+   * extras), at the same seam the Calamity-Wave augment uses: after the mint,
+   * before placement — so a folded Initiative really orders the guards. Used by
+   * the raid-boss escort Stack Tokens (§D2).
+   */
+  augmentDrawnUnits?: (units: CombatUnitState[]) => void
 ): void {
   const combat = state.combat;
   if (!combat || combat.context.kind !== "neutral") {
@@ -8300,6 +8308,7 @@ export function revealNeutralArmy(
       applyNeutralRoundsRank(unit, state.round);
     }
   }
+  augmentDrawnUnits?.(neutralUnits);
 
   if (neutralUnits.length === 0 && extraUnits.length === 0) {
     // The tier decks ran dry: the guards never show up and the field falls.
@@ -8534,9 +8543,91 @@ function applyWaveUnitAugments(
 }
 
 /**
+ * Themed escort (variant expansion §D1): `minionCount` draws built by cycling
+ * the boss's own `escortPool` from a seeded start index, emitted in the SAME
+ * `NeutralDraw` shape `drawPveThemedArmy` returns (`bankGuard: true`, exactly
+ * like the Doom branch) so recycling, targeting and XP are unchanged. Returns
+ * null — the caller then keeps today's level draw — when the boss has no pool
+ * or ANY id in it does not resolve to a unit definition, so a typo can never
+ * produce a short or empty escort.
+ */
+function themedEscortDraws(
+  state: GameState,
+  def: RaidBossDefinition,
+  seedScope: string
+): NeutralDraw[] | null {
+  const pool = def.escortPool;
+  const count = Math.max(0, def.minionCount);
+  if (!pool || pool.length === 0 || count === 0) {
+    return null;
+  }
+  if (pool.some((unitDefId) => !coreUnitDefinitions[unitDefId])) {
+    return null;
+  }
+  const random = createSeededRandom(
+    `${state.combat?.dice.seed ?? state.seed}#boss-escort#${seedScope}`,
+    { salt: false }
+  );
+  const start = random.nextInt(0, pool.length - 1);
+  const draws: NeutralDraw[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const unitDefId = pool[(start + index) % pool.length]!;
+    draws.push({ unitDefId, tier: coreUnitDefinitions[unitDefId]!.tier, bankGuard: true });
+  }
+  return draws;
+}
+
+/**
+ * Escort Stack Tokens (variant expansion §D2, RAID LAIRS ONLY — the Dungeon
+ * deals fair): an ESCALATED boss brings a visibly tougher retinue. At
+ * `layersLeft >= 4`, `min(2, layersLeft - 3)` escort bodies gain a real Stack
+ * Token through the SAME seam waves use (`unit.stackToken` then
+ * `applyUnitCurrentSide`), including the partial Fisher–Yates recipient pick
+ * and the "no one statistic more than twice" reroll. The reward is untouched:
+ * this is pressure to kill the boss early, not a payout change.
+ */
+function applyBossEscortStackTokens(
+  state: GameState,
+  units: CombatUnitState[],
+  layersLeft: number,
+  seedScope: string
+): void {
+  const tokenCount = Math.min(2, layersLeft - 3, units.length);
+  if (tokenCount <= 0) {
+    return;
+  }
+  const ruleset = getRuleset(state);
+  const overrides = unitSideRuleOverrides(state);
+  const random = createSeededRandom(
+    `${state.combat?.dice.seed ?? state.seed}#boss-escort-token#${seedScope}`,
+    { salt: false }
+  );
+  const order = units.map((_, index) => index);
+  for (let i = 0; i < tokenCount; i += 1) {
+    const j = random.nextInt(i, order.length - 1);
+    [order[i], order[j]] = [order[j]!, order[i]!];
+  }
+  const tokenIndices = new Set(order.slice(0, tokenCount));
+  const tokenCounts: Partial<Record<string, number>> = {};
+  units.forEach((unit, index) => {
+    if (unit.bankUnit || !unit.unitDefId || !tokenIndices.has(index)) {
+      return;
+    }
+    let stat = rollStackTokenStat(random);
+    for (let guard = 0; (tokenCounts[stat] ?? 0) >= 2 && guard < 64; guard += 1) {
+      stat = rollStackTokenStat(random);
+    }
+    tokenCounts[stat] = (tokenCounts[stat] ?? 0) + 1;
+    unit.stackToken = stat;
+    applyUnitCurrentSide(unit, ruleset, overrides);
+  });
+}
+
+/**
  * Raid Bosses (§6.5.2): reveal the layered boss — rebuilt from its REMAINING
  * layers (wounds persist between attempts) — pinned to the back-center cell,
- * with its minion escort drawn from the neutral decks.
+ * with its minion escort drawn from the neutral decks (or, when the boss
+ * prints an `escortPool`, from that themed pool — §D1).
  */
 function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
   const adventure = state.adventure;
@@ -8547,15 +8638,16 @@ function revealRaidBossArmy(state: GameState, bossInstanceId: string): void {
     return;
   }
   const bossUnit = makeRaidBossCombatUnit(def, boss.layersLeft, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
-  const minions = drawPveThemedArmy(
-    state,
-    Math.max(1, Math.min(7, def.minionLevel)),
-    `raid-boss-${bossInstanceId}`
-  ).slice(
-    0,
-    Math.max(0, def.minionCount)
-  );
-  revealNeutralArmy(state, minions, [bossUnit]);
+  const minions =
+    themedEscortDraws(state, def, `raid-${bossInstanceId}`) ??
+    drawPveThemedArmy(
+      state,
+      Math.max(1, Math.min(7, def.minionLevel)),
+      `raid-boss-${bossInstanceId}`
+    ).slice(0, Math.max(0, def.minionCount));
+  revealNeutralArmy(state, minions, [bossUnit], (escortUnits) => {
+    applyBossEscortStackTokens(state, escortUnits, boss.layersLeft, bossInstanceId);
+  });
 }
 
 /**
@@ -8568,10 +8660,14 @@ function revealDungeonFloorArmy(state: GameState, floor: number): void {
   const def = bossId ? resolveBossDefinition(state, bossId) : null;
   if (def) {
     const bossUnit = makeRaidBossCombatUnit(def, def.layers, `boss_${def.id}`, DEFENDER_BACKLINE[1]);
-    const minions = drawDungeonArmy(state, floor, Math.max(1, Math.min(7, def.minionLevel))).slice(
-      0,
-      Math.max(0, def.minionCount)
-    );
+    // §D1 applies here too; §D2 (escort Stack Tokens) deliberately does NOT —
+    // the Dungeon deals fair, so no augment callback is passed.
+    const minions =
+      themedEscortDraws(state, def, `floor-${floor}`) ??
+      drawDungeonArmy(state, floor, Math.max(1, Math.min(7, def.minionLevel))).slice(
+        0,
+        Math.max(0, def.minionCount)
+      );
     revealNeutralArmy(state, minions, [bossUnit]);
     return;
   }

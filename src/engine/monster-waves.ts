@@ -54,9 +54,35 @@ export const WAVE_VETERAN_RANK_CAP = 3;
  * (§6.7.3), reused so a wave boss ships with real art, real HP layers and a real
  * combat ability rather than a decorative new stub.
  */
+/*
+ * Wave coupling (variant expansion §C4, an EXPLICIT decision — this list is
+ * hand-written on purpose and must never be derived from the warden catalog):
+ * the new Dungeon wardens join here EXCEPT `warden_stone_choir`. That one is
+ * excluded because it is a round-start CASTER (`boss-spell-frost`), and a
+ * caster rotation on a wave mini-boss stacks with the wave's own battle event
+ * — which is exactly the wave-4+ difficulty cliff §0 warns about. Pinned by
+ * `monster-waves.test.ts`.
+ *
+ * KNOWN ASYMMETRY (deliberate, from the design authority): `doom_archvile_warden`
+ * also carries a round-start rotation (`boss-spell-infernal`) yet IS listed, so
+ * the "no casters on a wave boss" reading is not an invariant — only the stone
+ * choir is barred, and it is the harsher of the two (its Rime Chant debuffs the
+ * WHOLE attacking side while a damage cap slows the kill). If wave 4+ proves too
+ * hard in playtest, drop `doom_archvile_warden` here first (data-only).
+ */
 export const WAVE_MINIBOSS_POOLS = {
-  classic: ["minotaur_of_the_depths", "floor_wyrm"],
-  doom: ["doom_baron_warden", "doom_cyberdemon_tyrant"]
+  classic: [
+    "minotaur_of_the_depths",
+    "floor_wyrm",
+    "warden_gorgon_matron",
+    "warden_bone_colossus"
+  ],
+  doom: [
+    "doom_baron_warden",
+    "doom_cyberdemon_tyrant",
+    "doom_hell_knight_warden",
+    "doom_archvile_warden"
+  ]
 } as const;
 /** Pillage on a loss/retreat: lose 3 gold (floored at 0) + one holding overrun. */
 export const WAVE_PILLAGE_GOLD = 3;

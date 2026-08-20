@@ -2,10 +2,21 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { listAllBossDefinitions, RAID_BOSS_ABILITY_CHOICES, RAID_BOSSES } from "@/data/anime/bosses";
+import {
+  DUNGEON_FLOOR_BOSSES,
+  listAllBossDefinitions,
+  RAID_BOSS_ABILITY_CHOICES,
+  RAID_BOSSES
+} from "@/data/anime/bosses";
+import { PVE_LAIR_SCRIPT_IDS } from "@/data/anime/pve-combat-scripts";
 import { unitAbilities } from "@/data/units/abilities";
 import { applyAction, createInitialGameState, getLegalActions } from "./index";
-import { customBossToDefinition, makeRaidBossCombatUnit } from "./raid-bosses";
+import {
+  customBossToDefinition,
+  DOOM_RAID_BOSS_IDS,
+  makeRaidBossCombatUnit,
+  scheduledBossPool
+} from "./raid-bosses";
 import { deathStareFollowUpAppliesTo, getUnitAbilityDefinitions, moraleLockedForPlayer } from "./unit-abilities";
 import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
 
@@ -512,5 +523,83 @@ describe("Fear — the enemy cannot USE morale while the Fear unit lives", () =>
       controlMid.pendingChoice?.type === "ATTACK_DIE_REROLL" &&
         controlMid.pendingChoice.rerollSources.some((source) => source.morale)
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §B/§C — the new bosses and wardens are real, wired content
+// ---------------------------------------------------------------------------
+
+describe("Variant expansion bosses & wardens (§B/§C)", () => {
+  const NEW_RAID_BOSSES = [
+    "lich_archon",
+    "hydra_matriarch",
+    "basilisk_queen",
+    "wailing_banshee",
+    "archvile_ascendant",
+    "mother_demon"
+  ];
+  const NEW_WARDENS = [
+    "warden_gorgon_matron",
+    "warden_stone_choir",
+    "warden_bone_colossus",
+    "doom_hell_knight_warden",
+    "doom_archvile_warden"
+  ];
+
+  it("every new definition ships in the right catalog with at least one WIRED ability", () => {
+    for (const id of NEW_RAID_BOSSES) {
+      const def = RAID_BOSSES[id];
+      expect(def, id).toBeTruthy();
+      expect(def.abilities.length, id).toBeGreaterThan(0);
+    }
+    for (const id of NEW_WARDENS) {
+      const def = DUNGEON_FLOOR_BOSSES[id];
+      expect(def, id).toBeTruthy();
+      expect(def.abilities.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it("each new definition's abilityText is EXACTLY its wired abilities' printed texts (nothing decorative)", () => {
+    for (const id of [...NEW_RAID_BOSSES, ...NEW_WARDENS]) {
+      const def = RAID_BOSSES[id] ?? DUNGEON_FLOOR_BOSSES[id];
+      expect(def.abilityText, id).toBe(
+        def.abilities.map((abilityId) => unitAbilities[abilityId].text).join(" ")
+      );
+    }
+  });
+
+  const classicPool = scheduledBossPool({} as unknown as GameState);
+
+  it("every new boss lands in exactly ONE theme pool, and the four caster rotations are actually carried", () => {
+    for (const id of ["lich_archon", "hydra_matriarch", "basilisk_queen", "wailing_banshee"]) {
+      expect(classicPool, id).toContain(id);
+      expect(DOOM_RAID_BOSS_IDS as readonly string[], id).not.toContain(id);
+    }
+    for (const id of ["archvile_ascendant", "mother_demon"]) {
+      expect(DOOM_RAID_BOSS_IDS as readonly string[], id).toContain(id);
+      expect(classicPool, id).not.toContain(id);
+    }
+    // The Phase-1 caster arms are in play — each rotation id is carried by a
+    // shipped monster (an unused rotation would be dead content).
+    const carried = new Set(
+      listAllBossDefinitions().flatMap((def) => def.abilities)
+    );
+    for (const rotation of [
+      "boss-spell-necrotic",
+      "boss-spell-frost",
+      "boss-spell-infernal",
+      "boss-spell-mindflay"
+    ]) {
+      expect(carried, rotation).toContain(rotation);
+    }
+  });
+
+  it("the two Rift-Lair scripts written for Phase-2 bosses now name REAL bosses", () => {
+    for (const bossId of Object.keys(PVE_LAIR_SCRIPT_IDS)) {
+      expect(RAID_BOSSES[bossId], bossId).toBeTruthy();
+    }
+    expect(PVE_LAIR_SCRIPT_IDS.lich_archon).toBeTruthy();
+    expect(PVE_LAIR_SCRIPT_IDS.mother_demon).toBeTruthy();
   });
 });

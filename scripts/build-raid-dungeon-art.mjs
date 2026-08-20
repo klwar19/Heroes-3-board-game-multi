@@ -33,7 +33,22 @@ const BOSSES = [
   { id: "cyberdemon_prime", name: "CYBERDEMON PRIME", title: "Siege Lord of Hell", layers: 6, accent: "#ff6b35" },
   { id: "spider_overmind", name: "SPIDER OVERMIND", title: "Architect of the Invasion", layers: 5, accent: "#a9ff70" },
   { id: "doom_baron_warden", name: "BARON WARDEN", title: "Keeper of Infernal Floor 5", layers: 2, accent: "#8dff55", topPadding: 120 },
-  { id: "doom_cyberdemon_tyrant", name: "CYBERDEMON TYRANT", title: "Keeper of Infernal Floor 10", layers: 3, accent: "#ff7a32" }
+  { id: "doom_cyberdemon_tyrant", name: "CYBERDEMON TYRANT", title: "Keeper of Infernal Floor 10", layers: 3, accent: "#ff7a32" },
+  // Variant expansion §B/§C. ART PENDING: the ImageGen masters for these eleven
+  // are not in scripts/anime-art/raw/bosses yet, so this script cannot render
+  // them and `boss-abilities.test.ts`'s art-existence sweep fails for them until
+  // the masters land. Stats/titles/layers here must match src/data/anime/bosses.ts.
+  { id: "lich_archon", name: "LICH ARCHON", title: "Tongue of the Cold Grave", layers: 5, accent: "#7bf2a8" },
+  { id: "hydra_matriarch", name: "HYDRA MATRIARCH", title: "Nine Jaws of the Fen", layers: 4, accent: "#7fd4a1" },
+  { id: "basilisk_queen", name: "BASILISK QUEEN", title: "Gaze of the Stone Garden", layers: 4, accent: "#e5b34a" },
+  { id: "wailing_banshee", name: "WAILING BANSHEE", title: "Chorus of the Unmourned", layers: 4, accent: "#cfe3ff" },
+  { id: "archvile_ascendant", name: "ARCHVILE ASCENDANT", title: "Choir of the Furnace", layers: 5, accent: "#9dff5a" },
+  { id: "mother_demon", name: "MOTHER DEMON", title: "She Who Spawns", layers: 5, accent: "#ff5f6d" },
+  { id: "warden_gorgon_matron", name: "GORGON MATRON", title: "Warden of Floor 5", layers: 2, accent: "#c9a227" },
+  { id: "warden_stone_choir", name: "THE STONE CHOIR", title: "Warden of Floor 5", layers: 2, accent: "#7fb3ff" },
+  { id: "warden_bone_colossus", name: "BONE COLOSSUS", title: "Warden of Floor 10", layers: 3, accent: "#b9ffb0" },
+  { id: "doom_hell_knight_warden", name: "HELL KNIGHT WARDEN", title: "Keeper of Infernal Floor 5", layers: 2, accent: "#8dff55" },
+  { id: "doom_archvile_warden", name: "ARCHVILE WARDEN", title: "Keeper of Infernal Floor 10", layers: 3, accent: "#ffa23d" }
 ];
 
 const MAP_OBJECTS = [

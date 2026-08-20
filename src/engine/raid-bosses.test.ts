@@ -8,10 +8,13 @@ import {
 import { beginFieldVisit, startAdventureRound } from "./adventure";
 import { DEFENDER_BACKLINE, finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { markUnitRemovedIfNeeded } from "./combat-units";
-import { RAID_BOSSES } from "@/data/anime/bosses";
+import { RAID_BOSSES, type RaidBossDefinition } from "@/data/anime/bosses";
 import { DOOM_RAID_BOSS_IDS, makeRaidBossCombatUnit, scheduledBossPool } from "./raid-bosses";
 import { MAX_CUSTOM_WAVE_OVERRIDES, sanitizeCustomMapPreset } from "./map-preset";
-import { NEUTRAL_PLAYER_ID, type MapFieldState } from "./state";
+import { coreUnitDefinitions } from "@/data/factions/units";
+import { stackTokenDelta } from "@/data/map/creature-banks";
+import { getLegalActions } from "./index";
+import { NEUTRAL_PLAYER_ID, type CombatUnitState, type MapFieldState } from "./state";
 
 /**
  * Raid Bosses (§6.5) — every claim engine-enforced with CONTROLs: the
@@ -183,7 +186,7 @@ describe("Raid Bosses — spawn schedule", () => {
       anime: { enabled: true, raidBosses: true, pveTheme: "doom" }
     });
     expect(doom.adventure?.pveTheme).toBe("doom");
-    expect(scheduledBossPool(doom).sort()).toEqual(["cyberdemon_prime", "spider_overmind"]);
+    expect(scheduledBossPool(doom).sort()).toEqual([...DOOM_RAID_BOSS_IDS].sort());
     // The EFFECT: the boss actually spawned is one of them.
     const spawned = spawnLair(doom);
     expect(DOOM_RAID_BOSS_IDS).toContain(doom.adventure!.raidBosses![spawned.instanceId].defId);
@@ -193,7 +196,9 @@ describe("Raid Bosses — spawn schedule", () => {
     const classic = raidGame("raid-doom-pool");
     expect(classic.adventure?.pveTheme).toBe("classic");
     const classicPool = scheduledBossPool(classic);
-    expect(classicPool.length).toBe(5);
+    // The five original Erathian bosses + the four added by the variant
+    // expansion (§B1–B4); the Doom ids below prove the split still holds.
+    expect(classicPool.length).toBe(9);
     for (const doomId of DOOM_RAID_BOSS_IDS) {
       expect(classicPool).not.toContain(doomId);
       expect(Object.keys(RAID_BOSSES)).toContain(doomId);
@@ -500,5 +505,158 @@ describe("Designer sanitize — the monsterWaves / raidBosses preset blocks", ()
     expect(roundTripped?.monsterWaves).toEqual(original?.monsterWaves);
     expect(roundTripped?.raidBosses).toEqual(original?.raidBosses);
     expect(roundTripped?.dungeon).toEqual(original?.dungeon);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §D — escort variety (themed pools + high-layer Stack Tokens)
+// ---------------------------------------------------------------------------
+
+/** Finish deployment so the boss army actually reveals. */
+function revealBossArmy(state: GameState): GameState {
+  const placement = getLegalActions(state, "p1").find(
+    (entry) => entry.action.type === "PLACE_COMBAT_UNIT"
+  );
+  expect(placement, "expected a unit placement offer").toBeTruthy();
+  let next = apply(state, placement!.action);
+  next = apply(next, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  return next;
+}
+
+function escortUnits(state: GameState): CombatUnitState[] {
+  return Object.values(state.combat!.units).filter(
+    (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && !unit.bossUnit
+  );
+}
+
+/** Open the lair fight for a chosen boss def at a chosen wound level. */
+function fightBoss(seed: string, defId: string, layersLeft: number): GameState {
+  const state = raidGame(seed);
+  const { instanceId, fieldId } = spawnLair(state);
+  const record = state.adventure!.raidBosses![instanceId];
+  record.defId = defId;
+  record.layersLeft = layersLeft;
+  return revealBossArmy(challengeLair(state, fieldId));
+}
+
+function neutralDeckSize(state: GameState): number {
+  return (["bronze", "silver", "gold", "azure"] as const).reduce(
+    (total, tier) => total + (state.decks[`neutral-${tier}`]?.drawPile.length ?? 0),
+    0
+  );
+}
+
+describe("Raid Bosses — themed escorts (§D1)", () => {
+  it("a boss with an escortPool fields exactly minionCount bodies, ALL from its pool, and draws NO neutral deck cards", () => {
+    const pool = RAID_BOSSES.lich_archon.escortPool!;
+    const state = raidGame("raid-escort-pool");
+    const { instanceId, fieldId } = spawnLair(state);
+    const record = state.adventure!.raidBosses![instanceId];
+    record.defId = "lich_archon";
+    record.layersLeft = 3; // below the §D2 token threshold — escorts stay plain
+    const before = neutralDeckSize(state);
+    const fight = revealBossArmy(challengeLair(state, fieldId));
+
+    const escorts = escortUnits(fight);
+    expect(escorts.length).toBe(RAID_BOSSES.lich_archon.minionCount);
+    for (const unit of escorts) {
+      expect(pool, unit.unitDefId).toContain(unit.unitDefId);
+      // The pool mints its own bodies (bankGuard), so nothing left the decks.
+      expect(unit.bankGuard).toBe(true);
+    }
+    expect(neutralDeckSize(fight)).toBe(before);
+  });
+
+  it("CONTROL: a boss WITHOUT a pool keeps the level draw — its escort really comes off the Neutral decks", () => {
+    const state = raidGame("raid-escort-control");
+    const { instanceId, fieldId } = spawnLair(state);
+    const record = state.adventure!.raidBosses![instanceId];
+    record.defId = "goblin_king";
+    record.layersLeft = 3;
+    expect(RAID_BOSSES.goblin_king.escortPool).toBeUndefined();
+    const before = neutralDeckSize(state);
+    const fight = revealBossArmy(challengeLair(state, fieldId));
+
+    const escorts = escortUnits(fight);
+    expect(escorts.length).toBeGreaterThan(0);
+    // The observable difference from the pool path: cards left the shared decks.
+    expect(neutralDeckSize(fight)).toBeLessThan(before);
+  });
+
+  it("an UNRESOLVABLE pool id falls the whole escort back to the level draw (never a short or empty escort)", () => {
+    const original: RaidBossDefinition = RAID_BOSSES.lich_archon;
+    try {
+      RAID_BOSSES.lich_archon = {
+        ...original,
+        escortPool: ["neutral.zombies", "neutral.no_such_unit"]
+      };
+      const state = raidGame("raid-escort-typo");
+      const { instanceId, fieldId } = spawnLair(state);
+      const record = state.adventure!.raidBosses![instanceId];
+      record.defId = "lich_archon";
+      record.layersLeft = 3;
+      const before = neutralDeckSize(state);
+      const fight = revealBossArmy(challengeLair(state, fieldId));
+      const escorts = escortUnits(fight);
+      expect(escorts.length).toBeGreaterThan(0);
+      expect(neutralDeckSize(fight)).toBeLessThan(before);
+    } finally {
+      RAID_BOSSES.lich_archon = original;
+    }
+  });
+});
+
+describe("Raid Bosses — escort Stack Tokens at high layers (§D2)", () => {
+  /** The folded stat really moved: exactly the token's printed delta. */
+  function expectTokenFolded(unit: CombatUnitState): void {
+    const side = coreUnitDefinitions[unit.unitDefId!]?.neutral;
+    expect(side, unit.unitDefId).toBeTruthy();
+    const stat = unit.stackToken!;
+    const delta = stackTokenDelta(stat);
+    const live =
+      stat === "health" ? unit.maxHealth : stat === "attack" ? unit.attack : stat === "defense" ? unit.defense : unit.initiative;
+    const base =
+      stat === "health" ? side!.health : stat === "attack" ? side!.attack : stat === "defense" ? side!.defense : side!.initiative;
+    expect(live, `${unit.unitDefId} ${stat}`).toBe(base + delta);
+  }
+
+  it("at layersLeft 5 exactly 2 escorts carry a Stack Token and their folded stat really moved", () => {
+    const fight = fightBoss("raid-escort-tokens", "lich_archon", 5);
+    const escorts = escortUnits(fight);
+    const tokened = escorts.filter((unit) => unit.stackToken);
+    expect(tokened.length).toBe(2);
+    for (const unit of tokened) {
+      expectTokenFolded(unit);
+    }
+    // The untokened escort proves the fold is the TOKEN's doing, not a blanket buff.
+    for (const unit of escorts.filter((unit) => !unit.stackToken)) {
+      const side = coreUnitDefinitions[unit.unitDefId!]!.neutral!;
+      expect(unit.attack).toBe(side.attack);
+      expect(unit.maxHealth).toBe(side.health);
+    }
+  });
+
+  it("at layersLeft 4 exactly 1 escort carries one; CONTROL at layersLeft 3 → zero tokens", () => {
+    expect(escortUnits(fightBoss("raid-escort-4", "lich_archon", 4)).filter((u) => u.stackToken).length).toBe(1);
+    expect(escortUnits(fightBoss("raid-escort-3", "lich_archon", 3)).filter((u) => u.stackToken).length).toBe(0);
+  });
+});
+
+describe("Raid Bosses — a full seeded lair fight reaches an outcome (no stall)", () => {
+  it("driving ONLY legal actions, the fight settles and no window is left unanswerable", () => {
+    let state = fightBoss("raid-no-stall", "lich_archon", 5);
+    for (let step = 0; step < 400 && state.combat && !state.combat.outcome; step += 1) {
+      const actor = (["p1", "p2"] as const).find(
+        (playerId) => getLegalActions(state, playerId).length > 0
+      );
+      expect(actor, `nobody could act at step ${step} (a stalled table)`).toBeTruthy();
+      const offers = getLegalActions(state, actor!);
+      const pick =
+        offers.find((entry) => entry.action.type === "ATTACK_UNIT") ??
+        offers.find((entry) => entry.action.type !== "RETREAT_FROM_COMBAT" && entry.action.type !== "SURRENDER_COMBAT") ??
+        offers[0];
+      state = apply(state, pick!.action);
+    }
+    expect(state.combat?.outcome ?? "settled").toBeTruthy();
   });
 });
