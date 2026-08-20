@@ -51,7 +51,38 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
   "ability.necromancy",
   "ability.scouting",
   "ability.tactics",
-  "ability.wisdom"
+  "ability.wisdom",
+  // ---- Spells (all TWENTY-SIX of the sheet's spell cards are wired) --------
+  // AIR
+  "spell.haste",
+  "spell.fortune",
+  "spell.precision",
+  "spell.view_air",
+  "spell.counterstrike",
+  "spell.chain_lightning",
+  // EARTH
+  "spell.slow",
+  "spell.shield",
+  "spell.stone_skin",
+  "spell.anti_magic",
+  "spell.town_portal",
+  // FIRE
+  "spell.visions",
+  "spell.fire_wall",
+  "spell.misfortune",
+  "spell.bloodlust",
+  "spell.curse",
+  "spell.inferno",
+  "spell.slayer",
+  "spell.frenzy",
+  // WATER
+  "spell.forgetfulness",
+  "spell.bless",
+  "spell.weakness",
+  "spell.dispel",
+  "spell.cure",
+  "spell.mirth",
+  "spell.prayer"
 ] as const;
 
 /**
@@ -62,7 +93,9 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
  * `COMMUNITY_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  */
 export const COMMUNITY_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {
-  // EMPTY for the ABILITIES family: all twelve sheet abilities are wired. The
+  // EMPTY for the ABILITIES and SPELLS families: all twelve sheet abilities and
+  // all twenty-six sheet spells are wired (per-spell readings and their limits
+  // are stated on each entry in `community-spells-balance.ts`). The
   // last two (Necromancy's Recruit-or-Reinforce dwelling gate and Intelligence's
   // "play a spell from your discard pile") landed with the `anySpell` /
   // `castEnablerMode` cast seam and the `RECRUIT_FEW_AT_COST` visit step. Keep

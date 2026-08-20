@@ -796,9 +796,32 @@ export type ActiveEffectModifier =
       type: "REROLL_ENEMY_PLUS_ONE";
     }
   | {
+      /**
+       * Community Balance Pack Misfortune: "Choose an attack die roll result for
+       * the next N enemy attack rolls." While the effect lives, ONE die of every
+       * ENEMY Attack roll is SET to `face` — the caster picks the result, and on
+       * the three-face Attack die (-1 / 0 / +1) the caster attacking nobody
+       * always wants the worst, so the engine sets the die that lowers the
+       * enemy's outcome the most (the Negative-Morale set-die reading, pointed at
+       * the other side). Read in `applyEnemyDieSetCurses`; the remaining rolls
+       * live on the effect state's `dieSetsRemaining`.
+       */
+      type: "SET_ENEMY_ATTACK_DIE";
+      face: number;
+    }
+  | {
       type: "ATTACK_DIE_REROLL";
       maxUsesPerRoll: number;
       consumeEffectOnUse: boolean;
+      /**
+       * Community Balance Pack Fortune: "You may CHOOSE the resultant die side."
+       * Instead of rerolling, spending a use SETS one die of the current roll to
+       * this face — the `setDieFace` source the Positive-Morale "set a die to +1"
+       * card already drives (`rerollSourceAvailableFor` / the `useSetDie` branch
+       * of `rerollPendingChoice`), so it gets its own button and never competes
+       * with a plain reroll.
+       */
+      setDieFace?: number;
       /**
        * Fortune: "resolve the result of your choice." Spending this reroll unlocks
        * a FREE pick among every candidate rolled this window (the original roll and
@@ -1357,6 +1380,13 @@ export type ActiveEffectDefinition = {
    */
   activationsRemaining?: number;
   /**
+   * Community Balance Pack Misfortune: how many further ENEMY Attack die rolls
+   * this effect still sets a die on ("choose an attack die roll result for the
+   * next N enemy attack rolls"). Counted down in `applyEnemyDieSetCurses`; the
+   * effect is dropped when it reaches 0.
+   */
+  dieSetsRemaining?: number;
+  /**
    * Optional army-variant gate (Oidana VI's "all your neutral units" rally):
    * when set, the effect only touches combat units of this variant. Combined
    * with `scope: "player"` it means "this player's neutral-recruited units" —
@@ -1593,6 +1623,15 @@ export type EffectDefinition =
        * if its face was rolled — wired through stackItem.forceAbilityRollsThisAttack.
        */
       forceAbilityRolls?: boolean;
+      /**
+       * Community Balance Pack Slayer: "When attacking a unit of a HIGHER TIER,
+       * the selected unit gains +2/+4/+6 Attack." The bonus is offered and paid
+       * only while the attacked unit's grade rank is strictly above the
+       * attacker's (`gradeRankOfUnit`). A gradeless Creature-Bank / boss body
+       * ranks above every graded unit, so it always counts as higher tier; an
+       * attacker that is itself gradeless can never satisfy it.
+       */
+      requiresDefenderHigherTier?: boolean;
     }
   | {
       /** Centaur's Axe: the attack die's outcome counts three times. */
@@ -2351,6 +2390,11 @@ export type EffectDefinition =
        */
       type: "INFERNO";
       rollsByPower: Record<number, number>;
+      /**
+       * Community Balance Pack Inferno: "Deal 1 damage to a unit on that space"
+       * BEFORE the dice are rolled. Absent on the printed spell.
+       */
+      preDamageOnSpace?: number;
     }
   | {
       /**
@@ -2452,6 +2496,13 @@ export type EffectDefinition =
        * selected unit/space as printed, or EVERY ongoing effect in the Combat.
        */
       allInCombatAtPower?: number;
+      /**
+       * Community Balance Pack Dispel: the reprint is "Discard N active ongoing
+       * effects OR Paralysis tokens" (any mix, any owner, the caster's pick).
+       * When set, the cast opens a repeated pick instead of the printed
+       * unit/space cleanse — `gradeByPower` is then unused (no tier gate).
+       */
+      discardCountByPower?: Record<number, number>;
     }
   | {
       /**
@@ -2858,6 +2909,20 @@ export type EffectDefinition =
       vsAttackerType?: "ground-or-flying" | "ranged";
     }
   | {
+      /**
+       * Community Balance Pack Misfortune: "Choose an attack die roll result for
+       * the next N enemy attack rolls" (N = 1/2/3 by Power). Creates a
+       * player-scoped ongoing effect carrying `SET_ENEMY_ATTACK_DIE` and a
+       * `dieSetsRemaining` budget; each ENEMY Attack roll while it lives has one
+       * die set to `face` (see `applyEnemyDieSetCurses`).
+       */
+      type: "CREATE_ENEMY_DIE_SET";
+      name: string;
+      face: number;
+      rollsByPower: Record<number, number>;
+      duration: EffectDurationDefinition;
+    }
+  | {
       type: "CREATE_ATTACK_DIE_REROLL";
       name: string;
       basicRerolls: number;
@@ -2875,6 +2940,12 @@ export type EffectDefinition =
        * on the ATTACK_DIE_REROLL modifier) rather than forcing the latest roll.
        */
       chooseResult?: boolean;
+      /**
+       * Community Balance Pack Fortune: the uses granted SET a die to this face
+       * ("choose the resultant die side") instead of rerolling it. Passed
+       * straight onto the ATTACK_DIE_REROLL modifier.
+       */
+      setDieFace?: number;
       duration: EffectDurationDefinition;
       /**
        * Mirth: the duration scales with the Power paid rather than the reroll
@@ -3015,6 +3086,14 @@ export type EffectDefinition =
        */
       type: "PLACE_FIRE_WALL";
       damageByPower: Record<number, number>;
+      /**
+       * Community Balance Pack Fire Wall: "…to any unit STARTING THEIR
+       * ACTIVATION or stopping here…". Sets `burnsAtActivation` on the placed
+       * token (the Luna / Hell-Steed flag), so a unit that begins its activation
+       * standing on the wall is burned too. Absent on the printed spell, which
+       * only bites on stop / pass-through.
+       */
+      burnsAtActivation?: boolean;
     }
   | {
       /**
@@ -3205,6 +3284,13 @@ export type EffectDefinition =
        */
       type: "VISIONS_SCRY";
       cardsByPower: Record<number, number>;
+      /**
+       * Community Balance Pack Visions: "You may place them at the bottom or top
+       * of the respective Neutral unit Deck" — the reprint DROPS the discard
+       * option, so every revealed card goes back into the deck, top or bottom
+       * (the scry's per-card options become "put on top" / "put on the bottom").
+       */
+      placement?: "top-or-bottom";
     }
   | {
       /**
@@ -14962,6 +15048,7 @@ export type PendingChoice =
         | "combat-reposition"
         | "disrupting-ray-mode"
         | "dispel-scope"
+        | "community-dispel-pick"
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
@@ -15060,7 +15147,21 @@ export type PendingChoice =
        * the printed unit/space (option 0) or EVERY ongoing effect in the Combat
        * (option 1).
        */
-      balanceSpellChoice?: { cardId: CardId; unitId?: UnitId; amount?: number; target?: TargetRef };
+      balanceSpellChoice?: {
+        cardId: CardId;
+        unitId?: UnitId;
+        amount?: number;
+        target?: TargetRef;
+        /**
+         * Community Balance Pack Dispel ("community-dispel-pick"): how many more
+         * ongoing effects / Paralysis tokens the caster may still discard, and
+         * the candidates this step lists — `effectIds` first (index-aligned with
+         * the options), then `paralysisUnitIds`, then a trailing "Stop" option.
+         */
+        remaining?: number;
+        effectIds?: string[];
+        paralysisUnitIds?: UnitId[];
+      };
       /**
        * genie-take-spell: the Spells dug out of the Genies' controller's deck
        * (index-aligned with `options`); the chosen one goes to hand, the rest to

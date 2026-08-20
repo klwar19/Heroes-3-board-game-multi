@@ -6902,7 +6902,10 @@ export function openMapSpellBoost(
   power: number,
   flags: MapSpellBoostFlags = {}
 ): void {
-  const spell = cardLibrary[spellCardId];
+  // Balance packs (Polish / Community) reprint map spells too — read the
+  // definition the ENGINE resolves right now, never the raw printed library, or
+  // the tier table and the resolved effect disagree with the offer.
+  const spell = balanceCard(state, spellCardId);
   const tiers = mapSpellPowerTiers(spell);
   if (!spell || !tiers) {
     return;
@@ -6994,7 +6997,10 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     schoolPermanentExpertUsed,
     costDiscards
   } = boost;
-  const spell = cardLibrary[spellCardId];
+  // Balance packs (Polish / Community) reprint map spells too — read the
+  // definition the ENGINE resolves right now, never the raw printed library, or
+  // the tier table and the resolved effect disagree with the offer.
+  const spell = balanceCard(state, spellCardId);
   const player = state.players[playerId];
 
   // A still-owed REQUIRED cost discard (Titan's Cuirass) cannot be skipped by a
@@ -7267,7 +7273,10 @@ function applyMapSpellAtPower(
   power: number,
   bookFlags: MapSpellBoostFlags
 ): void {
-  const spell = cardLibrary[spellCardId];
+  // Balance packs (Polish / Community) reprint map spells too — read the
+  // definition the ENGINE resolves right now, never the raw printed library, or
+  // the tier table and the resolved effect disagree with the offer.
+  const spell = balanceCard(state, spellCardId);
   const tiers = mapSpellPowerTiers(spell);
   if (!spell || !tiers) {
     return;
@@ -7325,7 +7334,10 @@ function finalizeMapSpellEffect(
   power: number,
   bookFlags: MapSpellBoostFlags
 ): void {
-  const spell = cardLibrary[spellCardId];
+  // Balance packs (Polish / Community) reprint map spells too — read the
+  // definition the ENGINE resolves right now, never the raw printed library, or
+  // the tier table and the resolved effect disagree with the offer.
+  const spell = balanceCard(state, spellCardId);
   const tiers = mapSpellPowerTiers(spell);
   if (!spell || !tiers) {
     return;
@@ -7879,17 +7891,26 @@ function openVisionsScryStep(
   }
 
   const name = (cardId: CardId) => coreUnitDefinitions[cardId]?.name ?? cardId;
+  // Community Balance Pack Visions: "You may place them at the bottom or top of
+  // the respective Neutral unit Deck" — the reprint drops the DISCARD option, so
+  // the second half of the option list becomes "put on the bottom".
+  const toBottom = visionsPlacementIsTopOrBottom(state);
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt:
-      remaining.length === 1
+    prompt: toBottom
+      ? remaining.length === 1
+        ? `Visions: put ${name(remaining[0])} on the top or the bottom of the ${tier} deck?`
+        : `Visions: put each card back on top of the ${tier} deck (first kept is drawn next) or on the bottom.`
+      : remaining.length === 1
         ? `Visions: keep ${name(remaining[0])} on top of the ${tier} deck, or discard it?`
         : `Visions: put a card back on top of the ${tier} deck (first kept is drawn next) or discard it.`,
     options: [
       ...remaining.map((cardId) => ({ label: `Put ${name(cardId)} back on top` })),
-      ...remaining.map((cardId) => ({ label: `Discard ${name(cardId)}` }))
+      ...remaining.map((cardId) => ({
+        label: toBottom ? `Put ${name(cardId)} on the bottom` : `Discard ${name(cardId)}`
+      }))
     ],
     context: "visions-scry",
     visionsScry: { tier, remaining: [...remaining], toReturn: [...toReturn] },
@@ -8005,6 +8026,14 @@ export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, o
   const nextRemaining = remaining.filter((_, index) => index !== cardIndex);
   if (isKeep) {
     openVisionsScryStep(state, playerId, tier, nextRemaining, [...toReturn, cardId]);
+  } else if (visionsPlacementIsTopOrBottom(state)) {
+    // Community Balance Pack: the second option puts the card on the BOTTOM of
+    // the same Neutral deck instead of discarding it — nothing leaves the deck.
+    // drawPile is popped from the END, so index 0 is the bottom; each bottom
+    // pick is unshifted as it is made, so the first one picked ends up nearest
+    // the rest of the deck and the last one deepest.
+    state.decks[NEUTRAL_DECK_IDS[tier]]?.drawPile.unshift(cardId);
+    openVisionsScryStep(state, playerId, tier, nextRemaining, toReturn);
   } else {
     state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(cardId);
     openVisionsScryStep(state, playerId, tier, nextRemaining, toReturn);
@@ -9082,6 +9111,17 @@ export function resolveJudgeDread(state: GameState, playerId: PlayerId, optionIn
 
 /** The Visions spell id — its pre-battle cast lets the attacker swap guards. */
 const VISIONS_SPELL_ID = "spell.visions";
+
+/**
+ * Community Balance Pack Visions: the reprint prints "place them at the bottom
+ * or top of the respective Neutral unit Deck" — no card may be discarded. Read
+ * off the ACTIVE definition (`balanceCard`), so the classic / Polish printings
+ * keep the printed keep-or-discard scry byte-identically.
+ */
+function visionsPlacementIsTopOrBottom(state: GameState): boolean {
+  const card = balanceCard(state, VISIONS_SPELL_ID);
+  return card?.effect.type === "VISIONS_SCRY" && card.effect.placement === "top-or-bottom";
+}
 
 /** Visions' Power → card-count table (1/2/3), reused as the swap budget. */
 function visionsCardsByPower(state: GameState): Record<number, number> {

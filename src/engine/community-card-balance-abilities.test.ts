@@ -618,11 +618,15 @@ describe("Community pack — Wisdom is a combat Power instant", () => {
   }
 
   it("adds +1 (Expert +2) Power to the cast and lifts this round's Spell limit by 1", () => {
-    // Baseline: the same Haste cast with no Wisdom resolves at Power 0 → +1.
-    expect(hasteBonus(true, "none").initiative).toBe(1);
-    // Basic Wisdom → Power 1 → +2 initiative; expert → Power 2 → +3.
-    expect(hasteBonus(true, "basic")).toEqual({ offered: true, initiative: 2, limitDelta: 1 });
-    expect(hasteBonus(true, "expert")).toEqual({ offered: true, initiative: 3, limitDelta: 1 });
+    // The probe spell is Haste, which the pack's SPELLS family also reprints
+    // (+3/+6/+9 instead of the printed +1/+2/+3) — so with the rule ON the rungs
+    // read off the COMMUNITY ladder, and with it OFF off the printed one. Either
+    // way what this test measures is the Power Wisdom adds: one rung per side.
+    // Baseline: the same Haste cast with no Wisdom resolves at Power 0 → +3.
+    expect(hasteBonus(true, "none").initiative).toBe(3);
+    // Basic Wisdom → Power 1 → +6 initiative; expert → Power 2 → +9.
+    expect(hasteBonus(true, "basic")).toEqual({ offered: true, initiative: 6, limitDelta: 1 });
+    expect(hasteBonus(true, "expert")).toEqual({ offered: true, initiative: 9, limitDelta: 1 });
     // CONTROL: with the rule off the printed Town card offers no cast-window
     // play at all, so the same cast stays at Power 0 → +1.
     expect(hasteBonus(false, "basic").offered).toBe(false);

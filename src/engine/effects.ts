@@ -31,6 +31,7 @@ export const implementedCardEffectTypes = [
   "CREATE_VARIANT_ATTACK_BUFF",
   "CREATE_DEFENSE_BUFF",
   "CREATE_ATTACK_DIE_REROLL",
+  "CREATE_ENEMY_DIE_SET",
   "RECALL_SPELL",
   "ENTER_PLAY",
   "GAIN_RESOURCES",
@@ -826,6 +827,11 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
       return ladderFromTable(effect.countByPower, (count) => `${count} tokens`);
     case "VISIONS_SCRY":
       return ladderFromTable(effect.cardsByPower, (count) => `scry ${count} card${count === 1 ? "" : "s"}`);
+    case "CREATE_ENEMY_DIE_SET":
+      return ladderFromTable(
+        effect.rollsByPower,
+        (rolls) => `choose the die result on ${rolls} enemy attack roll${rolls === 1 ? "" : "s"}`
+      );
     default:
       return [];
   }
@@ -1148,6 +1154,13 @@ export function describeCardEffect(card: CardDefinition): string {
     }
 
     return `${card.effect.name} +${card.effect.amount ?? 0} defense${vs}`;
+  }
+
+  if (card.effect.type === "CREATE_ENEMY_DIE_SET") {
+    const breakpoints = Object.entries(card.effect.rollsByPower)
+      .map(([power, rolls]) => `${power}:${rolls}`)
+      .join(", ");
+    return `${card.effect.name}: set one die of the enemy's attack roll to ${card.effect.face} on the next N enemy rolls (${breakpoints})`;
   }
 
   if (card.effect.type === "CREATE_ATTACK_DIE_REROLL") {

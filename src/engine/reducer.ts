@@ -1592,6 +1592,83 @@ function applyEnemyPlusOneRerolls(
   return candidate;
 }
 
+/**
+ * Community Balance Pack Misfortune: "Choose an attack die roll result for the
+ * next N enemy attack rolls." Every LIVE `SET_ENEMY_ATTACK_DIE` effect whose
+ * controller is NOT the roller sets one die of this roll to its face, picking
+ * the die whose flip moves the roller's outcome furthest in the caster's favour
+ * (down for a negative face, up for a positive one) — the Negative-Morale
+ * set-die reading, pointed at the other side. Each application spends one of the
+ * effect's `dieSetsRemaining` rolls; the effect is dropped when the budget runs
+ * out.
+ *
+ * Called on the INITIAL roll of an enemy attack only (the three roll sites in
+ * `resolveAttackStackItem`), never inside `rerollPendingChoice` — so exactly one
+ * charge is spent per enemy attack roll, and a reroll the enemy then takes is
+ * their own answer to it.
+ */
+function applyEnemyDieSetCurses(
+  state: GameState,
+  rollerControllerId: PlayerId,
+  candidate: AttackRollCandidate,
+  aggregation: MoraleDiceAggregation
+): AttackRollCandidate {
+  if (!state.combat || candidate.rolls.length === 0) {
+    return candidate;
+  }
+  const spent: string[] = [];
+  for (const effect of state.activeEffects) {
+    if (effect.controllerId === rollerControllerId) {
+      continue;
+    }
+    const setter = effect.modifiers.find((modifier) => modifier.type === "SET_ENEMY_ATTACK_DIE");
+    if (!setter || setter.type !== "SET_ENEMY_ATTACK_DIE") {
+      continue;
+    }
+    if ((effect.dieSetsRemaining ?? 0) <= 0) {
+      continue;
+    }
+    const face = setter.face;
+    // The caster picks the RESULT, so pick the flip that helps them most: a
+    // negative face is chosen to minimise the roller's outcome, a positive one
+    // (never printed today, but the shape is symmetric) to maximise it.
+    let bestIndex = -1;
+    let bestOutcome = face < 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+    candidate.rolls.forEach((roll, index) => {
+      if (roll === face) {
+        return;
+      }
+      const flipped = candidate.rolls.map((value, at) => (at === index ? face : value));
+      const outcome = aggregateCandidateRoll(flipped, aggregation);
+      if (face < 0 ? outcome < bestOutcome : outcome > bestOutcome) {
+        bestOutcome = outcome;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex < 0) {
+      // Every die already shows the chosen face — the result the caster wants is
+      // already on the table, so no charge is spent.
+      continue;
+    }
+    candidate.rolls[bestIndex] = face;
+    candidate.roll = aggregateCandidateRoll(candidate.rolls, aggregation);
+    pushRollModifierNote(
+      candidate,
+      effect.name,
+      `one die is set to the "${face > 0 ? `+${face}` : face}" side`
+    );
+    effect.dieSetsRemaining = (effect.dieSetsRemaining ?? 0) - 1;
+    if (effect.dieSetsRemaining <= 0) {
+      spent.push(effect.id);
+    }
+  }
+  if (spent.length > 0) {
+    const done = new Set(spent);
+    state.activeEffects = state.activeEffects.filter((effect) => !done.has(effect.id));
+  }
+  return candidate;
+}
+
 function applyMoraleDiceCurses(
   state: GameState,
   controllerId: PlayerId,
@@ -2574,7 +2651,10 @@ function createAttackRerollEffectFromCard(
       consumeEffectOnUse: card.effect.consumeEffectOnUse,
       // Fortune ("resolve the result of your choice"): its reroll unlocks a free
       // pick among the rolled candidates instead of forcing the latest roll.
-      chooseResult: card.effect.chooseResult
+      chooseResult: card.effect.chooseResult,
+      // Community Balance Pack Fortune: the use SETS a die to this face instead
+      // of rerolling it ("you may choose the resultant die side").
+      setDieFace: card.effect.setDieFace
     }
   ];
   // Fortune also rerolls the adventure-map Treasure and Resource dice, sharing
@@ -3026,6 +3106,20 @@ function resolveInfernoSpell(
   const combat = state.combat;
   if (!combat) {
     return;
+  }
+
+  // Community Balance Pack Inferno: "Deal 1 damage to a unit on that space"
+  // BEFORE the dice are rolled. It lands on the unit standing on the SELECTED
+  // space only (never the adjacent ring) and resolves even if every die then
+  // whiffs; the printed spell has no such clause (`preDamageOnSpace` absent).
+  const preDamage = card.effect.type === "INFERNO" ? (card.effect.preDamageOnSpace ?? 0) : 0;
+  if (preDamage > 0) {
+    const occupant = Object.values(combat.units).find(
+      (unit) => isUnitAlive(unit) && unit.position === position
+    );
+    if (occupant) {
+      dealAreaCardDamage(state, playerId, card, occupant, preDamage);
+    }
   }
 
   const rolls = Array.from({ length: Math.max(1, rollCount) }, () => rollAttackDie(combat));
@@ -4349,6 +4443,21 @@ function effectRerollChoosesResult(effect: ActiveEffectState): boolean {
   );
 }
 
+/**
+ * Community Balance Pack Fortune: its ATTACK_DIE_REROLL modifier carries a
+ * `setDieFace`, so spending a use SETS one die of the current roll to that face
+ * ("you may choose the resultant die side") instead of rerolling it. Returns
+ * undefined for every classic reroll effect, which keeps them plain rerolls.
+ */
+function effectRerollSetsDieFace(effect: ActiveEffectState): number | undefined {
+  for (const modifier of effect.modifiers) {
+    if (modifier.type === "ATTACK_DIE_REROLL" && modifier.setDieFace !== undefined) {
+      return modifier.setDieFace;
+    }
+  }
+  return undefined;
+}
+
 const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
 /** Cards of Prophecy — its Balance-Pack reprint is the 3-roll die instant. */
 const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
@@ -4498,7 +4607,10 @@ function buildRerollSources(
       effectId: effect.id,
       remaining: getRerollUsesForEffect(effect),
       used: 0,
-      chooseResult: effectRerollChoosesResult(effect)
+      chooseResult: effectRerollChoosesResult(effect),
+      // Community Balance Pack Fortune: the effect's uses SET a die instead of
+      // rerolling it, so the source becomes a set-die source (its own button).
+      setDieFace: effectRerollSetsDieFace(effect)
     })),
     ...artifactSources,
     ...luckyESources,
@@ -5131,6 +5243,57 @@ function applyDispelToTarget(
 }
 
 /**
+ * Community Balance Pack Dispel ("Discard N active ongoing effects or Paralysis
+ * tokens"): opens ONE pick over every removable ongoing effect in play and every
+ * Paralysis token on the board — ANY owner, the caster's own included, in any
+ * mix — with a trailing "Stop" option. Answering re-opens the pick until the
+ * budget runs out or nothing removable is left, so the N discards are N real
+ * removals, not one blanket wipe.
+ *
+ * A plain OPTION_CHOICE, so the generic AI scorer and the AFK / turn-timeout
+ * driver answer it like any other window — the reprint can never strand a table.
+ */
+function openCommunityDispelPick(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  remaining: number
+): void {
+  if (remaining <= 0) {
+    return;
+  }
+  const effects = state.activeEffects.filter((effect) => effect.removable !== false);
+  const paralysed = state.combat
+    ? Object.values(state.combat.units).filter((unit) => isUnitAlive(unit) && hasToken(unit, "paralysis"))
+    : [];
+  if (effects.length === 0 && paralysed.length === 0) {
+    return;
+  }
+  const unitName = (effect: ActiveEffectState): string => {
+    const unitId = effect.target?.type === "unit" ? effect.target.unitId : undefined;
+    const unit = unitId && state.combat ? state.combat.units[unitId] : undefined;
+    return unit ? ` on ${unit.cardName}` : "";
+  };
+  openBalanceSpellChoice(
+    state,
+    playerId,
+    "community-dispel-pick",
+    {
+      cardId: card.id,
+      remaining,
+      effectIds: effects.map((effect) => effect.id),
+      paralysisUnitIds: paralysed.map((unit) => unit.id)
+    },
+    `${card.name}: discard an ongoing effect or a Paralysis token (${remaining} left).`,
+    [
+      ...effects.map((effect) => ({ label: `Discard "${effect.name}"${unitName(effect)}` })),
+      ...paralysed.map((unit) => ({ label: `Remove the Paralysis token from ${unit.cardName}` })),
+      { label: "Stop discarding" }
+    ]
+  );
+}
+
+/**
  * Polish Balance Pack: opens the caster's post-cast pick (Disrupting Ray's
  * ability-vs-Defense, Dispel's target-vs-everything). A plain OPTION_CHOICE, so
  * the generic AI scorer and the AFK / turn-timeout driver answer it like any
@@ -5139,8 +5302,16 @@ function applyDispelToTarget(
 function openBalanceSpellChoice(
   state: GameState,
   playerId: PlayerId,
-  context: "disrupting-ray-mode" | "dispel-scope",
-  payload: { cardId: CardId; unitId?: UnitId; amount?: number; target?: TargetRef },
+  context: "disrupting-ray-mode" | "dispel-scope" | "community-dispel-pick",
+  payload: {
+    cardId: CardId;
+    unitId?: UnitId;
+    amount?: number;
+    target?: TargetRef;
+    remaining?: number;
+    effectIds?: string[];
+    paralysisUnitIds?: UnitId[];
+  },
   prompt: string,
   options: { label: string }[]
 ): void {
@@ -5203,6 +5374,43 @@ function resolveBalanceSpellChoice(
       choice.playerId,
       target
     );
+    return;
+  }
+
+  // Community Balance Pack Dispel: one discard per answer, re-opened until the
+  // budget runs out, the caster stops, or nothing removable is left.
+  if (choice.context === "community-dispel-pick" && card) {
+    const effectIds = payload.effectIds ?? [];
+    const paralysisUnitIds = payload.paralysisUnitIds ?? [];
+    const stopIndex = effectIds.length + paralysisUnitIds.length;
+    if (picked >= stopIndex) {
+      return;
+    }
+    if (picked < effectIds.length) {
+      const effectId = effectIds[picked]!;
+      const removed = state.activeEffects.filter((effect) => effect.id === effectId);
+      if (removed.length === 0) {
+        return;
+      }
+      state.activeEffects = state.activeEffects.filter((effect) => effect.id !== effectId);
+      stripCombatHealthBonusFromRemovedEffects(state, removed);
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId: choice.playerId,
+        message: `${card.name} discards "${removed[0]!.name}".`
+      });
+    } else {
+      const unitId = paralysisUnitIds[picked - effectIds.length]!;
+      const unit = state.combat?.units[unitId];
+      if (!unit || !hasToken(unit, "paralysis")) {
+        return;
+      }
+      removeToken(state, unit, "paralysis", "dispelled");
+    }
+    const left = (payload.remaining ?? 1) - 1;
+    if (left > 0) {
+      openCommunityDispelPick(state, choice.playerId, card, left);
+    }
     return;
   }
 
@@ -11490,13 +11698,18 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     const slayerCount = takeMoraleRollOneLess(state, details.attacker.controllerId, stackItem.modifiers.slayerRolls);
     applyMoraleAttackRollPenalty(state, stackItem, details);
     const rolls = Array.from({ length: slayerCount }, () => rollAttackDie(combat));
-    const slayerCandidate = applyEnemyPlusOneRerolls(
+    const slayerCandidate = applyEnemyDieSetCurses(
       state,
       details.attacker.controllerId,
-      applyMoraleDiceCurses(
+      applyEnemyPlusOneRerolls(
         state,
         details.attacker.controllerId,
-        { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
+        applyMoraleDiceCurses(
+          state,
+          details.attacker.controllerId,
+          { rolls, roll: rolls.filter((roll) => roll === 1).length, sumAllDice: true },
+          "count-plus"
+        ),
         "count-plus"
       ),
       "count-plus"
@@ -11588,10 +11801,15 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       state,
       stackItem,
       details,
-      applyEnemyPlusOneRerolls(
+      applyEnemyDieSetCurses(
         state,
         details.attacker.controllerId,
-        applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
+        applyEnemyPlusOneRerolls(
+          state,
+          details.attacker.controllerId,
+          applyMoraleDiceCurses(state, details.attacker.controllerId, applyBothCandidate, "sum"),
+          "sum"
+        ),
         "sum"
       ),
       cards
@@ -11608,13 +11826,18 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     details.rollMode = "normal";
   }
   applyMoraleAttackRollPenalty(state, stackItem, details);
-  const candidate = applyEnemyPlusOneRerolls(
+  const candidate = applyEnemyDieSetCurses(
     state,
     details.attacker.controllerId,
-    applyMoraleDiceCurses(
+    applyEnemyPlusOneRerolls(
       state,
       details.attacker.controllerId,
-      rollAttackCandidate(combat, details.rollMode),
+      applyMoraleDiceCurses(
+        state,
+        details.attacker.controllerId,
+        rollAttackCandidate(combat, details.rollMode),
+        details.rollMode
+      ),
       details.rollMode
     ),
     details.rollMode
@@ -12115,6 +12338,31 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       );
     }
 
+    // Community Balance Pack Misfortune: "Choose an attack die roll result for
+    // the next N enemy attack rolls." A player-scoped ongoing effect carrying
+    // the SET_ENEMY_ATTACK_DIE modifier and an N-roll budget; every enemy attack
+    // roll while it lives has one die set (applyEnemyDieSetCurses).
+    if (card?.effect.type === "CREATE_ENEMY_DIE_SET") {
+      const rolls = Math.max(
+        1,
+        getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
+      );
+      createActiveEffect(
+        state,
+        {
+          name: card.effect.name,
+          scope: "player",
+          duration: card.effect.duration,
+          polarity: "positive",
+          removable: true,
+          dieSetsRemaining: rolls,
+          modifiers: [{ type: "SET_ENEMY_ATTACK_DIE", face: card.effect.face }]
+        },
+        { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
+        stackItem.action.playerId
+      );
+    }
+
     if (card?.effect.type === "CREATE_ATTACK_DIE_REROLL") {
       createAttackRerollEffectFromCard(
         state,
@@ -12360,6 +12608,17 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
     // works at any Power.
     if (card?.effect.type === "DISPEL_EFFECTS" && state.combat) {
       const dispelPower = getCurrentSpellPower(state, stackItem, cards);
+      // Community Balance Pack: "Discard N active ongoing effects or Paralysis
+      // tokens" — a repeated free pick over BOTH sides' effects, replacing the
+      // printed unit/space cleanse entirely (no tier gate at any rung).
+      if (card.effect.discardCountByPower) {
+        openCommunityDispelPick(
+          state,
+          stackItem.action.playerId,
+          card,
+          Math.max(1, getAmountByPower(card.effect.discardCountByPower, 1, dispelPower))
+        );
+      } else
       // Polish Balance Pack (Power 2, "ANY unit or ALL effects"): the caster
       // picks between the printed unit/space cleanse and wiping every ongoing
       // effect in the Combat. A generic OPTION_CHOICE, so the AI scorer and the
@@ -12755,7 +13014,11 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         kind: "fire_wall",
         position: stackItem.action.target.position,
         controllerId: stackItem.action.playerId,
-        damage: getAmountByPower(card.effect.damageByPower, 1, power)
+        damage: getAmountByPower(card.effect.damageByPower, 1, power),
+        // Community Balance Pack Fire Wall: "…any unit STARTING THEIR ACTIVATION
+        // or stopping here…" — the printed spell only bites on stop /
+        // pass-through, so the flag is absent there.
+        ...(card.effect.burnsAtActivation ? { burnsAtActivation: true } : {})
       });
     }
 
@@ -15466,6 +15729,18 @@ function applyReactionPlayCore(
       )
     ) {
       throw new Error(`${card.name} can be used only on Granberia's first own attack this combat.`);
+    }
+
+    // Community Balance Pack Slayer: the bonus is paid only when the ATTACKED
+    // unit is of a strictly higher tier than the attacker (a gradeless bank /
+    // boss body outranks every graded unit).
+    if (
+      effect.requiresDefenderHigherTier &&
+      attacker &&
+      defender &&
+      gradeRankOfUnit(defender) <= gradeRankOfUnit(attacker)
+    ) {
+      throw new Error(`${card.name} only applies when attacking a unit of a higher tier.`);
     }
 
     // Bloodlust/Precision/Golden Bow restrict which unit types benefit.
@@ -25331,7 +25606,8 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         } else if (
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           (nextState.pendingChoice.context === "disrupting-ray-mode" ||
-            nextState.pendingChoice.context === "dispel-scope")
+            nextState.pendingChoice.context === "dispel-scope" ||
+            nextState.pendingChoice.context === "community-dispel-pick")
         ) {
           resolveBalanceSpellChoice(nextState, action, cards);
         } else if (

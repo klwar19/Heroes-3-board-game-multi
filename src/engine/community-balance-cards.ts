@@ -3,6 +3,10 @@ import {
   communityBalanceAbilityCards,
   COMMUNITY_BALANCE_ABILITY_IDS
 } from "@/data/cards/community-abilities-balance";
+import {
+  communityBalanceSpellCards,
+  COMMUNITY_BALANCE_SPELL_IDS
+} from "@/data/cards/community-spells-balance";
 
 import { houseRuleEnabled } from "./house-rules";
 import { polishBalanceCard, polishBalanceCardForDisplay, polishBalanceCardLibrary } from "./polish-balance-spells";
@@ -25,15 +29,16 @@ import type { CardDefinition, CardLibrary, GameState } from "./state";
  * site (`balanceCardLibrary` below is the composed read), so with both rules on
  * the COMMUNITY reprint wins for a card both packs cover.
  *
- * SCOPE: the ABILITIES family has landed. Later steps merge the remaining
- * per-family reprint modules (spells, artifacts, units, war machines) in here
+ * SCOPE: the ABILITIES and SPELLS families have landed. Later steps merge the
+ * remaining per-family reprint modules (artifacts, units, war machines) in here
  * the same way.
  */
 export const COMMUNITY_REPRINTED_CARDS: CardLibrary = {
-  ...communityBalanceAbilityCards
+  ...communityBalanceAbilityCards,
+  ...communityBalanceSpellCards
 };
 
-export { COMMUNITY_BALANCE_ABILITY_IDS };
+export { COMMUNITY_BALANCE_ABILITY_IDS, COMMUNITY_BALANCE_SPELL_IDS };
 
 /** Memoized per base library (stable identity for repeated calls in one action). */
 const merged = new WeakMap<CardLibrary, CardLibrary>();

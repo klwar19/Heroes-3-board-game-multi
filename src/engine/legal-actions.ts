@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
+import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
 import { balanceCardLibrary } from "./community-balance-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
@@ -1034,7 +1035,11 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
   // double-counts when both rules are on.
   const classicRider = Boolean(state && houseRuleEnabled(state, "combat-move-initiative"));
   const balancePrinted = Boolean(state && houseRuleEnabled(state, "polish-card-balance"));
-  if (!state || (!classicRider && !balancePrinted)) {
+  // Community Balance Pack: its Haste ("+1 space") and Slow ("N fewer spaces")
+  // reprints PRINT the movement half too, so they get the same exemption from
+  // the classic `combat-move-initiative` gate as the Polish reprints.
+  const communityPrinted = Boolean(state && houseRuleEnabled(state, "community-card-balance"));
+  if (!state || (!classicRider && !balancePrinted && !communityPrinted)) {
     return base;
   }
   let bonus = 0;
@@ -1043,9 +1048,12 @@ export function getUnitMoveRange(unit: CombatUnitState, state?: GameState): numb
       continue;
     }
     const printedByReprint =
-      balancePrinted &&
-      effect.source.type === "card" &&
-      POLISH_BALANCE_PRINTED_MOVEMENT_IDS.includes(effect.source.cardId);
+      (balancePrinted &&
+        effect.source.type === "card" &&
+        POLISH_BALANCE_PRINTED_MOVEMENT_IDS.includes(effect.source.cardId)) ||
+      (communityPrinted &&
+        effect.source.type === "card" &&
+        COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS.includes(effect.source.cardId));
     if (!classicRider && !printedByReprint) {
       continue;
     }
@@ -10133,6 +10141,14 @@ export function isEffectLegalForTrigger(
       return false;
     }
     if (effect.firstOwnAttackOnly && !mgqGranberiaFirstAttackAvailable(state, attacker, triggerEvent.isRetaliation)) {
+      return false;
+    }
+
+    // Community Balance Pack Slayer: "When attacking a unit of a HIGHER TIER."
+    // Offered only while the attacked unit outranks the attacker; a gradeless
+    // Creature-Bank / boss defender outranks every graded attacker (and a
+    // gradeless attacker can never satisfy it).
+    if (effect.requiresDefenderHigherTier && gradeRankOfUnit(defender) <= gradeRankOfUnit(attacker)) {
       return false;
     }
 

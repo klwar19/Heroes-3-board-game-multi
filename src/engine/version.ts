@@ -507,7 +507,28 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `recallSpell.recallPlayedCardLimit`), and Tactics losing its start-of-combat
 // window while its two sides re-derive from the active unit.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 46;
+//
+// v47 (2026-08-20): the Community Balance Change SPELLS family (all 26 of the
+// sheet's spells) lands behind the same default-OFF `community-card-balance`
+// rule. New SERIALIZED shapes a stale worker cannot read: the
+// `SET_ENEMY_ATTACK_DIE` active-effect modifier and its `dieSetsRemaining`
+// budget on `ActiveEffectState` (Misfortune), the optional `setDieFace` on the
+// `ATTACK_DIE_REROLL` modifier and on the `CREATE_ATTACK_DIE_REROLL` /
+// `CREATE_ENEMY_DIE_SET` card effects (Fortune / Misfortune), the
+// `community-dispel-pick` pendingChoice context with its
+// `balanceSpellChoice.remaining` / `effectIds` / `paralysisUnitIds` payload
+// (Dispel), plus the optional `PLACE_FIRE_WALL.burnsAtActivation`,
+// `INFERNO.preDamageOnSpace`, `VISIONS_SCRY.placement`,
+// `DISPEL_EFFECTS.discardCountByPower` and
+// `ADD_COMBAT_STAT.requiresDefenderHigherTier` card-effect fields. Behaviour a
+// stale worker computes differently on top of that: every reprinted spell's
+// ladder / breakpoint (see the `community-card-balance` house-rule entry), the
+// Haste / Slow printed Combat-movement exemption, and the map-spell seams
+// (`openMapSpellBoost` / `applyMapSpellAtPower` / `finalizeMapSpellEffect` /
+// `resolveMapSpellBoostChoice`) now reading the BALANCED definition instead of
+// the raw printed library — which also fixes the Polish pack's map reprints.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 47;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

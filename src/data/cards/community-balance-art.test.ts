@@ -10,10 +10,10 @@
  * unimplemented, and no unimplemented entry secretly ships a face (which would
  * let a face advertise a rule the engine does not run).
  *
- * SCOPE TODAY: the ABILITIES family — all TWELVE sheet abilities are wired, so
- * `COMMUNITY_BALANCE_NOT_IMPLEMENTED` is empty. The directory-listing check is
- * the sharp one: a committed face without a wired id fails, and so does a wired
- * id with no face.
+ * SCOPE TODAY: the ABILITIES family (all TWELVE sheet abilities) and the SPELLS
+ * family (all TWENTY-SIX sheet spells), so `COMMUNITY_BALANCE_NOT_IMPLEMENTED`
+ * is empty. The directory-listing check is the sharp one: a committed face
+ * without a wired id fails, and so does a wired id with no face.
  */
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -118,6 +118,54 @@ describe("Community Balance Change registries", () => {
     }
   });
 
+  it("covers the sheet's twenty-six Spells — all wired, none declared unimplemented", () => {
+    // Non-vacuity marker for the SPELLS family: every id on the sheet's Spells
+    // tab is accounted for on exactly one side of the contract, and each one is
+    // a real Spell card (never an ability id typo'd into the list).
+    const sheetSpells = [
+      // AIR
+      "spell.haste",
+      "spell.fortune",
+      "spell.precision",
+      "spell.view_air",
+      "spell.counterstrike",
+      "spell.chain_lightning",
+      // EARTH
+      "spell.slow",
+      "spell.shield",
+      "spell.stone_skin",
+      "spell.anti_magic",
+      "spell.town_portal",
+      // FIRE
+      "spell.visions",
+      "spell.fire_wall",
+      "spell.misfortune",
+      "spell.bloodlust",
+      "spell.curse",
+      "spell.inferno",
+      "spell.slayer",
+      "spell.frenzy",
+      // WATER
+      "spell.forgetfulness",
+      "spell.bless",
+      "spell.weakness",
+      "spell.dispel",
+      "spell.cure",
+      "spell.mirth",
+      "spell.prayer"
+    ];
+    expect(sheetSpells).toHaveLength(26);
+    for (const cardId of sheetSpells) {
+      expect(isCommunityBalanceCard(cardId), `${cardId} is not wired`).toBe(true);
+      expect(cardLibrary[cardId]?.kind, `${cardId} is not a spell card`).toBe("spell");
+    }
+    // A spell has no distinct Empowered printing (Empowered is an ABILITY-card
+    // display state), so none of them may appear in the empowered face list.
+    for (const cardId of sheetSpells) {
+      expect(COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS).not.toContain(cardId);
+    }
+  });
+
   it("covers the sheet's twelve Abilities — ten wired, two declared unimplemented", () => {
     // Non-vacuity marker for the loops above: the ABILITIES family is complete,
     // so every one of the sheet's 12 ability ids is accounted for on exactly one
@@ -143,12 +191,16 @@ describe("Community Balance Change registries", () => {
     }
     // All twelve are WIRED now (Necromancy and Intelligence landed last), so the
     // unimplemented registry is empty for this family.
-    expect([...COMMUNITY_BALANCE_CARD_IDS].sort()).toEqual([...sheetAbilities].sort());
+    expect([...COMMUNITY_BALANCE_CARD_IDS].filter((id) => id.startsWith("ability.")).sort()).toEqual(
+      [...sheetAbilities].sort()
+    );
     expect(Object.keys(COMMUNITY_BALANCE_NOT_IMPLEMENTED)).toEqual([]);
     // Mysticism has no Expert side, so the sheet ships no Empowered printing for
     // it; every OTHER wired ability has one.
     expect([...COMMUNITY_BALANCE_EMPOWERED_ABILITY_IDS].sort()).toEqual(
-      [...COMMUNITY_BALANCE_CARD_IDS].filter((id) => id !== "ability.mysticism").sort()
+      [...COMMUNITY_BALANCE_CARD_IDS]
+        .filter((id) => id.startsWith("ability.") && id !== "ability.mysticism")
+        .sort()
     );
   });
 });
