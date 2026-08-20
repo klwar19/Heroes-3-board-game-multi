@@ -138,6 +138,57 @@ export function polishBalanceCardImage(cardId: string | undefined): string | und
 }
 
 /**
+ * Ability card ids that ship a DEDICATED Balance-Pack EMPOWERED face, drawn when
+ * the card is shown in its empowered display state (`player.empoweredAbilities`)
+ * while the pack is on. These have no distinct empowered card id — "empowered" is
+ * a per-owner display state over the same id — so they need this explicit list
+ * (unlike `stat.knowledge.empowered`, a real distinct library card whose face
+ * `polishBalanceCardImage` already derives).
+ *
+ * Diplomacy is deliberately ABSENT: it is a printed always-Empowered ability
+ * whose plain balance face already IS the empowered art, so it needs no `-empowered`
+ * variant (see `empoweredCardImage`).
+ *
+ * The `-empowered` faces DO print the NEW rules text (unlike the classic
+ * `-empowered` fan scans, which print the OLD text — the reason the plain balance
+ * face used to win over them), so preferring them for an empowered holder is
+ * correct: the reader sees the new card, now with the empowered chrome baked in.
+ */
+export const POLISH_BALANCE_EMPOWERED_ABILITY_IDS = [
+  "ability.artillery",
+  "ability.ballistics",
+  "ability.eagle_eye",
+  "ability.first_aid",
+  "ability.intelligence",
+  "ability.interference",
+  "ability.learning",
+  "ability.mysticism",
+  "ability.pathfinding",
+  "ability.scouting",
+  "ability.tactics",
+  "ability.wisdom"
+] as const;
+
+const EMPOWERED_COVERED = new Set<string>(POLISH_BALANCE_EMPOWERED_ABILITY_IDS);
+
+/** File basenames (no extension) of every empowered balance face shipped on disk. */
+export const POLISH_BALANCE_EMPOWERED_FACE_NAMES = POLISH_BALANCE_EMPOWERED_ABILITY_IDS.map(
+  (id) => `${id.replaceAll(".", "-")}-empowered`
+);
+
+/**
+ * The dedicated empowered balance face for `cardId`, or `undefined` when the card
+ * has no such variant (fall back to the plain balance face). Path DERIVED from
+ * the id so a file and its card can never drift.
+ */
+export function polishBalanceEmpoweredCardImage(cardId: string | undefined): string | undefined {
+  if (!cardId || !EMPOWERED_COVERED.has(cardId)) {
+    return undefined;
+  }
+  return `/assets/polish-balance/${cardId.replaceAll(".", "-")}-empowered.webp`;
+}
+
+/**
  * The face to render for `cardId` while the Balance Pack is ON: the balance face
  * when the card has a wired reprint, else the card's own printed face. Never the
  * `-empowered` scan for a covered card — that scan prints the OLD text.

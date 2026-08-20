@@ -20,8 +20,11 @@ import { polishBalanceSpecialtyCards } from "./specialties-balance";
 import {
   POLISH_BALANCE_CARD_IDS,
   POLISH_BALANCE_NOT_IMPLEMENTED,
+  POLISH_BALANCE_EMPOWERED_ABILITY_IDS,
+  POLISH_BALANCE_EMPOWERED_FACE_NAMES,
   isPolishBalanceCard,
   polishBalanceCardImage,
+  polishBalanceEmpoweredCardImage,
   polishBalanceFaceImage
 } from "./polish-balance-art";
 
@@ -55,8 +58,34 @@ describe("Polish Balance Pack art", () => {
         .filter((name) => name.endsWith(".webp"))
         .map((name) => name.replace(/\.webp$/, ""))
     );
-    const wired = new Set(POLISH_BALANCE_CARD_IDS.map((id) => id.replaceAll(".", "-")));
+    // The wired set is every reprinted card PLUS the dedicated empowered ability
+    // faces (drawn when the card is shown Empowered — no distinct card id, hence
+    // an explicit list).
+    const wired = new Set([
+      ...POLISH_BALANCE_CARD_IDS.map((id) => id.replaceAll(".", "-")),
+      ...POLISH_BALANCE_EMPOWERED_FACE_NAMES
+    ]);
     expect([...shipped].sort()).toEqual([...wired].sort());
+  });
+
+  it("ships a real 743×1040 EMPOWERED balance face for every empowered ability id", async () => {
+    expect(POLISH_BALANCE_EMPOWERED_ABILITY_IDS.length).toBe(12);
+    for (const cardId of POLISH_BALANCE_EMPOWERED_ABILITY_IDS) {
+      // Every empowered id must also have a wired plain reprint (the empowered
+      // face is the same card's empowered display state).
+      expect(isPolishBalanceCard(cardId), `${cardId} empowered face without a wired reprint`).toBe(true);
+      const url = polishBalanceEmpoweredCardImage(cardId);
+      expect(url).toBe(`/assets/polish-balance/${cardId.replaceAll(".", "-")}-empowered.webp`);
+      const file = toFile(url!);
+      expect(existsSync(file), `missing empowered balance face for ${cardId}: ${file}`).toBe(true);
+      const meta = await sharp(file).metadata();
+      expect([cardId, meta.format, meta.width, meta.height]).toEqual([cardId, "webp", 743, 1040]);
+      expect(statSync(file).size, `${cardId} empowered balance face looks like a stub`).toBeGreaterThan(40 * 1024);
+    }
+    // Diplomacy is deliberately excluded (printed always-Empowered).
+    expect(polishBalanceEmpoweredCardImage("ability.diplomacy")).toBeUndefined();
+    // A card outside the empowered list resolves nothing.
+    expect(polishBalanceEmpoweredCardImage("ability.estates")).toBeUndefined();
   });
 });
 

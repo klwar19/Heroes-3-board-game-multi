@@ -2,7 +2,7 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
-import { polishBalanceCardImage } from "@/data/cards/polish-balance-art";
+import { polishBalanceCardImage, polishBalanceEmpoweredCardImage } from "@/data/cards/polish-balance-art";
 
 // ---------------------------------------------------------------------------
 // Polish Balance Pack (`polish-card-balance`) — the FACE-SWAP seam.
@@ -35,12 +35,15 @@ export function usePolishBalanceArtEnabled(): boolean {
  * a hook where it needs the face (a `.map()` row, or a component that has
  * already returned early) reads the identical ordering.
  *
- * Precedence: the Balance-Pack face (while the rule is on and the card has a
- * WIRED reprint) beats both the printed `-empowered` scan and the classic face.
- * That is deliberate: the `-empowered` scan prints the OLD rules text, so an
- * Empowered holder would otherwise read rules the engine no longer runs. The
- * Empowered cue itself is unaffected — the render surfaces keep drawing their
- * gold ring / badge on top of whichever face this returns.
+ * Precedence (while the rule is on and the card has a WIRED reprint):
+ *  1. the DEDICATED empowered balance face, when the card is shown Empowered and
+ *     one exists (the 12 abilities in `POLISH_BALANCE_EMPOWERED_ABILITY_IDS`);
+ *  2. otherwise the plain balance face.
+ * Both beat the printed `-empowered` fan scan and the classic face. The empowered
+ * balance face prints the NEW rules text (unlike the classic `-empowered` scan,
+ * which prints the OLD text — the reason the plain balance face used to win over
+ * it), so an Empowered holder reads the right card. The render surfaces still draw
+ * their gold ring / badge on top of whichever face this returns.
  */
 export function resolveCardFaceImage(
   balanceEnabled: boolean,
@@ -48,6 +51,12 @@ export function resolveCardFaceImage(
   empowered: boolean
 ): string | undefined {
   if (balanceEnabled) {
+    if (empowered) {
+      const empoweredBalance = polishBalanceEmpoweredCardImage(cardId);
+      if (empoweredBalance) {
+        return empoweredBalance;
+      }
+    }
     const balance = polishBalanceCardImage(cardId);
     if (balance) {
       return balance;

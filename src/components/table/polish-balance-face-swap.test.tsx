@@ -13,7 +13,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { cardLibrary } from "@/data/cards/library";
-import { POLISH_BALANCE_CARD_IDS, POLISH_BALANCE_NOT_IMPLEMENTED } from "@/data/cards/polish-balance-art";
+import {
+  POLISH_BALANCE_CARD_IDS,
+  POLISH_BALANCE_NOT_IMPLEMENTED,
+  polishBalanceEmpoweredCardImage
+} from "@/data/cards/polish-balance-art";
 import { empoweredCardImage } from "@/data/cards/empowered-card-art";
 import { CardFrame } from "./seats";
 import { PolishBalanceArtProvider, resolveCardFaceImage } from "./polish-balance-art";
@@ -45,41 +49,39 @@ describe("Polish Balance Pack — card faces swap while the rule is ON", () => {
     }
   });
 
-  it("the reprint beats the printed \"-empowered\" scan (which prints the OLD rules text)", () => {
-    // Most wired reprints have a separate Empowered scan, which is exactly the
-    // trap this precedence exists for: an Empowered holder must still read the
-    // NEW card, not a face describing rules the engine no longer runs. (Diplomacy
-    // has none — it is a PRINTED always-Empowered card, so its own face IS the
-    // Empowered scan; it is covered by the plain swap case above.)
-    let covered = 0;
+  it("an Empowered holder gets the DEDICATED empowered balance face (never the OLD-text -empowered scan)", () => {
+    // The 12 abilities ship a dedicated `-empowered` balance face that prints the
+    // NEW rules text; an Empowered holder must get THAT, not the classic
+    // `-empowered` fan scan (OLD text) nor — as before this feature — the plain
+    // balance face. Cards WITHOUT an empowered balance variant (spells, the
+    // Knowledge statistic, Diplomacy) keep the plain balance face when Empowered.
+    let empoweredCovered = 0;
     for (const cardId of POLISH_BALANCE_CARD_IDS) {
-      const empowered = empoweredCardImage(cardId);
-      if (!empowered) {
-        continue;
+      const empoweredBalance = polishBalanceEmpoweredCardImage(cardId);
+      const plainBalance = `/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`;
+      const expected = empoweredBalance ?? plainBalance;
+      if (empoweredBalance) {
+        empoweredCovered += 1;
       }
-      covered += 1;
-      const balanceFace = `/assets/polish-balance/${cardId.replaceAll(".", "-")}.webp`;
-
-      expect(faceSrc(cardId, { balance: true, empowered: true })).toBe(balanceFace);
-      // CONTROL: with the rule off the Empowered scan still wins, unchanged.
-      expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(empowered);
+      expect(faceSrc(cardId, { balance: true, empowered: true }), `${cardId} empowered balance face`).toBe(expected);
+      // CONTROL: with the rule OFF the classic Empowered scan (or classic face) still wins.
+      const classicEmpowered = empoweredCardImage(cardId) ?? cardLibrary[cardId]?.assets?.cardImage;
+      expect(faceSrc(cardId, { balance: false, empowered: true })).toBe(classicEmpowered);
     }
-    // Non-vacuity: this must really be exercising every reprint that HAS an
-    // Empowered scan — the eleven Abilities other than Diplomacy. The pack's
-    // SPELLS have none: Empower is a hand-ABILITY affordance
-    // (`handAbilityEmpowerCandidates`), so no spell ships an `-empowered` face
-    // and there is no precedence to test for them.
-    const abilities = POLISH_BALANCE_CARD_IDS.filter((cardId) => cardId.startsWith("ability."));
-    expect(covered).toBeGreaterThanOrEqual(abilities.length - 1);
-    expect(
-      POLISH_BALANCE_CARD_IDS.filter((cardId) => cardId.startsWith("spell.") && empoweredCardImage(cardId)),
-      "no reprinted Spell ships an Empowered scan"
-    ).toEqual([]);
+    // Non-vacuity: exactly the 12 abilities carry an empowered balance face.
+    expect(empoweredCovered).toBe(12);
+    // The Knowledge statistic has no empowered balance variant → plain face even Empowered.
     expect(faceSrc("stat.knowledge", { balance: true, empowered: true })).toBe(
       "/assets/polish-balance/stat-knowledge.webp"
     );
+    // Empowered Knowledge is its OWN card id, whose plain balance face already IS
+    // the empowered art.
     expect(faceSrc("stat.knowledge.empowered", { balance: true })).toBe(
       "/assets/polish-balance/stat-knowledge-empowered.webp"
+    );
+    // Diplomacy (printed always-Empowered) keeps its plain balance face.
+    expect(faceSrc("ability.diplomacy", { balance: true, empowered: true })).toBe(
+      "/assets/polish-balance/ability-diplomacy.webp"
     );
   });
 
@@ -121,9 +123,13 @@ describe("resolveCardFaceImage — the shared precedence used where a hook canno
     expect(resolveCardFaceImage(true, wired, false)).toBe(
       `/assets/polish-balance/${wired.replaceAll(".", "-")}.webp`
     );
+    // Empowered: the dedicated empowered balance face when the card has one, else
+    // the plain balance face.
     expect(resolveCardFaceImage(true, wired, true)).toBe(
-      `/assets/polish-balance/${wired.replaceAll(".", "-")}.webp`
+      polishBalanceEmpoweredCardImage(wired) ?? `/assets/polish-balance/${wired.replaceAll(".", "-")}.webp`
     );
+    // A wired card with NO empowered balance variant (a spell) stays on the plain face.
+    expect(resolveCardFaceImage(true, "spell.prayer", true)).toBe("/assets/polish-balance/spell-prayer.webp");
     expect(resolveCardFaceImage(false, wired, false)).toBe(cardLibrary[wired]!.assets!.cardImage);
     expect(resolveCardFaceImage(false, wired, true)).toBe(empoweredCardImage(wired));
     expect(resolveCardFaceImage(true, undefined, false)).toBeUndefined();
