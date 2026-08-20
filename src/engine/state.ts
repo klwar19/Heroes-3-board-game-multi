@@ -709,6 +709,40 @@ export type ActiveEffectModifier =
       amount: number;
     }
   | {
+      /**
+       * Community Balance Change "🔄 At the end of your turn gain X" artifacts
+       * (Endless Bag of Gold, Everpouring Vial of Mercury, Inexhaustible Cart of
+       * Lumber). A PLAYER-scoped, `duration: { type: "permanent" }` ongoing: the
+       * card sits in the "Permanents & Ongoing" tray (holdLiveOngoingCardsFromDiscard)
+       * and pays `amount` of `resource` at the end of EVERY one of the owner's
+       * turns until it is ended (`DISCARD_ONGOING_CARD`) or dispelled. Read at
+       * the single END_TURN chokepoint (`payTurnEndOngoingIncome`,
+       * adventure-reducer.ts) — NOT the Resources-round income seam, which the
+       * ♾️ permanents (Eversmoking Ring, Cart of Ore, the community Endless Sack)
+       * use instead.
+       */
+      type: "TURN_END_RESOURCE_GAIN";
+      resource: ResourceKind;
+      amount: number;
+    }
+  | {
+      /**
+       * Community Balance Change Hourglass of the Evil Hour option B: "🔄 Until
+       * the end of the Combat round, ignore all +1 Attack die results." A
+       * GLOBAL-scope, `current-combat-round` effect: while it lives, a rolled
+       * "+1" contributes 0 to the attack value — for BOTH armies, exactly as the
+       * printed "all" reads. Folded at the shared damage seam
+       * (`getAttackDamagePreview`), so the real hit and the lethal-save preview
+       * can never disagree.
+       *
+       * LIMIT (deliberate, stated on the card's tags): only the die's NUMERIC
+       * result is ignored. Abilities keyed off the "+1" FACE (Death Blow, the
+       * Minotaur draw, …) still fire — that is the separate
+       * IGNORE_ATTACK_DIE_RESULT arm (Shield of the Dwarven Lords).
+       */
+      type: "IGNORE_ATTACK_DIE_PLUS_ONE";
+    }
+  | {
       type: "SPELL_POWER_BONUS";
       amount: number;
     }
@@ -1530,6 +1564,23 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       /** Sword of Judgement style: +1 per card paid via the option's cost. */
       perCostCard?: number;
+      /**
+       * Community Balance Change Celestial Necklace of Bliss: "⚡ +1 <attack>,
+       * then discard X cards from hand to gain +X <defense>" — the ONE printed
+       * line that grants BOTH stats on the same play.
+       *
+       * READING (deliberate, stated on the card's tags): an attack in this engine
+       * has exactly one attacker and one defender, and `modifiers.defenseBonus`
+       * is the DEFENDER's — so adding the Defense half to the blow would buff the
+       * enemy. Instead each card paid through the option's cost lays +1 Defense on
+       * the PLAYER'S OWN unit in the attack (a `current-combat-round`
+       * DEFENSE_BONUS active effect), where it really shields it — notably against
+       * the Retaliation Attack that same blow provokes. `amount` still rides the
+       * blow as the printed flat +1 attack.
+       *
+       * Absent on every other card (the classic same-stat `perCostCard` scaling).
+       */
+      perCostCardSelfDefense?: number;
       /** Offense/Armorer: "Then draw 1 card." */
       drawCards?: number;
       /**
@@ -1732,6 +1783,13 @@ export type EffectDefinition =
        */
       expertAmount?: number;
       expertDrawCards?: number;
+      /**
+       * Community Balance Change Spirit of Oppression option A: "🌎 ALL players
+       * gain <negative_morale>." The morale change is applied to every live
+       * player (the caster included), not just the card's owner. Read at the
+       * single GAIN_MORALE resolution seam in `playCard`.
+       */
+      allPlayers?: boolean;
     }
   | {
       /**
@@ -1791,6 +1849,34 @@ export type EffectDefinition =
        */
       type: "GAIN_RECRUIT_DISCOUNT";
       amount: number;
+      /**
+       * Community Balance Change Arms / Head of Legion: "…by 1 <valuables> or 4
+       * <gold>". The VALUABLES alternative is a second CHOOSE_ONE option on the
+       * reprint carrying `amount: 0, valuables: 1`; the voucher it banks knocks
+       * valuables (not gold) off the targeted purchase, through the same
+       * `recruitDiscounts` pipeline. Absent = the classic gold-only voucher.
+       */
+      valuables?: number;
+    }
+  | {
+      /**
+       * Community Balance Change Legion remove-sides: "🌍 Remove this card, then
+       * Reinforce a <tier> unit by paying its Reinforcement cost reduced by N
+       * gold (to a minimum of 0)." Opens a menu of the player's own Few army
+       * cards of `tier`, each priced with `reinforceCostFor(..., goldDiscount)`
+       * and bought through the SHARED `REINFORCE_FLAT_GOLD` visit step — the
+       * same step (and therefore the same Citadel gate, Legion-voucher stacking
+       * and spend path) the Cove Pub reinforcement offer uses.
+       */
+      type: "LEGION_TIER_REINFORCE";
+      tier: "bronze" | "silver" | "gold" | "azure";
+      goldDiscount: number;
+      /**
+       * Head of Legion's remove side prints "…reduced by 1 <valuables> or 3
+       * <gold>", so its menu lists BOTH currencies per eligible unit and the
+       * player picks. Absent on the gold-only Legion pieces.
+       */
+      valuablesDiscount?: number;
     }
   | {
       /** Logistics expert, Boots of Speed: the main hero gains movement. */
@@ -1916,6 +2002,12 @@ export type EffectDefinition =
        * discard-to-hand arm).
        */
       polishRecoveryLimit?: number;
+      /**
+       * Community Balance Change Crown of Dragontooth: "Select UP TO 2 Spell
+       * cards from your discard pile" (was exactly 2) — the pick offers an
+       * explicit "take no (more) cards" exit at every step.
+       */
+      optional?: boolean;
       /**
        * Scholar (basic) house rule: the pick may also be made mid-Combat. The
        * adventure reward queue is parked while a fight is live, so the reducer
@@ -2839,6 +2931,13 @@ export type EffectDefinition =
       effect: ActiveEffectDefinition;
       expertEffect?: ActiveEffectDefinition;
       /**
+       * Community Balance Change Pendant of Second Sight option A: "⚡ Remove 1
+       * Paralysis token. 🔄 Selected unit cannot gain Paralysis during this
+       * Combat." — ONE play doing BOTH. When set, the targeted unit loses one
+       * Paralysis token before the ongoing effect is created.
+       */
+      removeParalysis?: boolean;
+      /**
        * Ash's Bloodlust IV: "Place a Black cube on that unit." After the ongoing
        * buff is created on the selected unit, that unit also spends its
        * Retaliation for the round (`retaliatedThisRound = true`) — the same Black
@@ -3618,6 +3717,15 @@ export type CardOptionDefinition = {
    * never offered in the ATTACK_DIE_SETTLED window.
    */
   requiresRangedAttacker?: boolean;
+  /**
+   * Community Balance Change Centaur's Axe: "Use this AFTER the Attack die
+   * roll. Triple the Attack die's outcome." The option is withheld from the
+   * ordinary pre-roll attack window and is instead offered to the ATTACKING
+   * side in the dedicated post-roll window (ATTACK_DIE_SETTLED), where the
+   * rolled face is already known. Read by `getDieCancelReactions` and by
+   * `isEffectLegalForTrigger` (which refuses it in a pre-roll window).
+   */
+  afterAttackRoll?: boolean;
   /**
    * Per-option target override for a CHOOSE_ONE card whose options strike
    * different sides. Ring of the Wayfarer's initiative side buffs a friendly
@@ -8132,6 +8240,13 @@ export type RecruitDiscountVoucher = {
   cardId: CardId;
   /** Gold knocked off the targeted unit's recruit/reinforce, floored at 0. */
   amount: number;
+  /**
+   * Community Balance Change Arms / Head of Legion: the VALUABLES alternative
+   * ("…by 1 <valuables> or 4 <gold>"). Knocked off the targeted purchase's
+   * valuables component instead of its gold, floored at 0, through the same
+   * pipeline (`totalRecruitValuablesDiscount`). Absent = a gold-only voucher.
+   */
+  valuables?: number;
   /** The exact unit this voucher is reserved for. */
   target:
     | { kind: "recruit"; unitDefId: string }
@@ -10412,6 +10527,8 @@ export type AdventureReward =
       shuffleRestIntoDeck?: boolean;
       /** Polish Balance Pack Crown of Dragontooth: up to 2 enablers / refreshes. */
       polishRecoveryLimit?: number;
+      /** Community Balance Change Crown of Dragontooth: the pick may be declined. */
+      optional?: boolean;
       /** One protected occurrence per id is still resolving and cannot be recovered yet. */
       excludeCardIds?: CardId[];
       /** Polish Balance Pack Adelaide IV: open a Book-refresh pick after the take. */
@@ -11086,6 +11203,8 @@ export type VisitStep =
       type: "BANK_RECRUIT_DISCOUNT";
       cardId: CardId;
       amount: number;
+      /** Community Balance Change Arms / Head of Legion: the VALUABLES alternative. */
+      valuables?: number;
       target:
         | { kind: "recruit"; unitDefId: string }
         | { kind: "reinforce"; armyUnitId: string }
@@ -11661,6 +11780,12 @@ export type VisitStep =
       type: "REINFORCE_FLAT_GOLD";
       armyUnitId: string;
       discount: number;
+      /**
+       * Community Balance Change Head of Legion (remove side): "…reduced by 1
+       * <valuables> or 3 <gold>" — this option pays the VALUABLES half instead.
+       * Absent = the classic gold-only discount.
+       */
+      valuablesDiscount?: number;
     }
   | {
       /**
@@ -15318,6 +15443,12 @@ export type PendingChoice =
         offerWisdom?: boolean;
         /** Balance-Pack Speculum: play its persistent +1 arm as this Search starts. */
         offerSpeculum?: boolean;
+        /**
+         * Community Balance Change Cards of Prophecy (option A): "Play this card
+         * before taking a Search action, then do Search (4) instead." Offered
+         * here — the ONE pre-Search surface — beside Scouting.
+         */
+        offerProphecy?: boolean;
         /** Tarnum (Conflux) I: carry the "Remove instead of keep" privilege through the Scouting prompt. */
         allowRemove?: boolean;
         /**
@@ -15492,6 +15623,12 @@ export type PendingChoice =
         excludeCardIds?: CardId[];
         /** Polish Balance Pack Adelaide IV: open a Book-refresh pick once this take resolves. */
         polishRefreshAfter?: boolean;
+        /**
+         * Community Balance Change Crown of Dragontooth: "Select UP TO 2 Spell
+         * cards…". The pick gains a trailing "Take no (more) cards" option; the
+         * take is otherwise identical. Absent = the classic mandatory pick.
+         */
+        optional?: boolean;
       };
       /** Found shared-deck Spell waiting for its take-or-discard decision. */
       eagleEye?: { deckId: DeckId; cardId: CardId; allowDiscard?: boolean };

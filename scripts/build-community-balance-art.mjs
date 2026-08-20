@@ -119,7 +119,47 @@ const SOURCES = {
   "spells-dispel.webp": "spell.dispel",
   "spells-cure.webp": "spell.cure",
   "spells-mirth.webp": "spell.mirth",
-  "spells-prayer.webp": "spell.prayer"
+  "spells-prayer.webp": "spell.prayer",
+
+  // ---- Artifacts (all thirty-four) -----------------------------------------
+  // An artifact has no Empowered printing, so each contributes exactly one face.
+  // NOTE two misspellings in the sheet's own filenames, mapped to the real ids:
+  //   artifacts_minor-inexhaustiable_cart_of_lumber.webp -> inexhaustible_cart_of_lumber
+  //   artifacts_minor-lions_of_legion.webp               -> loins_of_legion
+  "artifacts_relic-boots_of_polarity.webp": "artifact.boots_of_polarity",
+  "artifacts_relic-celestial_necklace_of_bliss.webp": "artifact.celestial_necklace_of_bliss",
+  "artifacts_relic-crown_of_dragontooth.webp": "artifact.crown_of_dragontooth",
+  "artifacts_relic-endless_sack_of_gold.webp": "artifact.endless_sack_of_gold",
+  "artifacts_relic-lions_shield_of_courage.webp": "artifact.lions_shield_of_courage",
+  "artifacts_relic-sword_of_judgement.webp": "artifact.sword_of_judgement",
+  "artifacts_relic-sandals_of_the_saint.webp": "artifact.sandals_of_the_saint",
+  "artifacts_major-ambassadors_sash.webp": "artifact.ambassadors_sash",
+  "artifacts_major-arms_of_legion.webp": "artifact.arms_of_legion",
+  "artifacts_major-cards_of_prophecy.webp": "artifact.cards_of_prophecy",
+  "artifacts_major-endless_bag_of_gold.webp": "artifact.endless_bag_of_gold",
+  "artifacts_major-endless_purse_of_gold.webp": "artifact.endless_purse_of_gold",
+  "artifacts_major-everflowing_crystal_cloak.webp": "artifact.everflowing_crystal_cloak",
+  "artifacts_major-everpouring_vial_of_mercury.webp": "artifact.everpouring_vial_of_mercury",
+  "artifacts_major-eversmoking_ring_of_sulfur.webp": "artifact.eversmoking_ring_of_sulfur",
+  "artifacts_major-golden_bow.webp": "artifact.golden_bow",
+  "artifacts_major-head_of_legion.webp": "artifact.head_of_legion",
+  "artifacts_major-ogres_club_of_havoc.webp": "artifact.ogres_club_of_havoc",
+  "artifacts_major-pendant_of_second_sight.webp": "artifact.pendant_of_second_sight",
+  "artifacts_major-surcoat_of_counterpoise.webp": "artifact.surcoat_of_counterpoise",
+  "artifacts_major-targ_of_the_rampaging_ogre.webp": "artifact.targ_of_the_rampaging_ogre",
+  "artifacts_major-tunic_of_the_cyclops_king.webp": "artifact.tunic_of_the_cyclops_king",
+  "artifacts_minor-breastplate_of_petrified_wood.webp": "artifact.breastplate_of_petrified_wood",
+  "artifacts_minor-centaurs_axe.webp": "artifact.centaurs_axe",
+  "artifacts_minor-dragon_wing_tabard.webp": "artifact.dragon_wing_tabard",
+  "artifacts_minor-hourglass_of_the_evil_hour.webp": "artifact.hourglass_of_the_evil_hour",
+  "artifacts_minor-inexhaustiable_cart_of_lumber.webp": "artifact.inexhaustible_cart_of_lumber",
+  "artifacts_minor-inexhaustible_cart_of_ore.webp": "artifact.inexhaustible_cart_of_ore",
+  "artifacts_minor-legs_of_legion.webp": "artifact.legs_of_legion",
+  "artifacts_minor-lions_of_legion.webp": "artifact.loins_of_legion",
+  "artifacts_minor-scales_of_the_greater_basilisk.webp": "artifact.scales_of_the_greater_basilisk",
+  "artifacts_minor-speculum.webp": "artifact.speculum",
+  "artifacts_minor-spirit_of_oppression.webp": "artifact.spirit_of_oppression",
+  "artifacts_minor-torso_of_legion.webp": "artifact.torso_of_legion"
 };
 
 /** The committed basename for a table entry's target id. */

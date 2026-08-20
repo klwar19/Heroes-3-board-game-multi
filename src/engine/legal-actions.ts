@@ -26,6 +26,7 @@ import {
   farTilePlacementCenters,
   freeSpellBookActive,
   legionDiscountTargets,
+  legionTierReinforceOptions,
   legionPieceAlreadyBanked,
   playerHasPlaceableFarTile,
   reinforcementDiscountCostFor,
@@ -340,6 +341,12 @@ type CardPlayVariant = {
   combatOnly?: boolean;
   /** Option only playable before any unit activates. */
   combatStartOnly?: boolean;
+  /**
+   * Community Balance Change Centaur's Axe: "Use this AFTER the Attack die
+   * roll." Never offered in a PRE-roll window; the post-roll ATTACK_DIE_SETTLED
+   * window (`getDieCancelReactions`) offers it instead.
+   */
+  afterAttackRoll?: boolean;
   /** Option is the card's expert side (costs a crown). */
   expertOnly?: boolean;
 };
@@ -355,6 +362,7 @@ export function getCardPlayVariants(card: CardDefinition): CardPlayVariant[] {
       mapOnly: option.mapOnly,
       combatOnly: option.combatOnly,
       combatStartOnly: option.combatStartOnly,
+      afterAttackRoll: option.afterAttackRoll,
       expertOnly: option.expertOnly
     }));
   }
@@ -3467,6 +3475,9 @@ function isOptionEffectPlayable(
     // Legion artifacts' discount side: banking the one-shot recruit discount is
     // always a valid choice (it is spent later, on the map, by a recruit/reinforce).
     case "GAIN_RECRUIT_DISCOUNT":
+    // Community Balance Change Legion remove-sides: the tier-scoped reinforce
+    // menu. Offered only when there is really something to reinforce (below).
+    case "LEGION_TIER_REINFORCE":
     case "GAIN_MORALE":
     case "ENEMY_MORALE_STRIP":
     case "ROLL_FOR_MORALE":
@@ -4151,6 +4162,21 @@ function addOptionPlays(
         continue;
       }
     }
+    // Community Balance Change Legion remove-sides: the printed cost REMOVES the
+    // card, so the option is withheld unless the tier-scoped reinforce menu would
+    // really have something in it (never a card removed for nothing).
+    if (
+      option.effect.type === "LEGION_TIER_REINFORCE" &&
+      legionTierReinforceOptions(
+        state,
+        playerId,
+        option.effect.tier,
+        option.effect.goldDiscount,
+        option.effect.valuablesDiscount ?? 0
+      ).length === 0
+    ) {
+      continue;
+    }
     if (!canAffordCardCost(state, playerId, cardId, option.cost)) {
       continue;
     }
@@ -4462,6 +4488,9 @@ function isMapPlayableEffect(state: GameState, playerId: PlayerId, card: CardDef
     effect.type === "RESOURCE_FORTUNE_PLAY" ||
     // Legion artifacts' discount side: banked on the map for the next recruit.
     effect.type === "GAIN_RECRUIT_DISCOUNT" ||
+    // Community Balance Change Legion remove-sides: a map play that opens the
+    // tier-scoped reinforce menu.
+    effect.type === "LEGION_TIER_REINFORCE" ||
     effect.type === "ENEMY_MORALE_STRIP" ||
     effect.type === "ROLL_FOR_MORALE" ||
     effect.type === "RANDOM_ENEMY_DISCARD" ||
@@ -7508,9 +7537,6 @@ function getDieCancelReactions(
   const attackerIsRanged = combat.units[attackerId]?.type === "ranged";
   const playerId = defender.controllerId;
   const player = state.players[playerId];
-  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
-    return {};
-  }
 
   // Only one die-cancel per attack: if it is already armed, offer nothing more.
   const pendingAttack = state.stack.find(
@@ -7520,7 +7546,19 @@ function getDieCancelReactions(
     return {};
   }
 
+  // Community Balance Change Centaur's Axe: "⚡ Use this AFTER the Attack die
+  // roll. Triple the Attack die's outcome." The classic printing is a PRE-roll
+  // declaration; the reprint moves it into this post-roll window, where the
+  // attacking side now sees the face before committing. The tripling lands on
+  // `stackItem.modifiers.attackDieMultiplier`, which `getAttackStackDetails`
+  // re-reads when the parked blow resumes — so the stashed rolled candidate is
+  // multiplied exactly as a pre-roll play would have been.
+  const attackerOffers = getAfterRollAttackerReactions(state, attackerId, cards);
+
   const reactions: LegalAction[] = [];
+  if (!player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return attackerOffers;
+  }
   for (const cardId of new Set(player.hand)) {
     const card = cards[cardId];
     if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
@@ -7564,6 +7602,48 @@ function getDieCancelReactions(
     }
   }
 
+  return reactions.length > 0 ? { ...attackerOffers, [playerId]: reactions } : attackerOffers;
+}
+
+/**
+ * Community Balance Change Centaur's Axe — the ATTACKING side's offers in the
+ * post-roll ATTACK_DIE_SETTLED window. Only options explicitly flagged
+ * `afterAttackRoll` are surfaced (nothing in the classic library carries it), so
+ * with the pack off this returns `{}` and the window is defender-only exactly as
+ * before.
+ */
+function getAfterRollAttackerReactions(
+  state: GameState,
+  attackerId: UnitId,
+  cards: CardLibrary
+): Record<PlayerId, LegalAction[]> {
+  const attacker = state.combat?.units[attackerId];
+  const playerId = attacker?.controllerId;
+  const player = playerId ? state.players[playerId] : undefined;
+  if (!attacker || !playerId || !player || playerId === NEUTRAL_PLAYER_ID || isHandLockedInCombat(state, playerId)) {
+    return {};
+  }
+  const reactions: LegalAction[] = [];
+  for (const cardId of new Set(player.hand)) {
+    const card = cards[cardId];
+    if (!card || card.implementationStatus !== "implemented" || card.effect.type !== "CHOOSE_ONE") {
+      continue;
+    }
+    for (const [optionIndex, option] of card.effect.options.entries()) {
+      if (!option.afterAttackRoll || !canAffordCardCost(state, playerId, cardId, option.cost)) {
+        continue;
+      }
+      reactions.push(
+        makeReactionAction(`${card.name}: ${option.label}`, {
+          type: "PLAY_REACTION",
+          playerId,
+          cardId,
+          mode: "basic",
+          optionIndex
+        })
+      );
+    }
+  }
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
 
@@ -9418,6 +9498,12 @@ function variantMatchesTrigger(
   playerId: PlayerId,
   allowTriggerlessUtility = false
 ): boolean {
+  // Community Balance Change Centaur's Axe: an "after the Attack die roll"
+  // option is withheld from EVERY pre-roll window. Its only surface is the
+  // post-roll ATTACK_DIE_SETTLED window, which builds its offers directly.
+  if (variant.afterAttackRoll) {
+    return false;
+  }
   const utilityFallback = allowTriggerlessUtility && isInstantReactionUtility(variant.effect);
   if (!variant.trigger) {
     return utilityFallback;

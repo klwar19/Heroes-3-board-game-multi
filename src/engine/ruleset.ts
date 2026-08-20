@@ -410,7 +410,12 @@ export function effectiveArtifactTier(
   // with the rule OFF the engine reads the printed Minor tier.
   if (
     cardId === EVERSMOKING_RING_OF_SULFUR_ID &&
-    !houseRuleEnabled(state, "eversmoking-ring-of-sulfur-major")
+    !houseRuleEnabled(state, "eversmoking-ring-of-sulfur-major") &&
+    // Community Balance Change: the sheet's "Extra Change" column moves the Ring
+    // from MINOR to MAJOR, so the pack forces the same MAJOR reading the BINH
+    // house rule gives — composed with (never replacing) that toggle, so the Ring
+    // is Major whenever EITHER is on.
+    !houseRuleEnabled(state, "community-card-balance")
   ) {
     return "minor";
   }

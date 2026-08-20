@@ -561,7 +561,12 @@ export function cardMayEnterPlay(card: CardDefinition): boolean {
  */
 export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardId: CardId): void {
   const player = state.players[playerId];
-  const card = cardLibrary[cardId];
+  // Balance packs: the COMMUNITY Endless Sack of Gold turns its instant "gain 5
+  // gold" side into "♾️ At the beginning of each Resource round, gain 4 gold",
+  // so the printed definition carries no ENTER_PLAY option and `cardMayEnterPlay`
+  // would refuse the very play the reprint offers. Read the definition the rest
+  // of the engine resolves with. With every pack off this is `cardLibrary[cardId]`.
+  const card = balanceCard(state, cardId);
   if (!player || !card || !cardMayEnterPlay(card)) {
     throw new Error("That card is not a permanent.");
   }

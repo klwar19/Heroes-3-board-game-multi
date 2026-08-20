@@ -150,6 +150,10 @@ const MAP_ECONOMY_EFFECTS = new Set<EffectDefinition["type"]>([
   "DRAW_NEUTRAL_RECRUIT_OFFER",
   "RESOURCE_FORTUNE_PLAY",
   "GAIN_RECRUIT_DISCOUNT",
+  // Community Balance Change Legion remove-sides: a map economy play (it opens
+  // the tier-scoped reinforce menu). No dedicated AI valuation — it is scored as
+  // a generic map economy card, exactly like the discount side beside it.
+  "LEGION_TIER_REINFORCE",
   "GAIN_EXPERT_USE",
   "GAIN_WAR_MACHINE",
   "GAIN_RUNES",

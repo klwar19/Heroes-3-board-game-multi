@@ -82,7 +82,45 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
   "spell.dispel",
   "spell.cure",
   "spell.mirth",
-  "spell.prayer"
+  "spell.prayer",
+  // ---- Artifacts (all THIRTY-FOUR of the sheet's artifact cards are wired) --
+  // RELIC
+  "artifact.boots_of_polarity",
+  "artifact.celestial_necklace_of_bliss",
+  "artifact.crown_of_dragontooth",
+  "artifact.endless_sack_of_gold",
+  "artifact.lions_shield_of_courage",
+  "artifact.sword_of_judgement",
+  "artifact.sandals_of_the_saint",
+  // MAJOR
+  "artifact.ambassadors_sash",
+  "artifact.arms_of_legion",
+  "artifact.cards_of_prophecy",
+  "artifact.endless_bag_of_gold",
+  "artifact.endless_purse_of_gold",
+  "artifact.everflowing_crystal_cloak",
+  "artifact.everpouring_vial_of_mercury",
+  "artifact.eversmoking_ring_of_sulfur",
+  "artifact.golden_bow",
+  "artifact.head_of_legion",
+  "artifact.ogres_club_of_havoc",
+  "artifact.pendant_of_second_sight",
+  "artifact.surcoat_of_counterpoise",
+  "artifact.targ_of_the_rampaging_ogre",
+  "artifact.tunic_of_the_cyclops_king",
+  // MINOR
+  "artifact.breastplate_of_petrified_wood",
+  "artifact.centaurs_axe",
+  "artifact.dragon_wing_tabard",
+  "artifact.hourglass_of_the_evil_hour",
+  "artifact.inexhaustible_cart_of_lumber",
+  "artifact.inexhaustible_cart_of_ore",
+  "artifact.legs_of_legion",
+  "artifact.loins_of_legion",
+  "artifact.scales_of_the_greater_basilisk",
+  "artifact.speculum",
+  "artifact.spirit_of_oppression",
+  "artifact.torso_of_legion"
 ] as const;
 
 /**
@@ -93,6 +131,15 @@ export const COMMUNITY_BALANCE_CARD_IDS: readonly string[] = [
  * `COMMUNITY_BALANCE_CARD_IDS` is the conscious "it is wired now" step.
  */
 export const COMMUNITY_BALANCE_NOT_IMPLEMENTED: Record<string, string> = {
+  // EMPTY for the ARTIFACTS family too: all THIRTY-FOUR of the sheet's artifact
+  // cards are wired. The three readings that are NOT literal transcriptions —
+  // Celestial Necklace of Bliss's cross-stat discard (its +X Defense lands on
+  // YOUR unit for the combat round, since the blow's defense value is the
+  // enemy's), Hourglass of the Evil Hour option B (global, numeric result only)
+  // and Centaur's Axe's move to the post-roll window — are stated on each card's
+  // own tags in `community-artifacts-balance.ts` and pinned in
+  // `src/engine/community-card-balance-artifacts.test.ts`.
+  //
   // EMPTY for the ABILITIES and SPELLS families: all twelve sheet abilities and
   // all twenty-six sheet spells are wired (per-spell readings and their limits
   // are stated on each entry in `community-spells-balance.ts`). The

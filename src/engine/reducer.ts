@@ -24,12 +24,17 @@ import {
   openNeutralRecruitOffer,
   openPandoraSilverRefresh,
   queueLegionDiscountChoice,
+  queueLegionTierReinforce,
   queueNecromancyReinforce,
   recordLevelUpAbilityPick,
   grantRegularArtifactOfSameGrade
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
-import { balanceCardLibrary, COMMUNITY_REPRINTED_CARDS } from "./community-balance-cards";
+import {
+  balanceCardLibrary,
+  balanceRerollReactionArtifactIds,
+  COMMUNITY_REPRINTED_CARDS
+} from "./community-balance-cards";
 import { balanceIntelligenceWindowClosed, polishIntelligenceHandReadingActive } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
@@ -3510,7 +3515,13 @@ function getAttackDamagePreview(
   halveAttack = false,
   // Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a rolled
   // "-1" ("Ignore on '-1' result"), so a "-1" counts once instead of thrice.
-  dieMultiplierSkipsNegative = false
+  dieMultiplierSkipsNegative = false,
+  // Community Balance Change Hourglass of the Evil Hour (option B): while the
+  // GLOBAL "ignore all +1 Attack die results" effect lives, a rolled "+1"
+  // contributes 0 to the attack value — for BOTH armies. Only the NUMERIC result
+  // is ignored; "+1"-face abilities still fire (that is the separate
+  // IGNORE_ATTACK_DIE_RESULT arm).
+  ignorePlusOneDie = false
 ): { attackValue: number; defenseValue: number; damage: number; dieAttackBonus: number; dieDefenseBonus: number } {
   // Attack-die-face conditioned modifiers, resolved here so the actual hit and
   // the lethal-save preview always agree: Dread Knights' "Death Blow" adds to
@@ -3531,9 +3542,11 @@ function getAttackDamagePreview(
   // rolled once by the caller and passed in so every recompute agrees.
   // Centaur's Axe (Balance Pack): the tripling is ignored on a rolled "-1".
   const effectiveDieMultiplier = dieMultiplierSkipsNegative && roll < 0 ? 1 : dieMultiplier;
+  // Community Balance Change Hourglass of the Evil Hour: the "+1" result is ignored.
+  const countedRoll = ignorePlusOneDie && roll > 0 ? 0 : roll;
   const rawAttackValue = Math.max(
     0,
-    baseAttack + attackBonus + dieAttackBonus + roll * effectiveDieMultiplier + mightBonus
+    baseAttack + attackBonus + dieAttackBonus + countedRoll * effectiveDieMultiplier + mightBonus
   );
   const attackValue = halveAttack ? Math.ceil(rawAttackValue / 2) : rawAttackValue;
   // Elemental damage ignores Defense outright; otherwise sum printed Defense,
@@ -3594,7 +3607,9 @@ function applyAttackDamageFromCandidate(
   cardDamageCap?: number,
   halveAttack = false,
   // Centaur's Axe (Balance Pack): ignore the die multiplier on a rolled "-1".
-  dieMultiplierSkipsNegative = false
+  dieMultiplierSkipsNegative = false,
+  // Community Balance Change Hourglass of the Evil Hour: a rolled "+1" counts 0.
+  ignorePlusOneDie = false
 ): { damage: number; roll: number; cancelled: boolean } {
   if (!state.combat) {
     return { damage: 0, roll: 0, cancelled: false };
@@ -3616,7 +3631,8 @@ function applyAttackDamageFromCandidate(
     isRetaliation,
     cardDamageCap,
     halveAttack,
-    dieMultiplierSkipsNegative
+    dieMultiplierSkipsNegative,
+    ignorePlusOneDie
   );
   const { attackValue, defenseValue, dieAttackBonus, dieDefenseBonus } = preview;
   let damage = preview.damage;
@@ -4038,6 +4054,19 @@ function applyPostAttackAbilityDamage(
   }
 }
 
+/**
+ * Community Balance Change Hourglass of the Evil Hour (option B): "🔄 Until the
+ * end of the Combat round, ignore all +1 Attack die results." A live GLOBAL
+ * IGNORE_ATTACK_DIE_PLUS_ONE effect makes every rolled "+1" count 0 towards the
+ * attack value, for BOTH armies (the printed "all"). No-op with the pack off —
+ * nothing in the shipped library creates the modifier.
+ */
+function attackDiePlusOneIgnored(state: GameState): boolean {
+  return state.activeEffects.some((effect) =>
+    effect.modifiers.some((modifier) => modifier.type === "IGNORE_ATTACK_DIE_PLUS_ONE")
+  );
+}
+
 function getAttackStackDetails(
   state: GameState,
   stackItem: ResolutionStackItem
@@ -4071,6 +4100,11 @@ function getAttackStackDetails(
        * at half the attacker's Attack value, rounded up.
        */
       halveAttack?: boolean;
+      /**
+       * Community Balance Change Hourglass of the Evil Hour (option B): a GLOBAL
+       * "ignore all +1 Attack die results" effect is live this combat round.
+       */
+      ignorePlusOneDie?: boolean;
       /**
        * Polish Balance Pack Centaur's Axe: the die multiplier is IGNORED on a
        * rolled "-1" ("Ignore on '-1' result").
@@ -4399,6 +4433,8 @@ function getAttackStackDetails(
     halveAttack: attackKind === "ranged" && unitRangedAttackHalved(state, attacker),
     // Centaur's Axe (Balance Pack): the die multiplier is ignored on a "-1".
     dieMultiplierSkipsNegative: Boolean(stackItem.modifiers.attackDieMultiplierSkipsNegative),
+    // Community Balance Change Hourglass of the Evil Hour (option B).
+    ignorePlusOneDie: attackDiePlusOneIgnored(state),
     ignoreAttackDie:
       Boolean(stackItem.modifiers.ignoreAttackDie) ||
       elementalLocksAttack ||
@@ -4571,7 +4607,9 @@ function buildRerollSources(
   // reroll discards the artifact (handled in rerollPendingChoice).
   const artifactSources: AttackRerollSource[] =
     player && !isHandLockedInCombat(state, attacker.controllerId)
-      ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) =>
+      ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
+        .filter((cardId) => player.hand.includes(cardId))
+        .map((cardId) =>
           rerollArtifactSource(state, cardId)
         )
       : [];
@@ -4829,7 +4867,9 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
       : [];
 
   const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
-    ? REROLL_REACTION_ARTIFACT_IDS.filter((cardId) => player.hand.includes(cardId)).map((cardId) =>
+    ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
+        .filter((cardId) => player.hand.includes(cardId))
+        .map((cardId) =>
         rerollArtifactSource(state, cardId)
       )
     : [];
@@ -5986,7 +6026,8 @@ function finishResolvedAttack(
       details.isRetaliation,
       details.attackDamageCap,
       details.halveAttack,
-      details.dieMultiplierSkipsNegative
+      details.dieMultiplierSkipsNegative,
+      details.ignorePlusOneDie
     );
     const stackLayerOnly = armyStacksWouldAbsorbHit(state, details.defender, preview.damage);
     if (
@@ -6050,7 +6091,8 @@ function finishResolvedAttack(
         details.isRetaliation,
         details.attackDamageCap,
         details.halveAttack,
-        details.dieMultiplierSkipsNegative
+        details.dieMultiplierSkipsNegative,
+        details.ignorePlusOneDie
       );
       if (
         preview.damage > 0 &&
@@ -6116,7 +6158,8 @@ function finishResolvedAttack(
         details.isRetaliation,
         details.attackDamageCap,
         details.halveAttack,
-        details.dieMultiplierSkipsNegative
+        details.dieMultiplierSkipsNegative,
+        details.ignorePlusOneDie
       );
       return (
         preview.damage > 0 &&
@@ -6163,7 +6206,8 @@ function finishResolvedAttack(
     mightRolls,
     details.attackDamageCap,
     details.halveAttack,
-    details.dieMultiplierSkipsNegative
+    details.dieMultiplierSkipsNegative,
+    details.ignorePlusOneDie
   );
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
@@ -15850,6 +15894,31 @@ function applyReactionPlayCore(
     } else {
       stackItem.modifiers.defenseBonus += appliedAmount;
     }
+
+    // Community Balance Change Celestial Necklace of Bliss: "+1 attack, then
+    // discard X cards from hand to gain +X defense". The Defense half cannot ride
+    // this blow (modifiers.defenseBonus is the DEFENDER's, i.e. the enemy when the
+    // holder attacks), so each paid card lays +1 Defense on the holder's OWN unit
+    // for the rest of the combat round — where it really shields it, notably
+    // against the Retaliation Attack this very blow provokes.
+    if (effect.perCostCardSelfDefense && costCardsPaid > 0 && affectedUnit && state.combat) {
+      state.activeEffects.push(
+        makeActiveEffect(
+          state,
+          {
+            name: card.name,
+            scope: "unit",
+            duration: { type: "current-combat-round" },
+            polarity: "positive",
+            removable: true,
+            modifiers: [{ type: "DEFENSE_BONUS", amount: effect.perCostCardSelfDefense * costCardsPaid }]
+          },
+          { type: "card", cardId: card.id, controllerId: playerId },
+          playerId,
+          { type: "unit", unitId: affectedUnit.id }
+        )
+      );
+    }
     stackItem.modifiers.playedCardIds.push(play.cardId);
 
     // A Power-scaling spell instant (Bloodlust, Precision, Curse, Weakness…)
@@ -18490,6 +18559,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   }
 
   if (effect.type === "CREATE_ACTIVE_EFFECT") {
+    // Community Balance Change Pendant of Second Sight option A: "⚡ Remove 1
+    // Paralysis token. 🔄 Selected unit cannot gain Paralysis during this
+    // Combat." — ONE play doing BOTH, so the token comes off first and the ward
+    // is laid on the same unit right after.
+    if (effect.removeParalysis && state.combat && nonDamageTarget?.type === "unit") {
+      const paralysed = state.combat.units[nonDamageTarget.unitId];
+      if (paralysed && hasToken(paralysed, "paralysis")) {
+        removeToken(state, paralysed, "paralysis", "dispelled");
+      }
+    }
     createActiveEffectFromCard(state, card, effect, action.playerId, mode, target);
     // Ash's Bloodlust IV: the ongoing buff also "places a Black cube" on the
     // selected unit. The physical flag below covers the CURRENT round; the
@@ -19039,7 +19118,16 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         inFlightCardIds: playInFlightCardIds
       });
     }
-    changeMorale(state, action.playerId, gainMoraleAmount(effect, mode));
+    const moraleAmount = gainMoraleAmount(effect, mode);
+    if (effect.allPlayers) {
+      // Community Balance Change Spirit of Oppression option A: "🌎 ALL players
+      // gain <negative_morale>" — every live seat, the caster included.
+      for (const otherId of Object.keys(state.players)) {
+        changeMorale(state, otherId, moraleAmount);
+      }
+    } else {
+      changeMorale(state, action.playerId, moraleAmount);
+    }
   }
 
   if (effect.type === "NECROMANCY_REINFORCE") {
@@ -19165,7 +19253,23 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
   // cannot bank again before movement. Vouchers are spent when their unit is
   // bought.
   if (effect.type === "GAIN_RECRUIT_DISCOUNT") {
-    queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount);
+    // Community Balance Change Arms / Head of Legion: `valuables` is the printed
+    // VALUABLES alternative ("…by 1 <valuables> or 4 <gold>"), shipped as its own
+    // CHOOSE_ONE option so the player really picks which currency to knock off.
+    queueLegionDiscountChoice(state, action.playerId, card.id, effect.amount, effect.valuables ?? 0);
+  }
+
+  if (effect.type === "LEGION_TIER_REINFORCE") {
+    // Community Balance Change Legion remove-sides: open the tier-scoped
+    // reinforce menu (the card's own `cost.removeSelf` already removed it).
+    queueLegionTierReinforce(
+      state,
+      action.playerId,
+      card.name,
+      effect.tier,
+      effect.goldDiscount,
+      effect.valuablesDiscount ?? 0
+    );
   }
 
   if (effect.type === "GAIN_GRADE_PROGRESS") {
@@ -19378,7 +19482,9 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
       shuffleRestIntoDeck: effect.shuffleRestIntoDeck,
       polishRecoveryLimit: effect.polishRecoveryLimit,
       excludeCardIds: playInFlightCardIds,
-      polishRefreshAfter: effect.polishRefreshAfter
+      polishRefreshAfter: effect.polishRefreshAfter,
+      // Community Balance Change Crown of Dragontooth: "select UP TO 2".
+      optional: effect.optional
     };
     // The adventure reward queue is parked while a live (non-prep) combat runs —
     // a queued discard-pick would not surface until the fight ended. A mid-Combat

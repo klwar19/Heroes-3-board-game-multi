@@ -3,6 +3,7 @@ import { eventCardDefinitions, type EventCardDefinition } from "@/data/cards/eve
 import { REROLL_REACTION_ARTIFACT_IDS } from "@/data/cards/artifacts";
 import { spellDeckBinhExpert } from "@/data/cards/spells";
 import { cardLibrary } from "@/data/cards/library";
+import { balanceCard, balanceRerollReactionArtifactIds } from "./community-balance-cards";
 import {
   coreBuildingDefinitions,
   coreFactionDefinitions,
@@ -9819,6 +9820,7 @@ export function processPendingVisit(state: GameState): void {
         bankRecruitDiscountVoucher(state, visit.playerId, {
           cardId: step.cardId,
           amount: step.amount,
+          ...(step.valuables ? { valuables: step.valuables } : {}),
           target: step.target
         });
         break;
@@ -10605,7 +10607,17 @@ export function processPendingVisit(state: GameState): void {
         // The Pub discounts a normal reinforcement; it does not replace the
         // Citadel requirement that unlocks reinforcements in the first place.
         if (townHasBuildingEffect(state, visit.playerId, "UNLOCK_REINFORCE")) {
-          reinforceArmyUnit(state, visit.playerId, step.armyUnitId, false, false, false, false, step.discount);
+          reinforceArmyUnit(
+            state,
+            visit.playerId,
+            step.armyUnitId,
+            false,
+            false,
+            false,
+            false,
+            step.discount,
+            step.valuablesDiscount ?? 0
+          );
         }
         break;
       case "BUY_UNIT_STACK": {
@@ -14557,7 +14569,7 @@ function extraDieRerollOptions(
   const hand = state.players[visit.playerId]?.hand ?? [];
   const prophecyThreePick =
     houseRuleEnabled(state, "polish-card-balance");
-  for (const cardId of REROLL_REACTION_ARTIFACT_IDS) {
+  for (const cardId of balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)) {
     if (hand.includes(cardId)) {
       // Polish Balance Pack Cards of Prophecy option B: "roll it 3 times and
       // resolve 1 chosen result" — its reroll re-throws the die with ONE face
@@ -18086,7 +18098,12 @@ export function startAdventureRound(state: GameState): void {
     // so it cannot be imported back here.
     const incomePermanentIds = player.permanents ?? (player.permanent ? [player.permanent] : []);
     for (const permanentId of incomePermanentIds) {
-      const permanentEffect = cardLibrary[permanentId]?.permanentEffect;
+      // Balance packs: the COMMUNITY reprints move these numbers (Endless Sack of
+      // Gold becomes a 4-gold income permanent; the Inexhaustible Cart of Ore
+      // pays 2 building materials instead of 1), so the income must be read off
+      // the SAME definition the offer and the card face show. With every pack off
+      // `balanceCard` returns `cardLibrary[permanentId]` unchanged.
+      const permanentEffect = balanceCard(state, permanentId)?.permanentEffect;
       const incomeGain = permanentEffect?.resourceRoundGain;
       // Conditional income (anime Tụ Linh Bàn): town-stationed permanents pay
       // only while the main Hero stands in one of this player's Towns. The core
@@ -18847,6 +18864,110 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
  * reinforce one eligible owned Few unit for `discount` less gold (or Skip). Only
  * units the player can afford at the discounted price are offered.
  */
+/**
+ * Community Balance Change Legion remove-sides — "🌍 Remove this card, then
+ * Reinforce a <tier> unit by paying its Reinforcement cost reduced by N gold
+ * (to a minimum of 0)".
+ *
+ * Reuses the Cove Pub machinery verbatim: each own FEW army card of `tier` is
+ * priced with `reinforceCostFor(..., goldDiscount)` and bought through the
+ * SHARED `REINFORCE_FLAT_GOLD` visit step — so the Citadel (UNLOCK_REINFORCE)
+ * gate, the stacking with any banked Legion voucher, and the spend path are the
+ * ones the rest of the game already uses. A skip is always offered, so the play
+ * can never park the turn. Nothing happens when no eligible, affordable unit
+ * exists (the card is still removed — that is its printed cost).
+ */
+export function legionTierReinforceOptions(
+  state: GameState,
+  playerId: PlayerId,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  goldDiscount: number,
+  /** Head of Legion's remove side also prints a "1 <valuables>" alternative. */
+  valuablesDiscount = 0
+): { label: string; steps: VisitStep[] }[] {
+  const player = state.players[playerId];
+  const options: { label: string; steps: VisitStep[] }[] = [];
+  if (!player) {
+    return options;
+  }
+  const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
+  if (!canReinforce) {
+    return options;
+  }
+  const currencies: { gold: number; valuables: number }[] = [
+    { gold: goldDiscount, valuables: 0 },
+    ...(valuablesDiscount > 0 ? [{ gold: 0, valuables: valuablesDiscount }] : [])
+  ];
+  for (const unit of player.army) {
+    if (unit.side !== "few") {
+      continue;
+    }
+    const def = coreUnitDefinitions[unit.unitDefId];
+    if (!def || def.tier !== tier) {
+      continue;
+    }
+    for (const currency of currencies) {
+      const cost = reinforceCostFor(
+        state,
+        playerId,
+        unit.id,
+        false,
+        false,
+        false,
+        currency.gold,
+        currency.valuables
+      );
+      if (!cost || !hasRecruitResources(state, playerId, cost)) {
+        continue;
+      }
+      const costLabel = Object.entries(cost)
+        .filter(([, amount]) => amount)
+        .map(([resource, amount]) => `${amount} ${resource}`)
+        .join(" + ");
+      const cut = currency.valuables > 0 ? `−${currency.valuables} valuables` : `−${currency.gold} gold`;
+      options.push({
+        label: `Reinforce ${def.name} (${cut}: pay ${costLabel || "nothing"})`,
+        steps: [
+          {
+            type: "REINFORCE_FLAT_GOLD",
+            armyUnitId: unit.id,
+            discount: currency.gold,
+            ...(currency.valuables > 0 ? { valuablesDiscount: currency.valuables } : {})
+          }
+        ]
+      });
+    }
+  }
+  return options;
+}
+
+export function queueLegionTierReinforce(
+  state: GameState,
+  playerId: PlayerId,
+  cardName: string,
+  tier: "bronze" | "silver" | "gold" | "azure",
+  goldDiscount: number,
+  valuablesDiscount = 0
+): void {
+  const adventure = state.adventure;
+  const options = legionTierReinforceOptions(state, playerId, tier, goldDiscount, valuablesDiscount);
+  if (!adventure || options.length === 0) {
+    return;
+  }
+  options.push({ label: "Skip", steps: [] });
+  adventure.rewardQueue.push({
+    playerId,
+    kind: "visit-steps",
+    steps: [
+      {
+        type: "CHOOSE_ONE",
+        prompt: `${cardName}: reinforce a ${tier} unit for ${goldDiscount} less gold`,
+        options
+      }
+    ]
+  });
+}
+
 function queueFlatGoldReinforce(
   state: GameState,
   playerId: PlayerId,
@@ -20185,6 +20306,33 @@ export function externalRecruitGoldDiscount(state: GameState, playerId: PlayerId
  * before this flat total is subtracted from the amount still owed.
  * Pure read.
  */
+/**
+ * Community Balance Change Arms / Head of Legion — the VALUABLES half of "…by 1
+ * <valuables> or 4 <gold>". Sums the `valuables` component of every distinct
+ * Legion voucher reserved for this purchase, mirroring `legionVoucherDiscount`
+ * (largest-wins under the old `immediate-reinforcement-prompts` reading, additive
+ * otherwise). 0 for every classic gold-only voucher, so a table without the pack
+ * is byte-identical.
+ */
+export function totalRecruitValuablesDiscount(
+  state: GameState,
+  playerId: PlayerId,
+  purchase: RecruitPurchaseRef
+): number {
+  let total = 0;
+  let largest = 0;
+  const counted = new Set<CardId>();
+  for (const voucher of state.players[playerId]?.recruitDiscounts ?? []) {
+    if (!voucher.valuables || counted.has(voucher.cardId) || !voucherMatchesPurchase(voucher, purchase)) {
+      continue;
+    }
+    counted.add(voucher.cardId);
+    total += voucher.valuables;
+    largest = Math.max(largest, voucher.valuables);
+  }
+  return houseRuleEnabled(state, "immediate-reinforcement-prompts") ? largest : total;
+}
+
 export function totalRecruitGoldDiscount(state: GameState, playerId: PlayerId, purchase: RecruitPurchaseRef): number {
   return (
     legionVoucherDiscount(state, playerId, purchase) +
@@ -20216,10 +20364,19 @@ export function applyRecruitGoldDiscount(
 ): ResourceCost {
   const discount = totalRecruitGoldDiscount(state, playerId, purchase);
   const gold = cost.gold ?? 0;
+  // Community Balance Change Arms / Head of Legion: the VALUABLES alternative
+  // comes off the same purchase's valuables component (floored at 0). 0 for
+  // every classic voucher, so the return below is untouched without the pack.
+  const valuablesDiscount = totalRecruitValuablesDiscount(state, playerId, purchase);
+  const valuables = cost.valuables ?? 0;
+  const withValuables =
+    valuablesDiscount > 0 && valuables > 0
+      ? { ...cost, valuables: Math.max(0, valuables - valuablesDiscount) }
+      : cost;
   if (discount <= 0 || gold <= 0) {
-    return cost;
+    return withValuables;
   }
-  return { ...cost, gold: Math.max(0, gold - discount) };
+  return { ...withValuables, gold: Math.max(0, gold - discount) };
 }
 
 /**
@@ -20486,13 +20643,16 @@ export function legionDiscountTargets(state: GameState, playerId: PlayerId): Leg
  * A Legion target's prompt label. Distinct Legion pieces and building/location
  * discounts all stack by addition.
  */
+function legionTargetVerb(target: LegionDiscountTarget): string {
+  return target.purchase.kind === "recruit"
+    ? "Recruit"
+    : target.purchase.kind === "stack"
+      ? "Add a Stack to"
+      : "Reinforce";
+}
+
 function legionTargetLabel(target: LegionDiscountTarget, amount: number): string {
-  const verb =
-    target.purchase.kind === "recruit"
-      ? "Recruit"
-      : target.purchase.kind === "stack"
-        ? "Add a Stack to"
-        : "Reinforce";
+  const verb = legionTargetVerb(target);
   if (target.existingLegion <= 0 && target.existingExternal <= 0) {
     return `${verb} ${target.unitName} — reduce cost by ${amount} gold`;
   }
@@ -20515,19 +20675,41 @@ function legionTargetLabel(target: LegionDiscountTarget, amount: number): string
  * (the legal-action layer hides the discount side in that case, so this is a
  * safety net — the artifact is already discarded and its gold is simply lost).
  */
-export function queueLegionDiscountChoice(state: GameState, playerId: PlayerId, cardId: CardId, amount: number): void {
+export function queueLegionDiscountChoice(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardId,
+  amount: number,
+  /**
+   * Community Balance Change Arms / Head of Legion: the VALUABLES alternative
+   * ("…by 1 <valuables> or 4 <gold>"). Absent/0 = the classic gold-only voucher.
+   */
+  valuables = 0
+): void {
   const adventure = state.adventure;
   const targets = legionDiscountTargets(state, playerId);
   if (!adventure || targets.length === 0) {
     return;
   }
+  const reductionLabel = valuables > 0 ? `${valuables} valuables` : `${amount} gold`;
   const steps: VisitStep[] = [
     {
       type: "CHOOSE_ONE",
-      prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${amount} gold`,
+      prompt: `${cardLibrary[cardId]?.name ?? "Legion artifact"}: choose the unit whose cost to reduce by ${reductionLabel}`,
       options: targets.map((target) => ({
-        label: legionTargetLabel(target, amount),
-        steps: [{ type: "BANK_RECRUIT_DISCOUNT", cardId, amount, target: voucherTargetOf(target.purchase) }]
+        label:
+          valuables > 0
+            ? `${legionTargetVerb(target)} ${target.unitName} — reduce cost by ${valuables} valuables`
+            : legionTargetLabel(target, amount),
+        steps: [
+          {
+            type: "BANK_RECRUIT_DISCOUNT",
+            cardId,
+            amount,
+            ...(valuables > 0 ? { valuables } : {}),
+            target: voucherTargetOf(target.purchase)
+          }
+        ]
       }))
     }
   ];
@@ -20619,7 +20801,13 @@ export function reinforceCostFor(
    * It stacks with Legion and the Champions' Stables discount, after any
    * half-cost source has already reduced the printed price.
    */
-  flatGoldDiscount = 0
+  flatGoldDiscount = 0,
+  /**
+   * Community Balance Change Head of Legion (remove side): "…reduced by 1
+   * <valuables> or 3 <gold>". A flat VALUABLES discount on this reinforcement
+   * (min 0), the exact mirror of `flatGoldDiscount`. 0 everywhere else.
+   */
+  flatValuablesDiscount = 0
 ): ResourceCost | null {
   const armyUnit = state.players[playerId]?.army.find((candidate) => candidate.id === armyUnitId);
   const packSide = armyUnit ? getUnitSide(armyUnit.unitDefId, "pack") : null;
@@ -20642,10 +20830,17 @@ export function reinforceCostFor(
     ? Math.min(sourceGold, Math.max(0, originalGold - flatDiscount))
     : Math.max(0, sourceGold - flatDiscount);
 
+  // Community Balance Change Arms / Head of Legion: the VALUABLES alternative
+  // knocks valuables off this reinforcement, floored at 0. 0 for every classic
+  // (gold-only) voucher, so a table without the pack is byte-identical.
+  const valuablesDiscount = flatValuablesDiscount + totalRecruitValuablesDiscount(state, playerId, purchase);
+
   const cost: ResourceCost = {};
   for (const [resource, amount] of Object.entries(packSide.cost) as [ResourceKind, number][]) {
     if (resource === "gold") {
       cost.gold = finalGold;
+    } else if (resource === "valuables") {
+      cost.valuables = Math.max(0, (halfCost ? half(amount) : amount) - valuablesDiscount);
     } else {
       cost[resource] = halfCost ? half(amount) : amount;
     }
@@ -20663,7 +20858,9 @@ export function reinforceArmyUnit(
   /** Neutral Skeletons reward: a free Few→Pack flip (no resources spent). */
   free = false,
   /** Cove Pub: a flat gold discount on this reinforcement (min 0, stacks with Legion/Stables). */
-  flatGoldDiscount = 0
+  flatGoldDiscount = 0,
+  /** Community Balance Change Head of Legion: a flat VALUABLES discount (min 0). */
+  flatValuablesDiscount = 0
 ): boolean {
   const player = state.players[playerId];
   const armyUnit = player?.army.find((candidate) => candidate.id === armyUnitId);
@@ -20672,7 +20869,7 @@ export function reinforceArmyUnit(
   }
 
   const purchase: RecruitPurchaseRef = { kind: "reinforce", unitDefId: armyUnit.unitDefId, armyUnitId };
-  const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown, flatGoldDiscount) ?? {});
+  const finalCost = free ? {} : (reinforceCostFor(state, playerId, armyUnitId, halfCost, halfGoldOnly, roundDown, flatGoldDiscount, flatValuablesDiscount) ?? {});
   if (!hasRecruitResources(state, playerId, finalCost)) {
     return false;
   }
