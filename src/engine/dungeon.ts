@@ -141,6 +141,87 @@ export function dungeonTreasureThemeOf(state: GameState): DungeonTreasureTheme {
   return DUNGEON_TREASURE_THEMES[random.nextInt(0, DUNGEON_TREASURE_THEMES.length - 1)] ?? "hoard";
 }
 
+/**
+ * One short player-facing name per treasure theme, so the floor prompt can say
+ * WHICH flavour of loot this game's Dungeon pays. Presentation only — the
+ * ladder itself is `dungeonThemedRewardSteps`.
+ */
+export const DUNGEON_TREASURE_THEME_LABELS: Record<DungeonTreasureTheme, string> = {
+  hoard: "Hoard (gold and valuables)",
+  arsenal: "Arsenal (unit training and Stack Tokens)",
+  lore: "Lore (hero experience and commander points)"
+};
+
+const ARTIFACT_DECK_LABELS: Record<string, string> = {
+  "artifacts-minor": "Minor Artifacts",
+  "artifacts-major": "Major Artifacts",
+  "artifacts-relic": "Relic Artifacts",
+  artifacts: "Artifacts",
+  spells: "Spells",
+  abilities: "Abilities"
+};
+
+function resourceWords(step: { gold?: number; buildingMaterials?: number; valuables?: number }): string {
+  const parts: string[] = [];
+  if (step.gold) {
+    parts.push(`${step.gold} gold`);
+  }
+  if (step.buildingMaterials) {
+    parts.push(`${step.buildingMaterials} building material${step.buildingMaterials === 1 ? "" : "s"}`);
+  }
+  if (step.valuables) {
+    parts.push(`${step.valuables} valuable${step.valuables === 1 ? "" : "s"}`);
+  }
+  return parts.join(" + ");
+}
+
+/**
+ * PURE describer for the reward VisitSteps this file builds — the Dungeon floor
+ * prompt states what a clear pays BEFORE the player commits. It covers exactly
+ * the step kinds the dungeon ladder / rooms use and returns null for anything
+ * else, so a future step kind is silently omitted rather than mislabelled.
+ *
+ * A `CHOOSE_ONE` (the Unit-XP teaching / the Stack-Token grant) is described by
+ * its FIRST option's steps: those menus are one arm per army card plus a
+ * decline, so the first arm IS the payout.
+ */
+function describeVisitStep(step: VisitStep): string | null {
+  switch (step.type) {
+    case "GAIN_RESOURCES": {
+      const words = resourceWords(step);
+      return words.length > 0 ? words : null;
+    }
+    case "GAIN_EXPERIENCE":
+      return `+${step.amount} hero experience`;
+    case "GAIN_UNIT_XP":
+      return `+${step.amount} unit XP to one army card`;
+    case "GRANT_STACK_TOKEN":
+      return "a Stack Token for one army card";
+    case "GAIN_COMMANDER_POINTS":
+      return `+${step.amount} commander stat point${step.amount === 1 ? "" : "s"}`;
+    case "ROLL_TREASURE_DICE":
+      return `${step.count} Treasure ${step.count === 1 ? "die" : "dice"}`;
+    case "GAIN_MORALE":
+      return step.amount >= 0 ? `+${step.amount} morale` : `${step.amount} morale`;
+    case "GAIN_MOVEMENT":
+      return `+${step.amount} movement`;
+    case "SEARCH_SHARED_DECK":
+      return `Search the ${ARTIFACT_DECK_LABELS[step.deckId] ?? step.deckId} deck`;
+    case "CHOOSE_ONE":
+      return describeVisitSteps(step.options[0]?.steps ?? []) || null;
+    default:
+      return null;
+  }
+}
+
+/** Every describable step of a reward, joined — "" when nothing is describable. */
+export function describeVisitSteps(steps: readonly VisitStep[]): string {
+  return steps
+    .map((step) => describeVisitStep(step))
+    .filter((line): line is string => Boolean(line))
+    .join(" + ");
+}
+
 const STACK_TOKEN_STAT_LABELS: Record<StackTokenStat, string> = {
   attack: "+1 Attack",
   defense: "+1 Defense",

@@ -18,6 +18,7 @@
  */
 
 import {
+  getCombatScriptDefinition,
   registerCombatScriptDefinitions,
   type CombatScriptDefinition
 } from "@/data/map/combat-scripts";
@@ -319,6 +320,40 @@ export const PVE_FLOOR_SCRIPT_IDS: Record<
     abyss: ["pve_dungeon_doom_abyss"]
   }
 };
+
+/**
+ * The scripts a PvE encounter IDENTITY carries, as a PURE query — no
+ * `CombatState` needed, so the pre-fight menus (`handleDungeonGateVisit` /
+ * `handleRiftLairVisit`) can list the field effects BEFORE the player commits,
+ * and `pveEncounterScriptsForCombat` (engine) is the same table read through a
+ * live combat. Keep them in lockstep: the engine selector delegates HERE, so a
+ * new band/boss entry lights up both surfaces at once.
+ *
+ * This module is a LEAF (data only): adventure.ts may import it, while
+ * `src/engine/combat-scripts.ts` may not be imported there (it pulls in
+ * combat-units → adventure, a cycle).
+ */
+export type PveEncounterScriptQuery = {
+  theme: ResolvedPveEncounterTheme;
+  /** The dungeon floor being delved (band-keyed scripts). */
+  dungeonFloor?: number;
+  /** The raid boss's DEF id (per-boss lair scripts). */
+  bossDefId?: string;
+};
+
+export function pveEncounterScriptsFor(query: PveEncounterScriptQuery): CombatScriptDefinition[] {
+  const ids: string[] = [];
+  if (query.bossDefId) {
+    ids.push(...(PVE_LAIR_SCRIPT_IDS[query.bossDefId] ?? []));
+  }
+  if (query.dungeonFloor !== undefined) {
+    const theme = query.theme === "doom" ? "doom" : "classic";
+    ids.push(...(PVE_FLOOR_SCRIPT_IDS[theme][pveFloorBand(query.dungeonFloor)] ?? []));
+  }
+  return ids
+    .map((id) => getCombatScriptDefinition(id))
+    .filter((script): script is CombatScriptDefinition => Boolean(script));
+}
 
 // Register into the global catalog at module load (mirrors the anime scripts).
 registerCombatScriptDefinitions(PVE_COMBAT_SCRIPT_DEFINITIONS);

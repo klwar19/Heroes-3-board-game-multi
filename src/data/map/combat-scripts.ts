@@ -154,6 +154,28 @@ export function listCombatScriptDefinitions(): CombatScriptDefinition[] {
 }
 
 /**
+ * PRESENTATION (pure): one "<Name> — <summary>" line per script. The `summary`
+ * is authored on the definition and states exactly what the engine runs, so the
+ * pre-fight menus and the in-fight indicator never re-derive the rules text.
+ */
+export function combatScriptEffectLines(scripts: readonly CombatScriptDefinition[]): string[] {
+  return scripts.map((script) => `${script.name.en} — ${script.summary}`);
+}
+
+/**
+ * PRESENTATION (pure): when each of a script's events fires, with the line it
+ * announces. "At combat start — …" / "Round 3 — …". A round-start event with no
+ * `round` fires on the opening round (the engine matches `combat.round`, which
+ * starts at 1).
+ */
+export function combatScriptTimingLines(script: CombatScriptDefinition): string[] {
+  return script.events.map(
+    (event) =>
+      `${event.at === "combat-start" ? "At combat start" : `Round ${event.round ?? 1}`} — ${event.announce.en}`
+  );
+}
+
+/**
  * Every script attached to a fought field's location id (usually 0 or 1; the
  * registry supports several on one location — Bí Cảnh ships two). Order is
  * registration order.

@@ -986,6 +986,8 @@ export {
   getCombatScriptDefinition,
   listCombatScriptDefinitions,
   combatScriptsForLocation,
+  combatScriptEffectLines,
+  combatScriptTimingLines,
   type CombatScriptDefinition,
   type CombatScriptEffect,
   type CombatScriptEvent,

@@ -12,9 +12,15 @@ import { RAID_BOSSES, type RaidBossDefinition } from "@/data/anime/bosses";
 import {
   DOOM_RAID_BOSS_IDS,
   RAID_BOSS_KILL_GOLD,
+  RAID_BOSS_LAYER_BREAK_GOLD,
   makeRaidBossCombatUnit,
   scheduledBossPool
 } from "./raid-bosses";
+import {
+  PVE_LAIR_SCRIPT_IDS,
+  pveEncounterScriptsFor
+} from "@/data/anime/pve-combat-scripts";
+import { combatScriptEffectLines } from "@/data/map/combat-scripts";
 import { abilityIdsCastMonsterSpells } from "./monster-spells";
 import { standardComputerController } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
@@ -820,5 +826,81 @@ describe("Raid Bosses — the caster line on the lair prompt (§F5)", () => {
     expect(promptFor(plainId!)).not.toMatch(/casts every round/);
     // Both prompts still carry the unchanged reward wording.
     expect(promptFor(plainId!)).toMatch(/Challenge it\?/);
+  });
+});
+
+describe("Raid Bosses — the lair prompt EXPLAINS the fight (§E/§F presentation)", () => {
+  /** The lair confirm prompt for an arbitrary boss def id. */
+  function lairPromptFor(defId: string): string {
+    const state = raidGame(`raid-explain-${defId}`);
+    const { fieldId } = spawnLair(state);
+    const record = Object.values(state.adventure!.raidBosses!)[0];
+    record.defId = defId;
+    const hero = state.heroes.hero_p1;
+    state.adventure!.lastVisitedField[hero.id] = hero.spaceId!;
+    hero.spaceId = fieldId;
+    beginFieldVisit(state, hero.id, fieldId, false);
+    const step = state.adventure!.pendingVisit?.steps[0];
+    return step?.type === "CHOOSE_ONE" ? (step.prompt ?? "") : "";
+  }
+
+  it("a scripted lair LISTS its field effects; a boss with no script says nothing about them (CONTROL)", () => {
+    const scriptedId = Object.keys(PVE_LAIR_SCRIPT_IDS).find((id) => RAID_BOSSES[id]);
+    expect(scriptedId, "expected a shipped boss with a lair script").toBeTruthy();
+    const plainId = Object.keys(RAID_BOSSES).find((id) => !PVE_LAIR_SCRIPT_IDS[id]);
+    expect(plainId, "expected a shipped boss with NO lair script").toBeTruthy();
+
+    const scriptedPrompt = lairPromptFor(scriptedId!);
+    const lines = combatScriptEffectLines(
+      pveEncounterScriptsFor({ theme: "classic", bossDefId: scriptedId! })
+    );
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(scriptedPrompt).toContain(line);
+    }
+
+    const plainPrompt = lairPromptFor(plainId!);
+    expect(plainPrompt).not.toContain("Field effects:");
+    // The rest of the prompt is untouched by the addition.
+    expect(plainPrompt).toMatch(/Challenge it\?/);
+  });
+
+  it("the boss economy line is DERIVED from the layer/kill gold constants", () => {
+    const plainId = Object.keys(RAID_BOSSES).find((id) => !PVE_LAIR_SCRIPT_IDS[id])!;
+    // The two constants must differ, or the assertion below could not tell a
+    // swapped pair apart.
+    expect(RAID_BOSS_LAYER_BREAK_GOLD).not.toBe(RAID_BOSS_KILL_GOLD);
+    expect(lairPromptFor(plainId)).toContain(
+      `every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.`
+    );
+  });
+});
+
+describe("Raid Bosses — the first-kill trophy labels EXPLAIN each arm (§F2 presentation)", () => {
+  it("every trophy option names its payout in words matching its step", () => {
+    const state = raidGame("raid-trophy-labels");
+    const { fieldId } = spawnLair(state);
+    const after = challengeLair(state, fieldId);
+    slayTheBoss(after);
+    const trophy = trophyEntry(after);
+    const menu = trophy?.kind === "visit-steps" ? trophy.steps[0] : null;
+    expect(menu?.type).toBe("CHOOSE_ONE");
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the trophy menu");
+    }
+    expect(menu.prompt).toMatch(/once per game/i);
+    for (const option of menu.options) {
+      const step = option.steps[0];
+      const label = option.label.toLowerCase();
+      if (step?.type === "GAIN_MORALE") {
+        expect(label).toContain(`${step.amount} morale`);
+      } else if (step?.type === "ROLL_TREASURE_DICE") {
+        expect(label).toContain(`${step.count} treasure di`);
+      } else if (step?.type === "GAIN_EXPERIENCE") {
+        expect(label).toContain(`${step.amount} hero experience`);
+      } else {
+        throw new Error(`unexpected trophy arm ${step?.type}`);
+      }
+    }
   });
 });

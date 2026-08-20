@@ -124,6 +124,7 @@ import {
   type MonsterSpellCue
 } from "@/components/table/monster-spell-cue";
 import { MonsterSpellCueOverlay } from "@/components/table/monster-spell-cue-overlay";
+import { PveFieldEffectsPanel } from "@/components/table/pve-field-effects-panel";
 import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
@@ -7257,6 +7258,10 @@ export default function Home() {
               {/* Polish Set Artifacts: the same always-visible set status the
                   map shows, so a fight can be planned around the active tiers. */}
               <ArtifactSetPanel compact state={state} viewerPlayerId={viewerPlayerId} />
+              {/* PvE field effects: a scripted battle (Dungeon floor band, Rift
+                  Lair, Bí Cảnh) explains itself for the whole fight. Renders
+                  nothing in an unscripted combat and dispatches nothing. */}
+              <PveFieldEffectsPanel compact state={state} />
               <div className="handColumn">
                 {/* The combat "View hand" pile-browser button was removed to
                     declutter the top strip: the HandFan below already shows every

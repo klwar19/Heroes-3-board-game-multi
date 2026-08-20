@@ -24,8 +24,12 @@ import {
   dungeonRoomPool,
   dungeonTreasureThemeOf,
   dungeonWardenIdFor,
+  describeVisitSteps,
+  DUNGEON_TREASURE_THEME_LABELS,
   type DungeonTreasureTheme
 } from "./dungeon";
+import { pveEncounterScriptsFor } from "@/data/anime/pve-combat-scripts";
+import { combatScriptEffectLines } from "@/data/map/combat-scripts";
 import { makeCombatUnitFromArmy } from "./adventure";
 import { houseRuleEnabled } from "./house-rules";
 import { createSeededRandom } from "./random";
@@ -1076,5 +1080,125 @@ describe("The Dungeon — new rooms (§F4)", () => {
     // Same with NO context at all (a caller that cannot name an army).
     const contextless = dungeonRoomPool(1, "classic").find((room) => room.key === "forge")!;
     expect(contextless.steps).toEqual([{ type: "GAIN_RESOURCES", gold: 3 }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Variant expansion §E/§F PRESENTATION — the floor prompt EXPLAINS the fight
+// ---------------------------------------------------------------------------
+
+describe("The Dungeon — pre-fight explanation (§E/§F presentation)", () => {
+  /** Open the floor menu and return its prompt. */
+  function floorPrompt(state: GameState, floor: number): string {
+    state.players.p1.dungeonFloor = floor;
+    const fieldId = placeSiteUnderHero(state);
+    beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
+    const menu = firstPendingVisitStep(state);
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the floor menu");
+    }
+    return menu.prompt;
+  }
+
+  it("names THIS floor's reward, the treasure theme and the band's field effects", () => {
+    for (const theme of ALL_TREASURE_THEMES) {
+      const state = themedDungeonGame(theme, {}, "explain");
+      const expectedReward = describeVisitSteps(dungeonFloorRewardSteps(state, 1, { playerId: "p1" }));
+      expect(expectedReward.length, `${theme} floor 1 reward line`).toBeGreaterThan(0);
+      const prompt = floorPrompt(state, 1);
+      expect(prompt, theme).toContain(`Floor reward: ${expectedReward}.`);
+      expect(prompt, theme).toContain(`Treasure theme: ${DUNGEON_TREASURE_THEME_LABELS[theme]}.`);
+      // The shallow band's script, by its authored summary — never a literal.
+      const scripts = pveEncounterScriptsFor({ theme: "classic", dungeonFloor: 1 });
+      expect(scripts.length).toBeGreaterThan(0);
+      for (const line of combatScriptEffectLines(scripts)) {
+        expect(prompt, theme).toContain(line);
+      }
+    }
+  });
+
+  it("the reward line is DERIVED — two themes with different ladders print different lines", () => {
+    const hoard = themedDungeonGame("hoard", {}, "explain-derived");
+    const lore = themedDungeonGame("lore", {}, "explain-derived");
+    // Floor 1 diverges by design (lore pays hero XP, hoard 2 gold).
+    expect(describeVisitSteps(dungeonFloorRewardSteps(hoard, 1, { playerId: "p1" }))).not.toBe(
+      describeVisitSteps(dungeonFloorRewardSteps(lore, 1, { playerId: "p1" }))
+    );
+    expect(floorPrompt(hoard, 1)).not.toBe(floorPrompt(lore, 1));
+  });
+
+  it("the DEEP band prints a different field effect than the shallow one (band-keyed, not constant)", () => {
+    const shallow = floorPrompt(dungeonGame("explain-band-a"), 2);
+    const deep = floorPrompt(dungeonGame("explain-band-b"), 6);
+    const deepLines = combatScriptEffectLines(pveEncounterScriptsFor({ theme: "classic", dungeonFloor: 6 }));
+    expect(deepLines.length).toBeGreaterThan(0);
+    for (const line of deepLines) {
+      expect(deep).toContain(line);
+      expect(shallow).not.toContain(line);
+    }
+  });
+
+  it("CONTROL: a query naming neither a floor nor a boss selects NOTHING (no 'no field effects' noise)", () => {
+    expect(pveEncounterScriptsFor({ theme: "classic" })).toEqual([]);
+    expect(pveEncounterScriptsFor({ theme: "doom" })).toEqual([]);
+    expect(combatScriptEffectLines([])).toEqual([]);
+  });
+
+  it("the doom theme's floor prompt prints the DOOM band's effects, not the classic ones", () => {
+    const state = dungeonGame("explain-doom", {
+      wog: undefined,
+      anime: { enabled: true, dungeon: true, pveTheme: "doom" }
+    });
+    expect(state.adventure?.pveTheme).toBe("doom");
+    const prompt = floorPrompt(state, 6);
+    for (const line of combatScriptEffectLines(pveEncounterScriptsFor({ theme: "doom", dungeonFloor: 6 }))) {
+      expect(prompt).toContain(line);
+    }
+    for (const line of combatScriptEffectLines(pveEncounterScriptsFor({ theme: "classic", dungeonFloor: 6 }))) {
+      expect(prompt).not.toContain(line);
+    }
+  });
+
+  it("every room label states its cost and its payout", () => {
+    const state = dungeonGame("room-labels");
+    for (const theme of ["classic", "doom"] as const) {
+      for (const floor of [1, 4, 8]) {
+        for (const room of dungeonRoomPool(floor, theme, { state, playerId: "p1" })) {
+          const label = room.label.toLowerCase();
+          const walk = (steps: VisitStep[]): void => {
+            for (const step of steps) {
+              if (step.type === "PAY_TO") {
+                expect(label, room.label).toContain("pay");
+                for (const cost of step.costOptions) {
+                  if (cost.gold) {
+                    expect(label, room.label).toContain(String(cost.gold));
+                  }
+                }
+                walk(step.steps);
+              } else if (step.type === "GAIN_RESOURCES") {
+                if (step.gold) {
+                  expect(label, room.label).toContain(`${step.gold} gold`);
+                }
+                if (step.valuables) {
+                  expect(label, room.label).toContain(`${step.valuables} valuable`);
+                }
+              } else if (step.type === "ROLL_TREASURE_DICE") {
+                expect(label, room.label).toContain("treasure di");
+              } else if (step.type === "GAIN_EXPERIENCE") {
+                expect(label, room.label).toContain(`${step.amount} hero experience`);
+              } else if (step.type === "GAIN_MOVEMENT") {
+                expect(label, room.label).toContain(`${step.amount} movement`);
+              } else if (step.type === "GAIN_MORALE" && step.amount > 0) {
+                expect(label, room.label).toContain("morale");
+              } else if (step.type === "CHOOSE_ONE") {
+                // The Stack-Token grant: the label must say what it hands out.
+                expect(label, room.label).toContain("stack token");
+              }
+            }
+          };
+          walk(room.steps);
+        }
+      }
+    }
   });
 });

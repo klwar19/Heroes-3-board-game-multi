@@ -18597,6 +18597,25 @@ button.setupHubNavItem:hover {
   gap: 2px;
 }
 
+/* PvE field effects (variant expansion §E): the in-fight explainer strip, on the
+   same box chrome as the Artifact-set panel it sits beside. */
+.pveFieldEffectsPanel {
+  max-width: 280px;
+}
+
+.pveFieldEffect > summary {
+  cursor: pointer;
+  color: #e4d3aa;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pveFieldEffectTiming {
+  margin: 2px 0 0;
+  padding-left: 14px;
+  color: #cbb489;
+}
+
 .artifactSetSeatName {
   color: #cbb489;
   font-size: 11px;

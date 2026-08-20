@@ -19,8 +19,14 @@ import {
   combatScriptStatDelta,
   pveEncounterScriptsForCombat
 } from "./combat-scripts";
-import { combatScriptsForLocation } from "@/data/map/combat-scripts";
-import { PVE_COMBAT_SCRIPT_DEFINITIONS, pveFloorBand } from "@/data/anime/pve-combat-scripts";
+import { combatScriptsForLocation, combatScriptTimingLines } from "@/data/map/combat-scripts";
+import {
+  PVE_COMBAT_SCRIPT_DEFINITIONS,
+  PVE_FLOOR_SCRIPT_IDS,
+  PVE_LAIR_SCRIPT_IDS,
+  pveEncounterScriptsFor,
+  pveFloorBand
+} from "@/data/anime/pve-combat-scripts";
 import { startNeutralEncounter } from "./adventure-reducer";
 import type { CombatState, CombatUnitState, MapFieldState, MapSpaceId, PlayerId } from "./state";
 
@@ -505,5 +511,57 @@ describe("PvE field effects — end to end", () => {
     expect(combatScriptStatDelta(combat, attacker!, "attack"), "low ceilings foul the shots").toBe(-1);
     attacker!.type = "ground";
     expect(combatScriptStatDelta(combat, attacker!, "attack"), "CONTROL: melee is unaffected").toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §E presentation — the PURE query the pre-fight menus and the in-fight
+// indicator read (the engine selector delegates to it).
+// ---------------------------------------------------------------------------
+
+describe("PvE field effects — the pure encounter query (§E presentation)", () => {
+  it("returns exactly the band's / boss's shipped scripts, each with a real summary", () => {
+    for (const theme of ["classic", "doom"] as const) {
+      for (const [band, floor] of [
+        ["shallow", 2],
+        ["deep", 6],
+        ["abyss", 9]
+      ] as const) {
+        expect(pveFloorBand(floor)).toBe(band);
+        const scripts = pveEncounterScriptsFor({ theme, dungeonFloor: floor });
+        expect(scripts.map((script) => script.id), `${theme}/${band}`).toEqual([
+          ...PVE_FLOOR_SCRIPT_IDS[theme][band]
+        ]);
+        for (const script of scripts) {
+          expect(script.summary.length, script.id).toBeGreaterThan(20);
+          // Every event is explained by exactly one timing line.
+          expect(combatScriptTimingLines(script)).toHaveLength(script.events.length);
+        }
+      }
+    }
+    for (const [bossDefId, ids] of Object.entries(PVE_LAIR_SCRIPT_IDS)) {
+      expect(pveEncounterScriptsFor({ theme: "classic", bossDefId }).map((script) => script.id)).toEqual([
+        ...ids
+      ]);
+    }
+  });
+
+  it("the LIVE combat selector agrees with the pure query — and both are empty off-encounter (CONTROL)", () => {
+    const state = dungeonGame("pure-query-parity");
+    const fieldId = placeSiteUnderHero(state);
+    state.players.p1.dungeonFloor = 6;
+    const fought = delveFloor(state, fieldId);
+    expect(combatScriptsActiveForCombat(fought, fought.combat!).map((script) => script.id)).toEqual(
+      pveEncounterScriptsFor({ theme: "classic", dungeonFloor: 6 }).map((script) => script.id)
+    );
+    expect(pveEncounterScriptsFor({ theme: "classic" })).toEqual([]);
+    expect(pveEncounterScriptsFor({ theme: "classic", bossDefId: "not_a_boss" })).toEqual([]);
+  });
+
+  it("a timing line names WHEN an event fires and repeats its announcement", () => {
+    const script = PVE_COMBAT_SCRIPT_DEFINITIONS.pve_dungeon_classic_shallow;
+    const lines = combatScriptTimingLines(script);
+    expect(lines[0]).toBe(`At combat start — ${script.events[0].announce.en}`);
+    expect(lines[1]).toBe(`Round 3 — ${script.events[1].announce.en}`);
   });
 });

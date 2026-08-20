@@ -208,14 +208,23 @@ import {
   scheduledBossPool
 } from "./raid-bosses";
 import {
+  describeVisitSteps,
   dungeonBossId,
   dungeonDescentCostOf,
   dungeonDoorsForFloor,
   dungeonFloorCapOf,
   dungeonFloorDifficulty,
   dungeonFloorOf,
-  dungeonThemeOf
+  dungeonFloorRewardSteps,
+  dungeonThemeOf,
+  dungeonTreasureThemeOf,
+  DUNGEON_TREASURE_THEME_LABELS
 } from "./dungeon";
+// PURE data-side query (never the engine's combat-scripts module — that pulls in
+// combat-units → adventure): the field effects a PvE fight will run, listed in
+// the menu BEFORE the player commits.
+import { pveEncounterScriptsFor } from "@/data/anime/pve-combat-scripts";
+import { combatScriptEffectLines } from "@/data/map/combat-scripts";
 import { abilityIdsCastMonsterSpells } from "./monster-spells";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
@@ -17645,6 +17654,21 @@ function handleDungeonGateVisit(
     : [];
   const descentLabel = descentCost === 0 ? "free descent" : `${descentCost} movement`;
 
+  // ——— Pre-fight INFO (§E/§F presentation): what this floor pays and which
+  // field effects its battle runs. Both are DERIVED — the reward line from the
+  // very `dungeonFloorRewardSteps` the win will pay (so it can never drift from
+  // the ladder or the treasure theme), the effect lines from the same script
+  // table `pveEncounterScriptsForCombat` selects. A scriptless fight adds
+  // nothing (no "no field effects" noise).
+  const rewardLine = describeVisitSteps(dungeonFloorRewardSteps(state, floor, { repeat, playerId }));
+  const treasureLine = `Treasure theme: ${DUNGEON_TREASURE_THEME_LABELS[dungeonTreasureThemeOf(state)]}.`;
+  const effectLines = combatScriptEffectLines(
+    pveEncounterScriptsFor({ theme: dungeonThemeOf(state), dungeonFloor: floor })
+  );
+  const infoSuffix = `${rewardLine ? ` Floor reward: ${rewardLine}.` : ""} ${treasureLine}${
+    effectLines.length > 0 ? ` Field effects: ${effectLines.join(" ")}` : ""
+  }`;
+
   if (bossId) {
     const boss = resolveBossDefinition(state, bossId);
     adventure.pendingVisit = {
@@ -17656,7 +17680,7 @@ function handleDungeonGateVisit(
           type: "CHOOSE_ONE",
           prompt: `Dungeon floor ${floor}: ${boss?.name ?? "the floor warden"} guards the way (${
             boss?.layers ?? 2
-          } health bars plus retinue).${repeat ? " A repeat clear pays 1 Treasure die and 3 gold." : ""}`,
+          } health bars plus retinue).${repeat ? " A repeat clear pays 1 Treasure die and 3 gold." : ""}${infoSuffix}`,
           options: [
             {
               label: `${continuing ? `Continue (${descentLabel}) and ` : ""}Fight ${
@@ -17685,7 +17709,7 @@ function handleDungeonGateVisit(
         type: "CHOOSE_ONE",
         prompt: `Dungeon floor ${floor}: choose a room, resolve its effect, then fight the level-${dungeonFloorDifficulty(
           floor
-        )} floor guard.`,
+        )} floor guard.${infoSuffix}`,
         options: [
           {
             label: `${continuing ? `Continue (${descentLabel}) — ` : ""}Left room: ${left.label}`,
@@ -17720,6 +17744,12 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
   if (!boss || !def || boss.slainBy || boss.layersLeft <= 0) {
     return;
   }
+  // §E presentation: the lair's own field effects, listed BEFORE the challenge
+  // is accepted. Same table the fight itself reads; a boss with no script adds
+  // nothing to the prompt.
+  const lairEffectLines = combatScriptEffectLines(
+    pveEncounterScriptsFor({ theme: dungeonThemeOf(state), bossDefId: boss.defId })
+  );
   adventure.pendingVisit = {
     heroId,
     playerId,
@@ -17733,7 +17763,9 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
         // with no edit.
         prompt: `${def.name} lairs here — ${boss.layersLeft} health bar${boss.layersLeft === 1 ? "" : "s"} remain${
           boss.layersLeft === 1 ? "s" : ""
-        }${abilityIdsCastMonsterSpells(def.abilities) ? ", and it casts every round" : ""}. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)`,
+        }${abilityIdsCastMonsterSpells(def.abilities) ? ", and it casts every round" : ""}. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)${
+          lairEffectLines.length > 0 ? ` Field effects: ${lairEffectLines.join(" ")}` : ""
+        }`,
         options: [
           {
             label: `Challenge ${def.name}`,

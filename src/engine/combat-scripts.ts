@@ -23,14 +23,9 @@
 // Side-effect: register the Anime package's combat scripts into the catalog.
 import "@/data/anime/combat-scripts";
 // Side-effect + tables: the optional PvE director's encounter-scoped scripts.
-import {
-  pveFloorBand,
-  PVE_FLOOR_SCRIPT_IDS,
-  PVE_LAIR_SCRIPT_IDS
-} from "@/data/anime/pve-combat-scripts";
+import { pveEncounterScriptsFor } from "@/data/anime/pve-combat-scripts";
 import {
   combatScriptsForLocation,
-  getCombatScriptDefinition,
   type CombatScriptDefinition,
   type CombatScriptEvent
 } from "@/data/map/combat-scripts";
@@ -125,20 +120,16 @@ export function pveEncounterScriptsForCombat(
   if (context.waveAssault) {
     return [];
   }
-  const ids: string[] = [];
-  if (context.raidBossId) {
-    const defId = state.adventure?.raidBosses?.[context.raidBossId]?.defId;
-    if (defId) {
-      ids.push(...(PVE_LAIR_SCRIPT_IDS[defId] ?? []));
-    }
-  }
-  if (context.dungeonFloor !== undefined) {
-    const theme = state.adventure?.pveTheme === "doom" ? "doom" : "classic";
-    ids.push(...(PVE_FLOOR_SCRIPT_IDS[theme][pveFloorBand(context.dungeonFloor)] ?? []));
-  }
-  return ids
-    .map((id) => getCombatScriptDefinition(id))
-    .filter((script): script is CombatScriptDefinition => Boolean(script));
+  // Delegates to the PURE data-side query so the pre-fight menus (which have no
+  // CombatState) list exactly the scripts this fight will run.
+  const bossDefId = context.raidBossId
+    ? state.adventure?.raidBosses?.[context.raidBossId]?.defId
+    : undefined;
+  return pveEncounterScriptsFor({
+    theme: state.adventure?.pveTheme === "doom" ? "doom" : "classic",
+    ...(bossDefId ? { bossDefId } : {}),
+    ...(context.dungeonFloor !== undefined ? { dungeonFloor: context.dungeonFloor } : {})
+  });
 }
 
 /** Map a unit to its side identity for a script predicate. */
