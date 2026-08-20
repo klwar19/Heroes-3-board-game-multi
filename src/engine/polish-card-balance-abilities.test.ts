@@ -510,27 +510,39 @@ describe("Balance Pack — Eagle Eye", () => {
     ).toBe(true);
   });
 
-  it("the pick digs the chosen LEVEL, TAKES the find with no discard arm, and costs no crown", () => {
-    const on = digger("balance-eagle-take", true);
-    const played = applyOk(on, playsOf(on, "p1", "ability.eagle_eye")[0].action);
-    const choiceId = played.pendingChoice!.id;
-    const basic = applyOk(played, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId,
-      optionIndex: 0
-    });
-    expect(basic.players.p1.hand, "the Basic spell was TAKEN, no prompt").toContain(BASIC_SPELL);
-    expect(basic.pendingChoice, "no take-or-discard window").toBeNull();
+  it("the pick digs the chosen LEVEL, SHOWS the find in a take-only window, and costs no crown", () => {
+    // Resolve the level pick, then the single-option "Eagle Eye found {name}"
+    // window, returning the taken state. The window is the user-requested cue
+    // that names WHICH spell was added (no discard arm on the reprint).
+    const takeAtLevel = (seed: string, levelIndex: number) => {
+      const on = digger(seed, true);
+      const played = applyOk(on, playsOf(on, "p1", "ability.eagle_eye")[0].action);
+      const found = applyOk(played, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: played.pendingChoice!.id,
+        optionIndex: levelIndex
+      });
+      const window = found.pendingChoice;
+      expect(window?.type).toBe("OPTION_CHOICE");
+      if (window?.type !== "OPTION_CHOICE") throw new Error("expected the naming window");
+      expect("context" in window && window.context).toBe("eagle-eye");
+      expect(window.options, "take-only: no discard arm").toHaveLength(1);
+      return applyOk(found, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: window.id,
+        optionIndex: 0
+      });
+    };
+
+    const basic = takeAtLevel("balance-eagle-take", 0);
+    expect(basic.players.p1.hand, "the Basic spell was taken after the window").toContain(BASIC_SPELL);
+    expect(basic.pendingChoice).toBeNull();
     expect(crownsSpent(basic), "neither level costs a crown").toBe(0);
 
     // The Expert button digs for the Expert-level spell instead.
-    const expert = applyOk(played, {
-      type: "CHOOSE_OPTION",
-      playerId: "p1",
-      choiceId,
-      optionIndex: 1
-    });
+    const expert = takeAtLevel("balance-eagle-take-expert", 1);
     expect(expert.players.p1.hand).toContain(EXPERT_SPELL);
     expect(expert.players.p1.hand).not.toContain(BASIC_SPELL);
     expect(crownsSpent(expert)).toBe(0);

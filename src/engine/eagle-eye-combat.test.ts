@@ -241,61 +241,64 @@ describe("Polish Balance Pack Eagle Eye auto-takes but NAMES the added spell", (
     return state;
   }
 
-  it("emits a feed line naming the dug spell, and the spell is owned", () => {
+  it("opens a naming take window for the dug spell, then owns it (user ruling 2026-08-20)", () => {
     const state = balanceEagle("eagle-balance-name");
     state.decks.spells.drawPile = ["spell.bless", "spell.haste"]; // top = Haste
     state.decks.spells.discardPile = [];
 
     const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
     expect(basic).toBeTruthy();
-    // Balance Eagle Eye asks Basic/Expert first (the spell-deck-pick window),
-    // then auto-takes — never the take/discard "eagle-eye" choice.
+    // Balance Eagle Eye asks Basic/Expert first (the spell-deck-pick window)...
     const picked = applyOk(state, basic!);
     const pick = picked.pendingChoice as { id: string; context: string };
     expect(pick.context).toBe("spell-deck-pick");
 
-    const taken = applyOk(picked, {
+    const found = applyOk(picked, {
       type: "CHOOSE_OPTION",
       playerId: "p1",
       choiceId: pick.id,
       optionIndex: 0 // Basic
     });
 
-    // No take/discard prompt was opened — it was taken outright.
+    // ...then a naming window SHOWS which spell was found (the user's ask). The
+    // reprint has no discard arm, so it is a single take-only option.
+    const choice = found.pendingChoice as {
+      id: string;
+      context: string;
+      prompt: string;
+      options: { label: string }[];
+      eagleEye?: { cardId: string; allowDiscard: boolean };
+    };
+    expect(choice.context).toBe("eagle-eye");
+    expect(choice.eagleEye?.cardId).toBe("spell.haste");
+    expect(choice.eagleEye?.allowDiscard, "no discard arm on the reprint").toBe(false);
+    expect(choice.options.length, "take-only window").toBe(1);
+    expect(choice.prompt).toContain("Haste");
+
+    const taken = applyOk(found, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 0
+    });
     expect(taken.pendingChoice).toBeNull();
     // The specific spell is owned (hand or Spell Book).
-    const owned = [
-      ...taken.players.p1.hand,
-      ...taken.players.p1.spellBook,
-      ...taken.players.p1.deck
-    ];
+    const owned = [...taken.players.p1.hand, ...taken.players.p1.spellBook, ...taken.players.p1.deck];
     expect(owned).toContain("spell.haste");
-    // The feedback the author asked for: a feed line that NAMES Haste.
-    const note = taken.eventLog.find(
-      (event) =>
-        event.type === "EVENT_NOTE" &&
-        /Eagle Eye added/.test((event as { message: string }).message) &&
-        /Haste/.test((event as { message: string }).message)
-    );
-    expect(note, "the balance Eagle Eye must announce the spell by name").toBeTruthy();
   });
 
-  it("CONTROL: with the balance rule OFF, the same dig opens the naming take/discard prompt (no feed line)", () => {
+  it("CONTROL: with the balance rule OFF, the dig opens the take/discard prompt (two options)", () => {
     const state = combatWithEagle("eagle-balance-control");
     state.decks.spells.drawPile = ["spell.haste"];
     state.decks.spells.discardPile = [];
 
     const basic = eaglePlays(state, "p1").find((play) => (play.mode ?? "basic") === "basic");
     const dug = applyOk(state, basic!);
-    // The classic path still shows the name via its "Eagle Eye found {name}"
-    // pendingChoice — and never emits the balance feed line.
-    const choice = dug.pendingChoice as { context: string };
+    // The classic path shows the name AND keeps its discard arm (two options).
+    const choice = dug.pendingChoice as { context: string; options: { label: string }[]; eagleEye?: { allowDiscard: boolean } };
     expect(choice.context).toBe("eagle-eye");
-    expect(
-      dug.eventLog.some(
-        (event) => event.type === "EVENT_NOTE" && /Eagle Eye added/.test((event as { message: string }).message)
-      )
-    ).toBe(false);
+    expect(choice.eagleEye?.allowDiscard).toBe(true);
+    expect(choice.options.length).toBe(2);
   });
 });
 

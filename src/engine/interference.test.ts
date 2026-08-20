@@ -119,6 +119,24 @@ describe("Interference — reducing spell damage", () => {
     ).toBe(false);
   });
 
+  it("basic SP-reduction drops a 4-damage Lightning Bolt to 2 even when over-powered (user ruling 2026-08-20)", () => {
+    const run = (casterPower: number) => {
+      let state = setup(["ability.interference"], "spell.lightning_bolt", "unit_p1_griffins", true, casterPower);
+      const power = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.interferenceMode === "power"
+      );
+      expect(power, "the SP-reduction arm is offered").toBeTruthy();
+      state = passAllReactions(applyOk(state, power!.action));
+      return state.combat!.units.unit_p1_griffins.damage;
+    };
+    // Tier 2 (4 damage): reduce 2 SP → tier 0 → 2 damage.
+    expect(run(2)).toBe(2);
+    // Over-powered to tier 3 (still 4 damage): the wasted over-power must NOT
+    // shield it — reducing 2 SP still yields 2 damage, not 3. Before the fix this
+    // returned 3 (raw power 3 − 2 = 1 → 3 damage).
+    expect(run(3)).toBe(2);
+  });
+
   it("basic +1 reduces an enemy Magic Arrow (1 damage) to 0 and grants the unit +1 defense", () => {
     let state = setup(["ability.interference"]);
 

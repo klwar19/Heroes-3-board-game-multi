@@ -113,6 +113,7 @@ import {
   heroMovementGrantOption,
   heroMovementTopUpHeroId,
   spellMinUsefulPower,
+  spellMaxUsefulPower,
   spellPowerValueOfCard
 } from "./effects";
 import { commanderReviveCost } from "@/data/commanders";
@@ -9401,13 +9402,25 @@ export function resolvedSpellPowerForStackItem(
   // preview and the resolve of one cast. 0 when the rule is off.
   const setDrain = stackItem.modifiers.artifactSetSpellDrain ?? 0;
   const interferenceDrain = stackItem.modifiers.interferencePowerReduction ?? 0;
-  const totalFloorDrain = setDrain + interferenceDrain;
-  if (totalFloorDrain <= 0) {
+  if (setDrain <= 0 && interferenceDrain <= 0) {
     return drained;
   }
 
   const floor = Math.min(drained, spellMinUsefulPower(card));
-  return Math.max(floor, drained - totalFloorDrain);
+  // Pendant of Reflection (set drain) subtracts from the raw resolved power.
+  let reduced = Math.max(floor, drained - setDrain);
+  // Interference "decrease the SP … to a minimum of its weakest effect": measured
+  // against the spell's EFFECTIVE damage tier, so over-power the caster wasted
+  // beyond the ladder does NOT shield the spell (user ruling 2026-08-20 —
+  // reducing 2 SP off a 4-damage / tier-2 Lightning Bolt yields 2 damage, not 3,
+  // even when the caster over-powered it to tier 3+). Clamp to the top useful
+  // breakpoint before subtracting; a spell with no Power ladder is unaffected.
+  if (interferenceDrain > 0) {
+    const maxUseful = spellMaxUsefulPower(card);
+    const effective = maxUseful == null ? reduced : Math.min(reduced, maxUseful);
+    reduced = Math.max(floor, effective - interferenceDrain);
+  }
+  return reduced;
 }
 
 /**

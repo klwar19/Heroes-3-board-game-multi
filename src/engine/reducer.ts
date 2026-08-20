@@ -19931,49 +19931,35 @@ function performSpellDig(
   deck.drawPile = shuffleCards(remaining, `${state.seed}#eagle-eye#${eventSeedNumber(state)}`);
 
   // Polish Balance Pack — the reprinted EAGLE EYE: "Put it into your Spellbook."
-  // There is no discard arm on the reprint, so the find is TAKEN with no prompt
-  // (a one-button window would be a dead click). A Tome's School dig keeps its
-  // printed take-or-discard choice in every mode.
-  //
-  // The take is silent, so — unlike the non-balance path, whose "Eagle Eye found
-  // {name}" pendingChoice names the find on screen — the player would otherwise
-  // never see WHICH Spell was added. Announce it with a named feed line (the
-  // channel the log already renders; it opens no window, so no AI/AFK seat can
-  // stall on it), stating the destination it actually landed in.
-  if (!school && houseRuleEnabled(state, "polish-card-balance")) {
-    const destination = gainOwnedCard(state, playerId, foundCardId, cards);
-    appendEvent(state, {
-      type: "EVENT_NOTE",
-      playerId,
-      message: `Eagle Eye added ${cards[foundCardId]?.name ?? foundCardId} to your ${
-        destination === "spellBook" ? "Spell Book" : "hand"
-      }.`
-    });
-    return;
-  }
-
+  // There is NO discard arm on the reprint (the find is always taken), but it
+  // must still be SHOWN so the player sees WHICH Spell was added (user ruling
+  // 2026-08-20 — the old silent take + feed line was easy to miss). So the
+  // balance dig opens the SAME "Eagle Eye found {name}" window, just with a
+  // single take-only option (no discard). A Tome's School dig keeps its printed
+  // take-or-discard choice in every mode.
+  const balanceEagleEye = !school && houseRuleEnabled(state, "polish-card-balance");
+  const allowDiscard = !balanceEagleEye;
   const takeDest = polishSpellBookEnabled(state) ? "Spell Book" : "hand";
+  const foundName = cards[foundCardId]?.name ?? foundCardId;
   const choiceId = `choice_${nextEventNumber(state)}`;
   state.pendingChoice = {
     id: choiceId,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `${digLabel} found ${cards[foundCardId]?.name ?? foundCardId}`,
+    prompt: `${digLabel} found ${foundName}`,
     options: [
-      { label: `Take ${cards[foundCardId]?.name ?? foundCardId} into ${takeDest}` },
-      // The find may ALWAYS be discarded instead — the printed Eagle Eye card
-      // reads "…Take it into your hand OR DISCARD IT. Reshuffle the rest of the
-      // cards back to the Spell deck." on BOTH sides (scan:
-      // public/assets/abilities-eagle_eye.webp), exactly like a Tome's
-      // School-filtered dig. It used to be take-only, which forced a hero to
-      // accept a Spell they did not want.
-      { label: `Discard ${cards[foundCardId]?.name ?? foundCardId}` }
+      { label: `Take ${foundName} into ${takeDest}` },
+      // The find may be discarded instead ONLY on the printed Eagle Eye / a Tome
+      // dig (scan: public/assets/abilities-eagle_eye.webp reads "…Take it into
+      // your hand OR DISCARD IT."). The Balance-Pack reprint has no discard arm,
+      // so the window is take-only (a single, naming, non-dead confirmation).
+      ...(allowDiscard ? [{ label: `Discard ${foundName}` }] : [])
     ],
     context: "eagle-eye",
     eagleEye: {
       deckId,
       cardId: foundCardId,
-      allowDiscard: true
+      allowDiscard
     },
     returnPhase: state.combat ? "combat" : "player-turn"
   };
