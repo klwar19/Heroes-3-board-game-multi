@@ -472,7 +472,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // still fought; the mover's own free hop is unaffected). (5) The Cove
 // Sorceresses' Weakness DEBUFF token may target the Arrow Tower (friendly BUFF
 // tokens still skip it). `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 44;
+// v44 -> v45 (2026-08-20): Polish-Balance-Pack / spell-book fixes. Two ADDITIVE
+// combat fields (both optional, absent on legacy snapshots): a new combat action
+// `USE_EAGLE_EYE_UNIT_COPY` (a v44 edge REJECTS it) and `combatStats.
+// eagleEyeCopyUnitBolt` — the reprinted Eagle Eye Expert now also copies a
+// spell-casting UNIT's bolt (Faerie Dragons), and `activeEffects.
+// expiresAtActivationStartUnitId` expires a Prayer / Cards-of-Prophecy-A buff at
+// the buffed unit's NEXT activation START (never twice buffed). Behaviour-only
+// (a v44 edge computes them differently, so the bump forces a skewed room server
+// current): Slayer's top rung is Power 3; Helm of the Alabaster Unicorn inscribes
+// its cast Spell onto the Book's USED side; Interference's SP-cut is measured
+// against the spell's effective damage tier (over-power no longer shields it);
+// the balance Eagle Eye basic shows its find in a naming window; a Polish Random
+// Artifacts difficulty-I acquisition is a guaranteed Minor with no roll; and the
+// skeleton necro-reinforce offers a free Stack layer under polish-unit-stacks.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 45;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
