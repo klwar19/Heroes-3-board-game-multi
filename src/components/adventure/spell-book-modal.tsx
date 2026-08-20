@@ -25,7 +25,11 @@ import {
   type SpellTimingKind
 } from "@/engine";
 import { actionKey, titleCase } from "@/components/table/utils";
-import { resolveCardFaceImage, usePolishBalanceArtEnabled } from "@/components/table/polish-balance-art";
+import {
+  resolveCardFaceImage,
+  useBalanceArtFlags,
+  type BalanceArtFlags
+} from "@/components/table/polish-balance-art";
 import { cardZoomContent } from "@/components/table/zoom";
 
 /**
@@ -94,12 +98,12 @@ const SPELL_SCHOOL_COLORS: Record<string, string> = {
   water: "#5ca8ff"
 };
 
-function spellBookArtFor(cardId: string, balanceEnabled: boolean): string | undefined {
-  return SPELL_BOOK_ART[cardId] ?? resolveCardFaceImage(balanceEnabled, cardId, false);
+function spellBookArtFor(cardId: string, balanceFlags: BalanceArtFlags): string | undefined {
+  return SPELL_BOOK_ART[cardId] ?? resolveCardFaceImage(balanceFlags, cardId, false);
 }
 
 /** Best human rules text for a card id: its printed prose tag, else the auto effect. */
-function spellRulesText(cardId: string | undefined, balanceEnabled: boolean): string {
+function spellRulesText(cardId: string | undefined, balanceFlags: BalanceArtFlags): string {
   if (!cardId) {
     return "";
   }
@@ -107,7 +111,7 @@ function spellRulesText(cardId: string | undefined, balanceEnabled: boolean): st
   if (!card) {
     return "";
   }
-  return cardZoomContent(cardId, false, balanceEnabled).lines[0] ?? "";
+  return cardZoomContent(cardId, false, balanceFlags.polish, balanceFlags.community).lines[0] ?? "";
 }
 
 export function SpellBookModal({
@@ -153,7 +157,7 @@ export function SpellBookModal({
   /** Cast-button label override (combat appends the concrete target). */
   castLabel?: (legal: LegalAction) => string;
 }) {
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
   const [selected, setSelected] = useState(0);
   const [artFailed, setArtFailed] = useState<string | null>(null);
   // Bumped on every index change: keys the right page so the paper leaf

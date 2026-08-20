@@ -167,7 +167,7 @@ import { actionKey, cardIsEmpoweredFor, cardName, formatCost, titleCase } from "
 // non-member card, so a default table keeps its exact DOM.
 import { CardSetCornerBadge, CardSetFrame } from "@/components/table/artifact-set-badge";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
-import { resolveCardFaceImage, usePolishBalanceArtEnabled } from "@/components/table/polish-balance-art";
+import { resolveCardFaceImage, useBalanceArtFlags } from "@/components/table/polish-balance-art";
 import { beginUnitPointerDrag } from "@/components/table/pointer-drag";
 import { MAP_SCALE_MAX, MAP_SCALE_MIN, pinchCamera, type PinchStart } from "@/components/adventure/map-pinch";
 import { computeMapFloatPosition } from "@/components/adventure/map-float-position";
@@ -5633,7 +5633,7 @@ export function PromptTray({
   // Optional so the tray still renders (un-zoomable) outside a CardZoomProvider —
   // both real mount points in page.tsx are inside one; unit tests are not.
   const zoom = useOptionalCardZoom();
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
   const visit = state.adventure?.pendingVisit;
   const choice = state.pendingChoice;
   const balanceSpellCardId = choice?.type === "OPTION_CHOICE" ? choice.balanceSpellChoice?.cardId : undefined;
@@ -7185,7 +7185,7 @@ export function MarketPanel({
   legalActions: LegalAction[];
   onAction: (action: GameAction) => void;
 }) {
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
   const visit = state.adventure?.pendingVisit;
   const step = visit?.steps[0];
   const isMarket =
@@ -7514,7 +7514,7 @@ export function AdventureOwnDeck({
 }) {
   // Read the Balance-Pack flag BEFORE any early return (rules of hooks), then
   // resolve the face through the shared pure precedence helper.
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
@@ -7855,7 +7855,7 @@ function PileModalCards({
   const { zoomCard, zoomContent } = useCardZoom();
   // A row's face is resolved inside the .map() below, where a hook cannot run —
   // so the rule is read once here and passed to the shared pure resolver.
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
 
   return (
     <ul>
@@ -8855,7 +8855,8 @@ const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   abilities: "Abilities & heroes",
   combat: "Combat & map rules",
   global: "Global map rules",
-  polish: "Polish house rule type 1"
+  polish: "Polish house rule type 1",
+  community: "Community balance"
 };
 
 /** Optional crest/icon for a house-rule GROUP header (paths under public/). */
@@ -8867,6 +8868,10 @@ const HOUSE_RULE_CATEGORY_ICONS: Record<string, string | undefined> = {
 // BINH / Polish panels (user request) — no longer nested inside BINH house rules.
 const BINH_HOUSE_RULE_CATEGORIES = ["decks", "units", "abilities", "combat"] as const;
 const GLOBAL_HOUSE_RULE_CATEGORIES = ["global"] as const;
+// The community balance package is its OWN collapsible, a peer of the Polish
+// panel and — like it — shown in BOTH modes (BINH and Legacy): every rule in it
+// is default OFF in both, so the panel is purely opt-in either way.
+const COMMUNITY_HOUSE_RULE_CATEGORIES = ["community"] as const;
 
 function houseRuleToggleDisabled(
   ruleId: HouseRuleId,
@@ -9219,6 +9224,7 @@ function HouseRulesSection({
   const [binhOpen, setBinhOpen] = useState(false);
   const [globalOpen, setGlobalOpen] = useState(false);
   const [polishOpen, setPolishOpen] = useState(false);
+  const [communityOpen, setCommunityOpen] = useState(false);
 
   const binhRules = HOUSE_RULES.filter((rule) =>
     (BINH_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
@@ -9235,6 +9241,10 @@ function HouseRulesSection({
       rule.id === "eversmoking-ring-of-sulfur-major" ||
       (rule.category === "polish" && rule.id !== "polish-grail-utopia")
   );
+  const communityRules = HOUSE_RULES.filter((rule) =>
+    (COMMUNITY_HOUSE_RULE_CATEGORIES as readonly string[]).includes(rule.category)
+  );
+  const communityOn = communityRules.filter((rule) => houseRules[rule.id]).length;
   const binhOn = binhRules.filter((rule) => houseRules[rule.id]).length;
   const globalOn = globalRules.filter((rule) => houseRules[rule.id]).length;
   const polishOn = polishRules.filter((rule) => houseRules[rule.id]).length;
@@ -9330,6 +9340,42 @@ function HouseRulesSection({
           </div>
           <div className="houseRuleGrid">
             {polishRules.map((rule) => (
+              <HouseRuleToggleButton
+                disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
+                key={rule.id}
+                lockedOn={false}
+                on={houseRules[rule.id]}
+                onToggle={() => setHouseRule(rule.id, !houseRules[rule.id])}
+                rule={rule}
+              />
+            ))}
+          </div>
+        </div>
+      </HouseRuleCollapsible>
+
+      <HouseRuleCollapsible
+        id="community-house-rules"
+        onCount={communityOn}
+        onToggle={() => setCommunityOpen((v) => !v)}
+        open={communityOpen}
+        subtitle="The community balance spreadsheet's reprints — opt-in, default off"
+        title="Community balance"
+        totalCount={communityRules.length}
+        variant="polish"
+      >
+        <div className="houseRuleGroup polish">
+          <div className="houseRuleGroupHeader">
+            <span className="houseRuleGroupLabel">Whole Community package</span>
+            <GroupToggleAllButton
+              creatureBanksEnabled={creatureBanksEnabled}
+              groupLabel="Community"
+              houseRules={houseRules}
+              rules={communityRules}
+              setHouseRules={setHouseRules}
+            />
+          </div>
+          <div className="houseRuleGrid">
+            {communityRules.map((rule) => (
               <HouseRuleToggleButton
                 disabled={houseRuleToggleDisabled(rule.id, houseRules, creatureBanksEnabled)}
                 key={rule.id}

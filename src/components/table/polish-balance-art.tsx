@@ -1,8 +1,12 @@
 "use client";
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
 import { polishBalanceCardImage, polishBalanceEmpoweredCardImage } from "@/data/cards/polish-balance-art";
+import {
+  communityBalanceCardImage,
+  communityBalanceEmpoweredCardImage
+} from "@/data/cards/community-balance-art";
 
 // ---------------------------------------------------------------------------
 // Polish Balance Pack (`polish-card-balance`) — the FACE-SWAP seam.
@@ -19,15 +23,55 @@ import { polishBalanceCardImage, polishBalanceEmpoweredCardImage } from "@/data/
 // rule-off render is byte-identical to before.
 // ---------------------------------------------------------------------------
 
-const PolishBalanceArtContext = createContext(false);
+/**
+ * The two balance packs a table can have on at once. Kept as ONE context value
+ * (rather than a second fighting provider) so `resolveCardFaceImage` stays the
+ * single face-precedence rule every surface reads.
+ */
+export type BalanceArtFlags = {
+  /** `polish-card-balance` */
+  polish: boolean;
+  /** `community-card-balance` */
+  community: boolean;
+};
 
-/** Publish "the Polish Balance Pack is on" to every card face below. */
-export function PolishBalanceArtProvider({ children, enabled }: { children: ReactNode; enabled: boolean }) {
-  return <PolishBalanceArtContext.Provider value={enabled}>{children}</PolishBalanceArtContext.Provider>;
+const BOTH_OFF: BalanceArtFlags = { polish: false, community: false };
+
+const PolishBalanceArtContext = createContext<BalanceArtFlags>(BOTH_OFF);
+
+/**
+ * Publish "which balance packs are on" to every card face below. `enabled` is
+ * the Polish Balance Pack (the original prop, unchanged); `communityEnabled` is
+ * the Community Balance Change and defaults to OFF, so every existing mount and
+ * test renders byte-identically.
+ */
+export function PolishBalanceArtProvider({
+  children,
+  enabled,
+  communityEnabled = false
+}: {
+  children: ReactNode;
+  enabled: boolean;
+  communityEnabled?: boolean;
+}) {
+  const value = useMemo<BalanceArtFlags>(
+    () => ({ polish: enabled, community: communityEnabled }),
+    [enabled, communityEnabled]
+  );
+  return <PolishBalanceArtContext.Provider value={value}>{children}</PolishBalanceArtContext.Provider>;
+}
+
+/** Both packs' booleans — what a surface passes to `resolveCardFaceImage`. */
+export function useBalanceArtFlags(): BalanceArtFlags {
+  return useContext(PolishBalanceArtContext);
 }
 
 export function usePolishBalanceArtEnabled(): boolean {
-  return useContext(PolishBalanceArtContext);
+  return useContext(PolishBalanceArtContext).polish;
+}
+
+export function useCommunityBalanceArtEnabled(): boolean {
+  return useContext(PolishBalanceArtContext).community;
 }
 
 /**
@@ -35,22 +79,44 @@ export function usePolishBalanceArtEnabled(): boolean {
  * a hook where it needs the face (a `.map()` row, or a component that has
  * already returned early) reads the identical ordering.
  *
- * Precedence (while the rule is on and the card has a WIRED reprint):
- *  1. the DEDICATED empowered balance face, when the card is shown Empowered and
- *     one exists (the 12 abilities in `POLISH_BALANCE_EMPOWERED_ABILITY_IDS`);
- *  2. otherwise the plain balance face.
- * Both beat the printed `-empowered` fan scan and the classic face. The empowered
- * balance face prints the NEW rules text (unlike the classic `-empowered` scan,
- * which prints the OLD text — the reason the plain balance face used to win over
- * it), so an Empowered holder reads the right card. The render surfaces still draw
- * their gold ring / badge on top of whichever face this returns.
+ * Precedence, top to bottom (each rung only when that pack's rule is ON and the
+ * card has a WIRED reprint in it):
+ *  1. the DEDICATED empowered COMMUNITY face, when the card is shown Empowered;
+ *  2. the plain COMMUNITY face;
+ *  3. the DEDICATED empowered POLISH face, when the card is shown Empowered
+ *     (the 12 abilities in `POLISH_BALANCE_EMPOWERED_ABILITY_IDS`);
+ *  4. the plain POLISH face;
+ *  5. the classic printed `-empowered` scan / card face (`cardFaceImage`).
+ * COMMUNITY WINS over POLISH for a card both packs cover, matching the engine's
+ * `balanceCardLibrary` (the community swap is applied after the polish one), so
+ * the face a player reads is always the text the engine runs.
+ * Every balance face beats the printed `-empowered` fan scan: that scan prints
+ * the OLD rules text, so an Empowered holder must still read the NEW card. The
+ * render surfaces still draw their gold ring / badge on top of whichever face
+ * this returns.
+ *
+ * `flags` accepts a bare boolean for the Polish-only callers that predate the
+ * community pack (equivalent to `{ polish: value, community: false }`).
  */
 export function resolveCardFaceImage(
-  balanceEnabled: boolean,
+  flags: boolean | BalanceArtFlags,
   cardId: string | undefined,
   empowered: boolean
 ): string | undefined {
-  if (balanceEnabled) {
+  const { polish, community } = typeof flags === "boolean" ? { polish: flags, community: false } : flags;
+  if (community) {
+    if (empowered) {
+      const empoweredCommunity = communityBalanceEmpoweredCardImage(cardId);
+      if (empoweredCommunity) {
+        return empoweredCommunity;
+      }
+    }
+    const communityFace = communityBalanceCardImage(cardId);
+    if (communityFace) {
+      return communityFace;
+    }
+  }
+  if (polish) {
     if (empowered) {
       const empoweredBalance = polishBalanceEmpoweredCardImage(cardId);
       if (empoweredBalance) {
@@ -65,7 +131,7 @@ export function resolveCardFaceImage(
   return cardFaceImage(cardId, empowered);
 }
 
-/** `resolveCardFaceImage` with the rule read from context — the usual surface. */
+/** `resolveCardFaceImage` with both rules read from context — the usual surface. */
 export function useCardFaceImage(cardId: string | undefined, empowered: boolean): string | undefined {
-  return resolveCardFaceImage(usePolishBalanceArtEnabled(), cardId, empowered);
+  return resolveCardFaceImage(useBalanceArtFlags(), cardId, empowered);
 }

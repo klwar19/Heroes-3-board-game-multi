@@ -272,7 +272,14 @@ export type HouseRuleId =
   // (`src/data/cards/polish-balance-art.ts`) — a card is listed there ONLY once
   // its new behaviour is genuinely engine-wired, so the face can never advertise
   // a rule the engine does not run.
-  | "polish-card-balance";
+  | "polish-card-balance"
+  // Community house rule (default OFF in BOTH modes): the "Heroes 3 Board Game
+  // Community Balance Change" reprints. Same shape as `polish-card-balance` —
+  // each covered card plays its NEW printed text and renders its community FACE.
+  // The covered ids are the single registry `COMMUNITY_BALANCE_CARD_IDS`
+  // (`src/data/cards/community-balance-art.ts`). With BOTH balance rules on the
+  // COMMUNITY reprint/face WINS for a card both packs cover.
+  | "community-card-balance";
 
 /** Shared presentation/army theme for the optional wave, boss and dungeon modules. */
 export type PveEncounterTheme = "classic" | "doom" | "random";

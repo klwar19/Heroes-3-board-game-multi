@@ -1,5 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
-import { polishBalanceCard } from "./polish-balance-spells";
+import { balanceCard } from "./community-balance-cards";
 import { DRILL_UNIT_XP, MAX_UNIT_RANK } from "@/data/units/experience";
 import {
   applyNeutralRoundsRank,
@@ -7225,7 +7225,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
       // The rider lives on the ADD_SPELL_POWER side actually played. Read inline
       // (adventure-reducer cannot import legal-actions' `drawRiderThenDiscard` —
       // the dependency runs the other way); keep the two in step.
-      const boostCard = polishBalanceCard(state, offer.cardId) ?? cardLibrary[offer.cardId];
+      const boostCard = balanceCard(state, offer.cardId) ?? cardLibrary[offer.cardId];
       const boostEffect =
         boostCard?.effect.type === "CHOOSE_ONE"
           ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
@@ -9086,7 +9086,7 @@ const VISIONS_SPELL_ID = "spell.visions";
 /** Visions' Power → card-count table (1/2/3), reused as the swap budget. */
 function visionsCardsByPower(state: GameState): Record<number, number> {
   // Polish Balance Pack: the reprint scrys 2/4/6, so the swap budget follows.
-  const card = polishBalanceCard(state, VISIONS_SPELL_ID);
+  const card = balanceCard(state, VISIONS_SPELL_ID);
   return card?.effect.type === "VISIONS_SCRY" ? card.effect.cardsByPower : { 0: 1 };
 }
 

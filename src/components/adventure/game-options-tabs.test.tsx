@@ -43,6 +43,10 @@ function expandPolishHouseRules() {
   fireEvent.click(screen.getByRole("button", { name: /Polish house rule type 1/i }));
 }
 
+function expandCommunityHouseRules() {
+  fireEvent.click(screen.getAllByRole("button", { name: /Community balance/i })[0]);
+}
+
 function expandTournamentRules() {
   fireEvent.click(screen.getByRole("button", { name: /Tournament rules/i }));
 }
@@ -444,6 +448,57 @@ describe("Game options — tabbed layout", () => {
       playerId: "p1",
       options: { houseRules: { "polish-card-balance": true } }
     });
+  });
+
+  it("wires the opt-in Community Balance Change rule in its own group (default OFF)", () => {
+    const onAction = openOptions();
+    expandCommunityHouseRules();
+    const toggle = screen.getByRole("button", {
+      name: /Heroes 3 Board Game Community Balance Change/
+    }) as HTMLButtonElement;
+    // Default OFF in both modes, and it depends on nothing (never greyed out).
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.disabled).toBe(false);
+    fireEvent.click(toggle);
+    expect(onAction).toHaveBeenCalledWith({
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { houseRules: { "community-card-balance": true } }
+    });
+  });
+
+  it("the Community group has its own Enable-all button, and it leaves the Polish rows alone", () => {
+    const onAction = openOptions();
+    expandCommunityHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Community rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    expect(hr["community-card-balance"]).toBe(true);
+    // CONTROL: the Polish package is untouched by the Community group button.
+    expect(hr["polish-card-balance"]).toBeUndefined();
+    expect(hr["polish-wait"]).toBeUndefined();
+  });
+
+  it("CONTROL: the Polish Enable-all never turns the Community rule on", () => {
+    const onAction = openOptions();
+    expandPolishHouseRules();
+    fireEvent.click(screen.getByRole("button", { name: "Enable all Polish rules" }));
+    const hr = (onAction.mock.calls.at(-1)?.[0] as { options: { houseRules: Record<string, boolean> } })
+      .options.houseRules;
+    expect(hr["polish-card-balance"]).toBe(true);
+    expect(hr["community-card-balance"], "the Community pack is a separate group").toBeUndefined();
+  });
+
+  it("the Community toggle reflects a persisted ON value", () => {
+    openOptionsWith((state) => {
+      state.setupLobby!.options.houseRules = {
+        ...state.setupLobby!.options.houseRules,
+        "community-card-balance": true
+      };
+    });
+    expandCommunityHouseRules();
+    const toggle = screen.getByRole("button", { name: /Heroes 3 Board Game Community Balance Change/ });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("selecting Polish Spell Book switches the standard Spell Book off", () => {

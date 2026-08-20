@@ -7,9 +7,10 @@ import { assetUrl } from "@/lib/asset-url";
 import { Sparkles, X, ZoomIn } from "lucide-react";
 import { cardLibrary } from "@/data/cards/library";
 import { cardFaceImage } from "@/data/cards/empowered-card-art";
-import { useCardFaceImage, usePolishBalanceArtEnabled } from "./polish-balance-art";
+import { useBalanceArtFlags, useCardFaceImage } from "./polish-balance-art";
 import { isPolishBalanceCard } from "@/data/cards/polish-balance-art";
-import { polishBalanceCardForDisplay } from "@/engine/polish-balance-spells";
+import { isCommunityBalanceCard } from "@/data/cards/community-balance-art";
+import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 import {
   describeCardEffect,
   getInnateFlatAttackBonus,
@@ -96,18 +97,29 @@ export function useOptionalCardZoom(): CardZoomContextValue | null {
   return useContext(CardZoomContext);
 }
 
-export function cardZoomContent(cardId: string, empowered?: boolean, balanceEnabled = false): ZoomContent {
-  const resolved = polishBalanceCardForDisplay(balanceEnabled, cardId);
+export function cardZoomContent(
+  cardId: string,
+  empowered?: boolean,
+  balanceEnabled = false,
+  communityEnabled = false
+): ZoomContent {
+  // Community reprints WIN over Polish ones for a card both packs cover, exactly
+  // like the engine's `balanceCardLibrary`.
+  const resolved = balanceCardForDisplay(balanceEnabled, communityEnabled, cardId);
   const card =
     resolved?.effect.type === "CHOOSE_ONE"
       ? {
           ...resolved,
           effect: {
             ...resolved.effect,
-            options: resolved.effect.options.filter((option) =>
-              balanceEnabled
-                ? option.forbidsHouseRule !== "polish-card-balance"
-                : option.requiresHouseRule !== "polish-card-balance"
+            options: resolved.effect.options.filter(
+              (option) =>
+                (balanceEnabled
+                  ? option.forbidsHouseRule !== "polish-card-balance"
+                  : option.requiresHouseRule !== "polish-card-balance") &&
+                (communityEnabled
+                  ? option.forbidsHouseRule !== "community-card-balance"
+                  : option.requiresHouseRule !== "community-card-balance")
             )
           }
         }
@@ -116,9 +128,18 @@ export function cardZoomContent(cardId: string, empowered?: boolean, balanceEnab
     return { title: cardId, cardId, lines: [], empowered: Boolean(empowered) };
   }
 
-  const balanceText = balanceEnabled && isPolishBalanceCard(cardId)
-    ? card.tags.find((tag) => tag.startsWith("Balance pack:"))?.replace(/^Balance pack:\s*/, "")
-    : undefined;
+  // The reprint's own rules line. A card the COMMUNITY pack covers reads its
+  // "Community balance: …" tag (that pack's definition is the one in play); a
+  // Polish-only reprint keeps the "Balance pack: …" tag.
+  const communityText =
+    communityEnabled && isCommunityBalanceCard(cardId)
+      ? card.tags.find((tag) => tag.startsWith("Community balance:"))?.replace(/^Community balance:\s*/, "")
+      : undefined;
+  const balanceText =
+    communityText ??
+    (balanceEnabled && isPolishBalanceCard(cardId)
+      ? card.tags.find((tag) => tag.startsWith("Balance pack:"))?.replace(/^Balance pack:\s*/, "")
+      : undefined);
   const lines: string[] = [balanceText ?? describeCardEffect(card)];
   const note = card.tags.find((tag) => tag.includes(" "));
   if (card.implementationStatus === "not-implemented" && note) {
@@ -439,18 +460,19 @@ function ZoomCardVisual({
  */
 export function CardZoomProvider({ children }: { children: ReactNode }) {
   const [content, setContent] = useState<ZoomContent | null>(null);
-  const balanceEnabled = usePolishBalanceArtEnabled();
+  const balanceFlags = useBalanceArtFlags();
   // Fall back to the text frame if a card's scan is missing (e.g. Moandor's
   // specialties); keyed by src so each newly zoomed card tries its own art.
   const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
 
   const value = useMemo<CardZoomContextValue>(
     () => ({
-      zoomCard: (cardId, empowered) => setContent(cardZoomContent(cardId, empowered, balanceEnabled)),
+      zoomCard: (cardId, empowered) =>
+        setContent(cardZoomContent(cardId, empowered, balanceFlags.polish, balanceFlags.community)),
       zoomUnit: (unit, ruleset) => setContent(unitZoomContent(unit, ruleset)),
       zoomContent: (next) => setContent(next)
     }),
-    [balanceEnabled]
+    [balanceFlags.polish, balanceFlags.community]
   );
 
   const close = useCallback(() => setContent(null), []);

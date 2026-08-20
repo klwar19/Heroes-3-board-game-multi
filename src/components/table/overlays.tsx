@@ -57,7 +57,7 @@ import { MORALE_CUE_SOUNDS, type MoraleCardCue } from "./morale-card-cue";
 import { CardBack, CardFrame } from "./seats";
 import { AnkhIcon, CrossedShovelsIcon, StarBannerIcon } from "./dice-icons";
 import { useCardZoom, ZoomButton } from "./zoom";
-import { polishBalanceCardForDisplay } from "@/engine/polish-balance-spells";
+import { balanceCardForDisplay } from "@/engine/community-balance-cards";
 
 type ReactionLegal = Extract<GameAction, { type: "PLAY_REACTION" }>;
 
@@ -111,7 +111,11 @@ type TraySelection = {
   costBookCardId?: string;
 };
 
-function selectionPreview(selections: TraySelection[], balanceEnabled: boolean): string[] {
+function selectionPreview(
+  selections: TraySelection[],
+  balanceEnabled: boolean,
+  communityEnabled: boolean
+): string[] {
   const totals = new Map<string, number>();
 
   for (const selection of selections) {
@@ -119,7 +123,7 @@ function selectionPreview(selections: TraySelection[], balanceEnabled: boolean):
     // Necklace of Bliss "+1 attack, then +X per discard" vs the classic "+X").
     // The engine reads the reprint, so the running total must resolve it too or
     // the tray would show "+0 Attack" while the engine actually grants +1.
-    const card = polishBalanceCardForDisplay(balanceEnabled, selection.cardId);
+    const card = balanceCardForDisplay(balanceEnabled, communityEnabled, selection.cardId);
     if (!card) {
       continue;
     }
@@ -657,6 +661,9 @@ export function ReactionTray({
   // amounts). Resolve those for every displayed label/total or the tray shows
   // the classic text while the engine runs the reprint.
   const balanceEnabled = houseRuleEnabled(state, "polish-card-balance");
+  // The Community Balance Change reprints WIN over the Polish ones for a card
+  // both packs cover (see `balanceCardForDisplay`).
+  const communityEnabled = houseRuleEnabled(state, "community-card-balance");
   const [selections, setSelections] = useState<TraySelection[]>([]);
   /**
    * Cast-window Power gate dialog: when the caster tries to Pass while under
@@ -887,7 +894,7 @@ export function ReactionTray({
     // Resolve the Balance-Pack reprint so the option LABEL ("+1 attack, discard
     // X cards: +X more attack") matches what the engine runs, not the classic
     // "Discard X cards: +X attack".
-    const card = polishBalanceCardForDisplay(balanceEnabled, action.cardId);
+    const card = balanceCardForDisplay(balanceEnabled, communityEnabled, action.cardId);
     const effect = card && !action.asPowerBoost ? getEffectiveCardEffect(card, action.optionIndex) : null;
     const batchable = action.asPowerBoost
       ? true
@@ -1259,7 +1266,7 @@ export function ReactionTray({
     onAction({ type: "PLAY_REACTIONS", playerId: viewerPlayerId, plays: selections.map(toPlay) });
   };
 
-  const preview = selectionPreview(selections, balanceEnabled);
+  const preview = selectionPreview(selections, balanceEnabled, communityEnabled);
   const crownsOver = crownsSelected > crownsAvailable;
 
   // Pending CAST_SPELL Power bounds for the viewing caster (Pass gating).

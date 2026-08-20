@@ -8,7 +8,7 @@ import { playSpellBookOpen } from "@/lib/sound";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cardLibrary } from "@/data/cards/library";
-import { useCardFaceImage, usePolishBalanceArtEnabled } from "./polish-balance-art";
+import { useBalanceArtFlags, useCardFaceImage } from "./polish-balance-art";
 import { getDeckBack } from "@/data/decks";
 import {
   describeCardEffect,
@@ -609,7 +609,7 @@ export function HandFan({
   const [armed, setArmed] = useState<{ handIndex: number; action: CardBoardAction; label: string } | null>(null);
   const { zoomCard } = useCardZoom();
   const helperCoach = useHelperCoachPreference();
-  const balanceArt = usePolishBalanceArtEnabled();
+  const balanceArt = useBalanceArtFlags();
   const player = view.players[viewerPlayerId];
   if (!player) {
     return null;
@@ -910,7 +910,11 @@ export function HandFan({
                   </div>
                 ) : (
                   <>
-                    {card ? <small>{cardZoomContent(entry.cardId, empowered, balanceArt).lines[0]}</small> : null}
+                    {card ? (
+                      <small>
+                        {cardZoomContent(entry.cardId, empowered, balanceArt.polish, balanceArt.community).lines[0]}
+                      </small>
+                    ) : null}
                     {card ? (
                       <div className="popMeta">
                         {getCardMetaLabels(card).map((label) => (
@@ -1102,7 +1106,7 @@ export function HandFan({
                 !playable && helperCoach.enabled
                   ? `${card?.name ?? entry.cardId} — ${timingHint(entry.cardId)}`
                   : card
-                    ? `${empowered ? "Empowered — " : ""}${card.name} — ${cardZoomContent(entry.cardId, empowered, balanceArt).lines[0]}`
+                    ? `${empowered ? "Empowered — " : ""}${card.name} — ${cardZoomContent(entry.cardId, empowered, balanceArt.polish, balanceArt.community).lines[0]}`
                     : entry.cardId
               }
               type="button"

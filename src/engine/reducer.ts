@@ -29,7 +29,7 @@ import {
   grantRegularArtifactOfSameGrade
 } from "./adventure";
 import { diluteUnitExperienceForUpgrade, grantArmyUnitExperience, unitExperienceActive } from "./unit-experience";
-import { polishBalanceCardLibrary } from "./polish-balance-spells";
+import { balanceCardLibrary } from "./community-balance-cards";
 import { balanceIntelligenceWindowClosed } from "./combat-timing";
 import { openHandDiscardChoice } from "./hand-discard-choice";
 import {
@@ -24570,11 +24570,13 @@ function acknowledgeFirstPlayerRoll(
 }
 
 export function applyAction(state: GameState, action: GameAction, options: ReducerOptions = {}): EngineResult {
-  // Polish Balance Pack: ONE seam. Every card read below (and in every helper
-  // this action reaches) goes through `cards`, so swapping the 21 reprinted
-  // Spells in here is what makes the rule real for the whole resolution path.
-  // Rule off => the caller's library is returned unchanged.
-  const cards = polishBalanceCardLibrary(state, options.cards ?? cardLibrary);
+  // Balance packs: ONE seam. Every card read below (and in every helper this
+  // action reaches) goes through `cards`, so swapping the reprinted definitions
+  // in here is what makes the rules real for the whole resolution path.
+  // `balanceCardLibrary` applies Polish first and the Community Balance Change
+  // on top, so a card BOTH packs reprint plays the community text. Both rules
+  // off => the caller's library is returned unchanged.
+  const cards = balanceCardLibrary(state, options.cards ?? cardLibrary);
   const buildings = options.buildings ?? sampleBuildings;
 
   // Self-heal any duplicate army-unit ids before validating or running the

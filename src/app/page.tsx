@@ -5850,7 +5850,7 @@ export default function Home() {
 
     return (
       <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
-      <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")}>
+      <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")} communityEnabled={houseRuleEnabled(state, "community-card-balance")}>
       <CardZoomProvider>
         <main
           className={`tableRoot adventureRoot${phoneUi ? " phoneMode" : ""}`}
@@ -7114,7 +7114,7 @@ export default function Home() {
       }}
     >
     <ArtifactSetIconsProvider enabled={setArtifactsEnabled(state)}>
-    <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")}>
+    <PolishBalanceArtProvider enabled={houseRuleEnabled(state, "polish-card-balance")} communityEnabled={houseRuleEnabled(state, "community-card-balance")}>
     <CardZoomProvider>
     <main
       className={`tableRoot${phoneUi ? " phoneMode" : ""}`}

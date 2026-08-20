@@ -1,5 +1,6 @@
 import { cardLibrary } from "@/data/cards/library";
-import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS, polishBalanceCardLibrary } from "./polish-balance-spells";
+import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
+import { balanceCardLibrary } from "./community-balance-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
 import { moraleCardsRuleEnabled } from "./morale-cards";
@@ -6812,10 +6813,11 @@ function getLegalActionsCore(
   baseCards: CardLibrary = cardLibrary,
   buildings: BuildingLibrary = sampleBuildings
 ): LegalAction[] {
-  // Polish Balance Pack: the offer layer reads the SAME reprinted definitions
-  // the reducer resolves, so a ladder can never be promised here and paid
-  // differently there. Rule off => the caller's library, unchanged.
-  const cards = polishBalanceCardLibrary(state, baseCards);
+  // Balance packs (Polish, then Community on top): the offer layer reads the
+  // SAME reprinted definitions the reducer resolves, so a ladder can never be
+  // promised here and paid differently there. Rules off => the caller's library,
+  // unchanged.
+  const cards = balanceCardLibrary(state, baseCards);
   if (state.phase === "game-over") {
     // An adventure combat that just ended waits on the battlefield until a
     // participant closes the end-of-combat notice; only that acknowledgment
@@ -7996,8 +7998,8 @@ export function getLegalReactionsForTrigger(
   triggerEvent: GameEvent,
   baseCards: CardLibrary = cardLibrary
 ): Record<PlayerId, LegalAction[]> {
-  // Polish Balance Pack: same reprinted library the reducer resolves with.
-  const cards = polishBalanceCardLibrary(state, baseCards);
+  // Balance packs: same composed reprinted library the reducer resolves with.
+  const cards = balanceCardLibrary(state, baseCards);
   // Alamar's Resurrection: its own save window when a unit is about to die.
   if (triggerEvent.type === "UNIT_LETHAL_HIT") {
     return getLethalSaveReactions(state, triggerEvent, cards);
