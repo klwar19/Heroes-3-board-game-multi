@@ -528,7 +528,24 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `resolveMapSpellBoostChoice`) now reading the BALANCED definition instead of
 // the raw printed library — which also fixes the Polish pack's map reprints.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 47;
+//
+// v48 (2026-08-20): the Dungeon & Raid Boss VARIANT expansion (design authority
+// docs/dungeon-raid-boss-variants-plan.md). New SERIALIZED shapes a stale
+// worker cannot read: `CombatState.monsterSpells` (the BOSS_SPELL_ROTATION
+// idempotence ledger) and `PlayerState.raidBossTrophyClaimed` (the one
+// first-kill trophy latch). Server-computed behaviour on top: the round-start
+// monster-spell pass (reducer.ts `resolveMonsterSpellRoundStart` +
+// the `resumeCombatStartAfterCommanderPlacement` call site), the PvE
+// encounter-scoped combat scripts (`pveEncounterScriptsForCombat`, the
+// `side-heal` / `random-obstacle` script kinds), the seeded dungeon warden
+// pools (`dungeonWardenIdFor` — a stale worker fields the OLD fixed warden),
+// themed escorts + escort Stack Tokens at layersLeft>=4, the seeded dungeon
+// treasure themes (`dungeonTreasureThemeOf` swaps non-artifact rungs), the
+// first-kill trophy CHOOSE_ONE, and 6 new dungeon rooms behind the seeded
+// door pick (a stale worker deals doors from the OLD 5-room pool).
+// All content sits behind the existing PvE module flags (default OFF ⇒
+// byte-identical). `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 48;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
