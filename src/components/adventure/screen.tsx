@@ -9251,6 +9251,36 @@ function HouseRuleCategoryGroup({
 }
 
 /**
+ * External "full card list" links for any rule in the group that carries an
+ * `infoUrl` (the balance packs, whose card-by-card detail is too large to inline
+ * in the toggle text). Rendered as a sibling row BELOW the toggle grid — never
+ * inside a toggle `<button>` (an anchor cannot nest in a button, and a click
+ * there must open the reference, not flip the rule). Returns null when no rule
+ * in the group has a link, so ordinary groups are untouched.
+ */
+function HouseRuleInfoLinks({ rules }: { rules: (typeof HOUSE_RULES)[number][] }) {
+  const withLinks = rules.filter((rule) => rule.infoUrl);
+  if (withLinks.length === 0) {
+    return null;
+  }
+  return (
+    <div className="houseRuleInfoLinks">
+      {withLinks.map((rule) => (
+        <a
+          className="houseRuleInfoLink"
+          href={rule.infoUrl}
+          key={rule.id}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {rule.label}: full card list ↗
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/**
  * The individual house-rule toggles, rendered straight from the engine registry
  * so the menu and the engine never drift. Each button flips exactly one rule
  * (the reducer merges it); the value shown is the resolved effective boolean.
@@ -9400,6 +9430,7 @@ function HouseRulesSection({
               />
             ))}
           </div>
+          <HouseRuleInfoLinks rules={polishRules} />
         </div>
       </HouseRuleCollapsible>
 
@@ -9436,6 +9467,7 @@ function HouseRulesSection({
               />
             ))}
           </div>
+          <HouseRuleInfoLinks rules={communityRules} />
         </div>
       </HouseRuleCollapsible>
     </div>

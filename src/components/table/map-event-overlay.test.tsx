@@ -51,6 +51,34 @@ describe("MapEventOverlay", () => {
     expect(screen.getByText(/game ends once it is over/i)).toBeTruthy();
   });
 
+  it("uses a distinct Monster-wave header for a Calamity Wave notice (incoming vs imminent)", () => {
+    render(
+      <MapEventOverlay
+        cue={cue({
+          monsterWave: "incoming",
+          round: 3,
+          messages: ["The Gate groans — monster wave 1 strikes every army at the start of round 4."]
+        })}
+        onDone={() => {}}
+      />
+    );
+    expect(screen.getByText("Monster wave incoming!")).toBeTruthy();
+    expect(screen.queryByText("Map event!")).toBeNull();
+    cleanup();
+    render(
+      <MapEventOverlay
+        cue={cue({
+          monsterWave: "imminent",
+          round: 4,
+          messages: ["Monster wave 1 pours through — every player fights a war party at round start."]
+        })}
+        onDone={() => {}}
+      />
+    );
+    expect(screen.getByText("Monster wave strikes!")).toBeTruthy();
+    expect(screen.queryByText("Map event!")).toBeNull();
+  });
+
   it("dismisses on the button and on a backdrop click", () => {
     const onDone = vi.fn();
     render(<MapEventOverlay cue={cue()} onDone={onDone} />);

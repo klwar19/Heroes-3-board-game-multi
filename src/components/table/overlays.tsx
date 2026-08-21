@@ -3466,6 +3466,13 @@ export type MapEventCue = {
    * understands the game ends once this round is over.
    */
   finalRound?: boolean;
+  /**
+   * When set, this cue is a Calamity Waves notice (not a designed-map timed
+   * event): "incoming" is the round-BEFORE warning, "imminent" is the wave
+   * round beginning — both pop a distinct battle-flavored header so a wave is
+   * never just a feed line the player misses before their armies fight it.
+   */
+  monsterWave?: "incoming" | "imminent";
 };
 
 /**
@@ -3493,17 +3500,31 @@ export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () 
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  const headerIcon = cue.monsterWave ? "⚔️" : cue.finalRound ? "⏳" : "🗺️";
+  const headerTitle = cue.monsterWave
+    ? cue.monsterWave === "imminent"
+      ? "Monster wave strikes!"
+      : "Monster wave incoming!"
+    : cue.finalRound
+    ? "Final round!"
+    : "Map event!";
+  const ariaLabel = cue.monsterWave
+    ? `${headerTitle} — round ${cue.round}`
+    : cue.finalRound
+    ? `Final round — round ${cue.round}`
+    : `Map event — round ${cue.round}`;
+
   return (
     <div
       className="astrologersProclaimBackdrop mapEventBackdrop"
       role="dialog"
-      aria-label={cue.finalRound ? `Final round — round ${cue.round}` : `Map event — round ${cue.round}`}
+      aria-label={ariaLabel}
       onClick={onDone}
     >
       <div className="mapEventCard" onClick={(event) => event.stopPropagation()}>
         <header className="mapEventHead">
-          <span aria-hidden="true">{cue.finalRound ? "⏳" : "🗺️"}</span>
-          <strong>{cue.finalRound ? "Final round!" : "Map event!"}</strong>
+          <span aria-hidden="true">{headerIcon}</span>
+          <strong>{headerTitle}</strong>
           <span className="mapEventRound">round {cue.round}</span>
         </header>
         <ul className="mapEventLines">

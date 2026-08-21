@@ -489,6 +489,25 @@ describe("Game options — tabbed layout", () => {
     expect(hr["community-card-balance"], "the Community pack is a separate group").toBeUndefined();
   });
 
+  it("shows a 'full card list' spreadsheet link for each balance pack (concise description + external reference)", () => {
+    openOptions();
+    expandCommunityHouseRules();
+    const communityLink = screen.getByRole("link", {
+      name: /Heroes 3 Board Game Community Balance Change: full card list/i
+    }) as HTMLAnchorElement;
+    expect(communityLink.getAttribute("href")).toContain("docs.google.com/spreadsheets");
+    expect(communityLink.getAttribute("target")).toBe("_blank");
+    expect(communityLink.getAttribute("rel")).toContain("noopener");
+
+    expandPolishHouseRules();
+    const polishLink = screen.getByRole("link", {
+      name: /Balanced cards \(Balance Pack\): full card list/i
+    }) as HTMLAnchorElement;
+    expect(polishLink.getAttribute("href")).toContain("onedrive.live.com");
+    // CONTROL: an ordinary rule with no infoUrl gets no such link.
+    expect(screen.queryByRole("link", { name: /Polish Spell Book: full card list/i })).toBeNull();
+  });
+
   it("the Community toggle reflects a persisted ON value", () => {
     openOptionsWith((state) => {
       state.setupLobby!.options.houseRules = {
