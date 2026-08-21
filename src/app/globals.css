@@ -43740,3 +43740,575 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   font-size: 0.76rem;
   opacity: 0.75;
 }
+
+/* ---------------------------------------------------------------------------
+   PvE FIELD EFFECTS — the ANIMATED environment layer (2026-08-21).
+
+   Forced Battle Events (dungeon floor bands, rift lairs, the two Bí Cảnh
+   scripts) already changed stats, dropped obstacles and pulsed damage, and the
+   `PveFieldEffectsPanel` already explained them in words — but the battlefield
+   itself looked identical whether it was flooded, irradiated or full of ash.
+   `PveFieldEffectOverlay` (mounted INSIDE `.battlefieldFrame` by board.tsx, so
+   it inherits the board's box on the desktop HUD and in phone mode alike) hangs
+   one themed layer per active script here.
+
+   Z-INDEX inside the frame's own stacking context: 2 — above `.battlefield`
+   (1, so the weather reads as GLOBAL and drifts over the unit cards) but below
+   `.pveBattlefieldTitle` (4) and the ornate `.battlefieldFrame::after` frame
+   (30). It is `pointer-events: none` + `aria-hidden` on the stack AND every
+   layer, so it can never eat a click on a cell beneath it, and every layer
+   stays low-opacity so nothing on the board is obscured.
+
+   MOTION lives on the ::before/::after pseudo-elements and the particle spans;
+   the LAYER element keeps its own animation slot free for the trigger flare
+   (`[data-flare="on"]`, ~1.5s when a script's effect actually fires).
+   `prefers-reduced-motion: reduce` kills every animation and drops the
+   particles — the flat themed tint remains, so the field still reads as
+   flooded/irradiated without any movement.
+--------------------------------------------------------------------------- */
+.pveFieldFxStack {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pveFieldFxLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pveFieldFxLayer::before,
+.pveFieldFxLayer::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+}
+
+.pveFieldFxParticle {
+  position: absolute;
+  left: var(--pve-fx-lane, 50%);
+  pointer-events: none;
+  animation-delay: var(--pve-fx-delay, 0s);
+}
+
+/* The trigger flare: a short brightening of whichever layer just fired. */
+.pveFieldFxLayer[data-flare="on"] {
+  animation: pveFxFlare 1500ms ease-out;
+}
+
+@keyframes pveFxFlare {
+  0% {
+    filter: none;
+  }
+  18% {
+    filter: brightness(2) saturate(1.45);
+  }
+  100% {
+    filter: none;
+  }
+}
+
+/* ---- Generic fallback (an unmapped script is tinted, never invisible) ---- */
+.pveFieldFx-generic {
+  background: radial-gradient(circle at 50% 55%, rgb(120 140 180 / 12%), transparent 72%);
+}
+
+/* ---- ASH STORM — the "sandstorm" feel: warm haze sweeping sideways ------- */
+.pveFieldFx-ashStorm {
+  background: linear-gradient(180deg, rgb(96 62 34 / 16%), rgb(52 30 16 / 22%));
+}
+
+.pveFieldFx-ashStorm::before {
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgb(176 128 78 / 26%) 28%,
+    rgb(214 168 108 / 16%) 46%,
+    transparent 72%
+  );
+  background-size: 260% 100%;
+  animation: pveFxSweep 6.5s linear infinite;
+}
+
+.pveFieldFx-ashStorm::after {
+  background: linear-gradient(
+    82deg,
+    transparent 10%,
+    rgb(140 96 58 / 20%) 50%,
+    transparent 88%
+  );
+  background-size: 200% 100%;
+  animation: pveFxSweep 10.5s linear infinite reverse;
+}
+
+.pveFieldFx-ashStorm .pveFieldFxParticle {
+  top: -8%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgb(255 206 138 / 85%);
+  box-shadow: 0 0 6px rgb(255 150 60 / 70%);
+  transform: scale(var(--pve-fx-scale, 1));
+  animation: pveFxEmberDrift 5.5s linear infinite;
+}
+
+@keyframes pveFxSweep {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes pveFxEmberDrift {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(var(--pve-fx-scale, 1));
+  }
+  12% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-42vmin, 118%) scale(var(--pve-fx-scale, 1));
+  }
+}
+
+/* ---- FLOODED LAIR — blue caustic shimmer + slow ripple ------------------- */
+.pveFieldFx-flood {
+  background: linear-gradient(180deg, rgb(24 74 122 / 20%), rgb(12 46 82 / 26%));
+}
+
+.pveFieldFx-flood::before {
+  background:
+    radial-gradient(ellipse at 24% 38%, rgb(126 208 255 / 22%), transparent 46%),
+    radial-gradient(ellipse at 72% 66%, rgb(96 186 244 / 18%), transparent 44%);
+  animation: pveFxCaustic 9s ease-in-out infinite;
+}
+
+.pveFieldFx-flood::after {
+  background: repeating-linear-gradient(
+    12deg,
+    rgb(168 226 255 / 10%) 0 3px,
+    transparent 3px 26px
+  );
+  animation: pveFxRipple 7s ease-in-out infinite;
+}
+
+@keyframes pveFxCaustic {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(2%, -1.5%) scale(1.06);
+  }
+}
+
+@keyframes pveFxRipple {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(2.5%);
+    opacity: 0.85;
+  }
+}
+
+/* ---- HEALING MIASMA — drifting green mist wisps -------------------------- */
+.pveFieldFx-miasma {
+  background: radial-gradient(circle at 50% 62%, rgb(84 168 92 / 18%), transparent 76%);
+}
+
+.pveFieldFx-miasma::before {
+  background: linear-gradient(0deg, rgb(96 190 108 / 20%), transparent 62%);
+  animation: pveFxBreathe 8s ease-in-out infinite;
+}
+
+.pveFieldFx-miasma .pveFieldFxParticle {
+  bottom: -12%;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(150 240 158 / 26%), transparent 68%);
+  animation: pveFxWispRise 11s ease-in-out infinite;
+}
+
+@keyframes pveFxWispRise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.7);
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6vmin, -140%) scale(1.35);
+  }
+}
+
+@keyframes pveFxBreathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- THE NEST THICKENS — web strands vignette + slow pulse --------------- */
+.pveFieldFx-web {
+  background: radial-gradient(circle at 50% 50%, transparent 42%, rgb(38 34 26 / 42%) 100%);
+}
+
+.pveFieldFx-web::before {
+  background:
+    repeating-linear-gradient(52deg, rgb(232 226 208 / 12%) 0 1px, transparent 1px 34px),
+    repeating-linear-gradient(-52deg, rgb(232 226 208 / 10%) 0 1px, transparent 1px 38px);
+  animation: pveFxBreathe 6s ease-in-out infinite;
+}
+
+.pveFieldFx-web::after {
+  inset: 0;
+  box-shadow: inset 0 0 90px rgb(74 66 44 / 60%);
+  animation: pveFxPulseShadow 5s ease-in-out infinite;
+}
+
+@keyframes pveFxPulseShadow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- THE GOD PRESENCE (unmaking) — dark pulsing vignette ---------------- */
+.pveFieldFx-unmaking {
+  background: radial-gradient(circle at 50% 50%, transparent 30%, rgb(10 6 18 / 62%) 100%);
+}
+
+.pveFieldFx-unmaking::before {
+  background: radial-gradient(circle at 50% 50%, rgb(122 74 200 / 16%), transparent 58%);
+  animation: pveFxBreathe 4.5s ease-in-out infinite;
+}
+
+.pveFieldFx-unmaking::after {
+  inset: 0;
+  box-shadow: inset 0 0 120px rgb(0 0 0 / 78%);
+  animation: pveFxPulseShadow 7s ease-in-out infinite;
+}
+
+/* ---- DRIPPING DARK — falling drip streaks ------------------------------- */
+.pveFieldFx-drip {
+  background: linear-gradient(180deg, rgb(10 20 26 / 44%), rgb(8 14 20 / 18%) 46%, transparent);
+}
+
+.pveFieldFx-drip::before {
+  background: radial-gradient(ellipse at 50% 0%, rgb(90 140 150 / 20%), transparent 56%);
+  animation: pveFxBreathe 9s ease-in-out infinite;
+}
+
+.pveFieldFx-drip .pveFieldFxParticle {
+  top: -6%;
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, transparent, rgb(184 232 240 / 82%));
+  animation: pveFxDripFall 2.6s linear infinite;
+}
+
+@keyframes pveFxDripFall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scaleY(0.6);
+  }
+  15% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(120%) scaleY(1.4);
+  }
+}
+
+/* ---- LOW CEILINGS — dust motes + a darkened top edge -------------------- */
+.pveFieldFx-dust {
+  background: linear-gradient(180deg, rgb(6 5 4 / 62%), rgb(20 16 10 / 12%) 34%, transparent 62%);
+}
+
+.pveFieldFx-dust::before {
+  background: linear-gradient(180deg, rgb(0 0 0 / 46%), transparent 30%);
+  animation: pveFxBreathe 11s ease-in-out infinite;
+}
+
+.pveFieldFx-dust .pveFieldFxParticle {
+  top: 20%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgb(236 220 178 / 62%);
+  animation: pveFxMoteFloat 9s ease-in-out infinite;
+}
+
+@keyframes pveFxMoteFloat {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(var(--pve-fx-scale, 1));
+  }
+  20% {
+    opacity: 0.75;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4vmin, 46%) scale(var(--pve-fx-scale, 1));
+  }
+}
+
+/* ---- ABYSSAL PRESSURE — deep blue vignette, breathing ------------------- */
+.pveFieldFx-pressure {
+  background: radial-gradient(circle at 50% 52%, transparent 24%, rgb(6 18 44 / 68%) 100%);
+}
+
+.pveFieldFx-pressure::before {
+  background: radial-gradient(circle at 50% 52%, rgb(46 96 176 / 18%), transparent 52%);
+  animation: pveFxPressure 5.5s ease-in-out infinite;
+}
+
+.pveFieldFx-pressure::after {
+  inset: 0;
+  box-shadow: inset 0 0 130px rgb(4 10 30 / 80%);
+  animation: pveFxPulseShadow 5.5s ease-in-out infinite;
+}
+
+@keyframes pveFxPressure {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(1.04);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(0.97);
+  }
+}
+
+/* ---- RADIATION LEAK — green flicker bands ------------------------------- */
+.pveFieldFx-radiation {
+  background: linear-gradient(180deg, rgb(56 96 32 / 18%), rgb(28 56 18 / 22%));
+}
+
+.pveFieldFx-radiation::before {
+  background: repeating-linear-gradient(
+    0deg,
+    rgb(158 246 96 / 14%) 0 2px,
+    transparent 2px 12px
+  );
+  animation: pveFxFlicker 1.9s steps(6, end) infinite;
+}
+
+.pveFieldFx-radiation::after {
+  background: radial-gradient(ellipse at 50% 70%, rgb(178 255 110 / 18%), transparent 58%);
+  animation: pveFxBreathe 3.4s ease-in-out infinite;
+}
+
+@keyframes pveFxFlicker {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 0.95;
+    transform: translateY(-1.5%);
+  }
+  60% {
+    opacity: 0.5;
+    transform: translateY(1.5%);
+  }
+}
+
+/* ---- HELL EMPOWERS ITS OWN — red ember glow rising --------------------- */
+.pveFieldFx-emberRise {
+  background: linear-gradient(0deg, rgb(122 22 14 / 30%), transparent 62%);
+}
+
+.pveFieldFx-emberRise::before {
+  background: radial-gradient(ellipse at 50% 108%, rgb(226 74 34 / 26%), transparent 58%);
+  animation: pveFxBreathe 4s ease-in-out infinite;
+}
+
+.pveFieldFx-emberRise .pveFieldFxParticle {
+  bottom: -6%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgb(255 152 78 / 88%);
+  box-shadow: 0 0 8px rgb(255 88 24 / 78%);
+  animation: pveFxEmberRise 6.5s ease-in infinite;
+}
+
+@keyframes pveFxEmberRise {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(var(--pve-fx-scale, 1));
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3vmin, -125%) scale(var(--pve-fx-scale, 1));
+  }
+}
+
+/* ---- THE FURNACE MENDS ITS KEEPER — orange forge-glow pulses ------------ */
+.pveFieldFx-forge {
+  background: radial-gradient(ellipse at 50% 104%, rgb(184 74 12 / 26%), transparent 62%);
+}
+
+.pveFieldFx-forge::before {
+  background: radial-gradient(circle at 50% 96%, rgb(255 168 56 / 26%), transparent 46%);
+  animation: pveFxForgePulse 2.8s ease-in-out infinite;
+}
+
+.pveFieldFx-forge::after {
+  inset: 0;
+  box-shadow: inset 0 -40px 90px rgb(196 68 10 / 44%);
+  animation: pveFxForgePulse 4.6s ease-in-out infinite reverse;
+}
+
+@keyframes pveFxForgePulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.98);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+/* ---- BÍ CẢNH SPIRIT MIST — pale drifting mist --------------------------- */
+.pveFieldFx-spiritMist {
+  background: linear-gradient(180deg, rgb(180 200 230 / 14%), rgb(130 160 210 / 18%));
+}
+
+.pveFieldFx-spiritMist::before {
+  background: linear-gradient(96deg, transparent, rgb(226 238 255 / 20%) 45%, transparent);
+  background-size: 240% 100%;
+  animation: pveFxSweep 14s linear infinite;
+}
+
+.pveFieldFx-spiritMist .pveFieldFxParticle {
+  bottom: -14%;
+  width: 110px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(238 246 255 / 22%), transparent 70%);
+  animation: pveFxWispRise 15s ease-in-out infinite;
+}
+
+/* ---- BÍ CẢNH EARTHVEIN SURGE — amber cracks pulsing up ----------------- */
+.pveFieldFx-earthvein {
+  background: linear-gradient(0deg, rgb(120 76 18 / 26%), transparent 58%);
+}
+
+.pveFieldFx-earthvein::before {
+  background: repeating-linear-gradient(
+    68deg,
+    rgb(255 190 92 / 16%) 0 2px,
+    transparent 2px 46px
+  );
+  animation: pveFxPulseShadow 3.6s ease-in-out infinite;
+}
+
+.pveFieldFx-earthvein::after {
+  background: radial-gradient(ellipse at 50% 110%, rgb(255 168 62 / 22%), transparent 54%);
+  animation: pveFxBreathe 5s ease-in-out infinite;
+}
+
+/* ---- The one-shot FIELD EFFECTS explainer banner ------------------------ */
+/* Same non-blocking band as the enemy-force cue (z 93, under the tumbling
+   dice at 100 and the hub backdrop at 210); it names each active script with
+   its authored summary once, then removes itself. */
+.pveFieldEffectCue {
+  position: fixed;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 93;
+  width: min(620px, 94vw);
+  padding: 10px 14px 12px;
+  border: 1px solid rgb(226 196 130 / 55%);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(18 24 20 / 94%), rgb(9 12 11 / 94%));
+  box-shadow: 0 8px 24px rgb(0 0 0 / 55%);
+  color: #eee6d2;
+  pointer-events: none;
+  animation: pveFieldEffectCueIn 220ms ease-out;
+}
+
+@keyframes pveFieldEffectCueIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.pveFieldEffectCueHeadline {
+  display: block;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  color: #9fe0a4;
+}
+
+.pveFieldEffectCueList {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.86rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.pveFieldEffectCueList strong {
+  color: #f6d79a;
+}
+
+/* ---- Reduced motion: no movement, but the field keeps its themed tint --- */
+@media (prefers-reduced-motion: reduce) {
+  .pveFieldFxStack,
+  .pveFieldFxLayer,
+  .pveFieldFxLayer::before,
+  .pveFieldFxLayer::after,
+  .pveFieldEffectCue {
+    animation: none !important;
+  }
+
+  .pveFieldFxParticle {
+    display: none;
+  }
+}

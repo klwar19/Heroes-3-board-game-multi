@@ -125,6 +125,7 @@ import {
 } from "@/components/table/enemy-force-cue";
 import { EnemyForceCueOverlay } from "@/components/table/enemy-force-cue-overlay";
 import { PveFieldEffectsPanel } from "@/components/table/pve-field-effects-panel";
+import { PveFieldEffectsIntroCue } from "@/components/table/pve-field-effects-cue";
 import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
 import { CombatSandboxSetupScreen } from "@/components/table/combat-sandbox-setup";
@@ -7140,6 +7141,11 @@ export default function Home() {
           {/* PvE ENEMY FORCE: the boss's held-card play says what it did.
               Non-blocking, so it never waits on another overlay. */}
           <EnemyForceCueOverlay cues={enemyForceCues} onDone={dismissEnemyForceCue} />
+          {/* PvE FIELD EFFECTS: the one-shot "this battlefield does X" intro,
+              naming every active script with its authored summary. Self-gating
+              (unscripted fight / already shown for this combat id ⇒ nothing) and
+              non-blocking. */}
+          <PveFieldEffectsIntroCue state={state} />
           {/* WOG Commanders: the one-time "how your commander is placed" card.
               Pure presentation and self-gating — module off / no commander /
               already seen this game ⇒ it renders nothing. */}
@@ -7602,6 +7608,8 @@ export default function Home() {
       {/* PvE ENEMY FORCE banners over the battlefield — the usual home for a
           boss's held-card play. Non-blocking. */}
       <EnemyForceCueOverlay cues={enemyForceCues} onDone={dismissEnemyForceCue} />
+      {/* PvE FIELD EFFECTS intro — the battle screen is its usual home. */}
+      <PveFieldEffectsIntroCue state={state} />
       {/* Same one-time Commanders card on the battle screen (a direct-link
           joiner may land straight in a fight). */}
       <CommanderIntroOverlay state={state} viewerPlayerId={viewerPlayerId} />

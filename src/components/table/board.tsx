@@ -77,6 +77,7 @@ import {
 import { useCardZoom } from "./zoom";
 import { ArtifactSetPowerMenu, artifactSetPowerGroups, useArtifactSetArming } from "./artifact-set-powers";
 import { UnitEffectIcons } from "./unit-effect-icons";
+import { PveFieldEffectOverlay } from "./pve-field-effect-overlay";
 import { BattleMetric, signedMorale } from "./battle-metrics";
 
 /** Short label for a Creature Bank defender's Stack Token (+1 stat, +2 initiative). */
@@ -1336,6 +1337,13 @@ export function BattlefieldBoard({
           referrerPolicy="no-referrer"
           src={assetUrl(boardArt.scenery)}
         />
+        {/* PvE FIELD EFFECTS: the animated environment layer for every script
+            the engine selected for this fight. Anchored HERE (inside the frame,
+            not the viewport) so it inherits the board's box on the desktop HUD
+            and in phone mode alike; `pointer-events: none` + aria-hidden, so it
+            can never eat a click on a cell underneath. Renders nothing for an
+            unscripted combat. */}
+        <PveFieldEffectOverlay state={state} />
         <div className="battlefield">
           {/* Terrain art is a landscape 5x4 board, so it lines up directly with
               the transposed cells and only mirrors for the seat-relative flip. */}

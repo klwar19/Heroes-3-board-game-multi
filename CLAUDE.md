@@ -1049,6 +1049,39 @@ consults the PvE table FIRST, or the module's Dungeon hex shows the wager
 site's summary. The board's border-suppression pass keeps reading the pure
 `fieldOverridePresentation`. Pinned in `field-override-presentation.test.ts`.
 
+**PvE FIELD-EFFECT animation + explainer (2026-08-21, PRESENTATION ONLY)**: the
+Forced Battle Events a PvE fight carries (dungeon floor bands, rift lairs, the
+two Bí Cảnh location scripts) had mechanics, an authored `summary` and a 🌀 feed
+line but ZERO visual. Three additions, none of which touch an engine rule, a
+protocol field or a dispatch: `PveFieldEffectOverlay`
+(`src/components/table/pve-field-effect-overlay.tsx`) hangs one CSS-only animated
+layer per active script — theme table `PVE_FIELD_EFFECT_VISUALS`, keyed by script
+id, sweep-pinned so a NEW script cannot ship invisible and a visual cannot be an
+orphan; `PveFieldEffectsIntroCue` (`pve-field-effects-cue.tsx`, mounted on both
+table screens in page.tsx) is a one-shot auto-dismissing banner naming each
+effect with its AUTHORED summary; and a fresh `COMBAT_SCRIPT_TRIGGERED` sets
+`data-flare="on"` on the matching layer for 1.5s. The existing
+`PveFieldEffectsPanel` stays as the reference. All CSS lives in ONE delimited
+globals.css section at the end of the file, with NO new media files.
+Leading with what does NOT work / the deliberate limits:
+- **jsdom cannot compute CSS**, so `pve-field-effect-overlay.test.tsx` pins only
+  the DOM contract (layer per script, theme class + `data-fx-theme`, particle
+  count, aria/pointer-events, the registry sweep, the flare, the cue's
+  once-per-combat-id rule). Whether the ash actually drifts is a real-browser
+  concern and there is NO e2e spec.
+- **Z-INDEX 2 inside `.battlefieldFrame`'s own stacking context** (mounted in
+  board.tsx beside `.battlefieldScenery`, NOT fixed to the viewport, so it fits
+  the board on the desktop HUD and in phone mode): above `.battlefield` (1) so
+  the weather drifts over the unit cards, below `.pveBattlefieldTitle` (4) and
+  the ornate `.battlefieldFrame::after` frame (30). `pointer-events: none` +
+  `aria-hidden` on the stack AND every layer, so it can never eat a cell click.
+- `prefers-reduced-motion: reduce` drops every animation and the particles; the
+  flat themed tint remains (the field still reads as flooded/irradiated).
+- The COMBAT-START trigger does not flare (events already in `eventLog` on the
+  first render are ignored, so a reconnect never re-flashes history) — the intro
+  cue is that announcement. An unmapped script id falls through to a tinted
+  `generic` theme rather than crashing or vanishing.
+
 ## Event deck (Fortress expansion, OPTIONAL rule) — what runs vs. printed nuances
 
 `GameSetupOptions.events` (default OFF, multiplayer only — a solo table never gets the
