@@ -21,7 +21,7 @@ import {
   pveEncounterScriptsFor
 } from "@/data/anime/pve-combat-scripts";
 import { combatScriptEffectLines } from "@/data/map/combat-scripts";
-import { abilityIdsCastMonsterSpells } from "./monster-spells";
+import { listAllBossDefinitions } from "@/data/anime/bosses";
 import { standardComputerController } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
 import { MAX_CUSTOM_WAVE_OVERRIDES, sanitizeCustomMapPreset } from "./map-preset";
@@ -798,17 +798,8 @@ describe("Raid Bosses — the first-kill trophy (§F2)", () => {
   });
 });
 
-describe("Raid Bosses — the caster line on the lair prompt (§F5)", () => {
-  it("a boss carrying a BOSS_SPELL_ROTATION ability warns 'it casts every round'; a non-caster boss does NOT (CONTROL)", () => {
-    const casterId = Object.keys(RAID_BOSSES).find((id) =>
-      abilityIdsCastMonsterSpells(RAID_BOSSES[id].abilities)
-    );
-    const plainId = Object.keys(RAID_BOSSES).find(
-      (id) => !abilityIdsCastMonsterSpells(RAID_BOSSES[id].abilities)
-    );
-    expect(casterId, "expected at least one shipped caster boss").toBeTruthy();
-    expect(plainId, "expected at least one shipped non-caster boss").toBeTruthy();
-
+describe("Raid Bosses — the lair prompt no longer advertises a caster (BOSS_SPELL_ROTATION removed)", () => {
+  it("NO boss's lair prompt says 'it casts every round' any more, and every prompt keeps its reward wording", () => {
     const promptFor = (defId: string): string => {
       const state = raidGame(`raid-caster-${defId}`);
       const { fieldId } = spawnLair(state);
@@ -822,10 +813,51 @@ describe("Raid Bosses — the caster line on the lair prompt (§F5)", () => {
       return step?.type === "CHOOSE_ONE" ? (step.prompt ?? "") : "";
     };
 
-    expect(promptFor(casterId!)).toMatch(/casts every round/);
-    expect(promptFor(plainId!)).not.toMatch(/casts every round/);
-    // Both prompts still carry the unchanged reward wording.
-    expect(promptFor(plainId!)).toMatch(/Challenge it\?/);
+    for (const defId of Object.keys(RAID_BOSSES)) {
+      const prompt = promptFor(defId);
+      expect(prompt, defId).not.toMatch(/casts every round/);
+      // The unchanged reward wording is still there — the removal cut the caster
+      // clause out of the middle of a live sentence.
+      expect(prompt, defId).toMatch(/Challenge it\?/);
+      expect(prompt, defId).toMatch(/health bar/);
+    }
+  });
+});
+
+describe("Boss roster — every monster's ability kit is UNIQUE", () => {
+  it("no two bosses/wardens in the whole roster share the same ability combination", () => {
+    // The user's demand: "each with UNIQUE, BALANCED, real engine-enforced
+    // skills … all different from each other". Two monsters with identical kits
+    // are the same fight wearing different art — this failed before 2026-08-21
+    // (goblin_king == minotaur_of_the_depths, calamity_dragon ==
+    // doom_cyberdemon_tyrant), so it is a real regression guard, not a tautology.
+    const seen = new Map<string, string>();
+    const defs = listAllBossDefinitions();
+    expect(defs.length).toBeGreaterThanOrEqual(22);
+    for (const def of defs) {
+      expect(def.abilities.length, `${def.id} has no wired abilities`).toBeGreaterThan(0);
+      // A kit is the SET of ids: order must not launder a duplicate.
+      const key = [...def.abilities].sort().join("+");
+      expect(seen.get(key), `${def.id} duplicates ${seen.get(key)}'s kit (${key})`).toBeUndefined();
+      seen.set(key, def.id);
+      // Each id is a distinct arm on its own card (no "boss-enrage twice").
+      expect(new Set(def.abilities).size, `${def.id} repeats an ability id`).toBe(
+        def.abilities.length
+      );
+    }
+    expect(seen.size).toBe(defs.length);
+  });
+
+  it("every boss's printed abilityText names EXACTLY what its wired arms do (CLAUDE.md §2)", () => {
+    // `abilityTextFor` derives the card text from the arms' own printed texts.
+    // The older hand-written definitions restate the same thing, so the check is:
+    // every wired arm's text is a substring of the card text, and no removed
+    // caster wording survives anywhere.
+    for (const def of listAllBossDefinitions()) {
+      expect(def.abilityText, def.id).toBeTruthy();
+      expect(def.abilityText, def.id).not.toMatch(/at the start of (each|every) combat round/i);
+      expect(def.summary, def.id).not.toMatch(/round-start (bolt|cast)|casts every round/i);
+    }
   });
 });
 

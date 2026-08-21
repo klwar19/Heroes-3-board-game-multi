@@ -181,7 +181,14 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     name: "Spider Overmind",
     title: "Architect of the Invasion",
     attack: 6,
-    defense: 3,
+    // BALANCE (2026-08-21, `pve-boss-balance.test.ts`): Defense 3 → 2. This was
+    // the roster's ONE out-of-band monster — 0/5 against the gold reference army
+    // while its equally-weighted peers (calamity_dragon, archvile_ascendant) were
+    // 5/5 — because Defense 3 stacked on top of a 5-layer body, `zombie-
+    // resilience` (another +1 Defense on most dice) AND splash that punishes the
+    // crowding its own gradeless targeting invites. Defense 2 is what every other
+    // Doom raid boss prints; nothing about the kit changed.
+    defense: 2,
     health: 3,
     initiative: 7,
     type: "ranged",
@@ -196,21 +203,35 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
   },
 
   // ——— Variant expansion §B: six more world bosses ————————————————————————
-  // Every ability below is an EXISTING implemented arm (four of them the PvE
-  // caster rotations shipped in Phase 1); `abilityText` is derived from those
-  // arms' own printed texts, so nothing decorative can ship here.
+  // Every ability below is an EXISTING implemented arm; `abilityText` is derived
+  // from those arms' own printed texts, so nothing decorative can ship here.
+  //
+  // 2026-08-21: the four `boss-spell-*` round-start caster ROTATIONS these
+  // bosses were built around are DELETED (user rejection — see version.ts v50).
+  // The ex-casters (lich_archon, wailing_banshee, archvile_ascendant, plus the
+  // wardens warden_stone_choir / doom_archvile_warden) carry ordinary wired arms
+  // instead, one UNIQUE combination per monster in the whole roster (pinned by
+  // the roster-uniqueness test in raid-bosses.test.ts). Each also recovers the
+  // "−1 Attack for a rotation" tax §B charged them, where the balance harness
+  // (src/engine/pve-boss-balance.test.ts) showed the swap left them under-tier.
   lich_archon: {
     id: "lich_archon",
     name: "Lich Archon",
     title: "Tongue of the Cold Grave",
-    attack: 4,
+    // BALANCE (2026-08-21): 4 → 5 Attack. §B taxed a caster −1 Attack for its
+    // rotation; with the rotation gone the tax is refunded, and the harness had
+    // it as the softest 5-layer boss in the classic pool at Attack 4.
+    attack: 5,
     defense: 2,
     health: 3,
     initiative: 6,
     type: "ground",
     layers: 5,
-    abilities: ["boss-spell-necrotic", "zombie-resilience"],
-    abilityText: abilityTextFor(["boss-spell-necrotic", "zombie-resilience"]),
+    // Attrition undeath instead of a spell list: it strips a card off your hand
+    // every time it comes up, and knits its current bar back together.
+    // (`wraith-heal-2` heals DAMAGE only — a shed health BAR never returns.)
+    abilities: ["wraith-enemy-discard", "wraith-heal-2"],
+    abilityText: abilityTextFor(["wraith-enemy-discard", "wraith-heal-2"]),
     minionCount: 3,
     minionLevel: 3,
     escortPool: [
@@ -222,7 +243,7 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     ],
     cardImage: art("lich_archon"),
     summary:
-      "5 layers; the flagship caster — every round it bolts your toughest unit, drains your hand or mends itself, and chip damage bounces off it. Its escort is always undead."
+      "5 layers of attrition: every time it activates it tears a card out of your hand and heals 2 damage off its current bar. Its escort is always undead."
   },
   hydra_matriarch: {
     id: "hydra_matriarch",
@@ -265,19 +286,28 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     id: "wailing_banshee",
     name: "Wailing Banshee",
     title: "Chorus of the Unmourned",
-    attack: 4,
+    // BALANCE (2026-08-21): 4 → 5 Attack, the refunded caster tax (see the
+    // block comment above); its Defense stays 1, so it is still the glass
+    // cannon of the classic pool.
+    attack: 5,
     defense: 1,
     health: 3,
     initiative: 9,
     type: "flying",
     layers: 4,
-    abilities: ["boss-spell-mindflay", "ghost-dragon-morale-drain"],
-    abilityText: abilityTextFor(["boss-spell-mindflay", "ghost-dragon-morale-drain"]),
+    // The wail is TERROR now, not a round-start cast: its activation eats your
+    // positive morale token, and anything that swings at it strikes afraid.
+    // (Deliberately NOT `bank-wraith-attack-discard`, the obvious "the wail
+    // takes a card" arm: that one parks combat on a COMBAT_HAND_DISCARD choice
+    // the attacked player owns — a window on the boss's own turn. The two arms
+    // below open nothing.)
+    abilities: ["ghost-dragon-morale-drain", "wog-nightmare-fear"],
+    abilityText: abilityTextFor(["ghost-dragon-morale-drain", "wog-nightmare-fear"]),
     minionCount: 2,
     minionLevel: 3,
     cardImage: art("wailing_banshee"),
     summary:
-      "4 fragile layers, fastest thing in the lair; it burns your hand, your morale token and your fastest unit's Initiative — kill it quickly."
+      "4 fragile layers, fastest thing in the lair: its activation burns your positive morale token, and every unit that attacks it rolls 2 Attack dice and takes the LOWER — kill it quickly."
   },
   archvile_ascendant: {
     id: "archvile_ascendant",
@@ -289,14 +319,18 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     initiative: 7,
     type: "ground",
     layers: 5,
-    abilities: ["boss-spell-infernal", "wog-hell-steed-fire-wall"],
-    abilityText: abilityTextFor(["boss-spell-infernal", "wog-hell-steed-fire-wall"]),
+    // Fire that spreads by CONTACT instead of by chant: its blow washes over
+    // every other enemy touching it and leaves a Fire Wall burning the space it
+    // struck. (Attack stays 5 — the harness had the pair carrying its tier
+    // already, so the caster tax is NOT refunded here.)
+    abilities: ["magic-elemental-attack-all-enemies", "wog-hell-steed-fire-wall"],
+    abilityText: abilityTextFor(["magic-elemental-attack-all-enemies", "wog-hell-steed-fire-wall"]),
     minionCount: 3,
     minionLevel: 4,
     escortPool: ["doom.demon", "doom.cacodemon", "doom.hell_knight", "doom.baron_of_hell"],
     cardImage: art("archvile_ascendant"),
     summary:
-      "The Doom caster: 5 layers, a round-start bolt or mass curse plus a Fire Wall burning the space it strikes. Its escort is always Hell's own."
+      "5 layers of spreading fire: its attack washes over every other enemy adjacent to it and leaves a Fire Wall on the space it struck. Its escort is always Hell's own."
   },
   mother_demon: {
     id: "mother_demon",
@@ -336,13 +370,18 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     initiative: 7,
     type: "ground",
     layers: 2,
-    abilities: ["ignores-retaliation", "boss-enrage"],
-    abilityText:
-      "[unit_attack] Ignore the Retaliation Attack. While this boss is on its LAST health layer, its Attack gains +2 (Enrage).",
+    // UNIQUENESS (2026-08-21): this used to be the exact pair the Goblin King
+    // carries (`ignores-retaliation` + `boss-enrage`) — two monsters with an
+    // identical kit. The warden keeps the riposte-proof axe and trades Enrage
+    // for the great axe's armour-piercing, so no two monsters in the roster
+    // share a kit (pinned by the roster-uniqueness test).
+    abilities: ["ignores-retaliation", "manticore-ignore-defense"],
+    abilityText: abilityTextFor(["ignores-retaliation", "manticore-ignore-defense"]),
     minionCount: 2,
     minionLevel: 3,
     cardImage: art("minotaur_of_the_depths"),
-    summary: "The floor-5 warden: 2 layers, riposte-proof, furious at the end."
+    summary:
+      "The floor-5 warden: 2 layers, riposte-proof, and its great axe ignores the Defense printed on your card."
   },
   floor_wyrm: {
     id: "floor_wyrm",
@@ -390,13 +429,16 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     initiative: 7,
     type: "ground",
     layers: 3,
-    abilities: ["dragon-line-attack-3", "ignores-retaliation"],
-    abilityText:
-      "[unit_attack] Rocket barrage strikes the target and the unit directly behind it at Attack 3. Ignore the Retaliation Attack.",
+    // UNIQUENESS (2026-08-21): this used to be the exact pair the Calamity
+    // Dragon carries. The tyrant now takes retaliation like anything else and
+    // pays for it with an armoured chassis instead.
+    abilities: ["dragon-line-attack-3", "nix-damage-cap"],
+    abilityText: abilityTextFor(["dragon-line-attack-3", "nix-damage-cap"]),
     minionCount: 3,
     minionLevel: 4,
     cardImage: art("doom_cyberdemon_tyrant"),
-    summary: "The Doom floor-10 tyrant: three layers, line-breaking rockets, no retaliation."
+    summary:
+      "The Doom floor-10 tyrant: three layers, line-breaking rockets, and no single attack takes more than 4 off its armoured chassis."
   },
 
   // ——— Variant expansion §C2: warden variety for the seeded floor pools ————
@@ -431,13 +473,17 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     initiative: 4,
     type: "ground",
     layers: 2,
-    abilities: ["boss-spell-frost", "doom-baron-damage-cap"],
-    abilityText: abilityTextFor(["boss-spell-frost", "doom-baron-damage-cap"]),
+    // Petrifaction, not a chant: a "-1" on its own Attack die turns the target
+    // to stone (it skips its next activation), and its own stone body caps any
+    // single attack at 4. Attack stays 4 — the harness put the pair inside the
+    // floor-5 warden band without a refund.
+    abilities: ["azure-dragon-paralysis", "doom-baron-damage-cap"],
+    abilityText: abilityTextFor(["azure-dragon-paralysis", "doom-baron-damage-cap"]),
     minionCount: 2,
     minionLevel: 3,
     cardImage: art("warden_stone_choir"),
     summary:
-      "The caster warden: 2 layers, low Attack, but every round it chills your fastest unit, curses all your Attack or armours its own side — and no single attack takes more than 4 off it."
+      "2 stone layers, low Attack: a \"-1\" on its Attack die petrifies the target (it skips its next activation), and no single attack takes more than 4 off it."
   },
   warden_bone_colossus: {
     id: "warden_bone_colossus",
@@ -485,13 +531,17 @@ export const DUNGEON_FLOOR_BOSSES: Record<string, RaidBossDefinition> = {
     initiative: 6,
     type: "ground",
     layers: 3,
-    abilities: ["boss-spell-infernal", "wog-fire-shield-1"],
-    abilityText: abilityTextFor(["boss-spell-infernal", "wog-fire-shield-1"]),
+    // Fire both ways: it leaves a Fire Wall on every space it strikes and burns
+    // anything that melees it. Same two fire arms as its raid-tier cousin
+    // archvile_ascendant carries one of, but a DIFFERENT pair (roster
+    // uniqueness) — the warden burns back, the raid boss splashes sideways.
+    abilities: ["wog-hell-steed-fire-wall", "wog-fire-shield-1"],
+    abilityText: abilityTextFor(["wog-hell-steed-fire-wall", "wog-fire-shield-1"]),
     minionCount: 3,
     minionLevel: 4,
     cardImage: art("doom_archvile_warden"),
     summary:
-      "The Doom caster warden: 3 layers, a round-start bolt or mass curse, and 1 damage back to every adjacent attacker."
+      "3 layers wreathed in flame: every space it strikes catches a Fire Wall, and every adjacent attacker takes 1 damage back."
   }
 };
 
@@ -515,13 +565,28 @@ export const RAID_BOSS_ABILITY_CHOICES: readonly string[] = [
   "nix-damage-cap",
   "commander-defense-token",
   "attack-roll-advantage-passive",
-  // PvE monster-caster rotations (variant expansion §A3). Self-contained: they
-  // read only the combat's units and the fighter's hand, open no window and no
-  // reaction, so they satisfy this list's stated contract.
-  "boss-spell-necrotic",
-  "boss-spell-frost",
-  "boss-spell-infernal",
-  "boss-spell-mindflay"
+  // 2026-08-21: the four `boss-spell-*` rotations were REMOVED from this list
+  // with the mechanic. A saved designer preset still naming one is sanitized
+  // away by `sanitizeCustomMapPreset` (it filters against THIS list) — pinned in
+  // boss-abilities.test.ts. In their place, the arms the ex-caster monsters now
+  // use: each is self-contained (reads only the combat's units, and for the two
+  // hand-drain the fighter's hand at RANDOM), opens no window and no reaction.
+  //
+  // NOT listed on purpose — each of these IS carried by a shipped monster but
+  // opens a pendingChoice, which a designer's boss must never do:
+  // `bank-wraith-attack-discard` (COMBAT_HAND_DISCARD owned by the attacked
+  // player) and `hydra-multi-attack` (a `second-attack` ABILITY_TARGET_CHOICE
+  // that `isNeutralSplashVictimChoice` re-stamps onto the human fighter).
+  "wraith-enemy-discard",
+  "wraith-heal-2",
+  "ghost-dragon-morale-drain",
+  "wog-nightmare-fear",
+  "azure-dragon-paralysis",
+  "manticore-ignore-defense",
+  "wog-fire-shield-1",
+  "wog-hell-steed-fire-wall",
+  "doom-baron-damage-cap",
+  "veteran-guarded-stance"
 ];
 
 /** Every shipped boss (raid + dungeon floors), for data tests and art builds. */

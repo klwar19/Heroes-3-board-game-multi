@@ -1,21 +1,10 @@
-import { monsterSpellRotationText, type MonsterSpellId } from "@/data/anime/monster-spells";
 import type { CombatTokenKind, EffectDurationDefinition, SpellSchool, UnitType } from "@/engine/state";
 
+// REMOVED 2026-08-21: `BOSS_SPELL_ROTATION` (the PvE monster round-start spell
+// rotation). The USER rejected the mechanic outright — a boss no longer casts a
+// spell every round; each boss carries a UNIQUE kit of ordinary implemented
+// combat arms instead (see `src/data/anime/bosses.ts`). Do not reintroduce it.
 export type UnitAbilityEffectDefinition =
-  | {
-      /**
-       * PvE monster caster (dungeon/raid-boss variant expansion §A1): at the
-       * START of every combat round this unit automatically resolves ONE spell
-       * from `spells`, indexed by the combat round (round 1 → spells[0], round 2
-       * → spells[1], wrapping). Fully automatic and target-deterministic — NO
-       * window, NO choice, NO RNG, and no reaction window is ever opened (the
-       * anti-stall guarantee; damage is dealt directly, the Faerie-Bolt /
-       * damage-pulse precedent). Resolved by `applyMonsterSpellRoundStart`
-       * (reducer.ts) off the pure planning in `src/engine/monster-spells.ts`.
-       */
-      type: "BOSS_SPELL_ROTATION";
-      spells: MonsterSpellId[];
-    }
   | { type: "ALLOW_UNLIMITED_RETALIATION" }
   | { type: "RETALIATION_ATTACK_BONUS"; amount: number }
   | { type: "IGNORE_RETALIATION" }
@@ -2568,41 +2557,9 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     requiresLayersAtMost: 1,
     implementationStatus: "implemented"
   },
-  // ——— PvE monster CASTER arms (variant expansion §A3). Each is a fixed
-  // ROTATION of `src/data/anime/monster-spells.ts` entries resolved
-  // automatically at every combat round's start; the printed text is generated
-  // from that table so the card can never drift from what runs (CLAUDE.md §2).
-  "boss-spell-necrotic": {
-    id: "boss-spell-necrotic",
-    name: "Necrotic Litany",
-    text: monsterSpellRotationText(["shadow_bolt", "siphon_thought", "mend_flesh"]),
-    effect: { type: "BOSS_SPELL_ROTATION", spells: ["shadow_bolt", "siphon_thought", "mend_flesh"] },
-    implementationStatus: "implemented"
-  },
-  "boss-spell-frost": {
-    id: "boss-spell-frost",
-    name: "Rime Chant",
-    text: monsterSpellRotationText(["chill_of_the_deep", "withering_curse", "ward_of_ash"]),
-    effect: {
-      type: "BOSS_SPELL_ROTATION",
-      spells: ["chill_of_the_deep", "withering_curse", "ward_of_ash"]
-    },
-    implementationStatus: "implemented"
-  },
-  "boss-spell-infernal": {
-    id: "boss-spell-infernal",
-    name: "Infernal Cantos",
-    text: monsterSpellRotationText(["shadow_bolt", "withering_curse"]),
-    effect: { type: "BOSS_SPELL_ROTATION", spells: ["shadow_bolt", "withering_curse"] },
-    implementationStatus: "implemented"
-  },
-  "boss-spell-mindflay": {
-    id: "boss-spell-mindflay",
-    name: "Mindflay",
-    text: monsterSpellRotationText(["siphon_thought", "chill_of_the_deep"]),
-    effect: { type: "BOSS_SPELL_ROTATION", spells: ["siphon_thought", "chill_of_the_deep"] },
-    implementationStatus: "implemented"
-  },
+  // The four `boss-spell-*` caster rotations that lived here were REMOVED
+  // 2026-08-21 with the BOSS_SPELL_ROTATION mechanic (user rejection). The five
+  // bosses that carried them now use ordinary implemented arms.
   "archangel-lethal-save": {
     id: "archangel-lethal-save",
     name: "Resurrection",

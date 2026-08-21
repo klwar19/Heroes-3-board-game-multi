@@ -772,7 +772,7 @@ describe("The Dungeon — warden variety (§C1)", () => {
     expect(dungeonBossId(state, 10)).toBe("minotaur_of_the_depths");
   });
 
-  it("every warden the wave mini-boss pool can draw stays inside the wave caps, and the caster warden is EXCLUDED", () => {
+  it("every warden the wave mini-boss pool can draw stays inside the wave caps, and NO warden is excluded any more", () => {
     for (const theme of ["classic", "doom"] as const) {
       for (const id of WAVE_MINIBOSS_POOLS[theme]) {
         const def = DUNGEON_FLOOR_BOSSES[id];
@@ -781,14 +781,27 @@ describe("The Dungeon — warden variety (§C1)", () => {
         expect(def.layers, `${id} layers`).toBeLessThanOrEqual(3);
         expect(def.minionCount, `${id} minions`).toBeLessThanOrEqual(3);
       }
-      // §C4: the Rime Chant warden never leads a wave — its round-start caster
-      // rotation would stack with the wave's own battle event.
-      expect(WAVE_MINIBOSS_POOLS[theme]).not.toContain("warden_stone_choir");
     }
-    // …and it IS a real, reachable dungeon warden (the exclusion is deliberate,
-    // not an id that simply does not exist).
+    // 2026-08-21: `warden_stone_choir` used to be barred from the wave pool
+    // because it was a round-start CASTER whose whole-side debuff stacked with
+    // the wave's own battle event. BOSS_SPELL_ROTATION is gone, its replacement
+    // kit debuffs nobody (a conditional single-target petrify + a damage cap),
+    // so it leads waves like every other warden. If this is ever re-excluded,
+    // the reason must be written next to the pool, not here.
+    expect(WAVE_MINIBOSS_POOLS.classic).toContain("warden_stone_choir");
     expect(DUNGEON_WARDEN_POOLS.classic[5]).toContain("warden_stone_choir");
-    expect(DUNGEON_FLOOR_BOSSES.warden_stone_choir.abilities).toContain("boss-spell-frost");
+    expect(DUNGEON_FLOOR_BOSSES.warden_stone_choir.abilities).toEqual([
+      "azure-dragon-paralysis",
+      "doom-baron-damage-cap"
+    ]);
+    // Every warden the wave pool can field is drawn from the SAME catalog the
+    // dungeon uses — the pools are hand-written, so a typo'd id would field a
+    // plain party instead of a boss.
+    for (const theme of ["classic", "doom"] as const) {
+      for (const id of WAVE_MINIBOSS_POOLS[theme]) {
+        expect(DUNGEON_FLOOR_BOSSES[id], id).toBeTruthy();
+      }
+    }
   });
 });
 

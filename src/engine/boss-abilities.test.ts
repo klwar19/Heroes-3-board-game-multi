@@ -17,6 +17,7 @@ import {
   makeRaidBossCombatUnit,
   scheduledBossPool
 } from "./raid-bosses";
+import { sanitizeCustomMapPreset } from "./map-preset";
 import { deathStareFollowUpAppliesTo, getUnitAbilityDefinitions, moraleLockedForPlayer } from "./unit-abilities";
 import type { CombatUnitState, GameAction, GameEvent, GameState } from "./state";
 
@@ -571,7 +572,7 @@ describe("Variant expansion bosses & wardens (§B/§C)", () => {
 
   const classicPool = scheduledBossPool({} as unknown as GameState);
 
-  it("every new boss lands in exactly ONE theme pool, and the four caster rotations are actually carried", () => {
+  it("every new boss lands in exactly ONE theme pool", () => {
     for (const id of ["lich_archon", "hydra_matriarch", "basilisk_queen", "wailing_banshee"]) {
       expect(classicPool, id).toContain(id);
       expect(DOOM_RAID_BOSS_IDS as readonly string[], id).not.toContain(id);
@@ -580,19 +581,57 @@ describe("Variant expansion bosses & wardens (§B/§C)", () => {
       expect(DOOM_RAID_BOSS_IDS as readonly string[], id).toContain(id);
       expect(classicPool, id).not.toContain(id);
     }
-    // The Phase-1 caster arms are in play — each rotation id is carried by a
-    // shipped monster (an unused rotation would be dead content).
-    const carried = new Set(
-      listAllBossDefinitions().flatMap((def) => def.abilities)
-    );
+  });
+
+  it("the removed BOSS_SPELL_ROTATION arms are gone from the catalog, the registry and the designer whitelist", () => {
+    // 2026-08-21 user rejection: no monster casts at a round start any more.
+    // This is the machine proof the mechanic cannot come back through data.
+    const carried = new Set(listAllBossDefinitions().flatMap((def) => def.abilities));
     for (const rotation of [
       "boss-spell-necrotic",
       "boss-spell-frost",
       "boss-spell-infernal",
       "boss-spell-mindflay"
     ]) {
-      expect(carried, rotation).toContain(rotation);
+      expect(unitAbilities[rotation], rotation).toBeUndefined();
+      expect(carried.has(rotation), rotation).toBe(false);
+      expect(RAID_BOSS_ABILITY_CHOICES, rotation).not.toContain(rotation);
     }
+    // No surviving ability ANYWHERE in the registry carries the deleted effect
+    // type (a stale entry would be an unresolvable union member).
+    for (const [id, ability] of Object.entries(unitAbilities)) {
+      expect(ability.effect?.type, id).not.toBe("BOSS_SPELL_ROTATION");
+    }
+  });
+
+  it("a saved designer preset naming a REMOVED caster rotation is sanitized away, not crashed on", () => {
+    // A map authored while `boss-spell-frost` existed must still load: the
+    // sanitizer filters against RAID_BOSS_ABILITY_CHOICES, which no longer
+    // lists it. CONTROL: a still-valid id on the same boss survives.
+    const preset = sanitizeCustomMapPreset({
+      raidBosses: {
+        bosses: [
+          {
+            id: "legacy-caster",
+            name: "Legacy Caster",
+            attack: 5,
+            defense: 2,
+            health: 3,
+            initiative: 6,
+            layers: 3,
+            abilities: ["boss-spell-frost", "boss-enrage", "boss-spell-mindflay"]
+          }
+        ]
+      }
+    } as never);
+    const saved = preset?.raidBosses?.bosses?.[0];
+    expect(saved, "the boss itself must survive the sanitize").toBeTruthy();
+    expect(saved!.abilities).toEqual(["boss-enrage"]);
+    // …and resolving it into a live definition keeps only the survivor, with the
+    // card text derived from it.
+    const def = customBossToDefinition(saved!);
+    expect(def.abilities).toEqual(["boss-enrage"]);
+    expect(def.abilityText).toBe(unitAbilities["boss-enrage"].text);
   });
 
   it("the two Rift-Lair scripts written for Phase-2 bosses now name REAL bosses", () => {
@@ -601,5 +640,356 @@ describe("Variant expansion bosses & wardens (§B/§C)", () => {
     }
     expect(PVE_LAIR_SCRIPT_IDS.lich_archon).toBeTruthy();
     expect(PVE_LAIR_SCRIPT_IDS.mother_demon).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The BOSS_SPELL_ROTATION replacement kits (2026-08-21) — every arm the five
+// ex-caster monsters (and the two de-duplicated ones) now carry, pinned by the
+// OBSERVABLE combat outcome plus a CONTROL fight with the arm stripped.
+//
+// The arms are all pre-existing implemented ones, so what these tests really
+// prove is that the arm EXECUTES for a minted, NEUTRAL-owned, layered boss —
+// which is the thing that could silently be decorative (e.g. a `requiresStacked`
+// arm never fires on a boss, since a boss carries no stackToken).
+// ---------------------------------------------------------------------------
+
+describe("Boss replacement kits — each arm really runs on a minted boss", () => {
+  /** Put `def` on the board as p2's unit with `layersLeft` bars. */
+  function mountBoss(
+    state: GameState,
+    def: (typeof RAID_BOSSES)[string],
+    layersLeft: number,
+    unitId = "unit_p2_skeletons",
+    position = 10,
+    abilities?: string[]
+  ): CombatUnitState {
+    const boss = makeRaidBossCombatUnit(def, layersLeft, unitId, position);
+    boss.controllerId = "p2";
+    if (abilities) {
+      boss.abilities = [...abilities];
+    }
+    state.combat!.units[unitId] = boss;
+    return boss;
+  }
+
+  /**
+   * Advance the activation to `bossUnitId` through the REAL activation pipeline
+   * (so `applyActivationStartAbilities` fires), by Defending with a filler unit
+   * on the same side and letting the engine advance.
+   */
+  function activateThrough(state: GameState, bossUnitId: string, fillerId: string): GameState {
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== bossUnitId && unit.id !== fillerId;
+    }
+    state.activePlayerId = "p2";
+    state.combat!.activeUnitId = fillerId;
+    return settle(applyOk(state, { type: "DEFEND_UNIT", playerId: "p2", unitId: fillerId }));
+  }
+
+  // --- lich_archon: wraith-enemy-discard + wraith-heal-2 --------------------
+
+  it("Lich Archon's activation tears a RANDOM card out of the fighter's hand (and a stripped kit does not)", () => {
+    const run = (abilities: string[]): number => {
+      const state = freshCombat(`lich-drain-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = ["spell.magic_arrow", "stat.power", "stat.attack"];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons", "unit_p2_vampires"]);
+      mountBoss(state, RAID_BOSSES.lich_archon, 5, "unit_p2_skeletons", 10, abilities);
+      const after = activateThrough(state, "unit_p2_skeletons", "unit_p2_vampires");
+      expect(after.combat!.activeUnitId).toBe("unit_p2_skeletons");
+      return after.players.p1.hand.length;
+    };
+    // The shipped kit drains exactly 1 of the 3 cards...
+    expect(run(RAID_BOSSES.lich_archon.abilities)).toBe(2);
+    // ...and it is the hand-drain arm doing it, not the activation itself.
+    expect(run(["wraith-heal-2"])).toBe(3);
+  });
+
+  it("Lich Archon heals 2 damage off its CURRENT bar on activation, and never restores a shed bar (CONTROL: kit stripped)", () => {
+    const run = (abilities: string[]): { damage: number; bars: number } => {
+      const state = freshCombat(`lich-heal-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons", "unit_p2_vampires"]);
+      const boss = mountBoss(state, RAID_BOSSES.lich_archon, 4, "unit_p2_skeletons", 10, abilities);
+      // Wounded to 2 of 3 on the current bar, one bar already shed (4 of 5 left).
+      boss.damage = 2;
+      const after = activateThrough(state, "unit_p2_skeletons", "unit_p2_vampires");
+      const healed = after.combat!.units.unit_p2_skeletons;
+      return { damage: healed.damage, bars: (healed.armyStacks ?? 0) + 1 };
+    };
+    // Regeneration removes both points of damage, and the shed 5th bar is NOT
+    // given back (the printed cap is 5).
+    expect(run(RAID_BOSSES.lich_archon.abilities)).toEqual({ damage: 0, bars: 4 });
+    // CONTROL: with the heal arm gone the wound stays.
+    expect(run(["wraith-enemy-discard"])).toEqual({ damage: 2, bars: 4 });
+  });
+
+  // --- wailing_banshee: ghost-dragon-morale-drain + wog-nightmare-fear ------
+
+  it("Wailing Banshee's activation burns the fighter's positive morale (CONTROL: kit stripped keeps it)", () => {
+    const run = (abilities: string[]): number => {
+      const state = freshCombat(`banshee-morale-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      state.players.p1.morale = 1;
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons", "unit_p2_vampires"]);
+      mountBoss(state, RAID_BOSSES.wailing_banshee, 4, "unit_p2_skeletons", 10, abilities);
+      return activateThrough(state, "unit_p2_skeletons", "unit_p2_vampires").players.p1.morale;
+    };
+    expect(run(RAID_BOSSES.wailing_banshee.abilities)).toBe(0);
+    expect(run(["wog-nightmare-fear"])).toBe(1);
+  });
+
+  it("Wailing Banshee's Fear makes its attacker resolve the LOWER of two dice — real damage delta (CONTROL: kit stripped)", () => {
+    const run = (abilities: string[]): number => {
+      // Scripted dice: +1 first, -1 second. With Fear the attacker resolves the
+      // -1 (attack 6 - 1 = 5); without it, only the +1 is read (6 + 1 = 7).
+      const state = freshCombat(`banshee-fear-${abilities.join("-") || "none"}`, [1, -1]);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 6,
+        defense: 0,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = mountBoss(state, RAID_BOSSES.wailing_banshee, 4, "unit_p2_skeletons", 10, abilities);
+      boss.defense = 0;
+      const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      const hit = after.combat!.units.unit_p2_skeletons;
+      // Damage taken across the layer shed: bars lost x maxHealth + damage.
+      const barsLost = 3 - (hit.armyStacks ?? 0);
+      return barsLost * hit.maxHealth + hit.damage;
+    };
+    const feared = run(RAID_BOSSES.wailing_banshee.abilities);
+    const control = run(["ghost-dragon-morale-drain"]);
+    expect(control).toBe(7);
+    expect(feared).toBe(5);
+    expect(feared).toBeLessThan(control);
+  });
+
+  // --- archvile_ascendant: magic-elemental-attack-all-enemies + fire wall ---
+
+  it("Archvile Ascendant's blow washes over EVERY other adjacent enemy and leaves a Fire Wall (CONTROL: neither happens)", () => {
+    const run = (abilities: string[]) => {
+      const state = freshCombat(`archvile-splash-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p1_griffins", "unit_p2_skeletons"]);
+      // Position 9 neighbours 5, 8, 10, 13. Boss at 9, two victims adjacent.
+      for (const id of ["unit_p1_marksmen", "unit_p1_griffins"]) {
+        place(state, id, {
+          position: id === "unit_p1_marksmen" ? 8 : 10,
+          abilities: [],
+          attack: 0,
+          defense: 0,
+          maxHealth: 30,
+          damage: 0,
+          type: "ground"
+        });
+      }
+      mountBoss(state, RAID_BOSSES.archvile_ascendant, 5, "unit_p2_skeletons", 9, abilities);
+      const after = attack(state, "unit_p2_skeletons", "unit_p1_marksmen");
+      return {
+        primary: after.combat!.units.unit_p1_marksmen.damage,
+        splashed: after.combat!.units.unit_p1_griffins.damage,
+        fireWalls: (after.combat!.battlefieldTokens ?? []).filter(
+          (token) => token.kind === "fire_wall"
+        ).length
+      };
+    };
+    const kit = run(RAID_BOSSES.archvile_ascendant.abilities);
+    const printed = RAID_BOSSES.archvile_ascendant.attack;
+    // Attack 5 vs defense 0 on the primary, and a FULL separate attack on the
+    // other adjacent enemy — the whole point of the arm.
+    expect(kit.primary).toBe(printed);
+    // RECONCILED (do not "fix" this to `printed`): the splash victim takes the
+    // separate attack's 5 AND 1 more, because the Fire Wall arm drops a wall on
+    // the space of EVERY unit it attacks and that wall burns the occupant. So
+    // the two arms genuinely compound — 5 + 1 — which is the flavour ("fire that
+    // spreads by contact") landing as real damage.
+    expect(kit.splashed).toBe(printed + 1);
+    // One wall per attacked space (primary + splash).
+    expect(kit.fireWalls).toBe(2);
+    // CONTROL: with the kit stripped only the declared target is touched and no
+    // Fire Wall is placed.
+    const control = run([]);
+    expect(control.primary).toBe(printed);
+    expect(control.splashed).toBe(0);
+    expect(control.fireWalls).toBe(0);
+  });
+
+  // --- doom_archvile_warden: fire wall + fire shield ------------------------
+
+  it("Archvile Warden burns back at whatever melees it (CONTROL: kit stripped takes no revenge)", () => {
+    const run = (abilities: string[]): number => {
+      const state = freshCombat(`warden-fireshield-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 1,
+        defense: 0,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = makeRaidBossCombatUnit(
+        DUNGEON_FLOOR_BOSSES.doom_archvile_warden,
+        3,
+        "unit_p2_skeletons",
+        10
+      );
+      boss.controllerId = "p2";
+      boss.abilities = [...abilities];
+      state.combat!.units.unit_p2_skeletons = boss;
+      const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      return after.combat!.units.unit_p1_marksmen.damage;
+    };
+    // RECONCILED: the CONTROL is NOT 0 — the warden retaliates for its printed
+    // Attack 5 either way. Fire Shield is the extra 1 on top of that, so the
+    // arm's whole contribution is the +1 delta.
+    const printed = DUNGEON_FLOOR_BOSSES.doom_archvile_warden.attack;
+    expect(run([])).toBe(printed);
+    expect(run(DUNGEON_FLOOR_BOSSES.doom_archvile_warden.abilities)).toBe(printed + 1);
+  });
+
+  // --- warden_stone_choir: azure-dragon-paralysis + damage cap --------------
+
+  it("The Stone Choir petrifies its target on a '-1' Attack die and caps any single hit at 4 (CONTROLs for both)", () => {
+    const paralysisRun = (abilities: string[], roll: number): boolean => {
+      const state = freshCombat(`choir-petrify-${abilities.join("-") || "none"}-${roll}`, [roll]);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 0,
+        defense: 0,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = makeRaidBossCombatUnit(
+        DUNGEON_FLOOR_BOSSES.warden_stone_choir,
+        2,
+        "unit_p2_skeletons",
+        10
+      );
+      boss.controllerId = "p2";
+      boss.abilities = [...abilities];
+      state.combat!.units.unit_p2_skeletons = boss;
+      const after = attack(state, "unit_p2_skeletons", "unit_p1_marksmen");
+      return (after.combat!.units.unit_p1_marksmen.tokens ?? []).some(
+        (token) => token.kind === "paralysis"
+      );
+    };
+    const kit = DUNGEON_FLOOR_BOSSES.warden_stone_choir.abilities;
+    expect(paralysisRun(kit, -1)).toBe(true);
+    // CONTROL A: the same fight on a "+1" die petrifies nobody (the gate is the roll).
+    expect(paralysisRun(kit, 1)).toBe(false);
+    // CONTROL B: the same "-1" with the arm stripped petrifies nobody.
+    expect(paralysisRun(["doom-baron-damage-cap"], -1)).toBe(false);
+
+    const capRun = (abilities: string[]): number => {
+      const state = freshCombat(`choir-cap-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 9,
+        defense: 0,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = makeRaidBossCombatUnit(
+        DUNGEON_FLOOR_BOSSES.warden_stone_choir,
+        2,
+        "unit_p2_skeletons",
+        10
+      );
+      boss.controllerId = "p2";
+      boss.abilities = [...abilities];
+      boss.defense = 0;
+      state.combat!.units.unit_p2_skeletons = boss;
+      const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      const hit = after.combat!.units.unit_p2_skeletons;
+      const barsLost = 1 - (hit.armyStacks ?? 0);
+      return barsLost * hit.maxHealth + hit.damage;
+    };
+    // Attack 9 vs a 4-health bar: capped at 4, so exactly one bar sheds and 0
+    // carries. Uncapped the same blow would land 9.
+    expect(capRun(kit)).toBe(4);
+    expect(capRun(["azure-dragon-paralysis"])).toBe(9);
+  });
+
+  // --- the two de-duplicated wardens ----------------------------------------
+
+  it("Minotaur of the Depths ignores the Defense printed on the target card (CONTROL: it does not)", () => {
+    const run = (abilities: string[]): number => {
+      const state = freshCombat(`minotaur-pierce-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 0,
+        defense: 3,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = makeRaidBossCombatUnit(
+        DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths,
+        2,
+        "unit_p2_skeletons",
+        10
+      );
+      boss.controllerId = "p2";
+      boss.abilities = [...abilities];
+      state.combat!.units.unit_p2_skeletons = boss;
+      return attack(state, "unit_p2_skeletons", "unit_p1_marksmen").combat!.units.unit_p1_marksmen
+        .damage;
+    };
+    const printed = DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths.attack;
+    expect(run(DUNGEON_FLOOR_BOSSES.minotaur_of_the_depths.abilities)).toBe(printed);
+    expect(run(["ignores-retaliation"])).toBe(printed - 3);
+  });
+
+  it("Cyberdemon Tyrant's chassis caps a single attack at 4 (CONTROL: uncapped)", () => {
+    const run = (abilities: string[]): number => {
+      const state = freshCombat(`tyrant-cap-${abilities.join("-") || "none"}`);
+      state.players.p1.hand = [];
+      parkAllBut(state, ["unit_p1_marksmen", "unit_p2_skeletons"]);
+      place(state, "unit_p1_marksmen", {
+        position: 9,
+        abilities: [],
+        attack: 10,
+        defense: 0,
+        maxHealth: 30,
+        damage: 0,
+        type: "ground"
+      });
+      const boss = makeRaidBossCombatUnit(
+        DUNGEON_FLOOR_BOSSES.doom_cyberdemon_tyrant,
+        3,
+        "unit_p2_skeletons",
+        10
+      );
+      boss.controllerId = "p2";
+      boss.abilities = [...abilities];
+      boss.defense = 0;
+      state.combat!.units.unit_p2_skeletons = boss;
+      const after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
+      const hit = after.combat!.units.unit_p2_skeletons;
+      const barsLost = 2 - (hit.armyStacks ?? 0);
+      return barsLost * hit.maxHealth + hit.damage;
+    };
+    expect(run(DUNGEON_FLOOR_BOSSES.doom_cyberdemon_tyrant.abilities)).toBe(4);
+    expect(run(["dragon-line-attack-3"])).toBe(10);
   });
 });

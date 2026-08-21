@@ -334,7 +334,6 @@ import {
   waveStackTokenCount,
   waveVeteranRank
 } from "./monster-waves";
-import { applyMonsterSpellRoundStart } from "./monster-spells";
 import {
   dungeonBossId,
   dungeonFloorCapOf,
@@ -10685,10 +10684,6 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // round-start events configured for the opening round.
   applyCombatScriptCombatStart(state);
   applyHeroGradeRoundStartDamage(state);
-  // PvE monster casters (variant expansion §A2): round 1 never passes through
-  // `advanceCombatRound`, so the opening rotation slot fires here. Idempotent
-  // per `unitId#round`, which matters because this package can be re-entered.
-  applyMonsterSpellRoundStart(state);
   if (state.combat?.outcome) {
     return;
   }

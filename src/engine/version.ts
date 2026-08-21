@@ -545,10 +545,11 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // v49 (2026-08-20): the Dungeon & Raid Boss VARIANT expansion (design authority
 // docs/dungeon-raid-boss-variants-plan.md). New SERIALIZED shapes a stale
 // worker cannot read: `CombatState.monsterSpells` (the BOSS_SPELL_ROTATION
-// idempotence ledger) and `PlayerState.raidBossTrophyClaimed` (the one
+// idempotence ledger — SUPERSEDED by v50, which deletes both the field and the
+// mechanic) and `PlayerState.raidBossTrophyClaimed` (the one
 // first-kill trophy latch). Server-computed behaviour on top: the round-start
 // monster-spell pass (reducer.ts `resolveMonsterSpellRoundStart` +
-// the `resumeCombatStartAfterCommanderPlacement` call site), the PvE
+// the `resumeCombatStartAfterCommanderPlacement` call site — both GONE in v50), the PvE
 // encounter-scoped combat scripts (`pveEncounterScriptsForCombat`, the
 // `side-heal` / `random-obstacle` script kinds), the seeded dungeon warden
 // pools (`dungeonWardenIdFor` — a stale worker fields the OLD fixed warden),
@@ -561,7 +562,22 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // concurrent v48 collision (the Community Balance units/war-machines batch
 // pushed first) — the two different engines take DISTINCT numbers, the
 // 19749a33/v39 precedent, so a client/edge skew is always detected.
-export const ENGINE_PROTOCOL_VERSION = 49;
+//
+// v50 (2026-08-21): BOSS_SPELL_ROTATION is REMOVED (user rejection: "not all
+// bosses need to cast a spell at the start of a round — immersion breaking").
+// SERIALIZED shape change a stale worker computes differently: `CombatState.
+// monsterSpells` and `UNIT_ABILITY_TRIGGERED.monsterSpellId` are DELETED (a v49
+// worker would still write both, and — the real hazard — would still resolve a
+// round-start cast that no longer exists in this engine, so the two sides would
+// disagree about every boss fight's damage). The four `boss-spell-*` unit
+// abilities are gone from `unitAbilities`, so a v49 worker minting a boss from
+// its own catalog would stamp ability ids this engine cannot resolve. On top of
+// that, the FIVE ex-caster bosses/wardens (lich_archon, wailing_banshee,
+// archvile_ascendant, warden_stone_choir, doom_archvile_warden) carry different
+// wired abilities now, and `warden_stone_choir` re-joins `WAVE_MINIBOSS_POOLS`,
+// so a stale worker fields a different wave mini-boss pool.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 50;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

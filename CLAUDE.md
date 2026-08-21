@@ -911,6 +911,36 @@ pays 2 gold at the removal chokepoint; the kill pays 5 gold + a relic search and
 clears the lair; ignored, the boss regrows +1 layer every 4th round. Designer
 `preset.raidBosses.bosses` (cap 6, `RAID_BOSS_ABILITY_CHOICES`) REPLACE the pool.
 
+**NO monster CASTS on a round start (2026-08-21, protocol v50 — USER REJECTION).**
+The shipped-then-rejected `BOSS_SPELL_ROTATION` mechanic ("not all bosses need to
+cast a spell at the start of a round — immersion breaking — REMOVE it") is DELETED
+whole: the ability effect type, `src/data/anime/monster-spells.ts`,
+`src/engine/monster-spells.ts`, the four `boss-spell-*` abilities,
+`CombatState.monsterSpells`, `UNIT_ABILITY_TRIGGERED.monsterSpellId`, the lair
+prompt's ", and it casts every round" clause and the whole cue/FX/CSS presentation
+layer. Do NOT reintroduce it. The SAME 13 raid bosses + 9 wardens ship, each now
+carrying a UNIQUE combination of ordinary implemented arms — no two monsters in
+the roster share a kit (which was ALSO false before: goblin_king == the floor-5
+minotaur, calamity_dragon == the doom floor-10 tyrant; both pairs were broken up).
+The five ex-casters: `lich_archon` drains a random hand card and regenerates 2
+(`wraith-enemy-discard` + `wraith-heal-2`); `wailing_banshee` burns the positive
+morale token and makes its attackers resolve the LOWER of two dice
+(`ghost-dragon-morale-drain` + `wog-nightmare-fear`); `archvile_ascendant` splashes
+every adjacent enemy and leaves a Fire Wall on each space it strikes;
+`warden_stone_choir` petrifies on a "-1" and caps a hit at 4;
+`doom_archvile_warden` leaves Fire Walls and burns adjacent attackers. Two arms
+were deliberately REJECTED as replacements because they open a window on the
+boss's own turn (`bank-wraith-attack-discard`, `magi-power-drain`) — a boss arm
+must auto-resolve. `warden_stone_choir` REJOINS `WAVE_MINIBOSS_POOLS` (its
+exclusion existed only because it was a caster). Pinned in
+`boss-abilities.test.ts` (per-arm effect + CONTROL on a minted boss),
+`raid-bosses.test.ts` (roster-wide kit UNIQUENESS + no caster wording) and
+`src/engine/pve-boss-balance.test.ts` (a seeded battle-simulation harness: every
+monster vs a threat-matched reference army over 5 seeds, with an under-tier
+CONTROL that loses 0/5 — read its header for what it does NOT measure). One
+balance tweak the harness forced: `spider_overmind` Defense 3 → 2.
+`npm run deploy:partykit` is OWED.
+
 **The Dungeon**: ONE repeatable delve site placed at the tile-rotation seam (the
 first Near-band tile with a Blocked Field; no Creature Banks option needed). MOVEMENT
 is the limiter (the once-per-turn latch is gone), each door carrying a

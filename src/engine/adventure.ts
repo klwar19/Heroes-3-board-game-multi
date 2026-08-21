@@ -225,7 +225,6 @@ import {
 // the menu BEFORE the player commits.
 import { pveEncounterScriptsFor } from "@/data/anime/pve-combat-scripts";
 import { combatScriptEffectLines } from "@/data/map/combat-scripts";
-import { abilityIdsCastMonsterSpells } from "./monster-spells";
 import { applyUnitCurrentSide } from "./unit-transforms";
 import {
   diluteUnitExperienceForUpgrade,
@@ -17757,13 +17756,13 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
     steps: [
       {
         type: "CHOOSE_ONE",
-        // §F5: the caster warning is DERIVED from the boss's own ability array
-        // (abilityIdsCastMonsterSpells reads the registry), never a hand-listed
-        // set of boss ids — a new BOSS_SPELL_ROTATION ability lights it up here
-        // with no edit.
+        // The old ", and it casts every round" caster warning was REMOVED with
+        // BOSS_SPELL_ROTATION (2026-08-21): no boss casts on a round start any
+        // more, so there is nothing to warn about. The boss's real kit is on its
+        // card (`abilityText`).
         prompt: `${def.name} lairs here — ${boss.layersLeft} health bar${boss.layersLeft === 1 ? "" : "s"} remain${
           boss.layersLeft === 1 ? "s" : ""
-        }${abilityIdsCastMonsterSpells(def.abilities) ? ", and it casts every round" : ""}. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)${
+        }. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)${
           lairEffectLines.length > 0 ? ` Field effects: ${lairEffectLines.join(" ")}` : ""
         }`,
         options: [

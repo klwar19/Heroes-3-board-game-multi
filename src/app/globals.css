@@ -30339,6 +30339,26 @@ button.statChip.abilityEmpowerTokenChip.hasToken .abilityEmpowerTokenIcon {
   gap: 7px;
 }
 
+/* "Full card list ↗" reference links for the balance packs (below the grid). */
+.houseRuleInfoLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+}
+
+.houseRuleInfoLink {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: #c9a24a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.houseRuleInfoLink:hover {
+  color: #e8c874;
+}
+
 .houseRuleToggle {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -43628,72 +43648,4 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   .singlePlayerArtNav .menuNavButton:disabled {
     min-height: clamp(84px, 13vh, 108px);
   }
-}
-
-/* ---------------------------------------------------------------------------
-   PvE monster caster — the "the boss just cast X" banners.
-
-   A BOSS_SPELL_ROTATION resolves automatically at every combat round's start:
-   no card, no dice, no window. The board FX (a reused H3 spell sprite + sound)
-   plays on the caster/target; this stack adds the words. It is deliberately
-   NON-BLOCKING — `pointer-events: none` on the stack AND each banner (the JSX
-   also sets it inline, which is the half jsdom can pin), so it can never eat a
-   click, and it sits UNDER the tumbling dice (100) / hub backdrop (210) band.
---------------------------------------------------------------------------- */
-.monsterSpellCueStack {
-  position: fixed;
-  top: 84px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 93;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-  width: min(560px, 92vw);
-  pointer-events: none;
-}
-
-.monsterSpellCue {
-  pointer-events: none;
-  width: 100%;
-  padding: 10px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(196, 142, 66, 0.75);
-  background: linear-gradient(180deg, rgba(28, 12, 20, 0.94), rgba(12, 6, 10, 0.94));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
-  color: #f2e4cd;
-  text-align: center;
-  animation: monsterSpellCueIn 200ms ease-out;
-}
-
-@keyframes monsterSpellCueIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.monsterSpellCueHeadline {
-  display: block;
-  font-size: 1.02rem;
-  letter-spacing: 0.02em;
-  color: #f6c98a;
-}
-
-.monsterSpellCueDetail {
-  margin: 4px 0 0;
-  font-size: 0.9rem;
-  line-height: 1.35;
-}
-
-.monsterSpellCueRules {
-  display: block;
-  margin-top: 4px;
-  font-size: 0.76rem;
-  opacity: 0.75;
 }

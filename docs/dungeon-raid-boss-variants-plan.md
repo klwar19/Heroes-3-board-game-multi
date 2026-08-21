@@ -46,7 +46,21 @@ is ON. No shipped unit/card/field gains a new tag.
 
 ## A. Spellcaster / card-user monsters
 
-### A1. New ability effect `BOSS_SPELL_ROTATION`
+> **SUPERSEDED 2026-08-21 — this whole section (A1–A4) is DEAD.** The USER
+> rejected the round-start monster-caster mechanic outright ("not all bosses need
+> to cast a spell at the start of a round — immersion breaking — REMOVE it").
+> `BOSS_SPELL_ROTATION`, `src/data/anime/monster-spells.ts`,
+> `src/engine/monster-spells.ts`, the four `boss-spell-*` abilities, the
+> `CombatState.monsterSpells` ledger, `UNIT_ABILITY_TRIGGERED.monsterSpellId`
+> and all of the §F5 caster presentation are DELETED (protocol v50). The five
+> bosses/wardens that carried a rotation now carry ordinary implemented combat
+> arms, one UNIQUE kit each, balanced by the simulation harness in
+> `src/engine/pve-boss-balance.test.ts`. Everything below §A is historical
+> record only — do not reintroduce it. §A4's "card-user flavor beyond
+> `siphon_thought`" arm list, however, is still live guidance: those arms are
+> what the replacements were drawn from.
+
+### A1. New ability effect `BOSS_SPELL_ROTATION` (REMOVED)
 
 Data shape — add to the `UnitAbilityEffectDefinition` union
 (`src/data/units/abilities.ts:3`):
