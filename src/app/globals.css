@@ -43820,8 +43820,15 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
    MOUNTED on a computer-mode client without prefers-reduced-motion (the
    setup-scene rule: a display:none video still downloads), so this rule never
    has to hide one; the `display: none` in the reduced-motion block below is
-   belt-and-braces only. Kept low-opacity so units stay readable, and slightly
-   overscanned so the blend never shows a hard video edge. */
+   belt-and-braces only. Slightly overscanned so the blend never shows a hard
+   video edge.
+
+   INTERMITTENT BY DESIGN (USER RULE 2026-08-21: "the effect should happen from
+   time to time, not all the time — board replacement ugly"): the video is
+   INVISIBLE most of the cycle and swells in for a few seconds every ~18s
+   (`pveFxVideoSwell` animates opacity 0 → the theme's peak → 0), so the
+   ORIGINAL board art is the default view and the weather passes over it in
+   waves. Do not restore a constant opacity here. */
 .pveFieldFxVideo {
   position: absolute;
   inset: -2%;
@@ -43829,13 +43836,27 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   height: 104%;
   object-fit: cover;
   mix-blend-mode: screen;
-  opacity: var(--pve-fx-video-opacity, 0.5);
+  opacity: 0;
+  animation: pveFxVideoSwell 18s ease-in-out infinite;
   pointer-events: none;
 }
 
-/* Per-theme video intensity: smoke/mist reads stronger than point-light FX. */
+/* Quiet ~55% of the cycle, then a soft swell that holds a few seconds. */
+@keyframes pveFxVideoSwell {
+  0%,
+  55%,
+  100% {
+    opacity: 0;
+  }
+  14%,
+  32% {
+    opacity: var(--pve-fx-video-opacity, 0.38);
+  }
+}
+
+/* Per-theme PEAK intensity: smoke/mist reads stronger than point-light FX. */
 .pveFieldFx-ashStorm .pveFieldFxVideo {
-  --pve-fx-video-opacity: 0.42;
+  --pve-fx-video-opacity: 0.38;
   filter: sepia(0.55) saturate(1.6) hue-rotate(-12deg);
 }
 
@@ -43843,20 +43864,20 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
    opacity it white-washed the whole board (verified by screenshot), so it runs
    far dimmer than its siblings and stays a haunting shimmer. */
 .pveFieldFx-spiritMist .pveFieldFxVideo {
-  --pve-fx-video-opacity: 0.14;
+  --pve-fx-video-opacity: 0.12;
 }
 
 .pveFieldFx-flood .pveFieldFxVideo {
-  --pve-fx-video-opacity: 0.5;
+  --pve-fx-video-opacity: 0.42;
 }
 
 .pveFieldFx-radiation .pveFieldFxVideo {
-  --pve-fx-video-opacity: 0.55;
+  --pve-fx-video-opacity: 0.45;
   filter: hue-rotate(28deg) saturate(1.35);
 }
 
 .pveFieldFx-emberRise .pveFieldFxVideo {
-  --pve-fx-video-opacity: 0.5;
+  --pve-fx-video-opacity: 0.45;
 }
 
 /* ---- Soft SPRITE particles ------------------------------------------------
@@ -43895,15 +43916,15 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- ASH STORM — the "sandstorm" feel: warm haze sweeping sideways ------- */
 .pveFieldFx-ashStorm {
-  background: linear-gradient(180deg, rgb(96 62 34 / 16%), rgb(52 30 16 / 22%));
+  background: linear-gradient(180deg, rgb(96 62 34 / 7%), rgb(52 30 16 / 10%));
 }
 
 .pveFieldFx-ashStorm::before {
   background: linear-gradient(
     100deg,
     transparent 0%,
-    rgb(176 128 78 / 26%) 28%,
-    rgb(214 168 108 / 16%) 46%,
+    rgb(176 128 78 / 16%) 28%,
+    rgb(214 168 108 / 10%) 46%,
     transparent 72%
   );
   background-size: 260% 100%;
@@ -43914,7 +43935,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   background: linear-gradient(
     82deg,
     transparent 10%,
-    rgb(140 96 58 / 20%) 50%,
+    rgb(140 96 58 / 12%) 50%,
     transparent 88%
   );
   background-size: 200% 100%;
@@ -43957,20 +43978,20 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- FLOODED LAIR — blue caustic shimmer + slow ripple ------------------- */
 .pveFieldFx-flood {
-  background: linear-gradient(180deg, rgb(24 74 122 / 20%), rgb(12 46 82 / 26%));
+  background: linear-gradient(180deg, rgb(24 74 122 / 9%), rgb(12 46 82 / 12%));
 }
 
 .pveFieldFx-flood::before {
   background:
-    radial-gradient(ellipse at 24% 38%, rgb(126 208 255 / 22%), transparent 46%),
-    radial-gradient(ellipse at 72% 66%, rgb(96 186 244 / 18%), transparent 44%);
+    radial-gradient(ellipse at 24% 38%, rgb(126 208 255 / 13%), transparent 46%),
+    radial-gradient(ellipse at 72% 66%, rgb(96 186 244 / 11%), transparent 44%);
   animation: pveFxCaustic 9s ease-in-out infinite;
 }
 
 .pveFieldFx-flood::after {
   background: repeating-linear-gradient(
     12deg,
-    rgb(168 226 255 / 10%) 0 3px,
+    rgb(168 226 255 / 6%) 0 3px,
     transparent 3px 26px
   );
   animation: pveFxRipple 7s ease-in-out infinite;
@@ -44002,11 +44023,11 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- HEALING MIASMA — drifting green mist wisps -------------------------- */
 .pveFieldFx-miasma {
-  background: radial-gradient(circle at 50% 62%, rgb(84 168 92 / 18%), transparent 76%);
+  background: radial-gradient(circle at 50% 62%, rgb(84 168 92 / 10%), transparent 76%);
 }
 
 .pveFieldFx-miasma::before {
-  background: linear-gradient(0deg, rgb(96 190 108 / 20%), transparent 62%);
+  background: linear-gradient(0deg, rgb(96 190 108 / 12%), transparent 62%);
   animation: pveFxBreathe 8s ease-in-out infinite;
 }
 
@@ -44045,7 +44066,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- THE NEST THICKENS — web strands vignette + slow pulse --------------- */
 .pveFieldFx-web {
-  background: radial-gradient(circle at 50% 50%, transparent 42%, rgb(38 34 26 / 42%) 100%);
+  background: radial-gradient(circle at 50% 50%, transparent 42%, rgb(38 34 26 / 28%) 100%);
 }
 
 .pveFieldFx-web::before {
@@ -44057,7 +44078,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 .pveFieldFx-web::after {
   inset: 0;
-  box-shadow: inset 0 0 90px rgb(74 66 44 / 60%);
+  box-shadow: inset 0 0 90px rgb(74 66 44 / 42%);
   animation: pveFxPulseShadow 5s ease-in-out infinite;
 }
 
@@ -44073,7 +44094,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- THE GOD PRESENCE (unmaking) — dark pulsing vignette ---------------- */
 .pveFieldFx-unmaking {
-  background: radial-gradient(circle at 50% 50%, transparent 30%, rgb(10 6 18 / 62%) 100%);
+  background: radial-gradient(circle at 50% 50%, transparent 30%, rgb(10 6 18 / 42%) 100%);
 }
 
 .pveFieldFx-unmaking::before {
@@ -44083,13 +44104,13 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 .pveFieldFx-unmaking::after {
   inset: 0;
-  box-shadow: inset 0 0 120px rgb(0 0 0 / 78%);
+  box-shadow: inset 0 0 120px rgb(0 0 0 / 55%);
   animation: pveFxPulseShadow 7s ease-in-out infinite;
 }
 
 /* ---- DRIPPING DARK — falling drip streaks ------------------------------- */
 .pveFieldFx-drip {
-  background: linear-gradient(180deg, rgb(10 20 26 / 44%), rgb(8 14 20 / 18%) 46%, transparent);
+  background: linear-gradient(180deg, rgb(10 20 26 / 26%), rgb(8 14 20 / 10%) 46%, transparent);
 }
 
 .pveFieldFx-drip::before {
@@ -44122,11 +44143,11 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- LOW CEILINGS — dust motes + a darkened top edge -------------------- */
 .pveFieldFx-dust {
-  background: linear-gradient(180deg, rgb(6 5 4 / 62%), rgb(20 16 10 / 12%) 34%, transparent 62%);
+  background: linear-gradient(180deg, rgb(6 5 4 / 38%), rgb(20 16 10 / 7%) 34%, transparent 62%);
 }
 
 .pveFieldFx-dust::before {
-  background: linear-gradient(180deg, rgb(0 0 0 / 46%), transparent 30%);
+  background: linear-gradient(180deg, rgb(0 0 0 / 28%), transparent 30%);
   animation: pveFxBreathe 11s ease-in-out infinite;
 }
 
@@ -44158,7 +44179,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- ABYSSAL PRESSURE — deep blue vignette, breathing ------------------- */
 .pveFieldFx-pressure {
-  background: radial-gradient(circle at 50% 52%, transparent 24%, rgb(6 18 44 / 68%) 100%);
+  background: radial-gradient(circle at 50% 52%, transparent 24%, rgb(6 18 44 / 44%) 100%);
 }
 
 .pveFieldFx-pressure::before {
@@ -44168,7 +44189,7 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 .pveFieldFx-pressure::after {
   inset: 0;
-  box-shadow: inset 0 0 130px rgb(4 10 30 / 80%);
+  box-shadow: inset 0 0 130px rgb(4 10 30 / 55%);
   animation: pveFxPulseShadow 5.5s ease-in-out infinite;
 }
 
@@ -44186,20 +44207,20 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- RADIATION LEAK — green flicker bands ------------------------------- */
 .pveFieldFx-radiation {
-  background: linear-gradient(180deg, rgb(56 96 32 / 18%), rgb(28 56 18 / 22%));
+  background: linear-gradient(180deg, rgb(56 96 32 / 8%), rgb(28 56 18 / 10%));
 }
 
 .pveFieldFx-radiation::before {
   background: repeating-linear-gradient(
     0deg,
-    rgb(158 246 96 / 14%) 0 2px,
+    rgb(158 246 96 / 8%) 0 2px,
     transparent 2px 12px
   );
   animation: pveFxFlicker 1.9s steps(6, end) infinite;
 }
 
 .pveFieldFx-radiation::after {
-  background: radial-gradient(ellipse at 50% 70%, rgb(178 255 110 / 18%), transparent 58%);
+  background: radial-gradient(ellipse at 50% 70%, rgb(178 255 110 / 10%), transparent 58%);
   animation: pveFxBreathe 3.4s ease-in-out infinite;
 }
 
@@ -44221,11 +44242,11 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- HELL EMPOWERS ITS OWN — red ember glow rising --------------------- */
 .pveFieldFx-emberRise {
-  background: linear-gradient(0deg, rgb(122 22 14 / 30%), transparent 62%);
+  background: linear-gradient(0deg, rgb(122 22 14 / 14%), transparent 62%);
 }
 
 .pveFieldFx-emberRise::before {
-  background: radial-gradient(ellipse at 50% 108%, rgb(226 74 34 / 26%), transparent 58%);
+  background: radial-gradient(ellipse at 50% 108%, rgb(226 74 34 / 15%), transparent 58%);
   animation: pveFxBreathe 4s ease-in-out infinite;
 }
 
@@ -44283,11 +44304,11 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- BÍ CẢNH SPIRIT MIST — pale drifting mist --------------------------- */
 .pveFieldFx-spiritMist {
-  background: linear-gradient(180deg, rgb(180 200 230 / 14%), rgb(130 160 210 / 18%));
+  background: linear-gradient(180deg, rgb(180 200 230 / 6%), rgb(130 160 210 / 8%));
 }
 
 .pveFieldFx-spiritMist::before {
-  background: linear-gradient(96deg, transparent, rgb(226 238 255 / 20%) 45%, transparent);
+  background: linear-gradient(96deg, transparent, rgb(226 238 255 / 12%) 45%, transparent);
   background-size: 240% 100%;
   animation: pveFxSweep 14s linear infinite;
 }
@@ -44303,20 +44324,20 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
 
 /* ---- BÍ CẢNH EARTHVEIN SURGE — amber cracks pulsing up ----------------- */
 .pveFieldFx-earthvein {
-  background: linear-gradient(0deg, rgb(120 76 18 / 26%), transparent 58%);
+  background: linear-gradient(0deg, rgb(120 76 18 / 13%), transparent 58%);
 }
 
 .pveFieldFx-earthvein::before {
   background: repeating-linear-gradient(
     68deg,
-    rgb(255 190 92 / 16%) 0 2px,
+    rgb(255 190 92 / 10%) 0 2px,
     transparent 2px 46px
   );
   animation: pveFxPulseShadow 3.6s ease-in-out infinite;
 }
 
 .pveFieldFx-earthvein::after {
-  background: radial-gradient(ellipse at 50% 110%, rgb(255 168 62 / 22%), transparent 54%);
+  background: radial-gradient(ellipse at 50% 110%, rgb(255 168 62 / 13%), transparent 54%);
   animation: pveFxBreathe 5s ease-in-out infinite;
 }
 

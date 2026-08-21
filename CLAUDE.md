@@ -1072,7 +1072,13 @@ transparent SPRITE textures (`particle-*.webp`, image-gen; SOURCES record =
 `scripts/gen-pve-fx-textures.ps1`). The video is NEVER mounted in phone mode or
 under `prefers-reduced-motion` (`useFieldFxVideoAllowed`, the setup-scene "a
 hidden video still downloads" rule) — those clients keep the pure-CSS layer as
-the complete effect. LIMITS: the clips are NOT seamless loops (at overlay
+the complete effect. **INTERMITTENT BY USER RULE (2026-08-21b, "effect from
+time to time, not all the time — the board must stay the old image")**: the
+video swells in for a few seconds every ~18s (`pveFxVideoSwell`, opacity 0 most
+of the cycle) and every constant flat tint was cut to single-digit alphas, so
+the ORIGINAL board art is the default view — do not restore a constant video
+opacity or the heavy tints; no board art file was ever touched. LIMITS: the
+clips are NOT seamless loops (at overlay
 opacity under the screen blend the cut is a soft fade, accepted); the sprite
 swap is keyed off `data-fx-sprite` + `--pve-fx-sprite` (assetUrl-wrapped, so
 the CDN coverage test holds); a media-file existence SWEEP in the overlay test
