@@ -1,21 +1,18 @@
 import { isCreatureBankId } from "./adventure";
+import { isPveEncounterCombat } from "./pve-encounter";
 import { createSeededRandom } from "./random";
 import { NEUTRAL_PLAYER_ID, type CombatBoardArtId, type CombatState, type GameState } from "./state";
+
+// The predicate itself lives in the leaf `pve-encounter.ts` so the
+// dependency-light `neutral-control.ts` can share it (this module imports
+// `adventure.ts`, which imports neutral-control — importing it from here would
+// close an import cycle). Re-exported so every existing consumer keeps working.
+export { isPveEncounterCombat };
 
 export const SHIP_BATTLE_OBSTACLES = [9, 10] as const;
 
 const BASE_BOARD_ART_IDS: readonly CombatBoardArtId[] = ["classic", "frozen", "hell-necro", "jungle-fortress"];
 const CREATURE_BANK_BOARD_ART_ID: CombatBoardArtId = "creature-bank-dungeon";
-
-/** These three context marks are reserved for the shared optional PvE director. */
-export function isPveEncounterCombat(combat: CombatState | null | undefined): boolean {
-  return Boolean(
-    combat?.context.kind === "neutral" &&
-      (combat.context.waveAssault ||
-        combat.context.raidBossId !== undefined ||
-        combat.context.dungeonFloor !== undefined)
-  );
-}
 
 function pveEncounterBoardArtId(state: GameState): CombatBoardArtId {
   return state.adventure?.pveTheme === "doom"

@@ -506,7 +506,19 @@ and friendly checks match the AI pipeline verbatim; the controller breaks
 activation ties and answers every Neutral-owned decision (the pump re-stamps it).
 Pinned in `pvp-neutral-control.test.ts` (each claim with a mode-off / wrong-seat
 CONTROL).
-LIMITS: the War Zealot Magic Mirror still auto-USES (only its redirect target is
+LIMITS: **NEITHER this mode nor Manual guard control EVER reaches an optional
+PvE-director fight** (USER RULE 2026-08-21) — a Calamity Wave assault, a
+Raid-Boss lair fight or a Dungeon floor fight is always played by the normal
+Neutral AI, with no formation-sort window and no controller. ONE seam: both
+`pvpNeutralControllerId` and `manualGuardControllerId` return null for
+`isPveEncounterCombat` (the shared predicate now lives in the LEAF
+`src/engine/pve-encounter.ts` and is re-exported by `combat-board-art.ts` —
+importing it from there would close a cycle through `adventure.ts`); every
+downstream read (`neutralCombatControllerId`, `openNeutralPlacementWindow`,
+`combatUnitDecisionOwnerId`, `computerDecisionOwner`, `neutralControlMustAttack`)
+falls back on the null. Pinned in
+`src/engine/pve-manual-neutral-control-exempt.test.ts`.
+The War Zealot Magic Mirror still auto-USES (only its redirect target is
 picked); token "other actions" are offered in FREE mode only, and Genie Wish /
 Summon Demons never (they read the CONTROLLER's own deck); the in-combat menu is
 IDENTICAL for a field and a bank — only the pre-battle SORT differs
@@ -826,7 +838,11 @@ answers menus where it stands); all three hexes are Location-Token protected
 PRESET level, the "PvE encounter director" editor group); the two dedicated
 battlefields are stamped server-side by `isPveEncounterCombat` →
 `assignCombatBoardArt`, the PvE check running BEFORE the sea check; a boss
-`cardImage` must point at its OWN id (four Doom bosses shipped cross-wired).
+`cardImage` must point at its OWN id (four Doom bosses shipped cross-wired). And
+(USER RULE 2026-08-21) **all three module fights are EXEMPT from manual neutral
+control** — neither PvP Neutral Control nor Manual guard control may play a wave,
+a raid boss or a dungeon warden; the neutral AI always does (same
+`isPveEncounterCombat` read, see the PvP Neutral Control section).
 
 **Calamity Waves**: every Nth round EVERY live seat fights a wave army at round
 start, announced the round before and resolved in seat order behind the SAME

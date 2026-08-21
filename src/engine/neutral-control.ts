@@ -1,3 +1,4 @@
+import { isPveEncounterCombat } from "./pve-encounter";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId } from "./state";
 
@@ -17,6 +18,10 @@ import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId }
  * spirit: a guard must attack when it can reach an enemy, may not Defend, and
  * may only approach (never wander) when no attack is reachable. Toggled OFF,
  * the controller plays the guards with no constraint at all.
+ *
+ * USER RULE: NEITHER mode ever reaches an optional PvE-director fight — a
+ * Calamity Wave assault, a Raid-Boss lair fight or a Dungeon floor fight
+ * (`isPveEncounterCombat`). Those are always played by the normal Neutral AI.
  *
  * This module holds only the pure "who controls / what counts as a
  * neutral-side decision" reads so parallel-turns.ts, afk.ts, reducer.ts and
@@ -67,6 +72,12 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
   if (combat.context.kind !== "neutral" || !state.adventure?.pvpNeutralControl) {
     return null;
   }
+  // USER RULE: the optional PvE director's own fights — a Calamity Wave
+  // assault, a Raid-Boss lair, a Dungeon floor — are NEVER handed to a manual
+  // controller. They always fall back to the normal Neutral AI pipeline.
+  if (isPveEncounterCombat(combat)) {
+    return null;
+  }
   const order = state.turnOrder;
   const index = order.indexOf(combat.attackerPlayerId);
   if (index === -1 || order.length < 2) {
@@ -91,6 +102,12 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
  */
 export function manualGuardControllerId(state: GameState, combat: CombatState): PlayerId | null {
   if (combat.context.kind !== "neutral" || !state.adventure?.manualGuardControl) {
+    return null;
+  }
+  // Same USER RULE as pvpNeutralControllerId: never the fighter's to drive in a
+  // wave / raid-boss / dungeon fight (which would let the attacked player play
+  // the boss attacking them).
+  if (isPveEncounterCombat(combat)) {
     return null;
   }
   const fighter = combat.attackerPlayerId;
