@@ -43813,6 +43813,81 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
   }
 }
 
+/* ---- The looping VIDEO overlay (flood / ash / radiation / embers / mist) --
+   A real filmed/pre-rendered texture on a near-black background, composited
+   with `mix-blend-mode: screen` so the black vanishes and only the light —
+   caustics, smoke, sparks — reads over the board art. The element is only
+   MOUNTED on a computer-mode client without prefers-reduced-motion (the
+   setup-scene rule: a display:none video still downloads), so this rule never
+   has to hide one; the `display: none` in the reduced-motion block below is
+   belt-and-braces only. Kept low-opacity so units stay readable, and slightly
+   overscanned so the blend never shows a hard video edge. */
+.pveFieldFxVideo {
+  position: absolute;
+  inset: -2%;
+  width: 104%;
+  height: 104%;
+  object-fit: cover;
+  mix-blend-mode: screen;
+  opacity: var(--pve-fx-video-opacity, 0.5);
+  pointer-events: none;
+}
+
+/* Per-theme video intensity: smoke/mist reads stronger than point-light FX. */
+.pveFieldFx-ashStorm .pveFieldFxVideo {
+  --pve-fx-video-opacity: 0.42;
+  filter: sepia(0.55) saturate(1.6) hue-rotate(-12deg);
+}
+
+/* The mist clip is one bright frame-filling fog puff — at ordinary overlay
+   opacity it white-washed the whole board (verified by screenshot), so it runs
+   far dimmer than its siblings and stays a haunting shimmer. */
+.pveFieldFx-spiritMist .pveFieldFxVideo {
+  --pve-fx-video-opacity: 0.14;
+}
+
+.pveFieldFx-flood .pveFieldFxVideo {
+  --pve-fx-video-opacity: 0.5;
+}
+
+.pveFieldFx-radiation .pveFieldFxVideo {
+  --pve-fx-video-opacity: 0.55;
+  filter: hue-rotate(28deg) saturate(1.35);
+}
+
+.pveFieldFx-emberRise .pveFieldFxVideo {
+  --pve-fx-video-opacity: 0.5;
+}
+
+/* ---- Soft SPRITE particles ------------------------------------------------
+   A layer whose theme ships a transparent particle texture sets
+   `--pve-fx-sprite` (via assetUrl) and `data-fx-sprite="on"`; its spans then
+   paint the sprite instead of the flat CSS dot. Themes without a sprite keep
+   their original drawn particle, and each theme's own rule still supplies the
+   size/animation. */
+.pveFieldFxLayer[data-fx-sprite="on"] .pveFieldFxParticle {
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent var(--pve-fx-sprite) center / contain no-repeat;
+}
+
+/* Sprite particles read best a touch larger than the drawn dots. */
+.pveFieldFx-ashStorm[data-fx-sprite="on"] .pveFieldFxParticle,
+.pveFieldFx-emberRise[data-fx-sprite="on"] .pveFieldFxParticle {
+  width: 10px;
+  height: 10px;
+}
+
+.pveFieldFx-dust[data-fx-sprite="on"] .pveFieldFxParticle {
+  width: 7px;
+  height: 7px;
+}
+
+.pveFieldFx-drip[data-fx-sprite="on"] .pveFieldFxParticle {
+  width: 9px;
+  height: 30px;
+}
+
 /* ---- Generic fallback (an unmapped script is tinted, never invisible) ---- */
 .pveFieldFx-generic {
   background: radial-gradient(circle at 50% 55%, rgb(120 140 180 / 12%), transparent 72%);
@@ -44308,7 +44383,8 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
     animation: none !important;
   }
 
-  .pveFieldFxParticle {
+  .pveFieldFxParticle,
+  .pveFieldFxVideo {
     display: none;
   }
 }

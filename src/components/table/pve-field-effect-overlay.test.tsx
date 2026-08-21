@@ -13,6 +13,8 @@
  * invisible and no visual may be an orphan), the flare on a FRESH
  * `COMBAT_SCRIPT_TRIGGERED`, and the cue's show-once-per-combat-id rule.
  */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { GameState } from "@/engine";
@@ -83,6 +85,22 @@ describe("PvE field-effect visuals registry", () => {
     expect(pveFieldEffectVisual("pve_lair_unmaking_presence").particles).toBe(0);
     // An unmapped id falls through to the tinted generic theme, never a crash.
     expect(pveFieldEffectVisual("campaign_script_that_does_not_exist").theme).toBe("generic");
+  });
+
+  it("SWEEP: every declared video/sprite points at a COMMITTED media file (no 404 can ship)", () => {
+    const publicDir = join(__dirname, "..", "..", "..", "public");
+    for (const [id, visual] of Object.entries(PVE_FIELD_EFFECT_VISUALS)) {
+      for (const media of [visual.video, visual.sprite]) {
+        if (!media) continue;
+        expect(existsSync(join(publicDir, media)), `${id} → ${media} is missing from public/`).toBe(
+          true
+        );
+      }
+    }
+    // The media half is real, not vestigial: at least one video and one sprite ship.
+    const all = Object.values(PVE_FIELD_EFFECT_VISUALS);
+    expect(all.some((v) => v.video)).toBe(true);
+    expect(all.some((v) => v.sprite)).toBe(true);
   });
 });
 
@@ -188,6 +206,81 @@ describe("PvE field-effect overlay", () => {
     expect(
       (container.querySelector(`[data-script-id="${scriptId}"]`) as HTMLElement).getAttribute("data-flare")
     ).toBeNull();
+  });
+});
+
+describe("PvE field-effect MEDIA (looping video overlays + sprite particles)", () => {
+  const floodedLairState = () => {
+    const state = pveState({ raidBossId: "b1" });
+    (state.adventure as unknown as { raidBosses: unknown }).raidBosses = {
+      b1: { defId: "abyss_kraken" }
+    };
+    return state;
+  };
+
+  afterEach(() => {
+    window.localStorage.clear();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).matchMedia;
+  });
+
+  it("a video theme mounts ONE muted looping <video> on a computer-mode client", () => {
+    // jsdom default: preference unset (= computer) and no matchMedia (= no
+    // reduced-motion opt-out) — the video-allowed baseline.
+    const { container } = render(<PveFieldEffectOverlay state={floodedLairState()} />);
+    const layer = container.querySelector('[data-script-id="pve_lair_flooded"]') as HTMLElement;
+    const video = layer.querySelector("video.pveFieldFxVideo") as HTMLVideoElement;
+    expect(video).not.toBeNull();
+    // The anti-audio / autoplay-policy contract: muted, looping, inline.
+    expect(video.hasAttribute("loop")).toBe(true);
+    expect(video.hasAttribute("playsinline")).toBe(true);
+    expect(video.muted || video.hasAttribute("muted")).toBe(true);
+    expect(video.getAttribute("src")).toContain("/assets/fx/pve/overlay-flood.mp4");
+  });
+
+  it("PHONE MODE never mounts the video (the setup-scene rule: hidden video still downloads)", () => {
+    window.localStorage.setItem("binh-ui-mode", "phone");
+    const { container } = render(<PveFieldEffectOverlay state={floodedLairState()} />);
+    const layer = container.querySelector('[data-script-id="pve_lair_flooded"]') as HTMLElement;
+    expect(layer).not.toBeNull();
+    expect(layer.querySelector("video")).toBeNull();
+    // The pure-CSS layer is still the complete effect there.
+    expect(layer.classList.contains("pveFieldFx-flood")).toBe(true);
+  });
+
+  it("prefers-reduced-motion never mounts the video either", () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).matchMedia = (query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      addEventListener() {},
+      removeEventListener() {}
+    });
+    const { container } = render(<PveFieldEffectOverlay state={floodedLairState()} />);
+    expect(container.querySelector("video")).toBeNull();
+  });
+
+  it("a theme WITHOUT a video mounts none (CONTROL), and sprite themes carry the sprite contract", () => {
+    const state = pveState({ raidBossId: "b1" });
+    (state.adventure as unknown as { raidBosses: unknown }).raidBosses = {
+      b1: { defId: "mother_demon" } // thickening nest: no video, no sprite
+    };
+    const { container } = render(<PveFieldEffectOverlay state={state} />);
+    const web = container.querySelector('[data-script-id="pve_lair_thickening_nest"]') as HTMLElement;
+    expect(web).not.toBeNull();
+    expect(web.querySelector("video")).toBeNull();
+    expect(web.getAttribute("data-fx-sprite")).toBeNull();
+    expect(web.style.getPropertyValue("--pve-fx-sprite")).toBe("");
+
+    cleanup();
+    // A sprite theme sets BOTH halves the CSS keys off: the flag attribute and
+    // the assetUrl()-wrapped custom property.
+    const deep = render(<PveFieldEffectOverlay state={pveState({ dungeonFloor: 6 })} />);
+    const dust = deep.container.querySelector('[data-fx-theme="dust"]') as HTMLElement;
+    expect(dust).not.toBeNull();
+    expect(dust.getAttribute("data-fx-sprite")).toBe("on");
+    expect(dust.style.getPropertyValue("--pve-fx-sprite")).toContain(
+      "/assets/fx/pve/particle-dust.webp"
+    );
   });
 });
 

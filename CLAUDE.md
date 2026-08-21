@@ -1062,7 +1062,22 @@ table screens in page.tsx) is a one-shot auto-dismissing banner naming each
 effect with its AUTHORED summary; and a fresh `COMBAT_SCRIPT_TRIGGERED` sets
 `data-flare="on"` on the matching layer for 1.5s. The existing
 `PveFieldEffectsPanel` stays as the reference. All CSS lives in ONE delimited
-globals.css section at the end of the file, with NO new media files.
+globals.css section at the end of the file.
+**MEDIA upgrade (2026-08-21, same session's follow-up)**: the layer is no longer
+CSS-only. Five themes mount a looping VIDEO overlay (`public/assets/fx/pve/
+overlay-{flood,ash,radiation,embers,mist}.mp4`, Pixabay stock downscaled to
+640×360, screen-blended so the black background vanishes; sources recorded in
+the component header) and six themes swap the flat CSS particle dots for soft
+transparent SPRITE textures (`particle-*.webp`, image-gen; SOURCES record =
+`scripts/gen-pve-fx-textures.ps1`). The video is NEVER mounted in phone mode or
+under `prefers-reduced-motion` (`useFieldFxVideoAllowed`, the setup-scene "a
+hidden video still downloads" rule) — those clients keep the pure-CSS layer as
+the complete effect. LIMITS: the clips are NOT seamless loops (at overlay
+opacity under the screen blend the cut is a soft fade, accepted); the sprite
+swap is keyed off `data-fx-sprite` + `--pve-fx-sprite` (assetUrl-wrapped, so
+the CDN coverage test holds); a media-file existence SWEEP in the overlay test
+fails on a declared-but-missing file; visual verification was a headless-
+Playwright fixture over real board art, still no e2e spec.
 Leading with what does NOT work / the deliberate limits:
 - **jsdom cannot compute CSS**, so `pve-field-effect-overlay.test.tsx` pins only
   the DOM contract (layer per script, theme class + `data-fx-theme`, particle
