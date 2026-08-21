@@ -9,6 +9,7 @@ import { applyAction, createAdventureGameState, getLegalActions } from "./index"
 import { makeCombatUnitFromArmy, NEUTRAL_ARMY_TABLE } from "./adventure";
 import { makeRaidBossCombatUnit } from "./raid-bosses";
 import { DOOM_RAID_BOSS_IDS } from "./raid-bosses";
+import { ENEMY_FORCE_BOSS_HAND_SIZE, seedEnemyForceHandOnCombat } from "./enemy-force";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type { CombatState, GameAction, GameState, LegalAction, PlayerId } from "./state";
 
@@ -26,12 +27,16 @@ import type { CombatState, GameAction, GameState, LegalAction, PlayerId } from "
  *
  * ==== WHAT THIS HARNESS DOES *NOT* MEASURE (read this before trusting a band) ==
  *
- *  1. **Cards are out of scope.** Both hands are EMPTY, so the fighter never
- *     casts, never heals, never reacts. Consequence: the arms that tax a
- *     RESOURCE rather than deal damage — the Lich's hand-drain, the Banshee's
- *     morale burn — score as ~0 here. They are pinned as real effects in
- *     `boss-abilities.test.ts`; this file deliberately measures the melee floor,
- *     because that is the part a reference force can be defined against.
+ *  1. **The FIGHTER's cards are out of scope; the MONSTER's are not (2026-08-21).**
+ *     The player's hand is EMPTY, so the fighter never casts, never heals, never
+ *     reacts. Consequence: the arms that tax a RESOURCE rather than deal damage —
+ *     the Lich's hand-drain, the Banshee's morale burn — score as ~0 here. They
+ *     are pinned as real effects in `boss-abilities.test.ts`; this file measures
+ *     the melee floor, because that is the part a reference force can be defined
+ *     against. The MONSTER side, by contrast, now fights WITH its PvE enemy-force
+ *     hand (see `stageBossFight`), because every real lair fight has one — so the
+ *     bands below are the shipped fight, and the effect of the hand itself is
+ *     measured by BAND 6.
  *  2. **The escort is a controlled stand-in, not the real random draw.** A real
  *     lair draws `minionCount` bodies at a `NEUTRAL_ARMY_TABLE` row. Here each
  *     `minionLevel` maps to ONE fixed, deliberately vanilla neutral body (see
@@ -185,11 +190,27 @@ function baseState(seed: string): GameState {
   return state;
 }
 
+/**
+ * PvE ENEMY FORCE (2026-08-21): the monster side's card hand.
+ *
+ * IMPORTANT HARNESS NOTE — the hand is NOT picked up automatically here. This
+ * file stages `state.combat` DIRECTLY (bootstrap note in `stageBossFight`), so
+ * it never runs `finalizeCombatStart` / `resumeCombatStartAfterCommanderPlacement`
+ * — which is where `seedEnemyForceHand` lives. It is therefore dealt EXPLICITLY
+ * below, through the very same idempotent write that seam calls
+ * (`seedEnemyForceHandOnCombat`), at the real lair hand size. That the REAL seam
+ * deals it on a real fight is pinned separately, on the real path, in
+ * `raid-bosses.test.ts` and `dungeon.test.ts`.
+ *
+ * `enemyForce: false` is the feature-OFF control used by the WITH-vs-WITHOUT
+ * measurement at the bottom of this file.
+ */
 function stageBossFight(
   seed: string,
   force: ForceCard[],
   def: RaidBossDefinition,
-  layers: number
+  layers: number,
+  options: { enemyForce?: boolean } = {}
 ): GameState {
   const state = baseState(seed);
   const units: CombatState["units"] = {};
@@ -263,6 +284,10 @@ function stageBossFight(
   state.combat.activeUnitId = opening?.id ?? null;
   state.activePlayerId = "p1";
   state.priorityPlayerId = null;
+  // The enemy-force hand, at the real raid-lair size (see the note above).
+  if (options.enemyForce !== false) {
+    seedEnemyForceHandOnCombat(state.combat, state.seed, ENEMY_FORCE_BOSS_HAND_SIZE);
+  }
   return state;
 }
 
@@ -415,13 +440,20 @@ type Tally = {
   minLosses: number;
 };
 
-function simulate(def: RaidBossDefinition, forceKey: keyof typeof FORCES, layers = def.layers): Tally {
+function simulate(
+  def: RaidBossDefinition,
+  forceKey: keyof typeof FORCES,
+  layers = def.layers,
+  options: { enemyForce?: boolean } = {}
+): Tally {
   let wins = 0;
   let rounds = 0;
   let losses = 0;
   let minLosses = Number.POSITIVE_INFINITY;
   for (const seed of SEEDS) {
-    const result = runFight(stageBossFight(`${seed}-${forceKey}`, FORCES[forceKey], def, layers));
+    const result = runFight(
+      stageBossFight(`${seed}-${forceKey}`, FORCES[forceKey], def, layers, options)
+    );
     if (result.attackerWon) {
       wins += 1;
     }
@@ -482,34 +514,50 @@ describe("PvE boss balance — the bands", () => {
    * (goblin_king 3 layers → avatar_of_erebos 7); that is what `matchedForce`
    * exists to normalise, and what BAND 3 measures instead.
    *
-   * MEASURED at the time of writing (2026-08-21, 5 seeds each; win / average
-   * rounds / average attacker cards lost). Force = matchedForce(threat score):
-   *   goblin_king              silver  5/5  1.4  0.8
-   *   abyss_kraken             silver  5/5  2.4  1.6
-   *   wailing_banshee          silver  5/5  1.8  1.0
-   *   minotaur_of_the_depths   silver  5/5  1.4  0.6
-   *   doom_hell_knight_warden  silver  5/5  1.0  1.0
-   *   doom_baron_warden        silver  5/5  1.6  0.8
-   *   warden_gorgon_matron     silver  5/5  2.0  1.0
-   *   floor_wyrm               silver  3/5  2.6  2.8
-   *   warden_stone_choir       silver  5/5  3.0  1.0
-   *   doom_archvile_warden     gold    5/5  2.0  0.0
-   *   warden_bone_colossus     gold    5/5  1.8  0.0
-   *   doom_cyberdemon_tyrant   gold    5/5  2.0  0.2
-   *   lich_archon              gold    5/5  2.8  0.8
-   *   basilisk_queen           gold    4/5  3.8  2.0
-   *   colossal_titan           gold    5/5  2.8  0.8
-   *   hydra_matriarch          gold    5/5  2.6  1.4
-   *   mother_demon             gold    5/5  2.8  1.0
-   *   spider_overmind          gold    5/5  3.0  1.4
-   *   calamity_dragon          gold    5/5  3.6  2.6
-   *   archvile_ascendant       gold    5/5  2.4  1.0
-   *   avatar_of_erebos         gold    5/5  3.0  2.2
-   *   cyberdemon_prime         gold    5/5  3.2  2.2
-   * The under-tier control loses 0/5 against every single one of the 13 raid
-   * bosses (BAND 2). The one TWEAK this harness forced: spider_overmind's
-   * Defense 3 → 2 (see its definition) — it was 0/5 before it, the roster's only
-   * out-of-band monster.
+   * MEASURED after the PvE ENEMY FORCE hand shipped (2026-08-21, 5 seeds each;
+   * WITH the hand / WITHOUT it, as "win  rounds  losses"). Force =
+   * matchedForce(threat score):
+   *                             force   WITH hand          WITHOUT hand
+   *   goblin_king              silver  5/5  1.6  0.8   |  5/5  1.4  0.8
+   *   colossal_titan           gold    5/5  3.0  1.8   |  5/5  2.8  0.8
+   *   abyss_kraken             silver  5/5  3.0  2.4   |  5/5  2.4  1.6
+   *   calamity_dragon          gold    5/5  3.4  3.0   |  5/5  3.6  2.6
+   *   avatar_of_erebos         gold    5/5  3.4  2.4   |  5/5  3.0  1.6
+   *   cyberdemon_prime         gold    4/5  3.4  2.8   |  5/5  3.2  2.2
+   *   spider_overmind          gold    4/5  3.2  2.0   |  5/5  3.0  1.4
+   *   lich_archon              gold    5/5  2.8  1.0   |  5/5  2.8  0.8
+   *   hydra_matriarch          gold    5/5  2.8  1.8   |  5/5  2.6  1.4
+   *   basilisk_queen           gold    4/5  3.8  2.2   |  4/5  3.8  2.0
+   *   wailing_banshee          silver  5/5  1.8  1.0   |  5/5  1.8  1.0
+   *   archvile_ascendant       gold    5/5  2.4  1.2   |  5/5  2.4  1.0
+   *   mother_demon             gold    5/5  2.6  1.0   |  5/5  2.8  1.0
+   *   minotaur_of_the_depths   silver  5/5  1.4  0.6   |  5/5  1.4  0.6
+   *   floor_wyrm               silver  3/5  2.4  2.8   |  3/5  2.6  2.8
+   *   doom_baron_warden        silver  5/5  1.6  1.0   |  5/5  1.6  0.8
+   *   doom_cyberdemon_tyrant   gold    5/5  2.0  0.2   |  5/5  2.0  0.2
+   *   warden_gorgon_matron     silver  4/5  3.0  2.0   |  5/5  2.0  1.0
+   *   warden_stone_choir       silver  5/5  3.8  1.6   |  5/5  3.0  1.0
+   *   warden_bone_colossus     gold    5/5  1.8  0.2   |  5/5  1.8  0.0
+   *   doom_hell_knight_warden  silver  5/5  1.0  1.0   |  5/5  1.0  1.0
+   *   doom_archvile_warden     gold    5/5  2.0  0.0   |  5/5  2.0  0.0
+   * The under-tier control still loses 0/5 against every one of the 13 raid
+   * bosses (BAND 2).
+   *
+   * TWEAKS this harness has forced, in order:
+   *  - spider_overmind Defense 3 -> 2 (the earlier kit-swap pass; it was 0/5).
+   *  - THE ENEMY-FORCE PASS (2026-08-21) forced two:
+   *      (a) the whole damage/debuff/heal side of the pool moved from a Power-1
+   *          to a POWER-0 reading (Magic Arrow 2->1, Lightning Bolt 3->2, Slow
+   *          -2->-1, Cure heal 2->1; Implosion stays at its printed Power-1
+   *          minimum). This is also the MORE faithful read — the monster side has
+   *          no hero and no Power statistic at all — and it was worth 1-2 wins
+   *          across the roster (warden_stone_choir 3/5 -> 5/5, abyss_kraken
+   *          4/5 -> 5/5).
+   *      (b) avatar_of_erebos Attack 7 -> 6 (recorded on its definition): the
+   *          roster apex is also its fastest monster and its longest fight, so it
+   *          gets the most card plays of any encounter. It went 5/5 -> 0/5 and was
+   *          the only monster the hand pushed out of band; the nerf restores 5/5
+   *          while still costing the matched force more than it did before.
    */
   it("BAND 1: the matched force clears the majority of seeds against every monster, and the roster is not free", () => {
     const table: string[] = [];
@@ -570,6 +618,20 @@ describe("PvE boss balance — the bands", () => {
    * moves when a kit is nerfed into a pushover: a boss that folds in noticeably
    * fewer rounds than every peer of its own weight has lost its tier. (Win rate
    * is too coarse — everything in band sits at 5/5.)
+   *
+   * MEASURED WITH THE ENEMY-FORCE HAND KNOCKED OUT (2026-08-21) — the one band
+   * that does this, and deliberately. This band compares KITS, and the hand is a
+   * uniform layer laid on top of every kit; but its effect COMPOUNDS with fight
+   * length (a boss that survives longer plays more cards and therefore survives
+   * longer still), so it amplifies an existing spread rather than shifting peers
+   * equally. With the hand on, `wailing_banshee` (1.8r) failed against
+   * `abyss_kraken` (2.4 → 3.0r) — two monsters with IDENTICAL statlines (A5 D1
+   * H3, 4 layers, threat 20) whose only difference is that the kraken's arms are
+   * melee (splash-all + unlimited retaliation) while the banshee's tax RESOURCES
+   * (morale burn + attacker disadvantage), i.e. exactly the half limit 1 at the
+   * top of this file says this harness cannot see. Knocking the hand out isolates
+   * the kit comparison this band is about; the shipped fight is measured by every
+   * other band, and BAND 6 measures the hand itself.
    */
   it("BAND 3: no ex-caster is a pushover next to its threat-score peers", () => {
     const check = (catalog: Record<string, RaidBossDefinition>, id: string): void => {
@@ -582,8 +644,13 @@ describe("PvE boss balance — the bands", () => {
           Math.abs(threatScore(other) - threatScore(def)) <= 3
       );
       expect(peers.length, `${id} has no threat-score peer to compare against`).toBeGreaterThan(0);
-      const peerRounds = peers.map((peer) => simulate(peer, force).averageRounds);
-      const own = simulate(def, force).averageRounds;
+      // KIT-ONLY: the enemy-force hand is knocked out on BOTH sides (see the
+      // block comment above for why this band, and only this band, does that).
+      const noHand = { enemyForce: false } as const;
+      const peerRounds = peers.map(
+        (peer) => simulate(peer, force, peer.layers, noHand).averageRounds
+      );
+      const own = simulate(def, force, def.layers, noHand).averageRounds;
       const floor = Math.min(...peerRounds);
       // Tolerance: one round. The peers differ from each other by more than
       // that, so a tighter band would fail on ordinary design variance rather
@@ -649,3 +716,77 @@ describe("PvE boss balance — the bands", () => {
   });
 });
 
+
+
+// ---------------------------------------------------------------------------
+// 3. BAND 6 — the PvE ENEMY FORCE hand is not decorative
+// ---------------------------------------------------------------------------
+
+describe("PvE boss balance — the enemy force hand measurably matters", () => {
+  /**
+   * BAND 6 — the MUTATION CHECK for the enemy-force hand (2026-08-21).
+   *
+   * The feature could be "wired and tested" and still be scenery: five cards
+   * that never change a fight's outcome would pass every effect test in
+   * `enemy-force.test.ts` and still be worthless. So this measures the SAME
+   * roster twice — once with the hand, once with the feature knocked out
+   * (`enemyForce: false`) — and requires that across the roster the hand costs
+   * the attacker MORE, in rounds or in bodies.
+   *
+   * It is a ROSTER-WIDE aggregate, not a per-boss assertion, on purpose: a
+   * 3-layer monster dies in 1.4 rounds and may never get to play a second card,
+   * so demanding a delta from every single encounter would fail on design
+   * variance rather than on a regression. Measured at the time of writing: the
+   * hand raises the roster's average attacker losses from 1.19 to 1.50 (+26%)
+   * and its average rounds from 2.42 to 2.58, and 16 of the 22 encounters got
+   * strictly harder in at least one of the two metrics.
+   */
+  it("BAND 6: across the roster, the hand costs the attacker more rounds or more bodies", () => {
+    const roster = [...Object.values(RAID_BOSSES), ...Object.values(DUNGEON_FLOOR_BOSSES)];
+    let withRounds = 0;
+    let withoutRounds = 0;
+    let withLosses = 0;
+    let withoutLosses = 0;
+    let harder = 0;
+    const table: string[] = [];
+    for (const def of roster) {
+      const force = matchedForce(def);
+      const on = simulate(def, force);
+      const off = simulate(def, force, def.layers, { enemyForce: false });
+      withRounds += on.averageRounds;
+      withoutRounds += off.averageRounds;
+      withLosses += on.averageLosses;
+      withoutLosses += off.averageLosses;
+      if (on.averageRounds > off.averageRounds || on.averageLosses > off.averageLosses) {
+        harder += 1;
+      }
+      table.push(
+        `${def.id}: with ${on.averageRounds.toFixed(1)}r/${on.averageLosses.toFixed(1)}l vs without ${off.averageRounds.toFixed(1)}r/${off.averageLosses.toFixed(1)}l`
+      );
+    }
+    // The aggregate cost in BODIES must really rise — this is the assertion that
+    // fails if the hand is knocked out, mis-scored into never playing, or
+    // silently blocked (a no-window regression, a broken holder read).
+    expect(
+      withLosses,
+      `the hand cost the attacker nothing:\n${table.join("\n")}`
+    ).toBeGreaterThan(withoutLosses);
+    // …and the fights must not get SHORTER on aggregate either.
+    expect(withRounds).toBeGreaterThanOrEqual(withoutRounds);
+    // A clear majority of encounters is strictly harder with the hand.
+    expect(
+      harder / roster.length,
+      `only ${harder}/${roster.length} encounters got harder:\n${table.join("\n")}`
+    ).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it("BAND 6b: the hand never makes an encounter UNWINNABLE for its matched force", () => {
+    // The other side of the same coin: BAND 1 already requires >= 0.6, but this
+    // states the intent explicitly — the hand is meant to make an optional fight
+    // cost more, never to turn it into a wall nobody would attempt.
+    for (const def of [...Object.values(RAID_BOSSES), ...Object.values(DUNGEON_FLOOR_BOSSES)]) {
+      const tally = simulate(def, matchedForce(def));
+      expect(tally.wins, `${def.id} is a WALL with its hand (0/5)`).toBeGreaterThan(0);
+    }
+  });
+});

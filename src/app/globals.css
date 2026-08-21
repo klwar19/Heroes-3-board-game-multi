@@ -43649,3 +43649,94 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
     min-height: clamp(84px, 13vh, 108px);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   PvE ENEMY FORCE — the "the enemy force just played X" banners
+   (2026-08-21, the BOSS_SPELL_ROTATION replacement).
+
+   A raid boss / Dungeon warden spends one held card at its own activation
+   start: no dice, no window, and the card never leaves a player's hand, so
+   without this the play was invisible. The board FX (a reused H3 spell sprite +
+   sound) plays on the boss/target; this stack adds the CARD FACE and the words.
+   It is deliberately NON-BLOCKING — `pointer-events: none` on the stack AND
+   each banner (the JSX also sets it inline, which is the half jsdom can pin),
+   so it can never eat a click, and it sits UNDER the tumbling dice (100) /
+   hub backdrop (210) band.
+--------------------------------------------------------------------------- */
+.enemyForceCueStack {
+  position: fixed;
+  top: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 93;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  width: min(560px, 92vw);
+  pointer-events: none;
+}
+
+.enemyForceCue {
+  pointer-events: none;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(196, 142, 66, 0.75);
+  background: linear-gradient(180deg, rgba(28, 12, 20, 0.94), rgba(12, 6, 10, 0.94));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  color: #f2e4cd;
+  animation: enemyForceCueIn 200ms ease-out;
+}
+
+.enemyForceCue:not(:has(.enemyForceCueCard)) {
+  grid-template-columns: 1fr;
+}
+
+@keyframes enemyForceCueIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.enemyForceCueCard {
+  width: 62px;
+  height: auto;
+  border-radius: 5px;
+  border: 1px solid rgba(196, 142, 66, 0.6);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+}
+
+.enemyForceCueText {
+  min-width: 0;
+  text-align: left;
+}
+
+.enemyForceCueHeadline {
+  display: block;
+  font-size: 1.02rem;
+  letter-spacing: 0.02em;
+  color: #f6c98a;
+}
+
+.enemyForceCueDetail {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.enemyForceCueRules {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.76rem;
+  opacity: 0.75;
+}

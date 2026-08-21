@@ -21,6 +21,11 @@ import {
   pveEncounterScriptsFor
 } from "@/data/anime/pve-combat-scripts";
 import { combatScriptEffectLines } from "@/data/map/combat-scripts";
+import {
+  ENEMY_FORCE_BOSS_HAND_SIZE,
+  enemyForcePoolEntry,
+  seedEnemyForceHandOnCombat
+} from "./enemy-force";
 import { listAllBossDefinitions } from "@/data/anime/bosses";
 import { standardComputerController } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
@@ -934,5 +939,69 @@ describe("Raid Bosses — the first-kill trophy labels EXPLAIN each arm (§F2 pr
         throw new Error(`unexpected trophy arm ${step?.type}`);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The PvE ENEMY FORCE hand reaches a REAL lair fight (2026-08-21)
+// ---------------------------------------------------------------------------
+
+describe("Raid Bosses — the enemy force hand", () => {
+  it("a real lair fight deals the monster side five synthetic cards through the combat-start seam", () => {
+    // The integration claim: no test fixture plants the hand. `fightBoss` walks
+    // the hero in, answers "Challenge" AND closes the deployment — the hand is
+    // dealt by the combat-start package that runs once deployment closes (the
+    // fight opens in `combat-setup`, so merely challenging is not yet enough),
+    // and that package is the one seam every lair and floor fight passes through.
+    const after = fightBoss("raid-enemy-force", "lich_archon", 4);
+    const force = after.combat!.enemyForce;
+    expect(force, "a lair fight must deal the enemy force its hand").toBeTruthy();
+    expect(force!.cardIds).toHaveLength(ENEMY_FORCE_BOSS_HAND_SIZE);
+    expect(new Set(force!.cardIds).size).toBe(force!.cardIds.length);
+    expect(force!.playedCardIds).toEqual([]);
+    expect(force!.fired).toEqual([]);
+    // Every dealt card is a real curated pool entry (never an arbitrary id).
+    for (const cardId of force!.cardIds) {
+      expect(enemyForcePoolEntry(cardId), cardId).not.toBeNull();
+    }
+    // NOTE: a pool card id can legitimately ALSO sit in a player's hand — the
+    // pool is made of real library cards, and `stat.attack` is a normal starting
+    // card. So "no leak" cannot be an id-absence check; the real invariant (the
+    // draw moves no card between zones) is asserted directly against the seam in
+    // `enemy-force.test.ts`.
+    // The table was TOLD: the draw is announced in the feed.
+    expect(
+      after.eventLog.some(
+        (event) => event.type === "EVENT_NOTE" && event.message.includes("enemy force draws")
+      )
+    ).toBe(true);
+  });
+
+  it("the lair prompt WARNS how many cards the enemy force holds", () => {
+    const state = raidGame("raid-enemy-force-prompt");
+    const { fieldId } = spawnLair(state);
+    const hero = state.heroes.hero_p1;
+    state.adventure!.lastVisitedField[hero.id] = hero.spaceId!;
+    hero.spaceId = fieldId;
+    beginFieldVisit(state, hero.id, fieldId, false);
+    const step = state.adventure!.pendingVisit!.steps[0];
+    if (step.type !== "CHOOSE_ONE") {
+      throw new Error("expected the lair confirm prompt");
+    }
+    expect(step.prompt).toContain("enemy force holds 5 cards");
+  });
+
+  it("the hand is dealt ONCE — a re-entered combat start never re-deals or rerolls it", () => {
+    const after = fightBoss("raid-enemy-force-idempotent", "lich_archon", 4);
+    const combat = after.combat!;
+    const first = [...combat.enemyForce!.cardIds];
+    // Pretend a card was already spent, then re-run the SAME idempotent write
+    // the combat-start package performs — which is what a pre-combat window
+    // (commander sort / Bounty-Hunter mark) resolving back into it does. A
+    // re-deal would both reroll the hand and resurrect the spent card.
+    combat.enemyForce!.playedCardIds.push(first[0]);
+    expect(seedEnemyForceHandOnCombat(combat, after.seed, ENEMY_FORCE_BOSS_HAND_SIZE)).toBe(false);
+    expect(combat.enemyForce!.cardIds).toEqual(first);
+    expect(combat.enemyForce!.playedCardIds).toEqual([first[0]]);
   });
 });

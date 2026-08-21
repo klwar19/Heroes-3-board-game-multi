@@ -144,7 +144,14 @@ export const RAID_BOSSES: Record<string, RaidBossDefinition> = {
     id: "avatar_of_erebos",
     name: "Avatar of Erebos",
     title: "The God That Walks",
-    attack: 7,
+    // BALANCE (2026-08-21, the PvE ENEMY FORCE hand): Attack 7 -> 6. It is the
+    // roster apex AND the roster's fastest monster (Initiative 8), so with a card
+    // hand it acts first every round AND gets the most card plays of any
+    // encounter (7 layers = the longest fight). It fell from 5/5 to 0/5 against
+    // its matched force in pve-boss-balance.test.ts — the only monster the hand
+    // pushed out of band. Attack was the lever because `layers: 7` is its printed
+    // identity ("The God That Walks") and Enrage already adds +2 on the last bar.
+    attack: 6,
     defense: 2,
     health: 3,
     initiative: 8,

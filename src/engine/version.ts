@@ -577,7 +577,24 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // wired abilities now, and `warden_stone_choir` re-joins `WAVE_MINIBOSS_POOLS`,
 // so a stale worker fields a different wave mini-boss pool.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 50;
+//
+// v51 (2026-08-21): the PvE ENEMY FORCE hand replaces the removed
+// BOSS_SPELL_ROTATION (user rule: "i want enemy FORCE that behave like single
+// player, have cards random 5 ones and can use them like spell or artifact or
+// statistic"). SERIALIZED shape a stale worker cannot produce or read:
+// `CombatState.enemyForce` (the seeded synthetic hand + its played/fired
+// ledgers) and the new `ENEMY_FORCE_CARD_PLAYED` game event. Server-computed
+// behaviour on top: the seeded hand DRAW at combat start
+// (`drawEnemyForceHand`, called from
+// `resumeCombatStartAfterCommanderPlacement`) and the at-most-one-card-per-round
+// PLAY at the boss unit's activation start (`resolveEnemyForceCardPlay` in
+// reducer.ts's `setActiveUnit` tail) — a v50 worker resolves NEITHER, so the two
+// halves would disagree about every raid-boss and Dungeon-floor fight's damage
+// and about the boss hand's contents. The player-view masking of unplayed
+// enemy-force ids is likewise new. All of it sits behind the existing
+// raidBosses / dungeon module flags (default OFF ⇒ byte-identical) and wave
+// assaults are deliberately excluded. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 51;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

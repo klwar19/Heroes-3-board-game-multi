@@ -118,6 +118,12 @@ import {
   isMoraleCardEvent,
   type MoraleCardCue
 } from "@/components/table/morale-card-cue";
+import {
+  buildEnemyForceCues,
+  isEnemyForcePlayEvent,
+  type EnemyForceCue
+} from "@/components/table/enemy-force-cue";
+import { EnemyForceCueOverlay } from "@/components/table/enemy-force-cue-overlay";
 import { PveFieldEffectsPanel } from "@/components/table/pve-field-effects-panel";
 import { buildTownCaptureCue, isEnemyTownCapture } from "@/components/table/town-capture-cue";
 import { CombatMoralePanel } from "@/components/table/combat-morale-panel";
@@ -238,6 +244,7 @@ import {
 } from "@/data/map-sounds";
 import { COMBAT_EVENT_SOUNDS } from "@/data/combat-event-sounds";
 import { commanderCastFxPlan, commanderSpecialtySound } from "@/data/commander-fx";
+import { enemyForceFxPlan } from "@/data/enemy-force-fx";
 import { allTileDefinitions } from "@/data/map/tiles";
 import {
   playLibrarySound,
@@ -327,7 +334,12 @@ const FX_EVENT_TYPES = new Set<GameEvent["type"]>([
   "COMBAT_OBSTACLE_REMOVED",
   "FORTIFICATION_DESTROYED",
   // Bulwark: an army crossing a Rune-Level threshold rings the rune cue.
-  "RUNE_LEVEL_REACHED"
+  "RUNE_LEVEL_REACHED",
+  // PvE ENEMY FORCE: a boss's held-card play has no dice and no window, so its
+  // reused H3 spell sprite + sound is the only thing that animates it. MUST be
+  // listed here — the FX switch only ever sees events in this set (the
+  // `COMMANDER_CAST_USED` case below is dead precisely because it is not).
+  "ENEMY_FORCE_CARD_PLAYED"
 ]);
 
 const MAX_PRESENTATION_MS = DEFAULT_MAX_PRESENTATION_MS;
@@ -958,6 +970,13 @@ export default function Home() {
     current: null,
     queue: []
   });
+  // PvE ENEMY FORCE card plays: non-blocking banners showing the card face and
+  // what it just did. Several may be live at once (a batched snapshot); each
+  // removes itself on its own timer.
+  const [enemyForceCues, setEnemyForceCues] = useState<EnemyForceCue[]>([]);
+  const dismissEnemyForceCue = useCallback((id: string) => {
+    setEnemyForceCues((current) => current.filter((cue) => cue.id !== id));
+  }, []);
   const [astrologerCue, setAstrologerCue] = useState<AstrologersProclamationCue | null>(null);
   const [eventCue, setEventCue] = useState<EventDrawnCue | null>(null);
   const [mapEventCue, setMapEventCue] = useState<MapEventCue | null>(null);
@@ -1072,6 +1091,8 @@ export default function Home() {
   // Morale-card events already popped as the big MoraleCardOverlay — one pop
   // per event, never replayed on reconnect.
   const seenMoraleCueIdsRef = useRef<Set<string>>(new Set());
+  // PvE enemy-force card plays already banner-popped — never replayed on reconnect.
+  const seenEnemyForceIdsRef = useRef<Set<string>>(new Set());
   // House rule (BINH) notices, popped once per event and pre-seeded on reconnect:
   //  - Dracon reaching level IV (his new Few-of-Magi recruit option).
   //  - A Gelu-recruited Sharpshooters joining the army with its +1 Attack BUFF.
@@ -1442,6 +1463,7 @@ export default function Home() {
     );
     const fxEvents = presentationEvents.filter((event) => FX_EVENT_TYPES.has(event.type));
     const moraleCardEvents = presentationEvents.filter((event) => isMoraleCardEvent(event));
+    const enemyForceEvents = presentationEvents.filter((event) => isEnemyForcePlayEvent(event));
 
     if (!seenRollIdsRef.current) {
       // Fresh room connection: forget the previous room's units.
@@ -1472,6 +1494,7 @@ export default function Home() {
       seenFeedIdsRef.current = new Set(feedEvents.map((event) => event.id));
       seenFxIdsRef.current = new Set(fxEvents.map((event) => event.id));
       seenMoraleCueIdsRef.current = new Set(moraleCardEvents.map((event) => event.id));
+      seenEnemyForceIdsRef.current = new Set(enemyForceEvents.map((event) => event.id));
       // A mid-game join must not re-pop past hero level-ups or buffed recruits.
       seenLevelNoticeIdsRef.current = new Set(
         presentationEvents.filter((event) => event.type === "HERO_LEVEL_UP").map((event) => event.id)
@@ -1661,6 +1684,24 @@ export default function Home() {
             const queue = [...current.queue, ...cues];
             return current.current ? { ...current, queue } : { current: queue[0], queue: queue.slice(1) };
           });
+        }
+      }
+
+      // PvE ENEMY FORCE: the boss spent a held card at its activation start —
+      // no card left a hand, no dice rolled and no window opened, so it gets a
+      // transient banner with the CARD FACE plus the engine's own "what just
+      // happened" line. Presentation only — the banner dispatches nothing and
+      // takes no input.
+      const freshEnemyForceEvents = enemyForceEvents.filter(
+        (event) => !seenEnemyForceIdsRef.current.has(event.id)
+      );
+      for (const event of freshEnemyForceEvents) {
+        seenEnemyForceIdsRef.current.add(event.id);
+      }
+      if (freshEnemyForceEvents.length > 0) {
+        const cues = buildEnemyForceCues(freshEnemyForceEvents, nextState);
+        if (cues.length > 0) {
+          setEnemyForceCues((current) => [...current, ...cues]);
         }
       }
 
@@ -3086,6 +3127,20 @@ export default function Home() {
                   const soundKey = plan.sound;
                   window.setTimeout(() => playLibrarySound(soundKey), at);
                 }
+              }
+              break;
+            }
+            case "ENEMY_FORCE_CARD_PLAYED": {
+              // PvE ENEMY FORCE: the boss spent a held card. It has no dice and
+              // no window, so without this it resolved invisibly — play the
+              // reused H3 spell's sprite + sound from the boss onto whatever it
+              // singled out (or onto itself for a self-buff / self-heal). The
+              // CARD FACE and the words ride the separate EnemyForceCueOverlay.
+              const plan = enemyForceFxPlan(event.cardId);
+              queueBoardFx(plan, `${event.id}-enemy-force`, `unit:${event.unitId}`, event.targetUnitId ?? event.unitId);
+              if (inCombat) {
+                combatFxActive = true;
+                combatPresentationEnd = Math.max(combatPresentationEnd, timeline + 900);
               }
               break;
             }
@@ -7082,6 +7137,9 @@ export default function Home() {
           {!firstRoll && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && !mapDice.current && moraleCue.current ? (
             <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
           ) : null}
+          {/* PvE ENEMY FORCE: the boss's held-card play says what it did.
+              Non-blocking, so it never waits on another overlay. */}
+          <EnemyForceCueOverlay cues={enemyForceCues} onDone={dismissEnemyForceCue} />
           {/* WOG Commanders: the one-time "how your commander is placed" card.
               Pure presentation and self-gating — module off / no commander /
               already seen this game ⇒ it renders nothing. */}
@@ -7541,6 +7599,9 @@ export default function Home() {
       {!firstRoll && !dice.current && !combatPresenting && !newDay.current && !astrologerCue && !eventCue && !mapEventCue && moraleCue.current ? (
         <MoraleCardOverlay cue={moraleCue.current} key={moraleCue.current.id} onDone={dismissMoraleCue} />
       ) : null}
+      {/* PvE ENEMY FORCE banners over the battlefield — the usual home for a
+          boss's held-card play. Non-blocking. */}
+      <EnemyForceCueOverlay cues={enemyForceCues} onDone={dismissEnemyForceCue} />
       {/* Same one-time Commanders card on the battle screen (a direct-link
           joiner may land straight in a fight). */}
       <CommanderIntroOverlay state={state} viewerPlayerId={viewerPlayerId} />

@@ -1059,3 +1059,37 @@ describe("Calamity Waves — win rewards (necromancy yes, commander recruit no)"
     expect(state.adventure?.pendingNecromancy?.deferredReward).toMatchObject({ kind: "wave", wave: 1 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// The PvE ENEMY FORCE hand is DELIBERATELY excluded from wave assaults
+// ---------------------------------------------------------------------------
+
+describe("Calamity Waves — no enemy force hand (deliberate exclusion)", () => {
+  it("a real wave assault deals the monster side NO cards, at every wave", () => {
+    // The exclusion, proven on the real path (the same combat-start package that
+    // deals a lair/floor its hand runs here too). Waves already carry their own
+    // escalation — battle events, Stack Tokens, veteran ranks, a mini-boss — and
+    // every seat is FORCED to fight them, so stacking a card hand on top would
+    // double up two independent difficulty systems.
+    // `wavesGame` runs cadence 3, so rounds 3 / 6 / 9 are wave rounds. Wave 3
+    // (round 9) also carries the warband / Stack-Token / veteran-rank / mini-boss
+    // escalation, which is exactly the escalation this exclusion exists for.
+    for (const round of [3, 9]) {
+      const state = revealWaveArmy(openWave(wavesGame(`wave-no-enemy-force-${round}`), round));
+      const context = state.combat!.context;
+      expect(context.kind === "neutral" && context.waveAssault, `round ${round}`).toBeTruthy();
+      expect(state.combat!.enemyForce, `round ${round} dealt a hand`).toBeFalsy();
+      expect(
+        state.eventLog.some(
+          (event) => event.type === "EVENT_NOTE" && event.message.includes("enemy force draws")
+        ),
+        `round ${round} announced a hand`
+      ).toBe(false);
+      // And nothing can ever be played, because there is no hand to play.
+      expect(
+        state.eventLog.some((event) => event.type === "ENEMY_FORCE_CARD_PLAYED"),
+        `round ${round} played a card`
+      ).toBe(false);
+    }
+  });
+});

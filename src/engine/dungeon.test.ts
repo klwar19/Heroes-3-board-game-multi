@@ -36,6 +36,7 @@ import { createSeededRandom } from "./random";
 import { DUNGEON_FLOOR_BOSSES, RAID_BOSSES } from "@/data/anime/bosses";
 import { stackTokenDelta } from "@/data/map/creature-banks";
 import { WAVE_MINIBOSS_POOLS } from "./monster-waves";
+import { ENEMY_FORCE_BOSS_HAND_SIZE, enemyForcePoolEntry } from "./enemy-force";
 import { NEUTRAL_PLAYER_ID, type CombatState, type MapSpaceId, type VisitStep } from "./state";
 
 /**
@@ -1213,5 +1214,65 @@ describe("The Dungeon — pre-fight explanation (§E/§F presentation)", () => {
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The PvE ENEMY FORCE hand on a REAL Dungeon floor (2026-08-21)
+// ---------------------------------------------------------------------------
+
+describe("The Dungeon — the enemy force hand", () => {
+  /** Delve floor N and close deployment, so the combat-start package has run. */
+  function fightFloor(seed: string, floor: number): GameState {
+    const state = dungeonGame(seed);
+    state.players.p1.dungeonFloor = floor;
+    const fieldId = placeSiteUnderHero(state);
+    return revealFloorArmy(delveFloor(state, fieldId));
+  }
+
+  it("an ORDINARY floor's hand grows with the floor band — shallow 2, deep 3, abyss 4", () => {
+    // The integration claim: the size the fight actually deals is the size
+    // `enemyForceHandSize` derives, on a real floor opened through the real
+    // door menu. Floors 5 and 10 are wardens, so they are excluded here.
+    for (const [floor, expected] of [
+      [1, 2],
+      [3, 2],
+      [4, 3],
+      [6, 3],
+      [7, 3],
+      [8, 4],
+      [9, 4]
+    ] as const) {
+      const fight = fightFloor(`dungeon-ef-${floor}`, floor);
+      const force = fight.combat!.enemyForce;
+      expect(force, `floor ${floor} dealt no hand`).toBeTruthy();
+      expect(force!.cardIds, `floor ${floor} hand size`).toHaveLength(expected);
+      expect(new Set(force!.cardIds).size, `floor ${floor} duplicates`).toBe(expected);
+      for (const cardId of force!.cardIds) {
+        expect(enemyForcePoolEntry(cardId), `${floor}: ${cardId}`).not.toBeNull();
+      }
+    }
+  });
+
+  it("a WARDEN floor (5 / 10) fields a boss's full five", () => {
+    for (const floor of [5, 10] as const) {
+      const fight = fightFloor(`dungeon-ef-warden-${floor}`, floor);
+      expect(fight.combat!.enemyForce!.cardIds, `floor ${floor}`).toHaveLength(
+        ENEMY_FORCE_BOSS_HAND_SIZE
+      );
+    }
+  });
+
+  it("the floor prompt WARNS how many cards the enemy force holds", () => {
+    const state = dungeonGame("dungeon-ef-prompt");
+    state.players.p1.dungeonFloor = 8;
+    const fieldId = placeSiteUnderHero(state);
+    beginFieldVisit(state, state.heroes.hero_p1.id, fieldId, false);
+    const menu = firstPendingVisitStep(state);
+    if (menu?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the floor menu");
+    }
+    // Abyss band ⇒ four cards, and the player is told BEFORE committing.
+    expect(menu.prompt).toContain("enemy force holds 4 cards");
   });
 });

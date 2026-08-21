@@ -821,9 +821,10 @@ classic), `wavePressure`, `waveDefeatLimit` (0|2|3, default 0 = no elimination),
 `raidBossSpawnRound` (4|5|6, default 5), `dungeonDepth` (5|10),
 `dungeonDescentCost` (0|1|2, default 1) — a DESIGNED MAP may direct all of them
 (designer-first at every read). Engine `src/engine/pve-content.ts` +
-`monster-waves.ts` / `raid-bosses.ts` / `dungeon.ts` + `combat-board-art.ts`; boss
-data `src/data/anime/bosses.ts`. Pinned in `monster-waves.test.ts`,
-`raid-bosses.test.ts`, `boss-abilities.test.ts`, `dungeon.test.ts`,
+`monster-waves.ts` / `raid-bosses.ts` / `dungeon.ts` / `enemy-force.ts` +
+`combat-board-art.ts`; boss data `src/data/anime/bosses.ts`. Pinned in
+`monster-waves.test.ts`, `raid-bosses.test.ts`, `boss-abilities.test.ts`,
+`dungeon.test.ts`, `enemy-force.test.ts`, `pve-boss-balance.test.ts`,
 `game-options-tabs.test.tsx`, `map-preset-editor.test.tsx`, `board.test.tsx`,
 `anime-coexistence-soak.test.ts`. Default OFF ⇒ byte-identical.
 
@@ -955,6 +956,86 @@ kinds are auto-resolving, so no AI or AFK seat can stall. LIMITS: a 5-floor
 expedition never reaches the floor-10 relic rung; FREE descent removes the movement
 limiter; a hand-edited warden typo fields a PLAIN party (never a stall); the plan's
 bank-corner formation and spike-pit tokens are NOT modeled.
+
+### The ENEMY FORCE hand (2026-08-21, protocol v51) — replaces BOSS_SPELL_ROTATION
+
+USER RULE ("i want enemy FORCE that behave like single player, have cards random
+5 ones and can use them like spell or artifact or statistic"): in a raid-boss
+lair fight and a Dungeon-floor fight the MONSTER side holds a hand of real cards
+and spends at most ONE per combat round, at its boss unit's own activation start.
+The deleted round-start chant is NOT coming back — some bosses now cast because
+they happened to draw a Spell, which is the point. Pool + planning in the leaf
+`src/engine/enemy-force.ts`, resolution in `reducer.ts`
+(`resolveEnemyForceCardPlay`, at the `setActiveUnit` tail beside
+`applyActivationDamageSpell` so a monster bolt takes the SAME gates a Faerie Bolt
+does), hand dealt by `seedEnemyForceHand` in
+`resumeCombatStartAfterCommanderPlacement`. State: `CombatState.enemyForce`
+(`cardIds` / `playedCardIds` / the `unitId#round` `fired` ledger); event
+`ENEMY_FORCE_CARD_PLAYED`. Pinned in `enemy-force.test.ts`,
+`enemy-force-fx.test.ts`, `enemy-force-cue-overlay.test.tsx`, plus real-path
+integration in `raid-bosses.test.ts` / `dungeon.test.ts` and the wave CONTROL in
+`monster-waves.test.ts`. **`npm run deploy:partykit` owed.**
+
+Leading with the limits:
+- **NO reaction window is EVER opened against an enemy-force play.** It resolves
+  inline (feed event + effect), the `damage-pulse` precedent: the fighter cannot
+  answer it with an instant and pre-hit heals do not fire. That is the anti-stall
+  guarantee — `computerDecisionOwner` needed NO lockstep change and a computer
+  fighter cannot stall on it.
+- **WAVE ASSAULTS ARE EXCLUDED** (hand size 0, CONTROL-pinned). Waves already
+  carry their own escalation (battle events, Stack Tokens, veteran ranks, a
+  mini-boss) and every seat is FORCED to fight them.
+- **The pool is CURATED and read at a FIXED POWER per entry** — Power 0 for
+  everything with a Power table except Implosion (its printed "needs at least
+  Power 1" minimum), because the monster side has no hero and no Power statistic.
+  Ten entries: Magic Arrow (1 dmg), Lightning Bolt (2), Implosion (2), Slow (−1
+  Initiative, printed `combat` duration), Cure (heal 1 + cleanse), Vial of
+  Lifeblood (heal 3), Cape of Velocity (+2 Initiative, printed `combat`), Attack
+  / Defense statistics (+1) and Dragon Scale Shield (+2 Attack). A printed card
+  that cannot be auto-executed with zero windows and no player-owned choice is
+  simply NOT in the pool (all the grade-gated denial spells, area picks,
+  Inferno's dice and every map/economy half are out).
+- **Four entries are a documented WIDENING**: the per-attack `ADD_COMBAT_STAT`
+  statistic/artifact faces run as `current-combat-round` buffs, so they also
+  cover that round's retaliations. Stated on each entry (`SELF_BUFF_WIDENING`)
+  and enforced by a test that a widened entry must SAY "WIDENING".
+- **A PARALYSED boss plays nothing** — `setActiveUnit` consumes the token and
+  advances before the seam is reached, so Paralysis costs the enemy force its
+  card as well as its turn. Quick Combat / level auto-wins can never spend a card
+  (they resolve with no activation at all), and lair/floor fights are never
+  offered Quick Combat anyway.
+- Cards are SYNTHETIC copies: no shared deck is touched, no player zone moves, no
+  economy impact, and the hand dies with the combat state. The pool does NOT read
+  the Polish/Community reprints (base printed numbers only), so a balance pack
+  cannot silently retune a boss. Legacy snapshots (no `enemyForce`) no-op.
+
+What runs: hand SIZE is 5 for a lair and for a Dungeon WARDEN floor (5/10), and
+the floor BAND for an ordinary floor (`pveFloorBand`: shallow 2 / deep 3 / abyss
+4) — the force grows as you descend. The draw is seeded off
+`seed#enemy-force#<combat id>` with `{ salt: false }` (the
+`rollRandomBankRewardStackTokens` recipe), WITHOUT replacement, idempotent via
+`seedEnemyForceHandOnCombat`. MASKING: `getPlayerView` replaces every UNPLAYED id
+with `HIDDEN_CARD_ID` for EVERY viewer (the boss's hand is secret like an
+opponent's) while the COUNT and `playedCardIds` stay public. PLAY POLICY is
+conditional and scored, so it can play NOTHING: a heal needs ≥2 damage, damage is
+scored on what it would deal with a large KILL bonus, buffs/debuffs DECAY by 10
+per card already spent (so it stops stacking and holds), and a seeded per-round
+jitter breaks ties so fights differ. Both pre-fight prompts warn "The enemy force
+holds N cards." PRESENTATION: an `ENEMY_FORCE_CARD_PLAYED` feed line naming the
+card and the numbers, a non-blocking `.enemyForceCue` banner showing the printed
+CARD FACE (`enemy-force-cue*`, `pointer-events: none`, dispatches nothing), and a
+reused H3 sprite+sound derived from each entry's `fxKey`
+(`src/data/enemy-force-fx.ts`; it MUST be listed in page.tsx's `FX_EVENT_TYPES`
+or the FX case is dead code — the `COMMANDER_CAST_USED` case already is).
+BALANCE: `pve-boss-balance.test.ts` now fights every boss/warden WITH the hand
+and adds BAND 6, which requires the hand to measurably cost the attacker more
+(roster average losses 1.19 → 1.50, 16/22 encounters strictly harder). Two tweaks
+it forced are recorded there: the whole Power-1 → Power-0 pool reading, and
+`avatar_of_erebos` Attack 7 → 6 (recorded on its definition; the apex boss is
+also the fastest and longest fight, so it gets the most card plays and fell to
+0/5). BAND 3 alone measures with the hand knocked out, because it compares KITS.
+LIMIT: jsdom cannot compute CSS, so the banner's look is a real-browser concern
+with no e2e spec.
 
 **PvE-site description cards (2026-08-19)**: the three module hexes (Calamity
 Gate / Rift Lair / The Dungeon) get the SAME hover-tooltip + click-to-inspect

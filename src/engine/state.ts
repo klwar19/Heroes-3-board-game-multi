@@ -6971,6 +6971,24 @@ export type GameEvent =
       message: string;
     }
   | {
+      /**
+       * PvE ENEMY FORCE: the monster side spent one of its held cards. Public
+       * the moment it is played (the card id is no longer masked), so the feed,
+       * the cue banner and the board FX can all name it.
+       *
+       * `unitId` is the boss unit that played it (the FX anchor), `cardId` the
+       * real card-library id whose printed face the player sees, `targetUnitId`
+       * the single unit it singled out when it had one, and `message` states
+       * what it did WITH THE NUMBERS.
+       */
+      id: string;
+      type: "ENEMY_FORCE_CARD_PLAYED";
+      unitId: UnitId;
+      cardId: CardId;
+      targetUnitId?: UnitId;
+      message: string;
+    }
+  | {
       /** Calamity Waves: next round brings a wave — position your armies. */
       id: string;
       type: "MONSTER_WAVE_ANNOUNCED";
@@ -9796,6 +9814,29 @@ export type CombatState = {
     playerId: PlayerId;
     cardIds: CardId[];
     empoweredAdded: CardId[];
+  } | null;
+  /**
+   * PvE ENEMY FORCE hand (raid-boss lair / Dungeon-floor fights only — never a
+   * wave assault). The monster side "holds cards like a single-player opponent"
+   * and spends at most one per combat round at its boss unit's own activation
+   * start. See `src/engine/enemy-force.ts` for the pool + the play policy and
+   * `resolveEnemyForceCardPlay` (reducer.ts) for the resolution.
+   *
+   * These are SYNTHETIC copies of real card-library definitions: nothing is
+   * drawn from a shared deck, nothing enters a player zone, and the whole field
+   * evaporates with the combat state. `cardIds` is the drawn hand (seeded once
+   * at combat start, idempotent); `playedCardIds` are the ones already spent
+   * (public, in play order); `fired` is the `unitId#round` ledger that makes a
+   * replay/reconnect unable to double-fire a play.
+   *
+   * MASKING: `getPlayerView` replaces every UNPLAYED id with `HIDDEN_CARD_ID`
+   * — the boss's hand is secret exactly like an opponent's — while `playedCardIds`
+   * stays public. See player-view.ts.
+   */
+  enemyForce?: {
+    cardIds: CardId[];
+    playedCardIds: CardId[];
+    fired: string[];
   } | null;
   /**
    * Bulwark "Runes" (Gamefound Update #3, local house-rule gains), per Bulwark

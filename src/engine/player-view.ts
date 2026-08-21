@@ -492,6 +492,14 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
   // hidden from everyone but its controller. A trap is removed the instant a
   // unit springs it (see walkMoveThroughTokens), so only the caster ever learns
   // which of the face-down tokens still on the board are real.
+  //
+  // The PvE ENEMY FORCE hand is masked the same way an opponent's hand is: the
+  // monster side's UNPLAYED card ids become `HIDDEN_CARD_ID` placeholders (the
+  // COUNT stays public — the pre-fight prompt already announces "the enemy force
+  // holds N cards", and a player must be able to see how many are left), while
+  // `playedCardIds` stays exact, because a spent card was announced by name in
+  // the feed and painted by the cue. Nobody "owns" the enemy force, so this is
+  // masked for EVERY viewer, not just the opposing seat.
   const combat = base.combat
     ? {
         ...base.combat,
@@ -500,7 +508,17 @@ export function getPlayerView(state: GameState, viewerPlayerId: PlayerId): Playe
           (token.kind === "quicksand" || token.kind === "land_mine")
             ? { ...token, armed: undefined }
             : token
-        )
+        ),
+        ...(base.combat.enemyForce
+          ? {
+              enemyForce: {
+                ...base.combat.enemyForce,
+                cardIds: base.combat.enemyForce.cardIds.map((cardId) =>
+                  base.combat!.enemyForce!.playedCardIds.includes(cardId) ? cardId : HIDDEN_CARD_ID
+                )
+              }
+            }
+          : {})
       }
     : base.combat;
 

@@ -214,6 +214,12 @@ import {
 } from "./battlefield";
 import { appendExpiredEffectEvents, finishCombatIfNeeded, markUnitRemovedIfNeeded } from "./combat-units";
 import { applyCombatScriptRoundStart, combatScriptStatDelta } from "./combat-scripts";
+import {
+  chooseEnemyForcePlay,
+  enemyForceCardName,
+  enemyForceFiredKey,
+  enemyForceHandHolder
+} from "./enemy-force";
 import { isNeutralUnit, pickNeutralTarget, planNeutralActivation, sortNeutralTargetCandidates } from "./neutral-ai";
 import {
   combatUnitDecisionOwnerId,
@@ -10021,6 +10027,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   // Wraith/Troll regeneration, Ghost Dragon morale drain and the Wraith-pack
   // enemy hand discard. A paralysed unit (handled above) never reaches here.
   applyActivationStartAbilities(state, activeUnit);
+  // PvE ENEMY FORCE: a raid boss / Dungeon warden holding a hand may spend ONE
+  // card here — at its own activation start, the moment a player would use it.
+  // Deliberately NOT at round start (the removed rotation's chant). Resolves
+  // inline, opens no window; a no-op in every other fight (no `enemyForce`).
+  resolveEnemyForceCardPlay(state, activeUnit);
 }
 
 /**
@@ -10659,6 +10670,186 @@ function applyActivationDamageSpell(
   }
   markUnitRemovedIfNeeded(state, target);
   finishCombatIfNeeded(state);
+}
+
+/**
+ * PvE ENEMY FORCE resolution. Lives here — beside `applyActivationDamageSpell`
+ * — because an enemy-force bolt must take the SAME reduction/immunity gates a
+ * Faerie Bolt does, and `reducedSpellDamage` is module-private to this file.
+ * The pool, the hand draw and the play POLICY are all in the pure leaf
+ * `enemy-force.ts`; this function only executes the four declared shapes.
+ *
+ * Hard rules (all pinned by `enemy-force.test.ts`):
+ *  - NO window, NO pendingChoice, NO reaction window is ever opened. Damage is
+ *    dealt directly (the Faerie-Bolt / `damage-pulse` precedent), so pre-hit
+ *    heal reactions do NOT fire against it. This is the anti-stall guarantee.
+ *  - At most ONE card per combat round, and only at the boss unit's own
+ *    activation start. Idempotent per `unitId#round` via `enemyForce.fired`,
+ *    because `setActiveUnit` can be re-entered (a Polish-Wait re-activation
+ *    returns before this, and a replay/reconnect re-runs the reducer).
+ *  - The holder is re-checked ALIVE, and `finishCombatIfNeeded` runs after a
+ *    damaging play: a bolt that kills the last enemy must end the fight before
+ *    the activation continues.
+ */
+function resolveEnemyForceCardPlay(state: GameState, unit: CombatUnitState): void {
+  const combat = state.combat;
+  const force = combat?.enemyForce;
+  if (!combat || !force || combat.outcome || force.cardIds.length === 0) {
+    return;
+  }
+  // Only the hand HOLDER spends the hand, and only while it lives. An escort
+  // body activating never plays a card.
+  if (!unit.bossUnit || unit.damage >= unit.maxHealth || enemyForceHandHolder(combat)?.id !== unit.id) {
+    return;
+  }
+  const firedKey = enemyForceFiredKey(unit.id, combat.round);
+  if (force.fired.includes(firedKey)) {
+    return;
+  }
+  const chosen = chooseEnemyForcePlay(combat, unit, state.seed, state.activeEffects);
+  if (!chosen) {
+    // "It holds." The round is NOT marked fired: nothing was spent, and the
+    // board may change before this unit activates again (Polish Wait), so a
+    // later look is legitimate. The at-most-one-per-round cap is enforced by
+    // the key being written only when a card is actually played.
+    return;
+  }
+
+  const { entry, target } = chosen;
+  const execution = entry.execution;
+  const cardName = enemyForceCardName(entry.cardId);
+  // Spend the card FIRST: from here every exit path has consumed it, so a
+  // no-legal-target execution can never loop or replay.
+  force.playedCardIds.push(entry.cardId);
+  force.fired.push(firedKey);
+
+  const note = (message: string, targetUnitId?: UnitId): void => {
+    appendEvent(state, {
+      type: "ENEMY_FORCE_CARD_PLAYED",
+      unitId: unit.id,
+      cardId: entry.cardId,
+      ...(targetUnitId ? { targetUnitId } : {}),
+      message: `${unit.cardName} plays ${cardName} — ${message}.`
+    });
+  };
+
+  if (execution.k === "spell-damage") {
+    if (!target) {
+      note("no living target");
+      return;
+    }
+    // A Factory Couatl's invulnerability (a DAMAGE ward) turns it aside whole.
+    if (isUnitDamageImmune(target)) {
+      note(`${target.cardName} is invulnerable and ignores it`, target.id);
+      return;
+    }
+    // The pool's damage entries are school-less from the monster side, so the
+    // "any" reading: only an ALL-school immunity (printed or artifact-granted)
+    // blocks it — a single-school immunity does not.
+    const schools: readonly SpellSchool[] = ["any"];
+    if (
+      unitImmuneToSpellSchoolsByEffect(state, target, schools) ||
+      (!spellAbilitiesSuppressed(state) && unitImmuneToSpellSchools(target, schools))
+    ) {
+      note(`${target.cardName} is immune to Spells and ignores it`, target.id);
+      return;
+    }
+    const dealt = reducedSpellDamage(state, target, execution.amount);
+    note(`${dealt} Spell damage to ${target.cardName}`, target.id);
+    if (dealt <= 0) {
+      return;
+    }
+    target.damage += dealt;
+    noteUnitDamagedForTokens(state, target, dealt);
+    appendEvent(state, {
+      type: "DAMAGE_ASSIGNED",
+      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      target: { type: "unit", unitId: target.id },
+      amount: dealt,
+      damageKind: "spell"
+    });
+    markUnitRemovedIfNeeded(state, target);
+    // A bolt that wiped the last unit of a side ends the fight before the
+    // activation continues.
+    finishCombatIfNeeded(state);
+    return;
+  }
+
+  if (execution.k === "self-heal") {
+    if (unit.damage <= 0) {
+      note("it is already unwounded");
+      return;
+    }
+    const restored = Math.min(execution.amount, unit.damage);
+    // `armyStacks` is deliberately untouched: a shed health BAR never returns.
+    unit.damage -= restored;
+    appendEvent(state, {
+      type: "DAMAGE_HEALED",
+      source: { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+      target: { type: "unit", unitId: unit.id },
+      amount: restored
+    });
+    if (execution.cleanse) {
+      // The printed Cure rider: its negative ongoing effects and Paralysis.
+      removeEffectsFromTarget(
+        state,
+        { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+        { type: "unit", unitId: unit.id },
+        "negative"
+      );
+      while (hasToken(unit, "paralysis")) {
+        removeToken(state, unit, "paralysis", "dispelled");
+      }
+      note(`it removes ${restored} damage and shakes off its negative effects (health bars are never restored)`, unit.id);
+      return;
+    }
+    note(`it removes ${restored} damage (health bars are never restored)`, unit.id);
+    return;
+  }
+
+  // The two ActiveEffect shapes: a positive buff on itself, or a negative
+  // debuff on the one enemy the execution singled out.
+  const modifier =
+    execution.stat === "attack"
+      ? ({ type: "ATTACK_BONUS", amount: execution.amount } as const)
+      : execution.stat === "defense"
+        ? ({ type: "DEFENSE_BONUS", amount: execution.amount } as const)
+        : ({ type: "INITIATIVE_BONUS", amount: execution.amount } as const);
+  const subject = execution.k === "self-buff" ? unit : target;
+  if (!subject) {
+    note("no living target");
+    return;
+  }
+  const effect = makeActiveEffect(
+    state,
+    {
+      name: cardName,
+      scope: "unit",
+      duration: execution.duration,
+      polarity: execution.k === "self-buff" ? "positive" : "negative",
+      removable: true,
+      modifiers: [modifier]
+    },
+    { type: "unit", unitId: unit.id, controllerId: unit.controllerId },
+    unit.controllerId,
+    { type: "unit", unitId: subject.id }
+  );
+  state.activeEffects.push(effect);
+  appendEvent(state, {
+    type: "ACTIVE_EFFECT_CREATED",
+    effectId: effect.id,
+    controllerId: unit.controllerId,
+    name: effect.name,
+    duration: effect.duration
+  });
+  const statLabel =
+    execution.stat === "attack" ? "Attack" : execution.stat === "defense" ? "Defense" : "Initiative";
+  const scopeLabel =
+    execution.duration.type === "combat" ? "for the rest of the combat" : "this combat round";
+  note(
+    `${execution.amount > 0 ? "+" : ""}${execution.amount} ${statLabel} on ${subject.cardName} ${scopeLabel}`,
+    subject.id
+  );
 }
 
 /**

@@ -220,6 +220,9 @@ import {
   dungeonTreasureThemeOf,
   DUNGEON_TREASURE_THEME_LABELS
 } from "./dungeon";
+// PvE ENEMY FORCE (leaf: pool + planning only, no engine cycle) — the pre-fight
+// "the enemy force holds N cards" line on both module prompts.
+import { enemyForceHandNotice, enemyForceHandSize } from "./enemy-force";
 // PURE data-side query (never the engine's combat-scripts module — that pulls in
 // combat-units → adventure): the field effects a PvE fight will run, listed in
 // the menu BEFORE the player commits.
@@ -17664,9 +17667,16 @@ function handleDungeonGateVisit(
   const effectLines = combatScriptEffectLines(
     pveEncounterScriptsFor({ theme: dungeonThemeOf(state), dungeonFloor: floor })
   );
+  // PvE ENEMY FORCE: warn how many cards the monster side will hold before the
+  // player commits the descent. Derived from the SAME `enemyForceHandSize` the
+  // combat-start draw reads (warden floors field a boss's five), so the prompt
+  // can never advertise a different hand than the fight deals.
+  const enemyForceNotice = enemyForceHandNotice(
+    enemyForceHandSize({ dungeonFloor: floor }, { wardenFloor: bossId !== undefined })
+  );
   const infoSuffix = `${rewardLine ? ` Floor reward: ${rewardLine}.` : ""} ${treasureLine}${
     effectLines.length > 0 ? ` Field effects: ${effectLines.join(" ")}` : ""
-  }`;
+  }${enemyForceNotice}`;
 
   if (bossId) {
     const boss = resolveBossDefinition(state, bossId);
@@ -17764,7 +17774,7 @@ function handleRiftLairVisit(state: GameState, playerId: PlayerId, heroId: HeroI
           boss.layersLeft === 1 ? "s" : ""
         }. Challenge it? (Wounds persist; every layer broken pays ${RAID_BOSS_LAYER_BREAK_GOLD} gold, the kill ${RAID_BOSS_KILL_GOLD} gold + a relic search.)${
           lairEffectLines.length > 0 ? ` Field effects: ${lairEffectLines.join(" ")}` : ""
-        }`,
+        }${enemyForceHandNotice(enemyForceHandSize({ raidBossId: boss.defId }))}`,
         options: [
           {
             label: `Challenge ${def.name}`,

@@ -724,6 +724,9 @@ export function formatEvent(event: GameEvent, state: GameState): string {
       return event.message;
     // Calamity Waves / Raid Bosses / the Dungeon: every module event carries
     // its full feed line (module texts stay single-sourced at the wiring).
+    // The PvE enemy force's card play: the engine's own message already names
+    // the card and the numbers.
+    case "ENEMY_FORCE_CARD_PLAYED":
     case "MONSTER_WAVE_ANNOUNCED":
     case "MONSTER_WAVE_STARTED":
     case "MONSTER_WAVE_REPELLED":

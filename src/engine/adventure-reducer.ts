@@ -340,6 +340,7 @@ import {
   dungeonFloorDifficulty,
   dungeonFloorRewardSteps
 } from "./dungeon";
+import { enemyForceHandSize, seedEnemyForceHandOnCombat } from "./enemy-force";
 import { appendEvent, eventSeedNumber, nextEventNumber } from "./events";
 import { commitFirstPlayerRoll } from "./first-player";
 import { maybeAdvanceCultivationRealm, tribulationAvailable } from "./anime-cultivation";
@@ -10542,6 +10543,45 @@ function rollRandomBankRewardStackTokens(state: GameState): void {
   }
 }
 
+/**
+ * PvE ENEMY FORCE (2026-08-21, replacing BOSS_SPELL_ROTATION): deal the monster
+ * side its hand of synthetic card copies. ONE seam covering BOTH module fights,
+ * because `resumeCombatStartAfterCommanderPlacement` is the single combat-start
+ * package every raid-boss lair and every Dungeon-floor fight passes through.
+ *
+ * IDEMPOTENT: a fight whose `enemyForce` is already set is skipped, so the
+ * re-entries this package survives (a Bounty-Hunter / Disciplinary / commander
+ * sort window resolving back into it) never re-deal — and never reroll.
+ *
+ * A wave assault, an ordinary guard field, a Creature Bank, a PvP fight and the
+ * Battle-Test sandbox all get hand size 0 and therefore NO `enemyForce` field at
+ * all, which keeps their serialized shape byte-identical.
+ */
+function seedEnemyForceHand(state: GameState): void {
+  const combat = state.combat;
+  if (!combat || combat.enemyForce || combat.context.kind !== "neutral") {
+    return;
+  }
+  const context = combat.context;
+  const floor = context.dungeonFloor;
+  const size = enemyForceHandSize(context, {
+    // A WARDEN floor fields a boss, so it holds a boss's five. Read through the
+    // engine's own `dungeonBossId`, so a designer-configured warden floor counts
+    // exactly like a shipped 5/10 one.
+    wardenFloor: floor !== undefined && dungeonBossId(state, floor) !== undefined
+  });
+  if (!seedEnemyForceHandOnCombat(combat, state.seed, size)) {
+    return;
+  }
+  const count = combat.enemyForce!.cardIds.length;
+  appendEvent(state, {
+    type: "EVENT_NOTE",
+    message: `The enemy force draws ${count} card${
+      count === 1 ? "" : "s"
+    } and may spend one each combat round.`
+  });
+}
+
 function finalizeCombatStart(state: GameState): void {
   const combat = state.combat;
   if (!combat) {
@@ -10623,6 +10663,11 @@ function resumeCombatStartAfterCommanderPlacement(state: GameState): void {
   // Won Creature-Bank reward cards roll their RANDOM Stack Token now (idempotent),
   // before any start-of-combat stat read. See rollRandomBankRewardStackTokens.
   rollRandomBankRewardStackTokens(state);
+
+  // PvE ENEMY FORCE: a raid-boss lair / Dungeon-floor fight deals the monster
+  // side its hand now (idempotent), before any unit can activate and therefore
+  // before any card could be spent. See seedEnemyForceHand.
+  seedEnemyForceHand(state);
 
   // Little Busters Disciplinary Committee Pack is a real mandatory target
   // choice, not an automatic strongest-target shortcut. Resolve every Pack on
