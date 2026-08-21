@@ -5,6 +5,7 @@ import soundManifest from "../../public/sounds/manifest.json";
 import { coreUnitDefinitions } from "./factions/units";
 import { DOOM_UNIT_IDS } from "./doom";
 import { COMMANDER_SLUGS } from "./commanders";
+import { listAllBossDefinitions } from "./anime/bosses";
 import { commanderSoundKey, commanderVoiceId, unitAttackFlourish, unitSoundKey, type UnitSoundAction } from "./unit-sounds";
 
 const soundLibrary = soundManifest as Record<string, { src?: string; sequence?: string[]; random?: string[]; repeat?: number; sequenceDelayMs?: number }>;
@@ -524,5 +525,37 @@ describe("unit combat voices", () => {
     // The Hell Steed is a NORMAL melee attacker now (no Magic Arrow), so its blow
     // no longer layers a magic-arrow zap over its voice.
     expect(unitAttackFlourish("wog.hell_steed")).toBeUndefined();
+  });
+
+  it("gives every Raid Boss / Dungeon warden a voice, resolving to real clips on disk", () => {
+    // A boss combat unit's id is `boss.<id>` (makeRaidBossCombatUnit); before the
+    // bossVoices map it fell through to silence. Sweep every shipped boss plus the
+    // custom-boss fallback: each must resolve every core action to a clip that
+    // exists on disk. Fails if a boss id is added without a voice, or a mapped
+    // voice base loses its clip — the effect (audible boss), not the artifact.
+    const bossIds = [...listAllBossDefinitions().map((b) => b.id), "custom_boss"];
+    expect(bossIds.length).toBeGreaterThan(20);
+    const missing: string[] = [];
+    for (const id of bossIds) {
+      for (const action of coreActions) {
+        const key = unitSoundKey(`boss.${id}`, action);
+        const srcs = clipSrcs(key);
+        if (!key || srcs.length === 0) {
+          missing.push(`${id}: ${action}`);
+          continue;
+        }
+        for (const src of srcs) {
+          const file = fileURLToPath(new URL(`../../public${src}`, import.meta.url));
+          if (!existsSync(file)) {
+            missing.push(`${id}: ${action} -> ${src} (no file)`);
+          }
+        }
+      }
+    }
+    expect(missing).toEqual([]);
+    // CONTROL: the calamity dragon speaks with the Black Dragon's voice, and an
+    // unmapped boss id stays silent (so the map is doing the work, not a catch-all).
+    expect(unitSoundKey("boss.calamity_dragon", "attack")).toBe("units/black-dragon-attack");
+    expect(unitSoundKey("boss.not_a_boss", "attack")).toBeUndefined();
   });
 });

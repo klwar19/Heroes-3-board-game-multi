@@ -3489,8 +3489,11 @@ export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () 
     onDoneRef.current = onDone;
   }, [onDone]);
 
+  // A Calamity Wave gets an ominous war-horn instead of the cheerful new-week
+  // chime — it is a threat bearing down on every army, not a bookkeeping notice.
+  const isWave = Boolean(cue.monsterWave);
   useEffect(() => {
-    playLibrarySound("adventure/new-week", 0.4);
+    playLibrarySound(isWave ? "effects/horn-altar" : "adventure/new-week", isWave ? 0.55 : 0.4);
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape" || event.key === "Enter") {
         onDoneRef.current();
@@ -3498,7 +3501,7 @@ export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () 
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [isWave]);
 
   const headerIcon = cue.monsterWave ? "⚔️" : cue.finalRound ? "⏳" : "🗺️";
   const headerTitle = cue.monsterWave
@@ -3513,6 +3516,41 @@ export function MapEventOverlay({ cue, onDone }: { cue: MapEventCue; onDone: () 
     : cue.finalRound
     ? `Final round — round ${cue.round}`
     : `Map event — round ${cue.round}`;
+
+  // Calamity Waves get a dedicated HORROR treatment: a full-bleed painted
+  // invasion backdrop and a single short line instead of the ornate scroll's
+  // verbose effect list — a wave is a threat to brace for, not a memo to read.
+  if (cue.monsterWave) {
+    const tagline =
+      cue.monsterWave === "imminent"
+        ? "The horde is here — every army fights NOW."
+        : "The horde gathers — every army is struck next round.";
+    return (
+      <div
+        className="astrologersProclaimBackdrop mapEventBackdrop waveWarnBackdrop"
+        role="dialog"
+        aria-label={ariaLabel}
+        onClick={onDone}
+      >
+        <div className="mapEventCard waveWarnCard" onClick={(event) => event.stopPropagation()}>
+          <img
+            aria-hidden="true"
+            className="waveWarnArt"
+            src={assetUrl("/assets/ui/monster-wave-warning.webp")}
+            alt=""
+          />
+          <div className="waveWarnBody">
+            <span className="waveWarnRound">Round {cue.round}</span>
+            <strong className="waveWarnTitle">{headerTitle}</strong>
+            <p className="waveWarnTagline">{tagline}</p>
+            <button className="commandButton primary waveWarnButton" onClick={onDone} type="button">
+              Brace for battle
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

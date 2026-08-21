@@ -236,6 +236,44 @@ const creatureVoices: Record<string, string> = {
 };
 
 /**
+ * Raid Bosses & Dungeon-floor wardens (src/data/anime/bosses.ts). A boss combat
+ * unit's `unitDefId` is `boss.<id>` (makeRaidBossCombatUnit), so it never
+ * resolved through `creatureVoices` and fought SILENT. Each id reuses the
+ * closest converted Heroes III creature voice set — no dedicated boss audio
+ * exists yet — so a boss now roars, takes hits and dies audibly. Pinned by a
+ * whole-roster sweep in unit-sounds.test.ts (every listAllBossDefinitions id
+ * plus custom_boss resolves to a real attack clip). Every value here is a voice
+ * base that already backs a shipped roster creature, so the clips are known to
+ * exist on disk.
+ */
+const bossVoices: Record<string, string> = {
+  goblin_king: "goblin",
+  colossal_titan: "titan",
+  abyss_kraken: "hydra",
+  calamity_dragon: "black-dragon",
+  avatar_of_erebos: "arch-devil",
+  cyberdemon_prime: "titan",
+  spider_overmind: "hydra",
+  lich_archon: "lich",
+  hydra_matriarch: "hydra",
+  basilisk_queen: "basilisk",
+  wailing_banshee: "ghost-dragon",
+  archvile_ascendant: "efreet",
+  mother_demon: "pit-lord",
+  minotaur_of_the_depths: "minotaur",
+  floor_wyrm: "wyvern",
+  doom_baron_warden: "behemoth",
+  doom_cyberdemon_tyrant: "titan",
+  warden_gorgon_matron: "gorgon",
+  warden_stone_choir: "stone-golem",
+  warden_bone_colossus: "behemoth",
+  doom_hell_knight_warden: "behemoth",
+  doom_archvile_warden: "efreet",
+  // Fallback face for a designer-authored boss ("THE NAMELESS").
+  custom_boss: "arch-devil"
+};
+
+/**
  * Fate/unlimited codes voices and character sounds for Fuyuki City. Each unit
  * has its own five core actions; EMIYA and Medea also have a named ranged line.
  */
@@ -661,7 +699,10 @@ export function unitSoundKey(unitDefId: string, action: UnitSoundAction): string
   if (azurLaneSlug) {
     return azurLaneVoiceKey(azurLaneSlug, action);
   }
-  const voice = creatureVoices[bareName];
+  // Raid/Dungeon bosses (unitDefId `boss.<id>`) borrow a converted H3 voice.
+  const voice = unitDefId.startsWith("boss.")
+    ? bossVoices[bareName]
+    : creatureVoices[bareName];
   if (!voice) {
     return undefined;
   }

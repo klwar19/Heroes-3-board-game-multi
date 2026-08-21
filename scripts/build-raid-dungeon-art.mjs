@@ -19,7 +19,9 @@ const OUT_DIR = path.join(ROOT, "public", "assets", "bosses");
 const CARD_W = 743;
 const CARD_H = 1040;
 const HEX = 512;
-const WEBP = { quality: 92, effort: 6 };
+// q84 + smartSubsample keeps these dark, detailed card illustrations clean while
+// cutting ~35% off the q92 sizes (dragons/demons were ~190-263KB → ~120-170KB).
+const WEBP = { quality: 84, effort: 6, smartSubsample: true };
 
 const BOSSES = [
   { id: "goblin_king", name: "GOBLIN KING", title: "Tyrant of the Warrens", layers: 3, accent: "#9adb4f" },
@@ -29,15 +31,13 @@ const BOSSES = [
   { id: "avatar_of_erebos", name: "AVATAR OF EREBOS", title: "The God That Walks", layers: 7, accent: "#b779ff" },
   { id: "minotaur_of_the_depths", name: "MINOTAUR OF THE DEPTHS", title: "Warden of Floor 5", layers: 2, accent: "#e0a054" },
   { id: "floor_wyrm", name: "THE FLOOR WYRM", title: "Warden of Floor 10", layers: 2, accent: "#e5e2cf" },
-  { id: "custom_boss", name: "CUSTOM BOSS", title: "Designer's Nightmare", layers: 4, accent: "#a8c4ec" },
+  { id: "custom_boss", name: "THE NAMELESS", title: "A Horror Unbound", layers: 4, accent: "#a8c4ec" },
   { id: "cyberdemon_prime", name: "CYBERDEMON PRIME", title: "Siege Lord of Hell", layers: 6, accent: "#ff6b35" },
   { id: "spider_overmind", name: "SPIDER OVERMIND", title: "Architect of the Invasion", layers: 5, accent: "#a9ff70" },
   { id: "doom_baron_warden", name: "BARON WARDEN", title: "Keeper of Infernal Floor 5", layers: 2, accent: "#8dff55", topPadding: 120 },
   { id: "doom_cyberdemon_tyrant", name: "CYBERDEMON TYRANT", title: "Keeper of Infernal Floor 10", layers: 3, accent: "#ff7a32" },
-  // Variant expansion §B/§C. ART PENDING: the ImageGen masters for these eleven
-  // are not in scripts/anime-art/raw/bosses yet, so this script cannot render
-  // them and `boss-abilities.test.ts`'s art-existence sweep fails for them until
-  // the masters land. Stats/titles/layers here must match src/data/anime/bosses.ts.
+  // Variant expansion §B/§C. Masters live in scripts/anime-art/raw/bosses.
+  // Stats/titles/layers here must match src/data/anime/bosses.ts.
   { id: "lich_archon", name: "LICH ARCHON", title: "Tongue of the Cold Grave", layers: 5, accent: "#7bf2a8" },
   { id: "hydra_matriarch", name: "HYDRA MATRIARCH", title: "Nine Jaws of the Fen", layers: 4, accent: "#7fd4a1" },
   { id: "basilisk_queen", name: "BASILISK QUEEN", title: "Gaze of the Stone Garden", layers: 4, accent: "#e5b34a" },
@@ -75,41 +75,61 @@ function cornerFlourish(x, y, sx, sy) {
 }
 
 function cardFinishSvg(boss) {
+  // COMPACT overlay (2026-08-21): the previous plates were so large the monster
+  // illustration was barely visible. The name plate is now a slim top band with
+  // smaller type, the shade far lighter, and the bottom is health-layer PIPS ONLY
+  // (no "HEALTH LAYERS" word) so the art reads through. Dimensions stay 743x1040.
   const cx = CARD_W / 2;
-  const pipWidth = 46;
-  const pipGap = 14;
+  // LAYOUT (2026-08-21): the name plate USED to sit at the top and covered the
+  // monster's head/horns on many bosses. Both the name plate AND the health-layer
+  // pips now live at the BOTTOM of the card, stacked, so the entire upper frame —
+  // where creature heads sit — is clear. Feet/base get the overlay instead.
+  const pipHeight = 14;
+  const pipY = CARD_H - 42;
+  const pipGap = 11;
+  const maxPipRow = CARD_W - 240;
+  const pipWidth = Math.min(
+    38,
+    Math.floor((maxPipRow - (boss.layers - 1) * pipGap) / boss.layers)
+  );
   const totalPipWidth = boss.layers * pipWidth + (boss.layers - 1) * pipGap;
   const pips = Array.from({ length: boss.layers }, (_, index) => {
     const x = cx - totalPipWidth / 2 + index * (pipWidth + pipGap);
-    return `<rect x="${x}" y="928" width="${pipWidth}" height="19" rx="5"
+    return `<rect x="${x}" y="${pipY}" width="${pipWidth}" height="${pipHeight}" rx="4"
       fill="${boss.accent}" stroke="#100b08" stroke-width="2"/>`;
   }).join("");
+  // A thin dark cradle behind the pips so light accents stay legible over bright art.
+  const cradlePad = 16;
+  const cradleX = cx - totalPipWidth / 2 - cradlePad;
+  const cradleW = totalPipWidth + cradlePad * 2;
+  // The name plate, now a bottom banner just above the pip row.
   const nameSize =
-    boss.name.length >= 18 ? 32 : boss.name.length >= 15 ? 36 : boss.name.length >= 12 ? 42 : 48;
+    boss.name.length >= 18 ? 24 : boss.name.length >= 15 ? 27 : boss.name.length >= 12 ? 30 : 34;
+  const nameY = CARD_H - 150;
+  const nameH = 82;
   return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W}" height="${CARD_H}">
     <defs>
       <linearGradient id="shade" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#050306" stop-opacity="0.92"/>
-        <stop offset="22%" stop-color="#050306" stop-opacity="0.08"/>
-        <stop offset="72%" stop-color="#050306" stop-opacity="0"/>
-        <stop offset="100%" stop-color="#050306" stop-opacity="0.97"/>
+        <stop offset="0%" stop-color="#050306" stop-opacity="0.34"/>
+        <stop offset="16%" stop-color="#050306" stop-opacity="0"/>
+        <stop offset="64%" stop-color="#050306" stop-opacity="0"/>
+        <stop offset="100%" stop-color="#050306" stop-opacity="0.9"/>
       </linearGradient>
     </defs>
     <rect width="${CARD_W}" height="${CARD_H}" fill="url(#shade)"/>
-    <rect x="18" y="18" width="${CARD_W - 36}" height="${CARD_H - 36}" fill="none" stroke="#d7b45d" stroke-width="6" rx="14"/>
-    <rect x="34" y="34" width="${CARD_W - 68}" height="${CARD_H - 68}" fill="none" stroke="#d7b45d" stroke-width="2" rx="10" opacity="0.9"/>
-    ${cornerFlourish(52, 52, 1, 1)}
-    ${cornerFlourish(CARD_W - 52, 52, -1, 1)}
-    ${cornerFlourish(52, CARD_H - 52, 1, -1)}
-    ${cornerFlourish(CARD_W - 52, CARD_H - 52, -1, -1)}
-    <rect x="72" y="72" width="${CARD_W - 144}" height="134" rx="14" fill="#070407" fill-opacity="0.78" stroke="#d7b45d" stroke-width="2"/>
-    <text x="${cx}" y="137" font-family="Georgia, 'Times New Roman', serif" font-size="${nameSize}" font-weight="bold"
-      fill="#fff3d0" text-anchor="middle" letter-spacing="2">${escapeXml(boss.name)}</text>
-    <text x="${cx}" y="180" font-family="Georgia, serif" font-size="25" font-style="italic"
+    <rect x="18" y="18" width="${CARD_W - 36}" height="${CARD_H - 36}" fill="none" stroke="#d7b45d" stroke-width="5" rx="14"/>
+    <rect x="32" y="32" width="${CARD_W - 64}" height="${CARD_H - 64}" fill="none" stroke="#d7b45d" stroke-width="1.5" rx="10" opacity="0.85"/>
+    ${cornerFlourish(50, 50, 1, 1)}
+    ${cornerFlourish(CARD_W - 50, 50, -1, 1)}
+    ${cornerFlourish(50, CARD_H - 50, 1, -1)}
+    ${cornerFlourish(CARD_W - 50, CARD_H - 50, -1, -1)}
+    <rect x="66" y="${nameY}" width="${CARD_W - 132}" height="${nameH}" rx="12" fill="#070407" fill-opacity="0.7" stroke="#d7b45d" stroke-width="1.5"/>
+    <text x="${cx}" y="${nameY + 42}" font-family="Georgia, 'Times New Roman', serif" font-size="${nameSize}" font-weight="bold"
+      fill="#fff3d0" text-anchor="middle" letter-spacing="1.5">${escapeXml(boss.name)}</text>
+    <text x="${cx}" y="${nameY + 68}" font-family="Georgia, serif" font-size="17" font-style="italic"
       fill="${boss.accent}" text-anchor="middle">${escapeXml(boss.title)}</text>
-    <rect x="116" y="878" width="${CARD_W - 232}" height="93" rx="16" fill="#070407" fill-opacity="0.78" stroke="#d7b45d" stroke-width="1.5"/>
-    <text x="${cx}" y="914" font-family="Georgia, serif" font-size="20" font-weight="bold"
-      fill="#efe3c2" text-anchor="middle" letter-spacing="2">HEALTH LAYERS</text>
+    <rect x="${cradleX}" y="${pipY - 8}" width="${cradleW}" height="${pipHeight + 16}" rx="8"
+      fill="#070407" fill-opacity="0.55" stroke="#d7b45d" stroke-width="1"/>
     ${pips}
   </svg>`);
 }
