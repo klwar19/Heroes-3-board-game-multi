@@ -1079,6 +1079,48 @@ describe("Balance Pack artifacts — Eversmoking Ring of Sulfur", () => {
   it("CONTROL: the printed card pays 2", () => {
     expect(removeGain(false)).toBe(2);
   });
+
+  // The REPORTED bug (2026-08-22): the from-hand remove side above was already
+  // balanced, but CRACKING the ring open while it sits in the permanent slot
+  // (CRACK_PERMANENT) read the PRINTED library and still paid 2.
+  const crackInPlay = (balance: boolean) => {
+    let state = createAdventureGameState({
+      seed: `sulfur-crack-${balance}`,
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-card-balance": balance };
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.permanents = ["artifact.eversmoking_ring_of_sulfur" as CardId];
+    const before = state.players.p1.resources.valuables;
+    const offer = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "CRACK_PERMANENT" &&
+        legal.action.cardId === "artifact.eversmoking_ring_of_sulfur"
+    );
+    expect(offer, "an in-play income permanent offers a crack-open action").toBeTruthy();
+    const played = applyOk(state, offer!.action);
+    return {
+      delta: played.players.p1.resources.valuables - before,
+      label: offer!.label,
+      removed: played.players.p1.removed.includes("artifact.eversmoking_ring_of_sulfur")
+    };
+  };
+
+  it("cracking it open IN PLAY pays 1 valuables (was 2) and the label says 1", () => {
+    const cracked = crackInPlay(true);
+    expect(cracked.delta).toBe(1);
+    expect(cracked.label).toContain("1 valuables");
+    expect(cracked.removed).toBe(true);
+  });
+
+  it("CONTROL: with the pack OFF the in-play crack still pays the printed 2", () => {
+    const cracked = crackInPlay(false);
+    expect(cracked.delta).toBe(2);
+    expect(cracked.label).toContain("2 valuables");
+  });
 });
 
 // ===========================================================================

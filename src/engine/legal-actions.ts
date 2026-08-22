@@ -5237,7 +5237,9 @@ function addPermanentDiscardActions(actions: LegalAction[], state: GameState, pl
     // Income permanents (Eversmoking Ring of Sulfur, Inexhaustible Cart of Ore)
     // can be cracked open for their one-off instant gain even after the income
     // side was chosen and the card is sitting in the permanent slot.
-    const crackGain = permanentCrackOpenGain(cardId);
+    // Balance packs move the crack-open numbers, so the LABEL must be read off
+    // the same balanced definition the handler spends (state-aware read).
+    const crackGain = permanentCrackOpenGain(state, cardId);
     if (crackGain) {
       const parts = [
         crackGain.gold ? `${crackGain.gold} gold` : null,

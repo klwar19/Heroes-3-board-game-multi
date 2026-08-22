@@ -660,11 +660,20 @@ export function discardPermanentVoluntarily(
  * Schools of Magic, Pandora's permanents). This is the side a player normally
  * picks at play time INSTEAD of entering play; exposing it here lets it be used
  * later, once the income side is already in the permanent slot.
+ *
+ * Balance packs: the reprints move these numbers (the Eversmoking Ring's remove
+ * side pays 1 valuables instead of 2 under BOTH the Polish and the Community
+ * pack; the Endless Sack of Gold's pays 5 instead of 8), so this MUST read the
+ * same `balanceCard` definition the round-start income read and the card face
+ * use — the sibling income read in `startAdventureRound` was already balanced
+ * while this one was still on the printed library. With every pack off
+ * `balanceCard` returns `cardLibrary[cardId]` unchanged.
  */
 export function permanentCrackOpenGain(
+  state: GameState,
   cardId: CardId
 ): { gold?: number; buildingMaterials?: number; valuables?: number } | null {
-  const card = cardLibrary[cardId];
+  const card = balanceCard(state, cardId);
   if (card?.effect.type !== "CHOOSE_ONE") {
     return null;
   }
@@ -693,7 +702,7 @@ export function crackPermanentForInstant(
     throw new Error("That permanent is not in play.");
   }
 
-  const gain = permanentCrackOpenGain(action.cardId);
+  const gain = permanentCrackOpenGain(state, action.cardId);
   if (!gain) {
     throw new Error("That permanent has no instant effect to use.");
   }

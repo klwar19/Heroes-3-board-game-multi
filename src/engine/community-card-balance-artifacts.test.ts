@@ -319,6 +319,56 @@ describe("Community artifacts — resource sides", () => {
     });
   }
 
+  // The REPORTED bug (2026-08-22, "the ring still gives 2 minerals when crack
+  // open"): the from-hand remove side above was already balanced, but CRACKING
+  // an income permanent open while it sits in the permanent slot
+  // (CRACK_PERMANENT) read the PRINTED library — so both the offer LABEL and
+  // the resources actually paid were the printed numbers.
+  // Sibling sweep (CLAUDE.md #1a.3): every income permanent whose crack-open
+  // side the pack moves. The Cart of Ore's remove side is UNCHANGED at 3, so it
+  // rides along as the "did not drift" sibling.
+  const CRACK_IN_PLAY = [
+    { cardId: "artifact.eversmoking_ring_of_sulfur", resource: "valuables", community: 1, classic: 2, unit: "valuables" },
+    { cardId: "artifact.endless_sack_of_gold", resource: "gold", community: 5, classic: 8, unit: "gold" },
+    {
+      cardId: "artifact.inexhaustible_cart_of_ore",
+      resource: "buildingMaterials",
+      community: 3,
+      classic: 3,
+      unit: "building materials"
+    }
+  ] as const;
+
+  for (const entry of CRACK_IN_PLAY) {
+    it(`${cardLibrary[entry.cardId]?.name}: cracking it open IN PLAY pays ${entry.community} (was ${entry.classic})`, () => {
+      const crack = (community: boolean) => {
+        const state = mapState(`crack-${entry.cardId}-${community}`, community);
+        state.players.p1.permanents = [entry.cardId as CardId];
+        const before = state.players.p1.resources[entry.resource];
+        const offer = getLegalActions(state, "p1").find(
+          (legal) => legal.action.type === "CRACK_PERMANENT" && legal.action.cardId === entry.cardId
+        );
+        expect(offer, "an in-play income permanent offers a crack-open action").toBeTruthy();
+        const played = applyOk(state, offer!.action);
+        return {
+          delta: played.players.p1.resources[entry.resource] - before,
+          label: offer!.label,
+          removed: played.players.p1.removed.includes(entry.cardId)
+        };
+      };
+
+      const on = crack(true);
+      expect(on.delta).toBe(entry.community);
+      expect(on.label).toContain(`${entry.community} ${entry.unit}`);
+      expect(on.removed).toBe(true);
+
+      // CONTROL — pack OFF keeps the printed number at both seams.
+      const off = crack(false);
+      expect(off.delta).toBe(entry.classic);
+      expect(off.label).toContain(`${entry.classic} ${entry.unit}`);
+    });
+  }
+
   it("Endless Purse of Gold: option A now COSTS a discard for its 3 gold; the remove side pays 6 (was 8)", () => {
     const build = (community: boolean) => {
       const state = mapState(`purse-${community}`, community);
