@@ -4779,6 +4779,9 @@ export function ArmyPanel({
   // Honour the individual Griffin/Marksman toggles so the roster shows the same
   // live stats the engine will fight with (not just the bundled mode default).
   const sideOverrides = unitSideRuleOverrides(state);
+  // The same rules the printed CARD FACES beside each row must be read through
+  // (their zoom prints the side's stats).
+  const armySideRules = { ruleset, overrides: sideOverrides };
 
   // Ordered render list: each faction unit in printed order (owned card if the
   // player has it, else an unowned "not recruited" placeholder), then any army
@@ -4856,6 +4859,7 @@ export function ArmyPanel({
                     fewCost={rosterDef?.few?.cost}
                     ownedSide={null}
                     packCost={rosterDef?.pack?.cost}
+                    sideRules={armySideRules}
                     unitDefId={entry.unitDefId}
                   />
                 ) : null}
@@ -4971,6 +4975,7 @@ export function ArmyPanel({
                   fewCost={def?.few?.cost}
                   ownedSide={unit.side}
                   packCost={def?.pack?.cost}
+                  sideRules={armySideRules}
                   unitDefId={unit.unitDefId}
                 />
               ) : null}

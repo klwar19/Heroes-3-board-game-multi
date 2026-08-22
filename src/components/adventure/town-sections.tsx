@@ -15,13 +15,16 @@ import { allTileDefinitions } from "@/data/map/tiles";
 import type { TownBuildingDefinition } from "@/data/factions/types";
 import {
   applyRecruitGoldDiscount,
+  applyUnitSideRules,
   freeSpellBookActive,
+  getRuleset,
   houseRuleEnabled,
   inCombatPrep,
   legionVoucherDiscount,
   polishArmyUnitStackCap,
   polishArmyUnitStackCost,
   polishUnitStackCapLabel,
+  unitSideRuleOverrides,
   type ArmyUnitState,
   type GameAction,
   type GameState,
@@ -364,16 +367,50 @@ function UnitCost({ cost, label }: { cost: ResourceCost; label: string }) {
 }
 
 /**
+ * The live unit-stat house rules a printed card FACE must be read through
+ * (`griffin-buff`, `marksman-buff`, `phoenix-pack-rebirth`, the Community
+ * Balance unit sides). Threaded as a REQUIRED prop rather than defaulted, so a
+ * new card-face surface cannot silently print the raw scan's numbers again —
+ * the display drift `d95a9d71` fixed for the roster row and this card zoom
+ * re-introduced.
+ */
+export type UnitSideRules = {
+  ruleset: ReturnType<typeof getRuleset>;
+  overrides: ReturnType<typeof unitSideRuleOverrides>;
+};
+
+/** Resolve {@link UnitSideRules} from a live game state. */
+export function unitSideRulesFor(state: Pick<GameState, "ruleset" | "adventure" | "anime">): UnitSideRules {
+  return { ruleset: getRuleset(state), overrides: unitSideRuleOverrides(state) };
+}
+
+/**
  * A recruitable unit's card art: a click-to-enlarge thumbnail so the player can
  * SEE the unit (its scan + stats) before spending the Population token on it.
  * Degrades to a static, non-zoomable image when rendered without a
  * CardZoomProvider (isolated unit tests) — the art still shows either way.
  */
-function RecruitUnitView({ unitDefId, side }: { unitDefId: string; side: "few" | "pack" | "neutral" }) {
+function RecruitUnitView({
+  unitDefId,
+  side,
+  sideRules
+}: {
+  unitDefId: string;
+  side: "few" | "pack" | "neutral";
+  sideRules: UnitSideRules;
+}) {
   const zoom = useOptionalCardZoom();
   const def = coreUnitDefinitions[unitDefId];
-  const unitSide =
+  const printedSide =
     side === "pack" ? def?.pack : side === "neutral" ? def?.neutral : def?.few;
+  // BINH / Community unit-stat house rules (Griffins' +1 Defense, the Pack of
+  // Marksmen's 3rd Health, the Pack Phoenix Rebirth): the card the player READS
+  // must show the numbers the engine will FIGHT with, exactly like the in-play
+  // roster row. Without this the Pack Griffin's zoom printed "Defense 0" on a
+  // BINH table where the engine mints it at 1.
+  const unitSide = printedSide
+    ? applyUnitSideRules(sideRules.ruleset, unitDefId, side, printedSide, sideRules.overrides)
+    : printedSide;
   // Community Balance Change: four Castle unit sides are reprinted, so this
   // shared recruit/roster thumb (and its zoom) must read the balance face.
   const image = useUnitFaceImage(unitDefId, side, unitSide?.cardImage);
@@ -417,13 +454,15 @@ function UnitSideCard({
   unitDefId,
   side,
   cost,
-  ownedSide
+  ownedSide,
+  sideRules
 }: {
   unitDefId: string;
   side: "few" | "pack";
   /** Recruit/reinforce cost line. Omit (Unit deck view) to show only the face. */
   cost?: ResourceCost;
   ownedSide: "few" | "pack" | "neutral" | null;
+  sideRules: UnitSideRules;
 }) {
   const def = coreUnitDefinitions[unitDefId];
   const unitSide = side === "pack" ? def?.pack : def?.few;
@@ -434,7 +473,7 @@ function UnitSideCard({
   const owned = ownedSide === side;
   return (
     <div className={`unitSideCard ${side} ${owned ? "owned" : "unowned"}`}>
-      <RecruitUnitView side={side} unitDefId={unitDefId} />
+      <RecruitUnitView side={side} sideRules={sideRules} unitDefId={unitDefId} />
       <span className="unitSideMeta">
         <span className="unitSideLabel">
           {side === "few" ? "Few" : "Pack"}
@@ -460,18 +499,20 @@ export function UnitSideCards({
   unitDefId,
   fewCost,
   packCost,
-  ownedSide
+  ownedSide,
+  sideRules
 }: {
   unitDefId: string;
   fewCost?: ResourceCost;
   packCost?: ResourceCost;
   ownedSide: "few" | "pack" | "neutral" | null;
+  sideRules: UnitSideRules;
 }) {
   const name = coreUnitDefinitions[unitDefId]?.name ?? unitDefId;
   return (
     <div aria-label={`${name} Few and Pack cards`} className="unitSideCards">
-      <UnitSideCard cost={fewCost} ownedSide={ownedSide} side="few" unitDefId={unitDefId} />
-      <UnitSideCard cost={packCost} ownedSide={ownedSide} side="pack" unitDefId={unitDefId} />
+      <UnitSideCard cost={fewCost} ownedSide={ownedSide} side="few" sideRules={sideRules} unitDefId={unitDefId} />
+      <UnitSideCard cost={packCost} ownedSide={ownedSide} side="pack" sideRules={sideRules} unitDefId={unitDefId} />
     </div>
   );
 }
@@ -631,6 +672,8 @@ export function TownRecruitSection({
   const player = state.players[viewerPlayerId];
   const town = Object.values(state.towns).find((candidate) => candidate.controllerId === viewerPlayerId);
   const faction = player?.factionId ? coreFactionDefinitions[player.factionId] : undefined;
+  // Read every printed card face through the live unit-stat house rules.
+  const sideRules = unitSideRulesFor(state);
   if (!player || !town || !faction) {
     return null;
   }
@@ -752,6 +795,7 @@ export function TownRecruitSection({
             fewCost={rosterRecruitCost}
             ownedSide={rosterOwnedSide}
             packCost={rosterPackCost}
+            sideRules={sideRules}
             unitDefId={unitDefId}
           />
         ) : null;
@@ -950,7 +994,7 @@ export function TownRecruitSection({
                   }
                   return (
                     <div className="recruitRow done unitStackRow neutralStackRow" key={`neutral-stack-${owned.id}`}>
-                      <RecruitUnitView side="neutral" unitDefId={owned.unitDefId} />
+                      <RecruitUnitView side="neutral" sideRules={sideRules} unitDefId={owned.unitDefId} />
                       <Star aria-hidden="true" className={`tierStar ${unit.tier}`} size={12} />
                       <span className="recruitName">
                         {unit.name}

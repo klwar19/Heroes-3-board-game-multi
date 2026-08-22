@@ -13,7 +13,7 @@ import { CardZoomProvider } from "@/components/table/zoom";
 import { createAdventureGameState, getLegalActions } from "@/engine";
 import { coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
-import type { ArmyUnitState, GameState } from "@/engine/state";
+import type { ArmyUnitState, GameState, HouseRuleId } from "@/engine/state";
 
 afterEach(cleanup);
 
@@ -251,5 +251,66 @@ describe("Population recruit — unit view + one-click shortcut", () => {
     expect(recruitButtons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
     // The cost/limit info is still on the row (the thumbnail + tier + price stay).
     expect(document.querySelectorAll(".recruitThumbImg").length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REGRESSION PIN — the card a player READS must carry the live unit-stat house
+// rules, not the printed scan's numbers. This zoom printed "Defense 0" for a
+// Pack of Griffins on a BINH table (where `griffin-buff` is ON by default and
+// the engine mints it at 1) — the SECOND report of "Pack Griffins have 0
+// Defense again", after `d95a9d71` fixed the same drift on the roster ROW.
+// The engine half is pinned in src/engine/griffin-pack-defense.test.ts.
+// ---------------------------------------------------------------------------
+
+/** A Castle recruit panel with the given explicit house-rule toggles. */
+function castleRecruitState(houseRules: Partial<Record<HouseRuleId, boolean>>): GameState {
+  const state = createAdventureGameState({
+    seed: "griffin-card-face",
+    ruleset: "binh",
+    rollFirstPlayer: false,
+    houseRules,
+    players: [
+      { id: "p1", name: "Catherine", factionId: "castle", heroDefId: "catherine" },
+      { id: "p2", name: "Gelu", factionId: "rampart", heroDefId: "gelu" }
+    ]
+  });
+  state.players.p1.townTokens = { build: true, population: true, spellBook: true };
+  state.players.p1.resources = { ...state.players.p1.resources, gold: 500, buildingMaterials: 200, valuables: 200 };
+  state.players.p1.army = [];
+  const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+  for (const buildingId of ["castle.dwelling_bronze", "castle.citadel"]) {
+    if (!town.buildings.includes(buildingId)) {
+      town.buildings.push(buildingId);
+    }
+  }
+  return state;
+}
+
+/** The stat line the Pack of Griffins card zoom prints on that table. */
+function packGriffinZoomLine(houseRules: Partial<Record<HouseRuleId, boolean>>): string {
+  renderRecruit(castleRecruitState(houseRules));
+  fireEvent.click(screen.getByRole("button", { name: /View the Pack Griffins card/i }));
+  const line = Array.from(document.querySelectorAll(".zoomBackdrop p"))
+    .map((node) => node.textContent ?? "")
+    .find((text) => /Attack \d+ · Defense \d+/.test(text));
+  expect(line, "the enlarged unit card should print a stat line").toBeTruthy();
+  return line!;
+}
+
+describe("the recruit card face reads the live unit-stat house rules", () => {
+  it("BINH DEFAULT: the Pack of Griffins card prints Defense 1, not the printed 0 [MUTATION-CHECK]", () => {
+    // No explicit flag — the shipped BINH table, exactly what a player gets.
+    expect(packGriffinZoomLine({})).toMatch(/Attack 3 · Defense 1 /);
+  });
+
+  it("CONTROL: with griffin-buff OFF the same card prints the printed Defense 0", () => {
+    expect(packGriffinZoomLine({ "griffin-buff": false })).toMatch(/Attack 3 · Defense 0 /);
+  });
+
+  it("Community Balance ON with griffin-buff OFF still prints Defense 1", () => {
+    expect(packGriffinZoomLine({ "griffin-buff": false, "community-card-balance": true })).toMatch(
+      /Attack 3 · Defense 1 /
+    );
   });
 });
