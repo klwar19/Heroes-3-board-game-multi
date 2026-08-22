@@ -693,6 +693,8 @@ export {
   isDesignedEdgeSealedBetween,
   BLOCKED_FIELD_CARVE_LOCATIONS,
   isBlockedFieldCarve,
+  printedBordersSurviveCarve,
+  fieldNeverWearsBorders,
   isOuterEdgeSealed,
   isTileSlotDesignedSealed,
   isTileSlotOuterSealed,

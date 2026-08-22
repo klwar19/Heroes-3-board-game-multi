@@ -1873,7 +1873,10 @@ export function canCrossEdge(
  * rendering of impassable TERRAIN is not an independent yellow border, so
  * whatever rule lets a hero stand on / fly over that hex also lets it leave.
  *  - a Blocked-Field CARVE (Creature Bank / Calamity Gate / Dungeon Gate) wears
- *    no border at all ({@link fieldNeverWearsBorders}) — the long-standing rule;
+ *    none of the host tile's PRINTED lines ({@link fieldNeverWearsBorders}) — the
+ *    long-standing rule. A DESIGNER arc on that slot, and a STARTING tile's
+ *    printed lines ({@link printedBordersSurviveCarve}), still seal it: a fixed
+ *    yellow border is never removed, not even by a bank (USER RULE 2026-08-22);
  *  - a printed BLOCKED FIELD itself. Every one of the 100 blocked ring slots in
  *    the shipped tile catalog also carries its slot's `outerImpassable` arc (and
  *    on most Far tiles it is the tile's ONLY sealed arc) — the yellow line IS the
@@ -1894,14 +1897,38 @@ function outerEdgeSealsCrossing(
   field: MapFieldState,
   movement: HeroMovementCapabilities
 ): boolean {
-  if (isBlockedFieldCarve(field)) {
-    return false;
+  const carveTile = adventure.tiles[field.tileInstanceId];
+  if (isBlockedFieldCarve(field) && !printedBordersSurviveCarve(carveTile)) {
+    // The Ⅱ–Ⅴ tile's printed ring is gone, but a DESIGNER-drawn whole arc on the
+    // same slot is a deliberate wall and still seals (USER RULE 2026-08-22).
+    return carveTile ? isTileSlotDesignedSealed(carveTile, field.slot) : false;
   }
   if (movement.moveThrough && locationDefinitions[field.location]?.category === "blocked") {
-    const tile = adventure.tiles[field.tileInstanceId];
-    return tile ? isTileSlotDesignedSealed(tile, field.slot) : false;
+    return carveTile ? isTileSlotDesignedSealed(carveTile, field.slot) : false;
   }
   return isOuterEdgeSealed(adventure, field);
+}
+
+/**
+ * Whether a tile's PRINTED yellow borders survive a Blocked-Field carve sitting
+ * on it. USER RULE 2026-08-22: "a fixed yellow border in the map (either on Tile
+ * Ⅰ or drawn from map design) … should be respected and not removed (even by the
+ * bank)". A Ⅱ–Ⅲ / Ⅳ–Ⅴ tile's printed ring around the Blocked Field the bank
+ * replaced is NOT such a fixed border — the bank stays passable from every
+ * direction. The STARTING tile's printed lines are.
+ *
+ * REACHABILITY (stated, not assumed): none of the shipped PLACEMENT flows put a
+ * carve on a starting tile — Creature Banks come from a Far/Near tile reveal or
+ * from a designer object that is STANDALONE-only (validated in
+ * `adventure-setup.ts`, so it has no backing tile at all), the Calamity / Dungeon
+ * Gates take the first Far / Near Blocked Field, and no Field Override kind may
+ * claim `starting` tiles. The ENGINE PRIMITIVE {@link placeCreatureBank} does
+ * accept any field, so the rule is reachable and is pinned end-to-end there
+ * (`adventure.test.ts` > "a Creature Bank does NOT open TILE Ⅰ's printed yellow
+ * border"). The everyday half of the user rule is the designer-border half.
+ */
+export function printedBordersSurviveCarve(tile: MapTileState | undefined): boolean {
+  return tile?.group === "starting";
 }
 
 /**
@@ -2042,25 +2069,31 @@ export function isDesignedEdgeSealedBetween(
   if (!DESIGNER_BORDER_SEALING_ENABLED) {
     return false;
   }
-  // A runtime border-free hex — a Creature Bank / Calamity Gate / Dungeon Gate
-  // carve, or a Field Override — never wears borders, printed OR designer, so an
-  // edge TOUCHING one is never sealed by a designer border. This must be an
-  // edge-level early-out, not per-side gating: a tile-level inner edge's two
-  // encodings fold to ONE canonical code (`canonicalTileEdgeCode`), so a check
-  // run from the non-carve neighbour's frame would still match the stored code
-  // and seal the crossing — an invisible wall, since the board suppresses every
-  // drawn line touching such a hex (`getTileBorderSegments`' suppressed set).
-  if (fieldNeverWearsBorders(fromField) || fieldNeverWearsBorders(toField)) {
-    return false;
-  }
+  // USER RULE 2026-08-22: a FIXED yellow border the designer drew is respected
+  // even at a runtime border-free hex (a Creature Bank / Calamity Gate / Dungeon
+  // Gate carve, or a Field Override). Only the tile's own PRINTED art is dropped
+  // there — see {@link fieldNeverWearsBorders}. There is therefore NO early-out
+  // here: the board paints the same designer line
+  // (`getTileBorderSegments` appends designer segments unfiltered), so this is a
+  // visible wall, never an invisible one. Superseded: the 2026-08-09 (protocol
+  // v24) blanket "designer edges are inert at a border-free hex" early-out.
   const fromTile = adventure.tiles[fromField.tileInstanceId];
   const toTile = adventure.tiles[toField.tileInstanceId];
   const fromHas = Boolean(fromTile?.borderEdges && fromTile.borderEdges.length > 0);
   const toHas = Boolean(toTile?.borderEdges && toTile.borderEdges.length > 0);
   // Field-level borders: a STANDALONE object hex carries its own edge list
-  // (it has no backing tile). Same seal, same both-direction rule.
-  const fromFieldHas = Boolean(fromField.borderEdges && fromField.borderEdges.length > 0);
-  const toFieldHas = Boolean(toField.borderEdges && toField.borderEdges.length > 0);
+  // (it has no backing tile). Same seal, same both-direction rule — EXCEPT on a
+  // runtime border-free hex, which the designer can never legitimately give one
+  // to (`sanitizeCustomMapObject` strips `borderEdges` from a Creature Bank
+  // object and setup never stamps them), so a list found there is stale/legacy
+  // data rather than a fixed border. Unlike the TILE-level codes above, which
+  // ARE a deliberate designer wall and now seal a carve too.
+  const fromFieldHas =
+    Boolean(fromField.borderEdges && fromField.borderEdges.length > 0) &&
+    !fieldNeverWearsBorders(fromField);
+  const toFieldHas =
+    Boolean(toField.borderEdges && toField.borderEdges.length > 0) &&
+    !fieldNeverWearsBorders(toField);
   if (!fromHas && !toHas && !fromFieldHas && !toFieldHas) {
     return false;
   }
@@ -2147,12 +2180,16 @@ export function isBlockedFieldCarve(field: Pick<MapFieldState, "location">): boo
 }
 
 /**
- * Whether a placed field NEVER wears yellow borders at runtime: a Blocked-Field
- * carve (Creature Bank / Calamity Gate / Dungeon Gate) or a carved Field
- * Override hex. The board suppresses EVERY printed and designer line touching
- * such a hex (`getTileBorderSegments`' suppressed set), so movement must agree
- * ({@link isDesignedEdgeSealedBetween}'s early-out) — a hidden line that still
- * sealed the crossing would be an invisible wall.
+ * Whether a placed field NEVER wears the HOST TILE'S PRINTED yellow borders at
+ * runtime: a Blocked-Field carve (Creature Bank / Calamity Gate / Dungeon Gate)
+ * or a carved Field Override hex. The board suppresses every PRINTED line
+ * touching such a hex (`getTileBorderSegments`' suppressed set) and movement
+ * agrees, so the carve stays passable from all directions.
+ *
+ * It does NOT cover a FIXED yellow border (USER RULE 2026-08-22): a designer
+ * `extraBorders` arc / `borderEdges` line still renders and still seals here,
+ * and so would a starting tile's printed line
+ * ({@link printedBordersSurviveCarve}).
  */
 export function fieldNeverWearsBorders(field: Pick<MapFieldState, "location">): boolean {
   return isBlockedFieldCarve(field) || isFieldOverrideLocation(field.location);
@@ -2173,7 +2210,13 @@ export function fieldNeverWearsBorders(field: Pick<MapFieldState, "location">): 
  * only the hero-vantage reads take the exception.
  */
 export function heroFieldSealedForDiscovery(adventure: AdventureState, field: MapFieldState): boolean {
-  return !isBlockedFieldCarve(field) && isOuterEdgeSealed(adventure, field);
+  const tile = adventure.tiles[field.tileInstanceId];
+  if (isBlockedFieldCarve(field) && !printedBordersSurviveCarve(tile)) {
+    // Only the printed ring is gone; a DESIGNER arc on the slot still walls the
+    // vantage (USER RULE 2026-08-22).
+    return tile ? isTileSlotDesignedSealed(tile, field.slot) : false;
+  }
+  return isOuterEdgeSealed(adventure, field);
 }
 
 /**

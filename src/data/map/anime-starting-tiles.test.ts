@@ -117,17 +117,24 @@ describe("anime starting tiles A-S1 / W-S1 / L-S1 / P-S1 / D-S1 — hex + border
     expect(d.assets?.attachFieldSymbols).toBe(true);
   });
 
-  it("a Field Override removes every printed and designed edge touching its hex", () => {
+  it("a Field Override removes the PRINTED edges touching its hex — but never a designer border", () => {
     const hidden = getTileBorderSegments(s4, new Set([2]), {
       borderlessSlots: new Set([2])
     });
     expect(hidden.filter((segment) => segment.slot === 2)).toEqual([]);
 
-    // A runtime border-free carve wins over a designer edge too.
+    // USER RULE 2026-08-22: a FIXED yellow border the designer drew survives the
+    // carve and is still painted (movement seals it too).
     const designed = getTileBorderSegments(s4, new Set(), {
       borderlessSlots: new Set([2]),
       extraBorders: [1]
     });
-    expect(designed.filter((segment) => segment.slot === 2)).toHaveLength(0);
+    expect(designed.filter((segment) => segment.slot === 2)).toHaveLength(3);
+
+    // CONTROL: no designer arc → the carved slot draws nothing at all.
+    const printedOnly = getTileBorderSegments(s4, new Set(), {
+      borderlessSlots: new Set([2])
+    });
+    expect(printedOnly.filter((segment) => segment.slot === 2)).toHaveLength(0);
   });
 });

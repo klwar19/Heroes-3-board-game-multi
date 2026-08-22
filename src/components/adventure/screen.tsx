@@ -68,6 +68,7 @@ import {
   describeFieldReward,
   designedGuardPreview,
   isBlockedFieldCarve,
+  printedBordersSurviveCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
   hexDistance,
@@ -219,6 +220,9 @@ import { SetupSummaryRail } from "@/components/adventure/setup-summary-rail";
 import { SetupHubWindow } from "@/components/adventure/setup-hub-window";
 import { SetupSceneArt } from "@/components/adventure/setup-scene";
 import { DIFFICULTY_CHESS_ICONS, SETUP_HUB_ART } from "@/data/assets/homm-assets";
+
+/** No slot suppressed: a tile whose PRINTED borders are fixed keeps every line. */
+const EMPTY_SLOT_SET: ReadonlySet<number> = new Set<number>();
 
 const HEX_SIZE = 34;
 const HEX_WIDTH = Math.sqrt(3) * HEX_SIZE;
@@ -1745,8 +1749,13 @@ export function HexMapBoard({
     if (undergroundTile) {
       pushUndergroundTileOutline(overlays, tile.id, footprint, tile.rotation);
     }
-    // A placed Creature Bank is fully border-free: suppress every printed and
-    // designer line touching the carved hex.
+    // A placed Creature Bank is border-free: suppress the PRINTED lines touching
+    // the carved hex (the tile's own ring / outer arc). A FIXED yellow border —
+    // a designer `extraBorders` arc or `borderEdges` line, or the STARTING tile's
+    // printed lines — survives and is still painted (USER RULE 2026-08-22);
+    // `getTileBorderSegments` keeps designer segments unfiltered and the
+    // starting-tile exemption below empties the suppression sets, matching
+    // `printedBordersSurviveCarve` in the movement engine.
     const bankSlots = new Set<number>();
     const borderlessOverrideSlots = new Set<number>();
     footprint.forEach((coord, slot) => {
@@ -1766,12 +1775,13 @@ export function HexMapBoard({
         borderlessOverrideSlots.add(slot);
       }
     });
+    const printedBordersFixed = printedBordersSurviveCarve(tile);
     const borderSegments = tileDef
-      ? getTileBorderSegments(tileDef, bankSlots, {
+      ? getTileBorderSegments(tileDef, printedBordersFixed ? EMPTY_SLOT_SET : bankSlots, {
           extraBorders: tile.extraBorders,
           borderEdges: tile.borderEdges,
           rotation: tile.rotation,
-          borderlessSlots: borderlessOverrideSlots
+          borderlessSlots: printedBordersFixed ? EMPTY_SLOT_SET : borderlessOverrideSlots
         })
       : [];
     for (const [slot, coord] of footprint.entries()) {

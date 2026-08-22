@@ -10,6 +10,7 @@ import {
   createAdventureGameState,
   DESIGNER_BORDER_SEALING_ENABLED,
   getLegalActions,
+  heroFieldSealedForDiscovery,
   isDesignedEdgeSealedBetween,
   isOuterEdgeSealed,
   isTileSlotOuterSealed,
@@ -680,16 +681,16 @@ sealingDescribe("per-edge designer borders — movement", () => {
   });
 });
 
-sealingDescribe("designer edges never seal a runtime border-free hex (invisible-wall guard)", () => {
-  // The board suppresses EVERY drawn line touching a carved Creature Bank /
-  // PvE Gate / Field Override hex (getTileBorderSegments' suppressed set), so
-  // MOVEMENT must ignore designer borders on those edges too — a hidden line
-  // that still sealed the crossing would be an invisible wall. The early-out
-  // in isDesignedEdgeSealedBetween must be EDGE-level, not per-side gating:
-  // an inner edge's two encodings fold to ONE canonical code, so a check run
-  // from the plain neighbour's frame would still match the stored code. The
-  // fixture deliberately encodes the edge from the NEIGHBOUR (centre) frame to
-  // pin exactly that trap.
+sealingDescribe("a FIXED yellow border is respected at a runtime border-free hex (USER RULE 2026-08-22)", () => {
+  // SUPERSEDES the 2026-08-09 / protocol-v24 "designer edges are inert at a
+  // border-free hex" reading. A Creature Bank / PvE Gate / Field Override hex
+  // loses the HOST TILE'S PRINTED borders (it stays passable from all
+  // directions — pinned by the printed CONTROL below and in
+  // module-gate-reachability.test.ts), but a FIXED yellow border the designer
+  // drew is never removed: it seals movement AND is still painted.
+  // The fixture deliberately encodes the edge from the NEIGHBOUR (centre) frame,
+  // because an inner edge's two encodings fold to ONE canonical code — the seal
+  // must hold whichever side stored it.
   function sealedInnerEdges(seed: string) {
     const state = cleanState(seed);
     const O: HexCoord = { row: 40, col: 30 };
@@ -708,28 +709,185 @@ sealingDescribe("designer edges never seal a runtime border-free hex (invisible-
   }
 
   const BORDER_FREE_LOCATIONS = [
-    "creature_bank", // Blocked-Field carve (movement comment long claimed this; it was dead for tile-level edges)
-    "dungeon_gate", // PvE carve — had NO movement exception at all
-    "calamity_gate", // PvE carve — had NO movement exception at all
+    "creature_bank", // Blocked-Field carve — the user's named case ("even by the bank")
+    "dungeon_gate", // PvE carve
+    "calamity_gate", // PvE carve
     "wog.emerald_tower" // a Field Override hex (registry location)
   ] as const;
 
   for (const location of BORDER_FREE_LOCATIONS) {
-    it(`${location}: a designer edge coded from the NEIGHBOUR frame no longer seals the crossing`, () => {
+    it(`${location}: a designer edge coded from the NEIGHBOUR frame STILL seals the crossing`, () => {
       const { state, centerId, ring0Id, ring1Id } = sealedInnerEdges(`db-borderfree-${location}`);
-      // CONTROL first: on the plain field both designed edges seal the step.
+      // Baseline: on the plain field both designed edges seal the step.
       expect(canCrossEdge(state, centerId, ring0Id, NONE)).toBe(false);
       expect(canCrossEdge(state, centerId, ring1Id, NONE)).toBe(false);
 
       adv(state).fields[ring0Id].location = location as MapFieldState["location"];
-      // The edge touching the border-free hex opens, in BOTH directions...
+      // The carve does NOT lift the fixed border — both directions stay walled...
+      expect(canCrossEdge(state, centerId, ring0Id, NONE)).toBe(false);
+      expect(canCrossEdge(state, ring0Id, centerId, NONE)).toBe(false);
+      // ...and the sibling designed edge is untouched either way.
+      expect(canCrossEdge(state, centerId, ring1Id, NONE)).toBe(false);
+
+      // MUTATION CONTROL: drop the codes and the same carve hex is open again —
+      // it is the designer border doing the sealing, not the location.
+      adv(state).tiles[adv(state).fields[centerId].tileInstanceId].borderEdges = [];
       expect(canCrossEdge(state, centerId, ring0Id, NONE)).toBe(true);
       expect(canCrossEdge(state, ring0Id, centerId, NONE)).toBe(true);
-      // ...while the sibling designed edge (not touching it) still seals — the
-      // early-out is scoped to edges touching the hex, never a tile-wide off.
-      expect(canCrossEdge(state, centerId, ring1Id, NONE)).toBe(false);
     });
   }
+
+  // The other half of the user rule: the tile's OWN PRINTED border around the
+  // Blocked Field a bank replaced is NOT fixed — the bank stays passable from
+  // every direction. Same hex, same tile, printed vs designer: only the designer
+  // line seals.
+  const PRINTED_BLOCKED_TILE = "F3"; // Ⅱ–Ⅲ tile: blocked field on slot 3 with a sealed printed arc
+  const PRINTED_BLOCKED_SLOT = 3;
+
+  function bankOnPrintedBlockedSlot(seed: string): {
+    state: GameState;
+    tile: MapTileState;
+    bank: MapFieldState;
+    outside: MapFieldState;
+    dir: number;
+  } {
+    const state = cleanState(seed);
+    const O: HexCoord = { row: 40, col: 30 };
+    const tile = instantiateTile(adv(state), PRINTED_BLOCKED_TILE, O, 0, false);
+    const bank = Object.values(adv(state).fields).find(
+      (field) => field.tileInstanceId === tile.id && field.slot === PRINTED_BLOCKED_SLOT
+    )!;
+    // Sanity: the fixture's slot really is a printed, sealed Blocked Field.
+    expect(allTileDefinitions[PRINTED_BLOCKED_TILE].fields[PRINTED_BLOCKED_SLOT].location).toBe(
+      "blocked_field"
+    );
+    expect(isTileSlotOuterSealed(PRINTED_BLOCKED_TILE, PRINTED_BLOCKED_SLOT)).toBe(true);
+    bank.location = "creature_bank" as MapFieldState["location"];
+
+    const bankCoord = parseHexSpaceId(bank.spaceId)!;
+    let outside: MapFieldState | undefined;
+    let dir = -1;
+    for (const candidate of tileLatticeNeighbors(O)) {
+      if (centerTaken(state, candidate)) {
+        continue;
+      }
+      const other = instantiateTile(adv(state), OPEN_TILE, candidate, 0, false);
+      for (let d = 0; d < 6; d += 1) {
+        const found = adv(state).fields[hexSpaceId(hexNeighbor(bankCoord, d))];
+        if (found && found.tileInstanceId === other.id) {
+          outside = found;
+          dir = d;
+          break;
+        }
+      }
+      if (outside) {
+        break;
+      }
+      clearTile(adv(state), other);
+    }
+    if (!outside) {
+      throw new Error("no cross-tile neighbour for the carved bank hex");
+    }
+    return { state, tile, bank, outside, dir };
+  }
+
+  it("CONTROL: the Ⅱ–Ⅲ tile's PRINTED border around the carved bank still does not block — the DESIGNER arc / edge on the same hex does", () => {
+    const { state, tile, bank, outside, dir } = bankOnPrintedBlockedSlot("db-bank-printed-vs-designed");
+
+    // CONTROL: printed-only — the bank is enterable/leavable across the Tile edge
+    // and the hero standing on it may still flip an adjacent face-down Tile.
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(true);
+    expect(canCrossEdge(state, bank.spaceId, outside.spaceId, NONE)).toBe(true);
+    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
+
+    // A designer PER-EDGE line on exactly that crossing seals it, both ways.
+    tile.borderEdges = normalizeDesignedBorderEdges([edgeCodeFor(bank, tile, dir)]);
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(false);
+    expect(canCrossEdge(state, bank.spaceId, outside.spaceId, NONE)).toBe(false);
+    // A per-EDGE line is not the slot's whole arc, so the discovery vantage is
+    // still open here (the arc case below is what walls it).
+    tile.borderEdges = [];
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(true);
+
+    // A designer WHOLE-ARC border (extraBorders) on the bank's slot seals the
+    // crossing AND the discovery vantage.
+    tile.extraBorders = [slotDirection(bank.slot, tile.rotation)!];
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(false);
+    expect(canCrossEdge(state, bank.spaceId, outside.spaceId, NONE)).toBe(false);
+    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(true);
+
+    // MUTATION CONTROL: drop the designer arc → open again, printed art unchanged.
+    tile.extraBorders = [];
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(true);
+    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
+  });
+
+  // DEFENSIVE READ (see `printedBordersSurviveCarve`): no shipped carve source
+  // can land on a starting tile — banks come from a Far/Near reveal or a
+  // STANDALONE-only designer object, the Calamity/Dungeon Gates take a Far/Near
+  // Blocked Field, and no Field Override kind may claim `starting`. The fixture
+  // therefore relabels the host tile by hand; the rule ("Tile Ⅰ's printed border
+  // is fixed too") is pinned so a future carve source cannot silently erase it.
+  it("a carve on a STARTING tile keeps the tile's PRINTED border (CONTROL: the same carve on a far tile does not)", () => {
+    const { state, tile, bank, outside } = bankOnPrintedBlockedSlot("db-bank-starting-tile");
+
+    // CONTROL: as a far tile the printed arc is suppressed by the carve.
+    tile.group = "far";
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(true);
+    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(false);
+
+    // Tile Ⅰ: the printed line is a FIXED border and still seals.
+    tile.group = "starting";
+    expect(canCrossEdge(state, outside.spaceId, bank.spaceId, NONE)).toBe(false);
+    expect(canCrossEdge(state, bank.spaceId, outside.spaceId, NONE)).toBe(false);
+    expect(heroFieldSealedForDiscovery(adv(state), bank)).toBe(true);
+  });
+
+  it("RENDER agrees: the printed ring is suppressed at the bank hex while the designer line is still painted", () => {
+    const def = allTileDefinitions[PRINTED_BLOCKED_TILE];
+    // Raw code in the carved slot's OWN frame (footprint 3 == slot 3 at rotation 0).
+    const designedEdge = PRINTED_BLOCKED_SLOT * 6 + 0;
+    // ...and the SAME physical edge canonicalized into the NEIGHBOUR hex's frame,
+    // which the old physical-adjacency filter also swallowed.
+    const mirrorEdge = canonicalTileEdgeCode(PRINTED_BLOCKED_SLOT, 0);
+    const carved = { borderlessSlots: new Set([PRINTED_BLOCKED_SLOT]) };
+
+    // Printed-only at a carved slot: nothing drawn there (the long-standing rule).
+    expect(
+      getTileBorderSegments(def, new Set(), carved).filter(
+        (segment) => segment.slot === PRINTED_BLOCKED_SLOT
+      )
+    ).toEqual([]);
+
+    // The SAME carved slot with a designer per-edge line: the line is painted.
+    const withDesigned = getTileBorderSegments(def, new Set(), {
+      ...carved,
+      borderEdges: [designedEdge],
+      rotation: 0
+    }).map((segment) => `${segment.slot}:${segment.edge}`);
+    expect(withDesigned).toContain(`${PRINTED_BLOCKED_SLOT}:0`);
+    // ...and only that one line, not the printed ring's six.
+    expect(withDesigned.filter((key) => key.startsWith(`${PRINTED_BLOCKED_SLOT}:`))).toEqual([
+      `${PRINTED_BLOCKED_SLOT}:0`
+    ]);
+
+    // The mirror encoding of the same physical edge survives too (the old
+    // adjacency filter dropped every line TOUCHING the carve, whichever hex
+    // owned it).
+    const mirrored = getTileBorderSegments(def, new Set(), {
+      ...carved,
+      borderEdges: [mirrorEdge],
+      rotation: 0
+    }).map((segment) => `${segment.slot}:${segment.edge}`);
+    expect(mirrored.length).toBe(1);
+
+    // A designer WHOLE ARC on the carved slot is painted too (all three edges).
+    const withArc = getTileBorderSegments(def, new Set([PRINTED_BLOCKED_SLOT]), {
+      extraBorders: [PRINTED_BLOCKED_SLOT - 1],
+      rotation: 0
+    }).filter((segment) => segment.slot === PRINTED_BLOCKED_SLOT);
+    expect(withArc.length).toBe(3);
+  });
 });
 
 sealingDescribe("per-edge designer borders — absolute frame (rotation-independent)", () => {

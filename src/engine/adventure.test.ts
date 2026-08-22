@@ -942,13 +942,16 @@ describe("tile discovery and placement", () => {
     expect(result.state.adventure!.tiles[tile!.id].faceDown).toBe(true);
   });
 
-  it("HOUSE RULE ON: lets a hero standing on a (border-free) Creature Bank discover across that edge", () => {
-    // Same vantage as the sealed-border test: h:8:3 is S3 slot 2, whose outer arc
-    // toward the face-down hub at (9,4) is a printed yellow line — so an ordinary
-    // Location there cannot discover across it (that's the CONTROL above). But a
-    // Creature Bank draws NO border ("reads as fully open"), so a hero standing on
-    // one faces an OPEN edge and MAY flip the adjacent Tile. Carving a bank into
-    // that very field is the only change, isolating the bank as the cause.
+  it("HOUSE RULE ON: a Creature Bank does NOT open TILE Ⅰ's printed yellow border (USER RULE 2026-08-22)", () => {
+    // Same vantage as the sealed-border test: h:8:3 is S3 slot 2 — a STARTING
+    // tile — whose outer arc toward the face-down hub at (9,4) is a printed
+    // yellow line. Carving a Creature Bank into it used to open that edge (the
+    // old blanket "a carve wears no border at all"). USER RULE 2026-08-22: "a
+    // fixed yellow border in the map (either on Tile Ⅰ or drawn from map design)
+    // … should be respected and not removed (even by the bank)", so Tile Ⅰ's
+    // printed line survives the carve. The far/near tile's printed ring around a
+    // bank still vanishes — pinned in module-gate-reachability.test.ts and
+    // designed-borders.test.ts (the CONTROL for this one).
     const state = refreshP1(makeBorderGateGame());
     state.heroes.hero_p1.spaceId = "h:8:3";
     state.heroes.hero_p1.movementPoints = 3;
@@ -967,17 +970,37 @@ describe("tile discovery and placement", () => {
     expect(sealed.errors).toHaveLength(1);
     expect(sealed.state.adventure!.tiles[tile.id].faceDown).toBe(true);
 
-    // Now carve a Creature Bank into h:8:3 — the border is gone, the edge opens.
+    // Carve a Creature Bank into h:8:3 — on Tile Ⅰ the border stays.
     expect(placeCreatureBank(state, "h:8:3", "crypt")).not.toBeNull();
     expect(state.adventure!.fields["h:8:3"].location).toBe("creature_bank");
+    const heroTile = state.adventure!.tiles[state.adventure!.fields["h:8:3"].tileInstanceId];
+    expect(heroTile.group, "the vantage really is a starting tile").toBe("starting");
 
-    // The action is now offered…
-    const offered = getLegalActions(state, "p1").some(
-      (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
-    );
-    expect(offered).toBe(true);
+    // Still not offered, and still rejected with the movement point untouched.
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+      )
+    ).toBe(false);
+    const refused = applyAction(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: tile.id
+    });
+    expect(refused.errors).toHaveLength(1);
+    expect(refused.errors[0].message).toContain("yellow border");
+    expect(refused.state.adventure!.tiles[tile.id].faceDown).toBe(true);
+    expect(refused.state.heroes.hero_p1.movementPoints).toBe(3);
 
-    // …and succeeds: the tile flips face-up (awaiting the rotation), MP spent.
+    // MUTATION CONTROL: relabel the SAME tile as a far tile and the very same
+    // bank hex opens the edge again — it is the Tile Ⅰ rule doing the sealing.
+    heroTile.group = "far";
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "DISCOVER_TILE" && legal.action.tileInstanceId === tile.id
+      )
+    ).toBe(true);
     const next = apply(state, {
       type: "DISCOVER_TILE",
       playerId: "p1",

@@ -1451,12 +1451,43 @@ The `fix-ai-map-combat-rules` batch + audit (`npm run deploy:partykit` owed): Ch
 Lightning needs 3 living PLACED units (its last two differing bolts open a
 `chain-lightning` ABILITY_TARGET_CHOICE), Deemer's Meteor Shower is an EXACT
 multi-target effect, the Catapult needs an adjacent PAIR, banks / PvE Gates / Field
-Override hexes are ALWAYS border-free in render AND movement
+Override hexes are border-free in render AND movement
 (`fieldNeverWearsBorders` — the invisible-wall fix; the `showBankBorders` toggle is
-REMOVED), the AI banks two home payoffs on turn 1 and enters an opened Ⅱ–Ⅲ tile by
+REMOVED; **NARROWED 2026-08-22, see below**), the AI banks two home payoffs on turn 1 and enters an opened Ⅱ–Ⅲ tile by
 turn 3 (`bestHomeOpeningObjective`), and a hero on a STANDALONE Monolith is
 selectable again. `frost-ring-meteor-shower.test.ts`, `catapult-siege.test.ts`,
 `map-navigation.test.ts`, `single-player-opening.test.ts`.
+
+### A FIXED yellow border survives a border-free hex (2026-08-22, USER RULE)
+
+"When you have a fixed yellow border in the map (either on Tile Ⅰ or drawn from map
+design) it should be respected and not removed (even by the bank)." The v24 blanket
+"a border-free hex wears no border at all" was too broad. NEW reading, one rule at
+every seam: a Creature Bank / Calamity Gate / Dungeon Gate carve or a Field Override
+hex sheds the **host tile's PRINTED art only** (the Ⅱ–Ⅲ / Ⅳ–Ⅴ tile's ring + outer
+arc around the Blocked Field it replaced) — that half is UNCHANGED, so a bank stays
+passable and discoverable from all directions. A **fixed** border still seals AND is
+still painted: a designer `borderEdges` per-edge line or `extraBorders` whole arc
+(`isDesignedEdgeSealedBetween` lost its `fieldNeverWearsBorders` early-out;
+`outerEdgeSealsCrossing` / `heroFieldSealedForDiscovery` keep the designer arc at a
+carve), and the STARTING tile's printed lines (`printedBordersSurviveCarve`). Render
+moves with it: `getTileBorderSegments` suppresses PRINTED segments only and appends
+designer segments unfiltered, and `screen.tsx` empties the suppression sets on a
+starting tile. Pinned in `designed-borders.test.ts` ("a FIXED yellow border is
+respected at a runtime border-free hex"), `adventure.test.ts` ("a Creature Bank does
+NOT open TILE Ⅰ's printed yellow border" — a real DISCOVER_TILE refusal with a
+relabel-to-far CONTROL), `module-gate-board.test.tsx` (the designer line is really
+DRAWN on the board) and `anime-starting-tiles.test.ts`.
+LIMITS: the **Tile Ⅰ printed half is not reachable through the shipped PLACEMENT
+flows** (banks come from a Far/Near reveal or a STANDALONE-only designer object with no
+backing tile, the two PvE Gates take a Far/Near Blocked Field, and no Field Override kind
+may claim `starting`) — only the `placeCreatureBank` primitive can carve there, which is
+what the `adventure.test.ts` spec drives; a FIELD-level `borderEdges` list on a
+border-free hex is still ignored
+(sanitize strips it from a bank object, so it can only be stale/legacy data); the
+render half is pinned at the pure `getTileBorderSegments` level only (jsdom cannot
+compute CSS, no e2e); movement legality changed ⇒ a protocol bump + `npm run
+deploy:partykit` are owed.
 
 ## Meteor Shower / Rocket Launcher are FUEL-only Power effects with a dedicated window (2026-08-17, protocol v37)
 

@@ -79,12 +79,17 @@ describe("a Gate carved over a Blocked Field draws no printed border on the boar
       expect(carvedLines, "the Gate's ring and arc are gone").toBe(printedLines - 6);
     });
 
-    it(`${location}: designer borders touching the carved hex are removed too`, () => {
+    // USER RULE 2026-08-22 (supersedes the v24 "designer edges are inert at a
+    // border-free hex" reading): the carve removes the tile's own PRINTED lines
+    // (the test above) but never a FIXED yellow border the designer drew — it is
+    // still painted here and still seals movement
+    // (`designed-borders.test.ts` > "a FIXED yellow border is respected …").
+    it(`${location}: a designer border touching the carved hex is STILL drawn`, () => {
       const baseline = boardWithLocationOnBlockedSlot(location, `gate-designed-base-${location}`);
       const designed = boardWithLocationOnBlockedSlot(location, `gate-designed-edge-${location}`, true);
-      expect(designed.querySelectorAll("line.tileBorderLine").length).toBe(
-        baseline.querySelectorAll("line.tileBorderLine").length,
-      );
+      const baseCount = baseline.querySelectorAll("line.tileBorderLine").length;
+      // CONTROL is the baseline board: same fixture, same carve, no designer edge.
+      expect(designed.querySelectorAll("line.tileBorderLine").length).toBeGreaterThan(baseCount);
     });
   }
 });

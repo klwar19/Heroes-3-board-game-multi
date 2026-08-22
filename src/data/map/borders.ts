@@ -24,10 +24,15 @@ export type TileBorderSegment = {
  *
  * A Blocked Field carved into a Creature Bank (its slot listed in `bankSlots`)
  * is one exception. A placed bank is always border-free. Field Overrides passed
- * as `borderlessSlots` (including the Dungeon Gate) follow the same rule. The
- * suppression covers printed arcs/rings AND designer-added borders on every edge
- * touching the replaced hex; otherwise a designed edge can leave the yellow
- * outline visible even though the runtime object is explicitly border-free.
+ * as `borderlessSlots` (including the Dungeon Gate) follow the same rule.
+ *
+ * USER RULE 2026-08-22 — the suppression covers the PRINTED art only (outer
+ * arcs, the blocked-field ring, `internalBorders`). A FIXED yellow border the
+ * map DESIGNER drew (`extraBorders` whole arcs, `borderEdges` per-edge lines)
+ * survives a carve and is still painted: the bank removes the tile's own printed
+ * ring, never a deliberate wall. Movement agrees at the same seams
+ * (`isDesignedEdgeSealedBetween` / `outerEdgeSealsCrossing`), so a drawn line is
+ * always a real wall and an undrawn one is never an invisible wall.
  */
 const NO_BORDER_SLOTS: ReadonlySet<number> = new Set();
 
@@ -39,18 +44,27 @@ export function getTileBorderSegments(
     borderEdges?: readonly number[];
     rotation?: number;
     /**
-     * Runtime objects that replace a printed field hide every border touching
-     * that field, including designer-added arcs and per-edge lines.
+     * Runtime objects that replace a printed field hide every PRINTED border
+     * touching that field. Designer-added arcs / per-edge lines survive (USER
+     * RULE 2026-08-22).
      */
     borderlessSlots?: ReadonlySet<number>;
   } = {}
 ): TileBorderSegment[] {
+  // Printed art (suppressible by a carve) and DESIGNER-drawn fixed lines (never
+  // suppressed) are collected separately so the carve can drop one without the
+  // other.
   const segments = new Map<string, TileBorderSegment>();
+  const designed = new Map<string, TileBorderSegment>();
   const borderlessSlots = options.borderlessSlots ?? NO_BORDER_SLOTS;
   const suppressedSlots = new Set<number>([...bankSlots, ...borderlessSlots]);
   const add = (slot: number, edge: number) => {
     const normalized = ((edge % 6) + 6) % 6;
     segments.set(`${slot}:${normalized}`, { slot, edge: normalized });
+  };
+  const addDesigned = (slot: number, edge: number) => {
+    const normalized = ((edge % 6) + 6) % 6;
+    designed.set(`${slot}:${normalized}`, { slot, edge: normalized });
   };
 
   // Outer impassable arcs: ring slot d+1 exposes edges d-1, d, d+1.
@@ -117,9 +131,9 @@ export function getTileBorderSegments(
     }
     const local = (((absolute - rotation) % 6) + 6) % 6;
     const slot = local + 1;
-    add(slot, local - 1);
-    add(slot, local);
-    add(slot, local + 1);
+    addDesigned(slot, local - 1);
+    addDesigned(slot, local);
+    addDesigned(slot, local + 1);
   }
 
   // Designer-placed PER-EDGE yellow borders: each entry codes ONE hex edge as
@@ -128,8 +142,9 @@ export function getTileBorderSegments(
   // `rotation` at draw time lands the line back on the coded ABSOLUTE edge —
   // meaning a designed edge stays put while the tile rotates. The centre is
   // footprintIndex 0 → slot 0; a ring footprintIndex f → local slot
-  // ((f-1-rotation) mod 6)+1. Deduped against the arcs above (a legacy arc and an
-  // edge code can name the same line) by the shared `add` map.
+  // ((f-1-rotation) mod 6)+1. Deduped against the designer arcs above (a legacy
+  // arc and an edge code can name the same line) by the shared `designed` map,
+  // and against a printed twin by the merge below.
   for (const code of options.borderEdges ?? []) {
     if (!Number.isInteger(code) || code < 0 || code > 41) {
       continue;
@@ -138,15 +153,24 @@ export function getTileBorderSegments(
     const absolute = code % 6;
     const slot = footprintIndex === 0 ? 0 : (((footprintIndex - 1 - rotation) % 6) + 6) % 6 + 1;
     const edge = (((absolute - rotation) % 6) + 6) % 6;
-    add(slot, edge);
+    addDesigned(slot, edge);
   }
 
-  // A designer edge can be encoded from either of the two hexes it separates.
-  // Filter by physical adjacency, not only by the segment's owning slot, so a
-  // bank / Dungeon Gate truly loses all six surrounding lines.
-  return [...segments.values()].filter(
-    (segment) => !segmentTouchesSuppressedSlot(segment, suppressedSlots)
-  );
+  // The PRINTED art around a carved hex is filtered by physical adjacency, not
+  // only by the segment's owning slot, so a bank / Dungeon Gate truly loses the
+  // whole printed ring on all six surrounding lines. DESIGNER lines are appended
+  // unfiltered (USER RULE 2026-08-22: a fixed yellow border is never removed,
+  // not even by a bank), deduped against a printed twin by the shared key.
+  const kept = new Map<string, TileBorderSegment>();
+  for (const [key, segment] of segments) {
+    if (!segmentTouchesSuppressedSlot(segment, suppressedSlots)) {
+      kept.set(key, segment);
+    }
+  }
+  for (const [key, segment] of designed) {
+    kept.set(key, segment);
+  }
+  return [...kept.values()];
 }
 
 function segmentTouchesSuppressedSlot(
