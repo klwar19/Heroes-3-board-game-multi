@@ -612,7 +612,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // worker rejects the frame outright) and a new stack-item modifier
 // `prophecyThreeRoll`; `AttackRerollSource.rollExtraCandidates` is GONE. All of it
 // behind `polish-card-balance` (default OFF ⇒ byte-identical).
-export const ENGINE_PROTOCOL_VERSION = 52;
+//
+// v53 (2026-08-22/23, the nine-fix user batch d0bcfd55..3598bc1d — ONE number for
+// the whole batch): (1) a FIXED yellow border (designer borderEdges or a starting
+// tile's printed arc) seals movement/discovery again at a border-free bank/gate/
+// override hex — movement LEGALITY moved, a stale edge lets the step through;
+// (2) `MapFieldState.faction` is stamped PUBLIC the moment a Random Town's tile is
+// revealed (reveal-time write an old worker never makes); (3) a map Power-tier cast
+// offers "cast at Power N" RUNGS below the standing bonus — new
+// `mapSpellBoost.reducedPowers` / `.powerAddedByPlayer` and the map-spell-effect
+// reward's `effectivePowerOverride`; an old worker misreads the rung option
+// indices as a full-power resolve; (4) the Cove Pub banks a whole-round,
+// Citadel-gated reinforce entitlement (`ReinforcementDiscountBank.source:"pub"`,
+// `requiresReinforceUnlock`, `expiresAfterRound`) instead of a round-start prompt;
+// (5) Learning's instant offer fires from the ONE `gainExperience` chokepoint
+// (every XP source, map objects included); (6) an income permanent's crack-open
+// gain reads the BALANCED card; (7) a reaction-window Morale/town-cube/Valhalla/
+// card-to-attack/Basic-X-Magic play clears the opponent's STANDING PASS
+// (consecutive-passes closing rule). Display-only siblings in the same batch
+// (Griffin card stats, enemy-info 2nd-hero movement) need no protocol.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 53;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
