@@ -408,6 +408,22 @@ function scorePositionOption(
     // exception is a mandatory cost-discard window (Titan's Cuirass +4 on the
     // map): every option is then a payable discard, so whichever this scorer
     // prefers still pays the cost — bounded, never a stall.
+    // USER RULE 2026-08-22 (reduced-rung resolves): a map-spell-boost window can
+    // now end with "Cast at Power N instead" options AFTER the commit, so the
+    // trailing-option heuristic below would read the WEAKEST cast as "resolve".
+    // Score those explicitly: valid (never a stall) but never preferred — a
+    // computer seat commits at full Power.
+    if (context === "map-spell-boost" && choice.mapSpellBoost) {
+      const offerCount = choice.mapSpellBoost.offers.length;
+      if ((choice.mapSpellBoost.reducedPowers?.length ?? 0) > 0) {
+        if (optionIndex > offerCount) {
+          return CHOICE_BASE + 2;
+        }
+        if (optionIndex === offerCount) {
+          return offerCount === 0 ? CHOICE_BASE + 40 : CHOICE_BASE + 18;
+        }
+      }
+    }
     const optionCount =
       choice.type === "OPTION_CHOICE" ? choice.options.length : 0;
     const label = (optionLabel(choice, optionIndex) ?? "").toLowerCase();

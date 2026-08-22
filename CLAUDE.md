@@ -2496,7 +2496,20 @@ the REAL face is offered; ~~"a draw rider never OPENS a window"~~ is SUPERSEDED
   (`tome-max`), or "Resolve now". Printed side costs are honoured (removeSelf →
   `removed`, a mandatory cost-discard window) and the COST channel
   (`spellPowerValueOfCard`) collapses to the best HONEST side (never a removeSelf one);
-  the choice carries `effectivePower` (Orb doubling shown, applied once at resolve). UI:
+  the choice carries `effectivePower` (Orb doubling shown, applied once at resolve).
+  **The caster picks the RUNG (2026-08-22, USER RULE "view air when u have air magic
+  ability: can't choose at 0 pow … choose any pow level u want")**: standing Power (a
+  School-of-Magic permanent's basic +1, Pandora, Astrologers, cultivation, the map
+  Power bank) is added automatically at cast time and used to be an unavoidable FLOOR —
+  View Air with Air Magic could never take its Power-0 "3 gold". `openMapSpellBoost` now
+  also lists `reducedPowers` — every printed rung below the tier the current Power buys
+  — as trailing options AFTER the commit (so the commit keeps index `offers.length`),
+  resolved through `MapSpellBoostFlags.resolveEffectivePower`. Shared seam ⇒ all six map
+  Power-tier spells. LIMITS: a window with NO offers left whose Power the caster RAISED
+  themselves still auto-resolves (`powerAddedByPlayer`) — the rungs only hold a window
+  open for a floor nobody chose; a rung that buys the SAME tier is never offered (Fly at
+  Power 1); a mandatory cost-discard withholds the rungs like it withholds the commit;
+  the AI always commits at full Power (`choice-policy.ts` scores a rung last). UI:
   `MapSpellBoostModal` renders as the combat REACTION TRAY with a live "next breakpoint"
   readout. Map casts share the non-combat spell LIFECYCLE (`noteMapSpellCast`,
   `src/engine/spell-lifecycle.ts`) but never touch the combat-round limit. The OFFER GATE

@@ -706,3 +706,63 @@ describe("choice policy — polish-quick-combat (strength-based Quick Combat)", 
     expect(quick - fight).toBeGreaterThanOrEqual(25);
   });
 });
+
+describe("choice policy — map-spell-boost reduced Power rungs (2026-08-22 USER RULE)", () => {
+  /** View Air at a standing Power 2: commit, then the Power-0 and -1 rungs. */
+  function rungChoice(): PendingChoice {
+    return {
+      id: "msb1",
+      type: "OPTION_CHOICE",
+      playerId: "p2",
+      prompt: "View Air: Power 2 — Gain 1 Valuables.",
+      options: [
+        { label: "Commit Power and cast — Power 2: Gain 1 Valuables" },
+        { label: "Cast at Power 0 instead: Gain 3 gold" },
+        { label: "Cast at Power 1 instead: Gain 2 Building Materials" },
+      ],
+      context: "map-spell-boost",
+      mapSpellBoost: {
+        spellCardId: "spell.view_air",
+        power: 2,
+        effectivePower: 2,
+        offers: [],
+        reducedPowers: [0, 1],
+      },
+      returnPhase: "player-turn",
+    } as PendingChoice;
+  }
+
+  function rungActions(count: number): LegalAction[] {
+    return Array.from({ length: count }, (_, optionIndex) => ({
+      label: `option ${optionIndex}`,
+      action: {
+        type: "CHOOSE_OPTION",
+        playerId: "p2",
+        choiceId: "msb1",
+        optionIndex,
+      } as GameAction,
+    }));
+  }
+
+  it("a computer seat COMMITS at full Power and never picks a weaker rung", () => {
+    const choice = rungChoice();
+    const actions = rungActions(3);
+    const obs = observation(choice, actions);
+
+    const decision = chooseComputerAction(obs);
+    expect(decision?.action.type).toBe("CHOOSE_OPTION");
+    expect((decision?.action as { optionIndex: number }).optionIndex).toBe(0);
+
+    // MUTATION CHECK: without the dedicated branch the generic heuristic reads
+    // only the TRAILING option as "resolve" and scores a MIDDLE rung as if it
+    // were a Power boost — tying the commit, so the AI could deliberately
+    // downgrade its own cast.
+    const commit = scoreChoiceAction(obs, actions[0]!.action)!.score;
+    const lowest = scoreChoiceAction(obs, actions[1]!.action)!.score;
+    const middle = scoreChoiceAction(obs, actions[2]!.action)!.score;
+    expect(commit - lowest).toBeGreaterThanOrEqual(10);
+    expect(commit - middle).toBeGreaterThanOrEqual(10);
+    // Still real, scored (never null) options — an AFK/AI seat can always act.
+    expect(lowest).toBeGreaterThan(0);
+  });
+});

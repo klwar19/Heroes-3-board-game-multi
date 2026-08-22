@@ -3971,6 +3971,25 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   font-size: 11px;
 }
 
+/* "Cast at Power N instead" — the printed rungs below the current Power, so an
+   automatic standing bonus (Air Magic's +1 …) can be declined. Secondary to the
+   gold commit button: same tray-button chrome, no gold fill. */
+.mapSpellLowerPower {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.mapSpellLowerPower > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mapSpellResolveLower {
+  font-size: 11px;
+}
+
 /* Tournament Morale token — "discard all revealed, Search (X) again" row. */
 .searchRepeatRow {
   display: flex;

@@ -36,12 +36,15 @@ function applyOk(state: GameState, action: GameAction): GameState {
 }
 
 /** Cast View Air with the given hand so the real map-spell-boost choice opens. */
-function openBoost(cards: string[]): GameState {
+function openBoost(cards: string[], permanents: string[] = []): GameState {
   let state = createAdventureGameState({ seed: "map-boost-modal-ui", difficulty: "normal", rollFirstPlayer: false });
   if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
     state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
   }
   state.players.p1.hand = [...cards];
+  if (permanents.length > 0) {
+    state.players.p1.permanents = [...permanents];
+  }
   state = applyOk(state, {
     type: "PLAY_CARD",
     playerId: "p1",
@@ -178,6 +181,43 @@ describe("MapSpellBoostModal — battle-style Power tray", () => {
     );
     expect(screen.getByRole("status").textContent).toContain("adding Power");
     expect(screen.queryByText(/Tunic/i)).toBeNull();
+  });
+
+  it("offers a lower-Power cast button per printed rung, dispatching the engine's own option", () => {
+    // Air Magic's automatic +1 puts View Air at Power 1; the caster must still
+    // be able to take the Power-0 rung (USER RULE 2026-08-22).
+    const state = openBoost(["spell.view_air"], ["ability.air_magic"]);
+    const boost =
+      state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.mapSpellBoost : undefined;
+    expect(boost?.reducedPowers).toEqual([0]);
+    const onAction = vi.fn();
+    wrap(
+      <MapSpellBoostModal
+        legalActions={getLegalActions(state, "p1")}
+        onAction={onAction}
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    expect(screen.getByRole("button", { name: /Commit Power & Cast — Power 1/i })).toBeTruthy();
+    const lower = screen.getByRole("button", { name: /Cast at Power 0 instead: Gain 3 gold/i });
+    fireEvent.click(lower);
+    expect(onAction).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "CHOOSE_OPTION", optionIndex: boost!.offers.length + 1 })
+    );
+  });
+
+  it("CONTROL: with no standing bonus the tray shows no lower-Power buttons", () => {
+    const state = openBoost(["spell.view_air", "spell.haste"]);
+    wrap(
+      <MapSpellBoostModal
+        legalActions={getLegalActions(state, "p1")}
+        onAction={vi.fn()}
+        state={state}
+        viewerPlayerId="p1"
+      />
+    );
+    expect(screen.queryByRole("button", { name: /Cast at Power .* instead/i })).toBeNull();
   });
 
   it("CONTROL: the PromptTray no longer renders the map-spell-boost box list (owner AND bystander)", () => {

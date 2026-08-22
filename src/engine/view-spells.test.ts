@@ -472,8 +472,11 @@ describe("View Earth reach scales with the Power paid", () => {
     });
     expect(viewEarthCasts(state)).toBe(1);
 
-    // Starting Power 1 with nothing to boost → resolves straight to the pick.
+    // Starting Power 1 with nothing to ADD still opens the boost window (the
+    // 2026-08-22 rung rule: automatic Power is declinable); committing it drops
+    // straight into the pick.
     state = cast(state, "spell.view_earth");
+    state = boost(state, null);
     const choice = state.pendingChoice;
     if (choice?.type !== "OPTION_CHOICE" || choice.context !== "view-earth") {
       throw new Error("expected the view-earth pick at Power 1");

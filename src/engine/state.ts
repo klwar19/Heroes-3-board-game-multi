@@ -10749,6 +10749,12 @@ export type AdventureReward =
       kind: "map-spell-effect";
       spellCardId: CardId;
       power: number;
+      /**
+       * A deliberately REDUCED resolve (the caster picked a lower printed rung
+       * than their standing Power reaches): the exact effective Power to resolve
+       * at, bypassing `power * multiplier`. Absent = the normal full-Power read.
+       */
+      effectivePowerOverride?: number;
       fromSpellBook?: boolean;
       castEnablerCardId?: CardId;
       inFlightCardIds?: CardId[];
@@ -15908,6 +15914,25 @@ export type PendingChoice =
         >;
         /** Display/resolution Power after Tome/Orb-style multipliers. */
         effectivePower?: number;
+        /**
+         * USER RULE 2026-08-22 ("view air when u have air magic ability: can't
+         * choose at 0 pow, should be able to do that, choose any pow level u
+         * want"): the printed tier rungs BELOW the current effective Power, in
+         * ascending order. Standing Power (a School-of-Magic permanent's basic
+         * +1, Pandora, Astrologers …) is added automatically at cast time, so
+         * without these the caster could never resolve a weaker-but-wanted rung
+         * (View Air's Power-0 "3 gold" with Air Magic in play). Rendered AFTER
+         * the trailing commit option, so the commit keeps index `offers.length`;
+         * option `offers.length + 1 + k` resolves at `reducedPowers[k]`.
+         */
+        reducedPowers?: number[];
+        /**
+         * The caster has already ADDED Power by hand in this window. Then a
+         * window with no offers left auto-resolves exactly as before (they just
+         * chose that Power); the rungs only ever hold the window open for a
+         * floor the caster never chose — a standing bonus.
+         */
+        powerAddedByPlayer?: boolean;
         /** Basic Magic expert already spent on this cast (once per cast, like combat). */
         schoolFetchExpertUsed?: boolean;
         /** School permanent already experted on this cast. */

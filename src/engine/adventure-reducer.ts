@@ -6608,6 +6608,15 @@ type MapSpellBoostFlags = {
    * allowed, `perCard` Power each adds.
    */
   costDiscards?: { sourceCardId: CardId; required: number; upTo: number; perCard: number };
+  /**
+   * A deliberately REDUCED resolve (USER RULE 2026-08-22 — "choose any pow level
+   * u want"): resolve at exactly this EFFECTIVE Power instead of
+   * `power * multiplier`. Set only by the reduced-rung options of the boost
+   * window; every other path leaves it absent and is byte-identical.
+   */
+  resolveEffectivePower?: number;
+  /** The caster already added Power by hand in this window (see the state doc). */
+  powerAddedByPlayer?: boolean;
 };
 
 function mapSpellCrownsLeft(state: GameState, playerId: PlayerId): number {
@@ -6938,23 +6947,43 @@ export function openMapSpellBoost(
     multiplier,
     flags
   );
-  if (offers.length === 0) {
-    applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
-    return;
-  }
-
   // A still-owed REQUIRED cost discard (Titan's Cuirass) withholds "Resolve
   // now" until paid — the offers are then exactly the payable cost discards.
   const mustPayCost = Boolean(
     flags.costDiscards && flags.costDiscards.required > 0 && offers.some((offer) => offer.kind === "cost-discard")
   );
+  // USER RULE 2026-08-22: standing Power (School-of-Magic basic +1, Pandora,
+  // Astrologers, cultivation …) is folded into the cast's starting Power, so the
+  // window used to have exactly ONE resolve — at the maximum the caster's
+  // standing sources reach. Every printed rung BELOW that is offered too, so a
+  // View Air holder with Air Magic can still take the Power-0 "3 gold". Only
+  // rungs strictly below the tier the current Power actually BUYS — never a
+  // second button for the same effect (Fly at Power 1 still resolves its
+  // Power-0 tier, so it gets no "cast at Power 0 instead").
+  const currentRung = bestMapSpellTier(tiers, effectivePower).minPower;
+  const reducedPowers = mustPayCost
+    ? []
+    : [...new Set(tiers.tiers.map((tier) => tier.minPower))]
+        .filter((rung) => rung < currentRung)
+        .sort((a, b) => a - b);
+  // Nothing left to decide — no Power source to add, and either no weaker rung
+  // or a Power the caster raised themselves (they already chose it, so the
+  // classic auto-resolve stands). A rung only holds the window open for a floor
+  // nobody chose: the automatic standing bonus.
+  if (offers.length === 0 && (reducedPowers.length === 0 || flags.powerAddedByPlayer)) {
+    applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
+    return;
+  }
+
   const costSourceCardId = flags.costDiscards?.sourceCardId;
   const costSourceName = costSourceCardId ? cardLibrary[costSourceCardId]?.name ?? costSourceCardId : "";
   const prompt = mustPayCost
     ? `${spell.name}: Power ${effectivePower} — discard ${flags.costDiscards!.required} more card${
         flags.costDiscards!.required === 1 ? "" : "s"
       } to pay ${costSourceName}.`
-    : `${spell.name}: Power ${effectivePower} — ${mapSpellTierSummary(tiers, effectivePower)}. Add Power (cards / School / Basic Magic / Tome), or commit and cast.`;
+    : `${spell.name}: Power ${effectivePower} — ${mapSpellTierSummary(tiers, effectivePower)}. Add Power (cards / School / Basic Magic / Tome), or commit and cast.${
+        reducedPowers.length > 0 ? " You may also cast at a lower printed Power." : ""
+      }`;
 
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
@@ -6967,7 +6996,10 @@ export function openMapSpellBoost(
       })),
       ...(mustPayCost
         ? []
-        : [{ label: `Commit Power and cast — Power ${effectivePower}: ${mapSpellTierSummary(tiers, effectivePower)}` }])
+        : [{ label: `Commit Power and cast — Power ${effectivePower}: ${mapSpellTierSummary(tiers, effectivePower)}` }]),
+      ...reducedPowers.map((rung) => ({
+        label: `Cast at Power ${rung} instead: ${mapSpellTierSummary(tiers, rung)}`
+      }))
     ],
     context: "map-spell-boost",
     mapSpellBoost: {
@@ -6975,6 +7007,8 @@ export function openMapSpellBoost(
       power,
       effectivePower,
       offers,
+      ...(reducedPowers.length > 0 ? { reducedPowers } : {}),
+      ...(flags.powerAddedByPlayer ? { powerAddedByPlayer: true as const } : {}),
       ...(flags.schoolFetchExpertUsed ? { schoolFetchExpertUsed: true as const } : {}),
       ...(flags.schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true as const } : {}),
       ...(flags.fromSpellBook ? { fromSpellBook: true as const } : {}),
@@ -7013,6 +7047,7 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     schoolPermanentExpertUsed,
     costDiscards
   } = boost;
+  const reducedPowers = boost.reducedPowers ?? [];
   // Balance packs (Polish / Community) reprint map spells too — read the
   // definition the ENGINE resolves right now, never the raw printed library, or
   // the tier table and the resolved effect disagree with the offer.
@@ -7045,11 +7080,18 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     ...(inFlightCardIds ? { inFlightCardIds } : {}),
     ...(schoolFetchExpertUsed ? { schoolFetchExpertUsed: true } : {}),
     ...(schoolPermanentExpertUsed ? { schoolPermanentExpertUsed: true } : {}),
-    ...(costDiscards ? { costDiscards } : {})
+    ...(costDiscards ? { costDiscards } : {}),
+    ...(boost.powerAddedByPlayer ? { powerAddedByPlayer: true as const } : {})
   };
 
   if (!player || !spell || optionIndex >= offers.length) {
-    applyMapSpellAtPower(state, playerId, spellCardId, power, flags);
+    // Option `offers.length` is the full-Power commit (unchanged); every option
+    // after it is a deliberately WEAKER printed rung the caster picked instead.
+    const reduced = reducedPowers[optionIndex - offers.length - 1];
+    applyMapSpellAtPower(state, playerId, spellCardId, power, {
+      ...flags,
+      ...(reduced !== undefined ? { resolveEffectivePower: reduced } : {})
+    });
     if (!state.pendingChoice) {
       pumpAdventureQueues(state);
     }
@@ -7058,7 +7100,9 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
 
   const offer = offers[optionIndex]!;
   let nextPower = power;
-  let nextFlags = { ...flags };
+  // Taking ANY offer is the caster raising the Power by hand — from here the
+  // window auto-resolves once the offers run out (the classic behaviour).
+  let nextFlags: MapSpellBoostFlags = { ...flags, powerAddedByPlayer: true };
 
   if (offer.kind === "school-permanent-expert") {
     // Discard the School permanent for expert Power; crown spent inside helper.
@@ -7300,7 +7344,10 @@ function applyMapSpellAtPower(
   // Orb doubling (SPELL_POWER_DOUBLE) multiplies total Power at resolve — same
   // as combat resolvedSpellPowerForStackItem (map rarely has orbs, but parity).
   const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
-  const effectivePower = power * multiplier;
+  // A REDUCED resolve (the caster picked a lower printed rung than their
+  // standing Power reaches) names the effective Power outright — multiplying it
+  // again would undo the choice.
+  const effectivePower = bookFlags.resolveEffectivePower ?? power * multiplier;
   const best = bestMapSpellTier(tiers, effectivePower);
 
   // Dimension Door teleports through a destination pick that can drop the hero
@@ -7322,6 +7369,9 @@ function applyMapSpellAtPower(
         kind: "map-spell-effect",
         spellCardId,
         power,
+        ...(bookFlags.resolveEffectivePower !== undefined
+          ? { effectivePowerOverride: bookFlags.resolveEffectivePower }
+          : {}),
         ...(bookFlags.fromSpellBook ? { fromSpellBook: true as const } : {}),
         ...(bookFlags.castEnablerCardId ? { castEnablerCardId: bookFlags.castEnablerCardId } : {}),
         ...(bookFlags.inFlightCardIds ? { inFlightCardIds: bookFlags.inFlightCardIds } : {})
@@ -7359,7 +7409,8 @@ function finalizeMapSpellEffect(
     return;
   }
   const multiplier = getSchoolPowerMultiplier(state, playerId, spell);
-  const effectivePower = power * multiplier;
+  // See applyMapSpellAtPower: a reduced resolve names the effective Power.
+  const effectivePower = bookFlags.resolveEffectivePower ?? power * multiplier;
   const best = bestMapSpellTier(tiers, effectivePower);
   const effectCountBefore = state.activeEffects.length;
   applyMapSpellEffect(
@@ -19405,6 +19456,9 @@ export function pumpAdventureQueues(state: GameState): void {
       // is what keeps the recall out from behind that combat.
       adventure.rewardQueue.shift();
       finalizeMapSpellEffect(state, reward.playerId, reward.spellCardId, reward.power, {
+        ...(reward.effectivePowerOverride !== undefined
+          ? { resolveEffectivePower: reward.effectivePowerOverride }
+          : {}),
         ...(reward.fromSpellBook ? { fromSpellBook: true as const } : {}),
         ...(reward.castEnablerCardId ? { castEnablerCardId: reward.castEnablerCardId } : {}),
         ...(reward.inFlightCardIds ? { inFlightCardIds: reward.inFlightCardIds } : {})

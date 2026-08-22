@@ -46,6 +46,25 @@ function castViewAir(state: GameState): GameState {
   return applyOk(state, play);
 }
 
+/**
+ * Commit the open boost window at its CURRENT Power. Since 2026-08-22 a cast
+ * whose Power comes only from automatic sources (a bank, a school permanent)
+ * keeps the window open so the caster may decline it and take a lower printed
+ * rung — the commit is the option at index `offers.length`.
+ */
+function commitBoost(state: GameState): GameState {
+  const choice = state.pendingChoice;
+  if (choice?.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost" || !choice.mapSpellBoost) {
+    return state;
+  }
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: choice.id,
+    optionIndex: choice.mapSpellBoost.offers.length
+  });
+}
+
 describe("Map spell-power bank — Sorcery / Scales on the map", () => {
   it("banks +Power and draws a card when Sorcery is played on the map", () => {
     let state = mapHand(["ability.sorcery"]);
@@ -62,9 +81,9 @@ describe("Map spell-power bank — Sorcery / Scales on the map", () => {
     state.players.p1.mapSpellPowerBank = 1; // a Sorcery / Scales bank from earlier this turn
     const materialsBefore = state.players.p1.resources.buildingMaterials;
 
-    // Cast View Air alone: bank becomes starting Power 1, no boost sources left →
-    // auto-resolves at Power 1 (2 Building Materials).
-    state = castViewAir(state);
+    // Cast View Air alone: the bank becomes starting Power 1, with no boost
+    // sources left — commit it for the Power-1 tier (2 Building Materials).
+    state = commitBoost(castViewAir(state));
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
     expect(state.players.p1.mapSpellPowerBank ?? 0, "one Spell, one boost — the bank is spent").toBe(0);
   });
@@ -74,7 +93,7 @@ describe("Map spell-power bank — Sorcery / Scales on the map", () => {
     state.players.p1.mapSpellPowerBank = 3;
     const valuablesBefore = state.players.p1.resources.valuables;
 
-    state = castViewAir(state);
+    state = commitBoost(castViewAir(state));
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1); // top tier needs Power 2
     expect(state.players.p1.mapSpellPowerBank ?? 0).toBe(0);
   });

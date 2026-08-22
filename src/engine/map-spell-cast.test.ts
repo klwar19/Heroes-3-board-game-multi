@@ -156,9 +156,18 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
       mode: "basic",
       target: { type: "none" }
     });
-    // With only school permanent (no hand power, no expert crown), starting Power 1
-    // auto-resolves if no school-expert offer (needs crown) and no card offers.
-    // Actually school-expert needs crown — without crown, only starting +1, auto-resolve.
+    // With only the school permanent (no hand power, no expert crown) there is
+    // nothing left to ADD — but since 2026-08-22 the window still opens so the
+    // caster may decline the automatic +1 and take the Power-0 rung instead
+    // (USER RULE, pinned in the "caster picks the Power rung" block below).
+    // Committing is the boosted cast this test is about.
+    const boostChoiceId = state.pendingChoice!.id;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: boostChoiceId,
+      optionIndex: 0
+    });
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
     expect(state.players.p1.resources.gold).toBe(goldBefore);
     expect(state.players.p1.permanents).toContain("ability.air_magic"); // basic never discards
@@ -212,9 +221,13 @@ describe("Map cast — School of Magic expert + Basic Magic expert (combat parit
       mode: "basic",
       target: { type: "none" }
     });
-    // Starting Power 1 auto-resolves (no boost sources) — permanent still in play.
+    // No crown ⇒ no School-expert OFFER; the permanent stays in play. The
+    // window is still open on the rung choice alone (2026-08-22 USER RULE), so
+    // the assertion is that it carries no boost offer — not that it is closed.
     expect(casted.players.p1.permanents).toContain("ability.air_magic");
-    expect(casted.pendingChoice).toBeNull();
+    const boost =
+      casted.pendingChoice?.type === "OPTION_CHOICE" ? casted.pendingChoice.mapSpellBoost : undefined;
+    expect(boost?.offers).toEqual([]);
   });
 
   it("Basic Air Magic expert offers +3 Power (from the in-play permanent, which is discarded)", () => {
@@ -731,7 +744,11 @@ describe("map-spell-boost — every printed power side is offered", () => {
       .map((offer, index) => ({ offer, index }))
       .filter((entry) => entry.offer.kind === "cost-discard");
     expect(costOffers.length).toBeGreaterThan(0);
-    expect(choice.options.length).toBe(choice.mapSpellBoost.offers.length + 1); // Resolve now present
+    // "Resolve now" present at index `offers.length`, plus one trailing rung per
+    // printed Power level below the current one (2026-08-22 USER RULE).
+    expect(choice.mapSpellBoost.reducedPowers).toEqual([0]);
+    expect(choice.options.length).toBe(choice.mapSpellBoost.offers.length + 2);
+    expect(choice.options[choice.mapSpellBoost.offers.length]!.label).toMatch(/Commit Power and cast/);
     const slowDiscard = costOffers.find((entry) => entry.offer.kind === "cost-discard" && entry.offer.cardId === "spell.slow")!;
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -898,7 +915,18 @@ describe("map Spell Power parity — events, specialties, Tomes, Orbs, and recal
     state = castViewAir(state);
 
     // Blue Sky +1 and the hero specialty +1 are the same automatic sources
-    // used by battle, so View Air reaches its Power-2 tier without a discard.
+    // used by battle, so View Air reaches its Power-2 tier without a discard —
+    // committed through the rung window (2026-08-22 USER RULE: automatic Power
+    // is declinable, so the cast no longer resolves itself).
+    const boost =
+      state.pendingChoice?.type === "OPTION_CHOICE" ? state.pendingChoice.mapSpellBoost : undefined;
+    expect(boost?.effectivePower).toBe(2);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: boost!.offers.length
+    });
     expect(state.players.p1.resources.valuables).toBe(valuablesBefore + 1);
   });
 
@@ -1068,5 +1096,187 @@ describe("map Spell Power parity — events, specialties, Tomes, Orbs, and recal
     }
     expect(recall.options.some((option) => /Knowledge expert/i.test(option.label))).toBe(false);
     expect(recall.options.some((option) => /Use Knowledge:/i.test(option.label))).toBe(true);
+  });
+});
+
+/**
+ * USER RULE 2026-08-22: "view air when u have air magic ability: can't choose at
+ * 0 pow, should be able to do that, choose any pow level u want!!!"
+ *
+ * Standing Power (the Air Magic School-of-Magic permanent's basic +1, Pandora,
+ * Astrologers, cultivation …) is folded into a map Power-tier cast's STARTING
+ * Power, so the boost window used to have exactly one resolve — at the maximum
+ * those standing sources reach. The caster now also gets every printed rung
+ * BELOW the tier that Power buys. Shared seam (`openMapSpellBoost` /
+ * `resolveMapSpellBoostChoice`), so all six Power-tier map spells behave alike;
+ * Fly below is the sibling proof.
+ */
+describe("map-spell-boost — the caster picks the Power rung (standing bonuses are declinable)", () => {
+  /** p1 holds the Air Magic permanent (basic +1 Power on Air spells). */
+  function withAirMagic(cards: string[]): GameState {
+    const state = mapHand(cards);
+    state.players.p1.permanents = ["ability.air_magic"];
+    return state;
+  }
+
+  function boostChoice(state: GameState) {
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || choice.context !== "map-spell-boost" || !choice.mapSpellBoost) {
+      throw new Error("expected an open map-spell-boost choice");
+    }
+    return { choice, boost: choice.mapSpellBoost };
+  }
+
+  function castMapSpell(state: GameState, cardId: string): GameState {
+    return applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId,
+      mode: "basic",
+      target: { type: "none" }
+    });
+  }
+
+  it("View Air + Air Magic: the window OPENS at Power 1 and still offers the Power-0 rung (3 gold)", () => {
+    // No power sources in hand at all: before the fix `offers.length === 0`
+    // auto-resolved the cast at the forced Power 1 with no window and no choice.
+    let state = withAirMagic(["spell.view_air"]);
+    const goldBefore = state.players.p1.resources.gold;
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+
+    state = castMapSpell(state, "spell.view_air");
+
+    const { choice, boost } = boostChoice(state);
+    // Nothing has been paid out yet — the cast is genuinely still open.
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore);
+    expect(boost.offers).toHaveLength(0);
+    expect(boost.effectivePower).toBe(1);
+    expect(boost.reducedPowers).toEqual([0]);
+    // Commit is still the option at index `offers.length`; the rung follows it.
+    expect(choice.options[0]!.label).toMatch(/Commit Power and cast — Power 1/);
+    expect(choice.options[1]!.label).toMatch(/Cast at Power 0 instead: Gain 3 gold/);
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 1
+    });
+    expect(state.players.p1.resources.gold).toBe(goldBefore + 3);
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore);
+  });
+
+  it("CONTROL: committing instead resolves the boosted Power-1 rung (2 Building Materials)", () => {
+    let state = withAirMagic(["spell.view_air"]);
+    const goldBefore = state.players.p1.resources.gold;
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+    state = castMapSpell(state, "spell.view_air");
+    const { choice } = boostChoice(state);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: 0
+    });
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+  });
+
+  it("CONTROL: with NO standing bonus the window is unchanged — no rung options at all", () => {
+    let state = mapHand(["spell.view_air", "spell.haste"]);
+    state = castMapSpell(state, "spell.view_air");
+    const { choice, boost } = boostChoice(state);
+    expect(boost.effectivePower).toBe(0);
+    expect(boost.reducedPowers).toBeUndefined();
+    expect(choice.options).toHaveLength(boost.offers.length + 1);
+  });
+
+  it("every intermediate rung is reachable: standing Power 2 offers BOTH Power 1 and Power 0", () => {
+    // Air Magic (+1) plus a banked map Power (+1) — both automatic — put the
+    // cast at Power 2, the Valuables rung. The MIDDLE rung must be reachable
+    // too, not just the floor.
+    let state = withAirMagic(["spell.view_air"]);
+    state.players.p1.mapSpellPowerBank = 1;
+    const goldBefore = state.players.p1.resources.gold;
+    const materialsBefore = state.players.p1.resources.buildingMaterials;
+    const valuablesBefore = state.players.p1.resources.valuables;
+    state = castMapSpell(state, "spell.view_air");
+
+    const { choice, boost } = boostChoice(state);
+    expect(boost.effectivePower).toBe(2);
+    expect(boost.reducedPowers).toEqual([0, 1]);
+    // …and take the MIDDLE rung: 2 Building Materials, not 1 Valuables.
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: boost.offers.length + 2
+    });
+    expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+    expect(state.players.p1.resources.valuables).toBe(valuablesBefore);
+    expect(state.players.p1.resources.gold).toBe(goldBefore);
+  });
+
+  it("SIBLING (shared seam): Fly at Power 2 may be cast at Power 0 — no +1 movement", () => {
+    let state = withAirMagic(["spell.fly", "spell.haste", "spell.slow"]);
+    state = castMapSpell(state, "spell.fly");
+    // Air Magic (+1) + Haste (+1) = Power 2 → the "+1 movement" rung.
+    const first = boostChoice(state);
+    const hasteIndex = first.boost.offers.findIndex(
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: first.choice.id,
+      optionIndex: hasteIndex
+    });
+    const { choice, boost } = boostChoice(state);
+    expect(boost.effectivePower).toBe(2);
+    expect(boost.reducedPowers).toEqual([0]);
+    const heroId = "hero_p1";
+    const movementBefore = state.heroes[heroId]!.movementPoints;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: boost.offers.length + 1
+    });
+    expect(state.heroes[heroId]!.movementPoints).toBe(movementBefore);
+  });
+
+  it("CONTROL (sibling): committing Fly at Power 2 really grants the +1 movement", () => {
+    let state = withAirMagic(["spell.fly", "spell.haste", "spell.slow"]);
+    state = castMapSpell(state, "spell.fly");
+    const first = boostChoice(state);
+    const hasteIndex = first.boost.offers.findIndex(
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: first.choice.id,
+      optionIndex: hasteIndex
+    });
+    const { choice, boost } = boostChoice(state);
+    const heroId = "hero_p1";
+    const movementBefore = state.heroes[heroId]!.movementPoints;
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: boost.offers.length
+    });
+    expect(state.heroes[heroId]!.movementPoints).toBe(movementBefore + 1);
+  });
+
+  it("CONTROL: Fly at Power 1 gets NO rung option — its Power-0 tier is what Power 1 already buys", () => {
+    let state = withAirMagic(["spell.fly"]);
+    state = castMapSpell(state, "spell.fly");
+    // Nothing to add and nothing weaker to pick → the old auto-resolve stands.
+    expect(
+      state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "map-spell-boost"
+    ).toBe(false);
   });
 });

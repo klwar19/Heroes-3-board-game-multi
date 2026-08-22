@@ -533,8 +533,9 @@ describe("Map cast-then-boost × POLISH Spell Book", () => {
     state.players.p1.permanents = ["ability.air_magic"];
     const materialsBefore = state.players.p1.resources.buildingMaterials;
 
-    state = castViewAirFrom(state, true);
-    // Starting Power 1 (school basic), no fuel → auto-resolve materials.
+    state = resolveBoostNow(castViewAirFrom(state, true));
+    // Starting Power 1 (school basic), no fuel → commit for the materials tier
+    // (since 2026-08-22 the window still opens so the +1 can be declined).
     expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
     expect(state.players.p1.spellBookUsed).toContain("spell.view_air");
     expect(state.players.p1.permanents).toContain("ability.air_magic");

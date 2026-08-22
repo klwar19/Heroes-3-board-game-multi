@@ -127,6 +127,14 @@ export function MapSpellBoostModal({
   // The trailing option (when present) commits the Power and casts; while a printed cost
   // discard is still owed the engine withholds it, and so do we.
   const resolveAction = choice.options.length > boost.offers.length ? actionFor(boost.offers.length) : undefined;
+  // Reduced rungs (USER RULE 2026-08-22): the printed Power levels BELOW the
+  // current one, offered after the commit so a caster whose standing bonus
+  // (Air Magic …) pushed them past Power 0 can still cast at Power 0.
+  const reducedResolves = (boost.reducedPowers ?? []).map((rung, k) => ({
+    rung,
+    legal: actionFor(boost.offers.length + 1 + k),
+    label: choice.options[boost.offers.length + 1 + k]?.label ?? `Cast at Power ${rung}`
+  }));
 
   // The tray deliberately has no tier PICKER, but the player still has to
   // decide HOW MUCH Power to add — so the next unreached breakpoint (and what it
@@ -246,6 +254,26 @@ export function MapSpellBoostModal({
         ) : (
           <small className="spellBoostCostNote">Pay the printed cost before resolving.</small>
         )}
+        {reducedResolves.length > 0 ? (
+          <div className="mapSpellLowerPower">
+            <small>Or cast at a lower printed Power:</small>
+            {reducedResolves.map(({ rung, legal, label }) =>
+              legal ? (
+                <button
+                  aria-label={label}
+                  className="trayPass mapSpellResolveLower"
+                  key={rung}
+                  onClick={() => onAction(legal.action)}
+                  title={label}
+                  type="button"
+                >
+                  Cast at Power {rung}
+                  {tiers ? ` — ${bestMapSpellTier(tiers, rung).label}` : ""}
+                </button>
+              ) : null
+            )}
+          </div>
+        ) : null}
       </footer>
     </div>
   );
