@@ -4505,6 +4505,14 @@ const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
 /** Cards of Prophecy — its Balance-Pack reprint is the 3-roll die instant. */
 const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
 const GOLDEN_BOW_CARD_ID = "artifact.golden_bow" as CardId;
+/**
+ * Diplomat's Ring — the ONE card in the game printed "Reroll any die OR ANY
+ * ROLL" (base set AND its Community/Polish reprint, which keeps that wording;
+ * Cards of Prophecy prints "Reroll any die" and Ambassador's Sash "Reroll a
+ * die"). On a multi-die ability roll it is therefore the only source that
+ * re-throws BOTH dice — see `AttackRerollSource.rerollsWholeRoll`.
+ */
+const DIPLOMATS_RING_CARD_ID = "artifact.diplomats_ring" as CardId;
 
 /**
  * Builds the spend-ordered reroll pools for one attack roll. Rerolls from
@@ -4723,6 +4731,64 @@ function abilityRollSucceeds(rolls: number[], window: AbilityRollWindow): boolea
 }
 
 /**
+ * USER RULE (2026-08-22, Death Stare): its two dice are two SEPARATE dice. An
+ * ordinary reroll source — the positive Morale token/card, a "Reroll a die"
+ * artifact — re-throws exactly ONE of them, and the player picks which. Only
+ * Diplomat's Ring ("Reroll any die or any roll") re-throws both
+ * (`rerollsWholeRoll`).
+ *
+ * With no explicit pick (a server-side driver, a legacy frame) the engine
+ * rerolls the FIRST die outside the ability's success window — a die already
+ * inside it is never thrown away — falling back to die 1 when every die is
+ * already good. The OFFERS carry an explicit `dieIndex`, so `assertLegal`
+ * refuses a pick-less frame; this default is the non-offer backstop.
+ */
+function abilityRerollDieIndex(
+  rolls: number[],
+  window: AbilityRollWindow,
+  requested: number | undefined
+): number {
+  if (requested !== undefined && Number.isInteger(requested) && requested >= 0 && requested < rolls.length) {
+    return requested;
+  }
+  const outside = rolls.findIndex((roll) => roll < window.minRoll || roll > window.maxRoll);
+  return outside >= 0 ? outside : 0;
+}
+
+/**
+ * One throw of an ability-roll reroll. A whole-roll source (Diplomat's Ring) —
+ * and any genuinely single-die roll — re-throws every die; every other source
+ * re-throws only the chosen die and carries the untouched faces (and this
+ * throw's earlier adjustment notes) forward.
+ */
+function throwAbilityRerollCandidate(
+  combat: CombatState,
+  context: PendingAbilityRollContext,
+  source: AttackRerollSource,
+  latest: AttackRollCandidate | undefined,
+  window: AbilityRollWindow,
+  requestedDieIndex: number | undefined
+): AttackRollCandidate {
+  const diceCount = Math.max(1, context.diceCount);
+  const previous = latest?.rolls ?? [];
+  if (source.rerollsWholeRoll === true || diceCount <= 1 || previous.length <= 1) {
+    const rolls = Array.from({ length: diceCount }, () => rollAttackDie(combat));
+    return { rolls, roll: rolls[0] ?? 0, sumAllDice: true };
+  }
+  const index = abilityRerollDieIndex(previous, window, requestedDieIndex);
+  const rolls = previous.map((roll, at) => (at === index ? rollAttackDie(combat) : roll));
+  return {
+    rolls,
+    roll: rolls[0] ?? 0,
+    sumAllDice: true,
+    modifierNotes: [
+      ...(latest?.modifierNotes ?? []),
+      { source: source.name, text: `die ${index + 1} of ${previous.length} is rerolled` }
+    ]
+  };
+}
+
+/**
  * Negative Morale on an ability's own just-rolled dice. Mirrors
  * applyMoraleDiceCurses, but the "against the holder" heuristics rank flips
  * by the ability's SUCCESS WINDOW instead of the face value — a Death Stare
@@ -4825,7 +4891,10 @@ function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSou
     name: cardLibrary[cardId]?.name ?? cardId,
     cardId,
     remaining: 1,
-    used: 0
+    used: 0,
+    // "Reroll any die or any roll" — the Ring alone may re-throw a whole
+    // multi-die ability roll (both Death Stare dice).
+    ...(cardId === DIPLOMATS_RING_CARD_ID ? { rerollsWholeRoll: true } : {})
   };
   if (cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")) {
     return { ...base, rollExtraCandidates: 2 };
@@ -22031,8 +22100,8 @@ function rerollPendingChoice(
             ]
           } satisfies AttackRollCandidate;
         })()
-      : choice.abilityRoll
-        ? { rolls: Array.from({ length: Math.max(1, choice.abilityRoll.diceCount) }, () => rollAttackDie(combat)), roll: 0, sumAllDice: true }
+      : choice.abilityRoll && abilityWindow
+        ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
         : rollAttackCandidate(combat, choice.rollMode);
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
@@ -22043,13 +22112,10 @@ function rerollPendingChoice(
   const extraCandidates: AttackRollCandidate[] = [];
   if (source.rollExtraCandidates && source.setDieFace === undefined) {
     for (let index = 1; index < source.rollExtraCandidates; index += 1) {
-      const extra = choice.abilityRoll
-        ? {
-            rolls: Array.from({ length: Math.max(1, choice.abilityRoll.diceCount) }, () => rollAttackDie(combat)),
-            roll: 0,
-            sumAllDice: true
-          }
-        : rollAttackCandidate(combat, choice.rollMode);
+      const extra =
+        choice.abilityRoll && abilityWindow
+          ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
+          : rollAttackCandidate(combat, choice.rollMode);
       if (choice.abilityRoll) {
         extra.roll = extra.rolls[0] ?? 0;
       }

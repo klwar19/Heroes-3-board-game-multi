@@ -1282,6 +1282,38 @@ non-ability sources keep their own spend semantics. KNOWN LATENT GAP:
 `REROLL_ALL_MINUS_ONE` reaches an ATTACK die only inside the
 `hasRollTwoDiceApplyBoth` branch — no shipped unit has the exposed shape.
 
+## A multi-die ABILITY roll is rerolled ONE die at a time (2026-08-22)
+
+USER RULING: "Death Stare — you should roll 2 SEPARATE dice. Then after the roll you
+can reroll the 1st or the second (not both) with e.g. Morale. Only 1 artifact in the
+game lets you reroll both dice." Before this, ONE press in a Death-Stare
+`ATTACK_DIE_REROLL` window (`choice.abilityRoll`, `diceCount` 2) re-threw BOTH dice,
+so a "-1" already showing was thrown away with the bad die. THE ARTIFACT IS
+**Diplomat's Ring** — the only card printed "Reroll any die **or any roll**" (base
+`src/data/cards/artifacts.ts` AND its Community/Polish reprint `artifacts-balance.ts`,
+which keeps the wording); Cards of Prophecy prints "Reroll any die" and Ambassador's
+Sash "Reroll a die". Two seams: `throwAbilityRerollCandidate` / `abilityRerollDieIndex`
+(reducer.ts) re-throw only `REROLL_PENDING_CHOICE.dieIndex`, carrying the untouched
+faces and the throw's earlier modifier notes forward, unless the source carries
+`AttackRerollSource.rerollsWholeRoll` (set for the Ring alone in
+`rerollArtifactSource`); and legal-actions emits ONE button PER DIE for an
+ability-roll window, ordered so the die outside the success window comes first (what
+an AFK/AI seat takes). Pinned in `death-stare-die-reroll.test.ts` — every spec scripted
+so a whole-roll and a one-die reroll land on different faces AND a different outcome
+(target petrified or not), with Ring / Sash / Prophecy / single-die / attack-window
+CONTROLs.
+LIMITS: scoped to the ABILITY-roll window only — the ATTACK roll is untouched
+(advantage/disadvantage dice are one result, and the Champions
+`ROLL_TWO_DICE_APPLY_BOTH` sum keeps its built-in reroll and opens no per-die pick);
+`assertLegal` matches the offered frame exactly, so a pick-less reroll frame is
+REFUSED (fail-closed, an out-of-date client sees the banner) — the engine's
+outside-the-window default is only a non-offer backstop; the negative-Morale curses
+still re-apply to the whole candidate after a partial reroll (they can touch the
+preserved die, exactly as before); and the "next source in spend order" rule is
+unchanged, so a player holding the Ring gets its whole-roll button first and only
+sees per-die buttons once it is spent. Protocol bump owed
+(`REROLL_PENDING_CHOICE.dieIndex`, `AttackRerollSource.rerollsWholeRoll`).
+
 ## Every instant OPENS an attack window · medic draw play on your own turn (2026-08-08)
 
 USER RULING: "instant abilities should be able to be played before counter attack,

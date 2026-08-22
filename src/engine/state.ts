@@ -4287,6 +4287,18 @@ export type GameAction =
        * rerolled — the optimal die of the current candidate flips to the face.
        */
       useSetDie?: boolean;
+      /**
+       * Which die of a MULTI-DIE ability roll (Death Stare's two dice, the
+       * extra-die Paralysis pair) this reroll re-throws. USER RULE: an ordinary
+       * reroll source (a positive Morale token, a "Reroll a die" artifact)
+       * rerolls exactly ONE die of the roll — the player picks which — and only
+       * a source printed to reroll the whole roll (Diplomat's Ring, "Reroll any
+       * die or any roll") re-throws them all. Ignored for single-die rolls, for
+       * an attack window (its roll-mode dice are one result) and for a
+       * whole-roll source. Absent ⇒ the engine rerolls the die furthest from
+       * the ability's success window (the AFK/AI/legacy-client default).
+       */
+      dieIndex?: number;
     }
   | { type: "CHOOSE_PENDING_ROLL"; playerId: PlayerId; choiceId: string; candidateIndex: number }
   | {
@@ -15138,6 +15150,15 @@ export type AttackRerollSource = {
    * and then keeps whichever candidate they want.
    */
   chooseResult?: boolean;
+  /**
+   * Diplomat's Ring — the ONE printed reroll source that reads "Reroll any die
+   * OR ANY ROLL". On a multi-die ABILITY roll (Death Stare's two dice) it
+   * re-throws EVERY die; every other source rerolls exactly one die of the
+   * player's choosing (`REROLL_PENDING_CHOICE.dieIndex`). Absent/false ⇒ the
+   * one-die reading. Meaningless on an attack roll, whose roll-mode dice are
+   * already one result.
+   */
+  rerollsWholeRoll?: boolean;
   remaining: number;
   used: number;
 };

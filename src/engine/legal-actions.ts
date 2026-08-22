@@ -7273,16 +7273,44 @@ function getLegalActionsCore(
       (source) => rerollSourceAvailableFor(source, latest.roll) && source.setDieFace === undefined
     );
     if (nextSource) {
-      actions.push({
-        label: abilityRoll
-          ? `Reroll ${abilityRoll.abilityName} dice (${nextSource.name})`
-          : `Reroll attack die (${nextSource.name})`,
-        action: {
-          type: "REROLL_PENDING_CHOICE",
-          playerId,
-          choiceId: state.pendingChoice.id
+      // USER RULE: Death Stare rolls TWO SEPARATE dice, so an ordinary reroll
+      // source rerolls the FIRST or the SECOND — never both. One button per
+      // die, ordered so a die outside the ability's success window (the one
+      // worth rerolling) comes first, which is also what an AFK/AI seat takes.
+      // Diplomat's Ring alone prints "Reroll any die or any roll", so it keeps
+      // the single re-throw-everything button (`rerollsWholeRoll`).
+      const perDie =
+        abilityRoll !== undefined &&
+        nextSource.rerollsWholeRoll !== true &&
+        latest.rolls.length > 1;
+      if (perDie && abilityRoll) {
+        const inWindow = (roll: number): boolean => roll >= abilityRoll.minRoll && roll <= abilityRoll.maxRoll;
+        const indexes = latest.rolls.map((_, index) => index);
+        indexes.sort((left, right) => Number(inWindow(latest.rolls[left]!)) - Number(inWindow(latest.rolls[right]!)));
+        for (const index of indexes) {
+          const face = latest.rolls[index]!;
+          actions.push({
+            label: `Reroll ${abilityRoll.abilityName} die ${index + 1} (${face >= 0 ? `+${face}` : face}) (${nextSource.name})`,
+            action: {
+              type: "REROLL_PENDING_CHOICE",
+              playerId,
+              choiceId: state.pendingChoice.id,
+              dieIndex: index
+            }
+          });
         }
-      });
+      } else {
+        actions.push({
+          label: abilityRoll
+            ? `Reroll ${abilityRoll.abilityName} dice (${nextSource.name})`
+            : `Reroll attack die (${nextSource.name})`,
+          action: {
+            type: "REROLL_PENDING_CHOICE",
+            playerId,
+            choiceId: state.pendingChoice.id
+          }
+        });
+      }
     }
 
     // Positive Morale "set one of the dice to the +1 side": its own button —
