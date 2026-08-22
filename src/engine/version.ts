@@ -604,6 +604,14 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // at `setActiveUnit`). Server-computed behaviour: a v51 worker resolves the SAME
 // cast at one less Power, so the two halves disagree about that spell's damage.
 // `npm run deploy:partykit` owed.
+//
+// v52 also covers (same undeployed batch, 2026-08-22): the Polish Balance Pack
+// Cards of Prophecy option B moving from an AFTER-the-roll die-window reroll to a
+// PRE-roll declaration (USER RULING "you play it before the roll and then roll 3
+// dice and choose one of them"). NEW action type `USE_PROPHECY_PRE_ROLL` (a v51
+// worker rejects the frame outright) and a new stack-item modifier
+// `prophecyThreeRoll`; `AttackRerollSource.rollExtraCandidates` is GONE. All of it
+// behind `polish-card-balance` (default OFF ⇒ byte-identical).
 export const ENGINE_PROTOCOL_VERSION = 52;
 
 

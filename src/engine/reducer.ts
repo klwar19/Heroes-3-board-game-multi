@@ -490,6 +490,7 @@ import {
   payablePowerCardIds,
   playerHasAttackInstantOfSchool,
   preHitHealReactions,
+  prophecyPreRollAvailable,
   reflectableAttackInstantForPlayer,
   mapSpellPowerBankAvailable,
   resolvedSpellPowerForStackItem,
@@ -4505,6 +4506,8 @@ function effectRerollSetsDieFace(effect: ActiveEffectState): number | undefined 
 const AMMO_CART_CARD_ID = "war_machine.ammo_cart" as CardId;
 /** Cards of Prophecy — its Balance-Pack reprint is the 3-roll die instant. */
 const PROPHECY_CARD_ID = "artifact.cards_of_prophecy" as CardId;
+/** "…roll it 3 times and resolve 1 chosen result" — the printed throw count. */
+const PROPHECY_ROLL_THROWS = 3;
 const GOLDEN_BOW_CARD_ID = "artifact.golden_bow" as CardId;
 /**
  * Diplomat's Ring — the ONE card in the game printed "Reroll any die OR ANY
@@ -4624,7 +4627,7 @@ function buildRerollSources(
   const artifactSources: AttackRerollSource[] =
     player && !isHandLockedInCombat(state, attacker.controllerId)
       ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
-        .filter((cardId) => player.hand.includes(cardId))
+        .filter((cardId) => player.hand.includes(cardId) && !prophecyLeavesDieWindow(state, cardId))
         .map((cardId) =>
           rerollArtifactSource(state, cardId)
         )
@@ -4882,10 +4885,11 @@ function rollAbilityCandidate(
  * Sash) as a die-window source.
  *
  * Polish Balance Pack: the Cards of Prophecy reprint reads "When you are about
- * to roll any die, roll it 3 times and resolve 1 chosen result" — so its ONE use
- * appends TWO fresh candidates at once and unlocks a free pick among all three
- * (`rollExtraCandidates`). Every other artifact — and Cards of Prophecy with the
- * rule OFF — stays the classic single reroll.
+ * to roll any die, roll it 3 times and resolve 1 chosen result". USER RULING
+ * 2026-08-22 — that is a PRE-roll declaration, so with the rule ON the card is
+ * NOT a die-window reroll source at all: it leaves this window entirely and is
+ * offered in the attack's pre-roll window instead (`USE_PROPHECY_PRE_ROLL`).
+ * With the rule OFF it stays the printed single "Reroll any die" reaction.
  */
 function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSource {
   const base: AttackRerollSource = {
@@ -4897,10 +4901,18 @@ function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSou
     // multi-die ability roll (both Death Stare dice).
     ...(cardId === DIPLOMATS_RING_CARD_ID ? { rerollsWholeRoll: true } : {})
   };
-  if (cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")) {
-    return { ...base, rollExtraCandidates: 2 };
-  }
   return base;
+}
+
+/**
+ * Whether Cards of Prophecy's rewritten option B has LEFT the post-roll die
+ * window for this player. With `polish-card-balance` ON the reprint is a pre-roll
+ * declaration, so the held card must not ALSO be spendable after seeing the roll
+ * (which would be strictly better and leave the declaration dead). Filtered out
+ * of both die windows; with the rule OFF the classic reroll reaction is intact.
+ */
+function prophecyLeavesDieWindow(state: GameState, cardId: CardId): boolean {
+  return cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance");
 }
 
 function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): AttackRerollSource[] {
@@ -4945,7 +4957,7 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
 
   const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
     ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
-        .filter((cardId) => player.hand.includes(cardId))
+        .filter((cardId) => player.hand.includes(cardId) && !prophecyLeavesDieWindow(state, cardId))
         .map((cardId) =>
         rerollArtifactSource(state, cardId)
       )
@@ -5032,10 +5044,16 @@ function openAttackRerollChoice(
   stackItem: ResolutionStackItem,
   details: NonNullable<ReturnType<typeof getAttackStackDetails>>,
   candidate: AttackRollCandidate,
-  rerollSources: AttackRerollSource[]
+  rerollSources: AttackRerollSource[],
+  // Cards of Prophecy's two EXTRA up-front throws (option B, declared pre-roll):
+  // they join the window's candidate list and unlock the free pick among all
+  // three. Empty for every ordinary attack.
+  extraCandidates: AttackRollCandidate[] = []
 ): void {
   const choiceId = `choice_${nextEventNumber(state)}`;
-  const remainingRerolls = countAvailableRerolls(rerollSources, candidate.roll);
+  const candidates = [candidate, ...extraCandidates];
+  const latest = candidates.at(-1) ?? candidate;
+  const remainingRerolls = countAvailableRerolls(rerollSources, latest.roll);
   const sourceEffectIds = rerollSources.flatMap((source) => (source.effectId ? [source.effectId] : []));
 
   state.pendingChoice = {
@@ -5050,10 +5068,11 @@ function openAttackRerollChoice(
     rollMode: details.rollMode,
     attackBonus: details.attackBonus,
     defenseBonus: details.defenseBonus,
-    candidates: [candidate],
+    candidates,
     remainingRerolls,
     rerollSources,
-    sourceEffectIds
+    sourceEffectIds,
+    ...(extraCandidates.length > 0 ? { freeCandidateChoice: true } : {})
   };
   state.phase = "choice";
   state.priorityPlayerId = details.attacker.controllerId;
@@ -5064,7 +5083,10 @@ function openAttackRerollChoice(
     choiceType: "ATTACK_DIE_REROLL",
     playerId: details.attacker.controllerId,
     sourceEffectIds,
-    message: `${details.attacker.name} may reroll the attack die.`
+    message:
+      extraCandidates.length > 0
+        ? `${details.attacker.name} rolls the attack die ${candidates.length} times — resolve 1 chosen result (Cards of Prophecy).`
+        : `${details.attacker.name} may reroll the attack die.`
   });
 }
 
@@ -12197,24 +12219,38 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
     details.rollMode = "normal";
   }
   applyMoraleAttackRollPenalty(state, stackItem, details);
-  const candidate = applyEnemyDieSetCurses(
-    state,
-    details.attacker.controllerId,
-    applyEnemyPlusOneRerolls(
+  const throwAttackDie = (): AttackRollCandidate => {
+    const thrown = applyEnemyDieSetCurses(
       state,
       details.attacker.controllerId,
-      applyMoraleDiceCurses(
+      applyEnemyPlusOneRerolls(
         state,
         details.attacker.controllerId,
-        rollAttackCandidate(combat, details.rollMode),
+        applyMoraleDiceCurses(
+          state,
+          details.attacker.controllerId,
+          rollAttackCandidate(combat, details.rollMode),
+          details.rollMode
+        ),
         details.rollMode
       ),
       details.rollMode
-    ),
-    details.rollMode
-  );
-  if (collapsedToOneDie) {
-    pushRollModifierNote(candidate, "Negative Morale", "one die less is rolled");
+    );
+    if (collapsedToOneDie) {
+      pushRollModifierNote(thrown, "Negative Morale", "one die less is rolled");
+    }
+    return thrown;
+  };
+  const candidate = throwAttackDie();
+  // Polish Balance Pack Cards of Prophecy, option B: the holder DECLARED the card
+  // in this attack's pre-roll window, so the attack is thrown three times up front
+  // and the holder resolves 1 chosen result (USER RULING 2026-08-22). Every throw
+  // takes the same curse pass a lone roll would.
+  const prophecyThrows: AttackRollCandidate[] = [];
+  if (stackItem.modifiers.prophecyThreeRoll) {
+    for (let index = 1; index < PROPHECY_ROLL_THROWS; index += 1) {
+      prophecyThrows.push(throwAttackDie());
+    }
   }
   const rerollEffects = getAttackRerollEffects(state, {
     attacker: details.attacker,
@@ -12229,9 +12265,13 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
   const rerollSources = buildRerollSources(state, details.attacker, rerollEffects, moved, details.isRetaliation);
 
   // Only pause when a source can actually fire on this roll — the Crusaders'
-  // 'every "0"' reroll never interrupts a +1.
-  if (rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))) {
-    openAttackRerollChoice(state, stackItem, details, candidate, rerollSources);
+  // 'every "0"' reroll never interrupts a +1. A declared Cards of Prophecy always
+  // pauses: its three throws exist only to be chosen between.
+  if (
+    prophecyThrows.length > 0 ||
+    rerollSources.some((source) => rerollSourceAvailableFor(source, candidate.roll))
+  ) {
+    openAttackRerollChoice(state, stackItem, details, candidate, rerollSources, prophecyThrows);
     return;
   }
 
@@ -18164,6 +18204,58 @@ function applyArtifactSetAttackWindowPower(
 }
 
 /**
+ * USE_PROPHECY_PRE_ROLL — Polish Balance Pack Cards of Prophecy, option B.
+ *
+ * USER RULING 2026-08-22: "you play it before the roll and then roll 3 dice and
+ * choose one of them." So the card is declared inside the open attack window of
+ * the unit ABOUT TO ROLL (the artifact-set pop-up precedent), discarding it from
+ * hand and arming `prophecyThreeRoll` on the parked attack; `resolveAttackStackItem`
+ * then throws the attack die three times and opens the free pick.
+ *
+ * Self-validating: it re-derives the same gate legal-actions renders (rule on,
+ * open UNIT_ATTACK_DECLARED window this player has priority in, the named unit IS
+ * the roller, the card is in this player's hand, the deck is usable this combat),
+ * and it touches only the actor's own hand plus the parked attack's modifiers.
+ */
+function applyProphecyPreRoll(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_PROPHECY_PRE_ROLL" }>,
+  cards: CardLibrary
+): void {
+  const window = state.reactionWindow;
+  if (!window || window.triggerEvent.type !== "UNIT_ATTACK_DECLARED" || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No attack window is open for Cards of Prophecy.");
+  }
+  if (!prophecyPreRollAvailable(state, action.playerId, action.unitId)) {
+    throw new Error("Cards of Prophecy cannot be declared on that roll.");
+  }
+  if (action.unitId !== window.triggerEvent.attackerId) {
+    throw new Error("Cards of Prophecy is declared on the unit making this attack.");
+  }
+  const stackItem = state.stack.at(-1);
+  if (!stackItem || !stackItem.triggerEventIds.includes(window.triggerEvent.id)) {
+    throw new Error("That attack is no longer waiting for a reaction.");
+  }
+  const player = state.players[action.playerId];
+  const handIndex = player?.hand.indexOf(PROPHECY_CARD_ID) ?? -1;
+  if (!player || handIndex === -1) {
+    throw new Error("Cards of Prophecy is not in hand.");
+  }
+  player.hand.splice(handIndex, 1);
+  player.discard.push(PROPHECY_CARD_ID);
+  stackItem.modifiers.prophecyThreeRoll = true;
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: PROPHECY_CARD_ID,
+    timing: cardLibrary[PROPHECY_CARD_ID]?.timing ?? "instant",
+    mode: "basic",
+    optionLabel: "Roll this die 3 times and resolve 1 chosen result"
+  });
+  advanceReactionWindowAfterPlay(state, action.playerId, cards);
+}
+
+/**
  * USE_ARTIFACT_SET_POWER — activate one live set tier. Every branch here matches
  * exactly one `ArtifactSetTierEffect` kind in the data module; a kind with no
  * branch would be a decorative stub, which `artifact-sets.test.ts` forbids.
@@ -22211,33 +22303,12 @@ function rerollPendingChoice(
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
   }
-  // Polish Balance Pack Cards of Prophecy: "roll it 3 times and resolve 1 chosen
-  // result" — one press throws the die TWICE more (this candidate plus an extra)
-  // and unlocks the free pick below. Extra throws take the same curse pass.
-  const extraCandidates: AttackRollCandidate[] = [];
-  if (source.rollExtraCandidates && source.setDieFace === undefined) {
-    for (let index = 1; index < source.rollExtraCandidates; index += 1) {
-      const extra =
-        choice.abilityRoll && abilityWindow
-          ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
-          : rollAttackCandidate(combat, choice.rollMode);
-      if (choice.abilityRoll) {
-        extra.roll = extra.rolls[0] ?? 0;
-      }
-      if (abilityWindow) {
-        applyAbilityDiceCurses(state, action.playerId, extra, abilityWindow, true);
-      } else {
-        applyMoraleDiceCurses(state, action.playerId, extra, choice.rollMode);
-        applyEnemyPlusOneRerolls(state, action.playerId, extra, choice.rollMode);
-      }
-      extraCandidates.push(extra);
-    }
-    choice.freeCandidateChoice = true;
-  }
   // Fortune ("resolve the result of your choice"): spending its reroll unlocks a
   // free pick among every candidate rolled this window — the original roll and
   // each reroll — so the player keeps the result they choose, not the forced
-  // latest one. Unlike Cards of Prophecy it adds no extra rolls.
+  // latest one. It adds no extra rolls. (Cards of Prophecy's three throws used to
+  // be appended here; since the 2026-08-22 ruling they are thrown up front, at the
+  // attack itself, because the card is now declared BEFORE the roll.)
   if (source.chooseResult) {
     choice.freeCandidateChoice = true;
   }
@@ -22250,9 +22321,6 @@ function rerollPendingChoice(
     applyEnemyPlusOneRerolls(state, action.playerId, candidate, choice.rollMode);
   }
   choice.candidates.push(candidate);
-  for (const extra of extraCandidates) {
-    choice.candidates.push(extra);
-  }
   // EVERY source spends one use — the face-gated unit abilities included. An
   // "[unit_attack]" icon activates ONCE PER ATTACK, so a Minotaur/Crusader that
   // rerolls into another gated face may NOT reroll again in the same attack;
@@ -25353,6 +25421,10 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   // they are fully self-validating and touch only the actor's own state.
   "SELECT_ARTIFACT_SET_UNIT",
   "USE_ARTIFACT_SET_POWER",
+  // Cards of Prophecy's pre-roll declaration: the handler re-derives
+  // `prophecyPreRollAvailable` (the same gate legal-actions renders) plus the
+  // open-window/stack-item checks, and touches only the actor's own hand.
+  "USE_PROPHECY_PRE_ROLL",
   "USE_EQUIPMENT_DEFENSE_REACTION",
   "SELECT_EQUIPMENT_COMBAT_UNIT",
   "USE_EQUIPMENT_ATTACK_RIDER",
@@ -25946,6 +26018,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_ARTIFACT_SET_POWER":
         applyArtifactSetPower(nextState, action, cards);
+        break;
+      case "USE_PROPHECY_PRE_ROLL":
+        applyProphecyPreRoll(nextState, action, cards);
         break;
       case "LITTLE_BUSTERS_COUNTER":
         applyLittleBustersCounter(nextState, action);

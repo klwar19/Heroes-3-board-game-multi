@@ -4164,6 +4164,20 @@ export type GameAction =
     }
   | {
       /**
+       * Polish Balance Pack Cards of Prophecy, option B: declare the card BEFORE
+       * the roll (USER RULING 2026-08-22 — "you play it before the roll and then
+       * roll 3 dice and choose one of them"). Offered only inside the open
+       * `UNIT_ATTACK_DECLARED` window of the unit ABOUT TO ROLL, to that unit's
+       * controller, while `polish-card-balance` is on and the card is in hand.
+       * Playing it discards the card and arms `prophecyThreeRoll` on the parked
+       * attack. OPTIONAL — passing costs nothing, so it can never stall a seat.
+       */
+      type: "USE_PROPHECY_PRE_ROLL";
+      playerId: PlayerId;
+      unitId: string;
+    }
+  | {
+      /**
        * PvP anti-Little-Busters counter: a fighter facing a Little Busters seat
        * pays 1 gold for one of three effects — the LB seat discards a random hand
        * card ("discard"), the LB campus hero unit takes 3 effect damage ("damage"),
@@ -7664,6 +7678,17 @@ export type ResolutionStackItem = {
      * stack item, so the flag never bleeds across the exchange.
      */
     artifactSetAttackAdvantage?: boolean;
+    /**
+     * Polish Balance Pack Cards of Prophecy, option B ("When you are about to
+     * roll any die, roll it 3 times and resolve 1 chosen result"). USER RULING
+     * 2026-08-22: the card is played BEFORE the roll — the holder declares it in
+     * this attack's own pre-roll window (`USE_PROPHECY_PRE_ROLL`), and the attack
+     * is then thrown THREE times with a free pick among the three. It rides the
+     * stack item exactly like `artifactSetAttackAdvantage`, so it covers this ONE
+     * roll and vanishes with the item (no expiry code, never bleeding into the
+     * retaliation, which is its own stack item).
+     */
+    prophecyThreeRoll?: boolean;
     /**
      * Spell instants played into this attack that the OTHER side may still
      * cancel with Resistance (Curse/Weakness/Bloodlust/Precision/Bless/Slayer).
@@ -15144,19 +15169,13 @@ export type AttackRerollSource = {
    */
   setDieFace?: number;
   /**
-   * Polish Balance Pack Cards of Prophecy (option B): "roll it 3 times and
-   * resolve 1 chosen result." Spending this source appends THIS MANY fresh
-   * candidates at once (2) and unlocks a free pick among every candidate in the
-   * window (`freeCandidateChoice`) instead of the rulebook's "only the latest
-   * roll counts".
-   */
-  rollExtraCandidates?: number;
-  /**
    * Fortune: spending this reroll unlocks a FREE pick among every candidate
    * rolled this window (`freeCandidateChoice`), so the player chooses the result
-   * instead of the rulebook's "only the latest roll counts". Unlike
-   * `rollExtraCandidates` it adds no extra rolls — the player rerolls as normal
-   * and then keeps whichever candidate they want.
+   * instead of the rulebook's "only the latest roll counts". It adds no extra
+   * rolls — the player rerolls as normal and then keeps whichever candidate they
+   * want. (Cards of Prophecy USED to append extra candidates here; since the
+   * 2026-08-22 ruling it is declared BEFORE the roll instead — see
+   * `ResolutionStackItemModifiers.prophecyThreeRoll`.)
    */
   chooseResult?: boolean;
   /**

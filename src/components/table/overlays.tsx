@@ -841,6 +841,15 @@ export function ReactionTray({
     (legal) => legal.action.type === "USE_ARTIFACT_SET_POWER"
   );
 
+  // Polish Balance Pack Cards of Prophecy option B ("roll it 3 times and resolve
+  // 1 chosen result"): a PRE-roll declaration offered inside the attack window of
+  // the unit about to roll (USER RULING 2026-08-22). Like the Set-power pop-up it
+  // is a standalone legal action, not a PLAY_REACTION card, so without this tile
+  // the engine would offer it and a human would have no button.
+  const prophecyPreRollReactions = legalActions.filter(
+    (legal) => legal.action.type === "USE_PROPHECY_PRE_ROLL"
+  );
+
   // Halberdiers' Parry (USE_UNIT_DIE_IGNORE): discard a chosen hand card to
   // ignore the just-rolled Attack die. A standalone legal action (one offer per
   // discardable card, worded by the engine), so the card-tile path never
@@ -1397,6 +1406,7 @@ export function ReactionTray({
         heroSkillReactions.length === 0 &&
         schoolFetchExpertReactions.length === 0 &&
         artifactSetReactions.length === 0 &&
+        prophecyPreRollReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
         dieCancelReactions.length === 0 &&
         commanderCastReactions.length === 0 &&
@@ -1405,6 +1415,18 @@ export function ReactionTray({
         firstAidReactions.length === 0 ? (
           <div className="trayEmpty">No playable instants — pass to continue.</div>
         ) : null}
+        {prophecyPreRollReactions.map((legal) => (
+          <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
+            <div className="trayTileBody">
+              <strong>
+                <Sunrise aria-hidden="true" size={15} /> Cards of Prophecy
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
+                {legal.label}
+              </button>
+            </div>
+          </div>
+        ))}
         {commanderCastReactions.map((legal) => (
           <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
             <div className="trayTileBody">

@@ -312,6 +312,38 @@ describe("Balance Pack artifacts — the Discard-X relics gain a flat +1 base", 
 // Cards of Prophecy — the rewritten dice artifact
 // ===========================================================================
 
+/**
+ * p1 declares an attack while HOLDING Cards of Prophecy, with the attack die
+ * scripted to [-1, 0, +1] (attack 5 vs defense 0, so the three throws are worth
+ * 4 / 5 / 6 damage). Stops with the pre-roll reaction window open.
+ */
+function attackHolding(balance: boolean, community = false): GameState {
+  const state = combat(balance);
+  if (community) {
+    (state.adventure as unknown as { houseRules: Record<string, boolean> }).houseRules[
+      "community-card-balance"
+    ] = true;
+  }
+  state.combat!.units.unit_p1_griffins.attack = 5;
+  state.combat!.units.unit_p2_skeletons.defense = 0;
+  state.players.p1.hand = ["artifact.cards_of_prophecy" as CardId];
+  state.combat!.dice.scriptedRolls = [-1, 0, 1];
+  state.combat!.dice.rollCount = 0;
+  state.combat!.units.unit_p1_griffins.position = 13;
+  state.combat!.units.unit_p2_skeletons.position = 14;
+  return applyOk(state, {
+    type: "ATTACK_UNIT",
+    playerId: "p1",
+    attackerId: "unit_p1_griffins",
+    defenderId: "unit_p2_skeletons"
+  });
+}
+
+/** p1's pre-roll Cards of Prophecy offer in the open attack window, if any. */
+function prophecyOffer(state: GameState) {
+  return getLegalActions(state, "p1").find((legal) => legal.action.type === "USE_PROPHECY_PRE_ROLL");
+}
+
 describe("Balance Pack artifacts — Cards of Prophecy", () => {
   it("option A lays a lasting roll-2-KEEP-THE-HIGHER buff (and really keeps the higher die)", () => {
     const on = playOption(combat(true), "artifact.cards_of_prophecy", 0, "unit_p1_griffins");
@@ -342,37 +374,30 @@ describe("Balance Pack artifacts — Cards of Prophecy", () => {
     expect(combatPlays).toHaveLength(0);
   });
 
-  it("option B throws the die 3 times and lets the owner resolve ANY of the three", () => {
-    const state = combat(true);
-    state.combat!.units.unit_p1_griffins.attack = 5;
-    state.combat!.units.unit_p2_skeletons.defense = 0;
-    state.players.p1.hand = ["artifact.cards_of_prophecy" as CardId];
-    state.combat!.dice.scriptedRolls = [-1, 0, 1];
-    state.combat!.dice.rollCount = 0;
-    state.combat!.units.unit_p1_griffins.position = 13;
-    state.combat!.units.unit_p2_skeletons.position = 14;
+  // USER RULING 2026-08-22: option B "should work the way: you play it before the
+  // roll and then roll 3 dice and choose one of them" — so the offer lives in the
+  // attack's PRE-ROLL window, not in the post-roll die window it used to occupy.
+  it("option B is a PRE-ROLL declaration: declaring it throws the attack die 3 times", () => {
+    let next = attackHolding(true);
+    const offer = prophecyOffer(next);
+    expect(offer, "the pre-roll window offers Cards of Prophecy").toBeTruthy();
+    expect(
+      getLegalActions(next, "p1").some((legal) => legal.action.type === "REROLL_PENDING_CHOICE"),
+      "nothing has been rolled yet — this is a pre-roll window"
+    ).toBe(false);
 
-    let next = passAllReactions(
-      applyOk(state, {
-        type: "ATTACK_UNIT",
-        playerId: "p1",
-        attackerId: "unit_p1_griffins",
-        defenderId: "unit_p2_skeletons"
-      })
-    );
-    expect(next.pendingChoice?.type, "the held artifact opened the die window").toBe("ATTACK_DIE_REROLL");
-
-    const reroll = getLegalActions(next, "p1").find((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
-    expect(reroll, "the artifact offers its die use").toBeTruthy();
-    next = applyOk(next, reroll!.action);
+    next = passAllReactions(applyOk(next, offer!.action));
+    // The card is spent by the declaration itself.
+    expect(next.players.p1.hand).not.toContain("artifact.cards_of_prophecy");
+    expect(next.players.p1.discard).toContain("artifact.cards_of_prophecy");
 
     const choice = next.pendingChoice;
     expect(choice?.type).toBe("ATTACK_DIE_REROLL");
     if (choice?.type !== "ATTACK_DIE_REROLL") {
       throw new Error("unreachable");
     }
-    // Three throws in total (the original plus the two the reprint adds) and a
-    // FREE pick among them — the printed "resolve 1 chosen result".
+    // THREE throws made up front, and a free pick among them — "resolve 1 chosen
+    // result". Nothing was rerolled: the dice are the first three scripted faces.
     expect(choice.candidates).toHaveLength(3);
     expect(choice.freeCandidateChoice).toBe(true);
     expect(choice.candidates.map((candidate) => candidate.roll)).toEqual([-1, 0, 1]);
@@ -382,13 +407,48 @@ describe("Balance Pack artifacts — Cards of Prophecy", () => {
     );
     expect(keepOffers).toHaveLength(3);
 
-    // Keeping the FIRST throw (an ordinary reroll forbids this) really resolves it.
-    const keepFirst = keepOffers.find(
+    // OBSERVABLE: resolving the BEST of the three really lands 5 attack + 1 = 6.
+    const keepBest = keepOffers.find(
+      (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === 2
+    );
+    expect(keepBest).toBeTruthy();
+    next = passAllReactions(applyOk(next, keepBest!.action));
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(6);
+  });
+
+  it("option B: the FIRST throw is keepable too (an ordinary reroll forbids that)", () => {
+    let next = attackHolding(true);
+    next = passAllReactions(applyOk(next, prophecyOffer(next)!.action));
+    const keepFirst = getLegalActions(next, "p1").find(
       (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === 0
     );
     expect(keepFirst).toBeTruthy();
     next = passAllReactions(applyOk(next, keepFirst!.action));
     expect(next.combat!.units.unit_p2_skeletons.damage).toBe(4); // 5 attack - 1 die
+  });
+
+  // MUTATION CHECK: not declaring it (same hand, same scripted dice) resolves the
+  // SINGLE first throw — so the three throws are the declaration's doing.
+  it("CONTROL: passing the pre-roll offer resolves ONE throw, and the card is NOT a post-roll reroll", () => {
+    const next = passAllReactions(attackHolding(true));
+    expect(next.pendingChoice ?? undefined, "with the card undeclared nothing pauses the roll").toBeUndefined();
+    expect(next.combat!.units.unit_p2_skeletons.damage).toBe(4);
+    // The 2026-08-22 ruling removes the after-the-roll half entirely: the held
+    // card is no longer a die-window source with the rule ON.
+    expect(next.players.p1.hand).toContain("artifact.cards_of_prophecy");
+  });
+
+  it("CONTROL: COMMUNITY balance wins — its Search reprint leaves no pre-roll declaration", () => {
+    expect(prophecyOffer(attackHolding(true, true))).toBeUndefined();
+  });
+
+  it("CONTROL: with the rule OFF there is no pre-roll offer — the printed reroll reaction remains", () => {
+    const off = attackHolding(false);
+    expect(prophecyOffer(off), "no pre-roll declaration exists without the Balance Pack").toBeUndefined();
+    const rolled = passAllReactions(off);
+    expect(rolled.pendingChoice?.type, "the classic post-roll reroll window still opens").toBe(
+      "ATTACK_DIE_REROLL"
+    );
   });
 
   it("CONTROL: with the rule OFF the artifact rerolls ONCE and only the latest roll is keepable", () => {
@@ -1222,23 +1282,16 @@ describe("Balance Pack artifacts — the new windows never stall a table", () =>
   });
 
   it("the 3-throw pick and the cycle discard are both answerable", () => {
-    // (a) the Cards of Prophecy free pick
-    const state = combat(true);
-    state.players.p1.hand = ["artifact.cards_of_prophecy" as CardId];
-    state.combat!.dice.scriptedRolls = [-1, 0, 1];
-    state.combat!.dice.rollCount = 0;
-    state.combat!.units.unit_p1_griffins.position = 13;
-    state.combat!.units.unit_p2_skeletons.position = 14;
-    let next = passAllReactions(
-      applyOk(state, {
-        type: "ATTACK_UNIT",
-        playerId: "p1",
-        attackerId: "unit_p1_griffins",
-        defenderId: "unit_p2_skeletons"
-      })
-    );
-    const reroll = getLegalActions(next, "p1").find((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
-    next = applyOk(next, reroll!.action);
+    // (a) the Cards of Prophecy pre-roll declaration and its free pick
+    let next = attackHolding(true);
+    // The pre-roll offer itself is answerable: the AI/AFK driver simply passes it
+    // (a scored optional reaction), so a computer seat can never stall on it.
+    const aiWindow = chooseComputerAction(observation(next));
+    expect(aiWindow, "the AI answers the pre-roll window").toBeTruthy();
+    expect(applyAction(next, aiWindow!.action).errors).toEqual([]);
+    expect(nextTurnTimeoutAction(next, "p1"), "the AFK driver answers it too").toBeTruthy();
+
+    next = passAllReactions(applyOk(next, prophecyOffer(next)!.action));
     expect(next.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
 
     const aiPick = chooseComputerAction(observation(next));

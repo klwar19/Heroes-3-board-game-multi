@@ -376,16 +376,21 @@ export const polishBalanceArtifactCards: CardLibrary = {
   // ---- Dice manipulation ---------------------------------------------------
 
   // Cards of Prophecy — REWRITTEN on both halves. Option A is the lasting
-  // roll-the-HIGHER buff (the Shaman's Puppet mirror). Option B is the
-  // "roll it 3 times, resolve 1 chosen" reroll-window instant, which the engine
-  // offers from hand (REROLL_REACTION_ARTIFACT_IDS) rather than as a pre-armed
-  // option — exactly like the classic "Reroll any die" half it replaces. The
-  // printed map die-SET side is gone.
+  // roll-the-HIGHER buff (the Shaman's Puppet mirror). Option B ("when you are
+  // ABOUT TO roll any die, roll it 3 times and resolve 1 chosen result") is a
+  // PRE-ROLL declaration, not a reroll — USER RULING 2026-08-22 ("you play it
+  // before the roll and then roll 3 dice and choose one of them"). The engine
+  // offers it from hand in the attack's own pre-roll window
+  // (`USE_PROPHECY_PRE_ROLL`, gate `prophecyPreRollAvailable`) rather than as a
+  // pre-armed CHOOSE_ONE option, and with the rule ON the card is NO LONGER a
+  // post-roll die-window source. On the MAP the same half is still offered from
+  // the die-result menu (`prophecyThreePick`, a documented limit). The printed
+  // map die-SET side is gone.
   "artifact.cards_of_prophecy": reprint("artifact.cards_of_prophecy", {
     target: { type: "friendly-unit" },
     tags: tags(
       "artifact.cards_of_prophecy",
-      "Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, roll it 3 times and resolve 1 chosen result (offered in the die window)."
+      "Choose one of your units. Until its activation in the next round, for its every attack the unit rolls 2 dice and resolves the HIGHER result. — OR — When you are about to roll any die, play this BEFORE the roll: that die is rolled 3 times and you resolve 1 chosen result."
     ),
     effect: {
       type: "CHOOSE_ONE",

@@ -2893,6 +2893,44 @@ describe("ReactionTray — WOG commander instant reaction has a button", () => {
     ).toBeNull();
   });
 
+  // Cards of Prophecy's PRE-ROLL declaration (Polish Balance Pack option B, USER
+  // RULING 2026-08-22) is the same shape: a standalone legal action, not a
+  // PLAY_REACTION card, so without its own tile the engine would offer it in the
+  // attack window and a human would have no button (the commander-cast bug class).
+  it("renders a clickable tile for USE_PROPHECY_PRE_ROLL and dispatches it", () => {
+    const { state } = openWindow("tray-prophecy-pre-roll");
+    const prophecyAction: GameAction = {
+      type: "USE_PROPHECY_PRE_ROLL",
+      playerId: "p1",
+      unitId: "unit_p1_griffins"
+    };
+    const legalActions = [
+      {
+        action: prophecyAction,
+        label: "Cards of Prophecy: roll Griffins's attack die 3 times and resolve 1 chosen result"
+      }
+    ] as unknown as LegalAction[];
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={legalActions}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+    const button = screen.getByRole("button", { name: /Cards of Prophecy: roll .* 3 times/i });
+    fireEvent.click(button);
+    expect(onAction).toHaveBeenCalledWith(prophecyAction);
+    expect(
+      screen.queryByText(/No playable instants/i),
+      "the pre-roll declaration is a real tile, not the empty state"
+    ).toBeNull();
+  });
+
   it("CONTROL: with no commander cast offered, the tray shows the empty state", () => {
     const { state } = openWindow("tray-commander-cast-control");
     render(

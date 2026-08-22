@@ -1,7 +1,7 @@
 import { cardLibrary } from "@/data/cards/library";
 import { POLISH_BALANCE_PRINTED_MOVEMENT_IDS } from "./polish-balance-spells";
 import { COMMUNITY_BALANCE_PRINTED_MOVEMENT_IDS } from "@/data/cards/community-spells-balance";
-import { balanceCardLibrary } from "./community-balance-cards";
+import { balanceCardLibrary, balanceRerollReactionArtifactIds } from "./community-balance-cards";
 import { MORALE_CARD_IDS } from "@/data/cards/morale";
 import { hasToken as unitHasToken } from "./tokens";
 import { moraleCardsRuleEnabled } from "./morale-cards";
@@ -2240,6 +2240,47 @@ export function isCombatParticipant(state: GameState, playerId: PlayerId): boole
  * the reducer backstops alike), so the exception can never be honoured by one
  * surface and refused by another.
  */
+/** Cards of Prophecy — the Balance-Pack reprint's pre-roll instant (option B). */
+export const PROPHECY_PRE_ROLL_CARD_ID = "artifact.cards_of_prophecy" as CardId;
+
+/**
+ * Polish Balance Pack Cards of Prophecy, option B: "When you are about to roll
+ * any die, roll it 3 times and resolve 1 chosen result."
+ *
+ * USER RULING 2026-08-22 — the card is played BEFORE the roll, so it is offered
+ * inside the open attack window of the unit about to roll (never after it, where
+ * the reprint used to live as a die-window reroll source). THE one shared gate:
+ * legal-actions renders it and the handler re-derives it, so an offer and a
+ * refusal can never disagree.
+ *
+ * Scope (a documented limit): the ATTACK die of a unit you control — a
+ * Retaliation Attack included, since the retaliator is the attacker of its own
+ * window. Ability rolls (Death Stare & co.) have no pre-roll window and the map
+ * dice keep their own `prophecyThreePick` offer.
+ */
+export function prophecyPreRollAvailable(state: GameState, playerId: PlayerId, unitId: string): boolean {
+  if (playerId === NEUTRAL_PLAYER_ID || !houseRuleEnabled(state, "polish-card-balance")) {
+    return false;
+  }
+  // COMMUNITY WINS over Polish for a card both packs reprint: the Community
+  // Balance Change replaces Cards of Prophecy's die half with a Search, so its
+  // reroll/pre-roll half does not exist on that table (the ONE shared list
+  // `balanceRerollReactionArtifactIds`, which every other die surface reads).
+  if (!balanceRerollReactionArtifactIds(state, [PROPHECY_PRE_ROLL_CARD_ID]).includes(PROPHECY_PRE_ROLL_CARD_ID)) {
+    return false;
+  }
+  const unit = state.combat?.units[unitId];
+  if (!unit || unit.controllerId !== playerId) {
+    return false;
+  }
+  const player = state.players[playerId];
+  if (!player?.hand.includes(PROPHECY_PRE_ROLL_CARD_ID) || isHandLockedInCombat(state, playerId)) {
+    return false;
+  }
+  // Already declared on this very attack — one card, one arming.
+  return state.stack.at(-1)?.modifiers.prophecyThreeRoll !== true;
+}
+
 export function isHandLockedInCombat(state: GameState, playerId: PlayerId): boolean {
   const combat = state.combat;
   if (!combat) {
@@ -9274,6 +9315,21 @@ export function getLegalReactionsForTrigger(
     // otherwise be unreachable (the 2026-08-08 "the choice never appears" class).
     // Passing costs nothing — the charge is spent only by using it.
     const rollingUnit = state.combat?.units[triggerEvent.attackerId];
+    // Polish Balance Pack Cards of Prophecy option B — the SAME pre-roll shape:
+    // offered to the controller of the unit about to roll, played from hand, and
+    // NOT `windowJoinOnly` (in a neutral fight the guards open nothing, so a
+    // join-only offer would be unreachable — the 2026-08-08 class). Passing costs
+    // nothing; the card is spent only by taking it.
+    if (rollingUnit && prophecyPreRollAvailable(state, rollingUnit.controllerId, rollingUnit.id)) {
+      const rollOwner = rollingUnit.controllerId;
+      result[rollOwner] = [
+        ...(result[rollOwner] ?? []),
+        {
+          label: `Cards of Prophecy: roll ${rollingUnit.cardName ?? rollingUnit.name}'s attack die 3 times and resolve 1 chosen result`,
+          action: { type: "USE_PROPHECY_PRE_ROLL", playerId: rollOwner, unitId: rollingUnit.id }
+        }
+      ];
+    }
     if (rollingUnit) {
       const rollOwner = rollingUnit.controllerId;
       for (const offer of artifactSetAttackWindowOffers(state, rollOwner, rollingUnit.id)) {
