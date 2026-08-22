@@ -548,6 +548,279 @@ describe("Conflux elemental school spell-power boost", () => {
     });
     expect(next.combat!.units.unit_p2_vampires.damage).toBe(2);
   });
+
+  /**
+   * REPORTED BUG (2026-08-22): "Battle started with Lightning bolt casted on turn
+   * of Air elementals … it was 3 DM (+1 SP so ok). Then Ice Elementals activates
+   * and I cast Magic arrow (and it has no bonus +1 for 1st SP — it should have)."
+   *
+   * The two printed cards use DIFFERENT windows and the engine used one shared
+   * ROUND gate for both:
+   *   • Tower Magi (Pack):        "+1 power to the first spell you cast THIS ROUND"
+   *   • Conflux Pack Elementals:  "+1 power to the first <School> Magic spell you
+   *                                cast DURING THIS ACTIVATION"
+   * So the Storm Elementals' boosted Air spell closed the round gate and the Ice
+   * Elementals' own activation charge — a different unit, a different activation,
+   * a different school — could never be spent.
+   *
+   * Damage is the assertion (Magic Arrow: Power 0 → 1, Power 1 → 2), never a
+   * field read.
+   */
+  describe("the printed window is per ACTIVATION for the Elementals, per ROUND for the Magi", () => {
+    /**
+     * Storm Elementals activate and cast Lightning Bolt, then the Ice Elementals
+     * activate and cast Magic Arrow ("any" school, so the Water charge applies).
+     * The first cast stands in for the reported Expert-Intelligence cast: a free
+     * cast does NOT consume the per-round Spell limit (noteSpellCast's
+     * `countsLimit` is false) but DOES set anySpellCastThisRound, so the limit
+     * counter is reset here and the round flag deliberately left standing.
+     */
+    function twoActivationCasts(secondCaster: string[]): GameState {
+      const state = createInitialGameState("conflux-two-activation-casts");
+      state.players.p1.hand = ["spell.lightning_bolt", "spell.magic_arrow"];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      state.combat!.units.unit_p1_griffins.abilities = ["storm-elemental-air-power"];
+      const target = state.combat!.units.unit_p2_vampires;
+      target.maxHealth = 30;
+      target.damage = 0;
+
+      const firstCast = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.lightning_bolt" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      expect(firstCast, "Lightning Bolt cast should be legal").toBeTruthy();
+      const afterFirst = passAllReactions(applyOk(state, firstCast!.action));
+      // The Air Elementals' activation really paid its +1 (2 base → 3).
+      expect(afterFirst.combat!.units.unit_p2_vampires.damage).toBe(3);
+
+      // …the free (Expert Intelligence) cast leaves the Spell limit unspent…
+      afterFirst.players.p1.combatStats.spellsCastThisRound = 0;
+      // …and now the NEXT unit activates: a fresh activation, same combat round.
+      afterFirst.combat!.units.unit_p1_crusaders.abilities = secondCaster;
+      afterFirst.combat!.activeUnitId = "unit_p1_crusaders";
+
+      const secondCast = getLegalActions(afterFirst, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.magic_arrow" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      expect(secondCast, "Magic Arrow cast should be legal").toBeTruthy();
+      return passAllReactions(applyOk(afterFirst, secondCast!.action));
+    }
+
+    it("the Ice Elementals' activation boosts Magic Arrow even after an earlier activation cast a Spell", () => {
+      const next = twoActivationCasts(["ice-elemental-water-power"]);
+      // 3 (Lightning Bolt) + 2 (Magic Arrow at Power 1) — the bug dealt 1 here.
+      expect(next.combat!.units.unit_p2_vampires.damage).toBe(5);
+    });
+
+    it("CONTROL — a ROUND-scoped Magi boost is already spent by the earlier cast", () => {
+      const next = twoActivationCasts(["magi-power-boost"]);
+      // 3 + 1: "the first spell you cast this round" was the Lightning Bolt.
+      expect(next.combat!.units.unit_p2_vampires.damage).toBe(4);
+    });
+
+    it("CONTROL — no ability on the second caster at all", () => {
+      const next = twoActivationCasts([]);
+      expect(next.combat!.units.unit_p2_vampires.damage).toBe(4);
+    });
+
+    it("CONTROL — the activation charge is still ONCE: a second Spell in the SAME activation gets nothing", () => {
+      const state = createInitialGameState("conflux-one-charge-per-activation");
+      state.players.p1.hand = ["spell.lightning_bolt", "spell.magic_arrow"];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      state.combat!.units.unit_p1_griffins.abilities = ["storm-elemental-air-power"];
+      const target = state.combat!.units.unit_p2_vampires;
+      target.maxHealth = 30;
+      target.damage = 0;
+
+      const bolt = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.lightning_bolt" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      const afterBolt = passAllReactions(applyOk(state, bolt!.action));
+      expect(afterBolt.combat!.units.unit_p2_vampires.damage).toBe(3);
+      afterBolt.players.p1.combatStats.spellsCastThisRound = 0;
+      // Same unit, same activation — the charge was spent on the Bolt.
+      expect(afterBolt.combat!.units.unit_p1_griffins.activationSpellPowerUsed).toBe(true);
+
+      const arrow = getLegalActions(afterBolt, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.magic_arrow" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      const next = passAllReactions(applyOk(afterBolt, arrow!.action));
+      expect(next.combat!.units.unit_p2_vampires.damage).toBe(4);
+    });
+
+    it("a WRONG-school Spell during the activation does not burn the charge", () => {
+      const state = createInitialGameState("conflux-wrong-school-keeps-charge");
+      state.players.p1.hand = ["spell.lightning_bolt", "spell.magic_arrow"];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      // Magma Elementals (Earth) active; Lightning Bolt is an AIR spell — no
+      // boost, and the printed charge ("the first EARTH Magic spell") survives it.
+      state.combat!.units.unit_p1_griffins.abilities = ["magma-elemental-earth-power"];
+      const target = state.combat!.units.unit_p2_vampires;
+      target.maxHealth = 30;
+      target.damage = 0;
+
+      const bolt = getLegalActions(state, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.lightning_bolt" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      expect(bolt, "Lightning Bolt cast should be legal").toBeTruthy();
+      const afterBolt = passAllReactions(applyOk(state, bolt!.action));
+      // Wrong school ⇒ unboosted (2) and the charge is untouched.
+      expect(afterBolt.combat!.units.unit_p2_vampires.damage).toBe(2);
+      expect(afterBolt.combat!.units.unit_p1_griffins.activationSpellPowerUsed).toBeFalsy();
+      afterBolt.players.p1.combatStats.spellsCastThisRound = 0;
+
+      const arrow = getLegalActions(afterBolt, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.magic_arrow" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      const next = passAllReactions(applyOk(afterBolt, arrow!.action));
+      // Magic Arrow ("any" school) still takes the kept charge: 2, not 1.
+      expect(next.combat!.units.unit_p2_vampires.damage - afterBolt.combat!.units.unit_p2_vampires.damage).toBe(2);
+    });
+
+    it("standingSpellPower (the preview) agrees with the cast on both scopes", () => {
+      const state = createInitialGameState("conflux-preview-scope");
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      const arrow = cardLibrary["spell.magic_arrow"];
+      // A Spell was already cast this round (by an earlier activation).
+      state.players.p1.combatStats.anySpellCastThisRound = true;
+      state.players.p1.combatStats.spellsCastThisRound = 0;
+
+      state.combat!.units.unit_p1_griffins.abilities = ["ice-elemental-water-power"];
+      expect(standingSpellPower(state, "p1", arrow)).toBe(1);
+      // …until THIS activation has spent its charge.
+      state.combat!.units.unit_p1_griffins.activationSpellPowerUsed = true;
+      expect(standingSpellPower(state, "p1", arrow)).toBe(0);
+
+      // CONTROL — the ROUND-scoped Magi charge is gone once any Spell was cast
+      // this round, free casts included (anySpellCastThisRound, which is what the
+      // cast pipeline reads).
+      state.combat!.units.unit_p1_griffins.abilities = ["magi-power-boost"];
+      state.combat!.units.unit_p1_griffins.activationSpellPowerUsed = false;
+      expect(standingSpellPower(state, "p1", arrow)).toBe(0);
+      state.players.p1.combatStats.anySpellCastThisRound = false;
+      expect(standingSpellPower(state, "p1", arrow)).toBe(1);
+    });
+
+    it("a REAL new activation re-arms the charge (the reset seam)", () => {
+      const state = createInitialGameState("conflux-activation-rearm");
+      state.players.p1.hand = ["spell.lightning_bolt"];
+      state.players.p2.hand = [];
+      state.activePlayerId = "p1";
+      state.combat!.activeUnitId = "unit_p1_griffins";
+      // Every p1 unit is an Air Elemental Pack whose charge is ALREADY SPENT, so
+      // whichever unit the engine activates next can only cast at +1 if the
+      // activation seam really re-armed it.
+      for (const unit of Object.values(state.combat!.units)) {
+        if (unit.controllerId === "p1") {
+          unit.abilities = ["storm-elemental-air-power"];
+          unit.activationSpellPowerUsed = true;
+        }
+      }
+      const target = state.combat!.units.unit_p2_vampires;
+      target.maxHealth = 40;
+      target.damage = 0;
+      let current = state;
+      const firstUnitId = "unit_p1_griffins";
+
+      // Walk the engine until p1 owns a NEW activation.
+      let safety = 20;
+      while (safety > 0) {
+        safety -= 1;
+        const activeId = current.combat!.activeUnitId;
+        if (activeId && activeId !== firstUnitId && current.combat!.units[activeId]?.controllerId === "p1") {
+          break;
+        }
+        const offers = [...getLegalActions(current, "p1"), ...getLegalActions(current, "p2")];
+        // END_ACTIVATION when a unit holds the floor; otherwise answer whatever
+        // between-activation choice the engine opened (activation order tie-break).
+        const step =
+          offers.find((legal) => legal.action.type === "END_ACTIVATION") ??
+          offers.find((legal) => legal.action.type === "CHOOSE_OPTION");
+        if (!step) {
+          break;
+        }
+        current = passAllReactions(applyOk(current, step.action));
+      }
+      const newActiveId = current.combat!.activeUnitId!;
+      expect(newActiveId, "a different p1 unit should be active").not.toBe(firstUnitId);
+      expect(current.combat!.units[newActiveId].controllerId).toBe("p1");
+      // The reset seam: the fresh activation re-armed its own charge.
+      expect(current.combat!.units[newActiveId].activationSpellPowerUsed).toBeFalsy();
+      // …and a unit that has NOT re-activated keeps its spent charge.
+      expect(current.combat!.units[firstUnitId].activationSpellPowerUsed).toBe(true);
+
+      // The observable half: the re-armed charge really pays out (3, not 2).
+      const before = current.combat!.units.unit_p2_vampires.damage;
+      const bolt = getLegalActions(current, "p1").find(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          !legal.action.fromScroll &&
+          legal.action.cardId === "spell.lightning_bolt" &&
+          legal.action.target?.type === "unit" &&
+          legal.action.target.unitId === "unit_p2_vampires"
+      );
+      expect(bolt, "Lightning Bolt cast should be legal").toBeTruthy();
+      const next = passAllReactions(applyOk(current, bolt!.action));
+      expect(next.combat!.units.unit_p2_vampires.damage - before).toBe(3);
+    });
+
+    it("the printed scope is declared on every definition", () => {
+      const scopes = [
+        ["magi-power-boost", "round"],
+        ["storm-elemental-air-power", "activation"],
+        ["ice-elemental-water-power", "activation"],
+        ["energy-elemental-fire-power", "activation"],
+        ["magma-elemental-earth-power", "activation"]
+      ] as const;
+      for (const [abilityId, scope] of scopes) {
+        const effect = unitAbilities[abilityId]?.effect;
+        expect(effect?.type, abilityId).toBe("ON_ACTIVATION_SPELL_POWER_FIRST_CAST");
+        if (effect?.type === "ON_ACTIVATION_SPELL_POWER_FIRST_CAST") {
+          expect(effect.scope, abilityId).toBe(scope);
+          // The declared scope must match the printed card text.
+          expect(unitAbilities[abilityId].text.toLowerCase()).toContain(
+            scope === "activation" ? "during this activation" : "this round"
+          );
+        }
+      }
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

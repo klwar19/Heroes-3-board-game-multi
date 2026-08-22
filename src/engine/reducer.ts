@@ -504,7 +504,7 @@ import {
 import {
   getActivationAbilities,
   getActivationDamageSpellAbility,
-  getActivationSpellPowerBoost,
+  availableActivationSpellPowerBoost,
   getAfterRetaliationAttackAbility,
   getRandomOtherEnemySecondAttackAbility,
   getAttackBonusAfterMove,
@@ -10034,6 +10034,11 @@ function setActiveUnit(state: GameState, unitId: UnitId | null): void {
   activeUnit.activationStartPosition = activeUnit.position;
   if (!waitedReactivation) {
     activeUnit.activationAbilityDone = false;
+    // Conflux Pack Elementals: a fresh activation re-arms the "+1 Power to the
+    // first <School> Magic spell you cast during this Activation" charge. A
+    // Polish-Wait re-activation keeps it spent, exactly like
+    // activationAbilityDone (the Wait deferred ONE activation).
+    activeUnit.activationSpellPowerUsed = false;
   }
 
   if (activeUnit.defenseToken) {
@@ -13657,14 +13662,30 @@ function closeReactionWindow(state: GameState, reason: "all-pass" | "reaction-pl
  * to the caster. The school-scoped Elemental boost lands only when the spell
  * being cast (`spellSchools`) matches; the Magi's school-less boost always
  * lands. 0 at any other time (off-turn, another unit active, no combat).
+ *
+ * The cast-time half of the "+N Power to the first Spell" boost: reads the
+ * gate-aware amount off the ACTIVE unit and SPENDS an activation-scoped charge
+ * (Conflux Pack Elementals) when it lands. The round-scoped Magi charge needs no
+ * bookkeeping here — noteSpellCast has already set anySpellCastThisRound.
  */
-function activeUnitSpellPowerBoostFor(state: GameState, playerId: PlayerId, spellSchools?: SpellSchool[]): number {
+function consumeActiveUnitSpellPowerBoost(
+  state: GameState,
+  playerId: PlayerId,
+  spellSchools: SpellSchool[] | undefined,
+  firstSpellThisRound: boolean
+): number {
   const combat = state.combat;
   const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
   if (!activeUnit || activeUnit.controllerId !== playerId) {
     return 0;
   }
-  return getActivationSpellPowerBoost(activeUnit, spellSchools);
+  const { amount, spendsActivationCharge } = availableActivationSpellPowerBoost(activeUnit, spellSchools, {
+    firstSpellThisRound
+  });
+  if (spendsActivationCharge) {
+    activeUnit.activationSpellPowerUsed = true;
+  }
+  return amount;
 }
 
 function castSpell(state: GameState, action: Extract<GameAction, { type: "CAST_SPELL" }>, cards: CardLibrary): void {
@@ -14189,13 +14210,19 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
     // Tower Magi (Pack) "[activation] +N power to the first spell you cast this
     // round" and Conflux Pack Elementals "[activation] +N power to the first
     // <school> Magic spell you cast during this Activation": only while that
-    // unit itself is the active unit (its own turn), only for the round's first
-    // spell, and — for the Elementals — only when the spell matches their school.
-    if (isFirstSpellThisRound) {
-      const activationPower = activeUnitSpellPowerBoostFor(state, action.playerId, card.spellSchools);
-      if (activationPower > 0) {
-        stackItem.modifiers.spellPowerBonus += activationPower;
-      }
+    // unit itself is the active unit (its own turn), and — for the Elementals —
+    // only when the spell matches their school. The two printed windows DIFFER,
+    // so the gate is the effect's declared `scope`, not one shared round gate:
+    // an Air spell cast during the Storm Elementals' activation must not eat the
+    // Ice Elementals' later "during this Activation" charge.
+    const activationPower = consumeActiveUnitSpellPowerBoost(
+      state,
+      action.playerId,
+      card.spellSchools,
+      isFirstSpellThisRound
+    );
+    if (activationPower > 0) {
+      stackItem.modifiers.spellPowerBonus += activationPower;
     }
 
     // Sorcery draw-only bank: Power held from playing Sorcery outside a cast

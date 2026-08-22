@@ -1289,6 +1289,34 @@ a Medusa-style retaliation paralysis on a unit mid-activation still waits for th
 activation. MGQ Temptation markers use the same shape and were deliberately NOT widened.
 No new action type and no serialized-state field.
 
+## "First Spell" Power boosts: the Elementals' window is the ACTIVATION, the Magi's is the ROUND (2026-08-22, protocol v52)
+
+REPORTED: "Lightning bolt casted on turn of Air elementals … 3 DM (+1 SP so ok). Then Ice
+Elementals activates and I cast Magic arrow (and it has no bonus +1 for 1st SP)." The two
+printed cards use DIFFERENT windows and the engine gated BOTH on one per-ROUND flag:
+Tower Magi Pack prints "the first spell you cast **this round**"; the four Conflux Pack
+Elementals print "the first `<School>` Magic spell you cast **during this Activation**".
+So the Storm Elementals' boosted Air spell closed the round gate and the Ice Elementals'
+own activation charge was unreachable. FIX: the window is DECLARED IN THE DATA
+(`ON_ACTIVATION_SPELL_POWER_FIRST_CAST.scope: "round" | "activation"`, required on every
+definition) and read through ONE shared, gate-aware seam
+`availableActivationSpellPowerBoost` (`unit-abilities.ts`) called by BOTH the cast
+pipeline (`performSpellCast` → `consumeActiveUnitSpellPowerBoost`) and the preview
+(`standingSpellPower`), so an offer's number can never disagree with the damage. New
+serialized field `CombatUnitState.activationSpellPowerUsed` — spent only when the boost
+actually lands, re-armed at `setActiveUnit` (a Polish-Wait re-activation keeps it spent,
+like `activationAbilityDone`). `npm run deploy:partykit` OWED.
+LIMITS: the Magi's ROUND charge is unchanged and is still spent by the round's first Spell
+whoever casts it, FREE casts included (`anySpellCastThisRound`) — an Expert-Intelligence /
+Helm / Scroll cast eats it. A wrong-school Spell does NOT burn an Elemental charge, and one
+activation still grants at most ONE charge. Side fix at the same seam: the preview used the
+limit-only `spellsCastThisRound` counter while the cast used `anySpellCastThisRound`, so a
+free cast previewed a Magi bonus it would not get; both now read `anySpellCastThisRound`.
+Pinned in `conflux-content.test.ts` ("the printed window is per ACTIVATION for the
+Elementals, per ROUND for the Magi": the reported two-activation sequence by DAMAGE, a
+round-scoped Magi CONTROL, a no-ability CONTROL, once-per-activation, wrong-school, the
+real re-activation reset seam, and preview/cast agreement).
+
 ## An "[unit_attack]" reroll ability fires ONCE PER ATTACK (2026-08-10)
 
 USER RULING: "Minotaurs neutral can reroll -1 more than once, WHICH IS WRONG. ATTACK

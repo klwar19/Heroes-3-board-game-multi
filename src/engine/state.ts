@@ -9077,6 +9077,15 @@ export type CombatUnitState = {
    * never fires twice and the unit can act normally afterwards.
    */
   activationAbilityDone?: boolean;
+  /**
+   * Conflux Pack Elementals: set once this unit's ACTIVATION-scoped spell-power
+   * boost ("Add +1 power to the first <School> Magic spell you cast during this
+   * Activation") has actually been spent on a cast. Reset every time the unit
+   * becomes active (a Polish-Wait re-activation keeps it, like
+   * activationAbilityDone). The Magi's ROUND-scoped twin never touches this — it
+   * is gated by combatStats.anySpellCastThisRound instead.
+   */
+  activationSpellPowerUsed?: boolean;
   /** Pit Lords: set once this unit has summoned/reinforced Demons this combat. */
   summonedThisCombat?: boolean;
   /** Archangels: set once this unit has spent its once-per-combat lethal save. */

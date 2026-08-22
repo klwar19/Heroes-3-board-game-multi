@@ -1190,10 +1190,22 @@ export type UnitAbilityEffectDefinition =
        * Magic spell you cast during this Activation." When `school` is set the
        * bonus only lands on a Spell whose school list includes it; when it is
        * omitted (the Magi) the bonus lands on the first Spell of any school.
+       *
+       * `scope` is the PRINTED window the "first" refers to and must be stated
+       * on every definition — the two printed cards genuinely differ:
+       *   • "round"      — Tower Magi Pack: "…the first spell you cast this
+       *     round". Spent by the round's first Spell whoever casts it, free
+       *     casts included (combatStats.anySpellCastThisRound).
+       *   • "activation" — Conflux Pack Elementals: "…the first <School> Magic
+       *     spell you cast during THIS ACTIVATION". A Spell cast during some
+       *     EARLIER activation of the same round must not consume it, so it is
+       *     spent per unit-activation (CombatUnitState.activationSpellPowerUsed)
+       *     and only by a Spell that actually matches the school.
        */
       type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST";
       amount: number;
       school?: SpellSchool;
+      scope: "round" | "activation";
     }
   | {
       /**
@@ -3249,7 +3261,7 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "magi-power-boost",
     name: "Mage's Insight",
     text: "[activation] Add +1 power to the first spell you cast this round.",
-    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1 },
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, scope: "round" },
     implementationStatus: "implemented"
   },
   // Conflux Pack Elementals: "[activation] Add +1 power to the first <school>
@@ -3258,28 +3270,28 @@ export const unitAbilities: Record<string, UnitAbilityDefinition> = {
     id: "storm-elemental-air-power",
     name: "Storm Surge",
     text: "[activation] Add +1 power to the first Air Magic spell you cast during this Activation.",
-    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "air" },
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "air", scope: "activation" },
     implementationStatus: "implemented"
   },
   "ice-elemental-water-power": {
     id: "ice-elemental-water-power",
     name: "Frigid Focus",
     text: "[activation] Add +1 power to the first Water Magic spell you cast during this Activation.",
-    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "water" },
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "water", scope: "activation" },
     implementationStatus: "implemented"
   },
   "energy-elemental-fire-power": {
     id: "energy-elemental-fire-power",
     name: "Searing Focus",
     text: "[activation] Add +1 power to the first Fire Magic spell you cast during this Activation.",
-    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "fire" },
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "fire", scope: "activation" },
     implementationStatus: "implemented"
   },
   "magma-elemental-earth-power": {
     id: "magma-elemental-earth-power",
     name: "Tectonic Focus",
     text: "[activation] Add +1 power to the first Earth Magic spell you cast during this Activation.",
-    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "earth" },
+    effect: { type: "ON_ACTIVATION_SPELL_POWER_FIRST_CAST", amount: 1, school: "earth", scope: "activation" },
     implementationStatus: "implemented"
   },
   // Cove Nix (Pack): a hard cap on the damage any single attack can deal to it.

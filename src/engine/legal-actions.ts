@@ -303,7 +303,7 @@ import type {
 } from "./state";
 import { NEUTRAL_PLAYER_ID, UNOPENED_FAR_TILE } from "./state";
 import {
-  getActivationSpellPowerBoost,
+  availableActivationSpellPowerBoost,
   getAstrologersRoundFrenzy,
   getDiscardToIgnoreAttackDieAbility,
   getFreeIgnoreAttackDieAbility,
@@ -413,7 +413,7 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
       bonus += astrologers.effect.amount;
     }
   }
-  if (card.kind === "spell" && (player.combatStats.spellsCastThisRound ?? 0) === 0) {
+  if (card.kind === "spell") {
     const combat = state.combat;
     const activeUnit = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
     if (activeUnit && activeUnit.controllerId === playerId) {
@@ -422,7 +422,16 @@ export function standingSpellPower(state: GameState, playerId: PlayerId, card: C
       // spell — not only the Magi's school-less boost. Without the schools the
       // preview/affordability/pool-scaling paths silently dropped it, disagreeing
       // with the actual cast in performSpellCast.
-      bonus += getActivationSpellPowerBoost(activeUnit, card.spellSchools);
+      //
+      // THE gate is the shared, scope-aware read (availableActivationSpellPowerBoost)
+      // the cast pipeline uses, so preview and cast can never disagree: the Magi's
+      // ROUND charge is spent by any Spell cast this round (anySpellCastThisRound —
+      // free Helm/Scroll casts included, exactly as performSpellCast reads it, not
+      // the limit-only spellsCastThisRound counter), while the Elementals' printed
+      // "during this Activation" charge is spent per activation.
+      bonus += availableActivationSpellPowerBoost(activeUnit, card.spellSchools, {
+        firstSpellThisRound: !player.combatStats.anySpellCastThisRound
+      }).amount;
     }
   }
   // School-of-Magic permanent basic + Conflux Elemental-tile +1 for the spell's

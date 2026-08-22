@@ -885,6 +885,59 @@ export function getActivationSpellPowerBoost(unit: CombatUnitState, spellSchools
 }
 
 /**
+ * THE shared, gate-aware read of the active unit's "+N Power to the first Spell"
+ * boost — used by BOTH the cast pipeline (performSpellCast) and the standing
+ * preview (standingSpellPower), so an offer's number can never disagree with the
+ * damage the cast deals.
+ *
+ * `getActivationSpellPowerBoost` above answers "what does this unit PRINT"; this
+ * one answers "is that charge still available RIGHT NOW", per the effect's
+ * printed `scope`:
+ *   • "round"      (Tower Magi Pack, "…this round") — available while the
+ *     controller has cast no Spell at all this combat round.
+ *   • "activation" (Conflux Pack Elementals, "…during this Activation") —
+ *     available until THIS unit's own activation has actually spent it. A Spell
+ *     cast during an earlier activation of the same round is irrelevant, which
+ *     is the whole point of the printed wording: Storm Elementals boosting an
+ *     Air spell must not eat the Ice Elementals' later Water-spell charge.
+ *
+ * `spendsActivationCharge` tells the caller to set
+ * `unit.activationSpellPowerUsed` once the cast really goes through (the preview
+ * path ignores it and mutates nothing).
+ */
+export function availableActivationSpellPowerBoost(
+  unit: CombatUnitState,
+  spellSchools: SpellSchool[] | undefined,
+  gates: { firstSpellThisRound: boolean }
+): { amount: number; spendsActivationCharge: boolean } {
+  let amount = 0;
+  let spendsActivationCharge = false;
+  for (const ability of getAbilitiesWithEffect(unit, "ON_ACTIVATION_SPELL_POWER_FIRST_CAST")) {
+    if (ability.effect?.type !== "ON_ACTIVATION_SPELL_POWER_FIRST_CAST") {
+      continue;
+    }
+    const { school, scope } = ability.effect;
+    if (
+      school &&
+      !(spellSchools ?? []).includes(school) &&
+      !(spellSchools ?? []).includes("any")
+    ) {
+      continue;
+    }
+    if (scope === "activation") {
+      if (unit.activationSpellPowerUsed) {
+        continue;
+      }
+      spendsActivationCharge = true;
+    } else if (!gates.firstSpellThisRound) {
+      continue;
+    }
+    amount += ability.effect.amount;
+  }
+  return { amount, spendsActivationCharge: amount > 0 && spendsActivationCharge };
+}
+
+/**
  * "Mechanical" units — Factory Automatons and Dreadnoughts (the constructs that
  * carry the gear trait). Mechanics' Field Repair only ever targets these.
  */

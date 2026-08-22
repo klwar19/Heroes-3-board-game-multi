@@ -594,7 +594,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // enemy-force ids is likewise new. All of it sits behind the existing
 // raidBosses / dungeon module flags (default OFF ⇒ byte-identical) and wave
 // assaults are deliberately excluded. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 51;
+//
+// v52 (2026-08-22): the Conflux Pack Elementals' "+1 Power to the first <School>
+// Magic spell you cast DURING THIS ACTIVATION" is gated per ACTIVATION again
+// instead of sharing the Tower Magi's per-ROUND gate (reported: Lightning Bolt
+// boosted on the Storm Elementals' activation, then Magic Arrow unboosted on the
+// Ice Elementals'). SERIALIZED shape a stale worker neither writes nor clears:
+// `CombatUnitState.activationSpellPowerUsed` (spent in performSpellCast, re-armed
+// at `setActiveUnit`). Server-computed behaviour: a v51 worker resolves the SAME
+// cast at one less Power, so the two halves disagree about that spell's damage.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 52;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
