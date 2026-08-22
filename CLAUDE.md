@@ -1588,6 +1588,32 @@ LIMIT: the bronze pick opens a window only for a HUMAN defense controller — th
 every single-player table take `randomTownDefaultBronzePackId` (highest printed Pack
 cost); the printed multiplayer faction-PICK roll is NOT modeled.
 
+### The defending faction is PUBLIC at tile reveal (2026-08-22, protocol-relevant)
+
+USER RULE: "you should know the type of units (faction) when the tile with Random Town
+is revealed … and it is fixed. But you should not know where the gate is before setting
+your army." The faction used to be rolled lazily at GUARD-DRAW time. ONE sweep
+`ensureRevealedRandomTownFactions` (adventure.ts) stamps `field.faction` on every
+Random Town whose tile is FACE UP, called from the shared `applyAction` tail
+(reducer.ts, so every reveal path is covered) and once at the end of
+`createAdventureGameState`. It reuses `ensureRandomTownFaction`, whose
+already-stamped early-out is what makes reveal and fight ONE source of truth —
+`randomTownGuardDraws` reads the persisted value and can never re-roll. UI
+(`screen.tsx`): a `image.hexRandomTownFaction` crest (`townIconUrl`) on the hex plus a
+"— defended by <Faction> units" clause in the hover tooltip. Pinned in
+`random-town-defenders.test.ts` ("the defending faction is public at tile reveal":
+seeded + not-in-play + fixed + surviving `redactStateForSeat`, a face-down CONTROL, the
+draw following a re-stamped field, and the legacy fallback) and
+`src/components/adventure/random-town-faction-board.test.tsx` (DOM contract + a
+no-faction CONTROL).
+LIMITS: the GATE position and the defender layout are UNCHANGED — the siege board is
+still minted when the fight starts (`startNeutralEncounter`), i.e. it is visible while
+you deploy, never from the map; a LEGACY snapshot's unstamped Random Town is simply
+stamped on the next action (and a fight before any sweep falls back to the old
+draw-time roll); the crest stays on a captured Random Town; jsdom cannot compute CSS,
+so only the DOM contract is pinned and there is no e2e spec. `MapFieldState.faction` is
+now written earlier ⇒ a protocol bump + `npm run deploy:partykit` are OWED.
+
 ## Grail → Utopia conversion: at the BATTLE WIN, never the chosen field, full reward (2026-08-19)
 
 USER RULE 2026-08-19 ("both are grail fields, but after winning a battle vs a Ⅶ

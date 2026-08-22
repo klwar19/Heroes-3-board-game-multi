@@ -16603,6 +16603,50 @@ function ensureRandomTownFaction(state: GameState, field: MapFieldState): string
 }
 
 /**
+ * USER RULE 2026-08-22: "you should know the type of units (faction) when the
+ * tile with Random Town is revealed … and it is fixed". The defending faction
+ * used to be rolled lazily at GUARD-DRAW time (the fight), so a revealed Random
+ * Town hex told the table nothing about what it would have to beat.
+ *
+ * This sweep stamps `field.faction` on every Random Town whose tile is FACE UP
+ * and not yet stamped, using the SAME {@link ensureRandomTownFaction} roll the
+ * fight uses — and because that helper returns an already-stamped faction
+ * untouched, the reveal-time value IS what `randomTownGuardDraws` later fields.
+ * One source of truth; the two can never disagree.
+ *
+ * Called from the shared `applyAction` tail (so any reveal path — rotation,
+ * Redwood Observatory, designer placement — is covered) and once at setup.
+ * A legacy snapshot simply gets stamped on the next action; a Random Town whose
+ * fight starts before any sweep still falls back to the old draw-time roll.
+ *
+ * What is deliberately NOT revealed: the GATE position and the defender board
+ * layout, which are decided only when the combat is set up.
+ */
+export function ensureRevealedRandomTownFactions(state: GameState): boolean {
+  const adventure = state.adventure;
+  // A sandbox / hand-built fixture can carry an adventure with no field map at
+  // all: never assume it exists (this tail runs on EVERY action).
+  if (!adventure?.fields) {
+    return false;
+  }
+  let stamped = false;
+  for (const field of Object.values(adventure.fields)) {
+    if (field.location !== "random_town" || field.faction) {
+      continue;
+    }
+    const tile = field.tileInstanceId ? adventure.tiles?.[field.tileInstanceId] : undefined;
+    // A field only exists for a materialized (face-up) tile, but never stamp a
+    // hex whose tile is somehow still face down — that would be a real leak.
+    if (tile?.faceDown) {
+      continue;
+    }
+    ensureRandomTownFaction(state, field);
+    stamped = true;
+  }
+  return stamped;
+}
+
+/**
  * BRONZE-tier units of `faction` that can field a PACK side — the candidates for
  * the Random Town's ONE choosable bronze Pack (the printed card's bronze-star
  * slot: "a Pack of bronze-tier units, chosen by the player who controls the

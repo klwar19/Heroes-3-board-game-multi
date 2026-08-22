@@ -1830,6 +1830,18 @@ export function HexMapBoard({
       const designerVp = !designerRewardClaimed
         ? (field.centerHexVp ?? field.viiVp ?? field.designerRewardVp ?? 0)
         : 0;
+      // A REVEALED Random Town publishes the faction defending it (USER RULE
+      // 2026-08-22) — the engine stamps `field.faction` at reveal and the fight
+      // draws from the same value, so the crest is fixed. The GATE position and
+      // the defender layout stay hidden until the army is set.
+      const randomTownFaction =
+        field.location === "random_town" && field.faction ? field.faction : null;
+      const randomTownFactionName = randomTownFaction
+        ? (coreFactionDefinitions[randomTownFaction]?.name ?? randomTownFaction)
+        : "";
+      const randomTownFactionTip = randomTownFaction
+        ? ` — defended by ${randomTownFactionName} units`
+        : "";
       const designerRewardTip =
         designerRewardSummary || designerVp > 0
           ? ` — Reward: ${[designerRewardSummary, designerVp > 0 ? `+${designerVp} VP` : ""]
@@ -1956,7 +1968,7 @@ export function HexMapBoard({
               field.location === "creature_bank" && field.bankId
                 ? `${CREATURE_BANKS[field.bankId as CreatureBankId]?.name ?? "Creature Bank"} (Creature Bank${field.bankSize ? `, size ${ROMAN[field.bankSize]}` : ""})`
                 : (location?.name ?? field.location)
-            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${alteredGuardTip}${designerRewardTip}${
+            }${field.difficulty && guarded ? ` (guard ${ROMAN[field.difficulty]})` : ""}${randomTownFactionTip}${alteredGuardTip}${designerRewardTip}${
               overrideInfo ? ` — ${overrideInfo.summary}` : ""
             }${
               field.flagOwnerId ? ` — flagged by ${state.players[field.flagOwnerId]?.name}` : ""
@@ -2280,6 +2292,29 @@ export function HexMapBoard({
           >
             ⚙
           </text>
+        );
+      }
+      // A revealed Random Town wears the crest of the faction defending it, so
+      // the table can plan against a known roster (USER RULE 2026-08-22). Purely
+      // informational — it never says WHERE the Gate or the defenders will sit.
+      if (randomTownFaction) {
+        const crestSize = HEX_SIZE * 0.5;
+        overlays.push(
+          <image
+            aria-label={`Defended by ${randomTownFactionName}`}
+            className="hexRandomTownFaction"
+            data-random-town-faction={randomTownFaction}
+            height={crestSize}
+            href={assetUrl(townIconUrl(randomTownFaction))}
+            key={`${spaceId}-random-town-faction`}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ pointerEvents: "none" }}
+            width={crestSize}
+            x={x - crestSize / 2}
+            y={y - crestSize * 1.05}
+          >
+            <title>{`Defended by ${randomTownFactionName} units`}</title>
+          </image>
         );
       }
       // A gift mark for an unclaimed designer first-clear reward.

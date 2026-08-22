@@ -15,6 +15,7 @@ import {
   getActiveAstrologersCard,
   getMainHero,
   getUnitSide,
+  ensureRevealedRandomTownFactions,
   hasDuplicateArmyUnitIds,
   healLegacyPlayerFields,
   isSeaField,
@@ -26343,6 +26344,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // case) skips that activation now — BEFORE the adventure pump can run a
   // neutral guard's turn with the token still on it.
   enforceParalysisOnOpenActivation(nextState);
+
+  // A revealed Random Town publishes its defending FACTION (USER RULE
+  // 2026-08-22). Stamped at this shared tail so every reveal path is covered;
+  // the fight later reads the same persisted `field.faction`. The gate position
+  // and the defender layout are still decided only at combat setup.
+  ensureRevealedRandomTownFactions(nextState);
 
   // Polish Set Artifacts: re-derive every player's active-tier count and announce
   // the ones that MOVED — a set's tiers change whenever a member card enters or

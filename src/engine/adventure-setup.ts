@@ -68,6 +68,7 @@ import {
   EVENTS_DECK_ID,
   gatePairColor,
   getTileFootprintSpaceIds,
+  ensureRevealedRandomTownFactions,
   DESIGNER_BORDER_SEALING_ENABLED,
   getUnitSide,
   instantiateTile,
@@ -4141,6 +4142,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // already-open mandatory setup reward and is recovered by the reducer tail if
   // a restored snapshot still owes the choice.
   ensureMgqGoldContractSetupChoice(state);
+
+  // A designed map can start with a FACE-UP Random Town; publish its defending
+  // faction before the state is handed back (every later reveal is covered by
+  // the reducer tail).
+  ensureRevealedRandomTownFactions(state);
 
   return state;
 }
