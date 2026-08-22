@@ -174,6 +174,7 @@ export {
 export type { CommanderFirstAidOption } from "./commanders";
 export {
   cardCanBoostPower,
+  cardCanBoostPowerForSpellSchools,
   collectPowerBreakpoints,
   describeCardEffect,
   getCardEffectAmount,

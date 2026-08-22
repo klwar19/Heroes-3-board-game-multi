@@ -290,7 +290,12 @@ import {
 import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
-import { cardCanBoostPower, spellPowerSidesOfCard, spellPowerSourceDrawCards } from "./effects";
+import {
+  cardCanBoostPower,
+  cardCanBoostPowerForSpellSchools,
+  spellPowerSidesOfCard,
+  spellPowerSourceDrawCards
+} from "./effects";
 import {
   bestMapSpellTier,
   isMapPowerTierSpell,
@@ -6432,8 +6437,13 @@ export function openFortuneBoostStep(
   }
   const maxPower = fortuneMaxPower(card);
   const player = state.players[playerId];
+  // A school-restricted Power source (a School-of-Magic ability) may only pay a
+  // matching Spell's Power — the same rule the map-spell boost window applies.
+  const schools = card.spellSchools ?? [];
   const spellCardIds =
-    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+    boost < maxPower
+      ? (player?.hand.filter((cardId) => cardCanBoostPowerForSpellSchools(cardLibrary[cardId], schools)) ?? [])
+      : [];
 
   if (spellCardIds.length === 0) {
     createFortuneRerollEffect(state, playerId, card, boost);
@@ -7735,9 +7745,21 @@ function offerMapSpellKnowledgeRecall(
 export { isMapPowerTierSpell, mapSpellPowerTiers };
 
 /**
+ * The Spell schools a Visions Power payment must match — read off the
+ * definition the ENGINE resolves right now (a balance pack reprints Visions but
+ * keeps its printed FIRE school), so the filter and the resolved card agree.
+ */
+function visionsSpellSchools(state: GameState): readonly SpellSchool[] {
+  return balanceCard(state, VISIONS_SPELL_ID)?.spellSchools ?? [];
+}
+
+/**
  * Offers one Power boost: discard a Spell for +1 card, or scry now. Re-opens
  * with `boost + 1` after each paid Spell until the top breakpoint is reached or
  * no power-source Spell remains in hand, then proceeds to the deck choice.
+ *
+ * Only sources whose printed school matches Visions' (FIRE) are offered — see
+ * `cardCanBoostPowerForSpellSchools`.
  */
 function openVisionsBoostStep(
   state: GameState,
@@ -7747,9 +7769,13 @@ function openVisionsBoostStep(
 ): void {
   const player = state.players[playerId];
   const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
-  // Power-source cards are Spells (and Power statistics) still in hand.
+  // Power-source cards are Spells (and Power statistics) still in hand, minus
+  // any whose printed Power is restricted to a school Visions does not have.
+  const schools = visionsSpellSchools(state);
   const spellCardIds =
-    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+    boost < maxPower
+      ? (player?.hand.filter((cardId) => cardCanBoostPowerForSpellSchools(cardLibrary[cardId], schools)) ?? [])
+      : [];
 
   if (spellCardIds.length === 0) {
     proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
@@ -9328,8 +9354,13 @@ function openVisionsGuardSwapBoost(
 ): void {
   const player = state.players[playerId];
   const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
+  // Same school filter as the map scry: Visions is a FIRE spell, so an Air /
+  // Earth / Water School-of-Magic ability may not pay its Power.
+  const schools = visionsSpellSchools(state);
   const spellCardIds =
-    boost < maxPower ? (player?.hand.filter((cardId) => cardCanBoostPower(cardLibrary[cardId])) ?? []) : [];
+    boost < maxPower
+      ? (player?.hand.filter((cardId) => cardCanBoostPowerForSpellSchools(cardLibrary[cardId], schools)) ?? [])
+      : [];
 
   if (spellCardIds.length === 0) {
     openVisionsGuardSwapLoop(state, playerId, visionsCardCount(cardsByPower, boost));

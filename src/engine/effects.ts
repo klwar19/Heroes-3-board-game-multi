@@ -231,6 +231,64 @@ export function cardCanBoostPower(card: CardDefinition | undefined): boolean {
 }
 
 /**
+ * Every `schoolOnly` a card's printed ADD_SPELL_POWER sides name — `undefined`
+ * for a school-agnostic side. A Spell yields nothing here (its generic "+1
+ * Power" bottom side is never school-restricted). Unlike
+ * `findAddSpellPowerEffect` this ENUMERATES the sides instead of collapsing to
+ * one, so a card with a school side AND a generic side is judged on both.
+ */
+function addSpellPowerSchoolsOfCard(card: CardDefinition): (SpellSchool | undefined)[] {
+  if (card.effect.type === "ADD_SPELL_POWER") {
+    return [card.effect.schoolOnly];
+  }
+  if (card.effect.type === "CHOOSE_ONE") {
+    return card.effect.options
+      .filter((option) => option.effect.type === "ADD_SPELL_POWER")
+      .map((option) =>
+        option.effect.type === "ADD_SPELL_POWER" ? option.effect.schoolOnly : undefined
+      );
+  }
+  return [];
+}
+
+/**
+ * Whether a card may be discarded as a Power source for a spell of
+ * `spellSchools` — `cardCanBoostPower` plus the printed SCHOOL restriction.
+ *
+ * USER REPORT (2026-08-22): "Air magic - should not work with Visions - it is
+ * Fire Magic spell only." A School-of-Magic ability card is printed
+ * `ADD_SPELL_POWER { schoolOnly }`, and the bare `cardCanBoostPower` (which only
+ * asks "does this card carry ADD_SPELL_POWER at all?") let Air Magic pay a FIRE
+ * spell's Power in the flat "+1 Power per discard" windows (Visions' map scry,
+ * Visions' pre-battle guard swap, Fortune's map reroll boost). The map-spell
+ * boost window never had the hole — it reads `spellPowerSidesOfCard(card,
+ * schools)`, which drops non-matching sides — so this helper is that same rule
+ * for the windows that grant a FLAT +1 rather than the card's printed amount.
+ *
+ * A card is excluded only when EVERY one of its Power sides names a school the
+ * spell does not have: Spells (generic "+1 Power"), school-agnostic Power
+ * statistics/artifacts and a matching School ability are all still offered.
+ */
+export function cardCanBoostPowerForSpellSchools(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[]
+): boolean {
+  if (!cardCanBoostPower(card) || !card) {
+    return false;
+  }
+  if (card.kind === "spell") {
+    return true;
+  }
+  const schools = addSpellPowerSchoolsOfCard(card);
+  if (schools.length === 0) {
+    return true;
+  }
+  return schools.some(
+    (school) => !school || spellSchools.includes(school) || spellSchools.includes("any")
+  );
+}
+
+/**
  * Whether a card can actually fuel a school-less Power-scaled effect such as
  * Deemer's Meteor Shower / Kud's Rocket Launcher. Spells always bring their
  * generic +1 Power side; ordinary Power statistics, specialties and artifacts
