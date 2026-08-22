@@ -53,6 +53,60 @@ export function gainOwnedCard(
   return "hand";
 }
 
+/** Every shared Spell deck: Polish merges them, BINH splits basic/expert. */
+function sharedSpellDecks(state: Pick<GameState, "decks">) {
+  return Object.entries(state.decks)
+    .filter(([id]) => id.startsWith("spells"))
+    .map(([, deck]) => deck);
+}
+
+/**
+ * Tarnum (Conflux) VI — "Search(1) Spell twice" — under POLISH SPELL BOOK.
+ *
+ * USER RULING 2026-08-22 ("it adds 2 spells to the list — instead it should
+ * allow to cast a spell from discard … or cast spells instantly (if able), not
+ * add to the card in hand"): with the Book on, a Searched Spell is NEVER added
+ * to the hand and never inscribed into the Book. It is laid FACE UP on the
+ * shared Spell discard and the free over-limit cast is made FROM THERE — which
+ * is also why an uncast one simply stays on that discard (the next Search /
+ * Helm cast can reach it) instead of clogging a hand that could never cast it
+ * (a Polish hand Spell is uncastable: only the Book + Cast a Spell casts).
+ *
+ * This is THE one zone read shared by the offer layer (legal-actions' two
+ * over-limit passes) and the two consume seams (reducer's CAST_SPELL and
+ * PLAY_REACTION arms), so they can never disagree about where the card sits.
+ * With the rule OFF it is the classic `hand.includes` check, byte-identical.
+ */
+export function tarnumOverlimitSpellAvailable(
+  state: Pick<GameState, "ruleset" | "adventure" | "decks">,
+  player: PlayerState,
+  cardId: CardId
+): boolean {
+  if (!polishSpellBookEnabled(state)) {
+    return player.hand.includes(cardId);
+  }
+  return sharedSpellDecks(state).some((deck) => deck.discardPile.includes(cardId));
+}
+
+/**
+ * Polish reading only: lift one flagged Searched Spell off the shared Spell
+ * discard so the cast can relocate it (deck top / discard) like the classic
+ * hand cast does. Returns false when it is not there (a forged play).
+ */
+export function takeTarnumOverlimitSpellFromSharedDiscard(
+  state: Pick<GameState, "decks">,
+  cardId: CardId
+): boolean {
+  for (const deck of sharedSpellDecks(state)) {
+    const index = deck.discardPile.lastIndexOf(cardId);
+    if (index >= 0) {
+      deck.discardPile.splice(index, 1);
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * "In effect" — the third Book section (house rule, user ruling 2026-08-04).
  *

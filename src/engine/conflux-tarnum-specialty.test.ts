@@ -648,3 +648,261 @@ describe("Tarnum VI — instant-window (reaction) casting of attack/defense chan
     expect(after.players.p1.combatStats.tarnumOverlimitCards ?? []).not.toContain(BLOODLUST);
   });
 });
+
+/**
+ * Tarnum VI under the POLISH SPELL BOOK (`polish-spell-book`) 窶・USER RULING
+ * 2026-08-22: "it adds 2 spells to the list - instead it should: allow to cast a
+ * spell from discard (couse it is search (1)) OR cast spells instantly (if
+ * able) - not add to the card in hand."
+ *
+ * What runs: with the Book on, a Searched Spell is laid FACE UP on the shared
+ * Spell discard (never hand, never Book) and the free over-limit cast is made
+ * from there; the MAP play is withheld (the over-limit cast only exists in a
+ * Combat). Every claim carries a rule-OFF CONTROL on the same setup.
+ */
+describe("Tarnum VI under the Polish Spell Book", () => {
+  /** Combat with p1's Griffins active and `polish-spell-book` frozen on/off. */
+  function tarnumCombatWithBook(seed: string, drawPile: string[], polish: boolean): GameState {
+    const state = createInitialGameState(seed);
+    const rules = createAdventureGameState({
+      seed: `${seed}-rules`,
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": polish }
+    });
+    state.adventure = rules.adventure;
+    state.ruleset = "binh";
+    state.players.p1.hand = [T6];
+    state.players.p1.discard = [];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = [];
+    state.players.p2.hand = [];
+    state.decks.spells.drawPile = drawPile;
+    state.decks.spells.discardPile = [];
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].drawPile = [];
+      state.decks["spells-expert"].discardPile = [];
+    }
+    const target = state.combat!.units.unit_p2_skeletons;
+    target.maxHealth = 30;
+    target.damage = 0;
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.movedThisActivation = false;
+    griffins.attackedThisActivation = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return state;
+  }
+
+  function playVI(state: GameState): GameState {
+    const play = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
+    );
+    expect(play, "Tarnum VI should be playable in combat").toBeTruthy();
+    let cur = applyOk(state, play!.action);
+    let safety = 6;
+    while (cur.pendingChoice?.type === "TARNUM_SEARCH" && safety-- > 0) {
+      const pick = getLegalActions(cur, "p1").filter((legal) => legal.action.type === "CHOOSE_OPTION")[0];
+      expect(pick, "a Spell deck Search should be offered").toBeTruthy();
+      cur = applyOk(cur, pick!.action);
+    }
+    return passAllReactions(cur);
+  }
+
+  it("the Searched Spells go to the shared Spell DISCARD - never the hand, never the Book", () => {
+    const state = tarnumCombatWithBook("tarnum-vi-polish-zone", ["spell.bless", "spell.lightning_bolt"], true);
+    const after = playVI(state);
+    for (const spell of ["spell.lightning_bolt", "spell.bless"]) {
+      expect(after.players.p1.hand, `${spell} must not be added to the hand`).not.toContain(spell);
+      expect(after.players.p1.spellBook ?? []).not.toContain(spell);
+      expect(after.players.p1.spellBookUsed ?? []).not.toContain(spell);
+      expect(after.decks.spells.discardPile).toContain(spell);
+    }
+    // They are still flagged for the free over-limit cast.
+    expect(after.players.p1.combatStats.tarnumOverlimitCards).toEqual(
+      expect.arrayContaining(["spell.lightning_bolt", "spell.bless"])
+    );
+  });
+
+  it("CONTROL (rule OFF): the same play puts both Searched Spells in hand", () => {
+    const state = tarnumCombatWithBook("tarnum-vi-polish-zone-off", ["spell.bless", "spell.lightning_bolt"], false);
+    const after = playVI(state);
+    expect(after.players.p1.hand).toEqual(
+      expect.arrayContaining(["spell.lightning_bolt", "spell.bless"])
+    );
+    expect(after.decks.spells.discardPile).not.toContain("spell.lightning_bolt");
+    expect(after.decks.spells.discardPile).not.toContain("spell.bless");
+  });
+
+  it("casts a Searched Spell FROM THE DISCARD for free over the limit, and it leaves that discard", () => {
+    const state = tarnumCombatWithBook("tarnum-vi-polish-cast", ["spell.bless", "spell.lightning_bolt"], true);
+    state.players.p1.combatStats.spellsCastThisRound = 1; // the one Spell this round is spent
+    const searched = playVI(state);
+    expect(searched.decks.spells.discardPile).toContain("spell.lightning_bolt");
+
+    const cast = getLegalActions(searched, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.lightning_bolt" &&
+        legal.action.tarnumReturn === "deck-top" &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "the discard-sourced over-limit cast should be offered").toBeTruthy();
+
+    const after = passAllReactions(applyOk(searched, cast!.action));
+    // Observable game outcome: the enemy really took Lightning Bolt damage.
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(0);
+    // Free bonus cast: the per-round limit did not advance.
+    expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1);
+    // It left the shared discard for the Spell deck TOP (the chosen placement),
+    // and never touched the caster's hand / Book / own discard.
+    expect(after.decks.spells.drawPile.at(-1)).toBe("spell.lightning_bolt");
+    expect(after.decks.spells.discardPile).not.toContain("spell.lightning_bolt");
+    expect(after.players.p1.discard).not.toContain("spell.lightning_bolt");
+    expect(after.players.p1.hand).not.toContain("spell.lightning_bolt");
+    expect(after.players.p1.spellBook ?? []).not.toContain("spell.lightning_bolt");
+    // The uncast one simply stays on the shared discard (castable later, or by
+    // whatever else reads that discard) - it is never in hand.
+    expect(after.decks.spells.discardPile).toContain("spell.bless");
+    expect(after.players.p1.hand).not.toContain("spell.bless");
+  });
+
+  it("CONTROL: under the Book a flagged Spell sitting only in HAND is offered nothing and a forged cast is rejected", () => {
+    const state = tarnumCombatWithBook("tarnum-vi-polish-forge", [], true);
+    state.players.p1.hand = ["spell.lightning_bolt"];
+    state.players.p1.combatStats.tarnumOverlimitCards = ["spell.lightning_bolt"];
+    state.players.p1.combatStats.spellsCastThisRound = 1;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.tarnumReturn
+      )
+    ).toBe(false);
+    const result = applyAction(state, {
+      type: "CAST_SPELL",
+      playerId: "p1",
+      cardId: "spell.lightning_bolt",
+      target: { type: "unit", unitId: "unit_p2_skeletons" },
+      tarnumReturn: "deck-top"
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it("the MAP play is withheld under the Book, and still offered with the rule OFF (CONTROL)", () => {
+    function mapState(polish: boolean): GameState {
+      const state = createAdventureGameState({
+        seed: `tarnum-vi-polish-map-${polish}`,
+        ruleset: "binh",
+        rollFirstPlayer: false,
+        houseRules: { "polish-spell-book": polish },
+        players: [
+          { id: "p1", name: "Tarnum", factionId: "conflux", heroDefId: "tarnum_conflux" },
+          { id: "p2", name: "Catherine", factionId: "castle", heroDefId: "catherine" }
+        ]
+      });
+      for (const pl of Object.values(state.players)) {
+        pl.canMulligan = false;
+        pl.needsHandRefresh = false;
+      }
+      state.activePlayerId = "p1";
+      state.pendingChoice = null;
+      state.reactionWindow = null;
+      state.players.p1.hand = [T6];
+      state.decks.spells.drawPile = ["spell.bless", "spell.lightning_bolt"];
+      state.decks.spells.discardPile = [];
+      return state;
+    }
+    const offered = (state: GameState) =>
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === T6
+      );
+    expect(offered(mapState(true)), "the Book reading has no map surface").toBe(false);
+    expect(offered(mapState(false)), "CONTROL: the classic map Search play is unchanged").toBe(true);
+  });
+});
+
+
+/**
+ * The REACTION seam of the same ruling: a flagged Searched instant lying on the
+ * shared Spell discard is castable into an open attack window under the Book,
+ * with a rule-OFF CONTROL (there it must be in HAND instead).
+ */
+describe("Tarnum VI under the Polish Spell Book - the attack-window reaction seam", () => {
+  const BOOK_BLOODLUST = "spell.bloodlust";
+
+  /** Declare a p1 griffins attack with the flagged Bloodlust parked per `zone`. */
+  function declareWithFlagged(seed: string, polish: boolean, zone: "hand" | "spell-discard"): GameState {
+    const state = createInitialGameState(seed);
+    const rules = createAdventureGameState({
+      seed: `${seed}-rules`,
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": polish }
+    });
+    state.adventure = rules.adventure;
+    state.ruleset = "binh";
+    state.players.p1.hand = zone === "hand" ? [BOOK_BLOODLUST] : [];
+    state.players.p1.discard = [];
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = [];
+    state.players.p2.hand = [];
+    state.players.p1.combatStats.tarnumOverlimitCards = [BOOK_BLOODLUST];
+    state.players.p1.combatStats.spellsCastThisRound = 1; // limit already spent
+    state.decks.spells.drawPile = [];
+    // A second Spell sits UNDER the flagged one: the shared "one card face up on
+    // every deck's discard" invariant would otherwise flip the just-returned
+    // card straight back off the deck top the moment the pile empties.
+    state.decks.spells.discardPile =
+      zone === "spell-discard" ? ["spell.magic_arrow", BOOK_BLOODLUST] : ["spell.magic_arrow"];
+    if (state.decks["spells-expert"]) {
+      state.decks["spells-expert"].drawPile = [];
+      state.decks["spells-expert"].discardPile = [];
+    }
+    const skeletons = state.combat!.units.unit_p2_skeletons;
+    skeletons.maxHealth = 50;
+    skeletons.damage = 0;
+    state.combat!.units.unit_p1_griffins.position = 9;
+    skeletons.position = 13;
+    return applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+  }
+
+  function tarnumReaction(state: GameState): ReturnType<typeof getLegalActions>[number] | undefined {
+    return (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === BOOK_BLOODLUST &&
+        legal.action.tarnumReturn === "deck-top"
+    );
+  }
+
+  it("casts the discard-parked instant into the window: the buff really lands and it never enters hand", () => {
+    const baseline = passAllReactions(declareWithFlagged("tarnum-polish-react-base", true, "spell-discard"));
+    const baseDamage = baseline.combat!.units.unit_p2_skeletons.damage;
+
+    const state = declareWithFlagged("tarnum-polish-react", true, "spell-discard");
+    const cast = tarnumReaction(state);
+    expect(cast, "the Book reading offers the cast from the shared Spell discard").toBeTruthy();
+    const after = passAllReactions(applyOk(state, cast!.action));
+
+    expect(after.combat!.units.unit_p2_skeletons.damage).toBeGreaterThan(baseDamage);
+    expect(after.players.p1.combatStats.spellsCastThisRound).toBe(1); // free, over the limit
+    expect(after.decks.spells.drawPile.at(-1)).toBe(BOOK_BLOODLUST);
+    expect(after.decks.spells.discardPile).not.toContain(BOOK_BLOODLUST);
+    expect(after.players.p1.hand).not.toContain(BOOK_BLOODLUST);
+    expect(after.players.p1.discard).not.toContain(BOOK_BLOODLUST);
+    expect(after.players.p1.combatStats.tarnumOverlimitCards ?? []).not.toContain(BOOK_BLOODLUST);
+  });
+
+  it("CONTROL: under the Book a HAND copy is not offered; with the rule OFF the hand copy is (and the discard copy is not)", () => {
+    expect(tarnumReaction(declareWithFlagged("tarnum-polish-react-hand", true, "hand"))).toBeFalsy();
+    expect(tarnumReaction(declareWithFlagged("tarnum-classic-react-hand", false, "hand"))).toBeTruthy();
+    expect(tarnumReaction(declareWithFlagged("tarnum-classic-react-disc", false, "spell-discard"))).toBeFalsy();
+  });
+});
+

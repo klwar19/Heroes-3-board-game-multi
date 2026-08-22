@@ -3327,6 +3327,16 @@ export const adventureCards: CardLibrary = {
   // instant/reaction window when an attack is declared. One that does not fit the
   // open window just stays in hand. Each cast spell returns to the shared Spell
   // deck top OR its discard pile (the caster's choice, so the order is yours).
+  //
+  // POLISH SPELL BOOK (house rule `polish-spell-book`, USER RULING 2026-08-22):
+  // with the Book on, a Searched Spell is NEVER added to the hand or the Book —
+  // it is laid FACE UP on the shared Spell discard and the free over-limit cast
+  // is made from THERE (an uncast one simply stays on that discard). The MAP
+  // play is withheld under the Book (the over-limit cast only exists in a
+  // Combat, so a map play would be pure deck churn). Engine:
+  // `tarnumOverlimitSpellAvailable` / `takeTarnumOverlimitSpellFromSharedDiscard`
+  // (polish-spell-book.ts); pinned in conflux-tarnum-specialty.test.ts
+  // ("Tarnum VI under the Polish Spell Book"), rule-off CONTROLs included.
   "specialty.tarnum_conflux.6": {
     id: "specialty.tarnum_conflux.6",
     name: "Enchanters VI",

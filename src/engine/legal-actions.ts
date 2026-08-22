@@ -235,7 +235,8 @@ import {
   isCastASpellCard,
   midRoundRefreshablePolishUsedSpells,
   polishBookSpellRefreshBlocked,
-  polishSpellBookEnabled
+  polishSpellBookEnabled,
+  tarnumOverlimitSpellAvailable
 } from "./polish-spell-book";
 import {
   abilityExpertIsCrownFree,
@@ -2571,10 +2572,12 @@ function addSpellActions(
     castCandidates.push({ cardId: eagleEyeCopyId, eagleEyeCopy: true });
   }
 
-  // Tarnum over-limit casts: each flagged hand spell, offered with both
-  // placements ("on the top of the Spell deck or on its discard pile").
+  // Tarnum over-limit casts: each flagged Searched spell, offered with both
+  // placements ("on the top of the Spell deck or on its discard pile"). The
+  // zone it sits in is the shared read: hand classically, the shared Spell
+  // DISCARD under the Polish Spell Book (it is never added to the hand there).
   for (const cardId of tarnumFlagged) {
-    if (!player.hand.includes(cardId)) {
+    if (!tarnumOverlimitSpellAvailable(state, player, cardId)) {
       continue;
     }
     castCandidates.push({ cardId, tarnumReturn: "deck-top" });
@@ -3772,7 +3775,19 @@ function isOptionEffectPlayable(
       // rider has no combat to spend itself in, and the over-limit flag those
       // taken cards carry is cleared at the next combat start — so a map play is
       // deliberately Search-only, exactly as it reads outside a fight.
-      return Boolean(context === "combat" ? state.combat : state.adventure) && tarnumSearchableDeckExists(state);
+      //
+      // POLISH SPELL BOOK (user ruling 2026-08-22): there the Searched Spells are
+      // never added to the hand — they go to the shared Spell discard, castable
+      // only through the over-limit privilege, which exists only in a Combat. A
+      // map play would therefore be pure deck churn with no gain, so the MAP
+      // offer is withheld while the Book is on; the card stays a Combat /
+      // reaction instant.
+      if (!tarnumSearchableDeckExists(state)) {
+        return false;
+      }
+      return context === "combat"
+        ? Boolean(state.combat)
+        : Boolean(state.adventure) && !polishSpellBookEnabled(state);
     case "SEARCH_DECK_THEN_RESHUFFLE": {
       // Adrienne's Fire Magic IV: Search your own deck + reshuffle the discard. A
       // printed Instant's card manipulation is playable on the map AND mid-Combat
@@ -9065,7 +9080,8 @@ export function getLegalReactionsForTrigger(
     // dedicated pass so it bypasses the spell-limit gate the normal path applies.
     if (!castLocked) {
       for (const cardId of tarnumFlagged) {
-        if (!player.hand.includes(cardId)) {
+        // Hand classically; the shared Spell discard under the Polish Book.
+        if (!tarnumOverlimitSpellAvailable(state, player, cardId)) {
           continue;
         }
         const card = cards[cardId];

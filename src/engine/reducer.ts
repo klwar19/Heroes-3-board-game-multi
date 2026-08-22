@@ -336,7 +336,8 @@ import {
   isCastASpellCard,
   markPolishSpellRefreshedThisRound,
   polishBookSpellRefreshBlocked,
-  polishSpellBookEnabled
+  polishSpellBookEnabled,
+  takeTarnumOverlimitSpellFromSharedDiscard
 } from "./polish-spell-book";
 import {
   consumeHeldMoraleCard,
@@ -14074,13 +14075,22 @@ function performSpellCast(state: GameState, action: Extract<GameAction, { type: 
       throw new Error(moveError.message);
     }
   } else if (action.tarnumReturn) {
-    // Tarnum (Conflux) VI free over-limit cast of a just-Searched hand spell:
-    // move hand → discard like a normal cast (finalizeSpellCardDestination then
+    // Tarnum (Conflux) VI free over-limit cast of a just-Searched spell: move
+    // hand → discard like a normal cast (finalizeSpellCardDestination then
     // relocates the card to the shared Spell deck top/discard). As a bonus cast
     // it skips the Familiars' hand tax, and the flag is consumed below.
-    const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
-    if (moveError) {
-      throw new Error(moveError.message);
+    // POLISH SPELL BOOK: the Searched spell was never in hand — it sits on the
+    // shared Spell discard, so the cast lifts it from THERE (finalize's
+    // caster-discard removal is a no-op and the placement still applies).
+    if (polishSpellBookEnabled(state)) {
+      if (!takeTarnumOverlimitSpellFromSharedDiscard(state, action.cardId)) {
+        throw new Error("That Spell is not on the Spell discard pile.");
+      }
+    } else {
+      const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
+      if (moveError) {
+        throw new Error(moveError.message);
+      }
     }
   } else {
     const moveError = moveCardFromHandToDiscard(state, action.playerId, action.cardId);
@@ -15282,12 +15292,20 @@ function applyReactionPlayCore(
     // Tarnum (Conflux) VI: pull the flagged Spell out of hand and return it to the
     // shared Spell deck — its top or its discard pile (the caster's choice) —
     // never the caster's own discard. Consume the over-limit flag.
-    const hand = state.players[playerId]?.hand;
-    const handIndex = hand?.indexOf(play.cardId) ?? -1;
-    if (!hand || handIndex < 0) {
-      throw new Error("That Spell is not in your hand.");
+    // POLISH SPELL BOOK: it never entered the hand — lift it off the shared
+    // Spell discard instead (the same one zone read the offer layer uses).
+    if (polishSpellBookEnabled(state)) {
+      if (!takeTarnumOverlimitSpellFromSharedDiscard(state, play.cardId)) {
+        throw new Error("That Spell is not on the Spell discard pile.");
+      }
+    } else {
+      const hand = state.players[playerId]?.hand;
+      const handIndex = hand?.indexOf(play.cardId) ?? -1;
+      if (!hand || handIndex < 0) {
+        throw new Error("That Spell is not in your hand.");
+      }
+      hand.splice(handIndex, 1);
     }
-    hand.splice(handIndex, 1);
     const spellDeck = state.decks.spells;
     if (spellDeck) {
       if (play.tarnumReturn === "deck-top") {
@@ -24317,12 +24335,16 @@ function recordDeckDrawnAbility(player: PlayerState, deckId: string, cardId: Car
 
 /**
  * A single non-interactive Search(1) of the named shared Spell deck: take the
- * top card the player may acquire into hand (redrawing past any they cannot
- * take), leaving the skipped cards tucked back under the deck. Returns the taken
- * card id, or null when the deck holds nothing acquirable. Used by Tarnum
- * (Conflux) VI's "Search(1) Spell twice" across the basic and expert decks.
+ * top card the player may acquire (redrawing past any they cannot take), leaving
+ * the skipped cards tucked back under the deck. Returns the taken card id, or
+ * null when the deck holds nothing acquirable. Used by Tarnum (Conflux) VI's
+ * "Search(1) Spell twice" across the basic and expert decks.
+ *
+ * DESTINATION: classic = the caster's HAND. With `polish-spell-book` on it is
+ * the shared Spell DISCARD instead (never hand, never Book) — see
+ * `tarnumOverlimitSpellAvailable`.
  */
-function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deckId: string): CardId | null {
+function takeTopAcquirableSpellForTarnum(state: GameState, playerId: PlayerId, deckId: string): CardId | null {
   const deck = state.decks[deckId];
   const player = state.players[playerId];
   if (!deck || !player) {
@@ -24353,10 +24375,18 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
     deck.drawPile.unshift(...skipped);
   }
   if (taken) {
-    // Tarnum VI's searched spell is a temporary over-limit cast that returns
-    // to the shared deck; it never becomes an owned Polish Book Spell.
-    player.hand.push(taken);
-    recordDeckDrawnAbility(player, deckId, taken);
+    if (polishSpellBookEnabled(state)) {
+      // POLISH SPELL BOOK (user ruling 2026-08-22): the Searched Spell is never
+      // added to the hand and never inscribed into the Book — it is laid FACE UP
+      // on the shared Spell discard, and the free over-limit cast is made from
+      // there (tarnumOverlimitSpellAvailable). Uncast, it just stays there.
+      deck.discardPile.push(taken);
+    } else {
+      // Tarnum VI's searched spell is a temporary over-limit cast that returns
+      // to the shared deck; it never becomes an owned Polish Book Spell.
+      player.hand.push(taken);
+      recordDeckDrawnAbility(player, deckId, taken);
+    }
   }
   return taken;
 }
@@ -24364,7 +24394,7 @@ function takeTopAcquirableSpellToHand(state: GameState, playerId: PlayerId, deck
 /**
  * Spell decks with at least one card, basic first, that Tarnum VI may Search.
  * A deck whose draw pile is empty but whose discard pile still holds cards
- * counts — the pull reshuffles it back in (takeTopAcquirableSpellToHand).
+ * counts — the pull reshuffles it back in (takeTopAcquirableSpellForTarnum).
  */
 function tarnumSearchableDecks(state: GameState): string[] {
   return [SPELL_DECK_BASIC, SPELL_DECK_EXPERT].filter(
@@ -24423,7 +24453,7 @@ function resolveTarnumSearch(
   }
 
   const player = state.players[action.playerId];
-  const taken = takeTopAcquirableSpellToHand(state, action.playerId, deckId);
+  const taken = takeTopAcquirableSpellForTarnum(state, action.playerId, deckId);
   if (player && taken) {
     player.combatStats.tarnumOverlimitCards = [...(player.combatStats.tarnumOverlimitCards ?? []), taken];
   }
