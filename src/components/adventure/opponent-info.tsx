@@ -55,6 +55,14 @@ function OpponentInfoModal({
   const hero = Object.values(state.heroes).find(
     (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
   );
+  // A seat's SECONDARY hero (if it has hired one and it is still in the game —
+  // a defeated Secondary Hero is removed from `state.heroes`, and the
+  // `no-secondary-heroes` house rule means one is never hired at all). Its
+  // movement points are as public as the main hero's: heroes move openly on the
+  // map and `redactStateForSeat` never touches `state.heroes`.
+  const secondaryHero = Object.values(state.heroes).find(
+    (candidate) => candidate.controllerId === playerId && candidate.kind === "secondary"
+  );
   const town = Object.values(state.towns).find((candidate) => candidate.controllerId === playerId);
   const buildings = town?.buildings ?? [];
   // Public counts only. In a redacted view an opponent's `hand`/`deck` are
@@ -150,6 +158,15 @@ function OpponentInfoModal({
                   label="Move"
                   title="Movement points their main hero has left this turn"
                   value={hero.movementPoints}
+                />
+              ) : null}
+              {secondaryHero ? (
+                <BattleMetric
+                  className="opponentSecondaryMove"
+                  kind="movement"
+                  label="2nd move"
+                  title="Movement points their Secondary Hero has left this turn"
+                  value={secondaryHero.movementPoints}
                 />
               ) : null}
             </div>

@@ -165,3 +165,65 @@ describe("OpponentInfoDock — hand/deck/discard counts, crowns and the discard 
     expect(section.textContent).toMatch(/empty/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The opponent's SECONDARY hero movement points (public — heroes move openly on
+// the map and `redactStateForSeat` never touches `state.heroes`).
+// ---------------------------------------------------------------------------
+describe("OpponentInfoDock — the opponent's Secondary Hero movement", () => {
+  function openBob(state: GameState) {
+    renderMapDock(state);
+    fireEvent.click(screen.getByRole("button", { name: /Bob/ }));
+    return within(screen.getByRole("dialog"));
+  }
+
+  /** Give p2 a Secondary Hero standing beside its main one. */
+  function hireBobsSecondary(state: GameState, movementPoints: number) {
+    const main = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+    state.heroes.sec_p2 = { ...main, id: "sec_p2", kind: "secondary", movementPoints };
+    return state;
+  }
+
+  it("shows the Secondary Hero's movement points beside the main hero's", () => {
+    const state = twoPlayerGame();
+    const main = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+    main.movementPoints = 3;
+    hireBobsSecondary(state, 5);
+
+    const panel = openBob(state);
+    const status = panel.getByLabelText("Battle status");
+    // Both movement readings are present, each with its own value…
+    expect(status.textContent).toMatch(/Move\s*3/);
+    expect(status.textContent).toMatch(/2nd move\s*5/);
+    // …and the secondary reading really carries the SECONDARY hero's number,
+    // not a second copy of the main hero's.
+    const secondary = status.querySelector(".opponentSecondaryMove");
+    expect(secondary).toBeTruthy();
+    expect(secondary?.querySelector(".battleMetricValue")?.textContent).toBe("5");
+    expect(secondary?.getAttribute("title")).toMatch(/Secondary Hero/i);
+  });
+
+  it("CONTROL: a seat with no Secondary Hero renders no second movement reading", () => {
+    const state = twoPlayerGame();
+    const main = Object.values(state.heroes).find((h) => h.controllerId === "p2" && h.kind === "main")!;
+    main.movementPoints = 3;
+
+    const panel = openBob(state);
+    const status = panel.getByLabelText("Battle status");
+    expect(status.textContent).toMatch(/Move\s*3/);
+    expect(status.textContent).not.toMatch(/2nd move/);
+    expect(status.querySelector(".opponentSecondaryMove")).toBeNull();
+  });
+
+  it("CONTROL: the VIEWER's own Secondary Hero never leaks into an opponent's panel", () => {
+    const state = twoPlayerGame();
+    // Alice (the viewer) hires a secondary with a distinctive number; Bob has none.
+    const alice = Object.values(state.heroes).find((h) => h.controllerId === "p1" && h.kind === "main")!;
+    state.heroes.sec_p1 = { ...alice, id: "sec_p1", kind: "secondary", movementPoints: 7 };
+
+    const panel = openBob(state);
+    const status = panel.getByLabelText("Battle status");
+    expect(status.textContent).not.toMatch(/2nd move/);
+    expect(status.textContent).not.toMatch(/7/);
+  });
+});
