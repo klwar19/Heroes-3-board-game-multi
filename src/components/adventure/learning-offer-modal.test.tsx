@@ -45,9 +45,10 @@ describe("LearningOfferModal", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("under the Balance Pack the wording is 'gaining experience' (fires on any gain, not just a level-up)", () => {
-    // The reprint opens on ANY experience gain, so the header/aria reflect that
-    // instead of the classic "about to level up".
+  it("the wording is 'gaining experience' — the offer fires on any gain, not just a level-up", () => {
+    // USER RULE 2026-08-22: the offer opens on ANY Experience gain from any
+    // source, so the header/aria are timing-neutral for the classic card and the
+    // Balance Pack reprint alike — never the old "about to level up".
     const state = createAdventureGameState({
       seed: "learning-ui-balance",
       difficulty: "normal",
@@ -77,7 +78,9 @@ describe("LearningOfferModal", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: /Learning/i });
-    expect(within(dialog).getByText(/about to level up/i)).toBeTruthy();
+    // CONTROL: the classic card (rule OFF) carries the SAME timing-neutral header.
+    expect(within(dialog).getByText(/gaining Experience/i)).toBeTruthy();
+    expect(within(dialog).queryByText(/about to level up/i)).toBeNull();
     // The Learning card art is shown ("with learning in hand").
     expect(within(dialog).getByRole("img", { name: /Learning/i })).toBeTruthy();
     // Both plays plus Decline are offered.
@@ -127,6 +130,6 @@ describe("LearningOfferModal", () => {
       <LearningOfferModal legalActions={getLegalActions(state, "p2")} onAction={vi.fn()} state={state} viewerPlayerId="p2" />
     );
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(screen.getByText(/about to level up/i)).toBeTruthy();
+    expect(screen.getByText(/gaining experience/i)).toBeTruthy();
   });
 });

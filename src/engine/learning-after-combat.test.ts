@@ -24,12 +24,15 @@ import type { CombatState, MapFieldState } from "./state";
 // level, which crosses no level — so the offer never opened and the card looked
 // dead after a won battle.
 //
-// FIX: the two combat-victory XP seams (neutral guard win, PvP hero defeat) pass
-// `offerLearningWithoutLevelUp`, so a won fight that paid Experience always
-// offers Learning. Every OTHER Experience source keeps the printed timing.
+// FIX (superseded, then widened): the first pass flagged the two combat-victory
+// XP seams. FOLLOW-UP USER RULE, same day — "the map object that offers
+// experience: Learning ability not pick it up. Must show instant reaction
+// whenever you receive exp, from ANY source" — moved the trigger to the single
+// chokepoint `gainExperience`, so every source reaches it. The combat suites
+// below still pass unchanged; the "any source" suite is further down.
 //
 // Each claim below carries a CONTROL that fails if the widening leaked
-// somewhere it must not (no card, a loss, a non-combat gain, the Experience cap).
+// somewhere it must not (no card, a loss, a zero gain, the Experience cap).
 // ---------------------------------------------------------------------------
 
 function apply(state: GameState, action: GameAction): GameState {
@@ -272,24 +275,216 @@ describe("Learning after combat — CONTROLS", () => {
     expect(state.players.p1.hand).toContain("ability.learning");
   });
 
-  it("CONTROL: the widening is scoped to combat wins — a plain gainExperience half step still opens nothing", async () => {
+  it("the combat win offers EXACTLY ONE Learning window (no double-offer after the widening)", () => {
+    const state = makeGame("learning-single-offer");
+    state.players.p1.hand = ["ability.learning"];
+    stageNeutralCombat(state, { difficulty: 1 });
+    settleAfterCombat(state);
+
+    // One queued offer, one open window — not two.
+    const queued = (state.adventure?.rewardQueue ?? []).filter((r) => r.kind === "learning-level-up");
+    expect(queued).toHaveLength(0); // the single offer was popped into the window
+    expect(learningChoice(state)).not.toBeNull();
+
+    // Declining closes it for good: no second copy waiting behind it.
+    const choice = learningChoice(state)!;
+    const after = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.options.length - 1
+    });
+    expect(learningChoice(after)).toBeNull();
+    expect((after.adventure?.rewardQueue ?? []).some((r) => r.kind === "learning-level-up")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Learning on EVERY Experience source (USER RULE 2026-08-22, superseding the
+// combat-only widening above).
+//
+// REPORT: "The map object that offers experience: Learning ability not pick it
+// up. Must show instant reaction whenever you receive exp, from ANY source —
+// neutral, object… — and not mess up others."
+//
+// The trigger moved to the ONE chokepoint every hero-XP grant funnels through
+// (`gainExperience`), so a map object, a designer timed event, a hex event, a
+// centre-hex reward and a won fight all reach it without enumerating sources.
+// ---------------------------------------------------------------------------
+describe("Learning is offered on EVERY Experience source, not only combat", () => {
+  /** Puts p1's main hero on a real map field carrying the given location. */
+  function stageLocationField(state: GameState, location: string): string {
+    const hero = getMainHero(state, "p1")!;
+    const fieldId = "97,1";
+    state.adventure!.fields[fieldId] = {
+      spaceId: fieldId,
+      tileInstanceId: "test-tile-loc",
+      slot: 0,
+      location,
+      difficulty: 0,
+      blackCube: false,
+      flagOwnerId: null,
+      everFlagged: false,
+      settlementResource: null
+    } as unknown as MapFieldState;
+    hero.spaceId = fieldId;
+    state.activePlayerId = "p1";
+    return fieldId;
+  }
+
+  it("a MAP OBJECT that pays Experience (Learning Stone) opens the offer, and playing it really advances the Hero", async () => {
+    const { beginFieldVisit } = await import("./adventure");
+    const state = makeGame("learning-map-object");
+    state.players.p1.hand = ["ability.learning"];
+    const hero = getMainHero(state, "p1")!;
+    expect(hero.level).toBe(1);
+    expect(hero.experience).toBe(0);
+
+    // The exact reported shape: a visitable map object granting +1 hero XP —
+    // half a level, crossing NO level, so the old level-crossing gate withheld
+    // the offer entirely and the card "did not pick it up".
+    const fieldId = stageLocationField(state, "learning_stone");
+    beginFieldVisit(state, hero.id, fieldId, false);
+    pumpAdventureQueues(state);
+
+    const afterVisit = getMainHero(state, "p1")!;
+    expect(afterVisit.experience).toBe(1);
+    expect(afterVisit.level).toBe(1);
+
+    const choice = learningChoice(state);
+    expect(choice).not.toBeNull();
+    expect(choice!.playerId).toBe("p1");
+
+    // OBSERVABLE OUTCOME: the play moves Experience AND crosses the level.
+    const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
+    const played = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: basicIndex
+    });
+    expect(getMainHero(played, "p1")!.experience).toBe(2);
+    expect(getMainHero(played, "p1")!.level).toBe(2);
+    expect(played.players.p1.discard).toContain("ability.learning");
+  });
+
+  it("CONTROL: the same map object with NO Learning card pays the XP and opens nothing — the table keeps playing", async () => {
+    const { beginFieldVisit } = await import("./adventure");
+    const state = makeGame("learning-map-object-control");
+    state.players.p1.hand = ["ability.wisdom"];
+    const hero = getMainHero(state, "p1")!;
+
+    const fieldId = stageLocationField(state, "learning_stone");
+    beginFieldVisit(state, hero.id, fieldId, false);
+    pumpAdventureQueues(state);
+
+    expect(getMainHero(state, "p1")!.experience).toBe(1); // the XP still landed
+    expect(learningChoice(state)).toBeNull();
+    expect(state.pendingChoice).toBeNull();
+    expect(state.adventure?.pendingVisit ?? null).toBeNull();
+    // Nothing is stranded and the seat can still act.
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("declining a map-object offer costs nothing and leaves the table playable", async () => {
+    const { beginFieldVisit } = await import("./adventure");
+    const state = makeGame("learning-map-object-decline");
+    state.players.p1.hand = ["ability.learning"];
+    const hero = getMainHero(state, "p1")!;
+
+    const fieldId = stageLocationField(state, "learning_stone");
+    beginFieldVisit(state, hero.id, fieldId, false);
+    pumpAdventureQueues(state);
+
+    const choice = learningChoice(state)!;
+    const after = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: choice.options.length - 1
+    });
+    expect(getMainHero(after, "p1")!.experience).toBe(1); // just the object's XP
+    expect(after.players.p1.hand).toContain("ability.learning");
+    expect(after.pendingChoice).toBeNull();
+    expect(computerDecisionOwner(after)).toBeNull();
+    expect(getLegalActions(after, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("a designer TIMED MAP EVENT paying hero Experience offers it too (the shared pipeline, not a per-object hook)", async () => {
+    const { applyCustomMapTimedEvents } = await import("./adventure");
+    const state = makeGame("learning-timed-event");
+    state.players.p1.hand = ["ability.learning"];
+    state.adventure!.mapPreset = {
+      ...(state.adventure!.mapPreset ?? {}),
+      timedEvents: [{ round: 1, effect: { kind: "experience", amount: 1 } }]
+    } as NonNullable<GameState["adventure"]>["mapPreset"];
+
+    applyCustomMapTimedEvents(state);
+    pumpAdventureQueues(state);
+
+    expect(getMainHero(state, "p1")!.experience).toBe(1);
+    const choice = learningChoice(state);
+    expect(choice).not.toBeNull();
+    const basicIndex = choice!.learningLevelUp!.modes.indexOf("basic");
+    const played = apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice!.id,
+      optionIndex: basicIndex
+    });
+    expect(getMainHero(played, "p1")!.experience).toBe(2);
+  });
+
+  it("CONTROL: a zero-Experience 'gain' opens nothing, and the Experience CAP still closes the offer", async () => {
     const { gainExperience } = await import("./adventure");
-    const state = makeGame();
+    const state = makeGame("learning-any-source-controls");
     const hero = getMainHero(state, "p1")!;
     state.players.p1.hand = ["ability.learning"];
 
-    // The very same half-level gain, but from a NON-combat source (no option):
-    // the printed "about to level up" timing still governs, so nothing opens.
-    gainExperience(state, "p1", 1);
+    // No gain at all -> gainExperience returns early, nothing is queued.
+    gainExperience(state, "p1", 0);
     pumpAdventureQueues(state);
-    expect(hero.level).toBe(1);
     expect(learningChoice(state)).toBeNull();
 
-    // ...and the same call WITH the combat-win option does open it — the exact
-    // line under test (mutation check: drop the option and this flips).
-    gainExperience(state, "p1", 1, { offerLearningWithoutLevelUp: true });
+    // A real gain from a bare non-combat source DOES open it now (the exact
+    // line under test: revert the widening and this assertion flips).
+    gainExperience(state, "p1", 1);
     pumpAdventureQueues(state);
+    const openOffer = learningChoice(state);
+    expect(openOffer).not.toBeNull();
+    apply(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: openOffer!.id,
+      optionIndex: openOffer!.options.length - 1
+    });
+    state.pendingChoice = null;
+    state.phase = "player-turn";
+
+    // At the Experience cap the offer stays closed (advancing does nothing).
+    hero.experience = 12; // MAX_EXPERIENCE
+    hero.level = 7;
+    gainExperience(state, "p1", 1);
+    pumpAdventureQueues(state);
+    expect(learningChoice(state)).toBeNull();
+    expect(state.players.p1.hand).toContain("ability.learning");
+  });
+
+  it("a computer seat never stalls on a map-object offer (it owns the window and is offered a real answer)", async () => {
+    const { beginFieldVisit } = await import("./adventure");
+    const state = makeGame("learning-map-object-ai");
+    state.controllers = { ...(state.controllers ?? {}), p1: standardComputerController() };
+    state.sessionMode = "single-player";
+    state.players.p1.hand = ["ability.learning"];
+    const hero = getMainHero(state, "p1")!;
+
+    const fieldId = stageLocationField(state, "learning_stone");
+    beginFieldVisit(state, hero.id, fieldId, false);
+    pumpAdventureQueues(state);
+
     expect(learningChoice(state)).not.toBeNull();
+    expect(computerDecisionOwner(state)).toBe("p1");
+    expect(getLegalActions(state, "p1").some((entry) => entry.action.type === "CHOOSE_OPTION")).toBe(true);
   });
 });
 

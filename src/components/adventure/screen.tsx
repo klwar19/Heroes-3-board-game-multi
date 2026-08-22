@@ -7185,11 +7185,12 @@ export function LearningOfferModal({
     return null;
   }
 
-  // Balance Pack: the reprint fires on ANY experience gain (even a half level or
-  // at the cap), so the wording is "gaining experience". Classic Learning fires
-  // only on a level crossing, so it keeps the byte-identical "about to level up".
-  const balance = houseRuleEnabled(state, "polish-card-balance");
-  const gainingLabel = balance ? "gaining experience" : "about to level up";
+  // Since 2026-08-22 (USER RULE) the offer opens on ANY Experience gain from any
+  // source — a map object, a won fight, an event — so the old "about to level up"
+  // wording would be a lie on most of them. One timing-neutral label for both the
+  // classic card and the Balance Pack reprint (which additionally fires AT the
+  // Experience cap — an engine-side difference, not a wording one).
+  const gainingLabel = "gaining experience";
 
   // While another player is deciding, show a quiet waiting strip instead.
   if (choice.playerId !== viewerPlayerId) {
@@ -7217,7 +7218,7 @@ export function LearningOfferModal({
     <div className="modalBackdrop" role="dialog" aria-label={`Learning — ${gainingLabel}`}>
       <div className="searchModal learningOfferModal">
         <header>
-          <strong>{balance ? "Your Hero is gaining Experience!" : "Your Hero is about to level up!"}</strong>
+          <strong>Your Hero is gaining Experience!</strong>
           <span>You hold Learning. Play it now to advance even further — or keep it for later.</span>
         </header>
         <div className="learningOfferBody">

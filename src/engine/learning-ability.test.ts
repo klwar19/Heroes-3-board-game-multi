@@ -88,7 +88,11 @@ describe("Learning offer timing", () => {
     expect(isLearningChoice).toBe(false);
   });
 
-  it("does NOT offer Learning when no level is crossed", () => {
+  // SUPERSEDED 2026-08-22 (USER RULE): the offer is no longer gated on crossing a
+  // level. "Must show instant reaction whenever you receive exp, from ANY source"
+  // — a half-level gain now opens it too. See learning-after-combat.test.ts for
+  // the map-object / timed-event coverage of the same widened trigger.
+  it("DOES offer Learning on a half-level gain that crosses no level", () => {
     const state = makeGame();
     const hero = getMainHero(state, "p1")!;
     hero.experience = 4; // level 3
@@ -99,7 +103,7 @@ describe("Learning offer timing", () => {
     expect(getMainHero(state, "p1")!.level).toBe(3);
     const isLearningChoice =
       state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "learning-level-up";
-    expect(isLearningChoice).toBe(false);
+    expect(isLearningChoice).toBe(true);
   });
 
   it("does NOT offer Learning at the Experience cap", () => {

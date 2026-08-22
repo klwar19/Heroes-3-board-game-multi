@@ -3355,38 +3355,13 @@ export function levelOfExperience(experience: number): number {
   return Math.min(7, 1 + Math.floor(experience / 2));
 }
 
-/** Optional shaping for a single {@link gainExperience} call. */
-export interface GainExperienceOptions {
-  /**
-   * Offer the Learning ability for THIS gain even when it crossed no level.
-   *
-   * USER RULE (2026-08-22): winning a combat that pays Experience must offer
-   * Learning as a pop-up, "after neutral or pvp battle too". A fight whose XP is
-   * only a half level (e.g. a level-3 hero clearing a Field Difficulty 3 guard
-   * for +1 Experience) crosses no level, so the printed "about to level up"
-   * timing never fired and the card looked unusable after a won battle.
-   *
-   * Set ONLY at the combat-victory XP seams (neutral guard win, PvP hero
-   * defeat). Every other Experience source keeps the printed level-crossing
-   * timing, so this never widens Learning into a free "play any time" card.
-   * The Experience cap still suppresses the offer (advancing does nothing
-   * there) exactly as before — see `openLearningLevelUpChoice`.
-   */
-  offerLearningWithoutLevelUp?: boolean;
-}
-
 /**
  * Adds experience steps to the main hero and resolves every level-up crossed:
  * hand limit and expert-effect slots update immediately, ability searches
  * queue a Search (2) of the Ability deck, specialty levels add the printed
  * specialty card to the hand.
  */
-export function gainExperience(
-  state: GameState,
-  playerId: PlayerId,
-  amount: number,
-  options?: GainExperienceOptions
-): void {
+export function gainExperience(state: GameState, playerId: PlayerId, amount: number): void {
   const hero = getMainHero(state, playerId);
   const player = state.players[playerId];
   if (!hero || !player || amount <= 0) {
@@ -3499,27 +3474,30 @@ export function gainExperience(
     gainGradeProgress(state, playerId, levelsGained, "level-up");
   }
 
-  // Learning ability: the Hero is "about to level up" (it just crossed at least
-  // one level) and the player still holds a Learning card — offer to advance an
-  // extra half/full level. Deferred to the reward queue so it surfaces after the
-  // natural level-up benefits settle (and after any combat that granted the XP
-  // fully ends — pumpAdventureQueues waits for combat to clear). Skipped at the
-  // Experience cap, where advancing further would do nothing.
-  // Polish Balance Pack: the reprint reads "Play when the Hero GAINS EXPERIENCE"
-  // (not "is about to level up") and its basic side also draws a card — so the
-  // offer opens on ANY gain, and even at the Experience cap where the extra half
-  // level cannot apply but the draw still can.
-  // USER RULE (2026-08-22): a WON combat that paid Experience also offers it,
-  // level crossed or not (`offerLearningWithoutLevelUp`) — see the option's doc.
-  // The Experience cap still gates it here (advancing further does nothing);
-  // openLearningLevelUpChoice re-checks the same cap, so a stale queued offer
-  // that reached the cap in the meantime simply skips.
+  // Learning ability — offered on EVERY Experience gain, from EVERY source.
+  //
+  // USER RULE (2026-08-22, superseding the 2026-08-22 combat-only widening):
+  // "Must show instant reaction whenever you receive exp, from ANY source —
+  // neutral, object…". The trigger therefore lives HERE, at the one chokepoint
+  // every hero-XP grant funnels through (won neutral/PvP combats, a repelled
+  // Calamity Wave, a Tree of Knowledge / Emerald Tower / Altar of the Gods
+  // GAIN_EXPERIENCE visit step, a designer hex event, a timed map event, a
+  // centre-hex reward, a CHOOSE_OPTION reward…). Enumerating sources is exactly
+  // what left the map objects out before — the invariant is "a gain happened".
+  //
+  // The printed "play when the Hero is about to level up" timing is deliberately
+  // NOT the gate any more; the Experience CAP still is, because advancing past
+  // it does nothing. Polish Balance Pack: the reprint's basic side also draws a
+  // card, so it stays worth taking AT the cap too — the one case that ignores it.
+  //
+  // Deferred to the reward queue (never opened inline) so it surfaces after the
+  // level-up's own benefits settle, after any combat that granted the XP fully
+  // ends, and behind any exclusive interaction already open — pumpAdventureQueues
+  // owns that ordering. openLearningLevelUpChoice re-checks the card and the cap,
+  // so a queued offer whose card left the hand simply skips.
   const balanceLearning = houseRuleEnabled(state, "polish-card-balance");
-  const combatWinOffer = Boolean(options?.offerLearningWithoutLevelUp) && hero.experience < MAX_EXPERIENCE;
   if (
-    (balanceLearning ||
-      combatWinOffer ||
-      (hero.level > previousLevel && hero.experience < MAX_EXPERIENCE)) &&
+    (balanceLearning || hero.experience < MAX_EXPERIENCE) &&
     state.adventure &&
     player.hand.includes("ability.learning")
   ) {

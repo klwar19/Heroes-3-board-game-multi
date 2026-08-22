@@ -518,9 +518,11 @@ export const extraAbilityCards: CardLibrary = {
       "Balance pack: the basic timing widens to \"Play when the Hero gains experience\" (ANY gain, not only one that crosses a level — and it is offered at the Experience cap too), and the basic play ALSO draws 1 card, so it is worth playing even when the extra half level cannot apply. Expert is unchanged (+1 full level, then Remove)."
     ],
     // Never played from hand: the engine offers it (a "learning-level-up" pending
-    // choice) whenever the Hero crosses a level while this card is in hand. A
-    // half level is 1 Experience step (2 steps = 1 level), so basic = +1 and the
-    // Expert side = +2 Experience, spends an expert use, and removes the card.
+    // choice) whenever the Hero GAINS EXPERIENCE from any source while this card
+    // is in hand — USER RULE 2026-08-22, widened from the printed "crosses a
+    // level" timing so map objects that pay XP reach it too. A half level is 1
+    // Experience step (2 steps = 1 level), so basic = +1 and the Expert side =
+    // +2 Experience, spends an expert use, and removes the card.
     effect: { type: "ADVANCE_EXPERIENCE", amount: 1, expertAmount: 2 },
     assets: abilityAssets("learning", "Learning"),
     implementationStatus: "implemented",

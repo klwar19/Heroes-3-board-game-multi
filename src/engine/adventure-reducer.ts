@@ -6186,11 +6186,13 @@ export function resolveDiplomacyRecruitChoice(state: GameState, playerId: Player
 // ---------------------------------------------------------------------------
 
 /**
- * Learning: the Hero just crossed a level and the player holds a Learning card.
- * Offer to advance an extra half level (basic) or a full level (expert — which
- * spends an expert use and removes the card from the game). Returns true if a
- * choice was opened so the queue pump waits on it; false (e.g. the card left the
- * hand, or the Experience is already capped) lets the pump move on.
+ * Learning: the Hero gained Experience from ANY source (a won neutral/PvP
+ * combat, a map object's GAIN_EXPERIENCE step, a hex/timed event, a wave
+ * victory…) and the player holds a Learning card. Offer to advance an extra
+ * half level (basic) or a full level (expert — which spends an expert use and
+ * removes the card from the game). Returns true if a choice was opened so the
+ * queue pump waits on it; false (e.g. the card left the hand, or the Experience
+ * is already capped) lets the pump move on.
  */
 function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolean {
   const player = state.players[playerId];
@@ -6227,10 +6229,10 @@ function openLearningLevelUpChoice(state: GameState, playerId: PlayerId): boolea
     playerId,
     prompt: balance
       ? "Your Hero gained Experience — play Learning?"
-      : // Timing-neutral on purpose: since 2026-08-22 this window also opens on a
-        // won neutral/PvP combat whose Experience crossed NO level, where the
-        // printed "about to level up" wording would be a lie. Both cases are a
-        // gain, so the gain is what the prompt names.
+      : // Timing-neutral on purpose: since 2026-08-22 this window opens on EVERY
+        // Experience gain (a map object's XP, a won fight whose XP crossed no
+        // level…), where the printed "about to level up" wording would be a lie.
+        // Every case is a gain, so the gain is what the prompt names.
         "Your Hero gained Experience — play Learning to advance further?",
     options: [
       ...modes.map((mode) => ({
@@ -13032,16 +13034,14 @@ export function finalizeAdventureCombat(state: GameState): void {
           // Main Hero straight to level 7 (fills remaining experience). Diff 7
           // always fields azure guards in the army table, but key off difficulty
           // too so a stripped/empty azure draw cannot deny the level-up.
-          // USER RULE (2026-08-22): a won neutral combat offers Learning as a
-          // pop-up whether or not the XP crossed a level (a same-level guard
-          // pays only a half level, which used to silently skip the offer).
-          const learnOnWin = { offerLearningWithoutLevelUp: true } as const;
+          // The won-combat Learning pop-up needs no flag here: gainExperience
+          // offers Learning on EVERY gain from every source (2026-08-22 rule).
           if (context.hasAzure || context.difficulty >= 7) {
-            gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero), learnOnWin);
+            gainExperience(state, playerId, MAX_EXPERIENCE_GAIN_TO_SEVEN(hero));
           } else if (context.difficulty > level) {
-            gainExperience(state, playerId, 2, learnOnWin);
+            gainExperience(state, playerId, 2);
           } else if (context.difficulty === level) {
-            gainExperience(state, playerId, 1, learnOnWin);
+            gainExperience(state, playerId, 1);
           }
         }
 
@@ -13393,13 +13393,11 @@ export function finalizeAdventureCombat(state: GameState): void {
       // when no Main Hero stood on either side: a garrison defense win pays
       // nothing, and a Secondary Hero never gains experience from its fights.
       if (winnerHero && winnerHero.kind === "main" && loserHero.kind === "main") {
-        // USER RULE (2026-08-22): as with a neutral win, a PvP victory that
-        // pays Experience offers Learning even when no level was crossed.
-        const learnOnWin = { offerLearningWithoutLevelUp: true } as const;
+        // As with a neutral win, the Learning pop-up rides gainExperience itself.
         if (loserHero.level > winnerHero.level) {
-          gainExperience(state, winnerId, 2, learnOnWin);
+          gainExperience(state, winnerId, 2);
         } else if (loserHero.level === winnerHero.level) {
-          gainExperience(state, winnerId, 1, learnOnWin);
+          gainExperience(state, winnerId, 1);
         }
       }
 
