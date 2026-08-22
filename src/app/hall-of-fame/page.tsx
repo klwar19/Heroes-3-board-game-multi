@@ -10,7 +10,9 @@ type HallRow = { nickname: string; mmr: number; wins: number; losses: number; ma
 /**
  * Hall of Fame. In guest mode (accounts off) it honestly states nothing is
  * recorded. With accounts on it renders the live leaderboard from
- * /api/hall-of-fame (registered nicknames ranked by MMR). Note: automatic
+ * /api/hall-of-fame (registered nicknames ranked WINS-first, then rating —
+ * the server's order is rendered verbatim; see server/accounts/
+ * leaderboard-order.ts). Note: automatic
  * match-result reporting from finished games is Phase 6 — until then rows exist
  * but only move when a result is recorded, so a fresh deployment shows the
  * roster at the 1200 starting rating rather than a fabricated ladder.

@@ -26,6 +26,7 @@
  */
 import type { AccountBackend, RegisterOutcome } from "./backend";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
+import { HALL_OF_FAME_ORDER_CLAUSE } from "./leaderboard-order";
 import type { MatchParticipantInput, RecordMatchResult } from "./account-store";
 import {
   claimRowId,
@@ -604,7 +605,8 @@ export class SupabaseAccountStore implements AccountBackend {
     const rows = await this.db.select<AccountRow>(
       ACCOUNTS_TABLE,
       { banned_at: null },
-      { order: "mmr.desc,wins.desc,nickname.asc", limit: Math.max(0, limit) }
+      // WINS lead — the one ordering both backends share (leaderboard-order.ts).
+      { order: HALL_OF_FAME_ORDER_CLAUSE, limit: Math.max(0, limit) }
     );
     return rows.map((row) => toProfile(rowToRecord(row)));
   }

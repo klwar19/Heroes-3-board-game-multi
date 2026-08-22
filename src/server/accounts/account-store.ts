@@ -21,6 +21,7 @@ import {
   verifyPassword
 } from "./crypto";
 import { computeRatings, ELO_START, type EloParticipant } from "./elo";
+import { compareHallOfFame } from "./leaderboard-order";
 import {
   buildAccountActionLink,
   buildConfirmMail,
@@ -615,7 +616,8 @@ export class AccountStore implements AccountBackend {
   // -------------------------------------------------------------------------
 
   /**
-   * The public leaderboard, best first. `limit` bounds the payload so the
+   * The public leaderboard, best first — WINS lead (see leaderboard-order.ts,
+   * the one ordering both backends share). `limit` bounds the payload so the
    * endpoint stays a fixed size however many accounts register (the API serves
    * the top 100).
    */
@@ -623,7 +625,7 @@ export class AccountStore implements AccountBackend {
     return [...this.accounts.values()]
       .filter((r) => !r.bannedAt)
       .map(toProfile)
-      .sort((a, b) => b.mmr - a.mmr || b.wins - a.wins || a.nickname.localeCompare(b.nickname))
+      .sort(compareHallOfFame)
       .slice(0, Math.max(0, limit));
   }
 
