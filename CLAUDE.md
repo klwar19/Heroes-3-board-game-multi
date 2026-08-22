@@ -1459,6 +1459,33 @@ return value; never re-probe with `reactionPlayerOrder`.**
 `spell-cast-window-freeze.test.ts`. LIMITS: no rule changed (only stranded ⇒
 resolved); the join-only reading is untouched; games already frozen are not repaired.
 
+## A reaction window ends only on CONSECUTIVE passes (2026-08-22)
+
+USER RULE: "Reaction window: only end when both sides press pass one after another. So
+if one passes and the other plays a card, [the first] can still react again."
+MOSTLY ALREADY TRUE: `passReaction` closes a window only once EVERY allowed player sits
+in `passedPlayerIds`, and `advanceReactionWindowAfterPlay` EMPTIES that set after each
+card play — so the set has always meant "passes SINCE THE LAST PLAY". The hole was five
+NON-card in-window plays that called `refreshReactionWindowLegalReactions` DIRECTLY,
+which KEEPS the pass set: the Morale spend, a Town cube spend, the Hall of Valhalla
+boost, Crag Hack's Offense VI card→attack conversion and Basic X Magic's expert +3
+Power. An opponent who had already passed never got to answer one of those and the
+actor's own pass closed the window. All five now route through ONE seam
+`noteReactionWindowPlay` (reducer.ts), which hands the priority player's action the same
+treatment as a PLAY_CARD join. `reaction-window-consecutive-passes.test.ts` (core +
+pass/pass CONTROL + empty-hand CONTROL + spent-source + an AI loop + a paused area-pick
+window).
+LIMITS / deliberate scope: a play that leaves NOBODY with a legal reaction still CLOSES
+the window and resolves the parked item instead of demanding pointless Pass clicks (the
+anti-stall rule, and a FLIPPED expectation in `morale-card-effects.test.ts` "is playable
+as an INSTANT-WINDOW REACTION"); a side with no offers is never re-prompted; the seam is
+gated on PRIORITY so a bystander can never reset the passes; and the reaction families
+that deliberately END their window on one play (Resistance/Protection cancelling a cast,
+Magic Mirror's redirect, Sorrow, the cast-window recall, Bowstring, the die-ignore) are
+UNCHANGED — they close because the thing being reacted to is gone, not because a pass
+stood. No new serialized field, no protocol shape change; a stale edge simply keeps the
+old five-site behaviour (an opponent's standing pass survives those plays).
+
 ## EVERY card-gain instant works on the map AND in an attack window (2026-08-10)
 
 USER REPORT: "Solmyr 4 can't be used in map => I ALREADY TOLD U TO MAKE ALL INSTANT

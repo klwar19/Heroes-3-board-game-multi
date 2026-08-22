@@ -794,21 +794,28 @@ describe("Positive Morale: Combat Bonus", () => {
 
     // p2 plays +1 Defense as a reaction to the incoming attack.
     state = apply(state, { type: "SPEND_MORALE", playerId: "p2", benefit: "combat-bonus", bonus: "defense" });
-    // The card is spent, the window stays open, and the spent card is no longer
-    // re-offered (the window was refreshed).
+    // The card is spent and is no longer re-offered (the window re-derived its
+    // offers). FLIPPED 2026-08-22 (consecutive-pass rule, noteReactionWindowPlay):
+    // a Morale spend inside a window is now advanced exactly like a PLAY_CARD
+    // join instead of a bare refresh — it clears the opponent's standing pass
+    // AND, when the play leaves NOBODY with a legal reaction (as here: p1 holds
+    // nothing and p2's only card is spent), it closes the window and resolves
+    // the parked attack rather than leaving an offer-less window that both
+    // seats must click Pass on. The old expectation was "the window stays open".
     expect(state.players.p2.moraleCards?.positive).toHaveLength(0);
-    expect(state.reactionWindow, "the window stays open after the buff").toBeTruthy();
     expect(
       getLegalActions(state, "p2").some(
         (legal) => legal.action.type === "SPEND_MORALE" && legal.action.benefit === "combat-bonus"
       )
     ).toBe(false);
 
-    // Everyone passes; the attack resolves with the reaction defense buff.
+    // Drain anything left (nothing, today) and check the attack resolved with
+    // the reaction defense buff.
     let safety = 20;
     while (state.reactionWindow && safety-- > 0) {
       state = apply(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
     }
+    expect(state.reactionWindow, "the exchange settled — no frozen window").toBeNull();
     // attack 3 + 0 vs defense 1 +1 → 1 damage (control: 2).
     expect(lastAttackRoll(state).damage).toBe(1);
   });

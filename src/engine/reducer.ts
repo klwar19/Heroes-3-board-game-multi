@@ -17004,6 +17004,43 @@ function advanceReactionWindowAfterPlay(state: GameState, playerId: PlayerId, ca
   state.priorityPlayerId = keepPriority;
 }
 
+/**
+ * USER RULE 2026-08-22: "Reaction window: only end when both sides press pass
+ * one after another. So if one passes and the other plays a card, [the first]
+ * can still react again."
+ *
+ * `passReaction` already closes a window only when EVERY allowed player sits in
+ * `passedPlayerIds`, and `advanceReactionWindowAfterPlay` empties that set after
+ * every card play — so `passedPlayerIds` means "passes SINCE THE LAST PLAY" and
+ * the card path has always been consecutive-pass. The hole was the handful of
+ * NON-card in-window plays that called `refreshReactionWindowLegalReactions`
+ * DIRECTLY: that helper deliberately KEEPS the pass set (it only drops players
+ * who lost their offers), so an opponent who had already passed stayed passed,
+ * never got to answer the play, and the actor's own pass closed the window.
+ *
+ * The five sites are the Morale spend, a Town cube spend, the Hall of Valhalla
+ * boost, Crag Hack's Offense VI card→attack conversion and Basic X Magic's
+ * expert +3 Power. They now route through this ONE seam, which hands them the
+ * same treatment as a PLAY_CARD join — including the close-and-resolve when
+ * nobody can react any more, so a play that empties the offer list can never
+ * strand the parked attack in an offer-less window (the frozen-table shape).
+ *
+ * Gated on PRIORITY exactly like the PLAY_CARD tail: only the priority player's
+ * action is a play in THIS window, so a bystander seam (parallel turns today,
+ * anything else tomorrow) can never reset the passes or steal priority — it
+ * keeps the old bare refresh.
+ */
+function noteReactionWindowPlay(state: GameState, playerId: PlayerId, cards: CardLibrary): void {
+  if (!state.reactionWindow) {
+    return;
+  }
+  if (state.reactionWindow.priorityPlayerId === playerId) {
+    advanceReactionWindowAfterPlay(state, playerId, cards);
+    return;
+  }
+  refreshReactionWindowLegalReactions(state, cards);
+}
+
 /** Basic X Magic's expert side: +3 Power for a matching-school spell. */
 const SCHOOL_FETCH_EXPERT_POWER = 3;
 
@@ -25966,7 +26003,7 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_SCHOOL_FETCH_EXPERT":
         applySchoolFetchExpert(nextState, action);
-        refreshReactionWindowLegalReactions(nextState, cards);
+        noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "DISCARD_PERMANENT":
         discardPermanentVoluntarily(nextState, action);
@@ -26154,15 +26191,15 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "SPEND_TOWN_CUBE":
         spendTownCube(nextState, action);
-        refreshReactionWindowLegalReactions(nextState, cards);
+        noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "HALL_OF_VALHALLA_BOOST":
         hallOfValhallaBoost(nextState, action);
-        refreshReactionWindowLegalReactions(nextState, cards);
+        noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "CONVERT_CARD_TO_ATTACK":
         convertCardToAttack(nextState, action);
-        refreshReactionWindowLegalReactions(nextState, cards);
+        noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "ATTACK_FORTIFICATION":
         attackFortification(nextState, action);
@@ -26170,9 +26207,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
       case "SPEND_MORALE":
         spendMorale(nextState, action);
         // A combat-bonus spent inside an open attack/instant window keeps the
-        // window open; re-derive its offers so the just-spent card drops out
-        // (no-op when no reaction window is open).
-        refreshReactionWindowLegalReactions(nextState, cards);
+        // window open; re-derive its offers so the just-spent card drops out,
+        // and clear the opponent's standing pass (noteReactionWindowPlay — a
+        // window ends only on CONSECUTIVE passes). No-op with no window open.
+        noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "USE_ABILITY_EMPOWER_TOKEN":
         useAbilityEmpowerToken(nextState, action);
