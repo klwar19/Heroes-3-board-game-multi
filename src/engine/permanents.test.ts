@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createInitialGameState, effectiveInitiative, getLegalActions } from "./index";
 import { activeSchoolFetches } from "./ruleset";
 import type { GameAction, GameState, PlayerId } from "./state";
 
@@ -423,10 +423,14 @@ describe("permanent cards", () => {
     const baseInitiative = marksmen.initiative;
 
     // Entering a combat round applies the cart (initiative) and waives the
-    // adjacent-shot penalty.
+    // adjacent-shot penalty. The +2 is a live RANGED_INITIATIVE_BONUS modifier,
+    // not a write into the printed `unit.initiative` cache (which
+    // applyUnitCurrentSide rebuilds mid-combat) — so read it the way the
+    // activation order and the initiative rail do. Order coverage lives in
+    // ammo-cart-initiative-order.test.ts.
     const next = endRound(state, "p1");
     const nextMarksmen = next.combat!.units.unit_p1_marksmen;
-    expect(nextMarksmen.initiative).toBe(baseInitiative + 2);
+    expect(effectiveInitiative(nextMarksmen, next.activeEffects, next.combat)).toBe(baseInitiative + 2);
 
     // Put an enemy right next to the marksmen: the shot stays a normal roll.
     next.combat!.units.unit_p2_skeletons.position = nextMarksmen.position + 1;

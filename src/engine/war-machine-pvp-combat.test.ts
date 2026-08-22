@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction, createInitialGameState, getLegalActions } from "./index";
+import { applyAction, createInitialGameState, effectiveInitiative, getActivationOrder, getLegalActions } from "./index";
 import { getAttackRollMode } from "./legal-actions";
 import type { GameAction, GameState, PlayerId } from "./state";
 
@@ -165,7 +165,24 @@ describe("PvP — Ammo Cart (+2 ranged initiative, penalty waiver)", () => {
     state = applyOk(state, play!.action);
 
     expect(state.players.p1.permanents).toContain("war_machine.ammo_cart");
-    expect(state.combat!.units.unit_p1_marksmen.initiative).toBe(initiativeBefore + 2);
+    // The +2 is a live RANGED_INITIATIVE_BONUS modifier on the cart's own
+    // player-scoped effect, NOT a write into the derived `unit.initiative`
+    // cache (applyUnitCurrentSide rebuilds that field mid-combat and used to
+    // erase the bonus). Read it the way the activation order does — and check
+    // the order really moves: the boosted shooter now outranks a p2 unit that
+    // was one point faster a moment ago.
+    expect(effectiveInitiative(state.combat!.units.unit_p1_marksmen, state.activeEffects, state.combat)).toBe(
+      initiativeBefore + 2
+    );
+    const rival = state.combat!.units.unit_p2_vampires;
+    rival.initiative = initiativeBefore + 1;
+    for (const unit of Object.values(state.combat!.units)) {
+      if (unit.id !== "unit_p1_marksmen" && unit.id !== rival.id) {
+        unit.initiative = 1;
+      }
+      unit.activatedThisRound = false;
+    }
+    expect(getActivationOrder(state.combat!, state.activeEffects)[0]?.id).toBe("unit_p1_marksmen");
     const waiver = state.activeEffects.find(
       (effect) =>
         effect.name === "Ammo Cart" &&

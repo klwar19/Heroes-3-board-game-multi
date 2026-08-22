@@ -3,6 +3,7 @@ import {
   applyAction,
   createAdventureGameState,
   createInitialGameState,
+  effectiveInitiative,
   getActivationOrder,
   getActivationStep,
   getLegalActions,
@@ -606,7 +607,11 @@ describe("Creature Bank battlefield formation", () => {
       (unit) => unit.unitDefId === "neutral.wraiths" && unit.stackToken === "initiative"
     );
     expect(state.combat?.context.kind === "neutral" ? state.combat.context.bankStackCount : undefined).toBe(3);
-    expect(orcs?.initiative).toBe(7); // Pack 5 + Ammo Cart 2.
+    // Pack 5 + Ammo Cart 2. The cart's +2 is a live RANGED_INITIATIVE_BONUS on
+    // its player-scoped effect (never baked into the printed `unit.initiative`
+    // cache, which applyUnitCurrentSide rebuilds mid-combat), so read it the way
+    // the activation order does.
+    expect(effectiveInitiative(orcs!, state.activeEffects, state.combat)).toBe(7);
     expect(wraith?.initiative).toBe(7); // Wraith 5 + its +2 Initiative Stack Token.
     expect(getActivationOrder(state.combat!, state.activeEffects)[0]?.id).toBe(orcs?.id);
     expect(state.combat!.activeUnitId).toBe(orcs?.id);
@@ -653,12 +658,12 @@ describe("Creature Bank battlefield formation", () => {
     const wraith = Object.values(state.combat!.units).find(
       (unit) => unit.unitDefId === "neutral.wraiths" && unit.stackToken === "initiative"
     );
-    // Ammo Cart's startup adjustment is deliberately direct on ranged units;
-    // remove it here to isolate the same bank opening's no-Cart ordering.
+    // Dropping the cart's own active effect drops its +2 with it (the bonus is
+    // a modifier ON that effect, not a write into `unit.initiative`), isolating
+    // the same bank opening's no-Cart ordering.
     state.activeEffects = state.activeEffects.filter(
       (effect) => !(effect.source.type === "card" && effect.source.cardId === "war_machine.ammo_cart")
     );
-    orcs!.initiative -= 2;
     orcs!.activationInitiative = undefined;
     state.combat!.activeUnitId = null;
 

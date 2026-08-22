@@ -336,18 +336,6 @@ function playerIsInCombat(state: GameState, playerId: PlayerId): boolean {
   );
 }
 
-function adjustRangedInitiative(state: GameState, playerId: PlayerId, delta: number): void {
-  if (!state.combat || delta === 0) {
-    return;
-  }
-
-  for (const unit of Object.values(state.combat.units)) {
-    if (unit.controllerId === playerId && unit.type === "ranged" && isAlive(unit)) {
-      unit.initiative += delta;
-    }
-  }
-}
-
 /**
  * Instantiates the in-play permanents' combat presence for their owner: the
  * card-scoped active effects (First Aid Tent heal, Ammo Cart penalty waiver)
@@ -355,6 +343,19 @@ function adjustRangedInitiative(state: GameState, playerId: PlayerId, delta: num
  * as its card's "already applied" marker, so this may run at combat start, on
  * every round start and when a permanent enters play mid-combat. (A
  * rangedInitiativeBonus therefore needs a combatEffect on the same card.)
+ *
+ * A permanent's `rangedInitiativeBonus` (the Ammo Cart's printed "+2 [speed] to
+ * your [ranged] units") rides the SAME player-scoped effect as a
+ * `RANGED_INITIATIVE_BONUS` modifier — the arm Expert Archery already uses,
+ * folded live by `effectiveInitiative` and therefore by `getActivationOrder`.
+ * It must NOT be added straight onto `unit.initiative`: that field is a DERIVED
+ * cache of the printed side, recomputed from scratch by `applyUnitCurrentSide`
+ * (a Pack→Few flip, a Stack-Token absorb, a Polish Stack layer lost, a
+ * specialty cover placed or defeated, a mid-combat Few→Pack reinforce), so a
+ * baked-in bonus silently vanished mid-fight and the boosted shooter dropped
+ * back down the activation order. Reading it live also means a unit summoned
+ * AFTER combat start gets it, and a Pack shooter that flips to a melee Few
+ * loses it — both what the printed card says.
  */
 export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId: PlayerId): void {
   if (!playerIsInCombat(state, playerId)) {
@@ -390,6 +391,18 @@ export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId:
       };
     }
 
+    // The printed ranged initiative bonus joins the same effect (see the header):
+    // a live modifier, never a write into the derived `unit.initiative` field.
+    if (rangedInitiativeBonus) {
+      effectDefinition = {
+        ...effectDefinition,
+        modifiers: [
+          ...effectDefinition.modifiers,
+          { type: "RANGED_INITIATIVE_BONUS", amount: rangedInitiativeBonus }
+        ]
+      };
+    }
+
     const activeEffect = makeActiveEffect(
       state,
       effectDefinition,
@@ -404,10 +417,6 @@ export function applyPermanentCombatEffectsForPlayer(state: GameState, playerId:
       name: activeEffect.name,
       duration: activeEffect.duration
     });
-
-    if (rangedInitiativeBonus) {
-      adjustRangedInitiative(state, playerId, rangedInitiativeBonus);
-    }
   }
 }
 
@@ -424,17 +433,16 @@ export function applyPermanentCombatEffects(state: GameState): void {
 }
 
 /**
- * Removes a leaving permanent's combat presence (active effects and ranged
- * initiative) so a mid-combat replacement does not leave bonuses behind.
+ * Removes a leaving permanent's combat presence so a mid-combat replacement
+ * does not leave bonuses behind. Dropping the card's active effect is enough:
+ * the ranged initiative bonus rides that effect as a RANGED_INITIATIVE_BONUS
+ * modifier (see applyPermanentCombatEffectsForPlayer), so it stops being read
+ * the moment the effect is gone — no reverse arithmetic to keep in sync.
  */
 function removePermanentCombatEffects(state: GameState, playerId: PlayerId, card: CardDefinition): void {
   state.activeEffects = state.activeEffects.filter(
     (effect) => !(effect.source.type === "card" && effect.source.cardId === card.id && effect.controllerId === playerId)
   );
-
-  if (card.permanentEffect?.rangedInitiativeBonus && playerIsInCombat(state, playerId)) {
-    adjustRangedInitiative(state, playerId, -card.permanentEffect.rangedInitiativeBonus);
-  }
 }
 
 /**
