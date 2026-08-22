@@ -402,6 +402,37 @@ export function spellPowerValueOfCard(
 }
 
 /**
+ * The mode a hand/Book card must be spent at to contribute ANY Power to a
+ * Power-value cost (Sorrow's silver/gold skip, the map View Air / Dimension
+ * Door tiers, Alamar's Resurrection) — `null` when it can never contribute.
+ *
+ * WHY THIS EXISTS: a School-of-Magic ability (Earth Magic, Fire Magic, …) is
+ * printed `ADD_SPELL_POWER { amount: 0, expertAmount: 3 }` — its BASIC value is
+ * ZERO and only its Expert side (a crown) brings Power. `canAffordCardCost`
+ * already knows that: it greedily assigns crowns and OFFERS the play. The cost
+ * pickers, however, hid every chip whose BASIC value was 0, so the offered play
+ * had no payable card and could never be confirmed ("Sorrow is offered but
+ * cannot be played"). Both pickers now ask this helper which mode to show a
+ * chip at, so the offer and the payment surface agree.
+ *
+ * An EMPOWERED ability pays its Expert value crown-free (`payOptionCardCost`
+ * counts it out of the budget), so `crownAvailable` must be true for it too.
+ */
+export function powerCostPaymentMode(
+  card: CardDefinition | undefined,
+  spellSchools: readonly SpellSchool[],
+  options: { crownAvailable: boolean }
+): CardPlayMode | null {
+  if (spellPowerValueOfCard(card, spellSchools, "basic") > 0) {
+    return "basic";
+  }
+  if (options.crownAvailable && spellPowerValueOfCard(card, spellSchools, "expert") > 0) {
+    return "expert";
+  }
+  return null;
+}
+
+/**
  * How many cards a power source makes its owner draw when it is discarded to pay
  * a Power-value cost (Sorrow's silver/gold, Alamar's Resurrection) — the Sorcery
  * ability's "+1 Power, then draw 1 card", and the same bonus on Scales of the

@@ -193,6 +193,7 @@ export {
   spellPowerSidesOfCard,
   spellPowerSourceDrawCards,
   spellPowerValueOfCard,
+  powerCostPaymentMode,
   cardCanFuelSchoollessPower,
   spellTimingKind
 } from "./effects";

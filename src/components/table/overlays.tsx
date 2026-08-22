@@ -31,6 +31,7 @@ import {
   spellBookPowerAvailable,
   spellBookRuleEnabled,
   spellCastPowerBounds,
+  powerCostPaymentMode,
   spellPowerValueOfCard,
   standingSpellPower,
   SURRENDER_GOLD_COST,
@@ -316,14 +317,16 @@ function SpellBookSaveTile({
       ? playedCard.effect.options[action.optionIndex]?.label
       : undefined;
 
-  const togglePay = (index: number) =>
+  // `defaultMode`: the mode this source must be spent at to bring any Power (see
+  // powerCostPaymentMode) — a School-of-Magic ability is 0 basic / 3 expert.
+  const togglePay = (index: number, defaultMode: CardPlayMode = "basic") =>
     setPayIndexes((current) => {
       const at = current.indexOf(index);
       if (at !== -1) {
         setPayModes((modes) => modes.filter((_, position) => position !== at));
         return current.filter((value) => value !== index);
       }
-      setPayModes((modes) => [...modes, "basic"]);
+      setPayModes((modes) => [...modes, defaultMode]);
       return [...current, index];
     });
 
@@ -353,17 +356,25 @@ function SpellBookSaveTile({
             {hand.map((payCardId, index) => {
               const at = payIndexes.indexOf(index);
               const picked = at !== -1;
-              const payMode = picked ? (payModes[at] ?? "basic") : "basic";
               const wrongKind = cost.costCardFilter !== undefined && !costCardEligible(payCardId, cost.costCardFilter);
-              const powerValueBasic = isPowerCost
-                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, "basic")
-                : 0;
+              // Same rule as the reaction tray: a source whose BASIC Power is 0
+              // (every School-of-Magic ability) still pays at its Expert value,
+              // which is exactly what the engine's affordability gate counted
+              // when it offered this play. Hiding it made the offer unpayable.
+              const payDefaultMode = isPowerCost
+                ? powerCostPaymentMode(cardLibrary[payCardId], playedSchools, {
+                    crownAvailable:
+                      cardIsEmpoweredFor(payCardId, view.players[viewerPlayerId]?.empoweredAbilities) ||
+                      crownsAvailable - crownsSelected > 0
+                  })
+                : "basic";
+              if (wrongKind || (isPowerCost && payDefaultMode === null)) {
+                return null;
+              }
+              const payMode = picked ? (payModes[at] ?? "basic") : (payDefaultMode ?? "basic");
               const powerValue = isPowerCost
                 ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, payMode)
                 : 0;
-              if (wrongKind || (isPowerCost && powerValueBasic <= 0)) {
-                return null;
-              }
               const payAddPower =
                 cardLibrary[payCardId]?.effect.type === "ADD_SPELL_POWER"
                   ? cardLibrary[payCardId]?.effect
@@ -382,7 +393,7 @@ function SpellBookSaveTile({
                     aria-pressed={picked}
                     className={`trayChip ${picked ? "picked" : ""}`}
                     disabled={!picked && targetReached}
-                    onClick={() => togglePay(index)}
+                    onClick={() => togglePay(index, payDefaultMode ?? "basic")}
                     type="button"
                   >
                     {cardName(payCardId)}
@@ -1068,7 +1079,14 @@ export function ReactionTray({
     );
   };
 
-  const togglePayment = (selectionHandIndex: number, payHandIndex: number) => {
+  // `defaultMode` is the mode the chip must be spent at to bring ANY Power (see
+  // powerCostPaymentMode): a School-of-Magic ability is worth 0 basic / 3 expert,
+  // so picking it at "basic" would add nothing and the cost could never be met.
+  const togglePayment = (
+    selectionHandIndex: number,
+    payHandIndex: number,
+    defaultMode: CardPlayMode = "basic"
+  ) => {
     setSelections((current) =>
       current.map((selection) => {
         if (selection.handIndex !== selectionHandIndex) {
@@ -1083,7 +1101,7 @@ export function ReactionTray({
             : [...selection.costHandIndexes, payHandIndex],
           costHandModes: has
             ? selection.costHandModes.filter((_, position) => position !== at)
-            : [...selection.costHandModes, "basic"]
+            : [...selection.costHandModes, defaultMode]
         };
       })
     );
@@ -1748,25 +1766,39 @@ export function ReactionTray({
                               }
                               const payPosition = selection?.costHandIndexes.indexOf(payIndex) ?? -1;
                               const inThisPayment = payPosition !== -1;
-                              const payMode = inThisPayment
-                                ? (selection?.costHandModes[payPosition] ?? "basic")
-                                : "basic";
                               const takenElsewhere = !inThisPayment && committedIndexes.has(payIndex);
                               const wrongKind =
                                 selection?.costCards?.filter !== undefined &&
                                 !costCardEligible(payCardId, selection.costCards.filter);
+                              // The mode this chip must be spent at to bring ANY
+                              // Power — null when it can never pay (wrong school,
+                              // not a power source). A School-of-Magic ability is
+                              // 0 basic / 3 expert: `canAffordCardCost` counts that
+                              // expert value and OFFERS the play, so the old
+                              // `basic <= 0` test hid the only chip that could pay
+                              // an offered Sorrow — the play was unconfirmable.
+                              // An EMPOWERED source pays its expert value crown-free.
+                              const payDefaultMode = valuesPowerSources
+                                ? powerCostPaymentMode(cardLibrary[payCardId], playedSchools, {
+                                    crownAvailable:
+                                      cardIsEmpoweredFor(
+                                        payCardId,
+                                        view.players[viewerPlayerId]?.empoweredAbilities
+                                      ) || crownsAvailable - crownsSelected > 0
+                                  })
+                                : "basic";
+                              if (takenElsewhere || wrongKind || (valuesPowerSources && payDefaultMode === null)) {
+                                return null;
+                              }
+                              const payMode = inThisPayment
+                                ? (selection?.costHandModes[payPosition] ?? "basic")
+                                : (payDefaultMode ?? "basic");
                               // A power source of the wrong school contributes
                               // nothing to this spell, so it can never validly pay.
                               // Value it at the chosen mode (expert = crown).
                               const powerValue = valuesPowerSources
                                 ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, payMode)
                                 : 0;
-                              const powerValueBasic = valuesPowerSources
-                                ? spellPowerValueOfCard(cardLibrary[payCardId], playedSchools, "basic")
-                                : 0;
-                              if (takenElsewhere || wrongKind || (valuesPowerSources && powerValueBasic <= 0)) {
-                                return null;
-                              }
                               // A Power source with a higher expert value can be
                               // upgraded with a crown once it is picked.
                               const payCardEffect = cardLibrary[payCardId]?.effect;
@@ -1795,7 +1827,7 @@ export function ReactionTray({
                                     aria-pressed={inThisPayment}
                                     className={`trayChip ${inThisPayment ? "picked" : ""}`}
                                     disabled={full}
-                                    onClick={() => togglePayment(tile.handIndex, payIndex)}
+                                    onClick={() => togglePayment(tile.handIndex, payIndex, payDefaultMode ?? "basic")}
                                     type="button"
                                   >
                                     {cardName(payCardId)}

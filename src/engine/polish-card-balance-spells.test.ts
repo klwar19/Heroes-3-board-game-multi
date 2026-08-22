@@ -460,6 +460,83 @@ describe("Balance Pack — reaction reprints", () => {
     expect(priceOf(polishBalanceSpellCards["spell.sorrow"])).toEqual([0, 1, 3]);
     expect(priceOf(cardLibrary["spell.sorrow"])).toEqual([0, 2, 4]);
   });
+
+  /**
+   * The OBSERVABLE half of the reprint (the price check above is only data): a
+   * SILVER unit really loses its activation for ONE discarded Power card under
+   * the pack, and the very same play is refused at 1 Power with the pack off.
+   * Reported 2026-08-22 as "Sorrow should be 1 SP for silver unit".
+   */
+  // `unit_p1_marksmen` is deliberately left fresh so the combat ROUND does not
+  // wrap the moment the target is skipped — a round reset clears
+  // `activatedThisRound` and would hide the very effect under test.
+  // The crown budget is zeroed on BOTH arms: a Power statistic can be upgraded to
+  // its expert +2 with a crown, which would let ONE card buy the classic 2-Power
+  // rung too and hide the price change under test.
+  function aboutToActivate(balance: boolean, targetId: string, hand: string[], seed: string): GameState {
+    const state = combat(balance, seed);
+    state.players.p1.hand = hand as CardId[];
+    state.players.p1.combatStats.expertUsesSpentThisRound = state.players.p1.limits.expertUses;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound =
+        unit.id !== "unit_p1_griffins" && unit.id !== "unit_p1_marksmen" && unit.id !== targetId;
+    }
+    // …and the target activates before it, so the skip window is about the unit
+    // under test rather than the spare body.
+    state.combat!.units[targetId as UnitId].initiative = 99;
+    const opened = applyOk(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(opened.combat!.activeUnitId).toBe(targetId);
+    return opened;
+  }
+
+  const silverAboutToActivate = (balance: boolean, hand: string[]): GameState =>
+    aboutToActivate(balance, "unit_p2_vampires", hand, "polish-sorrow-skip");
+
+  it("Sorrow really skips a SILVER unit for one Power card — and cannot at 1 Power with the pack off", () => {
+    const on = silverAboutToActivate(true, ["spell.sorrow", "stat.power"]);
+    expect(on.combat!.activeUnitId).toBe("unit_p2_vampires");
+    const offer = reactionOffers(on, "spell.sorrow", "p1")[0];
+    expect(offer, "one Power card reaches the reprint's silver rung").toBeTruthy();
+    const played = applyAction(on, { ...offer!.action, costCardIds: ["stat.power"] } as GameAction);
+    expect(played.errors.map((error) => error.message)).toEqual([]);
+    // The observable outcome: the vampires' activation was consumed without them
+    // moving or attacking, and exactly one Power card paid for it.
+    const vampires = played.state.combat!.units.unit_p2_vampires;
+    expect(vampires.activatedThisRound).toBe(true);
+    expect(vampires.movedThisActivation).toBe(false);
+    expect(played.state.players.p1.discard).toContain("stat.power");
+    expect(played.state.players.p1.hand).not.toContain("stat.power");
+
+    // CONTROL: the classic card charges 2, so the same single Power card is not
+    // even enough to open the window.
+    const off = silverAboutToActivate(false, ["spell.sorrow", "stat.power"]);
+    expect(off.combat!.activeUnitId).toBe("unit_p2_vampires");
+    expect(reactionOffers(off, "spell.sorrow", "p1"), "1 Power cannot buy the classic silver rung").toEqual([]);
+    expect(off.combat!.units.unit_p2_vampires.activatedThisRound).toBe(false);
+  });
+
+  it("CONTROL: the reprint's rungs still gate by GRADE — a gold unit needs 3, a bronze is free", () => {
+    const goldTurn = (hand: string[]): GameState =>
+      aboutToActivate(true, "unit_p2_dread_knights", hand, "polish-sorrow-gold");
+    // Two Power cards cannot reach the gold rung (3) …
+    expect(reactionOffers(goldTurn(["spell.sorrow", "stat.power", "stat.power"]), "spell.sorrow", "p1")).toEqual([]);
+    // … three can, and the play is the gold option (index 2), never the silver one.
+    const rich = goldTurn(["spell.sorrow", "stat.power", "stat.power", "stat.power"]);
+    const goldOffer = reactionOffers(rich, "spell.sorrow", "p1")[0];
+    expect(goldOffer?.action).toMatchObject({ optionIndex: 2 });
+    const played = applyAction(rich, {
+      ...goldOffer!.action,
+      costCardIds: ["stat.power", "stat.power", "stat.power"]
+    } as GameAction);
+    expect(played.errors.map((error) => error.message)).toEqual([]);
+    expect(played.state.combat!.units.unit_p2_dread_knights.activatedThisRound).toBe(true);
+
+    // A BRONZE unit is still the FREE rung under the reprint (unchanged at 0).
+    const bronzeWindow = aboutToActivate(true, "unit_p2_skeletons", ["spell.sorrow"], "polish-sorrow-bronze");
+    const bronzeOffer = reactionOffers(bronzeWindow, "spell.sorrow", "p1")[0];
+    expect(bronzeOffer?.action).toMatchObject({ optionIndex: 0 });
+    expect(applyOk(bronzeWindow, bronzeOffer!.action).combat!.units.unit_p2_skeletons.activatedThisRound).toBe(true);
+  });
 });
 
 // ===========================================================================

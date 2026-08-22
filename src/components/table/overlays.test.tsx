@@ -1467,6 +1467,95 @@ describe("ReactionTray — Sorrow pays its skip with a Power-value cost picker",
     expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 
+  /**
+   * REPORTED BUG (2026-08-22): "Sorrow should be 1 SP for silver unit. Even with
+   * 2 SP cannot play it."
+   *
+   * A School-of-Magic ability (Earth Magic — and Sorrow is an EARTH spell) is
+   * printed `ADD_SPELL_POWER { amount: 0, expertAmount: 3 }`: worth NOTHING at
+   * basic, +3 with a crown. `canAffordCardCost` greedily assigns the crown and
+   * therefore OFFERS the silver skip, but the tray hid every payment chip whose
+   * BASIC Power was 0 — so the offered play had no payable card and the Confirm
+   * button could never leave "0/2 chosen". The engine accepts the very same play
+   * when it is paid at the expert value, which is what these tests drive.
+   */
+  /** Same setup, but no reaction window is expected (nothing is payable). */
+  function silverSkipAttempt(power: string[], crownsLeft?: number): GameState {
+    const state = createInitialGameState("sorrow-tray-seed");
+    state.players.p1.hand = ["spell.sorrow", ...power];
+    state.players.p2.hand = [];
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    if (crownsLeft !== undefined) {
+      state.players.p1.combatStats.expertUsesSpentThisRound = state.players.p1.limits.expertUses - crownsLeft;
+    }
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+    }
+    const result = applyAction(state, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  it("pays the silver skip with Earth Magic's expert side (0 basic / +3 with a crown)", () => {
+    const state = silverSkipWindow(["ability.earth_magic"]);
+    // The ENGINE really offers it — the bug was the payment surface, not the gate.
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.sorrow"
+      ),
+      "the engine offers the silver skip off Earth Magic's expert Power"
+    ).toBe(true);
+
+    const onAction = vi.fn();
+    render(trayFor(state, onAction));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    expect(confirmButton().disabled, "2 Power is owed and nothing is paid yet").toBe(true);
+
+    // The chip is shown at the value that can actually pay: its expert +3.
+    const chip = screen.getByRole("button", { name: /^Earth Magic \(\+3\)$/ }) as HTMLButtonElement;
+    act(() => fireEvent.click(chip));
+    expect(confirmButton().disabled, "Earth Magic's expert +3 covers the 2-Power skip").toBe(false);
+
+    act(() => fireEvent.click(confirmButton()));
+    const played = onAction.mock.calls[0][0] as Extract<GameAction, { type: "PLAY_REACTION" }>;
+    expect(played.costCardIds).toEqual(["ability.earth_magic"]);
+    // Picked at "basic" the source brings 0 Power and the engine rejects it, so
+    // the chip must arm itself at expert.
+    expect(played.costCardModes).toEqual(["expert"]);
+
+    const applied = applyAction(state, played);
+    expect(applied.errors.map((error) => error.message)).toEqual([]);
+    expect(applied.state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(applied.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
+  it("CONTROL: with no crowns left Earth Magic pays nothing — no window, no chip", () => {
+    // The expert +3 is unreachable without a crown, so the engine opens no window
+    // at all. The fix must not invent an offer the engine would refuse.
+    const state = silverSkipAttempt(["ability.earth_magic"], 0);
+    expect(state.reactionWindow, "nothing is payable, so no skip window opens").toBeNull();
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.sorrow"
+      )
+    ).toBe(false);
+    render(trayFor(state, vi.fn()));
+    expect(screen.queryByRole("button", { name: /^Earth Magic/ })).toBeNull();
+  });
+
+  it("CONTROL: a wrong-school School of Magic (Fire) never pays the EARTH Sorrow", () => {
+    // Alone it opens no window …
+    expect(silverSkipAttempt(["ability.fire_magic"]).reactionWindow).toBeNull();
+    // … and inside a window opened by a real Power card its chip stays hidden:
+    // spellPowerValueOfCard is 0 for Fire Magic on an Earth spell at BOTH modes.
+    const state = silverSkipWindow(["stat.power", "ability.fire_magic"]);
+    render(trayFor(state, vi.fn()));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /skip a silver unit/i })));
+    expect(screen.getByRole("button", { name: /^Power \(\+1\)$/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Fire Magic/ })).toBeNull();
+  });
+
   it("shows one Meteor Shower aim action and sends targeting to the battlefield", () => {
     const state = silverSkipWindow(["stat.power", "ability.basic_water_magic"]);
     state.players.p1.hand[0] = "specialty.deemer.1";
