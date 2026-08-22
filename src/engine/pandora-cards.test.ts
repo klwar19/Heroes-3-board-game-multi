@@ -10,7 +10,13 @@ import {
   type GameAction,
   type GameState
 } from "./index";
-import { eliminatePlayer, NEUTRAL_DECK_IDS, RESOURCE_GAIN_LEVEL_AMOUNTS, startAdventureRound } from "./adventure";
+import {
+  effectiveHandLimit,
+  eliminatePlayer,
+  NEUTRAL_DECK_IDS,
+  RESOURCE_GAIN_LEVEL_AMOUNTS,
+  startAdventureRound
+} from "./adventure";
 import { pandoraScryDeckId } from "./adventure-reducer";
 import { drawCardsForPlayer } from "./decks";
 import { getPlayerView } from "./player-view";
@@ -944,6 +950,113 @@ describe("Pandora cards are strictly one-time use", () => {
     after.players.p1.discard.push("stat.attack");
     drawCardsForPlayer(after, "p1", 2);
     expect(after.players.p1.hand).not.toContain("pandora.hand_size");
+  });
+});
+
+// ===========================================================================
+// Pandora's Gift: Three Permanents (Card 176) — "INCLUDING THIS ONE"
+// ===========================================================================
+
+describe("Pandora's Gift: Three Permanents — 'including this one'", () => {
+  it("does NOT evict the permanent already in play; both stay and the old bonus keeps running", () => {
+    const state = readyAdventure("pandora-three-slots");
+    state.players.p1.hand = ["pandora.hand_size", "pandora.permanent_slots"];
+    const baseHandLimit = effectiveHandLimit(state, "p1");
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    expect(effectiveHandLimit(after, "p1")).toBe(baseHandLimit + 1);
+
+    after = playCardFromHand(after, "pandora.permanent_slots");
+
+    // The printed card counts ITSELF against its own limit ("up to 3 permanent
+    // cards played at a time, including this one"), so 1 already in play + this
+    // one = 2 <= 3: nothing may be evicted.
+    expect(after.players.p1.permanents).toEqual(["pandora.hand_size", "pandora.permanent_slots"]);
+    expect(after.players.p1.removed).not.toContain("pandora.hand_size");
+    // EFFECT (not just a list read): an evicted hand_size would have taken its
+    // +1 hand limit with it.
+    expect(effectiveHandLimit(after, "p1")).toBe(baseHandLimit + 1);
+  });
+
+  it("fills all three slots and only then evicts the OLDEST (control on the raised limit)", () => {
+    const state = readyAdventure("pandora-three-slots-fill");
+    state.players.p1.hand = [
+      "pandora.hand_size",
+      "pandora.permanent_slots",
+      "pandora.power_or_morale",
+      "pandora.resource_income"
+    ];
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    after = playCardFromHand(after, "pandora.permanent_slots");
+    after = playCardFromHand(after, "pandora.power_or_morale");
+    expect(after.players.p1.permanents).toEqual([
+      "pandora.hand_size",
+      "pandora.permanent_slots",
+      "pandora.power_or_morale"
+    ]);
+
+    // The fourth is over the raised limit: the oldest leaves, and — Pandora —
+    // it leaves the GAME rather than the discard pile.
+    const fourth = playCardFromHand(after, "pandora.resource_income");
+    expect(fourth.players.p1.permanents).toEqual([
+      "pandora.permanent_slots",
+      "pandora.power_or_morale",
+      "pandora.resource_income"
+    ]);
+    expect(fourth.players.p1.removed).toContain("pandora.hand_size");
+    // EFFECT: the evicted card's +1 hand limit really stopped applying.
+    expect(effectiveHandLimit(fourth, "p1")).toBe(effectiveHandLimit(state, "p1"));
+  });
+
+  it("CONTROL: an ordinary permanent still replaces the one in play (the 1-slot rule is untouched)", () => {
+    const state = readyAdventure("pandora-one-slot-control");
+    state.players.p1.hand = ["pandora.hand_size", "pandora.power_or_morale"];
+    const baseHandLimit = effectiveHandLimit(state, "p1");
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    after = playCardFromHand(after, "pandora.power_or_morale");
+
+    expect(after.players.p1.permanents).toEqual(["pandora.power_or_morale"]);
+    expect(after.players.p1.removed).toContain("pandora.hand_size");
+    expect(effectiveHandLimit(after, "p1")).toBe(baseHandLimit);
+  });
+
+  it("CONTROL: another player's permanent is untouched by the play", () => {
+    const state = readyAdventureN("pandora-three-slots-other-seat", 2);
+    state.players.p2.permanents = ["pandora.hand_size"];
+    const p2HandLimit = effectiveHandLimit(state, "p2");
+    state.players.p1.hand = ["pandora.hand_size", "pandora.permanent_slots"];
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    after = playCardFromHand(after, "pandora.permanent_slots");
+
+    expect(after.players.p2.permanents).toEqual(["pandora.hand_size"]);
+    expect(after.players.p2.removed).not.toContain("pandora.hand_size");
+    expect(effectiveHandLimit(after, "p2")).toBe(p2HandLimit);
+  });
+
+  it("CONTROL: dropping the limit card afterwards squeezes the extras back out", () => {
+    const state = readyAdventure("pandora-three-slots-drop");
+    state.players.p1.hand = ["pandora.hand_size", "pandora.permanent_slots", "pandora.power_or_morale"];
+    const baseHandLimit = effectiveHandLimit(state, "p1");
+
+    let after = playCardFromHand(state, "pandora.hand_size");
+    after = playCardFromHand(after, "pandora.permanent_slots");
+    after = playCardFromHand(after, "pandora.power_or_morale");
+    expect(after.players.p1.permanents).toHaveLength(3);
+
+    const dropped = apply(after, {
+      type: "DISCARD_PERMANENT",
+      playerId: "p1",
+      cardId: "pandora.permanent_slots"
+    });
+    // Limit back to 1: the oldest extras are squeezed out by enforcePermanentLimit,
+    // leaving only the newest permanent.
+    expect(dropped.players.p1.permanents ?? []).toEqual(["pandora.power_or_morale"]);
+    expect(dropped.players.p1.removed).toContain("pandora.hand_size");
+    // EFFECT: the squeezed-out hand_size stopped granting its +1 hand limit.
+    expect(effectiveHandLimit(dropped, "p1")).toBe(baseHandLimit);
   });
 });
 

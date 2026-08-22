@@ -584,7 +584,18 @@ export function putPermanentIntoPlay(state: GameState, playerId: PlayerId, cardI
     throw new Error("That card is not in hand.");
   }
 
-  const limit = permanentLimitFor(state, playerId);
+  // The limit the table will be under ONCE this card is in play. Pandora's Gift:
+  // Three Permanents prints "You can have up to 3 permanent cards played at a
+  // time, INCLUDING THIS ONE" — the card counts itself against its own limit, so
+  // playing it over one existing permanent leaves 2 of 3 slots used and may NOT
+  // evict anything. Reading the limit off the board BEFORE the card lands made it
+  // discard the very permanent it was meant to sit beside (the whole point of the
+  // card), and `enforcePermanentLimit` below could not undo that. Data-driven off
+  // `permanentLimitOverride`, never a card-id list.
+  const limit = Math.max(
+    permanentLimitFor(state, playerId),
+    card.permanentEffect?.permanentLimitOverride ?? 1
+  );
   const replacedCardId =
     getPermanentCardIds(state, playerId).length >= limit ? discardPermanentFromPlay(state, playerId) : null;
   player.hand.splice(handIndex, 1);
