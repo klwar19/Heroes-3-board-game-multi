@@ -1036,11 +1036,12 @@ export const coreBuildingDefinitions: Record<string, TownBuildingDefinition> = {
     name: "Pub",
     faction: "cove",
     cost: { gold: 3, buildingMaterials: 2 },
-    // "During each Astrologers' round, reduce one reinforcement's cost by 3 gold
-    // (to a minimum of 0)." Modelled like the Saplings half-gold reinforce: a
-    // once-per-Astrologers'-round CHOOSE_ONE offered at round start to reinforce
-    // one owned Few unit (any tier) for 3 less gold, or Skip. The flat discount
-    // is non-stacking with a Legion voucher / Stables discount on that unit.
+    // Printed: "During each Astrologers' round, while Reinforcing units you may
+    // reduce one unit's reinforce cost by 3 gold (to a minimum of 0)." Engine:
+    // the Astrologers' round start banks ONE round-long reinforcement discount
+    // (bankFlatGoldReinforce → REDEEM_REINFORCEMENT_DISCOUNT), redeemable at any
+    // point of the owner's own turn that round and gated on the Citadel; the
+    // flat discount STACKS with a Legion voucher / Stables discount.
     effect: { type: "ASTROLOGERS_FLAT_GOLD_REINFORCE", discount: 3, tiers: ["bronze", "silver", "gold"] },
     implementationStatus: "implemented",
     source: townSource("cove")

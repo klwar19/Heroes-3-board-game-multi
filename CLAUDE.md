@@ -1124,7 +1124,42 @@ DRAWER only; A Shady Auction is sequential-but-hidden; earned Searches resolve i
 earning player's slot while a Treasure-die FACE Search queues at the END; Magical Forest
 contributions are masked; Cursed Swamp's "cheapest unit" is the lowest gold-equivalent
 printed cost of the CURRENT side; Marketplace is the resource exchange ONLY
-(`TRADING_POST.tradesOnly`).
+(`TRADING_POST.tradesOnly`). NOT an Event card: the **Cove Pub** round-start
+"reinforce?" popup people call the "Pub event" is a TOWN BUILDING and no longer a
+round-start prompt at all — see the section below.
+
+## The Cove Pub is a whole-round entitlement, not a round-start prompt (2026-08-22)
+
+USER RULING: "PUB event — should be able to use at any time during your turn, not just
+at the beginning. Also if a player doesn't have a Citadel, he cannot upgrade — not a
+force-upgrade event." Printed card (`towns-cove-board-full.webp`): "During each
+Astrologers' round, while **Reinforcing** units you may reduce one unit's reinforce cost
+by 3 gold (to a minimum of 0)." The engine instead queued a round-start `CHOOSE_ONE`
+("reinforce X / Skip") that had to be answered before anything else and was gone once
+skipped. FIX: `bankFlatGoldReinforce` (adventure.ts, replacing `queueFlatGoldReinforce`)
+BANKS a `ReinforcementDiscountBank` — the same non-blocking Necromancy / Hill-Fort
+machinery — so the discount is an ordinary optional `REDEEM_REINFORCEMENT_DISCOUNT`
+offered at ANY point of the owner's own turn that round, opening no window and raising no
+barrier. Two new bank fields (`requiresReinforceUnlock`, `expiresAfterRound`) carry the
+rest: the reinforce arm is refused in `reinforcementDiscountCostFor` without a Citadel
+(`UNLOCK_REINFORCE`, read LIVE so a Citadel built mid-round switches it on), and the bank
+is ROUND-scoped — it is EXEMPT from the two expiry seams every other bank takes (the hero
+step in `adventure-reducer.ts` and the `immediate-reinforcement-prompts` turn-start wipe),
+swept instead at the next `startAdventureRound`. Pinned in `cove-content.test.ts`
+("Cove Pub — Astrologers'-round reinforce discount", 9 cases, each with a CONTROL: the
+Hill-Fort bank still dies on the SAME hero step, no Citadel ⇒ no offer + a forged redeem
+refused, no Pub / Resource round ⇒ no bank, expiry at the next round start).
+LIMITS: the discount lands on whichever eligible unit you redeem it on FIRST (one per
+round, as printed) — and the army panel's per-unit reinforce button PREFERS a banked
+offer over the plain `POPULATION_ACTION` (`screen.tsx`), so reinforcing through the panel
+spends the Pub discount on that unit rather than saving it for a pricier one; the AI
+never plans around it (it scores the existing redeem at
+820/760); the Polish Unit-Stack arm rides along ungated by the Citadel (a Stack layer is
+not a Reinforcement); as before, no hero-in-town requirement is imposed; the sibling
+Rampart **Saplings** half-gold reinforce is UNCHANGED (still a round-start prompt — the
+ruling named the Pub only; its printed wording was not re-checked). New serialized fields on
+`ReinforcementDiscountBank`, so a stale edge computes a Pub bank differently (it would
+wipe it on the first hero step and offer it without a Citadel) — protocol bump owed.
 
 ## Mine-guard reinforcement (OPTIONAL "Global" house rule, default OFF) — what runs vs. limits
 

@@ -345,52 +345,136 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     return state;
   }
 
-  function reinforceAction(state: GameState, unitName: string) {
-    return getLegalActions(state, "p1").find(
-      (legal) => legal.action.type === "RESOLVE_VISIT_STEP" && legal.label.startsWith("Reinforce") && legal.label.includes(unitName)
+  /** Any queued round-start prompt whose text names the Pub. */
+  function pubPrompt(state: GameState): boolean {
+    return (
+      state.adventure?.rewardQueue.some(
+        (reward) =>
+          reward.kind === "visit-steps" &&
+          reward.steps[0]?.type === "CHOOSE_ONE" &&
+          reward.steps[0].prompt.includes("Pub")
+      ) ?? false
     );
   }
 
-  it("queues a once-per-round offer and reinforces one Few unit for 3 less gold", () => {
-    // Sea Dogs pack costs 6 gold; the Pub knocks 3 off → 3 gold.
-    const state = pubRound("pub-discount", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
-    const offer = state.adventure?.rewardQueue.some(
-      (reward) => reward.kind === "visit-steps" && reward.steps[0]?.type === "CHOOSE_ONE" && reward.steps[0].prompt.includes("Pub")
-    );
-    expect(offer, "the Pub reinforce offer should be queued at the Astrologers' round").toBe(true);
+  function pubBank(state: GameState) {
+    return (state.players.p1.reinforcementDiscounts ?? []).find((bank) => bank.source === "pub");
+  }
 
+  /** The redeem offer the Pub bank makes for `unitName`, if any. */
+  function redeemAction(state: GameState, unitName: string) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        legal.action.kind === "reinforce" &&
+        legal.label.startsWith("Pub:") &&
+        legal.label.includes(unitName)
+    );
+  }
+
+  /** Clears the mandatory start-of-turn hand step so ordinary turn actions open. */
+  function takeHandStep(state: GameState): GameState {
+    let current = state;
+    for (let guard = 0; guard < 4; guard += 1) {
+      const refresh = getLegalActions(current, "p1").find((legal) => legal.action.type === "REFRESH_HAND");
+      if (!refresh) break;
+      current = applyOk(current, refresh.action);
+    }
+    return current;
+  }
+
+  it("banks a round-long entitlement instead of forcing a round-start prompt", () => {
+    const state = pubRound("pub-no-prompt", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    expect(pubPrompt(state), "the Pub must not queue a round-start choice any more").toBe(false);
+    const bank = pubBank(state);
+    expect(bank, "the Pub banks a redeemable discount at the Astrologers' round").toBeTruthy();
+    expect(bank).toMatchObject({ flatGoldDiscount: 3, requiresReinforceUnlock: true, expiresAfterRound: 2 });
+
+    // Nothing is pending: the table is free to play on immediately.
     pumpAdventureQueues(state);
-    const reinforce = reinforceAction(state, "Sea Dogs");
-    expect(reinforce, "the Pub should offer to reinforce the Sea Dogs").toBeTruthy();
-    const after = applyOk(state, reinforce!.action);
-    expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
-    expect(after.players.p1.resources.gold).toBe(7); // 10 − (6 − 3)
+    expect(state.pendingChoice, "the Pub opens no window").toBeNull();
   });
 
-  it("does not offer Pub reinforcement without a Citadel", () => {
+  it("is redeemable at ANY point of the turn — after the hand step AND after the hero has walked", () => {
+    // Sea Dogs pack costs 6 gold; the Pub knocks 3 off → 3 gold.
+    const state = pubRound("pub-anytime", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    pumpAdventureQueues(state);
+    const afterHand = takeHandStep(state);
+
+    const move = getLegalActions(afterHand, "p1").find((legal) => legal.action.type === "MOVE_HERO");
+    expect(move, "the hero should have a legal step").toBeTruthy();
+    const afterMove = applyOk(afterHand, move!.action);
+    // The seam this pins: every OTHER reinforcement bank dies on a hero step.
+    // A round-scoped Pub bank must survive, or "any time during your turn" is a lie.
+    expect(pubBank(afterMove), "the Pub discount survives the walk").toBeTruthy();
+
+    const redeem = redeemAction(afterMove, "Sea Dogs");
+    expect(redeem, "the Pub reinforce is offered mid-turn, after moving").toBeTruthy();
+    const after = applyOk(afterMove, redeem!.action);
+    expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
+    expect(after.players.p1.resources.gold).toBe(7); // 10 − (6 − 3)
+    expect(pubBank(after), "one unit only: the entitlement is spent").toBeUndefined();
+  });
+
+  it("CONTROL: an ordinary (Hill Fort) bank still dies on the same hero step", () => {
+    // Proves the movement exemption is scoped to the round-scoped Pub bank and
+    // did not quietly make every banked discount immortal.
+    const state = pubRound("pub-move-control", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    state.players.p1.reinforcementDiscounts = [
+      ...(state.players.p1.reinforcementDiscounts ?? []),
+      { id: "bank_hill_fort", source: "hill-fort", sourceName: "Hill Fort", allowedTiers: ["bronze", "silver"], flatGoldDiscount: 3 }
+    ];
+    pumpAdventureQueues(state);
+    const afterHand = takeHandStep(state);
+    const move = getLegalActions(afterHand, "p1").find((legal) => legal.action.type === "MOVE_HERO");
+    expect(move).toBeTruthy();
+    const afterMove = applyOk(afterHand, move!.action);
+
+    const banks = afterMove.players.p1.reinforcementDiscounts ?? [];
+    expect(banks.map((bank) => bank.source)).toEqual(["pub"]);
+  });
+
+  it("CONTROL: without a Citadel there is no upgrade offer and nothing is forced", () => {
     const state = pubRound("pub-needs-citadel", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10, false);
     pumpAdventureQueues(state);
+    const afterHand = takeHandStep(state);
 
-    expect(reinforceAction(state, "Sea Dogs"), "Pub reinforcement still needs a Citadel").toBeUndefined();
+    expect(pubPrompt(afterHand), "no prompt is pushed at anyone").toBe(false);
+    expect(redeemAction(afterHand, "Sea Dogs"), "Pub reinforcement still needs a Citadel").toBeUndefined();
+    // And a forged redeem is refused, so the Few can never be force-upgraded.
+    const bank = pubBank(afterHand);
+    expect(bank).toBeTruthy();
+    const forged = applyAction(afterHand, {
+      type: "REDEEM_REINFORCEMENT_DISCOUNT",
+      playerId: "p1",
+      discountId: bank!.id,
+      armyUnitId: "army_sd",
+      kind: "reinforce"
+    });
+    expect(forged.errors.length, "the handler refuses it").toBeGreaterThan(0);
+    expect(forged.state.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("few");
+
+    // …and building the Citadel LATER in the same round switches the offer on
+    // (the gate is read at price time, not frozen at round start).
+    const town = Object.values(afterHand.towns).find((candidate) => candidate.controllerId === "p1");
+    town!.buildings = [...town!.buildings, "cove.citadel"];
+    expect(redeemAction(afterHand, "Sea Dogs"), "a Citadel built mid-round unlocks it").toBeTruthy();
   });
 
   it("STACKS the Pub discount with a Legion voucher reserved for the same unit", () => {
     // Sea Dogs pack costs 6 gold. The Pub −3 and a 2-gold Legion voucher reserved
     // for the same army unit STACK → −5, so the reinforce charges 1 gold — not the
-    // Pub-only 3, nor the Legion-only 4. (The Pub offer is queued at round start;
-    // the player banks the Legion piece during the turn, so the charge — read at
-    // resolution by reinforceCostFor — is what stacks the two.)
+    // Pub-only 3, nor the Legion-only 4.
     const state = pubRound("pub-legion-stack", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
-    // Bank a Legion voucher for the Sea Dogs (mid-turn, after round start so it is
-    // not expired). reinforceCostFor reads it when the reinforce actually resolves.
     state.players.p1.recruitDiscounts = [
       { cardId: "artifact.legs_of_legion", amount: 2, target: { kind: "reinforce", armyUnitId: "army_sd" } }
     ];
 
     pumpAdventureQueues(state);
-    const reinforce = reinforceAction(state, "Sea Dogs");
-    expect(reinforce, "the Pub should offer the Sea Dogs reinforce").toBeTruthy();
-    const after = applyOk(state, reinforce!.action);
+    const afterHand = takeHandStep(state);
+    const redeem = redeemAction(afterHand, "Sea Dogs");
+    expect(redeem, "the Pub should offer the Sea Dogs reinforce").toBeTruthy();
+    const after = applyOk(afterHand, redeem!.action);
     expect(after.players.p1.army.find((unit) => unit.id === "army_sd")?.side).toBe("pack");
     expect(after.players.p1.resources.gold).toBe(9); // 10 − 1 (stacked −5), NOT 7 (Pub only) or 8 (Legion only)
     // The Legion voucher was consumed by the reinforce.
@@ -402,25 +486,49 @@ describe("Cove Pub — Astrologers'-round reinforce discount", () => {
     expect(packGold).toBeLessThanOrEqual(3); // the discount fully covers it
     const state = pubRound("pub-min0", [{ id: "army_oc", unitDefId: "cove.oceanids", side: "few" }], 5);
     pumpAdventureQueues(state);
-    const reinforce = reinforceAction(state, "Oceanids");
-    expect(reinforce).toBeTruthy();
-    const after = applyOk(state, reinforce!.action);
+    const afterHand = takeHandStep(state);
+    const redeem = redeemAction(afterHand, "Oceanids");
+    expect(redeem).toBeTruthy();
+    const after = applyOk(afterHand, redeem!.action);
     expect(after.players.p1.army.find((unit) => unit.id === "army_oc")?.side).toBe("pack");
     expect(after.players.p1.resources.gold).toBe(5); // 5 − max(0, 3 − 3) = 5
   });
 
-  it("control: no Pub building → no reinforce offer at the Astrologers' round", () => {
+  it("expires with the round: the unspent discount is gone at the next round start", () => {
+    const state = pubRound("pub-expiry", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    pumpAdventureQueues(state);
+    const afterHand = takeHandStep(state);
+    expect(redeemAction(afterHand, "Sea Dogs"), "offered during the Astrologers' round").toBeTruthy();
+
+    afterHand.round = 3; // the following (Resource) round
+    afterHand.pendingChoice = null;
+    if (afterHand.adventure) afterHand.adventure.rewardQueue = [];
+    startAdventureRound(afterHand);
+    expect(pubBank(afterHand), "the entitlement expires with its round").toBeUndefined();
+    expect(redeemAction(afterHand, "Sea Dogs")).toBeUndefined();
+  });
+
+  it("control: no Pub building → no banked discount at the Astrologers' round", () => {
     const state = pubRound("pub-control", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
     // pubRound already built the Pub; rebuild the town without it to prove the offer is the Pub's.
     const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1");
     town!.buildings = [];
+    state.players.p1.reinforcementDiscounts = [];
     state.pendingChoice = null;
     if (state.adventure) state.adventure.rewardQueue = [];
     startAdventureRound(state);
-    const offer = state.adventure?.rewardQueue.some(
-      (reward) => reward.kind === "visit-steps" && reward.steps[0]?.type === "CHOOSE_ONE" && reward.steps[0].prompt.includes("Pub")
-    );
-    expect(offer ?? false).toBe(false);
+    expect(pubPrompt(state)).toBe(false);
+    expect(pubBank(state)).toBeUndefined();
+  });
+
+  it("control: a Resource round banks nothing (the window is Astrologers' rounds)", () => {
+    const state = pubRound("pub-resource-round", [{ id: "army_sd", unitDefId: "cove.sea_dogs", side: "few" }], 10);
+    state.players.p1.reinforcementDiscounts = [];
+    state.round = 3;
+    state.pendingChoice = null;
+    if (state.adventure) state.adventure.rewardQueue = [];
+    startAdventureRound(state);
+    expect(pubBank(state)).toBeUndefined();
   });
 });
 

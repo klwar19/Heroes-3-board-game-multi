@@ -1414,7 +1414,13 @@ function performHeroStep(state: GameState, hero: HeroState, to: MapSpaceId, pass
     if (!houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
       mover.recruitDiscounts = [];
       mover.legionDiscountCardIdsUsed = [];
-      mover.reinforcementDiscounts = [];
+      // A ROUND-scoped bank (the Cove Pub's "during each Astrologers' round"
+      // reinforce discount) survives movement on purpose — the USER RULING is
+      // that it is usable at ANY time during your turn, and walking is the most
+      // ordinary thing a turn contains. Swept at the next round start.
+      mover.reinforcementDiscounts = (mover.reinforcementDiscounts ?? []).filter(
+        (bank) => bank.expiresAfterRound !== undefined
+      );
     }
   }
 

@@ -17954,6 +17954,19 @@ export function startAdventureRound(state: GameState): void {
 
   const kind = state.round === 1 ? "first" : state.round % 2 === 1 ? "resource" : "astrologers";
 
+  // Round-scoped reinforcement entitlements (the Cove Pub's "during each
+  // Astrologers' round" discount) die here, at the start of the NEXT round —
+  // they deliberately survive hero movement and turn starts, which is what
+  // makes them usable at any point of the owner's turn.
+  for (const player of Object.values(state.players)) {
+    if (player.id === NEUTRAL_PLAYER_ID || !player.reinforcementDiscounts?.length) {
+      continue;
+    }
+    player.reinforcementDiscounts = player.reinforcementDiscounts.filter(
+      (bank) => bank.expiresAfterRound === undefined || bank.expiresAfterRound >= state.round
+    );
+  }
+
   // Round-scoped effects ("until the end of the round") end here: Luck / Expert
   // Luck and Torosar's Ballista IV grant. The card a round-scoped ONGOING effect
   // came from leaves the Ongoing tray in the shared releaseEndedOngoingCards
@@ -18116,7 +18129,10 @@ export function startAdventureRound(state: GameState): void {
           queueGardenOfLife(state, playerId, buildingId, effect.unitDefId);
         }
         if (effect?.type === "ASTROLOGERS_FLAT_GOLD_REINFORCE") {
-          queueFlatGoldReinforce(state, playerId, buildingId, effect.discount, effect.tiers);
+          // Banks a round-long entitlement instead of queueing a prompt — the
+          // owner spends it whenever they like on their own turn. See
+          // bankFlatGoldReinforce.
+          bankFlatGoldReinforce(state, playerId, buildingId, effect.discount, effect.tiers);
         }
         if (effect?.type === "COMBAT_CUBES" && effect.gainOn === "astrologers" && town) {
           gainTownCube(state, town, buildingId, effect.max);
@@ -19042,13 +19058,6 @@ function queueHalfGoldReinforce(state: GameState, playerId: PlayerId, buildingId
 }
 
 /**
- * Cove Pub: "At the beginning of each Astrologers' round, reduce a reinforcement
- * cost by `discount` gold (min 0), once per turn." Modelled like the Saplings
- * half-gold reinforce — a once-per-round CHOOSE_ONE offered at round start to
- * reinforce one eligible owned Few unit for `discount` less gold (or Skip). Only
- * units the player can afford at the discounted price are offered.
- */
-/**
  * Community Balance Change Legion remove-sides — "🌍 Remove this card, then
  * Reinforce a <tier> unit by paying its Reinforcement cost reduced by N gold
  * (to a minimum of 0)".
@@ -19152,7 +19161,24 @@ export function queueLegionTierReinforce(
   });
 }
 
-function queueFlatGoldReinforce(
+/**
+ * Cove Pub, printed: "During each Astrologers' round, while Reinforcing units
+ * you may reduce one unit's reinforce cost by 3 gold (to a minimum of 0)."
+ *
+ * USER RULING 2026-08-22 ("able to use at any time during your turn — not just
+ * at the beginning; if a player doesn't have a Citadel he cannot upgrade — not
+ * a force-upgrade event"): this is NOT a round-start prompt. It BANKS a
+ * `ReinforcementDiscountBank` (the same non-blocking machinery Necromancy and
+ * the Hill Fort use), so the discount is an ordinary optional legal action the
+ * owner may take at ANY point of their own turn during that Astrologers' round
+ * — after moving, after recruiting, after building a Citadel — and it opens no
+ * window, raises no barrier and can never force an upgrade.
+ *
+ * The bank is round-scoped (`expiresAfterRound`), so unlike its siblings it
+ * survives hero movement and turn starts and is swept at the next round start.
+ * The Citadel gate (`requiresReinforceUnlock`) is checked at PRICE time.
+ */
+function bankFlatGoldReinforce(
   state: GameState,
   playerId: PlayerId,
   buildingId: string,
@@ -19163,67 +19189,24 @@ function queueFlatGoldReinforce(
   if (!player) {
     return;
   }
-
-  const canReinforce = townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE");
-  const options: { label: string; steps: VisitStep[] }[] = [];
-  for (const unit of player.army) {
-    if (!canReinforce || unit.side !== "few") {
-      continue;
-    }
-
-    const def = coreUnitDefinitions[unit.unitDefId];
-    if (!def || !tiers.includes(def.tier)) {
-      continue;
-    }
-
-    // Price exactly as the reinforcement will be charged (the Pub flat discount
-    // STACKS with any Legion voucher / Stables discount reserved for this unit).
-    const cost = reinforceCostFor(state, playerId, unit.id, false, false, false, discount);
-    if (!cost || !hasRecruitResources(state, playerId, cost)) {
-      continue;
-    }
-
-    const costLabel = Object.entries(cost)
-      .filter(([, amount]) => amount)
-      .map(([resource, amount]) => `${amount} ${resource}`)
-      .join(" + ");
-    options.push({
-      label: `Reinforce ${def.name} (${costLabel || "free"})`,
-      steps: [{ type: "REINFORCE_FLAT_GOLD", armyUnitId: unit.id, discount }]
-    });
-  }
-
-  // Polish Unit Stacks: the Pub's flat gold discount also buys ONE Stack layer
-  // on a matching-tier Pack/Neutral card (Stack gold − discount, min 0).
-  for (const target of stackOfferTargets(state, playerId, tiers)) {
-    const option = stackOfferOption(
-      state,
-      playerId,
-      target,
-      Math.max(0, target.baseGold - discount),
-      coreBuildingDefinitions[buildingId]?.name ?? "Pub"
-    );
-    if (option) {
-      options.push(option);
-    }
-  }
-
-  if (options.length === 0) {
+  // Idempotent: one Pub entitlement per Astrologers' round, however often the
+  // round-start pass runs.
+  if ((player.reinforcementDiscounts ?? []).some((bank) => bank.source === "pub" && bank.expiresAfterRound === state.round)) {
     return;
   }
 
-  options.push({ label: "Skip", steps: [] });
-  state.adventure?.rewardQueue.push({
-    playerId,
-    kind: "visit-steps",
-    steps: [
-      {
-        type: "CHOOSE_ONE",
-        prompt: `${coreBuildingDefinitions[buildingId]?.name ?? "Pub"}: reinforce one unit for ${discount} less gold`,
-        options
-      }
-    ]
+  const bank = bankReinforcementDiscount(state, playerId, "pub", {
+    sourceName: coreBuildingDefinitions[buildingId]?.name ?? "Pub",
+    allowedTiers: tiers as ReinforcementDiscountBank["allowedTiers"],
+    // Polish Unit Stacks: the Pub's flat gold discount also buys ONE Stack layer
+    // on a matching-tier Pack/Neutral card (Stack gold − discount, min 0).
+    allowStack: true,
+    flatGoldDiscount: discount
   });
+  if (bank) {
+    bank.requiresReinforceUnlock = true;
+    bank.expiresAfterRound = state.round;
+  }
 }
 
 /**
@@ -19308,7 +19291,12 @@ export function startPlayerTurn(state: GameState, playerId: PlayerId): void {
   if (houseRuleEnabled(state, "immediate-reinforcement-prompts")) {
     player.recruitDiscounts = [];
     player.legionDiscountCardIdsUsed = [];
-    player.reinforcementDiscounts = [];
+    // A ROUND-scoped bank (the Cove Pub) is exempt from every turn/movement
+    // expiry: its printed window is the whole Astrologers' round, and the
+    // round-start sweep in startAdventureRound is its only seam.
+    player.reinforcementDiscounts = (player.reinforcementDiscounts ?? []).filter(
+      (bank) => bank.expiresAfterRound !== undefined
+    );
   }
 
   // "Resolve any 'at the beginning of your turn' abilities after drawing":
@@ -21136,6 +21124,13 @@ export function reinforcementDiscountCostFor(
     purchase = { kind: "stack", unitDefId: unit.unitDefId, armyUnitId: unit.id };
   } else {
     if (unit.side !== "few") {
+      return null;
+    }
+    // Cove Pub: "while Reinforcing units" — the Citadel is what unlocks
+    // Reinforcing, so with no Citadel there is no upgrade to discount and the
+    // arm is not offered at all. Read live, so a Citadel built later in the
+    // same Astrologers' round switches it on.
+    if (bank.requiresReinforceUnlock && !townHasBuildingEffect(state, playerId, "UNLOCK_REINFORCE")) {
       return null;
     }
     const pack = getUnitSide(unit.unitDefId, "pack");

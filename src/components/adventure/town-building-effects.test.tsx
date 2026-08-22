@@ -193,7 +193,9 @@ describe("TownPanel — in-place special-building effect / use buttons", () => {
     expect(cityHall.textContent).not.toMatch(/No special effect/i);
 
     const pub = openPanel("Pub");
-    expect(pub.textContent).toMatch(/3 less gold/i);
+    // Reworded 2026-08-22 with the Pub's timing fix ("any point of your turn",
+    // Citadel-gated); the regression this pins is the missing text, not the copy.
+    expect(pub.textContent).toMatch(/reinforce cost by 3 gold/i);
     expect(pub.textContent).not.toMatch(/No special effect/i);
   });
 

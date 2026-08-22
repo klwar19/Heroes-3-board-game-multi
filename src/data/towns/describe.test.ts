@@ -31,12 +31,17 @@ describe("describeBuildingEffect — no implemented building reads as inert", ()
     expect(buildingTimingLabel(building)).toBe("start of Resource rounds");
   });
 
-  it("describes the Cove Pub's flat −3-gold Astrologers'-round reinforce", () => {
+  it("describes the Cove Pub's −3-gold reinforce as an any-time, Citadel-gated round entitlement", () => {
     const building = coreBuildingDefinitions["cove.pub"];
     const text = describeBuildingEffect(building);
     expect(text).toMatch(/Astrologers' round/i);
-    expect(text).toMatch(/3 less gold/i);
-    expect(buildingTimingLabel(building)).toBe("start of Astrologers' rounds");
+    expect(text).toMatch(/3 gold/i);
+    // USER RULING 2026-08-22: not a round-start prompt, and it can never force
+    // an upgrade on a player without a Citadel.
+    expect(text).toMatch(/any point of your turn/i);
+    expect(text).toMatch(/Citadel/i);
+    expect(text).not.toMatch(/at the beginning/i);
+    expect(buildingTimingLabel(building)).toBe("any time during Astrologers' rounds");
   });
 
   it("describes the Cove Thieves' Guild's once-per-turn top-2 deck peek", () => {

@@ -33,7 +33,7 @@ export function describeBuildingEffect(building: TownBuildingDefinition): string
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
       return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for half of the gold cost.`;
     case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
-      return `At the beginning of each Astrologers' round, you may instantly reinforce one of your ${effect.tiers.join(" or ")} units for ${effect.discount} less gold (minimum 0).`;
+      return `During each Astrologers' round, while Reinforcing units you may reduce one ${effect.tiers.join(" or ")} unit's reinforce cost by ${effect.discount} gold (minimum 0). Usable at any point of your turn that round; Reinforcing needs a Citadel.`;
     case "RESOURCE_ROUND_SEARCH_DISCARD":
       return `At the beginning of each Resource round, you may Search (${effect.count}) your own discard pile and take 1 card to your hand.`;
     case "ASTROLOGERS_TAKE_STATISTIC":
@@ -97,9 +97,12 @@ export function buildingTimingLabel(building: TownBuildingDefinition): string | 
     case "RESOURCE_ROUND_SEARCH_DISCARD":
       return "start of Resource rounds";
     case "ASTROLOGERS_HALF_GOLD_REINFORCE":
-    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
     case "ASTROLOGERS_TAKE_STATISTIC":
       return "start of Astrologers' rounds";
+    case "ASTROLOGERS_FLAT_GOLD_REINFORCE":
+      // Not a round-start prompt: a whole-round entitlement spent whenever the
+      // owner reinforces during their turn.
+      return "any time during Astrologers' rounds";
     case "TURN_START_NECROMANCY":
     case "TURN_START_PORTAL_SUMMON":
     case "TURN_START_MANA_VORTEX":

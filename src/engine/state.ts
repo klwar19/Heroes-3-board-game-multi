@@ -8330,7 +8330,7 @@ export type RecruitDiscountVoucher = {
  */
 export type ReinforcementDiscountBank = {
   id: string;
-  source: "necromancy" | "hill-fort";
+  source: "necromancy" | "hill-fort" | "pub";
   /** Human-readable source card/object name used in action labels and logs. */
   sourceName: string;
   /** Unit tiers this source may reinforce. */
@@ -8342,6 +8342,20 @@ export type ReinforcementDiscountBank = {
   roundDown?: boolean;
   /** Hill Fort: subtract this from printed gold before Legion discounts. */
   flatGoldDiscount?: number;
+  /**
+   * Cove Pub: the printed discount only helps "while Reinforcing units", which
+   * the Citadel unlocks — with no Citadel the reinforce arm is not offered at
+   * all (the Pub can never force an upgrade). Checked at PRICE time, so a
+   * Citadel built later in the same round switches the offer on.
+   */
+  requiresReinforceUnlock?: boolean;
+  /**
+   * Cove Pub: a ROUND-scoped entitlement ("During each Astrologers' round…").
+   * The game round this bank stays usable through — it survives hero movement
+   * and turn starts (unlike the Legion/Necromancy/Hill-Fort banks, whose expiry
+   * seam is a hero step) and is swept at the start of the NEXT round.
+   */
+  expiresAfterRound?: number;
 };
 
 /** The six gradeable stats of a WOG commander (see src/data/commanders.ts). */

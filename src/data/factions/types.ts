@@ -149,10 +149,12 @@ export type TownBuildingEffect =
     }
   | {
       /**
-       * Cove Pub: at the beginning of each Astrologers' round, reinforce one
-       * unit of the listed tiers for `discount` less gold (min 0; other
-       * resources unchanged). The board game's "once per turn" — offered once
-       * per Astrologers' round, like the Saplings half-gold reinforce.
+       * Cove Pub, printed: "During each Astrologers' round, while Reinforcing
+       * units you may reduce one unit's reinforce cost by `discount` gold (to a
+       * minimum of 0)." NOT a round-start prompt (USER RULING 2026-08-22): the
+       * Astrologers' round start BANKS a round-long ReinforcementDiscountBank
+       * the owner may redeem at any point of their own turn, and the reinforce
+       * arm needs the Citadel (no Citadel ⇒ no offer, never a forced upgrade).
        */
       type: "ASTROLOGERS_FLAT_GOLD_REINFORCE";
       discount: number;

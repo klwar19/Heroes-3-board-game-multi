@@ -343,19 +343,45 @@ describe("Cove Pub: flat −3 gold Stack purchases", () => {
     return state;
   }
 
+  // 2026-08-22: the Pub no longer queues a round-start CHOOSE_ONE — it banks a
+  // round-long ReinforcementDiscountBank the owner redeems whenever they like on
+  // their own turn (see the Cove Pub section of CLAUDE.md). The Stack arm rides
+  // along on the same bank, so it is now a REDEEM_REINFORCEMENT_DISCOUNT offer.
+  function pubStackAction(state: GameState) {
+    return getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "REDEEM_REINFORCEMENT_DISCOUNT" &&
+        legal.action.kind === "stack" &&
+        legal.label.startsWith("Pub:")
+    );
+  }
+
+  /** Clears the mandatory start-of-turn hand step so ordinary turn actions open. */
+  function takeHandStep(input: GameState): GameState {
+    let current = input;
+    for (let guard = 0; guard < 4; guard += 1) {
+      const refresh = getLegalActions(current, "p1").find((legal) => legal.action.type === "REFRESH_HAND");
+      if (!refresh) break;
+      current = applyOk(current, refresh.action);
+    }
+    return current;
+  }
+
   it("offers the Stack at 3 less gold and charges the discounted price", () => {
-    let state = pubRound("pub-stack", true);
-    const stackPick = visitAction(state, "Add a Stack to Sea Dogs (4 gold)");
+    let state = takeHandStep(pubRound("pub-stack", true));
+    const stackPick = pubStackAction(state);
     expect(stackPick, "the Pub deal covers the Sea Dogs Stack at 7−3").toBeTruthy();
+    expect(stackPick!.label, "priced 7 − 3").toContain("4 gold");
     const goldBefore = state.players.p1.resources.gold;
     state = applyOk(state, stackPick!.action);
     expect(state.players.p1.army[0].stacks).toBe(1);
     expect(state.players.p1.resources.gold).toBe(goldBefore - 4);
   });
 
-  it("CONTROL: with the rule OFF the Pub offer contains no Stack options", () => {
-    const state = pubRound("pub-stack-off", false);
+  it("CONTROL: with the rule OFF the Pub offers no Stack purchase", () => {
+    const state = takeHandStep(pubRound("pub-stack-off", false));
     expect(visitAction(state, "Add a Stack to")).toBeUndefined();
+    expect(pubStackAction(state)).toBeUndefined();
   });
 });
 
