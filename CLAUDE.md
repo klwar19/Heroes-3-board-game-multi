@@ -1264,6 +1264,31 @@ SCOPE: effect damage (splash, detonate, Dreadnought allocation) declares no atta
 opens no window; scoped to `abilityAttack`, deliberately excluding the Marksmen/Elves
 `DOUBLE_ATTACK` and the Sandworm cube re-attack; a NEUTRAL attacker gains nothing.
 
+## Paralysis on an ALREADY-OPEN activation skips it (2026-08-22)
+
+USER REPORT: "polish balance rule: When cast Blind with 'Intelligence' on a unit — it
+should not activate — just remove paralysis token and skip activation." ROOT CAUSE was
+GENERIC, not Balance-Pack specific: the printed skip ("if a unit would activate with a
+Paralysis Token on it, skip its activation and remove the Token") had exactly ONE
+consumer, `setActiveUnit`, so the token was checked only at the instant the activation
+slot was handed out. The Balance Pack's Intelligence free cast fires in the
+START-OF-COMBAT window (`combatStartWindowOpen`), which is still open AFTER
+`ensureCombatActivation` has opened the first slot — so Blind cast through it landed on
+the unit already holding an untouched activation, which then moved and attacked with the
+token on it (the token was only eaten by its NEXT activation). FIX: one seam
+`enforceParalysisOnOpenActivation` (reducer.ts), called at the shared `applyAction` tail
+right after `syncAbilitySuppression` and BEFORE `runAdventureAutomations` (so the
+adventure pump cannot run a neutral guard's turn with the token on it); it removes the
+token and reuses `skipUnitActivation` (the Sorrow arm). Pinned in
+`src/engine/intelligence-blind-active-unit.test.ts`.
+LIMITS / deliberate scope: NOT gated on a house rule — with `polish-card-balance` OFF the
+classic combat-long Intelligence freedom reached the same hole and is likewise fixed
+(pinned), so OFF is NOT byte-identical in this one respect. Only an activation that has
+NOT STARTED is skipped (nothing moved/struck, no open window, choice or parked stack), so
+a Medusa-style retaliation paralysis on a unit mid-activation still waits for the next
+activation. MGQ Temptation markers use the same shape and were deliberately NOT widened.
+No new action type and no serialized-state field.
+
 ## An "[unit_attack]" reroll ability fires ONCE PER ATTACK (2026-08-10)
 
 USER RULING: "Minotaurs neutral can reroll -1 more than once, WHICH IS WRONG. ATTACK

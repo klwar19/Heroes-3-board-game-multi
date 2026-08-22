@@ -797,11 +797,17 @@ describe("Community artifacts — card and deck sides", () => {
   });
 
   it("Pendant of Second Sight: ONE play removes a Paralysis token AND wards the unit", () => {
+    // The paralysed unit is deliberately NOT the one holding the open activation
+    // slot (`combat()` gives that to unit_p1_griffins): a Paralysis token sitting
+    // on an untouched OPEN activation is consumed by the printed skip rule at the
+    // action tail (enforceParalysisOnOpenActivation, reducer.ts), which would eat
+    // the token this test is about before either printing could be compared.
+    const PARALYSED = "unit_p1_crusaders" as const;
     const build = (community: boolean) => {
       const state = combat(community, `pendant-${community}`);
       state.players.p1.hand = ["artifact.pendant_of_second_sight" as CardId];
-      state.combat!.units.unit_p1_griffins.tokens = [
-        ...(state.combat!.units.unit_p1_griffins.tokens ?? []),
+      state.combat!.units[PARALYSED].tokens = [
+        ...(state.combat!.units[PARALYSED].tokens ?? []),
         { id: "tok-paralysis", kind: "paralysis", amount: 0, sourceName: "test" }
       ];
       return state;
@@ -809,12 +815,12 @@ describe("Community artifacts — card and deck sides", () => {
     const on = build(true);
     const offer = plays(on, "artifact.pendant_of_second_sight").find(
       (action) =>
-        action.optionIndex === 0 && action.target?.type === "unit" && action.target.unitId === "unit_p1_griffins"
+        action.optionIndex === 0 && action.target?.type === "unit" && action.target.unitId === PARALYSED
     );
     expect(offer, "option A is offered on your paralysed unit").toBeTruthy();
     const played = applyOk(on, offer!);
     expect(
-      (played.combat!.units.unit_p1_griffins.tokens ?? []).some((token) => token.kind === "paralysis"),
+      (played.combat!.units[PARALYSED].tokens ?? []).some((token) => token.kind === "paralysis"),
       "the token really came off"
     ).toBe(false);
     expect(
@@ -830,11 +836,11 @@ describe("Community artifacts — card and deck sides", () => {
     const off = build(false);
     const offOffer = plays(off, "artifact.pendant_of_second_sight").find(
       (action) =>
-        action.optionIndex === 0 && action.target?.type === "unit" && action.target.unitId === "unit_p1_griffins"
+        action.optionIndex === 0 && action.target?.type === "unit" && action.target.unitId === PARALYSED
     );
     const offPlayed = applyOk(off, offOffer!);
     expect(
-      (offPlayed.combat!.units.unit_p1_griffins.tokens ?? []).some((token) => token.kind === "paralysis")
+      (offPlayed.combat!.units[PARALYSED].tokens ?? []).some((token) => token.kind === "paralysis")
     ).toBe(true);
   });
 

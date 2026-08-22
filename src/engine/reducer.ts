@@ -10517,6 +10517,66 @@ function skipUnitActivation(state: GameState, unit: CombatUnitState): void {
 }
 
 /**
+ * Paralysis that lands on the unit whose activation slot is ALREADY OPEN.
+ *
+ * The printed rule is "if a unit would activate with a Paralysis Token on it,
+ * skip its activation and remove the Token instead", and its only consumer used
+ * to be `setActiveUnit` — i.e. the token was checked exactly once, at the
+ * instant the slot was handed out. A token arriving one step LATER, while the
+ * same unit still holds an untouched activation, was therefore ignored for that
+ * whole activation: the unit moved and attacked with the Paralysis token sitting
+ * on it, and the token was only eaten by its NEXT activation.
+ *
+ * The everyday way to hit that hole is the Balance Pack's start-of-combat
+ * Intelligence free cast (`combatStartWindowOpen` stays open after the first
+ * activation slot has been opened, so Blind cast through it landed on the unit
+ * about to act), but the hole is GENERIC — classic Intelligence's combat-long
+ * timing freedom, any other off-turn cast and any ability that paralyses the
+ * current active unit reached it too — so the fix is generic and NOT gated on a
+ * house rule.
+ *
+ * Scoped to an activation that has not STARTED (nothing moved, nothing struck,
+ * no parked stack item / open window / open choice): a unit that already began
+ * acting has activated, so its token correctly waits for the next activation
+ * (Medusa's retaliation paralysis keeps behaving exactly as before).
+ */
+function enforceParalysisOnOpenActivation(state: GameState): void {
+  const combat = state.combat;
+  if (
+    !combat ||
+    combat.outcome ||
+    combat.setup ||
+    combat.awaitingContinue ||
+    combat.warMachineRound ||
+    (combat.pendingCommanderPlacement && combat.pendingCommanderPlacement.length > 0) ||
+    state.pendingChoice ||
+    state.reactionWindow ||
+    state.stack.length > 0
+  ) {
+    return;
+  }
+  const active = combat.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  if (
+    !active ||
+    !isUnitAlive(active) ||
+    !hasToken(active, "paralysis") ||
+    active.activatedThisRound ||
+    active.movedThisActivation ||
+    active.attackedThisActivation ||
+    (active.attacksThisActivation ?? 0) > 0
+  ) {
+    return;
+  }
+  removeToken(state, active, "paralysis", "activation-skipped");
+  // A pre-activation pause parked on this very unit would otherwise point at a
+  // unit that is already done — clear it with the activation it belonged to.
+  if (combat.pendingNeutralStep?.unitId === active.id) {
+    combat.pendingNeutralStep = null;
+  }
+  skipUnitActivation(state, active);
+}
+
+/**
  * Resolves the current combat pause so the fight resumes. Only the player who
  * holds the pause (the reacting side) clicks it on; the pump in
  * runAdventureAutomations picks the activation back up afterwards:
@@ -26134,6 +26194,12 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
   // just added (a cast) or removed (Dispel, combat/round end) — before any
   // automation or future action reads the unit's abilities.
   syncAbilitySuppression(nextState);
+
+  // Paralysis laid on the unit whose activation slot is already open (the
+  // Balance Pack's start-of-combat Intelligence cast of Blind is the everyday
+  // case) skips that activation now — BEFORE the adventure pump can run a
+  // neutral guard's turn with the token still on it.
+  enforceParalysisOnOpenActivation(nextState);
 
   // Polish Set Artifacts: re-derive every player's active-tier count and announce
   // the ones that MOVED — a set's tiers change whenever a member card enters or
