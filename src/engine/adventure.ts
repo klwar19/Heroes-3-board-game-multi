@@ -1861,10 +1861,47 @@ export function canCrossEdge(
   // reading as discovery): a hero may walk ONTO it from an adjacent Tile and walk
   // OFF it afterward. A guarded one still forces a stop via classifyHeroStep, so
   // it is never a free pass-through bridge across a Tile edge mid-path.
-  const fromSealed =
-    !isBlockedFieldCarve(fromField) && isOuterEdgeSealed(adventure, fromField);
-  const toSealed = !isBlockedFieldCarve(toField) && isOuterEdgeSealed(adventure, toField);
+  const fromSealed = outerEdgeSealsCrossing(adventure, fromField, movement);
+  const toSealed = outerEdgeSealsCrossing(adventure, toField, movement);
   return !fromSealed && !toSealed;
+}
+
+/**
+ * Whether a field's OUTER ARC seals a crossing over its own tile edge.
+ *
+ * Two exemptions, both saying the same thing: an arc that is only the printed
+ * rendering of impassable TERRAIN is not an independent yellow border, so
+ * whatever rule lets a hero stand on / fly over that hex also lets it leave.
+ *  - a Blocked-Field CARVE (Creature Bank / Calamity Gate / Dungeon Gate) wears
+ *    no border at all ({@link fieldNeverWearsBorders}) — the long-standing rule;
+ *  - a printed BLOCKED FIELD itself. Every one of the 100 blocked ring slots in
+ *    the shipped tile catalog also carries its slot's `outerImpassable` arc (and
+ *    on most Far tiles it is the tile's ONLY sealed arc) — the yellow line IS the
+ *    rocks. Without this exemption Fly / Angel Wings / expert Pathfinding could
+ *    step ONTO an edge Blocked Field (the `category === "blocked"` branch above
+ *    returns `movement.moveThrough` before any seal is consulted) but never OFF
+ *    it toward the neighbouring Tile, so the printed "move through blocked
+ *    fields" was dead at every tile edge — the hero could not even enter the hex,
+ *    because a pass-only hex with no continuation is not offered at all (the
+ *    reported "fly: cannot enter the block field, then open a tile and move on
+ *    it"). A DESIGNER-drawn arc (`extraBorders`) on that same slot is a
+ *    deliberate wall and still seals — Fly never crosses designer yellow borders,
+ *    and a hero WITHOUT move-through keeps the printed arc too (it can never
+ *    stand on the hex anyway, so the primitive stays honest for the carve tests).
+ */
+function outerEdgeSealsCrossing(
+  adventure: AdventureState,
+  field: MapFieldState,
+  movement: HeroMovementCapabilities
+): boolean {
+  if (isBlockedFieldCarve(field)) {
+    return false;
+  }
+  if (movement.moveThrough && locationDefinitions[field.location]?.category === "blocked") {
+    const tile = adventure.tiles[field.tileInstanceId];
+    return tile ? isTileSlotDesignedSealed(tile, field.slot) : false;
+  }
+  return isOuterEdgeSealed(adventure, field);
 }
 
 /**

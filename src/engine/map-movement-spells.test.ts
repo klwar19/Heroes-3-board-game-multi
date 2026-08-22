@@ -329,6 +329,188 @@ describe("Fly spell", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fly over a Blocked Field sitting on a TILE EDGE (reported bug)
+//
+// "fly spell: Cannot enter the block field (i got 3 MP) then open a tile and
+// move on it." Every one of the 100 blocked ring slots in the shipped tile
+// catalog ALSO carries that slot's printed `outerImpassable` arc — on most Far
+// tiles it is the tile's ONLY sealed arc. `canCrossEdge` let a flyer step ONTO
+// such a hex (the blocked branch returns `movement.moveThrough` before any seal
+// is read) but the cross-tile seal test then refused every step OFF it, so the
+// hex was a dead end: a pass-only hex with no continuation is never offered as a
+// destination at all, which is exactly "cannot enter the block field".
+//
+// Fixture: Far tile F1 (blocked slot 5, and slot 5 is its ONLY sealed arc) with
+// an all-edges-open F23 as its lattice neighbour. h:40:18 on the far tile touches
+// the blocked hex and NOTHING else of the near tile, so it is reachable only by
+// flying over the blocker.
+// ---------------------------------------------------------------------------
+
+function setupEdgeBlockedFly(state: GameState): {
+  heroField: string;
+  blockedHex: string;
+  farTileId: string;
+  farOnlyBeyondBlocker: string;
+  nearTileId: string;
+} {
+  const adventure = state.adventure;
+  if (!adventure) {
+    throw new Error("no adventure");
+  }
+  const nearCenter = { row: 40, col: 20 };
+  const nearTile = instantiateTile(adventure, "F1", nearCenter, 0, false);
+  const nearIds = getTileFootprintSpaceIds(nearTile);
+  const blockedHex = nearIds[5];
+  expect(adventure.fields[blockedHex]?.location).toBe("blocked_field");
+  const farTile = instantiateTile(adventure, "F23", tileLatticeNeighbors(nearCenter)[3], 0, false);
+  const farIds = getTileFootprintSpaceIds(farTile);
+  const farOnlyBeyondBlocker = farIds.find((id) => {
+    const nearNeighbours = getAdjacentSpaceIds(id).filter((neighbour) => nearIds.includes(neighbour));
+    return nearNeighbours.length === 1 && nearNeighbours[0] === blockedHex;
+  });
+  // The hero stands on a near-tile ring hex touching the blocker (slot 6).
+  const heroField = nearIds[6];
+  if (!farOnlyBeyondBlocker) {
+    throw new Error("could not build an edge-blocked fixture");
+  }
+  setField(state, heroField, "empty_field");
+  setField(state, farOnlyBeyondBlocker, "empty_field");
+  const hero = heroP1(state);
+  hero.spaceId = heroField;
+  hero.movementPoints = 3;
+  return { heroField, blockedHex, farTileId: farTile.id, farOnlyBeyondBlocker, nearTileId: nearTile.id };
+}
+
+describe("Fly over a Blocked Field on a tile edge", () => {
+  it("flies over the edge blocker onto the neighbouring tile — CONTROL: refused without Fly", () => {
+    let state = withHand(makeGame(), ["spell.fly"]);
+    const { blockedHex, farOnlyBeyondBlocker } = setupEdgeBlockedFly(state);
+
+    // CONTROL (no Fly): the blocker stops the walk, and the hex beyond is
+    // unreachable at any movement budget.
+    expect(getReachableHeroPaths(state, heroP1(state)).has(farOnlyBeyondBlocker)).toBe(false);
+    expectError(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: [blockedHex, farOnlyBeyondBlocker]
+    });
+
+    state = castMapPowerSpell(state, "spell.fly");
+    expect(hasModifier(state, "p1", "HERO_MOVE_THROUGH")).toBe(true);
+
+    // The blocker is now a real doorway: the hex beyond is offered as a
+    // destination (it was not before), and the walk actually crosses.
+    const flying = getReachableHeroPaths(state, heroP1(state));
+    expect(flying.has(farOnlyBeyondBlocker)).toBe(true);
+    expect(flying.has(blockedHex)).toBe(false); // pass over, never land
+
+    state = applyOk(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: [blockedHex, farOnlyBeyondBlocker]
+    });
+    expect(heroP1(state).spaceId).toBe(farOnlyBeyondBlocker);
+    expect(heroP1(state).movementPoints).toBe(1); // 3 − 2 hexes (the blocker costs its MP)
+  });
+
+  it("the reported flow: cast Fly, OPEN a face-down tile (1 MP), then fly onto it — exactly 3 MP", () => {
+    let state = withHand(makeGame(), ["spell.fly"]);
+    const adventure = state.adventure!;
+    const nearCenter = { row: 40, col: 20 };
+    const nearTile = instantiateTile(adventure, "F1", nearCenter, 0, false);
+    const nearIds = getTileFootprintSpaceIds(nearTile);
+    const blockedHex = nearIds[5];
+    const heroField = nearIds[6];
+    setField(state, heroField, "empty_field");
+    const hero = heroP1(state);
+    hero.spaceId = heroField;
+    hero.movementPoints = 3;
+
+    // A FACE-DOWN neighbour tile: no fields exist until it is opened.
+    const farTile = instantiateTile(adventure, "F23", tileLatticeNeighbors(nearCenter)[3], 0, true);
+    const farIds = getTileFootprintSpaceIds(farTile);
+    const beyond = farIds.find((id) => {
+      const nearNeighbours = getAdjacentSpaceIds(id).filter((neighbour) => nearIds.includes(neighbour));
+      return nearNeighbours.length === 1 && nearNeighbours[0] === blockedHex;
+    })!;
+    expect(state.adventure!.fields[beyond]).toBeUndefined();
+
+    state = castMapPowerSpell(state, "spell.fly");
+
+    // Open the tile (1 MP) and lock rotation 0.
+    state = applyOk(state, {
+      type: "DISCOVER_TILE",
+      playerId: "p1",
+      heroId: "hero_p1",
+      tileInstanceId: farTile.id
+    });
+    const rotation = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "SET_TILE_ROTATION" && legal.action.rotation === 0
+    );
+    expect(rotation, "rotation 0 should be offered for the opened tile").toBeTruthy();
+    state = applyOk(state, rotation!.action);
+    expect(heroP1(state).movementPoints).toBe(2);
+    setField(state, beyond, "empty_field");
+
+    // …then move onto the freshly opened tile across the blocker: 2 MP left,
+    // 2 hexes. This is the whole reported sequence on a 3-MP hero.
+    state = applyOk(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: [blockedHex, beyond]
+    });
+    expect(heroP1(state).spaceId).toBe(beyond);
+    expect(heroP1(state).movementPoints).toBe(0);
+  });
+
+  it("CONTROL: a DESIGNER yellow arc on that same blocked slot still seals under Fly", () => {
+    let state = withHand(makeGame(), ["spell.fly"]);
+    const { blockedHex, farOnlyBeyondBlocker, nearTileId } = setupEdgeBlockedFly(state);
+    // Slot 5 at rotation 0 faces absolute direction 4.
+    state.adventure!.tiles[nearTileId]!.extraBorders = [4];
+
+    state = castMapPowerSpell(state, "spell.fly");
+    expect(hasModifier(state, "p1", "HERO_MOVE_THROUGH")).toBe(true);
+    // Only the PRINTED arc is the rocks; a designer-drawn line is a real wall.
+    expect(canCrossEdge(state, blockedHex, farOnlyBeyondBlocker, { moveThrough: true, waterWalk: false })).toBe(false);
+    expect(getReachableHeroPaths(state, heroP1(state)).has(farOnlyBeyondBlocker)).toBe(false);
+    expectError(state, {
+      type: "MOVE_HERO_PATH",
+      playerId: "p1",
+      heroId: "hero_p1",
+      path: [blockedHex, farOnlyBeyondBlocker]
+    });
+  });
+
+  it("CONTROL: a printed yellow arc on a NON-blocked slot still seals under Fly", () => {
+    const state = makeGame();
+    const adventure = state.adventure!;
+    // S1 slot 3 is an ordinary empty field whose outer arc IS printed sealed.
+    const center = { row: 40, col: 20 };
+    const tile = instantiateTile(adventure, "S1", center, 0, false);
+    const ids = getTileFootprintSpaceIds(tile);
+    const sealedHex = ids[3];
+    expect(adventure.fields[sealedHex]?.location).not.toBe("blocked_field");
+    const neighbourTile = instantiateTile(adventure, "F23", tileLatticeNeighbors(center)[0], 0, false);
+    const acrossTheSeal = getTileFootprintSpaceIds(neighbourTile).filter((id) =>
+      getAdjacentSpaceIds(sealedHex).includes(id)
+    );
+    // At least one neighbour tile hex touches the sealed slot, and Fly does not
+    // open that yellow border (only Pathfinding's crossSealedBorders does).
+    for (const target of acrossTheSeal) {
+      expect(canCrossEdge(state, sealedHex, target, { moveThrough: true, waterWalk: false })).toBe(false);
+      expect(canCrossEdge(state, sealedHex, target, { moveThrough: true, waterWalk: false, crossSealedBorders: true })).toBe(
+        true
+      );
+    }
+    expect(acrossTheSeal.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Angel Wings artifact: the shipped relic whose move-through was decorative
 // until the pathfinding read HERO_MOVE_THROUGH. This pins that it now works.
 // ---------------------------------------------------------------------------
