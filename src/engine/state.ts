@@ -1234,7 +1234,10 @@ export type ActiveEffectModifier =
        * innate special ability "related to spells" is switched off — magic
        * resistance (the Dwarves' die roll), spell-damage reduction (Golems,
        * Black Dragons, the Unicorns' aura), printed spell-school immunity
-       * (Elementals, Efreet, Phoenix…) and the Pegasi's enemy-spell Power drain.
+       * (Elementals, Efreet, Phoenix…), the Pegasi's enemy-spell Power drain,
+       * and — USER RULING 2026-08-22 — a unit's own SPELL-CASTING ability: the
+       * Faerie Dragons' Faerie Bolt (`ON_ACTIVATION_DAMAGE_SPELL`) does not fire
+       * while the Orb is up.
        * Combat-scoped and side-agnostic, so a single grant covers both armies.
        * (Anti-Magic is a Spell-granted effect, not a unit ability, so it stays.)
        */

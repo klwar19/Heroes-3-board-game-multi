@@ -976,10 +976,31 @@ export function getEnchanterActivationAbility(unit: CombatUnitState): {
   return null;
 }
 
-/** Faerie Dragons: the activation flat-damage spell ("Ice Bolt"). */
+/**
+ * Faerie Dragons: the activation flat-damage spell ("Ice Bolt").
+ *
+ * ORB OF VULNERABILITY (USER RULING 2026-08-22, the classic HoMM3 reading): the
+ * printed card is "During this Combat, negate ALL units' special abilities
+ * related to spells" — a GLOBAL effect covering both armies. The Faerie Bolt's
+ * own printed text calls itself "a spell that does not count towards your spell
+ * limit", so it IS a spell-related unit ability and the Orb switches it OFF
+ * entirely: with the Orb in play this returns null, no bolt is offered and none
+ * fires (for a player-controlled AND a neutral dragon alike). That composes with
+ * — it does not replace — the Orb's other direction (it lifts a TARGET's printed
+ * all-spell immunity so a bolt that still exists lands); with the Orb down there
+ * is simply no bolt left to lift an immunity for.
+ *
+ * `spellAbilitiesSuppressed` is a REQUIRED parameter (the `bankAwareTierGateRank`
+ * pattern) so a new call site fails to compile rather than silently defaulting
+ * the suppression off. Callers pass `spellAbilitiesSuppressed(state)`.
+ */
 export function getActivationDamageSpellAbility(
-  unit: CombatUnitState
+  unit: CombatUnitState,
+  spellAbilitiesSuppressed: boolean
 ): { abilityId: string; abilityName: string; amount: number } | null {
+  if (spellAbilitiesSuppressed) {
+    return null;
+  }
   for (const ability of getUnitAbilityDefinitions(unit)) {
     if (ability.implementationStatus === "implemented" && ability.effect?.type === "ON_ACTIVATION_DAMAGE_SPELL") {
       return { abilityId: ability.id, abilityName: ability.name, amount: ability.effect.amount };

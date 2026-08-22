@@ -2587,7 +2587,11 @@ export const artifactCards: CardLibrary = {
   // Combat, switches off every unit's innate spell-related ability — both armies
   // (engine: SUPPRESS_SPELL_ABILITIES negates Dwarf Magic Resistance, all
   // "reduce Spell damage" passives and the Unicorns' aura, printed spell-school
-  // immunity, and the Pegasi enemy-spell Power drain). The card is discarded
+  // immunity, the Pegasi enemy-spell Power drain, and — USER RULING 2026-08-22,
+  // the classic HoMM3 reading — the Faerie Dragons' own casting: their Faerie
+  // Bolt ("a spell that does not count towards your spell limit", an
+  // ON_ACTIVATION_DAMAGE_SPELL) does not fire at all while the Orb is up, on
+  // EITHER army, since the printed scope is "all units"). The card is discarded
   // normally after use — the printed board-game card has no remove-from-game
   // clause. Anti-Magic is a Spell-granted effect rather than a unit ability, so
   // it is intentionally NOT negated.

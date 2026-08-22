@@ -10771,8 +10771,12 @@ function applyActivationDamageSpell(
   // immune to"). It has no school, so it is treated as the school-less "any"
   // (Magic Arrow's school): only a unit immune to ALL Spells (Azure/Black
   // Dragons Pack "immune-all-spells", or an artifact-granted all-school
-  // immunity) turns it aside — a single-school immunity does not. Orb of
-  // Vulnerability still lifts printed immunity (spellAbilitiesSuppressed).
+  // immunity) turns it aside — a single-school immunity does not. The
+  // `!spellAbilitiesSuppressed` clause below is the immunity-LIFTING direction of
+  // Orb of Vulnerability; since 2026-08-22 the Orb ALSO switches the bolt itself
+  // off upstream (getActivationDamageSpellAbility returns null), so on the Faerie
+  // path that clause is unreachable-by-construction and is kept only as a
+  // defensive read for a future direct caller.
   // The golems' / Unicorns' / Black-Dragons-Few "reduce any damage from spells"
   // passives soften a bolt that does land (reducedSpellDamage, below).
   // A Factory Couatl with its invulnerability up "ignores all damage" — that
@@ -11148,7 +11152,9 @@ function applyNeutralActivationAbility(state: GameState, unit: CombatUnitState):
     return true;
   }
 
-  const faerie = getActivationDamageSpellAbility(unit);
+  // Orb of Vulnerability negates it for a NEUTRAL dragon too — the card is
+  // global ("all units"), not side-scoped.
+  const faerie = getActivationDamageSpellAbility(unit, spellAbilitiesSuppressed(state));
   if (faerie) {
     const target = pickNeutralTarget(combat, unit);
     if (target) {
@@ -11305,7 +11311,9 @@ function maybeOpenPlayerActivationChoice(state: GameState): void {
     return;
   }
 
-  const faerie = getActivationDamageSpellAbility(unit);
+  // With the Orb of Vulnerability in play this is null, so NO target choice is
+  // opened at all and the dragon simply moves/attacks like an ability-less unit.
+  const faerie = getActivationDamageSpellAbility(unit, spellAbilitiesSuppressed(state));
   if (faerie) {
     // Any living enemy is a legal target — spell-school immunity is deliberately
     // NOT filtered here (see applyActivationDamageSpell: the bolt is spell
@@ -23147,7 +23155,10 @@ function chooseAbilityTarget(
   // Faerie Dragons' "[activation]": deal the flat Ice Bolt damage to the chosen
   // unit, then the unit acts normally (or the combat ends on a lethal hit).
   if (choice.kind === "faerie-damage") {
-    const ability = getActivationDamageSpellAbility(source);
+    // Backstop: an Orb played between the choice opening and its answer (e.g. in
+    // an intervening reaction window) still switches the bolt off — the
+    // activation is simply spent with no damage.
+    const ability = getActivationDamageSpellAbility(source, spellAbilitiesSuppressed(state));
     const target = combat.units[action.targetUnitId];
     if (ability && target && isUnitAlive(target)) {
       applyActivationDamageSpell(state, source, target, ability);

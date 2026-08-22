@@ -8,7 +8,39 @@ import {
 } from "./index";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
-import type { CardId, CombatUnitState, GameAction, GameEvent, GameState, PlayerId } from "./state";
+import { makeActiveEffect } from "./active-effects";
+import type {
+  ActiveEffectDefinition,
+  CardId,
+  CombatUnitState,
+  GameAction,
+  GameEvent,
+  GameState,
+  PlayerId
+} from "./state";
+
+/**
+ * Orb of Vulnerability, option A: "During this Combat, negate all units'
+ * special abilities related to spells." Global scope, both armies.
+ */
+const ORB_OF_VULNERABILITY: CardId = "artifact.orb_of_vulnerability";
+const ORB_SUPPRESSION_EFFECT: ActiveEffectDefinition = {
+  name: "Orb of Vulnerability",
+  scope: "global",
+  duration: { type: "combat" },
+  modifiers: [{ type: "SUPPRESS_SPELL_ABILITIES" }]
+};
+
+function addOrbSuppression(state: GameState, controllerId: PlayerId = "p1"): void {
+  state.activeEffects.push(
+    makeActiveEffect(
+      state,
+      ORB_SUPPRESSION_EFFECT,
+      { type: "card", cardId: ORB_OF_VULNERABILITY, controllerId },
+      controllerId
+    )
+  );
+}
 
 function applyOk(state: GameState, action: GameAction): GameState {
   const result = applyAction(state, action);
@@ -623,6 +655,148 @@ describe("neutral Faerie Dragons zap a target then act", () => {
     // DamageSpell), so it too precedes the move.
     expect(log[boltIndex + 1]?.type).toBe("DAMAGE_ASSIGNED");
     expect(boltIndex + 1).toBeLessThan(moveIndex);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Orb of Vulnerability turns the Faerie Dragons' casting OFF (USER RULING
+// 2026-08-22). Printed card: "During this Combat, negate all units' special
+// abilities related to spells" — GLOBAL, both armies. The Faerie Bolt's own
+// printed text calls itself "a spell that does not count towards your spell
+// limit", so it is exactly such an ability.
+// ---------------------------------------------------------------------------
+
+describe("Orb of Vulnerability switches off the Faerie Dragons' spell ability", () => {
+  function faerieOrbSandbox(seed: string): GameState {
+    const state = createInitialGameState(seed);
+    const combat = state.combat!;
+    const faerie = combat.units.unit_p1_marksmen;
+    faerie.name = "Faerie Dragons";
+    faerie.cardName = "Faerie Dragons";
+    faerie.type = "flying";
+    faerie.abilities = ["faerie-dragon-spell"];
+    faerie.attack = 5;
+    combat.units.unit_p2_skeletons.maxHealth = 10;
+    combat.units.unit_p2_skeletons.damage = 0;
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    return state;
+  }
+
+  it("a PLAYER dragon opens no bolt choice and deals NO bolt damage while the Orb is in play", () => {
+    let state = faerieOrbSandbox("orb-faerie-player");
+    addOrbSuppression(state);
+    state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
+
+    // No "[activation]" target choice at all — the ability does not exist now.
+    expect(state.pendingChoice).toBeNull();
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(0);
+    // The observable outcome: the enemy took no damage.
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(0);
+    expect(
+      state.eventLog.some((event) => event.type === "DAMAGE_ASSIGNED" && event.damageKind === "spell")
+    ).toBe(false);
+    // No stall: the dragon is still up and can act normally.
+    expect(state.combat!.activeUnitId).toBe("unit_p1_marksmen");
+    const acts = getLegalActions(state, "p1");
+    expect(acts.some((legal) => legal.action.type === "ATTACK_UNIT" || legal.action.type === "MOVE_UNIT")).toBe(true);
+  });
+
+  it("CONTROL: with NO Orb the same dragon opens the choice and its bolt deals 2 damage", () => {
+    let state = faerieOrbSandbox("orb-faerie-player-control");
+    state = makeNextActive(state, "unit_p1_griffins", "unit_p1_marksmen");
+
+    const choice = state.pendingChoice;
+    expect(choice?.type).toBe("ABILITY_TARGET_CHOICE");
+    if (choice?.type !== "ABILITY_TARGET_CHOICE") {
+      throw new Error("expected the faerie target choice");
+    }
+    expect(choice.kind).toBe("faerie-damage");
+    state = applyOk(state, {
+      type: "CHOOSE_ABILITY_TARGET",
+      playerId: "p1",
+      choiceId: choice.id,
+      targetUnitId: "unit_p2_skeletons"
+    });
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(1);
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(2);
+  });
+
+  // The printed scope is "ALL units", not "enemy units": a NEUTRAL dragon is
+  // silenced by the player's own Orb too.
+  it("a NEUTRAL dragon fires no bolt while the Orb is in play (the card says 'all units')", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 0; // isolate the Ice Bolt from the melee attack
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const preyId = prey.id;
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    addOrbSuppression(state);
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(0);
+    expect(state.combat!.units[preyId].damage).toBe(0);
+  });
+
+  it("CONTROL: the SAME neutral setup without the Orb does bolt the prey for 2", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 0;
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const preyId = prey.id;
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(1);
+    expect(state.combat!.units[preyId].damage).toBe(2);
+  });
+
+  // RECONCILIATION with the 2026-08-20 behaviour ("the Orb lifts a target's
+  // printed all-spell immunity so the bolt lands"). Both directions coexist, and
+  // this is the case that DISCRIMINATES them: under the old rule the Orb made the
+  // bolt land on an immune unit for 2; under the ruling there is no bolt at all,
+  // so the immune unit takes nothing AND no immunity event fires either.
+  it("against an immune-to-all-Spells target the Orb no longer makes the bolt land — there is no bolt", () => {
+    let state = neutralFightWithGuard((guard) => {
+      guard.name = "Faerie Dragons";
+      guard.cardName = "Faerie Dragons";
+      guard.type = "flying";
+      guard.abilities = ["faerie-dragon-spell"];
+      guard.attack = 0;
+      guard.initiative = 1;
+      guard.position = 1;
+    });
+    const prey = Object.values(state.combat!.units).find((unit) => unit.controllerId === "p1")!;
+    const preyId = prey.id;
+    prey.abilities = ["immune-all-spells"];
+    prey.maxHealth = 20;
+    prey.damage = 0;
+    addOrbSuppression(state);
+    script(state, [0, 0, 0, 0, 0, 0]);
+
+    state = defendThrough(state);
+
+    expect(abilityEvents(state, "faerie-dragon-spell")).toHaveLength(0);
+    expect(abilityEvents(state, "immune-all-spells")).toHaveLength(0);
+    expect(state.combat!.units[preyId].damage).toBe(0);
   });
 });
 
