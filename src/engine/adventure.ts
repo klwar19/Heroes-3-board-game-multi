@@ -3275,13 +3275,38 @@ export function levelOfExperience(experience: number): number {
   return Math.min(7, 1 + Math.floor(experience / 2));
 }
 
+/** Optional shaping for a single {@link gainExperience} call. */
+export interface GainExperienceOptions {
+  /**
+   * Offer the Learning ability for THIS gain even when it crossed no level.
+   *
+   * USER RULE (2026-08-22): winning a combat that pays Experience must offer
+   * Learning as a pop-up, "after neutral or pvp battle too". A fight whose XP is
+   * only a half level (e.g. a level-3 hero clearing a Field Difficulty 3 guard
+   * for +1 Experience) crosses no level, so the printed "about to level up"
+   * timing never fired and the card looked unusable after a won battle.
+   *
+   * Set ONLY at the combat-victory XP seams (neutral guard win, PvP hero
+   * defeat). Every other Experience source keeps the printed level-crossing
+   * timing, so this never widens Learning into a free "play any time" card.
+   * The Experience cap still suppresses the offer (advancing does nothing
+   * there) exactly as before — see `openLearningLevelUpChoice`.
+   */
+  offerLearningWithoutLevelUp?: boolean;
+}
+
 /**
  * Adds experience steps to the main hero and resolves every level-up crossed:
  * hand limit and expert-effect slots update immediately, ability searches
  * queue a Search (2) of the Ability deck, specialty levels add the printed
  * specialty card to the hand.
  */
-export function gainExperience(state: GameState, playerId: PlayerId, amount: number): void {
+export function gainExperience(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  options?: GainExperienceOptions
+): void {
   const hero = getMainHero(state, playerId);
   const player = state.players[playerId];
   if (!hero || !player || amount <= 0) {
@@ -3404,9 +3429,17 @@ export function gainExperience(state: GameState, playerId: PlayerId, amount: num
   // (not "is about to level up") and its basic side also draws a card — so the
   // offer opens on ANY gain, and even at the Experience cap where the extra half
   // level cannot apply but the draw still can.
+  // USER RULE (2026-08-22): a WON combat that paid Experience also offers it,
+  // level crossed or not (`offerLearningWithoutLevelUp`) — see the option's doc.
+  // The Experience cap still gates it here (advancing further does nothing);
+  // openLearningLevelUpChoice re-checks the same cap, so a stale queued offer
+  // that reached the cap in the meantime simply skips.
   const balanceLearning = houseRuleEnabled(state, "polish-card-balance");
+  const combatWinOffer = Boolean(options?.offerLearningWithoutLevelUp) && hero.experience < MAX_EXPERIENCE;
   if (
-    (balanceLearning || (hero.level > previousLevel && hero.experience < MAX_EXPERIENCE)) &&
+    (balanceLearning ||
+      combatWinOffer ||
+      (hero.level > previousLevel && hero.experience < MAX_EXPERIENCE)) &&
     state.adventure &&
     player.hand.includes("ability.learning")
   ) {
