@@ -16715,6 +16715,38 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     return;
   }
 
+  if (choice.context === "recall-alongside-pick") {
+    // Community Mysticism (basic): the caster picks WHICH card played alongside
+    // the Spell comes back. The chosen card leaves the discard for the hand (or
+    // the Spell Book, if that is where it was played from); every other
+    // candidate simply stays in the discard pile.
+    const pick = choice.recallAlongsidePick;
+    const player = state.players[action.playerId];
+    const cardId = pick?.cardIds[action.optionIndex];
+    if (!pick || !player || !cardId) {
+      throw new Error("Pick one of the cards played alongside the Spell.");
+    }
+    const discardIndex = player.discard.lastIndexOf(cardId);
+    if (discardIndex !== -1) {
+      player.discard.splice(discardIndex, 1);
+      if (pick.bookCardIds?.includes(cardId)) {
+        player.spellBook.push(cardId);
+      } else {
+        player.hand.push(cardId);
+      }
+      appendEvent(state, {
+        type: "SPELL_RETURNED_TO_HAND",
+        playerId: action.playerId,
+        cardId,
+        reason: "Knowledge/Mysticism"
+      });
+    }
+    state.pendingChoice = null;
+    state.phase = choice.returnPhase;
+    state.priorityPlayerId = null;
+    return;
+  }
+
   if (choice.context === "artifact-deck-pick") {
     // Tazar's War Hero VI: draw the top of the chosen Artifact deck.
     const pick = choice.artifactDeckPick;

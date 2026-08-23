@@ -21,6 +21,7 @@ import {
   tacticsCombatOfferIsExpert
 } from "./index";
 import { getAttackRerollEffects } from "./active-effects";
+import { computerDecisionOwner } from "./computer/window";
 import {
   openSharedDeckSearch,
   playScoutingCard,
@@ -817,6 +818,119 @@ describe("Community pack — Mysticism basic recalls 1 alongside card", () => {
     }
     expect(recall(true)).toEqual({ spell: true, support: true });
     expect(recall(false)).toEqual({ spell: true, support: false });
+  });
+
+  /**
+   * Casts Magic Arrow, plays every id in `alongside` into the cast window as a
+   * "+Power" source, then plays basic Mysticism and passes the window out. The
+   * cast is played INSIDE its own reaction window (the only surface Mysticism
+   * has in combat), so this is also the "no freeze" path: the window must be
+   * gone and the stack empty when the pick opens.
+   */
+  function castWithAlongside(community: boolean, seed: string, alongside: CardId[]): GameState {
+    let state = sandbox(seed, { community }, [
+      "ability.mysticism",
+      "spell.magic_arrow",
+      ...alongside
+    ]);
+    const castAction = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+    );
+    expect(castAction, "no Magic Arrow cast offered").toBeTruthy();
+    state = applyOk(state, castAction!.action);
+    for (const cardId of alongside) {
+      const power = getLegalActions(state, "p1").find(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === cardId
+      );
+      expect(power, `no power boost offered for ${cardId}`).toBeTruthy();
+      state = applyOk(state, power!.action);
+    }
+    const mysticism = getLegalActions(state, "p1").find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "ability.mysticism" &&
+        (legal.action.mode ?? "basic") === "basic"
+    );
+    expect(mysticism, "no basic Mysticism recall offered").toBeTruthy();
+    state = applyOk(state, mysticism!.action);
+    let guard = 0;
+    while (state.stack.length > 0 && guard < 16) {
+      const passer = (["p1", "p2"] as PlayerId[])
+        .map((id) => getLegalActions(state, id).find((legal) => legal.action.type === "PASS_REACTION"))
+        .find(Boolean);
+      if (!passer) {
+        break;
+      }
+      state = applyOk(state, passer.action);
+      guard += 1;
+    }
+    return state;
+  }
+
+  it("the OWNER picks WHICH alongside card comes back (USER RULING 2026-08-23)", () => {
+    let state = castWithAlongside(true, "mysticism-pick", [
+      "ability.sorcery" as CardId,
+      "stat.power" as CardId
+    ]);
+    // The cast resolved, its window closed, and the ONLY thing owed is the pick.
+    expect(state.stack.length, "nothing may stay parked on the stack").toBe(0);
+    expect(state.reactionWindow, "the reaction window must be closed").toBeFalsy();
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context === "recall-alongside-pick").toBe(true);
+    expect(choice!.playerId).toBe("p1");
+    expect(choice!.type === "OPTION_CHOICE" ? choice!.options.map((option) => option.label) : []).toEqual([
+      "Take back Sorcery",
+      "Take back Power"
+    ]);
+    // The real discriminator: take the SECOND candidate. Under the superseded
+    // first-card auto-pick Sorcery came back and Power never could.
+    const answer = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "CHOOSE_OPTION" && legal.action.optionIndex === 1
+    );
+    expect(answer, "the pick must be a legal action for its owner").toBeTruthy();
+    state = applyOk(state, answer!.action);
+    expect(state.pendingChoice, "the pick is spent").toBeNull();
+    expect(state.players.p1.hand).toContain("spell.magic_arrow");
+    expect(state.players.p1.hand, "the CHOSEN card came back").toContain("stat.power");
+    expect(state.players.p1.hand, "the other candidate did NOT").not.toContain("ability.sorcery");
+    expect(state.players.p1.discard, "…it stays in the discard pile").toContain("ability.sorcery");
+    // No freeze: play continues normally in combat.
+    expect(state.phase).toBe("combat");
+    expect(getLegalActions(state, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("a computer / AFK seat owns the pick, so it can never stall a table", () => {
+    const state = castWithAlongside(true, "mysticism-owner", [
+      "ability.sorcery" as CardId,
+      "stat.power" as CardId
+    ]);
+    // computerDecisionOwner keys off the open pendingChoice's playerId, so no
+    // lockstep change was needed for the new context — pinned here anyway.
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" && choice.context === "recall-alongside-pick").toBe(true);
+    expect(computerDecisionOwner(state), "a human owner is nobody's to drive").toBeNull();
+    const driven: GameState = {
+      ...state,
+      controllers: { p1: { kind: "computer", difficulty: "standard", policyVersion: 1 } }
+    };
+    expect(computerDecisionOwner(driven), "a computer seat's pick IS driven").toBe("p1");
+  });
+
+  it("a SINGLE candidate returns automatically — no window (CONTROL: the printed basic returns nothing)", () => {
+    const on = castWithAlongside(true, "mysticism-single", ["ability.sorcery" as CardId]);
+    expect(on.pendingChoice, "one candidate needs no pick").toBeNull();
+    expect(on.players.p1.hand).toContain("ability.sorcery");
+
+    // CONTROL: the classic basic Mysticism takes back the Spell alone, and even
+    // with TWO candidates it never opens a pick.
+    const off = castWithAlongside(false, "mysticism-off", [
+      "ability.sorcery" as CardId,
+      "stat.power" as CardId
+    ]);
+    expect(off.pendingChoice, "the printed card opens no pick").toBeNull();
+    expect(off.players.p1.hand).toContain("spell.magic_arrow");
+    expect(off.players.p1.hand).not.toContain("ability.sorcery");
+    expect(off.players.p1.hand).not.toContain("stat.power");
   });
 });
 

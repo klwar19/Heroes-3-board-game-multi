@@ -12544,13 +12544,26 @@ function finalizeSpellCardDestination(
     stackItem.modifiers.playedCardIds,
     recall?.sourceCardId
   );
-  // Community Mysticism (basic) recalls only the FIRST N cards played alongside
-  // the Spell ("… as well as 1 card played alongside it"); the printed Expert
-  // recall has no limit and takes them all.
+  // Community Mysticism (basic) recalls only N of the cards played alongside the
+  // Spell ("… as well as 1 card played alongside it"); the printed Expert recall
+  // has no limit and takes them all.
   const expertSupportCards =
     recall?.recallPlayedCardLimit !== undefined
       ? allSupportCards.slice(0, recall.recallPlayedCardLimit)
       : allSupportCards;
+  // USER RULING 2026-08-23: WHICH card comes back is the PLAYER'S choice, not
+  // the first one played. With 2+ recoverable candidates the recall opens an
+  // OPTION_CHOICE (one option per candidate) owned by the caster and returns
+  // nothing here — the `recall-alongside-pick` handler does it once answered.
+  // The cast is already popped by the caller, which hands priority to the
+  // pendingChoice (the Fireball second-target precedent), so no reaction window
+  // or stack item is stranded. One candidate (or none) resolves inline below,
+  // exactly as before.
+  const pickCandidates =
+    recall?.recallPlayedCards && recall.recallPlayedCardLimit === 1
+      ? [...new Set(allSupportCards)].filter((id) => state.players[playerId]?.discard.includes(id))
+      : [];
+  const opensAlongsidePick = pickCandidates.length > 1;
   if (polishSpellBookEnabled(state) && stackItem.action.fromSpellBook) {
     if (recall?.polishRefreshSpell) {
       refreshPolishUsedSpell(state, playerId, cardId);
@@ -12559,8 +12572,12 @@ function finalizeSpellCardDestination(
       returnSpellFromDiscardToHand(state, playerId, stackItem.action.castEnablerCardId);
     }
     if (recall?.recallPlayedCards) {
-      for (const playedCardId of expertSupportCards) {
-        returnSpellFromDiscardToHand(state, playerId, playedCardId);
+      if (opensAlongsidePick) {
+        openRecallAlongsidePick(state, playerId, pickCandidates, []);
+      } else {
+        for (const playedCardId of expertSupportCards) {
+          returnSpellFromDiscardToHand(state, playerId, playedCardId);
+        }
       }
     }
     return;
@@ -12590,6 +12607,10 @@ function finalizeSpellCardDestination(
   if (recall?.recallPlayedCards) {
     const caster = state.players[playerId];
     const bookPlayed = stackItem.modifiers.bookPlayedCardIds ?? [];
+    if (opensAlongsidePick) {
+      openRecallAlongsidePick(state, playerId, pickCandidates, bookPlayed);
+      return;
+    }
     for (const playedCardId of expertSupportCards) {
       const playedIndex = caster.discard.lastIndexOf(playedCardId);
       if (playedIndex !== -1) {
@@ -12619,6 +12640,40 @@ function expertRecallSupportCardIds(playedCardIds: CardId[], sourceCardId?: Card
     }
     return true;
   });
+}
+
+/**
+ * Community Balance Change MYSTICISM (basic): "…take the Spell back into your
+ * hand as well as 1 card played alongside it." With 2+ recoverable candidates
+ * the OWNER picks which one (USER RULING 2026-08-23; the MAP recall already
+ * offered one option per candidate). Opened at the cast's resolution, after the
+ * cast has been popped, so the pendingChoice is the only thing left to answer.
+ *
+ * `bookCardIds` are the candidates that were played FROM the Spell Book — those
+ * return to the Book, everything else to the hand (the expert recall's rule).
+ */
+function openRecallAlongsidePick(
+  state: GameState,
+  playerId: PlayerId,
+  candidateIds: CardId[],
+  bookCardIds: CardId[]
+): void {
+  const bookCandidates = bookCardIds.filter((id) => candidateIds.includes(id));
+  state.pendingChoice = {
+    id: `choice_${nextEventNumber(state)}`,
+    type: "OPTION_CHOICE",
+    playerId,
+    prompt: "Mysticism: take back one of the cards played alongside the Spell.",
+    options: candidateIds.map((id) => ({ label: `Take back ${cardLibrary[id]?.name ?? id}` })),
+    context: "recall-alongside-pick",
+    recallAlongsidePick: {
+      cardIds: candidateIds,
+      ...(bookCandidates.length > 0 ? { bookCardIds: bookCandidates } : {})
+    },
+    returnPhase: state.combat ? "combat" : "player-turn"
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
 }
 
 const EAGLE_EYE_ABILITY_ID = "ability.eagle_eye" as CardId;
@@ -12750,6 +12805,13 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       if (finishCombatIfNeeded(state)) {
         return;
       }
+      // A recall that opened its own pick (community Mysticism's alongside
+      // card) keeps priority, exactly like the main resolution path below.
+      if (state.pendingChoice) {
+        state.phase = "choice";
+        state.priorityPlayerId = state.pendingChoice.playerId;
+        return;
+      }
       state.phase = "combat";
       state.priorityPlayerId = null;
       return;
@@ -12773,6 +12835,13 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
       stackItem.status = "resolved";
       state.stack.pop();
       if (finishCombatIfNeeded(state)) {
+        return;
+      }
+      // A recall that opened its own pick (community Mysticism's alongside
+      // card) keeps priority, exactly like the main resolution path below.
+      if (state.pendingChoice) {
+        state.phase = "choice";
+        state.priorityPlayerId = state.pendingChoice.playerId;
         return;
       }
       state.phase = "combat";
@@ -16497,30 +16566,10 @@ function applyReactionPlayCore(
       stackItem.modifiers.defenseBonus += appliedAmount;
     }
 
-    // Community Balance Change Celestial Necklace of Bliss: "+1 attack, then
-    // discard X cards from hand to gain +X defense". The Defense half cannot ride
-    // this blow (modifiers.defenseBonus is the DEFENDER's, i.e. the enemy when the
-    // holder attacks), so each paid card lays +1 Defense on the holder's OWN unit
-    // for the rest of the combat round — where it really shields it, notably
-    // against the Retaliation Attack this very blow provokes.
-    if (effect.perCostCardSelfDefense && costCardsPaid > 0 && affectedUnit && state.combat) {
-      state.activeEffects.push(
-        makeActiveEffect(
-          state,
-          {
-            name: card.name,
-            scope: "unit",
-            duration: { type: "current-combat-round" },
-            polarity: "positive",
-            removable: true,
-            modifiers: [{ type: "DEFENSE_BONUS", amount: effect.perCostCardSelfDefense * costCardsPaid }]
-          },
-          { type: "card", cardId: card.id, controllerId: playerId },
-          playerId,
-          { type: "unit", unitId: affectedUnit.id }
-        )
-      );
-    }
+    // (Community Balance Change Celestial Necklace of Bliss used to lay its
+    // discard scaling on the holder's OWN unit as Defense here. USER RULING
+    // 2026-08-23: the scaling is ATTACK on this blow, so it now rides the
+    // ordinary `perCostCard` path above and that arm is gone.)
     stackItem.modifiers.playedCardIds.push(play.cardId);
 
     // A Power-scaling spell instant (Bloodlust, Precision, Curse, Weakness…)

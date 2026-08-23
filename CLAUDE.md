@@ -2921,14 +2921,24 @@ What runs, and the seams:
 The author's spreadsheet gained per-card playtest feedback; every NO was fixed
 (84ec17f1..1bb7f36c, each claim damage/offer-delta pinned with a pack-OFF
 CONTROL). Leading with what did NOT change / open items:
-- **Mysticism basic in COMBAT still returns the FIRST alongside card** (no pick —
-  the recall resolves post-cast with no window; the MAP recall now lists one
-  option per candidate). Stated on the card's tags.
-- **Celestial Necklace of Bliss was NOT a bug**: the flat +1 really lands as
-  ATTACK and the discarded-X Defense shields the retaliation (now pinned by
-  damage deltas). The author's "gives defense instead of attack" likely refers
-  to the documented deliberate reading (+X is Defense on your OWN unit) — ask
-  before changing it.
+- **Mysticism basic in COMBAT now opens a PICK** (USER RULING 2026-08-24,
+  superseding the "returns the FIRST alongside card" limit): with 2+ recoverable
+  candidates the cast's resolution opens a `recall-alongside-pick` OPTION_CHOICE
+  (`openRecallAlongsidePick`, reducer.ts, answered in adventure-reducer.ts) owned
+  by the caster — one option per candidate; the chosen card leaves the discard
+  for the hand (or the Spell Book if it was played from there), the rest stay
+  discarded. Exactly one candidate returns inline (no window), none = spell only.
+  It opens AFTER the cast is popped (the Fireball second-target precedent), so no
+  reaction window or stack item is stranded; `computerDecisionOwner` already owns
+  any pendingChoice by playerId, so no lockstep change and no new stall surface.
+  New serialized field `pendingChoice.recallAlongsidePick` + the context string.
+- **Celestial Necklace of Bliss side A scales ATTACK, not Defense** (USER RULING
+  2026-08-24, superseding the old "+X Defense on your OWN unit" reading — the
+  author's "gives defense instead of Attack" meant exactly this): the flat +1 AND
+  +1 per discarded card both ride the same blow (discard 2 = +3 attack), through
+  the ordinary `perCostCard` arm Sword of Judgement uses. The
+  `perCostCardSelfDefense` field and its reducer fold are DELETED, so the
+  Retaliation Attack is no longer shielded.
 - **Forgetfulness's engine thresholds were already the printed 0/2/4 rungs**; the
   bug was the DISPLAYED Power ladder reading the no-op gradeByPower table.
 - **No feedback yet** (Working? blank, re-check next sheet pull): Spells —

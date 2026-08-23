@@ -579,28 +579,25 @@ describe("Community artifacts — combat stat sides", () => {
     expect(measure(false, false) - measure(false, true)).toBe(2);
   });
 
-  it("Celestial Necklace of Bliss: +1 attack on the blow AND +X Defense on YOUR OWN unit per discarded card", () => {
+  it("Celestial Necklace of Bliss: the discards give +X ATTACK on the same blow (USER RULING 2026-08-23)", () => {
     const state = statFixture(true, false, "celestial");
     const base = plainAttackDamage(statFixture(true, false, "celestial-base"));
     const played = attackWithCard(state, "artifact.celestial_necklace_of_bliss", 0, [0, 0], [
       "ability.estates" as CardId,
       "ability.estates" as CardId
     ]);
-    // The printed flat +1 attack really lands on the blow.
-    expect(played.combat!.units.unit_p2_skeletons.damage).toBe(base + 1);
-    // …and each discarded card put +1 Defense on the ATTACKER (our unit).
-    const buff = played.activeEffects.find(
-      (effect) =>
-        effect.name === "Celestial Necklace of Bliss" &&
-        effect.target?.type === "unit" &&
-        effect.target.unitId === "unit_p1_griffins"
-    );
-    expect(buff, "the Defense half lands on the holder's own unit").toBeTruthy();
-    expect(buff!.modifiers).toEqual([{ type: "DEFENSE_BONUS", amount: 2 }]);
-    expect(buff!.duration).toEqual({ type: "current-combat-round" });
+    // The flat +1 AND +1 per discarded card ride the SAME attack: 2 discards
+    // means +3 damage, not +1. (The superseded reading gave +1 here and put +2
+    // Defense on the holder's own unit — this assertion fails under it.)
+    expect(played.combat!.units.unit_p2_skeletons.damage).toBe(base + 3);
+    // …and NO self-Defense buff is created any more.
+    expect(
+      played.activeEffects.some((effect) => effect.name === "Celestial Necklace of Bliss"),
+      "the deleted self-Defense arm must not fire"
+    ).toBe(false);
 
-    // CONTROL: the classic card scales ATTACK per discard and lays no Defense
-    // buff at all — with 2 discards the blow is +2 attack, not +1.
+    // CONTROL: the classic card has no flat base — with 2 discards the blow is
+    // +2 attack, not +3, and it lays no effect either.
     const offBase = plainAttackDamage(statFixture(false, false, "celestial-base-off"));
     const off = attackWithCard(
       statFixture(false, false, "celestial-off"),
@@ -1618,11 +1615,11 @@ describe("Community artifacts — the 2026-08-23 playtest reports", () => {
     expect(noCardLabels.some((label) => label.startsWith("Play Cards of Prophecy"))).toBe(false);
   });
 
-  it("Celestial Necklace of Bliss: +1 ATTACK on the blow and the discards really SHIELD the retaliation", () => {
-    // The sheet reads "Gives defense instead of Attack". BOTH halves run: the
-    // printed flat +1 is ATTACK on this blow, and the per-discard +X is Defense
-    // on the HOLDER'S OWN unit (the documented reading — a blow's defenseBonus
-    // belongs to the ENEMY defender, so paying it there would buff the target).
+  it("Celestial Necklace of Bliss: the whole +1+X rides the ATTACK and shields NOTHING", () => {
+    // The sheet's "Gives defense instead of Attack" is answered by the USER
+    // RULING 2026-08-23: the flat +1 AND the per-discard +X are both ATTACK on
+    // this blow, and the Retaliation Attack that follows is untouched (the
+    // superseded reading shielded it by 2 — this test fails under it both ways).
     const measure = (community: boolean, play: boolean) => {
       const state = combat(community, `celestial-retal-${community}-${play}`);
       state.combat!.units.unit_p1_griffins.attack = 6;
@@ -1655,11 +1652,11 @@ describe("Community artifacts — the 2026-08-23 playtest reports", () => {
 
     const onBase = measure(true, false);
     const onPlayed = measure(true, true);
-    expect(onPlayed.dealt - onBase.dealt, "the printed flat +1 is ATTACK").toBe(1);
-    expect(onBase.taken - onPlayed.taken, "2 discards = 2 Defense against the Retaliation Attack").toBe(2);
+    expect(onPlayed.dealt - onBase.dealt, "flat +1 plus +1 per discarded card, all ATTACK").toBe(3);
+    expect(onBase.taken - onPlayed.taken, "the Retaliation Attack is NOT shielded any more").toBe(0);
 
-    // CONTROL: the classic card scales ATTACK per discard (+2 for 2 cards) and
-    // shields nothing at all.
+    // CONTROL: the classic card scales ATTACK per discard (+2 for 2 cards, no
+    // flat base) and shields nothing either.
     const offBase = measure(false, false);
     const offPlayed = measure(false, true);
     expect(offPlayed.dealt - offBase.dealt).toBe(2);

@@ -23,13 +23,13 @@ import { sampleCards } from "./sample";
  * LEAD WITH THE DEVIATIONS / DELIBERATE READINGS (CLAUDE.md #4):
  *
  *  - CELESTIAL NECKLACE OF BLISS option A prints "+1 <attack>, then discard X
- *    cards from hand to gain +X <defense>" — one play, two stats. An attack in
- *    this engine has exactly ONE attacker and ONE defender, and the blow's
- *    `defenseBonus` is the DEFENDER's, so adding the Defense half there would buff
- *    the enemy. READING: the +1 attack rides the blow; each discarded card lays +1
- *    Defense on the HOLDER'S OWN unit until the end of the current combat round
- *    (`perCostCardSelfDefense`), where it really shields it — notably against the
- *    Retaliation Attack the same blow provokes.
+ *    cards from hand to gain +X <defense>" — one play, two stats. USER RULING
+ *    2026-08-23 ("should give attack when discard", answering the sheet author's
+ *    "Gives defense instead of Attack" feedback): the discard scaling rides the
+ *    SAME BLOW AS ATTACK, exactly like Sword of Judgement's `perCostCard` — so
+ *    discarding 2 cards is +3 attack in total on that attack. This SUPERSEDES the
+ *    old reading (each paid card laid +1 Defense on the holder's own unit for the
+ *    combat round, `perCostCardSelfDefense`), which is deleted.
  *  - HOURGLASS OF THE EVIL HOUR option B ("ignore all +1 Attack die results") is
  *    read as GLOBAL — both armies, the printed "all" — and it ignores only the
  *    die's NUMERIC result. Abilities keyed off the "+1" FACE (Death Blow, the
@@ -150,20 +150,21 @@ export const communityBalanceArtifactCards: CardLibrary = {
   }),
 
   // Celestial Necklace of Bliss — option A gains the flat +1 attack base AND
-  // flips the discard scaling to DEFENSE (see the header for the reading).
+  // scales the discard as MORE ATTACK on the same blow (USER RULING 2026-08-23;
+  // see the header). Same `perCostCard` mechanism as Sword of Judgement.
   "artifact.celestial_necklace_of_bliss": reprint("artifact.celestial_necklace_of_bliss", {
     tags: tags(
       "artifact.celestial_necklace_of_bliss",
-      "+1 attack on this attack, then discard X cards from hand: your OWN attacking unit gains +X Defense until the end of this combat round (the printed \"+X defense\" cannot ride the blow — that value is the enemy defender's — so it is laid on your unit, where it shields it against the Retaliation Attack). — OR — Remove this card, then gain +4 attack (unchanged)."
+      "+1 attack on this attack, and discard X cards from hand to gain +X MORE attack on the same blow (discarding 2 = +3 attack in total). — OR — Remove this card, then gain +4 attack (unchanged)."
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "+1 attack, discard X cards: +X Defense on your unit this combat round",
+          label: "+1 attack, discard X cards: +X more attack",
           cost: { discardCardsUpTo: 7 },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "self" },
-          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, perCostCardSelfDefense: 1 }
+          effect: { type: "ADD_COMBAT_STAT", stat: "attack", amount: 1, perCostCard: 1 }
         },
         {
           label: "Remove this card: +4 attack",

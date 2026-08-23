@@ -652,7 +652,18 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `payTurnEndOngoingIncome` after paying once; the Resource/Treasure die windows
 // gain the Cards-of-Prophecy from-hand SET options and a narrower auto-resolve
 // early-out. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 54;
+//
+// v55 (2026-08-24, two USER RULINGS on the Community Balance pack, one commit):
+// (1) Celestial Necklace of Bliss side A — the discarded-X now scales ATTACK on
+// the blow (`ADD_COMBAT_STAT.perCostCard`, the Sword of Judgement mechanism);
+// `ADD_COMBAT_STAT.perCostCardSelfDefense` is REMOVED (a stale edge would lay the
+// old own-unit Defense buff and under-count the attack). (2) Community basic
+// Mysticism in COMBAT — with 2+ alongside candidates the recall opens the new
+// `recall-alongside-pick` OPTION_CHOICE (`pendingChoice.recallAlongsidePick`),
+// so the caster PICKS which card returns; a stale edge rejects the answer.
+// Behind `community-card-balance` (default OFF ⇒ byte-identical).
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 55;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

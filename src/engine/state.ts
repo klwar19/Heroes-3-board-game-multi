@@ -1579,23 +1579,6 @@ export type EffectDefinition =
       amountByPower?: Record<number, number>;
       /** Sword of Judgement style: +1 per card paid via the option's cost. */
       perCostCard?: number;
-      /**
-       * Community Balance Change Celestial Necklace of Bliss: "⚡ +1 <attack>,
-       * then discard X cards from hand to gain +X <defense>" — the ONE printed
-       * line that grants BOTH stats on the same play.
-       *
-       * READING (deliberate, stated on the card's tags): an attack in this engine
-       * has exactly one attacker and one defender, and `modifiers.defenseBonus`
-       * is the DEFENDER's — so adding the Defense half to the blow would buff the
-       * enemy. Instead each card paid through the option's cost lays +1 Defense on
-       * the PLAYER'S OWN unit in the attack (a `current-combat-round`
-       * DEFENSE_BONUS active effect), where it really shields it — notably against
-       * the Retaliation Attack that same blow provokes. `amount` still rides the
-       * blow as the printed flat +1 attack.
-       *
-       * Absent on every other card (the classic same-stat `perCostCard` scaling).
-       */
-      perCostCardSelfDefense?: number;
       /** Offense/Armorer: "Then draw 1 card." */
       drawCards?: number;
       /**
@@ -15387,6 +15370,7 @@ export type PendingChoice =
         | "player-resource-pick"
         | "player-vii-pick"
         | "grail-free-building"
+        | "recall-alongside-pick"
         | "combat-remove-then-search"
         | "combat-remove-another"
         | "commander-artifact-offer"
@@ -15647,6 +15631,16 @@ export type PendingChoice =
          */
         thenReshuffleDiscard?: boolean;
       };
+      /**
+       * recall-alongside-pick — Community Balance Change Mysticism (basic):
+       * "…as well as 1 card played alongside it". WHICH card is the caster's
+       * choice (USER RULING 2026-08-23), so with 2+ recoverable candidates the
+       * cast's resolution opens this pick instead of taking the first one.
+       * `cardIds` are the candidates (all sitting in the caster's discard pile,
+       * index-aligned with `options`); `bookCardIds` are the ones that were
+       * played from the Spell Book and therefore return to the Book, not hand.
+       */
+      recallAlongsidePick?: { cardIds: CardId[]; bookCardIds?: CardId[] };
       /** artifact-deck-pick (Tazar's War Hero VI): the Artifact decks to draw from. */
       artifactDeckPick?: { deckIds: DeckId[] };
       /**
