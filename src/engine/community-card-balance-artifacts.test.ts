@@ -17,6 +17,7 @@ import { applyAction, createAdventureGameState, createInitialGameState, getLegal
 import { beginFieldVisit, startAdventureRound, reinforceCostFor } from "./adventure";
 import { openSharedDeckSearch } from "./adventure-reducer";
 import { effectiveArtifactTier } from "./ruleset";
+import { balancedPlayOptionCost, costNeedsCardPicker } from "./card-play-cost";
 import { cardLibrary } from "@/data/cards/library";
 import { communityBalanceArtifactCards } from "@/data/cards/community-artifacts-balance";
 import type { CardId, GameAction, GameState, PlayerId, UnitId } from "./state";
@@ -232,7 +233,7 @@ describe("Community artifacts — resource sides", () => {
   ];
 
   for (const entry of TURN_END) {
-    it(`${cardLibrary[entry.cardId]?.name}: option A becomes an ONGOING that pays ${entry.amount} at the end of EVERY one of your turns`, () => {
+    it(`${cardLibrary[entry.cardId]?.name}: option A is a ONE-TURN ongoing — pays ${entry.amount} at that turn's end, then the card is DISCARDED`, () => {
       const on = mapState(`turn-end-${entry.cardId}`, true);
       on.players.p1.hand = [entry.cardId as CardId];
       const before = on.players.p1.resources[entry.resource];
@@ -243,17 +244,27 @@ describe("Community artifacts — resource sides", () => {
       // …and the card is parked in the Ongoing tray, NOT in a permanent slot.
       expect(played.players.p1.ongoingCards?.some((held) => held.cardId === entry.cardId)).toBe(true);
       expect(played.players.p1.permanents ?? []).not.toContain(entry.cardId);
+      expect(played.players.p1.discard).not.toContain(entry.cardId);
 
       // Ending the turn pays once…
       const firstEnd = applyOk(played, { type: "END_TURN", playerId: "p1" });
       expect(firstEnd.players.p1.resources[entry.resource]).toBe(before + entry.amount);
+      // …and the card leaves the tray for the owner's DISCARD pile — not the
+      // hand, not removed from the game (the 2026-08-23 report: "is an ongoing
+      // that is never discarded but it should be discarded after receiving").
+      expect(firstEnd.players.p1.ongoingCards?.some((held) => held.cardId === entry.cardId) ?? false).toBe(false);
+      expect(firstEnd.players.p1.discard).toContain(entry.cardId);
+      expect(firstEnd.players.p1.hand).not.toContain(entry.cardId);
+      expect(firstEnd.activeEffects.some((effect) => effect.source.type === "card" && effect.source.cardId === entry.cardId)).toBe(
+        false
+      );
 
-      // …and it keeps paying on the NEXT turn too (an ongoing, not a one-shot).
+      // …and it NEVER pays again on a later turn of the same player.
       const backToP1 = { ...firstEnd, activePlayerId: "p1" } as GameState;
       backToP1.players.p1.canMulligan = false;
       backToP1.players.p1.needsHandRefresh = false;
       const secondEnd = applyOk(backToP1, { type: "END_TURN", playerId: "p1" });
-      expect(secondEnd.players.p1.resources[entry.resource]).toBe(before + entry.amount * 2);
+      expect(secondEnd.players.p1.resources[entry.resource]).toBe(before + entry.amount);
 
       // CONTROL: with the pack OFF the same option is the classic one-shot — it
       // pays at once and ending the turn pays nothing more.
@@ -1058,16 +1069,24 @@ describe("Community artifacts — morale and Search sides", () => {
 
     for (const cardId of ["artifact.cards_of_prophecy", "artifact.ambassadors_sash"]) {
       const name = cardLibrary[cardId]!.name;
+      // NARROWED 2026-08-23: the Cards keep a hand offer in this same window —
+      // their reprinted "Set a die on the side of your choice" half (see the
+      // die-set test below). What must be gone is the REROLL.
       expect(
-        rerollLabels(cardId, true).some((label) => label.includes(`Play ${name}`)),
+        rerollLabels(cardId, true).some((label) => label.includes(`Play ${name}`) && label.includes("reroll")),
         `${name} no longer offers a reroll under the pack`
       ).toBe(false);
       // CONTROL: with the pack OFF the classic reroll offer is right there.
       expect(
-        rerollLabels(cardId, false).some((label) => label.includes(`Play ${name}`)),
+        rerollLabels(cardId, false).some((label) => label.includes(`Play ${name}`) && label.includes("reroll")),
         `${name} keeps its classic reroll with the pack off`
       ).toBe(true);
     }
+    // …and the Sash, whose reprint is a morale gain, offers NOTHING in this
+    // window at all under the pack.
+    expect(
+      rerollLabels("artifact.ambassadors_sash", true).some((label) => label.includes("Play Ambassador's Sash"))
+    ).toBe(false);
 
     // …and the Diplomat's Ring — which the community sheet does NOT reprint —
     // still offers its reroll with the pack ON.
@@ -1364,5 +1383,286 @@ describe("Community artifacts — registry hygiene", () => {
 
   it("ships exactly the sheet's 34 artifacts", () => {
     expect(Object.keys(communityBalanceArtifactCards)).toHaveLength(34);
+  });
+});
+
+// ===========================================================================
+// 9. The 2026-08-23 playtest bug batch
+// ===========================================================================
+
+/**
+ * Five sheet-feedback reports, each pinned by the OBSERVABLE outcome with a
+ * pack-OFF (or printed-cost) CONTROL on the same setup.
+ *
+ * The three "you can't discard a card and resolve" / "doesn't work at all" /
+ * "nothing happens" reports share ONE root cause and are pinned together below:
+ * the surface that opens the discard picker read the RAW printed library, so it
+ * asked for the printed number of cards (or, when the printed side is free, for
+ * none at all) while the reducer charges the REPRINT's price. `costCardIds` then
+ * never matched and every such play was rejected.
+ */
+describe("Community artifacts — the 2026-08-23 playtest reports", () => {
+  /** Every reprinted side whose price DIFFERS from the printed side's. */
+  const COSTED_REPRINTS: {
+    cardId: string;
+    optionIndex: number;
+    /** Cards the REPRINT demands. */
+    reprintDiscards: number;
+    /** Cards the PRINTED side demands (undefined = the printed side is free). */
+    printedDiscards: number | undefined;
+  }[] = [
+    // "You can't discard a card and resolve."
+    { cardId: "artifact.endless_purse_of_gold", optionIndex: 0, reprintDiscards: 1, printedDiscards: undefined },
+    // "Doesn't work at all." — both sides.
+    { cardId: "artifact.everflowing_crystal_cloak", optionIndex: 0, reprintDiscards: 1, printedDiscards: 3 },
+    { cardId: "artifact.everflowing_crystal_cloak", optionIndex: 1, reprintDiscards: 2, printedDiscards: undefined },
+    // "Nothing happens."
+    { cardId: "artifact.loins_of_legion", optionIndex: 1, reprintDiscards: 1, printedDiscards: undefined }
+  ];
+
+  for (const entry of COSTED_REPRINTS) {
+    const name = cardLibrary[entry.cardId]!.name;
+    it(`${name} side ${entry.optionIndex}: the price the picker asks for is the REPRINT's, so the play resolves`, () => {
+      const build = () => {
+        const state = mapState(`cost-read-${entry.cardId}-${entry.optionIndex}`, true);
+        state.players.p1.hand = [
+          entry.cardId as CardId,
+          "ability.estates" as CardId,
+          "ability.estates" as CardId,
+          "ability.estates" as CardId
+        ];
+        state.players.p1.resources.gold = 40;
+        return state;
+      };
+
+      // The shared client-facing read returns the REPRINT's price…
+      const state = build();
+      const offer = findPlay(state, entry.cardId, entry.optionIndex);
+      expect(offer, "the reprinted side is offered on the map").toBeTruthy();
+      const cost = balancedPlayOptionCost(state, offer!);
+      expect(costNeedsCardPicker(cost)).toBe(true);
+      expect(cost!.discardCards).toBe(entry.reprintDiscards);
+
+      // …paying exactly that many cards really resolves the play.
+      const paid = applyOk(state, {
+        ...offer!,
+        costCardIds: Array.from({ length: entry.reprintDiscards }, () => "ability.estates" as CardId)
+      });
+      expect(paid.players.p1.hand).not.toContain(entry.cardId);
+
+      // …and the PRINTED price would have been REJECTED — the discriminator that
+      // makes this test fail if the read goes back to the raw `cardLibrary`.
+      const printedState = build();
+      const printedOffer = findPlay(printedState, entry.cardId, entry.optionIndex)!;
+      const printedPicks = Array.from(
+        { length: entry.printedDiscards ?? 0 },
+        () => "ability.estates" as CardId
+      );
+      const rejected = applyAction(printedState, { ...printedOffer, costCardIds: printedPicks });
+      expect(rejected.errors.length, "the printed count is not a legal payment").toBeGreaterThan(0);
+    });
+  }
+
+  it("Endless Purse of Gold / Everflowing Crystal Cloak: the discarded card really buys the resource", () => {
+    const measure = (cardId: string, optionIndex: number, discards: number, community: boolean) => {
+      const state = mapState(`payout-${cardId}-${optionIndex}-${community}`, community);
+      state.players.p1.hand = [
+        cardId as CardId,
+        "ability.estates" as CardId,
+        "ability.estates" as CardId,
+        "ability.estates" as CardId
+      ];
+      const offer = findPlay(state, cardId, optionIndex)!;
+      const before = {
+        gold: state.players.p1.resources.gold,
+        valuables: state.players.p1.resources.valuables,
+        hand: state.players.p1.hand.length
+      };
+      const after = applyOk(state, {
+        ...offer,
+        costCardIds: Array.from({ length: discards }, () => "ability.estates" as CardId)
+      });
+      return {
+        gold: after.players.p1.resources.gold - before.gold,
+        valuables: after.players.p1.resources.valuables - before.valuables,
+        handSpent: before.hand - after.players.p1.hand.length
+      };
+    };
+
+    // Purse A: discard 1 → 3 gold (the card itself plus the paid card leave hand).
+    expect(measure("artifact.endless_purse_of_gold", 0, 1, true)).toEqual({
+      gold: 3,
+      valuables: 0,
+      handSpent: 2
+    });
+    // Cloak A: discard 1 → 1 valuables. Cloak B: remove self + discard 2 → 2.
+    expect(measure("artifact.everflowing_crystal_cloak", 0, 1, true)).toEqual({
+      gold: 0,
+      valuables: 1,
+      handSpent: 2
+    });
+    expect(measure("artifact.everflowing_crystal_cloak", 1, 2, true)).toEqual({
+      gold: 0,
+      valuables: 2,
+      handSpent: 3
+    });
+
+    // CONTROL: with the pack OFF the SAME sides are the printed ones — Purse A
+    // is a FREE 3 gold and Cloak A costs THREE cards for 2 valuables.
+    expect(measure("artifact.endless_purse_of_gold", 0, 0, false)).toEqual({
+      gold: 3,
+      valuables: 0,
+      handSpent: 1
+    });
+    expect(measure("artifact.everflowing_crystal_cloak", 0, 3, false)).toEqual({
+      gold: 0,
+      valuables: 2,
+      handSpent: 4
+    });
+  });
+
+  it("Loins of Legion side B: the discard is paid, the card is removed and the bronze Few really flips", () => {
+    const state = mapState("loins-remove", true);
+    state.players.p1.hand = ["artifact.loins_of_legion" as CardId, "ability.estates" as CardId];
+    state.players.p1.resources.gold = 40;
+    const offer = findPlay(state, "artifact.loins_of_legion", 1)!;
+    const played = applyOk(state, { ...offer, costCardIds: ["ability.estates" as CardId] });
+    expect(played.players.p1.removed).toContain("artifact.loins_of_legion");
+    expect(played.players.p1.discard).toContain("ability.estates");
+
+    const menu = played.adventure!.pendingVisit!.steps[0]!;
+    expect(menu.type).toBe("CHOOSE_ONE");
+    const firstStep = menu.type === "CHOOSE_ONE" ? menu.options[0]!.steps[0]! : undefined;
+    expect(firstStep?.type).toBe("REINFORCE_FLAT_GOLD");
+    const targetId = firstStep?.type === "REINFORCE_FLAT_GOLD" ? firstStep.armyUnitId : "";
+    const fullPrice = reinforceCostFor(played, "p1", targetId, false, false, false, 0)!;
+    const goldBefore = played.players.p1.resources.gold;
+    const pick = getLegalActions(played, "p1").find(
+      (legal) => legal.label === (menu.type === "CHOOSE_ONE" ? menu.options[0]!.label : "")
+    )!;
+    const chosen = applyOk(played, pick.action);
+    // The observable outcome: the card flipped Few → Pack for 3 gold less.
+    expect(chosen.players.p1.army.find((unit) => unit.id === targetId)?.side).toBe("pack");
+    expect(goldBefore - chosen.players.p1.resources.gold).toBe(Math.max(0, (fullPrice.gold ?? 0) - 3));
+
+    // CONTROL: with the pack OFF option 1 is the printed free "Gain 2 gold" —
+    // no removal, no discard, no reinforce menu.
+    const off = mapState("loins-remove-off", false);
+    off.players.p1.hand = ["artifact.loins_of_legion" as CardId, "ability.estates" as CardId];
+    const offBefore = off.players.p1.resources.gold;
+    const offPlayed = applyOk(off, findPlay(off, "artifact.loins_of_legion", 1)!);
+    expect(offPlayed.players.p1.resources.gold).toBe(offBefore + 2);
+    expect(offPlayed.players.p1.removed ?? []).not.toContain("artifact.loins_of_legion");
+    expect(offPlayed.adventure!.pendingVisit).toBeFalsy();
+  });
+
+  it("Cards of Prophecy side B is playable FROM HAND inside the Resource-die window", () => {
+    const dieWindow = (community: boolean, holdsCard: boolean) => {
+      const state = mapState(`prophecy-die-${community}-${holdsCard}`, community);
+      state.players.p1.morale = 0;
+      state.players.p1.hand = holdsCard ? ["artifact.cards_of_prophecy" as CardId] : [];
+      const space = "51,51";
+      state.adventure!.fields[space] = {
+        spaceId: space,
+        tileInstanceId: "prophecy-die-tile",
+        slot: 0,
+        location: "resource_symbol",
+        difficulty: undefined,
+        blackCube: false,
+        flagOwnerId: null,
+        everFlagged: false,
+        settlementResource: null
+      };
+      const hero = Object.values(state.heroes).find(
+        (candidate) => candidate.controllerId === "p1" && candidate.kind === "main"
+      )!;
+      hero.spaceId = space;
+      beginFieldVisit(state, hero.id, space, false);
+      return state;
+    };
+
+    const on = dieWindow(true, true);
+    const step = on.adventure!.pendingVisit?.steps[0];
+    const labels = step?.type === "CHOOSE_ONE" ? step.options.map((option) => option.label) : [];
+    const setLabels = labels.filter((label) => label.startsWith("Play Cards of Prophecy: set the Resource die"));
+    expect(setLabels.length, "one option per distinct Resource-die face").toBeGreaterThan(1);
+
+    // Taking the 6-gold face really pays 6 gold and spends the card, whatever
+    // the die actually rolled.
+    const sixGold = labels.indexOf("Play Cards of Prophecy: set the Resource die to 6 gold");
+    expect(sixGold, "the die's best face is on the menu").toBeGreaterThanOrEqual(0);
+    const goldBefore = on.players.p1.resources.gold;
+    const pick = getLegalActions(on, "p1").find((legal) => legal.label === labels[sixGold]);
+    expect(pick, "the offer is dispatchable").toBeTruthy();
+    const chosen = applyOk(on, pick!.action);
+    expect(chosen.players.p1.resources.gold - goldBefore).toBe(6);
+    // …and it is a single use: the card leaves hand for the discard pile.
+    expect(chosen.players.p1.hand).not.toContain("artifact.cards_of_prophecy");
+    expect(chosen.players.p1.discard).toContain("artifact.cards_of_prophecy");
+
+    // CONTROL 1: with the pack OFF the Cards are a die REROLL, never a die SET.
+    const off = dieWindow(false, true);
+    const offStep = off.adventure!.pendingVisit?.steps[0];
+    const offLabels = offStep?.type === "CHOOSE_ONE" ? offStep.options.map((option) => option.label) : [];
+    expect(offLabels.some((label) => label.startsWith("Play Cards of Prophecy: set"))).toBe(false);
+    expect(offLabels.some((label) => label.includes("Play Cards of Prophecy") && label.includes("reroll"))).toBe(
+      true
+    );
+
+    // CONTROL 2: pack ON but the card NOT in hand — no set option is offered, so
+    // the offer can never be a phantom the player has nothing to pay it with.
+    const noCard = dieWindow(true, false);
+    const noCardStep = noCard.adventure!.pendingVisit?.steps[0];
+    const noCardLabels =
+      noCardStep?.type === "CHOOSE_ONE" ? noCardStep.options.map((option) => option.label) : [];
+    expect(noCardLabels.some((label) => label.startsWith("Play Cards of Prophecy"))).toBe(false);
+  });
+
+  it("Celestial Necklace of Bliss: +1 ATTACK on the blow and the discards really SHIELD the retaliation", () => {
+    // The sheet reads "Gives defense instead of Attack". BOTH halves run: the
+    // printed flat +1 is ATTACK on this blow, and the per-discard +X is Defense
+    // on the HOLDER'S OWN unit (the documented reading — a blow's defenseBonus
+    // belongs to the ENEMY defender, so paying it there would buff the target).
+    const measure = (community: boolean, play: boolean) => {
+      const state = combat(community, `celestial-retal-${community}-${play}`);
+      state.combat!.units.unit_p1_griffins.attack = 6;
+      state.combat!.units.unit_p1_griffins.defense = 0;
+      state.combat!.units.unit_p2_skeletons.defense = 0;
+      state.combat!.units.unit_p2_skeletons.attack = 8;
+      state.players.p1.hand = play
+        ? [
+            "artifact.celestial_necklace_of_bliss" as CardId,
+            "ability.estates" as CardId,
+            "ability.estates" as CardId
+          ]
+        : [];
+      const declared = declareAttack(state, [0, 0, 0, 0]);
+      let current = declared;
+      if (play) {
+        const offer = reaction(declared, "artifact.celestial_necklace_of_bliss", 0);
+        expect(offer, "the reprinted side is offered in the attack window").toBeTruthy();
+        current = applyOk(
+          declared,
+          withCost(offer!, "ability.estates" as CardId, "ability.estates" as CardId)
+        );
+      }
+      current = passAllReactions(current);
+      return {
+        dealt: current.combat!.units.unit_p2_skeletons.damage,
+        taken: current.combat!.units.unit_p1_griffins.damage
+      };
+    };
+
+    const onBase = measure(true, false);
+    const onPlayed = measure(true, true);
+    expect(onPlayed.dealt - onBase.dealt, "the printed flat +1 is ATTACK").toBe(1);
+    expect(onBase.taken - onPlayed.taken, "2 discards = 2 Defense against the Retaliation Attack").toBe(2);
+
+    // CONTROL: the classic card scales ATTACK per discard (+2 for 2 cards) and
+    // shields nothing at all.
+    const offBase = measure(false, false);
+    const offPlayed = measure(false, true);
+    expect(offPlayed.dealt - offBase.dealt).toBe(2);
+    expect(offBase.taken - offPlayed.taken).toBe(0);
   });
 });

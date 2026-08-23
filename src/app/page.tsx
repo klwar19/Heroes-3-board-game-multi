@@ -40,6 +40,7 @@ import {
   type LegalAction,
   type PlayerId
 } from "@/engine";
+import { balancedPlayOptionCost, costNeedsCardPicker } from "@/engine/card-play-cost";
 import { cardLibrary } from "@/data/cards/library";
 import { coreHeroDefinitions } from "@/data/factions/core";
 import {
@@ -4237,19 +4238,13 @@ export default function Home() {
     // Inferno, "discard N: …" options) opens the cost picker first when the
     // cost has not been paid yet. The reaction tray pays its own costs, so it
     // always passes costCardIds.
-    if (action.type === "PLAY_CARD" && !action.costCardIds) {
-      const card = cardLibrary[action.cardId];
-      const option =
-        card?.effect.type === "CHOOSE_ONE" && action.optionIndex !== undefined
-          ? card.effect.options[action.optionIndex]
-          : undefined;
-      const cost = option?.cost;
-      if (
-        cost &&
-        (cost.discardCards !== undefined ||
-          cost.discardCardsUpTo !== undefined ||
-          cost.powerCost !== undefined)
-      ) {
+    if (action.type === "PLAY_CARD" && !action.costCardIds && state) {
+      // Read the price through the BALANCE libraries — the definition the
+      // reducer will actually charge. Reading the raw printed library here made
+      // the picker ask for the printed count (or never open at all) under the
+      // Community pack, so the play was submitted unpaid and rejected.
+      const cost = balancedPlayOptionCost(state, action);
+      if (costNeedsCardPicker(cost)) {
         // "Discard first": a board-target play banks its discard when the card is
         // selected, so the payment is ready by the time the target is clicked —
         // attach it and play. Only fall back to the picker when the play was NOT
@@ -5796,13 +5791,10 @@ export default function Home() {
       }
     }
 
-    const optionCostOf = (action: Extract<GameAction, { type: "PLAY_CARD" }>) => {
-      const card = cardLibrary[action.cardId];
-      if (card?.effect.type !== "CHOOSE_ONE" || action.optionIndex === undefined) {
-        return undefined;
-      }
-      return card.effect.options[action.optionIndex]?.cost;
-    };
+    // The price this table really charges (Community/Polish reprint aware — the
+    // same read submitAction's picker gate uses, so the two can never disagree).
+    const optionCostOf = (action: Extract<GameAction, { type: "PLAY_CARD" }>) =>
+      balancedPlayOptionCost(state, action);
 
     const startPlay = (legal: HandCardLegal) => {
       if (legal.action.type === "ASTROLOGERS_HERO_EMPOWER") {

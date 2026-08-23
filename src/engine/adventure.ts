@@ -14490,6 +14490,44 @@ function getDieSetEffect(state: GameState, playerId: PlayerId, dice: "treasure" 
   );
 }
 
+/**
+ * Community Balance Change CARDS OF PROPHECY option B ("Set a die on the side of
+ * your choice") played FROM HAND, in the moment a Resource/Treasure die is on
+ * the table.
+ *
+ * 2026-08-23 playtest report: "should not be an ongoing effect but rather an
+ * option to be played before a roll. Effect however works." The lingering
+ * `ADVENTURE_DIE_SET` ongoing (armed on your turn, fire-and-forget) stays — it
+ * is the AI/legacy path and nothing is lost by keeping it — but the card is now
+ * ALSO offered inside the die window itself, exactly like the reroll artifacts
+ * were before the pack replaced that half (and like Octavia's Gold I, which
+ * shares the `CONSUME_HELD_CARD` machinery). Taking it discards the card and
+ * sets the die; declining costs nothing, so no seat can stall on it.
+ *
+ * Scoped by house rule AND by card id: with the pack off the printed Prophecy is
+ * a die REROLL artifact (`REROLL_REACTION_ARTIFACT_IDS`) and this returns [].
+ */
+function communityDieSetHandSources(state: GameState, playerId: PlayerId): DieSetSource[] {
+  if (!houseRuleEnabled(state, "community-card-balance")) {
+    return [];
+  }
+  const hand = state.players[playerId]?.hand ?? [];
+  if (!hand.includes(PROPHECY_CARD_ID)) {
+    return [];
+  }
+  const name = `Play ${cardLibrary[PROPHECY_CARD_ID]?.name ?? "Cards of Prophecy"}`;
+  return [
+    {
+      name,
+      consume: {
+        type: "CONSUME_HELD_CARD",
+        cardId: PROPHECY_CARD_ID,
+        optionLabel: "Set a die to the side of your choice"
+      } as VisitStep
+    }
+  ];
+}
+
 /** Spends a die-set effect: it is a single use, so the whole effect is removed. */
 function consumeDieSet(state: GameState, effectId: string): void {
   const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
@@ -14546,9 +14584,24 @@ function diceResultSelectionsWithReplacement<T>(items: readonly T[], choose: num
   return result;
 }
 
+/**
+ * Where a "set a die to the face of your choice" offer comes from: the lingering
+ * ADVENTURE_DIE_SET active effect (Cards of Prophecy played earlier this turn),
+ * or — under the Community Balance pack — the CARD itself, played from hand the
+ * moment the die is on the table (`communityDieSetHandSources`). Both build the
+ * SAME face options; only the leading consume step differs, so the two surfaces
+ * can never offer different faces.
+ */
+type DieSetSource = { name: string; consume: VisitStep };
+
+/** The lingering ADVENTURE_DIE_SET effect as a die-set source. */
+function dieSetSourceFromEffect(effect: ActiveEffectState): DieSetSource {
+  return { name: effect.name, consume: { type: "CONSUME_DIE_SET", effectId: effect.id } as VisitStep };
+}
+
 function setResourceDieOptions(
   state: Pick<GameState, "ruleset" | "adventure">,
-  setEffect: ActiveEffectState,
+  setEffect: DieSetSource,
   companionGroups: readonly ResourceDieRoll[][] = [[]]
 ): { label: string; steps: VisitStep[] }[] {
   // Offer one option per DISTINCT face of the die THIS table rolls. The
@@ -14570,7 +14623,7 @@ function setResourceDieOptions(
         companions.length > 0 ? ` + keep ${companions.map(resourceDieLabel).join(" + ")}` : ""
       }`,
       steps: [
-        { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
+        setEffect.consume,
         { type: "GAIN_RESOURCES", [face.resource]: face.amount } as VisitStep,
         ...companions.map(
           (roll) => ({ type: "GAIN_RESOURCES", [roll.resource]: roll.amount }) as VisitStep
@@ -14587,7 +14640,7 @@ function setResourceDieOptions(
  * effect, then resolves that face — overriding whatever was rolled.
  */
 function setTreasureDieOptions(
-  setEffect: ActiveEffectState,
+  setEffect: DieSetSource,
   companionGroups: readonly TreasureDieFace[][] = [[]]
 ): { label: string; steps: VisitStep[] }[] {
   return [...new Set(TREASURE_DIE_FACES)].flatMap((face) =>
@@ -14596,7 +14649,7 @@ function setTreasureDieOptions(
         companions.length > 0 ? ` + keep ${companions.map(treasureFaceLabel).join(" + ")}` : ""
       }`,
       steps: [
-        { type: "CONSUME_DIE_SET", effectId: setEffect.id } as VisitStep,
+        setEffect.consume,
         ...treasureFaceSteps(face),
         ...companions.flatMap(treasureFaceSteps)
       ]
@@ -14817,6 +14870,7 @@ function rollResourceDice(
   const luck = getLuckRerollEffect(state, visit.playerId, "resource", rolls.length);
   const extraOptions = extraDieRerollOptions(state, visit, "resource", count, resolveCount, origin);
   const setEffect = getDieSetEffect(state, visit.playerId, "resource");
+  const dieSetHandSources = communityDieSetHandSources(state, visit.playerId);
   const gradeMastery = heroHasGradeNode(state, visit.playerId, HERO_GRADE_NODE_IDS.resourceMastery);
   const companionGroups = diceResultCombinations(rolls, Math.max(0, resolveCount - 1));
   const octaviaOptions = octaviaGoldReactionOptions(state, visit, companionGroups);
@@ -14827,6 +14881,7 @@ function rollResourceDice(
     !luck &&
     extraOptions.length === 0 &&
     !setEffect &&
+    dieSetHandSources.length === 0 &&
     !gradeMastery &&
     octaviaOptions.length === 0
   ) {
@@ -14871,9 +14926,13 @@ function rollResourceDice(
   }
   options.push(...extraOptions);
   // Cards of Prophecy: ignore the roll and set the Resource die to a face of
-  // your choice (the whole die-set effect is spent on the chosen option).
-  if (setEffect) {
-    options.push(...setResourceDieOptions(state, setEffect, companionGroups));
+  // your choice — from the lingering die-set effect (spent whole on the chosen
+  // option) or, under the Community pack, straight from HAND.
+  for (const source of [
+    ...(setEffect ? [dieSetSourceFromEffect(setEffect)] : []),
+    ...dieSetHandSources
+  ]) {
+    options.push(...setResourceDieOptions(state, source, companionGroups));
   }
   if (gradeMastery) {
     const uniqueFaces = [...new Map(faces.map((face) => [`${face.resource}:${face.amount}`, face])).values()];
@@ -14960,8 +15019,16 @@ function rollTreasureDice(
   const luck = getLuckRerollEffect(state, visit.playerId, "treasure", rolls.length);
   const extraOptions = extraDieRerollOptions(state, visit, "treasure", count, resolveCount);
   const setEffect = getDieSetEffect(state, visit.playerId, "treasure");
+  const dieSetHandSources = communityDieSetHandSources(state, visit.playerId);
 
-  if (!prophecyThreePick && resolveCount === rolls.length && !luck && extraOptions.length === 0 && !setEffect) {
+  if (
+    !prophecyThreePick &&
+    resolveCount === rolls.length &&
+    !luck &&
+    extraOptions.length === 0 &&
+    !setEffect &&
+    dieSetHandSources.length === 0
+  ) {
     visit.steps.unshift(...rolls.flatMap(treasureFaceSteps));
     return;
   }
@@ -14995,10 +15062,16 @@ function rollTreasureDice(
   }
   options.push(...extraOptions);
   // Cards of Prophecy: ignore the roll and set the Treasure die to a face of
-  // your choice (the whole die-set effect is spent on the chosen option).
-  if (setEffect) {
+  // your choice — from the lingering die-set effect or, under the Community
+  // pack, straight from HAND.
+  {
     const companionGroups = diceResultCombinations(rolls, Math.max(0, resolveCount - 1));
-    options.push(...setTreasureDieOptions(setEffect, companionGroups));
+    for (const source of [
+      ...(setEffect ? [dieSetSourceFromEffect(setEffect)] : []),
+      ...dieSetHandSources
+    ]) {
+      options.push(...setTreasureDieOptions(source, companionGroups));
+    }
   }
 
   visit.steps.unshift({

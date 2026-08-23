@@ -17294,23 +17294,49 @@ function queuePandoraUpkeep(state: GameState, playerId: PlayerId): boolean {
  * valuables, Inexhaustible Cart of Lumber +2 building materials).
  *
  * ONE chokepoint: every live PLAYER-scoped `TURN_END_RESOURCE_GAIN` modifier the
- * ending player controls pays out here. The effects are created with
- * `duration: { type: "permanent" }`, so the card sits in the owner's
- * "Permanents & Ongoing" tray (holdLiveOngoingCardsFromDiscard) and keeps paying
- * until it is ended (`DISCARD_ONGOING_CARD`) or dispelled.
+ * ending player controls pays out here — and is then SPENT.
+ *
+ * The card is a ONE-TURN ongoing (2026-08-23 playtest report: "is an ongoing
+ * that is never discarded but it should be discarded after receiving [the
+ * resource] at the end of turn"). It is played onto the "Permanents & Ongoing"
+ * tray (`holdLiveOngoingCardsFromDiscard`), pays ONCE at the end of that same
+ * turn, and the effect is removed right here — so the shared
+ * `releaseEndedOngoingCards` tail moves the card into its owner's DISCARD pile,
+ * where it can be drawn and played again ("endless"). It must never pay on a
+ * later turn.
+ *
+ * The removal is explicit rather than left to the `current-turn` expiry, which
+ * fires at the owner's NEXT turn START (the house convention) — a whole round
+ * too late for a card the printed text spends at the turn's end. The declared
+ * duration is still `current-turn`, so a table that never reaches this seam
+ * (an eliminated seat, a game that ends mid-turn) still drops the effect.
  *
  * No-op with the pack off: nothing in the shipped library creates the modifier.
  */
 export function payTurnEndOngoingIncome(state: GameState, playerId: PlayerId): void {
+  const spent: string[] = [];
   for (const effect of state.activeEffects) {
     if (effect.scope !== "player" || effect.controllerId !== playerId) {
       continue;
     }
+    let paid = false;
     for (const modifier of effect.modifiers) {
       if (modifier.type === "TURN_END_RESOURCE_GAIN" && modifier.amount > 0) {
         gainResources(state, playerId, { [modifier.resource]: modifier.amount }, effect.name);
+        paid = true;
       }
     }
+    if (paid) {
+      spent.push(effect.id);
+    }
+  }
+  if (spent.length === 0) {
+    return;
+  }
+  const spentIds = new Set(spent);
+  state.activeEffects = state.activeEffects.filter((effect) => !spentIds.has(effect.id));
+  for (const effectId of spent) {
+    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId, reason: "turn-ended" });
   }
 }
 

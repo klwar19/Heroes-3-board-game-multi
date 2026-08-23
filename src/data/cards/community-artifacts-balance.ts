@@ -46,11 +46,14 @@ import { sampleCards } from "./sample";
  *    `eversmoking-ring-of-sulfur-major` house rule — the Ring is Major (tier read
  *    AND deck placement) whenever EITHER is on.
  *  - The "🔄 At the end of your turn gain X" sides (Endless Bag of Gold,
- *    Everpouring Vial of Mercury, Inexhaustible Cart of Lumber) are ONGOING, not
- *    ♾️ permanents: a player-scoped `duration: "permanent"` active effect carrying
- *    TURN_END_RESOURCE_GAIN. The card parks in the "Permanents & Ongoing" tray and
- *    pays at the end of EVERY one of the owner's turns until it is ended
- *    (`DISCARD_ONGOING_CARD`) or dispelled. It does NOT occupy a permanent slot.
+ *    Everpouring Vial of Mercury, Inexhaustible Cart of Lumber) are ONE-TURN
+ *    ONGOINGS, not ♾️ permanents: a player-scoped `duration: "current-turn"`
+ *    active effect carrying TURN_END_RESOURCE_GAIN. The card parks in the
+ *    "Permanents & Ongoing" tray, pays ONCE at the end of that same turn
+ *    (`payTurnEndOngoingIncome`, which also SPENDS the effect) and is then moved
+ *    to the owner's DISCARD pile by the shared `releaseEndedOngoingCards` tail —
+ *    so it can be drawn and played again, which is what "endless" means. It
+ *    never pays on a later turn and does NOT occupy a permanent slot.
  *    ENDLESS SACK OF GOLD's ♾️ side is the other kind — a real income PERMANENT
  *    (`resourceRoundGain`), so it does take the permanent slot.
  *  - AMBASSADOR'S SASH and CARDS OF PROPHECY lose their engine-side "reroll a die
@@ -356,7 +359,7 @@ export const communityBalanceArtifactCards: CardLibrary = {
   "artifact.cards_of_prophecy": reprint("artifact.cards_of_prophecy", {
     tags: tags(
       "artifact.cards_of_prophecy",
-      "Play this card before taking a Search action, then do Search (4) instead (was \"Reroll any die\": while this pack is on the Cards are no longer offered in any die-reroll window). — OR — Set a die on the side of your choice (the engine already covered every adventure die)."
+      "Play this card before taking a Search action, then do Search (4) instead (was \"Reroll any die\": while this pack is on the Cards are no longer offered in any die-reroll window). — OR — Set a die on the side of your choice: play it FROM HAND in the Resource/Treasure die window itself (one option per printed face, the roll ignored), or arm it in advance on your map turn as a this-turn ongoing."
     ),
     effect: {
       type: "CHOOSE_ONE",
@@ -379,6 +382,11 @@ export const communityBalanceArtifactCards: CardLibrary = {
           }
         },
         {
+          // Also offered FROM HAND inside the Resource/Treasure die window
+          // itself (`communityDieSetHandSources`, adventure.ts) — the playtest
+          // report "should not be an ongoing effect but rather an option to be
+          // played before a roll". This armed-in-advance ongoing stays as the
+          // second surface (and the AI's).
           label: "Set a die to the side of your choice",
           mapOnly: true,
           effect: {
@@ -401,19 +409,19 @@ export const communityBalanceArtifactCards: CardLibrary = {
   "artifact.endless_bag_of_gold": reprint("artifact.endless_bag_of_gold", {
     tags: tags(
       "artifact.endless_bag_of_gold",
-      "🔄 Ongoing: at the end of EACH of your turns, gain 3 gold (was a one-shot \"gain 3 gold\"). The card stays in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot — and keeps paying until you end it. — OR — Remove this card, then gain 4 gold (was 6)."
+      "🔄 Ongoing (ONE TURN): the card parks in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot — pays 3 gold ONCE at the END of that same turn and is then DISCARDED. It never pays on a later turn; draw it again to replay it. Was a one-shot \"gain 3 gold\". — OR — Remove this card, then gain 4 gold (was 6)."
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Ongoing: gain 3 gold at the end of each of your turns",
+          label: "Ongoing: gain 3 gold at the end of this turn, then discard this card",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
               name: "Endless Bag of Gold",
               scope: "player",
-              duration: { type: "permanent" },
+              duration: { type: "current-turn" },
               polarity: "positive",
               removable: true,
               modifiers: [{ type: "TURN_END_RESOURCE_GAIN", resource: "gold", amount: 3 }]
@@ -479,19 +487,19 @@ export const communityBalanceArtifactCards: CardLibrary = {
   "artifact.everpouring_vial_of_mercury": reprint("artifact.everpouring_vial_of_mercury", {
     tags: tags(
       "artifact.everpouring_vial_of_mercury",
-      "🔄 Ongoing: at the end of EACH of your turns, gain 1 valuables (was a one-shot \"gain 1 valuables\"). The card stays in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot. — OR — Remove this card, then gain 1 valuables (was 2)."
+      "🔄 Ongoing (ONE TURN): the card parks in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot — pays 1 valuables ONCE at the END of that same turn and is then DISCARDED. It never pays on a later turn. Was a one-shot \"gain 1 valuables\". — OR — Remove this card, then gain 1 valuables (was 2)."
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Ongoing: gain 1 valuables at the end of each of your turns",
+          label: "Ongoing: gain 1 valuables at the end of this turn, then discard this card",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
               name: "Everpouring Vial of Mercury",
               scope: "player",
-              duration: { type: "permanent" },
+              duration: { type: "current-turn" },
               polarity: "positive",
               removable: true,
               modifiers: [{ type: "TURN_END_RESOURCE_GAIN", resource: "valuables", amount: 1 }]
@@ -834,19 +842,19 @@ export const communityBalanceArtifactCards: CardLibrary = {
   "artifact.inexhaustible_cart_of_lumber": reprint("artifact.inexhaustible_cart_of_lumber", {
     tags: tags(
       "artifact.inexhaustible_cart_of_lumber",
-      "🔄 Ongoing: at the end of EACH of your turns, gain 2 building materials (was a one-shot \"gain 2\"). The card stays in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot. — OR — Remove this card, then gain 3 building materials (was 4)."
+      "🔄 Ongoing (ONE TURN): the card parks in your \"Permanents & Ongoing\" tray — it does NOT take a permanent slot — pays 2 building materials ONCE at the END of that same turn and is then DISCARDED. It never pays on a later turn. Was a one-shot \"gain 2\". — OR — Remove this card, then gain 3 building materials (was 4)."
     ),
     effect: {
       type: "CHOOSE_ONE",
       options: [
         {
-          label: "Ongoing: gain 2 building materials at the end of each of your turns",
+          label: "Ongoing: gain 2 building materials at the end of this turn, then discard this card",
           effect: {
             type: "CREATE_ACTIVE_EFFECT",
             effect: {
               name: "Inexhaustible Cart of Lumber",
               scope: "player",
-              duration: { type: "permanent" },
+              duration: { type: "current-turn" },
               polarity: "positive",
               removable: true,
               modifiers: [{ type: "TURN_END_RESOURCE_GAIN", resource: "buildingMaterials", amount: 2 }]
