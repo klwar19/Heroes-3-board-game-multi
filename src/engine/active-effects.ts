@@ -101,6 +101,10 @@ export function makeActiveEffect(
     // during your unit's turn); "next-activation" binds to the target unit
     // (Forgetfulness). Either way the effect ends when that unit's activation
     // ends — see expireEffectsForActivationEnd.
+    // "next-round-activation" (Community Prayer) deliberately has NO
+    // activation-END expiry: it must survive the target's own activation this
+    // round and every retaliation, ending only when the unit activates in a
+    // LATER combat round (expiresAtActivationStartUnitId below).
     expiresAtActivationEndUnitId:
       effect.duration.type === "current-activation"
         ? (state.combat?.activeUnitId ?? undefined)
@@ -115,7 +119,11 @@ export function makeActiveEffect(
     // expireEffectsForActivationStart). Scoped to the same case as the
     // activation-end +1 bump above.
     expiresAtActivationStartUnitId:
-      nextActivationOnActiveUnit && target?.type === "unit" ? target.unitId : undefined,
+      effect.duration.type === "next-round-activation"
+        ? (target?.type === "unit" ? target.unitId : undefined)
+        : nextActivationOnActiveUnit && target?.type === "unit"
+          ? target.unitId
+          : undefined,
     activationsRemaining: nextActivationOnActiveUnit
       ? (Math.min(2, (effect.activationsRemaining ?? 1) + 1) as 1 | 2)
       : effect.activationsRemaining,
@@ -1146,7 +1154,8 @@ export function expireEffectsForCombatEnd(state: GameState): ActiveEffectState[]
       effect.duration.type === "next-combat-round" ||
       effect.duration.type === "combat-rounds" ||
       effect.duration.type === "current-activation" ||
-      effect.duration.type === "next-activation"
+      effect.duration.type === "next-activation" ||
+      effect.duration.type === "next-round-activation"
   );
   if (expired.length > 0) {
     const expiredIds = new Set(expired.map((effect) => effect.id));

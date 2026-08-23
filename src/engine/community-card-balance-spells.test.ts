@@ -19,6 +19,8 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createAdventureGameState, createInitialGameState, getLegalActions } from "./index";
 import { balanceCard } from "./community-balance-cards";
+import { expireEffectsForActivationEnd, expireEffectsForActivationStart } from "./active-effects";
+import { spellPowerLadder } from "./effects";
 import { getActivationOrder, getUnitMoveRange } from "./legal-actions";
 import { hasToken } from "./tokens";
 import { cardLibrary } from "@/data/cards/library";
@@ -103,6 +105,18 @@ function cast(
     next = applyOk(next, boost!.action);
   }
   return passAllReactions(next);
+}
+
+/** Answers an open OPTION_CHOICE (the Misfortune die-face pick). */
+function answerOption(state: GameState, optionIndex: number): GameState {
+  const choice = state.pendingChoice;
+  expect(choice?.type, "an OPTION_CHOICE should be open").toBe("OPTION_CHOICE");
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: choice!.playerId,
+    choiceId: choice!.id,
+    optionIndex
+  });
 }
 
 function castOffers(state: GameState, cardId: string) {
@@ -685,6 +699,72 @@ describe("Community pack — Fire Wall", () => {
 });
 
 describe("Community pack — Misfortune", () => {
+  // The sheet's playtest report: "Doesn't do anything but it's treated as an
+  // Ongoing effect. You are however forced to pick a target which is wrong."
+  // The forced pick was real — CREATE_ENEMY_DIE_SET was missing from
+  // getTargetsForCard's self-targeted list, so it fell through to the
+  // "enemy-unit" default and demanded a unit the card never mentions (which is
+  // also why the ongoing looked inert: nothing happened to the picked unit).
+
+  it("picks NO unit: the only cast is target-less, and it opens a die-FACE pick instead", () => {
+    const state = combat(true);
+    state.players.p1.hand = ["spell.misfortune" as CardId];
+    const targets = castOffers(state, "spell.misfortune").map((action) =>
+      action.type === "CAST_SPELL" ? action.target.type : "?"
+    );
+    expect(targets.length).toBeGreaterThan(0);
+    expect(targets.every((type) => type === "none"), `offered targets: ${targets.join(", ")}`).toBe(true);
+
+    // The cast then asks the caster which Attack-die result to dictate.
+    const cast1 = cast(combat(true), "spell.misfortune", 0, { type: "none" });
+    expect(cast1.pendingChoice?.type).toBe("OPTION_CHOICE");
+    expect(cast1.pendingChoice?.type === "OPTION_CHOICE" && cast1.pendingChoice.context).toBe("misfortune-face");
+    // Answerable by anyone — the pick is an ordinary OPTION_CHOICE owned by the
+    // caster, so the AI / AFK driver can close it (no new stall surface).
+    expect(
+      getLegalActions(cast1, "p1").some(
+        (legal) => legal.action.type === "CHOOSE_OPTION" && legal.action.choiceId === cast1.pendingChoice!.id
+      )
+    ).toBe(true);
+  });
+
+  it("the CHOSEN face is what the enemy's die is set to — '-1' softens the blow, '+1' hardens it", () => {
+    // Every die is pinned to "0", so the ONLY thing that can move the damage is
+    // the face Misfortune dictates. Mutation check: a hard-coded face makes both
+    // numbers identical and this test fails.
+    const hit = (facePick: number | null) => {
+      const state = combat(true, { die: 0 });
+      state.combat!.units.unit_p1_griffins.position = 9;
+      state.combat!.units.unit_p2_vampires.position = 10;
+      for (const unit of Object.values(state.combat!.units)) {
+        unit.abilities = [];
+      }
+      state.combat!.units.unit_p2_vampires.attack = 10;
+      state.combat!.units.unit_p1_griffins.defense = 2;
+      let next =
+        facePick === null
+          ? state
+          : answerOption(cast(state, "spell.misfortune", 0, { type: "none" }), facePick);
+      next.activePlayerId = "p2";
+      next.combat!.activeUnitId = "unit_p2_vampires";
+      next.combat!.units.unit_p2_vampires.activatedThisRound = false;
+      next.players.p1.hand = [];
+      const attack = getLegalActions(next, "p2").find(
+        (legal) =>
+          legal.action.type === "ATTACK_UNIT" &&
+          legal.action.attackerId === "unit_p2_vampires" &&
+          legal.action.defenderId === "unit_p1_griffins"
+      )!;
+      next = passAllReactions(applyOk(next, attack.action));
+      return next.combat!.units.unit_p1_griffins.damage;
+    };
+    const bare = hit(null);
+    // Option 0 is "-1", option 2 is "+1" (worst first, so an AFK default helps
+    // the caster). A "0" die forced to "-1" costs the enemy 1, to "+1" pays 1.
+    expect(hit(0)).toBe(bare - 1);
+    expect(hit(2)).toBe(bare + 1);
+  });
+
   it("sets one die of the ENEMY's next attack roll to -1 — the blow really lands softer", () => {
     const hit = (community: boolean) => {
       // The die is pinned to "+1", so any softening can ONLY be Misfortune.
@@ -698,7 +778,7 @@ describe("Community pack — Misfortune", () => {
       state.combat!.units.unit_p1_griffins.defense = 2;
       // p1 casts Misfortune on its own activation.
       let next = community
-        ? cast(state, "spell.misfortune", 0, { type: "none" })
+        ? answerOption(cast(state, "spell.misfortune", 0, { type: "none" }), 0)
         : (() => {
             // The printed card is a REACTION; there is no own-turn cast, so the
             // control simply skips it and takes the same swing bare.
@@ -804,6 +884,99 @@ describe("Community pack — Inferno", () => {
     expect(rolls(false)).toBe(4);
     expect(blast(true)).toBeGreaterThan(0);
   });
+
+  // The sheet's playtest report: "Expert Luck doesn't allow reroll" — the
+  // reprint's Attack dice were rolled inline with no window at all.
+
+  /**
+   * A one-die Inferno on the vampires' space. `luck` grants the caster a real
+   * standing Attack-die reroll entitlement (the Luck/Fortune/Mirth shape); the
+   * scripted dice are consumed in order, so [0, 1] means "whiff, then a '+1' on
+   * the reroll".
+   */
+  function infernoRig(community: boolean, opts: { luck?: boolean; scripted?: number[] } = {}): GameState {
+    const state = combat(community);
+    state.combat!.units.unit_p2_vampires.position = 3;
+    for (const unit of Object.values(state.combat!.units)) {
+      unit.abilities = [];
+      unit.maxHealth = 99;
+    }
+    state.combat!.dice.scriptedRolls = opts.scripted ?? [0, 0, 0, 0];
+    state.combat!.dice.rollCount = 0;
+    if (opts.luck) {
+      state.activeEffects.push({
+        id: "effect_test_luck",
+        name: "Luck",
+        scope: "player",
+        controllerId: "p1",
+        duration: { type: "combat" },
+        polarity: "positive",
+        removable: true,
+        modifiers: [{ type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1 }],
+        source: { type: "system" },
+        startedRound: state.round,
+        usedRollEventIds: [],
+        usedChoiceIds: [],
+        usedCombatRoundNumbers: []
+      } as unknown as GameState["activeEffects"][number]);
+    }
+    return state;
+  }
+
+  it("opens the standing Attack-die reroll window on its dice — and the reroll really changes the blast", () => {
+    // Scripted: the first die whiffs ("0"), the reroll shows "+1".
+    const state = infernoRig(true, { luck: true, scripted: [0, 1, 0, 0] });
+    const parked = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
+
+    // The blast is PARKED: only the flat pre-damage has landed so far.
+    expect(parked.pendingChoice?.type).toBe("ATTACK_DIE_REROLL");
+    expect(parked.pendingChoice?.type === "ATTACK_DIE_REROLL" && parked.pendingChoice.abilityRoll?.kind).toBe(
+      "spell-dice"
+    );
+    expect(parked.combat!.units.unit_p2_vampires.damage).toBe(1);
+
+    // Expert Luck is the offered source, so the caster may reroll the whiff.
+    const reroll = getLegalActions(parked, "p1").find(
+      (legal) => legal.action.type === "REROLL_PENDING_CHOICE" && legal.label.includes("Luck")
+    );
+    expect(reroll, "the Luck reroll must be offered on Inferno's die").toBeTruthy();
+    let next = applyOk(parked, reroll!.action);
+    const keep = getLegalActions(next, "p1").find((legal) => legal.action.type === "CHOOSE_PENDING_ROLL")!;
+    next = applyOk(next, keep.action);
+
+    expect(next.pendingChoice).toBeNull();
+    // 1 pre-damage + 1 from the rerolled "+1" — the whiffed original pays none.
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(2);
+  });
+
+  it("DECLINING the window resolves the original dice and never freezes the table", () => {
+    const state = infernoRig(true, { luck: true, scripted: [0, 1, 0, 0] });
+    const parked = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
+    const keep = getLegalActions(parked, "p1").find((legal) => legal.action.type === "CHOOSE_PENDING_ROLL")!;
+    const next = applyOk(parked, keep.action);
+    expect(next.pendingChoice).toBeNull();
+    // Kept the whiff: only the pre-damage stands, and the "+1" the reroll would
+    // have found is never spent.
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
+    // The table moves again: p1 has ordinary offers with no choice pending.
+    expect(getLegalActions(next, "p1").length).toBeGreaterThan(0);
+  });
+
+  it("CONTROL: rule OFF the printed Inferno rolls inline — no window, whatever the caster holds", () => {
+    const state = infernoRig(false, { luck: true, scripted: [0, 1, 0, 0] });
+    const next = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
+    expect(next.pendingChoice).toBeNull();
+    // The printed spell has no pre-damage and its die whiffed → nothing at all.
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(0);
+  });
+
+  it("CONTROL: with NO reroll entitlement the reprint resolves inline too", () => {
+    const state = infernoRig(true, { scripted: [0, 1, 0, 0] });
+    state.players.p1.morale = 0;
+    const next = cast(state, "spell.inferno", 0, { type: "space", position: 3 });
+    expect(next.pendingChoice).toBeNull();
+    expect(next.combat!.units.unit_p2_vampires.damage).toBe(1);
+  });
 });
 
 describe("Community pack — Slayer", () => {
@@ -896,6 +1069,43 @@ describe("Community pack — Forgetfulness", () => {
     const printed = effectsOn(off, "unit_p2_skeletons").find((effect) => effect.name === "Forgetfulness")!;
     expect(printed.modifiers).toEqual([{ type: "UNIT_CANNOT_ATTACK" }]);
     expect(printed.activationsRemaining).toBeUndefined();
+  });
+
+  // The sheet's playtest report on the Power-2 rung: "Cost is assumed to be 1
+  // SP". The printed reprint face (public/assets/community-balance/
+  // spell-forgetfulness.webp) prints 0 → next Activation, 2 → next 2, 4 → next
+  // 3, and the ENGINE's threshold table already matches it — pinned here so a
+  // "fix" toward 1 SP fails. What DID mislead the reader was the ladder the game
+  // renders: it read the reprint's tier table (`gradeByPower`, a single no-op
+  // {0: azure} rung), advertising ONE rung at Power 0 and hiding the 2 / 4 rows.
+  it("the 2-activation rung really costs 2 Power — Power 1 still buys only 1 activation", () => {
+    const activations = (power: number) => {
+      const next = cast(withEnemyShooter(true), "spell.forgetfulness", power, {
+        type: "unit",
+        unitId: "unit_p2_skeletons"
+      });
+      return effectsOn(next, "unit_p2_skeletons").find((effect) => effect.name === "Forgetfulness")!
+        .activationsRemaining;
+    };
+    expect(activations(0)).toBe(1);
+    expect(activations(1)).toBe(1);
+    expect(activations(2)).toBe(2);
+    expect(activations(4)).toBe(3);
+  });
+
+  it("its Power ladder is DISPLAYED as the printed activation rungs, not the no-op tier table", () => {
+    const rows = spellPowerLadder(balanceCard(combat(true), "spell.forgetfulness"));
+    expect(rows.map((row) => row.power)).toEqual([0, 2, 4]);
+    expect(rows.map((row) => row.text)).toEqual([
+      "its next 1 activation",
+      "its next 2 activations",
+      "its next 3 activations"
+    ]);
+    // CONTROL: the printed card has no activation ladder, so it still shows its
+    // real tier rungs.
+    const printed = spellPowerLadder(balanceCard(combat(false), "spell.forgetfulness"));
+    expect(printed.map((row) => row.power)).toEqual([0, 1, 2]);
+    expect(printed[0]!.text).toBe("up to bronze");
   });
 
   it("has NO tier gate: it lands on a GOLD ranged unit at Power 0 (the printed card cannot)", () => {
@@ -1055,7 +1265,7 @@ describe("Community pack — Prayer", () => {
     expect(buff.modifiers.map((modifier) => modifier.type).sort()).toEqual(
       ["ATTACK_BONUS", "DEFENSE_BONUS", "INITIATIVE_BONUS"].sort()
     );
-    expect(buff.duration.type).toBe("next-activation");
+    expect(buff.duration.type).toBe("next-round-activation");
     // Observable: the Crusaders really climb the activation order.
     const indexOf = (state: GameState) =>
       getActivationOrder(state.combat!, state.activeEffects).findIndex((unit) => unit.id === "unit_p1_crusaders");
@@ -1067,6 +1277,85 @@ describe("Community pack — Prayer", () => {
     const off = cast(combat(false), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" }, 2);
     const buff = effectsOn(off, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
     expect(buff.modifiers.map((modifier) => modifier.type)).toEqual(["INITIATIVE_BONUS"]);
+  });
+
+  // The sheet's playtest report: "Right now it's discarded right after the unit
+  // has concluded its turn. It should however be discarded at it's activation
+  // the next combat round." The old `next-activation` duration died at the
+  // target's very next activation END — which, cast on a unit that had not yet
+  // acted, is exactly "right after it concluded its turn".
+  //
+  // p2's skeletons poke the (Prayer-buffed) p1 CRUSADERS — a unit that is NOT
+  // the active one when Prayer is cast, the shape the old reading broke on. The
+  // crusaders retaliate for attack + Prayer's +1, so the retaliation damage IS
+  // the observable: 6 while the buff stands, 5 once it is gone.
+  function crusaderRetaliationDamage(step: "cast" | "after-own-activation" | "next-round-activation"): number {
+    const on = cast(combat(true), "spell.prayer", 0, { type: "unit", unitId: "unit_p1_crusaders" });
+    const crusaders = on.combat!.units.unit_p1_crusaders;
+    const skeletons = on.combat!.units.unit_p2_skeletons;
+    crusaders.attack = 5;
+    crusaders.defense = 0;
+    crusaders.abilities = [];
+    crusaders.damage = 0;
+    crusaders.retaliatedThisRound = false;
+    crusaders.position = 13;
+    skeletons.attack = 1;
+    skeletons.defense = 0;
+    skeletons.abilities = [];
+    skeletons.damage = 0;
+    skeletons.position = 14;
+    skeletons.activatedThisRound = false;
+    skeletons.attackedThisActivation = false;
+    on.combat!.activeUnitId = "unit_p2_skeletons";
+    on.activePlayerId = "p2";
+    on.combat!.dice.scriptedRolls = [0, 0, 0, 0];
+    on.combat!.dice.rollCount = 0;
+
+    if (step !== "cast") {
+      // The crusaders take their own activation THIS round and finish it.
+      expireEffectsForActivationStart(on, "unit_p1_crusaders");
+      expireEffectsForActivationEnd(on, "unit_p1_crusaders");
+    }
+    if (step === "next-round-activation") {
+      // …and then activate again in a LATER combat round.
+      on.combat!.round = 2;
+      expireEffectsForActivationStart(on, "unit_p1_crusaders");
+    }
+
+    const resolved = passAllReactions(
+      applyOk(on, {
+        type: "ATTACK_UNIT",
+        playerId: "p2",
+        attackerId: "unit_p2_skeletons",
+        defenderId: "unit_p1_crusaders"
+      })
+    );
+    return resolved.combat!.units.unit_p2_skeletons.damage;
+  }
+
+  it("survives the buffed unit's OWN activation this round (the reported early discard)", () => {
+    // Both numbers must be the buffed 6. Revert the duration to `next-activation`
+    // and the second one drops to 5 — the exact bug the sheet reported.
+    expect(crusaderRetaliationDamage("cast")).toBe(6);
+    expect(crusaderRetaliationDamage("after-own-activation")).toBe(6);
+  });
+
+  it("ends at the buffed unit's activation NEXT combat round — and only then", () => {
+    expect(crusaderRetaliationDamage("next-round-activation")).toBe(5);
+  });
+
+  it("CONTROL: the POLISH Prayer reprint keeps its `next-activation` reading", () => {
+    // The new duration is scoped to the COMMUNITY card alone; the Polish twin
+    // (community OFF, polish ON) is untouched, so a single activation-end still
+    // clears it.
+    const polish = cast(combat(false, { polish: true }), "spell.prayer", 0, {
+      type: "unit",
+      unitId: "unit_p1_crusaders"
+    });
+    const buff = effectsOn(polish, "unit_p1_crusaders").find((effect) => effect.name === "Prayer")!;
+    expect(buff.duration.type).toBe("next-activation");
+    expireEffectsForActivationEnd(polish, "unit_p1_crusaders");
+    expect(effectsOn(polish, "unit_p1_crusaders").some((effect) => effect.name === "Prayer")).toBe(false);
   });
 });
 

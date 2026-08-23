@@ -808,6 +808,8 @@ function durationLadderText(duration: EffectDurationDefinition): string {
       return "this activation";
     case "next-activation":
       return "next activation";
+    case "next-round-activation":
+      return "its activation next combat round";
     case "current-combat-round":
       return "this combat round";
     case "next-combat-round":
@@ -893,9 +895,19 @@ function effectLadderRows(effect: Exclude<EffectDefinition, { type: "CHOOSE_ONE"
       return ladderFromTable(effect.gradeByPower, (grade) => `immune up to ${grade}`);
     case "IGNORE_DEFENSE":
       return ladderFromTable(effect.gradeByPower, (grade) => `pierce up to ${grade}`);
+    case "FORGETFULNESS":
+      // A reprint whose ladder is about ACTIVATIONS (Community: 0/2/4 → its next
+      // 1/2/3 activations) shows THAT ladder — its `gradeByPower` is a single
+      // no-op rung ({0: azure}, no tier gate at all), so reading the tier table
+      // here advertised one rung at Power 0 and hid the printed 2 / 4 rows.
+      return effect.activationsByPower
+        ? ladderFromTable(
+            effect.activationsByPower,
+            (activations) => `its next ${activations} activation${activations === 1 ? "" : "s"}`
+          )
+        : ladderFromTable(effect.gradeByPower, (grade) => `up to ${grade}`);
     case "CLEAR_RETALIATION":
     case "PLACE_PARALYSIS":
-    case "FORGETFULNESS":
     case "BERSERK":
     case "TELEPORT_UNIT":
     case "CLONE_UNIT":
@@ -976,6 +988,7 @@ const LASTING_DURATION_TYPES: ReadonlySet<EffectDurationDefinition["type"]> = ne
   "current-game-round",
   "current-activation",
   "next-activation",
+  "next-round-activation",
   "combat",
   "permanent"
 ]);

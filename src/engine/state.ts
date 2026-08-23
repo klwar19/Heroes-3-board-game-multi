@@ -700,6 +700,18 @@ export type EffectDurationDefinition =
    * targeted unit's next activation (bound to the effect's target unit).
    */
   | { type: "next-activation" }
+  /**
+   * Community Balance Pack Prayer: "until its activation NEXT COMBAT ROUND".
+   * Bound to the effect's target unit and expired ONLY at that unit's activation
+   * START in a LATER combat round (`expiresAtActivationStartUnitId` + the
+   * `startedCombatRound` guard in `expireEffectsForActivationStart`) — never at
+   * an activation END. So the buff covers the rest of the round it was cast in,
+   * including the target's OWN activation that round and every retaliation it
+   * makes, and ends the moment the unit next activates. `next-activation`
+   * differs: it dies at the target's very next activation END, which is what
+   * made the reprint "discarded right after the unit concluded its turn".
+   */
+  | { type: "next-round-activation" }
   | { type: "combat" }
   | { type: "permanent" };
 
@@ -2490,6 +2502,15 @@ export type EffectDefinition =
        * BEFORE the dice are rolled. Absent on the printed spell.
        */
       preDamageOnSpace?: number;
+      /**
+       * Community Balance Pack Inferno: its Attack dice take the caster's own
+       * Attack-die reroll entitlements (expert Luck, Fortune, Mirth, the
+       * positive morale token, the reroll artifacts) through the SAME
+       * `ATTACK_DIE_REROLL` window an ability roll opens — the reported
+       * "expert Luck doesn't allow reroll". Absent on the printed spell, whose
+       * dice resolve inline exactly as before.
+       */
+      offerDieReroll?: boolean;
     }
   | {
       /**
@@ -15130,7 +15151,7 @@ export type AbilityDiceRoll = {
  * post-attack follow-up tail (runPostAttackFollowUps) rather than the stack.
  */
 export type PendingAbilityRollContext = {
-  kind: "attack-die-damage" | "death-stare" | "paralysis-extra" | "knockback";
+  kind: "attack-die-damage" | "death-stare" | "paralysis-extra" | "knockback" | "spell-dice";
   abilityId: string;
   abilityName: string;
   /** Dice thrown per (re)roll — after any "roll 1 die less" reduction. */
@@ -15151,6 +15172,17 @@ export type PendingAbilityRollContext = {
     fromStep: number;
     /** This roll's index within its step's follow-up list. */
     followUpIndex: number;
+  };
+  /**
+   * kind "spell-dice" (Community Balance Pack Inferno): the roll belongs to a
+   * SPELL, not to a post-attack follow-up, so `resume` is inert filler and the
+   * kept dice resolve THIS payload instead — the blast lands on `position` for
+   * `cardId`, paid by `playerId`. Absent on every attack-follow-up window.
+   */
+  spellResume?: {
+    cardId: CardId;
+    playerId: PlayerId;
+    position: number;
   };
 };
 
@@ -15306,6 +15338,7 @@ export type PendingChoice =
         | "disrupting-ray-mode"
         | "dispel-scope"
         | "community-dispel-pick"
+        | "misfortune-face"
         | "genie-take-spell"
         | "combat-knockback"
         | "combat-teleport"
@@ -15418,6 +15451,14 @@ export type PendingChoice =
         remaining?: number;
         effectIds?: string[];
         paralysisUnitIds?: UnitId[];
+        /**
+         * Community Balance Pack Misfortune ("misfortune-face"): the Attack-die
+         * faces the caster may dictate, index-aligned with `options`. The answer
+         * writes the pick onto the just-created SET_ENEMY_ATTACK_DIE effect
+         * (`effectIds[0]`) — the card prints "CHOOSE an attack die roll result",
+         * so the face is the player's, never the engine's.
+         */
+        dieFaces?: number[];
       };
       /**
        * genie-take-spell: the Spells dug out of the Genies' controller's deck

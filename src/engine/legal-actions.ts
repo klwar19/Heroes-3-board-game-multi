@@ -1805,6 +1805,12 @@ function getTargetsForCard(
     card?.effect.type === "GAIN_MORALE" ||
     // Mirth: a player-scoped reroll buff picks no unit.
     card?.effect.type === "CREATE_ATTACK_DIE_REROLL" ||
+    // Community Balance Pack Misfortune: a player-scoped ongoing dictating the
+    // next N ENEMY attack rolls. It touches no single unit, so without this it
+    // fell through to the "enemy-unit" default and FORCED a pointless unit pick
+    // (the reported bug) — and, cast on a unit, looked like a debuff that did
+    // nothing to it. The cast opens a die-FACE pick instead.
+    card?.effect.type === "CREATE_ENEMY_DIE_SET" ||
     // Remove Obstacle picks no unit — it opens a board-obstacle choice instead.
     card?.effect.type === "REMOVE_OBSTACLE" ||
     // Quicksand / Land Mine pick no unit either — the cast opens a face-down

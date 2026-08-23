@@ -2789,7 +2789,12 @@ export function RerollModal({
         <header>
           <strong>{abilityRoll ? `${abilityRoll.abilityName} — fate is in your hands` : "Fate is in your hands"}</strong>
           <span>
-            {abilityRoll
+            {abilityRoll?.spellResume
+              ? // A SPELL's own dice (Community Inferno): there is no attacker /
+                // defender pair to name — the window's two unit ids are the
+                // caster's own unit, filler for the shared choice shape.
+                `${abilityRoll.abilityName} rolls its Attack dice before the blast lands`
+              : abilityRoll
               ? `${unitName(state, choice.attackerId)} rolls for ${abilityRoll.abilityName} against ${unitName(state, choice.defenderId)}`
               : `${unitName(state, choice.attackerId)} attacks ${unitName(state, choice.defenderId)}`}{" "}
             — a reroll replaces the result, the latest roll counts.

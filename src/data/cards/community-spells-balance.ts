@@ -30,11 +30,14 @@ import { spellCards } from "./spells";
  *    set-die path for the map dice. The 1/2/3 uses are the budget inside the ONE
  *    die window the card is spent on (`consumeEffectOnUse`), exactly like the
  *    printed Fortune's rerolls; there is no cross-roll "this turn" ledger.
- *  - MISFORTUNE's "choose an attack die roll result" is likewise resolved as the
- *    caster's best pick — one die of each of the next N ENEMY attack rolls is
- *    SET to "-1" (`SET_ENEMY_ATTACK_DIE`, `applyEnemyDieSetCurses`). It fires on
- *    the INITIAL roll of an enemy attack; a reroll the enemy then buys is their
- *    own answer and spends no further charge.
+ *  - MISFORTUNE's "choose an attack die roll result" is a REAL pick now
+ *    (2026-08-23): the cast targets NOTHING and opens a `misfortune-face`
+ *    OPTION_CHOICE listing "-1" / "0" / "+1"; the answer is written onto the
+ *    ongoing's `SET_ENEMY_ATTACK_DIE` modifier and one die of each of the next N
+ *    ENEMY attack rolls is set to it (`applyEnemyDieSetCurses` still picks WHICH
+ *    die — the flip that moves the roller's outcome furthest toward that face).
+ *    It fires on the INITIAL roll of an enemy attack; a reroll the enemy then
+ *    buys is their own answer and spends no further charge.
  *  - SLAYER's "a unit of a higher tier" is `gradeRankOfUnit(defender) >
  *    gradeRankOfUnit(attacker)`. A gradeless Creature-Bank / boss defender ranks
  *    above every graded unit, so it always counts as higher tier; a gradeless
@@ -43,10 +46,15 @@ import { spellCards } from "./spells";
  *    CREATE_SPELL_IMMUNITY ward — the reprint's real change here is the
  *    breakpoint move 0/2/4 → 0/1/2. It does NOT gain the Polish reprint's
  *    spell-DAMAGE reduction.
- *  - PRAYER's printed duration is "until its activation next combat round". The
- *    engine duration is `next-activation`, which ends when that unit's next
- *    activation ENDS — half a step longer than the wording (the same reading the
- *    Polish Prayer reprint documents; no new duration was invented).
+ *  - PRAYER's printed duration is "until its activation next combat round" and
+ *    the engine now runs exactly that (`next-round-activation`, 2026-08-23): the
+ *    buff survives the round it was cast in — the target's OWN activation that
+ *    round included, plus every retaliation — and expires at the START of that
+ *    unit's activation in a LATER combat round. The Polish reprint keeps its own
+ *    `next-activation` reading and is untouched.
+ *  - INFERNO's Attack dice are rerollable (`offerDieReroll`): the caster's
+ *    standing Attack-die entitlements open the ordinary reroll window on them
+ *    before the blast lands. The printed spell rolls inline.
  *  - CURE's only printed change is the word "friendly". The engine ALREADY
  *    restricted it to a friendly unit (`target: { type: "friendly-unit" }`), so
  *    this reprint changes NO behaviour — it ships so the face a player reads
@@ -353,7 +361,7 @@ export const communityBalanceSpellCards: CardLibrary = {
     tags: tags(
       "spell.misfortune",
       "Ongoing: choose an attack die roll result for the next N enemy attack rolls: Power 0: 1 roll; Power 1: 2; Power 2: 3.",
-      "the printed play-when-attacked negate is GONE. The reprint is an ongoing cast on your own activation: for the next 1/2/3 ENEMY Attack rolls one die is SET to the result you choose. With the three-face Attack die (-1 / 0 / +1) the caster always wants the worst, so the engine sets the die whose flip lowers the enemy's outcome the most (`SET_ENEMY_ATTACK_DIE`, applyEnemyDieSetCurses). It bites on the INITIAL roll of each enemy attack; a reroll the enemy then buys is their own answer and costs no further charge. There is no tier gate at any rung."
+      "the printed play-when-attacked negate is GONE. The reprint is an ongoing cast on your own activation with NO target at all (it picks no unit — 2026-08-23 fix; it used to fall through to the engine's \"enemy-unit\" default and force a meaningless unit pick). The cast opens a die-FACE pick — \"-1\" / \"0\" / \"+1\", a `misfortune-face` OPTION_CHOICE — and for the next 1/2/3 ENEMY Attack rolls one die is SET to the face chosen (`SET_ENEMY_ATTACK_DIE`, applyEnemyDieSetCurses picks WHICH die: the flip that moves the roller's outcome furthest toward the chosen face). It bites on the INITIAL roll of each enemy attack; a reroll the enemy then buys is their own answer and costs no further charge. There is no tier gate at any rung."
     ),
     effect: {
       type: "CREATE_ENEMY_DIE_SET",
@@ -401,9 +409,14 @@ export const communityBalanceSpellCards: CardLibrary = {
     tags: tags(
       "spell.inferno",
       "Activation: Select a space. Deal 1 damage to a unit on that space. Now roll an Attack die: Power 0: once; Power 1: twice; Power 2: 3 times. All units on this and the adjacent spaces take 1 damage for every \"+1\" rolled.",
-      "two changes. A flat 1 damage now lands on whatever unit occupies the SELECTED space BEFORE any die is rolled (it resolves even when every die whiffs, and never touches the adjacent ring). The top rung drops from 4 rolls to 3."
+      "three changes. A flat 1 damage now lands on whatever unit occupies the SELECTED space BEFORE any die is rolled (it resolves even when every die whiffs, and never touches the adjacent ring). The top rung drops from 4 rolls to 3. And the Attack dice are REROLLABLE (`offerDieReroll`, 2026-08-23): the caster's standing Attack-die entitlements — expert Luck, Fortune, Mirth, the positive morale token/card, the reroll artifacts, Lucky E — open the ordinary reroll window on them, one die at a time, before the blast lands. The printed spell rolls inline with no window."
     ),
-    effect: { type: "INFERNO", rollsByPower: { 0: 1, 1: 2, 2: 3 }, preDamageOnSpace: 1 }
+    effect: {
+      type: "INFERNO",
+      rollsByPower: { 0: 1, 1: 2, 2: 3 },
+      preDamageOnSpace: 1,
+      offerDieReroll: true
+    }
   }),
 
   // Slayer — complete rework: a flat attack bonus against a higher-tier unit,
@@ -561,13 +574,13 @@ export const communityBalanceSpellCards: CardLibrary = {
     tags: tags(
       "spell.prayer",
       "Ongoing: until its activation next combat round the selected unit gains attack, defense AND initiative: Power 0: +1; Power 2: +2; Power 4: +3.",
-      "the printed \"pick ONE of attack / defense / initiative for one attack\" becomes a lasting buff to ALL THREE at once. The ladder values and breakpoints (0/2/4 → +1/+2/+3) are the printed ones. Engine duration is `next-activation`, which ends when that unit's next activation ENDS — half a step longer than the printed wording (the documented Polish-Prayer reading; no new duration was invented)."
+      "the printed \"pick ONE of attack / defense / initiative for one attack\" becomes a lasting buff to ALL THREE at once. The ladder values and breakpoints (0/2/4 → +1/+2/+3) are the printed ones. Engine duration is `next-round-activation` (2026-08-23): it survives the rest of the combat round it was cast in — the target's OWN activation that round included, and every retaliation — and expires at the START of that unit's activation in a LATER combat round, exactly as printed. It used to be `next-activation`, which died at the target's very next activation END (\"discarded right after the unit has concluded its turn\")."
     ),
     effect: {
       type: "CREATE_PRAYER_BUFF",
       name: "Prayer",
       amountByPower: { 0: 1, 2: 2, 4: 3 },
-      duration: { type: "next-activation" },
+      duration: { type: "next-round-activation" },
       polarity: "positive",
       removable: true
     }

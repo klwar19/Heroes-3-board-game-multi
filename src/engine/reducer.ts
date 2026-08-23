@@ -3138,6 +3138,143 @@ function resolveInfernoSpell(
   }
 
   const rolls = Array.from({ length: Math.max(1, rollCount) }, () => rollAttackDie(combat));
+
+  // Community Balance Pack Inferno: the caster's own Attack-die reroll
+  // entitlements (expert Luck, Fortune, Mirth, the morale token, the reroll
+  // artifacts) reach these dice through the standard ATTACK_DIE_REROLL window —
+  // the reported "expert Luck doesn't allow reroll". The blast is PARKED on the
+  // window's `spellResume` payload and lands when the caster keeps a roll (the
+  // area-pick precedent: the cast itself finishes, the damage follows the pick).
+  // The printed spell carries no `offerDieReroll`, so it resolves inline.
+  if (
+    card.effect.type === "INFERNO" &&
+    card.effect.offerDieReroll &&
+    // `roll` follows the ABILITY-roll convention (the first die), because that
+    // is what `throwAbilityRerollCandidate` writes back on every reroll and what
+    // the face-gated sources read. Inferno's real outcome is the FACES, so the
+    // keep path counts `candidate.rolls`, never `candidate.roll`.
+    openInfernoRerollWindow(state, playerId, card, position, {
+      rolls,
+      roll: rolls[0] ?? 0,
+      sumAllDice: true
+    })
+  ) {
+    return;
+  }
+
+  applyInfernoDiceOutcome(state, playerId, card, position, rolls);
+}
+
+/**
+ * Offers the caster the keep/reroll window on Inferno's just-thrown Attack dice.
+ * Sources are the ability-roll pool (reroll artifacts in hand, Lucky E, the
+ * positive morale token / card, the Aegis) PLUS the caster's standing
+ * ATTACK_DIE_REROLL effects — Luck, Fortune and Mirth, which the ability-roll
+ * pool deliberately withholds from Death Stare & co. but which the printed Luck
+ * ("reroll each Attack die") plainly covers here. Returns true when the blast
+ * paused; false (no source, no caster unit on the board) resolves it inline.
+ */
+function openInfernoRerollWindow(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  position: number,
+  candidate: AttackRollCandidate
+): boolean {
+  const combat = state.combat;
+  const caster = combat?.activeUnitId ? combat.units[combat.activeUnitId] : undefined;
+  if (!combat || !caster || caster.controllerId !== playerId) {
+    return false;
+  }
+  const effectSources: AttackRerollSource[] = state.activeEffects
+    .filter(
+      (effect) =>
+        effect.controllerId === playerId &&
+        effect.scope !== "unit" &&
+        effect.modifiers.some(
+          (modifier) => modifier.type === "ATTACK_DIE_REROLL" && modifier.maxUsesPerRoll > 0
+        )
+    )
+    // Luck is spent last, exactly as in buildRerollSources.
+    .sort((left, right) => Number(left.name.includes("Luck")) - Number(right.name.includes("Luck")))
+    .map((effect) => ({
+      name: effect.name,
+      effectId: effect.id,
+      remaining: getRerollUsesForEffect(effect),
+      used: 0,
+      chooseResult: effectRerollChoosesResult(effect),
+      setDieFace: effectRerollSetsDieFace(effect)
+    }));
+  const sources = [...effectSources, ...buildAbilityRerollSources(state, caster)].filter(
+    (source) => source.remaining > 0
+  );
+  if (countAvailableRerolls(sources, candidate.roll) <= 0) {
+    return false;
+  }
+
+  const choiceId = `choice_${nextEventNumber(state)}`;
+  state.pendingChoice = {
+    id: choiceId,
+    type: "ATTACK_DIE_REROLL",
+    playerId,
+    stackItemId: "",
+    attackerId: caster.id,
+    defenderId: caster.id,
+    isRetaliation: false,
+    attackKind: "melee",
+    rollMode: "normal",
+    attackBonus: 0,
+    defenseBonus: 0,
+    candidates: [candidate],
+    remainingRerolls: countAvailableRerolls(sources, candidate.roll),
+    rerollSources: sources,
+    sourceEffectIds: [],
+    abilityRoll: {
+      kind: "spell-dice",
+      abilityId: card.id,
+      abilityName: card.name,
+      diceCount: candidate.rolls.length,
+      // Inferno pays 1 damage per "+1", so the "+1" face IS the success window:
+      // the per-die reroll buttons therefore offer the non-"+1" dice first.
+      minRoll: 1,
+      maxRoll: 1,
+      resume: {
+        attackerId: caster.id,
+        defenderId: caster.id,
+        attackKind: "melee",
+        attackRoll: 0,
+        forceAbilityRoll: false,
+        fromStep: 0,
+        followUpIndex: 0
+      },
+      spellResume: { cardId: card.id, playerId, position }
+    }
+  };
+  state.phase = "choice";
+  state.priorityPlayerId = playerId;
+  appendEvent(state, {
+    type: "PENDING_CHOICE_CREATED",
+    choiceId,
+    choiceType: "ATTACK_DIE_REROLL",
+    playerId,
+    sourceEffectIds: [],
+    message: `${card.name}: you may reroll the Attack dice before the blast lands.`
+  });
+  return true;
+}
+
+/** Reads out Inferno's kept dice and lands the blast. */
+function applyInfernoDiceOutcome(
+  state: GameState,
+  playerId: PlayerId,
+  card: CardDefinition,
+  position: number,
+  rolls: number[]
+): void {
+  const combat = state.combat;
+  if (!combat) {
+    return;
+  }
   const damage = rolls.filter((roll) => roll === 1).length;
 
   // Show the dice first: the client animates them tumbling and reading out (with
@@ -5439,10 +5576,17 @@ function openCommunityDispelPick(
  * the generic AI scorer and the AFK / turn-timeout driver answer it like any
  * other — the reprints can never strand a table.
  */
+/**
+ * The three faces of the Attack die, worst first — the options Community
+ * Misfortune offers ("choose an attack die roll result"). Worst first so an AI /
+ * AFK driver's default index-0 answer is the one a caster actually wants.
+ */
+const MISFORTUNE_DIE_FACES: readonly number[] = [-1, 0, 1];
+
 function openBalanceSpellChoice(
   state: GameState,
   playerId: PlayerId,
-  context: "disrupting-ray-mode" | "dispel-scope" | "community-dispel-pick",
+  context: "disrupting-ray-mode" | "dispel-scope" | "community-dispel-pick" | "misfortune-face",
   payload: {
     cardId: CardId;
     unitId?: UnitId;
@@ -5451,6 +5595,7 @@ function openBalanceSpellChoice(
     remaining?: number;
     effectIds?: string[];
     paralysisUnitIds?: UnitId[];
+    dieFaces?: number[];
   },
   prompt: string,
   options: { label: string }[]
@@ -5514,6 +5659,31 @@ function resolveBalanceSpellChoice(
       choice.playerId,
       target
     );
+    return;
+  }
+
+  // Community Balance Pack Misfortune: the caster dictates the Attack-die face
+  // the ongoing forces onto the next N enemy rolls.
+  if (choice.context === "misfortune-face" && card) {
+    const face = payload.dieFaces?.[picked];
+    const effectId = payload.effectIds?.[0];
+    if (face === undefined || effectId === undefined) {
+      return;
+    }
+    const effect = state.activeEffects.find((candidate) => candidate.id === effectId);
+    if (!effect) {
+      return;
+    }
+    effect.modifiers = effect.modifiers.map((modifier) =>
+      modifier.type === "SET_ENEMY_ATTACK_DIE" ? { ...modifier, face } : modifier
+    );
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId: choice.playerId,
+      message: `${card.name} dictates the "${face > 0 ? `+${face}` : face}" side on the next ${
+        effect.dieSetsRemaining ?? 1
+      } enemy Attack roll${(effect.dieSetsRemaining ?? 1) === 1 ? "" : "s"}.`
+    });
     return;
   }
 
@@ -12767,7 +12937,7 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         1,
         getAmountByPower(card.effect.rollsByPower, 1, getCurrentSpellPower(state, stackItem, cards))
       );
-      createActiveEffect(
+      const dieSet = createActiveEffect(
         state,
         {
           name: card.effect.name,
@@ -12780,6 +12950,23 @@ function resolveTopStackCore(state: GameState, cards: CardLibrary): void {
         },
         { type: "card", cardId: card.id, controllerId: stackItem.action.playerId },
         stackItem.action.playerId
+      );
+      // The card prints "CHOOSE an attack die roll result", so the FACE is the
+      // caster's pick, not the engine's: a generic OPTION_CHOICE (answerable by
+      // the AI / AFK driver like every other balance-spell pick) rewrites the
+      // face the effect was seeded with. The seed face is what an unanswered
+      // choice falls back to, so the ongoing is never left inert.
+      openBalanceSpellChoice(
+        state,
+        stackItem.action.playerId,
+        "misfortune-face",
+        { cardId: card.id, effectIds: [dieSet.id], dieFaces: [...MISFORTUNE_DIE_FACES] },
+        `${card.name}: choose the Attack die result the next ${rolls} enemy roll${
+          rolls === 1 ? "" : "s"
+        } must show.`,
+        MISFORTUNE_DIE_FACES.map((face) => ({
+          label: `Set one die to "${face > 0 ? `+${face}` : face}"`
+        }))
       );
     }
 
@@ -22524,6 +22711,24 @@ function resolveAbilityRollKeep(
   context: PendingAbilityRollContext,
   candidate: AttackRollCandidate
 ): void {
+  // kind "spell-dice" (Community Inferno): the roll belongs to a SPELL whose
+  // stack item is long gone — the kept dice land the parked blast and nothing
+  // resumes. Handled before `resume` is read: that field is inert filler here.
+  if (context.kind === "spell-dice" && context.spellResume) {
+    const spell = cards[context.spellResume.cardId];
+    if (spell && state.combat) {
+      applyInfernoDiceOutcome(
+        state,
+        context.spellResume.playerId,
+        spell,
+        context.spellResume.position,
+        candidate.rolls
+      );
+      finishCombatIfNeeded(state);
+    }
+    return;
+  }
+
   const resume = context.resume;
   const combat = state.combat;
   const attacker = combat?.units[resume.attackerId];
@@ -26226,7 +26431,8 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
           nextState.pendingChoice?.type === "OPTION_CHOICE" &&
           (nextState.pendingChoice.context === "disrupting-ray-mode" ||
             nextState.pendingChoice.context === "dispel-scope" ||
-            nextState.pendingChoice.context === "community-dispel-pick")
+            nextState.pendingChoice.context === "community-dispel-pick" ||
+            nextState.pendingChoice.context === "misfortune-face")
         ) {
           resolveBalanceSpellChoice(nextState, action, cards);
         } else if (
