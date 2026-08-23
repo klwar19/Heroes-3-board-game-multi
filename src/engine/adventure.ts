@@ -9365,7 +9365,12 @@ export function processPendingVisit(state: GameState): void {
       }
       case "KNOWLEDGE_RECALL_MAP_SPELL": {
         const player = state.players[visit.playerId];
-        const knowledge = cardLibrary[step.knowledgeCardId];
+        // The BALANCED definition, not the printed one: the Community Balance
+        // Change's Mysticism BASIC side carries `basicRecallPlayedCards` and the
+        // raw `cardLibrary` read here could never see it, so on the MAP the
+        // reprint returned only the Spell ("Returns the Spell card but not one
+        // extra"). With no balance pack on, `balanceCard` is the printed card.
+        const knowledge = balanceCard(state, step.knowledgeCardId) ?? cardLibrary[step.knowledgeCardId];
         const effect = knowledge?.effect.type === "RECALL_SPELL" ? knowledge.effect : null;
         const knowledgeIndex = player?.hand.indexOf(step.knowledgeCardId) ?? -1;
         const spellIndex = player?.discard.lastIndexOf(step.spellCardId) ?? -1;
@@ -9465,8 +9470,23 @@ export function processPendingVisit(state: GameState): void {
           }
         }
 
-        if (mode === "expert" && effect.expertRecallPlayedCards) {
+        // How many of the cards played ALONGSIDE the Spell come back with it.
+        // Expert Mysticism: all of them. Community Balance Change BASIC: exactly
+        // `basicRecallPlayedCards` (1) — "…as well as 1 card played alongside
+        // it" — and WHICH one is the player's own pick, carried in the step by
+        // the option they chose (`offerMapSpellKnowledgeRecall`).
+        const alongsideLimit =
+          mode === "expert" && effect.expertRecallPlayedCards
+            ? Number.POSITIVE_INFINITY
+            : mode === "expert"
+              ? 0
+              : (effect.basicRecallPlayedCards ?? 0);
+        if (alongsideLimit > 0) {
+          let returned = 0;
           for (const cardId of step.recallPlayedCardIds ?? []) {
+            if (returned >= alongsideLimit) {
+              break;
+            }
             if (
               cardId === step.spellCardId ||
               cardId === step.knowledgeCardId ||
@@ -9478,6 +9498,7 @@ export function processPendingVisit(state: GameState): void {
             if (playedIndex !== -1) {
               player.discard.splice(playedIndex, 1);
               player.hand.push(cardId);
+              returned += 1;
             }
           }
         }

@@ -287,7 +287,12 @@ import {
   applyHeroGradeRoundStartDamage,
   injectHeroGradeFamiliar
 } from "./hero-grade-combat";
-import { expireEffectsForCombatEnd, makeActiveEffect, playerCannotSurrenderCombat } from "./active-effects";
+import {
+  expireCommunityLuckAtTurnEnd,
+  expireEffectsForCombatEnd,
+  makeActiveEffect,
+  playerCannotSurrenderCombat
+} from "./active-effects";
 import { assignCombatBoardArt } from "./combat-board-art";
 import { applyCombatScriptCombatStart } from "./combat-scripts";
 import {
@@ -7717,7 +7722,10 @@ function offerMapSpellKnowledgeRecall(
       ? { fromSpellBook: true as const }
       : {};
   const recallCards = player.hand
-    .map((cardId) => ({ cardId, card: cardLibrary[cardId] }))
+    // The BALANCED definition — the Community Balance Change's Mysticism basic
+    // side only exists there (`basicRecallPlayedCards`). With no pack on this is
+    // the printed card, byte for byte.
+    .map((cardId) => ({ cardId, card: balanceCard(state, cardId) ?? cardLibrary[cardId] }))
     .filter(
       (entry): entry is { cardId: CardId; card: CardDefinition } =>
         entry.card?.effect.type === "RECALL_SPELL"
@@ -7747,18 +7755,45 @@ function offerMapSpellKnowledgeRecall(
     const cardReturnLabel = isPolishMysticismRecall
       ? "return Cast a Spell to your hand and refresh the cast Spell (once per round)"
       : returnLabel;
-    options.push({
-      label: `Use ${card.name}: ${cardReturnLabel}`,
-      steps: [
-        {
-          type: "KNOWLEDGE_RECALL_MAP_SPELL",
-          spellCardId: spell.id,
-          knowledgeCardId: cardId,
-          mode: "basic",
-          ...bookFlag
-        }
-      ]
-    });
+    // Community Balance Change MYSTICISM (basic): "…take it back into your hand
+    // AS WELL AS 1 card played alongside it." One option per candidate card, so
+    // the player really CHOOSES which one comes back (the author's report:
+    // "If working it should allow the user to choose which card to return").
+    // With no candidate — nothing was played into the cast — the plain
+    // spell-only option below is the whole offer.
+    const basicAlongside = recallEffect.basicRecallPlayedCards ?? 0;
+    const basicChoices =
+      basicAlongside > 0 ? [...new Set(playedWithCast)].filter((id) => player.discard.includes(id)) : [];
+    if (basicChoices.length > 0) {
+      for (const alongsideId of basicChoices) {
+        options.push({
+          label: `Use ${card.name}: ${cardReturnLabel} and recover ${cardLibrary[alongsideId]?.name ?? alongsideId}`,
+          steps: [
+            {
+              type: "KNOWLEDGE_RECALL_MAP_SPELL",
+              spellCardId: spell.id,
+              knowledgeCardId: cardId,
+              recallPlayedCardIds: [alongsideId],
+              mode: "basic",
+              ...bookFlag
+            }
+          ]
+        });
+      }
+    } else {
+      options.push({
+        label: `Use ${card.name}: ${cardReturnLabel}`,
+        steps: [
+          {
+            type: "KNOWLEDGE_RECALL_MAP_SPELL",
+            spellCardId: spell.id,
+            knowledgeCardId: cardId,
+            mode: "basic",
+            ...bookFlag
+          }
+        ]
+      });
+    }
     // Knowledge's expert side only raises a combat spell limit, which has no
     // purpose on the map. Mysticism expert is meaningful: it also returns every
     // discardable support card played into this cast.
@@ -17390,6 +17425,13 @@ export function endTurnAdventure(state: GameState, action: Extract<GameAction, {
  * rotation stays stable. Ongoing cards last "until the player who played them
  * starts their next Turn" and expire inside startPlayerTurn.
  */
+/** Expires the community Luck reroll entitlement and logs it, at a turn's END. */
+function expireCommunityLuck(state: GameState, playerId: PlayerId): void {
+  for (const effect of expireCommunityLuckAtTurnEnd(state, playerId)) {
+    appendEvent(state, { type: "ACTIVE_EFFECT_EXPIRED", effectId: effect.id, reason: "turn-ended" });
+  }
+}
+
 function advanceAfterTurn(
   state: GameState,
   endingPlayerId: PlayerId,
@@ -17453,6 +17495,12 @@ function advanceAfterTurn(
     playerId: endingPlayerId,
     nextPlayerId: nextPlayerId ?? endingPlayerId
   });
+
+  // Community Balance Change LUCK is spent by the turn ENDING (see
+  // `expireCommunityLuckAtTurnEnd`), not by the holder's next turn starting —
+  // otherwise a round-start Astrologers roll made after their turn was still
+  // rerollable. No-op for every other card, this pack off included.
+  expireCommunityLuck(state, endingPlayerId);
 
   // Whether this round already ran everyone's start-of-turn (a parallel round
   // start that stopped mid-round) — read BEFORE the round counter moves.
@@ -17521,6 +17569,9 @@ function endParallelTurn(
     playerId: endingPlayerId,
     waitingForPlayerIds: remainingParallelPlayerIds(state)
   });
+
+  // Same turn-END expiry as the ordered path above.
+  expireCommunityLuck(state, endingPlayerId);
 
   if (eliminate) {
     eliminatePlayer(state, endingPlayerId, eliminate.reason, gaveUp);

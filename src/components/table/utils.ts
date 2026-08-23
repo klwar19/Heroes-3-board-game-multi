@@ -946,7 +946,15 @@ export function cardSelectionKey(action: CardBoardAction): string {
     fromSpellBook: Boolean(action.fromSpellBook),
     fromScroll: "fromScroll" in action && action.fromScroll ? action.fromScroll : undefined,
     castEnablerCardId:
-      "castEnablerCardId" in action && action.castEnablerCardId ? action.castEnablerCardId : undefined
+      "castEnablerCardId" in action && action.castEnablerCardId ? action.castEnablerCardId : undefined,
+    // Community Balance Change INTELLIGENCE ("Play a spell from your discard
+    // pile"): ONE enabler authorises every Spell in the caster's discard, on
+    // TWO sides (basic counts toward the round limit, expert does not and
+    // spends a crown). Without the side in the key both sides of the same Spell
+    // collapsed into a single board selection and the player could not choose
+    // which one they were taking.
+    castEnablerMode: action.type === "CAST_SPELL" ? (action.castEnablerMode ?? undefined) : undefined,
+    fromSpellDeck: action.type === "CAST_SPELL" ? (action.fromSpellDeck ?? undefined) : undefined
   });
 }
 

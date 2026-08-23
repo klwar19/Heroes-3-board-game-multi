@@ -44,6 +44,7 @@ import {
   neutralFormationCellsForGuard,
   playerSpellCastsIgnoreLimit,
   spellCastRestrictionNotices,
+  tacticsCombatOfferIsExpert,
   unitHasUnlimitedRetaliationEffect,
   unitFlipSidePreview,
   unitIsBerserk,
@@ -1117,6 +1118,10 @@ export function BattlefieldBoard({
   const expertSwapOffers = !tacticsSetup ? getTacticsSwapActions(legalActions) : [];
   const expertMoveOffers = !tacticsSetup ? getTacticsMoveActions(legalActions) : [];
   const expertSwapAvailable = expertSwapOffers.length > 0 || expertMoveOffers.length > 0;
+  // Which SIDE the offered swap is, read from the ENGINE's one shared predicate
+  // (never re-derived here — the banner used to hard-code "Tactics (expert)",
+  // which mislabeled the Community Balance reprint's crown-free BASIC side).
+  const tacticsLabel = tacticsCombatOfferIsExpert(state, viewerPlayerId) ? "Tactics (expert)" : "Tactics";
   const swapActions = tacticsSetup
     ? getTacticsSwapActions(legalActions)
     : expertSwapArmed
@@ -1267,10 +1272,10 @@ export function BattlefieldBoard({
         </div>
       ) : null}
       {expertSwapAvailable ? (
-        <div className="tacticsExpertBanner" role="group" aria-label="Expert Tactics">
+        <div className="tacticsExpertBanner" role="group" aria-label={tacticsLabel}>
           {expertSwapArmed ? (
             <>
-              <span>Tactics (expert): click one of your units, then switch it with an ally or move it 1 space.</span>
+              <span>{tacticsLabel}: click one of your units, then switch it with an ally or move it 1 space.</span>
               <button
                 className="commandButton"
                 onClick={() => {
@@ -1287,9 +1292,13 @@ export function BattlefieldBoard({
               className="commandButton"
               onClick={() => setExpertSwapArmed(true)}
               type="button"
-              title="Switch two units or move one unit 1 space (spends one expert use)."
+              title={
+                tacticsCombatOfferIsExpert(state, viewerPlayerId)
+                  ? "Switch two units or move one unit 1 space (spends one expert use)."
+                  : "Switch two units or move one unit 1 space (no crown)."
+              }
             >
-              Tactics (expert): switch two units or move one
+              {tacticsLabel}: switch two units or move one
             </button>
           )}
         </div>

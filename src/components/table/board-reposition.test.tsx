@@ -165,7 +165,7 @@ describe("BattlefieldBoard — Tactics swap interaction", () => {
     const { state, legalActions } = tacticsState();
     state.combat!.pendingTacticsSwaps = null;
     renderBoard(state, legalActions);
-    fireEvent.click(document.querySelector('[aria-label="Expert Tactics"] .commandButton')!);
+    fireEvent.click(document.querySelector(".tacticsExpertBanner .commandButton")!);
     expect(cell(1)?.className).toContain("swapSource");
     fireEvent.click(cell(1)!);
     expect(cell(0)?.className).toContain("moveTarget");

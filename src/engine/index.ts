@@ -819,7 +819,8 @@ export {
   isAdjacent,
   isEffectLegalForTrigger,
   isUnitAlive,
-  standingSpellPower
+  standingSpellPower,
+  tacticsCombatOfferIsExpert
 } from "./legal-actions";
 export type { ActivationStep, PendingReactionPower } from "./legal-actions";
 export { spellCastRestrictionNotices } from "./spell-cast-restrictions";

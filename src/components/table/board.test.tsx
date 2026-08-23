@@ -658,13 +658,13 @@ describe("BattlefieldBoard — Expert Tactics is one board control, not a menu o
       </CardZoomProvider>
     );
     // One clear opt-in control on the board (not three pairwise buttons)…
-    const banner = board.querySelector('[aria-label="Expert Tactics"]');
+    const banner = board.querySelector('[aria-label="Tactics (expert)"]');
     expect(banner, "the expert-Tactics board control should appear").toBeTruthy();
     const toggle = banner!.querySelector("button");
     expect(toggle?.textContent).toMatch(/switch two units/i);
     // …and arming it switches to the board-click instruction (no pairwise text).
     fireEvent.click(toggle!);
-    expect(board.querySelector('[aria-label="Expert Tactics"]')?.textContent).toMatch(/click one of your units/i);
+    expect(board.querySelector('[aria-label="Tactics (expert)"]')?.textContent).toMatch(/click one of your units/i);
   });
 
   it("keeps the verbose pairwise swap buttons OUT of the command dock", () => {
@@ -2150,5 +2150,63 @@ describe("CommandDock — a watcher sees the fighting player's resources", () =>
     expect(limits.textContent).toMatch(/Crowns\s*1\/2/);
     expect(limits.textContent).toMatch(/Morale\s*0/);
     expect(limits.textContent).not.toMatch(/Hand/);
+  });
+});
+
+describe("BattlefieldBoard — the Tactics control names the SIDE that is actually on offer", () => {
+  /**
+   * Reported bug (Community Balance Change playtest, 2026-08-23): the reprint's
+   * BASIC Tactics side is crown-free, but this banner hard-coded the wording
+   * "Tactics (expert)" — it never asked the engine which side it was showing.
+   * It now reads `tacticsCombatOfferIsExpert`, the SAME predicate the engine
+   * labels its own offers with.
+   */
+  function swapOffers(): LegalAction[] {
+    return [
+      {
+        label: "Tactics: switch Marksmen (A2) and Griffins (B2)",
+        action: { type: "SWAP_COMBAT_UNITS", playerId: "p1", unitIdA: "unit_p1_marksmen", unitIdB: "unit_p1_griffins" }
+      }
+    ];
+  }
+
+  function renderTacticsBoard(community: boolean) {
+    const state = createInitialGameState(`tactics-banner-${community}`);
+    state.adventure = {
+      houseRules: { "community-card-balance": community },
+      tiles: {},
+      fields: {},
+      hexEvents: [],
+      playerFarTiles: {}
+    } as unknown as GameState["adventure"];
+    // p1's own unit is the one about to act — the reprint's BASIC moment.
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return render(
+      <CardZoomProvider>
+        <BattlefieldBoard
+          legalActions={swapOffers()}
+          onAction={vi.fn()}
+          onInspect={() => {}}
+          selectedCardAction={null}
+          state={state}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("says plain 'Tactics' over the crown-free basic side (CONTROL: '(expert)' with the pack off)", () => {
+    const { container: basic } = renderTacticsBoard(true);
+    const basicBanner = basic.querySelector('[aria-label="Tactics"]');
+    expect(basicBanner, "the banner should be labelled with the basic side").toBeTruthy();
+    expect(basicBanner!.textContent).not.toMatch(/expert/i);
+    expect(basic.querySelector('[aria-label="Tactics (expert)"]')).toBeNull();
+
+    cleanup();
+
+    const { container: printed } = renderTacticsBoard(false);
+    const printedBanner = printed.querySelector('[aria-label="Tactics (expert)"]');
+    expect(printedBanner, "the printed card only has the expert mid-combat side").toBeTruthy();
+    expect(printedBanner!.textContent).toMatch(/expert/i);
   });
 });

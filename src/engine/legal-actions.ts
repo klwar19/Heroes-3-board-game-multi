@@ -11007,6 +11007,29 @@ function addCommanderPlacementActions(
 }
 
 /**
+ * Which SIDE of Tactics a mid-combat swap offer is right now.
+ *
+ * THE ONE SHARED READ: `addTacticsCombatActions` labels its offers with it AND
+ * the board's Tactics banner reads it (`src/components/table/board.tsx`), so the
+ * button a player clicks can never say "Tactics (expert)" over the reprint's
+ * crown-free BASIC side — the reported bug ("It says 'Tactics (expert)' on
+ * basic"). The board hard-coded the expert wording; it never asked the engine.
+ *
+ * Classic / Polish Tactics has only the Expert mid-combat side, so this is
+ * always true with the community pack off.
+ */
+export function tacticsCombatOfferIsExpert(state: GameState, playerId: PlayerId): boolean {
+  if (!houseRuleEnabled(state, "community-card-balance")) {
+    return true;
+  }
+  const combat = state.combat;
+  const active = combat?.activeUnitId ? combat.units[combat.activeUnitId] : null;
+  // The reprint's basic side is "During Combat" on your own unit's moment; any
+  // OTHER unit about to activate is the expert ⚡ side.
+  return active?.controllerId !== playerId;
+}
+
+/**
  * Expert Tactics mid-combat: on the holder's turn, before their active unit has
  * moved or attacked, spend one expert use to switch any two of their units.
  */
@@ -11028,7 +11051,7 @@ function addTacticsCombatActions(actions: LegalAction[], state: GameState, playe
   // (crown) widens the moment to ANY unit about to activate. Classic / Polish
   // Tactics keeps its own-unit-only, crown-gated Expert reading.
   const community = houseRuleEnabled(state, "community-card-balance");
-  const communityBasic = community && active.controllerId === playerId;
+  const communityBasic = !tacticsCombatOfferIsExpert(state, playerId);
   if (!communityBasic) {
     if (!community && active.controllerId !== playerId) {
       return;
@@ -12143,6 +12166,17 @@ function getCombatInteractionActions(
         // ones, which stay on the holder's own activation). No-op when the rule
         // is off or the window has already closed.
         addArtifactSetActions(actions, state, playerId, true);
+        // Community Balance Change TACTICS (expert): "Play when a unit is about
+        // to activate, you can switch the position of any 2 of your units."
+        // THIS pause is the only moment a neutral guard's activation is
+        // interruptible — the guard's whole turn otherwise resolves inside the
+        // acting player's own action, so the reprint's expert side was
+        // unreachable in every neutral fight ("no trigger on Enemy
+        // Activation"). In PvP the enemy's activation is a real open snapshot,
+        // where the offer has always been live. No new window kind is opened,
+        // so no AI/AFK lockstep changes: a computer seat simply takes
+        // CONTINUE_NEUTRAL_STEP as before.
+        addTacticsCombatActions(actions, state, playerId);
       }
       // Manual guard control: after this pause the FIGHTER commands the unit
       // (or delegates via the separate "Let … act (automatic)" button), so the

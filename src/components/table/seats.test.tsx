@@ -1124,3 +1124,93 @@ describe("SeatNameplate / OpponentBar — person + hero + town", () => {
     expect(screen.queryByText("Sandro · Necropolis")).toBeNull();
   });
 });
+
+describe("HandFan — Community Intelligence lets the player CHOOSE the Spell from their discard", () => {
+  /**
+   * Reported bug: "Randomly selects Spell from Discard Pile, not allowing the
+   * user to choose." The ENGINE always offered one CAST_SPELL per Spell in the
+   * caster's own discard pile — the hole was here: every enabler-driven cast
+   * rendered under the generic label "Pick target", so the buttons for Magic
+   * Arrow and Lightning Bolt were indistinguishable and picking one was a coin
+   * flip. Each cast now names the Spell it would play.
+   */
+  function intelligenceHand(community: boolean, discard: string[]): GameState {
+    const state = createInitialGameState(`community-intelligence-hand-${community}`);
+    // The minimal adventure stub the engine suites use, plus the empty maps
+    // `getPlayerView` walks (this component renders a real player view).
+    state.adventure = {
+      houseRules: { "community-card-balance": community },
+      tiles: {},
+      fields: {},
+      hexEvents: [],
+      playerFarTiles: {}
+    } as unknown as GameState["adventure"];
+    state.players.p1.hand = ["ability.intelligence"];
+    state.players.p1.discard = [...discard];
+    state.players.p1.limits.expertUses = 0;
+    state.players.p2.hand = [];
+    state.decks.spells.discardPile = [];
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.movedThisActivation = false;
+    griffins.attackedThisActivation = false;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    return state;
+  }
+
+  function renderHand(state: GameState) {
+    return render(
+      <CardZoomProvider>
+        <HandFan
+          view={getPlayerView(state, "p1")}
+          state={state}
+          viewerPlayerId="p1"
+          legalActions={getLegalActions(state, "p1")}
+          selectedCardAction={null}
+          trayActive={false}
+          onSelectCardAction={() => {}}
+          onAction={() => {}}
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("names every castable discard Spell on its own button (CONTROL: the printed card offers no discard cast at all)", () => {
+    const state = intelligenceHand(true, ["spell.magic_arrow", "spell.lightning_bolt"]);
+    // Non-vacuity: the engine really offers both casts on this frame.
+    const casts = getLegalActions(state, "p1").filter(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        (legal.action as { fromOwnDiscard?: boolean }).fromOwnDiscard === true
+    );
+    expect(new Set(casts.map((legal) => (legal.action as { cardId: string }).cardId))).toEqual(
+      new Set(["spell.magic_arrow", "spell.lightning_bolt"])
+    );
+
+    const { container } = renderHand(state);
+    const card = container.querySelector(".fanCard");
+    expect(card?.classList.contains("playable")).toBe(true);
+    // Two distinct casts, so the card opens its popover rather than arming one.
+    fireEvent.click(card!);
+    expect(screen.getByRole("button", { name: /^Cast Magic Arrow$/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Cast Lightning Bolt$/ })).toBeTruthy();
+    // The old generic label is what made the choice invisible.
+    expect(screen.queryByRole("button", { name: /^Pick target$/ })).toBeNull();
+
+    cleanup();
+
+    // CONTROL: with the rule OFF, Intelligence is the classic timing-freedom
+    // card — no cast is sourced from the discard pile, so no named buttons.
+    const printed = intelligenceHand(false, ["spell.magic_arrow", "spell.lightning_bolt"]);
+    expect(
+      getLegalActions(printed, "p1").filter(
+        (legal) =>
+          legal.action.type === "CAST_SPELL" &&
+          (legal.action as { fromOwnDiscard?: boolean }).fromOwnDiscard === true
+      )
+    ).toEqual([]);
+    renderHand(printed);
+    expect(screen.queryByRole("button", { name: /^Cast Magic Arrow$/ })).toBeNull();
+  });
+});

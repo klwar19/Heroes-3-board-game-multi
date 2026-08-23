@@ -998,6 +998,17 @@ export function HandFan({
                       >
                         {sameCardSelection(selectedCardAction, action)
                           ? "Cancel targeting"
+                          : // Community Balance Change INTELLIGENCE: one enabler
+                            // card offers a cast of EVERY Spell in the caster's
+                            // discard pile, on two sides. The generic
+                            // "Pick target" made those buttons indistinguishable
+                            // ("randomly selects Spell from Discard Pile, not
+                            // allowing the user to choose") — an enabler-driven
+                            // cast names the Spell it would play, and its side.
+                            action.type === "CAST_SPELL" && action.fromSpellDeck && action.cardId !== entry.cardId
+                          ? `Cast ${cardName(action.cardId)}${
+                              action.castEnablerMode === "expert" ? " (expert — ignores the Spell limit)" : ""
+                            }`
                           : `Pick target${"mode" in action && action.mode === "expert" ? " (expert)" : ""}${
                               action.type === "CAST_SPELL" && action.useSchoolExpert ? " + School of Magic (+3)" : ""
                             }${
@@ -1019,6 +1030,13 @@ export function HandFan({
                         ? action.mode === "expert"
                           ? "Expert"
                           : "Basic"
+                        : // Community Intelligence: a TARGET-LESS Spell cast out
+                          // of the discard pile — name it, for the same reason
+                          // the board-target buttons above do.
+                          action.type === "CAST_SPELL" && action.fromSpellDeck && action.cardId !== entry.cardId
+                          ? `Cast ${cardName(action.cardId)}${
+                              action.castEnablerMode === "expert" ? " (expert — ignores the Spell limit)" : ""
+                            }`
                         : action.type === "CAST_SPELL" && action.useSchoolExpert
                           ? "Cast + School of Magic (+3)"
                           : action.type === "CAST_SPELL" && action.useSchoolFetchExpert

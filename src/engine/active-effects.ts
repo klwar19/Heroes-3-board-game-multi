@@ -1093,6 +1093,33 @@ export function expireEffectsForTurnEnd(state: GameState, playerId: PlayerId): A
 }
 
 /**
+ * Community Balance Change LUCK — "THIS TURN, you may reroll each … die once."
+ *
+ * Every other `current-turn` effect in this engine lasts until its owner's NEXT
+ * turn STARTS (`startPlayerTurn` runs `expireEffectsForTurnEnd`), which is the
+ * documented house convention and stays untouched. Luck is the one card whose
+ * printed text is spent by the turn ENDING: the reported bug was a round-start
+ * Astrologers roll ("Fluffy Rabbit": every player rolls a Treasure die) landing
+ * AFTER the holder's turn had ended but BEFORE their next turn began — the
+ * entitlement was still live there and the die was rerollable.
+ *
+ * Scoped by DATA, not by a house-rule read: `ADVENTURE_DIE_REROLL.perDie` is
+ * carried by the community reprint's two sides alone, so the printed card (whose
+ * Luck is deliberately GAME-ROUND scoped — the 2026-07-28 official reading) and
+ * every other turn-scoped card are byte-identical.
+ */
+export function expireCommunityLuckAtTurnEnd(state: GameState, playerId: PlayerId): ActiveEffectState[] {
+  const isTurnScopedReroll = (effect: ActiveEffectState): boolean =>
+    effect.expiresAtTurnEndPlayerId === playerId &&
+    effect.modifiers.some((modifier) => modifier.type === "ADVENTURE_DIE_REROLL" && modifier.perDie === true);
+  const expired = state.activeEffects.filter(isTurnScopedReroll);
+  if (expired.length > 0) {
+    state.activeEffects = state.activeEffects.filter((effect) => !isTurnScopedReroll(effect));
+  }
+  return expired;
+}
+
+/**
  * Expires "current-game-round" effects (Luck, Torosar's Ballista IV grant)
  * once a later game round has begun — run at the start of every game round.
  */

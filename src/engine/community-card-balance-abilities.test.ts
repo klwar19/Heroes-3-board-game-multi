@@ -17,8 +17,10 @@ import {
   createAdventureGameState,
   createInitialGameState,
   getLegalActions,
-  getMainHero
+  getMainHero,
+  tacticsCombatOfferIsExpert
 } from "./index";
+import { getAttackRerollEffects } from "./active-effects";
 import {
   openSharedDeckSearch,
   playScoutingCard,
@@ -651,15 +653,21 @@ describe("Community pack — Luck lasts this TURN and rerolls each die", () => {
   }
 
   /**
-   * Luck given to the LAST seat is the only shape that tells "this turn" from
-   * "this game round" apart (the polish suite's own reasoning, inverted): the
-   * round wrap runs the GAME-ROUND expiry but NOT that seat's turn start, so the
-   * printed round-scoped Luck is already gone while a turn-scoped one is still
-   * live and only dies when that seat's turn comes round again.
+   * The seat that discriminates "this turn" from "this game round" is a MIDDLE
+   * one: p2 plays Luck and ends their turn INSIDE the round. The community
+   * reprint is spent right there (2026-08-23 fix — the author rerolled an
+   * Astrologers die that was rolled after their turn had ended), while the
+   * printed round-scoped Luck is still live for the rest of the round and only
+   * dies at the wrap.
+   *
+   * SUPERSEDED READING: this case used to assert the community card SURVIVED
+   * the wrap and died at the holder's next turn START — the ordinary
+   * `current-turn` convention. That convention is exactly what left the
+   * entitlement alive between turns; do not restore it.
    */
-  function lastSeatLuck(community: boolean): { atWrap: boolean; atOwnTurn: boolean } {
+  function midRoundLuck(community: boolean): { afterOwnTurnEnd: boolean; atWrap: boolean } {
     let state = createAdventureGameState({
-      seed: `community-luck-last-seat-${community}`,
+      seed: `community-luck-mid-round-${community}`,
       difficulty: "normal",
       rollFirstPlayer: false,
       houseRules: { "community-card-balance": community },
@@ -682,37 +690,41 @@ describe("Community pack — Luck lasts this TURN and rerolls each die", () => {
       expect(next, `no action available for ${active}`).toBeTruthy();
       return applyOk(current, next!.action);
     };
-    for (let guard = 0; guard < 20 && state.activePlayerId !== "p3"; guard += 1) {
+    for (let guard = 0; guard < 20 && state.activePlayerId !== "p2"; guard += 1) {
       state = step(state);
     }
-    expect(state.activePlayerId).toBe("p3");
-    if (state.players.p3.needsHandRefresh || state.players.p3.canMulligan) {
-      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p3", discardCardIds: [] });
+    expect(state.activePlayerId).toBe("p2");
+    if (state.players.p2.needsHandRefresh || state.players.p2.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p2", discardCardIds: [] });
     }
-    state.players.p3.hand = ["ability.luck"] as CardId[];
-    const play = getLegalActions(state, "p3").find(
+    state.players.p2.hand = ["ability.luck"] as CardId[];
+    const play = getLegalActions(state, "p2").find(
       (legal) => legal.action.type === "PLAY_CARD" && legal.action.cardId === "ability.luck"
     );
     expect(play, "Luck must be playable on the map").toBeTruthy();
     state = applyOk(state, play!.action);
     expect(state.activeEffects.some((effect) => effect.name === "Luck")).toBe(true);
 
+    state = applyOk(state, { type: "END_TURN", playerId: "p2" });
+    expect(state.round, "still the same round — only p2's TURN ended").toBe(startRound);
+    const afterOwnTurnEnd = state.activeEffects.some((effect) => effect.name === "Luck");
+
     for (let guard = 0; guard < 20 && state.round === startRound; guard += 1) {
       state = step(state);
     }
     expect(state.round, "the round must actually have wrapped").toBe(startRound + 1);
-    expect(state.activePlayerId, "the holder's own turn must not have started yet").not.toBe("p3");
-    const atWrap = state.activeEffects.some((effect) => effect.name === "Luck");
-
-    for (let guard = 0; guard < 20 && state.activePlayerId !== "p3"; guard += 1) {
-      state = step(state);
-    }
-    return { atWrap, atOwnTurn: state.activeEffects.some((effect) => effect.name === "Luck") };
+    return { afterOwnTurnEnd, atWrap: state.activeEffects.some((effect) => effect.name === "Luck") };
   }
 
-  it("survives the ROUND wrap and dies at the holder's own turn (CONTROL: the printed card dies at the wrap)", () => {
-    expect(lastSeatLuck(true), "community Luck is turn-scoped").toEqual({ atWrap: true, atOwnTurn: false });
-    expect(lastSeatLuck(false), "the printed card is round-scoped").toEqual({ atWrap: false, atOwnTurn: false });
+  it("is spent the moment the holder's TURN ends (CONTROL: the printed card lives on to the round wrap)", () => {
+    expect(midRoundLuck(true), "community Luck is turn-scoped").toEqual({
+      afterOwnTurnEnd: false,
+      atWrap: false
+    });
+    expect(midRoundLuck(false), "the printed card is game-round scoped").toEqual({
+      afterOwnTurnEnd: true,
+      atWrap: false
+    });
   });
 
   it("a TWO-die Resource roll may be rerolled twice (CONTROL: the printed card offers one reroll)", () => {
@@ -869,5 +881,278 @@ describe("Community pack — Tactics", () => {
     }
     expect(setupWindowOpened({ community: true }), "the reprint has no start-of-combat side").toBe(false);
     expect(setupWindowOpened({}), "the printed card opens the setup window").toBe(true);
+  });
+});
+
+// ===========================================================================
+// The 2026-08-23 PLAYTEST-FEEDBACK batch (the mod author's sheet)
+// ===========================================================================
+
+/**
+ * A real level-I guard fight walked to the moment a NEUTRAL unit is about to
+ * act — the `pendingNeutralStep` "pre-activation" pause. This is the only
+ * snapshot in a neutral combat where the guard's activation is interruptible
+ * (its whole turn otherwise resolves inside the acting player's own action),
+ * so it is where the reprint's "Play when a unit is about to activate" side
+ * has to live. Nothing is stubbed: the fight, the placement and the pause all
+ * come out of the engine.
+ */
+function neutralPreActivationPause(rules: Rules, crowns: number): GameState {
+  // ONE seed for every arm: both readings must be measured on the very same
+  // map, the same guards and the same activation order, or a "no offer" CONTROL
+  // could just be a fight that never paused.
+  let state = openTurn("community-preactivation", rules);
+  state.players.p1.hand = ["ability.tactics"] as CardId[];
+  state.players.p1.limits.expertUses = crowns;
+  state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+  state = applyOk(state, { type: "MOVE_HERO", playerId: "p1", heroId: "hero_p1", to: "h:9:1" });
+  const [a, b] = state.players.p1.army;
+  state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: a.id, position: 13 });
+  state = applyOk(state, { type: "PLACE_COMBAT_UNIT", playerId: "p1", armyUnitId: b.id, position: 17 });
+  state = applyOk(state, { type: "FINISH_COMBAT_PLACEMENT", playerId: "p1" });
+  // The PRINTED Tactics opens a start-of-combat swap window here (the reprint
+  // has no such side). Close it, so both arms are measured at the SAME moment:
+  // a guard about to activate, with the setup window behind them.
+  if (state.combat?.pendingTacticsSwaps?.includes("p1")) {
+    state = applyOk(state, { type: "FINISH_TACTICS", playerId: "p1" });
+  }
+  return state;
+}
+
+describe("Community pack — Tactics expert really TRIGGERS on an enemy activation", () => {
+  it("is offered in the neutral guard pre-activation pause and really swaps them (CONTROL: never on the printed card)", () => {
+    const state = neutralPreActivationPause({ community: true }, 2);
+    // Non-vacuity: the fight really paused before a NEUTRAL unit acts.
+    expect(state.combat?.pendingNeutralStep?.kind).toBe("pre-activation");
+    const active = state.combat!.units[state.combat!.activeUnitId!];
+    expect(active.controllerId, "the unit about to act belongs to the guards").not.toBe("p1");
+
+    const swaps = getLegalActions(state, "p1").filter((legal) => legal.action.type === "SWAP_COMBAT_UNITS");
+    expect(swaps.length, "the reprint expert side must reach the enemy activation").toBeGreaterThan(0);
+
+    // The OBSERVABLE outcome: the two units really trade board positions and a
+    // crown is really spent — the pause is not merely "offered".
+    const swap = swaps[0].action as Extract<GameAction, { type: "SWAP_COMBAT_UNITS" }>;
+    const beforeA = state.combat!.units[swap.unitIdA].position;
+    const beforeB = state.combat!.units[swap.unitIdB].position;
+    const after = applyOk(state, swap);
+    expect(after.combat!.units[swap.unitIdA].position).toBe(beforeB);
+    expect(after.combat!.units[swap.unitIdB].position).toBe(beforeA);
+    expect(crownsSpent(after)).toBe(1);
+
+    // CONTROL 1: the printed card is own-unit only, so the same pause with the
+    // same two crowns offers nothing.
+    const printed = neutralPreActivationPause({}, 2);
+    expect(printed.combat?.pendingNeutralStep?.kind, "same shape").toBe("pre-activation");
+    expect(
+      getLegalActions(printed, "p1").filter((legal) => legal.action.type === "SWAP_COMBAT_UNITS")
+    ).toEqual([]);
+
+    // CONTROL 2: it is still the EXPERT side — with no crown, nothing is offered.
+    const broke = neutralPreActivationPause({ community: true }, 0);
+    expect(
+      getLegalActions(broke, "p1").filter((legal) => legal.action.type === "SWAP_COMBAT_UNITS")
+    ).toEqual([]);
+  });
+
+  it("the pause still resolves with the ordinary Continue, so no seat can stall on the new offer", () => {
+    const state = neutralPreActivationPause({ community: true }, 2);
+    const cont = getLegalActions(state, "p1").find((legal) => legal.action.type === "CONTINUE_NEUTRAL_STEP");
+    expect(cont, "the always-available exit is untouched").toBeTruthy();
+    const after = applyOk(state, cont!.action);
+    expect(after.combat?.pendingNeutralStep ?? null, "the pause really closed").toBeFalsy();
+  });
+});
+
+describe("Community pack — the mid-combat Tactics offer is LABELLED with the side it is", () => {
+  it("says plain Tactics on the crown-free basic side (CONTROL: expert on the printed card and on an enemy activation)", () => {
+    const swapLabels = (state: GameState): string[] =>
+      getLegalActions(state, "p1")
+        .filter((legal) => legal.action.type === "SWAP_COMBAT_UNITS")
+        .map((legal) => legal.label);
+
+    // The reprint BASIC side: p1's own unit is the one about to act.
+    const basic = sandbox("tactics-label-basic", { community: true }, ["ability.tactics"], 0);
+    expect(swapLabels(basic).length).toBeGreaterThan(0);
+    for (const label of swapLabels(basic)) {
+      expect(label, "the crown-free basic side must not be called expert").not.toMatch(/expert/i);
+      expect(label.startsWith("Tactics:")).toBe(true);
+    }
+    // The ONE shared read the board banner uses — the string a player clicks is
+    // derived from it, so the two can never disagree again.
+    expect(tacticsCombatOfferIsExpert(basic, "p1")).toBe(false);
+
+    // CONTROL A: an ENEMY unit about to act IS the expert side.
+    const enemy = sandbox("tactics-label-enemy", { community: true }, ["ability.tactics"], 2);
+    enemy.combat!.activeUnitId = "unit_p2_vampires";
+    expect(tacticsCombatOfferIsExpert(enemy, "p1")).toBe(true);
+    expect(swapLabels(enemy).length).toBeGreaterThan(0);
+    for (const label of swapLabels(enemy)) {
+      expect(label.startsWith("Tactics (expert):")).toBe(true);
+    }
+
+    // CONTROL B: with the pack OFF the mid-combat swap is Expert-only, labelled so.
+    const printed = sandbox("tactics-label-printed", {}, ["ability.tactics"], 2);
+    expect(tacticsCombatOfferIsExpert(printed, "p1")).toBe(true);
+    expect(swapLabels(printed).length).toBeGreaterThan(0);
+    for (const label of swapLabels(printed)) {
+      expect(label.startsWith("Tactics (expert):")).toBe(true);
+    }
+  });
+});
+
+describe("Community pack — Luck is spent by the END of the turn it was played in", () => {
+  /**
+   * Plays Luck, ENDS p1's turn, then rolls a Resource die FOR p1 while another
+   * seat is active — the shape of a round-start Astrologers roll ("Fluffy
+   * Rabbit": every player rolls a die), which is exactly what the author
+   * rerolled. Returns how many Luck reroll options that roll offers.
+   *
+   * Both readings are measured inside the SAME game round, so the printed
+   * card's own game-round expiry cannot be what makes the difference.
+   */
+  function rerollOffersAfterOwnTurnEnded(community: boolean): number {
+    let state = openTurn(`community-luck-turn-end-${community}`, { community });
+    state.players.p1.hand = ["ability.luck"] as CardId[];
+    const play = playsOf(state, "p1", "ability.luck").find(
+      (legal) => legal.action.type === "PLAY_CARD" && (legal.action.mode ?? "basic") === "basic"
+    );
+    expect(play, "no basic Luck play").toBeTruthy();
+    state = applyOk(state, play!.action);
+    expect(state.activeEffects.some((effect) => effect.name === "Luck")).toBe(true);
+    const roundBefore = state.round;
+
+    state = applyOk(state, { type: "END_TURN", playerId: "p1" });
+    expect(state.round, "the round must NOT have wrapped — this is the same round").toBe(roundBefore);
+    expect(state.activePlayerId, "p1 turn is over").not.toBe("p1");
+
+    // A die rolled for p1 outside p1's own turn.
+    state.adventure!.pendingVisit = {
+      playerId: "p1",
+      spaceId: getMainHero(state, "p1")!.spaceId,
+      steps: [{ type: "ROLL_RESOURCE_DICE", count: 1, resolveCount: 1 }]
+    } as unknown as NonNullable<GameState["adventure"]>["pendingVisit"];
+    pumpAdventureQueues(state);
+    const step = state.adventure!.pendingVisit?.steps[0];
+    return step?.type === "CHOOSE_ONE"
+      ? step.options.filter((option) => /reroll the Resource/i.test(option.label)).length
+      : 0;
+  }
+
+  it("a die rolled after the holder turn ended is NOT rerollable (CONTROL: the printed round-scoped card still rerolls it)", () => {
+    expect(rerollOffersAfterOwnTurnEnded(true), "this turn is over").toBe(0);
+    expect(rerollOffersAfterOwnTurnEnded(false), "the printed card lasts the whole game round").toBe(1);
+  });
+});
+
+describe("Community pack — expert Luck rerolls YOUR dice only", () => {
+  it("covers your own unit Attack die and not an enemy one (CONTROL: the same effect, the other attacker)", () => {
+    const state = sandbox("community-luck-own-dice", { community: true }, ["ability.luck"], 0);
+    state.activeEffects.push({
+      id: "community-expert-luck",
+      name: "Expert Luck",
+      scope: "player",
+      controllerId: "p1",
+      startedRound: state.round,
+      usedRollEventIds: [],
+      usedChoiceIds: [],
+      usedCombatRoundNumbers: [],
+      source: { type: "card", cardId: "ability.luck" as CardId },
+      duration: { type: "current-turn" },
+      expiresAtTurnEndPlayerId: "p1",
+      polarity: "positive",
+      removable: false,
+      modifiers: [
+        { type: "ATTACK_DIE_REROLL", maxUsesPerRoll: 1, consumeEffectOnUse: false },
+        { type: "ADVENTURE_DIE_REROLL", dice: "any", perDie: true }
+      ]
+    } as never);
+    const mine = state.combat!.units.unit_p1_griffins;
+    const theirs = state.combat!.units.unit_p2_vampires;
+    expect(
+      getAttackRerollEffects(state, { attacker: mine, defender: theirs, attackKind: "melee" } as never).length,
+      "p1's own attack die is rerollable"
+    ).toBe(1);
+    expect(
+      getAttackRerollEffects(state, { attacker: theirs, defender: mine, attackKind: "melee" } as never).length,
+      "the OTHER side's attack die is never p1's to reroll"
+    ).toBe(0);
+  });
+});
+
+describe("Community pack — Mysticism basic recovers a CHOSEN alongside card on the MAP too", () => {
+  /**
+   * The reported bug ("Returns the Spell card but not one extra"): the map
+   * recall offer and its resolution both read the RAW `cardLibrary`, so the
+   * reprint's `basicRecallPlayedCards` was invisible off the battlefield — the
+   * combat path (pinned above) worked, the map path never did.
+   *
+   * The probe is a real map cast: View Air is a Power-tier map Spell, so Haste
+   * is discarded ALONGSIDE it as a "+1 Power" source; Mysticism is then offered
+   * on the resolved cast. Crowns are 0 throughout, so the EXPERT recall (which
+   * has always recovered every alongside card) can never be what fires.
+   */
+  function mapRecallOffer(community: boolean): { state: GameState; options: { label: string }[] } {
+    let state = adventure(`community-mysticism-map-${community}`, { community });
+    state.activePlayerId = "p1";
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+      state.activePlayerId = "p1";
+    }
+    state.players.p1.hand = ["spell.view_air", "spell.haste", "ability.mysticism"] as CardId[];
+    state.players.p1.limits.expertUses = 0;
+    state.players.p1.combatStats.expertUsesSpentThisRound = 0;
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.view_air" as CardId,
+      mode: "basic",
+      target: { type: "none" }
+    });
+    // Spend Haste as the cast's "+1 Power" source — the card played ALONGSIDE.
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE" || !choice.mapSpellBoost) {
+      throw new Error("expected the map-spell-boost window");
+    }
+    const offerIndex = choice.mapSpellBoost.offers.findIndex(
+      (offer) => offer.kind === "card" && offer.cardId === "spell.haste"
+    );
+    expect(offerIndex, "Haste must be offered as a Power source").toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: offerIndex
+    });
+    expect(state.players.p1.discard, "Haste really went alongside the cast").toContain("spell.haste");
+
+    const recall = state.adventure?.pendingVisit?.steps[0];
+    if (recall?.type !== "CHOOSE_ONE") {
+      throw new Error("expected the Knowledge / Mysticism recall choice");
+    }
+    return { state, options: recall.options.map((option) => ({ label: option.label })) };
+  }
+
+  it("names the alongside card and really returns BOTH (CONTROL: the printed basic returns only the Spell)", () => {
+    const on = mapRecallOffer(true);
+    const recoverIndex = on.options.findIndex((option) => /Use Mysticism:.*recover Haste/i.test(option.label));
+    expect(recoverIndex, "the basic recall must OFFER the alongside card by name").toBeGreaterThanOrEqual(0);
+    const afterOn = applyOk(on.state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: recoverIndex });
+    expect(afterOn.players.p1.hand, "the Spell comes back").toContain("spell.view_air");
+    expect(afterOn.players.p1.hand, "…and the card played alongside it").toContain("spell.haste");
+    expect(afterOn.players.p1.discard).not.toContain("spell.haste");
+    // No crown was spent: this is the BASIC side, not the expert one.
+    expect(crownsSpent(afterOn)).toBe(0);
+
+    // CONTROL: the printed card's basic side offers no such option, and its
+    // plain recall leaves Haste in the discard pile.
+    const off = mapRecallOffer(false);
+    expect(off.options.some((option) => /recover/i.test(option.label))).toBe(false);
+    const plainIndex = off.options.findIndex((option) => /Use Mysticism:/i.test(option.label));
+    expect(plainIndex).toBeGreaterThanOrEqual(0);
+    const afterOff = applyOk(off.state, { type: "RESOLVE_VISIT_STEP", playerId: "p1", optionIndex: plainIndex });
+    expect(afterOff.players.p1.hand).toContain("spell.view_air");
+    expect(afterOff.players.p1.hand, "the printed basic never returns the Power card").not.toContain("spell.haste");
+    expect(afterOff.players.p1.discard).toContain("spell.haste");
   });
 });
