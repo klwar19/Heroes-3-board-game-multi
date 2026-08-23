@@ -632,7 +632,27 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // (consecutive-passes closing rule). Display-only siblings in the same batch
 // (Griffin card stats, enemy-info 2nd-hero movement) need no protocol.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 53;
+//
+// v54 (2026-08-23, the Community Balance playtest-feedback batch 84ec17f1..
+// 1bb7f36c — ONE number for the batch; everything behind `community-card-balance`,
+// default OFF ⇒ byte-identical): (1) SPELLS — Misfortune casts target-LESS and
+// opens a `misfortune-face` OPTION_CHOICE (new context + `dieFaces` on the
+// balanceSpellChoice payload; a stale edge rejects the face answer); Prayer's buff
+// carries the new `ActiveEffectDuration` `{ type: "next-round-activation" }`
+// (persisted on ActiveEffectState — an old worker cannot expire it); the community
+// Inferno parks its dice in an ATTACK_DIE_REROLL window via the new
+// `PendingAbilityRollContext.kind: "spell-dice"` + `spellResume` (an old worker
+// cannot resume the blast). (2) ABILITIES — community Luck is spent at the
+// holder's TURN END (`expireCommunityLuckAtTurnEnd`, keyed off the reprint-only
+// `perDie` modifier), so the two halves disagree about a between-turns reroll
+// offer; Tactics expert surfaces in the pendingNeutralStep pre-activation pause
+// (extra offers in an existing window); Mysticism's basic MAP recall lists one
+// option per alongside candidate. (3) ARTIFACTS — the three turn-end incomes
+// (Bag of Gold / Vial of Mercury / Cart of Lumber) are one-turn ongoings spent by
+// `payTurnEndOngoingIncome` after paying once; the Resource/Treasure die windows
+// gain the Cards-of-Prophecy from-hand SET options and a narrower auto-resolve
+// early-out. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 54;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

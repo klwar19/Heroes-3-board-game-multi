@@ -2916,6 +2916,44 @@ What runs, and the seams:
   a v47 worker rejects the free Parry's frame — plus the unit-side overrides and
   the two war-machine price seams). **`npm run deploy:partykit` is OWED.**
 
+### Playtest-feedback batch (2026-08-23, protocol v53→v54) — the sheet's "Working? NO" fixes
+
+The author's spreadsheet gained per-card playtest feedback; every NO was fixed
+(84ec17f1..1bb7f36c, each claim damage/offer-delta pinned with a pack-OFF
+CONTROL). Leading with what did NOT change / open items:
+- **Mysticism basic in COMBAT still returns the FIRST alongside card** (no pick —
+  the recall resolves post-cast with no window; the MAP recall now lists one
+  option per candidate). Stated on the card's tags.
+- **Celestial Necklace of Bliss was NOT a bug**: the flat +1 really lands as
+  ATTACK and the discarded-X Defense shields the retaliation (now pinned by
+  damage deltas). The author's "gives defense instead of attack" likely refers
+  to the documented deliberate reading (+X is Defense on your OWN unit) — ask
+  before changing it.
+- **Forgetfulness's engine thresholds were already the printed 0/2/4 rungs**; the
+  bug was the DISPLAYED Power ladder reading the no-op gradeByPower table.
+- **No feedback yet** (Working? blank, re-check next sheet pull): Spells —
+  Fortune, View Air, Shield, Anti-Magic, Town Portal, Fire Wall, Frenzy, Bless,
+  Weakness, Dispel, Mirth; Artifacts — Boots of Polarity, Lion's Shield, Sword
+  of Judgement, Ogre's Club, Pendant of Second Sight (side A), Targ, Dragon Wing
+  Tabard.
+What shipped: Intelligence's enabler casts are individually labelled in the hand
+(the engine always offered one per discard Spell); community Luck dies at the
+holder's TURN END (`expireCommunityLuckAtTurnEnd`, keyed off the reprint-only
+`perDie`); Tactics' board banner reads `tacticsCombatOfferIsExpert` (never
+"(expert)" on the free basic side) and the expert swap surfaces in the
+pendingNeutralStep pre-activation pause; Misfortune casts target-less with a
+`misfortune-face` pick that really sets the enemy die; Prayer carries the new
+`next-round-activation` duration (expires at the unit's activation START next
+round); the community Inferno parks its dice in a standard reroll window when the
+caster holds a standing Attack-die reroll (`INFERNO.offerDieReroll`); the
+Purse/Cloak/Loins "nothing happens" class was the CLIENT cost picker reading the
+RAW printed library — `src/engine/card-play-cost.ts` (`balancedPlayOptionCost`)
+is now the one picker price read; Bag of Gold / Vial of Mercury / Cart of Lumber
+are ONE-TURN ongoings (pay once at turn end, then to the DISCARD via
+`payTurnEndOngoingIncome` spending the effect); Cards of Prophecy's set-a-die
+side is offered from hand inside the Resource/Treasure die windows. **`npm run
+deploy:partykit` is OWED (v54).**
+
 ## Polish Set Artifacts (OPTIONAL house rule, default OFF) — engine + UI (2026-08-07)
 
 Eleven Artifact SETS. A player's PIECE COUNT is how many DISTINCT member cards they still
