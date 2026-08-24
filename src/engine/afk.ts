@@ -1,3 +1,4 @@
+import { isComputerPlayer } from "./computer/control";
 import { appendEvent } from "./events";
 import { combatUnitDecisionOwnerId } from "./neutral-control";
 import {
@@ -73,9 +74,26 @@ export function getAfkState(state: GameState): AfkState {
   return state.afk;
 }
 
-/** Live human seats (turnOrder already drops eliminated players). */
+/**
+ * Live HUMAN seats (turnOrder already drops eliminated players).
+ *
+ * CO-OP step 2 — a COMPUTER seat is filtered out here, which is the single seam
+ * that keeps every time control off the AI: it is never a vote target, never
+ * auto-kickable, never counted among the voters whose unanimity a kick vote
+ * needs (a computer never votes, so an AI seat in the list made an otherwise
+ * legitimate vote against an absent HUMAN impossible to resolve), and never has
+ * a running per-turn clock — the server pump is the AI's clock. Every human
+ * seat's time controls are untouched. No-op on a table with no computer seat,
+ * and single-player never reaches any of these paths at all (the sessionMode
+ * guards above them).
+ */
 function liveSeats(state: GameState): PlayerId[] {
-  return state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID && !state.players[id]?.eliminated);
+  return state.turnOrder.filter(
+    (id) =>
+      id !== NEUTRAL_PLAYER_ID &&
+      !state.players[id]?.eliminated &&
+      !isComputerPlayer(state, id)
+  );
 }
 
 function gameIsOver(state: GameState): boolean {
@@ -176,6 +194,12 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
   if (!actorId || actorId === NEUTRAL_PLAYER_ID || !state.players[actorId]) {
     return;
   }
+  // CO-OP step 2: a COMPUTER seat's action is the server pump's, not a player's
+  // activity — it must not stamp an idle clock (the seat is not kickable at all,
+  // see liveSeats) and must not cancel a vote about somebody else.
+  if (isComputerPlayer(state, actorId)) {
+    return;
+  }
   // Actions the SERVER driver takes on a seat's behalf (answering the pending
   // choices of a passed kick vote or an expired turn with default picks) are
   // not the player's own activity: they must neither refresh the idle clock
@@ -208,6 +232,18 @@ export function applyAfkBookkeeping(state: GameState, action: GameAction, now: n
   }
 }
 
+/**
+ * CO-OP step 2 — a COMPUTER seat is never a time-control TARGET. `liveSeats`
+ * already excludes it, so every call site would refuse anyway; this raises the
+ * misleading "must still be in the game" message into an honest one and makes
+ * the rule a single named read the tests can point at.
+ */
+function assertNotComputerTarget(state: GameState, targetPlayerId: PlayerId): void {
+  if (isComputerPlayer(state, targetPlayerId)) {
+    throw new Error("A computer seat is played by the server — it is never AFK.");
+  }
+}
+
 /** Shared legality for both vote actions. */
 function assertVoteContext(state: GameState): AfkState {
   if (state.sessionMode === "single-player") throw new Error("AFK votes do not exist in single-player games.");
@@ -234,6 +270,7 @@ export function startAfkVote(
   if (!timeControlsActive(state)) {
     throw new Error("AFK votes run only on a closed (hosted) table.");
   }
+  assertNotComputerTarget(state, action.targetPlayerId);
   const seats = liveSeats(state);
   if (seats.length < 2) {
     throw new Error("An AFK vote needs at least two players still in the game.");
@@ -363,6 +400,7 @@ export function forceAfkKick(
   if (!timeControlsActive(state)) {
     throw new Error("The AFK auto-kick runs only on a closed (hosted) table.");
   }
+  assertNotComputerTarget(state, action.targetPlayerId);
   const seats = liveSeats(state);
   if (seats.length < 2) {
     throw new Error("An AFK kick needs at least two players still in the game.");
@@ -407,6 +445,10 @@ export function forceAfkKick(
  * active seat, in parallel mode every live seat whose turn is still open.
  * Empty outside multiplayer adventures (solo tables, setup lobbies, sandbox,
  * finished games) — the turn budget exists only where someone is kept waiting.
+ *
+ * CO-OP step 2: `liveSeats` excludes COMPUTER seats, so an AI seat's open turn
+ * never has a running clock (nothing can be timed out on it) and a table with
+ * fewer than two HUMAN seats carries no turn budget at all.
  */
 export function turnClockRunningSeats(state: GameState): PlayerId[] {
   if (state.sessionMode === "single-player" || state.mode !== "adventure" || !state.adventure || state.setupLobby || gameIsOver(state)) {
@@ -562,6 +604,10 @@ export function forceTurnTimeout(
   now: number | undefined
 ): void {
   const afk = assertVoteContext(state);
+  // CO-OP step 2: the SERVER-side re-validation of the client-fired trigger must
+  // refuse a computer-seat target outright — the pump is that seat's clock and a
+  // forced turn end would fight it.
+  assertNotComputerTarget(state, action.targetPlayerId);
   const seats = liveSeats(state);
   if (seats.length < 2) {
     throw new Error("The turn timer runs only with at least two players still in the game.");

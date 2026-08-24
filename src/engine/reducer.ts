@@ -307,8 +307,8 @@ import { EQUIPMENT_IDS, getEquipmentDefinition } from "@/data/anime/equipment";
 import { createSeededRandom, setActiveEntropy } from "./random";
 import {
   combatHasHumanParticipant,
+  computerPlayerIds,
   isComputerPlayer,
-  sessionModeOf,
 } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
 import {
@@ -25789,8 +25789,13 @@ function advanceComputerStep(
   state: GameState,
   action: Extract<GameAction, { type: "ADVANCE_COMPUTER" }>,
 ): void {
-  if (sessionModeOf(state) !== "single-player") {
-    throw new Error("ADVANCE_COMPUTER is only legal in single-player.");
+  // CO-OP step 2: the gate is "does this GAME have a computer seat", not "is
+  // this a single-player room" — a multiplayer co-op / clash table with AI seats
+  // is driven by the same paced pump and needs the same last-resort watchdog
+  // when a tick is lost. A table with no computer seat still refuses it, so an
+  // ordinary all-human game is unchanged.
+  if (computerPlayerIds(state).length === 0) {
+    throw new Error("ADVANCE_COMPUTER is only legal in a game with computer seats.");
   }
   if (state.mode !== "adventure") {
     throw new Error("ADVANCE_COMPUTER is only legal on the adventure map.");

@@ -223,10 +223,10 @@ import {
 } from "./adventure-setup";
 import {
   combatHasHumanParticipant,
+  computerPlayerIds,
   controllerOf,
   humanPlayerIdsByController,
   isComputerPlayer,
-  sessionModeOf,
 } from "./computer/control";
 import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
@@ -6982,17 +6982,23 @@ function applyPolishSpellBookActionGate(
 }
 
 /**
- * Single-player: while a computer seat owns the next decision on the map (or
- * an AI-only fight), the human always has ADVANCE_COMPUTER — even when the
- * computer is the active player / owns a pending choice. PvP with the human
- * auto-pumps and does not offer this. Prepended so the UI can always find it.
+ * While a computer seat owns the next decision on the map (or an AI-only
+ * fight), a HUMAN seat always has ADVANCE_COMPUTER — even when the computer is
+ * the active player / owns a pending choice. PvP with the human auto-pumps and
+ * does not offer this. Prepended so the UI can always find it.
+ *
+ * CO-OP step 2: offered in ANY game that HAS a computer seat, not just the
+ * private single-player room — a multiplayer table with AI seats runs the same
+ * paced server pump and needs the same lost-tick watchdog. A game with no
+ * computer seat is offered nothing (and the reducer refuses the action), so an
+ * ordinary all-human table is unchanged.
  */
 function withComputerAdvanceOffer(
   state: GameState,
   playerId: PlayerId,
   actions: LegalAction[],
 ): LegalAction[] {
-  if (sessionModeOf(state) !== "single-player") {
+  if (computerPlayerIds(state).length === 0) {
     return actions;
   }
   if (isComputerPlayer(state, playerId) || state.players[playerId]?.eliminated) {

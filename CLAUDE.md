@@ -357,21 +357,90 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
-## Co-op mode (OPTIONAL, multiplayer) — STEP 1 ONLY: the engine foundation
+## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–2: engine foundation + live AI seats
 
-**Leading with what is NOT built.** This is step 1 of a multi-step feature and
-only the ENGINE foundation shipped. NOT done yet: the server computer pump for a
-multiplayer table (the AI seats do NOT play themselves outside a private
-single-player room — `src/server/computer-runner.ts` is unchanged), co-op victory
-objectives (the table still ends by the normal victory mode / last faction
-standing, so an all-human alliance can only end a game by beating the AI seats
-under the ordinary rules), match report / MMR handling of a co-op result, the map
-designer surface, and EVERY UI surface (no lobby toggle, no seat picker — the
-mode is only reachable by dispatching `SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`).
-Default absent ⇒ byte-identical (CONTROL-pinned).
+**Leading with what is NOT built.** Steps 1 (engine foundation) and 2 (the AI
+seats really play on a multiplayer table) have shipped. NOT done yet: co-op
+victory objectives (the table still ends by the normal victory mode / last
+faction standing, so an all-human alliance can only end a game by beating the AI
+seats under the ordinary rules), match report / MMR handling of a co-op result,
+the map-designer surface, and EVERY UI surface (no lobby toggle, no seat picker
+— the mode is only reachable by dispatching `SET_GAME_OPTIONS` /
+`SET_COMPUTER_OPPONENTS`). Default absent ⇒ byte-identical (CONTROL-pinned).
+
+### Step 2 (protocol v56 → v57, `npm run deploy:partykit` OWED) — the AI seats play
+
+Leading with the limits/decisions:
+- **PARALLEL TURNS and computer seats cannot coexist** — the combination is
+  REFUSED at the lobby in BOTH directions (`SET_GAME_OPTIONS.parallelTurns` > 0
+  while computer seats exist, and `SET_COMPUTER_OPPONENTS` > 0 while parallel
+  turns are on; removing computers / turning parallel turns OFF is always legal,
+  so a lobby can never wedge). An AI seat inside parallel turns is an untested
+  stall surface: the pump owns one open decision at a time while parallel mode
+  opens every live seat's turn at once, and the quiet-action / bystander guards
+  were designed for human bystanders. Blocked, not half-supported. KNOWN SCOPE:
+  the `SET_GAME_OPTIONS` half is not multiplayer-scoped, and a SINGLE-PLAYER
+  lobby always has computer seats — so parallel turns can no longer be switched
+  on there either (it was a foot-gun: `createAdventureGameState` enables
+  parallel mode on any table with 2+ seat configs, solo included). A LEGACY
+  lobby that already carries `parallelTurns > 0` is not retro-fixed: only the
+  multiplayer `SET_COMPUTER_OPPONENTS` path has the mirror refusal.
+- **The guaranteed first-battle wins and the temp Empowered Attack/Defense
+  boost stay SINGLE-PLAYER-ONLY** (`combatQualifiesForComputerGuaranteedWin` /
+  `combatQualifiesForComputerBoost` keep their `sessionModeOf` gate, deliberately
+  unchanged) — a multiplayer AI seat fights every battle straight. Pinned with a
+  single-player twin CONTROL that DOES qualify, so the claim measures the gate.
+- **The pump machinery itself needed NO change**: `src/server/computer-runner.ts`
+  and both backends' pump call sites were already keyed on
+  `computerPumpOwed(state)` → `computerPlayerIds(state).length > 0`, never on
+  the session mode, and `combatHasHumanParticipant` was already multi-human
+  aware. The step-1 note "the AI seats do not play themselves outside a private
+  single-player room" was WRONG about where the gate lived — the real gaps were
+  the time controls, the neutral-control modes and the ADVANCE_COMPUTER
+  watchdog. Nothing in the settle path assumes exactly one human.
+- Everything is pinned in `src/engine/coop-step2.test.ts` (18 cases, each with a
+  human-seat / clash / all-human / single-player CONTROL; all six seams
+  mutation-checked) and `src/server/coop-live.test.ts` (both backends, driven
+  the way production drives them).
+
+What RUNS:
+- **An AI seat in an ordinary multiplayer room plays itself, on both backends.**
+  `src/server/coop-live.test.ts` builds a real room (2 humans join, `gameMode:
+  "coop"`, `SET_COMPUTER_OPPONENTS 1`, factions, `START_ADVENTURE`), lets the
+  humans end their round-1 turns and then touches NOTHING: the built-in store's
+  real `setTimeout` chain and the PartyKit edge's real Durable-Object ALARM
+  chain (with `Party.id` unreadable inside `onAlarm`, as the runtime enforces)
+  each finish the computer seat's turn and WRAP THE ROUND back onto a human
+  seat. An all-human clash room in the same flow arms nothing (CONTROL).
+- **Time controls never punish a computer seat.** ONE seam: the shared
+  `liveSeats` read in `afk.ts` filters computer-controlled seats out. So an AI
+  seat is never an AFK-vote / 30-minute auto-kick / `FORCE_TURN_TIMEOUT` target
+  (each also refused explicitly by `assertNotComputerTarget` with an honest
+  message), is never counted among the voters whose unanimity a kick vote needs
+  (a computer never votes — counting it made an otherwise legitimate vote
+  against an ABSENT HUMAN unresolvable), never has a running 10-minute turn
+  clock (`turnClockRunningSeats`; the pump is its clock), and its own
+  pump-driven actions stamp no idle clock and bootstrap no seat. Human seats
+  keep every time control exactly as before.
+- **CO-OP: nobody controls the computer enemy** (USER RULE). In a
+  `gameMode === "coop"` game `pvpNeutralControllerId` AND `manualGuardControllerId`
+  return null ALWAYS — the Neutral AI plays every guard, no pre-battle formation
+  SORT window opens and every guard's `combatUnitDecisionOwnerId` stays
+  `NEUTRAL_PLAYER_ID`. Shaped exactly like the `isPveEncounterCombat` exemption:
+  ONE shared read `coopDisablesManualNeutralControl` (`neutral-control.ts`), an
+  early null in both derivations, every downstream consumer falling back on it.
+  A CLASH table with AI seats is UNCHANGED (CONTROL-pinned: PvP Neutral Control
+  still hands the guards to the next seat clockwise, Manual to the fighter).
+- **`ADVANCE_COMPUTER` is gated on "this game HAS a computer seat"**, not on the
+  private single-player room (reducer + the `withComputerAdvanceOffer` offer,
+  moved together). It stays what it always was — the last-resort watchdog for a
+  lost pump tick, never the normal clock — and an all-human game still neither
+  offers nor accepts it.
+
+### Step 1 (protocol v55 → v56) — the engine foundation
 
 What RUNS (all in `src/engine/coop-mode.test.ts`, every claim with a clash /
-single-player CONTROL; protocol v55 → v56, `npm run deploy:partykit` OWED):
+single-player CONTROL):
 - **`GameSetupOptions.gameMode`** (`"clash" | "coop"`, ABSENT = clash), sanitized
   in `setGameOptions` (an unknown value is REFUSED, never coerced) and carried by
   `buildAdventureFromLobby`. A co-op build freezes the root field
@@ -462,7 +531,10 @@ ordered-mode or unowned-target CONTROL.
   card play, waits for the open interaction; town actions stay blocked during
   combats exactly like ordered play. Ordered games (`parallelTurns` 0/absent),
   solo tables and legacy snapshots are untouched — every parallel predicate
-  no-ops when the mode is off.
+  no-ops when the mode is off. Since CO-OP STEP 2 the mode may NOT be combined
+  with COMPUTER SEATS: the lobby refuses `parallelTurns > 0` while computer
+  seats exist AND refuses adding computer seats while it is on (see the co-op
+  section) — an AI seat inside parallel turns is an untested stall surface.
 
 ## Undo moves (OPTIONAL debug/testing mode, default OFF) — what runs vs. limits
 

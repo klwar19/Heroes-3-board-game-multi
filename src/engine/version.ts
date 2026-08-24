@@ -687,7 +687,32 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // the resulting map ownership. Default (no `gameMode`, no computer seat in a
 // multiplayer lobby) is byte-identical to v55.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 56;
+// v57 (2026-08-24, CO-OP MODE step 2 — the AI seats PLAY on a multiplayer
+// table). No new serialized field, but four LEGALITY changes a stale worker
+// would answer differently, which is why the bump exists:
+// (1) ADVANCE_COMPUTER (the lost-tick watchdog) is gated on "this game HAS a
+// computer seat" instead of "this is a single-player room" — a v56 worker
+// refuses the frame a v57 client is offered on a multiplayer co-op table, and
+// the human's only manual recovery from a lost pump tick would fail.
+// (2) TIME CONTROLS never touch a computer seat: the shared `liveSeats` read in
+// afk.ts filters computer-controlled seats out, so an AI seat is never an AFK
+// vote / 30-minute auto-kick / FORCE_TURN_TIMEOUT target, is never counted
+// among the voters whose unanimity a kick vote needs, never carries a running
+// 10-minute turn clock, and its own (pump-driven) actions stamp no idle clock.
+// A v56 worker still counts it — so a legitimate vote against an ABSENT HUMAN
+// can never resolve there, and it would happily time out / auto-kick the AI.
+// (3) CO-OP disables BOTH manual-neutral-control modes: with
+// `GameState.gameMode === "coop"`, `pvpNeutralControllerId` and
+// `manualGuardControllerId` always return null (the Neutral AI plays every
+// guard). A v56 worker would open the pre-battle formation SORT window and hand
+// the guards to a seat the v57 client never offers them to.
+// (4) The PARALLEL-TURNS × computer-seats combination is REFUSED at the lobby
+// in BOTH directions (`SET_GAME_OPTIONS.parallelTurns` while computer seats
+// exist; `SET_COMPUTER_OPPONENTS` > 0 while parallel turns are on) — a v56
+// worker accepts the combination and builds an untested stall surface.
+// A table with NO computer seat and no `gameMode` is byte-identical to v56.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 57;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

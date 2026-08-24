@@ -29,6 +29,26 @@ import type { CombatState, CombatUnitState, GameState, PendingChoice, PlayerId }
  */
 
 /**
+ * CO-OP step 2 (USER RULE "nobody controls the computer enemy"): in a co-op
+ * game (`GameState.gameMode === "coop"`) NEITHER manual-neutral-control mode
+ * exists — the normal Neutral AI plays every guard. Both modes are clash-only
+ * ideas: they hand the guards to "the next player clockwise" / "the fighter",
+ * and in co-op that seat is either an ALLY (so the humans would be playing the
+ * monsters attacking their own alliance) or a COMPUTER seat that has no
+ * human-facing menu to drive.
+ *
+ * Shaped exactly like the `isPveEncounterCombat` exemption: ONE shared read,
+ * an early `null` in BOTH controller derivations, and every downstream consumer
+ * (`neutralCombatControllerId`, `combatUnitDecisionOwnerId`,
+ * `neutralControlMustAttack`, `openNeutralPlacementWindow`,
+ * `computerDecisionOwner`) simply falls back on that null. A CLASH table with
+ * computer seats is UNCHANGED.
+ */
+export function coopDisablesManualNeutralControl(state: GameState): boolean {
+  return state.gameMode === "coop";
+}
+
+/**
  * The seat controlling the Neutral side of `combat`, or null when the normal
  * Neutral AI plays it: the mode is off (or the snapshot predates it), the
  * combat is not a Neutral fight, or no OTHER live seat exists (solo table, or
@@ -72,6 +92,10 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
   if (combat.context.kind !== "neutral" || !state.adventure?.pvpNeutralControl) {
     return null;
   }
+  // CO-OP: nobody controls the computer enemy — the Neutral AI plays every guard.
+  if (coopDisablesManualNeutralControl(state)) {
+    return null;
+  }
   // USER RULE: the optional PvE director's own fights — a Calamity Wave
   // assault, a Raid-Boss lair, a Dungeon floor — are NEVER handed to a manual
   // controller. They always fall back to the normal Neutral AI pipeline.
@@ -102,6 +126,10 @@ export function pvpNeutralControllerId(state: GameState, combat: CombatState): P
  */
 export function manualGuardControllerId(state: GameState, combat: CombatState): PlayerId | null {
   if (combat.context.kind !== "neutral" || !state.adventure?.manualGuardControl) {
+    return null;
+  }
+  // CO-OP: same rule as pvpNeutralControllerId — the Neutral AI plays every guard.
+  if (coopDisablesManualNeutralControl(state)) {
     return null;
   }
   // Same USER RULE as pvpNeutralControllerId: never the fighter's to drive in a
