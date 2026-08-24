@@ -23,8 +23,10 @@ import {
   type CombatUnitState,
   type CustomRaidBossDef,
   type GameState,
+  type PlayerId,
   type RaidBossState
 } from "./state";
+import { playersAreAllied } from "./computer/control";
 
 /** Scheduled spawn: announced on round SPAWN−1, placed on round SPAWN. */
 export const RAID_BOSS_SPAWN_ROUND = 5;
@@ -188,6 +190,38 @@ export function bossLayersRemaining(unit: CombatUnitState): number {
     return 0;
   }
   return (unit.armyStacks ?? 0) + 1;
+}
+
+/**
+ * THE shared "how many Raid Bosses has this seat slain" metric — the ONE reader
+ * behind the `slay-raid-boss` custom win condition and any future VP/objective
+ * row (CLAUDE.md: the metrics ARE the Victory-Points readers, never a duplicate;
+ * no boss-kill reader existed before this one). Event-sourced off
+ * `RaidBossState.slainBy`, which `resolveRaidBossVictory` stamps at the kill, so
+ * a cleared lair keeps paying its credit forever.
+ *
+ * CO-OP is TEAM-WIDE: in a `gameMode === "coop"` game an ALLY's kill counts for
+ * every ally (`playersAreAllied` — the same alliance read every other co-op gate
+ * takes, no new team plumbing). On any other table it is strictly per-seat, so
+ * clash / single-player semantics are byte-identical.
+ */
+export function raidBossKillCount(state: GameState, playerId: PlayerId): number {
+  const bosses = state.adventure?.raidBosses;
+  if (!bosses) {
+    return 0;
+  }
+  const teamWide = state.gameMode === "coop";
+  let count = 0;
+  for (const boss of Object.values(bosses)) {
+    const slayer = boss.slainBy;
+    if (!slayer) {
+      continue;
+    }
+    if (slayer === playerId || (teamWide && playersAreAllied(state, playerId, slayer))) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 /** The live (unslain) boss lairing on a field, if any. */

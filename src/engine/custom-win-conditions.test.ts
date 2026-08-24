@@ -740,6 +740,12 @@ describe("Banner + describe", () => {
     expect(describeCustomWinCondition({ kind: "defeat-heroes", count: 2 })).toBe("defeat 2 enemy Heroes");
     expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia" })).toBe("flag 1 Dragon Utopia");
     expect(describeCustomWinCondition({ kind: "defeat-dragon-utopia", count: 2 })).toBe("flag 2 Dragon Utopias");
+    // Co-op step 3 kinds (behaviour pinned in coop-objectives.test.ts).
+    expect(describeCustomWinCondition({ kind: "defeat-computers" })).toBe(
+      "defeat every computer opponent"
+    );
+    expect(describeCustomWinCondition({ kind: "slay-raid-boss", count: 1 })).toBe("slay 1 Raid Boss");
+    expect(describeCustomWinCondition({ kind: "slay-raid-boss", count: 3 })).toBe("slay 3 Raid Bosses");
     expect(
       describeCustomWinCondition({ kind: "hold-with-grail", rounds: 3, target: "starting-town" })
     ).toBe("control Starting Town with the Grail for 3 rounds");

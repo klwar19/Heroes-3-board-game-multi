@@ -204,6 +204,7 @@ import {
   RAID_BOSS_KILL_GOLD,
   RAID_BOSS_LAYER_BREAK_GOLD,
   RAID_BOSS_SPAWN_ROUND,
+  raidBossKillCount,
   resolveBossDefinition,
   scheduledBossPool
 } from "./raid-bosses";
@@ -289,7 +290,7 @@ import type {
   VisitStep
 } from "./state";
 import { isNeutralSideCombatChoice, pvpNeutralControllerId } from "./neutral-control";
-import { playersAreAllied } from "./computer/control";
+import { isComputerPlayer, playersAreAllied } from "./computer/control";
 import {
   DEFAULT_OBELISK_BONUS,
   GRAIL_OBELISKS_REQUIRED,
@@ -4346,6 +4347,7 @@ export function declareAdventureWinner(
     return;
   }
   state.adventure.winnerPlayerId = playerId;
+  const reasonText = coopAllianceWinReason(state, playerId, reason);
   state.phase = "game-over";
   // Close every post-combat gate so nothing can re-open map play after a win
   // (Necromancy / First Aid would otherwise keep offering actions on a finished
@@ -4356,7 +4358,30 @@ export function declareAdventureWinner(
   for (const player of Object.values(state.players)) {
     player.necromancyWindow = false;
   }
-  appendEvent(state, { type: "GAME_WON", playerId, reason });
+  appendEvent(state, { type: "GAME_WON", playerId, reason: reasonText });
+}
+
+/**
+ * CO-OP win wording — PRESENTATION ONLY. The victory machinery is single-winner
+ * (`adventure.winnerPlayerId` names one seat) and step 3 deliberately does NOT
+ * change that; in co-op the win is nonetheless the ALLIANCE's, so the GAME_WON
+ * reason says so whenever the declared winner still has a LIVING ally. Not
+ * applied when the reason already names an alliance (the `eliminatePlayer`
+ * "last alliance standing" line) and never outside co-op, so every clash /
+ * single-player reason string is byte-identical.
+ */
+function coopAllianceWinReason(state: GameState, playerId: PlayerId, reason: string): string {
+  if (state.gameMode !== "coop" || /alliance/i.test(reason)) {
+    return reason;
+  }
+  const hasLivingAlly = Object.keys(state.players).some(
+    (id) =>
+      id !== playerId &&
+      id !== NEUTRAL_PLAYER_ID &&
+      !state.players[id]?.eliminated &&
+      playersAreAllied(state, playerId, id)
+  );
+  return hasLivingAlly ? `${reason}, with their alliance` : reason;
 }
 
 /**
@@ -4453,6 +4478,27 @@ export function customWinConditionProgress(
         current = ledger?.utopiaDefeatedFieldIds?.length ?? (ledger?.utopiaDefeated === true ? 1 : 0);
       }
       target = condition.count ?? 1;
+      break;
+    case "defeat-computers": {
+      // Every computer seat eliminated. Denominator = the computer seats this
+      // game HAS (an eliminated seat keeps its `players` entry and its
+      // `controllers` entry, so it never shrinks). With NO computer seat the
+      // condition is INERT — the "0 of 0" vacuous truth would otherwise hand an
+      // instant win to the first seat in turn order on move one.
+      const computerSeats = Object.keys(state.players).filter(
+        (id) => id !== NEUTRAL_PLAYER_ID && isComputerPlayer(state, id)
+      );
+      if (computerSeats.length === 0) {
+        return { current: 0, target: 1, complete: false };
+      }
+      current = computerSeats.filter((id) => state.players[id]?.eliminated).length;
+      target = computerSeats.length;
+      break;
+    }
+    case "slay-raid-boss":
+      // THE shared boss-kill metric (raid-bosses.ts) — team-wide in co-op.
+      current = raidBossKillCount(state, playerId);
+      target = condition.count;
       break;
     case "hold-with-grail": {
       // Progress is ticked at round start; meeting = continuous hold already reached N.
@@ -4622,6 +4668,15 @@ export function checkCustomWinConditions(state: GameState): void {
   }
   for (const playerId of state.turnOrder) {
     if (playerId === NEUTRAL_PLAYER_ID || !state.players[playerId] || state.players[playerId]?.eliminated) {
+      continue;
+    }
+    // CO-OP: a computer seat never wins by an OBJECTIVE. The invaders win the
+    // one way the mode defines — by eliminating every human (the last-alliance
+    // check in `eliminatePlayer`). Letting an AI seat cross a gold / hero-level
+    // / boss-kill line would end a co-op table on a bookkeeping threshold the
+    // players cannot even see coming. CLASH is deliberately UNCHANGED: an AI
+    // opponent there is an ordinary rival and may meet any condition.
+    if (state.gameMode === "coop" && isComputerPlayer(state, playerId)) {
       continue;
     }
     for (const condition of conditions) {

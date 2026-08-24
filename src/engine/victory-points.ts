@@ -370,6 +370,10 @@ export function describeCustomWinCondition(condition: CustomWinCondition): strin
         const count = condition.count ?? 1;
         return `flag ${count} Dragon Utopia${count === 1 ? "" : "s"}`;
       }
+    case "defeat-computers":
+      return "defeat every computer opponent";
+    case "slay-raid-boss":
+      return `slay ${condition.count} Raid Boss${condition.count === 1 ? "" : "es"}`;
     case "hold-with-grail": {
       const target =
         condition.target === "starting-town"

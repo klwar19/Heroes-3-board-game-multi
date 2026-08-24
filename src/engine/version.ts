@@ -712,7 +712,28 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // worker accepts the combination and builds an untested stall surface.
 // A table with NO computer seat and no `gameMode` is byte-identical to v56.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 57;
+// v58 (2026-08-24, CO-OP MODE step 3 — VICTORY & OBJECTIVES). The serialized
+// OPTIONS surface grew and the win check changed semantics, so a stale worker
+// and a new client disagree about when a game is OVER:
+// (1) TWO NEW `CustomWinCondition` kinds ride `GameSetupOptions.customWinConditions`
+// / `CustomMapPreset.customWinConditions` — `{ kind: "defeat-computers" }`
+// (parameterless) and `{ kind: "slay-raid-boss", count: 1-3 }`. A v57 worker's
+// sanitiser DROPS both as unknown kinds, so a host who added one starts a game
+// whose objective silently does not exist on the authority — the exact
+// "condition never fires" class the bump exists to surface.
+// (2) `checkCustomWinConditions` SKIPS computer-controlled seats in a
+// `gameMode === "coop"` game (the invaders win only by eliminating every
+// human). A v57 worker would end a co-op table the moment an AI seat crossed a
+// gold / hero-level line. CLASH is unchanged in both.
+// (3) A `slay-raid-boss` condition is DROPPED AT BUILD with a public
+// MAP_SECRET_FEATURE_FALLBACK note when neither `wog.raidBosses` nor
+// `anime.raidBosses` is on — a v57 worker builds a different effective preset
+// from the same lobby options.
+// (4) The GAME_WON reason of a co-op winner who still has a living ally gains
+// ", with their alliance" (presentation only, but it rides the persisted feed).
+// A game with no `customWinConditions` and no `gameMode` is byte-identical to v57.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 58;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

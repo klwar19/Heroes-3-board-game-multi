@@ -577,6 +577,7 @@ export {
   RAID_BOSS_LAYER_BREAK_GOLD,
   RAID_BOSS_SPAWN_ROUND,
   customBossToDefinition,
+  raidBossKillCount,
   raidBossesEnabled,
   resolveBossDefinition
 } from "./raid-bosses";

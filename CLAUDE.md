@@ -357,16 +357,78 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
-## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–2: engine foundation + live AI seats
+## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–3: foundation + live AI seats + objectives
 
-**Leading with what is NOT built.** Steps 1 (engine foundation) and 2 (the AI
-seats really play on a multiplayer table) have shipped. NOT done yet: co-op
-victory objectives (the table still ends by the normal victory mode / last
-faction standing, so an all-human alliance can only end a game by beating the AI
-seats under the ordinary rules), match report / MMR handling of a co-op result,
-the map-designer surface, and EVERY UI surface (no lobby toggle, no seat picker
-— the mode is only reachable by dispatching `SET_GAME_OPTIONS` /
-`SET_COMPUTER_OPPONENTS`). Default absent ⇒ byte-identical (CONTROL-pinned).
+**Leading with what is NOT built.** Steps 1 (engine foundation), 2 (the AI seats
+really play on a multiplayer table) and 3 (victory & objectives) have shipped.
+NOT done yet: **match report / MMR handling of a co-op result** — `detectFinishedMatch`
+(`src/server/match-report.ts`) still scores `live.seat === winnerSeat ? "win" : "loss"`,
+so a co-op ally who did NOT happen to be the declared winner seat is reported as a
+LOSS; that is the next step, and it is the ONLY consumer found (a `winnerPlayerId`
+sweep of `src/engine/` shows every other read is a plain "the game is over" gate,
+never a loser set). Also missing: the map-designer surface, and EVERY UI surface
+(no lobby toggle, no seat picker, and the two new win-condition kinds are
+deliberately NOT in `CUSTOM_WIN_CONDITION_OPTIONS`, so no designer/lobby dropdown
+row offers them yet — the mode and its objectives are reachable only by
+dispatching `SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`). Default absent ⇒
+byte-identical (CONTROL-pinned).
+
+### Step 3 (protocol v57 → v58, `npm run deploy:partykit` OWED) — victory & objectives
+
+Everything is pinned in `src/engine/coop-objectives.test.ts` (22 cases, every
+co-op claim with a clash / absent-mode / below-threshold CONTROL; 8 mutations
+applied-and-reverted, each failing 1–3 cases).
+
+Leading with the limits/readings:
+- **The victory machinery stays SINGLE-WINNER.** `adventure.winnerPlayerId` names
+  ONE seat; a co-op win is the ALLIANCE's only in the GAME_WON *reason*, which
+  gains ", with their alliance" when the declared winner still has a LIVING ally
+  (`coopAllianceWinReason`, adventure.ts — presentation only, never applied
+  outside co-op and never doubled on the `eliminatePlayer` "last alliance
+  standing" line). Living allies are not eliminated and no engine read presents
+  them as defeated; see the match-report caveat above.
+- **`defeat-computers` is INERT with no computer seat** — the sanitiser KEEPS the
+  condition, the CHECKER returns false forever. Without that guard the "0 of 0"
+  vacuous truth would hand an instant win to the first seat in turn order on move
+  one (mutation-pinned).
+- **A `slay-raid-boss` condition is DROPPED AT BUILD** when neither
+  `wog.raidBosses` nor `anime.raidBosses` is on, with a public
+  `MAP_SECRET_FEATURE_FALLBACK` feed line (feature `"slay-raid-boss"`, the
+  soft-failed-guarantee pattern) — never a silent no-op, never a blocked start.
+  Sibling conditions in the same list survive.
+- No new team plumbing: the team-wide reading is `playersAreAllied` on the
+  step-1 `playerTeams`, and it is gated on `gameMode === "coop"` so clash and
+  single-player are byte-identical.
+- **The AI-seat skip covers `checkCustomWinConditions` ONLY.** The designer
+  per-settlement hold-to-win (`checkSettlementHoldWins`, checked just above it)
+  and the normal victory modes are UNCHANGED, so a computer seat on a designed
+  hold-settlement map could still end a co-op table that way. Not reached by any
+  shipped co-op flow (no designer surface yet) — widen it with the designer step.
+
+What RUNS:
+- **The implicit TEAM victory** (already free from steps 1–2, now pinned in both
+  directions): `eliminatePlayer`'s alliance check declares "the last alliance
+  standing" when the humans wipe out every computer seat AND when the invaders
+  wipe out every human. Clash CONTROLs on the identical eliminations end nothing.
+- **Two new `CustomWinCondition` kinds**, sanitised/clamped/merged exactly like
+  their siblings (lobby ADD-only union, cap 4):
+  - `defeat-computers` (parameterless): every computer-controlled seat
+    eliminated. Denominator = the computer seats the game HAS — an eliminated
+    seat keeps its `players` AND `controllers` entry, so it never shrinks.
+    Meaningful in co-op AND in clash-with-AI.
+  - `slay-raid-boss` (`count` 1–3): slay N Raid Bosses. Metric = the ONE shared
+    reader `raidBossKillCount` (`raid-bosses.ts`, event-sourced off
+    `RaidBossState.slainBy`) — no boss-kill reader existed before, so this IS
+    the reader any future VP row must use. **TEAM-WIDE in co-op** (an ally's kill
+    counts for every ally), strictly per-seat in clash; a computer seat's kill
+    never credits the human alliance. Pinned through the REAL kill chain
+    (visit → Challenge → `finalizeAdventureCombat` → `resolveRaidBossVictory` →
+    the condition → the winner), not a hand-stamped `slainBy`.
+- **A COMPUTER seat never wins by a custom condition in co-op**:
+  `checkCustomWinConditions` skips computer-controlled seats when
+  `gameMode === "coop"` (the invaders win the one way the mode defines — by
+  eliminating every human). CLASH is deliberately UNCHANGED and CONTROL-pinned:
+  an AI seat there is an ordinary rival and still wins on a gold / hero-level line.
 
 ### Step 2 (protocol v56 → v57, `npm run deploy:partykit` OWED) — the AI seats play
 

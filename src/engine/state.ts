@@ -13973,6 +13973,26 @@ export type CustomWinCondition =
   | { kind: "obelisks"; count: number }
   | { kind: "defeat-heroes"; count: number }
   | { kind: "defeat-dragon-utopia"; count?: number }
+  /**
+   * CO-OP objective: every COMPUTER-controlled seat is eliminated. Parameterless
+   * — the target IS "all of them", read live off `state.controllers` +
+   * `players[id].eliminated` (controllers persist through an elimination, so the
+   * denominator never shrinks). Meaningful in co-op AND in clash-with-AI. HONEST
+   * LIMIT: with NO computer seat in the game the condition is INERT — the
+   * sanitiser keeps it, the checker returns false forever, so an all-human table
+   * can never win it by vacuous truth.
+   */
+  | { kind: "defeat-computers" }
+  /**
+   * "Destroy the monster": slay `count` (1–3) Raid Bosses. Event-sourced off
+   * `adventure.raidBosses[*].slainBy` through the ONE shared metric
+   * `raidBossKillCount` (raid-bosses.ts). In a CO-OP game the metric is
+   * TEAM-wide (an ally's kill counts for every ally, via `playersAreAllied`);
+   * in clash it is strictly per-seat. A condition of this kind is DROPPED at
+   * build time with a `MAP_SECRET_FEATURE_FALLBACK` note when neither
+   * `wog.raidBosses` nor `anime.raidBosses` is on — it could never fire.
+   */
+  | { kind: "slay-raid-boss"; count: number }
   | {
       kind: "hold-with-grail";
       /** Consecutive full rounds of continuous control + Grail possession (1–10). */

@@ -562,6 +562,10 @@ const CUSTOM_WIN_CONDITION_KINDS = new Set<CustomWinCondition["kind"]>([
   "obelisks",
   "defeat-heroes",
   "defeat-dragon-utopia",
+  // Co-op objectives (step 3). "defeat-computers" is parameterless; both are
+  // ordinary conditions the lobby/designer may author.
+  "defeat-computers",
+  "slay-raid-boss",
   "hold-with-grail"
 ]);
 
@@ -1405,6 +1409,14 @@ function sanitizeCustomWinCondition(input: unknown): CustomWinCondition | null {
       return { kind: "defeat-heroes", count: clampInt(raw.count, 1, 6, 1) };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia", count: clampInt(raw.count, 1, 6, 1) };
+    case "defeat-computers":
+      // Parameterless: the target is "every computer seat". Any stray numeric
+      // field on the incoming row is DROPPED so two authored copies dedupe.
+      return { kind: "defeat-computers" };
+    case "slay-raid-boss":
+      // 1-3: the scheduled spawn places ONE boss and a designer pool caps at 6,
+      // so 3 is already an ambitious multi-lair hunt.
+      return { kind: "slay-raid-boss", count: clampInt(raw.count, 1, 3, 1) };
     case "hold-with-grail": {
       const target = sanitizeHoldWithGrailTarget(raw.target);
       if (!target) {
@@ -3736,6 +3748,10 @@ export function defaultCustomWinCondition(kind: CustomWinCondition["kind"]): Cus
       return { kind: "defeat-heroes", count: 1 };
     case "defeat-dragon-utopia":
       return { kind: "defeat-dragon-utopia", count: 2 };
+    case "defeat-computers":
+      return { kind: "defeat-computers" };
+    case "slay-raid-boss":
+      return { kind: "slay-raid-boss", count: 1 };
     case "hold-with-grail":
       return { kind: "hold-with-grail", rounds: 3, target: "starting-town" };
   }

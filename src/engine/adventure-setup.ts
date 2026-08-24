@@ -3002,13 +3002,38 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   // enables VP stays authoritative (see `applyLobbyVictoryPoints`).
   // Lobby custom win conditions merge onto the effective preset AFTER the VP fold
   // (both edit `adventure.mapPreset`; the win-condition check reads it there).
-  const resolvedMapPreset = applyLobbyCustomWinConditions(
+  const mergedWinConditionPreset = applyLobbyCustomWinConditions(
     applyLobbyVictoryPoints(
       sanitizeCustomMapPreset(setupOptions.customMapPreset ?? null) ?? null,
       setupOptions
     ),
     setupOptions
   );
+  // MODULE DEPENDENCY (co-op step 3): a `slay-raid-boss` condition can NEVER
+  // fire with no raid-boss module on — no lair is ever placed, so nothing can
+  // stamp `slainBy`. Drop it here rather than leave a silent no-op objective on
+  // the banner, and announce the drop below (the MAP_SECRET_FEATURE_FALLBACK
+  // pattern: a soft-failed authored guarantee is a public feed line, never a
+  // blocked start).
+  const droppedRaidBossWinCondition =
+    !raidBossesOn &&
+    (mergedWinConditionPreset?.customWinConditions ?? []).some(
+      (condition) => condition.kind === "slay-raid-boss"
+    );
+  const resolvedMapPreset = droppedRaidBossWinCondition
+    ? (() => {
+        const kept = (mergedWinConditionPreset?.customWinConditions ?? []).filter(
+          (condition) => condition.kind !== "slay-raid-boss"
+        );
+        const next: CustomMapPreset = { ...(mergedWinConditionPreset ?? {}) };
+        if (kept.length > 0) {
+          next.customWinConditions = kept;
+        } else {
+          delete next.customWinConditions;
+        }
+        return customMapPresetIsActive(next) ? next : null;
+      })()
+    : mergedWinConditionPreset;
   // A designer map that PLACES Grail/Dragon Utopia fields auto-activates the
   // Grail & Dragon Utopia field rules (dig / XP-only clear / normal Level-VII
   // fight / 2-Azure guards, Utopia = +1 Black Dragon), so a placed Grail is a
@@ -4110,6 +4135,18 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
       message: roundLimit
         ? `Victory Points scenario: the game ends at round ${roundLimit} or when a player completes the victory condition — the most Victory Points wins.`
         : "Victory Points scenario: the game ends when a player completes the victory condition — the most Victory Points wins."
+    });
+  }
+
+  if (droppedRaidBossWinCondition) {
+    // The authored "slay N Raid Bosses" objective was dropped: no raid-boss
+    // module is on, so no lair would ever exist to slay. Public, never silent.
+    appendEvent(state, {
+      type: "MAP_SECRET_FEATURE_FALLBACK",
+      feature: "slay-raid-boss",
+      group: "custom-win-condition",
+      message:
+        "The “slay Raid Bosses” win condition was dropped: no Raid Bosses module is enabled in this game."
     });
   }
 
