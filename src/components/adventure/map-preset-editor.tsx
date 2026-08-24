@@ -671,6 +671,7 @@ export function MapPresetEditor({
   // ≥1 active entry starts OPEN; an empty group starts collapsed.
   const groupCounts = {
     matchSetup:
+      (value.supportedModes ? 1 : 0) +
       (value.difficulty ? 1 : 0) +
       (value.farTileOpening !== undefined ||
       value.farTilesPerPlayer !== undefined
@@ -767,6 +768,42 @@ export function MapPresetEditor({
       )}
 
       <MapPresetGroup title="Match setup" glyphEmoji="⚙️" count={groupCounts.matchSetup}>
+      <section className="mapPresetSection" aria-label="Supported table modes">
+        <div className="mapPresetSectionLabel">Supported table modes</div>
+        <div className="mapPresetChipRow" role="group" aria-label="Supported table modes">
+          {(
+            [
+              [undefined, "Both", "Clash and Co-op"],
+              [{ coop: false }, "Clash only", "Free-for-all only"],
+              [{ clash: false }, "Co-op only", "Humans vs computers only"]
+            ] as [CustomMapPreset["supportedModes"], string, string][]
+          ).map(([modes, label, title]) => {
+            const active =
+              modes === undefined
+                ? value.supportedModes === undefined
+                : value.supportedModes?.clash === modes.clash &&
+                  value.supportedModes?.coop === modes.coop;
+            return (
+              <button
+                aria-pressed={active}
+                className={`mapPresetChip${active ? " active" : ""}`}
+                key={label}
+                onClick={() => patch({ supportedModes: modes })}
+                title={title}
+                type="button"
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <small className="mapPresetHint">
+          Which table modes this map is designed for. Both (the default for every map) leaves it playable in
+          Clash and Co-op alike. Picking a Co-op-only map switches the lobby to Co-op automatically — the host can
+          still change it, but the game refuses to start in a mode the map does not support.
+        </small>
+      </section>
+
       <section className="mapPresetSection">
         <div className="mapPresetSectionLabel">Difficulty (preset)</div>
         <div className="mapPresetChipRow" role="group" aria-label="Difficulty">

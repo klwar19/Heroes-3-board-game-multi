@@ -17,7 +17,9 @@ import { assetUrl } from "@/lib/asset-url";
 import { fetchSharedMaps, type SharedMapRecord } from "@/lib/shared-maps";
 import {
   clampSeatCount,
+  coopMapSeatCapacity,
   describeCustomMapPresetEntries,
+  describeMapSupportedModes,
   scenarioDefinitions,
   singlePlayerMapDeployment,
   validateCustomMapPlan,
@@ -386,6 +388,11 @@ export function MapPickModal({
                         {selected.scenario.minPlayers === 2 ? "" : "s"} · standard starting positions
                       </small>
                     ) : null}
+                    {/* A built-in scenario sheet carries no preset, so it always
+                        supports BOTH table modes — see `mapSupportedModes`. */}
+                    <small className="mapPickModeSupport">
+                      Modes: {describeMapSupportedModes(null)}
+                    </small>
                     <small>{selected.scenario.description}</small>
                     <small className="mapPickCredit">{selected.scenario.source.product}</small>
                   </>
@@ -415,6 +422,21 @@ export function MapPickModal({
                         </small>
                       );
                     })() : null}
+                    {/* Which table modes the map declares, plus — when the
+                        designer authored per-position co-op roles — how many
+                        starting positions each side may take. Both derive from
+                        the SHARED engine helpers, never re-counted here. */}
+                    {(() => {
+                      const capacity = coopMapSeatCapacity(selected.record.tiles);
+                      return (
+                        <small className="mapPickModeSupport">
+                          Modes: {describeMapSupportedModes(selected.record.preset)}
+                          {capacity.authored
+                            ? ` · Co-op: ${capacity.human} human / ${capacity.computer} computer / ${capacity.flexible} flexible starting positions`
+                            : ""}
+                        </small>
+                      );
+                    })()}
                     <small>
                       Built on {scenarioDefinitions[selected.record.scenarioId]?.name ?? selected.record.scenarioId}
                     </small>

@@ -20,6 +20,8 @@ import { CREATURE_BANK_IDS, CREATURE_BANKS, type CreatureBankId } from "@/data/m
 import type { TileDefinition } from "@/data/map/types";
 import {
   canonicalTileEdgeCode,
+  coopMapDesignProblems,
+  coopMapSeatCapacity,
   gatePairColor,
   hexNeighbor,
   hexNeighbors,
@@ -67,6 +69,7 @@ import {
   type CustomMapGateLink,
   type CustomHexEvent,
   type CustomMapObjectivesConfig,
+  type CustomMapPreset,
   type CustomMapSettlementFieldPlan,
   type CustomObjectFieldPlan,
   type CustomMapTileToken,
@@ -1124,7 +1127,8 @@ export function MapDesigner({
   onPickResolved,
   hexEvents = EMPTY_HEX_EVENTS,
   onHexEventsChange,
-  objectives
+  objectives,
+  supportedModes
 }: {
   scenarioId: string;
   /** Active scenario seats to draw/reserve (defaults to the legacy footprint). */
@@ -1155,6 +1159,11 @@ export function MapDesigner({
    * `utopiaBonusSearch` stacks on a Ⅶ Dragon Utopia's own reward.
    */
   objectives?: CustomMapObjectivesConfig;
+  /**
+   * The preset's supported table modes — read ONLY so a CO-OP-ONLY map warns
+   * when its authored starting-position roles leave one side nowhere to start.
+   */
+  supportedModes?: CustomMapPreset["supportedModes"];
 }) {
   const scenario = scenarioDefinitions[scenarioId];
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -1652,6 +1661,9 @@ export function MapDesigner({
           if (changes.objectPlans === undefined && "objectPlans" in changes) {
             delete next.objectPlans;
           }
+          if (changes.coopSeat === undefined && "coopSeat" in changes) {
+            delete next.coopSeat;
+          }
           return next;
         })
       );
@@ -1884,6 +1896,13 @@ export function MapDesigner({
   const viiRewardStacks = useMemo(
     () => viiRewardStackWarnings(customMap, { hexEvents, objectives }),
     [customMap, hexEvents, objectives]
+  );
+  // CO-OP per-position roles (step 5) — ONE shared derivation for the popover
+  // hint and the alert below; never re-count roles in the JSX.
+  const coopSeatCapacity = useMemo(() => coopMapSeatCapacity(customMap), [customMap]);
+  const coopProblems = useMemo(
+    () => coopMapDesignProblems({ supportedModes }, customMap),
+    [supportedModes, customMap]
   );
   // The Grail / Dragon victory modes need supporting tiles; when one is chosen
   // and the design already provides them (no conflicts), show an all-clear so
@@ -3244,6 +3263,18 @@ export function MapDesigner({
         return plan;
       })
     );
+  };
+
+  /**
+   * CO-OP per-position role for this Town (step 5). Independent of the solo
+   * marker above — a Town may carry both — and read only by a CO-OP table:
+   * `undefined` clears the field back to "either side may start here".
+   */
+  const setCoopSeatRole = (role: "human" | "computer" | undefined) => {
+    if (selectedIndex === null || !selected || selected.group !== "starting") {
+      return;
+    }
+    updateTile(selectedIndex, { coopSeat: role ? { role } : undefined });
   };
 
   /**
@@ -5485,6 +5516,35 @@ export function MapDesigner({
                     : `Mark exactly one Town as You and 1–${soloOpponentLimit} Town${soloOpponentLimit === 1 ? "" : "s"} as Enemy AI. Until complete, solo play uses the map's standard ${startingPlanIndexes.length || starts.length}-seat order.`}
                   {" "}Ignored completely in multiplayer.
                 </small>
+                <div className="popoverSectionLabel">Co-op seat</div>
+                <div className="popoverModeRow popoverCoopSeatRow" role="group" aria-label="Co-op role for this Town">
+                  {(
+                    [
+                      [undefined, "Either", "Any side may start here"],
+                      ["human", "Human only", "Reserved for a human player"],
+                      ["computer", "Computer only", "Reserved for a computer invader"]
+                    ] as const
+                  ).map(([role, label, hint]) => {
+                    const active = (selected.coopSeat?.role ?? undefined) === role;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={`popoverModeCard${active ? " active" : ""}`}
+                        key={label}
+                        onClick={() => setCoopSeatRole(role)}
+                        type="button"
+                      >
+                        <span className="popoverModeTitle">{label}</span>
+                        <span className="popoverModeSub">{hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <small className="popoverHint">
+                  Read only by a CO-OP table (humans vs computers): {coopSeatCapacity.human} human-only,{" "}
+                  {coopSeatCapacity.computer} computer-only, {coopSeatCapacity.flexible} either. A co-op game whose
+                  seats these roles cannot fill refuses to start. Ignored completely in Clash and single-player.
+                </small>
                 {selected.singlePlayer?.role === "computer" ? (
                   <>
                     <div className="popoverSubLabel">This enemy&apos;s town type</div>
@@ -7419,6 +7479,11 @@ export function MapDesigner({
       {viiRewardStacks.map((warning, index) => (
         <div className="designerCavernAlert designerObjectAlert" key={`vii-stack-${index}`} role="status">
           ⚠ {warning}
+        </div>
+      ))}
+      {coopProblems.map((problem, index) => (
+        <div className="designerCavernAlert designerObjectAlert" key={`coop-seat-${index}`} role="alert">
+          ⚠ {problem}
         </div>
       ))}
       {objectValidation.problems.map((problem, index) => (

@@ -430,6 +430,7 @@ export default function MapDesignerPage() {
             hexEvents={preset?.hexEvents ?? []}
             objectives={preset?.objectives}
             objects={preset?.objects ?? []}
+            supportedModes={preset?.supportedModes}
             onChange={(nextTiles) => commitEditorChange({ tiles: nextTiles })}
             onHexEventsChange={(hexEvents) => {
               const next: CustomMapPreset = { ...(editorSnapshotRef.current.preset ?? {}) };

@@ -357,16 +357,96 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
-## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–4: foundation, live AI seats, objectives, reporting
+## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–5: foundation, live AI seats, objectives, reporting, MAP SUPPORT
 
 **Leading with what is NOT built.** Steps 1 (engine foundation), 2 (the AI seats
-really play on a multiplayer table), 3 (victory & objectives) and 4 (match report
-& ranking) have shipped. Still missing: the map-designer surface, and EVERY UI
-surface (no lobby toggle, no seat picker, and the two new win-condition kinds are
-deliberately NOT in `CUSTOM_WIN_CONDITION_OPTIONS`, so no designer/lobby dropdown
-row offers them yet — the mode and its objectives are reachable only by
-dispatching `SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`). Default absent ⇒
-byte-identical (CONTROL-pinned).
+really play on a multiplayer table), 3 (victory & objectives), 4 (match report
+& ranking) and 5 (map support: preset model, build enforcement, designer UI, map
+picker badge) have shipped. Still missing — ALL of step 6: the LOBBY/TABLE UI.
+There is still **no game-mode toggle in the setup hub, no AI-seat stepper, and
+the "Ranked" label still shows on a co-op lobby**; the two new win-condition
+kinds are deliberately NOT in `CUSTOM_WIN_CONDITION_OPTIONS`, so no designer /
+lobby dropdown row offers them yet. Outside a co-op-only MAP pick (which now
+seeds the mode), co-op is still reachable only by dispatching
+`SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`. Default absent ⇒ byte-identical
+(CONTROL-pinned).
+
+### Step 5 (protocol v58 → v59, `npm run deploy:partykit` OWED) — map support
+
+A map may declare WHICH TABLE MODES it is designed for, and — per STARTING
+POSITION — which side may sit there. Everything is pinned in
+`src/engine/coop-map-deployment.test.ts` (23 cases, every co-op claim with a
+clash / absent-field CONTROL; 8 engine mutations applied-and-reverted, each
+failing 1–6 cases) plus `map-pick-modal.test.tsx`, `map-preset-editor.test.tsx`
+and `map-designer.test.tsx` (4 more mutations).
+
+Leading with the limits / deliberate readings:
+- **No lobby surface.** The designer authors the two fields and the map picker
+  reports them, but the LOBBY has no mode toggle, so the only way a co-op-only
+  map's seed is visible is the Match-settings row it writes. Step 6.
+- **ABSENT means "both" / "either" everywhere.** `{ clash: false, coop: false }`
+  is meaningless and sanitises back to absent (a map supporting nothing would be
+  unplayable); a hand-edited record claiming neither reads as both at
+  `mapSupportedModes`. Every existing map and every built-in scenario sheet is
+  therefore playable in both modes exactly as before.
+- **A CLASH game ignores `coopSeat` entirely** (CONTROL-pinned by hero
+  positions): the roles are read only under `gameMode === "coop"`.
+- **The SOLO `singlePlayer` block is untouched** and independent — a Town may
+  carry both markers, neither setter or reader looks at the other (CONTROL-pinned
+  through `singlePlayerMapDeployment` vs `coopMapDeployment` on the same tiles).
+  In a SINGLE-PLAYER session the solo deployment still wins outright.
+- **The seed is SOFT, the start check is HARD.** Picking a co-op-only map seeds
+  `gameMode: "coop"` through the ordinary apply-once machinery (forced key
+  `gameMode`), so a host may still flip it back — and then
+  `startAdventureFromLobby` REFUSES the start with a clear message. A clash-only
+  map seeds nothing (clash is already the absent-default).
+- **The MODE check lives at the START CHECK only** — `createAdventureGameState`
+  called directly with an explicit `gameMode: "clash"` and a co-op-only preset
+  still builds a clash game (only the SEATING no-fit throws there). Every lobby
+  road passes through `startAdventureFromLobby`, so this is reachable from tests
+  and direct engine callers, not from play.
+- **The designer alert is a WARNING, never a block**: it fires only when one
+  side has NOWHERE to start (zero human-capable or zero computer-capable
+  positions), because the real seat counts are a lobby fact. The refusal lives
+  at the start check.
+- jsdom cannot compute CSS, so the two new controls are pinned by their DOM
+  contract + dispatch payloads only; there is no e2e spec for either.
+
+What RUNS:
+- **`CustomMapPreset.supportedModes`** (`{ clash?: boolean; coop?: boolean }`),
+  sanitised in `sanitizeCustomMapPreset`, read ONLY through `mapSupportedModes` /
+  `mapSupportsGameMode` / `describeMapSupportedModes` (`map-preset.ts`). It keeps
+  the preset ACTIVE (`customMapPresetIsActive`) so its seed can run, and it adds
+  a "Table mode: …" entry to `describeCustomMapPresetEntries`.
+- **`CustomMapTilePlan.coopSeat`** (`{ role: "human" | "computer" }`),
+  start-tile-only, sanitised by `sanitizeCoopMapSeat` at BOTH seams
+  (`validateCustomMapPlan` for in-memory `SET_GAME_OPTIONS` payloads,
+  `map-registry.ts` for saved records) — garbage and a role on any other group
+  are stripped, so absent always means "either".
+- **`coopMapDeployment(plans, humanCount, computerCount)`** — the pure seating,
+  modelled on `singlePlayerMapDeployment`: `null` when nothing is authored
+  (ordinary seat order, byte-identical), otherwise a DETERMINISTIC assignment
+  (each side fills its role-pinned positions in plan order, then draws from the
+  unmarked "flexible" ones — humans before computers) or `{ ok: false, reason }`
+  naming the binding constraint (too many humans / too many computers / the two
+  sides contending for the same flexible positions).
+- **Two enforcement seams, same reason string**: `startAdventureFromLobby`
+  refuses an unsupported mode AND a co-op seating that cannot fit BEFORE the
+  ready check opens (the case a hosted table needs — pinned separately, since the
+  open-table specs are also caught by the build), and
+  `createAdventureGameState` THROWS on the same no-fit rather than silently
+  dropping a human onto a computer-only position. A fitting co-op build seats
+  every player on its authored tile (pinned by hero map positions).
+- **`coopMapSeatCapacity`** is THE one shared derivation behind the designer
+  popover hint, the designer alert (`coopMapDesignProblems`) and the map
+  picker's capacity line — never re-counted in a component.
+- **UI**: a "Supported table modes" chip row (Both / Clash only / Co-op only) in
+  the map-preset editor's Match-setup group; a "Co-op seat" row (Either / Human
+  only / Computer only) in the designer's STARTING-tile popover beside the
+  existing solo-role row; and a `Modes: …` line in the map picker for BOTH
+  built-in and designed maps, gaining
+  `· Co-op: N human / M computer / K flexible starting positions` when the map
+  authored any role.
 
 ### Step 4 (NO protocol bump) — match report & ranking
 

@@ -733,7 +733,24 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // ", with their alliance" (presentation only, but it rides the persisted feed).
 // A game with no `customWinConditions` and no `gameMode` is byte-identical to v57.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 58;
+// v59 (2026-08-24, CO-OP MODE step 5 — MAP SUPPORT). Two new SERIALIZED map
+// fields and a new start-check legality, so a stale worker builds a different
+// game from the same lobby bytes:
+// (1) `CustomMapPreset.supportedModes` ({ clash?: boolean; coop?: boolean },
+// absent = BOTH) rides `GameSetupOptions.customMapPreset`. A v58 worker's
+// sanitiser DROPS it, so a co-op-only map neither seeds `gameMode: "coop"` at
+// pick nor refuses a clash start there — the exact silent-divergence class the
+// bump exists to surface.
+// (2) `CustomMapTilePlan.coopSeat` ({ role: "human" | "computer" }, absent =
+// either) rides every designed tile plan. A v58 worker drops it and seats a
+// co-op table in plain seat order, so a human can land on a position the map
+// reserves for the invaders.
+// (3) `startAdventureFromLobby` REFUSES a start whose effective table mode the
+// map does not support, and a co-op start whose human/computer seat counts the
+// authored roles cannot seat. A v58 worker starts both.
+// A map with neither field (every existing map and every built-in scenario) is
+// byte-identical to v58. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 59;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

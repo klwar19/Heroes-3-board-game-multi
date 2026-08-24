@@ -13539,6 +13539,21 @@ export type CustomRaidBossDef = {
 export type CustomMapPreset = {
   victoryMode?: VictoryMode;
   /**
+   * CO-OP STEP 5 — which TABLE MODES this map is designed for.
+   *
+   * ABSENT (every legacy map and every built-in scenario sheet) = BOTH modes
+   * are supported, byte-for-byte as before. `{ coop: false }` marks the map
+   * clash-only, `{ clash: false }` marks it co-op-only; BOTH false is
+   * meaningless and is sanitised back to absent (`sanitizeCustomMapPreset`).
+   *
+   * A co-op-only map SOFT-SEEDS `GameSetupOptions.gameMode = "coop"` when it is
+   * picked (forced key `gameMode`, the ordinary apply-once machinery — a host's
+   * later edit still wins), and `startAdventureFromLobby` HARD-REFUSES starting
+   * the table in a mode the map does not support. Clash-only maps seed nothing
+   * (clash is already the default).
+   */
+  supportedModes?: { clash?: boolean; coop?: boolean };
+  /**
    * SOLO ONLY: whether computer seats may attack one another. "allied" makes
    * every computer seat one team (heroes may pass through one another and can
    * never open PvP combat); "free-for-all"/absent keeps normal rival AI play.
@@ -14425,6 +14440,21 @@ export type CustomMapTilePlan = {
      */
     armyExperience?: number;
   };
+  /**
+   * CO-OP STEP 5 — optional CO-OP role for this STARTING tile: may a human sit
+   * here, or is the position reserved for a computer invader?
+   *
+   * ABSENT (every legacy map) = EITHER — the position is flexible and the seat
+   * that lands on it is decided by the ordinary deployment order. Read ONLY
+   * through {@link coopMapDeployment} / {@link coopMapSeatCapacity}; a CLASH
+   * game ignores the field entirely (pinned by a CONTROL), and it is stripped
+   * on every non-`starting` group at both sanitiser seams.
+   *
+   * DELIBERATELY SEPARATE from {@link singlePlayer}: that block is the SOLO
+   * scenario contract (one human + N enemies, plus each enemy's war chest /
+   * town type / army). A tile may carry both, and neither reads the other.
+   */
+  coopSeat?: { role: "human" | "computer" };
   /**
    * Sea tiles only: which guard band this slot belongs to. The Cove sea pool
    * ships both Ⅳ–Ⅴ and Ⅵ–Ⅶ tiles behind one wave back, so the designer offers

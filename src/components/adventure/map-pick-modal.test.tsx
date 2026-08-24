@@ -247,6 +247,58 @@ describe("Map window — applying a map", () => {
     });
   });
 
+  // ---------------------------------------------------------------------
+  // CO-OP step 5 — the supported-mode badge + the co-op capacity line
+  // ---------------------------------------------------------------------
+
+  it("CONTROL — a legacy designed map with no co-op fields reads as BOTH modes and shows no capacity", async () => {
+    const { dialog } = await open([designedMap()]);
+    fireEvent.click(within(dialog).getByText(/Twin Peaks/).closest("button") as HTMLElement);
+    const badge = dialog.querySelector(".mapPickModeSupport")?.textContent ?? "";
+    expect(badge).toContain("Modes: Clash + Co-op");
+    expect(badge, "no roles authored ⇒ no capacity clause").not.toContain("Co-op:");
+  });
+
+  it("a CLASH-ONLY and a CO-OP-ONLY designed map each say so", async () => {
+    const clashOnly = designedMap({
+      id: "clash-only",
+      name: "Border Duel",
+      preset: { supportedModes: { coop: false } }
+    });
+    const coopOnly = designedMap({
+      id: "coop-only",
+      name: "Last Stand",
+      preset: { supportedModes: { clash: false } }
+    });
+    const { dialog } = await open([clashOnly, coopOnly]);
+
+    fireEvent.click(within(dialog).getByText(/Border Duel/).closest("button") as HTMLElement);
+    expect(dialog.querySelector(".mapPickModeSupport")?.textContent).toContain("Modes: Clash only");
+
+    fireEvent.click(within(dialog).getByText(/Last Stand/).closest("button") as HTMLElement);
+    expect(dialog.querySelector(".mapPickModeSupport")?.textContent).toContain("Modes: Co-op only");
+  });
+
+  it("a map with authored co-op roles appends its starting-position capacity", async () => {
+    const record = designedMap({ id: "coop-roles", name: "Invasion Route", players: 4 });
+    const starts = record.tiles.filter((tile) => tile.group === "starting");
+    starts[0].coopSeat = { role: "human" };
+    starts[1].coopSeat = { role: "computer" };
+    starts[2].coopSeat = { role: "computer" };
+    // starts[3..] stay flexible.
+    const { dialog } = await open([record]);
+    fireEvent.click(within(dialog).getByText(/Invasion Route/).closest("button") as HTMLElement);
+    const badge = dialog.querySelector(".mapPickModeSupport")?.textContent ?? "";
+    expect(badge).toContain("Modes: Clash + Co-op");
+    expect(badge).toContain("Co-op: 1 human / 2 computer / 3 flexible starting positions");
+  });
+
+  it("a BUILT-IN scenario sheet is playable in both modes", async () => {
+    const { dialog } = await open();
+    fireEvent.click(within(dialog).getByText("📜 Twin Kingdoms (2P Land)").closest("button") as HTMLElement);
+    expect(dialog.querySelector(".mapPickModeSupport")?.textContent).toContain("Modes: Clash + Co-op");
+  });
+
   it("single-player built-in maps reset to their minimum solo deployment without changing multiplayer payloads", async () => {
     const { dialog, onAction } = await open([], makeSinglePlayer);
     fireEvent.click(within(dialog).getByText("📜 Twin Kingdoms (2P Land)").closest("button") as HTMLElement);

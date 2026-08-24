@@ -23176,11 +23176,13 @@ img.cardBack {
   gap: 6px;
 }
 
-.designerPopover .popoverSoloRoleRow {
+.designerPopover .popoverSoloRoleRow,
+.designerPopover .popoverCoopSeatRow {
   margin-bottom: 7px;
 }
 
-.designerPopover .popoverSoloRoleRow .popoverModeSub {
+.designerPopover .popoverSoloRoleRow .popoverModeSub,
+.designerPopover .popoverCoopSeatRow .popoverModeSub {
   min-height: 28px;
 }
 

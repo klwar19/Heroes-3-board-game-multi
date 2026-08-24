@@ -65,6 +65,7 @@ import type {
   GameDifficulty,
   GameSetupOptions,
   SecretTileFeature,
+  TableGameMode,
   UnitLevel,
   VictoryMode,
   VictoryPointObjective
@@ -811,6 +812,210 @@ export function singlePlayerMapDeployment(
     return null;
   }
   return { human: humans[0], computers };
+}
+
+// ---------------------------------------------------------------------------
+// CO-OP MAP SUPPORT (step 5): supported table modes + per-position co-op roles
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanitise the CO-OP role carried by one STARTING tile. Modelled on
+ * {@link sanitizeSinglePlayerMapStart} so HTTP, PartyKit and direct engine
+ * setup all accept exactly the same shape. Anything that is not one of the two
+ * literals is DROPPED (absent = the position is flexible), never coerced.
+ */
+export function sanitizeCoopMapSeat(
+  input: unknown
+): NonNullable<CustomMapTilePlan["coopSeat"]> | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const role = (input as { role?: unknown }).role;
+  if (role !== "human" && role !== "computer") {
+    return undefined;
+  }
+  return { role };
+}
+
+/**
+ * Which table modes a designed map declares support for. ABSENT (every legacy
+ * map, every built-in scenario sheet, and `sanitizeCustomMapPreset`'s
+ * both-false normalisation) means BOTH — no map is ever accidentally locked out
+ * of the mode it has always been playable in.
+ */
+export function mapSupportedModes(
+  preset: CustomMapPreset | null | undefined
+): { clash: boolean; coop: boolean } {
+  const declared = preset?.supportedModes;
+  const clash = declared?.clash !== false;
+  const coop = declared?.coop !== false;
+  // Belt-and-braces for a hand-edited record the sanitiser never saw: a preset
+  // that supports NOTHING would be unplayable, so it reads as "both".
+  return clash || coop ? { clash, coop } : { clash: true, coop: true };
+}
+
+/** Does this map's preset allow the table to be started in `mode`? */
+export function mapSupportsGameMode(
+  preset: CustomMapPreset | null | undefined,
+  mode: TableGameMode | undefined
+): boolean {
+  const modes = mapSupportedModes(preset);
+  return (mode ?? "clash") === "coop" ? modes.coop : modes.clash;
+}
+
+/** One-line label for the supported-mode badge (map picker + designer). */
+export function describeMapSupportedModes(preset: CustomMapPreset | null | undefined): string {
+  const modes = mapSupportedModes(preset);
+  if (modes.clash && modes.coop) {
+    return "Clash + Co-op";
+  }
+  return modes.coop ? "Co-op only" : "Clash only";
+}
+
+/** How many starting positions this map reserves for each side. */
+export type CoopMapSeatCapacity = {
+  /** Positions marked "human only". */
+  human: number;
+  /** Positions marked "computer only". */
+  computer: number;
+  /** Unmarked positions — either side may take one. */
+  flexible: number;
+  /** True once ANY starting position carries a co-op role. */
+  authored: boolean;
+};
+
+/**
+ * THE one shared derivation behind the map-picker capacity line, the designer
+ * alert and {@link coopMapDeployment}'s own bookkeeping — never re-count roles
+ * in a component.
+ */
+export function coopMapSeatCapacity(
+  plans: readonly CustomMapTilePlan[] | null | undefined
+): CoopMapSeatCapacity {
+  let human = 0;
+  let computer = 0;
+  let flexible = 0;
+  for (const plan of plans ?? []) {
+    if (plan.group !== "starting") {
+      continue;
+    }
+    const role = sanitizeCoopMapSeat(plan.coopSeat)?.role;
+    if (role === "human") {
+      human += 1;
+    } else if (role === "computer") {
+      computer += 1;
+    } else {
+      flexible += 1;
+    }
+  }
+  return { human, computer, flexible, authored: human + computer > 0 };
+}
+
+/** A resolved co-op seating: starting plans in HUMAN then COMPUTER seat order. */
+export type CoopMapDeployment = {
+  humans: CustomMapTilePlan[];
+  computers: CustomMapTilePlan[];
+};
+
+/** Either a complete seating, or the named constraint that made it impossible. */
+export type CoopMapDeploymentResult =
+  | { ok: true; deployment: CoopMapDeployment }
+  | { ok: false; reason: string };
+
+/**
+ * Resolve a map-authored CO-OP seating for `humanCount` human and
+ * `computerCount` computer seats.
+ *
+ * Returns `null` when NO starting position carries a co-op role — the map has
+ * nothing to say and the caller keeps ordinary seat-order placement (exactly
+ * what every legacy map does today).
+ *
+ * Otherwise the assignment is DETERMINISTIC: each side first fills its
+ * role-pinned positions in plan order, then draws from the unmarked
+ * ("flexible") positions in plan order — humans before computers, so the same
+ * map + the same seat counts always seat identically. A table the authored
+ * roles cannot seat returns `{ ok: false, reason }` naming the binding
+ * constraint; the caller REFUSES the start rather than silently dropping a
+ * human onto a computer-only position.
+ */
+export function coopMapDeployment(
+  plans: readonly CustomMapTilePlan[] | null | undefined,
+  humanCount: number,
+  computerCount: number
+): CoopMapDeploymentResult | null {
+  const starts = (plans ?? []).filter((plan) => plan.group === "starting");
+  const humanTiles = starts.filter((plan) => sanitizeCoopMapSeat(plan.coopSeat)?.role === "human");
+  const computerTiles = starts.filter(
+    (plan) => sanitizeCoopMapSeat(plan.coopSeat)?.role === "computer"
+  );
+  if (humanTiles.length + computerTiles.length === 0) {
+    return null;
+  }
+  const flexible = starts.filter((plan) => !sanitizeCoopMapSeat(plan.coopSeat));
+  const humans = Math.max(0, Math.floor(humanCount));
+  const computers = Math.max(0, Math.floor(computerCount));
+
+  if (humans > humanTiles.length + flexible.length) {
+    return {
+      ok: false,
+      reason: `This co-op map has only ${humanTiles.length + flexible.length} starting position${
+        humanTiles.length + flexible.length === 1 ? "" : "s"
+      } a human may take, but the table has ${humans} human seat${humans === 1 ? "" : "s"}.`
+    };
+  }
+  if (computers > computerTiles.length + flexible.length) {
+    return {
+      ok: false,
+      reason: `This co-op map has only ${computerTiles.length + flexible.length} starting position${
+        computerTiles.length + flexible.length === 1 ? "" : "s"
+      } a computer may take, but the table has ${computers} computer seat${
+        computers === 1 ? "" : "s"
+      }.`
+    };
+  }
+  const humanFlexNeeded = Math.max(0, humans - humanTiles.length);
+  const computerFlexNeeded = Math.max(0, computers - computerTiles.length);
+  if (humanFlexNeeded + computerFlexNeeded > flexible.length) {
+    return {
+      ok: false,
+      reason: `This co-op map cannot seat ${humans} human and ${computers} computer player${
+        computers === 1 ? "" : "s"
+      } at once — only ${flexible.length} starting position${
+        flexible.length === 1 ? " is" : "s are"
+      } open to either side.`
+    };
+  }
+  const pool = [...flexible];
+  const humanSeats = [...humanTiles.slice(0, humans), ...pool.splice(0, humanFlexNeeded)];
+  const computerSeats = [...computerTiles.slice(0, computers), ...pool.splice(0, computerFlexNeeded)];
+  return { ok: true, deployment: { humans: humanSeats, computers: computerSeats } };
+}
+
+/**
+ * Designer-side alert lines for a map's co-op authoring. Warnings only — the
+ * hard refusal lives at the start check, where the real seat counts are known.
+ */
+export function coopMapDesignProblems(
+  preset: CustomMapPreset | null | undefined,
+  plans: readonly CustomMapTilePlan[] | null | undefined
+): string[] {
+  const capacity = coopMapSeatCapacity(plans);
+  const coopOnly = !mapSupportedModes(preset).clash;
+  if (!capacity.authored && !coopOnly) {
+    return [];
+  }
+  const problems: string[] = [];
+  if (capacity.human + capacity.flexible === 0) {
+    problems.push(
+      "Co-op: no starting position is open to a human — mark at least one Town “Human only” or “Either”, or no co-op table can ever start here."
+    );
+  }
+  if (capacity.computer + capacity.flexible === 0) {
+    problems.push(
+      "Co-op: no starting position is open to a computer — mark at least one Town “Computer only” or “Either”, or the invaders have nowhere to spawn."
+    );
+  }
+  return problems;
 }
 
 function sanitizeStartingUnits(input: unknown): CustomStartingUnit[] | undefined {
@@ -2070,6 +2275,16 @@ export function sanitizeCustomMapPreset(input: unknown): CustomMapPreset | undef
   if (raw.computerDiplomacy === "allied" || raw.computerDiplomacy === "free-for-all") {
     preset.computerDiplomacy = raw.computerDiplomacy;
   }
+  // SUPPORTED TABLE MODES (co-op step 5). Only literal `false` narrows the map;
+  // anything else is dropped so absent keeps meaning BOTH. A record claiming
+  // NEITHER mode would be unplayable, so it normalises back to absent.
+  if (raw.supportedModes && typeof raw.supportedModes === "object") {
+    const clashOff = (raw.supportedModes as { clash?: unknown }).clash === false;
+    const coopOff = (raw.supportedModes as { coop?: unknown }).coop === false;
+    if (clashOff !== coopOff) {
+      preset.supportedModes = clashOff ? { clash: false } : { coop: false };
+    }
+  }
   if (raw.pveTheme === "classic" || raw.pveTheme === "doom" || raw.pveTheme === "random") {
     preset.pveTheme = raw.pveTheme;
   }
@@ -2272,6 +2487,9 @@ export function customMapPresetIsActive(preset: CustomMapPreset | null | undefin
   }
   return Boolean(
     preset.victoryMode ||
+      // A narrowed mode list is a real condition (a co-op-only map seeds the
+      // table mode), so it must keep the preset ACTIVE or the seed never runs.
+      preset.supportedModes ||
       preset.computerDiplomacy ||
       preset.pveTheme ||
       preset.difficulty ||
@@ -2715,6 +2933,9 @@ export function describeCustomMapPresetEntries(
       text: `Victory: ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`
     });
   }
+  if (preset.supportedModes) {
+    entries.push({ icon: "🤝", text: `Table mode: ${describeMapSupportedModes(preset)}` });
+  }
   if (preset.difficulty) {
     entries.push({ icon: "⚙️", text: `Difficulty: ${DIFFICULTY_LABELS[preset.difficulty]}` });
   }
@@ -2963,6 +3184,7 @@ export function describeCustomMapPreset(preset: CustomMapPreset | null | undefin
 /** GameSetupOptions keys a map preset may force. */
 export type PresetForcedOptionKey =
   | "victoryMode"
+  | "gameMode"
   | "difficulty"
   | "farTileOpening"
   | "farTilesPerPlayer"
@@ -2984,6 +3206,11 @@ export function presetForcedOptionKeys(
   const keys: PresetForcedOptionKey[] = [];
   if (preset.victoryMode) {
     keys.push("victoryMode");
+  }
+  // Only a CO-OP-ONLY map seeds the table mode; a clash-only map forces nothing
+  // because clash is already the absent-default.
+  if (!mapSupportedModes(preset).clash) {
+    keys.push("gameMode");
   }
   if (preset.difficulty) {
     keys.push("difficulty");
@@ -3038,6 +3265,12 @@ export function applyCustomMapPresetToOptions(
   if (preset.victoryMode && !skip?.has("victoryMode")) {
     options.victoryMode = preset.victoryMode;
     changes.push(`victory ${VICTORY_LABELS[preset.victoryMode] ?? preset.victoryMode}`);
+  }
+  // A CO-OP-ONLY map seeds the table mode (soft default: a host may still flip
+  // it back, and the start check refuses the unsupported combination there).
+  if (!mapSupportedModes(preset).clash && !skip?.has("gameMode")) {
+    options.gameMode = "coop";
+    changes.push("table mode Co-op (humans vs computers)");
   }
   if (preset.difficulty && !skip?.has("difficulty")) {
     options.difficulty = preset.difficulty;
@@ -3137,6 +3370,10 @@ export function revertCustomMapPresetOptions(
       case "victoryMode":
         options.victoryMode = defaults.victoryMode;
         changes.push(`victory back to ${VICTORY_LABELS[defaults.victoryMode ?? "conquest"] ?? "Conquest"}`);
+        break;
+      case "gameMode":
+        options.gameMode = defaults.gameMode;
+        changes.push("table mode back to Clash (free-for-all)");
         break;
       case "difficulty":
         options.difficulty = defaults.difficulty;

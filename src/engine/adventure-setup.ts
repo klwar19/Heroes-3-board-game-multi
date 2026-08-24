@@ -95,10 +95,12 @@ import {
 import { describeCustomWinCondition } from "./victory-points";
 import {
   applyCustomMapPresetToOptions,
+  coopMapDeployment,
   customMapPresetIsActive,
   MAX_GATES_PER_PAIR,
   mergeCustomWinConditions,
   mapHasAuthoredGrailOrUtopia,
+  mapSupportsGameMode,
   revertCustomMapPresetOptions,
   sanitizeCustomMapPreset,
   sanitizeCustomWinConditions,
@@ -115,6 +117,7 @@ import {
   sanitizeFieldReward,
   sanitizeHexEvents,
   sanitizeObjectPlans,
+  sanitizeCoopMapSeat,
   sanitizeSinglePlayerMapStart,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
@@ -1534,6 +1537,24 @@ export function validateCustomMapPlan(
     }
   }
 
+  // CO-OP per-position roles (step 5) are start-tile-only too, and deliberately
+  // INDEPENDENT of `singlePlayer` above: a tile may carry both, and neither
+  // reads the other. Garbage / a role on any other group is stripped, so an
+  // absent field always means "either side may take this position".
+  for (let index = 0; index < accepted.length; index += 1) {
+    const plan = accepted[index];
+    const coopSeat = plan.group === "starting" ? sanitizeCoopMapSeat(plan.coopSeat) : undefined;
+    if (coopSeat) {
+      if (coopSeat !== plan.coopSeat) {
+        accepted[index] = { ...plan, coopSeat };
+      }
+    } else if (plan.coopSeat !== undefined) {
+      const next = { ...plan };
+      delete next.coopSeat;
+      accepted[index] = next;
+    }
+  }
+
   // The UNDERGROUND layer override is a supply/sea/center-only flag (kept as a
   // literal true): strip it on `starting` (seat tiles stay Surface — the v1
   // limit) and `subterranean` (redundant — already underground), and drop any
@@ -2704,6 +2725,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   if (setupOptions.customMapPreset) {
     const explicit = new Set<PresetForcedOptionKey>([
       ...(options.victoryMode !== undefined ? (["victoryMode"] as const) : []),
+      ...(options.gameMode !== undefined ? (["gameMode"] as const) : []),
       ...(options.difficulty !== undefined ? (["difficulty"] as const) : []),
       ...(options.farTileOpening !== undefined ? (["farTileOpening"] as const) : []),
       ...(options.farTilesPerPlayer !== undefined ? (["farTilesPerPlayer"] as const) : []),
@@ -3355,6 +3377,38 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const startCenterFor = (index: number): HexCoord =>
     designerStartCenters[index] ?? scenario.layout.starts[index];
   const authoredStartByPlayer = new Map<PlayerId, CustomMapTilePlan>();
+  // CO-OP map-authored starting positions (step 5). Only a CO-OP build reads
+  // `plan.coopSeat` — a clash table ignores the roles entirely, and a map with
+  // no roles anywhere returns null so seating is byte-identical to before.
+  // A table the authored roles cannot seat THROWS with the structured reason
+  // rather than silently dropping a human onto a computer-only position; the
+  // lobby refuses the same combination earlier, at the start check.
+  if (setupOptions.gameMode === "coop" && !authoredSoloDeployment) {
+    const coopHumanConfigs = playerConfigs.filter(
+      (config) => configuredControllers?.[config.id]?.kind !== "computer"
+    );
+    const coopComputerConfigs = playerConfigs.filter(
+      (config) => configuredControllers?.[config.id]?.kind === "computer"
+    );
+    const coop = coopMapDeployment(customMap, coopHumanConfigs.length, coopComputerConfigs.length);
+    if (coop && !coop.ok) {
+      throw new Error(coop.reason);
+    }
+    if (coop?.ok) {
+      coopHumanConfigs.forEach((config, index) => {
+        const plan = coop.deployment.humans[index];
+        if (plan) {
+          authoredStartByPlayer.set(config.id, plan);
+        }
+      });
+      coopComputerConfigs.forEach((config, index) => {
+        const plan = coop.deployment.computers[index];
+        if (plan) {
+          authoredStartByPlayer.set(config.id, plan);
+        }
+      });
+    }
+  }
   if (authoredSoloDeployment) {
     const humanConfig = playerConfigs.find(
       (config) => configuredControllers?.[config.id]?.kind !== "computer"
@@ -6407,6 +6461,32 @@ export function startAdventureFromLobby(
     }
     if (conflicts.length > 0) {
       throw new Error(conflicts[0]);
+    }
+    // CO-OP MAP SUPPORT (step 5). A map may declare which table modes it is
+    // designed for, and — for co-op — which starting positions each side may
+    // take. Both are HARD refusals here: the effective mode must be supported,
+    // and the authored roles must be able to seat exactly this table. A map
+    // that declares nothing (every legacy map) passes straight through.
+    const effectiveMode = lobby.options.gameMode ?? "clash";
+    if (!mapSupportsGameMode(lobby.options.customMapPreset, effectiveMode)) {
+      throw new Error(
+        effectiveMode === "coop"
+          ? "This map is not designed for Co-op — switch the table mode to Clash or pick a co-op map."
+          : "This map is designed for Co-op only — switch the table mode to Co-op or pick another map."
+      );
+    }
+    if (effectiveMode === "coop") {
+      const computerSeats = lobby.seats.filter(
+        (seat) => controllerOf(state, seat.playerId).kind === "computer"
+      ).length;
+      const coop = coopMapDeployment(
+        acceptedPlan,
+        lobby.seats.length - computerSeats,
+        computerSeats
+      );
+      if (coop && !coop.ok) {
+        throw new Error(coop.reason);
+      }
     }
   }
 

@@ -1274,3 +1274,72 @@ describe("MapPresetEditor — Global | Specific object modes", () => {
     expect(note.textContent).toContain("board");
   });
 });
+
+/**
+ * CO-OP step 5 — "Supported table modes". Three chips, ONE preset field; the
+ * engine's `mapSupportedModes` reads absent as BOTH, so "Both" must clear the
+ * field rather than write `{ clash: true, coop: true }`.
+ */
+describe("MapPresetEditor — supported table modes (co-op step 5)", () => {
+  const modes = () => screen.getByRole("group", { name: "Supported table modes" });
+
+  it("defaults to Both with the field ABSENT, and each chip writes its own narrowing", () => {
+    const onChange = vi.fn();
+    render(<MapPresetEditor preset={undefined} onChange={onChange} />);
+
+    expect(
+      within(modes()).getByRole("button", { name: "Both" }).getAttribute("aria-pressed"),
+      "absent = both"
+    ).toBe("true");
+
+    fireEvent.click(within(modes()).getByRole("button", { name: "Clash only" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportedModes: { coop: false } })
+    );
+
+    fireEvent.click(within(modes()).getByRole("button", { name: "Co-op only" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportedModes: { clash: false } })
+    );
+  });
+
+  it("Both CLEARS the field (never a both-true object the sanitiser would drop)", () => {
+    const onChange = vi.fn();
+    // A second condition keeps the preset alive, so the emitted object really
+    // shows the cleared key rather than the whole preset collapsing away.
+    render(
+      <MapPresetEditor
+        preset={{ supportedModes: { clash: false }, difficulty: "hard" }}
+        onChange={onChange}
+      />
+    );
+
+    expect(within(modes()).getByRole("button", { name: "Co-op only" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(screen.getByText("Table mode: Co-op only")).toBeTruthy();
+
+    fireEvent.click(within(modes()).getByRole("button", { name: "Both" }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ supportedModes: undefined, difficulty: "hard" })
+    );
+
+    // ...and as the map's ONLY condition, clearing it collapses the preset.
+    cleanup();
+    const solo = vi.fn();
+    render(<MapPresetEditor preset={{ supportedModes: { coop: false } }} onChange={solo} />);
+    fireEvent.click(within(modes()).getByRole("button", { name: "Both" }));
+    expect(solo).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("CONTROL — a clash-only preset presses the clash chip, not the co-op one", () => {
+    render(<MapPresetEditor preset={{ supportedModes: { coop: false } }} onChange={() => {}} />);
+    expect(within(modes()).getByRole("button", { name: "Clash only" }).getAttribute("aria-pressed")).toBe(
+      "true"
+    );
+    expect(within(modes()).getByRole("button", { name: "Co-op only" }).getAttribute("aria-pressed")).toBe(
+      "false"
+    );
+    expect(within(modes()).getByRole("button", { name: "Both" }).getAttribute("aria-pressed")).toBe("false");
+  });
+});

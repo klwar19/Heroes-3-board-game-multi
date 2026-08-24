@@ -10,6 +10,7 @@ import {
   sanitizeCustomMapPreset,
   sanitizeFieldReward,
   sanitizeObjectPlans,
+  sanitizeCoopMapSeat,
   sanitizeSinglePlayerMapStart,
   sanitizeSettlementFieldPlan,
   sanitizeObjectGuard,
@@ -278,6 +279,10 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
   const objectPlans = sanitizeObjectPlans(candidate.objectPlans);
   const singlePlayer =
     candidate.group === "starting" ? sanitizeSinglePlayerMapStart(candidate.singlePlayer) : undefined;
+  // CO-OP per-position role (step 5) — start-tile-only, independent of the solo
+  // block above. Absent = either side may take this starting position.
+  const coopSeat =
+    candidate.group === "starting" ? sanitizeCoopMapSeat(candidate.coopSeat) : undefined;
 
   return {
     row: candidate.row as number,
@@ -296,6 +301,8 @@ function sanitizeTile(tile: unknown): CustomMapTilePlan | null {
     ...(candidate.group === "starting" && candidate.lockRotation === true ? { lockRotation: true } : {}),
     // Solo roles/bonuses are start-tile-only and are ignored by multiplayer.
     ...(singlePlayer ? { singlePlayer } : {}),
+    // Co-op per-position role — start-tile-only, ignored by a clash table.
+    ...(coopSeat ? { coopSeat } : {}),
     // `viiField` forces a center slot's Ⅶ objective field (Grail / Dragon Utopia
     // / town). Meaningful only on a center plan — kept there, dropped elsewhere;
     // only a known designation survives so garbage can't set it. The center-hex

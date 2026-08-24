@@ -3744,6 +3744,98 @@ describe("MapDesigner — single-player Town deployment", () => {
   });
 });
 
+/**
+ * CO-OP step 5 — the per-position "Co-op seat" row. Three buttons on ONE plan
+ * field (`coopSeat`), deliberately independent of the solo `singlePlayer`
+ * block above: a Town may carry both, and neither setter touches the other.
+ */
+describe("MapDesigner — co-op Town roles (step 5)", () => {
+  const towns: CustomMapTilePlan[] = [
+    { row: 8, col: 2, group: "starting", faceDown: false },
+    { row: 10, col: 7, group: "starting", faceDown: false },
+    { row: 6, col: 4, group: "starting", faceDown: false }
+  ];
+  const coopRow = (popover: HTMLElement) =>
+    within(popover).getByRole("group", { name: "Co-op role for this Town" });
+
+  it("each button writes its own role, and Either CLEARS the field", () => {
+    const fixture = renderStatefulDesigner(towns);
+
+    let popover = openTilePopover(fixture.container, 1);
+    expect(
+      within(coopRow(popover)).getByRole("button", { name: /^Either/ }).getAttribute("aria-pressed"),
+      "absent = either"
+    ).toBe("true");
+
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Human only/ }));
+    expect(fixture.get()[1].coopSeat).toEqual({ role: "human" });
+    expect(fixture.get()[0].coopSeat, "only the selected Town changed").toBeUndefined();
+
+    popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Computer only/ }));
+    expect(fixture.get()[0].coopSeat).toEqual({ role: "computer" });
+    expect(fixture.get()[1].coopSeat, "a human marker is NOT exclusive here").toEqual({
+      role: "human"
+    });
+
+    popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Either/ }));
+    expect(fixture.get()[0].coopSeat, "Either removes the field entirely").toBeUndefined();
+    expect("coopSeat" in fixture.get()[0]).toBe(false);
+  });
+
+  it("CONTROL — the co-op role and the SOLO role are independent on the same Town", () => {
+    const fixture = renderStatefulDesigner(towns);
+    let popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(popover).getByRole("button", { name: /^Enemy AI/ }));
+    expect(fixture.get()[0].singlePlayer).toEqual({ role: "computer" });
+
+    popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Human only/ }));
+    expect(fixture.get()[0].coopSeat).toEqual({ role: "human" });
+    expect(fixture.get()[0].singlePlayer, "the solo marker survives").toEqual({ role: "computer" });
+
+    // ...and clearing the co-op role leaves the solo marker alone.
+    popover = openTilePopover(fixture.container, 0);
+    fireEvent.click(within(coopRow(popover)).getByRole("button", { name: /^Either/ }));
+    expect(fixture.get()[0].coopSeat).toBeUndefined();
+    expect(fixture.get()[0].singlePlayer).toEqual({ role: "computer" });
+  });
+
+  it("shows the live capacity in the popover hint", () => {
+    const container = renderDesigner([
+      { ...towns[0], coopSeat: { role: "human" } },
+      { ...towns[1], coopSeat: { role: "computer" } },
+      towns[2]
+    ]);
+    const popover = openTilePopover(container, 0);
+    expect(
+      within(popover).getByText(/1 human-only, 1 computer-only, 1 either/)
+    ).toBeTruthy();
+  });
+
+  it("alerts when the authored roles leave one side nowhere to start", () => {
+    const allComputer = towns.map((town) => ({ ...town, coopSeat: { role: "computer" as const } }));
+    const { container } = render(
+      <MapDesigner scenarioId="skirmish" customMap={allComputer} onChange={() => {}} />
+    );
+    expect(container.textContent).toContain("no starting position is open to a human");
+
+    cleanup();
+    // CONTROL — the SAME towns with no roles at all warn nothing, even for a
+    // map declared co-op-only (every position is flexible).
+    const plain = render(
+      <MapDesigner
+        scenarioId="skirmish"
+        customMap={towns}
+        onChange={() => {}}
+        supportedModes={{ clash: false }}
+      />
+    );
+    expect(plain.container.textContent).not.toContain("no starting position is open");
+  });
+});
+
 describe("MapDesigner — fixed starting-tile orientation (lockRotation)", () => {
   const town = { row: 10, col: 10 };
   const far = tileLatticeNeighbors(town)[1];

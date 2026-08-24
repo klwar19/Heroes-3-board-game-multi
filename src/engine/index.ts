@@ -416,6 +416,9 @@ export {
 export type { AdventurePlayerConfig, AdventureSetupOptions, DraftPhaseInfo } from "./adventure-setup";
 export {
   applyCustomMapPresetToOptions,
+  coopMapDeployment,
+  coopMapDesignProblems,
+  coopMapSeatCapacity,
   customMapPresetIsActive,
   CUSTOM_WIN_CONDITION_OPTIONS,
   defaultCustomWinCondition,
@@ -426,6 +429,7 @@ export {
   describeCustomMapPreset,
   describeCustomMapPresetEntries,
   describeGuardSpec,
+  describeMapSupportedModes,
   describeMapObjects,
   describeObeliskAwards,
   describeObeliskBonus,
@@ -472,6 +476,8 @@ export {
   MAP_PRESET_OBELISK_ROLE_OPTIONS,
   MAP_PRESET_VICTORY_OPTIONS,
   mapHasAuthoredGrailOrUtopia,
+  mapSupportedModes,
+  mapSupportsGameMode,
   presetForcedOptionKeys,
   revertCustomMapPresetOptions,
   objectGuardSpec,
@@ -494,6 +500,7 @@ export {
   sanitizeObjectFieldPlan,
   sanitizeObjectPlans,
   sanitizeObjectGuard,
+  sanitizeCoopMapSeat,
   sanitizeSinglePlayerMapStart,
   secretFeatureDemandWarnings,
   singlePlayerMapDeployment,
@@ -506,7 +513,14 @@ export {
   viiRewardStackWarnings,
   VII_FIELD_DESIGNATIONS
 } from "./map-preset";
-export type { SinglePlayerMapDeployment, ViiRewardStack, ViiRewardStackSource } from "./map-preset";
+export type {
+  CoopMapDeployment,
+  CoopMapDeploymentResult,
+  CoopMapSeatCapacity,
+  SinglePlayerMapDeployment,
+  ViiRewardStack,
+  ViiRewardStackSource
+} from "./map-preset";
 export {
   availableFarTileTypes,
   FAR_TILE_TYPES,
