@@ -3844,9 +3844,7 @@ function winConditionGlyph(kind: CustomWinCondition["kind"]): string {
       return REWARD_GLYPH_ICONS.movement;
     case "defeat-heroes":
     case "defeat-dragon-utopia":
-    // Co-op objectives (step 3) — no designer/lobby dropdown row yet
-    // (CUSTOM_WIN_CONDITION_OPTIONS is untouched); these arms only keep the
-    // exhaustive switch honest for an authored/imported preset.
+    // Co-op objectives (step 3), offered in both dropdowns since step 6.
     case "defeat-computers":
     case "slay-raid-boss":
       return REWARD_GLYPH_ICONS.attack;

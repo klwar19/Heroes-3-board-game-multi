@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HandFan, OpponentBar, PermanentSlot, RuneTrack, SeatNameplate } from "./seats";
 import { CardZoomProvider } from "./zoom";
@@ -1212,5 +1212,95 @@ describe("HandFan — Community Intelligence lets the player CHOOSE the Spell fr
     ).toEqual([]);
     renderHand(printed);
     expect(screen.queryByRole("button", { name: /^Cast Magic Arrow$/ })).toBeNull();
+  });
+});
+
+/**
+ * CO-OP (step 6) — the two honest seat tags. Presentation only: both derive
+ * from persisted state (`state.controllers` / `state.playerTeams` through the
+ * engine's own `isComputerPlayer` / `playersAreAllied`), never from a seat's
+ * NAME, and each carries a CONTROL on the identical fixture.
+ */
+describe("SeatNameplate / OpponentBar — computer seats and co-op allies", () => {
+  /** A 3-seat game: p3 computer-controlled, teams stamped as a co-op build does. */
+  function coopTable(): GameState {
+    const state = createAdventureGameState({
+      seed: "coop-seat-tags",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Player 1", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Player 2", factionId: "rampart", heroDefId: "mephala" },
+        { id: "p3", name: "Computer 1", factionId: "necropolis", heroDefId: "sandro" }
+      ],
+      controllers: { p3: { kind: "computer", difficulty: "standard", policyVersion: 1 } },
+      gameMode: "coop"
+    });
+    expect(state.gameMode, "the fixture must really be a co-op build").toBe("coop");
+    return state;
+  }
+
+  it("tags a COMPUTER-controlled seat — and only that seat", () => {
+    const state = coopTable();
+    render(<SeatNameplate state={state} playerId="p3" />);
+    expect(screen.getByText("Computer")).toBeTruthy();
+    cleanup();
+
+    // CONTROL: the identical nameplate for a HUMAN seat of the same game.
+    render(<SeatNameplate state={state} playerId="p2" />);
+    expect(screen.queryByText("Computer")).toBeNull();
+  });
+
+  it("CONTROL: the tag follows the CONTROLLER, not the seat's name", () => {
+    const state = coopTable();
+    // A human seat NAMED "Computer 1" must NOT be tagged…
+    state.players.p2.name = "Computer 1";
+    render(<SeatNameplate state={state} playerId="p2" />);
+    expect(screen.queryByText("Computer")).toBeNull();
+    cleanup();
+    // …while the real computer seat renamed to a person's name still is.
+    state.players.p3.name = "Alex";
+    render(<SeatNameplate state={state} playerId="p3" />);
+    expect(screen.getByText("Computer")).toBeTruthy();
+  });
+
+  it("marks an allied human 'Ally' in the opponent bar; the computer enemy is not", () => {
+    const state = coopTable();
+    render(
+      <CardZoomProvider>
+        <OpponentBar view={getPlayerView(state, "p1")} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    const seats = Array.from(document.querySelectorAll(".opponentSeat")) as HTMLElement[];
+    expect(seats).toHaveLength(2);
+    const [ally, enemy] = seats;
+    expect(within(ally).getByText("Ally")).toBeTruthy();
+    expect(within(ally).queryByText("Computer")).toBeNull();
+    expect(within(enemy).queryByText("Ally")).toBeNull();
+    expect(within(enemy).getByText("Computer")).toBeTruthy();
+  });
+
+  it("CONTROL: the SAME table in CLASH mode has no Ally tag (the computer tag stays)", () => {
+    const state = createAdventureGameState({
+      seed: "coop-seat-tags",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      players: [
+        { id: "p1", name: "Player 1", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Player 2", factionId: "rampart", heroDefId: "mephala" },
+        { id: "p3", name: "Computer 1", factionId: "necropolis", heroDefId: "sandro" }
+      ],
+      controllers: { p3: { kind: "computer", difficulty: "standard", policyVersion: 1 } }
+    });
+    expect(state.gameMode).toBeUndefined();
+    render(
+      <CardZoomProvider>
+        <OpponentBar view={getPlayerView(state, "p1")} state={state} viewerPlayerId="p1" />
+      </CardZoomProvider>
+    );
+    expect(screen.queryByText("Ally")).toBeNull();
+    // The computer tag is NOT a co-op feature — a clash table with AI seats
+    // still says who is a bot.
+    expect(screen.getByText("Computer")).toBeTruthy();
   });
 });

@@ -932,6 +932,45 @@ describe("MapPresetEditor (collapsible map-conditions panel)", () => {
     expect(Array.from(legacySelect.options).some((option) => option.value === "obelisks")).toBe(true);
   });
 
+  it("CO-OP (step 6): the designer offers the two co-op objectives, and slay-raid-boss edits 1–3", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "flag-mines", count: 4 }] }} onChange={onChange} />
+    );
+    const select = screen.getByLabelText("Condition 1 kind") as HTMLSelectElement;
+    for (const kind of ["defeat-computers", "slay-raid-boss"]) {
+      expect(
+        Array.from(select.options).some((option) => option.value === kind),
+        `${kind} offered`
+      ).toBe(true);
+    }
+
+    fireEvent.change(select, { target: { value: "defeat-computers" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "defeat-computers" }] })
+    );
+
+    // Parameterless: the row shows NO spinbutton at all…
+    rerender(<MapPresetEditor preset={{ customWinConditions: [{ kind: "defeat-computers" }] }} onChange={onChange} />);
+    expect(
+      within(screen.getByRole("group", { name: "Custom win condition list" })).queryByRole("spinbutton")
+    ).toBeNull();
+
+    // …while slay-raid-boss carries the engine's own 1–3 clamp band.
+    rerender(
+      <MapPresetEditor preset={{ customWinConditions: [{ kind: "slay-raid-boss", count: 1 }] }} onChange={onChange} />
+    );
+    const bosses = within(
+      screen.getByRole("group", { name: "Custom win condition list" })
+    ).getByRole("spinbutton") as HTMLInputElement;
+    expect(bosses.min).toBe("1");
+    expect(bosses.max).toBe("3");
+    fireEvent.change(bosses, { target: { value: "3" } });
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ customWinConditions: [{ kind: "slay-raid-boss", count: 3 }] })
+    );
+  });
+
   it("Dragon Utopia section appears in conquest mode when a Utopia tile is placed (CONTROL: absent without it)", () => {
     const { rerender } = render(
       <MapPresetEditor

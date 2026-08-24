@@ -357,320 +357,213 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
-## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–5: foundation, live AI seats, objectives, reporting, MAP SUPPORT
+## Co-op mode (humans vs computer enemies) — what runs vs. limits
 
-**Leading with what is NOT built.** Steps 1 (engine foundation), 2 (the AI seats
-really play on a multiplayer table), 3 (victory & objectives), 4 (match report
-& ranking) and 5 (map support: preset model, build enforcement, designer UI, map
-picker badge) have shipped. Still missing — ALL of step 6: the LOBBY/TABLE UI.
-There is still **no game-mode toggle in the setup hub, no AI-seat stepper, and
-the "Ranked" label still shows on a co-op lobby**; the two new win-condition
-kinds are deliberately NOT in `CUSTOM_WIN_CONDITION_OPTIONS`, so no designer /
-lobby dropdown row offers them yet. Outside a co-op-only MAP pick (which now
-seeds the mode), co-op is still reachable only by dispatching
-`SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`. Default absent ⇒ byte-identical
-(CONTROL-pinned).
+Lobby option `GameSetupOptions.gameMode` (`"clash" | "coop"`, **ABSENT = clash ⇒
+byte-identical**, CONTROL-pinned), frozen onto the built game as
+`GameState.gameMode`. All six steps have shipped (protocol **v55 → v59**;
+`npm run deploy:partykit` is OWED). Machine truth is the six suites named below;
+re-verify any prose claim against them.
 
-### Step 5 (protocol v58 → v59, `npm run deploy:partykit` OWED) — map support
+Leading with what does NOT work / the deliberate limits:
 
-A map may declare WHICH TABLE MODES it is designed for, and — per STARTING
-POSITION — which side may sit there. Everything is pinned in
-`src/engine/coop-map-deployment.test.ts` (23 cases, every co-op claim with a
-clash / absent-field CONTROL; 8 engine mutations applied-and-reverted, each
-failing 1–6 cases) plus `map-pick-modal.test.tsx`, `map-preset-editor.test.tsx`
-and `map-designer.test.tsx` (4 more mutations).
-
-Leading with the limits / deliberate readings:
-- **No lobby surface.** The designer authors the two fields and the map picker
-  reports them, but the LOBBY has no mode toggle, so the only way a co-op-only
-  map's seed is visible is the Match-settings row it writes. Step 6.
-- **ABSENT means "both" / "either" everywhere.** `{ clash: false, coop: false }`
-  is meaningless and sanitises back to absent (a map supporting nothing would be
-  unplayable); a hand-edited record claiming neither reads as both at
-  `mapSupportedModes`. Every existing map and every built-in scenario sheet is
-  therefore playable in both modes exactly as before.
-- **A CLASH game ignores `coopSeat` entirely** (CONTROL-pinned by hero
-  positions): the roles are read only under `gameMode === "coop"`.
-- **The SOLO `singlePlayer` block is untouched** and independent — a Town may
-  carry both markers, neither setter or reader looks at the other (CONTROL-pinned
-  through `singlePlayerMapDeployment` vs `coopMapDeployment` on the same tiles).
-  In a SINGLE-PLAYER session the solo deployment still wins outright.
-- **The seed is SOFT, the start check is HARD.** Picking a co-op-only map seeds
-  `gameMode: "coop"` through the ordinary apply-once machinery (forced key
-  `gameMode`), so a host may still flip it back — and then
-  `startAdventureFromLobby` REFUSES the start with a clear message. A clash-only
-  map seeds nothing (clash is already the absent-default).
-- **The MODE check lives at the START CHECK only** — `createAdventureGameState`
+- **No RANKED co-op, at all** (USER RULE). A co-op game is never match-reported:
+  `detectFinishedMatch` returns null before any attribution, so no record, no
+  Elo, no abandon mark, no ranked room-close (a co-op rematch therefore works
+  where a ranked clash's would not). `SET_ROOM_RANKED` is deliberately
+  UNCHANGED — a co-op room may still carry `ranked: true`; the honest surface is
+  the Room panel's "Co-op — … Unranked: this table never counts toward MMR"
+  note, not the flag.
+- **PARALLEL TURNS and computer seats cannot coexist** — refused at the lobby in
+  BOTH directions (`SET_GAME_OPTIONS.parallelTurns > 0` while computer seats
+  exist, and `SET_COMPUTER_OPPONENTS > 0` while parallel turns are on). Removing
+  computers / turning parallel turns off is always legal, so a lobby can never
+  wedge, and the UI mirrors the block by disabling the stepper (never "None").
+  An AI seat inside parallel turns is an untested stall surface: the pump owns
+  one open decision at a time while parallel mode opens every seat's turn at
+  once. KNOWN SCOPE: the `SET_GAME_OPTIONS` half is not multiplayer-scoped and a
+  SINGLE-PLAYER lobby always has computer seats, so parallel turns can no longer
+  be switched on there either (it was a foot-gun); a LEGACY lobby already
+  carrying `parallelTurns > 0` is not retro-fixed.
+- **In co-op NOBODY plays the Neutral units.** `pvpNeutralControllerId` AND
+  `manualGuardControllerId` return null ALWAYS (one shared read
+  `coopDisablesManualNeutralControl`, `neutral-control.ts`, shaped like the
+  `isPveEncounterCombat` exemption): the Neutral AI plays every guard, no
+  pre-battle formation SORT opens, every guard's `combatUnitDecisionOwnerId`
+  stays `NEUTRAL_PLAYER_ID`. Both option rows render DISABLED with that reason.
+  A CLASH table with AI seats is UNCHANGED (CONTROL-pinned).
+- **A multiplayer AI seat is never boosted.** The guaranteed first-battle wins
+  and the temp Empowered Attack/Defense cards stay SINGLE-PLAYER-ONLY
+  (`combatQualifiesForComputerGuaranteedWin` / `combatQualifiesForComputerBoost`
+  keep their `sessionModeOf` gate) — a co-op / clash-with-AI seat fights every
+  battle straight, pinned against a single-player twin that DOES qualify.
+- **The victory machinery stays SINGLE-WINNER.** `adventure.winnerPlayerId`
+  names ONE seat; the alliance appears only in the GAME_WON *reason*, which
+  gains ", with their alliance" when the declared winner still has a LIVING ally
+  (`coopAllianceWinReason` — presentation only, never outside co-op, never
+  doubled on the `eliminatePlayer` line). Living allies are not eliminated and
+  no engine read presents them as defeated.
+- **The MODE check lives at the START CHECK only.** `createAdventureGameState`
   called directly with an explicit `gameMode: "clash"` and a co-op-only preset
   still builds a clash game (only the SEATING no-fit throws there). Every lobby
   road passes through `startAdventureFromLobby`, so this is reachable from tests
   and direct engine callers, not from play.
-- **The designer alert is a WARNING, never a block**: it fires only when one
-  side has NOWHERE to start (zero human-capable or zero computer-capable
-  positions), because the real seat counts are a lobby fact. The refusal lives
-  at the start check.
-- jsdom cannot compute CSS, so the two new controls are pinned by their DOM
-  contract + dispatch payloads only; there is no e2e spec for either.
-
-What RUNS:
-- **`CustomMapPreset.supportedModes`** (`{ clash?: boolean; coop?: boolean }`),
-  sanitised in `sanitizeCustomMapPreset`, read ONLY through `mapSupportedModes` /
-  `mapSupportsGameMode` / `describeMapSupportedModes` (`map-preset.ts`). It keeps
-  the preset ACTIVE (`customMapPresetIsActive`) so its seed can run, and it adds
-  a "Table mode: …" entry to `describeCustomMapPresetEntries`.
-- **`CustomMapTilePlan.coopSeat`** (`{ role: "human" | "computer" }`),
-  start-tile-only, sanitised by `sanitizeCoopMapSeat` at BOTH seams
-  (`validateCustomMapPlan` for in-memory `SET_GAME_OPTIONS` payloads,
-  `map-registry.ts` for saved records) — garbage and a role on any other group
-  are stripped, so absent always means "either".
-- **`coopMapDeployment(plans, humanCount, computerCount)`** — the pure seating,
-  modelled on `singlePlayerMapDeployment`: `null` when nothing is authored
-  (ordinary seat order, byte-identical), otherwise a DETERMINISTIC assignment
-  (each side fills its role-pinned positions in plan order, then draws from the
-  unmarked "flexible" ones — humans before computers) or `{ ok: false, reason }`
-  naming the binding constraint (too many humans / too many computers / the two
-  sides contending for the same flexible positions).
-- **Two enforcement seams, same reason string**: `startAdventureFromLobby`
-  refuses an unsupported mode AND a co-op seating that cannot fit BEFORE the
-  ready check opens (the case a hosted table needs — pinned separately, since the
-  open-table specs are also caught by the build), and
-  `createAdventureGameState` THROWS on the same no-fit rather than silently
-  dropping a human onto a computer-only position. A fitting co-op build seats
-  every player on its authored tile (pinned by hero map positions).
-- **`coopMapSeatCapacity`** is THE one shared derivation behind the designer
-  popover hint, the designer alert (`coopMapDesignProblems`) and the map
-  picker's capacity line — never re-counted in a component.
-- **UI**: a "Supported table modes" chip row (Both / Clash only / Co-op only) in
-  the map-preset editor's Match-setup group; a "Co-op seat" row (Either / Human
-  only / Computer only) in the designer's STARTING-tile popover beside the
-  existing solo-role row; and a `Modes: …` line in the map picker for BOTH
-  built-in and designed maps, gaining
-  `· Co-op: N human / M computer / K flexible starting positions` when the map
-  authored any role.
-
-### Step 4 (NO protocol bump) — match report & ranking
-
-TWO USER RULES: **co-op has no ranked play for now** (a co-op game is never
-reported at all) and **a CLASH table may hold computer enemies, but rank counts
-for HUMANS ONLY**. Both are enforced at the ONE chokepoint every reporter shares
-— `detectFinishedMatch` (`src/server/match-report.ts`), read by the built-in
-store, the PartyKit edge AND the browser dual-claim (`match-claim-client.ts`) —
-so there is no second path to keep in lockstep. Pinned in
-`src/server/coop-match-report.test.ts` (11 cases, every claim with a
-clash / not-computer-controlled CONTROL on the IDENTICAL fixture).
-
-Leading with the limits / deliberate readings:
-- **NO protocol bump and NO serialized-state change.** Nothing about
-  `matchSeats`, `controllers` or `GameState` moved — the AI exclusion is a READ
-  filter, so a stale edge computes the same participant list from the same
-  bytes. `ENGINE_PROTOCOL_VERSION` stays v58 (step 3's deploy is still owed).
-- **`SET_ROOM_RANKED` is deliberately UNCHANGED**: a co-op lobby may still sit
-  on `ranked: true` and the lobby will still say "Ranked". That is a COSMETIC
-  LIE until step 5 can hide/disable the control — harmless because the report
-  nulls out regardless of the flag (pinned for `true` / `false` / absent).
-  Forcing the flag false would have meant writing serialized room state and
-  deciding what happens when a host flips co-op → clash; the least-change option
-  is one gate at the reporter.
-- **A co-op leaver pays NOTHING.** The quit-loses-points "abandon" mark is part
-  of the same null, so quitting a co-op table has no ladder consequence at all
-  (CONTROL: the identical desertion on a clash table still reports the abandon).
-- **A co-op table is never force-closed after the win.** The ranked room-close
-  (`game-room-store.ts` / `party/index.ts`) is gated on `finishedMatch?.ranked`,
-  so a null result leaves the room open — a co-op rematch works where a ranked
-  clash's would not. Consequence of the null, not a separate rule.
-- **An AI seat winning a CLASH reports NOTHING** — the humans are not farmed for
-  losses by the computer. That falls out of the existing "needs ≥1 win AND ≥1
-  loss among ≥2 verified accounts" rule (no human holds the winning seat), so
-  that case is a characterization pin, not a new gate; the CONTROL is the same
-  three seats with a HUMAN winner, which does report.
-- Elo needed NO change: `computeRatings` takes account ids, and a computer seat
-  has no account. A ranked clash with AI seats therefore swings exactly like the
-  same game without them (1200 → 1216/1184, pinned on the real account store).
-
-What RUNS:
-- `next.gameMode === "coop"` ⇒ `detectFinishedMatch` returns null before any
-  attribution: no match record, no Elo, no abandon marks, no room close.
-- Both attribution loops (live members, and the frozen `room.matchSeats`
-  snapshot) skip a seat with `isComputerPlayer(next, seat)`. By construction an
-  AI seat already appears in neither — a computer seat holds no room member
-  (`assignSeat` refuses one, and `SET_COMPUTER_OPPONENTS` refuses to convert an
-  OCCUPIED seat), so the FREEZE in `buildAdventureFromLobby` — which iterates
-  `room.members` — can never stamp one. **The freeze was therefore left
-  untouched** (it is a shared file mid-edit by another session, and filtering
-  there would have changed nothing in the bytes); the explicit filter lives at
-  the READ instead, as belt-and-braces against a forged or legacy row. Both
-  halves are pinned: the report-side filter by a forged `matchSeats` row on an
-  AI seat (and a forged member row on one), the freeze-side invariant by a real
-  `SET_COMPUTER_OPPONENTS` → ready-check → build flow whose `matchSeats` holds
-  only the two human seats.
-
-### Step 3 (protocol v57 → v58, `npm run deploy:partykit` OWED) — victory & objectives
-
-Everything is pinned in `src/engine/coop-objectives.test.ts` (22 cases, every
-co-op claim with a clash / absent-mode / below-threshold CONTROL; 8 mutations
-applied-and-reverted, each failing 1–3 cases).
-
-Leading with the limits/readings:
-- **The victory machinery stays SINGLE-WINNER.** `adventure.winnerPlayerId` names
-  ONE seat; a co-op win is the ALLIANCE's only in the GAME_WON *reason*, which
-  gains ", with their alliance" when the declared winner still has a LIVING ally
-  (`coopAllianceWinReason`, adventure.ts — presentation only, never applied
-  outside co-op and never doubled on the `eliminatePlayer` "last alliance
-  standing" line). Living allies are not eliminated and no engine read presents
-  them as defeated; see the match-report caveat above.
-- **`defeat-computers` is INERT with no computer seat** — the sanitiser KEEPS the
-  condition, the CHECKER returns false forever. Without that guard the "0 of 0"
-  vacuous truth would hand an instant win to the first seat in turn order on move
-  one (mutation-pinned).
-- **A `slay-raid-boss` condition is DROPPED AT BUILD** when neither
-  `wog.raidBosses` nor `anime.raidBosses` is on, with a public
-  `MAP_SECRET_FEATURE_FALLBACK` feed line (feature `"slay-raid-boss"`, the
-  soft-failed-guarantee pattern) — never a silent no-op, never a blocked start.
-  Sibling conditions in the same list survive.
-- No new team plumbing: the team-wide reading is `playersAreAllied` on the
-  step-1 `playerTeams`, and it is gated on `gameMode === "coop"` so clash and
-  single-player are byte-identical.
+- **`defeat-computers` is INERT with no computer seat** — the sanitiser KEEPS
+  the condition, the CHECKER returns false forever. Without that guard the
+  "0 of 0" vacuous truth would hand an instant win on move one.
 - **The AI-seat skip covers `checkCustomWinConditions` ONLY.** The designer
-  per-settlement hold-to-win (`checkSettlementHoldWins`, checked just above it)
-  and the normal victory modes are UNCHANGED, so a computer seat on a designed
-  hold-settlement map could still end a co-op table that way. Not reached by any
-  shipped co-op flow (no designer surface yet) — widen it with the designer step.
+  per-settlement hold-to-win (`checkSettlementHoldWins`) and the normal victory
+  modes are UNCHANGED, so a computer seat on a designed hold-settlement map
+  could still end a co-op table that way.
+- **`gameMode` is not session-gated in the ENGINE** — only the UI withholds the
+  toggle in single player (CONTROL-pinned). The single-player
+  `computerDiplomacy: "allied"` team stamping is untouched and independent.
+- **jsdom cannot compute CSS**, so every step-6 UI claim is pinned by its DOM
+  contract and dispatched action only — nothing here proves a pixel, and there
+  is **no e2e spec for any co-op surface**. The two new seat chips
+  (`.seatControllerTag` / `.seatAllyTag`) are the only new CSS.
+- Other recorded limits: the ally gate keys off `playerTeams` alone, so it also
+  covers a map-authored single-player alliance; multi-flag fields (Obelisk /
+  Star Axis) are deliberately untouched — an ally adding its own cube is not a
+  steal; a lobby whose computer seats got INTERLEAVED (raise the seat count
+  while computers exist) refuses the next `SET_COMPUTER_OPPONENTS` rather than
+  swallowing an occupied seat; a designer preset cannot know which mods a lobby
+  will run, so the "needs Raid Bosses" hint is LOBBY-only.
 
-What RUNS:
-- **The implicit TEAM victory** (already free from steps 1–2, now pinned in both
-  directions): `eliminatePlayer`'s alliance check declares "the last alliance
-  standing" when the humans wipe out every computer seat AND when the invaders
-  wipe out every human. Clash CONTROLs on the identical eliminations end nothing.
-- **Two new `CustomWinCondition` kinds**, sanitised/clamped/merged exactly like
-  their siblings (lobby ADD-only union, cap 4):
-  - `defeat-computers` (parameterless): every computer-controlled seat
-    eliminated. Denominator = the computer seats the game HAS — an eliminated
-    seat keeps its `players` AND `controllers` entry, so it never shrinks.
-    Meaningful in co-op AND in clash-with-AI.
-  - `slay-raid-boss` (`count` 1–3): slay N Raid Bosses. Metric = the ONE shared
-    reader `raidBossKillCount` (`raid-bosses.ts`, event-sourced off
-    `RaidBossState.slainBy`) — no boss-kill reader existed before, so this IS
-    the reader any future VP row must use. **TEAM-WIDE in co-op** (an ally's kill
-    counts for every ally), strictly per-seat in clash; a computer seat's kill
-    never credits the human alliance. Pinned through the REAL kill chain
-    (visit → Challenge → `finalizeAdventureCombat` → `resolveRaidBossVictory` →
-    the condition → the winner), not a hand-stamped `slainBy`.
-- **A COMPUTER seat never wins by a custom condition in co-op**:
-  `checkCustomWinConditions` skips computer-controlled seats when
-  `gameMode === "coop"` (the invaders win the one way the mode defines — by
-  eliminating every human). CLASH is deliberately UNCHANGED and CONTROL-pinned:
-  an AI seat there is an ordinary rival and still wins on a gold / hero-level line.
+### What RUNS
 
-### Step 2 (protocol v56 → v57, `npm run deploy:partykit` OWED) — the AI seats play
+**The engine foundation** (`src/engine/coop-mode.test.ts`, every claim with a
+clash / single-player CONTROL). `gameMode` is sanitized in `setGameOptions` (an
+unknown value is REFUSED, never coerced) and carried by
+`buildAdventureFromLobby`; a co-op build stamps `playerTeams` with
+`COOP_HUMAN_TEAM_ID` / `COOP_AI_TEAM_ID` (`computer/control.ts`), so the
+alliance is ORDINARY team ids and every existing `playersAreAllied` gate applies
+with no per-mode branching. `SET_COMPUTER_OPPONENTS` / `SET_COMPUTER_SEAT_FACTION`
+work in an ordinary MULTIPLAYER lobby (any seated human, SET_GAME_OPTIONS'
+legality class); computer seats are the TRAILING seats, `state.controllers` holds
+entries for EXACTLY those seats and the whole map is DELETED when the last
+computer goes (`pruneMultiplayerComputerControllers`, called from every
+multiplayer `resizeLobbySeats`). A computer seat is never sit-able in ANY session
+mode and holds no room member, so `readyCheckConfirmers` never asks it to
+confirm. **The ALLY FLAG GATE**: a Mine / Settlement / Town / Random Town /
+designer Garrison / captured Dragon Utopia flagged by a LIVE ALLY is an OWN field
+— `classifyHeroStep` returns "open", every `beginFieldVisit` flag branch skips
+it, `capturableEnemyMinesWithin` drops it from the View Earth list, and
+`flagField` early-returns with a log note. ONE shared read `fieldFlaggedByAlly`
+(adventure.ts) backs all of them; PvP against an ally was already refused.
 
-Leading with the limits/decisions:
-- **PARALLEL TURNS and computer seats cannot coexist** — the combination is
-  REFUSED at the lobby in BOTH directions (`SET_GAME_OPTIONS.parallelTurns` > 0
-  while computer seats exist, and `SET_COMPUTER_OPPONENTS` > 0 while parallel
-  turns are on; removing computers / turning parallel turns OFF is always legal,
-  so a lobby can never wedge). An AI seat inside parallel turns is an untested
-  stall surface: the pump owns one open decision at a time while parallel mode
-  opens every live seat's turn at once, and the quiet-action / bystander guards
-  were designed for human bystanders. Blocked, not half-supported. KNOWN SCOPE:
-  the `SET_GAME_OPTIONS` half is not multiplayer-scoped, and a SINGLE-PLAYER
-  lobby always has computer seats — so parallel turns can no longer be switched
-  on there either (it was a foot-gun: `createAdventureGameState` enables
-  parallel mode on any table with 2+ seat configs, solo included). A LEGACY
-  lobby that already carries `parallelTurns > 0` is not retro-fixed: only the
-  multiplayer `SET_COMPUTER_OPPONENTS` path has the mirror refusal.
-- **The guaranteed first-battle wins and the temp Empowered Attack/Defense
-  boost stay SINGLE-PLAYER-ONLY** (`combatQualifiesForComputerGuaranteedWin` /
-  `combatQualifiesForComputerBoost` keep their `sessionModeOf` gate, deliberately
-  unchanged) — a multiplayer AI seat fights every battle straight. Pinned with a
-  single-player twin CONTROL that DOES qualify, so the claim measures the gate.
-- **The pump machinery itself needed NO change**: `src/server/computer-runner.ts`
-  and both backends' pump call sites were already keyed on
-  `computerPumpOwed(state)` → `computerPlayerIds(state).length > 0`, never on
-  the session mode, and `combatHasHumanParticipant` was already multi-human
-  aware. The step-1 note "the AI seats do not play themselves outside a private
-  single-player room" was WRONG about where the gate lived — the real gaps were
-  the time controls, the neutral-control modes and the ADVANCE_COMPUTER
-  watchdog. Nothing in the settle path assumes exactly one human.
-- Everything is pinned in `src/engine/coop-step2.test.ts` (18 cases, each with a
-  human-seat / clash / all-human / single-player CONTROL; all six seams
-  mutation-checked) and `src/server/coop-live.test.ts` (both backends, driven
-  the way production drives them).
+**The AI seats really play** (`src/engine/coop-step2.test.ts` +
+`src/server/coop-live.test.ts`, which builds a real room on BOTH backends — the
+built-in store's `setTimeout` chain and the PartyKit edge's Durable-Object ALARM
+chain, with `Party.id` unreadable inside `onAlarm` — and finishes the computer's
+turn untouched, wrapping the round back onto a human). The pump machinery needed
+NO change (`computerPumpOwed` was always keyed on computer seats, not the session
+mode). What DID change: time controls never punish a computer seat (ONE seam —
+the shared `liveSeats` read in `afk.ts` filters them out, so an AI seat is never
+an AFK-vote / 30-minute auto-kick / `FORCE_TURN_TIMEOUT` target, never counted
+among the voters a unanimous kick needs, and never has a running 10-minute
+clock); the two neutral-control modes null out in co-op; and `ADVANCE_COMPUTER`
+is gated on "this game HAS a computer seat" rather than the private
+single-player room.
 
-What RUNS:
-- **An AI seat in an ordinary multiplayer room plays itself, on both backends.**
-  `src/server/coop-live.test.ts` builds a real room (2 humans join, `gameMode:
-  "coop"`, `SET_COMPUTER_OPPONENTS 1`, factions, `START_ADVENTURE`), lets the
-  humans end their round-1 turns and then touches NOTHING: the built-in store's
-  real `setTimeout` chain and the PartyKit edge's real Durable-Object ALARM
-  chain (with `Party.id` unreadable inside `onAlarm`, as the runtime enforces)
-  each finish the computer seat's turn and WRAP THE ROUND back onto a human
-  seat. An all-human clash room in the same flow arms nothing (CONTROL).
-- **Time controls never punish a computer seat.** ONE seam: the shared
-  `liveSeats` read in `afk.ts` filters computer-controlled seats out. So an AI
-  seat is never an AFK-vote / 30-minute auto-kick / `FORCE_TURN_TIMEOUT` target
-  (each also refused explicitly by `assertNotComputerTarget` with an honest
-  message), is never counted among the voters whose unanimity a kick vote needs
-  (a computer never votes — counting it made an otherwise legitimate vote
-  against an ABSENT HUMAN unresolvable), never has a running 10-minute turn
-  clock (`turnClockRunningSeats`; the pump is its clock), and its own
-  pump-driven actions stamp no idle clock and bootstrap no seat. Human seats
-  keep every time control exactly as before.
-- **CO-OP: nobody controls the computer enemy** (USER RULE). In a
-  `gameMode === "coop"` game `pvpNeutralControllerId` AND `manualGuardControllerId`
-  return null ALWAYS — the Neutral AI plays every guard, no pre-battle formation
-  SORT window opens and every guard's `combatUnitDecisionOwnerId` stays
-  `NEUTRAL_PLAYER_ID`. Shaped exactly like the `isPveEncounterCombat` exemption:
-  ONE shared read `coopDisablesManualNeutralControl` (`neutral-control.ts`), an
-  early null in both derivations, every downstream consumer falling back on it.
-  A CLASH table with AI seats is UNCHANGED (CONTROL-pinned: PvP Neutral Control
-  still hands the guards to the next seat clockwise, Manual to the fighter).
-- **`ADVANCE_COMPUTER` is gated on "this game HAS a computer seat"**, not on the
-  private single-player room (reducer + the `withComputerAdvanceOffer` offer,
-  moved together). It stays what it always was — the last-resort watchdog for a
-  lost pump tick, never the normal clock — and an all-human game still neither
-  offers nor accepts it.
+**Victory & objectives** (`src/engine/coop-objectives.test.ts`). The implicit
+TEAM victory falls out of `eliminatePlayer`'s alliance check ("the last alliance
+standing") in both directions. Two `CustomWinCondition` kinds, sanitised /
+clamped / merged exactly like their siblings (lobby ADD-only union, cap 4):
+`defeat-computers` (parameterless — every computer seat eliminated; the
+denominator never shrinks because an eliminated seat keeps its `players` AND
+`controllers` entry) and `slay-raid-boss` (`count` 1–3, metric = the ONE shared
+reader `raidBossKillCount` in `raid-bosses.ts`, event-sourced off
+`RaidBossState.slainBy` — this IS the reader any future VP row must use).
+`slay-raid-boss` is **TEAM-WIDE in co-op**, strictly per-seat in clash, and a
+computer seat's kill never credits the humans. With no raid-boss module on, the
+condition is DROPPED AT BUILD with a public `MAP_SECRET_FEATURE_FALLBACK` feed
+line (never a silent no-op, never a blocked start; sibling conditions survive).
+A COMPUTER seat never wins by a custom condition in co-op — the invaders win the
+one way the mode defines, by eliminating every human — while CLASH is unchanged
+and CONTROL-pinned.
 
-### Step 1 (protocol v55 → v56) — the engine foundation
+**Match report & ranking** (`src/server/coop-match-report.test.ts`). TWO USER
+RULES enforced at the ONE chokepoint every reporter shares (`detectFinishedMatch`,
+read by the built-in store, the PartyKit edge AND the browser dual-claim): co-op
+is never reported at all, and a CLASH table may hold computer enemies but rank
+counts for HUMANS ONLY. Both attribution loops (live members and the frozen
+`room.matchSeats` snapshot) skip a seat with `isComputerPlayer`. NO protocol bump
+and no serialized change — the AI exclusion is a READ filter. Elo needed no
+change (a computer seat has no account), so a ranked clash with AI seats swings
+exactly like the same game without them. An AI seat WINNING a clash reports
+nothing, which falls out of the existing "≥1 win AND ≥1 loss among ≥2 verified
+accounts" rule.
 
-What RUNS (all in `src/engine/coop-mode.test.ts`, every claim with a clash /
-single-player CONTROL):
-- **`GameSetupOptions.gameMode`** (`"clash" | "coop"`, ABSENT = clash), sanitized
-  in `setGameOptions` (an unknown value is REFUSED, never coerced) and carried by
-  `buildAdventureFromLobby`. A co-op build freezes the root field
-  `GameState.gameMode: "coop"` and stamps `playerTeams` with
-  `COOP_HUMAN_TEAM_ID` / `COOP_AI_TEAM_ID` (`computer/control.ts`) — so the
-  alliance is expressed as ORDINARY team ids and every existing
-  `playersAreAllied` gate applies with no per-mode branching.
-- **Computer seats in an ORDINARY multiplayer lobby.** `SET_COMPUTER_OPPONENTS`
-  and `SET_COMPUTER_SEAT_FACTION` are no longer single-player-only: any SEATED
-  player may add/remove them while the setup is open and no start check runs
-  (SET_GAME_OPTIONS' legality class). Invariant: computer seats are the TRAILING
-  seats and `state.controllers` holds entries for EXACTLY those seats — human
-  seats keep no entry and the whole map is DELETED when the last computer goes
-  (`pruneMultiplayerComputerControllers`, called from every multiplayer
-  `resizeLobbySeats`, so a trimmed seat can never orphan a controller entry).
-  A computer seat holds no room member, so `readyCheckConfirmers` never asks it
-  to confirm — it is ready by construction.
-- **A computer seat is never sit-able in ANY session mode** (`assignSeat`, host
-  and self-claim alike; the old single-player string check is kept as a backstop).
-- **The ALLY FLAG GATE.** A Mine / Settlement / Town / Random Town / designer
-  Garrison / captured Dragon Utopia flagged by a LIVE ALLY is treated as an OWN
-  field: `classifyHeroStep` returns "open" (no stop, no capture), every
-  `beginFieldVisit` flag branch skips it, `capturableEnemyMinesWithin` drops it
-  from the View Earth remote-capture list, and `flagField` itself early-returns
-  with a log note so a forged/future call path cannot steal it either. ONE shared
-  read `fieldFlaggedByAlly` (adventure.ts) backs all of them.
-- PvP against an ally was ALREADY refused (`startPlayerCombat`'s
-  `playersAreAllied` throw) and the garrison window already skipped an ally
-  (`garrisonDefenderFor`); both are now pinned with clash CONTROLs.
-LIMITS/decisions recorded: `gameMode` is NOT session-gated, so a single-player
-table could technically set it (the existing `computerDiplomacy: "allied"`
-stamping is untouched and CONTROL-pinned); the ally gate keys off `playerTeams`
-alone, so it also covers a map-authored single-player alliance; multi-flag fields
-(Obelisk / Star Axis) are deliberately untouched — an ally adding its own extra
-cube is not a steal; a lobby whose computer seats got INTERLEAVED (raise the seat
-count while computers exist) refuses the next `SET_COMPUTER_OPPONENTS` rather
-than swallowing an occupied seat.
+**Map support** (`src/engine/coop-map-deployment.test.ts`, plus
+`map-pick-modal.test.tsx` / `map-preset-editor.test.tsx` / `map-designer.test.tsx`).
+`CustomMapPreset.supportedModes` (`{ clash?, coop? }`) read ONLY through
+`mapSupportedModes` / `mapSupportsGameMode` / `describeMapSupportedModes`;
+`CustomMapTilePlan.coopSeat` (`{ role: "human" | "computer" }`), start-tile-only,
+sanitised at BOTH seams (`validateCustomMapPlan` and `map-registry.ts`).
+**ABSENT means "both" / "either" everywhere** — `{ clash: false, coop: false }`
+sanitises back to absent and a hand-edited record claiming neither reads as
+both, so every existing map and every built-in scenario sheet stays playable in
+both modes. A CLASH game ignores `coopSeat` entirely (CONTROL-pinned by hero
+positions) and the SOLO `singlePlayer` block is untouched and independent.
+`coopMapDeployment(plans, humanCount, computerCount)` is the pure seating (null
+when nothing is authored ⇒ ordinary seat order), `coopMapSeatCapacity` is THE one
+shared derivation behind the designer hint, the designer alert
+(`coopMapDesignProblems`, a WARNING never a block) and the map picker's capacity
+line. Two enforcement seams share one reason string: `startAdventureFromLobby`
+refuses an unsupported mode AND an unfittable co-op seating before the ready
+check opens, and `createAdventureGameState` THROWS on the same no-fit. Picking a
+co-op-only map SEEDS `gameMode: "coop"` through the ordinary apply-once machinery
+(soft — a host may flip it back, and then the start check refuses).
+
+**The LOBBY / TABLE UI** — the step that made all of the above reachable by
+clicking. Pinned in `src/components/adventure/coop-lobby-ui.test.tsx` (18 cases,
+every co-op claim with a clash / single-player / all-human CONTROL) plus
+`setup-hub-summary.test.ts`, `map-preset-editor.test.tsx`,
+`src/components/table/seats.test.tsx` and `src/components/table/room-panel.test.tsx`.
+13 UI mutations were applied-and-reverted, each failing 1–3 cases.
+
+- **Table mode row** in the Setup Hub's **Game mode** window (`TableModeSection`,
+  screen.tsx): Clash / Co-op, dispatching `SET_GAME_OPTIONS { gameMode }`, with
+  the co-op explainer "All human players are one alliance against the computer
+  enemies. Unranked." MULTIPLAYER-SCOPED — a single-player lobby shows no row at
+  all. A mode the picked MAP refuses renders DISABLED with the map's reason,
+  read through the engine's own `mapSupportedModes` (`tableModeAvailability`,
+  setup-hub-summary.ts), so a button can never offer a mode the start check will
+  then reject. The always-visible `SetupSummaryRail` names "Co-op" on the
+  Game-mode chip — and deliberately says NOTHING on clash (the absent default;
+  naming it would add a line to every lobby that ever existed).
+- **"Computer enemies" stepper in MULTIPLAYER** (`MultiplayerComputerEnemiesRow`,
+  in the Heroes & Draft window beside the Players row): None / 1…N dispatching
+  `SET_COMPUTER_OPPONENTS`. The offered counts stop at the scenario's seat
+  capacity (the engine clamps `humans + requested`, so a bigger offer would
+  silently do nothing) and every count > 0 is DISABLED with the reason while
+  parallel turns are on. `ComputerOpponentPickers` (faction/hero per computer
+  seat) now renders in multiplayer too — only its heading differs; the
+  single-player rendering is byte-identical (CONTROL-pinned), and its viewer test
+  goes through `isComputerPlayer` because a multiplayer HUMAN seat carries no
+  controller entry at all. `heroesSummary().computers` is likewise
+  controller-driven now, not session-gated.
+- **Objectives reachable**: `defeat-computers` ("Defeat all computer enemies",
+  parameterless) and `slay-raid-boss` ("Slay the raid boss(es)", count 1–3) are
+  in `CUSTOM_WIN_CONDITION_OPTIONS`, so BOTH the lobby MATCH-tab row and the
+  designer's condition editor offer them. The lobby warns "needs Raid Bosses …
+  will be dropped at start" while no raid-boss module is on
+  (`raidBossModuleEnabled`, a UI MIRROR of the engine's `raidBossesOn` — if that
+  engine read ever changes, this must move with it).
+- **Honest surfaces**: `SeatNameplate` tags a computer-controlled seat
+  "Computer" — from `state.controllers` via `isComputerPlayer`, NEVER from the
+  seat's name (a human named "Computer 1" is not tagged; a computer renamed to a
+  person's name still is, both CONTROL-pinned); the `OpponentBar` tags an allied
+  human "Ally" (co-op only, so a single-player "solo-computers" alliance and
+  every clash table are untouched); the Room panel labels a computer seat
+  "(Computer)" and DISABLES it in both seat dropdowns (it is in `turnOrder` but
+  holds no member, so it used to be a nameless option `assignSeat` then refused),
+  and shows the "Co-op — humans vs the computer enemies. Unranked: this table
+  never counts toward MMR." note, reading the mode off the frozen `gameMode` OR
+  the open lobby's options; and the PvP-Neutral-Control row, its must-attack
+  sub-toggle and the Manual-guard-control row all render disabled in co-op with
+  ONE shared reason string.
 
 ## Parallel turns (OPTIONAL house rule, multiplayer only) — what runs vs. limits
 

@@ -3957,6 +3957,18 @@ export const CUSTOM_WIN_CONDITION_OPTIONS: {
     label: "Flag N Dragon Utopias",
     param: { field: "count", label: "Utopias", min: 1, max: 6 }
   },
+  // Co-op objectives (step 3). `defeat-computers` is parameterless — the target
+  // is "every computer seat this game has" — and is meaningful in co-op AND in a
+  // clash table that holds computer enemies. `slay-raid-boss` needs a raid-boss
+  // module: with none on, the condition is DROPPED at build with a public feed
+  // line, and the lobby row warns about that before the start (see
+  // `raidBossModuleEnabled` in setup-hub-summary.ts).
+  { id: "defeat-computers", label: "Defeat all computer enemies", param: null },
+  {
+    id: "slay-raid-boss",
+    label: "Slay the raid boss(es)",
+    param: { field: "count", label: "Bosses", min: 1, max: 3 }
+  },
   {
     id: "hold-with-grail",
     label: "Control place + Grail for N rounds",

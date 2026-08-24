@@ -68,6 +68,7 @@ import {
   describeFieldReward,
   designedGuardPreview,
   isBlockedFieldCarve,
+  isComputerPlayer,
   printedBordersSurviveCarve,
   isFieldGuarded,
   hasOpenAdventureTurn,
@@ -211,7 +212,12 @@ import {
   heroesSummary,
   mapSummary,
   MODE_PRESET_PAYLOADS,
+  raidBossModuleEnabled,
   SETUP_HUB_MODE_NAMES,
+  TABLE_MODE_BLURBS,
+  TABLE_MODE_LABELS,
+  tableGameMode,
+  tableModeAvailability,
   type SetupHubBoxId,
   type SetupModeId
 } from "@/components/adventure/setup-hub-summary";
@@ -8950,6 +8956,17 @@ const OPTION_TABS: { id: OptionsTabId; label: string; icon: ReactNode }[] = [
 /** Every binary setup row uses the same convention: On left, Off right. */
 const BOOLEAN_OPTION_ORDER = [true, false] as const;
 
+/**
+ * CO-OP (step 6): the ONE wording behind both neutral-control rows' disabled
+ * state, so the two surfaces can never explain the same engine rule differently.
+ * The rule itself is `coopDisablesManualNeutralControl` (neutral-control.ts):
+ * in a co-op game BOTH `pvpNeutralControllerId` and `manualGuardControllerId`
+ * return null always, so leaving these rows live would show an "On" that does
+ * nothing.
+ */
+const COOP_NEUTRAL_CONTROL_DISABLED_REASON =
+  "Not available in Co-op: the humans are one alliance, so nobody plays the Neutral units — the Neutral AI plays every guard.";
+
 const HOUSE_RULE_CATEGORY_LABELS: Record<string, string> = {
   decks: "Decks",
   units: "Unit buffs",
@@ -9521,6 +9538,75 @@ function HouseRulesSection({
           <HouseRuleInfoLinks rules={communityRules} />
         </div>
       </HouseRuleCollapsible>
+    </div>
+  );
+}
+
+/**
+ * CO-OP (step 6) — the TABLE MODE row: Clash (free-for-all, the absent default)
+ * or Co-op (every human seat allied against the computer enemies).
+ *
+ * MULTIPLAYER ONLY. The engine does not session-gate `gameMode`, but a
+ * single-player table is one human against computer seats by construction, so a
+ * "co-op" there would be a meaningless relabel — the control is simply not
+ * offered (CONTROL-pinned). A mode the picked MAP refuses renders disabled with
+ * the map's reason, read through the engine's own `mapSupportedModes` so the
+ * button and `startAdventureFromLobby` can never disagree.
+ */
+function TableModeSection({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const lobby = state.setupLobby;
+  if (!lobby || state.sessionMode === "single-player") {
+    return null;
+  }
+  const options = lobby.options;
+  const current = tableGameMode(options);
+  const availability = tableModeAvailability(options);
+  return (
+    <div className="optionRow tableModeRow">
+      <small title="Who is playing against whom: a free-for-all, or every human allied against the computer enemies">
+        Table mode
+      </small>
+      <div className="optionButtons" role="group" aria-label="Table mode">
+        {(["clash", "coop"] as const).map((mode) => {
+          const { allowed, reason } = availability[mode];
+          return (
+            <button
+              aria-pressed={current === mode}
+              className={current === mode ? "selected" : ""}
+              disabled={!allowed}
+              key={mode}
+              onClick={() =>
+                onAction({ type: "SET_GAME_OPTIONS", playerId: viewerPlayerId, options: { gameMode: mode } })
+              }
+              title={reason ?? TABLE_MODE_BLURBS[mode]}
+              type="button"
+            >
+              {mode === "coop" ? "Co-op" : "Clash"}
+            </button>
+          );
+        })}
+      </div>
+      <small className="optionHint">
+        {TABLE_MODE_LABELS[current]} — {TABLE_MODE_BLURBS[current]}
+      </small>
+      {/* The Co-op explainer stays visible from CLASH too, or the only way to
+          learn what the other button does is to press it. */}
+      {current === "coop" ? null : (
+        <small className="optionHint">Co-op: {TABLE_MODE_BLURBS.coop}</small>
+      )}
+      {availability.clash.allowed && availability.coop.allowed ? null : (
+        <small className="optionHint">
+          {availability.coop.allowed ? availability.clash.reason : availability.coop.reason}
+        </small>
+      )}
     </div>
   );
 }
@@ -10306,33 +10392,139 @@ function SeatCountControl({
   for (let n = min; n <= max; n += 1) {
     counts.push(n);
   }
-  return counts.length > 1 ? (
+  const playersRow =
+    counts.length > 1 ? (
+      <div className="optionRow">
+        <small title="How many seats this game opens — each needs a faction before the adventure starts">
+          Players
+        </small>
+        <div className="optionButtons">
+          {counts.map((count) => (
+            <button
+              aria-pressed={seatCount === count}
+              className={seatCount === count ? "selected" : ""}
+              key={count}
+              onClick={() => send({ playerCount: count })}
+              title={`Play with ${count} players`}
+              type="button"
+            >
+              {count} players
+            </button>
+          ))}
+        </div>
+        <small className="optionHint">
+          Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
+        </small>
+      </div>
+    ) : null;
+  // The footer's contract is "rendered only when a control is" — so ASK whether
+  // the computer row will render rather than testing the JSX element, which is
+  // truthy even for a component that returns null.
+  const computersRow = multiplayerComputerEnemiesChoices(state) !== null;
+  return playersRow || computersRow ? (
     <>
+      {playersRow}
+      {computersRow ? (
+        <MultiplayerComputerEnemiesRow onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
+      ) : null}
+      {footer}
+    </>
+  ) : null;
+}
+
+/**
+ * The computer-enemy counts a MULTIPLAYER lobby may offer, or null when the row
+ * has nothing to say (single player, no lobby, or a scenario already full of
+ * humans with no computer seat to remove). ONE derivation, shared by the row and
+ * by `SeatCountControl`'s footer gate.
+ */
+function multiplayerComputerEnemiesChoices(state: GameState): { choices: number[]; current: number } | null {
+  const lobby = state.setupLobby;
+  if (!lobby || state.sessionMode === "single-player") {
+    return null;
+  }
+  const scenario = scenarioDefinitions[lobby.options.scenarioId];
+  const max = Math.min(scenario?.maxPlayers ?? 2, scenario?.layout.starts.length ?? 2);
+  const current = lobby.seats.filter((seat) => isComputerPlayer(state, seat.playerId)).length;
+  const humanSeats = Math.max(1, lobby.seats.length - current);
+  // The engine clamps `humanSeats + requested` to the scenario capacity, so
+  // offering more would silently do nothing.
+  const maxComputers = Math.max(0, max - humanSeats);
+  if (maxComputers === 0 && current === 0) {
+    return null;
+  }
+  return { choices: Array.from({ length: maxComputers + 1 }, (_, index) => index), current };
+}
+
+/**
+ * CO-OP (step 6) — the MULTIPLAYER "Computer enemies" stepper. Adds/removes the
+ * TRAILING computer seats through the same `SET_COMPUTER_OPPONENTS` action
+ * single player uses; the engine keeps the invariant (computers trail, human
+ * seats hold no controller entry). Both table modes may hold computer enemies —
+ * clash-with-AI is supported, co-op simply allies the humans against them.
+ *
+ * Two mirrors of engine rules, both derived from the SAME options object the
+ * handler reads rather than re-implemented: the offered counts stop at the
+ * scenario's seat capacity (`setMultiplayerComputerOpponents` clamps there
+ * anyway, so an impossible value is never offered), and the whole row is
+ * DISABLED while parallel turns are on — that combination is refused in both
+ * directions at the lobby.
+ */
+function MultiplayerComputerEnemiesRow({
+  state,
+  viewerPlayerId,
+  onAction
+}: {
+  state: GameState;
+  viewerPlayerId: PlayerId;
+  onAction: (action: GameAction) => void;
+}) {
+  const offer = multiplayerComputerEnemiesChoices(state);
+  if (!offer) {
+    return null;
+  }
+  const { choices, current: computerSeats } = offer;
+  const parallelRounds = state.setupLobby?.options.parallelTurns ?? 0;
+  const blockedReason =
+    parallelRounds > 0
+      ? "Parallel turns are on — computer enemies cannot be used with them. Turn parallel turns off in Advanced settings first."
+      : null;
+  return (
     <div className="optionRow">
-      <small title="How many seats this game opens — each needs a faction before the adventure starts">
-        Players
+      <small title="Add computer-controlled enemy seats to this multiplayer table. In Co-op every human is allied against them.">
+        Computer enemies
       </small>
-      <div className="optionButtons">
-        {counts.map((count) => (
+      <div className="optionButtons" role="group" aria-label="Number of computer enemies">
+        {choices.map((count) => (
           <button
-            aria-pressed={seatCount === count}
-            className={seatCount === count ? "selected" : ""}
+            aria-pressed={computerSeats === count}
+            className={computerSeats === count ? "selected" : ""}
+            disabled={Boolean(blockedReason) && count > 0}
             key={count}
-            onClick={() => send({ playerCount: count })}
-            title={`Play with ${count} players`}
+            onClick={() => onAction({ type: "SET_COMPUTER_OPPONENTS", playerId: viewerPlayerId, count })}
+            title={
+              blockedReason && count > 0
+                ? blockedReason
+                : count === 0
+                  ? "Humans only — no computer seats"
+                  : `Add ${count} computer ${count === 1 ? "enemy" : "enemies"}`
+            }
             type="button"
           >
-            {count} players
+            {count === 0 ? "None" : `${count} ${count === 1 ? "enemy" : "enemies"}`}
           </button>
         ))}
       </div>
       <small className="optionHint">
-        Seats beyond two open empty — anyone can sit in them from the table’s seat switcher and pick a faction.
+        {blockedReason ??
+          (computerSeats === 0
+            ? "None — every seat is human. Computer enemies take the trailing seats and nobody can sit in them."
+            : `${computerSeats} computer ${computerSeats === 1 ? "enemy takes" : "enemies take"} the trailing seat${
+                computerSeats === 1 ? "" : "s"
+              }. Pick each one’s town & hero below, or leave it random.`)}
       </small>
     </div>
-    {footer}
-    </>
-  ) : null;
+  );
 }
 
 /**
@@ -10573,6 +10765,10 @@ function GameOptionsPanel({
         const spellBookOn = !polishSpellBookOn && (options.spellBook ?? options.ruleset === "binh");
         const undoMovesOn = options.undoMoves ?? false;
         const manualGuardControlOn = options.manualGuardControl ?? false;
+        // CO-OP (step 2 engine rule): in co-op NOBODY plays the Neutral units —
+        // `coopDisablesManualNeutralControl` nulls both controllers always. The
+        // row would otherwise sit "On" while doing nothing at all.
+        const coopTable = tableGameMode(options) === "coop";
         const startingHandMulliganOn = options.startingHandMulligan !== false;
         const unitExperienceOn = options.unitExperience ?? false;
         return (
@@ -10760,9 +10956,16 @@ function GameOptionsPanel({
                   <button
                     aria-pressed={manualGuardControlOn === on}
                     className={manualGuardControlOn === on ? "selected" : ""}
+                    disabled={coopTable}
                     key={String(on)}
                     onClick={() => send({ manualGuardControl: on })}
-                    title={on ? "Manual guard control on" : "Manual guard control off"}
+                    title={
+                      coopTable
+                        ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                        : on
+                          ? "Manual guard control on"
+                          : "Manual guard control off"
+                    }
                     type="button"
                   >
                     {on ? "On" : "Off"}
@@ -10770,9 +10973,11 @@ function GameOptionsPanel({
                 ))}
               </div>
               <small className="optionHint">
-                {manualGuardControlOn
-                  ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
-                  : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
+                {coopTable
+                  ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                  : manualGuardControlOn
+                    ? "You play the Neutral units in your own guard and Creature-Bank fights — same must-attack discipline as PvP Neutral Control — with a \u201cLet the unit act\u201d button to hand any single guard back to the automatic player. PvP Neutral Control wins when both modes are on."
+                    : "Off: the rulebook Neutral player plays the guards automatically, exactly as usual."}
               </small>
             </div>
 
@@ -11025,6 +11230,17 @@ function GameOptionsPanel({
                 ? "None set. Add a condition and the first player to reach it wins immediately — an extra early-end trigger on top of the victory mode."
                 : "The first player to satisfy any condition wins immediately. Map-set conditions can't be removed here — you can only add your own for this game."}
             </small>
+            {/* CO-OP (step 6): "slay N Raid Bosses" needs a Raid Bosses module —
+                with none on, no lair is ever placed, so the engine DROPS the
+                condition at build with a public feed line. Say so here, before
+                the start, instead of letting it vanish. */}
+            {effective.some((condition) => condition.kind === "slay-raid-boss") &&
+            !raidBossModuleEnabled(options) ? (
+              <small className="optionHint">
+                “Slay the raid boss(es)” needs Raid Bosses — enable the module under Mod (WOG or Anime) or this
+                condition will be dropped at start.
+              </small>
+            ) : null}
           </div>
         );
       })()}
@@ -11149,6 +11365,8 @@ function GameOptionsPanel({
       {(() => {
         const neutralControlOn = options.pvpNeutralControl ?? false;
         const mustAttackOn = options.pvpNeutralControlMustAttack ?? true;
+        // Same co-op engine rule as Manual guard control above.
+        const coopTable = tableGameMode(options) === "coop";
         return (
           <>
             <div className="optionRow">
@@ -11160,9 +11378,16 @@ function GameOptionsPanel({
                   <button
                     aria-pressed={neutralControlOn === on}
                     className={neutralControlOn === on ? "selected" : ""}
+                    disabled={coopTable}
                     key={String(on)}
                     onClick={() => send({ pvpNeutralControl: on })}
-                    title={on ? "A human plays the Neutral units (next player clockwise)" : "The Neutral AI plays the guards"}
+                    title={
+                      coopTable
+                        ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                        : on
+                          ? "A human plays the Neutral units (next player clockwise)"
+                          : "The Neutral AI plays the guards"
+                    }
                     type="button"
                   >
                     {on ? "On" : "Off"}
@@ -11170,7 +11395,9 @@ function GameOptionsPanel({
                 ))}
               </div>
               <small className="optionHint">
-                {neutralControlOn
+                {coopTable
+                  ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                  : neutralControlOn
                   ? "Every Neutral combat becomes PvP-like: the NEXT seat clockwise plays the guards — moving and attacking each one, breaking activation ties, and answering ability targets and dice rerolls. In single-player, you control guards in computer heroes' fights; computer seats control them in yours. A one-seat game keeps the Neutral AI."
                   : "Off by default. The Neutral AI plays the guards by the rulebook (same-tier priority, nearest target); the fighting player only breaks its ties."}
               </small>
@@ -11185,12 +11412,15 @@ function GameOptionsPanel({
                     <button
                       aria-pressed={mustAttackOn === on}
                       className={mustAttackOn === on ? "selected" : ""}
+                      disabled={coopTable}
                       key={String(on)}
                       onClick={() => send({ pvpNeutralControlMustAttack: on })}
                       title={
-                        on
-                          ? "Guards must attack when they can — no defending or stalling"
-                          : "Guards play with no constraint, exactly like the player's own units"
+                        coopTable
+                          ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                          : on
+                            ? "Guards must attack when they can — no defending or stalling"
+                            : "Guards play with no constraint, exactly like the player's own units"
                       }
                       type="button"
                     >
@@ -11199,7 +11429,9 @@ function GameOptionsPanel({
                   ))}
                 </div>
                 <small className="optionHint">
-                  {mustAttackOn
+                  {coopTable
+                    ? COOP_NEUTRAL_CONTROL_DISABLED_REASON
+                    : mustAttackOn
                     ? "Rulebook spirit: a guard that can reach an enemy must attack it (pick which), may not Defend, and may only step closer when no attack is reachable — no buying time until the round limit."
                     : "No constraint: the controlling player moves, defends, attacks or holds each guard entirely freely, exactly like their own units in PvP."}
                 </small>
@@ -12461,28 +12693,31 @@ function DraftFlowPanel({ state, viewerPlayerId, onAction, onInspect }: DraftFlo
 }
 
 /**
- * Single-player only: the human owner's per-opponent faction/hero picker. Each
- * COMPUTER seat gets a block showing its current pick (faction crest colour +
- * hero portrait + names) or a "Random at start" badge, plus controls to
- * hand-pick a town & hero (reusing FactionPickGrid — no second grid), roll a
- * random one now, or clear back to auto. Hidden outside single-player, for a
- * non-human viewer, and in any non-"open" format (the draft/random flows own the
- * picks there). Every button dispatches SET_COMPUTER_SEAT_FACTION, so the engine
- * validates and shares the result (a bot never re-picks a seat already set).
+ * The per-opponent faction/hero picker for every COMPUTER seat. Each seat gets a
+ * block showing its current pick (faction crest colour + hero portrait + names)
+ * or a "Random at start" badge, plus controls to hand-pick a town & hero
+ * (reusing FactionPickGrid — no second grid), roll a random one now, or clear
+ * back to auto. Hidden for a computer viewer and in any non-"open" format (the
+ * draft/random flows own the picks there). Every button dispatches
+ * SET_COMPUTER_SEAT_FACTION, so the engine validates and shares the result (a
+ * bot never re-picks a seat already set).
+ *
+ * CO-OP (step 6): also rendered on a MULTIPLAYER setup lobby, where any seated
+ * human may set up the table's computer enemies — the same legality class the
+ * engine gives `SET_COMPUTER_SEAT_FACTION` there. Only the heading wording
+ * differs; single-player renders exactly as before (CONTROL-pinned). The viewer
+ * test goes through `isComputerPlayer`, NOT a raw `controllers[...]` read: a
+ * multiplayer HUMAN seat deliberately carries no controller entry at all.
  */
 function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }: DraftFlowProps) {
   const [openSeatId, setOpenSeatId] = useState<PlayerId | null>(null);
   const lobby = state.setupLobby;
   const format = lobby?.draft?.format ?? "open";
-  if (
-    !lobby ||
-    state.sessionMode !== "single-player" ||
-    state.controllers?.[viewerPlayerId]?.kind !== "human" ||
-    format !== "open"
-  ) {
+  if (!lobby || isComputerPlayer(state, viewerPlayerId) || format !== "open") {
     return null;
   }
-  const computerSeats = lobby.seats.filter((seat) => state.controllers?.[seat.playerId]?.kind === "computer");
+  const singlePlayer = state.sessionMode === "single-player";
+  const computerSeats = lobby.seats.filter((seat) => isComputerPlayer(state, seat.playerId));
   if (computerSeats.length === 0) {
     return null;
   }
@@ -12500,7 +12735,7 @@ function ComputerOpponentPickers({ state, viewerPlayerId, onAction, onInspect }:
   return (
     <section className="computerSeatPickers" aria-label="Computer opponents setup">
       <div className="draftPhaseHead">
-        <strong>Your computer opponents</strong>
+        <strong>{singlePlayer ? "Your computer opponents" : "The table’s computer enemies"}</strong>
         <small>Hand-pick each one’s town &amp; hero, roll one at random, or leave it on auto (picked at game start).</small>
       </div>
       {computerSeats.map((seat) => {
@@ -12786,6 +13021,7 @@ function GameModeModal({
       label="Game mode"
       onClose={onClose}
     >
+      <TableModeSection onAction={onAction} state={state} viewerPlayerId={viewerPlayerId} />
       <GameModeSection
         customHint="Personal custom setup: save the current map & rules to a file below, or load one of your setting files."
         customNotice="Custom mode selected: save the current setup to a file, or load a setting file, below."

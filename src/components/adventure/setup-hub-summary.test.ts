@@ -5,7 +5,14 @@
  * derivation lied (e.g. a map-owned change must NOT read as "Customized").
  */
 import { describe, expect, it } from "vitest";
-import { createAdventureLobbyState, DEFAULT_WOG_OPTIONS, HOUSE_RULES, scenarioDefinitions } from "@/engine";
+import {
+  applyAction,
+  createAdventureLobbyState,
+  DEFAULT_ANIME_OPTIONS,
+  DEFAULT_WOG_OPTIONS,
+  HOUSE_RULES,
+  scenarioDefinitions
+} from "@/engine";
 import type { GameSetupOptions } from "@/engine";
 import {
   advancedSettingsChanged,
@@ -15,7 +22,10 @@ import {
   heroesSummary,
   mapSummary,
   MODE_PRESET_PAYLOADS,
-  setupHubNavItems
+  raidBossModuleEnabled,
+  setupHubNavItems,
+  tableGameMode,
+  tableModeAvailability
 } from "./setup-hub-summary";
 
 /**
@@ -136,7 +146,7 @@ describe("heroesSummary / mapSummary", () => {
     expect(picked?.picked).toBe(1);
   });
 
-  it("counts computer seats in single-player only", () => {
+  it("counts computer seats from the CONTROLLERS, in either session mode", () => {
     const sp = createAdventureLobbyState({
       seed: "hub-summary-sp",
       scenarioId: "skirmish",
@@ -144,7 +154,12 @@ describe("heroesSummary / mapSummary", () => {
       computerOpponents: 2
     });
     expect(heroesSummary(sp, "p1")?.computers).toBe(2);
-    // CONTROL: a multiplayer lobby reports no computers.
+    // CO-OP (step 6): a MULTIPLAYER lobby may hold computer enemies too, and
+    // the Heroes box must count them (it was session-gated to 0 before).
+    let mpWithAi = createAdventureLobbyState({ seed: "hub-summary-mp-ai", scenarioId: "skirmish" });
+    mpWithAi = applyAction(mpWithAi, { type: "SET_COMPUTER_OPPONENTS", playerId: "p1", count: 2 }).state;
+    expect(heroesSummary(mpWithAi, "p1")?.computers).toBe(2);
+    // CONTROL: an ALL-HUMAN multiplayer lobby still reports none.
     const mp = createAdventureLobbyState({ seed: "hub-summary-mp", scenarioId: "skirmish", playerCount: 3 });
     expect(heroesSummary(mp, "p1")?.computers).toBe(0);
   });
@@ -240,5 +255,90 @@ describe("setupHubNavItems", () => {
     expect(byId.mode.detail).toBeUndefined();
     expect(byId.heroes.value).toBe("no town yet");
     expect(byId.advanced.value).toBe("Default");
+  });
+});
+
+/**
+ * CO-OP (step 6) — the table-mode axis, which is separate from the four rule
+ * presets above. Every case carries a clash / absent-field CONTROL, because
+ * "absent means clash and nothing changes" is the whole compatibility promise.
+ */
+describe("tableGameMode / tableModeAvailability / raidBossModuleEnabled", () => {
+  it("an ABSENT gameMode reads as clash; only the literal 'coop' reads as co-op", () => {
+    const options = freshOptions();
+    expect(options.gameMode, "a fresh lobby writes no gameMode at all").toBeUndefined();
+    expect(tableGameMode(options)).toBe("clash");
+    expect(tableGameMode({ ...options, gameMode: "clash" })).toBe("clash");
+    expect(tableGameMode({ ...options, gameMode: "coop" })).toBe("coop");
+  });
+
+  it("a map declaring one supported mode disables the other, with the reason", () => {
+    const options = freshOptions();
+    // CONTROL: no preset at all — every existing map stays playable both ways.
+    const both = tableModeAvailability(options);
+    expect(both.clash.allowed).toBe(true);
+    expect(both.coop.allowed).toBe(true);
+    expect(both.clash.reason).toBeUndefined();
+    expect(both.coop.reason).toBeUndefined();
+
+    const coopOnly = tableModeAvailability({
+      ...options,
+      customMapPreset: { supportedModes: { clash: false, coop: true } }
+    });
+    expect(coopOnly.clash.allowed).toBe(false);
+    expect(coopOnly.clash.reason).toContain("Co-op only");
+    expect(coopOnly.coop.allowed).toBe(true);
+
+    const clashOnly = tableModeAvailability({
+      ...options,
+      customMapPreset: { supportedModes: { clash: true, coop: false } }
+    });
+    expect(clashOnly.coop.allowed).toBe(false);
+    expect(clashOnly.coop.reason).toContain("Clash only");
+    expect(clashOnly.clash.allowed).toBe(true);
+
+    // A hand-edited record supporting NOTHING would be unplayable, so the
+    // engine's `mapSupportedModes` reads it as both — and so must the UI.
+    const neither = tableModeAvailability({
+      ...options,
+      customMapPreset: { supportedModes: { clash: false, coop: false } }
+    });
+    expect(neither.clash.allowed).toBe(true);
+    expect(neither.coop.allowed).toBe(true);
+  });
+
+  it("raidBossModuleEnabled needs the MOD enabled as well as the module (four combinations)", () => {
+    const options = freshOptions();
+    expect(raidBossModuleEnabled(options)).toBe(false);
+    expect(
+      raidBossModuleEnabled({ ...options, wog: { ...DEFAULT_WOG_OPTIONS, enabled: false, raidBosses: true } })
+    ).toBe(false);
+    expect(
+      raidBossModuleEnabled({ ...options, wog: { ...DEFAULT_WOG_OPTIONS, enabled: true, raidBosses: false } })
+    ).toBe(false);
+    expect(
+      raidBossModuleEnabled({ ...options, wog: { ...DEFAULT_WOG_OPTIONS, enabled: true, raidBosses: true } })
+    ).toBe(true);
+    // The anime surface is the second road to the same module.
+    const anime = { ...DEFAULT_ANIME_OPTIONS, raidBosses: true };
+    expect(raidBossModuleEnabled({ ...options, anime: { ...anime, enabled: true } })).toBe(true);
+    expect(raidBossModuleEnabled({ ...options, anime: { ...anime, enabled: false } })).toBe(false);
+  });
+
+  it("the summary rail names CO-OP on the Game-mode chip — and stays silent on clash", () => {
+    const coop = createAdventureLobbyState({ seed: "hub-nav-coop" });
+    coop.setupLobby!.options.gameMode = "coop";
+    const coopMode = setupHubNavItems(coop, "p1").find((item) => item.id === "mode")!;
+    expect(coopMode.detail).toBe("Co-op");
+
+    // With a mod on it joins that line rather than replacing it.
+    coop.setupLobby!.options.wog = { ...DEFAULT_WOG_OPTIONS, enabled: true };
+    expect(setupHubNavItems(coop, "p1").find((item) => item.id === "mode")!.detail).toBe("Co-op · Mods: WOG");
+
+    // CONTROL: an explicit CLASH table is byte-identical to the absent default
+    // — clash has always been every table, so naming it would be pure noise.
+    const clash = createAdventureLobbyState({ seed: "hub-nav-clash" });
+    clash.setupLobby!.options.gameMode = "clash";
+    expect(setupHubNavItems(clash, "p1").find((item) => item.id === "mode")!.detail).toBeUndefined();
   });
 });

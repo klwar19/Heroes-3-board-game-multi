@@ -2,7 +2,13 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoomPanel } from "./room-panel";
-import { applyAction, createAdventureGameState, type GameAction, type GameState } from "@/engine";
+import {
+  applyAction,
+  createAdventureGameState,
+  createAdventureLobbyState,
+  type GameAction,
+  type GameState
+} from "@/engine";
 import type { PresenceEntry } from "@/lib/lobby-presence-client";
 
 // The panel polls live presence to decide when the host is gone. Default: no
@@ -330,5 +336,103 @@ describe("RoomPanel — host recovery when the host is gone", () => {
     expect(screen.queryByRole("button", { name: /Take over host/i })).toBeNull();
     // A non-host member with a present host also gets no Close button.
     expect(screen.queryByRole("button", { name: /Close room/i })).toBeNull();
+  });
+});
+
+/**
+ * CO-OP (step 6) — the room roster's honest surfaces. A COMPUTER seat holds no
+ * room member, so it never gets a roster row, but it IS in `turnOrder` and so
+ * appeared in both seat dropdowns as a nameless option `assignSeat` then
+ * refused. Both claims derive from `state.controllers`, never from a name.
+ */
+describe("RoomPanel — computer seats and the co-op ranked note", () => {
+  /** A hosted 3-seat game whose third seat (p3) is computer-controlled. */
+  function withComputerSeat(): GameState {
+    let state = createAdventureGameState({
+      seed: "room-panel-computer",
+      difficulty: "normal",
+      rollFirstPlayer: false,
+      scenarioId: "skirmish",
+      players: [
+        { id: "p1", name: "Player 1", factionId: "castle", heroDefId: "catherine" },
+        { id: "p2", name: "Player 2", factionId: "rampart", heroDefId: "mephala" },
+        { id: "p3", name: "Computer 1", factionId: "necropolis", heroDefId: "sandro" }
+      ],
+      controllers: { p3: { kind: "computer", difficulty: "standard", policyVersion: 1 } }
+    });
+    for (const [clientId, name] of [
+      ["c1", "Alice"],
+      ["c2", "Bob"],
+      ["c3", "Cara"]
+    ] as const) {
+      state = applyAction(state, { type: "JOIN_ROOM", clientId, name }).state;
+    }
+    state = applyAction(state, { type: "SET_ROOM_HOSTED", clientId: "c1", hosted: true }).state;
+    state = applyAction(state, { type: "ASSIGN_SEAT", clientId: "c1", targetClientId: "c2", seat: "p1" }).state;
+    return state;
+  }
+
+  it("labels a computer seat '(Computer)' and DISABLES it in the host's seat dropdown", () => {
+    const state = withComputerSeat();
+    expect(state.controllers?.p3, "the fixture must really hold a computer seat").toMatchObject({
+      kind: "computer"
+    });
+    renderPanel(state, "c1");
+
+    const select = screen.getByLabelText("Seat for Bob") as HTMLSelectElement;
+    const computer = Array.from(select.options).find((option) => option.value === "p3")!;
+    expect(computer.textContent).toContain("(Computer)");
+    expect(computer.disabled).toBe(true);
+    // CONTROL: a human seat in the SAME dropdown is neither labelled nor disabled.
+    const human = Array.from(select.options).find((option) => option.value === "p2")!;
+    expect(human.textContent).not.toContain("(Computer)");
+    expect(human.disabled).toBe(false);
+  });
+
+  it("does the same in a NON-host member's own self-seating dropdown", () => {
+    const state = withComputerSeat();
+    renderPanel(state, "c3");
+    const select = screen.getByLabelText("Your seat") as HTMLSelectElement;
+    const computer = Array.from(select.options).find((option) => option.value === "p3")!;
+    expect(computer.disabled).toBe(true);
+    expect(computer.textContent).toContain("(Computer)");
+  });
+
+  it("CONTROL: an all-human room has no '(Computer)' option anywhere", () => {
+    renderPanel(hostedState(), "c1");
+    const select = screen.getByLabelText("Seat for Bob") as HTMLSelectElement;
+    for (const option of Array.from(select.options)) {
+      expect(option.textContent).not.toContain("(Computer)");
+      expect(option.disabled).toBe(false);
+    }
+  });
+
+  it("says a co-op table is UNRANKED (clash CONTROL: no note)", () => {
+    const state = hostedState();
+    state.gameMode = "coop";
+    // The room's own ranked flag is a create-time leftover; the note is honest
+    // regardless of it, because `detectFinishedMatch` nulls a co-op game out.
+    state.room!.ranked = true;
+    renderPanel(state, "c1");
+    expect(screen.getByText(/Unranked: this table never counts toward MMR/i)).toBeTruthy();
+
+    cleanup();
+    const clash = hostedState();
+    clash.room!.ranked = true;
+    renderPanel(clash, "c1");
+    expect(screen.queryByText(/Unranked: this table never counts toward MMR/i)).toBeNull();
+  });
+
+  it("reads the mode off the SETUP LOBBY too, before the game is built", () => {
+    let state = createAdventureLobbyState({ seed: "room-panel-coop-lobby", scenarioId: "skirmish" });
+    state = applyAction(state, { type: "JOIN_ROOM", clientId: "c1", name: "Alice" }).state;
+    state = applyAction(state, {
+      type: "SET_GAME_OPTIONS",
+      playerId: "p1",
+      options: { gameMode: "coop" }
+    }).state;
+    expect(state.gameMode, "a lobby has not frozen the mode yet").toBeUndefined();
+    renderPanel(state, "c1");
+    expect(screen.getByText(/Unranked: this table never counts toward MMR/i)).toBeTruthy();
   });
 });

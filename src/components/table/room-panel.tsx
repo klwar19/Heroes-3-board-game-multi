@@ -21,6 +21,7 @@ import {
   AFK_IDLE_MS,
   getSeatIdentity,
   idleMillis,
+  isComputerPlayer,
   NEUTRAL_PLAYER_ID,
   roomDisplayName,
   seatPickSummary,
@@ -101,7 +102,19 @@ export function RoomPanel({
   // derived below once `liveInThisRoom` is built.
 
   const seatIds = state.turnOrder.filter((id) => id !== NEUTRAL_PLAYER_ID);
-  const seatLabel = (seat: RoomSeat) => (seat === "observer" ? "Observer" : state.players[seat]?.name ?? seat);
+  // CO-OP (step 6): a COMPUTER seat holds no room member, but it is still in
+  // `turnOrder`, so it appeared in both seat dropdowns as a nameless assignable
+  // option the engine then refused (`assignSeat` never seats a computer). Label
+  // it and disable the option — derived from `state.controllers` through
+  // `isComputerPlayer`, never from the seat's name.
+  const seatIsComputer = (seat: RoomSeat) => seat !== "observer" && isComputerPlayer(state, seat);
+  const seatLabel = (seat: RoomSeat) =>
+    seat === "observer"
+      ? "Observer"
+      : `${state.players[seat]?.name ?? seat}${seatIsComputer(seat) ? " (Computer)" : ""}`;
+  // The mode is frozen on a STARTED game; while the lobby is open it lives on
+  // the setup options (absent = clash in both places).
+  const coopTable = state.gameMode === "coop" || state.setupLobby?.options.gameMode === "coop";
 
   const inviteLink =
     typeof window === "undefined"
@@ -473,6 +486,16 @@ export function RoomPanel({
             )}
           </div>
 
+          {/* CO-OP (step 6): a co-op game is NEVER match-reported (step 4 nulls
+              it at `detectFinishedMatch` whatever `room.ranked` says), so this
+              is the honest ranked surface — the room's own Ranked flag is a
+              cosmetic leftover of the create-time choice at /play. */}
+          {coopTable ? (
+            <div className="roomModeNote">
+              Co-op — humans vs the computer enemies. Unranked: this table never counts toward MMR.
+            </div>
+          ) : null}
+
           <p className="roomRosterStatus" aria-live="polite">
             {gameInProgress ? "Game on" : "Setting up"}
             {" · "}
@@ -589,7 +612,7 @@ export function RoomPanel({
                     >
                       <option value="observer">Observer</option>
                       {seatIds.map((seatId) => (
-                        <option key={seatId} value={seatId}>
+                        <option disabled={seatIsComputer(seatId)} key={seatId} value={seatId}>
                           {seatLabel(seatId)}
                         </option>
                       ))}
@@ -619,7 +642,7 @@ export function RoomPanel({
                             !members.some((other) => other.clientId !== member.clientId && other.seat === seatId)
                         )
                         .map((seatId) => (
-                          <option key={seatId} value={seatId}>
+                          <option disabled={seatIsComputer(seatId)} key={seatId} value={seatId}>
                             {seatLabel(seatId)}
                           </option>
                         ))}

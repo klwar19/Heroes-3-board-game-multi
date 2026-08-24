@@ -551,6 +551,33 @@ button {
   white-space: nowrap;
 }
 
+/* Co-op (step 6): who is at this seat — a computer, or a human on your side.
+   Two tiny chips reusing the seat plate's own type scale; no new system. */
+.seatControllerTag,
+.seatAllyTag {
+  border: 1px solid rgba(176, 141, 47, 0.5);
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.seatControllerTag {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.seatAllyTag {
+  align-self: flex-start;
+  background: rgba(96, 176, 112, 0.16);
+  border-color: rgba(96, 176, 112, 0.55);
+  color: #8fd6a2;
+}
+
 .seatMetrics {
   display: flex;
   flex-wrap: wrap;

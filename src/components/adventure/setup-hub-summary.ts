@@ -8,12 +8,14 @@ import {
   DRAFT_FORMAT_LABELS,
   HOUSE_RULES,
   defaultGameSetupOptions,
+  mapSupportedModes,
   resolveHouseRules,
   scenarioDefinitions,
   tournamentRulesAllOn,
   type GameSetupOptions,
   type GameState,
-  type PlayerId
+  type PlayerId,
+  type TableGameMode
 } from "@/engine";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
 import { DEFAULT_SETUP_STARTING_BUILDINGS } from "@/data/map/scenarios";
@@ -70,6 +72,64 @@ export function designedMapBlockers(tileCount: number, planProblems: string[]): 
   return tileCount === 0
     ? ["This map has no tiles — open it in the map designer and place some.", ...planProblems]
     : planProblems;
+}
+
+/**
+ * CO-OP (step 6) — the TABLE mode, a separate axis from the four rule presets
+ * above. ABSENT means clash everywhere in the engine, so this collapses the
+ * missing field once and every surface reads it instead of re-testing
+ * `=== "coop"`.
+ */
+export function tableGameMode(options: GameSetupOptions): TableGameMode {
+  return options.gameMode === "coop" ? "coop" : "clash";
+}
+
+export const TABLE_MODE_LABELS: Record<TableGameMode, string> = {
+  clash: "Clash — free-for-all",
+  coop: "Co-op — humans vs computers"
+};
+
+export const TABLE_MODE_BLURBS: Record<TableGameMode, string> = {
+  clash: "Every seat plays for itself. Computer enemies may still be added.",
+  coop: "All human players are one alliance against the computer enemies. Unranked."
+};
+
+/**
+ * Whether each table mode may be picked here, and the reason when it may not.
+ * The ONLY rule is the picked map's declared support, read through the ENGINE's
+ * own `mapSupportedModes` — the same predicate `startAdventureFromLobby` uses to
+ * REFUSE the start — so the buttons can never offer a mode the start check will
+ * then reject. A map that declares nothing (every built-in scenario, every
+ * legacy designed map) allows both.
+ */
+export function tableModeAvailability(
+  options: GameSetupOptions
+): Record<TableGameMode, { allowed: boolean; reason?: string }> {
+  const modes = mapSupportedModes(options.customMapPreset);
+  return {
+    clash: {
+      allowed: modes.clash,
+      reason: modes.clash ? undefined : "This map is designed for Co-op only."
+    },
+    coop: {
+      allowed: modes.coop,
+      reason: modes.coop ? undefined : "This map is designed for Clash only."
+    }
+  };
+}
+
+/**
+ * Whether a Raid Bosses module is on — the UI MIRROR of `raidBossesOn` in
+ * `createAdventureGameState`, which drops a `slay-raid-boss` win condition (with
+ * a public feed line) when this is false. Kept here rather than imported so this
+ * UI step touches no engine file; if the engine read ever changes, this must
+ * move with it (pinned by the four-combination case in setup-hub-summary.test.ts).
+ */
+export function raidBossModuleEnabled(options: GameSetupOptions): boolean {
+  return (
+    Boolean(options.wog?.enabled && options.wog?.raidBosses) ||
+    Boolean(options.anime?.enabled && options.anime?.raidBosses)
+  );
 }
 
 /** Which big mode card is highlighted from the current options. */
@@ -276,7 +336,12 @@ export type HeroesBoxSummary = {
   yourPick: string | null;
   picked: number;
   seats: number;
-  /** Computer seats (single-player); 0 elsewhere. */
+  /**
+   * Computer seats at this table. CO-OP (step 6): controller-driven, NOT
+   * session-gated — a multiplayer lobby may hold computer enemies too, and the
+   * Heroes box has to count them or it under-reports the seats. An all-human
+   * table still reports 0 (CONTROL-pinned).
+   */
   computers: number;
 };
 
@@ -295,10 +360,7 @@ export function heroesSummary(state: GameState, viewerPlayerId: PlayerId): Heroe
     yourPick,
     picked: lobby.seats.filter((seat) => seat.factionId && seat.heroDefId).length,
     seats: lobby.seats.length,
-    computers:
-      state.sessionMode === "single-player"
-        ? lobby.seats.filter((seat) => state.controllers?.[seat.playerId]?.kind === "computer").length
-        : 0
+    computers: lobby.seats.filter((seat) => state.controllers?.[seat.playerId]?.kind === "computer").length
   };
 }
 
@@ -334,12 +396,20 @@ export function setupHubNavItems(state: GameState, viewerPlayerId: PlayerId): Se
   const mods = [options.wog?.enabled ? "WOG" : null, options.anime?.enabled ? "Anime" : null].filter(Boolean);
   const heroes = heroesSummary(state, viewerPlayerId);
   const map = mapSummary(state);
+  // CO-OP (step 6): the table mode joins the Game-mode chip's second line only
+  // when it is CO-OP. Clash is the absent default — every table has always been
+  // one — so naming it would add a line to every lobby that ever existed; the
+  // Game-mode window itself always shows both buttons.
+  const modeDetail = [
+    tableGameMode(options) === "coop" ? "Co-op" : null,
+    mods.length ? `Mods: ${mods.join(" + ")}` : null
+  ].filter(Boolean);
   return [
     {
       id: "mode",
       title: SETUP_HUB_BOX_TITLES.mode,
       value: SETUP_HUB_MODE_NAMES[deriveActiveSetupMode(options)],
-      detail: mods.length ? `Mods: ${mods.join(" + ")}` : undefined
+      detail: modeDetail.length ? modeDetail.join(" · ") : undefined
     },
     {
       id: "heroes",

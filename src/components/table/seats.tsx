@@ -17,6 +17,8 @@ import {
   getSeatIdentity,
   isBulwarkPlayer,
   isCastASpellCard,
+  isComputerPlayer,
+  playersAreAllied,
   playerSpellCastsIgnoreLimit,
   polishSpellBookEnabled,
   houseRuleEnabled,
@@ -1237,13 +1239,20 @@ export function RuneTrack({
  * dot. On an open/solo table with no room member the seat label already encodes
  * "Hero (Town)", so the redundant hero·town line is dropped. Used by both the
  * opponent bar and the viewer's own dock so every seat is introduced the same way.
+ *
+ * CO-OP (step 6): a computer-controlled seat wears a "Computer" tag. It is
+ * derived from `state.controllers` through `isComputerPlayer` — NEVER from the
+ * seat's NAME (the single-player plan's rule: control is persisted state, and a
+ * human may be called "Computer 1").
  */
 export function SeatNameplate({ state, playerId }: { state: GameState; playerId: PlayerId }) {
   const identity = getSeatIdentity(state, playerId);
+  const computer = isComputerPlayer(state, playerId);
   const person = identity.personName;
   const summary = seatPickSummary(identity);
   const primary = person ?? identity.seatName;
-  const title = summary ? `${primary} — ${summary}` : primary;
+  const baseTitle = summary ? `${primary} — ${summary}` : primary;
+  const title = computer ? `${baseTitle} — computer-controlled` : baseTitle;
   // A verified account's nickname opens their public profile in a new tab.
   const primaryNode =
     identity.verified && person ? (
@@ -1267,6 +1276,7 @@ export function SeatNameplate({ state, playerId }: { state: GameState; playerId:
         <strong>
           {primaryNode}
           {identity.role === "host" ? <Crown aria-hidden="true" size={11} className="seatHostCrown" /> : null}
+          {computer ? <small className="seatControllerTag">Computer</small> : null}
         </strong>
         {person && summary ? <small className="seatPick">{summary}</small> : null}
       </span>
@@ -1300,10 +1310,21 @@ export function OpponentBar({
           (candidate) => candidate.controllerId === playerId && candidate.kind === "main"
         );
 
+        // CO-OP (step 6): tell an ALLY apart from a computer ENEMY at a glance.
+        // Gated on the frozen co-op mode so a single-player table's
+        // "solo-computers" alliance (which is between the COMPUTERS, not with
+        // the viewer) never paints an Ally tag, and clash is byte-identical.
+        const ally = state.gameMode === "coop" && playersAreAllied(state, viewerPlayerId, playerId);
+
         return (
           <section className="opponentSeat" key={playerId} aria-label={`${player.name} seat`}>
             <div className="seatBadge">
               <SeatNameplate state={state} playerId={playerId} />
+              {ally ? (
+                <span className="seatAllyTag" title="Your ally — you are on the same side in this Co-op game">
+                  Ally
+                </span>
+              ) : null}
               <span className="seatMetrics">
                 {hero ? (
                   <BattleMetric kind="level" label="Level" title={`${player.name}'s hero level`} value={hero.level} />
