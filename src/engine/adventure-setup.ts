@@ -1214,8 +1214,16 @@ export function validateCustomMapPlan(
   plans: CustomMapTilePlan[],
   scenario: ScenarioDefinition,
   activeSeatCount = scenario.layout.unusedStartsAsNearFrom ?? scenario.layout.starts.length
-): { accepted: CustomMapTilePlan[]; problems: string[] } {
+): { accepted: CustomMapTilePlan[]; problems: string[]; warnings: string[] } {
   const problems: string[] = [];
+  // Non-fatal notes: the design is playable, but something was adjusted. A
+  // designer Subterranean Gate LINK that cannot resolve (its partner Surface tile
+  // is not placed at the current player count, or the two tiles do not touch) is a
+  // WARNING, not a problem — a gate connects two TILES, so at a player count where
+  // one side is absent the gate simply does not instantiate; the cavern tile still
+  // makes it into the game. (Previously these were problems, which read as "N tiles
+  // won't make it into the game" and blocked Play — the reported 4P-at-3P bug.)
+  const warnings: string[] = [];
   const accepted: CustomMapTilePlan[] = [];
   const validGroups = new Set(["starting", "far", "near", "center", "sea", "subterranean"]);
 
@@ -1417,19 +1425,19 @@ export function validateCustomMapPlan(
       const surfaceCenter = { row: link.surface.row, col: link.surface.col };
       const surfaceKey = `${surfaceCenter.row}:${surfaceCenter.col}`;
       if (!Number.isInteger(surfaceCenter.row) || !Number.isInteger(surfaceCenter.col) || !surfaceCenterKeys.has(surfaceKey)) {
-        problems.push(
-          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — no Surface tile is placed there.`
+        warnings.push(
+          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — no Surface tile is placed there (the gate is skipped at this player count).`
         );
         continue;
       }
       if (!tileFootprintsTouch(cavernCenter, surfaceCenter)) {
-        problems.push(
-          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — the tiles do not touch.`
+        warnings.push(
+          `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — the tiles do not touch (the gate is skipped).`
         );
         continue;
       }
       if (keptLinks.length >= MAX_DESIGNED_GATE_LINKS) {
-        problems.push(`Cavern at ${plan.row},${plan.col}: too many gate links (max ${MAX_DESIGNED_GATE_LINKS}).`);
+        warnings.push(`Cavern at ${plan.row},${plan.col}: too many gate links (max ${MAX_DESIGNED_GATE_LINKS}).`);
         continue;
       }
       const pinnedHexes = [link.gateHex, link.entranceHex].filter((hex): hex is MapSpaceId => Boolean(hex));
@@ -1438,8 +1446,8 @@ export function validateCustomMapPlan(
         //     (this cavern's or another's) would double-carve a board hex — drop it.
         const collision = pinnedHexes.find((hex) => claimedPinnedHexes.has(hex));
         if (collision) {
-          problems.push(
-            `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — its gate hex ${collision} collides with another gate.`
+          warnings.push(
+            `Cavern at ${plan.row},${plan.col}: gate link to ${link.surface.row},${link.surface.col} — its editor gate hex ${collision} overlaps another gate (position is chosen at play, so this is harmless).`
           );
           continue;
         }
@@ -1655,7 +1663,7 @@ export function validateCustomMapPlan(
     accepted[index] = next;
   }
 
-  return { accepted, problems };
+  return { accepted, problems, warnings };
 }
 
 /**
@@ -3957,6 +3965,16 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // tile instance ids by their placed centres; a `designed` plan bypasses
     // one-gate-per-tile so a cavern linked to several Surface tiles hosts one gate
     // per link. Links to a tile that never instantiated (a starved pool) drop out.
+    //
+    // A designed link connects two TILES, not two fixed FIELDS (USER RULE): the
+    // exact gate/entrance hex is chosen by the revealing player at play time
+    // through the pick-on-reveal chooser (`planGateChoiceForReveal`), so the
+    // editor-drawn `gateHex`/`entranceHex` are PURELY DECORATIVE and are NOT
+    // copied into the seeded plan. This is what makes a 4P map's caverns work
+    // whatever field the surface tile lands on — and lets each of several gates on
+    // one tile be positioned in turn. (A pinned hex directly seeded onto
+    // `adventure.gatePlans` — legacy / unit tests — is still honoured; only this
+    // setup-from-links path drops the pins.)
     const tileIdByCenter = new Map<string, string>();
     for (const tile of Object.values(adventure.tiles)) {
       tileIdByCenter.set(`${tile.centerRow}:${tile.centerCol}`, tile.id);
@@ -3984,8 +4002,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
           surfaceTileId: surfaceId,
           undergroundTileId: cavernId,
           designed: true,
-          ...(link.gateHex ? { gateHex: link.gateHex } : {}),
-          ...(link.entranceHex ? { entranceHex: link.entranceHex } : {}),
+          // Decorative editor position → NOT copied (see comment above); the
+          // player fixes the field on reveal. Guards stay: they belong to the gate.
           ...(gateGuard ? { gateGuard } : {}),
           ...(entranceGuard ? { entranceGuard } : {})
         });
@@ -4096,8 +4114,11 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
 
   // Carve the Subterranean Gate Tokens for any Surface/Subterranean tiles the
   // layout placed face-up next to each other (the rest are carved as tiles are
-  // discovered during play).
-  recomputeSubterraneanGates(adventure);
+  // discovered during play). `forceDesignedCarve`: a FACE-UP designer-linked tile
+  // never passes through the interactive reveal chooser, so its designed gate is
+  // carved here (nearest hex) rather than deferred and stranded; face-DOWN designed
+  // tiles carry no half yet and are positioned by the player when discovered.
+  recomputeSubterraneanGates(adventure, { forceDesignedCarve: true });
 
   // Far (II–III) tile supplies. The tiles are NOT decided here: each player gets
   // `farTilesPerPlayer` face-down UNOPENED markers, and a truly-random tile is

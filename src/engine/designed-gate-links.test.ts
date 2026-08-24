@@ -27,12 +27,15 @@ import { fieldLayer, gateFieldsLinked, instantiateTile, isFieldGuarded } from ".
 import type { AdventureState } from "./state";
 
 // ---------------------------------------------------------------------------
-// Designer-chosen Subterranean Gate links (map designer, map-scoped):
+// Designer-chosen Subterranean Gate links (map designer, map-scoped). USER RULE:
+// a gate connects two TILES, not two fixed FIELDS —
 //  - the designer connects a chosen underground tile to a chosen Surface tile,
 //    incl. ONE cavern to SEVERAL Surface tiles (bypassing one-gate-per-tile);
-//  - the gate pair carves at the designer's pinned hexes (else the nearest);
-//  - a fully-pinned designed link opens NO pick-on-reveal choice in play.
-// Every assertion diverges from the automatic-pairing default (the control).
+//  - the editor gate/entrance position is DECORATIVE: at play the exact field is
+//    chosen by the revealing player (pick-on-reveal), or carved at the automatic
+//    nearest hex for a tile that is face-up from setup (no chooser fires there);
+//  - a directly-seeded PINNED plan (legacy) still carves silently at its hex;
+//  - two links to the SAME tile pair collapse to ONE gate.
 // ---------------------------------------------------------------------------
 
 function adv(state: GameState): AdventureState {
@@ -158,11 +161,12 @@ function cavernNextToFarWithDisjointPairs(): { cavern: HexCoord; pairs: [HexPair
   throw new Error("no cavern next to FAR with two disjoint boundary pairs");
 }
 
-describe("designed gate links — pinned hexes carve where the designer chose", () => {
-  it("carves BOTH halves at the DESIGNED hexes (not the auto nearest) and a hero can cross", () => {
+describe("designed gate links — the editor position is DECORATIVE (gates connect tiles)", () => {
+  it("connects the two tiles and a hero can cross; the editor pin is NOT honoured (auto position wins) — CONTROL for the old pinned behaviour", () => {
     const cavern = cavernNextToFar();
 
-    // What the automatic pairing WOULD carve with no designed link (the control).
+    // The position the game ACTUALLY uses for these two tiles (the automatic
+    // nearest-hex pairing) — a face-up designer tile is carved here at setup.
     const autoGates = planSubterraneanGates([
       { row: TOWN.row, col: TOWN.col, group: "starting" },
       { row: FAR.row, col: FAR.col, group: "far" },
@@ -171,8 +175,10 @@ describe("designed gate links — pinned hexes carve where the designer chose", 
     expect(autoGates).toHaveLength(1);
     const autoGateHexId = hexSpaceId(autoGates[0].gateHex);
 
-    // Pick a legal boundary pair whose gate hex DIFFERS from the auto default, so
-    // the assertions below fail if the pin is ignored (the mutation check).
+    // A legal boundary pair whose gate hex DIFFERS from the auto default. USER RULE:
+    // the editor position is decorative, so pinning it must make NO difference — the
+    // gate still carves at the auto position (the mutation check: it fails if the
+    // old "carve at the pin" behaviour returns).
     const pinned = legalGateHexPairs(FAR, cavern).find((pair) => hexSpaceId(pair.gateHex) !== autoGateHexId);
     expect(pinned, "a non-default legal boundary pair exists").toBeTruthy();
     const pinnedGateId = hexSpaceId(pinned!.gateHex);
@@ -199,18 +205,18 @@ describe("designed gate links — pinned hexes carve where the designer chose", 
     const entrance = gateHalfTo(state, surfaceId); // cavern half → surface
     expect(gate, "surface gate carved").toBeDefined();
     expect(entrance, "cavern entrance carved").toBeDefined();
-    // The designer's hexes, NOT the automatic nearest hex.
-    expect(gate!.spaceId).toBe(pinnedGateId);
-    expect(entrance!.spaceId).toBe(pinnedEntranceId);
-    expect(gate!.spaceId).not.toBe(autoGateHexId);
+    // The AUTOMATIC position — NOT the decorative editor pin.
+    expect(gate!.spaceId).toBe(autoGateHexId);
+    expect(gate!.spaceId).not.toBe(pinnedGateId);
 
-    // The two halves are one Field and the divide is crossable both ways.
+    // What matters is that the two TILES are connected: the halves are one Field
+    // and the divide is crossable both ways.
     expect(gateFieldsLinked(gate, entrance)).toBe(true);
     expect(canCrossEdge(state, gate!.spaceId, entrance!.spaceId)).toBe(true);
     expect(canCrossEdge(state, entrance!.spaceId, gate!.spaceId)).toBe(true);
 
     // A hero standing on the surface gate reaches the underground ONLY via the
-    // designed crossing (the observable outcome).
+    // crossing (the observable outcome).
     const hero = state.heroes.hero_p1;
     hero.spaceId = gate!.spaceId;
     hero.movementPoints = 8;
@@ -303,10 +309,11 @@ describe("designed gate links — a scenario SEAT surface (no designer Town tile
     const entrance = gateHalfTo(state, surfaceId); // cavern half → seat
     expect(gate, "seat-surface gate carved").toBeDefined();
     expect(entrance, "cavern entrance carved").toBeDefined();
-    // The DESIGNER's pinned hexes, not the automatic nearest.
-    expect(gate!.spaceId).toBe(pinnedGateId);
-    expect(entrance!.spaceId).toBe(pinnedEntranceId);
-    expect(gate!.spaceId).not.toBe(autoGateHexId);
+    // A face-up seat never passes through the reveal chooser, so its designed gate
+    // is carved at setup — at the AUTOMATIC position, NOT the decorative editor pin.
+    expect(gate!.spaceId).toBe(autoGateHexId);
+    expect(gate!.spaceId).not.toBe(pinnedGateId);
+    void pinnedEntranceId;
 
     // One Field, crossable both ways — the seat truly opens onto the cavern.
     expect(gateFieldsLinked(gate, entrance)).toBe(true);
@@ -424,8 +431,8 @@ describe("designed gate links — one cavern to FIVE Surface tiles (over the old
   });
 });
 
-describe("designed gate links — the SAME Surface tile linked twice (several gates on one edge)", () => {
-  it("carves BOTH gates at distinct pinned pairs; CONTROL: two UNPINNED same-surface links merge to ONE", () => {
+describe("designed gate links — the SAME Surface tile linked twice collapses to ONE gate", () => {
+  it("two links to the same surface produce ONE gate (positions decorative); CONTROL: unpinned duplicates also collapse", () => {
     const { cavern, pairs } = cavernNextToFarWithDisjointPairs();
     const [first, second] = pairs;
     const base: CustomMapTilePlan[] = [
@@ -434,7 +441,9 @@ describe("designed gate links — the SAME Surface tile linked twice (several ga
     ];
     const cavernPlan = { row: cavern.row, col: cavern.col, group: "subterranean" as const, faceDown: false, tileDefId: "U1" };
 
-    // Designed: TWO pinned links to the SAME surface → two gate fields on the edge.
+    // USER RULE: a gate connects two TILES, so at most one gate per tile pair. Two
+    // links to the SAME surface — even at distinct editor positions — collapse to
+    // ONE gate (the old "two gates on one edge" behaviour is gone).
     const twoGateState = twoPlayerGame([
       ...base,
       {
@@ -449,22 +458,15 @@ describe("designed gate links — the SAME Surface tile linked twice (several ga
     const cavernId = tileIdAt(twoGateState, cavern);
     const surfaceGates = gatesOnTile(twoGateState, FAR);
     const cavernGates = gatesOnTile(twoGateState, cavern);
-    expect(surfaceGates, "two gate halves on the shared surface edge").toHaveLength(2);
-    expect(cavernGates, "two entrance halves on the cavern").toHaveLength(2);
-    // Both carve at exactly the designer's pinned hexes.
-    expect(new Set(surfaceGates.map((field) => field.spaceId))).toEqual(
-      new Set([hexSpaceId(first.gateHex), hexSpaceId(second.gateHex)])
-    );
-    // Each surface gate links to its own cavern entrance and is crossable.
-    for (const gate of surfaceGates) {
-      expect(gate.gateToTileId).toBe(cavernId);
-      const entrance = cavernGates.find((field) => field.spaceId === gate.gateLinkSpaceId);
-      expect(entrance, "each gate is linked to a distinct cavern entrance").toBeDefined();
-      expect(entrance!.gateToTileId).toBe(surfaceId);
-      expect(canCrossEdge(twoGateState, gate.spaceId, entrance!.spaceId)).toBe(true);
-    }
+    expect(surfaceGates, "one gate on the shared surface edge").toHaveLength(1);
+    expect(cavernGates, "one entrance on the cavern").toHaveLength(1);
+    // The one gate is a real, linked crossing between the two tiles.
+    expect(surfaceGates[0].gateToTileId).toBe(cavernId);
+    expect(cavernGates[0].gateToTileId).toBe(surfaceId);
+    expect(gateFieldsLinked(surfaceGates[0], cavernGates[0])).toBe(true);
+    expect(canCrossEdge(twoGateState, surfaceGates[0].spaceId, cavernGates[0].spaceId)).toBe(true);
 
-    // CONTROL: two UNPINNED links to the same surface are true duplicates → ONE gate.
+    // CONTROL: two UNPINNED links to the same surface also collapse to ONE gate.
     const mergedState = twoPlayerGame([
       ...base,
       {
@@ -481,7 +483,7 @@ describe("designed gate links — the SAME Surface tile linked twice (several ga
     const first = legalGateHexPairs(FAR, cavern)[0];
     const gateHex = hexSpaceId(first.gateHex);
     const entranceHex = hexSpaceId(first.entranceHex);
-    const { accepted, problems } = validateCustomMapPlan(
+    const { accepted, problems, warnings } = validateCustomMapPlan(
       [
         { row: FAR.row, col: FAR.col, group: "far", faceDown: false, tileDefId: "F1" },
         {
@@ -491,18 +493,21 @@ describe("designed gate links — the SAME Surface tile linked twice (several ga
           faceDown: false,
           tileDefId: "U1",
           gateLinks: [
-            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex }, // accepted
-            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex } // same pin → collides → dropped
+            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex }, // kept
+            { surface: { row: FAR.row, col: FAR.col }, gateHex, entranceHex } // same editor hex → overlap → dropped
           ]
         }
       ],
       scenario
     );
     const cav = accepted.find((plan) => plan.group === "subterranean");
-    expect(cav?.gateLinks, "the sibling still carves; the colliding one is dropped").toHaveLength(1);
+    expect(cav?.gateLinks, "the sibling still carves; the overlapping one is dropped").toHaveLength(1);
     expect(cav!.gateLinks![0].gateHex).toBe(gateHex);
-    expect(problems.some((message) => /collides with another gate/i.test(message))).toBe(true);
-    expect(problems.some((message) => message.includes(gateHex)), "the problem names the colliding hex").toBe(true);
+    // USER RULE: gate-link issues are non-fatal WARNINGS (the map still plays), never
+    // blocking problems — the editor position is decorative, so an overlap is harmless.
+    expect(problems, "no blocking problem").toHaveLength(0);
+    expect(warnings.some((message) => /overlaps another gate/i.test(message))).toBe(true);
+    expect(warnings.some((message) => message.includes(gateHex)), "the warning names the overlapping hex").toBe(true);
   });
 });
 
@@ -515,7 +520,7 @@ describe("designed gate links — validation", () => {
     expect(tileFootprintsTouch(cavernCenter, faraway)).toBe(false);
     const absent = { row: 40, col: 40 };
 
-    const { accepted, problems } = validateCustomMapPlan(
+    const { accepted, problems, warnings } = validateCustomMapPlan(
       [
         { row: touching.row, col: touching.col, group: "far", faceDown: false, tileDefId: "F1" },
         // A real Surface tile that is placed but does NOT touch the cavern.
@@ -541,9 +546,11 @@ describe("designed gate links — validation", () => {
     // Only the touching link survives.
     expect(cavern!.gateLinks).toHaveLength(1);
     expect(cavern!.gateLinks![0].surface).toEqual({ row: touching.row, col: touching.col });
-    // Both bad links reported.
-    expect(problems.some((message) => /do not touch/i.test(message))).toBe(true);
-    expect(problems.some((message) => /no Surface tile is placed/i.test(message))).toBe(true);
+    // USER RULE: both bad links are NON-FATAL WARNINGS (the cavern tile still makes
+    // it into the game), never blocking problems.
+    expect(problems, "no blocking problem").toHaveLength(0);
+    expect(warnings.some((message) => /do not touch/i.test(message))).toBe(true);
+    expect(warnings.some((message) => /no Surface tile is placed/i.test(message))).toBe(true);
   });
 });
 
@@ -658,7 +665,7 @@ describe("designed gate links — reveal opens NO pick-on-reveal choice", () => 
     expect(hexDistance(parseHexSpaceId(gate!.spaceId)!, parseHexSpaceId(entrance!.spaceId)!)).toBe(1);
   });
 
-  it("TWO same-surface pinned designed gates BOTH carve silently on reveal — neither opens a choice", () => {
+  it("TWO same-surface pinned designed gates collapse to ONE gate on reveal — no choice opens", () => {
     const state = makeChoiceGame();
     const surfaceCenter = { row: 24, col: 12 };
     const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
@@ -687,22 +694,116 @@ describe("designed gate links — reveal opens NO pick-on-reveal choice", () => 
     ];
 
     const revealed = revealTile(state, surface.id);
-    // Both pinned — neither opens the pick-on-reveal choice.
-    expect(gatePlacementChoice(revealed), "a fully-pinned pair of designed gates opens NO choice").toBe(false);
-    // Both gates carved on the surface, at exactly the two designed hexes.
+    // Both pinned — no pick-on-reveal choice opens.
+    expect(gatePlacementChoice(revealed), "a pinned designed gate opens NO choice").toBe(false);
+    // USER RULE: a gate connects two TILES, so two plans for the SAME pair collapse
+    // to ONE gate — at the FIRST plan's hex. (The second is a redundant duplicate.)
     const surfaceGates = getTileFootprintSpaceIds(surface)
       .map((id) => adv(revealed).fields[id])
       .filter((field): field is MapFieldState => field?.location === "subterranean_gate");
-    expect(surfaceGates, "both same-surface designed gates carved").toHaveLength(2);
-    expect(new Set(surfaceGates.map((field) => field.spaceId))).toEqual(
-      new Set([hexSpaceId(first.gateHex), hexSpaceId(second.gateHex)])
-    );
-    // Each is a real linked crossing to the cavern.
-    for (const gate of surfaceGates) {
-      expect(gate.gateToTileId).toBe(cavern.id);
-      const entrance = adv(revealed).fields[gate.gateLinkSpaceId ?? ""];
-      expect(entrance?.location).toBe("subterranean_gate");
-      expect(canCrossEdge(revealed, gate.spaceId, entrance!.spaceId)).toBe(true);
+    expect(surfaceGates, "same-pair duplicates collapse to one gate").toHaveLength(1);
+    expect(surfaceGates[0].spaceId).toBe(hexSpaceId(first.gateHex));
+    void second;
+    // It is a real linked crossing to the cavern.
+    const gate = surfaceGates[0];
+    expect(gate.gateToTileId).toBe(cavern.id);
+    const entrance = adv(revealed).fields[gate.gateLinkSpaceId ?? ""];
+    expect(entrance?.location).toBe("subterranean_gate");
+    expect(canCrossEdge(revealed, gate.spaceId, entrance!.spaceId)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// USER RULE — a designer gate is POSITIONED AT PLAY: when a linked tile is
+// discovered face-down, the revealing player fixes the gate field (pick-on-reveal),
+// and a tile linked to SEVERAL tiles fixes EACH gate in turn (goal 7). These are
+// the tests that fail if the play-time positioning / draining is removed.
+// ---------------------------------------------------------------------------
+
+function resolveGateChoice(state: GameState, optionIndex: number, playerId = "p1"): GameState {
+  const choice = state.pendingChoice;
+  if (!choice || choice.type !== "OPTION_CHOICE" || choice.context !== "subterranean-gate-placement") {
+    throw new Error("no gate placement choice open");
+  }
+  const result = applyAction(state, { type: "CHOOSE_OPTION", playerId, choiceId: choice.id, optionIndex });
+  expect(result.errors, "resolving the gate choice is legal").toHaveLength(0);
+  return result.state;
+}
+
+describe("designed gate links — positioned at PLAY, each gate in turn", () => {
+  it("a designed link discovered FACE-DOWN opens the pick-on-reveal choice; CONTROL: chooser off → auto-carve, no prompt", () => {
+    const surfaceCenter = { row: 24, col: 12 };
+    const cavernCenter = tileLatticeNeighbors(surfaceCenter)[0];
+    expect(legalGateHexPairs(cavernCenter, surfaceCenter).length, "≥2 boundary positions").toBeGreaterThanOrEqual(2);
+
+    // Surface face-up, cavern face-down: revealing the cavern lets the player fix
+    // the entrance field. The link is UNPINNED (positions decorative).
+    const state = makeChoiceGame();
+    const surface = instantiateTile(adv(state), "F1", surfaceCenter, 0, false); // face-up
+    setAllEmpty(state, surface);
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true); // face-down
+    adv(state).gatePlans = [{ surfaceTileId: surface.id, undergroundTileId: cavern.id, designed: true }];
+
+    const revealed = revealTile(state, cavern.id);
+    expect(gatePlacementChoice(revealed), "the player is asked where the gate goes").toBe(true);
+    const placed = resolveGateChoice(revealed, 0);
+    expect(gatePlacementChoice(placed), "no further prompt after the single gate").toBe(false);
+    const entrance = gateHalfTo(placed, surface.id); // cavern half → surface
+    const gate = gateHalfTo(placed, cavern.id); // surface half → cavern
+    expect(entrance, "entrance carved at the chosen field").toBeDefined();
+    expect(gate, "surface gate completed").toBeDefined();
+    expect(gateFieldsLinked(gate, entrance)).toBe(true);
+    expect(canCrossEdge(placed, entrance!.spaceId, gate!.spaceId)).toBe(true);
+
+    // CONTROL: with the chooser OFF the same link auto-carves at the nearest hex
+    // with NO prompt (the deterministic path).
+    const controlState = makeChoiceGame();
+    const cSurface = instantiateTile(adv(controlState), "F1", surfaceCenter, 0, false);
+    setAllEmpty(controlState, cSurface);
+    const cCavern = instantiateTile(adv(controlState), "U1", cavernCenter, 0, true);
+    adv(controlState).chooseGatePlacement = false;
+    adv(controlState).gatePlans = [{ surfaceTileId: cSurface.id, undergroundTileId: cCavern.id, designed: true }];
+    const cRevealed = revealTile(controlState, cCavern.id);
+    expect(gatePlacementChoice(cRevealed), "chooser off → no prompt").toBe(false);
+    expect(gateHalfTo(cRevealed, cSurface.id), "auto-carved entrance").toBeDefined();
+  });
+
+  it("a cavern linked to TWO surfaces positions EACH gate in turn (goal 7)", () => {
+    const cavernCenter = { row: 24, col: 12 };
+    const [surfA, surfB] = tileLatticeNeighbors(cavernCenter);
+    expect(legalGateHexPairs(cavernCenter, surfA).length).toBeGreaterThanOrEqual(2);
+    expect(legalGateHexPairs(cavernCenter, surfB).length).toBeGreaterThanOrEqual(2);
+
+    const state = makeChoiceGame();
+    const sa = instantiateTile(adv(state), "F1", surfA, 0, false); // face-up
+    const sb = instantiateTile(adv(state), "F2", surfB, 0, false); // face-up
+    setAllEmpty(state, sa);
+    setAllEmpty(state, sb);
+    const cavern = instantiateTile(adv(state), "U1", cavernCenter, 0, true); // face-down
+    adv(state).gatePlans = [
+      { surfaceTileId: sa.id, undergroundTileId: cavern.id, designed: true },
+      { surfaceTileId: sb.id, undergroundTileId: cavern.id, designed: true }
+    ];
+
+    // Reveal the cavern → the FIRST gate choice opens.
+    let s = revealTile(state, cavern.id);
+    expect(gatePlacementChoice(s), "first gate choice opens").toBe(true);
+    // Resolving it opens the SECOND gate choice — each gate positioned in turn.
+    s = resolveGateChoice(s, 0);
+    expect(gatePlacementChoice(s), "second gate choice opens after the first is fixed").toBe(true);
+    // Resolving the second leaves NO further prompt.
+    s = resolveGateChoice(s, 0);
+    expect(gatePlacementChoice(s), "both gates positioned — no third prompt").toBe(false);
+
+    // Two entrance halves on the cavern, one toward each surface, both crossable.
+    const cavernGates = gatesOnTile(s, cavernCenter);
+    expect(cavernGates, "both designed gates positioned at play").toHaveLength(2);
+    for (const surfaceId of [sa.id, sb.id]) {
+      const entrance = cavernGates.find((field) => field.gateToTileId === surfaceId);
+      expect(entrance, `entrance toward ${surfaceId}`).toBeDefined();
+      const surfaceGate = adv(s).fields[entrance!.gateLinkSpaceId ?? ""];
+      expect(surfaceGate?.location, "linked surface gate").toBe("subterranean_gate");
+      expect(canCrossEdge(s, entrance!.spaceId, surfaceGate!.spaceId)).toBe(true);
     }
   });
 });

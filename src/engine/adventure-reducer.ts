@@ -3035,19 +3035,51 @@ export function setTileRotation(state: GameState, action: Extract<GameAction, { 
 
 /**
  * After the Creature Bank prompt (or when none was offered), fix the
- * Subterranean Gate exit on the just-revealed tile, then place any waiting
- * Monolith/Whirlpool/Gate tokens. ≥2 candidate hexes/partners → player cycles
- * and confirms; 0–1 → automatic carve.
+ * Subterranean Gate exit(s) on the just-revealed tile, then place any waiting
+ * Monolith/Whirlpool/Gate tokens. Delegates to {@link offerNextSubterraneanGate},
+ * which drains every gate the tile owes one at a time.
  */
 function continueRevealAfterBank(state: GameState, tile: MapTileState, playerId: PlayerId): void {
+  offerNextSubterraneanGate(state, tile, playerId);
+}
+
+/**
+ * Drains the Subterranean Gate placements a just-revealed tile still owes, one at
+ * a time, then offers teleport tokens:
+ *  - ≥2 candidate positions for the next gate → open the pick-on-reveal choice
+ *    (the player cycles the exit on the map and Confirm; resolving calls back here);
+ *  - exactly 1 legal position → nothing to choose: record it (so the designed-gate
+ *    defer lets `recompute` carve it) and continue draining;
+ *  - none left → carve any remaining automatic gates and offer tokens.
+ *
+ * A DESIGNER-linked tile may owe SEVERAL gates — one per connected tile (USER
+ * RULE) — each positioned in turn; an automatic touch pairing owes at most one.
+ */
+function offerNextSubterraneanGate(state: GameState, tile: MapTileState, playerId: PlayerId): void {
   const adventure = requireAdventure(state);
-  const gateCandidates = adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
-  if (gateCandidates.length >= 2) {
-    openSubterraneanGatePlacementChoice(state, tile, playerId, gateCandidates);
+  const candidates = adventure.chooseGatePlacement ? planGateChoiceForReveal(adventure, tile) : [];
+  if (candidates.length >= 2) {
+    openSubterraneanGatePlacementChoice(state, tile, playerId, candidates);
     return;
   }
-  // Automatic carve (0 or 1 candidate, or the choice is off): sacrifice the
-  // nearest hex and warn what it cost, then offer teleport tokens.
+  if (candidates.length === 1) {
+    // One legal position for the next gate — no choice to make. A DESIGNED gate must
+    // have its hex recorded so the designed-gate defer lets `recompute` carve it; an
+    // automatic gate carves at the nearest hex on its own (old behaviour — no plan
+    // is written for it). Then drain any further gates.
+    const only = candidates[0];
+    const isDesigned = (adventure.gatePlans ?? []).some(
+      (plan) => plan.designed && plan.surfaceTileId === only.surfaceTileId && plan.undergroundTileId === only.undergroundTileId
+    );
+    if (isDesigned) {
+      upsertGatePlan(adventure, only);
+    }
+    carveGatesWithWarning(state, playerId, false);
+    offerNextSubterraneanGate(state, tile, playerId);
+    return;
+  }
+  // Nothing more to position: carve any remaining automatic gates (nearest hex,
+  // warning what it cost), then offer teleport tokens.
   carveGatesWithWarning(state, playerId, false);
   offerPendingTokenPlacement(state, tile, playerId);
 }
@@ -16084,8 +16116,10 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
     state.pendingChoice = null;
     state.phase = choice.returnPhase;
     state.priorityPlayerId = null;
-    // Gate exit fixed for the rest of the game. Bank already ran earlier; only
-    // Monolith/Whirlpool tokens wait behind the gate prompt.
+    // This gate exit is fixed. A designer-linked tile may still owe MORE gates
+    // (one per connected tile — USER RULE); offerNextSubterraneanGate opens the
+    // next pick or, when none remain, offers the waiting Monolith/Whirlpool tokens.
+    // Bank already ran earlier in the reveal chain.
     const tile = data ? adventure?.tiles[data.tileInstanceId] : undefined;
     if (data?.deferBank && tile) {
       // Legacy snapshots that opened a gate choice with deferBank:true still
@@ -16093,7 +16127,7 @@ export function chooseOption(state: GameState, action: Extract<GameAction, { typ
       offerCreatureBankPlacement(state, tile, action.playerId);
     }
     if (tile && !state.pendingChoice) {
-      offerPendingTokenPlacement(state, tile, action.playerId);
+      offerNextSubterraneanGate(state, tile, action.playerId);
     }
     return;
   }

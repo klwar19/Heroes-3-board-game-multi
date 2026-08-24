@@ -158,10 +158,12 @@ export default function MapDesignerPage() {
   const canModifyCurrent = !currentId || actorMayModifyMap(currentRecord, actor);
 
   const scenario = scenarioDefinitions[scenarioId];
-  const problems = useMemo(
-    () => (scenario ? validateCustomMapPlan(tiles, scenario, players).problems : []),
+  const planValidation = useMemo(
+    () => (scenario ? validateCustomMapPlan(tiles, scenario, players) : { problems: [], warnings: [] }),
     [tiles, scenario, players]
   );
+  const problems = planValidation.problems;
+  const planWarnings = planValidation.warnings;
   const secretWarnings = useMemo(() => secretFeatureDemandWarnings(tiles), [tiles]);
   const soloOpponentLimit = scenario
     ? Math.max(0, Math.min(scenario.maxPlayers, scenario.layout.starts.length) - 1)
@@ -405,6 +407,15 @@ export default function MapDesignerPage() {
               </strong>
               {problems.slice(0, 4).map((problem) => (
                 <small key={problem}>{problem}</small>
+              ))}
+            </div>
+          ) : null}
+
+          {planWarnings.length > 0 ? (
+            <div className="designerProblems designerWarnings" aria-label="Gate link notes" role="status">
+              <strong>Some Subterranean Gates were adjusted (the map still plays):</strong>
+              {planWarnings.slice(0, 6).map((warning) => (
+                <small key={warning}>{warning}</small>
               ))}
             </div>
           ) : null}

@@ -13853,7 +13853,8 @@ function ensureSubterraneanGate(
   surface: MapTileState,
   subterranean: MapTileState,
   plan?: SubterraneanGatePlan,
-  claimed?: Set<MapSpaceId>
+  claimed?: Set<MapSpaceId>,
+  forceDesignedCarve = false
 ): void {
   // A DESIGNER plan may be one of SEVERAL bridging this same tile pair, so its
   // half is identified by the plan's own pinned hex (via `claimed`), not by the
@@ -13868,6 +13869,22 @@ function ensureSubterraneanGate(
     : findGateHalf(adventure, subterranean, surface.id);
   const surfaceUp = tileMaterialized(adventure, surface);
   const undergroundUp = tileMaterialized(adventure, subterranean);
+
+  // Pick-on-reveal for DESIGNED gates: a designer link connects two tiles, and
+  // the revealing player fixes the exact field at play time (USER RULE — the
+  // editor position is decorative). So while the chooser is active, a designed
+  // plan's half is carved ONLY once its hex has been CHOSEN (written back onto
+  // the plan by `upsertGatePlan`); an as-yet-unchosen half is left for the
+  // chooser instead of auto-placed at the nearest hex. This is what lets each of
+  // several gates on one tile be positioned in turn. With the chooser off (the
+  // deterministic CONTROL / a directly-seeded pinned plan), nothing is deferred.
+  //
+  // `forceDesignedCarve` (setup only) overrides the defer: a tile FACE-UP from the
+  // start never passes through the interactive reveal chain, so there is no chooser
+  // to fire — setup carves its designed gate at the nearest hex rather than strand
+  // it. In-play discoveries leave forceDesignedCarve false and use the chooser.
+  const deferDesignedGate =
+    Boolean(plan?.designed) && Boolean(adventure.chooseGatePlacement) && !forceDesignedCarve;
 
   // ONE GATE PER TILE: if either tile already hosts a gate to a DIFFERENT
   // neighbour, this pair is never carved — neither a second surface gate nor an
@@ -13891,7 +13908,13 @@ function ensureSubterraneanGate(
   // Carve the surface gate: adjacent to the underground half if it is already
   // placed, otherwise the slot closest to the underground tile's centre. A plan's
   // `gateHex` (pick-on-reveal) overrides the default when it is a legal candidate.
-  if (!surfaceHalf && surfaceUp) {
+  //
+  // The designed-gate defer applies ONLY to an ANCHOR half — one with no partner
+  // half yet AND no chosen hex — because that is the half the chooser positions. A
+  // COMPLETING half (the partner's own half already exists) is constrained to sit
+  // edge-adjacent to it, so it always carves, even when its own hex was never
+  // chosen (e.g. the partner cavern was discovered through another gate first).
+  if (!surfaceHalf && surfaceUp && !(deferDesignedGate && !plan?.gateHex && !undergroundHalf)) {
     const spaceId = undergroundHalf
       ? chooseAdjacentGateHex(adventure, surface, undergroundHalf.spaceId, plan?.gateHex)
       : chooseAnchorGateHex(adventure, surface, { row: subterranean.centerRow, col: subterranean.centerCol }, subterranean, plan?.gateHex);
@@ -13908,7 +13931,7 @@ function ensureSubterraneanGate(
   // Carve the underground entrance: adjacent to the surface gate if it exists,
   // otherwise (bootstrapping from below) the slot closest to the surface tile.
   // A plan's `entranceHex` (the player's "path up" pick) overrides the default.
-  if (!undergroundHalf && undergroundUp) {
+  if (!undergroundHalf && undergroundUp && !(deferDesignedGate && !plan?.entranceHex && !surfaceHalf)) {
     const spaceId = surfaceHalf
       ? chooseAdjacentGateHex(adventure, subterranean, surfaceHalf.spaceId, plan?.entranceHex)
       : chooseAnchorGateHex(adventure, subterranean, { row: surface.centerRow, col: surface.centerCol }, surface, plan?.entranceHex);
@@ -13960,8 +13983,26 @@ const EMPTY_MAP_SPACE_SET: ReadonlySet<MapSpaceId> = new Set<MapSpaceId>();
  * Surface tile abuts several caverns (one-gate-per-tile), the gapless neighbour
  * wins the single gate over a merely-touching one.
  */
-export function recomputeSubterraneanGates(adventure: AdventureState): void {
-  const plans = adventure.gatePlans ?? [];
+export function recomputeSubterraneanGates(
+  adventure: AdventureState,
+  options: { forceDesignedCarve?: boolean } = {}
+): void {
+  // Gates connect TILES (USER RULE), so at most ONE gate per tile pair: collapse
+  // any duplicate plans for the same (surface, cavern) pair to the first. (The
+  // editor lets a designer draw several gates along one shared edge; with positions
+  // now decorative, those are redundant — one gate connects the two tiles. Several
+  // gates from ONE tile to DIFFERENT tiles are distinct pairs and are all kept.)
+  const rawPlans = adventure.gatePlans ?? [];
+  const seenPairs = new Set<string>();
+  const plans: SubterraneanGatePlan[] = [];
+  for (const plan of rawPlans) {
+    const key = `${plan.surfaceTileId}|${plan.undergroundTileId}`;
+    if (seenPairs.has(key)) {
+      continue;
+    }
+    seenPairs.add(key);
+    plans.push(plan);
+  }
   // A tile named in a plan is COMMITTED to its plan partner(s): it can gate with
   // those partners alone, so the auto pass never pairs it with anyone else. A
   // player pick-on-reveal plan commits a tile to exactly one partner; a DESIGNER
@@ -13986,7 +14027,7 @@ export function recomputeSubterraneanGates(adventure: AdventureState): void {
     const surface = adventure.tiles[plan.surfaceTileId];
     const subterranean = adventure.tiles[plan.undergroundTileId];
     if (surface && subterranean) {
-      ensureSubterraneanGate(adventure, surface, subterranean, plan, claimed);
+      ensureSubterraneanGate(adventure, surface, subterranean, plan, claimed, options.forceDesignedCarve);
     }
   }
 
@@ -14087,10 +14128,6 @@ export function planGateChoiceForReveal(
   adventure: AdventureState,
   revealedTile: MapTileState
 ): SubterraneanGateChoiceCandidate[] {
-  // One gate per tile: a tile that already hosts a half offers no further choice.
-  if (tileHasAnyGateHalf(adventure, revealedTile)) {
-    return [];
-  }
   // tileLayer buckets every tile as "surface" or "subterranean" (sea tiles ride
   // the surface layer), matching how recomputeSubterraneanGates pairs them, so a
   // choice is only ever offered for what the carve would actually produce.
@@ -14108,9 +14145,15 @@ export function planGateChoiceForReveal(
     commit(plan.undergroundTileId, plan.surfaceTileId);
   }
   const revealedCommittedTo = committedPartner.get(revealedTile.id);
+  const revealedHasHalf = tileHasAnyGateHalf(adventure, revealedTile);
 
   const revealedCenter = { row: revealedTile.centerRow, col: revealedTile.centerCol };
-  const candidates: SubterraneanGateChoiceCandidate[] = [];
+  // DESIGNER gates connect two TILES and are positioned ONE AT A TIME (USER RULE):
+  // a tile linked to several partners fixes each gate in turn, so a tile already
+  // hosting an earlier half still offers the NEXT designed partner. AUTOMATIC
+  // touch pairings keep the classic strict one-gate-per-tile.
+  const designedPending: { row: number; col: number; candidates: SubterraneanGateChoiceCandidate[] }[] = [];
+  const autoCandidates: SubterraneanGateChoiceCandidate[] = [];
   for (const other of Object.values(adventure.tiles)) {
     if (tileLayer(other) === revealedLayer) {
       continue; // the gate bridges the Surface↔Subterranean divide only
@@ -14127,17 +14170,20 @@ export function planGateChoiceForReveal(
     if (otherCommittedTo && !otherCommittedTo.has(revealedTile.id)) {
       continue;
     }
+    // This tile's own half toward the partner is already carved → that gate is
+    // positioned; nothing more to choose for it.
+    if (findGateHalf(adventure, revealedTile, other.id)) {
+      continue;
+    }
     const surfaceTileId = revealedLayer === "surface" ? revealedTile.id : other.id;
     const undergroundTileId = revealedLayer === "surface" ? other.id : revealedTile.id;
     const role: "gate" | "entrance" = revealedLayer === "surface" ? "gate" : "entrance";
-    // A DESIGNER link that already pins THIS half's hex is the designer's decision,
-    // not a player choice: skip it so no pick-on-reveal choice opens — the auto
-    // carve then honours the pinned hex (`recomputeSubterraneanGates` reads the
-    // plan). A designed pairing whose hex is UNPINNED still offers the hexes below,
-    // but the commitment filter above already constrains it to the designed partner.
     const designedPlan = plans.find(
       (plan) => plan.designed && plan.surfaceTileId === surfaceTileId && plan.undergroundTileId === undergroundTileId
     );
+    // A DESIGNER plan whose half is already fixed — a legacy pinned hex directly
+    // seeded onto the plan, or a hex this player already chose — is auto-carved:
+    // skip it so no (further) pick-on-reveal choice opens for it.
     if (designedPlan && (role === "gate" ? designedPlan.gateHex : designedPlan.entranceHex)) {
       continue;
     }
@@ -14146,11 +14192,31 @@ export function planGateChoiceForReveal(
     const hexes = otherHalf
       ? adjacentGateHexCandidates(adventure, revealedTile, otherHalf.spaceId)
       : anchorGateHexCandidates(adventure, revealedTile, other);
-    for (const hex of hexes) {
-      candidates.push({ surfaceTileId, undergroundTileId, hex, role });
+    if (hexes.length === 0) {
+      continue;
+    }
+    const partnerCandidates = hexes.map((hex) => ({ surfaceTileId, undergroundTileId, hex, role }));
+    if (designedPlan) {
+      designedPending.push({ row: other.centerRow, col: other.centerCol, candidates: partnerCandidates });
+    } else {
+      autoCandidates.push(...partnerCandidates);
     }
   }
-  return candidates;
+
+  // A designer-linked tile fixes its gates one partner at a time — return only the
+  // NEXT pending designed partner's hexes (deterministic tile order). The reveal
+  // loop re-calls this after each carve to drain the rest.
+  if (designedPending.length > 0) {
+    designedPending.sort((a, b) => a.row - b.row || a.col - b.col);
+    return designedPending[0].candidates;
+  }
+  // Automatic touch pairing — one gate per tile: once the tile hosts any half no
+  // further automatic gate is offered. Otherwise offer every touching partner
+  // together (the "which of two Surface tiles / which hex" pick).
+  if (revealedHasHalf) {
+    return [];
+  }
+  return autoCandidates;
 }
 
 /**

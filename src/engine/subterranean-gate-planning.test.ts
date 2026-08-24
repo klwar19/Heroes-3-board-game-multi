@@ -281,9 +281,15 @@ describe("planSubterraneanGates matches the engine with DESIGNER gate links", ()
         gateLinks: [{ surface: { row: far.row, col: far.col }, gateHex: gateHexId, entranceHex: entranceHexId }]
       }
     ]);
+    // USER RULE: the editor pin is DECORATIVE. The designer PREVIEW still renders
+    // the gate where drawn (so the editor "shows them as now"), but the ENGINE
+    // carves at the automatic position at play — so preview and engine now DIFFER.
     expect(engine.size).toBe(2);
-    expect(preview).toEqual(engine);
-    // The pin actually moved the gate off the auto default (mutation check).
+    // The engine carves at the AUTO default, NOT the decorative pin.
+    expect(engine.has(autoGateId)).toBe(true);
+    expect(engine.has(gateHexId)).toBe(false);
+    void entranceHexId;
+    // The preview still shows the drawn pin (editor rendering only).
     expect(preview.has(gateHexId)).toBe(true);
     expect(preview.has(autoGateId)).toBe(false);
   });
@@ -351,7 +357,7 @@ describe("planSubterraneanGates matches the engine with DESIGNER gate links", ()
     expect(preview).toEqual(engine);
   });
 
-  it("the SAME surface linked TWICE at distinct pairs: two gates — preview == engine (4 hexes)", () => {
+  it("the SAME surface linked TWICE collapses to ONE gate in the engine (preview still renders both drawn)", () => {
     const far = tileLatticeNeighbors({ row: 24, col: 12 })[0];
     const cavern = cavernNextTo(far);
     const disjoint = twoDisjointPairs(legalGateHexPairs(far, cavern));
@@ -381,8 +387,11 @@ describe("planSubterraneanGates matches the engine with DESIGNER gate links", ()
         ]
       }
     ]);
-    expect(engine.size).toBe(4); // two gates × two sacrificed hexes each
-    expect(preview).toEqual(engine);
+    // USER RULE: a gate connects two TILES, so two links to the SAME pair collapse
+    // to ONE gate in the engine (2 sacrificed hexes). The designer preview still
+    // renders BOTH drawn gates (4 hexes) — editor rendering only.
+    expect(engine.size).toBe(2);
+    expect(preview.size).toBe(4);
   });
 });
 
