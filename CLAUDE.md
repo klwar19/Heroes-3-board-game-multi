@@ -357,21 +357,72 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
-## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–3: foundation + live AI seats + objectives
+## Co-op mode (OPTIONAL, multiplayer) — STEPS 1–4: foundation, live AI seats, objectives, reporting
 
 **Leading with what is NOT built.** Steps 1 (engine foundation), 2 (the AI seats
-really play on a multiplayer table) and 3 (victory & objectives) have shipped.
-NOT done yet: **match report / MMR handling of a co-op result** — `detectFinishedMatch`
-(`src/server/match-report.ts`) still scores `live.seat === winnerSeat ? "win" : "loss"`,
-so a co-op ally who did NOT happen to be the declared winner seat is reported as a
-LOSS; that is the next step, and it is the ONLY consumer found (a `winnerPlayerId`
-sweep of `src/engine/` shows every other read is a plain "the game is over" gate,
-never a loser set). Also missing: the map-designer surface, and EVERY UI surface
-(no lobby toggle, no seat picker, and the two new win-condition kinds are
+really play on a multiplayer table), 3 (victory & objectives) and 4 (match report
+& ranking) have shipped. Still missing: the map-designer surface, and EVERY UI
+surface (no lobby toggle, no seat picker, and the two new win-condition kinds are
 deliberately NOT in `CUSTOM_WIN_CONDITION_OPTIONS`, so no designer/lobby dropdown
 row offers them yet — the mode and its objectives are reachable only by
 dispatching `SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`). Default absent ⇒
 byte-identical (CONTROL-pinned).
+
+### Step 4 (NO protocol bump) — match report & ranking
+
+TWO USER RULES: **co-op has no ranked play for now** (a co-op game is never
+reported at all) and **a CLASH table may hold computer enemies, but rank counts
+for HUMANS ONLY**. Both are enforced at the ONE chokepoint every reporter shares
+— `detectFinishedMatch` (`src/server/match-report.ts`), read by the built-in
+store, the PartyKit edge AND the browser dual-claim (`match-claim-client.ts`) —
+so there is no second path to keep in lockstep. Pinned in
+`src/server/coop-match-report.test.ts` (11 cases, every claim with a
+clash / not-computer-controlled CONTROL on the IDENTICAL fixture).
+
+Leading with the limits / deliberate readings:
+- **NO protocol bump and NO serialized-state change.** Nothing about
+  `matchSeats`, `controllers` or `GameState` moved — the AI exclusion is a READ
+  filter, so a stale edge computes the same participant list from the same
+  bytes. `ENGINE_PROTOCOL_VERSION` stays v58 (step 3's deploy is still owed).
+- **`SET_ROOM_RANKED` is deliberately UNCHANGED**: a co-op lobby may still sit
+  on `ranked: true` and the lobby will still say "Ranked". That is a COSMETIC
+  LIE until step 5 can hide/disable the control — harmless because the report
+  nulls out regardless of the flag (pinned for `true` / `false` / absent).
+  Forcing the flag false would have meant writing serialized room state and
+  deciding what happens when a host flips co-op → clash; the least-change option
+  is one gate at the reporter.
+- **A co-op leaver pays NOTHING.** The quit-loses-points "abandon" mark is part
+  of the same null, so quitting a co-op table has no ladder consequence at all
+  (CONTROL: the identical desertion on a clash table still reports the abandon).
+- **A co-op table is never force-closed after the win.** The ranked room-close
+  (`game-room-store.ts` / `party/index.ts`) is gated on `finishedMatch?.ranked`,
+  so a null result leaves the room open — a co-op rematch works where a ranked
+  clash's would not. Consequence of the null, not a separate rule.
+- **An AI seat winning a CLASH reports NOTHING** — the humans are not farmed for
+  losses by the computer. That falls out of the existing "needs ≥1 win AND ≥1
+  loss among ≥2 verified accounts" rule (no human holds the winning seat), so
+  that case is a characterization pin, not a new gate; the CONTROL is the same
+  three seats with a HUMAN winner, which does report.
+- Elo needed NO change: `computeRatings` takes account ids, and a computer seat
+  has no account. A ranked clash with AI seats therefore swings exactly like the
+  same game without them (1200 → 1216/1184, pinned on the real account store).
+
+What RUNS:
+- `next.gameMode === "coop"` ⇒ `detectFinishedMatch` returns null before any
+  attribution: no match record, no Elo, no abandon marks, no room close.
+- Both attribution loops (live members, and the frozen `room.matchSeats`
+  snapshot) skip a seat with `isComputerPlayer(next, seat)`. By construction an
+  AI seat already appears in neither — a computer seat holds no room member
+  (`assignSeat` refuses one, and `SET_COMPUTER_OPPONENTS` refuses to convert an
+  OCCUPIED seat), so the FREEZE in `buildAdventureFromLobby` — which iterates
+  `room.members` — can never stamp one. **The freeze was therefore left
+  untouched** (it is a shared file mid-edit by another session, and filtering
+  there would have changed nothing in the bytes); the explicit filter lives at
+  the READ instead, as belt-and-braces against a forged or legacy row. Both
+  halves are pinned: the report-side filter by a forged `matchSeats` row on an
+  AI seat (and a forged member row on one), the freeze-side invariant by a real
+  `SET_COMPUTER_OPPONENTS` → ready-check → build flow whose `matchSeats` holds
+  only the two human seats.
 
 ### Step 3 (protocol v57 → v58, `npm run deploy:partykit` OWED) — victory & objectives
 

@@ -32,12 +32,16 @@
  *    loser: solo games, games against neutrals only, and one-account tables
  *    (self-play across tabs) are never ranked;
  *  - an account occupying more than one seat disqualifies itself (ambiguous),
- *    never the whole match.
+ *    never the whole match;
+ *  - CO-OP (`GameState.gameMode === "coop"`) is NEVER reported at all — no
+ *    record, no Elo, no abandon marks (co-op step 4);
+ *  - COMPUTER seats are invisible: a clash table may hold them, but only human
+ *    verified accounts ever enter the participant list or the Elo maths.
  */
 // ISOMORPHIC — this module is bundled into the PartyKit Worker (party/index.ts
 // imports the detector), so it must never import Node built-ins or the account
 // store; the Node-side trigger lives in match-report-trigger.ts.
-import { NEUTRAL_PLAYER_ID, type GameState } from "@/engine";
+import { isComputerPlayer, NEUTRAL_PLAYER_ID, type GameState } from "@/engine";
 import type { MatchParticipantInput } from "@/server/accounts/account-store";
 
 export type FinishedMatch = {
@@ -81,6 +85,17 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     return null;
   }
   if (next.sessionMode === "single-player" || next.room?.visibility === "private") return null;
+  // CO-OP IS NEVER REPORTED (co-op step 4; USER RULE "co-op has no ranked play
+  // for now"). Two reasons it is a wholesale exclusion rather than a scoring
+  // tweak: the victory machinery is single-winner, so a co-op win names ONE
+  // ally's seat and every other LIVING ally would be scored a loss; and a table
+  // whose only enemies are computer seats has no human-vs-human result to rank
+  // in the first place. This one return is the WHOLE enforcement — no match
+  // record, no Elo, and no "abandon" mark for a co-op player who leaves —
+  // whatever `room.ranked` says. Because the ranked room-close is gated on this
+  // result (game-room-store / party/index), a finished co-op table also stays
+  // OPEN for a rematch.
+  if (next.gameMode === "coop") return null;
   // A NORMAL ("casual") table still records the WIN/LOSS on each account — so a
   // give-up / quit is reflected on the profile even in a casual game — but does
   // NOT move MMR (see `ranked` on the result, honoured by recordMatchResult).
@@ -92,7 +107,18 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     return null;
   }
   const members = next.room?.members ?? [];
-  const seatHolders = members.filter((member) => member.userId && member.seat !== "observer");
+  // RANK COUNTS FOR HUMANS ONLY (USER RULE): a CLASH table may hold computer
+  // seats, and they are invisible to the ladder. By construction they already
+  // are — a computer seat holds no room member and no account, so it can appear
+  // in neither loop below — but both attribution loops filter
+  // `isComputerPlayer` EXPLICITLY so a forged or legacy membership/matchSeats
+  // row on an AI seat can never smuggle one in. Consequence, pinned: an AI seat
+  // WINNING a clash produces no human "win", so the winner-and-loser rule at
+  // the bottom nulls the whole report instead of inventing a human-vs-human
+  // result out of it.
+  const seatHolders = members.filter(
+    (member) => member.userId && member.seat !== "observer" && !isComputerPlayer(next, member.seat)
+  );
   // An account on MORE than one seat is ambiguous (self-play across tabs on an
   // open table) — drop that account, keep the match for everyone else.
   const seatsPerAccount = new Map<string, number>();
@@ -124,8 +150,8 @@ export function detectFinishedMatch(prev: GameState, next: GameState): FinishedM
     participants.push({ accountId, nickname: live.nickname, result });
   }
   for (const [seat, bound] of Object.entries(next.room?.matchSeats ?? {})) {
-    if (!bound.userId || (seatsPerAccount.get(bound.userId) ?? 0) > 1) {
-      continue; // guest seat, or an ambiguous multi-seat account (dropped above).
+    if (!bound.userId || isComputerPlayer(next, seat) || (seatsPerAccount.get(bound.userId) ?? 0) > 1) {
+      continue; // guest seat, a computer seat, or an ambiguous multi-seat account.
     }
     if (liveByAccount.has(bound.userId) || participants.some((p) => p.accountId === bound.userId)) {
       continue; // the account is already attributed (still here, or moved seats).
