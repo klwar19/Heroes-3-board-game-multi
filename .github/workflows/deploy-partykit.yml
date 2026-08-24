@@ -52,18 +52,46 @@
 # because those failures are unrelated to the engine.
 #
 # So the `deploy` job below gates on the tests that actually protect the room
-# server — `src/engine` + `src/server` — plus a full typecheck. The full test
-# suite still runs, in a SEPARATE `full-suite` job that is NON-blocking
-# (continue-on-error) purely for signal: UI/art debt shows up as an annotation
-# without ever holding the engine hostage. This keeps the stated safety intent
-# ("never ship a room server that fails the RULES tests or typecheck") while
-# making the auto-deploy actually reliable.
+# server — `src/engine` + `src/server` — plus a full typecheck. This keeps the
+# stated safety intent ("never ship a room server that fails the RULES tests
+# or typecheck") while making the auto-deploy actually reliable.
+#
+# ACTIONS-MINUTES BUDGET (2026-08-24): this private repo burned its whole
+# monthly GitHub Actions quota, and the two culprits were both in this file:
+#   1. a non-blocking `full-suite` job (the entire `npm test`, ~17 min) ran on
+#      EVERY push to main, permanently red on two documented baseline test
+#      failures — pure signal nobody acted on, over half the monthly bill. It
+#      is REMOVED; run `npm test` locally (or re-add it behind a `schedule:`
+#      trigger) if that signal is ever wanted again.
+#   2. the deploy job (~13.5 min) ran even for pushes that could not change
+#      the room server (media under public/, docs, .claude, scripts). The
+#      `paths:` filter below scopes the auto-deploy to files the server can
+#      actually depend on: party/** and ALL of src/** (party/index.ts imports
+#      @/engine and @/server, which reach src/data and src/lib — filtering
+#      the whole src tree is deliberate so a data/protocol change can never
+#      be skipped), plus the dependency/build manifests. `workflow_dispatch`
+#      stays as the manual lever for anything the filter misses.
+# Vercel is UNAFFECTED either way — it builds on Vercel's own infra and never
+# consumed Actions minutes.
 
 name: Deploy PartyKit
 
 on:
   push:
     branches: [main]
+    # Deploy only when files the ROOM SERVER can depend on change. Media-only
+    # pushes (public/**), docs, scripts and tooling never alter party/index.ts
+    # behaviour, and each skipped run saves ~13.5 billable minutes. Keep this
+    # list INCLUSIVE of the whole src tree — the server imports @/engine and
+    # @/server, which transitively reach src/data and src/lib.
+    paths:
+      - "party/**"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "partykit.json"
+      - ".github/workflows/deploy-partykit.yml"
   workflow_dispatch: {}
 
 # Never let two deploys race; keep only the newest per branch.
@@ -127,22 +155,5 @@ jobs:
           HOMM3BG_APP_URL: ${{ secrets.HOMM3BG_APP_URL }}
           HOMM3BG_ADMIN_KEY: ${{ secrets.HOMM3BG_ADMIN_KEY }}
           HOMM3BG_MATCH_REPORT_KEY: ${{ secrets.HOMM3BG_MATCH_REPORT_KEY }}
-
-  # Non-blocking full test suite (UI + art + everything else) purely for signal.
-  # It runs in parallel with `deploy-partykit` and NEVER blocks it: a UI-component
-  # regression or a too-small placeholder art file will annotate this job red
-  # WITHOUT stranding the authoritative room server. Fix what it surfaces, but the
-  # engine ships either way.
-  full-suite:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install dependencies (resilient to optional-dep lockfile drift)
-        run: npm ci || (echo "::warning::npm ci rejected the lockfile — repairing with npm install" && npm install --no-audit --no-fund)
-      - name: Full test suite (non-blocking signal)
-        run: npm test
+  # The former non-blocking `full-suite` job (whole `npm test` on every push)
+  # was removed 2026-08-24 — see the ACTIONS-MINUTES BUDGET note in the header.
