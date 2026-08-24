@@ -11748,10 +11748,16 @@ function getSetupLobbyLegalActions(state: GameState, playerId: PlayerId): LegalA
     .map((faction) => faction.id)
     .filter((id) => !takenFactions.has(id) && isPlayableFaction(id, lobby.options.anime));
 
-  if (state.sessionMode === "single-player" && controllerOf(state, playerId).kind === "human" &&
-      humanPlayerIdsByController(state).length === 1 && !lobby.startCheck) {
+  // Single player: the ONE human owner seat. Multiplayer (co-op step 1): ANY
+  // seated human, exactly like SET_GAME_OPTIONS — a multiplayer lobby only holds
+  // computer seats once SET_COMPUTER_OPPONENTS created them, so a plain table
+  // enumerates nothing new here.
+  if (controllerOf(state, playerId).kind === "human" && !lobby.startCheck &&
+      (state.sessionMode === "single-player"
+        ? humanPlayerIdsByController(state).length === 1
+        : lobby.seats.some((seat) => seat.playerId === playerId))) {
     // The human owner may hand-pick, roll, or clear each COMPUTER seat's faction
-    // + hero (single-player Free-pick only). Mirrors how CHOOSE_FACTION enumerates
+    // + hero (Free-pick format only). Mirrors how CHOOSE_FACTION enumerates
     // untaken factions × heroes, but targets a computer seat via seatPlayerId.
     if (phase.format === "open") {
       for (const computerSeat of lobby.seats) {

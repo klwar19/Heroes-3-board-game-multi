@@ -357,6 +357,59 @@ LIMITS: the two Battlefield-Symbol cards (`morale.positive.replace_adventure_car
 games; `morale.positive.remove_token` is a documented engine reading (remove one
 NEGATIVE combat token from an own unit).
 
+## Co-op mode (OPTIONAL, multiplayer) — STEP 1 ONLY: the engine foundation
+
+**Leading with what is NOT built.** This is step 1 of a multi-step feature and
+only the ENGINE foundation shipped. NOT done yet: the server computer pump for a
+multiplayer table (the AI seats do NOT play themselves outside a private
+single-player room — `src/server/computer-runner.ts` is unchanged), co-op victory
+objectives (the table still ends by the normal victory mode / last faction
+standing, so an all-human alliance can only end a game by beating the AI seats
+under the ordinary rules), match report / MMR handling of a co-op result, the map
+designer surface, and EVERY UI surface (no lobby toggle, no seat picker — the
+mode is only reachable by dispatching `SET_GAME_OPTIONS` / `SET_COMPUTER_OPPONENTS`).
+Default absent ⇒ byte-identical (CONTROL-pinned).
+
+What RUNS (all in `src/engine/coop-mode.test.ts`, every claim with a clash /
+single-player CONTROL; protocol v55 → v56, `npm run deploy:partykit` OWED):
+- **`GameSetupOptions.gameMode`** (`"clash" | "coop"`, ABSENT = clash), sanitized
+  in `setGameOptions` (an unknown value is REFUSED, never coerced) and carried by
+  `buildAdventureFromLobby`. A co-op build freezes the root field
+  `GameState.gameMode: "coop"` and stamps `playerTeams` with
+  `COOP_HUMAN_TEAM_ID` / `COOP_AI_TEAM_ID` (`computer/control.ts`) — so the
+  alliance is expressed as ORDINARY team ids and every existing
+  `playersAreAllied` gate applies with no per-mode branching.
+- **Computer seats in an ORDINARY multiplayer lobby.** `SET_COMPUTER_OPPONENTS`
+  and `SET_COMPUTER_SEAT_FACTION` are no longer single-player-only: any SEATED
+  player may add/remove them while the setup is open and no start check runs
+  (SET_GAME_OPTIONS' legality class). Invariant: computer seats are the TRAILING
+  seats and `state.controllers` holds entries for EXACTLY those seats — human
+  seats keep no entry and the whole map is DELETED when the last computer goes
+  (`pruneMultiplayerComputerControllers`, called from every multiplayer
+  `resizeLobbySeats`, so a trimmed seat can never orphan a controller entry).
+  A computer seat holds no room member, so `readyCheckConfirmers` never asks it
+  to confirm — it is ready by construction.
+- **A computer seat is never sit-able in ANY session mode** (`assignSeat`, host
+  and self-claim alike; the old single-player string check is kept as a backstop).
+- **The ALLY FLAG GATE.** A Mine / Settlement / Town / Random Town / designer
+  Garrison / captured Dragon Utopia flagged by a LIVE ALLY is treated as an OWN
+  field: `classifyHeroStep` returns "open" (no stop, no capture), every
+  `beginFieldVisit` flag branch skips it, `capturableEnemyMinesWithin` drops it
+  from the View Earth remote-capture list, and `flagField` itself early-returns
+  with a log note so a forged/future call path cannot steal it either. ONE shared
+  read `fieldFlaggedByAlly` (adventure.ts) backs all of them.
+- PvP against an ally was ALREADY refused (`startPlayerCombat`'s
+  `playersAreAllied` throw) and the garrison window already skipped an ally
+  (`garrisonDefenderFor`); both are now pinned with clash CONTROLs.
+LIMITS/decisions recorded: `gameMode` is NOT session-gated, so a single-player
+table could technically set it (the existing `computerDiplomacy: "allied"`
+stamping is untouched and CONTROL-pinned); the ally gate keys off `playerTeams`
+alone, so it also covers a map-authored single-player alliance; multi-flag fields
+(Obelisk / Star Axis) are deliberately untouched — an ally adding its own extra
+cube is not a steal; a lobby whose computer seats got INTERLEAVED (raise the seat
+count while computers exist) refuses the next `SET_COMPUTER_OPPONENTS` rather
+than swallowing an occupied seat.
+
 ## Parallel turns (OPTIONAL house rule, multiplayer only) — what runs vs. limits
 
 Engine in `src/engine/parallel-turns.ts` (predicates, the stop/collapse, the

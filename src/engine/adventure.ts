@@ -2452,7 +2452,12 @@ export function classifyHeroStep(
   // Dragon Conqueror: a captured Dragon Utopia is a stronghold — its holder
   // walks on and off freely, everyone else must stop to besiege it.
   if (field.location === "dragon_utopia" && field.flagOwnerId && adventureVictoryMode(state) === "dragon-conqueror") {
-    return field.flagOwnerId === playerId ? "open" : passAnyField(movement) ? "encounter" : "stop";
+    // An ALLY's captured Utopia is walked over like your own (never besieged).
+    return field.flagOwnerId === playerId || fieldFlaggedByAlly(state, playerId, field)
+      ? "open"
+      : passAnyField(movement)
+        ? "encounter"
+        : "stop";
   }
 
   // Obelisk role "monolith": the field is a Monolith network member, so entering
@@ -2491,7 +2496,14 @@ export function classifyHeroStep(
     return passAnyField(movement) ? "encounter" : "stop";
   }
   if (location.category === "flaggable") {
-    const mine = field.flagOwnerId === playerId || Boolean(field.extraFlagOwnerIds?.includes(playerId));
+    // ALLY FLAG GATE (co-op step 1): an ALLY's flagged Mine / Settlement is
+    // treated exactly like an own field — walked over freely, never stopped on
+    // to be re-flagged. This is the OFFER half of the gate; `flagField` and the
+    // `beginFieldVisit` branches are the resolution half.
+    const mine =
+      field.flagOwnerId === playerId ||
+      Boolean(field.extraFlagOwnerIds?.includes(playerId)) ||
+      fieldFlaggedByAlly(state, playerId, field);
     return mine ? "open" : passAnyField(movement) ? "encounter" : "stop";
   }
 
@@ -3881,8 +3893,49 @@ function interactionToSteps(interaction: LocationInteraction, extraLocationDice 
   }
 }
 
+/**
+ * True when `field` currently flies the Faction cube of a LIVE ALLY of
+ * `playerId` (co-op step 1: the human alliance and the computer alliance).
+ *
+ * ONE shared read behind every ally-flag seam — the movement classification
+ * (`classifyHeroStep`), the visit branches that would re-flag, the View Earth
+ * capture list and the defensive early-return inside {@link flagField} itself —
+ * so an offer and the resolution can never disagree. Never true without
+ * `state.playerTeams`, so a classic clash table is byte-identical.
+ */
+export function fieldFlaggedByAlly(
+  state: GameState,
+  playerId: PlayerId,
+  field: MapFieldState | undefined | null
+): boolean {
+  const ownerId = field?.flagOwnerId;
+  if (!ownerId || ownerId === playerId || ownerId === NEUTRAL_PLAYER_ID) {
+    return false;
+  }
+  const owner = state.players[ownerId];
+  if (!owner || owner.eliminated) {
+    return false;
+  }
+  return playersAreAllied(state, ownerId, playerId);
+}
+
 export function flagField(state: GameState, playerId: PlayerId, field: MapFieldState): void {
   const previousOwnerId = field.flagOwnerId;
+
+  // ALLY FLAG GATE (co-op step 1): an allied player's Mine / Settlement / Town /
+  // Random Town / Garrison is NEVER taken — a co-op alliance would otherwise
+  // rob itself of the income it just built. The offer side already treats an
+  // ally-flagged field like an OWN field (classifyHeroStep + the beginFieldVisit
+  // branches + capturableEnemyMinesWithin), so this is the defensive backstop
+  // that makes a FORGED or future call path harmless: the flag simply stays put.
+  if (fieldFlaggedByAlly(state, playerId, field)) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: `${state.players[playerId]?.name ?? playerId} leaves the ${locationDefinitionName(field.location)} to their ally.`
+    });
+    return;
+  }
 
   // Parallel turns: taking a flag FROM a live player (walking onto their mine
   // or settlement, a View Earth capture, a town falling undefended…) is a
@@ -4072,8 +4125,11 @@ export function capturableEnemyMinesWithin(
     if (field.location !== "mine") {
       continue;
     }
-    // "Choose enemy Mine": only Mines flagged by another player can be taken.
-    if (!field.flagOwnerId || field.flagOwnerId === playerId) {
+    // "Choose ENEMY Mine": only Mines flagged by another player can be taken —
+    // and, since co-op step 1, never an ALLY's (this is the one shared gate the
+    // legal-action offer AND the View Earth resolver both read, so the remote
+    // capture cannot take what the offer refuses to list).
+    if (!field.flagOwnerId || field.flagOwnerId === playerId || fieldFlaggedByAlly(state, playerId, field)) {
       continue;
     }
     const coord = parseHexSpaceId(field.spaceId);
@@ -5994,9 +6050,11 @@ function handleDragonUtopiaVisit(state: GameState, hero: HeroState, field: MapFi
     return;
   }
 
-  if (mode === "dragon-conqueror" && !field.grailConverted) {
+  if (mode === "dragon-conqueror" && !field.grailConverted && !fieldFlaggedByAlly(state, hero.controllerId, field)) {
     // Capture: flag the Utopia for the victor and keep neutrals from
-    // respawning. Holding it at the start of a later turn wins.
+    // respawning. Holding it at the start of a later turn wins. An ALLY's
+    // already-captured Utopia is skipped (this branch writes `flagOwnerId`
+    // DIRECTLY, so it needs its own ally gate — `flagField` never sees it).
     const firstCapture = !field.everFlagged;
     const previousOwnerId = field.flagOwnerId;
     field.flagOwnerId = hero.controllerId;
@@ -8437,7 +8495,7 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
   // Walking through your own garrison does nothing.
   if (location.id === "garrison") {
     field.everFlagged = true;
-    if (field.flagOwnerId !== playerId) {
+    if (field.flagOwnerId !== playerId && !fieldFlaggedByAlly(state, playerId, field)) {
       flagField(state, playerId, field);
     }
     return;
@@ -8454,28 +8512,38 @@ export function beginFieldVisit(state: GameState, heroId: HeroId, fieldId: MapSp
     }
   }
 
+  // ALLY FLAG GATE (co-op step 1): an ALLY's holding is treated exactly like
+  // your own on every single-owner flag branch below — no re-flag, no income
+  // transfer, no settlement choice. `fieldFlaggedByAlly` is false on a classic
+  // clash table, so these four branches are unchanged there.
+  const allyHolding = fieldFlaggedByAlly(state, playerId, field);
+
   if (location.id === "mine") {
-    if (field.flagOwnerId !== playerId) {
+    if (field.flagOwnerId !== playerId && !allyHolding) {
       applyMineFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "random_town") {
-    if (field.flagOwnerId !== playerId) {
+    if (field.flagOwnerId !== playerId && !allyHolding) {
       applyRandomTownFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "town") {
-    if (field.flagOwnerId !== playerId) {
+    if (field.flagOwnerId !== playerId && !allyHolding) {
       applyTownFlag(state, playerId, field);
     }
     return;
   }
 
   if (location.id === "settlement") {
+    // An ally's settlement is theirs: never re-tokened, never reinforced from.
+    if (allyHolding) {
+      return;
+    }
     // Re-entering a settlement you already own does nothing. The income is
     // applied once when you take it and is collected every resource round from
     // your production track — walking out and back in must NOT re-stack it.

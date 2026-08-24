@@ -42,6 +42,20 @@ export type GameDifficulty = "easy" | "normal" | "hard" | "impossible";
  */
 export type GameRuleset = "legacy" | "binh";
 
+/**
+ * Table game mode (co-op step 1). ABSENT means "clash" — the classic
+ * every-seat-for-itself table — so a lobby that never touched this field, and
+ * every snapshot saved before the option existed, behaves exactly as before.
+ *
+ *  - "clash": the classic free-for-all (default).
+ *  - "coop":  the human seats form ONE alliance ("coop-humans") against the
+ *    computer seats ("coop-ai"). The teams are stamped onto
+ *    {@link GameState.playerTeams} at build time, so every existing
+ *    `playersAreAllied` gate (PvP combat refusal, garrison defence, hero
+ *    pass-through, the ally flag gate) applies with no per-mode branching.
+ */
+export type TableGameMode = "clash" | "coop";
+
 /** Which Artifact tier decks a hero may search right now (BINH split decks). */
 export type ArtifactDeckAccess = {
   minor: boolean;
@@ -13191,6 +13205,12 @@ export type GameSetupOptions = {
   playerCount?: number;
   /** Personal custom setup mode; keeps the normal Legacy/BINH ruleset underneath. */
   customMode?: boolean;
+  /**
+   * Table game mode: "clash" (default, ABSENT) or "coop" (human seats allied
+   * against the computer seats). Frozen onto {@link GameState.gameMode} at
+   * build time; absent ⇒ byte-identical to a pre-feature table.
+   */
+  gameMode?: TableGameMode;
   /** Rules variant: "legacy" (rulebook) or "binh" (house rules). */
   ruleset: GameRuleset;
   /** Wake of Gods modules. Enabled only in BINH mode; absent means fully off. */
@@ -16307,8 +16327,17 @@ export type GameState = {
   sessionMode?: GameSessionMode;
   controllers?: Record<PlayerId, PlayerController>;
   /**
+   * Frozen table game mode. ABSENT means the classic "clash" free-for-all, so
+   * every pre-feature snapshot reads correctly. Only "coop" is ever written —
+   * see {@link GameSetupOptions.gameMode}. Later steps (server pump, victory
+   * objectives, match report, UI) read this one field.
+   */
+  gameMode?: "coop";
+  /**
    * Optional team ids. Equal non-empty ids are allies and cannot fight. Map
-   * authored computer teams are created only in single-player.
+   * authored computer teams are created only in single-player; a "coop" table
+   * additionally stamps every human seat "coop-humans" and every computer seat
+   * "coop-ai".
    */
   playerTeams?: Record<PlayerId, string>;
   /**

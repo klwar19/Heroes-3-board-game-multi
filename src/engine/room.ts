@@ -1,5 +1,5 @@
 import { appendSystemChat } from "./chat";
-import { isPrivateSinglePlayer } from "./computer/control";
+import { controllerOf, isPrivateSinglePlayer } from "./computer/control";
 import { appendEvent } from "./events";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import type {
@@ -592,6 +592,15 @@ export function assignSeat(state: GameState, action: Extract<GameAction, { type:
   // runner would then act for the same seat. Only p1 (or observer) is legal.
   if (state.sessionMode === "single-player" && action.seat !== "observer" && action.seat !== "p1") {
     throw new Error("Computer seats cannot be taken in a single-player game.");
+  }
+
+  // GENERAL rule (co-op step 1): a COMPUTER-controlled seat is never sit-able in
+  // ANY session mode — a multiplayer lobby may now hold computer seats too
+  // (SET_COMPUTER_OPPONENTS). Both the member and the computer runner would
+  // otherwise act for the same seat. Applies to the host as well as to a
+  // self-claim; the single-player check above stays as a belt-and-braces guard.
+  if (action.seat !== "observer" && controllerOf(state, action.seat).kind === "computer") {
+    throw new Error("A computer seat cannot be taken by a player.");
   }
 
   // Authority. The host may seat ANY member into ANY seat (bumping whoever holds

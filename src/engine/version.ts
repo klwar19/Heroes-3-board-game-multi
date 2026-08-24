@@ -663,7 +663,31 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // so the caster PICKS which card returns; a stale edge rejects the answer.
 // Behind `community-card-balance` (default OFF ⇒ byte-identical).
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 55;
+// v56 (2026-08-24, CO-OP MODE step 1 — the engine foundation, one commit):
+// (1) `GameSetupOptions.gameMode` ("clash" | "coop", ABSENT = clash) is a new
+// lobby option, sanitized in `setGameOptions` and carried by
+// `buildAdventureFromLobby`; a v55 worker rejects the SET_GAME_OPTIONS frame
+// that carries it, so a stale edge simply keeps the table on clash rather than
+// silently half-applying it. (2) The built game freezes the new root field
+// `GameState.gameMode: "coop"` and stamps `playerTeams` with the two alliance
+// ids ("coop-humans" / "coop-ai") — a stale edge computing the same build would
+// produce a FREE-FOR-ALL game from the same lobby, so the two halves would
+// disagree about who may attack whom. (3) COMPUTER SEATS IN MULTIPLAYER:
+// `SET_COMPUTER_OPPONENTS` / `SET_COMPUTER_SEAT_FACTION` are no longer
+// single-player-only, so an ordinary lobby may now persist
+// `state.controllers` entries (computer seats only, always the TRAILING seats);
+// a v55 worker refuses both actions outright and would treat such a seat as an
+// ordinary empty human seat. `ASSIGN_SEAT` now refuses ANY computer seat in
+// every session mode (the old check was single-player-only). (4) ALLY FLAG
+// GATE: a Mine / Settlement / Town / Random Town / Garrison / captured Dragon
+// Utopia flagged by a LIVE ALLY is classified as an OWN field
+// (`classifyHeroStep`), is skipped by every `beginFieldVisit` flag branch, is
+// dropped from the View Earth capture list and is refused inside `flagField`
+// itself — a stale edge would still steal it, so the two halves disagree about
+// the resulting map ownership. Default (no `gameMode`, no computer seat in a
+// multiplayer lobby) is byte-identical to v55.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 56;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

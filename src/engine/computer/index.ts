@@ -1,6 +1,8 @@
 export {
   combatHasHumanParticipant,
   computerPlayerIds,
+  COOP_AI_TEAM_ID,
+  COOP_HUMAN_TEAM_ID,
   configuredComputerOpponents,
   controllerOf,
   humanPlayerIdsByController,

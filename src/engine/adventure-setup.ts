@@ -124,7 +124,12 @@ import {
 } from "./map-preset";
 import { pumpAdventureQueues } from "./adventure-reducer";
 import { makeInitialCommanderState } from "./commanders";
-import { controllerOf, standardComputerController } from "./computer/control";
+import {
+  COOP_AI_TEAM_ID,
+  COOP_HUMAN_TEAM_ID,
+  controllerOf,
+  standardComputerController
+} from "./computer/control";
 import { normalizeParallelTurnRounds } from "./parallel-turns";
 import { drawCardsForPlayer, shuffleCards } from "./decks";
 import { makeMoraleDecks } from "./morale-cards";
@@ -169,6 +174,7 @@ import type {
   GameSetupOptions,
   GameSetupState,
   GameState,
+  TableGameMode,
   HouseRuleId,
   DragonUtopiaGuards,
   MapTileState,
@@ -523,6 +529,11 @@ export type AdventureSetupOptions = {
   sessionMode?: GameSessionMode;
   controllers?: Record<PlayerId, PlayerController>;
   computerOpponents?: number;
+  /**
+   * Table game mode: "clash" (default/absent) or "coop" (human seats allied
+   * against the computer seats). Only "coop" is frozen onto the built state.
+   */
+  gameMode?: TableGameMode;
   ruleset?: GameRuleset;
   /** Wake of Gods modules; honored only when the BINH ruleset is active. */
   wog?: Partial<WogModOptions>;
@@ -2627,6 +2638,7 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
   const scenario = getScenario(options.scenarioId);
   const setupOptions: GameSetupOptions = {
     ...defaultGameSetupOptions(scenario),
+    ...(options.gameMode !== undefined ? { gameMode: options.gameMode } : {}),
     ...(options.ruleset ? { ruleset: options.ruleset } : {}),
     ...(options.wog ? { wog: { ...DEFAULT_WOG_OPTIONS, ...options.wog } } : {}),
     ...(options.anime ? { anime: resolveAnimeOptions(options.anime) } : {}),
@@ -3211,6 +3223,23 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
             playerConfigs
               .filter((config) => configuredControllers?.[config.id]?.kind === "computer")
               .map((config) => [config.id, "solo-computers"])
+          )
+        }
+      : {}),
+    // CO-OP (step 1): the frozen mode is a root field so the server pump, the
+    // victory objectives, the match report and the UI all read ONE value; the
+    // alliance itself is expressed as ordinary `playerTeams`, so every existing
+    // `playersAreAllied` gate applies with no per-mode branching. Spread AFTER
+    // the single-player block so an (impossible in practice) overlap resolves
+    // to the explicit co-op teams. Absent gameMode ⇒ neither key is written.
+    ...(setupOptions.gameMode === "coop"
+      ? {
+          gameMode: "coop" as const,
+          playerTeams: Object.fromEntries(
+            playerConfigs.map((config) => [
+              config.id,
+              configuredControllers?.[config.id]?.kind === "computer" ? COOP_AI_TEAM_ID : COOP_HUMAN_TEAM_ID
+            ])
           )
         }
       : {}),
@@ -4263,8 +4292,48 @@ function resizeLobbySeats(state: GameState, scenario: ScenarioDefinition, target
         state.players[seat.playerId].name = faction && hero ? `${hero.name} of ${faction.name}` : seat.name;
       }
     });
+  } else {
+    pruneMultiplayerComputerControllers(state);
   }
   return count;
+}
+
+/**
+ * MULTIPLAYER controller invariant (co-op step 1). `state.controllers` carries
+ * entries ONLY for computer seats created by SET_COMPUTER_OPPONENTS — a human
+ * seat is left ABSENT (`controllerOf` falls back to human) and the whole map is
+ * DELETED once no computer seat remains, so a table that never added a computer
+ * serializes exactly as it did before the feature.
+ *
+ * Called from every multiplayer seat-count change (`resizeLobbySeats`), so a
+ * trimmed computer seat can NEVER leave an orphaned controller entry behind —
+ * an orphan would make `configuredComputerOpponents` (room resets/rematches)
+ * and the computer pump believe in a seat that does not exist.
+ */
+function pruneMultiplayerComputerControllers(state: GameState): void {
+  if (state.sessionMode === "single-player") {
+    return;
+  }
+  const controllers = state.controllers;
+  if (!controllers) {
+    return;
+  }
+  const live = new Set((state.setupLobby?.seats ?? []).map((seat) => seat.playerId));
+  for (const playerId of Object.keys(controllers)) {
+    if (!live.has(playerId) || controllers[playerId]?.kind !== "computer") {
+      delete controllers[playerId];
+    }
+  }
+  if (Object.keys(controllers).length === 0) {
+    delete state.controllers;
+  }
+}
+
+/** The lobby seats currently driven by the computer, in seat order. */
+function computerLobbySeatIds(state: GameState): PlayerId[] {
+  return (state.setupLobby?.seats ?? [])
+    .filter((seat) => controllerOf(state, seat.playerId).kind === "computer")
+    .map((seat) => seat.playerId);
 }
 
 export function setComputerOpponents(
@@ -4272,8 +4341,12 @@ export function setComputerOpponents(
   action: Extract<GameAction, { type: "SET_COMPUTER_OPPONENTS" }>
 ): void {
   const lobby = state.setupLobby;
-  if (state.sessionMode !== "single-player" || !lobby || state.phase !== "setup" || lobby.startCheck) {
-    throw new Error("Computer opponents can only be changed during single-player setup.");
+  if (!lobby || state.phase !== "setup" || lobby.startCheck) {
+    throw new Error("Computer opponents can only be changed during setup.");
+  }
+  if (state.sessionMode !== "single-player") {
+    setMultiplayerComputerOpponents(state, lobby, action);
+    return;
   }
   const humans = lobby.seats.filter((seat) => controllerOf(state, seat.playerId).kind === "human");
   if (humans.length !== 1 || humans[0].playerId !== action.playerId || !Number.isFinite(action.count)) {
@@ -4299,6 +4372,94 @@ export function setComputerOpponents(
     type: "GAME_OPTIONS_CHANGED",
     playerId: action.playerId,
     message: `${state.players[action.playerId]?.name ?? action.playerId} set computer opponents ${count - 1}.`
+  });
+}
+
+/**
+ * MULTIPLAYER computer opponents (co-op step 1). An ordinary lobby may add
+ * computer-controlled seats — for a co-op table (humans vs the AI alliance) and
+ * for a clash table alike. Legality class is SET_GAME_OPTIONS': any seated
+ * player may change it while the setup is open and no start check is running.
+ *
+ * Semantics: the lobby KEEPS its human seats and the computer seats are the
+ * TRAILING seats of the list. `count` is the number of computer seats wanted;
+ * the total is clamped to the scenario capacity exactly as before, so a lobby
+ * already full of humans simply gets no computer seat.
+ */
+function setMultiplayerComputerOpponents(
+  state: GameState,
+  lobby: GameSetupState,
+  action: Extract<GameAction, { type: "SET_COMPUTER_OPPONENTS" }>
+): void {
+  if (!lobby.seats.some((seat) => seat.playerId === action.playerId)) {
+    throw new Error("Only seated players may change the computer opponents.");
+  }
+  if (controllerOf(state, action.playerId).kind === "computer") {
+    throw new Error("Only seated players may change the computer opponents.");
+  }
+  if (!Number.isFinite(action.count)) {
+    throw new Error("Computer opponents must be a number.");
+  }
+
+  const scenario = getScenario(lobby.options.scenarioId);
+  const requested = Math.max(0, Math.floor(action.count));
+  const humanSeatCount = Math.max(1, lobby.seats.length - computerLobbySeatIds(state).length);
+  const total = clampSeatCount(scenario, humanSeatCount + requested);
+  const computerCount = Math.max(0, total - humanSeatCount);
+
+  // A seat that is about to BECOME a computer must be free: a member sitting on
+  // it would break the "nobody controls a computer seat" invariant that
+  // assignSeat enforces from the other side. Refused whole, never silently
+  // bumping a player to observer.
+  const occupiedSeats = new Set(
+    (state.room?.members ?? []).filter((member) => member.seat !== "observer").map((member) => member.seat)
+  );
+  for (let index = humanSeatCount; index < total; index += 1) {
+    if (occupiedSeats.has(`p${index + 1}`)) {
+      throw new Error("Move the players in the trailing seats to observer before adding computer opponents.");
+    }
+  }
+
+  resizeLobbySeats(state, scenario, total);
+
+  // Re-stamp the controller map: the LAST `computerCount` seats are computers,
+  // every earlier seat is human (no entry at all — see
+  // pruneMultiplayerComputerControllers).
+  const firstComputerIndex = total - computerCount;
+  lobby.seats.forEach((seat, index) => {
+    const player = state.players[seat.playerId];
+    if (index >= firstComputerIndex) {
+      state.controllers = { ...(state.controllers ?? {}), [seat.playerId]: standardComputerController() };
+      seat.name = `Computer ${index + 1 - firstComputerIndex}`;
+      const faction = seat.factionId ? coreFactionDefinitions[seat.factionId] : null;
+      const hero = seat.heroDefId ? coreHeroDefinitions[seat.heroDefId] : null;
+      if (player) {
+        player.name = faction && hero ? `${hero.name} of ${faction.name}` : seat.name;
+      }
+      return;
+    }
+    if (state.controllers?.[seat.playerId]) {
+      // Demoted back to a human seat: drop the pick the computer was carrying so
+      // an arriving player starts from a clean, unnamed seat.
+      delete state.controllers[seat.playerId];
+      seat.name = LOBBY_SEAT_NAMES[index] ?? `Player ${index + 1}`;
+      seat.factionId = null;
+      seat.heroDefId = null;
+      if (player) {
+        player.name = seat.name;
+      }
+    }
+  });
+  pruneMultiplayerComputerControllers(state);
+
+  if (lobby.draft?.seatRolls) {
+    const live = new Set(lobby.seats.map((seat) => seat.playerId));
+    lobby.draft.seatRolls = Object.fromEntries(Object.entries(lobby.draft.seatRolls).filter(([id]) => live.has(id)));
+  }
+  appendEvent(state, {
+    type: "GAME_OPTIONS_CHANGED",
+    playerId: action.playerId,
+    message: `${state.players[action.playerId]?.name ?? action.playerId} set computer opponents ${computerCount}.`
   });
 }
 
@@ -4484,6 +4645,17 @@ export function setGameOptions(state: GameState, action: Extract<GameAction, { t
   if (next.customMode !== undefined) {
     lobby.options.customMode = Boolean(next.customMode);
     changes.push(`game mode ${lobby.options.customMode ? "Custom (personal setup)" : "standard preset"}`);
+  }
+
+  // CO-OP (step 1). Sanitized to the two literals; anything else is refused
+  // rather than silently coerced, so a stale/forged client cannot invent a mode.
+  // "clash" is the default, so a lobby that never sets this field is unchanged.
+  if (next.gameMode !== undefined) {
+    if (next.gameMode !== "clash" && next.gameMode !== "coop") {
+      throw new Error("Unknown table mode.");
+    }
+    lobby.options.gameMode = next.gameMode;
+    changes.push(`table mode ${next.gameMode === "coop" ? "Co-op (humans vs computers)" : "Clash (free-for-all)"}`);
   }
 
   if (next.ruleset !== undefined) {
@@ -5924,9 +6096,6 @@ export function setComputerSeatFaction(
   if (!lobby || state.phase !== "setup") {
     throw new Error("Computer seats can only be set during map setup.");
   }
-  if (state.sessionMode !== "single-player") {
-    throw new Error("A computer's faction can only be set in a single-player game.");
-  }
   if (lobby.startCheck) {
     throw new Error("The setup is locked while the start check is open.");
   }
@@ -5934,11 +6103,22 @@ export function setComputerSeatFaction(
     throw new Error("A computer's town and hero can only be hand-picked in the Free pick format.");
   }
 
-  // Issuer must be the ONE human owner seat (never a seat takeover — this only
-  // writes the faction/hero fields of a computer seat).
-  const humans = lobby.seats.filter((candidate) => controllerOf(state, candidate.playerId).kind === "human");
-  if (humans.length !== 1 || humans[0].playerId !== action.playerId) {
-    throw new Error("Only the single-player human seat may pick a computer's faction.");
+  if (state.sessionMode === "single-player") {
+    // Issuer must be the ONE human owner seat (never a seat takeover — this only
+    // writes the faction/hero fields of a computer seat).
+    const humans = lobby.seats.filter((candidate) => controllerOf(state, candidate.playerId).kind === "human");
+    if (humans.length !== 1 || humans[0].playerId !== action.playerId) {
+      throw new Error("Only the single-player human seat may pick a computer's faction.");
+    }
+  } else {
+    // MULTIPLAYER (co-op step 1): a lobby may now hold computer seats, and any
+    // SEATED HUMAN may pick their town/hero — the same legality class as
+    // SET_GAME_OPTIONS / SET_COMPUTER_OPPONENTS. A computer seat may never
+    // issue it.
+    const issuerSeated = lobby.seats.some((candidate) => candidate.playerId === action.playerId);
+    if (!issuerSeated || controllerOf(state, action.playerId).kind === "computer") {
+      throw new Error("Only a seated player may pick a computer's faction.");
+    }
   }
 
   const seat = lobby.seats.find((candidate) => candidate.playerId === action.seatPlayerId);
@@ -6287,6 +6467,9 @@ function buildAdventureFromLobby(state: GameState): void {
     sessionMode: state.sessionMode,
     controllers: state.controllers,
     scenarioId: lobby.options.scenarioId,
+    // CO-OP: carried or the host's table-mode choice is silently dropped and the
+    // built game has no alliance. Absent (a plain lobby) ⇒ byte-identical.
+    gameMode: lobby.options.gameMode,
     ruleset: lobby.options.ruleset,
     wog: lobby.options.wog,
     // Anime mod + the GLOBAL Field Override system are set on the lobby (the

@@ -46,6 +46,16 @@ export function isComputerPlayer(
   );
 }
 
+/**
+ * CO-OP mode team ids (`GameSetupOptions.gameMode === "coop"`). Stamped onto
+ * `GameState.playerTeams` at build time: every human seat joins
+ * {@link COOP_HUMAN_TEAM_ID}, every computer seat {@link COOP_AI_TEAM_ID}. They
+ * are ordinary team ids — `playersAreAllied` is the only reader, so no gate in
+ * the engine needs a co-op branch.
+ */
+export const COOP_HUMAN_TEAM_ID = "coop-humans";
+export const COOP_AI_TEAM_ID = "coop-ai";
+
 /** Equal persisted team ids are allies. A missing id never creates an alliance. */
 export function playersAreAllied(
   state: GameState,

@@ -216,6 +216,8 @@ export {
   emptyComputerMemory,
   getComputerMemory,
   combatHasHumanParticipant,
+  COOP_AI_TEAM_ID,
+  COOP_HUMAN_TEAM_ID,
   humanPlayerIdsByController,
   isComputerPlayer,
   isPrivateSinglePlayer,
@@ -652,6 +654,7 @@ export {
   endGameByVictoryPoints,
   effectiveHandLimit,
   ensureUniqueArmyUnitIds,
+  fieldFlaggedByAlly,
   fieldLayer,
   freeSpellBookActive,
   gainExperience,
@@ -1145,7 +1148,8 @@ export type {
   SiegeState,
   WogModOptions,
   AnimeModOptions,
-  GameRuleset
+  GameRuleset,
+  TableGameMode
 } from "./state";
 
 export { getUnitTokens, tokenAttackBonus, tokenDefenseDelta } from "./tokens";
