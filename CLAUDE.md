@@ -2354,6 +2354,34 @@ held OUT of their own reshuffle (`inFlightCardIds`).
 LIMIT: **peeks are not draws** — the Thieves' Guild "look at the top 2" still needs 2
 real cards.
 
+## A card handed BACK to a shared deck lands UNDER its face-up top (2026-08-26, protocol v69)
+
+USER BUG: "polish spell book: Rolling spells — still there is a bug that 1st proposition
+is the same spell you roll — not the first from discard." Rolling Spells (Polish Spell
+Book + a Mage Guild, 3 gold, once per turn) returns one owned Book Spell to the shared
+Spell discard and queues its own Search (2) — and every Search opens with the rulebook
+either/or whose take-the-discard proposition reads the pile's face-up TOP (both the
+engine label and `DeckSearchModeModal`'s card tile). Pushed on top, the just-rolled Spell
+WAS that proposition: 3 gold bought the offer to take it straight back. ONE seam
+**`returnCardUnderSharedDeckDiscardTop`** (`decks.ts`, beside `ensureSharedDeckDiscard`)
+slides such a return UNDER the face-up top instead, so the proposition is the card that
+was already there ("the first from discard") and the returned card is still in the pile
+(a later Search reaches it once it surfaces; a reshuffle recycles it). Both call sites —
+the `rollSpell` arm of `spellBookAction` and `returnOwnedSpellToSharedDiscard`, whose
+caller is the Tournament Morale "Search again" card (the SAME hole in a second flow) —
+take it, so they can never disagree. Pinned in `polish-spell-book.test.ts` ("Rolling
+Spells: the queued Search offers the DISCARD TOP, never the rolled Spell" — proposition
+by NAME plus the take really inscribing the discard-top Spell; the empty-pile edge; the
+morale re-run twin; and a CONTROL that an ordinary top-pushed discard IS still offered,
+so the take-the-top rule was not blanket-skipped).
+LIMITS: this is the RETURN convention only — an ordinary cast / bin still becomes the
+face-up top, deliberately (a cast Spell is not being paid away); a deck whose draw pile
+is ALSO empty has nothing to hide the return behind and keeps it face up (unreachable in
+a normal game — setup flips a face-up card into every shared discard); nothing else reads
+a shared discard's ORDER beyond its top entry, so no other surface moves. No serialized
+field changed, but the authoritative resolution does ⇒ `npm run deploy:partykit` OWED
+(until the edge carries it a hosted table still sees the bug).
+
 ## Beginning-of-player-turn draws resolve after the hand phase (2026-07-26)
 
 Round effects resolve first, then the active player completes `REFRESH_HAND`, and only

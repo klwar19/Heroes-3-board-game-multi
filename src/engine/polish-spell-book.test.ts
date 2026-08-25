@@ -774,6 +774,117 @@ describe("Polish Mage Guild", () => {
     ).toBe(true);
   });
 
+  /**
+   * USER BUG 2026-08-26: "polish spell book: Rolling spells — still there is a
+   * bug that 1st proposition is the same spell you roll — not the first from
+   * discard."
+   *
+   * The roll returns the Spell to the shared Spell discard and queues its own
+   * Search (2). That Search opens with the rulebook either/or, whose
+   * take-the-discard proposition reads the pile's face-up TOP — which used to be
+   * the just-rolled Spell, so 3 gold bought the offer to take it straight back.
+   * The rolled Spell now slides UNDER the face-up top instead, so the
+   * proposition is the card that was already there ("the first from discard").
+   */
+  function rollGame(seed: string): GameState {
+    const state = createAdventureGameState({ startingBuildings: [],
+      seed,
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      houseRules: { "polish-spell-book": true }
+    });
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.resources.gold = 10;
+    state.players.p1.spellBook = ["spell.haste"];
+    state.players.p1.spellBookUsed = [];
+    const town = Object.values(state.towns).find((candidate) => candidate.controllerId === "p1")!;
+    town.buildings.push("castle.mage_guild");
+    return state;
+  }
+
+  function rollHaste(state: GameState): GameState {
+    const roll = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "SPELL_BOOK_ACTION" && entry.action.rollSpell?.cardId === "spell.haste"
+    );
+    expect(roll).toBeTruthy();
+    return applyOk(state, roll!.action);
+  }
+
+  function searchModeOptions(state: GameState): { label: string }[] {
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the Search-or-take-discard menu");
+    }
+    expect(state.pendingChoice.context).toBe("deck-search-mode");
+    return state.pendingChoice.options;
+  }
+
+  it("Rolling Spells: the queued Search offers the DISCARD TOP, never the rolled Spell", () => {
+    let state = rollGame("polish-roll-discard-top");
+    // A deterministic pile: Bless is the face-up top the Search must offer.
+    state.decks.spells.discardPile = ["spell.magic_arrow", "spell.bless"];
+
+    state = rollHaste(state);
+
+    // The rolled Spell is really in the pile (nothing created or lost) but it is
+    // NOT the face-up top — Bless still is.
+    const pile = state.decks.spells.discardPile;
+    expect(pile).toContain("spell.haste");
+    expect(pile[pile.length - 1]).toBe("spell.bless");
+
+    const options = searchModeOptions(state);
+    const take = options.findIndex((option) => option.label.startsWith("Take the top discard"));
+    expect(take).toBeGreaterThan(-1);
+    expect(options[take]!.label).toContain("Bless");
+    // The whole menu never mentions the Spell just paid for and rolled away.
+    expect(options.every((option) => !/haste/i.test(option.label))).toBe(true);
+
+    // Taking the proposition really moves BLESS (not Haste) into the Book.
+    const choiceId = state.pendingChoice!.id;
+    state = applyOk(state, { type: "CHOOSE_OPTION", playerId: "p1", choiceId, optionIndex: take });
+    expect(state.players.p1.spellBook).toContain("spell.bless");
+    expect(state.players.p1.spellBook).not.toContain("spell.haste");
+    expect(state.decks.spells.discardPile).not.toContain("spell.bless");
+    expect(state.decks.spells.discardPile).toContain("spell.haste");
+  });
+
+  it("Rolling Spells with an EMPTY Spell discard still never offers the rolled Spell", () => {
+    let state = rollGame("polish-roll-empty-discard");
+    // Degenerate pile (an older snapshot / a pile just emptied by a take): the
+    // face-up invariant is seeded from the draw pile and the rolled Spell goes
+    // under THAT, so it can never be the proposition either.
+    state.decks.spells.drawPile = [...state.decks.spells.discardPile, ...state.decks.spells.drawPile];
+    state.decks.spells.discardPile = [];
+
+    state = rollHaste(state);
+
+    const pile = state.decks.spells.discardPile;
+    expect(pile).toContain("spell.haste");
+    expect(pile.length).toBeGreaterThan(1);
+    expect(pile[pile.length - 1]).not.toBe("spell.haste");
+    if (state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context === "deck-search-mode") {
+      expect(state.pendingChoice.options.every((option) => !/haste/i.test(option.label))).toBe(true);
+    }
+  });
+
+  it("CONTROL: an ordinary Search still offers the pile's genuine face-up top", () => {
+    // The fix must not have removed (or blanket-skipped) the take-the-top-discard
+    // proposition: a Spell that reached the shared discard WITHOUT a roll — a
+    // cast, a bin — is still the card the next Search offers.
+    let state = rollGame("polish-roll-control-top");
+    state.decks.spells.discardPile = ["spell.magic_arrow", "spell.bless"];
+    // The classic route onto a shared discard: pushed on top.
+    state.decks.spells.discardPile.push("spell.slow");
+
+    openSharedDeckSearch(state, "p1", "spells", 2);
+    const options = searchModeOptions(state);
+    const take = options.findIndex((option) => option.label.startsWith("Take the top discard"));
+    expect(take).toBeGreaterThan(-1);
+    expect(options[take]!.label).toContain("Slow");
+    expect(options[take]!.label).not.toContain("Bless");
+  });
+
   it("a newly built Guild offers two Search-3-or-Cast rewards", () => {
     const state = createAdventureGameState({ startingBuildings: [],
       seed: "polish-guild-build",
@@ -1186,6 +1297,58 @@ describe("Polish Spell Book — co-composition fixes", () => {
     expect(state.players.p1.discard).not.toContain("spell.haste");
     expect(state.decks.spells?.discardPile).toContain("spell.haste");
     expect((state.decks.spells?.discardPile.length ?? 0)).toBe(sharedBefore + 1);
+  });
+
+  /**
+   * The Rolling Spells bug in its SECOND flow: the Tournament Morale
+   * "Search again" card discards the Spell just gained and re-opens the SAME
+   * Spell Search, so a Spell uninscribed onto the top of the shared pile came
+   * straight back as that Search's take-the-top-discard proposition. It goes
+   * UNDER the face-up top for the same reason.
+   */
+  it("morale repeat_search: the re-run Search offers the discard TOP, never the Spell just returned", () => {
+    let state = polishAdventure("polish-morale-repeat-not-offered");
+    state.players.p1.canMulligan = false;
+    state.players.p1.needsHandRefresh = false;
+    state.players.p1.spellBook = ["spell.haste"];
+    state.players.p1.spellBookUsed = [];
+    state.players.p1.discard = [];
+    state.players.p1.moraleCards = { positive: [MORALE_CARD_IDS.repeatSearch], negative: [] };
+    state.decks.spells!.discardPile = ["spell.magic_arrow", "spell.bless"];
+    state.pendingChoice = {
+      id: "choice_morale_repeat",
+      type: "OPTION_CHOICE",
+      playerId: "p1",
+      prompt: "Discard the gained card to Search again?",
+      options: [{ label: "Discard Haste and Search again" }, { label: "Keep Haste" }],
+      context: "morale-repeat-search",
+      moraleRepeatSearch: { cardId: "spell.haste", deckId: "spells", count: 2 },
+      returnPhase: "player-turn"
+    };
+    state.phase = "choice";
+    state.priorityPlayerId = "p1";
+
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: "choice_morale_repeat",
+      optionIndex: 0
+    });
+
+    const pile = state.decks.spells!.discardPile;
+    expect(pile).toContain("spell.haste");
+    expect(pile[pile.length - 1]).toBe("spell.bless");
+    expect(state.pendingChoice?.type).toBe("OPTION_CHOICE");
+    if (state.pendingChoice?.type !== "OPTION_CHOICE") {
+      throw new Error("expected the re-run Search menu");
+    }
+    expect(state.pendingChoice.context).toBe("deck-search-mode");
+    const take = state.pendingChoice.options.findIndex((option) =>
+      option.label.startsWith("Take the top discard")
+    );
+    expect(take).toBeGreaterThan(-1);
+    expect(state.pendingChoice.options[take]!.label).toContain("Bless");
+    expect(state.pendingChoice.options.every((option) => !/haste/i.test(option.label))).toBe(true);
   });
 
   it("Event remove-for-search offers Book Spells and never Cast a Spell", () => {

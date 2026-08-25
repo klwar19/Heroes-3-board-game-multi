@@ -325,6 +325,7 @@ import {
   drawCardsForPlayer,
   ensureSharedDeckDiscard,
   reshuffleSharedDeckIfEmpty,
+  returnCardUnderSharedDeckDiscardTop,
   shuffleCards
 } from "./decks";
 import { maybeReturnFirstSpellToHand } from "./spell-lifecycle";
@@ -15027,7 +15028,13 @@ export function spellBookAction(state: GameState, action: Extract<GameAction, { 
     }
     spendResources(state, action.playerId, { gold: 3 }, "Rolling Spells");
     source.splice(spellIndex, 1);
-    state.decks.spells?.discardPile.push(action.rollSpell.cardId);
+    // The rolled Spell goes back UNDER the shared Spell discard's face-up top,
+    // never on top of it: the Search (2) this roll queues offers that top card
+    // as its take-the-discard proposition, and the Spell you just paid 3 gold
+    // to be rid of must never BE that offer (the reported bug — see
+    // `returnCardUnderSharedDeckDiscardTop`). The face-up top stays the card
+    // that was already there, i.e. "the first from discard".
+    returnCardUnderSharedDeckDiscardTop(state, "spells", action.rollSpell.cardId);
     player.polishSpellRollUsedRound = state.round;
     state.adventure?.rewardQueue.push({
       playerId: action.playerId,

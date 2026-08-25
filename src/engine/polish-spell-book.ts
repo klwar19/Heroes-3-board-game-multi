@@ -1,4 +1,5 @@
 import { cardLibrary } from "@/data/cards/library";
+import { returnCardUnderSharedDeckDiscardTop } from "./decks";
 import { houseRuleEnabled } from "./house-rules";
 import type { CardId, CardLibrary, GameState, PlayerId, PlayerState } from "./state";
 
@@ -418,7 +419,14 @@ export function discardRecoveryHasWork(
  * Uninscribe an owned Polish Book Spell: remove from the Book (or a leaked
  * hand copy) and put it on the shared Spell discard. Never parks Spells in
  * the personal discard (they would be uncastable and un-refreshable under
- * Polish). Mirrors Rolling Spells' return convention.
+ * Polish).
+ *
+ * It lands UNDER that pile's face-up top, the same convention Rolling Spells
+ * takes (`returnCardUnderSharedDeckDiscardTop`): the one caller is the
+ * Tournament Morale "Search again" card, which re-opens the SAME Spell Search
+ * right after — so a pushed-on-top Spell would come straight back as that
+ * Search's take-the-top-discard proposition, the Rolling Spells bug in a
+ * second flow.
  */
 export function returnOwnedSpellToSharedDiscard(
   state: GameState,
@@ -448,12 +456,12 @@ export function returnOwnedSpellToSharedDiscard(
     player.hand.splice(index, 1);
   }
   // Polish forces a merged `"spells"` deck; fall back to any spells* pile.
-  const deck =
-    state.decks.spells ??
-    state.decks["spells-expert"] ??
-    Object.entries(state.decks).find(([id]) => id.startsWith("spells"))?.[1];
-  if (deck) {
-    deck.discardPile.push(cardId);
+  const deckId =
+    (state.decks.spells && "spells") ??
+    (state.decks["spells-expert"] && "spells-expert") ??
+    Object.keys(state.decks).find((id) => id.startsWith("spells"));
+  if (deckId) {
+    returnCardUnderSharedDeckDiscardTop(state, deckId, cardId);
   }
 }
 

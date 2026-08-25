@@ -812,7 +812,19 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // pop-up the new client shows does not exist on the stale edge (and the
 // CHOOSE_OPTION answering it is rejected) — the silent-divergence class the
 // banner exists to surface. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 68;
+// v69 (2026-08-26, USER BUG "polish spell book: Rolling spells — still there is
+// a bug that 1st proposition is the same spell you roll — not the first from
+// discard"): a card handed BACK to a shared deck by an effect that then Searches
+// that same deck now lands UNDER the pile's face-up top
+// (`returnCardUnderSharedDeckDiscardTop`) instead of on top of it — Polish
+// Rolling Spells and the Tournament Morale "Search again" return. No new action
+// type and no new serialized FIELD, but the AUTHORITATIVE resolution moves: the
+// server builds the Search's take-the-top-discard proposition (and the modal's
+// card face) from the pile it just wrote, so a v68 worker still offers the
+// rolled Spell straight back while a v68 client applying the same action locally
+// writes a different pile order. The fix only reaches a hosted table once the
+// edge carries it. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 69;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

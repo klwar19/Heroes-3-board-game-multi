@@ -58,6 +58,56 @@ export function ensureSharedDeckDiscard(state: GameState, deckId: string): boole
   return true;
 }
 
+/**
+ * Return one card to a shared deck's discard pile UNDER its face-up top card —
+ * THE one seam for every "hand this card back, then Search that same deck"
+ * effect.
+ *
+ * WHY: the rulebook alternative that opens every Search ("take the top of the
+ * discard pile") reads this pile's LAST entry, and so does the modal's card
+ * tile. A card pushed on TOP therefore becomes the very card the Search queued
+ * by the same effect offers first — which is exactly wrong for an effect whose
+ * whole point is getting rid of it. Reported for Polish Rolling Spells (USER
+ * BUG 2026-08-26: "still there is a bug that 1st proposition is the same spell
+ * you roll — not the first from discard"), and the Tournament Morale
+ * "Search again" card had the identical hole under the Polish Spell Book (the
+ * rejected Spell is uninscribed to this shared pile, then the SAME Search
+ * re-opens).
+ *
+ * So the returned card slides UNDER the face-up top instead: the top stays
+ * whatever was already face up — "the first from discard", which is what the
+ * Search must offer — while the returned card really is in the pile (a later
+ * Search reaches it once it surfaces, and a reshuffle recycles it). No card is
+ * created or lost, and nothing else reads a shared discard's order beyond its
+ * top entry.
+ *
+ * An EMPTY pile is seeded face-up first (`ensureSharedDeckDiscard`, the same
+ * invariant the action tail keeps) so there is a real card to slide under. The
+ * one case with nothing to hide behind is a deck whose draw pile is ALSO empty:
+ * the returned card is then the only card the pile can possibly show, so it
+ * stays face up (documented limit, not reachable in a normal game — setup flips
+ * a face-up card into every shared discard).
+ */
+export function returnCardUnderSharedDeckDiscardTop(
+  state: GameState,
+  deckId: string,
+  cardId: CardId
+): boolean {
+  const deck = state.decks[deckId];
+  if (!deck) {
+    return false;
+  }
+  if (deck.discardPile.length === 0) {
+    ensureSharedDeckDiscard(state, deckId);
+  }
+  if (deck.discardPile.length === 0) {
+    deck.discardPile.push(cardId);
+    return true;
+  }
+  deck.discardPile.splice(deck.discardPile.length - 1, 0, cardId);
+  return true;
+}
+
 export function refillSharedDeckDiscards(state: GameState, before?: GameState): void {
   for (const deckId of SHARED_DECK_IDS) {
     // At an action tail (with the pre-action `before` state supplied), only
