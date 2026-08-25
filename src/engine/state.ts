@@ -4394,6 +4394,24 @@ export type GameAction =
        */
       fromScroll?: string;
       /**
+       * Helm of the Alabaster Unicorn (option B) / Ciele's Magic Arrow, played as
+       * the printed ⚡ INSTANT it is: the reaction Spell is NOT owned — it is cast
+       * from the top of the shared Spell-deck discard pile (Ciele: her own
+       * discard / Book) — and THIS card is the enabler in hand that authorises it
+       * and is spent by the play (the Helm is REMOVED, a specialty/ability
+       * cycles to the discard). The Spell itself moves nowhere (the Balance-Pack
+       * Helm inscribes it into the Spellbook instead), it is cast at the caster's
+       * full Power, and it is a free bonus — never blocked by, and never
+       * consuming, the one-Spell-per-combat-round limit.
+       *
+       * WHY IT EXISTS: the printed top of that pile can be a TRIGGERED Spell
+       * (Bless, Curse, Precision, Bloodlust, …) whose only legal moment is an
+       * open reaction window, so the on-turn CAST_SPELL path could never reach it
+       * (reported 2026-08-26: the Helm's second part did nothing even with a
+       * perfectly castable Spell on top).
+       */
+      fromSpellDeck?: CardId;
+      /**
        * Tarnum (Conflux) VI: this reaction Spell is a just-Searched, flagged card
        * cast for FREE over the per-round limit. It does not count toward the limit
        * and, instead of the caster's discard, returns to the shared Spell deck —

@@ -3124,3 +3124,81 @@ describe("ReactionTray — WOG commander instant reaction has a button", () => {
     expect(screen.queryByRole("button", { name: /cast Shield/i })).toBeNull();
   });
 });
+
+describe("ReactionTray — the Helm of the Alabaster Unicorn's Spell-deck cast has a button", () => {
+  // Reported 2026-08-26 ("Helm of unicorn — second part still not working"): the
+  // cast's `cardId` is the SPELL on the shared Spell-deck discard top — NOT a
+  // hand card — while `fromSpellDeck` names the Helm that is. The tray's batch
+  // tiles are keyed on hand INDEX, so without a dedicated one-click tile (the
+  // Scroll pattern) the engine-offered instant renders no button at all — the
+  // same UI-surface class as commit 2934b779's hand-fan fix.
+  const HELM = "artifact.helm_of_the_alabaster_unicorn";
+
+  function attackWindow(seed: string, discardTop: string | null): GameState {
+    const state = createInitialGameState(seed);
+    state.players.p1.hand = [HELM];
+    state.players.p2.hand = [];
+    state.decks.spells.discardPile = discardTop ? [discardTop] : [];
+    const attacker = state.combat!.units.unit_p1_griffins;
+    attacker.position = 13;
+    attacker.activatedThisRound = false;
+    attacker.movedThisActivation = false;
+    attacker.attackedThisActivation = false;
+    const defender = state.combat!.units.unit_p2_skeletons;
+    defender.position = 14;
+    defender.abilities = [];
+    defender.maxHealth = 40;
+    defender.damage = 0;
+    state.activePlayerId = "p1";
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const result = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(result.errors).toEqual([]);
+    return result.state;
+  }
+
+  function tray(state: GameState, onAction: (action: GameAction) => void) {
+    return (
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(state, "p1")}
+          onAction={onAction}
+          state={state}
+          view={getPlayerView(state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+  }
+
+  it("renders a one-click tile for a TRIGGERED discard top and dispatches the cast", () => {
+    const state = attackWindow("tray-helm-curse", "spell.curse");
+    expect(state.reactionWindow?.priorityPlayerId).toBe("p1");
+    const onAction = vi.fn();
+    render(tray(state, onAction));
+
+    expect(screen.queryByText(/No playable instants/i)).toBeNull();
+    expect(screen.getByText(/Curse.*Helm of the Alabaster Unicorn/i)).toBeTruthy();
+    const button = screen.getByRole("button", { name: /Cast from the Spell discard/i });
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.curse",
+      mode: "basic",
+      fromSpellDeck: HELM
+    });
+  });
+
+  it("CONTROL: with the Spell discard empty the Helm shows no cast button", () => {
+    const state = attackWindow("tray-helm-empty", null);
+    render(tray(state, vi.fn()));
+    expect(screen.queryByRole("button", { name: /Cast from the Spell discard/i })).toBeNull();
+  });
+});

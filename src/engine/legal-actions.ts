@@ -235,9 +235,10 @@ import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
 import {
   CAST_A_SPELL_CARD_ID,
+  castFromSpellDiscardArm,
+  castFromSpellDiscardSourceSpellIds,
   discardRecoveryHasWork,
   isCastASpellCard,
-  polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
   tarnumOverlimitSpellAvailable
 } from "./polish-spell-book";
@@ -2829,61 +2830,27 @@ function addSpellActions(
   for (const enablerId of [...new Set(player.hand)].filter(
     (id) => cardEnablesSpellDeckCast(cards[id]) && !cardOffersAnySpellDiscardCast(cards[id])
   )) {
-    const enabler = cards[enablerId];
     // The card may print SEVERAL cast arms gated on a house rule (the Balance
-    // Pack Ciele I/IV carry a Polish-Book arm AND the classic one) — take the
-    // first whose gates pass, so exactly one reading is live at a time. The
-    // reducer's `castFromSpellDiscardOption` applies the SAME gates.
-    const castOption =
-      enabler?.effect.type === "CHOOSE_ONE"
-        ? enabler.effect.options.find(
-            (o) =>
-              o.effect.type === "CAST_FROM_SPELL_DISCARD" &&
-              !(o.requiresHouseRule && !houseRuleEnabled(state, o.requiresHouseRule)) &&
-              !(o.forbidsHouseRule && houseRuleEnabled(state, o.forbidsHouseRule))
-          )
-        : undefined;
-    const spellIdFilter =
-      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" ? castOption.effect.spellId : undefined;
-    // Ciele IV (Conflux): `ownDiscard` reads the caster's OWN discard pile (where
-    // a cast Magic Arrow actually lands), not the shared Spell-deck discard the
-    // Helm draws from. Search it for the filtered spell id.
-    const fromOwnDiscard = castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" && castOption.effect.ownDiscard === true;
-    // Polish Balance Pack Ciele I/IV: "If you have a Cast a Spell card on your
-    // discard pile, Refresh up to 1 Magic Arrow spell and cast it." The source is
-    // the caster's USED Book side, the enabler in the discard pile is only the
-    // CONDITION (never spent), and a Book Spell the shared once-per-round /
-    // in-effect gate refuses is not a candidate. Book-gated: without the Polish
-    // Book this arm is not offered (the reprint's classic sides cover that table).
-    const refreshFromBook =
-      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
-      castOption.effect.polishRefreshFromBook === true &&
-      polishSpellBookEnabled(state);
-    if (refreshFromBook && !player.discard.includes(CAST_A_SPELL_CARD_ID)) {
+    // Pack Ciele I/IV carry a Polish-Book arm AND the classic one) — the shared
+    // leaf read takes the first whose gates pass, so exactly one reading is live
+    // at a time. The reducer's two consume seams and the reaction-window pass
+    // below read the SAME arm, so no two surfaces can disagree.
+    const arm = castFromSpellDiscardArm(state, cards, enablerId);
+    if (!arm) {
       continue;
     }
     // Ciele I's reprint counts against the per-round limit (only IV prints the
     // over-limit clause), so it is withheld once the limit is spent.
-    if (
-      castOption?.effect.type === "CAST_FROM_SPELL_DISCARD" &&
-      castOption.effect.countsTowardSpellLimit === true &&
-      spellLimitReached
-    ) {
+    if (arm.effect.countsTowardSpellLimit === true && spellLimitReached) {
       continue;
     }
-    const sourcePile = refreshFromBook
-      ? (player.spellBookUsed ?? []).filter(
-          (id) => polishBookSpellRefreshBlocked(state, playerId, id, player) === null
-        )
-      : fromOwnDiscard
-      ? polishSpellBookEnabled(state)
-        ? player.spellBook
-        : player.discard
-      : state.decks.spells?.discardPile ?? [];
-    const sourceSpell = spellIdFilter
-      ? [...sourcePile].reverse().find((id) => id === spellIdFilter)
-      : sourcePile.at(-1);
-    if (sourceSpell) {
+    // Ciele IV (Conflux) reads the caster's OWN discard pile (where a cast Magic
+    // Arrow actually lands) / their Book; the Helm reads the shared Spell-deck
+    // discard's face-up top.
+    const fromOwnDiscard = arm.effect.ownDiscard === true;
+    // One candidate per shared Spell-deck discard TOP (BINH splits the Spell deck
+    // into basic + expert, so both face-up tops are castable).
+    for (const sourceSpell of castFromSpellDiscardSourceSpellIds(state, player, arm.effect)) {
       castCandidates.push({ cardId: sourceSpell, fromSpellDeck: enablerId, ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}) });
     }
   }
@@ -7069,7 +7036,11 @@ function applyPolishSpellBookActionGate(
       !isCastASpellCard(action.cardId) &&
       !action.fromSpellBook &&
       !(action.type === "CAST_SPELL" && (action.fromScroll || action.fromSpellDeck || action.tarnumReturn)) &&
-      !(action.type === "PLAY_REACTION" && (action.fromScroll || action.tarnumReturn))
+      // A Spell-deck cast (Helm of the Alabaster Unicorn option B / Ciele) is not
+      // an OWNED Spell either — it is cast off a shared discard pile through its
+      // enabler, so it passes the Cast-a-Spell gate like a Scroll. Listed for
+      // BOTH shapes: the on-turn CAST_SPELL and the ⚡ instant PLAY_REACTION.
+      !(action.type === "PLAY_REACTION" && (action.fromScroll || action.fromSpellDeck || action.tarnumReturn))
     ) {
       // Owned Polish Spells live only in the Book. This also heals legacy saves
       // defensively: a stray hand Spell cannot bypass the Cast-a-Spell gate.
@@ -8903,6 +8874,88 @@ export function getLegalReactionsForTrigger(
               })
             );
           }
+        }
+      }
+    }
+
+    // Helm of the Alabaster Unicorn (option B) / Ciele's Magic Arrow — the
+    // printed ⚡ INSTANT half, played INSIDE a window.
+    //
+    // REPORTED 2026-08-26 ("Helm of unicorn — second part still not working,
+    // even if in the top of the discard is a spell that can be casted", both the
+    // printed card and the Balance Pack): the only surface that ever enumerated
+    // this cast was the on-turn `addSpellActions` path, which skips every Spell
+    // carrying a printed trigger (`card.trigger`) — and a THIRD of the Spell deck
+    // is exactly that (Bless, Curse, Precision, Weakness, Shield, Bloodlust,
+    // Stone Skin, Slayer, Frenzy). Those Spells are only ever playable inside the
+    // window their trigger names, so with one of them face up on the discard the
+    // Helm offered nothing at all, on the map and in combat alike.
+    //
+    // Shaped on the Spell Scroll pass above — the closest shipped analogue for
+    // "a Spell you do not own, offered as a reaction" — with two printed
+    // differences: it is NOT power-locked (the Helm casts at the caster's full
+    // Power) and the play consumes its ENABLER (the Helm is removed from the
+    // game; a specialty/ability cycles to the discard), never a hand Spell.
+    // Recanter's Cloak still locks it out with every other Spell.
+    if (!castLocked) {
+      for (const enablerId of [...new Set(player.hand)].filter(
+        (id) => cardEnablesSpellDeckCast(cards[id]) && !cardOffersAnySpellDiscardCast(cards[id])
+      )) {
+        const arm = castFromSpellDiscardArm(state, cards, enablerId);
+        if (!arm) {
+          continue;
+        }
+        // Only the Balance-Pack Ciele I arm consumes the per-round Spell limit;
+        // the Helm's free bonus cast is offered past it, exactly like on-turn.
+        if (arm.effect.countsTowardSpellLimit === true && spellLimitLeft <= 0) {
+          continue;
+        }
+        for (const spellId of castFromSpellDiscardSourceSpellIds(state, player, arm.effect)) {
+        const card = cards[spellId];
+        if (!card || card.kind !== "spell" || card.implementationStatus !== "implemented") {
+          continue;
+        }
+        if (card.timing !== "reaction" && card.timing !== "instant") {
+          continue;
+        }
+        if (spellEffectIsAlreadyOngoing(state, player.id, spellId)) {
+          continue;
+        }
+        for (const variant of getCardPlayVariants(card)) {
+          if (
+            variant.mapOnly ||
+            variant.expertOnly ||
+            // A cost-bearing reaction Spell (Sorrow / Resurrection / Misfortune)
+            // and Magic Mirror's redirect are OUT, exactly as they are for a
+            // Scroll: their cost pickers and dedicated passes read the player's
+            // own cards, and a Spell that is not theirs has no hand entry to
+            // hang that on. Documented limit, not an oversight.
+            variant.cost ||
+            variant.effect.type === "ADD_SPELL_POWER" ||
+            variant.effect.type === "REDIRECT_SPELL" ||
+            !variantMatchesTrigger(variant, triggerEvent, player.id) ||
+            !isEffectLegalForTrigger(state, player.id, variant.effect, triggerEvent, "basic", spellId) ||
+            spellReactionBlockedByImmunity(state, card, variant.effect, triggerEvent)
+          ) {
+            continue;
+          }
+          const enablerName = cards[enablerId]?.name ?? "Spell-deck cast";
+          reactions.push(
+            makeReactionAction(
+              variant.optionLabel
+                ? `${card.name}: ${variant.optionLabel} (${enablerName})`
+                : `${card.name} (${enablerName})`,
+              {
+                type: "PLAY_REACTION",
+                playerId: player.id,
+                cardId: spellId,
+                mode: "basic",
+                fromSpellDeck: enablerId,
+                ...(variant.optionIndex !== undefined ? { optionIndex: variant.optionIndex } : {})
+              }
+            )
+          );
+        }
         }
       }
     }

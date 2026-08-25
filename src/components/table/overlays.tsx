@@ -700,8 +700,26 @@ export function ReactionTray({
         .map((legal) => legal.action)
         .filter(
           (action): action is ReactionLegal =>
-            action.type === "PLAY_REACTION" && !action.fromScroll && !action.fromSpellBook
+            action.type === "PLAY_REACTION" &&
+            !action.fromScroll &&
+            !action.fromSpellBook &&
+            // The Helm of the Alabaster Unicorn's Spell-deck cast names a Spell
+            // that is NOT in hand (the enabler is), so the hand-index batch tray
+            // below could never render a tile for it — it gets its own one-click
+            // tile, exactly like a Scroll.
+            !action.fromSpellDeck
         ),
+    [legalActions]
+  );
+
+  // Helm of the Alabaster Unicorn (option B) / Ciele's Magic Arrow played as the
+  // printed ⚡ instant: the Spell comes off a shared Spell-deck discard top and
+  // the enabling hand card is spent for it. Single-card play (never batched).
+  const spellDeckReactions = useMemo(
+    () =>
+      legalActions
+        .map((legal) => legal.action)
+        .filter((action): action is ReactionLegal => action.type === "PLAY_REACTION" && Boolean(action.fromSpellDeck)),
     [legalActions]
   );
 
@@ -1428,6 +1446,7 @@ export function ReactionTray({
         buildingBoosts.length === 0 &&
         offenseViConverts.length === 0 &&
         scrollReactions.length === 0 &&
+        spellDeckReactions.length === 0 &&
         spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
@@ -1644,6 +1663,19 @@ export function ReactionTray({
               <strong>📜 {cardName(action.cardId)} (Scroll)</strong>
               <button className="trayInstant" onClick={() => onAction(action)} type="button">
                 Play at power 0
+              </button>
+            </div>
+          </div>
+        ))}
+        {spellDeckReactions.map((action) => (
+          <div className="trayTile scrollTile" key={JSON.stringify(action)}>
+            <CardFrame cardId={action.cardId} className="trayCardImage" />
+            <div className="trayTileBody">
+              <strong>
+                ✨ {cardName(action.cardId)} ({cardName(action.fromSpellDeck ?? "")})
+              </strong>
+              <button className="trayInstant" onClick={() => onAction(action)} type="button">
+                Cast from the Spell discard
               </button>
             </div>
           </div>

@@ -866,7 +866,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `polish-card-balance` (default OFF ⇒ byte-identical) and scoped to the ability
 // window, so the ATTACK pre-roll declaration and the map `prophecyThreePick` offer
 // are untouched. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 71;
+// v72 (2026-08-26): the Helm of the Alabaster Unicorn's SECOND part reaches every
+// castable Spell on a Spell-deck discard top (reported AGAIN: "Helm of unicorn —
+// second part still not working, even if in the top of the discard is a spell that
+// can be casted, for both polish balance and normal game"). Both printed faces mark
+// that half a ⚡ INSTANT, but the only surface that ever enumerated it was the
+// on-turn cast path — which skips every Spell carrying a printed trigger, i.e. a
+// THIRD of the Spell deck (Bless, Curse, Precision, Weakness, Shield, Bloodlust,
+// Stone Skin, Slayer, Frenzy: playable ONLY inside the window their trigger names),
+// and read `decks.spells` alone, leaving the BINH expert Spell pile's face-up top
+// permanently unreachable. NEW SERIALIZED SHAPE a v71 worker neither writes nor
+// reads: `PLAY_REACTION.fromSpellDeck` (a v71 edge REJECTS the frame outright), and
+// server-computed offers it answers differently: no Spell-deck cast is offered in
+// any reaction window, and none is offered for the expert pile's top on-turn
+// either. Ciele's Magic Arrow I/IV ride the same shared arm/source read
+// (`castFromSpellDiscardArm` / `castFromSpellDiscardSourceSpellIds`, now the ONE
+// read behind the on-turn offer, the window offer and both reducer consume seams).
+// A "Cast a Spell" enabler on a Spell-deck top is no longer offered at all (the
+// reducer always refused to cast it — a dead button). `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 72;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

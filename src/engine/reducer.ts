@@ -340,7 +340,10 @@ import { nextWaitTokenNumber } from "./polish-house-rules";
 import { polishArmyUnitCanBuyStack, polishUnitStackCap } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
+  castFromSpellDiscardArm,
+  castFromSpellDiscardSourceSpellIds,
   gainOwnedCard,
+  inscribeCastSpellIntoSpellBook,
   isCastASpellCard,
   markPolishSpellRefreshedThisRound,
   polishBookSpellRefreshBlocked,
@@ -785,7 +788,13 @@ function normalizeActionForMatch(action: GameAction): GameAction {
       ...(action.drawOnly ? { drawOnly: true as const } : {}),
       ...(action.asPowerBoost ? { asPowerBoost: true } : {}),
       ...(action.fromSpellBook ? { fromSpellBook: true } : {}),
-      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {})
+      ...(action.fromScroll ? { fromScroll: action.fromScroll } : {}),
+      // `fromSpellDeck` MUST be matched for the same reason as the two source
+      // flags above: it changes WHICH zone the Spell comes from and WHICH card is
+      // spent (the enabler, removed from the game), and the same Spell can sit in
+      // hand AND on the Spell-deck discard top at once — so without it the two
+      // offers would normalize identically.
+      ...(action.fromSpellDeck ? { fromSpellDeck: action.fromSpellDeck } : {})
     };
   }
 
@@ -12577,20 +12586,13 @@ function finalizeSpellCardDestination(
     // already spent this round — it refreshes at the next round start like any
     // other used Book Spell, and can NOT be cast again immediately.
     if (stackItem.modifiers.inscribeCastToSpellBook) {
-      const caster = state.players[stackItem.action.playerId];
       const cardId = stackItem.action.cardId;
-      const deck = Object.values(state.decks).find((candidate) => candidate?.discardPile.includes(cardId));
-      if (caster && deck) {
-        const index = deck.discardPile.lastIndexOf(cardId);
-        if (index >= 0) {
-          deck.discardPile.splice(index, 1);
-          (caster.spellBookUsed ??= []).push(cardId);
-          appendEvent(state, {
-            type: "EVENT_NOTE",
-            playerId: stackItem.action.playerId,
-            message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook (used).`
-          });
-        }
+      if (inscribeCastSpellIntoSpellBook(state, stackItem.action.playerId, cardId)) {
+        appendEvent(state, {
+          type: "EVENT_NOTE",
+          playerId: stackItem.action.playerId,
+          message: `${cardLibrary[cardId]?.name ?? cardId} is added to the Spellbook (used).`
+        });
       }
     }
     return;
@@ -15300,21 +15302,11 @@ function castFromSpellDiscardOption(
    */
   mode?: "basic" | "expert"
 ): Extract<ConcreteEffect, { type: "CAST_FROM_SPELL_DISCARD" }> | undefined {
-  const enabler = cards[enablerId];
-  if (enabler?.effect.type !== "CHOOSE_ONE") {
-    return undefined;
-  }
   // House-rule gated arms (Balance Pack Ciele I/IV print a Polish-Book cast AND
-  // the classic one): take the first whose gates pass — the SAME read the
-  // legal-action offer uses, so offer and resolution can never disagree.
-  const option = enabler.effect.options.find(
-    (entry) =>
-      entry.effect.type === "CAST_FROM_SPELL_DISCARD" &&
-      !(entry.requiresHouseRule && !houseRuleEnabled(state, entry.requiresHouseRule)) &&
-      !(entry.forbidsHouseRule && houseRuleEnabled(state, entry.forbidsHouseRule)) &&
-      (mode === undefined || Boolean(entry.expertOnly) === (mode === "expert"))
-  );
-  return option?.effect.type === "CAST_FROM_SPELL_DISCARD" ? option.effect : undefined;
+  // the classic one): take the first whose gates pass — the SAME leaf read the
+  // legal-action offers use (on-turn casts AND the reaction-window pass), so
+  // offer and resolution can never disagree.
+  return castFromSpellDiscardArm(state, cards, enablerId, mode)?.effect;
 }
 
 /** Jeddite's Mysterious Warlock I/VI: dig `count`, keep every match (no choice). */
@@ -15498,6 +15490,14 @@ function applyReactionPlayCore(
     asPowerBoost?: boolean;
     /** Spell Scroll reaction: power-locked to 0, consumed from the scroll. */
     fromScroll?: string;
+    /**
+     * Helm of the Alabaster Unicorn (option B) / Ciele's Magic Arrow played as the
+     * printed ⚡ instant: the Spell comes from the shared Spell-deck discard top
+     * (Ciele: her own discard / Book) and THIS enabling hand card is spent for it.
+     * Full Power, free of the per-round Spell limit (unless the arm prints
+     * otherwise), and the Spell itself never enters the caster's zones.
+     */
+    fromSpellDeck?: CardId;
     /** Spell Book (house rule): the reaction Spell comes from the Book, not hand. */
     fromSpellBook?: boolean;
     /** Polish Book: the generic hand card consumed to enable this Spell. */
@@ -15597,9 +15597,33 @@ function applyReactionPlayCore(
     card.kind === "spell" &&
     !play.fromSpellBook &&
     !play.fromScroll &&
+    // A Spell-deck cast is not an OWNED Spell either: it is cast off the shared
+    // discard pile through its enabler, exactly like a Scroll.
+    !play.fromSpellDeck &&
     !play.tarnumReturn
   ) {
     throw new Error("Owned Spells must be cast from the Polish Spell Book with Cast a Spell.");
+  }
+
+  // The Spell-deck cast (Helm of the Alabaster Unicorn option B, Ciele's Magic
+  // Arrow) re-derives its own legality here, so a forged frame fails cleanly:
+  // the enabler must be in hand, its cast arm's house-rule gates must pass, and
+  // the named Spell must be the one that arm authorises right now (the SAME leaf
+  // read the offer used — `applySchoolFetchExpert`'s fail-closed precedent).
+  const spellDeckArm = play.fromSpellDeck
+    ? castFromSpellDiscardArm(state, cards, play.fromSpellDeck)
+    : undefined;
+  if (play.fromSpellDeck) {
+    const holder = state.players[playerId];
+    if (!holder?.hand.includes(play.fromSpellDeck)) {
+      throw new Error("That card is not in your hand.");
+    }
+    if (!spellDeckArm || spellDeckArm.effect.anySpell === true) {
+      throw new Error(`${cards[play.fromSpellDeck]?.name ?? "That card"} cannot cast a Spell from a discard pile now.`);
+    }
+    if (!castFromSpellDiscardSourceSpellIds(state, holder, spellDeckArm.effect).includes(play.cardId)) {
+      throw new Error(`${card.name} is not the Spell that card may cast.`);
+    }
   }
 
   const option = getChosenOption(card, play.optionIndex);
@@ -15631,11 +15655,16 @@ function applyReactionPlayCore(
     throw new Error("That Spell was not Searched for a Tarnum over-limit cast.");
   }
 
+  // A Spell-deck cast is a free bonus too (only the Balance-Pack Ciele I arm
+  // prints "counts toward your Spell limit"), matching `performSpellCast`.
+  const spellDeckCastCountsLimit = spellDeckArm?.effect.countsTowardSpellLimit === true;
+  const spellDeckCastIsFree = Boolean(play.fromSpellDeck) && !spellDeckCastCountsLimit;
+
   // Spell cards played as instants count toward the printed limit of one
   // Spell card per combat round (Knowledge/Necklace raise it). A Tarnum VI
   // over-limit reaction and a Spell Scroll cast are free bonuses — they ignore
   // the limit (scrolls never consume it either).
-  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn && !play.fromScroll) {
+  if (card.kind === "spell" && state.combat && player && !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree) {
     if (player.combatStats.spellsCastThisRound >= spellLimitFor(state, player)) {
       throw new Error("Spell limit reached for this combat round.");
     }
@@ -15718,6 +15747,40 @@ function applyReactionPlayCore(
   if (play.fromScroll) {
     if (!consumeScrollSpell(state, playerId, play.fromScroll, play.cardId)) {
       throw new Error("That spell is not in the named Spell Scroll.");
+    }
+  } else if (play.fromSpellDeck) {
+    // The Spell is cast from the shared Spell-deck discard pile (Ciele: her own
+    // discard / Book) and STAYS there — nothing of the caster's moves for it.
+    // What IS spent is the enabling card named on the play: the Helm pays its
+    // printed "Remove this card" (it leaves the game), while a hero-specialty or
+    // ability cycles to the discard pile to be redrawn. Identical to
+    // `performSpellCast`'s fromSpellDeck arm.
+    const enablerKind = cards[play.fromSpellDeck]?.kind;
+    const enablerCycles = enablerKind === "hero-specialty" || enablerKind === "ability";
+    const removeError = moveCardFromHandToDiscard(
+      state,
+      playerId,
+      play.fromSpellDeck,
+      enablerCycles ? "discard" : "removed"
+    );
+    if (removeError) {
+      throw new Error(removeError.message);
+    }
+    // Polish Balance Pack Helm: "Add casted Spell to your Spellbook" (Book-gated,
+    // onto the USED side — it was just cast). The CAST_SPELL path carries this on
+    // the stack item; a reaction has none, so it is inscribed right here through
+    // the same shared seam.
+    if (
+      spellDeckArm?.effect.addToSpellBook === true &&
+      polishSpellBookEnabled(state) &&
+      spellCanEnterSpellBook(play.cardId) &&
+      inscribeCastSpellIntoSpellBook(state, playerId, play.cardId)
+    ) {
+      appendEvent(state, {
+        type: "EVENT_NOTE",
+        playerId,
+        message: `${card.name} is added to the Spellbook (used).`
+      });
     }
   } else if (play.fromSpellBook) {
     // Spell Book (house rule): a Book Spell played as an instant cycles Book →
@@ -15826,7 +15889,10 @@ function applyReactionPlayCore(
     }
   }
 
-  const currentReactionInFlightCardIds: CardId[] = !play.fromScroll && !play.tarnumReturn
+  // A Spell-deck cast leaves no card of the caster's in a recoverable zone (the
+  // Spell stays on the shared discard; the enabler was removed or cycled), so it
+  // contributes nothing to the in-flight ledger — like a Scroll.
+  const currentReactionInFlightCardIds: CardId[] = !play.fromScroll && !play.tarnumReturn && !play.fromSpellDeck
     ? play.fromSpellBook && polishSpellBookEnabled(state)
       ? play.castEnablerCardId
         ? [play.castEnablerCardId]
@@ -15849,7 +15915,7 @@ function applyReactionPlayCore(
     noteSpellCast(
       state,
       player,
-      !play.tarnumReturn && !play.fromScroll,
+      !play.tarnumReturn && !play.fromScroll && !spellDeckCastIsFree,
       reactionInFlightCardIds
     );
   }
@@ -15868,6 +15934,8 @@ function applyReactionPlayCore(
     isAttackStackItem(stackItem) &&
     !play.fromScroll &&
     !play.tarnumReturn &&
+    // A Spell-deck cast leaves no card in the caster's own discard to take back.
+    !play.fromSpellDeck &&
     !option?.cost?.removeSelf
   ) {
     (stackItem.modifiers.recallableSpellReactions ??= []).push({

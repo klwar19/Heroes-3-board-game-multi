@@ -1,7 +1,15 @@
 import { cardLibrary } from "@/data/cards/library";
 import { returnCardUnderSharedDeckDiscardTop } from "./decks";
 import { houseRuleEnabled } from "./house-rules";
-import type { CardId, CardLibrary, GameState, PlayerId, PlayerState } from "./state";
+import type {
+  CardId,
+  CardLibrary,
+  CardOptionDefinition,
+  EffectDefinition,
+  GameState,
+  PlayerId,
+  PlayerState
+} from "./state";
 
 /** Unlimited generic M&M card minted by setup, Mage Guilds, and level grants. */
 export const CAST_A_SPELL_CARD_ID = "spell.cast_a_spell";
@@ -584,4 +592,135 @@ export function eventZoneMatches(
   }
 
   return out;
+}
+
+/**
+ * A CAST_FROM_SPELL_DISCARD "cast a Spell you do not own" arm — the Helm of the
+ * Alabaster Unicorn's option B, Ciele's Magic Arrow I/IV and their Balance-Pack
+ * reprints.
+ *
+ * THE ONE shared read behind every surface that may spend such an arm:
+ *   • the on-turn cast offer (`addSpellActions`),
+ *   • the reaction-window offer (`getLegalReactionsForTrigger`'s Spell-deck pass
+ *     — the printed ⚡ INSTANT: the discard top may be a TRIGGERED Spell such as
+ *     Bless / Curse / Precision, which is playable ONLY inside a window),
+ *   • both reducer consume seams (`performSpellCast` and `applyReactionPlayCore`).
+ * Keeping them on one read is what stops an offer and its resolution disagreeing
+ * about which arm is live or which Spell it names (the 2026-08-26 report: the
+ * Helm's second part "still not working" for a castable discard top, because the
+ * only surface that ever enumerated it was the on-turn cast path).
+ */
+export function castFromSpellDiscardArm(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  cards: CardLibrary,
+  enablerId: CardId,
+  /**
+   * Community Balance Change INTELLIGENCE prints TWO cast-from-discard sides
+   * (basic counts toward the Spell limit, expert does not). When the caller names
+   * a side, pick the option with the matching `expertOnly`-ness; every other
+   * enabler prints one side and leaves this undefined, so the first-match
+   * behaviour is byte-identical for them.
+   */
+  mode?: "basic" | "expert"
+): { option: CardOptionDefinition; effect: Extract<EffectDefinition, { type: "CAST_FROM_SPELL_DISCARD" }> } | undefined {
+  const enabler = cards[enablerId];
+  if (enabler?.effect.type !== "CHOOSE_ONE") {
+    return undefined;
+  }
+  // House-rule gated arms (Balance Pack Ciele I/IV print a Polish-Book cast AND
+  // the classic one): take the FIRST whose gates pass, so exactly one reading is
+  // live at a time.
+  const option = enabler.effect.options.find(
+    (entry) =>
+      entry.effect.type === "CAST_FROM_SPELL_DISCARD" &&
+      !(entry.requiresHouseRule && !houseRuleEnabled(state, entry.requiresHouseRule)) &&
+      !(entry.forbidsHouseRule && houseRuleEnabled(state, entry.forbidsHouseRule)) &&
+      (mode === undefined || Boolean(entry.expertOnly) === (mode === "expert"))
+  );
+  return option?.effect.type === "CAST_FROM_SPELL_DISCARD" ? { option, effect: option.effect } : undefined;
+}
+
+/**
+ * WHICH Spell a `castFromSpellDiscardArm` may cast right now, or undefined when
+ * the arm has no source (an empty pile, no matching Spell, a Balance-Pack Ciele
+ * Book arm with no "Cast a Spell" card in the discard, …).
+ *
+ * The Helm reads the face-up TOP of the SHARED Spell-deck discard — of EVERY
+ * shared Spell pile: BINH splits the Spell deck into basic + expert, so the
+ * table shows TWO face-up Spell-deck discard tops and both answer to the printed
+ * "the top of the [spell] deck discard pile" (the same multi-pile convention
+ * `tarnumOverlimitSpellAvailable` / `takeTarnumOverlimitSpellFromSharedDiscard` /
+ * `inscribeCastSpellIntoSpellBook` already use — reading only `decks.spells` left
+ * the expert pile's top permanently unreachable, half of the 2026-08-26 "the top
+ * of the discard IS a castable spell and nothing happens" report). Ciele IV's
+ * `ownDiscard` reads the caster's own discard (their Book under the Polish Spell
+ * Book) for its named `spellId`; the Balance reprint's `polishRefreshFromBook`
+ * arm reads the refreshable USED side of the Book.
+ *
+ * The generic Cast-a-Spell enabler is never a candidate: its card kind is Spell
+ * but the reducer refuses to cast it (it enables a Book Spell), so offering it
+ * would be a dead button.
+ *
+ * `anySpell` enablers (Community Intelligence) are NOT covered — they authorise
+ * every Spell in the pile and each caller enumerates them itself.
+ */
+export function castFromSpellDiscardSourceSpellIds(
+  state: Pick<GameState, "ruleset" | "adventure" | "decks" | "activeEffects">,
+  player: PlayerState,
+  effect: Extract<EffectDefinition, { type: "CAST_FROM_SPELL_DISCARD" }>
+): CardId[] {
+  if (effect.anySpell === true) {
+    return [];
+  }
+  const topOf = (pile: readonly CardId[]): CardId | undefined =>
+    effect.spellId ? [...pile].reverse().find((cardId) => cardId === effect.spellId) : pile.at(-1);
+  const refreshFromBook = effect.polishRefreshFromBook === true && polishSpellBookEnabled(state);
+  if (refreshFromBook && !player.discard.includes(CAST_A_SPELL_CARD_ID)) {
+    return [];
+  }
+  const candidates: (CardId | undefined)[] = refreshFromBook
+    ? [
+        topOf(
+          (player.spellBookUsed ?? []).filter(
+            (cardId) => polishBookSpellRefreshBlocked(state, player.id, cardId, player) === null
+          )
+        )
+      ]
+    : effect.ownDiscard === true
+      ? [topOf(polishSpellBookEnabled(state) ? player.spellBook : player.discard)]
+      : sharedSpellDecks(state).map((deck) => topOf(deck.discardPile));
+  const out: CardId[] = [];
+  for (const cardId of candidates) {
+    if (cardId && !isCastASpellCard(cardId) && !out.includes(cardId)) {
+      out.push(cardId);
+    }
+  }
+  return out;
+}
+
+/**
+ * Polish Balance Pack Helm of the Alabaster Unicorn: "Add casted [spell] to your
+ * Spellbook." BOOK-GATED — the Spell was cast FROM a shared Spell-deck discard
+ * pile (where it normally stays); with the Book on it is pulled out and inscribed
+ * onto the USED side (user ruling 2026-08-20: it was just CAST, so it is already
+ * spent this round and refreshes at the next round start).
+ *
+ * ONE seam shared by the CAST_SPELL resolution (`finalizeSpellCardDestination`)
+ * and the reaction path (`applyReactionPlayCore`), which has no stack item to
+ * carry the flag. Any split deck may hold the Spell, so the pile is found by id.
+ * Returns true when the Spell really moved.
+ */
+export function inscribeCastSpellIntoSpellBook(state: GameState, playerId: PlayerId, cardId: CardId): boolean {
+  const caster = state.players[playerId];
+  const deck = Object.values(state.decks).find((candidate) => candidate?.discardPile.includes(cardId));
+  if (!caster || !deck) {
+    return false;
+  }
+  const index = deck.discardPile.lastIndexOf(cardId);
+  if (index < 0) {
+    return false;
+  }
+  deck.discardPile.splice(index, 1);
+  (caster.spellBookUsed ??= []).push(cardId);
+  return true;
 }
