@@ -2053,6 +2053,33 @@ the `utopiaGuards: "four"` mode keeps the minted four-dragon party
 Search (3); the Creature-Bank TOKEN pays a FIXED 40 gold + Search (3)/(5)/(5), so
 Stacked defenders affect only the FIGHT (`dragon-utopia-artifact-reward.test.ts`).
 
+### The skip's level bar is "AT LEAST", so Ⅵ/Ⅶ are reachable (2026-08-25, protocol v68)
+
+USER RULING: "Diplomacy expert - bug, not working now. It should for fields VI and VII
+also (for both polish rule and normal games)." Both printed faces say EQUAL (base scan
+"Neutral Units on the same level as your Hero"; the Polish reprint "a field whose Field
+Difficulty is equal to your Hero's level") and the engine enforced exactly that — but
+Quick Combat is barred on Ⅵ/Ⅶ (`QUICK_COMBAT_MAX_FIELD_DIFFICULTY`), so a level-7 hero
+(the normal state by the time the centre band is reachable) could skip NOTHING there
+while a WEAKER level-6 hero could skip the Ⅵ guard. ONE shared seam
+`diplomacySkipLevelQualifies(level, difficulty)` = `level >= difficulty`
+(adventure-reducer.ts) now backs BOTH offer sites — the ordinary guarded arrival in
+`startNeutralEncounter` and the "Fight" branch of the Polish Quick-Combat pop-up — so
+they can never disagree. Pinned in `tactics-diplomacy.test.ts` ("Diplomacy Expert skips
+Ⅵ and Ⅶ guard fields": the level-7-vs-Ⅵ and Ⅶ skips by OUTCOME — no combat, mine
+flagged, no XP, crown spent — with and without `polish-quick-combat` +
+`polish-card-balance`, an Empowered no-crown case, and CONTROLs for an under-levelled
+hero, a designer EXACT army, a crownless holder and the fight-instead choice).
+LIMITS / deliberate consequences: fields Ⅰ–Ⅴ in a NORMAL game are unchanged (the classic
+`level > difficulty` Quick Combat resolves and returns before this branch); with
+`polish-quick-combat` ON an UNCOVERED army no longer forces an over-levelled Diplomacy
+holder to fight on Ⅰ–Ⅴ either (the sheet's mandatory fight is a QUICK-COMBAT rule, while
+Diplomacy costs a card plus a crown); an UNDER-levelled hero is still refused; and every
+exclusion above the branch still returns first — Creature Banks, bank-style outpost /
+teleport guards, break fields and designer EXACT armies are never Diplomacy-skipped. The
+pre-move "you can still buy troops" warning (`heroMoveResolvesAsQuickCombat`) was NOT
+widened, so a Ⅵ/Ⅶ arrival still warns about a battle before the skip pop-up opens.
+
 ## Ⅶ Utopia / Grail reward STACKING — warned, never blocked (2026-08-03)
 
 One clear of a Ⅶ objective field CAN stack the built-in reward, a centre-hex reward/VP,
@@ -2669,9 +2696,26 @@ with the First-Aid window keyed off the `first-aid` SPECIALTY id
 `heavenly-demon-blood-siphon` (heal after an own attack that really dealt damage) and
 `heavenly-demon-reap` (a stacking Attack bonus when an adjacent unit is removed) —
 `heavenly-demon-abilities.test.ts`.
-Hero specialties: each anime hero owns its OWN set — unit specialists double on a gold
-unit their OWN faction fields, medics are themed clones via `rethemedSpecialty` (they
-previously borrowed Catherine's / Gelu's sets, whose doubling could never fire).
+Hero specialties: each anime hero owns its OWN set; medics are themed clones via
+`rethemedSpecialty` (they previously borrowed Catherine's / Gelu's sets, whose doubling
+could never fire). **SPECIALTY REDESIGN (2026-08-25, USER REQUEST)**: the Fuyuki /
+Hidden Leaf / Azure Breeze / Heavenly Demon MIGHT heroes dropped the generic
+unit-buff trio for 14 DISTINCT sets, each a `rethemedSpecialty` clone of a shipped,
+behaviour-tested source (Shirou←miriam, Rin←ciele, Kiritsugu←cyra, Kirei←ash,
+Sasuke←solmyr, Kakashi←adelaide, Shikamaru←zilare, Jiraiya←luna, Qingyun←xyron,
+Jianxu←miku, Yulian←merist, Xuedao←septienna, Guiyan←glacius, Xuanming←oidana) —
+no new engine arm; only display names/labels re-flavoured. The ONLY kept anime
+unit specialists are Illyasviel (Heracles), Naruto (Nine-Tails Chakra Avatar) and
+Azur Lane's Bismarck / Nagato. Clone↔source mechanical identity, the display
+re-flavours, the kept doubles, each hero's Codex-imagegen specialty medallion AND
+the bespoke Fuyuki / Hidden Leaf unit-XP rank emblems
+(`FUYUKI_RANK_ABILITY_ICONS` / `HIDDEN_LEAF_RANK_ABILITY_ICONS`) are pinned in
+`src/data/anime/anime-specialty-redesign.test.ts`; the Kakashi/Guiyan clones'
+combatAnytime faces are in `COMBAT_ANYTIME_FACES`. Jianxu / Yulian keep their
+hero-id-keyed Innate engine rules (wuxia-factions.ts) under the new cards.
+LIMITS: the clones inherit base printed text (a Polish Balance reprint of a
+SOURCE card does not re-skin its clone), and none carries the source's spell FX
+plan (SPECIALTY_FX is deliberately unchanged — no FX, not a bug).
 **Themed mod UI (visual registers)**: `src/data/faction-theme.ts` maps a faction to
 `classic` / `anime` / `wuxia` with a per-register lexicon and a `theme-<register>`
 class + `--mod-*` vars on the hero board, town window/board, army panel and every mod

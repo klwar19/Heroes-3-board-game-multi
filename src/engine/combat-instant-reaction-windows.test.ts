@@ -491,6 +491,15 @@ const COMBAT_ANYTIME_FACES: { cardId: CardId; optionIndex: number }[] = [
   { cardId: "specialty.glacius.1", optionIndex: 0 },
   { cardId: "specialty.glacius.4", optionIndex: 0 },
   { cardId: "specialty.glacius.6", optionIndex: 0 },
+  // Anime specialty redesign (2026-08-25): Kakashi's Raikiri · Sharingan is an
+  // Adelaide (Frost Ring) clone and Guiyan's Ghostfire Coil a Glacius clone —
+  // each inherits the source's three combatAnytime faces verbatim.
+  { cardId: "specialty.kakashi_hatake.1", optionIndex: 0 },
+  { cardId: "specialty.kakashi_hatake.4", optionIndex: 0 },
+  { cardId: "specialty.kakashi_hatake.6", optionIndex: 0 },
+  { cardId: "specialty.guiyan.1", optionIndex: 0 },
+  { cardId: "specialty.guiyan.4", optionIndex: 0 },
+  { cardId: "specialty.guiyan.6", optionIndex: 0 },
   { cardId: "specialty.gerwulf.1", optionIndex: 1 },
   { cardId: "specialty.gerwulf.4", optionIndex: 1 },
   { cardId: "specialty.gerwulf.6", optionIndex: 1 },

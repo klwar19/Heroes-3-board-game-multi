@@ -246,22 +246,23 @@ describe("Heavenly Demon Palace — heroes & specialties", () => {
     }
   });
 
-  it("might specialists (Xuedao/Guiyan/Xuanming) double on units the faction actually FIELDS", () => {
-    const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
-    for (const [heroId, unitName] of [
-      ["xuedao", "Heavenly Demon Avatar"],
-      ["guiyan", "Ghost King"],
-      ["xuanming", "Bone Reavers"]
+  it("might heroes (Xuedao/Guiyan/Xuanming) carry the redesigned distinct specialty sets", () => {
+    // 2026-08-25 specialty redesign: the three might heroes dropped the generic
+    // unit-buff trio for distinct rethemedSpecialty clones (mechanics pinned
+    // clone↔source in anime-specialty-redesign.test.ts).
+    for (const [heroId, newName] of [
+      ["xuedao", "Blood Ripple"],
+      ["guiyan", "Ghostfire Coil"],
+      ["xuanming", "Legion of Bones"]
     ] as const) {
-      const effect = cardLibrary[`specialty.${heroId}.1`]?.effect;
-      expect(effect?.type).toBe("CHOOSE_ONE");
-      const doubled =
-        effect?.type === "CHOOSE_ONE" &&
-        effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
-        effect.options[0].effect.doubleForUnitName;
-      expect(doubled, heroId).toBe(unitName);
-      // Mutation control: the doubled unit is one the faction can recruit.
-      expect(factionUnitNames, `${heroId} doubles a fielded unit`).toContain(doubled);
+      for (const level of [1, 4, 6] as const) {
+        const card = cardLibrary[`specialty.${heroId}.${level}`];
+        expect(card?.name, `${heroId} ${level}`).toMatch(new RegExp(`^${newName} `));
+        expect(card?.implementationStatus, `${heroId} ${level}`).toBe("implemented");
+        expect(JSON.stringify(card?.effect), `${heroId} ${level} is not a unit-doubling buff`).not.toContain(
+          "doubleForUnitName"
+        );
+      }
     }
   });
 

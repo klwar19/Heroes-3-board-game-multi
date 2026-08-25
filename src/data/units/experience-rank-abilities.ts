@@ -600,6 +600,29 @@ export const LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> 
   "little_busters.mio:gargoyle-spell-ward": "/assets/anime/icons/little-busters/rank-mio.webp"
 };
 
+/** Fuyuki veterancy — one bespoke Servant-relic emblem per unit line (Codex imagegen). */
+export const FUYUKI_RANK_ABILITY_ICONS: Record<string, string> = {
+  "fuyuki.assassins": "/assets/anime/icons/fuyuki/rank-assassins.webp",
+  "fuyuki.riders": "/assets/anime/icons/fuyuki/rank-riders.webp",
+  "fuyuki.lancers": "/assets/anime/icons/fuyuki/rank-lancers.webp",
+  "fuyuki.archers": "/assets/anime/icons/fuyuki/rank-archers.webp",
+  "fuyuki.casters": "/assets/anime/icons/fuyuki/rank-casters.webp",
+  "fuyuki.sabers": "/assets/anime/icons/fuyuki/rank-sabers.webp",
+  "fuyuki.berserkers": "/assets/anime/icons/fuyuki/rank-berserkers.webp"
+};
+
+/** Hidden Leaf veterancy — one bespoke shinobi emblem per unit line (Codex imagegen). */
+export const HIDDEN_LEAF_RANK_ABILITY_ICONS: Record<string, string> = {
+  "hidden_leaf.genin_squad": "/assets/anime/icons/hidden-leaf/rank-genin-squad.webp",
+  "hidden_leaf.medical_nin": "/assets/anime/icons/hidden-leaf/rank-medical-nin.webp",
+  "hidden_leaf.anbu": "/assets/anime/icons/hidden-leaf/rank-anbu.webp",
+  "hidden_leaf.jonin": "/assets/anime/icons/hidden-leaf/rank-jonin.webp",
+  "hidden_leaf.giant_toad": "/assets/anime/icons/hidden-leaf/rank-giant-toad.webp",
+  "hidden_leaf.jinchuriki": "/assets/anime/icons/hidden-leaf/rank-jinchuriki.webp",
+  "hidden_leaf.susanoo": "/assets/anime/icons/hidden-leaf/rank-susanoo.webp",
+  "hidden_leaf.hokage_vanguard": "/assets/anime/icons/hidden-leaf/rank-hokage-vanguard.webp"
+};
+
 /** Xianxia town veterancy uses one bespoke emblem per cultivation unit line. */
 export const WUXIA_RANK_ABILITY_ICONS: Record<string, string> = {
   "azure_breeze.outer_disciples": "/assets/anime/icons/cultivation/rank-outer-sect-disciples.webp",
@@ -645,6 +668,12 @@ export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJo
   }
   if (unitDefId && WUXIA_RANK_ABILITY_ICONS[unitDefId]) {
     return WUXIA_RANK_ABILITY_ICONS[unitDefId];
+  }
+  if (unitDefId && FUYUKI_RANK_ABILITY_ICONS[unitDefId]) {
+    return FUYUKI_RANK_ABILITY_ICONS[unitDefId];
+  }
+  if (unitDefId && HIDDEN_LEAF_RANK_ABILITY_ICONS[unitDefId]) {
+    return HIDDEN_LEAF_RANK_ABILITY_ICONS[unitDefId];
   }
   return UNIT_RANK_ABILITY_ICONS[abilityId] ?? RANK_ABILITY_ICON_FALLBACK;
 }

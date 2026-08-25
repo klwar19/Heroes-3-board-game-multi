@@ -201,24 +201,34 @@ describe("Hidden Leaf Village — heroes & specialties", () => {
     }
   });
 
-  it("unit specialists double on units the faction actually fields", () => {
+  it("Naruto is the ONE kept unit specialist; the other might heroes carry the redesigned sets", () => {
+    // 2026-08-25 specialty redesign: Sasuke / Kakashi / Shikamaru / Jiraiya
+    // dropped the generic unit-buff trio for distinct rethemedSpecialty clones
+    // (mechanics pinned clone↔source in anime-specialty-redesign.test.ts).
     const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
-    for (const [heroId, unitName] of [
-      ["naruto", "Nine-Tails Chakra Avatar"],
-      ["sasuke", "Perfect Susanoo"],
-      ["kakashi_hatake", "Leaf Jōnin"],
-      ["shikamaru_nara", "ANBU Black Ops"],
-      ["jiraiya", "Gamabunta"]
+    const effect = cardLibrary["specialty.naruto.1"]?.effect;
+    expect(effect?.type).toBe("CHOOSE_ONE");
+    const doubled =
+      effect?.type === "CHOOSE_ONE" &&
+      effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
+      effect.options[0].effect.doubleForUnitName;
+    expect(doubled).toBe("Nine-Tails Chakra Avatar");
+    // Mutation control: the doubled unit is one the faction can recruit.
+    expect(factionUnitNames, "naruto doubles a fielded unit").toContain(doubled);
+    // The redesigned four are no longer doubling unit buffs.
+    for (const [heroId, newName] of [
+      ["sasuke", "Chidori Stream"],
+      ["kakashi_hatake", "Raikiri · Sharingan"],
+      ["shikamaru_nara", "Shadow Possession"],
+      ["jiraiya", "Toad Oil Flame Bomb"]
     ] as const) {
-      const effect = cardLibrary[`specialty.${heroId}.1`]?.effect;
-      expect(effect?.type).toBe("CHOOSE_ONE");
-      const doubled =
-        effect?.type === "CHOOSE_ONE" &&
-        effect.options[0]?.effect?.type === "ADD_COMBAT_STAT" &&
-        effect.options[0].effect.doubleForUnitName;
-      expect(doubled, heroId).toBe(unitName);
-      // Mutation control: the doubled unit is one the faction can recruit.
-      expect(factionUnitNames, `${heroId} doubles a fielded unit`).toContain(doubled);
+      for (const level of [1, 4, 6] as const) {
+        const card = cardLibrary[`specialty.${heroId}.${level}`];
+        expect(card?.name, `${heroId} ${level}`).toMatch(new RegExp(`^${newName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")} `));
+        expect(JSON.stringify(card?.effect), `${heroId} ${level} is not a unit-doubling buff`).not.toContain(
+          "doubleForUnitName"
+        );
+      }
     }
   });
 

@@ -129,10 +129,13 @@ describe("Blood Siphon — registration", () => {
 });
 
 describe("Bone Reavers — damage never removes a surviving neutral", () => {
-  it("3 Attack + Xuanming's doubled +2 − a −1 die deals 4 to 5-Health Neutral Cerberi", () => {
+  // The +2 instrument used to be Xuanming's doubled unit buff; his set became
+  // "Legion of Bones" in the 2026-08-25 specialty redesign, so the doubling now
+  // comes from Illyasviel's KEPT unit-specialist set (doubles on "Heracles").
+  it("3 Attack + Illyasviel's doubled +2 − a −1 die deals 4 to 5-Health Neutral Cerberi", () => {
     let state = freshCombat("bone-reavers-v-neutral-cerberi");
     state.combat!.dice.scriptedRolls = Array.from({ length: 40 }, () => -1);
-    state.players.p1.hand = ["specialty.xuanming.1"];
+    state.players.p1.hand = ["specialty.illyasviel.1"];
 
     const attacker = place(state, "unit_p1_marksmen", {
       position: 9,
@@ -145,8 +148,8 @@ describe("Bone Reavers — damage never removes a surviving neutral", () => {
       type: "ground",
       variant: "few"
     });
-    attacker.name = "Bone Reavers";
-    attacker.cardName = "Few of Bone Reavers";
+    attacker.name = "Heracles";
+    attacker.cardName = "Few of Heracles";
 
     place(state, "unit_p2_skeletons", {
       position: 10,
@@ -183,7 +186,7 @@ describe("Bone Reavers — damage never removes a surviving neutral", () => {
       applyOk(state, {
         type: "PLAY_REACTIONS",
         playerId: "p1",
-        plays: [{ cardId: "specialty.xuanming.1", optionIndex: 0 }]
+        plays: [{ cardId: "specialty.illyasviel.1", optionIndex: 0 }]
       })
     );
 

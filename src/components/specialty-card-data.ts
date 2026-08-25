@@ -69,27 +69,29 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // Anime Realms unit specialists — the signature unit's own portrait, cropped
   // from its commissioned card art (scripts/build-anime-town-icons.mjs).
   bin: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Sabers (Fuyuki)
-  qingyun: "/assets/anime/units/portraits/azure-breeze-true-inheritors.webp", // True Inheritors (Azure Breeze)
-  jianxu: "/assets/anime/icons/cultivation/sect-qi.webp",
-  yulian: "/assets/anime/icons/cultivation/foundation-establishment.webp",
-  // Fuyuki's Fifth Holy Grail War cast (2026-08-25 roster pass) — each unit
-  // specialist wears the portrait of the Servant line their specialty doubles.
-  shirou_emiya: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Artoria Pendragon
-  rin_tohsaka: "/assets/anime/units/portraits/fuyuki-archers.webp", // EMIYA
-  illyasviel: "/assets/anime/units/portraits/fuyuki-berserkers.webp", // Heracles
-  kiritsugu_emiya: "/assets/anime/units/portraits/fuyuki-assassins.webp", // Sasaki Kojirō
-  kirei_kotomine: "/assets/anime/units/portraits/fuyuki-lancers.webp", // Cú Chulainn
+  // 2026-08-25 SPECIALTY REDESIGN: the Fuyuki / Hidden Leaf / wuxia might
+  // heroes below dropped the unit-buff trio for distinct sets, each with a
+  // bespoke Codex-imagegen medallion (anime-specialty-redesign.test.ts pins
+  // file existence). The KEPT unit specialists (Illyasviel, Naruto) keep their
+  // signature unit's portrait.
+  qingyun: "/assets/anime/icons/cultivation/specialty-qingyun-sword-tempest.webp", // Sword Qi Tempest
+  jianxu: "/assets/anime/icons/cultivation/specialty-jianxu-trap-array.webp", // Seven-Star Trap Array
+  yulian: "/assets/anime/icons/cultivation/specialty-yulian-jade-body.webp", // Jade Body Arts
+  shirou_emiya: "/assets/anime/icons/fuyuki/specialty-shirou-projection.webp", // Projection Magecraft
+  rin_tohsaka: "/assets/anime/icons/fuyuki/specialty-rin-gandr.webp", // Gandr Shot
+  illyasviel: "/assets/anime/units/portraits/fuyuki-berserkers.webp", // Heracles (KEPT unit specialist)
+  kiritsugu_emiya: "/assets/anime/icons/fuyuki/specialty-kiritsugu-time-alter.webp", // Time Alter
+  kirei_kotomine: "/assets/anime/icons/fuyuki/specialty-kirei-black-keys.webp", // Black Keys
   // Sakura's Gentle Resolve is a Rion heal/cleanse clone, so she shares the
   // Cure SPELL icon like Astra and Aoko.
   sakura_matou: "/assets/specialty-card/icon-cure.webp",
-  // Hidden Leaf might specialists — signature unit portraits cropped from the
-  // commissioned unit cards (scripts/build-anime-town-icons.mjs).
+  // Hidden Leaf: Naruto keeps his signature unit's portrait (KEPT unit
+  // specialist); the redesigned four wear bespoke Codex-imagegen medallions.
   naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Nine-Tails Chakra Avatar
-  // Sasuke's specialty moved to Perfect Susanoo in the 2026-08-25 roster pass.
-  sasuke: "/assets/anime/units/portraits/hidden-leaf-susanoo.webp", // Perfect Susanoo
-  kakashi_hatake: "/assets/anime/units/portraits/hidden-leaf-jonin.webp", // Leaf Jōnin
-  shikamaru_nara: "/assets/anime/units/portraits/hidden-leaf-anbu.webp", // ANBU Black Ops
-  jiraiya: "/assets/anime/units/portraits/hidden-leaf-giant-toad.webp", // Gamabunta
+  sasuke: "/assets/anime/icons/hidden-leaf/specialty-sasuke-chidori.webp", // Chidori Stream
+  kakashi_hatake: "/assets/anime/icons/hidden-leaf/specialty-kakashi-raikiri.webp", // Raikiri · Sharingan
+  shikamaru_nara: "/assets/anime/icons/hidden-leaf/specialty-shikamaru-shadow.webp", // Shadow Possession
+  jiraiya: "/assets/anime/icons/hidden-leaf/specialty-jiraiya-flame-oil.webp", // Toad Oil Flame Bomb
   // Tsunade's Hundred Healings IS the First Aid medic set (Gem clone), like Lingxi.
   tsunade: "/assets/specialty-card/icon-first_aid.webp",
   // Azur Lane hero specialties use the heroes' actual in-game skill emblems,
@@ -103,13 +105,11 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // medic effects while showing their own ship skill emblems.
   akashi: "/assets/anime/icons/azur-lane/specialty-akashi.webp",
   sirius: "/assets/anime/icons/azur-lane/specialty-sirius.webp",
-  // Heavenly Demon Palace might specialists — no dedicated signature-unit portrait
-  // shipped yet, so a thematic Homm3BG emblem: Xuedao's Blood Path fury & Guiyan's
-  // Ghost Flame → the Bloodlust rage icon; Xuanming's Bone Reaver command → the
-  // Stone Skin (bone-armor) icon.
-  xuedao: "/assets/specialty-card/icon-bloodlust.webp",
-  guiyan: "/assets/specialty-card/icon-bloodlust.webp",
-  xuanming: "/assets/specialty-card/icon-stone_skin.webp",
+  // Heavenly Demon Palace might specialists — bespoke Codex-imagegen medallions
+  // for the 2026-08-25 redesigned sets.
+  xuedao: "/assets/anime/icons/cultivation/specialty-xuedao-blood-ripple.webp", // Blood Ripple
+  guiyan: "/assets/anime/icons/cultivation/specialty-guiyan-ghostfire.webp", // Ghostfire Coil
+  xuanming: "/assets/anime/icons/cultivation/specialty-xuanming-bone-legion.webp", // Legion of Bones
   // Heavenly Demon Palace magic medics — Yaoji's Blood Renewal (Gem First Aid
   // clone) shows the First-Aid medallion; Molian's Corpse Suture (Rion heal/
   // cleanse clone, like Aoko) shows the Cure spell icon.

@@ -166,7 +166,8 @@ describe("hero-board / zoom wiring", () => {
     );
     // Unit specialists for anime towns use their own unit portraits.
     expect(specialtyIconSrc("specialty.bin.1")).toContain("fuyuki-sabers.webp");
-    expect(specialtyIconSrc("specialty.qingyun.1")).toContain("azure-breeze-true-inheritors.webp");
+    // Qingyun's 2026-08-25 redesign (Sword Qi Tempest) wears its own medallion.
+    expect(specialtyIconSrc("specialty.qingyun.1")).toContain("specialty-qingyun-sword-tempest.webp");
     expect(specialtyIconSrc("specialty.catherine.1")).toBeUndefined(); // a baked-art hero
     expect(specialtyIconSrc("spell.teleport")).toBeUndefined();
     expect(specialtyIconSrc(undefined)).toBeUndefined();

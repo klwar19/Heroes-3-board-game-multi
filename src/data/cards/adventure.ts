@@ -1582,47 +1582,22 @@ export const adventureCards: CardLibrary = {
   "specialty.bin.1": withoutArt(mightSpecialtyOne("bin", "Sabers", "Sabers")),
   "specialty.bin.4": withoutArt(unitHealthSpecialty("bin", "Sabers", 4, 1, "Sabers")),
   "specialty.bin.6": withoutArt(unitInitiativeSpecialty("bin", "Sabers", 6, 1, "Sabers")),
-  "specialty.shirou_emiya.1": withoutArt(mightSpecialtyOne("shirou_emiya", "King's Contract", "Artoria Pendragon")),
-  "specialty.shirou_emiya.4": withoutArt(unitHealthSpecialty("shirou_emiya", "King's Contract", 4, 1, "Artoria Pendragon")),
-  "specialty.shirou_emiya.6": withoutArt(unitInitiativeSpecialty("shirou_emiya", "King's Contract", 6, 1, "Artoria Pendragon")),
-  "specialty.rin_tohsaka.1": withoutArt(mightSpecialtyOne("rin_tohsaka", "Crimson Contract", "EMIYA")),
-  "specialty.rin_tohsaka.4": withoutArt(unitHealthSpecialty("rin_tohsaka", "Crimson Contract", 4, 1, "EMIYA")),
-  "specialty.rin_tohsaka.6": withoutArt(unitInitiativeSpecialty("rin_tohsaka", "Crimson Contract", 6, 1, "EMIYA")),
+  // Fuyuki / Azure Breeze MIGHT-hero sets were REDESIGNED 2026-08-25 (USER
+  // REQUEST: drop the generic unit-buff trio). Shirou / Rin / Kiritsugu / Kirei
+  // and Qingyun / Jianxu / Yulian are now distinct rethemedSpecialty clones,
+  // assigned in the "ANIME SPECIALTY REDESIGN" block below (search that
+  // string). Illyasviel is the ONE kept Fuyuki unit specialist — her Servant
+  // IS Berserker (Heracles), the bond the doubling models.
   "specialty.illyasviel.1": withoutArt(mightSpecialtyOne("illyasviel", "Einzbern Bond", "Heracles")),
   "specialty.illyasviel.4": withoutArt(unitHealthSpecialty("illyasviel", "Einzbern Bond", 4, 1, "Heracles")),
   "specialty.illyasviel.6": withoutArt(unitInitiativeSpecialty("illyasviel", "Einzbern Bond", 6, 1, "Heracles")),
-  "specialty.kiritsugu_emiya.1": withoutArt(mightSpecialtyOne("kiritsugu_emiya", "Contingency Plan", "Sasaki Kojirō")),
-  "specialty.kiritsugu_emiya.4": withoutArt(unitHealthSpecialty("kiritsugu_emiya", "Contingency Plan", 4, 1, "Sasaki Kojirō")),
-  "specialty.kiritsugu_emiya.6": withoutArt(unitInitiativeSpecialty("kiritsugu_emiya", "Contingency Plan", 6, 1, "Sasaki Kojirō")),
-  "specialty.kirei_kotomine.1": withoutArt(mightSpecialtyOne("kirei_kotomine", "Executor's Rite", "Cú Chulainn")),
-  "specialty.kirei_kotomine.4": withoutArt(unitHealthSpecialty("kirei_kotomine", "Executor's Rite", 4, 1, "Cú Chulainn")),
-  "specialty.kirei_kotomine.6": withoutArt(unitInitiativeSpecialty("kirei_kotomine", "Executor's Rite", 6, 1, "Cú Chulainn")),
-  "specialty.qingyun.1": withoutArt(mightSpecialtyOne("qingyun", "True Inheritors", "True Inheritors")),
-  "specialty.qingyun.4": withoutArt(unitHealthSpecialty("qingyun", "True Inheritors", 4, 1, "True Inheritors")),
-  "specialty.qingyun.6": withoutArt(unitInitiativeSpecialty("qingyun", "True Inheritors", 6, 1, "True Inheritors")),
-  "specialty.jianxu.1": withInnateHeroRule(withoutArt(mightSpecialtyOne("jianxu", "Seven-Star Array", "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
-  "specialty.jianxu.4": withInnateHeroRule(withoutArt(unitHealthSpecialty("jianxu", "Seven-Star Array", 4, 1, "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
-  "specialty.jianxu.6": withInnateHeroRule(withoutArt(unitInitiativeSpecialty("jianxu", "Seven-Star Array", 6, 1, "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
-  "specialty.yulian.1": withInnateHeroRule(withoutArt(mightSpecialtyOne("yulian", "Jade Body", "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
-  "specialty.yulian.4": withInnateHeroRule(withoutArt(unitHealthSpecialty("yulian", "Jade Body", 4, 1, "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
-  "specialty.yulian.6": withInnateHeroRule(withoutArt(unitInitiativeSpecialty("yulian", "Jade Body", 6, 1, "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
-  // Hidden Leaf's six heroes each strengthen a line they are directly associated
-  // with; exact display names keep every doubled clause live after the roster pass.
+  // Hidden Leaf hero sets were REDESIGNED 2026-08-25: Sasuke / Kakashi /
+  // Shikamaru / Jiraiya are distinct rethemedSpecialty clones assigned in the
+  // "ANIME SPECIALTY REDESIGN" block below. Naruto is the ONE kept Hidden Leaf
+  // unit specialist — the Nine-Tails bond IS his identity.
   "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Nine-Tails Chakra Avatar")),
   "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Nine-Tails Chakra Avatar")),
   "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Nine-Tails Chakra Avatar")),
-  "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Mangekyō Mastery", "Perfect Susanoo")),
-  "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Mangekyō Mastery", 4, 1, "Perfect Susanoo")),
-  "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Mangekyō Mastery", 6, 1, "Perfect Susanoo")),
-  "specialty.kakashi_hatake.1": withoutArt(mightSpecialtyOne("kakashi_hatake", "Copy Ninja", "Leaf Jōnin")),
-  "specialty.kakashi_hatake.4": withoutArt(unitHealthSpecialty("kakashi_hatake", "Copy Ninja", 4, 1, "Leaf Jōnin")),
-  "specialty.kakashi_hatake.6": withoutArt(unitInitiativeSpecialty("kakashi_hatake", "Copy Ninja", 6, 1, "Leaf Jōnin")),
-  "specialty.shikamaru_nara.1": withoutArt(mightSpecialtyOne("shikamaru_nara", "Shadow Command", "ANBU Black Ops")),
-  "specialty.shikamaru_nara.4": withoutArt(unitHealthSpecialty("shikamaru_nara", "Shadow Command", 4, 1, "ANBU Black Ops")),
-  "specialty.shikamaru_nara.6": withoutArt(unitInitiativeSpecialty("shikamaru_nara", "Shadow Command", 6, 1, "ANBU Black Ops")),
-  "specialty.jiraiya.1": withoutArt(mightSpecialtyOne("jiraiya", "Toad Sage Pact", "Gamabunta")),
-  "specialty.jiraiya.4": withoutArt(unitHealthSpecialty("jiraiya", "Toad Sage Pact", 4, 1, "Gamabunta")),
-  "specialty.jiraiya.6": withoutArt(unitInitiativeSpecialty("jiraiya", "Toad Sage Pact", 6, 1, "Gamabunta")),
   // Azur Lane might heroes (src/data/anime/towns.ts). Enterprise carries the
   // BESPOKE "Lucky E" dice specialty (2026-07 upgrade — proactive stat half +
   // a held-card die half in the reroll window, see luckyESpecialty); Bismarck /
@@ -1637,21 +1612,11 @@ export const adventureCards: CardLibrary = {
   "specialty.nagato.1": withoutArt(mightSpecialtyOne("nagato", "Big Seven Resolve", "Yukikaze")),
   "specialty.nagato.4": withoutArt(unitHealthSpecialty("nagato", "Big Seven Resolve", 4, 1, "Yukikaze")),
   "specialty.nagato.6": withoutArt(unitInitiativeSpecialty("nagato", "Big Seven Resolve", 6, 1, "Yukikaze")),
-  // Heavenly Demon Palace might heroes (src/data/anime/towns.ts) — unit specialists
-  // doubling on units their OWN faction actually FIELDS (Xuedao → Heavenly Demon
-  // Avatar, Guiyan → Ghost King, Xuanming → Bone Reavers). Same proven generic
-  // I/IV/VI shape as Bin/Qingyun/Naruto; face-less (native renderer). Their two
-  // MAGIC medic siblings (Yaoji / Molian) are rethemedSpecialty clones defined
-  // below beside the other anime medic clones.
-  "specialty.xuedao.1": withoutArt(mightSpecialtyOne("xuedao", "Demon Sovereign", "Heavenly Demon Avatar")),
-  "specialty.xuedao.4": withoutArt(unitHealthSpecialty("xuedao", "Demon Sovereign", 4, 1, "Heavenly Demon Avatar")),
-  "specialty.xuedao.6": withoutArt(unitInitiativeSpecialty("xuedao", "Demon Sovereign", 6, 1, "Heavenly Demon Avatar")),
-  "specialty.guiyan.1": withoutArt(mightSpecialtyOne("guiyan", "Ghost Sovereign", "Ghost King")),
-  "specialty.guiyan.4": withoutArt(unitHealthSpecialty("guiyan", "Ghost Sovereign", 4, 1, "Ghost King")),
-  "specialty.guiyan.6": withoutArt(unitInitiativeSpecialty("guiyan", "Ghost Sovereign", 6, 1, "Ghost King")),
-  "specialty.xuanming.1": withoutArt(mightSpecialtyOne("xuanming", "Marrow Legion", "Bone Reavers")),
-  "specialty.xuanming.4": withoutArt(unitHealthSpecialty("xuanming", "Marrow Legion", 4, 1, "Bone Reavers")),
-  "specialty.xuanming.6": withoutArt(unitInitiativeSpecialty("xuanming", "Marrow Legion", 6, 1, "Bone Reavers")),
+  // Heavenly Demon Palace MIGHT-hero sets were REDESIGNED 2026-08-25: Xuedao /
+  // Guiyan / Xuanming are distinct rethemedSpecialty clones assigned in the
+  // "ANIME SPECIALTY REDESIGN" block below. Their two MAGIC medic siblings
+  // (Yaoji / Molian) stay the rethemedSpecialty medic clones defined beside the
+  // other anime medic clones.
   // Little Busters might heroes — each set strengthens a unit the campus can
   // actually recruit. These use the fully wired unit-specialist I/IV/VI arms.
   "specialty.sasami_sasasegawa.1": withoutArt(mightSpecialtyOne("sasami_sasasegawa", "Perfect Captain", "Softball Club")),
@@ -5443,6 +5408,121 @@ for (const level of [1, 4, 6] as const) {
     rethemedSpecialty(adventureCards[`specialty.rion.${level}`], "rion", "shiyan", level, "Corpse-Furnace Sutra"),
     "Innate — the first real Heavenly Demon casualty each combat round yields 2 Blood Essence instead of 1."
   );
+}
+
+// ---------------------------------------------------------------------------
+// ANIME SPECIALTY REDESIGN (2026-08-25, USER REQUEST): the Fuyuki / Hidden Leaf
+// / Azure Breeze / Heavenly Demon MIGHT heroes drop the generic unit-buff trio
+// for distinct, fully-wired specialty identities. Every card below is a
+// rethemedSpecialty clone of a shipped, behaviour-tested source set — no new
+// engine arm, nothing decorative; only display names/labels are re-flavoured.
+// The clone↔source mechanical identity, the two kept unit specialists
+// (Illyasviel ↔ Heracles, Naruto ↔ Nine-Tails Chakra Avatar) and the
+// combatAnytime registry joins for the Kakashi/Guiyan clones are pinned in
+// src/data/anime/anime-specialty-redesign.test.ts.
+// ---------------------------------------------------------------------------
+
+for (const level of [1, 4, 6] as const) {
+  // Shirou (Fuyuki, might) — Projection Magecraft: sacrifice a card to trace a
+  // copy from its deck (Miriam's Scouting search set).
+  adventureCards[`specialty.shirou_emiya.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.miriam.${level}`], "miriam", "shirou_emiya", level, "Projection Magecraft"
+  );
+  // Rin (Fuyuki, magic-leaning might roster slot) — Gandr Shot: her jewel-stored
+  // curses ARE magic arrows (Ciele's set; the recovered card really is the
+  // Magic Arrow spell, so the labels keep its printed name).
+  adventureCards[`specialty.rin_tohsaka.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.ciele.${level}`], "ciele", "rin_tohsaka", level, "Gandr Shot"
+  );
+  // Kiritsugu (Fuyuki, might) — Time Alter: Innate Time Control accelerates his
+  // side (Cyra's Haste set).
+  adventureCards[`specialty.kiritsugu_emiya.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.cyra.${level}`], "cyra", "kiritsugu_emiya", level, "Time Alter"
+  );
+  // Kirei (Fuyuki, might) — Black Keys: the Executor's killing arts (Ash's
+  // Bloodlust set; VI's un-retaliated +3 strike is the assassination blow).
+  adventureCards[`specialty.kirei_kotomine.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.ash.${level}`], "ash", "kirei_kotomine", level, "Black Keys"
+  );
+  // Sasuke (Hidden Leaf, might) — Chidori Stream: lightning arcs to the nearest
+  // bodies (Solmyr's Chain Lightning set).
+  adventureCards[`specialty.sasuke.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.solmyr.${level}`], "solmyr", "sasuke", level, "Chidori Stream"
+  );
+  // Kakashi (Hidden Leaf, might) — Raikiri · Sharingan: the lightning-blade
+  // burst plus "copy a Spell or Specialty back from the discard" (Adelaide's
+  // set; its three combatAnytime faces join COMBAT_ANYTIME_FACES).
+  adventureCards[`specialty.kakashi_hatake.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.adelaide.${level}`], "adelaide", "kakashi_hatake", level, "Raikiri · Sharingan"
+  );
+  // Shikamaru (Hidden Leaf, magic) — Shadow Possession: the bound unit cannot
+  // attack on its next activation (Zilare's Forgetfulness set).
+  adventureCards[`specialty.shikamaru_nara.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.zilare.${level}`], "zilare", "shikamaru_nara", level, "Shadow Possession"
+  );
+  // Jiraiya (Hidden Leaf, magic) — Toad Oil Flame Bomb: burning oil pooled on
+  // the battlefield (Luna's set; the card places real Fire Wall tokens, so the
+  // rules text keeps that token's printed name).
+  adventureCards[`specialty.jiraiya.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.luna.${level}`], "luna", "jiraiya", level, "Toad Oil Flame Bomb"
+  );
+  // Qingyun (Azure Breeze, might) — Sword Qi Tempest: discard-fueled sword-wave
+  // bursts (Xyron's Inferno set) beside his innate Sword Intent meter.
+  adventureCards[`specialty.qingyun.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.xyron.${level}`], "xyron", "qingyun", level, "Sword Qi Tempest"
+  );
+  // Jianxu (Azure Breeze, might) — Seven-Star Trap Array: an enemy-wide snare
+  // aura, a warding heal, an array eruption (Miku's Voice-of-Angel wiring),
+  // plus his kept Innate array rule.
+  const jianxuCard = rethemedSpecialty(
+    adventureCards[`specialty.miku.${level}`], "miku", "jianxu", level, "Seven-Star Trap Array"
+  );
+  jianxuCard.tags = jianxuCard.tags?.map((tag) => (tag === "voice-of-angel" ? "seven-star-trap-array" : tag));
+  const jianxuEffect = jianxuCard.effect as { name?: string } | undefined;
+  if (jianxuEffect && typeof jianxuEffect.name === "string") {
+    jianxuEffect.name = "Seven-Star Trap Array";
+  }
+  adventureCards[`specialty.jianxu.${level}`] = withInnateHeroRule(
+    jianxuCard,
+    "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."
+  );
+  // Yulian (Azure Breeze, might) — Jade Body Arts: tempered-jade defense tokens
+  // for the whole line (Merist's Stone Skin set), plus his kept Innate Shared
+  // Ward rule.
+  adventureCards[`specialty.yulian.${level}`] = withInnateHeroRule(
+    rethemedSpecialty(adventureCards[`specialty.merist.${level}`], "merist", "yulian", level, "Jade Body Arts"),
+    "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."
+  );
+  // Xuedao (Heavenly Demon, might) — Blood Ripple: tier-sweeping life-drain
+  // waves (Septienna's Death Ripple set).
+  adventureCards[`specialty.xuedao.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.septienna.${level}`], "septienna", "xuedao", level, "Blood Ripple"
+  );
+  // Guiyan (Heavenly Demon, might) — Ghostfire Coil: soulfire bursting around a
+  // chosen space (Glacius's Frost Ring set; its three combatAnytime faces join
+  // COMBAT_ANYTIME_FACES).
+  adventureCards[`specialty.guiyan.${level}`] = rethemedSpecialty(
+    adventureCards[`specialty.glacius.${level}`], "glacius", "guiyan", level, "Ghostfire Coil"
+  );
+  // Xuanming (Heavenly Demon, might) — Legion of Bones: conscript the fallen
+  // into service (Oidana's Diplomacy set). Only the display labels and the VI
+  // buff's display name are re-flavoured — the mechanics text after each colon
+  // and every effect stay byte-identical to Diplomacy's.
+  const xuanmingCard = rethemedSpecialty(
+    adventureCards[`specialty.oidana.${level}`], "oidana", "xuanming", level, "Legion of Bones"
+  );
+  const xuanmingEffect = xuanmingCard.effect as
+    | { options?: Array<{ label?: string; effect?: { name?: string } }> }
+    | undefined;
+  for (const option of xuanmingEffect?.options ?? []) {
+    if (option.label?.startsWith("Diplomacy:")) {
+      option.label = option.label.replace("Diplomacy:", "Raise the fallen:");
+    }
+    if (option.effect?.name === "Diplomatic Rally") {
+      option.effect.name = "Legion of Bones";
+    }
+  }
+  adventureCards[`specialty.xuanming.${level}`] = xuanmingCard;
 }
 
 // Little Busters specialty identities. These are native-card rethemes of fully

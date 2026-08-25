@@ -745,12 +745,12 @@ export const animeTownHeroDefinitions: Record<string, HeroDefinition> = {
     specialtyCardIds: { 1: "specialty.sirius.1", 4: "specialty.sirius.4", 6: "specialty.sirius.6" },
     portrait: "/assets/anime/heroes/sirius.webp", source
   },
-  // Heavenly Demon Palace — five heroes (the azur_lane shape): three MIGHT unit
-  // specialists doubling units the faction actually FIELDS (Xuedao → Heavenly
-  // Demon Avatar, Guiyan → Ghost King, Xuanming → Bone Reavers) on the proven
-  // generic I/IV/VI shape, plus two MAGIC medic clones (rethemedSpecialty of the
-  // fully generic Gem / Rion sets — no unit doubling that could go dead). All
-  // face-less (native specialty renderer, hero's own portrait).
+  // Heavenly Demon Palace — three MIGHT heroes with DISTINCT redesigned sets
+  // (2026-08-25: Xuedao → Blood Ripple, Guiyan → Ghostfire Coil, Xuanming →
+  // Legion of Bones; rethemedSpecialty clones pinned in
+  // anime-specialty-redesign.test.ts), plus two MAGIC medic clones
+  // (rethemedSpecialty of the fully generic Gem / Rion sets). All face-less
+  // (native specialty renderer, hero's own portrait).
   xuedao: {
     id: "xuedao", name: "Xuedao", faction: "heavenly_demon", class: "Blood Path Patriarch", type: "might",
     startingStats: { attack: 2, defense: 2, power: 1, knowledge: 1 },
@@ -850,7 +850,7 @@ export const AZURE_BREEZE_UNIT_ORDER = [
   "azure_breeze.inner_swordsmen", // LV2 bronze
   "azure_breeze.spirit_crane", // LV3 bronze
   "azure_breeze.sect_protectors", // LV4 silver
-  "azure_breeze.true_inheritors", // LV5 silver (Qingyun specialty)
+  "azure_breeze.true_inheritors", // LV5 silver
   "azure_breeze.core_master", // LV6 gold ranged
   "azure_breeze.mountain_guardian" // LV7 gold
 ] as const;
