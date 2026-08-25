@@ -1,4 +1,10 @@
-import { roomDisplayName, type GameMode, type GameState, type RoomMembershipState } from "@/engine";
+import {
+  roomDisplayName,
+  type GameMode,
+  type GameState,
+  type RoomMembershipState,
+  type TableGameMode
+} from "@/engine";
 
 /**
  * Pure, isomorphic lobby-directory logic — the single source of truth for how a
@@ -90,6 +96,8 @@ export type RoomDirectoryEntry = {
   name: string;
   /** Which kind of table this is: an adventure game or a combat "battle test". */
   mode: GameMode;
+  /** Adventure table identity. Absent on legacy rows means Clash. */
+  tableMode?: TableGameMode;
   /** Engine phase ("setup", "playing", "combat", …). */
   phase: string;
   /** False while the room is still a fresh setup lobby (nothing started yet). */
@@ -126,6 +134,8 @@ export type LobbyRoomRecord = {
   name: string;
   /** Which kind of table this is: an adventure game or a combat "battle test". */
   mode: GameMode;
+  /** Adventure table identity. Absent on legacy records means Clash. */
+  tableMode?: TableGameMode;
   phase: string;
   inProgress: boolean;
   memberCount: number;
@@ -195,6 +205,9 @@ export function deriveLobbyRecord(input: DeriveLobbyRecordInput): LobbyRoomRecor
     roomId,
     name: roomDisplayName(state, roomId),
     mode: state.mode,
+    ...(state.mode === "adventure"
+      ? { tableMode: state.gameMode === "coop" || state.setupLobby?.options.gameMode === "coop" ? "coop" : "clash" }
+      : {}),
     phase: state.phase,
     inProgress: !isFreshLobby,
     memberCount: members.length,
@@ -291,6 +304,7 @@ export function toDirectoryEntry(record: LobbyRoomRecord, viewerClientId?: strin
     roomId: record.roomId,
     name: record.name,
     mode: record.mode,
+    ...(record.mode === "adventure" ? { tableMode: record.tableMode === "coop" ? "coop" : "clash" } : {}),
     phase: record.phase,
     inProgress: record.inProgress,
     memberCount: record.memberCount,
@@ -319,6 +333,7 @@ export function lobbyRecordSignature(record: LobbyRoomRecord): string {
     roomId: record.roomId,
     name: record.name,
     mode: record.mode,
+    tableMode: record.tableMode ?? "clash",
     phase: record.phase,
     inProgress: record.inProgress,
     memberCount: record.memberCount,

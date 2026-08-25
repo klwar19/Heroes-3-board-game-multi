@@ -516,7 +516,7 @@ export const HERO_GRADE_NODES: Record<string, HeroGradeNode> = {
     kind: "skill",
     name: { en: "Harmony Ward", vi: "Hộ Ca" },
     summary:
-      "Skill (reaction): when your unit is attacked, it gains a Defense token after the attack resolves. Once per combat.",
+      "Skill (reaction): when your unit without a Defense token is attacked, it gains one for this attack and until its next activation. Once per combat.",
     skill: { mode: "reaction", role: "defender", stat: "defense-token", amount: 1 }
   },
   [HERO_GRADE_NODE_IDS.standingOvation]: {

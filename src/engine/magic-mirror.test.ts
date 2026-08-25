@@ -50,6 +50,35 @@ function redirectChoice(state: GameState) {
 }
 
 describe("Magic Mirror", () => {
+  it("offers Air Magic expert before the redirect and unlocks the gold target tier", () => {
+    const base = createInitialGameState("mirror-school-expert");
+    base.players.p1.hand = ["spell.magic_mirror"];
+    base.players.p1.permanents = ["ability.air_magic"];
+    base.players.p1.limits.expertUses = 1;
+    base.players.p2.hand = ["spell.magic_arrow"];
+    base.activePlayerId = "p2";
+    base.combat!.activeUnitId = "unit_p2_skeletons";
+    base.combat!.units.unit_p2_skeletons.activatedThisRound = false;
+    let state = applyOk(base, {
+      type: "CAST_SPELL",
+      playerId: "p2",
+      cardId: "spell.magic_arrow",
+      target: { type: "unit", unitId: "unit_p1_griffins" }
+    });
+
+    const expert = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+    state = applyOk(state, expert!.action);
+    expect(state.players.p1.discard).toContain("ability.air_magic");
+
+    const gold = reactionFor(state, "p1", "spell.magic_mirror", 2);
+    expect(gold).toBeTruthy();
+    state = applyOk(state, gold!.action);
+    expect(redirectChoice(state).candidateUnitIds).toContain("unit_p2_dread_knights");
+  });
+
   it("redirects an enemy spell from your unit to a new bronze target, which takes the damage", () => {
     let state = mirrorSetup(["spell.magic_mirror"]);
 

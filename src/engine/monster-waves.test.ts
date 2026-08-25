@@ -9,6 +9,8 @@ import {
 } from "./index";
 import {
   applyWavePillage,
+  applyMineFlag,
+  applySettlementResource,
   beginFieldVisit,
   canCrossEdge,
   drawWaveArmy,
@@ -44,6 +46,7 @@ import { queueNeutralCommanderArtifactOffer } from "./commander-artifacts";
 import { NEUTRAL_PLAYER_ID } from "./state";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { unitAbilities } from "@/data/units/abilities";
+import { markUnitRemovedIfNeeded } from "./combat-units";
 
 /**
  * Calamity Waves (§6.6) — every claim engine-enforced with CONTROLs:
@@ -642,6 +645,51 @@ describe("Calamity Waves — outcomes", () => {
     const pillage = state.eventLog.find((event) => event.type === "MONSTER_WAVE_PILLAGED");
     expect(pillage?.type === "MONSTER_WAVE_PILLAGED" && pillage.overrunFieldId).toBeNull();
   });
+
+  it("an overrun mine stops contributing its income to the production track", () => {
+    const state = wavesGame("waves-pillage-mine-production");
+    const mine = Object.values(state.adventure!.fields).find((field) => field.location === "mine")!;
+    expect(mine).toBeTruthy();
+    mine.resource = "buildingMaterials";
+    mine.amount = 2;
+    const productionBefore = state.players.p1.production.buildingMaterials;
+    applyMineFlag(state, "p1", mine);
+    expect(state.players.p1.production.buildingMaterials).toBe(productionBefore + 2);
+
+    applyWavePillage(state, "p1", 1);
+
+    expect(mine.flagOwnerId).toBeNull();
+    expect(state.players.p1.production.buildingMaterials).toBe(productionBefore);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "PRODUCTION_CHANGED" &&
+          event.playerId === "p1" &&
+          event.resource === "buildingMaterials" &&
+          event.amount === -2
+      )
+    ).toBe(true);
+  });
+
+  it("an overrun settlement removes its resource token income too", () => {
+    const state = wavesGame("waves-pillage-settlement-production");
+    const settlement = Object.values(state.adventure!.fields).find(
+      (field) => field.location !== "town" && field.location !== "mine"
+    )!;
+    settlement.location = "settlement";
+    settlement.flagOwnerId = null;
+    settlement.settlementResource = null;
+    settlement.everFlagged = false;
+    const productionBefore = state.players.p1.production.valuables;
+    applySettlementResource(state, "p1", settlement, "valuables");
+    expect(state.players.p1.production.valuables).toBeGreaterThan(productionBefore);
+
+    applyWavePillage(state, "p1", 1);
+
+    expect(settlement.flagOwnerId).toBeNull();
+    expect(settlement.settlementResource).toBeNull();
+    expect(state.players.p1.production.valuables).toBe(productionBefore);
+  });
 });
 
 describe("Calamity Waves — the wave army", () => {
@@ -664,6 +712,25 @@ describe("Calamity Waves — the wave army", () => {
     // CONTROL: wave 2 keeps the level-table draw (level 3 on NORMAL = 3 bodies).
     const normal = drawWaveArmy(state, 2);
     expect(normal.length).toBe(3);
+  });
+
+  it("announces the designer's effective army instead of the default wave level", () => {
+    const exact = wavesGame("waves-designed-announcement", {
+      customMapPreset: {
+        monsterWaves: { waves: { 1: { units: ["neutral.skeletons"] } } }
+      }
+    });
+    startRound(exact, 3);
+    const exactEvent = exact.eventLog.find((event) => event.type === "MONSTER_WAVE_STARTED");
+    expect(exactEvent?.type === "MONSTER_WAVE_STARTED" && exactEvent.message).toMatch(/custom war party/i);
+
+    const level = wavesGame("waves-designed-level-announcement", {
+      customMapPreset: { monsterWaves: { waves: { 1: { level: 5 } } } }
+    });
+    startRound(level, 3);
+    const levelEvent = level.eventLog.find((event) => event.type === "MONSTER_WAVE_STARTED");
+    expect(levelEvent?.type === "MONSTER_WAVE_STARTED" && levelEvent.level).toBe(5);
+    expect(levelEvent?.type === "MONSTER_WAVE_STARTED" && levelEvent.message).toMatch(/level-5/i);
   });
 
   it("the wave director freezes designer-first: map cadence, pressure, and loss rule beat setup", () => {
@@ -962,6 +1029,35 @@ describe("Calamity Waves — composition variety (pure planning)", () => {
 });
 
 describe("Calamity Waves — a hardened later wave (engine-enforced)", () => {
+  it("keeps the wave battle-event bonus after a Stack Token is consumed", () => {
+    const options = {
+      customMapPreset: {
+        monsterWaves: { waves: { 3: { units: ["neutral.skeletons", "neutral.skeletons"] } } }
+      }
+    };
+    const exposed = revealWaveArmy(openWave(wavesGame("waves-event-stack-recompute", options), 9));
+    const preparedState = wavesGame("waves-event-stack-recompute", options);
+    preparedState.players.p1.wavePreparedFor = 3;
+    const prepared = revealWaveArmy(openWave(preparedState, 9));
+    const exposedUnit = Object.values(exposed.combat!.units).find(
+      (unit) => unit.controllerId === NEUTRAL_PLAYER_ID && unit.stackToken
+    )!;
+    const preparedUnit = prepared.combat!.units[exposedUnit.id]!;
+    expect(exposedUnit).toBeTruthy();
+    expect(preparedUnit.stackToken).toBe(exposedUnit.stackToken);
+
+    exposedUnit.damage = exposedUnit.maxHealth;
+    preparedUnit.damage = preparedUnit.maxHealth;
+    markUnitRemovedIfNeeded(exposed, exposedUnit);
+    markUnitRemovedIfNeeded(prepared, preparedUnit);
+
+    expect(exposedUnit.stackToken ?? null).toBeNull();
+    expect(preparedUnit.stackToken ?? null).toBeNull();
+    // Wave 3 is Shield Wall. Its +1 Defense lasts for the whole combat, not
+    // merely until this unit's first printed-side recomputation.
+    expect(exposedUnit.defense).toBe(preparedUnit.defense + 1);
+  });
+
   it("wave 4 invaders fight at Veteran rank, some carry Stack Tokens, and a mini-boss leads them", () => {
     const state = wavesGame("waves-hardened");
     const fought = revealWaveArmy(openWave(state, 12)); // cadence 3 → wave 4

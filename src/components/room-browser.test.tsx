@@ -5,6 +5,7 @@ import { LOBBY_POLL_MS, RoomBrowser, type RoomBrowserLabels } from "./room-brows
 import * as authClient from "@/lib/auth-client";
 import * as realtime from "@/lib/realtime";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
+import { takePendingCoopRoomSetup } from "@/lib/pending-room-name";
 
 vi.mock("@/lib/music", () => ({ useBackgroundMusic: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -67,10 +68,12 @@ const LABELS: RoomBrowserLabels = {
 };
 
 beforeEach(() => {
+  window.sessionStorage.clear();
   vi.mocked(authClient.fetchSession).mockResolvedValue(ADMIN);
   vi.mocked(realtime.fetchRoomList).mockResolvedValue({ rooms: [ROOM], supported: true });
   vi.mocked(realtime.requestAdminCloseRoom).mockResolvedValue({ closed: true });
   vi.mocked(realtime.requestCloseRoom).mockResolvedValue({ closed: true });
+  vi.mocked(realtime.createRoomOnServer).mockReset();
 });
 
 afterEach(cleanup);
@@ -136,5 +139,43 @@ describe("lobby room browser — admin delete goes through the reliable same-ori
     // The fragile cross-origin ticket close is NOT used for the admin action.
     expect(realtime.requestCloseRoom).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
+  });
+});
+
+describe("Co-op room browser", () => {
+  it("filters out Clash rooms and creates a real unranked Co-op table with AI enemies", async () => {
+    vi.mocked(realtime.createRoomOnServer).mockResolvedValue({ roomId: "coop-real" });
+    render(
+      <RoomBrowser
+        labels={{ ...LABELS, title: "Co-op War Room", createLabel: "Open expedition", backdrop: "coop-backdrop" }}
+        mode="adventure"
+        tableMode="coop"
+      />
+    );
+
+    await waitFor(() => expect(screen.queryByText("Border Skirmish")).toBeTruthy());
+    // The listed fixture has no tableMode, which means legacy Clash, so only
+    // the selected battlefield card is visible — not its room-row Join button.
+    expect(screen.queryByRole("button", { name: /Watch \/ play Border Skirmish/i })).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: /2/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open expedition/i }));
+
+    await waitFor(() =>
+      expect(realtime.createRoomOnServer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: "adventure",
+          gameMode: "coop",
+          scenarioId: "skirmish",
+          ranked: false,
+          hosted: true
+        })
+      )
+    );
+    expect(takePendingCoopRoomSetup()).toEqual({
+      roomId: "coop-real",
+      scenarioId: "skirmish",
+      computerOpponents: 2
+    });
   });
 });

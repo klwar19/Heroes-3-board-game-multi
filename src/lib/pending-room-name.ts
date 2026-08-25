@@ -23,11 +23,76 @@ const MODE_KEY = "homm3bg.pendingRoomMode";
 const RANKED_KEY = "homm3bg.pendingRoomRanked";
 /** Join password typed in the lobby before navigating into a locked room. */
 const PASSWORD_KEY = "homm3bg.pendingRoomPassword";
+/** Co-op front-door choices applied after the creator joins the fresh room. */
+const COOP_SETUP_KEY = "homm3bg.pendingCoopSetup";
 
 export type PendingRoomName = { roomId: string; name: string };
 export type PendingRoomMode = { roomId: string; mode: GameMode };
 export type PendingRoomRanked = { roomId: string; ranked: boolean };
 export type PendingRoomPassword = { roomId: string; password: string };
+export type PendingCoopRoomSetup = {
+  roomId: string;
+  scenarioId: string;
+  computerOpponents: number;
+};
+
+/**
+ * Carries the dedicated /coop lobby's real gameplay choices into the room.
+ * The built-in backend can seed the table mode/scenario immediately; PartyKit
+ * creates rooms on first connect, so the creating tab completes the same setup
+ * through ordinary authoritative lobby actions once it has a seat.
+ */
+export function savePendingCoopRoomSetup(setup: PendingCoopRoomSetup): void {
+  if (
+    typeof window === "undefined" ||
+    !setup.roomId ||
+    !setup.scenarioId ||
+    !Number.isFinite(setup.computerOpponents)
+  ) {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      COOP_SETUP_KEY,
+      JSON.stringify({
+        roomId: setup.roomId,
+        scenarioId: setup.scenarioId,
+        computerOpponents: Math.max(1, Math.min(4, Math.floor(setup.computerOpponents)))
+      } satisfies PendingCoopRoomSetup)
+    );
+  } catch {
+    /* Private mode etc. — the in-room Co-op picker remains available. */
+  }
+}
+
+/** Read and clear the one-shot Co-op room setup. */
+export function takePendingCoopRoomSetup(): PendingCoopRoomSetup | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.sessionStorage.getItem(COOP_SETUP_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.sessionStorage.removeItem(COOP_SETUP_KEY);
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as PendingCoopRoomSetup).roomId === "string" &&
+      typeof (parsed as PendingCoopRoomSetup).scenarioId === "string" &&
+      typeof (parsed as PendingCoopRoomSetup).computerOpponents === "number" &&
+      (parsed as PendingCoopRoomSetup).computerOpponents >= 1 &&
+      (parsed as PendingCoopRoomSetup).computerOpponents <= 4
+    ) {
+      return parsed as PendingCoopRoomSetup;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export function savePendingRoomName(roomId: string, name: string): void {
   if (typeof window === "undefined" || !name) {

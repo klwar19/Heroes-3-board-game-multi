@@ -1263,6 +1263,7 @@ export function scoreCardAction(
       return { score, policy: "combat.discard-to-ignore-positive-die" };
     }
     case "USE_SCHOOL_FETCH_EXPERT":
+    case "USE_SCHOOL_PERMANENT_EXPERT":
       return { score: 1_125, policy: "card.use-school-expert-power" };
     case "HALL_OF_VALHALLA_BOOST":
       return {

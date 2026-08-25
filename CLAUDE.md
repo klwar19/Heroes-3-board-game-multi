@@ -2121,6 +2121,27 @@ removed cards and shared-deck casts are untouched; legacy snapshots migrate sile
 with one cosmetic edge (a second copy may be held if the effect's card was REMOVED — no
 card is created or destroyed).
 
+## Instant / reaction Power parity (2026-08-25, protocol v61)
+
+School of Magic expert is a real pre-Spell reaction action in every applicable
+window: declared attacks (Fortune, Bloodlust and other scaling instants), enemy
+casts (Magic Mirror), pre-activation skips (Sorrow), Misfortune's defender-first
+pre-window, and lethal saves (Resurrection). It discards the matching in-play
+School permanent, spends one crown unless Empowered waives it, and banks the
+printed expert Power for the immediately following matching Spell. This action
+may itself open a cost-gated reaction window that basic standing Power cannot.
+Misfortune, Magic Mirror, and Resurrection tiers use `powerCost`, never a fixed
+number of discarded cards, so printed +2/+3 Power, School Power, Book Power, and
+expert payment share the same accounting. Fortune joins the normal attack-declared
+window before the die and its reroll count recomputes when later Power is played;
+on the adventure map it uses the shared map-Spell boost ladder rather than a
+private +1-per-card path. Tarnum returned-to-deck casts retain normal School
+expert variants. Regression authority: `attack-window.test.ts`,
+`misfortune-spell.test.ts`, `magic-mirror.test.ts`,
+`lethal-save-sources.test.ts`, `rampart-inferno-spells.test.ts`,
+`map-movement-spells.test.ts`, `conflux-tarnum-specialty.test.ts`, and
+`overlays.test.tsx`.
+
 ## Specialties & combat reactions · summon/recruit elemental split (2026-07-31)
 
 Two audited codex commits: the reaction batch resolves in the PLAYER'S declared order;
@@ -2403,7 +2424,7 @@ tile); designed gate links belong to any UNDERGROUND-layer plan only.
 `GameSetupOptions.fieldOverrides` (default OFF; auto-ON when a designed map carries
 `plan.fieldOverride(s)` pins). Mechanism is CORE (`src/data/map/field-overrides.ts`
 registry + `src/engine/field-overrides.ts` + `tile-hex-placements.ts`); the Anime and
-WoG mods only register content kinds (WOG: 3 objects, package `"wog"`; Anime: 13
+WoG mods only register content kinds (WOG: 7 objects, package `"wog"`; Anime: 17
 across `anime-xianxia` / `anime-isekai`, 2 of them Equipment outfitters gated by
 `requiresModule: "equipment"`). On tile reveal the override places FIRST (before
 Subterranean Gates → Creature Banks → teleport tokens); pool draws obey
@@ -2416,7 +2437,7 @@ LIMITS: pool kinds stamped on face-down tiles are readable in raw snapshots (no
 player-view masking in V1); no standalone off-tile override objects; no override kind
 may claim `starting` tiles; `FIELD_OVERRIDE_ART_PLACEHOLDERS` is EMPTY (a future
 art-less kind must be declared).
-**ALL 20 override objects were EFFECT-REDESIGNED 2026-08-19** — the design authority
+**ALL 24 override objects were EFFECT-REDESIGNED 2026-08-19** — the design authority
 is `docs/field-override-redesign-plan.md` (per-object effects + wave amendments) and
 every kind's `summary` states exactly what runs. Highlights: WAGER GUARD sites
 (Bí Cảnh Ⅲ–Ⅶ / Dungeon Gate Ⅰ–Ⅳ carve unguarded, the visitor picks the depth, fights

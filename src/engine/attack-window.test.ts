@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyAction } from "./index";
+import { applyAction, getLegalActions } from "./index";
 import { createInitialGameState } from "./setup";
 import type { GameAction, GameState } from "./state";
 
@@ -83,6 +83,82 @@ describe("Bless can suppress an enemy attack", () => {
     ).toBe(false);
     const attack = [...state.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
     expect(attack?.type === "ATTACK_ROLLED" ? attack.noDie : false).toBe(true);
+  });
+});
+
+describe("Fortune before the Attack die", () => {
+  it("opens the declared-attack window, resolves before the roll, and tracks later Power", () => {
+    let state = declareMeleeAttack(["spell.fortune", "stat.power"], []);
+    state.combat!.dice.scriptedRolls = [0, 1];
+    state.combat!.dice.rollCount = 0;
+
+    const offers = getLegalActions(state, "p1");
+    expect(
+      offers.some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.fortune"
+      )
+    ).toBe(true);
+
+    state = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic"
+    });
+    state = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "stat.power",
+      mode: "basic"
+    });
+
+    const reroll = state.activeEffects
+      .find((effect) => effect.name === "Fortune")
+      ?.modifiers.find((modifier) => modifier.type === "ATTACK_DIE_REROLL");
+    expect(reroll?.type === "ATTACK_DIE_REROLL" && reroll.maxUsesPerRoll).toBe(2);
+
+    state = passAll(state);
+    expect(state.pendingChoice).toMatchObject({
+      type: "ATTACK_DIE_REROLL",
+      playerId: "p1",
+      remainingRerolls: 2
+    });
+    expect(state.combat!.units.unit_p2_skeletons.damage).toBe(0);
+  });
+
+  it("offers the in-play Air Magic expert and applies its full +3 before Fortune", () => {
+    const base = createInitialGameState("fortune-school-expert");
+    base.players.p1.hand = ["spell.fortune"];
+    base.players.p1.permanents = ["ability.air_magic"];
+    base.players.p2.hand = [];
+    base.combat!.units.unit_p1_griffins.position = 9;
+    base.combat!.units.unit_p2_skeletons.position = 13;
+    let state = applyOk(base, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+
+    const expert = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+    state = applyOk(state, expert!.action);
+    expect(state.players.p1.permanents).not.toContain("ability.air_magic");
+    expect(state.players.p1.discard).toContain("ability.air_magic");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+
+    state = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic"
+    });
+    const reroll = state.activeEffects
+      .find((effect) => effect.name === "Fortune")
+      ?.modifiers.find((modifier) => modifier.type === "ATTACK_DIE_REROLL");
+    expect(reroll?.type === "ATTACK_DIE_REROLL" && reroll.maxUsesPerRoll).toBe(3);
   });
 });
 
@@ -244,6 +320,34 @@ describe("attack-window power pairing", () => {
     const next = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.bloodlust", mode: "basic" });
     const rolled = [...next.eventLog].reverse().find((event) => event.type === "ATTACK_ROLLED");
     expect(rolled && rolled.type === "ATTACK_ROLLED" ? rolled.attackBonus : null).toBe(2);
+  });
+
+  it("offers Fire Magic expert before Bloodlust and applies its top Power tier", () => {
+    const base = createInitialGameState("bloodlust-school-expert");
+    base.players.p1.hand = ["spell.bloodlust"];
+    base.players.p2.hand = [];
+    base.players.p1.permanents = ["ability.fire_magic"];
+    base.players.p1.limits.expertUses = 1;
+    base.combat!.units.unit_p1_griffins.position = 9;
+    base.combat!.units.unit_p2_skeletons.position = 13;
+    let state = applyOk(base, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    const expert = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+    state = applyOk(state, expert!.action);
+    state = applyOk(state, {
+      type: "PLAY_REACTION",
+      playerId: "p1",
+      cardId: "spell.bloodlust",
+      mode: "basic"
+    });
+    expect(lastAttackBonus(state)).toBe(3);
   });
 
   it("without the School permanent the same reaction Bloodlust is only +1 (standing-power guard)", () => {

@@ -4693,6 +4693,16 @@ export type GameAction =
     }
   | {
       /**
+       * Commit an in-play School of Magic permanent at expert strength to a
+       * matching Spell in the current reaction window. The permanent is
+       * discarded and its +3 replaces the standing +1 for that Spell.
+       */
+      type: "USE_SCHOOL_PERMANENT_EXPERT";
+      playerId: PlayerId;
+      cardId: CardId;
+    }
+  | {
+      /**
        * Voluntarily put one of your in-play permanents into the discard pile
        * ("The player may decide to put an active permanent card into their
        * discard pile. This stops the card effect immediately.").
@@ -7862,6 +7872,8 @@ export type ResolutionStackItem = {
      * Power instead of being frozen at the value they had when first played.
      */
     powerScaledAttackInstants?: PowerScaledAttackInstant[];
+    /** Fortune-style rerolls whose count follows the caster's final window Power. */
+    powerScaledAttackRerolls?: PowerScaledAttackReroll[];
     /**
      * Per-player Power pool for an attack window. Each side's spell instants
      * (the attacker's Bloodlust/Bless/Precision/Slayer, the defender's
@@ -7953,6 +7965,15 @@ export type PowerScaledAttackInstant = {
   appliedAmount: number;
 };
 
+/** A Fortune-style reroll whose count follows its caster's attack-window Power. */
+export type PowerScaledAttackReroll = {
+  cardId: CardId;
+  playerId: PlayerId;
+  effectId: string;
+  rerollsByPower: Record<number, number>;
+  baseRerolls: number;
+};
+
 export type ReactionWindow = {
   id: string;
   triggerEvent: GameEvent;
@@ -7961,6 +7982,8 @@ export type ReactionWindow = {
   legalReactions: Record<PlayerId, LegalAction[]>;
   passedPlayerIds: PlayerId[];
   closesWhen: "all-pass" | "one-reaction" | "choice-made";
+  /** School expert Power committed before a stack-less reaction Spell (Sorrow). */
+  schoolExpertPowerByPlayer?: Partial<Record<PlayerId, number>>;
 };
 
 export type ActiveEffectState = ActiveEffectDefinition & {
@@ -9091,6 +9114,17 @@ export type CombatUnitState = {
   maxHealth: number;
   damage: number;
   initiative: number;
+  /**
+   * Calamity Wave battle-event modifiers are combat-long printed-stat bonuses.
+   * They are mirrored here so any mid-combat side recompute (Stack Token loss,
+   * Pack→Few flip, rank/stack refresh) can re-fold them instead of silently
+   * dropping the wave event after the first health layer changes.
+   */
+  waveEventBonuses?: {
+    attack?: number;
+    defense?: number;
+    initiative?: number;
+  };
   position: number;
   activatedThisRound: boolean;
   /**
@@ -9315,6 +9349,12 @@ export type CombatUnitState = {
    * (c) excludes it from tier-gated stares (Devour).
    */
   bossUnit?: boolean;
+  /**
+   * Rift-Lair only: the body (last health bar) has already paid its live
+   * layer-break bounty. Prevents a repeated removal check from paying twice.
+   * Dungeon wardens never set this because their fights have no layer bounty.
+   */
+  bossFinalLayerPaid?: boolean;
   /**
    * The Stack Token currently sitting on this Creature Bank unit, if any.
    * A Stacked unit's printed statistics already include the token's bonus; when
@@ -10680,6 +10720,9 @@ export type AdventureReward =
       playerId: PlayerId;
       kind: "visit-steps";
       steps: VisitStep[];
+      /** Exact context for hero-bound chains such as a secondary Dungeon delver. */
+      heroId?: HeroId;
+      fieldId?: MapSpaceId;
     }
   | {
       /** Optional post-combat purchase of one offered commander artifact. */
@@ -12870,7 +12913,7 @@ export type AdventureState = {
         }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
-      | { kind: "dungeon-floor"; floor: number };
+      | { kind: "dungeon-floor"; floor: number; heroId?: HeroId; fieldId?: MapSpaceId };
     /** Necromancy banks created in this window; unused ones expire on Resolve. */
     discountIds?: string[];
   } | null;
@@ -12893,7 +12936,7 @@ export type AdventureState = {
       | { kind: "creature-bank"; heroId: HeroId; fieldId: MapSpaceId; stackCount: number }
       | { kind: "wave"; wave: number }
       | { kind: "raid-boss"; bossInstanceId: string }
-      | { kind: "dungeon-floor"; floor: number };
+      | { kind: "dungeon-floor"; floor: number; heroId?: HeroId; fieldId?: MapSpaceId };
   } | null;
   /**
    * Hierophant commander (First Aid Master): after a combat in which the

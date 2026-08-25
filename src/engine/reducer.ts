@@ -999,8 +999,10 @@ function assertBatchReactionLegal(
         : undefined;
     const empowerable =
       (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
+      (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === action.playerId) ||
       (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
-      stackItem?.modifiers.ignoreDefenseCasterId === action.playerId;
+      stackItem?.modifiers.ignoreDefenseCasterId === action.playerId ||
+      stackItem?.modifiers.misfortuneCasterId === action.playerId;
     if (!empowerable) {
       return {
         code: "ACTION_NOT_LEGAL",
@@ -2077,6 +2079,9 @@ function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEf
   if (effect.type === "NEGATE_ATTACK") {
     return Boolean(effect.dieModeByPower);
   }
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
+    return Boolean(effect.rerollsByPower);
+  }
   return false;
 }
 
@@ -2087,7 +2092,7 @@ function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEf
  * attack window so a Bloodlust/Bless/Precision/Curse/Weakness cast earlier keeps
  * growing instead of being frozen at the Power it had when first played.
  */
-function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): void {
+function recomputePowerScaledAttackInstants(state: GameState, stackItem: ResolutionStackItem): void {
   const attackerId =
     stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
       ? stackItem.action.playerId
@@ -2116,10 +2121,7 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
   }
 
   const records = stackItem.modifiers.powerScaledAttackInstants;
-  if (!records || records.length === 0) {
-    return;
-  }
-  for (const record of records) {
+  for (const record of records ?? []) {
     const scaled = getAmountByPower(
       record.amountByPower,
       record.baseAmount,
@@ -2136,6 +2138,22 @@ function recomputePowerScaledAttackInstants(stackItem: ResolutionStackItem): voi
       stackItem.modifiers.defenseBonus += delta;
     }
     record.appliedAmount = newApplied;
+  }
+
+  // Fortune may be declared before or alongside its Power cards. Keep its live
+  // reroll modifier synchronized with the caster's final pooled Power just like
+  // Bloodlust/Weakness records above, regardless of declaration order.
+  for (const record of stackItem.modifiers.powerScaledAttackRerolls ?? []) {
+    const effect = state.activeEffects.find((candidate) => candidate.id === record.effectId);
+    const modifier = effect?.modifiers.find((candidate) => candidate.type === "ATTACK_DIE_REROLL");
+    if (!modifier || modifier.type !== "ATTACK_DIE_REROLL") {
+      continue;
+    }
+    modifier.maxUsesPerRoll = getAmountByPower(
+      record.rerollsByPower,
+      record.baseRerolls,
+      attackPowerFor(stackItem, record.playerId)
+    );
   }
 }
 
@@ -2635,7 +2653,7 @@ function createAttackRerollEffectFromCard(
   playerId: PlayerId,
   mode: "basic" | "expert",
   power?: number
-): void {
+): ActiveEffectState | undefined {
   if (card.effect.type !== "CREATE_ATTACK_DIE_REROLL") {
     return;
   }
@@ -2682,7 +2700,7 @@ function createAttackRerollEffectFromCard(
     );
   }
 
-  createActiveEffect(
+  return createActiveEffect(
     state,
     {
       name: card.effect.name,
@@ -6484,6 +6502,10 @@ function finishResolvedAttack(
   // its strike, but no damage, no on-attack abilities, and no Retaliation
   // Attack follow. Conclude the activation straight away.
   if (attackResult.cancelled) {
+    // First Blood keys off the first DECLARED attack. A lethal-save cancellation
+    // still spends that strike, so it must not leave the +2 armed for a later
+    // attack in the same combat.
+    markHeroGradeFirstBloodUsed(state, details.attacker.controllerId, details.isRetaliation);
     if (details.isRetaliation) {
       details.attacker.retaliatedThisRound = true;
     } else {
@@ -11669,7 +11691,9 @@ function maybeOpenPreActivationWindow(state: GameState, cards: CardLibrary): voi
   const legalReactions = getLegalReactionsForTrigger(state, triggerEvent, cards);
   const hasInterrupt = Object.values(legalReactions).some((actions) =>
     actions.some(
-      (legal) => legal.action.type === "PLAY_REACTION" && reactionIsPreActivationInterrupt(cards, legal.action)
+      (legal) =>
+        legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT" ||
+        (legal.action.type === "PLAY_REACTION" && reactionIsPreActivationInterrupt(cards, legal.action))
     )
   );
 
@@ -14931,7 +14955,10 @@ function payOptionCardCost(
     // banked +1 pays part of a map Spell's tier. Zero in combat (the helper
     // guards on state.combat), so a combat cost never touches the map bank.
     const mapBank = mapSpellPowerBankAvailable(state, playerId);
-    const standing = standingSpellPower(state, playerId, playedCard) + mapBank;
+    const standing =
+      standingSpellPower(state, playerId, playedCard) +
+      mapBank +
+      (state.reactionWindow?.schoolExpertPowerByPlayer?.[playerId] ?? 0);
     const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
     // An EMPOWERED ability paid at its Expert Power value costs no crown — the
     // same waiver its ordinary Expert play gets, so it is counted out of the
@@ -15460,7 +15487,7 @@ function applyReactionPlayCore(
       // Record the Book source so a Mysticism-expert sweep returns it to the Book.
       (stackItemForBoost.modifiers.bookPlayedCardIds ??= []).push(play.cardId);
     }
-    recomputePowerScaledAttackInstants(stackItemForBoost);
+    recomputePowerScaledAttackInstants(state, stackItemForBoost);
     appendEvent(state, {
       type: "CARD_PLAYED",
       playerId,
@@ -15702,7 +15729,7 @@ function applyReactionPlayCore(
     const standing = standingSpellPower(state, playerId, card);
     if (standing > 0) {
       addAttackPower(stackItem, playerId, standing);
-      recomputePowerScaledAttackInstants(stackItem);
+      recomputePowerScaledAttackInstants(state, stackItem);
     }
   }
 
@@ -15793,6 +15820,25 @@ function applyReactionPlayCore(
     optionLabel,
     ...(cardPlayTargetUnitId ? { targetUnitId: cardPlayTargetUnitId } : {})
   });
+
+  // Fortune's printed "before a die roll" timing resolves in the declared-
+  // attack reaction window. Create the reroll before the parked attack resumes,
+  // at this caster's current Power; a record keeps it live-updated if more Power
+  // is committed later in the same window (or later in this batch).
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL" && stackItem && isAttackStackItem(stackItem)) {
+    const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId);
+    const active = createAttackRerollEffectFromCard(state, card, playerId, mode, power);
+    if (active && effect.rerollsByPower && !play.fromScroll) {
+      (stackItem.modifiers.powerScaledAttackRerolls ??= []).push({
+        cardId: card.id,
+        playerId,
+        effectId: active.id,
+        rerollsByPower: effect.rerollsByPower,
+        baseRerolls: effect.basicRerolls
+      });
+    }
+    stackItem.modifiers.playedCardIds.push(play.cardId);
+  }
 
   // An Instant draw-rider used outside the primary effect's printed trigger:
   // spend the card/cost normally, draw, and deliberately skip the stat, Power,
@@ -16327,7 +16373,7 @@ function applyReactionPlayCore(
       state.players[playerId].combatStats.spellLimitBonusThisRound += effect.spellLimitBonus;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
-    recomputePowerScaledAttackInstants(stackItem);
+    recomputePowerScaledAttackInstants(state, stackItem);
     if (effect.drawCards) {
       drawCardsForPlayer(state, playerId, effect.drawCards + consumeEquipmentDrawRiderBonus(state, playerId), {
         inFlightCardIds: reactionInFlightCardIds
@@ -16350,7 +16396,7 @@ function applyReactionPlayCore(
       stackItem.modifiers.spellPowerBonus += target - current;
     }
     stackItem.modifiers.playedCardIds.push(play.cardId);
-    recomputePowerScaledAttackInstants(stackItem);
+    recomputePowerScaledAttackInstants(state, stackItem);
   }
 
   if (effect.type === "GAIN_MORALE") {
@@ -16737,7 +16783,7 @@ function applyReactionPlayCore(
     const misfortuneMode = effect.dieMode ?? "negate";
     stackItem.modifiers.misfortuneDie = misfortuneMode;
     stackItem.modifiers.attackDieCancelled = misfortuneMode === "negate";
-    recomputePowerScaledAttackInstants(stackItem);
+    recomputePowerScaledAttackInstants(state, stackItem);
     stackItem.modifiers.misfortunePhase = false;
     stackItem.modifiers.playedCardIds.push(play.cardId);
   }
@@ -17337,7 +17383,7 @@ function applySchoolFetchExpert(
       throw new Error("You have no matching-school spell instant on this attack to empower.");
     }
     addAttackPower(stackItem, action.playerId, SCHOOL_FETCH_EXPERT_POWER);
-    recomputePowerScaledAttackInstants(stackItem);
+    recomputePowerScaledAttackInstants(state, stackItem);
   } else {
     throw new Error("The +3 expert needs one of your spells.");
   }
@@ -17361,6 +17407,51 @@ function applySchoolFetchExpert(
     // Say OUT LOUD that the permanent left play — a silent consumption reads as
     // "my Basic Magic stopped working" (the original user bug report).
     ...(consumed ? { optionLabel: "+3 Power — the permanent is discarded" } : {})
+  });
+}
+
+/** Commit an in-play School of Magic permanent at expert strength to this window. */
+function applySchoolPermanentExpert(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_SCHOOL_PERMANENT_EXPERT" }>
+): void {
+  const player = state.players[action.playerId];
+  const window = state.reactionWindow;
+  const card = cardLibrary[action.cardId];
+  const school = card?.permanentEffect?.schoolBonus;
+  if (!player || !window || window.priorityPlayerId !== action.playerId) {
+    throw new Error("No matching reaction window is open for that School expert.");
+  }
+  if (!school || !getPermanentCardIds(state, action.playerId).includes(action.cardId)) {
+    throw new Error("That School of Magic permanent is not in play.");
+  }
+  if ((window.schoolExpertPowerByPlayer?.[action.playerId] ?? 0) > 0) {
+    throw new Error("A School of Magic expert is already committed to this window.");
+  }
+  if (!canPlayExpertMode(player, action.cardId)) {
+    throw new Error("No expert uses are available this combat round.");
+  }
+
+  if (!discardPermanentFromPlay(state, action.playerId, action.cardId)) {
+    throw new Error("That School of Magic permanent could not be discarded.");
+  }
+  (window.schoolExpertPowerByPlayer ??= {})[action.playerId] = school.expertPower;
+  const stackItem = state.stack.at(-1);
+  if (stackItem && isAttackStackItem(stackItem)) {
+    addAttackPower(stackItem, action.playerId, school.expertPower);
+    recomputePowerScaledAttackInstants(state, stackItem);
+  }
+  if (!abilityExpertIsCrownFree(player, action.cardId)) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId: action.playerId,
+    cardId: action.cardId,
+    timing: card.timing,
+    mode: "expert",
+    effectAmount: school.expertPower,
+    optionLabel: `+${school.expertPower} Power (discarded from play)`
   });
 }
 
@@ -17434,6 +17525,7 @@ function playReaction(
       // dissipates.
       const empowerable =
         (stackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === action.playerId) ||
+        (stackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === action.playerId) ||
         (attackOwner === action.playerId && stackItem?.modifiers.slayerRollsByPower !== undefined) ||
         stackItem?.modifiers.ignoreDefenseCasterId === action.playerId ||
         stackItem?.modifiers.misfortuneCasterId === action.playerId;
@@ -17536,20 +17628,17 @@ function applyCommanderCastReaction(
 }
 
 /**
- * Anime Hero Grades (§3.11): create the +Attack / +Defense buff a skill node
- * applies to `unit` for the current attack/activation. Mirrors the commander
- * cast buffs — an ATTACK_BONUS / DEFENSE_BONUS active effect scoped to the unit,
- * `current-combat-round` for the reaction skills (folds into the triggering
- * attack, like the commander defense reaction) and `current-activation` for the
- * War Cry active (ends when the unit's activation does).
+ * Anime Hero Grades (§3.11): create the +Attack buff a skill node applies to
+ * `unit` for its current activation. Reaction skills use the pending attack's
+ * stack modifiers instead (see applyHeroSkillReaction), which prevents their
+ * "this attack" bonus leaking into every later attack in the round.
  */
 function applyHeroSkillStatBuff(
   state: GameState,
   playerId: PlayerId,
   unit: CombatUnitState,
-  stat: "attack" | "defense",
   amount: number,
-  duration: "current-combat-round" | "current-activation",
+  duration: "current-activation",
   label: string
 ): void {
   createActiveEffect(
@@ -17560,7 +17649,7 @@ function applyHeroSkillStatBuff(
       duration: { type: duration },
       polarity: "positive",
       removable: true,
-      modifiers: [{ type: stat === "attack" ? "ATTACK_BONUS" : "DEFENSE_BONUS", amount }]
+      modifiers: [{ type: "ATTACK_BONUS", amount }]
     },
     { type: "unit", unitId: unit.id, controllerId: playerId },
     playerId,
@@ -17630,6 +17719,9 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
     throw new Error("That skill has already been used this combat.");
   }
   if (node.skill.stat === "heal") {
+    if (unit.damage <= 0) {
+      throw new Error("That unit has no damage to heal.");
+    }
     healUnitDamage(
       state,
       { type: "system" },
@@ -17645,22 +17737,24 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
     });
     return;
   }
-  applyHeroSkillStatBuff(state, action.playerId, unit, "attack", node.skill.amount, "current-activation", `War Cry (${node.name.en})`);
+  if (unit.attackedThisActivation) {
+    throw new Error("Use that Attack skill before the unit attacks.");
+  }
+  applyHeroSkillStatBuff(state, action.playerId, unit, node.skill.amount, "current-activation", `${node.name.en} (Hero Grade)`);
   markHeroSkillUsedThisCombat(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_SKILL_USED",
     playerId: action.playerId,
     nodeId: node.id,
-    message: `War Cry: ${unit.cardName} +${node.skill.amount} Attack this activation.`
+    message: `${node.name.en}: ${unit.cardName} +${node.skill.amount} Attack this activation.`
   });
 }
 
 /**
  * USE_HERO_SKILL_REACTION: a skill node used as an instant reaction inside an
  * open attack window — Battle Focus (+Attack on your attacking unit) or Iron
- * Will (+Defense on your attacked unit). Once per combat; buffs the unit BEFORE
- * the hit resolves (a current-combat-round effect folds into the triggering
- * attack, exactly like the commander defense reaction).
+ * Will (+Defense on your attacked unit). Once per combat; the numeric bonus is
+ * written to the pending attack stack item, so it affects this hit only.
  */
 function applyHeroSkillReaction(
   state: GameState,
@@ -17698,7 +17792,19 @@ function applyHeroSkillReaction(
   if (!heroSkillAvailableThisCombat(state, action.playerId, node.id)) {
     throw new Error("That skill has already been used this combat.");
   }
+  const stackItem = state.stack.at(-1);
+  if (
+    !stackItem ||
+    (stackItem.action.type !== "ATTACK_UNIT" && stackItem.action.type !== "MOVE_AND_ATTACK_UNIT") ||
+    stackItem.action.attackerId !== window.triggerEvent.attackerId ||
+    stackItem.action.defenderId !== window.triggerEvent.defenderId
+  ) {
+    throw new Error("That attack is no longer pending.");
+  }
   if (node.skill.stat === "defense-token") {
+    if (unit.defenseToken) {
+      throw new Error("That unit already has a Defense token.");
+    }
     unit.defenseToken = true;
     markHeroSkillUsedThisCombat(state, action.playerId, node.id);
     appendEvent(state, {
@@ -17710,15 +17816,11 @@ function applyHeroSkillReaction(
     advanceReactionWindowAfterPlay(state, action.playerId, cards);
     return;
   }
-  applyHeroSkillStatBuff(
-    state,
-    action.playerId,
-    unit,
-    node.skill.stat,
-    node.skill.amount,
-    "current-combat-round",
-    `${node.name.en} (Hero Grade)`
-  );
+  if (node.skill.stat === "attack") {
+    stackItem.modifiers.attackBonus += node.skill.amount;
+  } else {
+    stackItem.modifiers.defenseBonus += node.skill.amount;
+  }
   markHeroSkillUsedThisCombat(state, action.playerId, node.id);
   appendEvent(state, {
     type: "HERO_SKILL_USED",
@@ -25734,6 +25836,7 @@ const HANDLER_VALIDATED_ACTIONS = new Set<GameAction["type"]>([
   "USE_EQUIPMENT_HEAL_REACTION",
   "USE_EQUIPMENT_GUARDIAN_REACTION",
   "USE_SCHOOL_FETCH_EXPERT",
+  "USE_SCHOOL_PERMANENT_EXPERT",
   "USE_TOWN_BUILDING",
   "SPEND_TOWN_CUBE",
   "HALL_OF_VALHALLA_BOOST",
@@ -26262,6 +26365,10 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_SCHOOL_FETCH_EXPERT":
         applySchoolFetchExpert(nextState, action);
+        noteReactionWindowPlay(nextState, action.playerId, cards);
+        break;
+      case "USE_SCHOOL_PERMANENT_EXPERT":
+        applySchoolPermanentExpert(nextState, action);
         noteReactionWindowPlay(nextState, action.playerId, cards);
         break;
       case "DISCARD_PERMANENT":

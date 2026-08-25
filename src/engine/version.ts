@@ -750,7 +750,20 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // authored roles cannot seat. A v58 worker starts both.
 // A map with neither field (every existing map and every built-in scenario) is
 // byte-identical to v58. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 59;
+// v60 (2026-08-25, Calamity Waves audit): authoritative wave resolution now
+// unwinds a pillaged Mine / Settlement's mirrored production income instead of
+// clearing only its map flag, and CombatUnitState carries optional
+// `waveEventBonuses` so a Stack-Token loss or Pack→Few recompute cannot erase
+// the wave's combat-long Attack / Defense / Initiative event. A v59 worker
+// would pay ghost income after an overrun and field different mid-combat stats,
+// so the client/server rules fingerprint must change.
+// v61 (2026-08-25, instant/reaction audit): reaction windows gained the
+// `USE_SCHOOL_PERMANENT_EXPERT` action and a per-window expert-Power bank;
+// attack stacks persist Power-scaled Fortune rerolls; and Misfortune, Magic
+// Mirror, and Resurrection now use printed Power costs instead of fixed discard
+// counts. A v60 worker would reject the new action and resolve these instants at
+// different tiers, so client/server compatibility must fail visibly.
+export const ENGINE_PROTOCOL_VERSION = 61;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

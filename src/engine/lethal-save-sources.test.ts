@@ -140,6 +140,37 @@ describe("A resurrected (cancelled) attack applies no after-attack effects", () 
 });
 
 describe("Resurrection spell", () => {
+  it("lets Earth Magic expert open a silver lethal-save window and pay Resurrection", () => {
+    let state = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["spell.resurrection"],
+      p1Permanents: ["ability.earth_magic"],
+      p1Crowns: 1
+    });
+    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    expect(
+      p1SaveActions(state).some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection"
+      )
+    ).toBe(false);
+    const expert = p1SaveActions(state).find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+
+    state = applyOk(state, expert!.action);
+    const save = p1SaveActions(state).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.resurrection" &&
+        legal.action.optionIndex === 1
+    );
+    expect(save).toBeTruthy();
+    state = applyOk(state, save!.action);
+    expect(hasAbilityEvent(state, "resurrection")).toBe(true);
+    expect(state.players.p1.discard).toEqual(expect.arrayContaining(["ability.earth_magic", "spell.resurrection"]));
+  });
+
   it("is offered in the save window and cancels the killing blow", () => {
     const declared = lethalSetup({ defenderGrade: "bronze", p1Hand: ["spell.resurrection"] });
     expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");

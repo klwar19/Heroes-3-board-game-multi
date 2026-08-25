@@ -60,6 +60,35 @@ function consumeCurrentLifeHealthBonuses(state: GameState, unit: CombatUnitState
   }
 }
 
+/** Pay one live Rift health-bar break to the attacking player. */
+function payRaidBossLayerBreak(
+  state: GameState,
+  unit: CombatUnitState,
+  layersLeft: number
+): boolean {
+  const raidContext = state.combat?.context;
+  if (!unit.bossUnit || raidContext?.kind !== "neutral" || !raidContext.raidBossId) {
+    return false;
+  }
+  const bossRecord = state.adventure?.raidBosses?.[raidContext.raidBossId];
+  const breakerId = state.combat?.attackerPlayerId;
+  const breaker = breakerId ? state.players[breakerId] : undefined;
+  if (!bossRecord || !breaker || !breakerId) {
+    return false;
+  }
+  bossRecord.layerBreaks[breakerId] = (bossRecord.layerBreaks[breakerId] ?? 0) + 1;
+  breaker.resources.gold += RAID_BOSS_LAYER_BREAK_GOLD;
+  appendEvent(state, {
+    type: "RAID_BOSS_LAYER_BROKEN",
+    bossInstanceId: raidContext.raidBossId,
+    playerId: breakerId,
+    layersLeft,
+    gold: RAID_BOSS_LAYER_BREAK_GOLD,
+    message: `${breaker.name} broke a health layer off ${unit.name} — +${RAID_BOSS_LAYER_BREAK_GOLD} gold at once (${layersLeft} bar${layersLeft === 1 ? "" : "s"} left).`
+  });
+  return true;
+}
+
 /**
  * Finalizes lethal damage on a combat unit, peeling the physical stack top
  * to bottom: a defeated specialty card on top (Sandro's Cloak) goes to its
@@ -265,26 +294,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     // once and lands on the per-player payout ledger ("soften it so I can
     // finish it" is a real play). Only the raid LAIR pays — a dungeon floor
     // boss settles through the floor ladder instead.
-    const raidContext = state.combat?.context;
-    if (unit.bossUnit && raidContext?.kind === "neutral" && raidContext.raidBossId) {
-      const bossRecord = state.adventure?.raidBosses?.[raidContext.raidBossId];
-      const breakerId = state.combat?.attackerPlayerId;
-      const breaker = breakerId ? state.players[breakerId] : undefined;
-      if (bossRecord && breaker && breakerId) {
-        bossRecord.layerBreaks[breakerId] = (bossRecord.layerBreaks[breakerId] ?? 0) + 1;
-        breaker.resources.gold += RAID_BOSS_LAYER_BREAK_GOLD;
-        appendEvent(state, {
-          type: "RAID_BOSS_LAYER_BROKEN",
-          bossInstanceId: raidContext.raidBossId,
-          playerId: breakerId,
-          layersLeft: (unit.armyStacks ?? 0) + 1,
-          gold: RAID_BOSS_LAYER_BREAK_GOLD,
-          message: `${breaker.name} broke a health layer off ${unit.name} — +${RAID_BOSS_LAYER_BREAK_GOLD} gold at once (${
-            (unit.armyStacks ?? 0) + 1
-          } bar${(unit.armyStacks ?? 0) + 1 === 1 ? "" : "s"} left).`
-        });
-      }
-    }
+    payRaidBossLayerBreak(state, unit, (unit.armyStacks ?? 0) + 1);
   }
 
   if (unit.damage < unit.maxHealth) {
@@ -351,6 +361,15 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
 
   // A one-life bonus also expires when there is no lower health bar to reveal.
   consumeCurrentLifeHealthBonuses(state, unit);
+  // The body is the final printed Rift health bar, not a separate non-paying
+  // life. Pay it here because only the extra bars pass through armyStacks.
+  if (
+    unit.bossUnit &&
+    !unit.bossFinalLayerPaid &&
+    payRaidBossLayerBreak(state, unit, 0)
+  ) {
+    unit.bossFinalLayerPaid = true;
+  }
   appendEvent(state, {
     type: "UNIT_REMOVED",
     unitId: unit.id,

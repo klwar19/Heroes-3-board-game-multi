@@ -185,7 +185,11 @@ describe("AUDIT School of Magic permanent (+1 standing / +3 expert)", () => {
       attackerId: "unit_p1_griffins",
       defenderId: "unit_p2_skeletons"
     });
-    s = applyOk(s, { type: "PLAY_REACTION", playerId: "p2", cardId: "spell.weakness", mode: "basic" });
+    const weakness = getLegalActions(s, "p2").find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.weakness"
+    );
+    expect(weakness, "Water Magic must not hide the matching Weakness reaction").toBeTruthy();
+    s = applyOk(s, weakness!.action);
     s = passAll(s);
     // 8 attack − 2 (Weakness at standing Power 1) − 2 defense + 0 die = 4
     expect(s.combat!.units.unit_p2_skeletons.damage).toBe(4);

@@ -297,11 +297,13 @@ import {
 } from "@/lib/presentation-event-window";
 import { leavePresence, sendPresence } from "@/lib/lobby-presence-client";
 import {
+  takePendingCoopRoomSetup,
   takePendingRoomHosted,
   takePendingRoomMode,
   takePendingRoomName,
   takePendingRoomPassword,
-  takePendingRoomRanked
+  takePendingRoomRanked,
+  type PendingCoopRoomSetup
 } from "@/lib/pending-room-name";
 import { RoomPanel } from "@/components/table/room-panel";
 import { LoadingScreen } from "@/components/menu/loading-screen";
@@ -746,6 +748,10 @@ export default function Home() {
   const pendingRoomRankedRef = useRef<{ roomId: string; ranked: boolean } | null>(null);
   // Password typed in the lobby Join dialog for a locked room.
   const pendingRoomPasswordRef = useRef<{ roomId: string; password: string } | null>(null);
+  // Dedicated /coop front door: once seated, authoritatively stamp Co-op and
+  // add the selected number of trailing computer-controlled enemy seats.
+  const pendingCoopRoomSetupRef = useRef<PendingCoopRoomSetup | null>(null);
+  const pendingCoopApplyInFlightRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState("connecting");
   // Latest transport round-trip sample (pong / action ack) for the RTT chip.
   // Presentation-only; retainQualitySample keeps the reference stable when the
@@ -1159,6 +1165,10 @@ export default function Home() {
       const pendingRanked = takePendingRoomRanked();
       if (pendingRanked && pendingRanked.roomId === initialRoom) {
         pendingRoomRankedRef.current = pendingRanked;
+      }
+      const pendingCoop = takePendingCoopRoomSetup();
+      if (pendingCoop && pendingCoop.roomId === initialRoom) {
+        pendingCoopRoomSetupRef.current = pendingCoop;
       }
       // Password typed in the lobby before Join — seed JOIN_ROOM so a locked
       // room never auto-joins without a typed password (host online or not).
@@ -4465,6 +4475,58 @@ export default function Home() {
             });
           if (pendingRanked.ranked && !state.room?.hosted) {
             void connection.submitAction({ type: "SET_ROOM_HOSTED", clientId, hosted: true }).catch(() => {});
+          }
+        }
+      }
+      // Co-op front door: this is gameplay state, not just a visual hint. Apply
+      // it through the same validated actions as the in-room controls. Mode/map
+      // land first; the computer seats are added on the following snapshot so
+      // their count is calculated from the final scenario's human-seat count.
+      const pendingCoop = pendingCoopRoomSetupRef.current;
+      const coopActor = me?.seat && me.seat !== "observer" ? me.seat : null;
+      if (
+        pendingCoop &&
+        pendingCoop.roomId === roomId &&
+        coopActor &&
+        state.phase === "setup" &&
+        state.setupLobby &&
+        !pendingCoopApplyInFlightRef.current
+      ) {
+        const lobbyOptions = state.setupLobby.options;
+        if (lobbyOptions.gameMode !== "coop" || lobbyOptions.scenarioId !== pendingCoop.scenarioId) {
+          pendingCoopApplyInFlightRef.current = true;
+          void connection
+            .submitAction({
+              type: "SET_GAME_OPTIONS",
+              playerId: coopActor,
+              options: { gameMode: "coop", scenarioId: pendingCoop.scenarioId }
+            })
+            .catch(() => {
+              /* keep the pending setup; retry on the next stable snapshot */
+            })
+            .finally(() => {
+              pendingCoopApplyInFlightRef.current = false;
+            });
+        } else {
+          const computerCount = Object.values(state.controllers ?? {}).filter(
+            (controller) => controller.kind === "computer"
+          ).length;
+          if (computerCount === pendingCoop.computerOpponents) {
+            pendingCoopRoomSetupRef.current = null;
+          } else {
+            pendingCoopApplyInFlightRef.current = true;
+            void connection
+              .submitAction({
+                type: "SET_COMPUTER_OPPONENTS",
+                playerId: coopActor,
+                count: pendingCoop.computerOpponents
+              })
+              .catch(() => {
+                /* keep the pending setup; retry on the next stable snapshot */
+              })
+              .finally(() => {
+                pendingCoopApplyInFlightRef.current = false;
+              });
           }
         }
       }

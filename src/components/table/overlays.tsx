@@ -272,7 +272,8 @@ function SpellBookSaveTile({
   const playedSchools = cardLibrary[action.cardId]?.spellSchools ?? [];
   const isPowerCost = cost.powerCost !== undefined;
   const standing = cardLibrary[action.cardId]
-    ? standingSpellPower(state, viewerPlayerId, cardLibrary[action.cardId])
+    ? standingSpellPower(state, viewerPlayerId, cardLibrary[action.cardId]) +
+      (state.reactionWindow?.schoolExpertPowerByPlayer?.[viewerPlayerId] ?? 0)
     : 0;
   const chosenValues = [
     ...payIndexes.map((index, position) =>
@@ -784,8 +785,10 @@ export function ReactionTray({
   // PLAY_REACTION card tile ever surfaces it. Without this the +3 expert was
   // engine-offered but had no button in the instant window ("cannot play the
   // expert effect").
-  const schoolFetchExpertReactions = legalActions.filter(
-    (legal) => legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
+  const schoolExpertReactions = legalActions.filter(
+    (legal) =>
+      legal.action.type === "USE_SCHOOL_FETCH_EXPERT" ||
+      legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
   );
 
   // Retaliation pre-roll Morale-token draw. This is a standalone SPEND_MORALE
@@ -1164,7 +1167,10 @@ export function ReactionTray({
   const powerPaidBy = (selection: TraySelection) => {
     const card = cardLibrary[selection.cardId];
     const schools = card?.spellSchools ?? [];
-    const standing = card ? standingSpellPower(state, viewerPlayerId, card) : 0;
+    const standing = card
+      ? standingSpellPower(state, viewerPlayerId, card) +
+        (state.reactionWindow?.schoolExpertPowerByPlayer?.[viewerPlayerId] ?? 0)
+      : 0;
     const fromCards = selection.costHandIndexes.reduce(
       (sum, index, position) =>
         sum + spellPowerValueOfCard(cardLibrary[hand[index]], schools, selection.costHandModes[position] ?? "basic"),
@@ -1238,8 +1244,10 @@ export function ReactionTray({
       : undefined;
   const attackAlreadyEmpowerable =
     (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === viewerPlayerId) ||
+    (attackStackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === viewerPlayerId) ||
     (attackOwner === viewerPlayerId && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
-    attackStackItem?.modifiers.ignoreDefenseCasterId === viewerPlayerId;
+    attackStackItem?.modifiers.ignoreDefenseCasterId === viewerPlayerId ||
+    attackStackItem?.modifiers.misfortuneCasterId === viewerPlayerId;
   const powerNeedsSpell =
     isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay && !attackAlreadyEmpowerable;
 
@@ -1404,7 +1412,7 @@ export function ReactionTray({
         spellBookReactions.length === 0 &&
         resurrectionActions.length === 0 &&
         heroSkillReactions.length === 0 &&
-        schoolFetchExpertReactions.length === 0 &&
+        schoolExpertReactions.length === 0 &&
         artifactSetReactions.length === 0 &&
         prophecyPreRollReactions.length === 0 &&
         moraleDrawOffers.length === 0 &&
@@ -1480,17 +1488,19 @@ export function ReactionTray({
             </div>
           );
         })}
-        {schoolFetchExpertReactions.map((legal) => {
+        {schoolExpertReactions.map((legal) => {
           const cardId =
             legal.action.type === "USE_SCHOOL_FETCH_EXPERT"
               ? (`ability.basic_${legal.action.school}_magic` as const)
-              : "";
+              : legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+                ? legal.action.cardId
+                : "";
           return (
             <div className="trayTile permanentTile" key={JSON.stringify(legal.action)}>
               {cardId ? <CardFrame cardId={cardId} className="trayCardImage" /> : null}
               <div className="trayTileBody">
                 <strong>
-                  <Plus aria-hidden="true" size={15} /> Basic Magic
+                  <Plus aria-hidden="true" size={15} /> School expert
                 </strong>
                 <button className="trayInstant" onClick={() => onAction(legal.action)} type="button">
                   {legal.label}

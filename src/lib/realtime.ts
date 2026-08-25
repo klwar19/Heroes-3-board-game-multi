@@ -1,7 +1,15 @@
 ﻿"use client";
 
 import PartySocket from "partysocket";
-import type { AdventurePlayerConfig, EngineResult, GameAction, GameDifficulty, GameMode, GameState } from "@/engine";
+import type {
+  AdventurePlayerConfig,
+  EngineResult,
+  GameAction,
+  GameDifficulty,
+  GameMode,
+  GameState,
+  TableGameMode
+} from "@/engine";
 import { VERIFIED_SEAT_REJECTION_MESSAGE } from "@/engine";
 import { getPartyKitHost, partyProtocol } from "@/lib/party-origin";
 import { frameBytes, metricNow, metricsSampled, recordPerformanceMetric } from "@/lib/performance-metrics";
@@ -1131,6 +1139,8 @@ export async function createRoomOnServer(options: {
   ranked?: boolean;
   /** Closed table (hosted). Ranked games should always set this. */
   hosted?: boolean;
+  /** Dedicated Adventure table identity. The Co-op front door always sends "coop". */
+  gameMode?: TableGameMode;
 }): Promise<{ roomId: string }> {
   if (getPartyKitHost()) {
     return { roomId: options.roomId?.trim() || `room-${Math.random().toString(36).slice(2, 8)}` };

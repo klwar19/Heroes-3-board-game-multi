@@ -332,7 +332,7 @@ export const ANIME_FIELD_OVERRIDE_DEFINITIONS: Record<string, FieldOverrideDefin
  * set `image: art("<id>")`, and remove the id from this set.
  */
 export const FIELD_OVERRIDE_ART_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  // 2026-07: EMPTY — all 13 kinds now ship real 512×512 hex art (the 8 former
+  // 2026-07: EMPTY — all 17 kinds now ship real 512×512 hex art (the 8 former
   // placeholders were generated + promoted; the 5 wave-1 hexes were regenerated
   // on-register — the earlier files were mismatched stock-like scenes). Any
   // FUTURE art-less kind must be declared here, keeping the glyph fallback.

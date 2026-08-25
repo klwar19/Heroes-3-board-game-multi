@@ -1601,7 +1601,7 @@ describe("Fortune spell (map)", () => {
       target: { type: "none" }
     });
     // The boost opens: discard a power-source card for +1 reroll, or play now.
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("fortune-boost");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("map-spell-boost");
     // Discard the first card (option 0) -> Power 1.
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -1609,7 +1609,7 @@ describe("Fortune spell (map)", () => {
       choiceId: state.pendingChoice!.id,
       optionIndex: 0
     });
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("fortune-boost");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("map-spell-boost");
     // Discard the second card (option 0, the only one left) -> Power 2 (max) -> effect created.
     state = applyOk(state, {
       type: "CHOOSE_OPTION",
@@ -1633,7 +1633,7 @@ describe("Fortune spell (map)", () => {
       target: { type: "none" }
     });
     const choice = state.pendingChoice;
-    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("fortune-boost");
+    expect(choice?.type === "OPTION_CHOICE" && choice.context).toBe("map-spell-boost");
     // The trailing option is "Play now" — decline the boost, keep Haste.
     const playNowIndex = choice?.type === "OPTION_CHOICE" ? choice.options.length - 1 : 0;
     state = applyOk(state, {
@@ -1644,6 +1644,56 @@ describe("Fortune spell (map)", () => {
     });
     expect(adventureRerollBudget(state)).toBe(1); // Power 0
     expect(state.players.p1.hand).toContain("spell.haste"); // not spent
+  });
+
+  it("uses a power source's printed +2 value instead of counting it as one card", () => {
+    let state = withHand(makeGame(), ["spell.fortune", "artifact.necklace_of_dragonteeth"]);
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected Fortune Power boost");
+    const necklace = choice.options.findIndex((option) => option.label.includes("Necklace of Dragonteeth"));
+    expect(necklace).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: necklace
+    });
+    expect(adventureRerollBudget(state)).toBe(3);
+    expect(state.players.p1.discard).toContain("artifact.necklace_of_dragonteeth");
+  });
+
+  it("offers and consumes an in-play Air Magic expert in the shared map boost window", () => {
+    let state = withHand(makeGame(), ["spell.fortune"]);
+    state.players.p1.permanents = ["ability.air_magic"];
+    state.players.p1.limits.expertUses = 1;
+    state = applyOk(state, {
+      type: "PLAY_CARD",
+      playerId: "p1",
+      cardId: "spell.fortune",
+      mode: "basic",
+      target: { type: "none" }
+    });
+    const choice = state.pendingChoice;
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected Fortune Power boost");
+    const expert = choice.options.findIndex((option) => option.label.includes("Air Magic expert"));
+    expect(expert).toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: choice.id,
+      optionIndex: expert
+    });
+    expect(adventureRerollBudget(state)).toBe(3);
+    expect(state.players.p1.permanents).not.toContain("ability.air_magic");
+    expect(state.players.p1.discard).toContain("ability.air_magic");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
   });
 
   it("offers and spends a Fortune reroll when a Resource die is rolled, then is used up", () => {

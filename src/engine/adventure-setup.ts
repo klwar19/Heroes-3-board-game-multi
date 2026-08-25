@@ -207,7 +207,8 @@ import {
   customMapHasWogFieldOverridePins,
   mapObjectsModuleActive,
   resolveFieldOverridePlacement,
-  resolveFieldOverridesEnabled
+  resolveFieldOverridesEnabled,
+  fieldOverrideKindAllowedForState
 } from "./field-overrides";
 import { isFieldOverrideLocation } from "@/data/map/field-overrides";
 import { ensureMgqGoldContractSetupChoice } from "./mgq-contracts";
@@ -3936,7 +3937,8 @@ export function createAdventureGameState(options: AdventureSetupOptions = {}): G
     // Far/Near/Center). Anime only supplies object kinds — auto-enabled above
     // when pins need anime content. Feature off drops pins with a note.
     const fieldOverrideProblems = applyCustomMapFieldOverrides(adventure, plannedFieldOverrides, {
-      enabled: fieldOverridesOn
+      enabled: fieldOverridesOn,
+      kindAllowed: (kind) => fieldOverrideKindAllowedForState(state, kind)
     });
     for (const message of fieldOverrideProblems) {
       appendEvent(state, { type: "EVENT_NOTE", message });
@@ -4591,6 +4593,9 @@ export function createAdventureLobbyState(options: AdventureSetupOptions = {}): 
   const seed = options.seed ?? freshSeed("homm3bg-lobby");
   const scenario = getScenario(options.scenarioId);
   const setupOptions = defaultGameSetupOptions(scenario);
+  if (options.gameMode !== undefined) {
+    setupOptions.gameMode = options.gameMode;
+  }
   if (options.ruleset) {
     setupOptions.ruleset = options.ruleset;
   }

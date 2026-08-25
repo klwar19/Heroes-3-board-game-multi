@@ -4567,6 +4567,341 @@ button.combatOwnDiscard.hasCard .combatOwnPileCard {
   }
 }
 
+/* ----------------------------------------------------------------------- */
+/* Dedicated Co-op front door + in-room war room                           */
+/* ----------------------------------------------------------------------- */
+
+.coopLobbyShell .menuShellBackdrop {
+  position: fixed;
+  height: 100dvh;
+  object-position: center bottom;
+  filter: saturate(1.08) brightness(0.68) contrast(1.04);
+  animation: none;
+  transform: none;
+}
+
+.coopLobbyShell .menuShellVignette {
+  position: fixed;
+  background:
+    linear-gradient(90deg, rgb(3 10 18 / 84%) 0%, rgb(3 10 18 / 50%) 54%, rgb(18 4 10 / 25%) 100%),
+    radial-gradient(ellipse at 52% 42%, transparent 22%, rgb(2 5 10 / 58%) 100%);
+}
+
+.coopLobbyShell .serverBadge,
+.coopLobbyShell .lobbyCard,
+.coopLobbyShell .lobbySidebar .playersOnline,
+.coopLobbyShell .lobbySidebar .lobbyChat {
+  border: 1px solid rgb(83 193 186 / 34%);
+  background:
+    linear-gradient(135deg, rgb(6 24 31 / 92%), rgb(12 13 25 / 88%));
+  box-shadow:
+    inset 0 0 0 1px rgb(160 247 232 / 5%),
+    0 18px 46px rgb(0 0 0 / 58%);
+}
+
+.coopLobbyShell .serverBadgeName,
+.coopLobbyShell .lobbyHeader h1 {
+  color: #b9fff1;
+}
+
+.coopMissionIntro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgb(93 220 203 / 36%);
+  border-left: 4px solid #55d7c4;
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 88% 30%, rgb(163 35 65 / 22%), transparent 34%),
+    linear-gradient(105deg, rgb(12 54 62 / 62%), rgb(14 17 30 / 74%));
+}
+
+.coopMissionIntro > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.coopEyebrow,
+.coopExpeditionBuilder small {
+  color: #6de4d2;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.coopMissionIntro strong {
+  color: #effffb;
+  font-family: var(--font-heroic);
+  font-size: 16px;
+}
+
+.coopMissionIntro p,
+.coopBattlefieldCard p {
+  margin: 0;
+  color: #afc9cc;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.coopMissionTags {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.coopMissionTags span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border: 1px solid rgb(99 226 208 / 28%);
+  border-radius: 999px;
+  background: rgb(2 19 24 / 62%);
+  color: #c9fff5;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.coopMissionTags span:last-child {
+  border-color: rgb(234 119 143 / 42%);
+  color: #ffbdc8;
+}
+
+.coopExpeditionBuilder {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(180px, 0.8fr);
+  gap: 9px;
+}
+
+.coopBattlefieldCard,
+.coopEnemyPicker,
+.coopUnrankedBanner {
+  border: 1px solid rgb(84 202 190 / 28%);
+  border-radius: 9px;
+  background: linear-gradient(145deg, rgb(3 22 28 / 72%), rgb(15 15 27 / 68%));
+}
+
+.coopBattlefieldCard {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 12px;
+  padding: 10px;
+}
+
+.coopBattlefieldCard > div:last-child {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+}
+
+.coopBattlefieldCard strong,
+.coopEnemyPicker strong {
+  color: #e7fff9;
+  font-size: 14px;
+}
+
+.coopBattlefieldCard > div:last-child > span,
+.coopEnemyPicker > div:first-child > span {
+  color: #76989d;
+  font-size: 10px;
+}
+
+.coopMapPreview {
+  position: relative;
+  min-height: 84px;
+  overflow: hidden;
+  border: 1px solid rgb(198 169 94 / 30%);
+  border-radius: 7px;
+  background:
+    linear-gradient(rgb(20 46 47 / 16%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(20 46 47 / 16%) 1px, transparent 1px),
+    radial-gradient(circle at 52% 48%, #6b5730 0 2%, #2e331f 3% 13%, transparent 14%),
+    #171d19;
+  background-size: 15px 15px, 15px 15px, auto, auto;
+}
+
+.coopMapPreview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 15%, rgb(3 8 8 / 60%) 100%);
+}
+
+.coopMapCenter,
+.coopMapNode {
+  position: absolute;
+  z-index: 2;
+  border-radius: 50%;
+}
+
+.coopMapCenter {
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d7b85e;
+  background: #3f3219;
+  color: #ffe39a;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 12px rgb(221 177 76 / 35%);
+}
+
+.coopMapNode {
+  width: 11px;
+  height: 11px;
+  border: 2px solid #071115;
+}
+
+.coopMapNode.ally { background: #4fd6c1; box-shadow: 0 0 7px #45d8c2; }
+.coopMapNode.enemy { background: #df4d68; box-shadow: 0 0 7px #e34966; }
+.coopMapNode.ally.one { left: 15%; bottom: 18%; }
+.coopMapNode.ally.two { left: 24%; top: 18%; }
+.coopMapNode.enemy.one { right: 14%; top: 17%; }
+.coopMapNode.enemy.two { right: 20%; bottom: 16%; }
+
+.coopEnemyPicker {
+  display: grid;
+  align-content: center;
+  gap: 9px;
+  padding: 10px;
+}
+
+.coopEnemyPicker > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.coopEnemyButtons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.coopEnemyButtons button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 34px;
+  border: 1px solid rgb(216 80 104 / 34%);
+  border-radius: 7px;
+  background: rgb(47 13 24 / 52%);
+  color: #df9aaa;
+  cursor: pointer;
+}
+
+.coopEnemyButtons button:hover,
+.coopEnemyButtons button.active {
+  border-color: #ec5e79;
+  background: linear-gradient(180deg, #8d263b, #451421);
+  color: #fff1f4;
+  box-shadow: 0 0 10px rgb(226 69 99 / 34%);
+}
+
+.coopUnrankedBanner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  color: #9be9dd;
+}
+
+.coopUnrankedBanner > span {
+  display: grid;
+  gap: 1px;
+  color: #91acaf;
+  font-size: 11px;
+}
+
+.coopUnrankedBanner strong {
+  color: #cafff5;
+  font-size: 12px;
+}
+
+.coopLobbyShell .lobbyCreate .commandButton.primary {
+  border: 1px solid rgb(112 238 219 / 46%);
+  background: linear-gradient(180deg, #16766e, #0a3d42);
+  color: #ecfffb;
+  box-shadow: 0 0 16px rgb(60 215 194 / 22%);
+}
+
+.coopLobbyShell .lobbyModeOption.active {
+  border-color: #56d9c6;
+  background: rgb(25 116 108 / 20%);
+  box-shadow: inset 0 0 0 1px rgb(134 255 235 / 12%), 0 0 10px rgb(62 219 196 / 18%);
+}
+
+.lobbyRoomRanked.coop {
+  border-color: rgb(81 211 191 / 52%);
+  background: rgb(13 93 86 / 34%);
+  color: #bafff3;
+}
+
+/* Co-op stays unmistakable after room creation: static generated war-room art,
+   a persistent mode banner, and no setup-scene video download for this mode. */
+.setupSceneIllustration.setupSceneIllustration--coop,
+.setupPhase .setupSceneIllustration.setupSceneIllustration--coop {
+  background: #050b12 url("/assets/ui/coop/coop-mounted-party-v2.png") center / cover no-repeat !important;
+}
+
+.setupLobby--coop .setupSceneDragonBreath,
+.setupLobby--coop .setupScenePaintedFruit {
+  display: none;
+}
+
+.coopSetupBanner {
+  position: absolute;
+  z-index: 9;
+  top: 20px;
+  right: 2.2%;
+  display: grid;
+  gap: 2px;
+  width: min(330px, 28vw);
+  padding: 10px 14px;
+  border: 1px solid rgb(91 226 205 / 42%);
+  border-left: 4px solid #58d9c5;
+  border-radius: 8px;
+  background: linear-gradient(110deg, rgb(5 32 39 / 91%), rgb(25 9 19 / 86%));
+  box-shadow: 0 10px 28px rgb(0 0 0 / 50%), 0 0 18px rgb(72 217 195 / 12%);
+  color: #c9fff5;
+  pointer-events: none;
+}
+
+.coopSetupBanner > span {
+  color: #65dfce;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.coopSetupBanner strong {
+  font-family: var(--font-heroic);
+  font-size: 13px;
+}
+
+.coopSetupBanner em { color: #ed6c83; font-style: normal; }
+.coopSetupBanner small { color: #91b5b6; font-size: 9px; }
+
+@media (max-width: 760px) {
+  .coopMissionIntro { align-items: flex-start; flex-direction: column; }
+  .coopMissionTags { justify-content: flex-start; }
+  .coopExpeditionBuilder { grid-template-columns: 1fr; }
+  .coopBattlefieldCard { grid-template-columns: 88px 1fr; }
+  .coopSetupBanner {
+    top: 7px;
+    right: 8px;
+    width: min(280px, calc(100vw - 16px));
+    padding: 7px 10px;
+  }
+  .coopSetupBanner small { display: none; }
+}
+
 .dieFace {
   position: absolute;
   inset: 0;
@@ -44540,8 +44875,32 @@ body:has(.leftRailExpanded) .commanderEquipmentBackdrop {
     animation: none !important;
   }
 
-  .pveFieldFxParticle,
+.pveFieldFxParticle,
   .pveFieldFxVideo {
     display: none;
+  }
+}
+
+/* Final responsive override: the shared lobby header floats Refresh over its
+   ornate title on desktop; in the narrow Co-op card they become two rows so
+   neither label is clipped or intercepts the other. */
+@media (max-width: 760px) {
+  .coopLobbyShell .lobbyHeader {
+    display: grid;
+    justify-items: center;
+    gap: 0;
+  }
+
+  .coopLobbyShell .lobbyHeader h1 {
+    width: 100%;
+    max-width: 300px;
+    font-size: 12px;
+  }
+
+  .coopLobbyShell .lobbyHeader > .commandButton {
+    position: static;
+    justify-self: center;
+    margin-top: 2px;
+    transform: none;
   }
 }

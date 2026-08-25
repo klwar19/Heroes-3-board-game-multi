@@ -987,13 +987,16 @@ describe("Necromancy prompt coverage across combat kinds", () => {
   it("defers Dungeon floor advancement and rewards behind the same window", () => {
     let state = coverageGame("necro-dungeon");
     state.players.p2.dungeonFloor = 1;
-    stageSpecialNeutralWin(state, { dungeonFloor: 1 });
+    const fieldId = stageSpecialNeutralWin(state, { dungeonFloor: 1 });
+    const heroId = getMainHero(state, "p2")!.id;
 
     finalizeAdventureCombat(state);
 
     expect(state.adventure?.pendingNecromancy?.deferredReward).toEqual({
       kind: "dungeon-floor",
-      floor: 1
+      floor: 1,
+      heroId,
+      fieldId
     });
     expect(state.players.p2.dungeonFloor).toBe(1);
 

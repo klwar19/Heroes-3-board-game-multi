@@ -1,13 +1,27 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  savePendingCoopRoomSetup,
   savePendingRoomHosted,
   savePendingRoomMode,
   savePendingRoomName,
+  takePendingCoopRoomSetup,
   takePendingRoomHosted,
   takePendingRoomMode,
   takePendingRoomName
 } from "./pending-room-name";
+
+describe("pending Co-op room setup handoff", () => {
+  it("round-trips the battlefield and computer-enemy count once", () => {
+    savePendingCoopRoomSetup({ roomId: "coop-1", scenarioId: "skirmish", computerOpponents: 2 });
+    expect(takePendingCoopRoomSetup()).toEqual({
+      roomId: "coop-1",
+      scenarioId: "skirmish",
+      computerOpponents: 2
+    });
+    expect(takePendingCoopRoomSetup()).toBeNull();
+  });
+});
 
 afterEach(() => window.sessionStorage.clear());
 

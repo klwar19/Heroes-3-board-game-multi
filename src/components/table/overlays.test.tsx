@@ -1009,6 +1009,49 @@ describe("ReactionTray — Basic X Magic in-play +3 expert has a button", () => 
   });
 });
 
+describe("ReactionTray — School of Magic expert is usable before an instant Spell", () => {
+  it("renders Air Magic expert for Fortune and dispatches the permanent action", () => {
+    const state = createInitialGameState("tray-school-expert-fortune");
+    state.players.p1.hand = ["spell.fortune"];
+    state.players.p2.hand = [];
+    state.players.p1.permanents = ["ability.air_magic"];
+    state.players.p1.limits.expertUses = 1;
+    state.combat!.units.unit_p1_griffins.position = 9;
+    state.combat!.units.unit_p2_skeletons.position = 13;
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_skeletons"
+    });
+    expect(declared.errors).toEqual([]);
+    expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    const onAction = vi.fn();
+    render(
+      <CardZoomProvider>
+        <ReactionTray
+          legalActions={getLegalActions(declared.state, "p1")}
+          onAction={onAction}
+          state={declared.state}
+          view={getPlayerView(declared.state, "p1")}
+          viewerPlayerId="p1"
+        />
+      </CardZoomProvider>
+    );
+
+    const button = screen.getByRole("button", { name: /Air Magic.*\+3 Power/i });
+    act(() => {
+      fireEvent.click(button);
+    });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "USE_SCHOOL_PERMANENT_EXPERT",
+      playerId: "p1",
+      cardId: "ability.air_magic"
+    });
+  });
+});
+
 describe("ReactionTray — Power can still be added after Slayer arms the attack", () => {
   function tray(state: GameState) {
     return (
@@ -1739,7 +1782,7 @@ describe("ReactionTray — Magic Mirror's paid redirect can pay its cost in the 
     const confirm = () => screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
     expect(confirm().disabled, "1 Power is owed but unpaid").toBe(true);
 
-    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power$/ })));
+    act(() => fireEvent.click(screen.getByRole("button", { name: /^Power \(\+1\)$/ })));
     expect(confirm().disabled, "the 1-Power cost is now covered").toBe(false);
 
     act(() => fireEvent.click(confirm()));

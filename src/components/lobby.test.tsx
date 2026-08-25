@@ -49,6 +49,23 @@ function renderLobby(props: Partial<Parameters<typeof LobbyScreen>[0]> = {}) {
 }
 
 describe("LobbyScreen", () => {
+  it("gives Co-op its own AI expedition builder and never renders ranked/MMR controls", () => {
+    const handlers = renderLobby({ tableMode: "coop", title: "Co-op War Room", createLabel: "Open expedition" });
+
+    expect(screen.getByRole("region", { name: "Co-op mission briefing" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Co-op expedition setup" })).toBeTruthy();
+    expect(screen.getByText("Border Skirmish")).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: "Match type" })).toBeNull();
+    expect(screen.queryByText("Ranked game")).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: /2/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open expedition/i }));
+    expect(handlers.onCreate).toHaveBeenCalledWith("", true, false, {
+      scenarioId: "skirmish",
+      computerOpponents: 2
+    });
+  });
+
   it("lists rooms with their name and status, and joining fires onJoin", () => {
     const handlers = renderLobby({
       rooms: [entry({ roomId: "room-1", name: "Friday Night", inProgress: true, memberCount: 2, seatedCount: 2 })]

@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { locationDefinitions } from "@/data/map/locations";
+import { allTileDefinitions } from "@/data/map/tiles";
 import {
   ANIME_FIELD_OVERRIDE_DEFINITIONS,
   FIELD_OVERRIDE_ART_PLACEHOLDERS
@@ -23,6 +24,8 @@ import { createAdventureGameState, createAdventureLobbyState, applyAction } from
 import {
   assignPoolFieldOverrides,
   carveFieldOverride,
+  fieldOverrideKindAllowedForState,
+  fieldOverrideMayCoverFieldDef,
   fieldOverrideMayCoverField,
   fieldOverridesEnabled,
   offerPendingFieldOverridePlacement,
@@ -223,6 +226,110 @@ describe("Anime content package registration", () => {
     }
   });
 
+  it("authored pins obey their package and required-module gates", () => {
+    expect(
+      fieldOverrideKindAllowedForState(
+        { anime: { ...animeOn(), equipment: false } as never, wog: undefined },
+        "ren_binh_cac"
+      )
+    ).toBe(false);
+    expect(
+      fieldOverrideKindAllowedForState(
+        { anime: { ...animeOn(), equipment: true } as never, wog: undefined },
+        "ren_binh_cac"
+      )
+    ).toBe(true);
+    expect(
+      fieldOverrideKindAllowedForState(
+        { anime: undefined, wog: { enabled: false, newObjects: false } as never },
+        "adventure_cave"
+      )
+    ).toBe(false);
+    expect(
+      fieldOverrideKindAllowedForState(
+        { anime: undefined, wog: { enabled: true, newObjects: true } as never },
+        "adventure_cave"
+      )
+    ).toBe(true);
+  });
+
+  it("setup drops a module-gated authored pin instead of carving an inert object", () => {
+    const plan: CustomMapTilePlan[] = [
+      {
+        row: 0,
+        col: 0,
+        group: "far",
+        faceDown: true,
+        tileDefId: "F1",
+        fieldOverride: { kind: "ren_binh_cac", slot: 0 }
+      }
+    ];
+    const off = createAdventureGameState({
+      seed: "fo-authored-module-off",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      rotateStartTiles: false,
+      anime: { ...animeOn(), equipment: false } as never,
+      customMap: plan
+    });
+    expect(
+      Object.values(off.adventure!.tiles).some((tile) =>
+        tile.pendingFieldOverrides?.some((pending) => pending.kind === "ren_binh_cac")
+      )
+    ).toBe(false);
+    expect(
+      off.eventLog.some(
+        (event) =>
+          event.type === "EVENT_NOTE" &&
+          event.message.includes('Field Override "ren_binh_cac" is unavailable')
+      )
+    ).toBe(true);
+
+    const on = createAdventureGameState({
+      seed: "fo-authored-module-on",
+      ruleset: "binh",
+      rollFirstPlayer: false,
+      rotateStartTiles: false,
+      anime: { ...animeOn(), equipment: true } as never,
+      customMap: plan
+    });
+    expect(
+      Object.values(on.adventure!.tiles).some((tile) =>
+        tile.pendingFieldOverrides?.some((pending) => pending.kind === "ren_binh_cac")
+      )
+    ).toBe(true);
+  });
+
+  it("every random-replacement tile has a legal host for each enabled content package", () => {
+    const packages = [
+      ["anime-xianxia", "anime-isekai"],
+      ["wog"]
+    ] as const;
+    for (const tile of Object.values(allTileDefinitions)) {
+      if (tile.group !== "far" && tile.group !== "near" && tile.group !== "center") {
+        continue;
+      }
+      for (const enabledPackages of packages) {
+        const pool = allFieldOverrideDefinitions().filter(
+          (def) =>
+            enabledPackages.includes(def.package as never) &&
+            !def.requiresModule &&
+            def.implementationStatus === "implemented" &&
+            def.tileGroups.includes(tile.group)
+        );
+        expect(pool.length, `${tile.id}: no ${enabledPackages.join("/")} pool`).toBeGreaterThan(0);
+        expect(
+          pool.every((overrideDef) =>
+            tile.fields.some((_, slot) =>
+              fieldOverrideMayCoverFieldDef(tile, slot, overrideDef, tile.group)
+            )
+          ),
+          `${tile.id}: at least one ${enabledPackages.join("/")} replacement has no legal hex`
+        ).toBe(true);
+      }
+    }
+  });
+
   it("fieldOverrideImage resolves location and kind", () => {
     expect(fieldOverrideImage("kiem_trung")).toContain("kiem_trung.webp");
     expect(fieldOverrideImage("anime.kiem_trung")).toContain("kiem_trung.webp");
@@ -416,6 +523,38 @@ describe("carve + placement", () => {
     // Every registered kind is anime-xianxia or anime-isekai — both need the
     // Anime mod on, so with anime off the pool is empty.
     expect(state.adventure!.tiles[tile.id]?.pendingFieldOverride).toBeUndefined();
+  });
+
+  it("drops a legacy queued replacement when its required module is no longer active", () => {
+    const state = createAdventureGameState({
+      seed: "fo-legacy-module-off",
+      ruleset: "binh",
+      fieldOverrides: true,
+      anime: { ...animeOn(), equipment: false } as never,
+      fieldOverridePlacement: "random",
+      rollFirstPlayer: false,
+      rotateStartTiles: false
+    });
+    const tile = Object.values(state.adventure!.tiles).find((candidate) => !candidate.faceDown)!;
+    tile.group = "far";
+    tile.awaitingRotation = false;
+    tile.pendingFieldOverrides = [{ kind: "ren_binh_cac", fromPool: false }];
+    tile.pendingFieldOverride = tile.pendingFieldOverrides[0];
+
+    expect(offerPendingFieldOverridePlacement(state, tile, "p1")).toBe(false);
+    expect(tile.pendingFieldOverride).toBeUndefined();
+    expect(tile.pendingFieldOverrides).toBeUndefined();
+    expect(
+      Object.values(state.adventure!.fields).some(
+        (field) => field.location === "anime.ren_binh_cac"
+      )
+    ).toBe(false);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "EVENT_NOTE" && event.message.includes("mod module is not active")
+      )
+    ).toBe(true);
   });
 
   it("random placement mode places without a choice", () => {

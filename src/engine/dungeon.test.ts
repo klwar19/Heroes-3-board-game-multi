@@ -345,6 +345,68 @@ describe("The Dungeon — delving floors", () => {
     );
   });
 
+  it("keeps an exact secondary delver bound to the reward and continuation chain", () => {
+    const state = dungeonGame("dungeon-secondary-context");
+    const fieldId = placeSiteUnderHero(state);
+    const secondary = state.heroes.hero_p1;
+    secondary.kind = "secondary";
+    const mainSpace = Object.keys(state.adventure!.fields).find((spaceId) => spaceId !== fieldId)!;
+    state.heroes.hero_p1_main = {
+      ...secondary,
+      id: "hero_p1_main",
+      kind: "main",
+      spaceId: mainSpace
+    };
+
+    const fought = delveFloor(state, fieldId);
+    fought.combat!.outcome = {
+      winnerPlayerId: "p1",
+      defeatedPlayerId: NEUTRAL_PLAYER_ID,
+      reason: "all-enemy-units-defeated"
+    };
+    finalizeAdventureCombat(fought);
+    const reward = fought.adventure!.rewardQueue[0];
+    expect(reward).toMatchObject({
+      kind: "visit-steps",
+      heroId: secondary.id,
+      fieldId
+    });
+
+    pumpAdventureQueues(fought);
+    expect(fought.adventure!.pendingVisit).toMatchObject({
+      heroId: secondary.id,
+      fieldId
+    });
+    expect(fought.adventure!.pendingVisit?.steps[0]?.type).toBe("CHOOSE_ONE");
+  });
+
+  it("clears every designed-guard trace when carving the shared Dungeon site", () => {
+    const state = dungeonGame("dungeon-clean-carve");
+    const field = Object.values(state.adventure!.fields).find(
+      (candidate) => candidate.location !== "town"
+    )!;
+    Object.assign(field, {
+      difficulty: 7,
+      customGuardUnits: ["neutral.ancient-behemoth"],
+      customGuardLevel: 7,
+      designedGuard: true,
+      breakField: true,
+      persistentGuard: true,
+      unlimitedCombatRounds: true
+    });
+
+    placeDungeonSite(state, field.spaceId);
+
+    expect(field.location).toBe("dungeon_gate");
+    expect(field.difficulty).toBeUndefined();
+    expect(field.customGuardUnits).toBeUndefined();
+    expect(field.customGuardLevel).toBeUndefined();
+    expect(field.designedGuard).toBeUndefined();
+    expect(field.breakField).toBeUndefined();
+    expect(field.persistentGuard).toBeUndefined();
+    expect(field.unlimitedCombatRounds).toBeUndefined();
+  });
+
   it("setup can make immediate descents free or cost 2 movement", () => {
     for (const cost of [0, 2] as const) {
       const state = dungeonGame(`dungeon-cost-${cost}`, {

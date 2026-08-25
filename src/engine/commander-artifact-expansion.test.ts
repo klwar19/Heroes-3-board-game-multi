@@ -145,6 +145,22 @@ describe("Commander Forge", () => {
     expect(after.players.p1.resources.gold).toBe(22);
     expect(after.players.p1.hand).toContain(offeredId);
   });
+
+  it("removes artifacts claimed elsewhere before a queued offer is shown", () => {
+    const state = mapState("neutral-offer-stale");
+    expect(queueNeutralCommanderArtifactOffer(state, "p1", 4)).toBe(true);
+    const queued = state.adventure?.rewardQueue.find((reward) => reward.kind === "commander-artifact-offer");
+    if (!queued || queued.kind !== "commander-artifact-offer") throw new Error("expected queued artifact offer");
+    const claimedId = queued.cardIds[0]!;
+    state.players.p2.hand.push(claimedId);
+
+    pumpAdventureQueues(state);
+
+    const choice = state.pendingChoice;
+    expect(choice?.type === "OPTION_CHOICE" ? choice.context : null).toBe("commander-artifact-offer");
+    if (choice?.type !== "OPTION_CHOICE") throw new Error("expected filtered artifact offer");
+    expect(choice.commanderArtifactOffer?.cardIds).not.toContain(claimedId);
+  });
 });
 
 describe("expanded commander artifact behavior", () => {

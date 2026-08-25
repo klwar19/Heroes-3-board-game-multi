@@ -116,6 +116,60 @@ function observe(state: GameState): ComputerObservation {
   };
 }
 
+describe("PvE module navigation objectives", () => {
+  it("marches a viable army to the shared Dungeon gate but not a gutted army", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    const field = state.adventure!.fields[RESOURCE];
+    field.location = "dungeon_gate";
+    field.blackCube = false;
+    state.adventure!.dungeonSite = { fieldId: RESOURCE, maxFloor: 10 };
+
+    expect(collectMapObjectives(state, hero)).toContainEqual({
+      spaceId: RESOURCE,
+      kind: "visitable"
+    });
+
+    state.players.p2.army = [];
+    expect(collectMapObjectives(state, hero)).not.toContainEqual({
+      spaceId: RESOURCE,
+      kind: "visitable"
+    });
+  });
+
+  it("marches a viable army to a live Rift and ignores a slain one", () => {
+    const state = game();
+    const hero = p2Hero(state);
+    establishP2PackCore(state);
+    const field = state.adventure!.fields[RESOURCE];
+    field.location = "rift_lair";
+    field.riftLair = "raid-nav";
+    field.blackCube = false;
+    state.adventure!.raidBosses = {
+      "raid-nav": {
+        defId: "goblin_king",
+        fieldId: RESOURCE,
+        layersLeft: 3,
+        layerBreaks: {},
+        spawnedRound: 5
+      }
+    };
+
+    expect(collectMapObjectives(state, hero)).toContainEqual({
+      spaceId: RESOURCE,
+      kind: "visitable"
+    });
+
+    state.adventure!.raidBosses["raid-nav"].slainBy = "p2";
+    state.adventure!.raidBosses["raid-nav"].layersLeft = 0;
+    expect(collectMapObjectives(state, hero)).not.toContainEqual({
+      spaceId: RESOURCE,
+      kind: "visitable"
+    });
+  });
+});
+
 function parkAtOpenDiscoveryDoorway(state: GameState, hero: HeroState) {
   const faceDown = Object.values(state.adventure!.tiles).filter((tile) => tile.faceDown);
   for (const field of Object.values(state.adventure!.fields)) {

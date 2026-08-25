@@ -252,15 +252,13 @@ export default function MenuPage() {
               >
                 <MenuArt src={MENU_ART.battleTest} />
               </Link>
-              {/* NOT IMPLEMENTED: there is no co-op game mode in the engine, and
-                  /play reads no query params — it always renders the ADVENTURE
-                  room browser. So this button lands on the SAME lobby Skirmish
-                  does and `?mode=co-op` is inert; it is a placeholder for a mode
-                  that does not exist yet, not a second way to play. */}
+              {/* Co-op owns a separate front door: its browser filters to Co-op
+                  tables, creates an unranked humans-vs-computers room, and hands
+                  the chosen AI count into the authoritative setup lobby. */}
               <Link
                 aria-label="CO-OP"
                 className="menuNavButton"
-                href="/play?mode=co-op"
+                href="/coop"
               >
                 <MenuArt src={MENU_ART.coOp} />
               </Link>

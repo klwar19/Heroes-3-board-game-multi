@@ -195,6 +195,24 @@ function moduleEnabledForState(state: Pick<GameState, "anime">) {
 }
 
 /**
+ * One legality read shared by authored pins and pool draws. A designer pin may
+ * auto-enable its owning package during setup, but it must never bypass a
+ * package/module gate that is still off (for example a WoG pin in a direct
+ * Legacy setup, or an Equipment outfitter pin without the Equipment module).
+ * Carving such a kind would leave an inert or only partly functional hex.
+ */
+export function fieldOverrideKindAllowedForState(
+  state: Pick<GameState, "anime" | "wog">,
+  kind: string
+): boolean {
+  const def = getFieldOverrideDefinition(kind);
+  if (!def || !packageAllowedForState(state)(def.package)) {
+    return false;
+  }
+  return !def.requiresModule || moduleEnabledForState(state)(def.requiresModule);
+}
+
+/**
  * Whether a tile-DEFINITION field may host this override kind: legal location,
  * matching terrain, tile group allowed, no guard already printed.
  */
@@ -353,7 +371,11 @@ export function fieldOverridePlacementCandidates(
 export function applyCustomMapFieldOverrides(
   adventure: AdventureState,
   planned: { plan: CustomMapTilePlan; tile: MapTileState }[],
-  options: { enabled: boolean }
+  options: {
+    enabled: boolean;
+    /** Optional setup/runtime gate; omitted only by low-level placement tests. */
+    kindAllowed?: (kind: string) => boolean;
+  }
 ): string[] {
   const problems: string[] = [];
   if (!options.enabled) {
@@ -381,6 +403,12 @@ export function applyCustomMapFieldOverrides(
       }
       if (overrideDef.implementationStatus !== "implemented") {
         problems.push(`Field Override "${pin.kind}" is not implemented — dropped.`);
+        continue;
+      }
+      if (options.kindAllowed && !options.kindAllowed(pin.kind)) {
+        problems.push(
+          `Field Override "${pin.kind}" is unavailable with the selected mod modules — dropped.`
+        );
         continue;
       }
       const group = (plan.group ?? tile.group ?? "far") as TileGroup;
@@ -554,6 +582,18 @@ export function offerPendingFieldOverridePlacement(
   if (!fieldOverridesEnabled(state) && pending.fromPool) {
     shiftPendingFieldOverride(tile);
     // Try next in queue (no new pool draw).
+    return offerPendingFieldOverridePlacement(state, tile, playerId, { allowPoolDraw: false });
+  }
+  // Backstop old/in-flight snapshots too: a queued authored pin from an older
+  // build must not carve an inert object after its package or required module
+  // is unavailable. Setup applies the same gate before queueing new games.
+  if (!fieldOverrideKindAllowedForState(state, pending.kind)) {
+    shiftPendingFieldOverride(tile);
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      message: `${fieldOverrideLabel(pending.kind)} could not be placed — its mod module is not active.`,
+      playerId
+    });
     return offerPendingFieldOverridePlacement(state, tile, playerId, { allowPoolDraw: false });
   }
 

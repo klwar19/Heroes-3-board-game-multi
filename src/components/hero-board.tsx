@@ -768,9 +768,9 @@ export function HeroBoard({
                       </p>
                     ) : null}
                     <div className="heroGradeTree" aria-label="Skill and passive tree">
-                      {[1, 2, 3].map((tier) => (
+                      {Array.from({ length: HERO_GRADE_MAX }, (_, index) => index + 1).map((tier) => (
                         <div className={`heroGradeTier tier-${tier}`} key={tier}>
-                          <h3><span>Tier {tier}</span><small>{tier === 1 ? "Foundation" : tier === 2 ? "Mastery" : "Legacy"}</small></h3>
+                          <h3><span>Tier {tier}</span><small>{tier === 1 ? "Foundation" : tier === 2 ? "Mastery" : tier === 3 ? "Legacy" : `Ascension ${tier}`}</small></h3>
                           {dealtGradeNodes.filter((node) => node.tier === tier).map((node) => {
                             const owned = ownedGradeNodes.has(node.id);
                             const available = pickableNodeIds.has(node.id) && Boolean(onAction);

@@ -60,7 +60,19 @@ function boostSourceIds(state: GameState): CardId[] {
   if (choice?.type !== "OPTION_CHOICE") {
     return [];
   }
-  return [...(choice.visionsBoost?.spellCardIds ?? choice.fortuneBoost?.spellCardIds ?? [])];
+  const sharedMapSources = (choice.mapSpellBoost?.offers ?? []).flatMap((offer) => {
+    if (offer.kind === "card" || offer.kind === "cost-discard") {
+      return [offer.cardId];
+    }
+    if (offer.kind === "school-permanent-expert") {
+      return [offer.permanentCardId];
+    }
+    if (offer.kind === "school-fetch-expert") {
+      return offer.fromHandCardId ? [offer.fromHandCardId] : [];
+    }
+    return [];
+  });
+  return [...(choice.visionsBoost?.spellCardIds ?? choice.fortuneBoost?.spellCardIds ?? sharedMapSources)];
 }
 
 function playVisions(hand: CardId[], seed: string): GameState {
@@ -215,6 +227,7 @@ describe("Fortune (Air) Power boost — the mirror image", () => {
   function playFortune(hand: CardId[], seed: string): GameState {
     const state = makeGame(seed);
     state.players.p1.hand = [...hand];
+    state.players.p1.limits.expertUses = 1;
     return apply(state, {
       type: "PLAY_CARD",
       playerId: "p1",
@@ -235,9 +248,9 @@ describe("Fortune (Air) Power boost — the mirror image", () => {
     expect(cardLibrary["spell.fortune"].spellSchools).toEqual(["air"]);
   });
 
-  it("offers Air Magic and spends it for +1 reroll", () => {
+  it("offers Air Magic expert through the shared map boost and spends its printed +3 Power", () => {
     let state = playFortune(["spell.fortune", "ability.air_magic"], "fortune-air");
-    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("fortune-boost");
+    expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("map-spell-boost");
     expect(boostSourceIds(state)).toContain("ability.air_magic");
     state = apply(state, {
       type: "CHOOSE_OPTION",
@@ -245,8 +258,8 @@ describe("Fortune (Air) Power boost — the mirror image", () => {
       choiceId: state.pendingChoice!.id,
       optionIndex: 0
     });
-    // Observable outcome: Power 1 -> 2 rerolls (Power 0 would be 1).
-    expect(rerollBudget(state)).toBe(2);
+    // Observable outcome: expert Power 3 reaches the top 3-reroll tier.
+    expect(rerollBudget(state)).toBe(3);
     expect(state.players.p1.hand).not.toContain("ability.air_magic");
   });
 

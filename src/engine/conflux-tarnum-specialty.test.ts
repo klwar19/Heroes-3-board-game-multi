@@ -314,6 +314,30 @@ describe("Tarnum VI — Search twice, cast over the per-round limit", () => {
     expect(after.players.p1.hand).toContain("spell.bless");
   });
 
+  it("offers School of Magic expert on a Tarnum over-limit cast and preserves its return destination", () => {
+    const state = tarnumCombat("tarnum-vi-school-expert", ["spell.bless", "spell.lightning_bolt"]);
+    state.players.p1.combatStats.spellsCastThisRound = 1;
+    state.players.p1.permanents = ["ability.air_magic"];
+    const searched = playSpecialty(state);
+    const cast = getLegalActions(searched, "p1").find(
+      (legal) =>
+        legal.action.type === "CAST_SPELL" &&
+        legal.action.cardId === "spell.lightning_bolt" &&
+        legal.action.tarnumReturn === "deck-top" &&
+        legal.action.useSchoolExpert === true &&
+        legal.action.target.type === "unit" &&
+        legal.action.target.unitId === "unit_p2_skeletons"
+    );
+    expect(cast, "Tarnum's bonus cast keeps the matching School expert variant").toBeTruthy();
+
+    const after = passAllReactions(applyOk(searched, cast!.action));
+    expect(after.players.p1.permanents).not.toContain("ability.air_magic");
+    expect(after.players.p1.discard).toContain("ability.air_magic");
+    expect(after.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(after.decks.spells.drawPile.at(-1)).toBe("spell.lightning_bolt");
+    expect(after.players.p1.discard).not.toContain("spell.lightning_bolt");
+  });
+
   it("the 'to Spell discard' placement returns the cast Spell to the Spell discard pile", () => {
     const state = tarnumCombat("tarnum-vi-todiscard", ["spell.bless", "spell.lightning_bolt"]);
     state.players.p1.combatStats.spellsCastThisRound = 1;
