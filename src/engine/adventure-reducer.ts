@@ -4589,7 +4589,9 @@ export function resolveVisitStep(state: GameState, action: Extract<GameAction, {
         const sellable = removableHandCards(state, action.playerId, "sellable");
         const chosen = sellable.find(({ index }) => index === action.optionIndex);
         if (!player || !chosen) {
-          throw new Error("Specialty, Statistic, starting Ability and Magic Arrow cards cannot be sold.");
+          throw new Error(
+            "Specialty, Statistic, starting Ability, Magic Arrow and Cast a Spell cards cannot be sold."
+          );
         }
         player.hand.splice(chosen.index, 1);
         player.removed.push(chosen.cardId);
@@ -4853,11 +4855,32 @@ function resolveSettlementChoice(
 }
 
 /**
+ * The one registry of cards the market can never buy: the two starting-only
+ * Spell cards a player is DEALT rather than acquires. Magic Arrows was always
+ * excluded; "Cast a Spell" — the Polish Spell Book enabler, minted by setup /
+ * Mage Guilds / level grants and never joinable to a shared deck
+ * (`STARTING_ONLY_SPELLS`) — joins it per the USER RULE 2026-08-25 ("Cast a
+ * Spell card should be: cannot be sold in market, similar to Magic Arrows").
+ * Unconditional, exactly like the Magic Arrows entry: it is NOT gated on
+ * `polish-spell-book`, so a copy that reached a hand by any road is unsellable.
+ * The Trading Post is the ONLY sell surface a Spell card can reach — the
+ * Blacksmith, the Artifact Broker, the hero-grade sale and the WoG Junk
+ * Merchant all filter to `kind === "artifact"` — and both its offer builder
+ * (`legal-actions.ts`) and its handler re-derive through the "sellable" filter
+ * below, so this list is the single seam.
+ */
+export const MARKET_UNSELLABLE_CARD_IDS: readonly string[] = [
+  "spell.magic_arrow",
+  CAST_A_SPELL_CARD_ID
+];
+
+/**
  * Hand cards a REMOVE_HAND_CARD step may remove. "removable" follows the
  * Faerie Ring / Market of Time exclusions: no Statistic, Starting Ability or
  * Specialty cards (and only cards that belong to a shared deck). "sellable"
  * is the Trading Post rule: any card except Specialty, Statistic, the
- * Starting Ability and Magic Arrows.
+ * Starting Ability and the `MARKET_UNSELLABLE_CARD_IDS` starting-only Spells
+ * (Magic Arrows, Cast a Spell).
  */
 export function removableHandCards(
   state: GameState,
@@ -4892,7 +4915,7 @@ export function removableHandCards(
             kind !== "statistic" &&
             kind !== "hero-specialty" &&
             cardId !== startingAbility &&
-            cardId !== "spell.magic_arrow"
+            !MARKET_UNSELLABLE_CARD_IDS.includes(cardId)
           );
       }
     });

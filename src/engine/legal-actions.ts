@@ -10790,7 +10790,8 @@ function addVisitStepActions(actions: LegalAction[], state: GameState, playerId:
     }
     // The other two printed options ("choose one") stay open only until the
     // first resource trade: sell one card from hand for 1 gold (Specialty,
-    // Statistic, starting Ability and Magic Arrow excluded), or buy a war
+    // Statistic, starting Ability and the `MARKET_UNSELLABLE_CARD_IDS`
+    // starting-only Spells — Magic Arrow, Cast a Spell — excluded), or buy a war
     // machine at the higher price. The Marketplace Event's "Trade resources
     // using Trading Post rules" is the exchange alone — tradesOnly hides both.
     if (!step.traded && !step.tradesOnly) {

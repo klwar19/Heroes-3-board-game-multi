@@ -816,6 +816,72 @@ describe("rulebook conformance fixes", () => {
     expect(next.adventure?.pendingVisit).toBeNull();
   });
 
+  // USER RULE 2026-08-25: "Cast a Spell card — should be: cannot be sold in
+  // market (similar to Magic Arrows)." Both are starting-only Spell cards
+  // (`MARKET_UNSELLABLE_CARD_IDS`); the Trading Post is the ONLY sell surface a
+  // Spell card can reach, and its offer builder and handler share one filter.
+  it("never sells a Cast a Spell card at the Trading Post, exactly like Magic Arrows", () => {
+    const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
+    for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
+    const adventure = state.adventure;
+    const player = state.players.p1;
+    const hero = Object.values(state.heroes).find((candidate) => candidate.controllerId === "p1");
+    if (!adventure || !player || !hero) {
+      throw new Error("setup failed");
+    }
+
+    // Hand indices: 0 = the enabler under test, 1 = its already-excluded
+    // sibling, 2 = the CONTROL card that must still sell on this same setup.
+    player.hand = ["spell.cast_a_spell", "spell.magic_arrow", "spell.lightning_bolt"];
+    const field = Object.values(adventure.fields)[0];
+    adventure.pendingVisit = {
+      heroId: hero.id,
+      playerId: "p1",
+      fieldId: field.spaceId,
+      steps: [{ type: "TRADING_POST" }]
+    };
+
+    // The shared filter drops both starting-only Spells and keeps the control.
+    expect(removableHandCards(state, "p1", "sellable").map((entry) => entry.cardId)).toEqual([
+      "spell.lightning_bolt"
+    ]);
+
+    // OFFER: no "Sell Cast a Spell" (nor Magic Arrows) button exists.
+    const sellActions = getLegalActions(state, "p1").filter((legal) => legal.label.startsWith("Sell "));
+    expect(sellActions.some((legal) => legal.label.includes("Cast a Spell"))).toBe(false);
+    expect(sellActions.some((legal) => legal.label.includes("Magic Arrow"))).toBe(false);
+    expect(sellActions).toHaveLength(1);
+    expect(sellActions[0].label).toContain("Lightning Bolt");
+
+    // FORGED sell of hand index 0 (Cast a Spell) is REFUSED — no gold, the card
+    // stays in hand and nothing is removed from the game.
+    const goldBefore = player.resources.gold;
+    const forged = applyAction(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: 0
+    } as GameAction);
+    expect(forged.errors.length).toBeGreaterThan(0);
+    expect(forged.state.players.p1.resources.gold).toBe(goldBefore);
+    expect(forged.state.players.p1.hand).toContain("spell.cast_a_spell");
+    expect(forged.state.players.p1.removed).not.toContain("spell.cast_a_spell");
+
+    // FORGED sell of the Magic Arrows sibling (index 1) is refused the same way.
+    const forgedArrow = applyAction(state, {
+      type: "RESOLVE_VISIT_STEP",
+      playerId: "p1",
+      optionIndex: 1
+    } as GameAction);
+    expect(forgedArrow.errors.length).toBeGreaterThan(0);
+    expect(forgedArrow.state.players.p1.hand).toContain("spell.magic_arrow");
+
+    // CONTROL: the ordinary Spell on the SAME setup really does sell for 1 gold.
+    const sold = apply(state, sellActions[0].action);
+    expect(sold.players.p1.resources.gold).toBe(goldBefore + 1);
+    expect(sold.players.p1.removed).toEqual(["spell.lightning_bolt"]);
+    expect(sold.players.p1.hand).toEqual(["spell.cast_a_spell", "spell.magic_arrow"]);
+  });
+
   it("locks Trading Post selling and buying once resources were traded", () => {
     const state = createAdventureGameState({ seed: "test-seed", difficulty: "normal", rotateStartTiles: false });
   for (const _pl of Object.values(state.players)) { _pl.canMulligan = false; _pl.needsHandRefresh = false; }
