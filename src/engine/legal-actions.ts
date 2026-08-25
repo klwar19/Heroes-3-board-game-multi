@@ -2385,10 +2385,15 @@ export const PROPHECY_PRE_ROLL_CARD_ID = "artifact.cards_of_prophecy" as CardId;
  * legal-actions renders it and the handler re-derives it, so an offer and a
  * refusal can never disagree.
  *
- * Scope (a documented limit): the ATTACK die of a unit you control — a
- * Retaliation Attack included, since the retaliator is the attacker of its own
- * window. Ability rolls (Death Stare & co.) have no pre-roll window and the map
- * dice keep their own `prophecyThreePick` offer.
+ * Scope: the ATTACK die of a unit you control — a Retaliation Attack included,
+ * since the retaliator is the attacker of its own window. This gate covers the
+ * ATTACK die ONLY, because it is the only roll with a real pre-roll window.
+ * The rolls that have none keep the same roll-3-keep-1 outcome at the window they
+ * DO have, one moment later: an ABILITY roll (Death Stare & co.) through
+ * `AttackRerollSource.rollExtraCandidates` (see `rerollArtifactSource`) and the
+ * map dice through their own `prophecyThreePick` offer. All three surfaces must
+ * stay covered — with the ability half missing the reprint was strictly worse
+ * than the rule OFF (the 2026-08-26 "lower part effect still not working" report).
  */
 export function prophecyPreRollAvailable(state: GameState, playerId: PlayerId, unitId: string): boolean {
   if (playerId === NEUTRAL_PLAYER_ID || !houseRuleEnabled(state, "polish-card-balance")) {

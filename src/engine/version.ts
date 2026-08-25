@@ -848,7 +848,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // re-scaling record dropped their `card.kind === "spell"` gate. Every shipped
 // pool ladder is still on a Spell (pinned as an invariant), so that last part is
 // a seam alignment with no shipped consumer. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 70;
+// v71 (2026-08-26): the Polish Balance Pack Cards of Prophecy option B works on an
+// ABILITY roll again (reported: "Card of Prophecy, lower part effect — still not
+// working"). The 2026-08-22 pre-roll rewrite (v52) was right for the ATTACK die,
+// which has a real pre-roll window, but it also deleted
+// `AttackRerollSource.rollExtraCandidates` and filtered the card out of the
+// ability-roll window (Death Stare & co.) with nothing offered in its place — so
+// with the rule ON the card was unspendable there AND that window stopped opening
+// at all (no sources ⇒ no window), i.e. strictly worse than the rule OFF. The
+// field is BACK, set only on Cards of Prophecy in the ability window: its one use
+// throws the chosen die twice more and unlocks the free pick, so the holder
+// resolves 1 of 3 faces. SERIALIZED shape a v70 worker neither writes nor reads
+// (`AttackRerollSource.rollExtraCandidates`, inside `pendingChoice.rerollSources`),
+// and server-computed behaviour it answers DIFFERENTLY: a v70 edge opens no
+// ability-roll window for the holder at all, and would resolve the same press as a
+// single re-throw with no free pick — a different die stands. Behind
+// `polish-card-balance` (default OFF ⇒ byte-identical) and scoped to the ability
+// window, so the ATTACK pre-roll declaration and the map `prophecyThreePick` offer
+// are untouched. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 71;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

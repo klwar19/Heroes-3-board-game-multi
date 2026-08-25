@@ -33,12 +33,25 @@ import { sampleCards } from "./sample";
  *    The closest existing duration is `next-activation`, which ends when that
  *    unit's next activation ENDS — one activation's worth longer than the printed
  *    wording. The same reading the Balance-Pack Prayer already ships.
- *  - CARDS OF PROPHECY option B ("roll it 3 times and resolve 1 chosen result")
- *    lives in the ATTACK-die and ABILITY-roll reroll windows, where a candidate
- *    list exists. On the MAP dice (the Resource/Treasure/Scholar roll windows)
- *    the card keeps its classic single reroll — those windows re-roll in place
- *    and hold no candidate history, so "resolve 1 chosen result" has nothing to
- *    choose between there. Stated, not silently narrowed.
+ *  - CARDS OF PROPHECY option B ("play this BEFORE the roll: that die is rolled 3
+ *    times and you resolve 1 chosen result") lives in a DIFFERENT place per die,
+ *    because only one kind of roll has a real pre-roll window:
+ *      · ATTACK die — declared BEFORE the roll in the parked attack's own window
+ *        (`USE_PROPHECY_PRE_ROLL` → `prophecyThreeRoll`), which throws it three
+ *        times up front. It is filtered OUT of the post-roll attack-die window
+ *        (`prophecyLeavesDieWindow`) so it cannot also be spent after seeing the
+ *        face.
+ *      · ABILITY rolls (Death Stare & co.) and the MAP Resource/Treasure dice —
+ *        these are thrown inline with no pre-roll window anywhere, so the card is
+ *        offered at the window that DOES exist and its one use throws the chosen
+ *        die twice more with a free pick among all three faces
+ *        (`AttackRerollSource.rollExtraCandidates` / the `prophecyThreePick`
+ *        visit-step flag). Same roll-3-keep-1 outcome, one moment later; the
+ *        holder sees the first face before committing. A documented widening,
+ *        stated rather than silently narrowed.
+ *    (2026-08-26: the ability-roll half was BROKEN — filtered out with nothing in
+ *    its place, so the card was dead there and that window stopped opening at all.
+ *    Pinned in `prophecy-ability-roll-three-throws.test.ts`.)
  *  - GOLDEN BOW's "can reroll 1 Attack die once per turn" is read per ATTACK (the
  *    Ammo Cart precedent, whose identical printed clause is rebuilt per attack):
  *    a ranged unit of the owner gets one reroll on each of its attacks while the
@@ -380,12 +393,14 @@ export const polishBalanceArtifactCards: CardLibrary = {
   // ABOUT TO roll any die, roll it 3 times and resolve 1 chosen result") is a
   // PRE-ROLL declaration, not a reroll — USER RULING 2026-08-22 ("you play it
   // before the roll and then roll 3 dice and choose one of them"). The engine
-  // offers it from hand in the attack's own pre-roll window
+  // offers it from hand in the ATTACK's own pre-roll window
   // (`USE_PROPHECY_PRE_ROLL`, gate `prophecyPreRollAvailable`) rather than as a
   // pre-armed CHOOSE_ONE option, and with the rule ON the card is NO LONGER a
-  // post-roll die-window source. On the MAP the same half is still offered from
-  // the die-result menu (`prophecyThreePick`, a documented limit). The printed
-  // map die-SET side is gone.
+  // post-roll ATTACK-die source. The rolls that have NO pre-roll window keep the
+  // roll-3-keep-1 shape at the window they do have: the MAP dice via the
+  // die-result menu (`prophecyThreePick`) and an ABILITY roll via
+  // `rollExtraCandidates` (see the header; both are documented widenings). The
+  // printed map die-SET side is gone.
   "artifact.cards_of_prophecy": reprint("artifact.cards_of_prophecy", {
     target: { type: "friendly-unit" },
     tags: tags(

@@ -2809,8 +2809,21 @@ export function RerollModal({
     );
   }
 
-  const keepAction = legalActions.find(
-    (legal) => legal.action.type === "CHOOSE_PENDING_ROLL" && legal.action.candidateIndex === latestIndex
+  // EVERY keep the engine is offering, by candidate index — not just the latest.
+  // With a FREE candidate choice (`freeCandidateChoice`: the Balance-Pack Cards of
+  // Prophecy's three throws, Fortune's "resolve the result of your choice") the
+  // engine offers one `CHOOSE_PENDING_ROLL` PER candidate; this modal used to look
+  // up the latest index alone and label the others "rerolled away" with no button,
+  // so a human could only ever keep the last throw. That made Prophecy's option B
+  // unusable from the UI even though the engine had all three picks ready — half
+  // of the 2026-08-26 "lower part effect still not working" report.
+  const keepActions = new Map(
+    legalActions
+      .filter(
+        (legal): legal is typeof legal & { action: Extract<GameAction, { type: "CHOOSE_PENDING_ROLL" }> } =>
+          legal.action.type === "CHOOSE_PENDING_ROLL"
+      )
+      .map((legal) => [legal.action.candidateIndex, legal])
   );
   // Both the plain reroll and the Positive Morale set-die (useSetDie) offers.
   const rerollActions = legalActions.filter((legal) => legal.action.type === "REROLL_PENDING_CHOICE");
@@ -2829,7 +2842,12 @@ export function RerollModal({
               : abilityRoll
               ? `${unitName(state, choice.attackerId)} rolls for ${abilityRoll.abilityName} against ${unitName(state, choice.defenderId)}`
               : `${unitName(state, choice.attackerId)} attacks ${unitName(state, choice.defenderId)}`}{" "}
-            — a reroll replaces the result, the latest roll counts.
+            {choice.freeCandidateChoice
+              ? // Cards of Prophecy's three throws / Fortune's free pick: every
+                // face on the felt is keepable, so do not tell the player the
+                // opposite.
+                "— keep ANY of these results, not just the last one."
+              : "— a reroll replaces the result, the latest roll counts."}
           </span>
         </header>
         {rolling && latestCandidate ? (
@@ -2859,16 +2877,29 @@ export function RerollModal({
               const facesText = abilityRoll
                 ? candidate.rolls.map(formatDieFace).join(" · ")
                 : formatDieFace(candidate.roll);
+              // A candidate is keepable exactly when the ENGINE offers its index
+              // (so the free pick and the "only the latest counts" default are
+              // both read off the offers, never re-derived here).
+              const keepAction = keepActions.get(index);
               return (
-                <div className={`rerollDie ${isLatest ? "current" : "rerolledAway"}`} key={index}>
+                <div
+                  className={`rerollDie ${isLatest ? "current" : keepAction ? "keepable" : "rerolledAway"}`}
+                  key={index}
+                >
                   <span className="dieFaceBig">{facesText}</span>
                   <small>{candidate.rolls.map(formatDieFace).join(" / ")}</small>
-                  {isLatest ? (
-                    keepAction ? (
-                      <button className="commandButton primary" onClick={() => onAction(keepAction.action)} type="button">
-                        Keep {facesText}
-                      </button>
-                    ) : null
+                  {keepAction ? (
+                    <button
+                      // The latest throw keeps the gold primary treatment; the
+                      // earlier faces are ordinary (secondary) command buttons,
+                      // so the free pick reads as a choice rather than three
+                      // equally-shouting options. No new CSS.
+                      className={isLatest ? "commandButton primary" : "commandButton"}
+                      onClick={() => onAction(keepAction.action)}
+                      type="button"
+                    >
+                      Keep {facesText}
+                    </button>
                   ) : (
                     <small className="rerolledNote">rerolled away</small>
                   )}

@@ -2434,6 +2434,100 @@ describe("RerollModal — the die rolls before the keep/reroll choice", () => {
     expect(container.querySelector(".dieCube.tumbling")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Keep/ })).toBeNull();
   });
+
+  /**
+   * A FREE candidate choice (`freeCandidateChoice`) — the Balance-Pack Cards of
+   * Prophecy's three throws and Fortune's "resolve the result of your choice".
+   *
+   * REPORTED 2026-08-26 ("Cards of Prophecy, lower part effect — still not
+   * working"): the modal looked its keep action up by the LATEST candidate index
+   * alone and rendered every other face as a struck-through "rerolled away" note,
+   * so a human could only ever keep the last throw — the engine had all three
+   * `CHOOSE_PENDING_ROLL` offers ready and the UI dropped two of them. jsdom
+   * cannot compute CSS, so this pins the DOM contract (a button per offered
+   * candidate, dispatching THAT candidate's index) — the look is a real-browser
+   * concern.
+   */
+  function threeThrowState(): GameState {
+    const state = rerollState();
+    const choice = state.pendingChoice as unknown as {
+      candidates: { rolls: number[]; roll: number }[];
+      freeCandidateChoice: boolean;
+      remainingRerolls: number;
+    };
+    choice.candidates = [
+      { rolls: [-1], roll: -1 },
+      { rolls: [0], roll: 0 },
+      { rolls: [1], roll: 1 }
+    ];
+    choice.freeCandidateChoice = true;
+    choice.remainingRerolls = 0;
+    return state;
+  }
+
+  /** One keep offer PER candidate, exactly as the engine emits them. */
+  const threeKeeps: LegalAction[] = [-1, 0, 1].map((face, index) => ({
+    label: `Keep ${face > 0 ? `+${face}` : face}`,
+    action: {
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      candidateIndex: index
+    } as unknown as GameAction
+  }));
+
+  it("a free candidate choice offers a Keep button for EVERY thrown face", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const { container } = render(
+      <RerollModal legalActions={threeKeeps} onAction={onAction} state={threeThrowState()} viewerPlayerId="p1" />
+    );
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
+
+    // Three faces, three buttons — and nothing struck through as unavailable.
+    expect(screen.getAllByRole("button", { name: /^Keep/ })).toHaveLength(3);
+    expect(container.querySelectorAll(".rerolledNote")).toHaveLength(0);
+    expect(container.querySelectorAll(".rerollDie.rerolledAway")).toHaveLength(0);
+    // The blurb must not tell the player the opposite of what the buttons do.
+    expect(screen.getByText(/keep ANY of these results/i)).toBeTruthy();
+  });
+
+  it("clicking a NON-latest face dispatches THAT candidate's index", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    render(
+      <RerollModal legalActions={threeKeeps} onAction={onAction} state={threeThrowState()} viewerPlayerId="p1" />
+    );
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
+
+    // The MIDDLE throw — neither the original nor the latest, i.e. the one only
+    // a real free pick can reach. Buttons render in candidate order.
+    const keeps = screen.getAllByRole("button", { name: /^Keep/ });
+    expect(keeps).toHaveLength(3);
+    act(() => fireEvent.click(keeps[1]));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onAction.mock.calls[0][0]).toMatchObject({
+      type: "CHOOSE_PENDING_ROLL",
+      playerId: "p1",
+      candidateIndex: 1
+    });
+  });
+
+  it("CONTROL: without the free pick only the LATEST face keeps, the rest stay struck out", () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn();
+    const state = threeThrowState();
+    // Same three candidates, but an ordinary reroll history: the engine offers
+    // the latest index alone.
+    (state.pendingChoice as unknown as { freeCandidateChoice?: boolean }).freeCandidateChoice = undefined;
+    const { container } = render(
+      <RerollModal legalActions={[threeKeeps[2]]} onAction={onAction} state={state} viewerPlayerId="p1" />
+    );
+    act(() => vi.advanceTimersByTime(DICE_ROLL_MS + 10));
+
+    expect(screen.getAllByRole("button", { name: /^Keep/ })).toHaveLength(1);
+    expect(container.querySelectorAll(".rerollDie.rerolledAway")).toHaveLength(2);
+    expect(screen.getByText(/the latest roll counts/i)).toBeTruthy();
+  });
 });
 
 describe("AfkVotePanel — the vote UI and the idle call-a-vote button", () => {

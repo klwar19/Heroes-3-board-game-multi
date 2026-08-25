@@ -4805,7 +4805,7 @@ function buildRerollSources(
       ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
         .filter((cardId) => player.hand.includes(cardId) && !prophecyLeavesDieWindow(state, cardId))
         .map((cardId) =>
-          rerollArtifactSource(state, cardId)
+          rerollArtifactSource(state, cardId, "attack")
         )
       : [];
 
@@ -5061,13 +5061,35 @@ function rollAbilityCandidate(
  * Sash) as a die-window source.
  *
  * Polish Balance Pack: the Cards of Prophecy reprint reads "When you are about
- * to roll any die, roll it 3 times and resolve 1 chosen result". USER RULING
- * 2026-08-22 — that is a PRE-roll declaration, so with the rule ON the card is
- * NOT a die-window reroll source at all: it leaves this window entirely and is
- * offered in the attack's pre-roll window instead (`USE_PROPHECY_PRE_ROLL`).
- * With the rule OFF it stays the printed single "Reroll any die" reaction.
+ * to roll any die, PLAY THIS BEFORE THE ROLL: that die is rolled 3 times and you
+ * resolve 1 chosen result". USER RULING 2026-08-22 — that is a PRE-roll
+ * declaration, so WHERE it lives depends on whether the roll has a pre-roll
+ * window at all:
+ *
+ * - `window: "attack"` — the ATTACK die has one. The card is declared there
+ *   (`USE_PROPHECY_PRE_ROLL`, arming `prophecyThreeRoll`) and `prophecyLeavesDieWindow`
+ *   keeps it OUT of this post-roll window, so it can never be spent after seeing
+ *   the roll (which would be strictly better and leave the declaration dead).
+ * - `window: "ability"` — an ABILITY roll (Death Stare & co.) has NO pre-roll
+ *   window: the dice are thrown inline while an attack resolves. So the card
+ *   stays in that window and its one use throws the chosen die twice more with a
+ *   free pick among all three faces (`rollExtraCandidates`) — the printed
+ *   roll-3-keep-1 outcome, declared at the only moment the engine offers. That is
+ *   the same documented reading the MAP Resource/Treasure dice already ship.
+ *
+ * 2026-08-26 BUGFIX: the ability half was filtered out with NOTHING offered in
+ * its place, so with the rule ON the card was dead on every ability roll AND the
+ * window stopped opening at all (no sources ⇒ no window). Reported as "Cards of
+ * Prophecy, lower part effect — still not working".
+ *
+ * With the rule OFF the card is the printed single "Reroll any die" reaction in
+ * BOTH windows.
  */
-function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSource {
+function rerollArtifactSource(
+  state: GameState,
+  cardId: CardId,
+  window: "attack" | "ability"
+): AttackRerollSource {
   const base: AttackRerollSource = {
     name: cardLibrary[cardId]?.name ?? cardId,
     cardId,
@@ -5077,15 +5099,23 @@ function rerollArtifactSource(state: GameState, cardId: CardId): AttackRerollSou
     // multi-die ability roll (both Death Stare dice).
     ...(cardId === DIPLOMATS_RING_CARD_ID ? { rerollsWholeRoll: true } : {})
   };
+  if (window === "ability" && cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance")) {
+    return { ...base, rollExtraCandidates: 2 };
+  }
   return base;
 }
 
 /**
- * Whether Cards of Prophecy's rewritten option B has LEFT the post-roll die
- * window for this player. With `polish-card-balance` ON the reprint is a pre-roll
- * declaration, so the held card must not ALSO be spendable after seeing the roll
- * (which would be strictly better and leave the declaration dead). Filtered out
- * of both die windows; with the rule OFF the classic reroll reaction is intact.
+ * Whether Cards of Prophecy's rewritten option B has LEFT the post-roll ATTACK-die
+ * window for this player. With `polish-card-balance` ON the reprint is declared in
+ * that die's own PRE-roll window, so the held card must not ALSO be spendable
+ * after seeing the roll (which would be strictly better and leave the declaration
+ * dead). With the rule OFF the classic reroll reaction is intact.
+ *
+ * ATTACK-die window ONLY. `buildAbilityRerollSources` deliberately does NOT call
+ * this: an ability roll has no pre-roll window, so filtering the card out there
+ * left it dead with nothing in its place (the 2026-08-26 report) — it keeps the
+ * card and hands it `rollExtraCandidates` instead.
  */
 function prophecyLeavesDieWindow(state: GameState, cardId: CardId): boolean {
   return cardId === PROPHECY_CARD_ID && houseRuleEnabled(state, "polish-card-balance");
@@ -5131,11 +5161,15 @@ function buildAbilityRerollSources(state: GameState, roller: CombatUnitState): A
           }))
       : [];
 
+  // An ABILITY roll has no pre-roll window, so Cards of Prophecy is NOT filtered
+  // out here (that is `prophecyLeavesDieWindow`'s attack-window job): with the
+  // Balance Pack on it stays and becomes a roll-3-keep-1 source instead of a
+  // plain reroll — see `rerollArtifactSource`.
   const artifactSources: AttackRerollSource[] = !isHandLockedInCombat(state, roller.controllerId)
     ? balanceRerollReactionArtifactIds(state, REROLL_REACTION_ARTIFACT_IDS)
-        .filter((cardId) => player.hand.includes(cardId) && !prophecyLeavesDieWindow(state, cardId))
+        .filter((cardId) => player.hand.includes(cardId))
         .map((cardId) =>
-        rerollArtifactSource(state, cardId)
+        rerollArtifactSource(state, cardId, "ability")
       )
     : [];
 
@@ -22834,12 +22868,38 @@ function rerollPendingChoice(
   if (choice.abilityRoll && source.setDieFace === undefined) {
     candidate.roll = candidate.rolls[0] ?? 0;
   }
+  // Polish Balance Pack Cards of Prophecy on an ABILITY roll ("that die is rolled
+  // 3 times and you resolve 1 chosen result"): one press throws the die a SECOND
+  // extra time — this candidate plus one more — and unlocks the free pick below,
+  // so the player chooses among all three faces. Every extra throw re-throws the
+  // SAME `dieIndex` (the printed singular "that die", the Death Stare one-die
+  // rule) and takes the same curse pass a lone roll would. On the ATTACK die the
+  // card is declared before the roll instead, so no source ever carries this
+  // there.
+  const extraCandidates: AttackRollCandidate[] = [];
+  if (source.rollExtraCandidates && source.setDieFace === undefined) {
+    for (let index = 1; index < source.rollExtraCandidates; index += 1) {
+      const extra =
+        choice.abilityRoll && abilityWindow
+          ? throwAbilityRerollCandidate(combat, choice.abilityRoll, source, latest, abilityWindow, action.dieIndex)
+          : rollAttackCandidate(combat, choice.rollMode);
+      if (choice.abilityRoll) {
+        extra.roll = extra.rolls[0] ?? 0;
+      }
+      if (abilityWindow) {
+        applyAbilityDiceCurses(state, action.playerId, extra, abilityWindow, true);
+      } else {
+        applyMoraleDiceCurses(state, action.playerId, extra, choice.rollMode);
+        applyEnemyPlusOneRerolls(state, action.playerId, extra, choice.rollMode);
+      }
+      extraCandidates.push(extra);
+    }
+    choice.freeCandidateChoice = true;
+  }
   // Fortune ("resolve the result of your choice"): spending its reroll unlocks a
   // free pick among every candidate rolled this window — the original roll and
   // each reroll — so the player keeps the result they choose, not the forced
-  // latest one. It adds no extra rolls. (Cards of Prophecy's three throws used to
-  // be appended here; since the 2026-08-22 ruling they are thrown up front, at the
-  // attack itself, because the card is now declared BEFORE the roll.)
+  // latest one. Unlike Cards of Prophecy it adds no extra rolls.
   if (source.chooseResult) {
     choice.freeCandidateChoice = true;
   }
@@ -22852,6 +22912,9 @@ function rerollPendingChoice(
     applyEnemyPlusOneRerolls(state, action.playerId, candidate, choice.rollMode);
   }
   choice.candidates.push(candidate);
+  for (const extra of extraCandidates) {
+    choice.candidates.push(extra);
+  }
   // EVERY source spends one use — the face-gated unit abilities included. An
   // "[unit_attack]" icon activates ONCE PER ATTACK, so a Minotaur/Crusader that
   // rerolls into another gated face may NOT reroll again in the same attack;

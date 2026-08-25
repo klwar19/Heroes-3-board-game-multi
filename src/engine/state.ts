@@ -15384,11 +15384,29 @@ export type AttackRerollSource = {
    * rolled this window (`freeCandidateChoice`), so the player chooses the result
    * instead of the rulebook's "only the latest roll counts". It adds no extra
    * rolls — the player rerolls as normal and then keeps whichever candidate they
-   * want. (Cards of Prophecy USED to append extra candidates here; since the
-   * 2026-08-22 ruling it is declared BEFORE the roll instead — see
-   * `ResolutionStackItemModifiers.prophecyThreeRoll`.)
+   * want. (On the ATTACK die Cards of Prophecy is declared BEFORE the roll
+   * instead — see `ResolutionStackItemModifiers.prophecyThreeRoll`.)
    */
   chooseResult?: boolean;
+  /**
+   * Polish Balance Pack Cards of Prophecy, option B ("that die is rolled 3 times
+   * and you resolve 1 chosen result") on an **ABILITY roll** (Death Stare & co.).
+   *
+   * The total number of candidate faces this source's ONE use produces for the
+   * die it is spent on, counting the throw the ordinary reroll already makes:
+   * `2` means "re-throw, then throw once more", so together with the face already
+   * showing the player picks 1 of 3. Spending it also unlocks
+   * `freeCandidateChoice`, so the face already on the table is keepable too.
+   *
+   * ATTACK-die rolls do NOT use this: they have a real pre-roll window, so the
+   * card is declared there (`USE_PROPHECY_PRE_ROLL` / `prophecyThreeRoll`) and
+   * `prophecyLeavesDieWindow` keeps it out of the post-roll attack window. An
+   * ability roll has no pre-roll window at all, and before this field came back
+   * (2026-08-26) the card was filtered out of that window with nothing offered in
+   * its place — i.e. DEAD on every ability roll with the rule ON, which is
+   * strictly worse than the rule OFF. Never set on any other source.
+   */
+  rollExtraCandidates?: number;
   /**
    * Diplomat's Ring — the ONE printed reroll source that reads "Reroll any die
    * OR ANY ROLL". On a multi-die ABILITY roll (Death Stare's two dice) it
