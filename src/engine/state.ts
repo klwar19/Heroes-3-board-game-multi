@@ -7620,7 +7620,8 @@ export type ResolutionStackItem = {
      * Polish Balance Pack Misfortune: how the negated attack's Attack DIE is
      * rolled. "negate" is the classic cancelled die; "lower-of-two" rolls 2 dice
      * and resolves the lower; "four-reroll-plus" rolls 4, rerolls every "+1"
-     * once, and resolves every result (a "-1" subtracts).
+     * REPEATEDLY until it is gone (USER RULING 2026-08-25 — so only "-1" and "0"
+     * faces can survive), and resolves every result (a "-1" subtracts).
      */
     misfortuneDie?: "negate" | "lower-of-two" | "four-reroll-plus";
     misfortuneDieByPower?: Record<number, "negate" | "lower-of-two" | "four-reroll-plus">;

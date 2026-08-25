@@ -270,11 +270,15 @@ export const polishBalanceSpellCards: CardLibrary = {
   }),
 
   // Misfortune — no tier gate; the printed "negate an additional Attack from any
-  // card" rider is always on and the DIE half scales with Power.
+  // card" rider is always on and the DIE half scales with Power. The face's top
+  // rung reads "Roll 4 dice, reroll every '+1'. Resolve all." — read (USER
+  // RULING 2026-08-25) as rerolling each "+1" REPEATEDLY until it is gone, so
+  // the resolved roll only ever contains "-1" and "0" faces and the top rung can
+  // never raise the cursed attack. Engine: rollAttackDieWithPlusReroll.
   "spell.misfortune": reprint("spell.misfortune", {
     tags: tags(
       "spell.misfortune",
-      "Instant: play when the selected enemy unit is attacking (ANY tier — the reprint drops the tier gate) — it cannot increase its attack from any card, and Power 0: its Attack die is negated; Power 1: it rolls 2 dice and resolves the lower result; Power 2: it rolls 4 dice, rerolls every '+1' once and resolves all of them."
+      "Instant: play when the selected enemy unit is attacking (ANY tier — the reprint drops the tier gate) — it cannot increase its attack from any card, and Power 0: its Attack die is negated; Power 1: it rolls 2 dice and resolves the lower result; Power 2: it rolls 4 dice, rerolling every '+1' until only '-1' and '0' faces remain, and resolves all of them."
     ),
     effect: {
       type: "NEGATE_ATTACK",

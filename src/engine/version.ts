@@ -782,7 +782,15 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // `PlayerState.otherworldHandLimitLoss`, a per-combat Azur Lane damage latch,
 // and authoritative Resource-round deductions. A v64 worker would accept the
 // same faction pick but silently omit every penalty, so compatibility must fail.
-export const ENGINE_PROTOCOL_VERSION = 65;
+// v66 (2026-08-25, USER RULING): the Polish Balance Pack Misfortune's top rung
+// ("Roll 4 dice, reroll every '+1'. Resolve all.") now rerolls each "+1"
+// REPEATEDLY until only "-1" and "0" faces remain, instead of once per die. No
+// new action type and no new serialized field, but the authoritative dice
+// resolution changes — a v65 worker leaves surviving "+1" faces on the cursed
+// attack and consumes a different number of seeded rolls (`dice.rollCount`), so
+// the same snapshot resolves to different damage on the two halves.
+// `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 66;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

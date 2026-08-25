@@ -1497,6 +1497,26 @@ function rollAttackDieWithMinusReroll(combat: CombatState, rerollMinus: boolean)
 }
 
 /**
+ * Polish Balance Pack Misfortune, top rung ("Roll 4 dice, reroll every '+1'.
+ * Resolve all."): throw ONE die and keep rethrowing it while it shows "+1", so
+ * the resolved roll can only ever contain "-1" and "0" faces. USER RULING
+ * 2026-08-25 — "at the level with +2 SP all '+1' dice are reroll everytime,
+ * till the time there are only '-1' or '0' rolled": a single reroll per die
+ * (the old reading) let a "+1" stand and HELPED the cursed attacker.
+ * Guard-bounded exactly like `rollAttackDieWithMinusReroll` so a fully-scripted
+ * all-"+1" fixture terminates instead of spinning.
+ */
+function rollAttackDieWithPlusReroll(combat: CombatState): number {
+  let value = rollAttackDie(combat);
+  let guard = 0;
+  while (value === 1 && guard < 32) {
+    value = rollAttackDie(combat);
+    guard += 1;
+  }
+  return value;
+}
+
+/**
  * Neutral Champions' "roll 2 Attack dice and apply both outcomes" ([unit_attack],
  * own attacks only): roll `count` dice — 2 on an own attack, 1 on a Retaliation
  * Attack (or when Negative Morale drops a die) — each rerolled while it shows
@@ -12266,17 +12286,17 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
 
   // Polish Balance Pack Misfortune (Power 1/2): the cursed attack still rolls,
   // but badly — 2 dice keeping the LOWER, or 4 dice with every "+1" rerolled
-  // once and every result resolved (a "-1" subtracts). Power 0 keeps the classic
-  // cancelled die (details.ignoreAttackDie above already returned).
+  // UNTIL IT IS GONE (USER RULING 2026-08-25: "all '+1' dice are reroll
+  // everytime, till the time there are only '-1' or '0' rolled") and every
+  // result resolved (a "-1" subtracts), so the top rung can never add to the
+  // attack. Power 0 keeps the classic cancelled die (details.ignoreAttackDie
+  // above already returned).
   if (stackItem.modifiers.misfortuneDie && stackItem.modifiers.misfortuneDie !== "negate") {
     const mode = stackItem.modifiers.misfortuneDie;
     const rolls =
       mode === "lower-of-two"
         ? [rollAttackDie(combat), rollAttackDie(combat)]
-        : Array.from({ length: 4 }, () => {
-            const first = rollAttackDie(combat);
-            return first === 1 ? rollAttackDie(combat) : first;
-          });
+        : Array.from({ length: 4 }, () => rollAttackDieWithPlusReroll(combat));
     const value = mode === "lower-of-two" ? Math.min(...rolls) : rolls.reduce((sum, roll) => sum + roll, 0);
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
@@ -12286,7 +12306,7 @@ function resolveAttackStackItem(state: GameState, stackItem: ResolutionStackItem
       message:
         mode === "lower-of-two"
           ? `Misfortune: ${details.attacker.cardName} rolls 2 Attack dice and resolves the lower (${value}).`
-          : `Misfortune: ${details.attacker.cardName} rolls 4 Attack dice, rerolling every "+1" (${value}).`
+          : `Misfortune: ${details.attacker.cardName} rolls 4 Attack dice, rerolling every "+1" until only "-1" and "0" remain — ${rolls.join(", ")} (${value}).`
     });
     finishResolvedAttack(
       state,
