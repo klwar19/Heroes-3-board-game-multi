@@ -2051,3 +2051,147 @@ describe("Polish Spell Book 窶・a Spell can be refreshed only ONCE per round",
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// USER RULING 2026-08-25: "all card that refresh spells can be played multiple
+// times in 1 round (just their effect of refreshing spells works once per
+// round)" — the once-per-round limit belongs to the REFRESH, never to the card.
+// Paired with the reported Adelaide IV bug: the printed "Refresh 1 Spell"
+// sentence has to stand on its own, so a used Book Spell really becomes
+// CASTABLE again (asserted by a second cast that really deals damage).
+// ---------------------------------------------------------------------------
+
+/** `polishCombat` plus the Polish Balance Pack (Adelaide IV's reprint). */
+function polishBalanceCombat(seed: string): GameState {
+  const state = createInitialGameState(seed);
+  const adventure = createAdventureGameState({
+    startingBuildings: [],
+    seed: `${seed}-rules`,
+    ruleset: "binh",
+    rollFirstPlayer: false,
+    houseRules: { "polish-spell-book": true, "polish-card-balance": true }
+  });
+  state.adventure = adventure.adventure;
+  state.ruleset = "binh";
+  state.activePlayerId = "p1";
+  state.combat!.activeUnitId = "unit_p1_marksmen";
+  state.players.p1.hand = [];
+  state.players.p1.discard = [];
+  state.players.p1.spellBook = [];
+  state.players.p1.spellBookUsed = [];
+  state.players.p2.hand = [];
+  const target = state.combat!.units.unit_p2_skeletons;
+  target.abilities = [];
+  target.maxHealth = 50;
+  target.damage = 0;
+  return state;
+}
+
+function optionLabels(state: GameState): string[] {
+  return state.pendingChoice?.type === "OPTION_CHOICE"
+    ? state.pendingChoice.options.map((option: { label: string }) => option.label)
+    : [];
+}
+
+function chooseLabel(state: GameState, label: string): GameState {
+  const index = optionLabels(state).indexOf(label);
+  expect(index, `"${label}" should be offered (got ${JSON.stringify(optionLabels(state))})`).toBeGreaterThanOrEqual(0);
+  return applyOk(state, {
+    type: "CHOOSE_OPTION",
+    playerId: "p1",
+    choiceId: state.pendingChoice!.id,
+    optionIndex: index
+  });
+}
+
+function playCard(state: GameState, cardId: string, optionIndex?: number) {
+  return getLegalActions(state, "p1").find(
+    (legal) =>
+      legal.action.type === "PLAY_CARD" &&
+      legal.action.cardId === cardId &&
+      (optionIndex === undefined || legal.action.optionIndex === optionIndex)
+  );
+}
+
+describe("Polish Spell Book — the once-per-round limit gates the REFRESH, not the card", () => {
+  it("Adelaide IV's refresh makes a used Book Spell castable again — the second cast really lands", () => {
+    let state = polishBalanceCombat("adelaide-refresh-recast");
+    state.players.p1.spellBook = ["spell.magic_arrow"];
+    state.players.p1.hand = [CAST_A_SPELL_CARD_ID, CAST_A_SPELL_CARD_ID, "specialty.adelaide.4"];
+
+    state = passAll(applyOk(state, castAtSkeletons(state, "spell.magic_arrow").action));
+    const firstDamage = state.combat!.units.unit_p2_skeletons.damage;
+    expect(firstDamage, "the first Book cast really damages the target").toBeGreaterThan(0);
+    expect(state.players.p1.spellBookUsed).toContain("spell.magic_arrow");
+
+    // The used Spell is uncastable, even with the second enabler still in hand
+    // and the per-round cast budget cleared.
+    state.players.p1.combatStats.spellsCastThisRound = 0;
+    expect(
+      getLegalActions(state, "p1").some(
+        (legal) => legal.action.type === "CAST_SPELL" && legal.action.cardId === "spell.magic_arrow"
+      ),
+      "a USED Book Spell cannot be cast"
+    ).toBe(false);
+
+    // Adelaide IV: take the spent enabler back, then the printed second sentence.
+    state = applyOk(state, playCard(state, "specialty.adelaide.4")!.action);
+    state = chooseLabel(state, "Take Cast a Spell");
+    state = chooseLabel(state, "Refresh Magic Arrow in the Spell Book");
+    expect(state.players.p1.spellBook).toContain("spell.magic_arrow");
+    expect(state.players.p1.spellBookUsed).not.toContain("spell.magic_arrow");
+    expect(refreshMarkers(state)).toEqual(["spell.magic_arrow"]);
+
+    // THE observable: the refreshed Spell is castable again and the cast resolves.
+    state = passAll(applyOk(state, castAtSkeletons(state, "spell.magic_arrow").action));
+    expect(
+      state.combat!.units.unit_p2_skeletons.damage,
+      "the second cast really deals more damage"
+    ).toBeGreaterThan(firstDamage);
+    expect(state.players.p1.spellBookUsed).toContain("spell.magic_arrow");
+  });
+
+  it("a spent refresh never blocks the recovery CARD: Rib Cage still hands back the Cast a Spell enabler", () => {
+    let state = polishMapGame("polish-recovery-card-not-blocked");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+    state.players.p1.discard = [CAST_A_SPELL_CARD_ID];
+    state.players.p1.hand = ["artifact.rib_cage"];
+
+    const play = playCard(state, "artifact.rib_cage", 0);
+    expect(play, "the recovery half still has work (the enabler return)").toBeTruthy();
+    state = applyOk(state, play!.action);
+
+    expect(state.players.p1.hand, "the enabler really came back").toContain(CAST_A_SPELL_CARD_ID);
+    // The refresh half is spent, so the Spell stays used and no second marker lands.
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.haste"]);
+    expect(state.players.p1.spellBook).toEqual([]);
+    expect(refreshMarkers(state)).toEqual(["spell.haste"]);
+  });
+
+  it("CONTROL: with the refresh spent AND no enabler to return, the same recovery half is not offered", () => {
+    const state = polishMapGame("polish-recovery-card-nothing-to-do");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.haste"];
+    state.players.p1.discard = ["artifact.centaurs_axe"];
+    state.players.p1.hand = ["artifact.rib_cage"];
+    expect(playCard(state, "artifact.rib_cage", 0)).toBeUndefined();
+  });
+
+  it("CONTROL: with the refresh AVAILABLE the same card refreshes, proving the gate is the marker", () => {
+    let state = polishMapGame("polish-recovery-card-refresh-available");
+    state.players.p1.spellBook = [];
+    state.players.p1.spellBookUsed = ["spell.haste"];
+    state.players.p1.discard = ["artifact.centaurs_axe"];
+    state.players.p1.hand = ["artifact.rib_cage"];
+
+    const play = playCard(state, "artifact.rib_cage", 0);
+    expect(play, "a refreshable used Book Spell is work on its own").toBeTruthy();
+    state = applyOk(state, play!.action);
+    state = chooseLabel(state, "Refresh Haste in the Spell Book");
+    expect(state.players.p1.spellBook).toEqual(["spell.haste"]);
+    expect(refreshMarkers(state)).toEqual(["spell.haste"]);
+  });
+});

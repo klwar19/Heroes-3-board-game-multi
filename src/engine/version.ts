@@ -790,7 +790,17 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // attack and consumes a different number of seeded rolls (`dice.rollCount`), so
 // the same snapshot resolves to different damage on the two halves.
 // `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 66;
+// v67 (2026-08-25, USER RULING): every discard-recovery / spell-refresh card now
+// asks ONE shared "does this have work?" read (`discardRecoveryHasWork`) that
+// knows the Balance Pack Adelaide IV filter `cast-enabler-or-specialty` and its
+// STANDALONE follow-up refresh, so the printed "Refresh 1 Spell" makes the card
+// playable with nothing to take — and the once-per-round limit gates the refresh
+// only, never the card. No new action type and no new serialized field, but PLAY
+// legality moves in both directions (a card offered where a v66 worker refuses
+// it, and withheld where a v66 worker would consume it for an empty prompt), so
+// client/server compatibility must fail visibly instead of rejecting a legal
+// play. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 67;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

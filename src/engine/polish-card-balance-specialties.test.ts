@@ -196,6 +196,107 @@ describe("Balance Pack specialties — Adelaide IV (Frost Ring)", () => {
     expect(driven, "the AFK/turn-timeout driver answers it too").toBeTruthy();
     expect(applyAction(state, driven!).errors).toEqual([]);
   });
+
+  // -------------------------------------------------------------------------
+  // 2026-08-25 USER REPORT: "Adeila speciality should refresh one spell — but
+  // now it doesnt." Root cause: the PLAY gate (isOptionEffectPlayable's
+  // TAKE_FROM_DISCARD case, and its reaction-window twin) knew nothing about
+  // this card's `cast-enabler-or-specialty` filter and nothing about the
+  // standalone follow-up refresh, so it fell through to a catch-all keyed purely
+  // on "is the discard pile non-empty" — an EMPTY discard pile made the whole
+  // card unplayable and its printed second sentence unreachable.
+  // -------------------------------------------------------------------------
+
+  const emptyDiscard = (rules: Rules, seed: string): GameState => {
+    const state = combat(rules, seed);
+    state.players.p1.discard = [];
+    state.players.p1.spellBookUsed = ["spell.magic_arrow" as CardId];
+    state.players.p1.spellBook = [];
+    state.players.p1.hand = ["specialty.adelaide.4" as CardId];
+    return state;
+  };
+
+  it("with NOTHING to take (an empty discard pile) it is still playable and really refreshes", () => {
+    let state = emptyDiscard({ balance: true, book: true }, "adelaide-empty-discard");
+    const play = plays(state, "specialty.adelaide.4")[0];
+    expect(play, "the standalone 'Refresh 1 Spell' makes the card playable").toBeTruthy();
+    state = applyOk(state, play);
+    expect(choiceLabels(state)).toEqual(["Refresh Magic Arrow in the Spell Book"]);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: 0
+    });
+    // The OBSERVABLE: the Spell really moved back to the refreshed side.
+    expect(state.players.p1.spellBook).toEqual(["spell.magic_arrow"]);
+    expect(state.players.p1.spellBookUsed).toEqual([]);
+    expect(state.players.p1.polishSpellsRefreshedThisRound).toEqual(["spell.magic_arrow"]);
+  });
+
+  it("the STANDALONE refresh pick never stalls a computer seat or the AFK driver", () => {
+    let state = emptyDiscard({ balance: true, book: true }, "adelaide-empty-discard-ai");
+    state = applyOk(state, plays(state, "specialty.adelaide.4")[0]);
+    expect((state.pendingChoice as { context?: string } | null)?.context).toBe("discard-pick");
+    const observation: ComputerObservation = {
+      state: state as unknown as ComputerObservation["state"],
+      playerId: "p1",
+      legalActions: getLegalActions(state, "p1")
+    };
+    const aiPick = chooseComputerAction(observation);
+    expect(aiPick, "the AI answers the standalone refresh pick").toBeTruthy();
+    expect(applyAction(state, aiPick!.action).errors).toEqual([]);
+    const driven = nextTurnTimeoutAction(state, "p1");
+    expect(driven, "the AFK/turn-timeout driver answers it too").toBeTruthy();
+    expect(applyAction(state, driven!).errors).toEqual([]);
+  });
+
+  it("CONTROL: without the Polish Book an empty discard pile leaves it unplayable (there is no Book to refresh)", () => {
+    const state = emptyDiscard({ balance: true, book: false }, "adelaide-empty-discard-nobook");
+    expect(plays(state, "specialty.adelaide.4")).toEqual([]);
+  });
+
+  it("CONTROL: with the refresh already spent AND nothing takeable it is not offered at all (it would do nothing)", () => {
+    const state = emptyDiscard({ balance: true, book: true }, "adelaide-empty-discard-spent");
+    // Junk in the discard the take can never use, and the round's refresh of the
+    // one used Book Spell already made.
+    state.players.p1.discard = ["artifact.centaurs_axe" as CardId];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.magic_arrow" as CardId];
+    expect(plays(state, "specialty.adelaide.4")).toEqual([]);
+  });
+
+  it("USER RULING: the once-per-round limit is on the REFRESH, not the card — it plays again and only the refresh no-ops", () => {
+    let state = combat({ balance: true, book: true }, "adelaide-refresh-spent-still-plays");
+    state.players.p1.discard = ["spell.cast_a_spell" as CardId];
+    state.players.p1.spellBookUsed = ["spell.magic_arrow" as CardId];
+    state.players.p1.spellBook = [];
+    state.players.p1.polishSpellsRefreshedThisRound = ["spell.magic_arrow" as CardId];
+    state.players.p1.hand = ["specialty.adelaide.4" as CardId];
+
+    const play = plays(state, "specialty.adelaide.4")[0];
+    expect(play, "a spent refresh must never block the CARD").toBeTruthy();
+    state = applyOk(state, play);
+    const takeIndex = choiceLabels(state).indexOf("Take Cast a Spell");
+    expect(takeIndex, "the take half is still offered").toBeGreaterThanOrEqual(0);
+    state = applyOk(state, {
+      type: "CHOOSE_OPTION",
+      playerId: "p1",
+      choiceId: state.pendingChoice!.id,
+      optionIndex: takeIndex
+    });
+    // The take really resolved; the refresh half no-opped, out loud.
+    expect(state.players.p1.hand).toContain("spell.cast_a_spell");
+    expect(state.players.p1.spellBookUsed).toEqual(["spell.magic_arrow"]);
+    expect(state.players.p1.spellBook).toEqual([]);
+    expect(
+      state.eventLog.some(
+        (event) =>
+          event.type === "EVENT_NOTE" &&
+          event.message.includes("No Spell in the Spell Book can be refreshed right now.")
+      ),
+      "the dead refresh half says so instead of vanishing silently"
+    ).toBe(true);
+  });
 });
 
 // ===========================================================================

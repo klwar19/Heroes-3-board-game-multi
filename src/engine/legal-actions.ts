@@ -235,8 +235,8 @@ import { computerDecisionOwner } from "./computer/window";
 import { SHARED_DECK_IDS } from "./decks";
 import {
   CAST_A_SPELL_CARD_ID,
+  discardRecoveryHasWork,
   isCastASpellCard,
-  midRoundRefreshablePolishUsedSpells,
   polishBookSpellRefreshBlocked,
   polishSpellBookEnabled,
   tarnumOverlimitSpellAvailable
@@ -3520,18 +3520,8 @@ function recoveryInFlightCardIds(state: GameState, playerId: PlayerId): CardId[]
   ]);
 }
 
-function excludeInFlightOccurrences(pool: CardId[], inFlightCardIds: readonly CardId[]): CardId[] {
-  const excludedCounts = new Map<CardId, number>();
-  for (const cardId of inFlightCardIds) {
-    excludedCounts.set(cardId, (excludedCounts.get(cardId) ?? 0) + 1);
-  }
-  return pool.filter((cardId) => {
-    const remaining = excludedCounts.get(cardId) ?? 0;
-    if (remaining <= 0) return true;
-    excludedCounts.set(cardId, remaining - 1);
-    return false;
-  });
-}
+// `excludeInFlightOccurrences` now lives in `polish-spell-book.ts` beside the
+// shared `discardRecoveryHasWork` read that also needs it (see the import above).
 
 /** Effects an "OR" option may resolve directly in the given context. */
 function isOptionEffectPlayable(
@@ -3605,45 +3595,23 @@ function isOptionEffectPlayable(
         return false;
       }
       const player = state.players[playerId];
-      const rawPool = effect.fromTop ? (player?.discard.slice(-effect.fromTop) ?? []) : [...(player?.discard ?? [])];
-      const pool = excludeInFlightOccurrences(rawPool, recoveryInFlightCardIds(state, playerId));
-      // Polish recovery effects read the face-up used side of the Book instead
-      // of a discard pile that can no longer contain owned Spells. Preserve any
-      // non-Spell half of a mixed filter (Scholar's specialty recovery).
-      if (polishSpellBookEnabled(state)) {
-        // A Book Spell still IN EFFECT — or already refreshed once this round —
-        // can never be refreshed, so it must not make a recovery card look
-        // playable (the pick would offer nothing).
-        const used = player ? midRoundRefreshablePolishUsedSpells(state, player) : [];
-        if (effect.filter === "spell" && used.length > 0) {
-          return true;
-        }
-        if (effect.filter === "magic-arrow" && used.includes("spell.magic_arrow")) {
-          return true;
-        }
-        if (
-          effect.filter === "spell-or-specialty" &&
-          (used.length > 0 || pool.some((cardId) => cardLibrary[cardId]?.kind === "hero-specialty"))
-        ) {
-          return true;
-        }
+      if (!player) {
+        return false;
       }
-      return pool.some((cardId) => {
-        const kind = cardLibrary[cardId]?.kind;
-        if (effect.filter === "spell") {
-          return kind === "spell";
-        }
-        if (effect.filter === "non-artifact") {
-          return kind !== "artifact";
-        }
-        if (effect.filter === "spell-or-specialty") {
-          return kind === "spell" || kind === "hero-specialty";
-        }
-        if (effect.filter === "magic-arrow") {
-          return cardId === "spell.magic_arrow";
-        }
-        return true;
-      });
+      const inFlight = recoveryInFlightCardIds(state, playerId);
+      // ONE shared read with the resolution (`discardRecoveryHasWork`, which
+      // mirrors openDiscardPickChoice): a takeable discard card, the Polish
+      // "Cast a Spell" enabler return, a refreshable used Book Spell — or the
+      // Balance Pack Adelaide IV STANDALONE follow-up refresh, whose printed
+      // second sentence must make the card playable with nothing to take.
+      // `fromTop` is applied inside the shared read.
+      return discardRecoveryHasWork(
+        state,
+        player,
+        effect,
+        player.discard,
+        inFlight
+      );
     }
     case "SCHOLAR_EMPOWER_SWAP": {
       // Scholar expert: map-only. Both phases are "up to N" (including zero), so
@@ -10189,23 +10157,17 @@ export function isEffectLegalForTrigger(
     if (!player || !state.combat) {
       return false;
     }
-    const matches = (cardId: CardId): boolean => {
-      const kind = cardLibrary[cardId]?.kind;
-      if (effect.filter === "spell") return kind === "spell";
-      if (effect.filter === "non-artifact") return kind !== "artifact";
-      if (effect.filter === "spell-or-specialty") return kind === "spell" || kind === "hero-specialty";
-      if (effect.filter === "magic-arrow") return cardId === "spell.magic_arrow";
-      return true;
-    };
+    // Same ONE shared read as the map/activation gate above: the in-flight
+    // filter (a Book Spell whose cast is still resolving is not recoverable)
+    // applies to the discard pile AND the used-Book side.
     const inFlight = recoveryInFlightCardIds(state, playerId);
-    const availableDiscard = excludeInFlightOccurrences(player.discard, inFlight);
-    // The Polish used-Book pool is filtered by the SAME in-flight read — a Book
-    // Spell whose cast is still resolving must not count as recoverable — and by
-    // the shared refresh gate (in effect / already refreshed once this round).
-    const availableBookUsed = polishSpellBookEnabled(state)
-      ? excludeInFlightOccurrences(midRoundRefreshablePolishUsedSpells(state, player), inFlight)
-      : [];
-    return availableDiscard.some(matches) || availableBookUsed.some(matches);
+    return discardRecoveryHasWork(
+      state,
+      player,
+      effect,
+      player.discard,
+      inFlight
+    );
   }
   if (effect.type === "RESHUFFLE_DISCARD_THEN_DRAW") {
     const player = state.players[playerId];

@@ -252,6 +252,169 @@ export function midRoundRefreshablePolishUsedSpells(
 }
 
 /**
+ * Every `filter` a TAKE_FROM_DISCARD / DISCARD_PICK recovery may carry. Kept
+ * here beside the ONE shared matcher below so a new filter value cannot be
+ * added to the resolution without the two legality gates learning it.
+ */
+export type DiscardRecoveryFilter =
+  | "spell"
+  | "non-artifact"
+  | "specialty"
+  | "power-or-knowledge-statistic"
+  | "spell-or-specialty"
+  | "magic-arrow"
+  | "cast-enabler-or-specialty"
+  | "polish-refresh-only";
+
+/**
+ * THE one filter read shared by `openDiscardPickChoice`'s candidate builder AND
+ * both playability gates (`isOptionEffectPlayable`'s TAKE_FROM_DISCARD case and
+ * the reaction-window twin `isInstantReactionUtility`). It used to be three
+ * hand-copied `matchesFilter` closures, and the two gate copies knew neither
+ * `cast-enabler-or-specialty` (the Balance Pack Adelaide IV filter) nor
+ * `polish-refresh-only` — both fell through to a catch-all "any card matches",
+ * so a recovery card looked playable whenever the discard pile was merely
+ * NON-EMPTY and unplayable whenever it was empty.
+ */
+export function discardRecoveryFilterMatches(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  cardId: CardId,
+  filter: DiscardRecoveryFilter | undefined,
+  cards: CardLibrary = cardLibrary
+): boolean {
+  const kind = cards[cardId]?.kind;
+  switch (filter) {
+    case undefined:
+      return true;
+    case "spell":
+      return kind === "spell";
+    case "non-artifact":
+      return kind !== "artifact";
+    case "specialty":
+      return kind === "hero-specialty";
+    case "spell-or-specialty":
+      return kind === "spell" || kind === "hero-specialty";
+    case "magic-arrow":
+      return cardId === "spell.magic_arrow";
+    // Polish Balance Pack Adelaide IV — BOOK-AWARE: with the Polish Book on the
+    // printed "Cast a Spell or Specialty card" is exactly those two (owned Spells
+    // live in the Book, so a raw Spell is never in the discard pile to take);
+    // with the Book off there is no enabler and the card keeps its classic
+    // printed reading, "Spell or Specialty".
+    case "cast-enabler-or-specialty":
+      if (kind === "hero-specialty") {
+        return true;
+      }
+      return polishSpellBookEnabled(state) ? isCastASpellCard(cardId) : kind === "spell";
+    // The Adelaide IV follow-up: only a used Book Spell may be picked (every
+    // discard-pile candidate is filtered out by the caller's polish-recovery
+    // exclusion, which adds the used-Book side instead).
+    case "polish-refresh-only":
+      return kind === "spell";
+    case "power-or-knowledge-statistic": {
+      const statisticType = cards[cardId]?.statisticType;
+      return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
+    }
+  }
+}
+
+/**
+ * Which recovery filters read the Polish Book's USED side instead of a discard
+ * pile that can no longer hold owned Spells. Shared by the candidate builder and
+ * both gates for the same reason `discardRecoveryFilterMatches` is.
+ */
+export function discardRecoveryReadsPolishBook(
+  state: Pick<GameState, "ruleset" | "adventure">,
+  filter: DiscardRecoveryFilter | undefined
+): boolean {
+  return (
+    polishSpellBookEnabled(state) &&
+    (filter === "spell" ||
+      filter === "spell-or-specialty" ||
+      filter === "magic-arrow" ||
+      filter === "polish-refresh-only")
+  );
+}
+
+/**
+ * Multiset subtraction: drop ONE occurrence per in-flight card id. A card whose
+ * play is still resolving must not count as recoverable by its own resolution
+ * (`recoveryInFlightCardIds`); duplicates keep their remaining copies.
+ */
+export function excludeInFlightOccurrences(
+  pool: readonly CardId[],
+  inFlightCardIds: readonly CardId[]
+): CardId[] {
+  const excludedCounts = new Map<CardId, number>();
+  for (const cardId of inFlightCardIds) {
+    excludedCounts.set(cardId, (excludedCounts.get(cardId) ?? 0) + 1);
+  }
+  return pool.filter((cardId) => {
+    const remaining = excludedCounts.get(cardId) ?? 0;
+    if (remaining <= 0) return true;
+    excludedCounts.set(cardId, remaining - 1);
+    return false;
+  });
+}
+
+/**
+ * "Does this recovery have anything to do right now?" — the ONE predicate both
+ * playability gates ask, written to mirror `openDiscardPickChoice` exactly so an
+ * offered recovery can never open an empty prompt (consuming the card for
+ * nothing) and a recovery with real work can never be withheld.
+ *
+ * Three kinds of work, any one of which is enough:
+ *  1. a takeable discard-pile card (under the Book a raw Spell is NOT takeable —
+ *     it is excluded from the candidate list there, same as at resolution);
+ *  2. the Polish enabler return (`filter: "spell"` only: the four recovery
+ *     artifacts + Crown of Dragontooth hand back a "Cast a Spell" from the
+ *     discard pile before any refresh);
+ *  3. a refreshable used Book Spell — including the STANDALONE follow-up refresh
+ *     of Balance Pack Adelaide IV (`polishRefreshAfter`), whose printed second
+ *     sentence ("Refresh 1 Spell, once per round") stands on its own and must
+ *     make the card playable with nothing at all to take.
+ *
+ * USER RULING 2026-08-25: the once-per-round limit belongs to the REFRESH, never
+ * to the card. That falls out of (1) and (2) — a card with another job stays
+ * playable once its refresh is spent, and only the refresh half no-ops.
+ */
+export function discardRecoveryHasWork(
+  state: Pick<GameState, "ruleset" | "adventure" | "activeEffects">,
+  player: PlayerState,
+  pick: { filter?: DiscardRecoveryFilter; fromTop?: number; polishRefreshAfter?: boolean },
+  /** The RAW discard pile — `fromTop` is sliced BEFORE the in-flight exclusion, exactly as `openDiscardPickChoice` does. */
+  discard: readonly CardId[],
+  inFlightCardIds: readonly CardId[] = [],
+  cards: CardLibrary = cardLibrary
+): boolean {
+  const readsBook = discardRecoveryReadsPolishBook(state, pick.filter);
+  // The enabler return reads the WHOLE pile and ignores `fromTop`, like resolution.
+  if (readsBook && pick.filter === "spell" && discard.includes(CAST_A_SPELL_CARD_ID)) {
+    return true;
+  }
+  const pool = excludeInFlightOccurrences(
+    pick.fromTop ? discard.slice(-pick.fromTop) : discard,
+    inFlightCardIds
+  );
+  if (
+    pool.some(
+      (cardId) =>
+        discardRecoveryFilterMatches(state, cardId, pick.filter, cards) &&
+        !(readsBook && cards[cardId]?.kind === "spell")
+    )
+  ) {
+    return true;
+  }
+  const refreshable = midRoundRefreshablePolishUsedSpells(state, player).filter(
+    (cardId) => !inFlightCardIds.includes(cardId)
+  );
+  if (readsBook && refreshable.some((cardId) => discardRecoveryFilterMatches(state, cardId, pick.filter, cards))) {
+    return true;
+  }
+  return Boolean(pick.polishRefreshAfter) && polishSpellBookEnabled(state) && refreshable.length > 0;
+}
+
+/**
  * Uninscribe an owned Polish Book Spell: remove from the Book (or a leaked
  * hand copy) and put it on the shared Spell discard. Never parks Spells in
  * the personal discard (they would be uncastable and un-refreshable under

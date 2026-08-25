@@ -465,6 +465,8 @@ import {
 } from "./polish-unit-stacks";
 import {
   CAST_A_SPELL_CARD_ID,
+  discardRecoveryFilterMatches,
+  discardRecoveryReadsPolishBook,
   gainOwnedCard,
   isCastASpellCard,
   isOwnedSpellCard,
@@ -19283,7 +19285,23 @@ export function openPolishBookRefreshPick(state: GameState, playerId: PlayerId):
   if (!polishSpellBookEnabled(state)) {
     return false;
   }
-  return openDiscardPickChoice(state, playerId, { count: 1, filter: "polish-refresh-only" });
+  if (openDiscardPickChoice(state, playerId, { count: 1, filter: "polish-refresh-only" })) {
+    return true;
+  }
+  // USER RULING 2026-08-25: the once-per-round limit belongs to the REFRESH, not
+  // to the card — so a card whose refresh half is already spent (or whose only
+  // used Book Spells are still in effect) still PLAYS and resolves its other
+  // halves, and the dead refresh says so out loud instead of silently vanishing.
+  // Nothing to refresh at all needs no note.
+  const player = state.players[playerId];
+  if (player && (player.spellBookUsed?.length ?? 0) > 0) {
+    appendEvent(state, {
+      type: "EVENT_NOTE",
+      playerId,
+      message: "No Spell in the Spell Book can be refreshed right now."
+    });
+  }
+  return false;
 }
 
 /**
@@ -19336,53 +19354,13 @@ export function openDiscardPickChoice(
     return false;
   }
 
-  const matchesFilter = (cardId: CardId): boolean => {
-    const kind = cardLibrary[cardId]?.kind;
-    if (pick.filter === "spell") {
-      return kind === "spell";
-    }
-    if (pick.filter === "non-artifact") {
-      return kind !== "artifact";
-    }
-    if (pick.filter === "specialty") {
-      return kind === "hero-specialty";
-    }
-    if (pick.filter === "spell-or-specialty") {
-      return kind === "spell" || kind === "hero-specialty";
-    }
-    if (pick.filter === "magic-arrow") {
-      return cardId === "spell.magic_arrow";
-    }
-    // Polish Balance Pack Adelaide IV — BOOK-AWARE: with the Polish Book on the
-    // printed "Cast a Spell or Specialty card" is exactly those two (owned Spells
-    // live in the Book, so a raw Spell is never in the discard pile to take);
-    // with the Book off there is no enabler and the card keeps its classic
-    // printed reading, "Spell or Specialty".
-    if (pick.filter === "cast-enabler-or-specialty") {
-      if (kind === "hero-specialty") {
-        return true;
-      }
-      return polishSpellBookEnabled(state) ? isCastASpellCard(cardId) : kind === "spell";
-    }
-    // The Adelaide IV follow-up: only a used Book Spell may be picked (every
-    // discard-pile candidate is filtered out here, and `polishRecovery` below
-    // adds the used-Book side).
-    if (pick.filter === "polish-refresh-only") {
-      return kind === "spell";
-    }
-    if (pick.filter === "power-or-knowledge-statistic") {
-      const statisticType = cardLibrary[cardId]?.statisticType;
-      return kind === "statistic" && (statisticType === "power" || statisticType === "knowledge");
-    }
-    return true;
-  };
+  // ONE shared filter read (`polish-spell-book.ts`) — the two playability gates
+  // ask the same question through `discardRecoveryHasWork`, so an offered
+  // recovery can never open an empty prompt and vice versa.
+  const matchesFilter = (cardId: CardId): boolean =>
+    discardRecoveryFilterMatches(state, cardId, pick.filter);
 
-  const polishRecovery =
-    polishSpellBookEnabled(state) &&
-    (pick.filter === "spell" ||
-      pick.filter === "spell-or-specialty" ||
-      pick.filter === "magic-arrow" ||
-      pick.filter === "polish-refresh-only");
+  const polishRecovery = discardRecoveryReadsPolishBook(state, pick.filter);
 
   // Polish Spell Book (reference sheet): the four discard-recovery Spell artifacts
   // — Helm of the Alabaster Unicorn, Rib Cage, Crown of the Five Seas, Thunder
