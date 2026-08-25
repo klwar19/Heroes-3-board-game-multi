@@ -1,6 +1,7 @@
 import { appendEvent } from "./events";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { createSeededRandom } from "./random";
+import { animeFactionPenaltyTitle } from "@/data/anime/faction-penalties";
 import type { GameState, PlayerId } from "./state";
 
 const FOUR_GOLD_FACTIONS = new Set(["fuyuki", "azure_breeze", "heavenly_demon"]);
@@ -28,12 +29,17 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
   const player = state.players[playerId];
   if (!player?.factionId) return;
 
+  // Each town names its own penalty (single source of truth in the data table),
+  // so the notice reads per-town — never a shared "Otherworld Penalty".
+  const title = animeFactionPenaltyTitle(player.factionId);
+  if (!title) return;
+
   if (FOUR_GOLD_FACTIONS.has(player.factionId)) {
     const paid = spendAvailable(state, playerId, { gold: 4 });
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `Otherworld Penalty — ${paid.gold} gold lost${paid.gold < 4 ? " (all available gold)" : ""}.`
+      message: `${title} — ${paid.gold} gold lost${paid.gold < 4 ? " (all available gold)" : ""}.`
     });
     return;
   }
@@ -43,7 +49,7 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `Otherworld Penalty — hand limit permanently reduced by 1 (${player.otherworldHandLimitLoss} total).`
+      message: `${title} — hand limit permanently reduced by 1 (${player.otherworldHandLimitLoss} total).`
     });
     return;
   }
@@ -53,7 +59,7 @@ export function applyAnimeFactionResourceRoundPenalty(state: GameState, playerId
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `School Contribution Fund — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 5 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
+      message: `${title} — ${paid.gold} gold and ${paid.buildingMaterials} building material paid${paid.gold < 5 || paid.buildingMaterials < 1 ? " (all available resources)" : ""}.`
     });
   }
 }
@@ -62,6 +68,7 @@ export function applyAzurLaneCombatStartPenalty(state: GameState): void {
   const combat = state.combat;
   if (!combat) return;
   const done = combat.azurLaneMaintenanceDone ?? [];
+  const title = animeFactionPenaltyTitle("azur_lane") ?? "Fleet Maintenance";
   for (const playerId of [combat.attackerPlayerId, combat.defenderPlayerId]) {
     if (playerId === "neutrals" || done.includes(playerId) || state.players[playerId]?.factionId !== "azur_lane") continue;
     done.push(playerId);
@@ -80,7 +87,7 @@ export function applyAzurLaneCombatStartPenalty(state: GameState): void {
       appendEvent(state, {
         type: "EVENT_NOTE",
         playerId,
-        message: "Fleet Maintenance — no deployed Azur Lane army unit could suffer the damage."
+        message: `${title} — no deployed Azur Lane army unit could suffer the damage.`
       });
       continue;
     }
@@ -91,7 +98,7 @@ export function applyAzurLaneCombatStartPenalty(state: GameState): void {
     appendEvent(state, {
       type: "EVENT_NOTE",
       playerId,
-      message: `Fleet Maintenance — ${unit.cardName} suffers 1 damage at combat start.`
+      message: `${title} — ${unit.cardName} suffers 1 damage at combat start.`
     });
   }
 }
