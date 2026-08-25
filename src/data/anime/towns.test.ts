@@ -18,16 +18,20 @@ describe("playable Anime Realms towns", () => {
   it.each(MOD_FACTIONS)("registers a complete playable %s faction", (factionId) => {
     const faction = coreFactionDefinitions[factionId];
     expect(faction).toBeDefined();
-    expect(faction.units).toHaveLength(7);
+    expect(faction.units).toHaveLength(factionId === "hidden_leaf" ? 8 : 7);
     expect(faction.buildings).toHaveLength(8);
-    // Fuyuki ships Bin + Aoko + Miku (3); Azure Breeze ships Qingyun + Lingxi (2).
+    // Fuyuki and Hidden Leaf each ship a six-hero canonical roster.
     expect(faction.heroes.length).toBeGreaterThanOrEqual(2);
     if (factionId === "fuyuki") {
-      expect(faction.heroes).toEqual(expect.arrayContaining(["bin", "aoko", "miku"]));
-      expect(faction.heroes).toHaveLength(3);
+      expect(faction.heroes).toEqual(expect.arrayContaining([
+        "shirou_emiya", "rin_tohsaka", "illyasviel", "kiritsugu_emiya", "kirei_kotomine", "sakura_matou"
+      ]));
+      expect(faction.heroes).toHaveLength(6);
     } else if (factionId === "hidden_leaf") {
-      expect(faction.heroes).toEqual(expect.arrayContaining(["naruto", "sasuke", "tsunade"]));
-      expect(faction.heroes).toHaveLength(3);
+      expect(faction.heroes).toEqual(expect.arrayContaining([
+        "naruto", "sasuke", "tsunade", "kakashi_hatake", "shikamaru_nara", "jiraiya"
+      ]));
+      expect(faction.heroes).toHaveLength(6);
     } else if (factionId === "azur_lane") {
       expect(faction.heroes).toEqual(
         expect.arrayContaining(["enterprise", "bismarck", "nagato", "akashi", "sirius"])
@@ -38,6 +42,14 @@ describe("playable Anime Realms towns", () => {
         "sasami_sasasegawa", "riki_naoe", "rin_natsume", "yuiko_kurugaya", "kudryavka_noumi", "komari_kamikita"
       ]));
       expect(faction.heroes).toHaveLength(6);
+    } else if (factionId === "azure_breeze") {
+      expect(faction.heroes).toEqual(expect.arrayContaining(["qingyun", "lingxi", "jianxu", "yulian"]));
+      expect(faction.heroes).toHaveLength(4);
+    } else if (factionId === "heavenly_demon") {
+      expect(faction.heroes).toEqual(expect.arrayContaining([
+        "xuedao", "guiyan", "xuanming", "yaoji", "molian", "luohun", "shiyan"
+      ]));
+      expect(faction.heroes).toHaveLength(7);
     } else {
       expect(faction.heroes).toHaveLength(2);
     }
@@ -134,10 +146,17 @@ describe("playable Anime Realms towns", () => {
     // bespoke "Lucky E" dice specialty (pinned in azur-lane-content.test.ts +
     // kansen-abilities.test.ts), not a unit-specialist set.
     for (const [heroId, factionId] of [
-      ["bin", "fuyuki"],
+      ["shirou_emiya", "fuyuki"],
+      ["rin_tohsaka", "fuyuki"],
+      ["illyasviel", "fuyuki"],
+      ["kiritsugu_emiya", "fuyuki"],
+      ["kirei_kotomine", "fuyuki"],
       ["qingyun", "azure_breeze"],
       ["naruto", "hidden_leaf"],
       ["sasuke", "hidden_leaf"],
+      ["kakashi_hatake", "hidden_leaf"],
+      ["shikamaru_nara", "hidden_leaf"],
+      ["jiraiya", "hidden_leaf"],
       ["bismarck", "azur_lane"],
       ["nagato", "azur_lane"],
       ["xuedao", "heavenly_demon"],
@@ -226,15 +245,13 @@ describe("playable Anime Realms towns", () => {
   });
 
   it("Azure Breeze engine art paths exist for printed LV tiers", () => {
-    // LV3 bronze crane · LV5 silver True Inheritors · LV6 gold Core Formation Master.
+    // LV3 bronze crane · LV5 silver True Inheritors · LV6 gold Golden Core Elders.
     // A bad copy once put swordsmen into bronze Spirit Crane — real crane art
     // must stay on the bronze path the engine uses.
     const publicRoot = join(process.cwd(), "public");
     const azure = join(publicRoot, "assets/anime/units/azure-breeze");
     for (const side of ["few", "pack"] as const) {
       const bronze = readFileSync(join(azure, `units-azure-breeze-bronze-spirit-crane-${side}.webp`));
-      const silverCrane = readFileSync(join(azure, `units-azure-breeze-silver-spirit-crane-${side}.webp`));
-      expect(bronze.equals(silverCrane), `bronze Spirit Crane ${side} must be the real crane art`).toBe(true);
       expect(bronze.byteLength).toBeLessThan(250_000);
       expect(bronze.byteLength).toBeGreaterThan(50_000);
       expect(existsSync(join(azure, `units-azure-breeze-silver-true-inheritors-${side}.webp`))).toBe(true);

@@ -600,6 +600,24 @@ export const LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE: Record<string, string> 
   "little_busters.mio:gargoyle-spell-ward": "/assets/anime/icons/little-busters/rank-mio.webp"
 };
 
+/** Xianxia town veterancy uses one bespoke emblem per cultivation unit line. */
+export const WUXIA_RANK_ABILITY_ICONS: Record<string, string> = {
+  "azure_breeze.outer_disciples": "/assets/anime/icons/cultivation/rank-outer-sect-disciples.webp",
+  "azure_breeze.inner_swordsmen": "/assets/anime/icons/cultivation/rank-inner-sect-swordsmen.webp",
+  "azure_breeze.spirit_crane": "/assets/anime/icons/cultivation/rank-spirit-crane.webp",
+  "azure_breeze.sect_protectors": "/assets/anime/icons/cultivation/rank-sect-formation-wardens.webp",
+  "azure_breeze.true_inheritors": "/assets/anime/icons/cultivation/rank-true-inheritors.webp",
+  "azure_breeze.core_master": "/assets/anime/icons/cultivation/rank-golden-core-elders.webp",
+  "azure_breeze.mountain_guardian": "/assets/anime/icons/cultivation/rank-mountain-guardian.webp",
+  "heavenly_demon.blood_disciples": "/assets/anime/icons/cultivation/rank-blood-disciples.webp",
+  "heavenly_demon.gu_witches": "/assets/anime/icons/cultivation/rank-gu-witches.webp",
+  "heavenly_demon.shadow_wraiths": "/assets/anime/icons/cultivation/rank-shadow-sabre-disciples.webp",
+  "heavenly_demon.corpse_puppets": "/assets/anime/icons/cultivation/rank-corpse-puppets.webp",
+  "heavenly_demon.bone_reavers": "/assets/anime/icons/cultivation/rank-bone-reavers.webp",
+  "heavenly_demon.ghost_king": "/assets/anime/icons/cultivation/rank-ghost-king.webp",
+  "heavenly_demon.demon_avatar": "/assets/anime/icons/cultivation/rank-heavenly-demon-avatar.webp"
+};
+
 /** MGQ's rank-3 emblem follows the card's current Job, including sealed Neutrals. */
 export const MGQ_JOB_RANK_ABILITY_ICONS: Record<string, string> = {
   "ignores-retaliation": "/assets/anime/icons/mgq/rank-job-warrior.webp",
@@ -624,6 +642,9 @@ export function unitRankAbilityIcon(abilityId: string, unitDefId?: string, mgqJo
     const choiceIcon = LITTLE_BUSTERS_RANK_ABILITY_ICON_BY_CHOICE[`${unitDefId}:${abilityId}`];
     if (choiceIcon) return choiceIcon;
     if (LITTLE_BUSTERS_RANK_ABILITY_ICONS[unitDefId]) return LITTLE_BUSTERS_RANK_ABILITY_ICONS[unitDefId];
+  }
+  if (unitDefId && WUXIA_RANK_ABILITY_ICONS[unitDefId]) {
+    return WUXIA_RANK_ABILITY_ICONS[unitDefId];
   }
   return UNIT_RANK_ABILITY_ICONS[abilityId] ?? RANK_ABILITY_ICON_FALLBACK;
 }

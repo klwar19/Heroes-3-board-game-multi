@@ -53,8 +53,8 @@ const equipmentArtOnDisk = (id: string) =>
 describe("anime equipment catalog integrity", () => {
   it("ships every item with a grade I/II/III, cost locked to grade, and package", () => {
     const items = listEquipmentDefinitions();
-    // Shared/base lines plus Shinobi, Kansen, Modao, Seishun and MGQ = 58.
-    expect(items).toHaveLength(58);
+    // 58 market cards plus Heavenly Demon's intrinsic Soul Banner birthright.
+    expect(items).toHaveLength(59);
     const bySlug = (id: string) => getEquipmentDefinition(id)!;
 
     for (const def of items) {
@@ -156,12 +156,19 @@ describe("anime equipment catalog integrity", () => {
 
     // Heavenly Demon Palace bespoke "modao" line (§3.13): one per grade, spread
     // across weapon / armor / accessory (Blood Demon Saber I / Bonefiend Plate II /
-    // Demon Heart III).
+    // Demon Heart III), plus the intrinsic Soul Banner that never enters shops.
     expect(bySlug(EQUIPMENT_IDS.demonBloodSaber)).toMatchObject({ slot: "weapon", grade: "I", cost: 5, package: "modao" });
     expect(bySlug(EQUIPMENT_IDS.bonefiendPlate)).toMatchObject({ slot: "armor", grade: "II", cost: 7, package: "modao" });
     expect(bySlug(EQUIPMENT_IDS.demonHeartRelic)).toMatchObject({ slot: "accessory", grade: "III", cost: 10, package: "modao" });
+    expect(bySlug(EQUIPMENT_IDS.soulBanner)).toMatchObject({
+      slot: "accessory",
+      grade: "III",
+      cost: 10,
+      package: "modao",
+      intrinsic: true
+    });
     const modao = items.filter((def) => def.package === "modao");
-    expect(modao).toHaveLength(3);
+    expect(modao).toHaveLength(4);
     expect(new Set(modao.map((def) => def.grade))).toEqual(new Set(["I", "II", "III"]));
     expect(new Set(modao.map((def) => def.slot))).toEqual(new Set(["weapon", "armor", "accessory"]));
     // Icons ship on disk (never a glyph placeholder).
@@ -345,6 +352,7 @@ describe("anime equipment catalog integrity", () => {
     expect(new Set(modaoLine)).toEqual(
       new Set([EQUIPMENT_IDS.demonBloodSaber, EQUIPMENT_IDS.bonefiendPlate, EQUIPMENT_IDS.demonHeartRelic])
     );
+    expect(modaoLine).not.toContain(EQUIPMENT_IDS.soulBanner);
     // CONTROL: heavenly_demon shares the "wuxia" visual register with azure_breeze,
     // but the modao line is its bespoke line ONLY — carrying none of the other
     // registers' exclusives, and azure_breeze never gets a modao item.

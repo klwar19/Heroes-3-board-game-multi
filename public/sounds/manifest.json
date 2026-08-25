@@ -4919,6 +4919,10 @@
     "src": "/sounds/units/heavenly-demon-ghost-king-attack.mp3",
     "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"
   },
+  "units/heavenly-demon-ghost-king-shoot": {
+    "src": "/sounds/units/heavenly-demon-ghost-king-shoot.mp3",
+    "note": "Ranged Ghost King strike, promoted from its curated attack cue after the unit became ranged"
+  },
   "units/heavenly-demon-ghost-king-defend": {
     "src": "/sounds/units/heavenly-demon-ghost-king-defend.mp3",
     "note": "Curated anime-town combat cue; source and processing notes in docs/anime-town-audio.md"

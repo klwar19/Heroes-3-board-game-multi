@@ -908,6 +908,9 @@ describe("healDrawOnlyRider — the map draw-only gate", () => {
       "specialty.rion.1",
       "specialty.rion.4",
       "specialty.rion.6",
+      "specialty.sakura_matou.1",
+      "specialty.sakura_matou.4",
+      "specialty.sakura_matou.6",
       "specialty.sirius.1",
       "specialty.sirius.4",
       "specialty.sirius.6"

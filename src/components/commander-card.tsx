@@ -92,11 +92,9 @@ const OUTLINE =
 type CommanderCardLayout = "classic" | "azur-lane" | "wuxia";
 
 /**
- * Belfast and Demon Ancestor use the newer commissioned card art. Those files
- * already contain their own title banner, so the classic HoMM3 overlay
- * coordinates would print a second title over the art and put the stat values
- * on top of the character. Keep one renderer, but give both themed cards the
- * same readable information layout with only the palette changing.
+ * Belfast uses commissioned card art with its own title banner. Every other
+ * commander, including the two cultivation commanders, is composited into the
+ * real golden commander frame and therefore uses the classic dynamic overlay.
  */
 const THEMED_CARD_STYLES: Record<Exclude<CommanderCardLayout, "classic">, {
   panel: string;
@@ -123,7 +121,6 @@ const THEMED_CARD_STYLES: Record<Exclude<CommanderCardLayout, "classic">, {
 
 function commanderCardLayout(slug: CommanderSlug): CommanderCardLayout {
   if (slug === "belfast") return "azur-lane";
-  if (slug === "demon_ancestor") return "wuxia";
   return "classic";
 }
 

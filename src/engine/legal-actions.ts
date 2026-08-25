@@ -174,6 +174,7 @@ import {
   heroTrainAvailable,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
+import { fuyukiCommandSealsOf, hiddenLeafCombatFormationError } from "./anime-town-mechanics";
 import {
   equipmentEnabled,
   equipmentAttackRiderAvailable,
@@ -6562,6 +6563,27 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
     }
   }
 
+  const commandSeals = fuyukiCommandSealsOf(state.players[playerId]);
+  if (
+    !controlsNeutral &&
+    commandSeals > 0 &&
+    playerMainHeroInCombat(state, playerId) &&
+    !(combat.fuyukiCommandSealUsedPlayerIds ?? []).includes(playerId)
+  ) {
+    if (!alreadyAttacked) {
+      actions.push({
+        label: `Command Seal (${commandSeals}): Compel ${activeUnit.name} for +1 Attack`,
+        action: { type: "USE_FUYUKI_COMMAND_SEAL", playerId, unitId: activeUnit.id, mode: "compel" }
+      });
+    }
+    if (activeUnit.damage > 0) {
+      actions.push({
+        label: `Command Seal (${commandSeals}): Recall ${activeUnit.name} and heal 3`,
+        action: { type: "USE_FUYUKI_COMMAND_SEAL", playerId, unitId: activeUnit.id, mode: "recall" }
+      });
+    }
+  }
+
   for (const destination of getLegalMoveDestinations(combat, activeUnit, state)) {
     actions.push({
       label: `${activeUnit.name} move to ${getBattlefieldLabel(destination)}`,
@@ -10926,8 +10948,18 @@ function addCombatSetupActions(actions: LegalAction[], state: GameState, playerI
   const takenPositions = new Set(Object.values(combat.units).map((unit) => unit.position));
 
   if (placed.length < setup.unitLimit) {
+    const placedFormation = placed.flatMap((armyUnitId) => {
+      const unit = player.army.find((candidate) => candidate.id === armyUnitId);
+      return unit ? [{ side: unit.side, tier: coreUnitDefinitions[unit.unitDefId]?.tier }] : [];
+    });
     for (const armyUnit of player.army) {
       if (placed.includes(armyUnit.id)) {
+        continue;
+      }
+      if (hiddenLeafCombatFormationError(player, [
+        ...placedFormation,
+        { side: armyUnit.side, tier: coreUnitDefinitions[armyUnit.unitDefId]?.tier }
+      ])) {
         continue;
       }
 

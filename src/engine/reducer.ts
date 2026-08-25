@@ -267,7 +267,13 @@ import {
   markHeroSkillUsedThisRound,
   playerMainHeroInCombat
 } from "./anime-hero-grades";
+import { fuyukiCommandSealsOf } from "./anime-town-mechanics";
 import { applyHeroGradeRoundStartDamage, expireHeroGradeFamiliars } from "./hero-grade-combat";
+import {
+  applyCultivationAttackDeclaration,
+  gainSectQiAfterMove,
+  recordSwordIntentAfterAttack
+} from "./wuxia-factions";
 import {
   applyEquipmentStageCostumeDefenseToken,
   consumeEquipmentFirstDamagePrevention,
@@ -4396,6 +4402,7 @@ function getAttackStackDetails(
   // so the effective Defense never drops below 0.
   const defenseBonusBeforeAbility =
     stackItem.modifiers.defenseBonus +
+    (stackItem.modifiers.cultivationDefenseBonus ?? 0) +
     activeDefenseBonus +
     tokenDefense +
     redirectedDefenseDelta +
@@ -4546,6 +4553,7 @@ function getAttackStackDetails(
       // to ≤0 (main); innate ability bonuses (Ghost Dragon die result, Hatred) are
       // added unclamped. OFF (official): no clamp at all — +⚔ cards work normally.
       effectiveCardAttackBonus +
+      (stackItem.modifiers.cultivationAttackBonus ?? 0) +
       effectiveTokenAttack +
       attackDieResultBonus +
       hatredAttackBonus +
@@ -6497,6 +6505,10 @@ function finishResolvedAttack(
     details.dieMultiplierSkipsNegative,
     details.ignorePlusOneDie
   );
+
+  if (!attackResult.cancelled) {
+    recordSwordIntentAfterAttack(state, details.attacker, details.isRetaliation, attackResult.damage);
+  }
 
   // Alamar's Resurrection cancelled the whole attack: the attacker still spent
   // its strike, but no damage, no on-attack abilities, and no Retaliation
@@ -17750,6 +17762,59 @@ function applyHeroSkillActive(state: GameState, action: Extract<GameAction, { ty
   });
 }
 
+/** Fuyuki's finite game-long resource: one pre-attack seal may be spent per fight. */
+function applyFuyukiCommandSeal(
+  state: GameState,
+  action: Extract<GameAction, { type: "USE_FUYUKI_COMMAND_SEAL" }>
+): void {
+  const player = state.players[action.playerId];
+  const combat = state.combat;
+  const unit = combat?.units[action.unitId];
+  if (!player || player.factionId !== "fuyuki") {
+    throw new Error("Only a Fuyuki hero may use Command Seals.");
+  }
+  if (!combat || !unit || !isUnitAlive(unit) || unit.controllerId !== action.playerId) {
+    throw new Error("Pick your own living active unit.");
+  }
+  if (combat.activeUnitId !== unit.id || !playerMainHeroInCombat(state, action.playerId)) {
+    throw new Error("Command Seals are used during your main hero's active unit.");
+  }
+  if ((combat.fuyukiCommandSealUsedPlayerIds ?? []).includes(action.playerId)) {
+    throw new Error("You have already used a Command Seal this combat.");
+  }
+  const seals = fuyukiCommandSealsOf(player);
+  if (seals <= 0) {
+    throw new Error("You have no Command Seals remaining.");
+  }
+  if (action.mode === "compel") {
+    if (unit.attackedThisActivation) {
+      throw new Error("Use Compel before this unit attacks.");
+    }
+    applyHeroSkillStatBuff(state, action.playerId, unit, 1, "current-activation", "Command Seal — Compel");
+  } else {
+    if (unit.damage <= 0) {
+      throw new Error("That unit has no damage to heal.");
+    }
+    healUnitDamage(state, { type: "system" }, { type: "unit", unitId: unit.id }, 3);
+  }
+
+  player.fuyukiCommandSeals = seals - 1;
+  combat.fuyukiCommandSealUsedPlayerIds = [
+    ...(combat.fuyukiCommandSealUsedPlayerIds ?? []),
+    action.playerId
+  ];
+  appendEvent(state, {
+    type: "FACTION_MECHANIC_TRIGGERED",
+    playerId: action.playerId,
+    factionId: "fuyuki",
+    mechanicId: `command-seal.${action.mode}`,
+    message:
+      action.mode === "compel"
+        ? `Command Seal — Compel: ${unit.cardName} gains +1 Attack this activation (${seals - 1} seals remain).`
+        : `Command Seal — Recall: ${unit.cardName} heals up to 3 damage (${seals - 1} seals remain).`
+  });
+}
+
 /**
  * USE_HERO_SKILL_REACTION: a skill node used as an instant reaction inside an
  * open attack window — Battle Focus (+Attack on your attacking unit) or Iron
@@ -23956,6 +24021,9 @@ function declareAttack(
   }
 
   const stackItem = makeStackItem(state, resolvedAction);
+  if (!abilityAttack && !isInternalFollowUp) {
+    applyCultivationAttackDeclaration(state, stackItem, attacker, defender, isRetaliation);
+  }
   state.stack.push(stackItem);
 
   const attackKind = getAttackKind(attacker, defender);
@@ -24066,6 +24134,7 @@ function moveAndAttackUnit(
     from,
     to: finalPosition
   });
+  gainSectQiAfterMove(state, attacker, from, finalPosition);
   healCommanderFromArtifactAction(state, attacker, "move");
 
   // A Fire Wall / Land Mine that struck the attacker down, or a Quicksand that
@@ -24448,6 +24517,7 @@ function moveUnit(state: GameState, action: Extract<GameAction, { type: "MOVE_UN
     from,
     to: finalPosition
   });
+  gainSectQiAfterMove(state, unit, from, finalPosition);
   healCommanderFromArtifactAction(state, unit, "move");
 
   // Rune Keeper commander (Rune Ritual, move half): +1 Rune whenever it moves.
@@ -26442,6 +26512,9 @@ export function applyAction(state: GameState, action: GameAction, options: Reduc
         break;
       case "USE_HERO_SKILL":
         applyHeroSkillActive(nextState, action);
+        break;
+      case "USE_FUYUKI_COMMAND_SEAL":
+        applyFuyukiCommandSeal(nextState, action);
         break;
       case "USE_HERO_SKILL_REACTION":
         applyHeroSkillReaction(nextState, action, cards);

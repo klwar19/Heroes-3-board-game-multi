@@ -112,6 +112,8 @@ export type EquipmentDefinition = {
    * wiring site, so a hand-stamped item is simply a no-op with the context off.
    */
   requiresContext?: EquipmentContextRequirement;
+  /** Faction birthright: exists as equipped rules data, but never enters shops or decks. */
+  intrinsic?: boolean;
 };
 
 // --- Item id constants (referenced by the engine wiring & tests) ------------
@@ -173,6 +175,7 @@ export const EQUIPMENT_IDS = {
   demonBloodSaber: "anime.equip.demon_blood_saber",
   bonefiendPlate: "anime.equip.bonefiend_plate",
   demonHeartRelic: "anime.equip.demon_heart",
+  soulBanner: "anime.equip.ten_thousand_souls_banner",
   littleBustersGlassMarbles: "anime.equip.little-busters-harukas-glass-marbles",
   littleBustersMissionLetter: "anime.equip.little-busters-lennons-mission-letter",
   littleBustersMiosParasol: "anime.equip.little-busters-mios-parasol",
@@ -599,6 +602,16 @@ export const ANIME_EQUIPMENT_DEFINITIONS: Record<string, EquipmentDefinition> = 
     summary:
       "Accessory · Grade III: +1 spell Power on your first Spell each combat AND +1 hand limit."
   }),
+  [EQUIPMENT_IDS.soulBanner]: equip({
+    id: EQUIPMENT_IDS.soulBanner,
+    slot: "accessory",
+    grade: "III",
+    name: { en: "Ten Thousand Souls Banner", vi: "Vạn Hồn Phiên" },
+    package: "modao",
+    intrinsic: true,
+    summary:
+      "Accessory · Grade III · intrinsic: Heavenly Demon Palace begins with this equipped. At each combat start, summon one temporary 2/0/2/8 flying Bound Soul for round 1; it ignores Retaliation Attacks."
+  }),
   [EQUIPMENT_IDS.pathfindersBoots]: equip({
     id: EQUIPMENT_IDS.pathfindersBoots, slot: "mount", grade: "I",
     name: { en: "Pathfinder's Boots", vi: "Ủng Dẫn Lối" }, package: "shared",
@@ -866,6 +879,6 @@ export function equipmentPackagesForFaction(factionId: string | undefined): Equi
 export function equipmentRegisterLineFor(factionId: string | undefined): string[] {
   const packages = new Set(equipmentPackagesForFaction(factionId));
   return listEquipmentDefinitions()
-    .filter((def) => packages.has(def.package))
+    .filter((def) => packages.has(def.package) && !def.intrinsic)
     .map((def) => def.id);
 }

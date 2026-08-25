@@ -64,94 +64,107 @@ const TIER = {
 const CARDS = [
   {
     slug: "genin-squad",
-    name: "Genin Squad",
+    name: "Academy Genin",
     tier: "bronze",
     kind: "GROUND",
     art: "units-hidden-leaf-bronze-genin-squad-master.png",
     stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
-    packStats: { initiative: 8 },
-    cost: { gold: 2 },
-    packCost: { gold: 3 },
-    few: "No printed ability.",
-    pack: "Teamwork Formation — +1 Attack on this unit's own attacks (never on Retaliation)."
-  },
-  {
-    slug: "medical-nin",
-    name: "Medical-Nin",
-    tier: "bronze",
-    kind: "GROUND",
-    art: "units-hidden-leaf-bronze-medical-nin-master.png",
-    stats: { attack: 1, defense: 1, health: 2, initiative: 6 },
-    packStats: { attack: 2, health: 3 },
+    packStats: { health: 3, initiative: 8 },
     cost: { gold: 2 },
     packCost: { gold: 4 },
     few: "No printed ability.",
-    pack: "Mystical Palm — [activation] heal a friendly unit 2, or +1 Attack if none need healing."
+    pack: "Shadow Clone Formation — +1 Attack on this unit's own attacks, never on Retaliation."
+  },
+  {
+    slug: "medical-nin",
+    name: "Sakura's Medical Corps",
+    tier: "bronze",
+    kind: "GROUND",
+    art: "units-hidden-leaf-bronze-medical-nin-master.png",
+    stats: { attack: 1, defense: 1, health: 3, initiative: 6 },
+    packStats: { attack: 2, defense: 2 },
+    cost: { gold: 3 },
+    packCost: { gold: 5 },
+    few: "No printed ability.",
+    pack: "Mystical Palm — heal another friendly unit 2; if none can be healed, gain +1 Attack this round."
   },
   {
     slug: "anbu",
-    name: "Anbu Black Ops",
+    name: "ANBU Black Ops",
     tier: "bronze",
     kind: "RANGED",
     art: "units-hidden-leaf-bronze-anbu-master.png",
-    stats: { attack: 2, defense: 1, health: 2, initiative: 7 },
-    packStats: { attack: 3, initiative: 8 },
+    stats: { attack: 2, defense: 1, health: 2, initiative: 8 },
+    packStats: { attack: 3, defense: 2, health: 3, initiative: 9 },
     cost: { gold: 4 },
-    packCost: { gold: 5 },
-    few: "Shadow Step — ignores the adjacent-unit Combat penalty.",
-    pack: "Body Flicker — ignores adjacent Combat penalty; may move to any empty space."
+    packCost: { gold: 7 },
+    few: "Shadow Step — ignores the adjacent ranged Combat penalty.",
+    pack: "Body Flicker — ignores the adjacent ranged penalty; may move to any empty space."
   },
   {
     slug: "jonin",
-    name: "Jonin",
+    name: "Leaf Jōnin",
     tier: "silver",
     kind: "RANGED",
     art: "units-hidden-leaf-silver-jonin-master.png",
-    stats: { attack: 3, defense: 2, health: 3, initiative: 6 },
-    packStats: { attack: 4, health: 4, initiative: 7 },
-    cost: { gold: 7 },
-    packCost: { gold: 10 },
+    stats: { attack: 3, defense: 2, health: 4, initiative: 6 },
+    packStats: { attack: 4, initiative: 7 },
+    cost: { gold: 8 },
+    packCost: { gold: 11 },
     few: "Kunai Barrage — ignores the adjacent-unit Combat penalty.",
-    pack: "Jonin Mastery — ignores all ranged Combat penalties; never provokes Retaliation."
+    pack: "Jōnin Mastery — ignores all ranged penalties; never provokes Retaliation."
   },
   {
     slug: "giant-toad",
-    name: "Giant Toad",
+    name: "Gamabunta",
     tier: "silver",
     kind: "GROUND",
     art: "units-hidden-leaf-silver-giant-toad-master.png",
-    stats: { attack: 3, defense: 2, health: 4, initiative: 4 },
-    packStats: { attack: 4, defense: 3, health: 5 },
-    cost: { gold: 8 },
-    packCost: { gold: 11 },
+    stats: { attack: 3, defense: 3, health: 5, initiative: 4 },
+    packStats: { attack: 4, health: 6, initiative: 5 },
+    cost: { gold: 9 },
+    packCost: { gold: 13 },
     few: "Toad Hide — always rolls the Defend die when attacked.",
-    pack: "Toad Hide — Defend die when attacked; Smoke Burst — on defeat, 1 damage to adjacent units."
+    pack: "Toad Hide — Defend die; Smoke Bomb — on defeat, 1 damage to every adjacent unit."
   },
   {
     slug: "jinchuriki",
-    name: "Jinchuriki",
+    name: "Nine-Tails Chakra Avatar",
     tier: "golden",
     kind: "GROUND",
     art: "units-hidden-leaf-golden-jinchuriki-master.png",
     stats: { attack: 5, defense: 2, health: 6, initiative: 6 },
-    packStats: { attack: 6, health: 7, initiative: 7 },
-    cost: { gold: 14, valuables: 1 },
-    packCost: { gold: 20, valuables: 2 },
+    packStats: { attack: 6, defense: 3, health: 7, initiative: 8 },
+    cost: { gold: 15, valuables: 1 },
+    packCost: { gold: 24, valuables: 2 },
     few: "Chakra Burst — after own attack, 1 damage to every other adjacent unit (friend and foe).",
-    pack: "Tailed-Beast Cloak — after attack, full separate attack vs every other adjacent enemy."
+    pack: "Tailed-Beast Cloak — after attacking, separately attack every other adjacent enemy; no Retaliation or chaining."
   },
   {
     slug: "susanoo",
-    name: "Susanoo Avatar",
+    name: "Perfect Susanoo",
     tier: "golden",
     kind: "GROUND",
     art: "units-hidden-leaf-golden-susanoo-master.png",
-    stats: { attack: 5, defense: 3, health: 6, initiative: 4 },
-    packStats: { attack: 6, health: 7 },
-    cost: { gold: 15, valuables: 1 },
-    packCost: { gold: 22, valuables: 2 },
+    stats: { attack: 5, defense: 3, health: 7, initiative: 4 },
+    packStats: { attack: 6, defense: 4, health: 8, initiative: 5 },
+    cost: { gold: 16, valuables: 1 },
+    packCost: { gold: 25, valuables: 2 },
     few: "Ethereal Armor — at most 4 damage from a single attack (Spells uncapped).",
-    pack: "Ethereal Armor — ≤4 damage per attack; Unbreakable Will — ignore ongoing effects."
+    pack: "Perfect Armor — ≤4 damage per attack; ignore ongoing effects on this unit."
+  },
+  {
+    slug: "hokage-vanguard",
+    name: "Hokage Vanguard",
+    tier: "golden",
+    kind: "GROUND",
+    art: "units-hidden-leaf-golden-hokage-vanguard-master.png",
+    stats: { attack: 5, defense: 2, health: 6, initiative: 7 },
+    packStats: { attack: 6, health: 8, initiative: 8 },
+    cost: { gold: 13, valuables: 2 },
+    packCost: { gold: 21, valuables: 3 },
+    few: "Flying Raijin Formation — may move to any empty space.",
+    pack: "Four Hokage Formation — may move anywhere; always rolls the Defend die when attacked."
   }
 ];
 
@@ -233,12 +246,24 @@ async function loadPaintedStatIcons() {
   for (const [kind, file] of Object.entries(STAT_ICON_FILES)) {
     const src = path.join(ICONS_RAW, file);
     // Clean to a tight 128px icon, dark-bg friendly for the rail.
-    const png = await sharp(src)
-      .resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .png()
-      .toBuffer();
     const outWebp = path.join(ICONS_PUBLIC, file.replace(/\.png$/, ".webp"));
-    await sharp(png).webp({ quality: 90 }).toFile(outWebp);
+    let png;
+    let publishIcon = true;
+    try {
+      png = await sharp(src)
+        .resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+    } catch {
+      // Older checkouts retain only the published WebP icons. They are lossless
+      // enough for a 52px stat rail and keep card rebuilding reproducible.
+      png = await sharp(outWebp)
+        .resize(128, 128, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .png()
+        .toBuffer();
+      publishIcon = false;
+    }
+    if (publishIcon) await sharp(png).webp({ quality: 90 }).toFile(outWebp);
     statIconDataUri[kind] = `data:image/png;base64,${png.toString("base64")}`;
     console.log(`icon ${kind} ← ${file}`);
   }

@@ -8,7 +8,7 @@ import { coreFactionDefinitions, coreHeroDefinitions, isPlayableFaction } from "
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { allTileDefinitions } from "@/data/map/tiles";
 import { townBoardSpecs } from "@/data/towns/boards";
-import { commanderSoundKey, unitSoundKey } from "@/data/unit-sounds";
+import { commanderSoundKey } from "@/data/unit-sounds";
 import { unitAbilities } from "@/data/units/abilities";
 import { applyAction, createInitialGameState } from "@/engine";
 import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/state";
@@ -18,9 +18,9 @@ import type { CombatUnitState, GameAction, GameState, PlayerId } from "@/engine/
  * gated on the SAME `anime.enabled && anime.isekaiTowns` flag as Fuyuki.
  *
  * This file pins the town like conflux-content / factory-content: the EXACT
- * per-side ability ids of all seven units (the Few/Pack divergence is the
+ * per-side ability ids of all eight units (the Few/Pack divergence is the
  * mutation control), the module gate truth table, the commander wiring, the
- * three heroes' specialties, the starting tile, the board spec + bar art, and —
+ * six heroes' specialties, the starting tile, the board spec + bar art, and —
  * so the roster is not pinned by DATA alone — one BEHAVIOURAL combat spot-check
  * proving a real roster reuse arm (Susanoo's damage cap) executes in play.
  */
@@ -38,7 +38,8 @@ const EXPECTED_ABILITIES: Record<string, { few: string[]; pack: string[] }> = {
     pack: ["commander-defense-token", "automaton-detonate-1"]
   },
   "hidden_leaf.jinchuriki": { few: ["jinchuriki-chakra-burst"], pack: ["magic-elemental-attack-all-enemies"] },
-  "hidden_leaf.susanoo": { few: ["nix-damage-cap"], pack: ["nix-damage-cap", "titan-ignore-ongoing"] }
+  "hidden_leaf.susanoo": { few: ["nix-damage-cap"], pack: ["nix-damage-cap", "titan-ignore-ongoing"] },
+  "hidden_leaf.hokage_vanguard": { few: ["teleport-move"], pack: ["teleport-move", "commander-defense-token"] }
 };
 
 /** Stat/cost envelopes from the design brief (both sides must sit inside). */
@@ -46,9 +47,9 @@ const ENVELOPES: Record<
   "bronze" | "silver" | "gold",
   { attack: [number, number]; defense: [number, number]; health: [number, number]; initiative: [number, number]; gold: [number, number]; valuables: [number, number] }
 > = {
-  bronze: { attack: [1, 3], defense: [1, 2], health: [2, 3], initiative: [5, 8], gold: [2, 5], valuables: [0, 0] },
-  silver: { attack: [2, 4], defense: [2, 3], health: [3, 5], initiative: [3, 7], gold: [7, 11], valuables: [0, 0] },
-  gold: { attack: [5, 7], defense: [2, 3], health: [5, 8], initiative: [3, 7], gold: [13, 22], valuables: [1, 2] }
+  bronze: { attack: [1, 3], defense: [1, 2], health: [2, 3], initiative: [6, 9], gold: [2, 7], valuables: [0, 0] },
+  silver: { attack: [3, 4], defense: [2, 3], health: [4, 6], initiative: [4, 7], gold: [8, 13], valuables: [0, 0] },
+  gold: { attack: [5, 6], defense: [2, 4], health: [6, 8], initiative: [4, 8], gold: [13, 25], valuables: [1, 3] }
 };
 
 function fileExists(assetPath: string, minBytes = 1000): boolean {
@@ -57,18 +58,18 @@ function fileExists(assetPath: string, minBytes = 1000): boolean {
 }
 
 describe("Hidden Leaf Village — registration & roster shape", () => {
-  it("registers a complete faction: 7 units (3/2/2), 8 buildings, 3 heroes, leaf tile + commander", () => {
+  it("registers a complete faction: 8 units (3/2/3), 8 buildings, 6 heroes, leaf tile + commander", () => {
     const faction = coreFactionDefinitions[FACTION];
     expect(faction).toBeDefined();
     expect(faction.name).toBe("Hidden Leaf Village");
     expect(faction.startingTileId).toBe("L-S1");
-    expect(faction.units).toHaveLength(7);
+    expect(faction.units).toHaveLength(8);
     expect(faction.buildings).toHaveLength(8);
-    expect(faction.heroes).toEqual(["naruto", "sasuke", "tsunade"]);
+    expect(faction.heroes).toEqual(["naruto", "sasuke", "tsunade", "kakashi_hatake", "shikamaru_nara", "jiraiya"]);
 
     const byTier = { bronze: 0, silver: 0, gold: 0, azure: 0 };
     for (const id of faction.units) byTier[coreUnitDefinitions[id].tier] += 1;
-    expect(byTier).toEqual({ bronze: 3, silver: 2, gold: 2, azure: 0 });
+    expect(byTier).toEqual({ bronze: 3, silver: 2, gold: 3, azure: 0 });
 
     // Every rostered unit is pinned in EXPECTED_ABILITIES (no unit escapes the pin).
     expect([...faction.units].sort()).toEqual(Object.keys(EXPECTED_ABILITIES).sort());
@@ -121,6 +122,15 @@ describe("Hidden Leaf Village — EXACT per-side ability ids (Few/Pack divergenc
 });
 
 describe("Hidden Leaf Village — balance envelopes & Few→Pack progression", () => {
+  it("prices the three Gold choices by role while keeping Hokage Vanguard crystal-intensive", () => {
+    expect(coreUnitDefinitions["hidden_leaf.jinchuriki"].few!.cost).toEqual({ gold: 15, valuables: 1 });
+    expect(coreUnitDefinitions["hidden_leaf.jinchuriki"].pack!.cost).toEqual({ gold: 24, valuables: 2 });
+    expect(coreUnitDefinitions["hidden_leaf.susanoo"].few!.cost).toEqual({ gold: 16, valuables: 1 });
+    expect(coreUnitDefinitions["hidden_leaf.susanoo"].pack!.cost).toEqual({ gold: 25, valuables: 2 });
+    expect(coreUnitDefinitions["hidden_leaf.hokage_vanguard"].few!.cost).toEqual({ gold: 13, valuables: 2 });
+    expect(coreUnitDefinitions["hidden_leaf.hokage_vanguard"].pack!.cost).toEqual({ gold: 21, valuables: 3 });
+  });
+
   it("every side sits inside its tier envelope; Few→Pack never lowers a stat", () => {
     for (const unitId of coreFactionDefinitions[FACTION].units) {
       const unit = coreUnitDefinitions[unitId];
@@ -178,8 +188,8 @@ describe("Hidden Leaf Village — commander (Might Guy)", () => {
 });
 
 describe("Hidden Leaf Village — heroes & specialties", () => {
-  it("all three heroes carry implemented, own-portrait specialties I/IV/VI", () => {
-    for (const heroId of ["naruto", "sasuke", "tsunade"] as const) {
+  it("all six heroes carry implemented, own-portrait specialties I/IV/VI", () => {
+    for (const heroId of ["naruto", "sasuke", "tsunade", "kakashi_hatake", "shikamaru_nara", "jiraiya"] as const) {
       const hero = coreHeroDefinitions[heroId];
       expect(hero?.faction).toBe(FACTION);
       expect(fileExists(hero!.portrait!)).toBe(true);
@@ -191,11 +201,14 @@ describe("Hidden Leaf Village — heroes & specialties", () => {
     }
   });
 
-  it("might specialists (Naruto/Sasuke) double on units the faction actually FIELDS", () => {
+  it("unit specialists double on units the faction actually fields", () => {
     const factionUnitNames = coreFactionDefinitions[FACTION].units.map((id) => coreUnitDefinitions[id]?.name);
     for (const [heroId, unitName] of [
-      ["naruto", "Jinchuriki"],
-      ["sasuke", "Jonin"]
+      ["naruto", "Nine-Tails Chakra Avatar"],
+      ["sasuke", "Perfect Susanoo"],
+      ["kakashi_hatake", "Leaf Jōnin"],
+      ["shikamaru_nara", "ANBU Black Ops"],
+      ["jiraiya", "Gamabunta"]
     ] as const) {
       const effect = cardLibrary[`specialty.${heroId}.1`]?.effect;
       expect(effect?.type).toBe("CHOOSE_ONE");

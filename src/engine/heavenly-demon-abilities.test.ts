@@ -14,7 +14,7 @@ import type { CombatUnitState, GameAction, GameEvent, GameState, PlayerId, UnitI
  *      NOTHING. Never on a Retaliation Attack.
  *  (2) Reap the Fallen (`heavenly-demon-reap`, ATTACK_BUFF_ON_ADJACENT_REMOVAL):
  *      whenever a unit ADJACENT to this unit is removed (any source), this unit
- *      gains +1 Attack for the rest of the Combat — escalating, and surviving a
+ *      gains +1 Attack for the rest of the Combat, capped at +2 and surviving a
  *      Pack→Few flip (baked onto `permanentAttackBonus`).
  *
  * Harness modelled on src/engine/after-attack-splash.test.ts: the combat sandbox
@@ -392,7 +392,7 @@ describe("Reap the Fallen — +1 Attack when an ADJACENT unit is removed", () =>
     expect(unitAt(after, "unit_p1_marksmen").permanentAttackBonus ?? 0).toBe(0);
   });
 
-  it("ESCALATES: two adjacent deaths raise the reaper's Attack by 2", () => {
+  it("ESCALATES TO ITS CAP: two adjacent deaths grant +2 and a third grants nothing", () => {
     const state = freshCombat("reap-escalate");
     // Reaper @9. Its neighbours 8 and 10 each hold a 1-HP `few` victim.
     place(state, "unit_p1_marksmen", {
@@ -427,6 +427,17 @@ describe("Reap the Fallen — +1 Attack when an ADJACENT unit is removed", () =>
       type: "ground",
       variant: "few"
     });
+    const victim3 = place(state, "unit_p2_dread_knights", {
+      position: 5,
+      controllerId: "p2",
+      abilities: [],
+      attack: 0,
+      defense: 0,
+      maxHealth: 1,
+      damage: 0,
+      type: "ground",
+      variant: "few"
+    });
     // A second friendly killer @12 = (row 3, col 0), adjacent to victim2 @8.
     place(state, "unit_p1_crusaders", {
       position: 12,
@@ -438,7 +449,16 @@ describe("Reap the Fallen — +1 Attack when an ADJACENT unit is removed", () =>
       damage: 0,
       type: "ground"
     });
-    parkBystanders(state, ["unit_p1_griffins", "unit_p2_dread_knights"]);
+    place(state, "unit_p1_griffins", {
+      position: 1,
+      controllerId: "p1",
+      abilities: [],
+      attack: 5,
+      defense: 0,
+      maxHealth: 100,
+      damage: 0,
+      type: "ground"
+    });
 
     // Reaper kills victim1 (@10) → +1 (attack 6).
     let after = attack(state, "unit_p1_marksmen", "unit_p2_skeletons");
@@ -450,5 +470,11 @@ describe("Reap the Fallen — +1 Attack when an ADJACENT unit is removed", () =>
     expect(wasRemoved(after, victim2.id)).toBe(true);
     expect(unitAt(after, "unit_p1_marksmen").attack).toBe(7);
     expect(unitAt(after, "unit_p1_marksmen").permanentAttackBonus).toBe(2);
+
+    // A third adjacent death is observed but cannot exceed the printed +2 cap.
+    after = attack(after, "unit_p1_griffins", "unit_p2_dread_knights");
+    expect(wasRemoved(after, victim3.id)).toBe(true);
+    expect(unitAt(after, "unit_p1_marksmen").attack).toBe(7);
+    expect(unitAt(after, "unit_p1_marksmen").reapAttackBonus).toBe(2);
   });
 });

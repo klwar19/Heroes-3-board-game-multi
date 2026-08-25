@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
-  <title>Azure Breeze Sect Core Formation Master PACK art proof</title>
-  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="5" data-defense="3" data-health="6" data-initiative="6" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
+  <title>Azure Breeze Sect Golden Core Elders PACK art proof</title>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-core-formation-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="6" data-variant="pack" data-attack="6" data-defense="2" data-health="7" data-initiative="6" data-traits="RANGED,MAGIC" data-rule-capacity-lines="7"/>
   <defs>
     <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
     <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -38,20 +38,20 @@
       <path d="M24-23-21 22M16-28l13 13-12 1M-15 28l-13-13 12-1"/>
       <path d="m-10 17-7 11M10 17l7 11" stroke="#8ab39a"/>
     </g>
-      <text x="118" y="274" class="statNumber">5</text>
+      <text x="118" y="274" class="statNumber">6</text>
     </g><g id="stat-defense">
       <g id="icon-defense-jade-shield" transform="translate(118 353)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
       <path d="M0-30 27-20V1c0 22-11 37-27 45C-16 38-27 23-27 1v-21z" fill="#183d35" stroke="#dce4c5"/>
       <path d="M0-21 17-14V1c0 13-6 24-17 31C-11 25-17 14-17 1v-15z" stroke="#86ad91"/>
       <circle r="8"/><path d="M0-8a8 8 0 0 0 0 16M0-8a4 4 0 0 1 0 8M0 0a4 4 0 0 0 0 8" stroke-width="2.7"/>
     </g>
-      <text x="118" y="422" class="statNumber">3</text>
+      <text x="118" y="422" class="statNumber">2</text>
     </g><g id="stat-health">
       <g id="icon-health-lotus-cross" transform="translate(118 501)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
       <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>
       <path d="M0 18C-7 10-15 8-20 9-17 1-10-5 0-10 10-5 17 1 20 9 15 8 7 10 0 18Z" fill="#4f846d" stroke="#315f50" stroke-width="2.5"/>
     </g>
-      <text x="118" y="570" class="statNumber">6</text>
+      <text x="118" y="570" class="statNumber">7</text>
     </g><g id="stat-initiative">
       <g id="icon-initiative-cloud-step" transform="translate(118 649)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
     <circle cx="10" cy="-22" r="7" fill="#dce4c5"/>
@@ -71,9 +71,9 @@
   </g>
 
   <g inkscape:groupmode="layer" inkscape:label="05 Editable original-style typography and rules" id="layer-type">
-    <text x="371" y="105" class="display" fill="#f5dda0" font-size="30" text-anchor="middle" filter="url(#textShadow)">Core Formation Master</text>
-    <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Kim Đan Chân Nhân</text>
+    <text x="371" y="105" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)">Golden Core Elders</text>
+    <text x="371" y="135" fill="#c8d6b9" font-family="Liberation Serif, Georgia, serif" font-size="17" font-style="italic" font-weight="700" text-anchor="middle" filter="url(#textShadow)">Kim Đan Trưởng Lão</text>
     <text x="376" y="814" class="display" fill="#f5dda0" font-size="34" text-anchor="middle" filter="url(#textShadow)"># PACK</text>
-    <g id="editable-rules"><path d="M84 898.38q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="907.38" class="ruleText">Magic Attack — Ranged; ignores Combat penalties.</text><path d="M84 925.38q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="934.38" class="ruleText">Talisman Aura — When an adjacent ally is attacked and</text><text x="384" y="955.38" class="ruleText">rolls 0 or −1, it gains +1 Defense.</text></g>
+    <g id="editable-rules"><path d="M84 887.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="896.88" class="ruleText">Talisman Arts — ignores penalties; first Spell +1</text><text x="384" y="917.88" class="ruleText">Power.</text><path d="M84 935.88q10-9 20 0-10 2-13 12-2-8-7-12Z" fill="#e0c17e"/><text x="384" y="944.88" class="ruleText">Talisman Aura — adjacent allies reduce Spell damage by</text><text x="384" y="965.88" class="ruleText">1.</text></g>
   </g>
 </svg>

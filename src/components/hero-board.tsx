@@ -10,7 +10,7 @@ import { HERO_INFO_STAT_ICONS } from "@/data/assets/homm-assets";
 import { assetUrl } from "@/lib/asset-url";
 import { cardLibrary } from "@/data/cards/library";
 import { coreFactionDefinitions, coreHeroDefinitions } from "@/data/factions/core";
-import { HERO_GRADE_NODE_IDS } from "@/data/anime/hero-grades";
+import { HERO_GRADE_NODE_IDS, heroGradeIconForFaction } from "@/data/anime/hero-grades";
 import {
   ANIME_EQUIPMENT_DEFINITIONS,
   EQUIPMENT_PACKAGE_LABEL,
@@ -100,22 +100,43 @@ const HERO_GRADE_ICON_CELLS: Record<string, readonly [number, number]> = {
   [HERO_GRADE_NODE_IDS.relicDestiny]: [0, 2]
 };
 
-function HeroGradeEmblem({ gradeValue, className = "" }: { gradeValue: number; className?: string }) {
+function HeroGradeEmblem({
+  gradeValue,
+  factionId,
+  className = ""
+}: {
+  gradeValue: number;
+  factionId?: string;
+  className?: string;
+}) {
   const cell = Math.max(0, Math.min(3, gradeValue));
+  const bespoke = heroGradeIconForFaction(factionId, gradeValue);
   return (
     <span
       aria-hidden="true"
       className={`heroGradeEmblem ${className}`}
       style={{
-        "--grade-emblem-image": `url(${assetUrl(HERO_GRADE_EMBLEM_ATLAS)})`,
-        "--grade-emblem-x": `${(cell % 2) * 100}%`,
-        "--grade-emblem-y": `${Math.floor(cell / 2) * 100}%`
+        "--grade-emblem-image": `url(${assetUrl(bespoke ?? HERO_GRADE_EMBLEM_ATLAS)})`,
+        "--grade-emblem-x": bespoke ? "center" : `${(cell % 2) * 100}%`,
+        "--grade-emblem-y": bespoke ? "center" : `${Math.floor(cell / 2) * 100}%`,
+        "--grade-emblem-size": bespoke ? "cover" : "200% 200%"
       } as React.CSSProperties}
     />
   );
 }
 
 function HeroGradeAbilityEmblem({ nodeId }: { nodeId: string }) {
+  const cultivationIcon: Record<string, string> = {
+    "xianxia-meridian-circulation": "/assets/anime/icons/cultivation/sect-qi.webp",
+    "xianxia-body-refinement": "/assets/anime/icons/cultivation/foundation-establishment.webp",
+    "xianxia-sword-domain": "/assets/anime/icons/cultivation/sword-intent.webp",
+    "modao-blood-refinement": "/assets/anime/icons/cultivation/blood-essence.webp",
+    "modao-corpse-furnace": "/assets/anime/icons/cultivation/demon-foundation.webp",
+    "modao-forbidden-overreach": "/assets/anime/icons/cultivation/demon-soul.webp"
+  };
+  if (cultivationIcon[nodeId]) {
+    return <img alt="" aria-hidden="true" className="heroGradeAbilityImage" src={assetUrl(cultivationIcon[nodeId])} />;
+  }
   const [column = 1, row = 3] = HERO_GRADE_ICON_CELLS[nodeId] ?? [];
   return (
     <span
@@ -350,23 +371,27 @@ export function HeroBoard({
   const handLimit = effectiveHandLimit(state, playerId);
   // Anime Cultivation (§5.6): a public realm chip (EN + VI). Renders only with
   // the module on — a module-off / non-anime table shows nothing (CONTROL).
-  const showRealm = cultivationEnabled(state);
+  const cultivationGradeFaction = heroDef.faction === "azure_breeze" || heroDef.faction === "heavenly_demon";
+  const showGrade = heroGradesEnabled(state);
+  const showRealm = cultivationEnabled(state) && !(cultivationGradeFaction && showGrade);
   const realm = cultivationRealmLabel(state, playerId, cultivationRealmOf(state, playerId));
   // Anime Hero Grades (§3.11): a public grade chip + Merit progress + unspent-
   // point indicator, and a pick-a-node picker. Renders only with the module on.
-  const showGrade = heroGradesEnabled(state);
   const gradeValue = heroGradeOf(state, playerId);
   const grade = heroGradeLabel(state, playerId, gradeValue);
   const merit = heroGradeProgressOf(state, playerId);
   const nextThreshold = gradeValue < HERO_GRADE_MAX ? HERO_GRADE_MERIT_THRESHOLDS[gradeValue] : null;
   const gradePoints = heroGradePointsOf(state, playerId);
+  const combatCultivation = state.combat?.cultivationFactions?.[playerId];
+  const hasSwordIntent = heroDef.id === "qingyun" || heroDef.id === "xuedao";
   const pickableGradeNodes = heroGradePickableNodes(state, playerId);
   const dealtGradeNodes = heroGradeNodesForPlayer(state, playerId);
   const ownedGradeNodes = new Set(heroGradeNodesOf(state, playerId));
   const pickableNodeIds = new Set(pickableGradeNodes.map((node) => node.id));
   // Anime Equipment (§3.13): always-on item chips (slot glyph + EN/VI name).
   // Renders only with the module on AND something equipped (CONTROL: off = null).
-  const showEquip = equipmentEnabled(state);
+  const showEquip =
+    equipmentEnabled(state) || state.players[playerId]?.factionId === "heavenly_demon";
   const equipmentInventory = heroEquipmentInventoryOf(state, playerId);
   const inventoryEquipmentIds = new Set(equipmentInventory);
   const equippedEquipmentIds = new Set(Object.values(heroEquipmentOf(state, playerId)));
@@ -618,11 +643,26 @@ export function HeroBoard({
           {showGrade ? (
             <span
               className="hbGrade"
-              title={`Hero Grade: ${grade.en} (${grade.vi}) · Merit ${merit}${nextThreshold ? `/${nextThreshold}` : " (max)"}`}
+              title={`${cultivationGradeFaction ? "Cultivation Realm" : "Hero Grade"}: ${grade.en} (${grade.vi}) · Merit ${merit}${nextThreshold ? `/${nextThreshold}` : " (max)"}`}
             >
               ⚔ {grade.en} · {grade.vi} · Merit {merit}
               {nextThreshold ? `/${nextThreshold}` : ""}
               {gradePoints > 0 ? ` · ${gradePoints} pt` : ""}
+            </span>
+          ) : null}
+          {combatCultivation?.sectQi !== undefined ? (
+            <span className="hbCultivationMeter" title="Sect Qi: formed by moving into a new allied adjacency; automatically spent by Sword Formation or Shared Ward.">
+              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/sect-qi.webp")} /> Sect Qi {combatCultivation.sectQi}
+            </span>
+          ) : null}
+          {combatCultivation?.bloodEssence !== undefined ? (
+            <span className="hbCultivationMeter blood" title="Blood Essence: gained when a real Heavenly Demon army unit first flips or is removed; Blood Frenzy spends at most 1 each round.">
+              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/blood-essence.webp")} /> Essence {combatCultivation.bloodEssence}
+            </span>
+          ) : null}
+          {hasSwordIntent && combatCultivation?.swordIntent !== undefined ? (
+            <span className="hbCultivationMeter intent" title="Sword Intent: damaging own attacks temper it; the next attack releases at the threshold.">
+              <img alt="" src={assetUrl("/assets/anime/icons/cultivation/sword-intent.webp")} /> Intent {combatCultivation.swordIntent}
             </span>
           ) : null}
           {showEquip && equippedItems.length > 0
@@ -661,7 +701,7 @@ export function HeroBoard({
                 }}
                 type="button"
               >
-                <HeroGradeEmblem className="compact" gradeValue={gradeValue} />
+                <HeroGradeEmblem className="compact" factionId={heroDef.faction} gradeValue={gradeValue} />
                 <span><strong>{lexicon.grade}</strong><small>{grade.en} · {gradePoints} point{gradePoints === 1 ? "" : "s"}</small></span>
               </button>
             ) : null}
@@ -750,7 +790,7 @@ export function HeroBoard({
                 {systemsOpen === "grade" ? (
                   <>
                     <div className="gradeWindowSummary">
-                      <span className="gradeWindowCurrent"><HeroGradeEmblem gradeValue={gradeValue} /><span><b>{grade.en}</b><small>{grade.vi}</small></span></span>
+                      <span className="gradeWindowCurrent"><HeroGradeEmblem factionId={heroDef.faction} gradeValue={gradeValue} /><span><b>{grade.en}</b><small>{grade.vi}</small></span></span>
                       <span><b>{merit}{nextThreshold ? ` / ${nextThreshold}` : ""}</b><small>Merit</small></span>
                       <span className={gradePoints > 0 ? "ready" : ""}><b>{gradePoints}</b><small>Points available</small></span>
                     </div>

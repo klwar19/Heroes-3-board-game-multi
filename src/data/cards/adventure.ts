@@ -809,6 +809,15 @@ function withoutArt(card: CardLibrary[string]): CardLibrary[string] {
   return next;
 }
 
+/** Add an engine-backed innate hero rule to an otherwise normal playable card. */
+function withInnateHeroRule(card: CardLibrary[string], innate: string): CardLibrary[string] {
+  const next = structuredClone(card) as CardLibrary[string];
+  const prose = (next.tags ?? []).filter((tag) => /\s/u.test(tag)).sort((a, b) => b.length - a.length)[0];
+  next.tags = (next.tags ?? []).filter((tag) => tag !== prose);
+  next.tags.push(`${innate} Card: ${prose ?? "Resolve this specialty's implemented effect."}`);
+  return next;
+}
+
 /**
  * Attach the PRINTED specialty card face to a definition whose scan now ships in
  * /public/assets (the fan wiki published the full "Regular Stretch Goals 2024" /
@@ -1566,28 +1575,54 @@ export const adventureCards: CardLibrary = {
   "specialty.agar.1": withoutArt(mightSpecialtyOne("agar", "Sandworms", "Sandworms")),
   "specialty.agar.4": withoutArt(unitHealthSpecialty("agar", "Sandworms", 4, 1, "Sandworms")),
   "specialty.agar.6": withoutArt(unitInitiativeSpecialty("agar", "Sandworms", 6, 1, "Sandworms")),
-  // Anime Realms might heroes (src/data/anime/towns.ts) — unit specialists for
-  // their OWN faction's signature gold unit, on the proven generic I/IV/VI
-  // shape. They previously borrowed Catherine's Crusaders / Gelu's
-  // Sharpshooters sets, whose doubling (and Gelu IV's Elves trade) could never
-  // fire without those Castle/Rampart units — dead clauses, now live on Sabers
-  // / True Inheritors. Face-less: withoutArt renders them natively with the
-  // hero's own portrait.
+  // Anime Realms unit specialists use the proven generic I/IV/VI curve: global
+  // +1 at I/IV/VI, doubled only on the named line. Face-less cards render with
+  // the current hero portrait. Bin remains for legacy story scenarios; Fuyuki's
+  // selectable roster below is the canonical Fifth Holy Grail War cast.
   "specialty.bin.1": withoutArt(mightSpecialtyOne("bin", "Sabers", "Sabers")),
   "specialty.bin.4": withoutArt(unitHealthSpecialty("bin", "Sabers", 4, 1, "Sabers")),
   "specialty.bin.6": withoutArt(unitInitiativeSpecialty("bin", "Sabers", 6, 1, "Sabers")),
+  "specialty.shirou_emiya.1": withoutArt(mightSpecialtyOne("shirou_emiya", "King's Contract", "Artoria Pendragon")),
+  "specialty.shirou_emiya.4": withoutArt(unitHealthSpecialty("shirou_emiya", "King's Contract", 4, 1, "Artoria Pendragon")),
+  "specialty.shirou_emiya.6": withoutArt(unitInitiativeSpecialty("shirou_emiya", "King's Contract", 6, 1, "Artoria Pendragon")),
+  "specialty.rin_tohsaka.1": withoutArt(mightSpecialtyOne("rin_tohsaka", "Crimson Contract", "EMIYA")),
+  "specialty.rin_tohsaka.4": withoutArt(unitHealthSpecialty("rin_tohsaka", "Crimson Contract", 4, 1, "EMIYA")),
+  "specialty.rin_tohsaka.6": withoutArt(unitInitiativeSpecialty("rin_tohsaka", "Crimson Contract", 6, 1, "EMIYA")),
+  "specialty.illyasviel.1": withoutArt(mightSpecialtyOne("illyasviel", "Einzbern Bond", "Heracles")),
+  "specialty.illyasviel.4": withoutArt(unitHealthSpecialty("illyasviel", "Einzbern Bond", 4, 1, "Heracles")),
+  "specialty.illyasviel.6": withoutArt(unitInitiativeSpecialty("illyasviel", "Einzbern Bond", 6, 1, "Heracles")),
+  "specialty.kiritsugu_emiya.1": withoutArt(mightSpecialtyOne("kiritsugu_emiya", "Contingency Plan", "Sasaki Kojirō")),
+  "specialty.kiritsugu_emiya.4": withoutArt(unitHealthSpecialty("kiritsugu_emiya", "Contingency Plan", 4, 1, "Sasaki Kojirō")),
+  "specialty.kiritsugu_emiya.6": withoutArt(unitInitiativeSpecialty("kiritsugu_emiya", "Contingency Plan", 6, 1, "Sasaki Kojirō")),
+  "specialty.kirei_kotomine.1": withoutArt(mightSpecialtyOne("kirei_kotomine", "Executor's Rite", "Cú Chulainn")),
+  "specialty.kirei_kotomine.4": withoutArt(unitHealthSpecialty("kirei_kotomine", "Executor's Rite", 4, 1, "Cú Chulainn")),
+  "specialty.kirei_kotomine.6": withoutArt(unitInitiativeSpecialty("kirei_kotomine", "Executor's Rite", 6, 1, "Cú Chulainn")),
   "specialty.qingyun.1": withoutArt(mightSpecialtyOne("qingyun", "True Inheritors", "True Inheritors")),
   "specialty.qingyun.4": withoutArt(unitHealthSpecialty("qingyun", "True Inheritors", 4, 1, "True Inheritors")),
   "specialty.qingyun.6": withoutArt(unitInitiativeSpecialty("qingyun", "True Inheritors", 6, 1, "True Inheritors")),
-  // Hidden Leaf might heroes (src/data/anime/towns.ts) — unit specialists doubling
-  // on their OWN faction's units (Naruto → Jinchuriki, Sasuke → Jonin). Same
-  // proven generic I/IV/VI shape as Bin/Qingyun; face-less (native renderer).
-  "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Jinchuriki")),
-  "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Jinchuriki")),
-  "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Jinchuriki")),
-  "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Lightning Blade", "Jonin")),
-  "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Lightning Blade", 4, 1, "Jonin")),
-  "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Lightning Blade", 6, 1, "Jonin")),
+  "specialty.jianxu.1": withInnateHeroRule(withoutArt(mightSpecialtyOne("jianxu", "Seven-Star Array", "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
+  "specialty.jianxu.4": withInnateHeroRule(withoutArt(unitHealthSpecialty("jianxu", "Seven-Star Array", 4, 1, "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
+  "specialty.jianxu.6": withInnateHeroRule(withoutArt(unitInitiativeSpecialty("jianxu", "Seven-Star Array", 6, 1, "Outer Sect Disciples")), "Innate — when Sword Formation spends Sect Qi with two adjacent allies, its Attack bonus is +2 instead of +1."),
+  "specialty.yulian.1": withInnateHeroRule(withoutArt(mightSpecialtyOne("yulian", "Jade Body", "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
+  "specialty.yulian.4": withInnateHeroRule(withoutArt(unitHealthSpecialty("yulian", "Jade Body", 4, 1, "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
+  "specialty.yulian.6": withInnateHeroRule(withoutArt(unitInitiativeSpecialty("yulian", "Jade Body", 6, 1, "Sect Formation Wardens")), "Innate — once each combat round, when Shared Ward spends Sect Qi on a damaged defender, that unit also recovers 1 damage."),
+  // Hidden Leaf's six heroes each strengthen a line they are directly associated
+  // with; exact display names keep every doubled clause live after the roster pass.
+  "specialty.naruto.1": withoutArt(mightSpecialtyOne("naruto", "Nine-Tails Chakra", "Nine-Tails Chakra Avatar")),
+  "specialty.naruto.4": withoutArt(unitHealthSpecialty("naruto", "Nine-Tails Chakra", 4, 1, "Nine-Tails Chakra Avatar")),
+  "specialty.naruto.6": withoutArt(unitInitiativeSpecialty("naruto", "Nine-Tails Chakra", 6, 1, "Nine-Tails Chakra Avatar")),
+  "specialty.sasuke.1": withoutArt(mightSpecialtyOne("sasuke", "Mangekyō Mastery", "Perfect Susanoo")),
+  "specialty.sasuke.4": withoutArt(unitHealthSpecialty("sasuke", "Mangekyō Mastery", 4, 1, "Perfect Susanoo")),
+  "specialty.sasuke.6": withoutArt(unitInitiativeSpecialty("sasuke", "Mangekyō Mastery", 6, 1, "Perfect Susanoo")),
+  "specialty.kakashi_hatake.1": withoutArt(mightSpecialtyOne("kakashi_hatake", "Copy Ninja", "Leaf Jōnin")),
+  "specialty.kakashi_hatake.4": withoutArt(unitHealthSpecialty("kakashi_hatake", "Copy Ninja", 4, 1, "Leaf Jōnin")),
+  "specialty.kakashi_hatake.6": withoutArt(unitInitiativeSpecialty("kakashi_hatake", "Copy Ninja", 6, 1, "Leaf Jōnin")),
+  "specialty.shikamaru_nara.1": withoutArt(mightSpecialtyOne("shikamaru_nara", "Shadow Command", "ANBU Black Ops")),
+  "specialty.shikamaru_nara.4": withoutArt(unitHealthSpecialty("shikamaru_nara", "Shadow Command", 4, 1, "ANBU Black Ops")),
+  "specialty.shikamaru_nara.6": withoutArt(unitInitiativeSpecialty("shikamaru_nara", "Shadow Command", 6, 1, "ANBU Black Ops")),
+  "specialty.jiraiya.1": withoutArt(mightSpecialtyOne("jiraiya", "Toad Sage Pact", "Gamabunta")),
+  "specialty.jiraiya.4": withoutArt(unitHealthSpecialty("jiraiya", "Toad Sage Pact", 4, 1, "Gamabunta")),
+  "specialty.jiraiya.6": withoutArt(unitInitiativeSpecialty("jiraiya", "Toad Sage Pact", 6, 1, "Gamabunta")),
   // Azur Lane might heroes (src/data/anime/towns.ts). Enterprise carries the
   // BESPOKE "Lucky E" dice specialty (2026-07 upgrade — proactive stat half +
   // a held-card die half in the reroll window, see luckyESpecialty); Bismarck /
@@ -5351,6 +5386,10 @@ function rethemedSpecialty(
 adventureCards["specialty.aoko.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "aoko", 1, "Leyline Mending");
 adventureCards["specialty.aoko.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "aoko", 4, "Leyline Mending");
 adventureCards["specialty.aoko.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "aoko", 6, "Leyline Mending");
+// Sakura Matou (Fuyuki, magic): a fully wired heal/cleanse-and-draw specialty.
+adventureCards["specialty.sakura_matou.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "sakura_matou", 1, "Gentle Resolve");
+adventureCards["specialty.sakura_matou.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "sakura_matou", 4, "Gentle Resolve");
+adventureCards["specialty.sakura_matou.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "sakura_matou", 6, "Gentle Resolve");
 // Lingxi (Azure Breeze, magic): Gem's generic First Aid set (Tent + heals).
 // Art-less on purpose — the native SpecialtyCard draws her portrait + the
 // dedicated specialty-card medallion (`icon-first_aid.webp`), not Gem's baked
@@ -5395,6 +5434,16 @@ adventureCards["specialty.yaoji.6"] = rethemedSpecialty(adventureCards["specialt
 adventureCards["specialty.molian.1"] = rethemedSpecialty(adventureCards["specialty.rion.1"], "rion", "molian", 1, "Corpse Suture");
 adventureCards["specialty.molian.4"] = rethemedSpecialty(adventureCards["specialty.rion.4"], "rion", "molian", 4, "Corpse Suture");
 adventureCards["specialty.molian.6"] = rethemedSpecialty(adventureCards["specialty.rion.6"], "rion", "molian", 6, "Corpse Suture");
+for (const level of [1, 4, 6] as const) {
+  adventureCards[`specialty.luohun.${level}`] = withInnateHeroRule(
+    rethemedSpecialty(adventureCards[`specialty.gem.${level}`], "gem", "luohun", level, "Soul Shepherd"),
+    "Innate — the Ten Thousand Souls Banner's Bound Soul has 1 Defense, 3 Health, and remains through combat round 2."
+  );
+  adventureCards[`specialty.shiyan.${level}`] = withInnateHeroRule(
+    rethemedSpecialty(adventureCards[`specialty.rion.${level}`], "rion", "shiyan", level, "Corpse-Furnace Sutra"),
+    "Innate — the first real Heavenly Demon casualty each combat round yields 2 Blood Essence instead of 1."
+  );
+}
 
 // Little Busters specialty identities. These are native-card rethemes of fully
 // implemented mechanics: Riki uses Forgetfulness, Yuiko Fortune, and Kud's

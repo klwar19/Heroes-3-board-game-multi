@@ -1,6 +1,7 @@
 import {
   applyAction,
   computerDecisionOwner,
+  effectiveHandLimit,
   getLegalActions,
   type GameAction,
   type GameState,
@@ -44,7 +45,7 @@ export const HUMAN_PRIORITY: GameAction["type"][] = [
 /**
  * A legal REFRESH_HAND that actually discards down when over the limit (the
  * legal-actions template ships discardCardIds: []). Engine requires discarding
- * to the hand limit (4 on a forced refresh, else 5) before refreshing.
+ * to the player's current effective hand limit before refreshing.
  */
 function withHumanRefreshDiscards(
   state: GameState,
@@ -53,7 +54,7 @@ function withHumanRefreshDiscards(
 ): GameAction {
   const player = state.players[playerId];
   if (!player) return action;
-  const limit = player.needsHandRefresh ? 4 : 5;
+  const limit = effectiveHandLimit(state, playerId);
   const discardCount = Math.max(0, player.hand.length - limit);
   return { ...action, discardCardIds: player.hand.slice(0, discardCount) };
 }

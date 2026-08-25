@@ -4255,6 +4255,13 @@ export type GameAction =
       unitId?: UnitId;
     }
   | {
+      /** Fuyuki: spend one of three game-long Command Seals, at most one per combat. */
+      type: "USE_FUYUKI_COMMAND_SEAL";
+      playerId: PlayerId;
+      unitId: UnitId;
+      mode: "compel" | "recall";
+    }
+  | {
       /**
        * Anime Hero Grades: use a "skill" tree node as an instant REACTION inside
        * an open attack window — Battle Focus (+1 Attack on your attacking unit) or
@@ -6606,6 +6613,15 @@ export type GameEvent =
       message: string;
     }
   | {
+      /** Persistent or combat-active faction engine feedback. */
+      id: string;
+      type: "FACTION_MECHANIC_TRIGGERED";
+      playerId: PlayerId;
+      factionId: FactionId;
+      mechanicId: string;
+      message: string;
+    }
+  | {
       /**
        * Anime Equipment (§3.13): the hero equipped an item into a slot at an
        * outfitter shop. `replacedId` is the item moved back to the bag (null on
@@ -7581,6 +7597,10 @@ export type ResolutionStackItem = {
     schoolPowerBonus?: number;
     attackBonus: number;
     defenseBonus: number;
+    /** Azure formations / Sword Intent and Heavenly Blood Frenzy, latched at declaration. */
+    cultivationAttackBonus?: number;
+    /** Azure Shared Ward, latched at declaration so previews and resolution agree. */
+    cultivationDefenseBonus?: number;
     /**
      * Polish Balance Pack Shield (Power 2): "takes up to 3 damage" — a per-attack
      * damage CAP on the blow this stack item is resolving. Clamped at the shared
@@ -8458,6 +8478,8 @@ export type PlayerState = {
   /** Adventure mode: chosen faction and main hero definition ids. */
   factionId?: FactionId;
   heroDefId?: string;
+  /** Hidden Leaf / MGQ cumulative Otherworld penalty: −1 effective hand limit per Resource round. */
+  otherworldHandLimitLoss?: number;
   /** Personal draw pile. The top of the pile is the last array element. */
   deck: CardId[];
   hand: CardId[];
@@ -8873,6 +8895,10 @@ export type PlayerState = {
    * Absent === 0. PUBLIC (player-view never strips it).
    */
   bankWins?: number;
+  /** Fuyuki City: unspent game-long Command Seals. Absent on Fuyuki means 3. */
+  fuyukiCommandSeals?: number;
+  /** Hidden Leaf Village: persistent Mission Board progress (D→S rank). */
+  hiddenLeafMissionPoints?: number;
   /**
    * The Dungeon (§6.7.3): this player's current floor (1..10, absent === 1).
    * Advanced by one on every floor-fight WIN; the cap floor stays repeatable.
@@ -9297,6 +9323,8 @@ export type CombatUnitState = {
    * a flip. Not doubled and not removable — it is part of the card's stats.
    */
   permanentAttackBonus?: number;
+  /** Combat-only portion earned specifically from Reap the Fallen (capped at +2). */
+  reapAttackBonus?: number;
   /** WOG Ghost: persistent Soul Harvest Health mirrored from its army card. */
   permanentHealthBonus?: number;
   /**
@@ -9388,6 +9416,12 @@ export type CombatUnitState = {
   temporary?: boolean;
   /** Spirit Companion: the combat round after which this temporary familiar vanishes. */
   heroGradeExpiresAfterRound?: number;
+  /**
+   * Heavenly Demon Blood Essence: a real army card may feed the faction meter
+   * only once per combat, whether its Pack side flips or its final Few side is
+   * removed. Synthetic summons never set this flag or grant Essence.
+   */
+  heavenlyDemonEssenceGranted?: boolean;
   /**
    * WOG Commanders module: this unit IS the controller's commander (the value
    * is its CommanderSlug). A commander has no army card, is tierless on both
@@ -9622,8 +9656,27 @@ export type CombatState = {
   defenderPlayerId: PlayerId;
   activeUnitId: UnitId | null;
   context: CombatContext;
+  /** Fuyuki seats that have already spent their one Command Seal this combat. */
+  fuyukiCommandSealUsedPlayerIds?: PlayerId[];
+  /** Azur Lane seats whose one random-unit maintenance damage already fired this combat. */
+  azurLaneMaintenanceDone?: PlayerId[];
   /** Per-side Spirit Shrine choices frozen at setup for this combat. */
   mgqSpirits?: Partial<Record<PlayerId, MgqSpirit>>;
+  /**
+   * Azure Breeze / Heavenly Demon faction engines. The optional record keeps
+   * legacy saves loadable; combat creation stamps only the relevant faction.
+   * Sect Qi and Blood Essence are combat-scoped and never become map economy.
+   */
+  cultivationFactions?: Partial<Record<PlayerId, {
+    sectQi?: number;
+    bloodEssence?: number;
+    swordIntent?: number;
+    bloodFrenzySpentRound?: number;
+    /** Yulian's once-per-round Jade Body recovery. */
+    jadeBodyTemperingRound?: number;
+    /** Shiyan's once-per-round extra Corpse Furnace yield. */
+    corpseFurnaceSurgeRound?: number;
+  }>>;
   /** MGQ heroes who paid this combat's mandatory 1-card Spirit summon cost. */
   mgqSpiritCostPaidPlayerIds?: PlayerId[];
   /**

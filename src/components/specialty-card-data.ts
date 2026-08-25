@@ -70,6 +70,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // from its commissioned card art (scripts/build-anime-town-icons.mjs).
   bin: "/assets/anime/units/portraits/fuyuki-sabers.webp", // Sabers (Fuyuki)
   qingyun: "/assets/anime/units/portraits/azure-breeze-true-inheritors.webp", // True Inheritors (Azure Breeze)
+  jianxu: "/assets/anime/icons/cultivation/sect-qi.webp",
+  yulian: "/assets/anime/icons/cultivation/foundation-establishment.webp",
   // Hidden Leaf might specialists — signature unit portraits cropped from the
   // commissioned unit cards (scripts/build-hidden-leaf-unit-cards.mjs).
   naruto: "/assets/anime/units/portraits/hidden-leaf-jinchuriki.webp", // Jinchuriki
@@ -99,6 +101,8 @@ export const SPECIALTY_ICON_BY_HERO: Record<string, string> = {
   // cleanse clone, like Aoko) shows the Cure spell icon.
   yaoji: "/assets/specialty-card/icon-first_aid.webp",
   molian: "/assets/specialty-card/icon-cure.webp",
+  luohun: "/assets/anime/equipment/ten_thousand_souls_banner.webp",
+  shiyan: "/assets/anime/icons/cultivation/blood-essence.webp",
   // Little Busters — generated transparent emblems double as clean native-card
   // specialty symbols. Kud's rocket-science crest replaces the unrelated frost icon.
   sasami_sasasegawa: "/assets/anime/icons/little-busters/rank-softball-club.webp",
@@ -197,6 +201,7 @@ export const FACTION_ACCENT: Record<string, string> = {
   // the same town tint as the hero board / commander chrome.
   fuyuki: "#7256d8",
   azure_breeze: "#27a9a0",
+  heavenly_demon: "#8b1a2b",
   azur_lane: "#2f6fc1"
 };
 

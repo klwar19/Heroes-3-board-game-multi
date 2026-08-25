@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="743" height="1040" viewBox="0 0 743 1040">
   <title>Azure Breeze Sect True Inheritors PACK art proof</title>
-  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-golden-true-inheritors-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="5" data-variant="pack" data-attack="5" data-defense="2" data-health="6" data-initiative="7" data-traits="GROUND,MELEE" data-rule-capacity-lines="7"/>
+  <metadata data-status="art-proof-not-playable" data-layout="ninefold-board-game-classic-v3" data-source="docs/anime-mod-plan.md" data-master="units-azure-breeze-silver-true-inheritors-master.png" data-frame="units-azure-breeze-board-game-frame-master.png" data-level="5" data-variant="pack" data-attack="4" data-defense="2" data-health="5" data-initiative="7" data-traits="GROUND,MELEE" data-rule-capacity-lines="7"/>
   <defs>
     <linearGradient id="variantBand" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#4a2d1d"/><stop offset=".52" stop-color="#29170f"/><stop offset="1" stop-color="#1a0d09"/></linearGradient>
     <filter id="textShadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur in="SourceAlpha" stdDeviation="2"/><feOffset dy="2"/><feComponentTransfer><feFuncA type="linear" slope=".8"/></feComponentTransfer><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -22,7 +22,7 @@
 
   <g inkscape:groupmode="layer" inkscape:label="02 Illustration (linked master)" id="layer-art" clip-path="url(#paintingClip)">
     <rect x="173" y="157" width="509" height="597" fill="#1c100b"/>
-    <image id="linked-master" x="173" y="157" width="509" height="597" preserveAspectRatio="xMidYMid slice" href="../../../raw/azure-breeze/units/units-azure-breeze-golden-true-inheritors-master.png" xlink:href="../../../raw/azure-breeze/units/units-azure-breeze-golden-true-inheritors-master.png"/>
+    <image id="linked-master" x="173" y="157" width="509" height="597" preserveAspectRatio="xMidYMid slice" href="../../../raw/azure-breeze/units/units-azure-breeze-silver-true-inheritors-master.png" xlink:href="../../../raw/azure-breeze/units/units-azure-breeze-silver-true-inheritors-master.png"/>
   </g>
 
   <g inkscape:groupmode="layer" inkscape:label="03 Classic board-game alignment panels" id="layer-frame">
@@ -38,7 +38,7 @@
       <path d="M24-23-21 22M16-28l13 13-12 1M-15 28l-13-13 12-1"/>
       <path d="m-10 17-7 11M10 17l7 11" stroke="#8ab39a"/>
     </g>
-      <text x="118" y="274" class="statNumber">5</text>
+      <text x="118" y="274" class="statNumber">4</text>
     </g><g id="stat-defense">
       <g id="icon-defense-jade-shield" transform="translate(118 353)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
       <path d="M0-30 27-20V1c0 22-11 37-27 45C-16 38-27 23-27 1v-21z" fill="#183d35" stroke="#dce4c5"/>
@@ -51,7 +51,7 @@
       <path d="M-11-29H11V-11H29V11H11V29H-11V11H-29V-11H-11Z" fill="#d7d7a4" stroke="#f2e7bd"/>
       <path d="M0 18C-7 10-15 8-20 9-17 1-10-5 0-10 10-5 17 1 20 9 15 8 7 10 0 18Z" fill="#4f846d" stroke="#315f50" stroke-width="2.5"/>
     </g>
-      <text x="118" y="570" class="statNumber">6</text>
+      <text x="118" y="570" class="statNumber">5</text>
     </g><g id="stat-initiative">
       <g id="icon-initiative-cloud-step" transform="translate(118 649)" fill="none" stroke="#dce4c5" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#iconShadow)">
     <circle cx="10" cy="-22" r="7" fill="#dce4c5"/>
@@ -65,8 +65,8 @@
       <text x="232" y="190" class="typeLabel">GROUND</text>
     </g>
     <g id="tier-star" transform="translate(648 101)">
-      <path d="m0-27 7 18 20 1-15 12 5 20-17-11-17 11 5-20-15-12 20-1z" fill="#ffe39a" stroke="#513313" stroke-width="2.5" filter="url(#iconShadow)"/>
-      <text x="0" y="42" class="smallcaps" fill="#ffe39a" font-size="11" text-anchor="middle" filter="url(#textShadow)">LV 5</text>
+      <path d="m0-27 7 18 20 1-15 12 5 20-17-11-17 11 5-20-15-12 20-1z" fill="#e8edf5" stroke="#303747" stroke-width="2.5" filter="url(#iconShadow)"/>
+      <text x="0" y="42" class="smallcaps" fill="#e8edf5" font-size="11" text-anchor="middle" filter="url(#textShadow)">LV 5</text>
     </g>
   </g>
 

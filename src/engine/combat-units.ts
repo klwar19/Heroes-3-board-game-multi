@@ -18,6 +18,7 @@ import { createSeededRandom } from "./random";
 import { commanderArtifactBonusesForUnit } from "./commander-artifacts";
 import { applyUnitCurrentSide, topTransform } from "./unit-transforms";
 import { NEUTRAL_PLAYER_ID } from "./state";
+import { gainBloodEssenceFromCasualty } from "./wuxia-factions";
 import type { ActiveEffectState, CombatState, CombatUnitState, GameState, PlayerId, UnitId } from "./state";
 
 /**
@@ -352,6 +353,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
         unitName: unit.name,
         excessDamage: Math.max(0, excess)
       });
+      gainBloodEssenceFromCasualty(state, unit);
 
       if (unit.damage < unit.maxHealth) {
         return;
@@ -375,6 +377,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
     unitId: unit.id,
     playerId: unit.controllerId
   });
+  gainBloodEssenceFromCasualty(state, unit);
 
   // Clone Spell: "A Clone is removed from the Combat Board if its original unit
   // is removed from the Combat Board." Any Clone Token copying this unit goes
@@ -424,7 +427,7 @@ export function markUnitRemovedIfNeeded(state: GameState, unit: CombatUnitState)
 /**
  * Heavenly Demon Palace "Reap the Fallen" (ATTACK_BUFF_ON_ADJACENT_REMOVAL): when
  * `removed` leaves the Combat Board, every LIVING unit adjacent to it carrying the
- * trait gains its `amount` Attack for the rest of the combat. The bonus is baked
+ * trait gains its `amount` Attack for the rest of the combat, to a +2 cap. The bonus is baked
  * onto the reaper's combat `permanentAttackBonus` (so it survives a Pack→Few flip,
  * like the Gelu buff) and mirrored onto `attack` for immediate reads; it is NOT
  * written to the army card, so it is strictly combat-scoped. Buffing Attack causes
@@ -440,13 +443,16 @@ function applyReapTheFallenOnRemoval(state: GameState, removed: CombatUnitState)
     if (!reap || reap.amount <= 0) {
       continue;
     }
-    neighbour.permanentAttackBonus = (neighbour.permanentAttackBonus ?? 0) + reap.amount;
-    neighbour.attack += reap.amount;
+    const gained = Math.min(reap.amount, Math.max(0, 2 - (neighbour.reapAttackBonus ?? 0)));
+    if (gained <= 0) continue;
+    neighbour.reapAttackBonus = (neighbour.reapAttackBonus ?? 0) + gained;
+    neighbour.permanentAttackBonus = (neighbour.permanentAttackBonus ?? 0) + gained;
+    neighbour.attack += gained;
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
       unitId: neighbour.id,
       abilityId: reap.abilityId,
-      message: `${neighbour.cardName} reaps ${removed.cardName} and gains +${reap.amount} Attack for the rest of the combat.`
+      message: `${neighbour.cardName} reaps ${removed.cardName} and gains +${gained} Attack (${neighbour.reapAttackBonus}/2 this combat).`
     });
   }
 }

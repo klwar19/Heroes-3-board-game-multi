@@ -1176,7 +1176,7 @@ describe("anime.heroGrades — grade-name registers", () => {
     expect(heroGradeRegisterKey(mixed, "p1")).toBe("isekai");
     expect(heroGradeLabel(mixed, "p1", 1).en).toBe("Rank C");
     expect(heroGradeRegisterKey(mixed, "p2")).toBe("xianxia");
-    expect(heroGradeLabel(mixed, "p2", 1).vi).toBe("Cao Thủ");
+    expect(heroGradeLabel(mixed, "p2", 1).vi).toBe("Trúc Cơ");
   });
 
   it("azur_lane wears the bespoke kansen register even in an isekai-only game (hidden_leaf CONTROL stays isekai)", () => {
@@ -1238,13 +1238,13 @@ describe("anime.heroGrades — grade-name registers", () => {
     );
     // (a) heavenly_demon → modao; grade-3 label is the top demonic title.
     expect(heroGradeRegisterKey(xianxiaOnly, "p1")).toBe("modao");
-    expect(heroGradeLabel(xianxiaOnly, "p1", 0).en).toBe("Blood Adept");
-    expect(heroGradeLabel(xianxiaOnly, "p1", 3).en).toBe("Heavenly Demon");
-    expect(heroGradeLabel(xianxiaOnly, "p1", 3).vi).toBe("Thiên Ma");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 0).en).toBe("Blood Refinement");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 3).en).toBe("Demon Soul");
+    expect(heroGradeLabel(xianxiaOnly, "p1", 3).vi).toBe("Ma Anh");
     // (b) CONTROL: azure_breeze in the SAME game keeps the PLAIN xianxia register —
     // the bespoke branch is faction-scoped, not table-wide.
     expect(heroGradeRegisterKey(xianxiaOnly, "p2")).toBe("xianxia");
-    expect(heroGradeLabel(xianxiaOnly, "p2", 1).vi).toBe("Cao Thủ");
+    expect(heroGradeLabel(xianxiaOnly, "p2", 1).vi).toBe("Trúc Cơ");
   });
 
   it("heavenly_demon stays modao in a both-packages game (bespoke override + family map agree)", () => {

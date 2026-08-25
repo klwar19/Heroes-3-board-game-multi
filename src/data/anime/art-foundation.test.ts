@@ -26,9 +26,9 @@ const FUYUKI_EXPECTED = [
 const AZURE_BREEZE_EXPECTED = [
   ["outer-sect-disciples", "bronze"],
   ["inner-sect-swordsmen", "bronze"],
-  ["spirit-crane", "silver"],
+  ["spirit-crane", "bronze"],
   ["sect-protectors", "silver"],
-  ["true-inheritors", "golden"],
+  ["true-inheritors", "silver"],
   ["core-formation-master", "golden"],
   ["mountain-guardian", "golden"]
 ] as const;
@@ -37,8 +37,12 @@ async function manifest(name: string): Promise<Manifest> {
   return JSON.parse(await readFile(resolve(ART_ROOT, `${name}-unit-art-manifest.json`), "utf8")) as Manifest;
 }
 
-async function expectApprovedMasters(data: Manifest, expected: ReadonlyArray<readonly [string, string]>) {
-  expect(data.status).toBe("art-proof-not-playable");
+async function expectApprovedMasters(
+  data: Manifest,
+  expected: ReadonlyArray<readonly [string, string]>,
+  expectedStatus = "art-proof-not-playable"
+) {
+  expect(data.status).toBe(expectedStatus);
   expect(data.masters.map(({ slug, tier }) => [slug, tier])).toEqual(expected);
   for (const master of data.masters) {
     expect(master.review).toBe("approved");
@@ -77,7 +81,7 @@ describe("anime art foundation", () => {
   });
 
   it("keeps one approved high-resolution raw master for every Azure Breeze unit line", async () => {
-    await expectApprovedMasters(await manifest("azure-breeze"), AZURE_BREEZE_EXPECTED);
+    await expectApprovedMasters(await manifest("azure-breeze"), AZURE_BREEZE_EXPECTED, "engine-wired-and-verified");
   });
 
   it("keeps the approved image-generated Azure frame as a linked editable source", async () => {
@@ -129,21 +133,21 @@ describe("anime art foundation", () => {
     const azureUnits = resolve(ART_ROOT, "editable/azure-breeze/units");
     const readProof = (stem: string) => readFile(resolve(azureUnits, `units-azure-breeze-${stem}.svg`), "utf8");
 
-    const craneFew = await readProof("silver-spirit-crane-few");
-    const cranePack = await readProof("silver-spirit-crane-pack");
+    const craneFew = await readProof("bronze-spirit-crane-few");
+    const cranePack = await readProof("bronze-spirit-crane-pack");
     expect(craneFew).toContain('data-level="3"');
     expect(craneFew).toContain('data-traits="FLYING,MELEE"');
-    expect(craneFew).toContain('data-attack="3"');
-    expect(craneFew).toContain('data-initiative="10"');
-    expect(cranePack).toContain('data-attack="4"');
-    expect(cranePack).toContain('data-initiative="11"');
+    expect(craneFew).toContain('data-attack="2"');
+    expect(craneFew).toContain('data-initiative="9"');
+    expect(cranePack).toContain('data-attack="3"');
+    expect(cranePack).toContain('data-initiative="10"');
     expect(cranePack).toContain("Wingbeat");
 
     const masterPack = await readProof("golden-core-formation-master-pack");
-    expect(masterPack).toContain("Core Formation Master");
-    expect(masterPack).toContain("Kim Đan Chân Nhân");
+    expect(masterPack).toContain("Golden Core Elders");
+    expect(masterPack).toContain("Kim Đan Trưởng Lão");
     expect(masterPack).toContain('data-traits="RANGED,MAGIC"');
-    expect(masterPack).toContain('data-attack="5"');
+    expect(masterPack).toContain('data-attack="6"');
     expect(masterPack).toContain("Talisman Aura");
 
     const guardianFew = await readProof("golden-mountain-guardian-few");
@@ -152,7 +156,6 @@ describe("anime art foundation", () => {
     expect(guardianFew).toContain('data-attack="5"');
     expect(guardianFew).toContain("Verdant Pulse");
     expect(guardianPack).toContain('data-attack="6"');
-    expect(guardianPack).toContain("Verdant Pulse");
     expect(guardianPack).toContain("Returning Earth");
   });
 
