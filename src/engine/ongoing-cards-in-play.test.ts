@@ -183,7 +183,7 @@ describe("ongoing cards — a boost-prompt card is held in play (Fortune, map)",
       target: { type: "none" }
     });
     const prompted =
-      played.pendingChoice?.type === "OPTION_CHOICE" && played.pendingChoice.context === "fortune-boost";
+      played.pendingChoice?.type === "OPTION_CHOICE" && played.pendingChoice.context === "map-spell-boost";
     return { before, after: settleOwnChoices(played), prompted };
   }
 

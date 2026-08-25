@@ -636,12 +636,12 @@ export const spellCards: CardLibrary = {
         { label: "Save a bronze unit", effect: { type: "CANCEL_LETHAL_ATTACK", grade: "bronze" } },
         {
           label: "Save a silver unit (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           effect: { type: "CANCEL_LETHAL_ATTACK", grade: "silver" }
         },
         {
           label: "Save a gold unit (pay 4 Power)",
-          cost: { discardCards: 4, costCardFilter: "power-source" },
+          cost: { powerCost: 4, costCardFilter: "power-source" },
           effect: { type: "CANCEL_LETHAL_ATTACK", grade: "gold" }
         }
       ]
@@ -701,13 +701,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Redirect to a bronze or silver unit (pay 1 Power)",
-          cost: { discardCards: 1, costCardFilter: "power-source" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
           effect: { type: "REDIRECT_SPELL", grade: "silver" }
         },
         {
           label: "Redirect to a bronze, silver, or gold unit (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "SPELL_CAST_STARTED", controller: "opponent" },
           effect: { type: "REDIRECT_SPELL", grade: "gold" }
         }
@@ -1968,13 +1968,13 @@ export const spellCards: CardLibrary = {
         },
         {
           label: "Negate a silver unit's attack (pay 1 Power)",
-          cost: { discardCards: 1, costCardFilter: "power-source" },
+          cost: { powerCost: 1, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
           effect: { type: "NEGATE_ATTACK", grade: "silver" }
         },
         {
           label: "Negate a gold unit's attack (pay 2 Power)",
-          cost: { discardCards: 2, costCardFilter: "power-source" },
+          cost: { powerCost: 2, costCardFilter: "power-source" },
           trigger: { event: "UNIT_ATTACK_DECLARED", controller: "opponent" },
           effect: { type: "NEGATE_ATTACK", grade: "gold" }
         }

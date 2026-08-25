@@ -52,6 +52,12 @@ export const UI_ART_SLOTS = {
     alt: "Weathered parchment map of Erathia",
     size: "1920x1080 full-bleed, low contrast (room list is overlaid)"
   },
+  /** Dedicated humans-vs-computers Co-op lobby and war-room backdrop. */
+  "coop-backdrop": {
+    src: "/assets/ui/coop/coop-mounted-party-v2.webp",
+    alt: "Four allied heroes on horseback ride together beneath a purple-blue star-filled sky",
+    size: "1672x936 full-bleed, four mounted heroes in the lower third"
+  },
   /** Full-bleed backdrop behind loading screens (room join, map entry). */
   "loading-backdrop": {
     src: "/assets/ui/layout/cover.jpg",

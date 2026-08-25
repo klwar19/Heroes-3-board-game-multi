@@ -39,6 +39,7 @@ import {
 } from "./field-overrides";
 import {
   beginFieldVisit,
+  createSecondaryHero,
   getMainHero,
   getTileFootprintSpaceIds,
   makeCombatUnitFromArmy,
@@ -406,6 +407,19 @@ describe("Emerald Tower (wog.emerald_tower)", () => {
 
     visit(state);
     expect(menu(state).options.some((o) => o.label.includes("unit XP"))).toBe(false);
+  });
+
+  it("a Secondary Hero is never offered the paid main-Hero XP arm", () => {
+    const state = wogGame({ seed: "emerald-secondary" });
+    injectField(state, "wog.emerald_tower");
+    getMainHero(state, "p1")!.spaceId = null;
+    const secondary = createSecondaryHero(state, "p1", FIELD_ID);
+
+    beginFieldVisit(state, secondary.id, FIELD_ID, false);
+
+    expect(menu(state).options.map((option) => option.label)).not.toContain(
+      "Pay 2 gold: your main Hero gains 1 experience"
+    );
   });
 });
 
@@ -1376,6 +1390,23 @@ describe("Altar of the Gods (wog.altar_of_gods)", () => {
     const resolves = getLegalActions(state, "p1").filter((a) => a.action.type === "RESOLVE_VISIT_STEP");
     expect(resolves.some((a) => (a.action as { optionIndex?: number }).optionIndex !== undefined)).toBe(false);
     expect(resolves.some((a) => (a.action as { decline?: boolean }).decline === true)).toBe(true);
+  });
+
+  it("a Secondary Hero cannot pay or sacrifice for an Experience reward it is forbidden to receive", () => {
+    const state = wogGame({ seed: "altar-secondary" });
+    injectField(state, "wog.altar_of_gods");
+    getMainHero(state, "p1")!.spaceId = null;
+    const secondary = createSecondaryHero(state, "p1", FIELD_ID);
+
+    beginFieldVisit(state, secondary.id, FIELD_ID, false);
+
+    const altar = menu(state);
+    expect(altar.options.some((option) => option.label.startsWith("Greater sacrifice"))).toBe(false);
+    const offering = altar.options.find((option) => option.label.startsWith("Make an offering"))!;
+    const payStep = offering.steps[0] as Extract<VisitStep, { type: "PAY_TO" }>;
+    const blessings = payStep.steps[0] as Extract<VisitStep, { type: "CHOOSE_ONE" }>;
+    expect(blessings.options.some((option) => /experience/i.test(option.label))).toBe(false);
+    expect(blessings.options.some((option) => /morale/i.test(option.label))).toBe(true);
   });
 });
 

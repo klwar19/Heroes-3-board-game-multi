@@ -40,6 +40,7 @@ import {
   armyTierCoversGuardField,
   canBeatCreatureBank,
   isPremiumEconomyField,
+  playerArmyStrength,
   premiumEconomyWorthStaging,
   shouldAssaultEnemyHolding,
   shouldEngageEnemy,
@@ -604,6 +605,28 @@ function objectiveKind(
   const ownedByUs =
     field.flagOwnerId === playerId ||
     Boolean(field.extraFlagOwnerIds?.includes(playerId));
+
+  // PvE module sites are revisitable by design, so the generic category path
+  // below does not claim them. Once the same strength gate used by the visit
+  // policy says the fight is viable, deliberately march to the live site.
+  const dungeonSite = state.adventure?.dungeonSite;
+  if (
+    field.location === "dungeon_gate" &&
+    dungeonSite?.fieldId === field.spaceId &&
+    playerArmyStrength(state, playerId) >= 4
+  ) {
+    return "visitable";
+  }
+  if (
+    field.location === "rift_lair" &&
+    field.riftLair &&
+    playerArmyStrength(state, playerId) >= 8
+  ) {
+    const raid = state.adventure?.raidBosses?.[field.riftLair];
+    if (raid && raid.fieldId === field.spaceId && !raid.slainBy && raid.layersLeft > 0) {
+      return "visitable";
+    }
+  }
 
   // Enemy-flagged holdings (no enemy hero on the hex):
   //  - bare mines / flaggables re-flag for free → always worth taking

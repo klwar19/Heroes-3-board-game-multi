@@ -27,7 +27,8 @@ import {
   type GameMode,
   type GameSessionMode,
   type GameState,
-  type PlayerId
+  type PlayerId,
+  type TableGameMode
 } from "@/engine";
 import {
   applyHumanComputerAdvance,
@@ -95,6 +96,8 @@ export type RoomResetOptions = {
   players?: AdventurePlayerConfig[];
   sessionMode?: GameSessionMode;
   computerOpponents?: number;
+  /** Clash (default) or the humans-vs-computers Co-op table. */
+  gameMode?: TableGameMode;
 };
 
 export type RoomCreateOptions = RoomResetOptions & {
@@ -263,8 +266,13 @@ function makeRoom(roomId: string, options: RoomCreateOptions = {}): GameRoomReco
           })
         : // New adventure rooms open in the map-setup lobby: players pick
           // factions and heroes, then the scenario map builds itself.
-          createAdventureLobbyState({ seed, scenarioId: options.scenarioId, sessionMode,
-            computerOpponents });
+          createAdventureLobbyState({
+            seed,
+            scenarioId: options.scenarioId,
+            sessionMode,
+            computerOpponents,
+            gameMode: options.gameMode
+          });
 
   // A name and/or match type chosen at creation seeds a room membership record
   // so the lobby shows them before anyone joins; JOIN_ROOM then fills in

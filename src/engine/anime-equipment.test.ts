@@ -23,7 +23,7 @@ import {
   type GameState,
   type PlayerId
 } from "./index";
-import { beginFieldVisit, refreshRoundTokens, startAdventureRound } from "./adventure";
+import { beginFieldVisit, getHeroMovementCapabilities, refreshRoundTokens, startAdventureRound } from "./adventure";
 import { finalizeAdventureCombat, startNeutralEncounter } from "./adventure-reducer";
 import { finishCombatIfNeeded } from "./combat-units";
 import { scoreMapAction } from "./computer/map-policy";
@@ -683,6 +683,16 @@ describe("anime.equipment — outfitter context hide rule (never a dead purchase
     expect(on.some((label) => label.includes("Spirit Crane Mount"))).toBe(true);
   });
 
+  it("Spirit Crane grants no undocumented blocker or sealed-border traversal", () => {
+    const state = adventure("eq-crane-movement", EQUIP_ON, { wog: { ...WOG_COMMANDERS_ON } });
+    equip(state, "p1", "mount", EQUIPMENT_IDS.spiritCraneMount);
+    const hero = getMainHero(state, "p1")!;
+
+    const capabilities = getHeroMovementCapabilities(state, hero);
+    expect(capabilities.moveThrough).toBe(false);
+    expect(Boolean(capabilities.crossSealedBorders)).toBe(false);
+  });
+
   it("Veteran's Standard is HIDDEN while Unit Experience is off, SHOWN when on (CONTROL)", () => {
     const off = blacksmithLabels(adventure("eq-vet-ctx-off"));
     expect(off.some((label) => label.includes("Veteran's Standard"))).toBe(false);
@@ -984,6 +994,21 @@ describe("anime.equipment — Neon Microphone (weapon)", () => {
     // After the charge is spent, standing Power drops back.
     withMic.players.p1.combatStats.equipmentFirstSpellPowerUsed = true;
     expect(standingSpellPower(withMic, "p1", arrow)).toBe(baseline);
+  });
+
+  it("stacks first-spell Power across the weapon and accessory slots", () => {
+    const state = combat("eq-first-spell-distinct-slots");
+    const arrow = cardLibrary["spell.magic_arrow"];
+    const baseline = standingSpellPower(state, "p1", arrow);
+    equip(state, "p1", "weapon", EQUIP_ID_MIC);
+    equip(state, "p1", "accessory", EQUIPMENT_IDS.demonHeartRelic);
+
+    expect(equipmentFirstSpellPowerBonus(state, "p1")).toBe(2);
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline + 2);
+
+    state.players.p1.combatStats.equipmentFirstSpellPowerUsed = true;
+    expect(equipmentFirstSpellPowerBonus(state, "p1")).toBe(0);
+    expect(standingSpellPower(state, "p1", arrow)).toBe(baseline);
   });
 
   it("module OFF / not equipped → no first-spell bonus (CONTROL)", () => {

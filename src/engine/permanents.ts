@@ -31,6 +31,27 @@ import type {
   WarMachineRoundStartDefinition
 } from "./state";
 
+/**
+ * The window-banked School expert Power (+3 from a discarded School of Magic
+ * permanent) usable by THIS spell: the printed card grants the bonus to a
+ * matching-school Spell only, so a Fire commit never pays or scales an Earth
+ * cast. One shared read for the cost gates (payOptionCardCost /
+ * canAffordCardCost) and the cost-picker UI, so the offer, the payment and the
+ * display can never disagree.
+ */
+export function committedSchoolExpertPower(
+  window: Pick<NonNullable<GameState["reactionWindow"]>, "schoolExpertPowerByPlayer"> | null | undefined,
+  playerId: PlayerId,
+  spellCard: CardDefinition | undefined
+): number {
+  const bank = window?.schoolExpertPowerByPlayer?.[playerId];
+  if (!bank || !spellCard || spellCard.kind !== "spell") {
+    return 0;
+  }
+  const schools = spellCard.spellSchools ?? [];
+  return schools.includes("any") || schools.includes(bank.school) ? bank.power : 0;
+}
+
 /** The four elemental Magic schools (Magic Arrow's "any" picks among these). */
 export type ElementalSchool = Exclude<SpellSchool, "any">;
 

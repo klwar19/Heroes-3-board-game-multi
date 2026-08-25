@@ -221,7 +221,6 @@ const RECRUIT_DISCOUNT_ITEMS = [EQUIPMENT_IDS.hornOfPlenty] as const;
 const FREE_DRILL_ITEMS = [EQUIPMENT_IDS.littleBustersGlassMarbles] as const;
 const SEARCH_BONUS_ITEMS = [EQUIPMENT_IDS.supplySatchel] as const;
 const IGNORE_EMBARK_PENALTY_ITEMS = [EQUIPMENT_IDS.coursersBarding] as const;
-const MOVE_THROUGH_BLOCKERS_ITEMS = [EQUIPMENT_IDS.spiritCraneMount] as const;
 const END_TURN_STEP_ITEMS = [EQUIPMENT_IDS.pathfindersBoots] as const;
 const FREE_DISCOVERY_ITEMS = [EQUIPMENT_IDS.surveyorsLens] as const;
 const START_IN_TOWN_MOVEMENT_ITEMS = [EQUIPMENT_IDS.hearthboundHorseshoe] as const;
@@ -264,9 +263,10 @@ export function equipmentSpellPowerBonus(state: GameState, playerId: PlayerId): 
 }
 
 /**
- * Neon Microphone (weapon): +1 Power on the owner's FIRST Spell each combat.
- * Folded at standingSpellPower for spells only; the charge is consumed when a
- * spell cast resolves (`markEquipmentFirstSpellCast`).
+ * +1 Power per equipped first-spell item on the owner's FIRST Spell each combat.
+ * Accessory variants cannot stack with each other because they share a slot,
+ * while Neon Microphone can stack with one of them because it is a weapon.
+ * The shared charge is consumed when a spell cast resolves.
  */
 export function equipmentFirstSpellPowerBonus(state: GameState, playerId: PlayerId): number {
   if (!equipmentEnabled(state)) {
@@ -281,10 +281,10 @@ export function equipmentFirstSpellPowerBonus(state: GameState, playerId: Player
   if (state.players[playerId]?.combatStats.equipmentFirstSpellPowerUsed) {
     return 0;
   }
-  return 1;
+  return countEquipment(state, playerId, FIRST_SPELL_POWER_ITEMS);
 }
 
-/** Consume the Neon Microphone first-spell charge after a spell cast lands. */
+/** Consume the equipment first-spell charge after a spell cast lands. */
 export function markEquipmentFirstSpellCast(state: GameState, playerId: PlayerId): void {
   if (equipmentFirstSpellPowerBonus(state, playerId) <= 0) {
     return;
@@ -573,10 +573,6 @@ export function equipmentSearchCountBonus(state: GameState, playerId: PlayerId):
 
 export function equipmentIgnoresEmbarkPenalty(state: GameState, playerId: PlayerId): boolean {
   return playerHasAnyEquipment(state, playerId, IGNORE_EMBARK_PENALTY_ITEMS);
-}
-
-export function equipmentMovesThroughBlockers(state: GameState, playerId: PlayerId): boolean {
-  return playerHasAnyEquipment(state, playerId, MOVE_THROUGH_BLOCKERS_ITEMS);
 }
 
 export function equipmentEndTurnStepAvailable(state: GameState, playerId: PlayerId): boolean {

@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     players: body?.players,
     sessionMode: body?.sessionMode,
     computerOpponents: body?.computerOpponents,
+    gameMode: body?.gameMode === "coop" ? "coop" : body?.gameMode === "clash" ? "clash" : undefined,
     ...(typeof body?.ranked === "boolean" ? { ranked: body.ranked } : {})
   });
 

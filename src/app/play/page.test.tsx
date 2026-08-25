@@ -83,6 +83,9 @@ describe("/play (multiplayer room browser)", () => {
       createdByName: "Binh",
       mode: "adventure",
       ranked: false,
+      // The /play lane explicitly claims the Clash table identity so the
+      // built-in backend seeds it and the /coop lane's directory filter holds.
+      gameMode: "clash",
       // Ranked forces a closed table; a Normal room carries the explicit choice
       // (default Open) so the edge seeds the same hosting the client applies.
       hosted: false

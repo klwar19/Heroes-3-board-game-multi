@@ -204,6 +204,35 @@ describe("Sorrow", () => {
     expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
   });
 
+  it("lets an in-play Earth Magic expert open and pay the stack-less silver Sorrow window", () => {
+    const base = createInitialGameState("sorrow-school-expert");
+    base.players.p1.hand = ["spell.sorrow"];
+    base.players.p1.permanents = ["ability.earth_magic"];
+    base.players.p2.hand = [];
+    base.activePlayerId = "p1";
+    base.combat!.activeUnitId = "unit_p1_griffins";
+    for (const unit of Object.values(base.combat!.units)) {
+      unit.activatedThisRound = unit.id !== "unit_p1_griffins" && unit.id !== "unit_p2_vampires";
+    }
+    let state = applyOk(base, { type: "DEFEND_UNIT", playerId: "p1", unitId: "unit_p1_griffins" });
+
+    expect(state.reactionWindow, "School expert itself opens the Sorrow timing window").toBeTruthy();
+    expect(reactionFor(state, "p1", "spell.sorrow", 1)).toBeUndefined();
+    const expert = getLegalActions(state, "p1").find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+    state = applyOk(state, expert!.action);
+
+    const silver = reactionFor(state, "p1", "spell.sorrow", 1);
+    expect(silver, "+3 committed Power makes the silver option free of hand payments").toBeTruthy();
+    state = applyOk(state, silver!.action);
+    expect(state.combat!.units.unit_p2_vampires.activatedThisRound).toBe(true);
+    expect(state.players.p1.permanents).not.toContain("ability.earth_magic");
+    expect(state.players.p1.discard).toContain("ability.earth_magic");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+  });
+
   it("skips a gold unit by paying the option's 4 Power cost", () => {
     let state = aboutToActivate("unit_p2_dread_knights", [
       "spell.sorrow",

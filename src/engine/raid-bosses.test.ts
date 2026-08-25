@@ -5,7 +5,7 @@ import {
   type GameAction,
   type GameState
 } from "./index";
-import { beginFieldVisit, startAdventureRound } from "./adventure";
+import { beginFieldVisit, spawnRaidBossOnField, startAdventureRound } from "./adventure";
 import { DEFENDER_BACKLINE, finalizeAdventureCombat, pumpAdventureQueues } from "./adventure-reducer";
 import { markUnitRemovedIfNeeded } from "./combat-units";
 import { RAID_BOSSES, type RaidBossDefinition } from "@/data/anime/bosses";
@@ -126,6 +126,51 @@ describe("Raid Bosses — spawn schedule", () => {
     expect(def).toBeTruthy();
     expect(record.layersLeft).toBe(def.layers);
     expect(state.eventLog.some((event) => event.type === "RAID_BOSS_SPAWNED")).toBe(true);
+  });
+
+  it("replaces stale rewards, ownership, and designed guards without changing terrain borders", () => {
+    const state = raidGame("raid-clean-conversion");
+    const field = Object.values(state.adventure!.fields).find(
+      (candidate) => candidate.location !== "town"
+    )!;
+    Object.assign(field, {
+      difficulty: 6,
+      resource: "gold",
+      amount: 9,
+      faction: "castle",
+      flagOwnerId: "p2",
+      extraFlagOwnerIds: ["p1"],
+      everFlagged: true,
+      settlementResource: "valuables",
+      grailDiggable: true,
+      grailConverted: true,
+      customGuardUnits: ["neutral.ancient-behemoth"],
+      customGuardLevel: 6,
+      designedGuard: true,
+      breakField: true,
+      terrain: "water",
+      borderEdges: [1, 3]
+    });
+
+    spawnRaidBossOnField(state, field, "goblin_king");
+
+    expect(field.location).toBe("rift_lair");
+    expect(field.difficulty).toBeUndefined();
+    expect(field.customGuardUnits).toBeUndefined();
+    expect(field.customGuardLevel).toBeUndefined();
+    expect(field.designedGuard).toBeUndefined();
+    expect(field.breakField).toBeUndefined();
+    expect(field.resource).toBeUndefined();
+    expect(field.amount).toBeUndefined();
+    expect(field.faction).toBeUndefined();
+    expect(field.flagOwnerId).toBeNull();
+    expect(field.extraFlagOwnerIds).toBeUndefined();
+    expect(field.everFlagged).toBe(false);
+    expect(field.settlementResource).toBeNull();
+    expect(field.grailDiggable).toBeUndefined();
+    expect(field.grailConverted).toBeUndefined();
+    expect(field.terrain).toBe("water");
+    expect(field.borderEdges).toEqual([1, 3]);
   });
 
   it("the lobby chooses round 4/5/6 arrival, while a designed map's round wins", () => {
@@ -370,6 +415,29 @@ describe("Raid Bosses — the lair fight", () => {
     expect(fought.players.p1.resources.gold).toBe(goldBefore + 2);
     expect(record.layerBreaks.p1).toBe(1);
     expect(fought.eventLog.some((event) => event.type === "RAID_BOSS_LAYER_BROKEN")).toBe(true);
+  });
+
+  it("pays the final body bar exactly once before the separate kill reward", () => {
+    const state = raidGame("raid-final-layer-pay");
+    const { instanceId, fieldId } = spawnLair(state);
+    const fought = challengeLair(state, fieldId);
+    const record = fought.adventure!.raidBosses![instanceId];
+    const def = RAID_BOSSES[record.defId];
+    const boss = makeRaidBossCombatUnit(def, 1, "boss_final_probe", DEFENDER_BACKLINE[1]);
+    fought.combat!.units[boss.id] = boss;
+    const goldBefore = fought.players.p1.resources.gold;
+
+    boss.damage = boss.maxHealth;
+    markUnitRemovedIfNeeded(fought, boss);
+    markUnitRemovedIfNeeded(fought, boss); // removal re-check must not duplicate the bounty
+
+    expect(fought.players.p1.resources.gold).toBe(goldBefore + RAID_BOSS_LAYER_BREAK_GOLD);
+    expect(record.layerBreaks.p1).toBe(1);
+    expect(
+      fought.eventLog.filter(
+        (event) => event.type === "RAID_BOSS_LAYER_BROKEN" && event.layersLeft === 0
+      )
+    ).toHaveLength(1);
   });
 
   it("the KILL pays 5 gold + a relic-tier Artifact search and clears the lair; a later visit is inert", () => {

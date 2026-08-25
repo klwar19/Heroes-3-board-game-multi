@@ -79,7 +79,12 @@ describe("deriveLobbyRecord", () => {
 
   it("carries the room's mode so the lobby can tell adventures from battle tests", () => {
     const adventure = createAdventureLobbyState({ seed: "mode-adv" });
-    expect(deriveLobbyRecord({ roomId: "a", state: adventure, ...META }).mode).toBe("adventure");
+    const clashRecord = deriveLobbyRecord({ roomId: "a", state: adventure, ...META });
+    expect(clashRecord.mode).toBe("adventure");
+    expect(clashRecord.tableMode).toBe("clash");
+
+    const coop = createAdventureLobbyState({ seed: "mode-coop", gameMode: "coop" });
+    expect(deriveLobbyRecord({ roomId: "c", state: coop, ...META }).tableMode).toBe("coop");
     // A combat sandbox is a "battle test" table. CONTROL: the same helper reads
     // it straight from state.mode, so the two diverge.
     const sandbox = createInitialGameState("mode-battle");

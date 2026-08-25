@@ -1,13 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { Crown, Eye, Lock, Medal, Plus, RefreshCw, Search, Swords, Trash2, Users } from "lucide-react";
+import {
+  Bot,
+  Crown,
+  Eye,
+  Lock,
+  Map as MapIcon,
+  Medal,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Swords,
+  Trash2,
+  Users
+} from "lucide-react";
 import { authEnabled } from "@/lib/auth-mode";
+import type { TableGameMode } from "@/engine";
 import type { PresenceEntry } from "@/lib/lobby-presence-client";
 import type { RoomDirectoryEntry } from "@/lib/realtime";
 
 /** Show the room filter once the list is long enough for scanning to hurt. */
 const ROOM_FILTER_MIN_ROOMS = 6;
+
+export type CoopExpeditionOptions = {
+  scenarioId: "skirmish";
+  computerOpponents: number;
+};
 
 /** Case-insensitive match on the room's name, host, creator, or any member. */
 function roomMatchesFilter(room: RoomDirectoryEntry, filter: string): boolean {
@@ -65,6 +85,7 @@ export function LobbyScreen({
   isAdmin = false,
   /** Live presence board — used to mark which roster names are actually online. */
   onlinePlayers,
+  tableMode = "clash",
   title = "Multiplayer Lobby",
   createLabel = "Create room",
   emptyHint = "No rooms yet — create one above to get started."
@@ -86,11 +107,18 @@ export function LobbyScreen({
    * Create a room; `hosted` picks Closed (host-controlled seats) vs Open (free
    * seats), `ranked` picks Ranked (counts MMR) vs Normal (casual, no MMR).
    */
-  onCreate: (name: string, hosted: boolean, ranked: boolean) => void;
+  onCreate: (
+    name: string,
+    hosted: boolean,
+    ranked: boolean,
+    coop?: CoopExpeditionOptions
+  ) => void;
   onClose: (roomId: string) => void;
   /** A signed-in platform admin: may delete ANY room (the server verifies the session). */
   isAdmin?: boolean;
   onlinePlayers?: PresenceEntry[];
+  /** Adventure table identity. Co-op gets its own setup and never shows MMR controls. */
+  tableMode?: TableGameMode;
   /** Heading (default the multiplayer lobby; the battle-test arena reuses this). */
   title?: string;
   /** Label on the create button ("Create room" / "Create arena"). */
@@ -101,7 +129,9 @@ export function LobbyScreen({
   const showAuthLabels = authEnabled();
   const [nameDraft, setNameDraft] = useState(displayName);
   const [newRoomName, setNewRoomName] = useState("");
-  const [createHosted, setCreateHosted] = useState(false);
+  const isCoop = tableMode === "coop";
+  const [createHosted, setCreateHosted] = useState(isCoop);
+  const [coopEnemies, setCoopEnemies] = useState(1);
   // Password gate for locked rooms: prompt at Join click, never navigate without
   // a typed password. Host presence is irrelevant — the engine still checks.
   const [passwordPrompt, setPasswordPrompt] = useState<{ roomId: string; roomName: string } | null>(
@@ -121,7 +151,14 @@ export function LobbyScreen({
   const createRoom = () => {
     // Ranked ⇒ closed (hosted), always — seat identity is required for W/L.
     const hosted = createRanked ? true : createHosted;
-    onCreate(newRoomName.trim(), hosted, createRanked);
+    if (isCoop) {
+      onCreate(newRoomName.trim(), hosted, false, {
+        scenarioId: "skirmish",
+        computerOpponents: coopEnemies
+      });
+    } else {
+      onCreate(newRoomName.trim(), hosted, createRanked);
+    }
     setNewRoomName("");
   };
 
@@ -169,7 +206,7 @@ export function LobbyScreen({
 
   return (
     <main className="lobbyRoot">
-      <div className="lobbyCard">
+      <div className={`lobbyCard${isCoop ? " lobbyCard--coop" : ""}`}>
         <header className="lobbyHeader">
           <h1>
             <Users aria-hidden="true" size={20} /> {title}
@@ -178,6 +215,21 @@ export function LobbyScreen({
             <RefreshCw aria-hidden="true" size={14} /> Refresh
           </button>
         </header>
+
+        {isCoop ? (
+          <section className="coopMissionIntro" aria-label="Co-op mission briefing">
+            <div>
+              <span className="coopEyebrow">CO-OP WAR ROOM</span>
+              <strong>Stand together against the computer army</strong>
+              <p>Human heroes share one alliance. The computer controls the invading enemy seats.</p>
+            </div>
+            <div className="coopMissionTags" aria-label="Co-op rules">
+              <span><ShieldCheck aria-hidden="true" size={14} /> Human alliance</span>
+              <span><Bot aria-hidden="true" size={14} /> AI enemy</span>
+              <span>No MMR</span>
+            </div>
+          </section>
+        ) : null}
 
         <div className="lobbyIdentity">
           <label htmlFor="lobbyName">Your name</label>
@@ -199,6 +251,48 @@ export function LobbyScreen({
         </div>
 
         <div className="lobbyActions">
+          {isCoop ? (
+            <section className="coopExpeditionBuilder" aria-label="Co-op expedition setup">
+              <div className="coopBattlefieldCard">
+                <div className="coopMapPreview" aria-hidden="true">
+                  <span className="coopMapCenter"><MapIcon size={18} /></span>
+                  <span className="coopMapNode ally one" />
+                  <span className="coopMapNode ally two" />
+                  <span className="coopMapNode enemy one" />
+                  <span className="coopMapNode enemy two" />
+                  <span className="coopMapRoute routeOne" />
+                  <span className="coopMapRoute routeTwo" />
+                </div>
+                <div>
+                  <small>SELECTED BATTLEFIELD</small>
+                  <strong>Border Skirmish</strong>
+                  <p>Two human starting positions, with computer invaders added on the outer ring.</p>
+                  <span>More maps can be picked in the room before Start.</span>
+                </div>
+              </div>
+              <div className="coopEnemyPicker">
+                <div>
+                  <small>COMPUTER ENEMIES</small>
+                  <strong>{coopEnemies} AI commander{coopEnemies === 1 ? "" : "s"}</strong>
+                  <span>{2 + coopEnemies} total map seats · Standard AI</span>
+                </div>
+                <div className="coopEnemyButtons" role="radiogroup" aria-label="Computer enemies">
+                  {[1, 2, 3].map((count) => (
+                    <button
+                      aria-checked={coopEnemies === count}
+                      className={coopEnemies === count ? "active" : ""}
+                      key={count}
+                      onClick={() => setCoopEnemies(count)}
+                      role="radio"
+                      type="button"
+                    >
+                      <Bot aria-hidden="true" size={15} /> {count}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ) : null}
           <div className="lobbyCreate">
             <input
               aria-label="New room name"
@@ -213,7 +307,7 @@ export function LobbyScreen({
             </button>
           </div>
 
-          <div className="lobbyCreateMode" role="radiogroup" aria-label="Table type">
+          <div className="lobbyCreateMode" role="radiogroup" aria-label={isCoop ? "Party access" : "Table type"}>
             <button
               aria-checked={!createHosted}
               // Ranked matches need seat identity for W/L reporting, so an open
@@ -226,9 +320,9 @@ export function LobbyScreen({
               type="button"
             >
               <Eye aria-hidden="true" size={14} />
-              <span className="lobbyModeName">Open table</span>
+              <span className="lobbyModeName">{isCoop ? "Open party" : "Open table"}</span>
               <span className="lobbyModeHint">
-                {createRanked ? "Ranked requires a closed table" : "Anyone can pick any seat"}
+                {createRanked ? "Ranked requires a closed table" : isCoop ? "Allies can join and choose a human seat" : "Anyone can pick any seat"}
               </span>
             </button>
             <button
@@ -239,11 +333,17 @@ export function LobbyScreen({
               type="button"
             >
               <Lock aria-hidden="true" size={14} />
-              <span className="lobbyModeName">Closed table</span>
-              <span className="lobbyModeHint">You host — one player per seat</span>
+              <span className="lobbyModeName">{isCoop ? "Private party" : "Closed table"}</span>
+              <span className="lobbyModeHint">{isCoop ? "Invite allies and assign their seats" : "You host — one player per seat"}</span>
             </button>
           </div>
 
+          {isCoop ? (
+            <div className="coopUnrankedBanner" role="note">
+              <ShieldCheck aria-hidden="true" size={18} />
+              <span><strong>Co-op is unranked</strong>There is no MMR here. Results never change the competitive ladder.</span>
+            </div>
+          ) : (
           <div className="lobbyCreateMode" role="radiogroup" aria-label="Match type">
             <button
               aria-checked={!createRanked}
@@ -271,6 +371,7 @@ export function LobbyScreen({
               <span className="lobbyModeHint">Counts MMR · closed table</span>
             </button>
           </div>
+          )}
           <div className="lobbyJoinCode">
             <input
               aria-label="Room code"
@@ -350,7 +451,11 @@ export function LobbyScreen({
                     <span className={`lobbyRoomStatus ${room.inProgress ? "playing" : "setup"}`}>
                       {room.inProgress ? "Game on" : "Setting up"}
                     </span>
-                    <span
+                    {isCoop ? (
+                      <span className="lobbyRoomRanked coop" title="Co-op — humans allied against computer enemies">
+                        <ShieldCheck aria-hidden="true" size={12} /> Co-op
+                      </span>
+                    ) : <span
                       className={`lobbyRoomRanked ${room.ranked ? "ranked" : "casual"}`}
                       title={room.ranked ? "Ranked game — counts MMR" : "Normal game — does not count MMR"}
                     >
@@ -363,7 +468,7 @@ export function LobbyScreen({
                           <Swords aria-hidden="true" size={12} /> Normal
                         </>
                       )}
-                    </span>
+                    </span>}
                     {room.locked ? (
                       <span
                         className="lobbyRoomLocked"

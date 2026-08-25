@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { LobbyScreen } from "@/components/lobby";
+import { LobbyScreen, type CoopExpeditionOptions } from "@/components/lobby";
 import { InvitePopup } from "@/components/invite-popup";
 import { LobbyChat } from "@/components/lobby-chat";
 import { PlayersOnline } from "@/components/players-online";
@@ -12,7 +12,7 @@ import { MenuShell } from "@/components/menu/menu-shell";
 import { sendLobbyInvite } from "@/lib/lobby-invites-client";
 import { DEFAULT_SERVER } from "@/data/servers";
 import { uiArtSlot } from "@/data/ui-art";
-import type { GameMode } from "@/engine";
+import type { GameMode, TableGameMode } from "@/engine";
 import { assetUrl } from "@/lib/asset-url";
 import { fetchSession, fetchSocketToken } from "@/lib/auth-client";
 import { getClientId, getDisplayName, setDisplayName } from "@/lib/identity";
@@ -21,6 +21,7 @@ import { fetchLobbyChat, postLobbyChat, type LobbyChatMessage } from "@/lib/lobb
 import { leavePresence, sendPresence, type PresenceEntry } from "@/lib/lobby-presence-client";
 import {
   savePendingRoomHosted,
+  savePendingCoopRoomSetup,
   savePendingRoomMode,
   savePendingRoomName,
   savePendingRoomPassword,
@@ -61,10 +62,19 @@ export type RoomBrowserLabels = {
   /** Empty-state hint. */
   emptyHint: string;
   /** Backdrop art slot for the MenuShell. */
-  backdrop: "lobby-backdrop" | "menu-backdrop";
+  backdrop: "lobby-backdrop" | "menu-backdrop" | "coop-backdrop";
 };
 
-export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrowserLabels }) {
+export function RoomBrowser({
+  mode,
+  labels,
+  tableMode
+}: {
+  mode: GameMode;
+  labels: RoomBrowserLabels;
+  /** Adventure lobby lane. Omit for non-adventure browsers such as Battle Test. */
+  tableMode?: TableGameMode;
+}) {
   const router = useRouter();
   const clientId = useMemo(() => getClientId(), []);
   const [displayName, setDisplayNameState] = useState("");
@@ -114,7 +124,13 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   const refresh = useCallback(() => {
     fetchRoomList(clientId)
       .then((result) => {
-        setRooms(result.rooms.filter((room) => room.mode === mode));
+        setRooms(
+          result.rooms.filter(
+            (room) =>
+              room.mode === mode &&
+              (mode !== "adventure" || !tableMode || (room.tableMode ?? "clash") === tableMode)
+          )
+        );
         setSupported(result.supported);
         setError(null);
       })
@@ -141,7 +157,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       .catch(() => {
         /* transient — the next poll retries */
       });
-  }, [clientId, mode, accountName]);
+  }, [clientId, mode, tableMode, accountName]);
 
   // Poll the directory (and lobby chat) while the browser is open. Every tick
   // costs same-origin /api requests (billed edge requests on the production
@@ -225,7 +241,12 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
     [sendChat, clientId, displayName]
   );
 
-  const handleCreate = (name: string, hosted: boolean, ranked: boolean) => {
+  const handleCreate = (
+    name: string,
+    hosted: boolean,
+    ranked: boolean,
+    coop?: CoopExpeditionOptions
+  ) => {
     setError(null);
     // Ranked always closes the table so seats exist for match reporting.
     const effectiveHosted = ranked ? true : hosted;
@@ -233,7 +254,9 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
       name: name || undefined,
       createdByName: displayName.trim() || undefined,
       mode,
-      ranked,
+      ranked: tableMode === "coop" ? false : ranked,
+      ...(tableMode ? { gameMode: tableMode } : {}),
+      ...(coop ? { scenarioId: coop.scenarioId } : {}),
       hosted: effectiveHosted
     })
       .then(({ roomId }) => {
@@ -249,7 +272,14 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
         // Always carry the match type so PartyKit applies the explicit choice
         // (both Ranked and Normal, since the edge default would otherwise be
         // "ranked").
-        savePendingRoomRanked(roomId, ranked);
+        savePendingRoomRanked(roomId, tableMode === "coop" ? false : ranked);
+        if (tableMode === "coop") {
+          savePendingCoopRoomSetup({
+            roomId,
+            scenarioId: coop?.scenarioId ?? "skirmish",
+            computerOpponents: coop?.computerOpponents ?? 1
+          });
+        }
         // A battle test needs the room switched to combat-sandbox on connect.
         if (mode !== "adventure") {
           savePendingRoomMode(roomId, mode);
@@ -289,7 +319,12 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
   const emblem = uiArtSlot(DEFAULT_SERVER.emblemSlot);
 
   return (
-    <MenuShell as="div" backdrop={labels.backdrop} panel={false}>
+    <MenuShell
+      as="div"
+      backdrop={labels.backdrop}
+      className={tableMode === "coop" ? "coopLobbyShell" : undefined}
+      panel={false}
+    >
       <div className="serverBadge">
         <img alt={emblem.alt} className="serverBadgeEmblem" src={assetUrl(emblem.src)} />
         <span className="serverBadgeName">
@@ -331,6 +366,7 @@ export function RoomBrowser({ mode, labels }: { mode: GameMode; labels: RoomBrow
           onlinePlayers={playersOnline}
           rooms={rooms}
           supported={supported}
+          tableMode={tableMode}
           title={labels.title}
         />
         <aside className="lobbySidebar" aria-label="Players online and lobby chat">

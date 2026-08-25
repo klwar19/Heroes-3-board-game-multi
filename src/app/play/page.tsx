@@ -18,6 +18,7 @@ export default function PlayPage() {
       <UiModePrompt />
       <RoomBrowser
         mode="adventure"
+        tableMode="clash"
         labels={{
           badgeNote: "Adventure tables — browse or open your own",
           title: "Multiplayer Lobby",

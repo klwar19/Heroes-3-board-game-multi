@@ -189,6 +189,9 @@ export function applyUnitCurrentSide(
     phoenixPackRebirth?: boolean;
   }
 ): void {
+  const waveAttack = unit.waveEventBonuses?.attack ?? 0;
+  const waveDefense = unit.waveEventBonuses?.defense ?? 0;
+  const waveInitiative = unit.waveEventBonuses?.initiative ?? 0;
   const top = topTransform(unit);
   if (top) {
     // Polish Balance Pack Sandro I / Vidomina IV: "Put this card on the Stack or
@@ -200,10 +203,10 @@ export function applyUnitCurrentSide(
     const coverStackBonus =
       overrides?.polishUnitStacks && (unit.armyStacks ?? 0) > 0 ? top.stackAttackBonus ?? 0 : 0;
     unit.cardName = top.name;
-    unit.attack = top.attack + coverStackBonus;
-    unit.defense = top.defense;
+    unit.attack = top.attack + coverStackBonus + waveAttack;
+    unit.defense = top.defense + waveDefense;
     unit.maxHealth = top.health;
-    unit.initiative = top.initiative;
+    unit.initiative = top.initiative + waveInitiative;
     // A Job is a separate persistent token on the army card, not printed text
     // covered by the transform. Its base package and rank-3 signature remain.
     unit.abilities = withMgqJobAbilities(withRankAbilities([], combatUnitRankFold(unit)), unit.job);
@@ -240,10 +243,11 @@ export function applyUnitCurrentSide(
     // which only accrues under Unit Experience) for a PLAYER's won bank card
     // (USER RULE 2026-08-15) — so with both rules off this is an exact no-op.
     const rankFold = (unit.unitExperience ?? 0) > 0 ? combatUnitRankFold(unit) : null;
-    unit.attack = bankSide.attack + bonus("attack") + (rankFold?.attack ?? 0);
-    unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0);
+    unit.attack = bankSide.attack + bonus("attack") + (rankFold?.attack ?? 0) + waveAttack;
+    unit.defense = bankSide.defense + bonus("defense") + (rankFold?.defense ?? 0) + waveDefense;
     unit.maxHealth = bankSide.health + bonus("health") + (rankFold?.health ?? 0);
-    unit.initiative = bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0);
+    unit.initiative =
+      bankSide.initiative + bonus("initiative") + (rankFold?.initiative ?? 0) + waveInitiative;
     unit.abilities = rankFold ? withRankAbilities(bankSide.abilities, rankFold) : bankSide.abilities;
     // Same lockstep as the cover branch above: a bank card's ability list is
     // replaced wholesale, so the movement type must be recomputed from the
@@ -305,8 +309,14 @@ export function applyUnitCurrentSide(
     unit.stackToken === stat ? stackTokenDelta(stat) : 0;
   const combatAbilityIds = withMgqJobAbilities(withRankAbilities(side.abilities, rankFold), unit.job);
   unit.type = movementTypeAfterUnitAbilityEffects(printedType, combatAbilityIds);
-  unit.attack = side.attack + (unit.permanentAttackBonus ?? 0) + armyStackAttack + rankFold.attack + tokenBonus("attack");
-  unit.defense = side.defense + rankFold.defense + tokenBonus("defense");
+  unit.attack =
+    side.attack +
+    (unit.permanentAttackBonus ?? 0) +
+    armyStackAttack +
+    rankFold.attack +
+    tokenBonus("attack") +
+    waveAttack;
+  unit.defense = side.defense + rankFold.defense + tokenBonus("defense") + waveDefense;
   // combatMaxHealthBonus: ADD_UNIT_MAX_HEALTH (Valeska, Vial, Ivor VI…). Must
   // re-fold here so a Pack→Few flip or a Polish Stack layer loss keeps the
   // same +HP on the new health bar (stack / pack / few all share the bonus).
@@ -318,7 +328,7 @@ export function applyUnitCurrentSide(
       tokenBonus("health"),
     combatAbilityIds
   );
-  unit.initiative = side.initiative + rankFold.initiative + tokenBonus("initiative");
+  unit.initiative = side.initiative + rankFold.initiative + tokenBonus("initiative") + waveInitiative;
   unit.abilities = combatAbilityIds;
   if (rankFold.rank > 0) {
     unit.unitRank = rankFold.rank;

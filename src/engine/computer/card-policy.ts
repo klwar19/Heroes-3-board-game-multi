@@ -1264,6 +1264,20 @@ export function scoreCardAction(
     }
     case "USE_SCHOOL_FETCH_EXPERT":
       return { score: 1_125, policy: "card.use-school-expert-power" };
+    case "USE_SCHOOL_PERMANENT_EXPERT": {
+      // Committing (permanently discarding) an in-play School permanent is a
+      // gamble: the +3 pays off only if the AI then PLAYS the enabled Spell,
+      // and most reaction plays score below Pass — so outside the lethal-save
+      // window (where the follow-up Resurrection is the point) the AI keeps
+      // its permanent: a standing +1 forever beats a one-window +3 it would
+      // usually let expire. The fetch twin above keeps its high score because
+      // it is only offered with a guaranteed payoff already on the attack.
+      const lethalWindow = observation.state.reactionWindow?.triggerEvent.type === "UNIT_LETHAL_HIT";
+      return {
+        score: lethalWindow ? 1_125 : 990,
+        policy: "card.use-school-expert-power"
+      };
+    }
     case "HALL_OF_VALHALLA_BOOST":
       return {
         score: marginalAttackModifierScore(observation, "attack", true),

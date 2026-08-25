@@ -88,11 +88,9 @@ describe("/menu (main menu, guest-only build)", () => {
     expect(battleTest.querySelector("img")?.getAttribute("src")).toContain(
       "/assets/ui/menu/buttons/battle-test-fire.webp",
     );
-    // CO-OP is a PLACEHOLDER, not a second mode: /play reads no query params, so
-    // this lands on the very same adventure lobby Skirmish does (see the
-    // NOT-IMPLEMENTED note at the button). Asserted only so the placeholder
-    // cannot quietly turn into a broken route.
-    expect(coOp.getAttribute("href")).toBe("/play?mode=co-op");
+    // Co-op owns a dedicated room browser and creation handoff; it must never
+    // regress to the Clash /play path.
+    expect(coOp.getAttribute("href")).toBe("/coop");
     expect(coOp.querySelector("img")?.getAttribute("src")).toContain(
       "/assets/ui/menu/buttons/co-op-tactics.webp",
     );

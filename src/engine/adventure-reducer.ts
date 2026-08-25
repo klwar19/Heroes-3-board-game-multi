@@ -7395,6 +7395,16 @@ function applyMapSpellAtPower(
   const effectivePower = bookFlags.resolveEffectivePower ?? power * multiplier;
   const best = bestMapSpellTier(tiers, effectivePower);
 
+  // Fortune shares the full map Spell-Power boost pipeline. Its synthetic tier
+  // carries the original reroll effect, so resolving the chosen Power creates
+  // the ongoing Treasure/Resource/Attack-die reroll and then offers the normal
+  // Knowledge/Mysticism recall just like every other map Spell.
+  if (best.effect.type === "CREATE_ATTACK_DIE_REROLL" && best.effect.adventureDice) {
+    createFortuneRerollEffect(state, playerId, spell, effectivePower);
+    offerMapSpellKnowledgeRecall(state, playerId, spell, bookFlags);
+    return;
+  }
+
   // Dimension Door teleports through a destination pick that can drop the hero
   // straight into a fight. If the Knowledge/Mysticism recall were offered AFTER
   // the effect (as every other map spell does), its reward would be stranded
@@ -8511,9 +8521,17 @@ export function revealNeutralArmy(
     const prepared = state.players[combat.attackerPlayerId]?.wavePreparedFor === wave;
     if (!prepared) {
       for (const unit of [...neutralUnits, ...extraUnits]) {
-        unit.attack += event.neutralAttack ?? 0;
-        unit.defense += event.neutralDefense ?? 0;
-        unit.initiative += event.neutralInitiative ?? 0;
+        const attack = event.neutralAttack ?? 0;
+        const defense = event.neutralDefense ?? 0;
+        const initiative = event.neutralInitiative ?? 0;
+        unit.waveEventBonuses = {
+          ...(attack ? { attack } : {}),
+          ...(defense ? { defense } : {}),
+          ...(initiative ? { initiative } : {})
+        };
+        unit.attack += attack;
+        unit.defense += defense;
+        unit.initiative += initiative;
       }
     }
     appendEvent(state, {
@@ -12447,7 +12465,7 @@ function releaseDeferredCombatReward(
   } else if (reward?.kind === "raid-boss") {
     resolveRaidBossVictory(state, playerId, reward.bossInstanceId);
   } else if (reward?.kind === "dungeon-floor") {
-    resolveDungeonFloorVictory(state, playerId, reward.floor);
+    resolveDungeonFloorVictory(state, playerId, reward.floor, reward.heroId, reward.fieldId);
   } else if (legacyHeroId && legacyFieldId) {
     beginFieldVisit(state, legacyHeroId, legacyFieldId, false);
   }
@@ -12733,7 +12751,13 @@ function resolveRaidBossVictory(state: GameState, playerId: PlayerId, bossInstan
  * bottom floor stays repeatable for the fallback reward) and, the first time
  * floor 10 falls, the Dungeon Conqueror title.
  */
-function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor: number): void {
+function resolveDungeonFloorVictory(
+  state: GameState,
+  playerId: PlayerId,
+  floor: number,
+  heroId?: HeroId,
+  fieldId?: MapSpaceId
+): void {
   const adventure = state.adventure;
   const player = state.players[playerId];
   if (!adventure || !player) {
@@ -12744,6 +12768,8 @@ function resolveDungeonFloorVictory(state: GameState, playerId: PlayerId, floor:
   adventure.rewardQueue.unshift({
     playerId,
     kind: "visit-steps",
+    ...(heroId ? { heroId } : {}),
+    ...(fieldId ? { fieldId } : {}),
     steps: [
       ...dungeonFloorRewardSteps(state, floor, { repeat, playerId }),
       { type: "DUNGEON_CONTINUE" }
@@ -13296,7 +13322,12 @@ export function finalizeAdventureCombat(state: GameState): void {
           ? { kind: "wave", wave: context.waveAssault.wave }
           : context.raidBossId
             ? { kind: "raid-boss", bossInstanceId: context.raidBossId }
-            : { kind: "dungeon-floor", floor: context.dungeonFloor! };
+            : {
+                kind: "dungeon-floor",
+                floor: context.dungeonFloor!,
+                heroId: hero.id,
+                fieldId: field.spaceId
+              };
         const deferred =
           openMgqCompanionWindow(state, playerId, hero.id, mgqCompanionOptions, deferredReward) ||
           openNecromancyWindow(state, playerId, hero.id, deferredReward);
@@ -13305,7 +13336,13 @@ export function finalizeAdventureCombat(state: GameState): void {
         } else if (!deferred && context.raidBossId) {
           resolveRaidBossVictory(state, playerId, context.raidBossId);
         } else if (!deferred && context.dungeonFloor !== undefined) {
-          resolveDungeonFloorVictory(state, playerId, context.dungeonFloor);
+          resolveDungeonFloorVictory(
+            state,
+            playerId,
+            context.dungeonFloor,
+            hero.id,
+            field.spaceId
+          );
         }
         state.phase = "player-turn";
         return;
@@ -13962,6 +13999,12 @@ export function heroGradePick(state: GameState, action: Extract<GameAction, { ty
   if (state.combat) {
     throw new Error("Grade nodes are picked outside of combat.");
   }
+  if (!hasOpenAdventureTurn(state, action.playerId)) {
+    throw new Error("Pick a grade node on your own map turn.");
+  }
+  // Some nodes grant cards or queue a Search immediately. Keep those one-time
+  // rewards out of another seat's singleton interaction machinery.
+  assertParallelInteractionFree(state, action.playerId);
   if (!heroGradesEnabled(state)) {
     throw new Error("Hero Grades is off for this game.");
   }
@@ -19554,11 +19597,15 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "visit-steps") {
       adventure.rewardQueue.shift();
-      const hero = getMainHero(state, reward.playerId);
+      // Modern hero-bound chains retain the exact delver. The main-hero
+      // fallback keeps old snapshots/rewards loadable.
+      const hero =
+        (reward.heroId ? state.heroes[reward.heroId] : undefined) ??
+        getMainHero(state, reward.playerId);
       adventure.pendingVisit = {
         heroId: hero?.id ?? "",
         playerId: reward.playerId,
-        fieldId: hero?.spaceId ?? "",
+        fieldId: reward.fieldId ?? hero?.spaceId ?? "",
         steps: [...reward.steps]
       };
       processPendingVisit(state);
@@ -19570,7 +19617,10 @@ export function pumpAdventureQueues(state: GameState): void {
 
     if (reward.kind === "commander-artifact-offer") {
       adventure.rewardQueue.shift();
-      const stillAvailable = reward.cardIds.filter((cardId) => COMMANDER_ARTIFACT_SPECS[cardId]);
+      const availableIds = new Set(
+        availableCommanderArtifactSpecs(state, reward.playerId, undefined, true).map((spec) => spec.cardId)
+      );
+      const stillAvailable = reward.cardIds.filter((cardId) => availableIds.has(cardId));
       if (stillAvailable.length === 0) continue;
       const choiceId = `choice_${nextEventNumber(state)}`;
       state.pendingChoice = {

@@ -13285,15 +13285,34 @@ export function SetupLobbyScreen({
   const allChosen = lobby.seats.every((seat) => seat.factionId && seat.heroDefId);
   const scenarioName = scenarioDefinitions[lobby.options.scenarioId]?.name ?? lobby.scenarioId;
   const singlePlayer = state.sessionMode === "single-player";
+  const cooperative = lobby.options.gameMode === "coop";
+  const computerEnemies = Object.values(state.controllers ?? {}).filter(
+    (controller) => controller.kind === "computer"
+  ).length;
 
   return (
-    <section className={`setupLobby${allChosen ? " setupLobby--ready" : ""}`} aria-label="Map setup">
-      <SetupSceneArt />
+    <section
+      className={`setupLobby${allChosen ? " setupLobby--ready" : ""}${cooperative ? " setupLobby--coop" : ""}`}
+      aria-label={cooperative ? "Co-op map setup" : "Map setup"}
+    >
+      <SetupSceneArt cooperative={cooperative} />
+      {cooperative ? (
+        <aside className="coopSetupBanner" role="status">
+          <span>CO-OP WAR ROOM</span>
+          <strong>Human alliance <em>vs</em> {computerEnemies || "…"} computer enem{computerEnemies === 1 ? "y" : "ies"}</strong>
+          <small>Shared victory · No MMR · Pick heroes and map, then deploy</small>
+        </aside>
+      ) : null}
       {/* First-visit opt-in: next-step coach + card reasons (local browser pref). */}
       <HelperCoachLobbyPrompt force={forceHelperPrompt} onClose={() => setForceHelperPrompt(false)} />
       <header>
         <h2>Map setup — {scenarioName}</h2>
-        {singlePlayer ? (
+        {cooperative ? (
+          <p>
+            <strong>Co-op:</strong> every human is allied against the computer enemies. Pick the battlefield and your
+            heroes together; this table never changes MMR.
+          </p>
+        ) : singlePlayer ? (
           <p>
             <strong>Playing with computer.</strong> Open <strong>Heroes &amp; Draft</strong> for your town, your hero
             and the computer opponents. Each box shows its current choice.

@@ -26,9 +26,9 @@ import {
 describe("fieldOverridePresentation — every registered kind resolves", () => {
   it("resolves name + summary + mod tag for EVERY registered override kind (by kind AND by location id)", () => {
     const defs = allFieldOverrideDefinitions();
-    // We ship 7 WOG + 13 anime kinds; assert the loop actually covers a real set,
+    // We ship 7 WOG + 17 anime kinds; assert the loop actually covers a real set,
     // not an empty one (a broken import would silently pass an empty loop).
-    expect(defs.length).toBeGreaterThanOrEqual(20);
+    expect(defs.length).toBeGreaterThanOrEqual(24);
     for (const def of defs) {
       // By kind id.
       const byKind = fieldOverridePresentation(def.id);

@@ -154,6 +154,7 @@ import {
   countBallistas,
   firstAidVolleyHeals,
   getPermanentCardIds,
+  committedSchoolExpertPower,
   getPermanentSchoolBonus,
   isLowestInitiativeEnemy,
   permanentCrackOpenGain,
@@ -166,6 +167,7 @@ import { cultivationSpellPowerBonus, tribulationAvailable } from "./anime-cultiv
 import {
   heroGradeSpellPowerBonus,
   heroGradePickableNodes,
+  heroGradeNode,
   heroGradeNodesOf,
   heroHasGradeNode,
   heroSkillAvailableThisCombat,
@@ -503,7 +505,14 @@ function canAffordCardCost(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
-  cost?: CardPlayCost
+  cost?: CardPlayCost,
+  /**
+   * Hypothetical extra standing Power, used by the School-permanent commit
+   * OFFER to ask "would this Spell become affordable AFTER the commit?"
+   * (net gain = expertPower − basicPower: the standing +1 leaves with the
+   * permanent while the window bank adds the +3).
+   */
+  extraStandingPower = 0
 ): boolean {
   const player = state.players[playerId];
   if (!player) {
@@ -575,7 +584,11 @@ function canAffordCardCost(
     // affordable with one fewer discard. Zero in combat (guarded in the helper).
     const standing =
       (card ? standingSpellPower(state, playerId, card) + getSchoolPowerBonus(state, playerId, card) : 0) +
-      mapSpellPowerBankAvailable(state, playerId);
+      mapSpellPowerBankAvailable(state, playerId) +
+      // Window-committed School expert: only a MATCHING-school Spell may spend
+      // it (one shared read with payOptionCardCost, so offer and payment agree).
+      committedSchoolExpertPower(state.reactionWindow, playerId, card) +
+      extraStandingPower;
     const crownsLeft =
       player.limits.expertUses +
       (player.combatStats.expertUseBonusThisRound ?? 0) -
@@ -2889,7 +2902,7 @@ function addSpellActions(
     // offered at 0 crowns too — the permanent-school read comes first so the
     // waiver can be keyed off the actual School card being discarded.
     const schoolExpertCandidate =
-      !fromScroll && !fromSpellDeck && !tarnumReturn ? getPermanentSchoolBonus(state, playerId, card) : null;
+      !fromScroll && !fromSpellDeck ? getPermanentSchoolBonus(state, playerId, card) : null;
     const schoolExpert =
       schoolExpertCandidate && canPlayExpertMode(player, schoolExpertCandidate.card.id)
         ? schoolExpertCandidate
@@ -2904,7 +2917,7 @@ function addSpellActions(
     // exclusions; a Book cast keeps its flag.
     // An EMPOWERED Basic X Magic likewise folds its +3 with no crown.
     const fetchExpertCandidate =
-      !fromScroll && !fromSpellDeck && !tarnumReturn
+      !fromScroll && !fromSpellDeck
         ? matchingSchoolFetchForCast(state, playerId, card.spellSchools ?? [])
         : null;
     const fetchExpertSchool =
@@ -2960,7 +2973,8 @@ function addSpellActions(
             cardId,
             target,
             useSchoolExpert: true,
-            ...(fromSpellBook ? { fromSpellBook: true } : {})
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+            ...(tarnumReturn ? { tarnumReturn } : {})
           }
         });
       }
@@ -2978,7 +2992,8 @@ function addSpellActions(
             target,
             useSchoolFetchExpert: true,
             ...(fromOwnDiscard ? { fromOwnDiscard: true } : {}),
-            ...(fromSpellBook ? { fromSpellBook: true } : {})
+            ...(fromSpellBook ? { fromSpellBook: true } : {}),
+            ...(tarnumReturn ? { tarnumReturn } : {})
           }
         });
       }
@@ -6533,21 +6548,28 @@ function addUnitActions(actions: LegalAction[], state: GameState, playerId: Play
   if (!alreadyAttacked) {
     addUnitAbilityActions(actions, state, playerId, activeUnit);
     addFortificationActions(actions, state, playerId, activeUnit);
+  }
 
-    // Anime Hero Grades (§3.11): War Cry — a combat active on your OWN unit's
-    // activation (+Attack this activation), offered before it attacks so the
-    // buff matters. Only your main hero's battles, only your real unit (never a
-    // controlled Neutral guard), once per combat.
-    if (!controlsNeutral && playerMainHeroInCombat(state, playerId)) {
-      for (const nodeId of heroGradeNodesOf(state, playerId)) {
-        const node = HERO_GRADE_NODES[nodeId];
-        if (node?.skill?.mode === "combat-active" && heroSkillAvailableThisCombat(state, playerId, nodeId)) {
-          actions.push({
-            label: `${node.name.en}: ${activeUnit.name} +${node.skill.amount} Attack this activation`,
-            action: { type: "USE_HERO_SKILL", playerId, nodeId, unitId: activeUnit.id }
-          });
-        }
+  // Anime Hero Grades (§3.11): combat actives on your OWN unit's activation.
+  // Attack buffs are useful only before the strike; heals remain usable for the
+  // rest of the activation but are never offered to a full-health body. Only
+  // the main hero's battles, never a controlled Neutral guard, once per combat.
+  if (!controlsNeutral && playerMainHeroInCombat(state, playerId)) {
+    for (const nodeId of heroGradeNodesOf(state, playerId)) {
+      const node = heroGradeNode(nodeId);
+      if (node?.skill?.mode !== "combat-active" || !heroSkillAvailableThisCombat(state, playerId, nodeId)) {
+        continue;
       }
+      if (node.skill.stat === "attack" && alreadyAttacked) continue;
+      if (node.skill.stat === "heal" && activeUnit.damage <= 0) continue;
+      const label =
+        node.skill.stat === "heal"
+          ? `${node.name.en}: heal ${node.skill.amount} damage on ${activeUnit.name}`
+          : `${node.name.en}: ${activeUnit.name} +${node.skill.amount} Attack this activation`;
+      actions.push({
+        label,
+        action: { type: "USE_HERO_SKILL", playerId, nodeId, unitId: activeUnit.id }
+      });
     }
   }
 
@@ -7875,6 +7897,12 @@ function getMisfortunePreWindowReactions(
     }
   }
 
+  // The in-play School permanent may be committed first; after it is consumed
+  // this dedicated pre-window refreshes and the matching Misfortune appears at
+  // the full +3 Power. Keep the pre-buff ordering intact by offering nothing
+  // else here.
+  reactions.unshift(...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards));
+
   return reactions.length > 0 ? { [playerId]: reactions } : {};
 }
 
@@ -7983,6 +8011,12 @@ function getLethalSaveReactions(
   }
 
   const reactions: LegalAction[] = [];
+
+  // A matching in-play School of Magic can be committed before Resurrection.
+  // This can open an otherwise-unaffordable save window; after the permanent is
+  // consumed, the refreshed window evaluates Resurrection against the banked
+  // expert Power just like other Power-gated reaction Spells.
+  reactions.push(...getSchoolPermanentExpertActions(state, playerId, triggerEvent, cards));
 
   // Deck-based saves (the Resurrection Spell, Alamar's Resurrection specialty)
   // are played from the controller's hand, so they are unavailable whenever
@@ -8766,11 +8800,12 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // School of Magic (Air/Earth/Fire/Water Magic) in play: the discard-for-+3
-    // expert is NOT a reaction here — it would pop an extra prompt on every
-    // matching cast. It is decided up front as a cast option instead (a
-    // `useSchoolExpert` CAST_SPELL variant; see addSpellActions), so a plain
-    // cast just keeps the standing +1 and resolves.
+    // School of Magic in play: normal CAST_SPELL actions keep their up-front
+    // expert variant; reaction Spells instead commit the permanent here before
+    // the Spell, which also makes the +3 available to stack-less Sorrow costs.
+    for (const offer of getSchoolPermanentExpertActions(state, player.id, triggerEvent, cards)) {
+      reactions.push(offer);
+    }
 
     // Basic X Magic in play (the spell-fetch permanent): +3 Power for a
     // matching-school spell — a normal cast or an instant on the attack — without
@@ -9105,6 +9140,7 @@ export function getLegalReactionsForTrigger(
     // defender's Curse/Weakness) — each pays into their own Power pool.
     const hasEmpowerablePlayed =
       (attackStackItem?.modifiers.powerScaledAttackInstants ?? []).some((record) => record.playerId === player.id) ||
+      (attackStackItem?.modifiers.powerScaledAttackRerolls ?? []).some((record) => record.playerId === player.id) ||
       (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
       attackStackItem?.modifiers.ignoreDefenseCasterId === player.id ||
       attackStackItem?.modifiers.misfortuneCasterId === player.id;
@@ -9376,14 +9412,23 @@ export function getLegalReactionsForTrigger(
         continue;
       }
       for (const nodeId of heroGradeNodesOf(state, owner)) {
-        const node = HERO_GRADE_NODES[nodeId];
+        const node = heroGradeNode(nodeId);
         if (node?.skill?.mode !== "reaction" || node.skill.role !== role || !heroSkillAvailableThisCombat(state, owner, nodeId)) {
           continue;
         }
+        // Defense tokens do not stack. Offering Harmony Ward here would spend
+        // its once-per-combat use without changing the unit at all.
+        if (node.skill.stat === "defense-token" && reactUnit.defenseToken) {
+          continue;
+        }
+        const effectLabel =
+          node.skill.stat === "defense-token"
+            ? "gain a Defense token"
+            : `+${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"}`;
         result[owner] = [
           ...(result[owner] ?? []),
           {
-            label: `${node.name.en}: ${reactUnit.cardName} +${node.skill.amount} ${node.skill.stat === "attack" ? "Attack" : "Defense"}`,
+            label: `${node.name.en}: ${reactUnit.cardName} ${effectLabel}`,
             action: { type: "USE_HERO_SKILL_REACTION", playerId: owner, nodeId, unitId: reactUnit.id }
           }
         ];
@@ -9565,6 +9610,13 @@ export function playerHasAttackInstantOfSchool(
   if (records.some((record) => record.playerId === playerId && cardMatchesSchool(record.cardId, school))) {
     return true;
   }
+  if (
+    (stackItem.modifiers.powerScaledAttackRerolls ?? []).some(
+      (record) => record.playerId === playerId && cardMatchesSchool(record.cardId, school)
+    )
+  ) {
+    return true;
+  }
   const attackerId =
     stackItem.action.type === "ATTACK_UNIT" || stackItem.action.type === "MOVE_AND_ATTACK_UNIT"
       ? stackItem.action.playerId
@@ -9637,6 +9689,119 @@ function getSchoolFetchExpertActions(
   return offers;
 }
 
+/**
+ * In-play School of Magic expert (+3, discard the permanent) for reaction
+ * Spells. It is committed BEFORE the matching Spell so stack-less windows such
+ * as Sorrow can count it as payment, and attack instants (Fortune, Bloodlust,
+ * Misfortune, …) receive the full +3 after the permanent's standing +1 leaves.
+ */
+export function getSchoolPermanentExpertActions(
+  state: GameState,
+  playerId: PlayerId,
+  triggerEvent: Extract<
+    GameEvent,
+    { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" | "UNIT_LETHAL_HIT" }
+  >,
+  cards: CardLibrary
+): LegalAction[] {
+  const player = state.players[playerId];
+  if (
+    !player ||
+    state.reactionWindow?.schoolExpertPowerByPlayer?.[playerId] ||
+    getSpellCastRestriction(state).lockAll ||
+    // The Spell the commit enables is played from the hand/Book, so a
+    // hand-locked fighter (Secondary-Hero fight, heroless garrison) must not
+    // be offered a commit it can never follow — the lethal seam leaked this.
+    isHandLockedInCombat(state, playerId)
+  ) {
+    return [];
+  }
+  const spellLimitLeft = spellLimitFor(state, player) - player.combatStats.spellsCastThisRound;
+  if (spellLimitLeft <= 0) {
+    return [];
+  }
+
+  const sources: CardId[] = [
+    ...player.hand,
+    ...(bookCastSourcesEnabled(state) ? (player.spellBook ?? []) : [])
+  ];
+  const offers = new Map<CardId, LegalAction>();
+  for (const spellId of new Set(sources)) {
+    const spell = cards[spellId];
+    if (
+      !spell ||
+      spell.kind !== "spell" ||
+      spell.implementationStatus !== "implemented" ||
+      (spell.timing !== "instant" && spell.timing !== "reaction") ||
+      spellEffectIsAlreadyOngoing(state, playerId, spellId)
+    ) {
+      continue;
+    }
+    const school = getPermanentSchoolBonus(state, playerId, spell);
+    if (!school || !canPlayExpertMode(player, school.card.id)) {
+      continue;
+    }
+    // Magic Mirror is deliberately derived by its dedicated legality pass
+    // (single-target, area, and attack-instant redirects), so reuse that result
+    // instead of the generic trigger matcher that intentionally excludes it.
+    const mirrorMatches =
+      triggerEvent.type !== "UNIT_LETHAL_HIT" &&
+      getMagicMirrorReactions(state, player, triggerEvent, spellLimitLeft, cards).some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === spellId
+      );
+    // A cost-bearing variant counts only if it becomes AFFORDABLE once the
+    // commit lands (net standing gain = expert − basic, since the permanent's
+    // standing +1 leaves play). Without this the commit was a trap: gold
+    // Sorrow (4 Power) with an empty hand still offered the commit, then
+    // stayed unaffordable at +3 — the permanent and crown burned for nothing.
+    const affordableAfterCommit = (variant: CardPlayVariant) =>
+      variant.cost === undefined ||
+      canAffordCardCost(state, playerId, spellId, variant.cost, school.expertPower - school.basicPower);
+    const matchesWindow = mirrorMatches || getCardPlayVariants(spell).some((variant) => {
+      if (triggerEvent.type === "UNIT_LETHAL_HIT") {
+        const defender = state.combat?.units[triggerEvent.defenderId];
+        return (
+          !variant.mapOnly &&
+          variant.effect.type === "CANCEL_LETHAL_ATTACK" &&
+          defender?.controllerId === playerId &&
+          variant.effect.grade === defender.grade &&
+          affordableAfterCommit(variant)
+        );
+      }
+      const inMisfortunePreWindow =
+        triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+        Boolean(state.stack.at(-1)?.modifiers.misfortunePhase);
+      const misfortunePreWindow =
+        inMisfortunePreWindow &&
+        variant.effect.type === "NEGATE_ATTACK" &&
+        state.combat?.units[triggerEvent.defenderId]?.controllerId === playerId &&
+        (variant.effect.grade === undefined ||
+          gradeRankOfUnit(state.combat.units[triggerEvent.attackerId]!) === gradeRank(variant.effect.grade));
+      return (
+        !variant.mapOnly &&
+        (inMisfortunePreWindow
+          ? misfortunePreWindow
+          : variantMatchesTrigger(variant, triggerEvent, playerId, spell.timing === "instant") &&
+            isEffectLegalForTrigger(state, playerId, variant.effect, triggerEvent, "basic", spellId)) &&
+        !spellReactionBlockedByImmunity(state, spell, variant.effect, triggerEvent) &&
+        affordableAfterCommit(variant)
+      );
+    });
+    if (!matchesWindow || offers.has(school.card.id)) {
+      continue;
+    }
+    offers.set(school.card.id, {
+      label: `${school.card.name}: +${school.expertPower} Power (expert — discards the permanent)`,
+      action: {
+        type: "USE_SCHOOL_PERMANENT_EXPERT",
+        playerId,
+        cardId: school.card.id
+      }
+    });
+  }
+  return [...offers.values()];
+}
+
 function variantMatchesTrigger(
   variant: CardPlayVariant,
   triggerEvent: Extract<GameEvent, { type: "SPELL_CAST_STARTED" | "UNIT_ATTACK_DECLARED" | "UNIT_ACTIVATION_STARTED" }>,
@@ -9650,8 +9815,12 @@ function variantMatchesTrigger(
     return false;
   }
   const utilityFallback = allowTriggerlessUtility && isInstantReactionUtility(variant.effect);
+  const attackInstantFallback =
+    allowTriggerlessUtility &&
+    triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
+    variant.effect.type === "CREATE_ATTACK_DIE_REROLL";
   if (!variant.trigger) {
-    return utilityFallback;
+    return utilityFallback || attackInstantFallback;
   }
 
   if (variant.trigger.event !== triggerEvent.type) {
@@ -10218,6 +10387,13 @@ export function isEffectLegalForTrigger(
     const defender = combat?.units[triggerEvent.defenderId];
     if (!attacker || !defender) {
       return false;
+    }
+
+    // Fortune is printed "Instant: before a die roll" with no explicit
+    // UNIT_ATTACK_DECLARED trigger. This declared-attack window is the last
+    // timing point before the Attack die, for either combat participant.
+    if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
+      return true;
     }
 
     // Kriv (Bulwark): bank Runes in reaction to an enemy's attack so a crossed

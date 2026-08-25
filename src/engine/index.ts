@@ -852,6 +852,7 @@ export {
 } from "./unit-abilities";
 export {
   combatElementalSchool,
+  committedSchoolExpertPower,
   elementalTileSpellPowerBonus,
   getPermanentCardIds,
   getPermanentDefinitions,

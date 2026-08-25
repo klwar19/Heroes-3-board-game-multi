@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction, createInitialGameState } from "./index";
 import { soundDurationMs, spellFxPlans, spellPresentationMs, spriteDurationMs } from "@/data/fx";
-import type { GameAction, GameState, PlayerId, UnitId } from "./state";
+import type { CardId, GameAction, GameState, PlayerId, UnitId } from "./state";
 
 /**
  * Engine tests for Misfortune (Basic Fire, Instant; Fortress Expansion). Every
@@ -81,6 +81,8 @@ type AttackOpts = {
   defenderDefense?: number;
   p1Hand?: string[];
   p2Hand?: string[];
+  p1Permanents?: CardId[];
+  p1ExpertUses?: number;
   rolls?: number[];
 };
 
@@ -109,6 +111,10 @@ function declareEnemyAttack(seed: string, opts: AttackOpts): GameState {
   attacker.retaliatedThisRound = false;
   state.players.p1.hand = opts.p1Hand ?? [];
   state.players.p2.hand = opts.p2Hand ?? [];
+  state.players.p1.permanents = opts.p1Permanents ?? [];
+  if (opts.p1ExpertUses !== undefined) {
+    state.players.p1.limits.expertUses = opts.p1ExpertUses;
+  }
   state.activePlayerId = "p2";
   state.combat!.activeUnitId = opts.attacker;
   state.combat!.dice.scriptedRolls = opts.rolls ?? [1, 0, 0, 0, 0, 0];
@@ -156,8 +162,9 @@ describe("Misfortune — card definition & FX", () => {
       "silver",
       "gold"
     ]);
-    // bronze free, silver pays 1, gold pays 2 power-source cards.
-    expect(options.map((option) => option.cost?.discardCards ?? 0)).toEqual([0, 1, 2]);
+    // Bronze is free; silver/gold use the shared printed-Power cost system so
+    // statistic values, School Power, and expert School Power all count.
+    expect(options.map((option) => option.cost?.powerCost ?? 0)).toEqual([0, 1, 2]);
     for (const option of options) {
       expect(option.trigger).toMatchObject({ event: "UNIT_ATTACK_DECLARED", controller: "opponent" });
     }
@@ -233,7 +240,8 @@ describe("Misfortune — its own window, before the attacker buffs", () => {
     // Gold attacker needs 2 Power; one short → nothing offered.
     const goldShort = declareEnemyAttack("misfortune-gold-short", {
       attacker: "unit_p2_dread_knights",
-      p1Hand: ["spell.misfortune", "stat.power"]
+      p1Hand: ["spell.misfortune", "stat.power"],
+      p1ExpertUses: 0
     });
     expect(misfortuneOffered(goldShort, "p1", 2)).toBe(false);
     const gold = declareEnemyAttack("misfortune-gold", {
@@ -241,6 +249,90 @@ describe("Misfortune — its own window, before the attacker buffs", () => {
       p1Hand: ["spell.misfortune", "stat.power", "stat.power"]
     });
     expect(misfortuneOffered(gold, "p1", 2)).toBe(true);
+  });
+
+  it("lets Fire Magic expert open and pay the pre-window before gold Misfortune", () => {
+    let state = declareEnemyAttack("misfortune-school-expert", {
+      attacker: "unit_p2_dread_knights",
+      p1Hand: ["spell.misfortune"],
+      p1Permanents: ["ability.fire_magic"],
+      p1ExpertUses: 1
+    });
+    expect(isMisfortunePreWindow(state)).toBe(true);
+    expect(misfortuneOffered(state, "p1", 2)).toBe(false);
+    const expert = (state.reactionWindow?.legalReactions.p1 ?? []).find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+
+    state = applyOk(state, expert!.action);
+    expect(state.players.p1.permanents).not.toContain("ability.fire_magic");
+    expect(state.players.p1.discard).toContain("ability.fire_magic");
+    expect(state.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
+    expect(misfortuneOffered(state, "p1", 2)).toBe(true);
+
+    state = playMisfortune(state, 2);
+    expect(crusadersDamage(state)).toBe(5);
+    expect(state.players.p1.discard).toContain("spell.misfortune");
+    expect(state.players.p1.combatStats.spellsCastThisRound).toBe(1);
+  });
+
+  it("neither offers nor accepts a WRONG-school permanent (Air Magic before fire Misfortune)", () => {
+    // 2026-08-25 audit fix: USE_SCHOOL_PERMANENT_EXPERT is handler-validated,
+    // so the handler must re-derive the offer — a forged commit of a school
+    // matching NO spell in the window banked +3 against any powerCost.
+    const state = declareEnemyAttack("misfortune-wrong-school", {
+      attacker: "unit_p2_dread_knights",
+      p1Hand: ["spell.misfortune", "stat.power"],
+      p1Permanents: ["ability.air_magic"]
+    });
+    expect(isMisfortunePreWindow(state)).toBe(true);
+    expect(
+      (state.reactionWindow?.legalReactions.p1 ?? []).some(
+        (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+      )
+    ).toBe(false);
+    const forged = applyAction(state, {
+      type: "USE_SCHOOL_PERMANENT_EXPERT",
+      playerId: "p1",
+      cardId: "ability.air_magic"
+    });
+    expect(forged.errors.length).toBeGreaterThan(0);
+    expect(forged.state.players.p1.permanents).toContain("ability.air_magic");
+    expect(forged.state.players.p1.combatStats.expertUsesSpentThisRound).toBe(0);
+  });
+
+  it("a committed Fire expert never scales an EARTH instant on the same attack", () => {
+    // 2026-08-25 audit fix: the commit used to credit the school-generic
+    // attack-Power pool immediately, so committing Fire Magic in the
+    // pre-window and then casting NOTHING still resolved the defender's Earth
+    // Weakness at −3 in the later attack window. The +3 serves a
+    // MATCHING-school Spell only; unused, it expires with its window.
+    const run = (withWeakness: boolean) => {
+      let state = declareEnemyAttack(`misfortune-cross-school-${withWeakness}`, {
+        attacker: "unit_p2_dread_knights",
+        p1Hand: withWeakness ? ["spell.misfortune", "spell.weakness"] : ["spell.misfortune"],
+        p1Permanents: ["ability.fire_magic"],
+        p1ExpertUses: 1
+      });
+      const expert = (state.reactionWindow?.legalReactions.p1 ?? []).find(
+        (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+      );
+      expect(expert, "the fire commit must be offered in the pre-window").toBeTruthy();
+      state = applyOk(state, expert!.action);
+      state = applyOk(state, { type: "PASS_REACTION", playerId: "p1" });
+      if (withWeakness) {
+        while (state.reactionWindow && state.reactionWindow.priorityPlayerId !== "p1") {
+          state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+        }
+        state = applyOk(state, { type: "PLAY_REACTION", playerId: "p1", cardId: "spell.weakness", mode: "basic" });
+      }
+      state = settle(state);
+      return crusadersDamage(state);
+    };
+    const withoutWeakness = run(false);
+    // Weakness at its BASIC −1 — the burned Fire commit adds nothing to it.
+    expect(run(true)).toBe(withoutWeakness - 1);
   });
 
   it("is never offered to the attacker (only the attacked unit's controller)", () => {

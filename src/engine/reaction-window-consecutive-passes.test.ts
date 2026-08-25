@@ -350,7 +350,7 @@ describe("no dispatcher case bypasses the consecutive-pass seam", () => {
    * the seam is pinned above through CONVERT_CARD_TO_ATTACK, the one of the five
    * sites that is scriptable in a two-line combat fixture. Its four siblings
    * (SPEND_MORALE, SPEND_TOWN_CUBE, HALL_OF_VALHALLA_BOOST,
-   * USE_SCHOOL_FETCH_EXPERT) run the identical code path, and this sweep is what
+   * USE_SCHOOL_FETCH_EXPERT, USE_SCHOOL_PERMANENT_EXPERT) run the identical code path, and this sweep is what
    * keeps a NEW in-window action from quietly re-introducing the bare
    * `refreshReactionWindowLegalReactions` that kept an opponent's pass standing.
    */
@@ -364,7 +364,7 @@ describe("no dispatcher case bypasses the consecutive-pass seam", () => {
     ).toBe(false);
     expect(
       (dispatcher.match(/noteReactionWindowPlay\(nextState, action\.playerId, cards\)/g) ?? []).length,
-      "the five non-card in-window plays share the seam"
-    ).toBe(5);
+      "the six non-card in-window plays share the seam"
+    ).toBe(6);
   });
 });

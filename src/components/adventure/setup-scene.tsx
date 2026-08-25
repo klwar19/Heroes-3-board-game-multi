@@ -15,7 +15,7 @@ const FRUIT = [
   { id: "advanced", className: "setupSceneFruit--advanced" }
 ] as const;
 
-export function SetupSceneArt() {
+export function SetupSceneArt({ cooperative = false }: { cooperative?: boolean }) {
   const randomizedStart = useRef(false);
   /*
    * PHONE MODE never LOADS the ~2MB scene playlist. Hiding it with CSS is not
@@ -38,8 +38,8 @@ export function SetupSceneArt() {
 
   return (
     <div aria-hidden="true" className="setupSceneArt" data-testid="setup-scene-art">
-      <span className="setupSceneIllustration" />
-      {phoneMode ? null : (
+      <span className={`setupSceneIllustration${cooperative ? " setupSceneIllustration--coop" : ""}`} />
+      {phoneMode || cooperative ? null : (
         <video
           autoPlay
           className="setupSceneVideo"

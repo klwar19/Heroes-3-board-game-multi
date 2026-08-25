@@ -465,6 +465,21 @@ describe("anime.heroGrades — tree pick gating", () => {
     const doublePick = applyAction(state, { type: "HERO_GRADE_PICK", playerId: "p1", nodeId: pickable[1].id });
     expect(doublePick.errors.length).toBeGreaterThan(0);
   });
+
+  it("refuses an out-of-turn grade pick before a one-time reward can touch shared interaction state", () => {
+    const state = adventure("hg-pick-out-of-turn");
+    const hero = getMainHero(state, "p2")!;
+    hero.grade = 3;
+    hero.gradePoints = 1;
+    const beforeQueue = state.adventure!.rewardQueue.length;
+    const result = applyAction(state, {
+      type: "HERO_GRADE_PICK",
+      playerId: "p2",
+      nodeId: HERO_GRADE_NODE_IDS.relicDestiny
+    });
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.state.adventure!.rewardQueue).toHaveLength(beforeQueue);
+  });
 });
 
 // ===========================================================================
@@ -696,6 +711,38 @@ describe("anime.heroGrades — skill node effects", () => {
     expect(buffed.players.p1.combatStats.heroSkillsUsedThisCombat).toContain(HERO_GRADE_NODE_IDS.firstBlood);
   });
 
+  it("First Blood is consumed when its first declared attack is cancelled by a lethal save", () => {
+    const state = createInitialGameState("hg-first-blood-cancelled");
+    state.anime = { ...GRADES_ON };
+    grantNodes(state, "p2", [HERO_GRADE_NODE_IDS.firstBlood], 2);
+    state.players.p1.hand = ["specialty.alamar.1", "stat.power"];
+    state.players.p2.hand = [];
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.position = 9;
+    defender.damage = defender.maxHealth - 1;
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.position = 13;
+    attacker.attack = 5;
+    attacker.abilities = [];
+    state.combat!.dice.scriptedRolls = [0];
+    state.combat!.activeUnitId = attacker.id;
+    state.activePlayerId = "p2";
+    const lethal = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: attacker.id,
+      defenderId: defender.id
+    });
+    expect(lethal.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const saved = applyOk(lethal, {
+      type: "PLAY_REACTIONS",
+      playerId: "p1",
+      plays: [{ cardId: "specialty.alamar.1", optionIndex: 0, costCardIds: ["stat.power"] }]
+    });
+    expect(saved.combat!.units[defender.id].damage).toBe(defender.maxHealth - 1);
+    expect(saved.players.p2.combatStats.heroSkillsUsedThisCombat).toContain(HERO_GRADE_NODE_IDS.firstBlood);
+  });
+
   it("Spirit Companion summons the framed, sortable 2/1/2/8 familiar for round 1, then it expires", () => {
     const state = combatState("hg-familiar", [HERO_GRADE_NODE_IDS.spiritCompanion]);
     const familiar = injectHeroGradeFamiliar(state, "p1", [16, 17, 18, 19]);
@@ -808,6 +855,21 @@ describe("anime.heroGrades — skill node effects", () => {
     expect(battleFocusAttackValue(true)).toBe(battleFocusAttackValue(false) + 1);
   });
 
+  it("Battle Focus is stack-scoped to the triggering attack, not a round-long unit buff", () => {
+    let state = attack(combatState("hg-bf-stack-only", [HERO_GRADE_NODE_IDS.battleFocus]));
+    let guard = 20;
+    while (state.reactionWindow?.priorityPlayerId !== "p1" && state.reactionWindow && guard > 0) {
+      guard -= 1;
+      state = applyOk(state, { type: "PASS_REACTION", playerId: state.reactionWindow.priorityPlayerId });
+    }
+    const offer = getLegalActions(state, "p1").find(
+      (entry) => entry.action.type === "USE_HERO_SKILL_REACTION"
+    );
+    expect(offer).toBeTruthy();
+    state = applyOk(state, offer!.action);
+    expect(state.activeEffects.some((effect) => effect.name.includes("Battle Focus"))).toBe(false);
+  });
+
   it("Iron Will (reaction): +1 Defense on the incoming hit (CONTROL: no node)", () => {
     function ironWillDefenseValue(use: boolean): number {
       // p1 defends: give the node to p1 and have p2 attack p1's unit.
@@ -881,6 +943,52 @@ describe("anime.heroGrades — skill node effects", () => {
     expect(control.after).toBe(control.before); // no heal without the node
   });
 
+  it("Encore is never a no-op offer and remains usable after the unit attacks", () => {
+    const full = combatState("hg-encore-full", [HERO_GRADE_NODE_IDS.encore]);
+    const unit = full.combat!.units.unit_p1_griffins;
+    unit.damage = 0;
+    expect(
+      getLegalActions(full, "p1").some(
+        (entry) => entry.action.type === "USE_HERO_SKILL" && entry.action.nodeId === HERO_GRADE_NODE_IDS.encore
+      )
+    ).toBe(false);
+    const forced = applyAction(full, {
+      type: "USE_HERO_SKILL",
+      playerId: "p1",
+      nodeId: HERO_GRADE_NODE_IDS.encore,
+      unitId: unit.id
+    });
+    expect(forced.errors.length).toBeGreaterThan(0);
+    expect(forced.state.players.p1.combatStats.heroSkillsUsedThisCombat ?? []).not.toContain(HERO_GRADE_NODE_IDS.encore);
+
+    unit.damage = 2;
+    unit.attackedThisActivation = true;
+    const afterAttack = getLegalActions(full, "p1").find(
+      (entry) => entry.action.type === "USE_HERO_SKILL" && entry.action.nodeId === HERO_GRADE_NODE_IDS.encore
+    );
+    expect(afterAttack?.label).toContain("heal 1 damage");
+    const healed = applyOk(full, afterAttack!.action);
+    expect(healed.combat!.units[unit.id].damage).toBe(1);
+  });
+
+  it("War Cry cannot be spent after the active unit has already attacked", () => {
+    const state = combatState("hg-warcry-after-attack", [HERO_GRADE_NODE_IDS.warCry]);
+    const unit = state.combat!.units.unit_p1_griffins;
+    unit.attackedThisActivation = true;
+    expect(
+      getLegalActions(state, "p1").some(
+        (entry) => entry.action.type === "USE_HERO_SKILL" && entry.action.nodeId === HERO_GRADE_NODE_IDS.warCry
+      )
+    ).toBe(false);
+    const forced = applyAction(state, {
+      type: "USE_HERO_SKILL",
+      playerId: "p1",
+      nodeId: HERO_GRADE_NODE_IDS.warCry,
+      unitId: unit.id
+    });
+    expect(forced.errors.length).toBeGreaterThan(0);
+  });
+
   it("Harmony Ward (reaction): the granted Defense token soaks 1 off the incoming hit (CONTROL: no node)", () => {
     // p2 attacks p1's Griffins. WITH the node p1 plays the reaction, the Griffins
     // gain a Defense token and roll the Defend die (scripted "+1" → +1 Defense),
@@ -939,6 +1047,41 @@ describe("anime.heroGrades — skill node effects", () => {
     const control = damageTaken(false);
     expect(control).toBeGreaterThan(0); // the raw hit lands
     expect(damageTaken(true)).toBe(control - 1); // the Defense token's Defend die soaked 1
+  });
+
+  it("Harmony Ward refuses a stale reaction once the defender already has a non-stacking token", () => {
+    const state = createInitialGameState("hg-harmony-existing-token");
+    state.anime = { ...GRADES_ON };
+    grantNodes(state, "p1", [HERO_GRADE_NODE_IDS.harmonyWard], 2);
+    state.players.p1.hand = [];
+    state.players.p2.hand = [];
+    const attacker = state.combat!.units.unit_p2_skeletons;
+    attacker.abilities = [];
+    const defender = state.combat!.units.unit_p1_griffins;
+    defender.position = 9;
+    defender.abilities = [];
+    defender.defenseToken = false;
+    state.combat!.activeUnitId = attacker.id;
+    state.activePlayerId = "p2";
+    let pending = applyOk(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p2",
+      attackerId: attacker.id,
+      defenderId: defender.id
+    });
+    let guard = 20;
+    while (pending.reactionWindow?.priorityPlayerId !== "p1" && pending.reactionWindow && guard > 0) {
+      guard -= 1;
+      pending = applyOk(pending, { type: "PASS_REACTION", playerId: pending.reactionWindow.priorityPlayerId });
+    }
+    const offer = getLegalActions(pending, "p1").find(
+      (entry) => entry.action.type === "USE_HERO_SKILL_REACTION"
+    );
+    expect(offer).toBeTruthy();
+    pending.combat!.units[defender.id].defenseToken = true;
+    const stale = applyAction(pending, offer!.action);
+    expect(stale.errors.length).toBeGreaterThan(0);
+    expect(stale.state.players.p1.combatStats.heroSkillsUsedThisCombat ?? []).not.toContain(HERO_GRADE_NODE_IDS.harmonyWard);
   });
 
   it("Forced March (passive): +1 movement at the beginning of each Resources round", () => {

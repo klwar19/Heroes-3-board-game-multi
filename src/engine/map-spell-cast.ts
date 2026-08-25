@@ -30,6 +30,31 @@ export type MapSpellPowerTiers = {
  * card is not that shape (leave it on the normal CHOOSE_ONE path).
  */
 export function mapSpellPowerTiers(card: CardDefinition | undefined): MapSpellPowerTiers | null {
+  // Fortune is a plain Instant rather than a CHOOSE_ONE map Spell, but its
+  // rerollsByPower table is the same kind of Power ladder. Treat it as a
+  // synthetic tier table so it uses the one shared map boost pipeline (printed
+  // Power values, School expert, Basic Magic, Tome and Orb multiplier) instead
+  // of the old private "+1 per discarded card" path.
+  if (
+    card?.kind === "spell" &&
+    card.timing === "instant" &&
+    card.effect.type === "CREATE_ATTACK_DIE_REROLL" &&
+    card.effect.adventureDice &&
+    card.effect.rerollsByPower
+  ) {
+    const tiers = Object.entries(card.effect.rerollsByPower)
+      .map(([rawPower, rerolls], optionIndex) => ({
+        optionIndex,
+        minPower: Number(rawPower),
+        label: `Reroll a Treasure, Resource, or Attack die ${rerolls}×`,
+        effect: card.effect as MapSpellTierEffect
+      }))
+      .filter((tier) => Number.isFinite(tier.minPower))
+      .sort((a, b) => a.minPower - b.minPower);
+    if (tiers.length > 0) {
+      return { tiers, maxPower: Math.max(...tiers.map((tier) => tier.minPower)) };
+    }
+  }
   if (!card || card.kind !== "spell" || card.timing !== "map" || card.effect.type !== "CHOOSE_ONE") {
     return null;
   }

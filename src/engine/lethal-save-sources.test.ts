@@ -140,6 +140,99 @@ describe("A resurrected (cancelled) attack applies no after-attack effects", () 
 });
 
 describe("Resurrection spell", () => {
+  it("lets Earth Magic expert open a silver lethal-save window and pay Resurrection", () => {
+    let state = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["spell.resurrection"],
+      p1Permanents: ["ability.earth_magic"],
+      p1Crowns: 1
+    });
+    expect(state.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    expect(
+      p1SaveActions(state).some(
+        (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection"
+      )
+    ).toBe(false);
+    const expert = p1SaveActions(state).find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert).toBeTruthy();
+
+    state = applyOk(state, expert!.action);
+    const save = p1SaveActions(state).find(
+      (legal) =>
+        legal.action.type === "PLAY_REACTION" &&
+        legal.action.cardId === "spell.resurrection" &&
+        legal.action.optionIndex === 1
+    );
+    expect(save).toBeTruthy();
+    state = applyOk(state, save!.action);
+    expect(hasAbilityEvent(state, "resurrection")).toBe(true);
+    expect(state.players.p1.discard).toEqual(expect.arrayContaining(["ability.earth_magic", "spell.resurrection"]));
+  });
+
+  it("withholds the School commit from a hand-locked side (the Spell it enables is locked too)", () => {
+    // 2026-08-25 audit fix: the commit's only payoff is casting the hand
+    // Resurrection, which the hand lock withholds — offering it burned the
+    // permanent + a crown for nothing. The Archangel keeps the window real.
+    const declared = lethalSetup({
+      defenderGrade: "silver",
+      p1Hand: ["spell.resurrection"],
+      p1Permanents: ["ability.earth_magic"],
+      p1Crowns: 1,
+      archangelSaver: true,
+      handLockP1: true
+    });
+    expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");
+    const actions = p1SaveActions(declared);
+    // CONTROL: the window is real — the free unit save is still offered…
+    expect(actions.some((legal) => legal.action.type === "USE_UNIT_RESURRECTION")).toBe(true);
+    // …but the School commit (like the Deck save itself) is not.
+    expect(actions.some((legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT")).toBe(false);
+    expect(actions.some((legal) => legal.action.type === "PLAY_REACTION")).toBe(false);
+  });
+
+  it("withholds the commit when even +3 cannot afford the save, and no empty window opens", () => {
+    // Gold Resurrection costs 4 Power; after a commit only 3 would stand, so
+    // the offer was a pure trap (permanent + crown burned, the save still
+    // unaffordable) that opened a pause window with nothing real in it.
+    const short = lethalSetup({
+      defenderGrade: "gold",
+      p1Hand: ["spell.resurrection"],
+      p1Permanents: ["ability.earth_magic"],
+      p1Crowns: 1
+    });
+    expect(short.reactionWindow?.triggerEvent.type).not.toBe("UNIT_LETHAL_HIT");
+    // The unsaveable griffins die on the spot (a dead unit sits at full damage).
+    expect(short.combat!.units.unit_p1_griffins.damage).toBeGreaterThanOrEqual(
+      short.combat!.units.unit_p1_griffins.maxHealth
+    );
+
+    // CONTROL: one Power statistic closes the gap (3 + 1 ≥ 4) — the commit is
+    // offered, and following through really saves the gold unit.
+    let state = lethalSetup({
+      defenderGrade: "gold",
+      p1Hand: ["spell.resurrection", "stat.power"],
+      p1Permanents: ["ability.earth_magic"],
+      p1Crowns: 1
+    });
+    const expert = p1SaveActions(state).find(
+      (legal) => legal.action.type === "USE_SCHOOL_PERMANENT_EXPERT"
+    );
+    expect(expert, "the affordable gold save must re-enable the commit").toBeTruthy();
+    state = applyOk(state, expert!.action);
+    const save = p1SaveActions(state).find(
+      (legal) => legal.action.type === "PLAY_REACTION" && legal.action.cardId === "spell.resurrection"
+    );
+    expect(save, "the gold save must be offered off the banked +3").toBeTruthy();
+    // The banked +3 plus the stat.power (chosen in the cost picker) pays the 4.
+    state = applyOk(state, { ...save!.action, costCardIds: ["stat.power"] } as GameAction);
+    expect(hasAbilityEvent(state, "resurrection")).toBe(true);
+    expect(state.combat!.units.unit_p1_griffins.damage).toBeLessThan(
+      state.combat!.units.unit_p1_griffins.maxHealth
+    );
+  });
+
   it("is offered in the save window and cancels the killing blow", () => {
     const declared = lethalSetup({ defenderGrade: "bronze", p1Hand: ["spell.resurrection"] });
     expect(declared.reactionWindow?.triggerEvent.type).toBe("UNIT_LETHAL_HIT");

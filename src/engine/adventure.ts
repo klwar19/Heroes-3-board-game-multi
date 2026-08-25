@@ -69,7 +69,6 @@ import {
   equipmentHandLimitBonus,
   equipmentIgnoresEmbarkPenalty,
   equipmentMovementBonus,
-  equipmentMovesThroughBlockers,
   equipmentRecruitGoldDiscount,
   equipmentResourceRoundGold,
   equipmentResourceRoundMaterials,
@@ -1518,11 +1517,11 @@ const NO_MOVEMENT_CAPABILITIES: HeroMovementCapabilities = { moveThrough: false,
  * GAIN_HERO_MOVEMENT already applies to all of a player's heroes.
  */
 export function getHeroMovementCapabilities(state: GameState, hero: HeroState): HeroMovementCapabilities {
-  let moveThrough = equipmentMovesThroughBlockers(state, hero.controllerId);
+  let moveThrough = false;
   let waterWalk = false;
   let passEncounters = false;
   let passAnyField = false;
-  let crossSealedBorders = equipmentMovesThroughBlockers(state, hero.controllerId);
+  let crossSealedBorders = false;
   let crossLayers = false;
   for (const effect of state.activeEffects) {
     if (effect.controllerId !== hero.controllerId) {
@@ -7278,6 +7277,10 @@ function buildWogFieldVisitStep(
   if (!player) {
     return null;
   }
+  // Secondary Heroes never gain Experience from map locations. Paid XP arms
+  // must therefore be absent for a secondary visitor; otherwise the player can
+  // spend gold (or an army card at the Altar) and receive no reward.
+  const visitingMainHero = state.heroes[heroId]?.kind === "main";
 
   if (locationId === "wog.emerald_tower") {
     const options: { label: string; steps: VisitStep[] }[] = [];
@@ -7296,17 +7299,19 @@ function buildWogFieldVisitStep(
         ]
       });
     }
-    options.push({
-      label: "Pay 2 gold: your main Hero gains 1 experience",
-      steps: [
-        {
-          type: "PAY_TO",
-          prompt: "Train your hero for 2 gold?",
-          costOptions: [{ gold: 2 }],
-          steps: [{ type: "GAIN_EXPERIENCE", amount: 1 }]
-        }
-      ]
-    });
+    if (visitingMainHero) {
+      options.push({
+        label: "Pay 2 gold: your main Hero gains 1 experience",
+        steps: [
+          {
+            type: "PAY_TO",
+            prompt: "Train your hero for 2 gold?",
+            costOptions: [{ gold: 2 }],
+            steps: [{ type: "GAIN_EXPERIENCE", amount: 1 }]
+          }
+        ]
+      });
+    }
     // FO redesign wave 4 — the DRILL arm: with the Unit Experience rule on (and
     // at least one army card), pay 4 gold to teach one chosen unit card +2 unit
     // XP. Absent with the rule off or an empty army (armyUnitXpChoiceStep
@@ -7515,9 +7520,14 @@ function buildWogFieldVisitStep(
   if (locationId === "wog.altar_of_gods") {
     // Pay 3 valuables → choose a blessing. Decline (or too few valuables) = leave.
     const blessings: { label: string; steps: VisitStep[] }[] = [
-      { label: "+1 morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] },
-      { label: "+2 hero experience", steps: [{ type: "GAIN_EXPERIENCE", amount: 2 }] }
+      { label: "+1 morale", steps: [{ type: "GAIN_MORALE", amount: 1 }] }
     ];
+    if (visitingMainHero) {
+      blessings.push({
+        label: "+2 hero experience",
+        steps: [{ type: "GAIN_EXPERIENCE", amount: 2 }]
+      });
+    }
     // Commander stat-point arm — present ONLY with the Commanders module on AND a
     // commander to train (context filter), like the Emerald Tower.
     if (commandersModuleEnabled(state) && player.commander) {
@@ -7552,29 +7562,33 @@ function buildWogFieldVisitStep(
           steps: [{ type: "GAIN_COMMANDER_POINTS", amount: 1 }, { type: "GAIN_MORALE", amount: 1 }]
         });
       }
-      boons.push({
-        label: `+${ALTAR_SACRIFICE_HERO_XP} hero experience`,
-        steps: [{ type: "GAIN_EXPERIENCE", amount: ALTAR_SACRIFICE_HERO_XP }]
-      });
-      options.push({
-        label: "Greater sacrifice: give up one army unit card FOREVER",
-        steps: [
-          {
-            type: "CHOOSE_ONE",
-            prompt: "Which unit card do you lay on the altar? (the card leaves the game for good)",
-            options: [
-              ...player.army.map((unit) => ({
-                label: `Sacrifice ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
-                steps: [
-                  { type: "SACRIFICE_ARMY_UNIT" as const, armyUnitId: unit.id },
-                  { type: "CHOOSE_ONE" as const, prompt: "The gods accept the sacrifice:", options: boons }
-                ]
-              })),
-              { label: "Sacrifice nothing", steps: [] }
-            ]
-          }
-        ]
-      });
+      if (visitingMainHero) {
+        boons.push({
+          label: `+${ALTAR_SACRIFICE_HERO_XP} hero experience`,
+          steps: [{ type: "GAIN_EXPERIENCE", amount: ALTAR_SACRIFICE_HERO_XP }]
+        });
+      }
+      if (boons.length > 0) {
+        options.push({
+          label: "Greater sacrifice: give up one army unit card FOREVER",
+          steps: [
+            {
+              type: "CHOOSE_ONE",
+              prompt: "Which unit card do you lay on the altar? (the card leaves the game for good)",
+              options: [
+                ...player.army.map((unit) => ({
+                  label: `Sacrifice ${coreUnitDefinitions[unit.unitDefId]?.name ?? unit.unitDefId} (${unit.side})`,
+                  steps: [
+                    { type: "SACRIFICE_ARMY_UNIT" as const, armyUnitId: unit.id },
+                    { type: "CHOOSE_ONE" as const, prompt: "The gods accept the sacrifice:", options: boons }
+                  ]
+                })),
+                { label: "Sacrifice nothing", steps: [] }
+              ]
+            }
+          ]
+        });
+      }
     }
     options.push({ label: "Leave", steps: [] });
     return { type: "CHOOSE_ONE", prompt: "Altar of the Gods:", options };
@@ -17636,14 +17650,15 @@ function applyCalamityWaveRoundStart(state: GameState): void {
   for (const playerId of seats) {
     adventure.rewardQueue.push({ playerId, kind: "wave-assault", wave });
   }
+  const designed = designedWaveSpec(state, wave);
+  const level = designed?.level ?? waveArmyLevel(wave);
+  const armyLabel = designed?.units?.length ? "the map's custom war party" : `a level-${level} war party`;
   appendEvent(state, {
     type: "MONSTER_WAVE_STARTED",
     round: state.round,
     wave,
-    level: waveArmyLevel(wave),
-    message: `Monster wave ${wave} pours through — every player fights a level-${waveArmyLevel(
-      wave
-    )} war party at round start, in seat order.`
+    level,
+    message: `Monster wave ${wave} pours through — every player fights ${armyLabel} at round start, in seat order.`
   });
   beginRoundStartEventBarrier(state);
 }
@@ -17727,6 +17742,25 @@ export function applyWavePillage(state: GameState, playerId: PlayerId, wave: num
     });
   const overrun = holdings[0] ?? null;
   if (overrun) {
+    // Ownership has an economic mirror: mines and settlements contribute to
+    // the owner's production track. Removing only the map flag leaves a ghost
+    // income that keeps paying every resource round, so unwind that mirror
+    // before the field is reset and re-guarded.
+    if (overrun.location === "mine") {
+      const resource = overrun.resource ?? "gold";
+      const amount = overrun.amount ?? 0;
+      if (amount > 0) {
+        player.production[resource] = Math.max(0, player.production[resource] - amount);
+        appendEvent(state, {
+          type: "PRODUCTION_CHANGED",
+          playerId,
+          resource,
+          amount: -amount
+        });
+      }
+    } else {
+      removeSettlementProduction(state, NEUTRAL_PLAYER_ID, overrun);
+    }
     overrun.flagOwnerId = null;
     overrun.blackCube = false;
     overrun.everFlagged = false;
@@ -17735,6 +17769,9 @@ export function applyWavePillage(state: GameState, playerId: PlayerId, wave: num
     }
     overrun.difficulty = WAVE_OVERRUN_GUARD_LEVEL;
     overrun.customGuardLevel = WAVE_OVERRUN_GUARD_LEVEL;
+    if (overrun.location === "settlement") {
+      refreshEliminationClock(state, playerId);
+    }
   }
 
   appendEvent(state, {
@@ -17914,8 +17951,18 @@ export function spawnRaidBossOnField(
   }
   const instanceId = `raid_${def.id}_${field.spaceId}`;
   clearCustomGuard(field);
-  delete field.difficulty;
+  delete field.resource;
+  delete field.amount;
+  delete field.faction;
   field.blackCube = false;
+  field.flagOwnerId = null;
+  delete field.extraFlagOwnerIds;
+  field.everFlagged = false;
+  field.settlementResource = null;
+  delete field.grailDiggable;
+  delete field.grailConverted;
+  delete field.dungeonSite;
+  delete field.wagerCleared;
   field.location = "rift_lair";
   field.riftLair = instanceId;
   adventure.raidBosses[instanceId] = {
@@ -18012,9 +18059,9 @@ export function placeDungeonSite(state: GameState, spaceId: MapSpaceId): MapFiel
   if (!adventure || !adventure.dungeonSite || !field) {
     return null;
   }
+  clearCustomGuard(field);
   field.location = "dungeon_gate";
   field.dungeonSite = true;
-  delete field.difficulty;
   delete field.resource;
   delete field.amount;
   delete field.faction;
