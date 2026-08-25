@@ -235,7 +235,6 @@ import {
 } from "./field-overrides";
 import { tilePendingTokens } from "./tile-hex-placements";
 import { openDeckCardPlacementChoice, resolveDeckCardPlacementChoice } from "./deck-card-placement";
-import { openHandDiscardChoice } from "./hand-discard-choice";
 import { ATTACK_DIE_FACES, getBattlefieldLabel, getOrthogonalNeighbors } from "./battlefield";
 import { appendExpiredEffectEvents, pvpEscapeWindowOpen } from "./combat-units";
 import { applyUnitCurrentSide } from "./unit-transforms";
@@ -6739,7 +6738,14 @@ function listMapSpellBoostOffers(
   // single spellPowerValueOfCard read collapsed it to the draw side and hid the
   // +2 (the reported bug). Expert sides honour the Empower crown waiver.
   const considerPowerCard = (cardId: CardId) => {
-    const card = cardLibrary[cardId];
+    // Read the definition the ENGINE resolves right now, never the raw printed
+    // library — the same rule openMapSpellBoost / applyMapSpellAtPower and this
+    // window's own RESOLUTION already follow. A balance pack reprints Power
+    // sources too: the Polish Dragon Wing Tabard / Spirit of Oppression side is
+    // "+1 Power, draw 1 card then discard 1 card", and reading the printed card
+    // here offered it as a bare "+1 Power" with `drawCards: 0`, so the tray
+    // resolved neither the draw nor its printed discard.
+    const card = balanceCard(state, cardId) ?? cardLibrary[cardId];
     if (!cardCanBoostPower(card)) {
       return;
     }
@@ -7335,31 +7341,20 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     const resolving = offer.removeSelf
       ? [...(nextFlags.inFlightCardIds ?? [])]
       : [...(nextFlags.inFlightCardIds ?? []), offer.cardId];
+    // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
+    // card then discard 1 card". The rider lives on the ADD_SPELL_POWER side
+    // actually played. Read inline (adventure-reducer cannot import
+    // legal-actions' `drawRiderThenDiscard` — the dependency runs the other
+    // way); keep the two in step.
+    const boostCard = balanceCard(state, offer.cardId) ?? cardLibrary[offer.cardId];
+    const boostEffect =
+      boostCard?.effect.type === "CHOOSE_ONE"
+        ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
+        : boostCard?.effect;
+    const thenDiscard = boostEffect?.type === "ADD_SPELL_POWER" ? (boostEffect.thenDiscard ?? 0) : 0;
     if (draws > 0) {
       nextFlags = { ...nextFlags, inFlightCardIds: resolving };
       drawCardsForPlayer(state, playerId, draws, { inFlightCardIds: resolving });
-      // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "…, draw 1
-      // card then discard 1 card" — the discard follows the draw here too, so the
-      // Power tray cannot resolve the draw without the printed pitch.
-      // The rider lives on the ADD_SPELL_POWER side actually played. Read inline
-      // (adventure-reducer cannot import legal-actions' `drawRiderThenDiscard` —
-      // the dependency runs the other way); keep the two in step.
-      const boostCard = balanceCard(state, offer.cardId) ?? cardLibrary[offer.cardId];
-      const boostEffect =
-        boostCard?.effect.type === "CHOOSE_ONE"
-          ? boostCard.effect.options[offer.optionIndex ?? 0]?.effect
-          : boostCard?.effect;
-      const thenDiscard = boostEffect?.type === "ADD_SPELL_POWER" ? (boostEffect.thenDiscard ?? 0) : 0;
-      if (thenDiscard > 0) {
-        openHandDiscardChoice(
-          state,
-          playerId,
-          thenDiscard,
-          [...(state.players[playerId]?.hand ?? [])],
-          false,
-          cardLibrary[offer.cardId]?.name ?? offer.cardId
-        );
-      }
     } else if (!offer.removeSelf) {
       nextFlags = {
         ...nextFlags,
@@ -7370,6 +7365,26 @@ export function resolveMapSpellBoostChoice(state: GameState, playerId: PlayerId,
     // The side's own printed card cost (discard 1 / up to 3) opens now.
     if (offer.costDiscards && (offer.costDiscards.required > 0 || (offer.costDiscards.upTo > 0 && offer.costDiscards.perCard > 0))) {
       nextFlags = { ...nextFlags, costDiscards: { sourceCardId: offer.cardId, ...offer.costDiscards } };
+    }
+    // The printed post-draw discard is owed to the STILL-OPEN tray, so it cannot
+    // be a `pendingChoice` of its own: `openMapSpellBoost` below reopens the
+    // window and would overwrite it (the reported "no discarding" on this
+    // surface). Fold it into the tray's own owed-cost slot instead — the exact
+    // machinery Titan's Cuirass uses — so the window withholds "Commit and cast"
+    // until the pitch is paid, and the just-drawn card (already in hand) is one
+    // of the offered candidates, keeping the printed draw-THEN-discard order.
+    // Additive, so a side printing BOTH a cost and this rider owes both.
+    if (thenDiscard > 0) {
+      const owed = nextFlags.costDiscards;
+      nextFlags = {
+        ...nextFlags,
+        costDiscards: {
+          sourceCardId: owed?.sourceCardId ?? offer.cardId,
+          required: (owed?.required ?? 0) + thenDiscard,
+          upTo: (owed?.upTo ?? 0) + thenDiscard,
+          perCard: owed?.perCard ?? 0
+        }
+      };
     }
   }
 

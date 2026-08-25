@@ -1029,6 +1029,176 @@ describe("Balance Pack artifacts — the +1 Power cycle riders", () => {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // The reported bug (2026-08-25): "Tabard and Spirit … should draw 1 card and
+  // then DISCARD 1 card. No discarding for now." The cast-window reaction above
+  // was already right; the three surfaces below each drew (or, in the boost
+  // tray, did not even draw) and never demanded the printed pitch.
+  // -------------------------------------------------------------------------
+
+  /** A fresh adventure map with the Balance Pack flag and p1's hand replaced. */
+  function mapWithHand(balance: boolean, cards: string[], seed = "cycle-rider"): GameState {
+    let state = createAdventureGameState({
+      seed: `${seed}-${balance}`,
+      difficulty: "normal",
+      rollFirstPlayer: false
+    });
+    state.adventure!.houseRules = { ...(state.adventure!.houseRules ?? {}), "polish-card-balance": balance };
+    if (state.players.p1.needsHandRefresh || state.players.p1.canMulligan) {
+      state = applyOk(state, { type: "REFRESH_HAND", playerId: "p1", discardCardIds: [] });
+    }
+    state.players.p1.hand = cards as CardId[];
+    // Top of the pile is the LAST element, so Bless is the card drawn.
+    state.players.p1.deck = ["spell.haste", "spell.bless"] as CardId[];
+    state.players.p1.discard = [];
+    return state;
+  }
+
+  for (const cardId of ["artifact.dragon_wing_tabard", "artifact.spirit_of_oppression"]) {
+    const name = cardLibrary[cardId]?.name ?? cardId;
+
+    it(`${name}: the MAP cycling play draws 1 and then really discards 1`, () => {
+      let state = mapWithHand(true, [cardId]);
+      const play = plays(state, cardId).find((action) => action.optionIndex === 1);
+      expect(play, "the Power/cycle side is a map play").toBeTruthy();
+
+      state = applyOk(state, play!);
+      // The draw resolved and the +Power banked for the next map Spell.
+      expect(state.players.p1.hand, "it drew the top of the deck").toEqual(["spell.bless"]);
+      expect(state.players.p1.mapSpellPowerBank).toBe(1);
+      // …and the printed discard is owed, with the just-DRAWN card a candidate.
+      expect(choiceInfo(state).context, "the printed discard opened").toBe("hand-discard");
+      const discardChoice = state.pendingChoice!;
+      expect(
+        (discardChoice as unknown as { handDiscard: { cardIds: CardId[] } }).handDiscard.cardIds,
+        "the card just drawn may pay the pitch (draw happens FIRST)"
+      ).toContain("spell.bless" as CardId);
+
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: discardChoice.id,
+        optionIndex: 0
+      });
+      expect(state.players.p1.hand, "the pitch really left the hand").toEqual([]);
+      expect(state.players.p1.discard, "…and reached the discard pile").toContain("spell.bless" as CardId);
+    });
+
+    it(`${name}: the own-activation COMBAT draw-only play draws 1 and then really discards 1`, () => {
+      let state = combat(true, `cycle-rider-combat-${cardId}`);
+      state.players.p1.hand = [cardId as CardId];
+      state.players.p1.deck = ["spell.haste", "spell.bless"] as CardId[];
+      state.players.p1.discard = [];
+
+      const play = plays(state, cardId).find((action) => action.optionIndex === 1);
+      expect(play, "the Power/cycle side is playable on your own activation").toBeTruthy();
+
+      state = applyOk(state, play!);
+      expect(state.players.p1.hand, "it drew").toEqual(["spell.bless"]);
+      expect(choiceInfo(state).context, "the printed discard opened").toBe("hand-discard");
+
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: state.pendingChoice!.id,
+        optionIndex: 0
+      });
+      expect(state.players.p1.hand).toEqual([]);
+      expect(state.players.p1.discard).toContain("spell.bless" as CardId);
+    });
+
+    it(`${name}: the map spell-boost TRAY draws 1 and withholds the cast until the pitch is paid`, () => {
+      let state = mapWithHand(true, ["spell.view_air", cardId], `cycle-rider-tray-${cardId}`);
+      const materialsBefore = state.players.p1.resources.buildingMaterials;
+      state = applyOk(state, plays(state, "spell.view_air")[0]);
+
+      const boost = state.pendingChoice as unknown as {
+        id: string;
+        context: string;
+        options: { label: string }[];
+        mapSpellBoost: { offers: { cardId: string; drawCards?: number }[] };
+      };
+      expect(boost.context).toBe("map-spell-boost");
+      const offerIndex = boost.mapSpellBoost.offers.findIndex((offer) => offer.cardId === cardId);
+      expect(offerIndex, "the Power side is a tray offer").toBeGreaterThanOrEqual(0);
+      expect(
+        boost.mapSpellBoost.offers[offerIndex].drawCards,
+        "the tray reads the REPRINT, so the offer carries its draw rider"
+      ).toBe(1);
+
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: boost.id,
+        optionIndex: offerIndex
+      });
+      expect(state.players.p1.hand, "it drew inside the tray").toEqual(["spell.bless"]);
+      const owed = state.pendingChoice as unknown as { id: string; context: string; options: { label: string }[] };
+      expect(owed.context, "the tray stays open and now owes the printed pitch").toBe("map-spell-boost");
+      expect(
+        owed.options.map((option) => option.label),
+        "…with the just-drawn card as the ONLY offer — no commit until it is paid"
+      ).toEqual(["Discard Bless — pays " + name]);
+      expect(
+        state.players.p1.resources.buildingMaterials,
+        "the Spell has NOT resolved while the pitch is owed"
+      ).toBe(materialsBefore);
+
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: owed.id,
+        optionIndex: 0
+      });
+      expect(state.players.p1.discard, "the pitch reached the discard pile").toContain("spell.bless" as CardId);
+      expect(state.players.p1.hand).toEqual([]);
+      expect(
+        state.players.p1.resources.buildingMaterials,
+        "and the Power-1 View Air then resolved (2 building materials)"
+      ).toBe(materialsBefore + 2);
+    });
+
+    it(`CONTROL: the printed ${name} has no map/combat cycling play at all`, () => {
+      const onMap = mapWithHand(false, [cardId], `cycle-off-map-${cardId}`);
+      expect(
+        plays(onMap, cardId).some((action) => action.optionIndex === 1),
+        "the printed Power side carries no draw rider, so it is no map play"
+      ).toBe(false);
+
+      const inCombat = combat(false, `cycle-off-combat-${cardId}`);
+      inCombat.players.p1.hand = [cardId as CardId];
+      inCombat.players.p1.deck = ["spell.haste", "spell.bless"] as CardId[];
+      expect(
+        plays(inCombat, cardId).some((action) => action.optionIndex === 1),
+        "…nor an own-activation draw-only play"
+      ).toBe(false);
+    });
+
+    it(`CONTROL: the printed ${name} in the map spell-boost tray draws nothing and owes no pitch`, () => {
+      let state = mapWithHand(false, ["spell.view_air", cardId], `cycle-off-tray-${cardId}`);
+      const materialsBefore = state.players.p1.resources.buildingMaterials;
+      state = applyOk(state, plays(state, "spell.view_air")[0]);
+      const boost = state.pendingChoice as unknown as {
+        id: string;
+        mapSpellBoost: { offers: { cardId: string; drawCards?: number }[] };
+      };
+      const offerIndex = boost.mapSpellBoost.offers.findIndex((offer) => offer.cardId === cardId);
+      expect(offerIndex).toBeGreaterThanOrEqual(0);
+      expect(boost.mapSpellBoost.offers[offerIndex].drawCards ?? 0, "the printed side never draws").toBe(0);
+
+      state = applyOk(state, {
+        type: "CHOOSE_OPTION",
+        playerId: "p1",
+        choiceId: boost.id,
+        optionIndex: offerIndex
+      });
+      expect(state.players.p1.hand, "nothing was drawn").toEqual([]);
+      expect(state.players.p1.deck, "the deck is untouched").toContain("spell.bless" as CardId);
+      expect(state.pendingChoice ?? null, "no pitch is owed — the cast resolved straight away").toBeNull();
+      expect(state.players.p1.resources.buildingMaterials).toBe(materialsBefore + 2);
+    });
+  }
+
   it("CONTROL: the printed cards draw nothing and open no discard", () => {
     const state = combat(false);
     state.players.p1.hand = ["artifact.dragon_wing_tabard" as CardId, "spell.magic_arrow" as CardId];

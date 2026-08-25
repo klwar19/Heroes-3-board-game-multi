@@ -20066,6 +20066,13 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
         player.mapSpellPowerBank = (player.mapSpellPowerBank ?? 0) + bank;
       }
     }
+    // Polish Balance Pack Dragon Wing Tabard / Spirit of Oppression: "+1 Power,
+    // draw 1 card THEN discard 1 card." This branch IS the everyday surface for
+    // that side — the map cycling play (where the Power banks) and the
+    // own-activation combat draw-only play — and it used to draw without ever
+    // demanding the printed pitch. The discard runs AFTER the draw, so the
+    // just-drawn card is a legal candidate (the shared Rion VI rider read).
+    applyDrawRiderThenDiscard(state, action.playerId, effect, card.name);
   }
 
   if (effect.type === "GAIN_MORALE") {

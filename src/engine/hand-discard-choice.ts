@@ -1,13 +1,15 @@
 /**
  * "Discard N card(s) from your hand" — the shared hand-discard window.
  *
- * Extracted from `reducer.ts` (unchanged behaviour) so the ADVENTURE side can
- * open it too: the Polish Balance Pack's Dragon Wing Tabard / Spirit of
- * Oppression print "+1 Power, draw 1 card then discard 1 card", and one of the
- * surfaces that resolves that Power side is the map-spell-boost tray in
- * `adventure-reducer.ts` — which cannot import `reducer.ts` (the dependency runs
- * the other way). ONE implementation, so no surface can resolve the draw without
- * the discard.
+ * Extracted from `reducer.ts` (unchanged behaviour) as a leaf module so the
+ * ADVENTURE side can open it too without importing `reducer.ts` (the dependency
+ * runs the other way). ONE implementation, so no surface can resolve a "draw
+ * then discard" rider without the discard.
+ *
+ * NOTE the one surface that deliberately does NOT call this: the map-spell-boost
+ * tray (`resolveMapSpellBoostChoice`). It is itself an open `pendingChoice` that
+ * reopens after every step, so a nested choice would be overwritten — the owed
+ * pitch is folded into that tray's own `costDiscards` slot instead.
  *
  * Two-option-per-card shape, so the generic AI option scorer and the
  * AFK/turn-timeout driver's `CHOOSE_OPTION` path answer it with no bespoke
