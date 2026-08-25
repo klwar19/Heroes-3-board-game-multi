@@ -493,6 +493,113 @@ export function mapSpellPowerBankAvailable(state: GameState, playerId: PlayerId)
 }
 
 /**
+ * Whether an effect draws from the attack-window Power pool — the Power-scaling
+ * ladders (Bloodlust/Curse/Weakness/Precision's `amountByPower`, the scaled
+ * Bless bonus, Slayer's roll count, Frenzy's pierced grade, the reprint
+ * Misfortune's die mode, Fortune's reroll count). A plain (unscaled) Bless does
+ * not, so it is never credited standing Power.
+ *
+ * Card KIND is deliberately NOT part of this read: the pool is per-player Power,
+ * and anything printed with a `*ByPower` ladder consumes it (see
+ * `playConsumesWindowPower`). Moved here from reducer.ts so the offer gate, the
+ * batch validator, the resolver and the tray all share ONE predicate.
+ */
+export function effectScalesWithAttackPool(
+  effect: ReturnType<typeof getEffectiveCardEffect> | null | undefined
+): boolean {
+  if (!effect) {
+    return false;
+  }
+  if (effect.type === "SLAYER_ATTACK") {
+    return true;
+  }
+  if (effect.type === "ADD_COMBAT_STAT") {
+    return Boolean(effect.amountByPower);
+  }
+  if (effect.type === "IGNORE_ATTACK_DIE") {
+    return Boolean(effect.attackBonusByPower);
+  }
+  if (effect.type === "IGNORE_DEFENSE") {
+    return Boolean(effect.gradeByPower);
+  }
+  if (effect.type === "NEGATE_ATTACK") {
+    return Boolean(effect.dieModeByPower);
+  }
+  if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
+    return Boolean(effect.rerollsByPower);
+  }
+  return false;
+}
+
+/**
+ * Whether a play is a Power SINK — something the window's pooled Power really
+ * feeds, so pouring "+1 Power" alongside it is not wasted. TWO families, and
+ * NEITHER is gated on the card being a Spell (USER RULE 2026-08-26, "still
+ * cannot add SP to other effects" — the pooled Power must reach every
+ * Power-scaling play in the window, not only Spells):
+ *   - a `*ByPower` ladder (`effectScalesWithAttackPool`), re-derived from the
+ *     caster's pool every time fresh Power lands;
+ *   - a printed `powerCost` tier (Resurrection / Magic Mirror / Misfortune /
+ *     Sorrow rungs, the Alamar & Jeddite lethal-save specialties), which since
+ *     2026-08-26 counts the pooled window Power as payment
+ *     (`attackWindowPooledPower`).
+ *
+ * DELIBERATE EXCLUSION: the Meteor Shower / Rocket Launcher family
+ * (`meteor-shower` tag) is FUEL-only — `playCardSpellPower` short-circuits to
+ * the chosen fuel cards alone — so its `amountByPower` is NOT a pool sink and
+ * it never justifies a pooled Power play. `discardCardsUpTo` fuel is not a
+ * `powerCost`, so it falls out of this read on its own.
+ */
+export function playConsumesWindowPower(
+  card: CardDefinition | undefined,
+  effect: ReturnType<typeof getEffectiveCardEffect> | null | undefined,
+  cost?: CardPlayCost
+): boolean {
+  if (!card || card.tags?.includes("meteor-shower")) {
+    return false;
+  }
+  return effectScalesWithAttackPool(effect) || cost?.powerCost !== undefined;
+}
+
+/**
+ * The Power this player has already poured into the pending attack of the OPEN
+ * window — the "+1 Power" Spell discards and every `ADD_SPELL_POWER` statistic
+ * played into it (`modifiers.attackPowerByPlayer`, the very pool every
+ * Bloodlust / Fortune / Frenzy ladder scales off).
+ *
+ * Counted toward a printed `powerCost` paid LATER in that same window so pooled
+ * Power reaches the TIERED plays too, not only the `*ByPower` ladders (USER RULE
+ * 2026-08-26). Read by BOTH `canAffordCardCost` (the offer) and
+ * `payOptionCardCost` (the payment) so a rung the engine accepts is exactly the
+ * rung the window offered. Unlike the map / School-expert banks the pool is NOT
+ * consumed by paying — it is a per-caster READING every ladder on the attack
+ * already shares (see the note at payOptionCardCost's powerCost branch).
+ *
+ * Zero outside combat (a map Spell's Power cost never touches an attack pool)
+ * and zero for a CAST_SPELL stack item, whose `spellPowerBonus` belongs to the
+ * cast it was paid into.
+ */
+export function attackWindowPooledPower(state: GameState, playerId: PlayerId): number {
+  if (!state.combat) {
+    return 0;
+  }
+  // Scan from the TOP DOWN, not bottom-up: a "+1 Power" discard always lands on
+  // `state.stack.at(-1)` (applyReactionPlayCore's `stackItemForBoost`), so the
+  // TOPMOST attack item is the one holding the pool — reading the bottom-most (a
+  // plain `.find`, which is what the lethal-save window's own lookup does) would
+  // read an OLDER attack's pool the moment a printed follow-up attack stacks a
+  // second one. Walking down still finds the attack under a nested cast/save
+  // window, which is why this is not just `at(-1)`.
+  for (let index = state.stack.length - 1; index >= 0; index -= 1) {
+    const item = state.stack[index];
+    if (item.action.type === "ATTACK_UNIT" || item.action.type === "MOVE_AND_ATTACK_UNIT") {
+      return item.modifiers.attackPowerByPlayer?.[playerId] ?? 0;
+    }
+  }
+  return 0;
+}
+
+/**
  * Whether the player can pay an option's card cost from hand right now.
  *
  * Spell Book (house rule): one stashed Book Spell may count toward a value /
@@ -589,6 +696,11 @@ function canAffordCardCost(
       // Window-committed School expert: only a MATCHING-school Spell may spend
       // it (one shared read with payOptionCardCost, so offer and payment agree).
       committedSchoolExpertPower(state.reactionWindow, playerId, card) +
+      // Power already poured into this window's pending attack (the "+1 Power"
+      // discards, a played Power statistic). ONE shared read with
+      // payOptionCardCost, so the rung this offer shows is exactly the rung the
+      // payment accepts.
+      attackWindowPooledPower(state, playerId) +
       extraStandingPower;
     const crownsLeft =
       player.limits.expertUses +
@@ -9105,18 +9217,32 @@ export function getLegalReactionsForTrigger(
       }
     }
 
-    // Attack windows: only spells that modify the attack (buffs/nerfs of
-    // attack or defense) may consume Power, so Power plays are offered only
-    // while the player still holds such an instant spell to pair them with…
-    const hasPairableSpell = reactions.some(
-      (legal) =>
-        legal.action.type === "PLAY_REACTION" &&
-        !legal.action.asPowerBoost &&
-        // A draw-rider-only play never CASTS its spell (only the draw resolves),
-        // so it can never be the spell a Power play pays into.
-        !legal.action.drawOnly &&
-        cards[legal.action.cardId]?.kind === "spell"
-    );
+    // Attack windows: Power plays are offered only while the player still holds
+    // something in this window that can actually CONSUME the Power — a spell
+    // that modifies the attack, or (since 2026-08-26) ANY play that is a Power
+    // sink whatever its kind: a `*ByPower` ladder or a printed `powerCost` tier
+    // (`playConsumesWindowPower`). Widened per the USER RULE "still cannot add
+    // SP to other effects": the pooled Power must reach every Power-scaling
+    // play, not only Spells. The spell-kind arm is KEPT as-is (a plain unscaled
+    // instant Spell has always justified a Power play), so this only widens.
+    const hasPairablePowerSink = reactions.some((legal) => {
+      if (legal.action.type !== "PLAY_REACTION" || legal.action.asPowerBoost) {
+        return false;
+      }
+      // A draw-rider-only play never CASTS its card (only the draw resolves),
+      // so it can never be the play a Power play pays into.
+      if (legal.action.drawOnly) {
+        return false;
+      }
+      const offered = cards[legal.action.cardId];
+      if (offered?.kind === "spell") {
+        return true;
+      }
+      const variants = offered ? getCardPlayVariants(offered) : [];
+      const variant =
+        legal.action.optionIndex !== undefined ? variants[legal.action.optionIndex] : variants[0];
+      return playConsumesWindowPower(offered, variant?.effect, variant?.cost);
+    });
     // …or while a Power-scaling spell this player already cast into the attack
     // is still on the stack waiting to grow (the caster keeps priority and may
     // keep empowering a Bloodlust/Bless after playing it).
@@ -9134,7 +9260,7 @@ export function getLegalReactionsForTrigger(
       (attackOwner === player.id && attackStackItem?.modifiers.slayerRollsByPower !== undefined) ||
       attackStackItem?.modifiers.ignoreDefenseCasterId === player.id ||
       attackStackItem?.modifiers.misfortuneCasterId === player.id;
-    if (!isAttackWindow || hasPairableSpell || hasEmpowerablePlayed) {
+    if (!isAttackWindow || hasPairablePowerSink || hasEmpowerablePlayed) {
       reactions.push(...powerReactions);
     }
 

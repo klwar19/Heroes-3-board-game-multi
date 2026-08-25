@@ -1155,7 +1155,46 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     // already armed the attack.
     const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(false);
-    expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
+    expect(screen.queryByText(/power needs something in this attack to feed/i)).toBeNull();
+  });
+
+  it("still WARNS (with the honest wording) when a lone Power boost has nothing to feed", () => {
+    // The POSITIVE half of the two negative assertions above — without it they
+    // are vacuous the moment the string is reworded (which is exactly what
+    // happened on 2026-08-26). It also proves the "Power sink" widening did not
+    // switch the pairing rule off: with nothing selected that consumes Power the
+    // tray still warns and still refuses to confirm. The wording no longer
+    // claims a SPELL is the only thing Power can feed.
+    // Same shape as the Slayer case above, but Slayer is NEVER played — so the
+    // attack carries nothing empowerable and the selected boost is alone.
+    const state = createInitialGameState("tray-lone-power-warns");
+    state.players.p1.hand = ["spell.slayer", "spell.haste"];
+    state.players.p2.hand = [];
+    state.combat!.activeUnitId = "unit_p1_griffins";
+    const griffins = state.combat!.units.unit_p1_griffins;
+    griffins.activatedThisRound = false;
+    griffins.abilities = [];
+    griffins.position = 9;
+    const dread = state.combat!.units.unit_p2_dread_knights;
+    dread.abilities = [];
+    dread.position = 13;
+
+    const declared = applyAction(state, {
+      type: "ATTACK_UNIT",
+      playerId: "p1",
+      attackerId: "unit_p1_griffins",
+      defenderId: "unit_p2_dread_knights"
+    });
+    expect(declared.errors).toEqual([]);
+    expect(declared.state.reactionWindow?.priorityPlayerId).toBe("p1");
+
+    render(tray(declared.state));
+    // Both hand Spells offer a "+1 Power" discard; take the first and nothing else.
+    act(() => fireEvent.click(screen.getAllByRole("button", { name: /discard for \+1 power/i })[0]));
+
+    expect(screen.getByText(/power needs something in this attack to feed/i)).toBeTruthy();
+    const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
+    expect(confirm.disabled, "a lone Power boost can never be confirmed").toBe(true);
   });
 
   it("lets the DEFENDER fuel a Spell Book Weakness with a lone +1 Power (hand Magic Arrow)", () => {
@@ -1215,7 +1254,7 @@ describe("ReactionTray — Power can still be added after Slayer arms the attack
     // may fuel it with a lone Power. Before the fix this stayed disabled.
     const confirm = screen.getByRole("button", { name: /play card/i }) as HTMLButtonElement;
     expect(confirm.disabled, "the defender should be able to fuel their own Weakness with Magic Arrow").toBe(false);
-    expect(screen.queryByText(/power only counts with a spell/i)).toBeNull();
+    expect(screen.queryByText(/power needs something in this attack to feed/i)).toBeNull();
   });
 
   it("offers Frenzy (a target-less instant buff) to the attacker as a clickable tile that dispatches PLAY_REACTION", () => {

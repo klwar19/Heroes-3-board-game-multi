@@ -501,6 +501,10 @@ import {
   prophecyPreRollAvailable,
   reflectableAttackInstantForPlayer,
   mapSpellPowerBankAvailable,
+  attackWindowPooledPower,
+  effectScalesWithAttackPool,
+  playConsumesWindowPower,
+  getCardPlayVariants,
   getSchoolPermanentExpertActions,
   resolvedSpellPowerForStackItem,
   rerollSourceAvailableFor,
@@ -923,6 +927,10 @@ function assertBatchReactionLegal(
 
   let expertUsesNeeded = 0;
   let spellPlays = 0;
+  // Plays in this batch that genuinely CONSUME the window's pooled Power without
+  // being Spells (a `*ByPower` ladder or a printed `powerCost` tier) — the
+  // 2026-08-26 widening of the "Power needs a Spell" rule.
+  let powerSinkPlays = 0;
   let powerOnlyPlays = 0;
 
   for (const play of action.plays) {
@@ -974,6 +982,12 @@ function assertBatchReactionLegal(
 
     if (card?.kind === "spell") {
       spellPlays += 1;
+    } else if (
+      playConsumesWindowPower(card, effect, card ? getCardPlayVariants(card)[play.optionIndex ?? 0]?.cost : undefined)
+    ) {
+      // A non-Spell Power sink justifies a pooled Power play in the same batch
+      // exactly like a Spell does (USER RULE 2026-08-26).
+      powerSinkPlays += 1;
     }
     if (effect.type === "ADD_SPELL_POWER") {
       powerOnlyPlays += 1;
@@ -998,7 +1012,10 @@ function assertBatchReactionLegal(
   if (
     state.reactionWindow.triggerEvent.type === "UNIT_ATTACK_DECLARED" &&
     powerOnlyPlays > 0 &&
-    spellPlays === 0
+    spellPlays === 0 &&
+    // …or a non-Spell Power SINK in the same batch (a `*ByPower` ladder or a
+    // printed `powerCost` tier) — it consumes the Power just as a Spell does.
+    powerSinkPlays === 0
   ) {
     const stackItem = state.stack.at(-1);
     const attackOwner =
@@ -2082,36 +2099,9 @@ function frenzyPierces(
   return reached !== null && bankAwareTierGateRank(defender, "IGNORE_DEFENSE", bankTargetingEnabled) <= gradeRank(reached);
 }
 
-/**
- * Whether a spell instant's effect draws from the attack-window Power pool —
- * the Power-scaling buffs/debuffs (Bloodlust, Curse, Weakness, Precision, the
- * scaled Bless bonus, Slayer's roll count and Frenzy's pierced grade). A plain
- * (unscaled) Bless does not, so it is never credited standing Power.
- */
-function effectScalesWithAttackPool(effect: ReturnType<typeof getEffectiveCardEffect>): boolean {
-  if (!effect) {
-    return false;
-  }
-  if (effect.type === "SLAYER_ATTACK") {
-    return true;
-  }
-  if (effect.type === "ADD_COMBAT_STAT") {
-    return Boolean(effect.amountByPower);
-  }
-  if (effect.type === "IGNORE_ATTACK_DIE") {
-    return Boolean(effect.attackBonusByPower);
-  }
-  if (effect.type === "IGNORE_DEFENSE") {
-    return Boolean(effect.gradeByPower);
-  }
-  if (effect.type === "NEGATE_ATTACK") {
-    return Boolean(effect.dieModeByPower);
-  }
-  if (effect.type === "CREATE_ATTACK_DIE_REROLL") {
-    return Boolean(effect.rerollsByPower);
-  }
-  return false;
-}
+// `effectScalesWithAttackPool` moved to legal-actions.ts on 2026-08-26 so the
+// offer gate, this resolver, the batch validator and the reaction tray all share
+// ONE predicate — see `playConsumesWindowPower` there.
 
 /**
  * Re-derive every Power-scaling attack/defense instant recorded on an attack
@@ -14995,7 +14985,15 @@ function payOptionCardCost(
     // Spell — the printed card grants it "to a <School> Spell", never across
     // schools (one shared read with canAffordCardCost and the cost pickers).
     const schoolBank = committedSchoolExpertPower(state.reactionWindow, playerId, playedCard);
-    const standing = standingSpellPower(state, playerId, playedCard) + mapBank + schoolBank;
+    // Power already poured into this window's pending attack (the "+1 Power"
+    // Spell discards, a played Power statistic) pays a printed `powerCost` too —
+    // USER RULE 2026-08-26 ("still cannot add SP to other effects"): the pool
+    // must reach the TIERED plays (Resurrection / Magic Mirror / Misfortune /
+    // Sorrow rungs, the Alamar & Jeddite lethal saves), not only the `*ByPower`
+    // ladders. ONE shared read with canAffordCardCost, so a rung this engine
+    // accepts is exactly the rung the window offered.
+    const windowPool = attackWindowPooledPower(state, playerId);
+    const standing = standingSpellPower(state, playerId, playedCard) + mapBank + schoolBank + windowPool;
     const values = paying.map((cardId, index) => spellPowerValueOfCard(cards[cardId], schools, payModes[index]));
     // An EMPOWERED ability paid at its Expert Power value costs no crown — the
     // same waiver its ordinary Expert play gets, so it is counted out of the
@@ -15021,6 +15019,17 @@ function payOptionCardCost(
     if (schoolBank > 0 && state.reactionWindow?.schoolExpertPowerByPlayer) {
       delete state.reactionWindow.schoolExpertPowerByPlayer[playerId];
     }
+    // The window pool is deliberately NOT consumed here, unlike the map and
+    // School-expert banks above. It is a per-caster READING, not a bank: every
+    // `*ByPower` ladder on this attack already scales off the same pool at the
+    // same time (a Bloodlust and a Curse both grow on one +2), so a rung reading
+    // it is consistent with how the pool has always worked. It is also the only
+    // reading that is TESTABLE: the sole pooled-Power cost reachable with the
+    // shipped cards is a lethal save, which cancels the very attack whose pool
+    // it read, so a "spend" could never be observed (and one attack allows at
+    // most one save, so it could never be double-spent either). If a future card
+    // makes a second pooled cost reachable in one window, make the spend
+    // explicit here — and pin it — rather than assuming this comment still holds.
   }
 
   if (expertPays > 0) {
@@ -16582,7 +16591,14 @@ function applyReactionPlayCore(
       effect.amountByPower && card.kind === "spell" && !play.fromScroll
         ? getSchoolPowerBonus(state, playerId, card)
         : 0;
-    if (effect.amountByPower && card.kind === "spell") {
+    // The pool is per-PLAYER Power, so anything printed with an `amountByPower`
+    // ladder reads it — no `card.kind === "spell"` gate since 2026-08-26 (USER
+    // RULE "still cannot add SP to other effects"): a non-Spell Power-scaling
+    // instant scales off the pooled window Power exactly like Bloodlust does.
+    // The `instantSchoolPowerBonus` above stays spell-only (a school bonus is
+    // Spell business), and the Meteor Shower family never reaches here (its
+    // effect is AREA_DAMAGE_PICK_ADJACENT and stays FUEL-only).
+    if (effect.amountByPower) {
       const power = play.fromScroll ? 0 : attackPowerFor(stackItem, playerId) + instantSchoolPowerBonus;
       effectAmount = getAmountByPower(effect.amountByPower, effect.amount, power);
     }
@@ -16668,12 +16684,13 @@ function applyReactionPlayCore(
     // ordinary `perCostCard` path above and that arm is gone.)
     stackItem.modifiers.playedCardIds.push(play.cardId);
 
-    // A Power-scaling spell instant (Bloodlust, Precision, Curse, Weakness…)
-    // is recorded so Power the caster pays LATER in this same attack window
+    // A Power-scaling instant (Bloodlust, Precision, Curse, Weakness…) is
+    // recorded so Power the caster pays LATER in this same attack window
     // re-derives its bonus from the new total Power. Scroll spells are locked
-    // to power 0 and never recorded. The non-spell Attack/Defense statistic is
-    // a flat bonus that does not scale, so it is not recorded either.
-    if (effect.amountByPower && card.kind === "spell" && !play.fromScroll) {
+    // to power 0 and never recorded. Kept in lockstep with the scaling read
+    // above (no card-kind gate since 2026-08-26): a plain Attack/Defense
+    // statistic carries no `amountByPower` at all, so it still never records.
+    if (effect.amountByPower && !play.fromScroll) {
       const fixedBonus = effect.perCostCard ? effect.perCostCard * costCardsPaid : 0;
       (stackItem.modifiers.powerScaledAttackInstants ??= []).push({
         cardId: card.id,

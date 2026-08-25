@@ -2237,6 +2237,43 @@ expert variants. Regression authority: `attack-window.test.ts`,
 `map-movement-spells.test.ts`, `conflux-tarnum-specialty.test.ts`, and
 `overlays.test.tsx`.
 
+### Pooled window Power also pays a `powerCost` TIER (2026-08-26, protocol v70)
+
+USER BUG "terrible bug: now still cannot add SP to other effects" (a screenshot of
+an instant window holding a "+2 Power" chip beside the warning "Power only counts
+with a Spell played into this attack"). Power poured into an open window's pending
+attack lands in ONE per-caster pool (`modifiers.attackPowerByPlayer`) which only
+the `*ByPower` LADDERS read; a printed `powerCost` TIER was priced by
+`standingSpellPower + map bank + School bank + discarded cost cards` and never
+looked at the pool, so Power the player had already paid was invisible to every
+tiered play. FIX: ONE shared read `attackWindowPooledPower` (legal-actions.ts)
+folded into BOTH `canAffordCardCost` (the offer) and `payOptionCardCost` (the
+payment), so the rung the engine accepts is the rung the window offered. The
+reachable case is the **non-Spell** Alamar / Jeddite lethal-save specialties,
+whose only Power can be that pool. Pinned in `window-power-tiered-plays.test.ts`
+(13 cases, by OUTCOME — the doomed unit lives or its Pack flips — each mutation
+checked; the offer half and the payment half each independently kill 3 specs).
+Same batch: the "Power needs a Spell" gate (the offer filter, the batch validator
+AND the reaction tray) now accepts any Power SINK through the shared
+`playConsumesWindowPower` — a `*ByPower` ladder or a `powerCost` tier, card KIND
+irrelevant — and the resolver's ADD_COMBAT_STAT scaling + its re-scaling record
+dropped their `card.kind === "spell"` gate.
+Leading with the LIMITS: the pool is a per-caster **READING, not a bank** — paying
+a rung does NOT consume it (unlike the map / School-expert banks), because the
+only pooled cost the shipped cards can reach is a lethal save, which cancels the
+very attack whose pool it read, so a spend is unobservable and untestable (and one
+attack allows at most one save, so it can never be double-spent); the
+`meteor-shower` FUEL-only family is explicitly excluded from the sink read and
+keeps `playCardSpellPower`'s short-circuit; **every shipped pool ladder is still
+on a `kind: "spell"` card** (an invariant sweep asserts it), so the card-kind
+widening is a seam alignment with NO shipped consumer, and likewise no non-Spell
+sink is reachable in a UNIT_ATTACK_DECLARED window today — the gate widening is
+inert until one ships; commander casts stay OUT (their tiers key off the
+commander's Magic GRADE, not spell Power); and the tray warning is only reworded
+("Power needs something in this attack to feed…"), pinned positively in
+`overlays.test.tsx` because the two pre-existing negative assertions went vacuous
+the moment the string changed. `npm run deploy:partykit` owed.
+
 ## Specialties & combat reactions · summon/recruit elemental split (2026-07-31)
 
 Two audited codex commits: the reaction batch resolves in the PLAYER'S declared order;

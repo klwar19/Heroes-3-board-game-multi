@@ -22,6 +22,8 @@ import {
   effectHasExpertMode,
   getEffectAmount,
   getEffectiveCardEffect,
+  getCardPlayVariants,
+  playConsumesWindowPower,
   getPendingReactionPower,
   getSpellDamageAmount,
   getSpellDiceRollCount,
@@ -1225,9 +1227,25 @@ export function ReactionTray({
     const effect = card ? getEffectiveCardEffect(card, selection.optionIndex) : null;
     return effect?.type === "ADD_SPELL_POWER";
   };
-  const hasSpellPlay = selections.some(
-    (selection) => !selection.asPowerBoost && cardLibrary[selection.cardId]?.kind === "spell" && !isPowerSelection(selection)
-  );
+  // A Spell in the batch consumes the Power — and, since 2026-08-26, so does any
+  // NON-Spell Power SINK: a `*ByPower` ladder or a printed `powerCost` tier
+  // (`playConsumesWindowPower`, the engine's own shared read, so the tray can
+  // never warn about Power the batch validator happily accepts). USER RULE:
+  // "still cannot add SP to other effects".
+  const hasPowerSinkPlay = selections.some((selection) => {
+    if (selection.asPowerBoost || isPowerSelection(selection)) {
+      return false;
+    }
+    // Read the BALANCE definition, not the raw print: a reprint can change an
+    // option's `cost` / effect shape, and this predicate now looks at both — the
+    // tray must not warn about Power the engine's own (balanced) read accepts.
+    const card = balanceCardForDisplay(balanceEnabled, communityEnabled, selection.cardId);
+    if (card?.kind === "spell") {
+      return true;
+    }
+    const variant = card ? getCardPlayVariants(card)[selection.optionIndex ?? 0] : undefined;
+    return playConsumesWindowPower(card, variant?.effect, variant?.cost);
+  });
   // …but once a power-scaling spell THIS player already played is on the pending
   // attack, they keep priority and may keep adding Power to it on its own —
   // mirrors the engine's hasEmpowerablePlayed. This is NOT attacker-only: the
@@ -1250,7 +1268,7 @@ export function ReactionTray({
     attackStackItem?.modifiers.ignoreDefenseCasterId === viewerPlayerId ||
     attackStackItem?.modifiers.misfortuneCasterId === viewerPlayerId;
   const powerNeedsSpell =
-    isAttackWindow && selections.some(isPowerSelection) && !hasSpellPlay && !attackAlreadyEmpowerable;
+    isAttackWindow && selections.some(isPowerSelection) && !hasPowerSinkPlay && !attackAlreadyEmpowerable;
 
   const confirmSelection = () => {
     if (selections.length === 0 || paymentInvalid || powerNeedsSpell) {
@@ -1945,7 +1963,10 @@ export function ReactionTray({
         <div className="trayPreview">
           {preview.length > 0 ? preview.map((line) => <span key={line}>{line}</span>) : <span>Nothing selected</span>}
           {powerNeedsSpell ? (
-            <span className="trayWarning">Power only counts with a Spell played into this attack — add the spell.</span>
+            <span className="trayWarning">
+              Power needs something in this attack to feed — add the Spell (or a Power-scaling play) you want to
+              empower.
+            </span>
           ) : null}
           {passBlockedUnderMin ? (
             <span className="trayWarning" role="alert">

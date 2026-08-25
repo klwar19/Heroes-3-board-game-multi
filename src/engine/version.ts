@@ -824,7 +824,31 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // rolled Spell straight back while a v68 client applying the same action locally
 // writes a different pile order. The fix only reaches a hosted table once the
 // edge carries it. `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 69;
+// v70 (2026-08-26, USER BUG "terrible bug: now still cannot add SP to other
+// effects" — a screenshot of an instant window holding a "+2 Power" chip and the
+// warning "Power only counts with a Spell played into this attack"): the Power a
+// player has already poured into an open window's pending attack
+// (`modifiers.attackPowerByPlayer` — the "+1 Power" Spell discards and every
+// played Power statistic) now counts toward a printed `powerCost` TIER as well as
+// toward the `*ByPower` ladders it always fed. ONE shared read
+// (`attackWindowPooledPower`) folded into BOTH `canAffordCardCost` (the offer)
+// and `payOptionCardCost` (the payment), so the rung the engine accepts is the
+// rung the window offered. No new action type and no new serialized FIELD, but
+// the AUTHORITATIVE cost resolution moves in both directions: a v69 worker prices
+// the same rung WITHOUT the pool, so it never offers the lethal save / Magic
+// Mirror / Resurrection / Sorrow tier the new client shows (the Alamar and
+// Jeddite lethal-save SPECIALTIES are the reachable case — non-Spell cards whose
+// only Power is that pool) and rejects the play with "needs at least N Power;
+// this pays only 0". Two same-batch seam widenings ride the same number: the
+// "Power needs a Spell" gate (the offer filter, the batch validator and the
+// reaction tray) now accepts any Power SINK via the shared
+// `playConsumesWindowPower` — a `*ByPower` ladder or a `powerCost` tier, card
+// KIND irrelevant, with the `meteor-shower` FUEL-only family explicitly
+// excluded — and the resolver's ADD_COMBAT_STAT Power scaling plus its
+// re-scaling record dropped their `card.kind === "spell"` gate. Every shipped
+// pool ladder is still on a Spell (pinned as an invariant), so that last part is
+// a seam alignment with no shipped consumer. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 70;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8
