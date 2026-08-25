@@ -20546,11 +20546,28 @@ function playCard(state: GameState, action: Extract<GameAction, { type: "PLAY_CA
     openNeutralRecruitOffer(state, action.playerId, effect.count, effect.tier);
   }
 
-  // Visions (Map): begin the scry. The Power (how many cards) is paid by
-  // discarding Spells for +1 each — offered interactively — then a Neutral deck
-  // is chosen and scryed.
+  // Visions (Map): begin the scry. Its printed Power ladder ("Draw * cards") is
+  // read exactly like every other map Power-tier Spell — the cast STARTS at the
+  // player's standing Power (School basic, Astrologers, Pandora,
+  // cultivation/grade/equipment via getSchoolPowerBonus, plus the map
+  // Sorcery/Scales bank, which the cast consumes whole) and each source
+  // discarded in the boost window adds its PRINTED Power. It used to start at 0
+  // and count every discard as a flat +1, so a "+2 Power" source or a standing
+  // +2 landed one rung short (the reported "+2 SP scryed 4 cards, not 6").
   if (effect.type === "VISIONS_SCRY") {
-    openVisionsScry(state, action.playerId, effect.cardsByPower);
+    const visionsBank = mapSpellPowerBankAvailable(state, action.playerId);
+    const visionsPlayer = state.players[action.playerId];
+    if (visionsPlayer && visionsBank > 0) {
+      visionsPlayer.mapSpellPowerBank = 0;
+    }
+    openVisionsScry(
+      state,
+      action.playerId,
+      effect.cardsByPower,
+      standingSpellPower(state, action.playerId, card) +
+        getSchoolPowerBonus(state, action.playerId, card) +
+        visionsBank
+    );
   }
 
   // Pandora's Box: resolve a list of map visit steps against the MAIN hero

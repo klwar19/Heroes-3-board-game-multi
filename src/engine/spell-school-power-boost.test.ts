@@ -78,6 +78,10 @@ function boostSourceIds(state: GameState): CardId[] {
 function playVisions(hand: CardId[], seed: string): GameState {
   const state = makeGame(seed);
   state.players.p1.hand = [...hand];
+  // A School-of-Magic ability's from-hand Power side is its printed EXPERT side
+  // (`amount: 0, expertAmount: 3`), so paying with it costs a crown — exactly as
+  // `playFortune` below has always seeded for the shared map boost window.
+  state.players.p1.limits.expertUses = 1;
   isolateBronze(state, ["n.a", "n.b", "n.c", "n.d"]);
   return apply(state, {
     type: "PLAY_CARD",
@@ -140,7 +144,8 @@ describe("Visions (Fire) Power boost — school-restricted sources", () => {
     );
     expect(state.players.p1.hand).toContain("ability.air_magic");
 
-    // CONTROL — Fire Magic really can be spent for +1 card.
+    // CONTROL — Fire Magic really can be spent, and pays its PRINTED expert +3
+    // Power (2026-08-26), which clamps to the classic card's top rung: 3 cards.
     let fire = playVisions(["spell.visions", "ability.fire_magic"], "visions-fire-outcome");
     fire = apply(fire, {
       type: "CHOOSE_OPTION",
@@ -148,7 +153,8 @@ describe("Visions (Fire) Power boost — school-restricted sources", () => {
       choiceId: fire.pendingChoice!.id,
       optionIndex: 0
     });
-    expect(fire.pendingChoice?.type === "OPTION_CHOICE" && fire.pendingChoice.visionsScry?.remaining).toHaveLength(2);
+    expect(fire.pendingChoice?.type === "OPTION_CHOICE" && fire.pendingChoice.visionsScry?.remaining).toHaveLength(3);
+    expect(fire.players.p1.combatStats.expertUsesSpentThisRound).toBe(1);
     expect(fire.players.p1.hand).not.toContain("ability.fire_magic");
     expect(fire.players.p1.discard).toContain("ability.fire_magic");
   });
@@ -174,6 +180,8 @@ describe("Visions pre-battle guard swap — the same school filter", () => {
     startNeutralEncounter(state, hero, field);
     state.players.p1.hand = [...hand];
     state.players.p1.discard = [];
+    // See playVisions: a School ability pays from hand at its expert side (crown).
+    state.players.p1.limits.expertUses = 1;
     return state;
   }
 
@@ -204,7 +212,7 @@ describe("Visions pre-battle guard swap — the same school filter", () => {
     expect(state.players.p1.hand).toContain("ability.air_magic");
   });
 
-  it("CONTROL — Fire Magic is offered and buys a second swap", () => {
+  it("CONTROL — Fire Magic is offered and its printed +3 Power buys the top swap budget", () => {
     let state = castVisions("vis-guard-fire", ["spell.visions", "ability.fire_magic"]);
     expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("visions-guard-boost");
     expect(boostSourceIds(state)).toContain("ability.fire_magic");
@@ -215,7 +223,8 @@ describe("Visions pre-battle guard swap — the same school filter", () => {
       optionIndex: 0
     });
     expect(state.pendingChoice?.type === "OPTION_CHOICE" && state.pendingChoice.context).toBe("visions-guard-swap");
-    expect(swapsRemaining(state)).toBe(2);
+    // +3 Power clamps to the classic ladder's top rung (1/2/3 swaps).
+    expect(swapsRemaining(state)).toBe(3);
     expect(state.players.p1.discard).toContain("ability.fire_magic");
   });
 });

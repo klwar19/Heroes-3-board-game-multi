@@ -5219,10 +5219,26 @@ export function eliminatePlayer(
       state.decks[choice.spellDiscardTopPick.deckId]?.discardPile.push(...choice.spellDiscardTopPick.cardIds);
     }
     if (choice.type === "OPTION_CHOICE" && choice.visionsScry) {
-      state.decks[NEUTRAL_DECK_IDS[choice.visionsScry.tier]]?.discardPile.push(
-        ...choice.visionsScry.remaining,
-        ...choice.visionsScry.toReturn
-      );
+      // One Visions cast may have lifted cards off SEVERAL Neutral decks, so
+      // each returns to ITS OWN discard pile (a pre-v73 frame carries one
+      // `tier` for the whole scry).
+      const scry = choice.visionsScry;
+      const fallback = scry.tier ?? "bronze";
+      scry.remaining.forEach((cardId, index) => {
+        state.decks[NEUTRAL_DECK_IDS[scry.remainingTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
+      });
+      scry.toReturn.forEach((cardId, index) => {
+        state.decks[NEUTRAL_DECK_IDS[scry.toReturnTiers?.[index] ?? fallback]]?.discardPile.push(cardId);
+      });
+    }
+    if (choice.type === "OPTION_CHOICE" && choice.visionsDeck?.drawn) {
+      // The Visions deck pick holds the cards already lifted this cast (they are
+      // out of every pile while it is open) — return them so eliminating the
+      // caster mid-draw destroys no Neutral card.
+      const pick = choice.visionsDeck;
+      pick.drawn?.forEach((cardId, index) => {
+        state.decks[NEUTRAL_DECK_IDS[pick.drawnTiers?.[index] ?? "bronze"]]?.discardPile.push(cardId);
+      });
     }
     if (choice.type === "OPTION_CHOICE" && choice.deckCardPlacement) {
       // The Balance Pack's "top or bottom?" window holds cards that are already

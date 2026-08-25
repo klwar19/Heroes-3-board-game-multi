@@ -636,7 +636,11 @@ describe("Community pack — Visions", () => {
     )!;
     let next = applyOk(state, offer.action);
     next = applyOk(next, getLegalActions(next, "p1").find((legal) => legal.action.type === "CHOOSE_OPTION")!.action);
-    const tier = (next.pendingChoice as { visionsScry?: { tier: string } }).visionsScry!.tier;
+    // The first deck option takes the WHOLE remainder off one deck, so every
+    // lifted card records that same tier (2026-08-26: the tier rides each card,
+    // because one cast may now lift from several Neutral decks).
+    const tier = (next.pendingChoice as { visionsScry?: { remainingTiers?: string[] } }).visionsScry!
+      .remainingTiers![0]!;
     const deckId = Object.keys(next.decks).find((id) => id.includes(tier))!;
     const discardBefore = next.decks[deckId]!.discardPile.length;
     const drawBefore = next.decks[deckId]!.drawPile.length;

@@ -304,7 +304,8 @@ import {
   cardCanBoostPower,
   cardCanBoostPowerForSpellSchools,
   spellPowerSidesOfCard,
-  spellPowerSourceDrawCards
+  spellPowerSourceDrawCards,
+  spellPowerValueOfCard
 } from "./effects";
 import {
   bestMapSpellTier,
@@ -6450,9 +6451,120 @@ type NeutralTier = "bronze" | "silver" | "gold" | "azure";
 
 const NEUTRAL_TIERS: readonly NeutralTier[] = ["bronze", "silver", "gold", "azure"];
 
-/** Cards Visions scrys at a given Power level (clamped to a defined breakpoint). */
+/**
+ * Cards Visions scrys at a given Power level, clamped DOWN to the highest
+ * printed breakpoint the Power reaches (the `fortuneRerollCount` recipe below).
+ *
+ * The old `cardsByPower[power] ?? cardsByPower[0]` read only worked while Power
+ * moved one rung at a time: a source paying its printed +2/+3 (or standing Power
+ * above the top rung) landed on an UNDEFINED key and fell back to the LOWEST
+ * rung — "+2 Power scryed 2 cards instead of 6".
+ */
 function visionsCardCount(cardsByPower: Record<number, number>, power: number): number {
-  return cardsByPower[power] ?? cardsByPower[0] ?? 1;
+  const breakpoints = Object.keys(cardsByPower)
+    .map(Number)
+    .filter((value) => Number.isFinite(value))
+    .sort((left, right) => left - right);
+  if (breakpoints.length === 0) {
+    return 1;
+  }
+  const match = breakpoints.filter((value) => value <= power).at(-1) ?? breakpoints[0];
+  return cardsByPower[match] ?? 1;
+}
+
+/** One Neutral card lifted off a deck by a Visions cast, with its source deck. */
+type VisionsLift = { cardId: CardId; tier: NeutralTier };
+
+/** A hand card Visions may discard for Power, at the mode it actually pays at. */
+type VisionsPowerSource = { cardId: CardId; mode: "basic" | "expert"; value: number; crownFree: boolean };
+
+/**
+ * The hand cards that can pay a Visions cast's Power, each with the PRINTED
+ * Power it brings — never a flat +1 (the reported bug: "with +2 SP should take 6
+ * cards … for now it takes only 4").
+ *
+ * A card is read exactly like every other Power-value cost in the engine
+ * (`spellPowerValueOfCard` / `powerCostPaymentMode`): a Spell brings the generic
+ * +1 on its bottom side; a Power statistic / artifact brings its printed amount;
+ * a School-of-Magic ability's BASIC side brings 0 from hand, so it is offered at
+ * its printed EXPERT side (+3) and costs a crown unless the ability is Empowered.
+ * The school filter is unchanged (USER REPORT 2026-08-22: Air Magic may never pay
+ * a FIRE spell) — a source that brings 0 Power for this spell is not offered.
+ */
+function visionsPowerSources(
+  state: GameState,
+  playerId: PlayerId,
+  schools: readonly SpellSchool[]
+): VisionsPowerSource[] {
+  const player = state.players[playerId];
+  if (!player) {
+    return [];
+  }
+  const crownsLeft = mapSpellCrownsLeft(state, playerId);
+  const sources: VisionsPowerSource[] = [];
+  for (const cardId of player.hand) {
+    // Balance packs reprint Power values, so read the definition the ENGINE
+    // resolves right now (the offer and the payment must agree).
+    const card = balanceCard(state, cardId);
+    if (!cardCanBoostPowerForSpellSchools(card, schools)) {
+      continue;
+    }
+    const basic = spellPowerValueOfCard(card, schools, "basic");
+    if (basic > 0) {
+      sources.push({ cardId, mode: "basic", value: basic, crownFree: false });
+      continue;
+    }
+    const expert = spellPowerValueOfCard(card, schools, "expert");
+    const crownFree = abilityExpertIsCrownFree(player, cardId);
+    if (expert > 0 && (crownFree || crownsLeft > 0)) {
+      sources.push({ cardId, mode: "expert", value: expert, crownFree });
+    }
+  }
+  return sources;
+}
+
+/**
+ * Spends one Visions Power source out of hand: discards it, pays the crown its
+ * expert side costs (unless Empowered) and logs the payment. Returns the Power
+ * it brought, or null when the card is no longer payable (a stale frame).
+ */
+function payVisionsPowerSource(
+  state: GameState,
+  playerId: PlayerId,
+  source: VisionsPowerSource,
+  label: string
+): number | null {
+  const player = state.players[playerId];
+  const handIndex = player?.hand.indexOf(source.cardId) ?? -1;
+  if (!player || handIndex === -1) {
+    return null;
+  }
+  if (source.mode === "expert" && !source.crownFree && mapSpellCrownsLeft(state, playerId) <= 0) {
+    return null;
+  }
+  player.hand.splice(handIndex, 1);
+  player.discard.push(source.cardId);
+  if (source.mode === "expert" && !source.crownFree) {
+    player.combatStats.expertUsesSpentThisRound += 1;
+  }
+  appendEvent(state, {
+    type: "CARD_PLAYED",
+    playerId,
+    cardId: source.cardId,
+    timing: cardLibrary[source.cardId]?.timing ?? "instant",
+    mode: source.mode,
+    effectAmount: source.value,
+    optionLabel: `+${source.value} Power (${label})`
+  });
+  return source.value;
+}
+
+/** Offer label for one Visions Power source (its printed value, never "+1"). */
+function visionsPowerSourceLabel(source: VisionsPowerSource, outcome: string): string {
+  const name = cardLibrary[source.cardId]?.name ?? source.cardId;
+  const modeTag =
+    source.mode === "expert" ? (source.crownFree ? " expert (Empowered)" : " expert (crown)") : "";
+  return `Discard ${name}${modeTag} (+${source.value} Power) → ${outcome}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -6635,13 +6747,19 @@ export function resolveFortuneBoostChoice(state: GameState, playerId: PlayerId, 
 }
 
 /**
- * Visions (Map): begin the scry. Power is paid the board-game way — discard
- * Spells (their "+1 Power" side) for +1 card each, up to the spell's top
- * breakpoint — so the boost is offered interactively before a deck is chosen.
- * Called from playCard once Visions itself is discarded.
+ * Visions (Map): begin the scry. The cast STARTS at `startingPower` (the caller
+ * passes the same standing-Power recipe every other map Spell cast uses) and the
+ * rest is paid the board-game way — discard power sources for their PRINTED
+ * Power, up to the spell's top breakpoint — offered interactively before the
+ * Neutral decks are picked. Called from playCard once Visions itself is discarded.
  */
-export function openVisionsScry(state: GameState, playerId: PlayerId, cardsByPower: Record<number, number>): void {
-  openVisionsBoostStep(state, playerId, cardsByPower, 0);
+export function openVisionsScry(
+  state: GameState,
+  playerId: PlayerId,
+  cardsByPower: Record<number, number>,
+  startingPower = 0
+): void {
+  openVisionsBoostStep(state, playerId, cardsByPower, Math.max(0, startingPower));
 }
 
 // ---------------------------------------------------------------------------
@@ -7975,12 +8093,15 @@ function visionsSpellSchools(state: GameState): readonly SpellSchool[] {
 }
 
 /**
- * Offers one Power boost: discard a Spell for +1 card, or scry now. Re-opens
- * with `boost + 1` after each paid Spell until the top breakpoint is reached or
- * no power-source Spell remains in hand, then proceeds to the deck choice.
+ * Offers one Power boost: discard a power source for its PRINTED Power, or scry
+ * now. Re-opens with `boost + value` after each payment until the top breakpoint
+ * is reached or no payable source remains in hand, then proceeds to the deck
+ * choice.
  *
+ * `boost` is the Power STANDING on the cast (the map cast's standing Power seed
+ * plus everything paid so far), so a "+2 Power" source really moves two rungs.
  * Only sources whose printed school matches Visions' (FIRE) are offered — see
- * `cardCanBoostPowerForSpellSchools`.
+ * `visionsPowerSources`.
  */
 function openVisionsBoostStep(
   state: GameState,
@@ -7988,36 +8109,38 @@ function openVisionsBoostStep(
   cardsByPower: Record<number, number>,
   boost: number
 ): void {
-  const player = state.players[playerId];
   const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
-  // Power-source cards are Spells (and Power statistics) still in hand, minus
-  // any whose printed Power is restricted to a school Visions does not have.
   const schools = visionsSpellSchools(state);
-  const spellCardIds =
-    boost < maxPower
-      ? (player?.hand.filter((cardId) => cardCanBoostPowerForSpellSchools(cardLibrary[cardId], schools)) ?? [])
-      : [];
+  const sources = boost < maxPower ? visionsPowerSources(state, playerId, schools) : [];
 
-  if (spellCardIds.length === 0) {
+  if (sources.length === 0) {
     proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
     return;
   }
 
-  const nextCount = visionsCardCount(cardsByPower, boost + 1);
   const nowCount = visionsCardCount(cardsByPower, boost);
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Visions: discard a Spell for +1 card (scry ${nextCount}), or scry now (${nowCount})?`,
+    prompt: `Visions: Power ${boost} — scry ${nowCount}. Discard a power source for its printed Power, or scry now?`,
     options: [
-      ...spellCardIds.map((cardId) => ({
-        label: `Discard ${cardLibrary[cardId]?.name ?? cardId} → scry ${nextCount}`
+      ...sources.map((source) => ({
+        label: visionsPowerSourceLabel(
+          source,
+          `scry ${visionsCardCount(cardsByPower, boost + source.value)}`
+        )
       })),
       { label: `Scry now — ${nowCount} card${nowCount === 1 ? "" : "s"}` }
     ],
     context: "visions-boost",
-    visionsBoost: { boost, spellCardIds: [...spellCardIds], cardsByPower },
+    visionsBoost: {
+      boost,
+      spellCardIds: sources.map((source) => source.cardId),
+      spellCardValues: sources.map((source) => source.value),
+      spellCardModes: sources.map((source) => source.mode),
+      cardsByPower
+    },
     returnPhase: "player-turn"
   };
   state.phase = "choice";
@@ -8037,92 +8160,133 @@ export function resolveVisionsBoostChoice(state: GameState, playerId: PlayerId, 
     throw new Error("There is no Visions Power decision to resolve.");
   }
   const { boost, spellCardIds, cardsByPower } = choice.visionsBoost;
-  const player = state.players[playerId];
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
 
-  const paySpell = spellCardIds[optionIndex];
-  const handIndex = player ? player.hand.indexOf(paySpell ?? "") : -1;
-  // The trailing option (or a Spell that left the hand) scrys at the current Power.
-  if (!player || optionIndex >= spellCardIds.length || !paySpell || handIndex === -1) {
-    proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
-    if (!state.pendingChoice) {
-      pumpAdventureQueues(state);
-    }
-    return;
-  }
+  // Re-derive the offer (the applySchoolFetchExpert precedent): a forged or
+  // stale frame can only fall through to "scry now", never pay a phantom Power.
+  const paidCardId = spellCardIds[optionIndex];
+  const source = visionsPowerSources(state, playerId, visionsSpellSchools(state)).find(
+    (candidate) => candidate.cardId === paidCardId
+  );
+  const paid =
+    optionIndex < spellCardIds.length && source
+      ? payVisionsPowerSource(state, playerId, source, "Visions")
+      : null;
 
-  // Spend the Spell for +1 Power (one more card), then offer the next boost.
-  player.hand.splice(handIndex, 1);
-  player.discard.push(paySpell);
-  appendEvent(state, {
-    type: "CARD_PLAYED",
-    playerId,
-    cardId: paySpell,
-    timing: cardLibrary[paySpell]?.timing ?? "instant",
-    mode: "basic",
-    optionLabel: "+1 Power (Visions)"
-  });
-  openVisionsBoostStep(state, playerId, cardsByPower, boost + 1);
+  if (paid === null) {
+    // The trailing option (or a source that is no longer payable) scrys now.
+    proceedToVisionsDeck(state, playerId, visionsCardCount(cardsByPower, boost));
+  } else {
+    openVisionsBoostStep(state, playerId, cardsByPower, boost + paid);
+  }
   if (!state.pendingChoice) {
     pumpAdventureQueues(state);
   }
 }
 
-/**
- * Chooses which Neutral Unit deck to scry: auto-picks the only tier with cards,
- * otherwise opens the tier choice. Draws `count` cards from the chosen tier.
- */
-function proceedToVisionsDeck(state: GameState, playerId: PlayerId, count: number): void {
-  const tiers = NEUTRAL_TIERS.filter((tier) => {
+/** The Neutral tier decks that still hold a card (draw pile or discard). */
+function visionsTiersWithCards(state: GameState): NeutralTier[] {
+  return NEUTRAL_TIERS.filter((tier) => {
     const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-    return deck && deck.drawPile.length + deck.discardPile.length > 0;
+    return Boolean(deck) && deck.drawPile.length + deck.discardPile.length > 0;
   });
-
-  if (count <= 0 || tiers.length === 0) {
-    return;
-  }
-
-  if (tiers.length === 1) {
-    beginVisionsScryOnTier(state, playerId, tiers[0], count);
-    return;
-  }
-
-  state.pendingChoice = {
-    id: `choice_${nextEventNumber(state)}`,
-    type: "OPTION_CHOICE",
-    playerId,
-    prompt: `Visions: scry which Neutral Unit deck? (draw ${count})`,
-    options: tiers.map((tier) => {
-      const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-      const total = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
-      return { label: `${tier.charAt(0).toUpperCase()}${tier.slice(1)} deck (${total} cards)` };
-    }),
-    context: "visions-deck",
-    visionsDeck: { tiers: [...tiers], count },
-    returnPhase: "player-turn"
-  };
-  state.phase = "choice";
-  state.priorityPlayerId = playerId;
 }
 
-/** Draws up to `count` cards off a tier deck and opens the keep/discard scry. */
-function beginVisionsScryOnTier(state: GameState, playerId: PlayerId, tier: NeutralTier, count: number): void {
-  const revealed: CardId[] = [];
+/** Lifts up to `count` cards off one tier deck (reshuffling its discard once). */
+function liftVisionsCards(state: GameState, tier: NeutralTier, count: number): VisionsLift[] {
+  const lifted: VisionsLift[] = [];
   for (let index = 0; index < count; index += 1) {
+    // drawFromNeutralDeck reshuffles the discard back in when the pile empties;
+    // the cards lifted here are already OUT of both piles, so they are held out
+    // of that reshuffle and at most one reshuffle per deck can happen.
     const drawn = drawFromNeutralDeck(state, tier);
     if (!drawn) {
       break;
     }
-    revealed.push(drawn);
+    lifted.push({ cardId: drawn, tier });
+  }
+  return lifted;
+}
+
+/** Begins the draw: the whole card count is still owed, nothing lifted yet. */
+function proceedToVisionsDeck(state: GameState, playerId: PlayerId, count: number): void {
+  openVisionsDeckStep(state, playerId, [], count);
+}
+
+/**
+ * Chooses which Neutral Unit deck the NEXT card comes off, and re-opens until
+ * every owed card is lifted — the printed card draws "from any Neutral Unit
+ * deckS" (plural), so one cast may split its draw across several decks (USER
+ * RULING: "you should be able to pick multiple decks"). It used to lock the
+ * whole draw to a single deck picked once.
+ *
+ * Nothing is decided when only one deck holds cards (it takes the whole
+ * remainder, exactly as before). While more than one card is owed each deck is
+ * offered twice: take the WHOLE remainder from it (the classic one-deck draw, in
+ * one click) or take just one card and pick again.
+ */
+function openVisionsDeckStep(
+  state: GameState,
+  playerId: PlayerId,
+  lifted: VisionsLift[],
+  drawsLeft: number
+): void {
+  let carried = lifted;
+  let owed = drawsLeft;
+  // Loop instead of recursing so a deck that runs dry mid-draw can never spin.
+  for (;;) {
+    const tiers = visionsTiersWithCards(state);
+    if (owed <= 0 || tiers.length === 0) {
+      break;
+    }
+    if (tiers.length > 1) {
+      const bulk = owed > 1;
+      const deckLabel = (tier: NeutralTier) => {
+        const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
+        const total = (deck?.drawPile.length ?? 0) + (deck?.discardPile.length ?? 0);
+        return `${tier.charAt(0).toUpperCase()}${tier.slice(1)} deck (${total} cards)`;
+      };
+      state.pendingChoice = {
+        id: `choice_${nextEventNumber(state)}`,
+        type: "OPTION_CHOICE",
+        playerId,
+        prompt: bulk
+          ? `Visions: draw ${owed} more card${owed === 1 ? "" : "s"} — from which Neutral Unit deck(s)?`
+          : `Visions: draw the last card from which Neutral Unit deck?`,
+        options: [
+          ...(bulk ? tiers.map((tier) => ({ label: `${deckLabel(tier)} — draw all ${owed}` })) : []),
+          ...tiers.map((tier) => ({
+            label: bulk ? `${deckLabel(tier)} — draw 1, then pick again` : deckLabel(tier)
+          }))
+        ],
+        context: "visions-deck",
+        visionsDeck: {
+          tiers: [...tiers],
+          count: owed,
+          drawn: carried.map((lift) => lift.cardId),
+          drawnTiers: carried.map((lift) => lift.tier)
+        },
+        returnPhase: "player-turn"
+      };
+      state.phase = "choice";
+      state.priorityPlayerId = playerId;
+      return;
+    }
+    // Exactly one deck can be drawn from: no decision, take the remainder.
+    const drawn = liftVisionsCards(state, tiers[0], owed);
+    if (drawn.length === 0) {
+      break;
+    }
+    carried = [...carried, ...drawn];
+    owed -= drawn.length;
   }
 
-  if (revealed.length === 0) {
+  if (carried.length === 0) {
     return;
   }
-
-  openVisionsScryStep(state, playerId, tier, revealed, []);
+  openVisionsScryStep(state, playerId, carried, []);
 }
 
 /**
@@ -8134,59 +8298,82 @@ function beginVisionsScryOnTier(state: GameState, playerId: PlayerId, tier: Neut
 function openVisionsScryStep(
   state: GameState,
   playerId: PlayerId,
-  tier: NeutralTier,
-  remaining: CardId[],
-  toReturn: CardId[]
+  remaining: VisionsLift[],
+  toReturn: VisionsLift[]
 ): void {
   if (remaining.length === 0) {
-    finishVisionsScry(state, tier, toReturn);
+    finishVisionsScry(state, toReturn);
     return;
   }
 
-  const name = (cardId: CardId) => coreUnitDefinitions[cardId]?.name ?? cardId;
+  const name = (lift: VisionsLift) => coreUnitDefinitions[lift.cardId]?.name ?? lift.cardId;
   // Community Balance Pack Visions: "You may place them at the bottom or top of
   // the respective Neutral unit Deck" — the reprint drops the DISCARD option, so
   // the second half of the option list becomes "put on the bottom".
   const toBottom = visionsPlacementIsTopOrBottom(state);
+  // A cast may have lifted cards off SEVERAL decks, so every label names the
+  // deck the card goes back to ("the respective Neutral unit Deck").
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
     prompt: toBottom
       ? remaining.length === 1
-        ? `Visions: put ${name(remaining[0])} on the top or the bottom of the ${tier} deck?`
-        : `Visions: put each card back on top of the ${tier} deck (first kept is drawn next) or on the bottom.`
+        ? `Visions: put ${name(remaining[0])} on the top or the bottom of the ${remaining[0].tier} deck?`
+        : `Visions: put each card back on top of its own Neutral deck (first kept is drawn next) or on the bottom.`
       : remaining.length === 1
-        ? `Visions: keep ${name(remaining[0])} on top of the ${tier} deck, or discard it?`
-        : `Visions: put a card back on top of the ${tier} deck (first kept is drawn next) or discard it.`,
+        ? `Visions: keep ${name(remaining[0])} on top of the ${remaining[0].tier} deck, or discard it?`
+        : `Visions: put a card back on top of its own Neutral deck (first kept is drawn next) or discard it.`,
     options: [
-      ...remaining.map((cardId) => ({ label: `Put ${name(cardId)} back on top` })),
-      ...remaining.map((cardId) => ({
-        label: toBottom ? `Put ${name(cardId)} on the bottom` : `Discard ${name(cardId)}`
+      ...remaining.map((lift) => ({ label: `Put ${name(lift)} back on top of the ${lift.tier} deck` })),
+      ...remaining.map((lift) => ({
+        label: toBottom
+          ? `Put ${name(lift)} on the bottom of the ${lift.tier} deck`
+          : `Discard ${name(lift)} (${lift.tier})`
       }))
     ],
     context: "visions-scry",
-    visionsScry: { tier, remaining: [...remaining], toReturn: [...toReturn] },
+    visionsScry: {
+      remaining: remaining.map((lift) => lift.cardId),
+      remainingTiers: remaining.map((lift) => lift.tier),
+      toReturn: toReturn.map((lift) => lift.cardId),
+      toReturnTiers: toReturn.map((lift) => lift.tier)
+    },
     returnPhase: "player-turn"
   };
   state.phase = "choice";
   state.priorityPlayerId = playerId;
 }
 
-/** Returns the kept cards to the top of the tier deck (first kept on top). */
-function finishVisionsScry(state: GameState, tier: NeutralTier, toReturn: CardId[]): void {
-  const deck = state.decks[NEUTRAL_DECK_IDS[tier]];
-  if (deck) {
-    // drawPile is popped from the end, so the last item is the top. Push the
-    // kept cards in reverse pick order so the first one kept ends up on top.
-    for (let index = toReturn.length - 1; index >= 0; index -= 1) {
-      deck.drawPile.push(toReturn[index]);
-    }
+/**
+ * Returns every kept card to the top of ITS OWN deck (first kept of a deck ends
+ * on that deck's top). Walking the pick order in reverse keeps each deck's
+ * relative order right without grouping the list first.
+ */
+function finishVisionsScry(state: GameState, toReturn: VisionsLift[]): void {
+  for (let index = toReturn.length - 1; index >= 0; index -= 1) {
+    const lift = toReturn[index];
+    // drawPile is popped from the end, so pushing last-picked first leaves the
+    // first-picked card of each deck on that deck's top.
+    state.decks[NEUTRAL_DECK_IDS[lift.tier]]?.drawPile.push(lift.cardId);
   }
   state.pendingChoice = null;
   state.phase = "player-turn";
   state.priorityPlayerId = null;
   pumpAdventureQueues(state);
+}
+
+/** Rebuilds the lifted cards (card + source deck) off a visions-scry frame. */
+function visionsLiftsFromFrame(
+  cardIds: readonly CardId[],
+  tiers: readonly NeutralTier[] | undefined,
+  legacyTier: NeutralTier | undefined
+): VisionsLift[] {
+  return cardIds.map((cardId, index) => ({
+    cardId,
+    // LEGACY (pre-v73) frames carry one `tier` for the whole scry.
+    tier: tiers?.[index] ?? legacyTier ?? "bronze"
+  }));
 }
 
 /**
@@ -8238,16 +8425,32 @@ export function resolveVisionsDeckChoice(state: GameState, playerId: PlayerId, o
     throw new Error("There is no Visions deck choice to resolve.");
   }
   const { tiers, count } = choice.visionsDeck;
-  const tier = tiers[optionIndex];
+  const lifted = visionsLiftsFromFrame(
+    choice.visionsDeck.drawn ?? [],
+    choice.visionsDeck.drawnTiers,
+    undefined
+  );
   state.pendingChoice = null;
   state.phase = choice.returnPhase;
   state.priorityPlayerId = null;
 
+  // Options are [draw all from t0, …, draw 1 from t0, …] while more than one
+  // card is owed; with one card left only the per-deck half is offered.
+  const bulk = count > 1;
+  const bulkPick = bulk && optionIndex < tiers.length;
+  const tier = bulkPick ? tiers[optionIndex] : tiers[optionIndex - (bulk ? tiers.length : 0)];
+
   if (!tier) {
-    pumpAdventureQueues(state);
+    // A forged / stale frame decides nothing: keep the cards already lifted and
+    // move on to the scry rather than stranding them.
+    openVisionsDeckStep(state, playerId, lifted, 0);
+    if (!state.pendingChoice) {
+      pumpAdventureQueues(state);
+    }
     return;
   }
-  beginVisionsScryOnTier(state, playerId, tier, count);
+  const drawn = liftVisionsCards(state, tier, bulkPick ? count : 1);
+  openVisionsDeckStep(state, playerId, [...lifted, ...drawn], count - drawn.length);
   if (!state.pendingChoice) {
     pumpAdventureQueues(state);
   }
@@ -8266,19 +8469,29 @@ export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, o
     throw new Error("There is no Visions scry to resolve.");
   }
 
-  const { tier, remaining, toReturn } = choice.visionsScry;
+  const remaining = visionsLiftsFromFrame(
+    choice.visionsScry.remaining,
+    choice.visionsScry.remainingTiers,
+    choice.visionsScry.tier
+  );
+  const toReturn = visionsLiftsFromFrame(
+    choice.visionsScry.toReturn,
+    choice.visionsScry.toReturnTiers,
+    choice.visionsScry.tier
+  );
   const keepCount = remaining.length;
   // Options are [keep r0, keep r1, …, discard r0, discard r1, …].
   const isKeep = optionIndex < keepCount;
   const cardIndex = isKeep ? optionIndex : optionIndex - keepCount;
-  const cardId = remaining[cardIndex];
-  if (!cardId) {
+  const lift = remaining[cardIndex];
+  if (!lift) {
     throw new Error("Pick one of the revealed cards.");
   }
+  const { cardId, tier } = lift;
 
   const nextRemaining = remaining.filter((_, index) => index !== cardIndex);
   if (isKeep) {
-    openVisionsScryStep(state, playerId, tier, nextRemaining, [...toReturn, cardId]);
+    openVisionsScryStep(state, playerId, nextRemaining, [...toReturn, lift]);
   } else if (visionsPlacementIsTopOrBottom(state)) {
     // Community Balance Pack: the second option puts the card on the BOTTOM of
     // the same Neutral deck instead of discarding it — nothing leaves the deck.
@@ -8286,10 +8499,10 @@ export function resolveVisionsScryChoice(state: GameState, playerId: PlayerId, o
     // pick is unshifted as it is made, so the first one picked ends up nearest
     // the rest of the deck and the last one deepest.
     state.decks[NEUTRAL_DECK_IDS[tier]]?.drawPile.unshift(cardId);
-    openVisionsScryStep(state, playerId, tier, nextRemaining, toReturn);
+    openVisionsScryStep(state, playerId, nextRemaining, toReturn);
   } else {
     state.decks[NEUTRAL_DECK_IDS[tier]]?.discardPile.push(cardId);
-    openVisionsScryStep(state, playerId, tier, nextRemaining, toReturn);
+    openVisionsScryStep(state, playerId, nextRemaining, toReturn);
   }
 }
 
@@ -9571,9 +9784,11 @@ export function resolveVisionsGuardCast(state: GameState, playerId: PlayerId, op
 }
 
 /**
- * Visions pre-battle swap Power boost: discard a Spell for +1 swap (up to the
- * spell's top breakpoint), or start swapping now. Mirrors the map scry's Power
- * payment (openVisionsBoostStep) but ends by opening the guard-swap loop.
+ * Visions pre-battle swap Power boost: discard a power source for its PRINTED
+ * Power (up to the spell's top breakpoint), or start swapping now. Kept in
+ * LOCKSTEP with the map scry's Power payment (`openVisionsBoostStep` /
+ * `visionsPowerSources`) so the two readings of Visions' Power cannot diverge —
+ * one Visions cast is one Power ladder.
  */
 function openVisionsGuardSwapBoost(
   state: GameState,
@@ -9581,36 +9796,40 @@ function openVisionsGuardSwapBoost(
   cardsByPower: Record<number, number>,
   boost: number
 ): void {
-  const player = state.players[playerId];
   const maxPower = Math.max(...Object.keys(cardsByPower).map(Number));
   // Same school filter as the map scry: Visions is a FIRE spell, so an Air /
   // Earth / Water School-of-Magic ability may not pay its Power.
   const schools = visionsSpellSchools(state);
-  const spellCardIds =
-    boost < maxPower
-      ? (player?.hand.filter((cardId) => cardCanBoostPowerForSpellSchools(cardLibrary[cardId], schools)) ?? [])
-      : [];
+  const sources = boost < maxPower ? visionsPowerSources(state, playerId, schools) : [];
 
-  if (spellCardIds.length === 0) {
+  if (sources.length === 0) {
     openVisionsGuardSwapLoop(state, playerId, visionsCardCount(cardsByPower, boost));
     return;
   }
 
-  const nextCount = visionsCardCount(cardsByPower, boost + 1);
   const nowCount = visionsCardCount(cardsByPower, boost);
   state.pendingChoice = {
     id: `choice_${nextEventNumber(state)}`,
     type: "OPTION_CHOICE",
     playerId,
-    prompt: `Visions: discard a Spell for +1 swap (swap ${nextCount}), or swap now (${nowCount})?`,
+    prompt: `Visions: Power ${boost} — swap up to ${nowCount}. Discard a power source for its printed Power, or swap now?`,
     options: [
-      ...spellCardIds.map((cardId) => ({
-        label: `Discard ${cardLibrary[cardId]?.name ?? cardId} → swap up to ${nextCount}`
+      ...sources.map((source) => ({
+        label: visionsPowerSourceLabel(
+          source,
+          `swap up to ${visionsCardCount(cardsByPower, boost + source.value)}`
+        )
       })),
       { label: `Swap now — up to ${nowCount} guard${nowCount === 1 ? "" : "s"}` }
     ],
     context: "visions-guard-boost",
-    visionsBoost: { boost, spellCardIds: [...spellCardIds], cardsByPower },
+    visionsBoost: {
+      boost,
+      spellCardIds: sources.map((source) => source.cardId),
+      spellCardValues: sources.map((source) => source.value),
+      spellCardModes: sources.map((source) => source.mode),
+      cardsByPower
+    },
     returnPhase: "combat-setup"
   };
   state.phase = "choice";
@@ -9630,29 +9849,24 @@ export function resolveVisionsGuardBoost(state: GameState, playerId: PlayerId, o
     throw new Error("There is no Visions swap Power decision to resolve.");
   }
   const { boost, spellCardIds, cardsByPower } = choice.visionsBoost;
-  const player = state.players[playerId];
   state.pendingChoice = null;
 
-  const paySpell = spellCardIds[optionIndex];
-  const handIndex = player ? player.hand.indexOf(paySpell ?? "") : -1;
-  // The trailing option (or a Spell that left the hand) starts swapping now.
-  if (!player || optionIndex >= spellCardIds.length || !paySpell || handIndex === -1) {
+  // Re-derive the offer (the map scry's rule): a stale frame can only fall
+  // through to "swap now", never pay a phantom Power.
+  const paidCardId = spellCardIds[optionIndex];
+  const source = visionsPowerSources(state, playerId, visionsSpellSchools(state)).find(
+    (candidate) => candidate.cardId === paidCardId
+  );
+  const paid =
+    optionIndex < spellCardIds.length && source
+      ? payVisionsPowerSource(state, playerId, source, "Visions swap")
+      : null;
+
+  if (paid === null) {
     openVisionsGuardSwapLoop(state, playerId, visionsCardCount(cardsByPower, boost));
     return;
   }
-
-  // Spend the Spell for +1 Power (one more swap), then offer the next boost.
-  player.hand.splice(handIndex, 1);
-  player.discard.push(paySpell);
-  appendEvent(state, {
-    type: "CARD_PLAYED",
-    playerId,
-    cardId: paySpell,
-    timing: cardLibrary[paySpell]?.timing ?? "instant",
-    mode: "basic",
-    optionLabel: "+1 Power (Visions swap)"
-  });
-  openVisionsGuardSwapBoost(state, playerId, cardsByPower, boost + 1);
+  openVisionsGuardSwapBoost(state, playerId, cardsByPower, boost + paid);
 }
 
 /**

@@ -731,6 +731,19 @@ function scorePositionOption(
     return CHOICE_BASE + 35 - Math.min(10, optionIndex);
   }
 
+  // Visions deck pick: the printed card draws from "any Neutral Unit deckS", so
+  // the window re-opens until every owed card is lifted. EVERY option lifts at
+  // least one card, so the loop always terminates and no seat can stall here;
+  // prefer the leading "draw all N" bulk options (offered only while more than
+  // one card is still owed) so a computer seat finishes the draw in ONE step.
+  if (context === "visions-deck") {
+    const pick = choice?.type === "OPTION_CHOICE" ? choice.visionsDeck : undefined;
+    const bulkCount = pick && pick.count > 1 ? pick.tiers.length : 0;
+    return (
+      CHOICE_BASE + (optionIndex < bulkCount ? 30 : 15) - Math.min(10, optionIndex)
+    );
+  }
+
   // Generic OPTION_CHOICE: slight preference for non-decline, first options.
   const label = optionLabel(choice, optionIndex);
   if (looksLikeDecline(label)) {

@@ -16080,11 +16080,23 @@ export type PendingChoice =
       learningLevelUp?: { modes: ("basic" | "expert")[] };
       /**
        * visions-boost: paying Visions' Power on the map. `spellCardIds` are the
-       * power-source Spells in hand offered to discard for +1 card each (index-
-       * aligned with the leading options; the trailing option scrys now). `boost`
-       * is how many have already been paid, capped by `cardsByPower`.
+       * power-source cards in hand offered to discard (index-aligned with the
+       * leading options; the trailing option scrys now). `boost` is the Power
+       * already standing — the cast's standing Power plus every source paid so
+       * far — read against `cardsByPower`.
+       *
+       * `spellCardValues` / `spellCardModes` are index-aligned with
+       * `spellCardIds`: a source pays its PRINTED Power (a Spell's generic +1, a
+       * statistic/artifact's printed amount, a School-of-Magic ability's expert
+       * +3 for a crown), never a flat +1 — see `visionsPowerSources`.
        */
-      visionsBoost?: { boost: number; spellCardIds: CardId[]; cardsByPower: Record<number, number> };
+      visionsBoost?: {
+        boost: number;
+        spellCardIds: CardId[];
+        spellCardValues?: number[];
+        spellCardModes?: ("basic" | "expert")[];
+        cardsByPower: Record<number, number>;
+      };
       /**
        * fortune-boost: paying Fortune's Power on the map. `spellCardIds` are the
        * power-source cards in hand offered to discard for +1 reroll each (index-
@@ -16211,17 +16223,36 @@ export type PendingChoice =
        * visions-deck: the Neutral tier decks Visions may scry (index-aligned with
        * the options) and how many cards the chosen power level draws.
        */
-      visionsDeck?: { tiers: ("bronze" | "silver" | "gold" | "azure")[]; count: number };
+      visionsDeck?: {
+        tiers: ("bronze" | "silver" | "gold" | "azure")[];
+        /** Cards still owed on this cast (the printed "Draw * cards" minus the lifts so far). */
+        count: number;
+        /**
+         * Cards already lifted by this cast — the printed card draws from "any
+         * Neutral Unit deckS", so the pick re-opens until every card is drawn
+         * and a cast may span several decks. Index-aligned with `drawnTiers`.
+         * The identities stay private to the casting player.
+         */
+        drawn?: CardId[];
+        drawnTiers?: ("bronze" | "silver" | "gold" | "azure")[];
+      };
       /**
-       * visions-scry: the Neutral cards lifted off the chosen tier deck still
-       * awaiting a keep/discard decision (`remaining`), and the cards already
-       * kept (`toReturn`, in pick order — the first kept ends on top). The
-       * identities stay private to the scrying player.
+       * visions-scry: the Neutral cards lifted off the decks still awaiting a
+       * keep/discard decision (`remaining`), and the cards already kept
+       * (`toReturn`, in pick order — the first kept of a deck ends on top of
+       * THAT deck). The identities stay private to the scrying player.
+       *
+       * `remainingTiers` / `toReturnTiers` are index-aligned with their card
+       * arrays and name the deck each card came from — one cast may lift cards
+       * off SEVERAL Neutral decks, and every card goes back to its own.
        */
       visionsScry?: {
-        tier: "bronze" | "silver" | "gold" | "azure";
+        /** LEGACY (pre-v73 snapshots): the single deck a whole scry was locked to. */
+        tier?: "bronze" | "silver" | "gold" | "azure";
         remaining: CardId[];
+        remainingTiers?: ("bronze" | "silver" | "gold" | "azure")[];
         toReturn: CardId[];
+        toReturnTiers?: ("bronze" | "silver" | "gold" | "azure")[];
       };
       /**
        * artifact-set-scry (Polish Set Artifacts, Diplomat's Cloak tier 2): the

@@ -884,7 +884,25 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // read behind the on-turn offer, the window offer and both reducer consume seams).
 // A "Cast a Spell" enabler on a Spell-deck top is no longer offered at all (the
 // reducer always refused to cast it — a dead button). `npm run deploy:partykit` owed.
-export const ENGINE_PROTOCOL_VERSION = 72;
+// v73: Visions is drawn "from any Neutral Unit deckS" and its Power ladder is
+// read like every other map Spell. USER REPORT: "Visions (with +2 SP should take
+// 6 cards from any decks). For now it takes only 4 cards and only from 1 deck
+// (you should be able to pick multiple decks)." THREE authoritative changes a v72
+// worker computes differently: (a) the deck pick re-opens until every owed card
+// is lifted, so ONE cast may split its draw across several Neutral decks and each
+// card returns to ITS OWN deck (NEW SERIALIZED SHAPE: `visionsDeck.drawn` /
+// `.drawnTiers`, `visionsScry.remainingTiers` / `.toReturnTiers`, with the old
+// single `visionsScry.tier` now legacy-only — a v72 edge locks the whole draw to
+// one deck and reads no per-card tier); (b) a discarded power source pays its
+// PRINTED Power (a Spell +1, a statistic/artifact its printed amount, a
+// School-of-Magic ability its expert +3 for a crown) instead of a flat +1, carried
+// by the new index-aligned `visionsBoost.spellCardValues` / `.spellCardModes`; and
+// (c) the cast STARTS at the player's standing Power (the same
+// standingSpellPower + getSchoolPowerBonus + map Sorcery/Scales bank recipe every
+// map Power-tier cast uses, consuming the bank) instead of Power 0. The rung
+// lookup also clamps DOWN to the highest printed breakpoint reached, where the old
+// exact-key read fell back to the LOWEST rung. `npm run deploy:partykit` owed.
+export const ENGINE_PROTOCOL_VERSION = 73;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

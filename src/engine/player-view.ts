@@ -171,10 +171,29 @@ function getVisiblePendingChoice(choice: PendingChoice, viewerPlayerId: PlayerId
       options: choice.options.map(() => ({ label: "Hidden card" })),
       visionsScry: choice.visionsScry
         ? {
-            tier: choice.visionsScry.tier,
+            ...(choice.visionsScry.tier ? { tier: choice.visionsScry.tier } : {}),
             remaining: choice.visionsScry.remaining.map(() => "hidden"),
-            toReturn: choice.visionsScry.toReturn.map(() => "hidden")
+            ...(choice.visionsScry.remainingTiers
+              ? { remainingTiers: [...choice.visionsScry.remainingTiers] }
+              : {}),
+            toReturn: choice.visionsScry.toReturn.map(() => "hidden"),
+            ...(choice.visionsScry.toReturnTiers
+              ? { toReturnTiers: [...choice.visionsScry.toReturnTiers] }
+              : {})
           }
+        : undefined
+    };
+  }
+
+  // Visions deck pick: the cards this cast has ALREADY lifted are private to the
+  // caster (the visions-scry rule above) — the deck names/counts in the option
+  // labels are public, and so is WHICH deck each lifted card came from (the pile
+  // count moved), but never the card identities.
+  if (choice.type === "OPTION_CHOICE" && choice.context === "visions-deck" && choice.playerId !== viewerPlayerId) {
+    return {
+      ...cloneSerializable(choice),
+      visionsDeck: choice.visionsDeck
+        ? { ...choice.visionsDeck, drawn: (choice.visionsDeck.drawn ?? []).map(() => "hidden") }
         : undefined
     };
   }

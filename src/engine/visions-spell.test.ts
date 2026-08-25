@@ -172,7 +172,9 @@ describe("Visions deck choice", () => {
     expect(played.pendingChoice?.type).toBe("OPTION_CHOICE");
     if (played.pendingChoice?.type === "OPTION_CHOICE") {
       expect(played.pendingChoice.context).toBe("visions-scry");
-      expect(played.pendingChoice.visionsScry?.tier).toBe("bronze");
+      // Each lifted card now records the deck it came off (2026-08-26: one cast
+      // may lift cards from SEVERAL decks, so the tier rides the card).
+      expect(played.pendingChoice.visionsScry?.remainingTiers).toEqual(["bronze"]);
     }
   });
 });

@@ -1622,6 +1622,49 @@ Elementals, per ROUND for the Magi": the reported two-activation sequence by DAM
 round-scoped Magi CONTROL, a no-ability CONTROL, once-per-activation, wrong-school, the
 real re-activation reset seam, and preview/cast agreement).
 
+## Visions draws from ANY Neutral decks, at its real Power (2026-08-26, protocol v73)
+
+USER REPORT: "POLISH BALANCE: Visions spell (with +2 SP should take 6 cards from any
+decks). For now it takes only 4 cards and only from 1 deck (you should be able to pick
+multiple decks)." The printed Polish face
+(`public/assets/polish-balance/spell-visions.webp`) reads "Draw * cards from any Neutral
+Unit **decks**. You can discard any of them and return the remaining cards in any order"
+with the ladder 0:*2 · 1:*4 · 2:*6 (classic scan: 1/2/3). THREE fixes, all in the
+Visions windows (`adventure-reducer.ts`) with the cast seam in `reducer.ts`:
+- **Power is the real Power.** The boost window granted a flat +1 per discarded card and
+  the cast always started at Power 0. Now the cast STARTS at the same standing-Power
+  recipe every other map Spell cast uses (`standingSpellPower` + `getSchoolPowerBonus` +
+  the map Sorcery/Scales `mapSpellPowerBank`, consumed whole) and each discarded source
+  pays its PRINTED Power through the shared reads (`visionsPowerSources` →
+  `spellPowerValueOfCard`): a Spell +1, a statistic/artifact its printed amount, a
+  School-of-Magic ability its printed EXPERT +3 (which costs a crown unless Empowered —
+  its basic side is `amount: 0`, so a crownless holder is no longer offered it). The rung
+  lookup also clamps DOWN to the highest printed breakpoint reached; the old exact-key
+  read (`cardsByPower[power]`) fell back to the LOWEST rung above the top rung.
+- **The draw may span several decks.** The deck pick re-opens until every owed card is
+  lifted (`openVisionsDeckStep`), each deck offered as "draw all N" (the leading options —
+  the classic one-deck draw in ONE click, and what a computer seat takes) or "draw 1, then
+  pick again". Every lifted card remembers its deck and goes back to ITS OWN deck's
+  top/bottom/discard ("the respective Neutral unit Deck").
+- **Nothing is stranded.** `eliminatePlayer` returns the cards held by an open deck pick
+  AND an open scry to their own discard piles.
+Pinned in `visions-multi-deck.test.ts` (16 cases: the +2-source and standing-+2 6-card
+rungs, a 6-card draw really split across four decks with every card going home, per-deck
+top-of-deck order, the one-click bulk path, a dry deck, a reshuffle with no duplicate,
+opponent masking of both windows, mid-draw elimination, and an AI walking the whole chain),
+plus `visions-spell.test.ts`, `spell-school-power-boost.test.ts`,
+`polish-card-balance-spells.test.ts`, `community-card-balance-spells.test.ts`.
+LIMITS: the pack-OFF classic card keeps its printed 1/2/3 ladder and its generic "+1 Power"
+Spell discard (CONTROL-pinned) — but it is NOT byte-identical in the two respects the fix
+is ABOUT (a printed +2/+3 source and standing Power now count on the classic card too; the
+same class of fix as the Intelligence/Blind ruling); the pre-battle guard-swap twin
+(`vision-battle-swap`) shares the printed-value accounting but deliberately NOT the
+standing-Power seed (it is cast inside a combat, where standing Power belongs to the combat
+cast pipeline); Visions still does not run `noteMapSpellCast`, so it neither counts as a
+spell cast this turn nor consumes the Astrologers first-spell bonus; and there is no bespoke
+UI — every window is the generic OPTION_CHOICE prompt tray, so the labels are the surface.
+`npm run deploy:partykit` is OWED.
+
 ## An "[unit_attack]" reroll ability fires ONCE PER ATTACK (2026-08-10)
 
 USER RULING: "Minotaurs neutral can reroll -1 more than once, WHICH IS WRONG. ATTACK
