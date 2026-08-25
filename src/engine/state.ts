@@ -16417,6 +16417,12 @@ export type ComputerPolicyMemoryState = {
   visitedThisTurn: MapSpaceId[];
   lastMarketRound: number | null;
   stagnantArmyTurns: number;
+  /**
+   * Cross-tick cycle guard: fingerprint hashes of states this seat already
+   * LEFT this turn (see `src/engine/computer/memory.ts`). Optional — absent on
+   * legacy snapshots (= empty), cleared every turn.
+   */
+  recentStateHashes?: number[];
 };
 
 export type GameState = {

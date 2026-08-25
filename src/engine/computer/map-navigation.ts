@@ -10,6 +10,8 @@ import {
   canDigGrail,
   classifyHeroStep,
   farTilePlacementCenters,
+  fieldFlaggedByAlly,
+  gateFieldsLinked,
   getAdjacentSpaceIds,
   getHeroMovementCapabilities,
   heroAtSpace,
@@ -21,11 +23,11 @@ import {
   playerHoldsTentFlag,
 } from "../adventure";
 import { allTileDefinitions } from "@/data/map/tiles";
-import { hexSpaceId, tileFootprint } from "../hex";
+import { hexDistance, hexSpaceId, parseHexSpaceId, tileFootprint } from "../hex";
 import { ANIME_EQUIPMENT_SLOTS } from "@/data/anime/equipment";
 import { equipmentEnabled, heroEquipmentSlot } from "../anime-equipment";
 import { canHeroImmediatelyAccessAdjacentTile } from "../adventure-reducer";
-import { playersAreAllied } from "./control";
+import { isComputerPlayer, playersAreAllied } from "./control";
 import type {
   GameState,
   HeroState,
@@ -244,10 +246,12 @@ function victoryObjectiveKind(
       field.location === "dragon_utopia") ||
     (vpObjectives.some((objective) => objective.kind === "control-towns") &&
       locationDefinitions[field.location]?.category === "town" &&
-      field.flagOwnerId !== playerId) ||
+      field.flagOwnerId !== playerId &&
+      !fieldFlaggedByAlly(state, playerId, field)) ||
     (vpObjectives.some((objective) => objective.kind === "flag-mines") &&
       (field.location === "mine" || field.location === "settlement") &&
-      field.flagOwnerId !== playerId)
+      field.flagOwnerId !== playerId &&
+      !fieldFlaggedByAlly(state, playerId, field))
   ) {
     return "victory";
   }
@@ -305,6 +309,11 @@ function victoryObjectiveKind(
       if (!field.flagOwnerId || field.flagOwnerId === playerId) {
         return "victory";
       }
+      // An ALLY's captured Utopia is walked over like your own — a siege there
+      // is inert by the ally flag gate, never a march target.
+      if (fieldFlaggedByAlly(state, playerId, field)) {
+        return null;
+      }
       // Enemy-held utopia — still the win object, treat as victory target.
       return "victory";
     }
@@ -317,7 +326,12 @@ function victoryObjectiveKind(
     if (
       category === "town" &&
       field.flagOwnerId &&
-      field.flagOwnerId !== playerId
+      field.flagOwnerId !== playerId &&
+      // An ALLY's town is never a conquest target: capturing it is refused by
+      // the ally flag gate, so listing it committed allied AI seats to a march
+      // that could never resolve (measured in co-op: each AI ranked its
+      // ally's town as top-priority "victory" and parked beside it).
+      !playersAreAllied(state, field.flagOwnerId, playerId)
     ) {
       return "victory";
     }
@@ -531,6 +545,40 @@ export function canBeatGuardedField(
 }
 
 /**
+ * A guarded LINKED Subterranean-Gate half can only be FOUGHT by an ordinary
+ * arrival from a NON-TWIN neighbor: the free hop between the two halves SLIPS
+ * PAST the guard by engine rule (2026-08-07, resolveHeroArrival's gate arm), so
+ * a hero can never open that battle by crossing the gate. When no non-twin
+ * neighbor exists to stand on, the guard is unfightable by walking at all —
+ * listing it as a march objective would commit the hero to a fight that can
+ * never fire (measured: the AI slipped onto the guarded half, believed it had
+ * "arrived", and parked there for the rest of the game). Non-gate fields and
+ * unguarded halves always answer true.
+ */
+export function guardedGateHalfHasFightApproach(
+  state: GameState,
+  hero: HeroState,
+  field: MapFieldState,
+): boolean {
+  if (field.location !== "subterranean_gate" || !field.gateLinkSpaceId) {
+    return true;
+  }
+  const twin = state.adventure?.fields[field.gateLinkSpaceId];
+  if (!gateFieldsLinked(field, twin)) {
+    return true;
+  }
+  const movement = getHeroMovementCapabilities(state, hero);
+  return getAdjacentSpaceIds(field.spaceId).some((neighbor) => {
+    if (neighbor === field.gateLinkSpaceId) return false;
+    if (!state.adventure?.fields[neighbor]) return false;
+    if (!canCrossEdge(state, neighbor, field.spaceId, movement)) return false;
+    const kind = classifyHeroStep(state, hero, neighbor, movement);
+    // The approach cell must be one the hero could actually STAND on.
+    return kind === "open" || kind === "stop" || kind === "encounter";
+  });
+}
+
+/**
  * Whether a field is worth marching toward for this hero. An enemy hero the
  * army-strength read says we can take is the prize the AI now hunts (see
  * `shouldEngageEnemy` — the AI is not afraid to trade a roughly even fight, and
@@ -602,9 +650,14 @@ function objectiveKind(
   }
 
   const category = locationDefinitions[field.location]?.category;
+  // An ALLY's flag counts as ours: the engine's ally flag gate makes walking
+  // onto an ally's town/mine/settlement a no-op (no re-flag, no visit), so an
+  // ally-flagged field can never be a collectible objective — listing it sent
+  // allied computer seats marching to fields where nothing could ever happen.
   const ownedByUs =
     field.flagOwnerId === playerId ||
-    Boolean(field.extraFlagOwnerIds?.includes(playerId));
+    Boolean(field.extraFlagOwnerIds?.includes(playerId)) ||
+    fieldFlaggedByAlly(state, playerId, field);
 
   // PvE module sites are revisitable by design, so the generic category path
   // below does not claim them. Once the same strength gate used by the visit
@@ -645,6 +698,11 @@ function objectiveKind(
   }
 
   if (isFieldGuarded(field)) {
+    // A guarded gate half with no non-twin approach can never be fought —
+    // never a march target (the twin hop only slips past its guard).
+    if (!guardedGateHalfHasFightApproach(state, hero, field)) {
+      return null;
+    }
     if (canBeatGuardedField(state, hero, field)) {
       return "guard";
     }
@@ -850,6 +908,9 @@ function collectStagingObjectives(
     if (!isFieldGuarded(field)) continue;
     if (field.flagOwnerId) continue;
     if (heroAtSpace(state, field.spaceId, hero.id)) continue;
+    // A guard the hero could never ARRIVE at (gate half with no non-twin
+    // approach) is not worth staging beside either.
+    if (!guardedGateHalfHasFightApproach(state, hero, field)) continue;
     objectives.push({ spaceId, kind: "guard" });
   }
   return objectives;
@@ -955,6 +1016,34 @@ export function objectiveDistanceField(
     }
   };
 
+  /**
+   * Subterranean-Gate slip relax: a GUARDED linked gate half classifies as a
+   * "stop" (fighting is how you normally arrive), but the free hop from its
+   * TWIN slips past the guard by engine rule — so for a hero coming through
+   * the gate the guarded half IS a corridor. When such a half settles as a
+   * stop, hand its twin a distance anyway so the far layer stays reachable in
+   * the AI's model exactly as it is on the real table.
+   */
+  const relaxGateTwinSlip = (half: MapSpaceId, halfDistance: number) => {
+    const field = fields[half];
+    if (field?.location !== "subterranean_gate" || !field.gateLinkSpaceId) {
+      return;
+    }
+    const twinId = field.gateLinkSpaceId;
+    const twin = fields[twinId];
+    if (!gateFieldsLinked(field, twin)) return;
+    const next = halfDistance + 1;
+    const prior = distance.get(twinId);
+    if (prior !== undefined && prior <= next) return;
+    distance.set(twinId, next);
+    const kind = classifyHeroStep(state, hero, twinId, movement);
+    if (kind !== "stop") {
+      queue.push(twinId);
+    } else {
+      relaxReverseTeleports(twinId, next);
+    }
+  };
+
   for (const objective of objectives) {
     if (!distance.has(objective.spaceId)) {
       distance.set(objective.spaceId, 0);
@@ -994,6 +1083,7 @@ export function objectiveDistanceField(
         queue.push(neighbor);
       } else {
         relaxReverseTeleports(neighbor, next);
+        relaxGateTwinSlip(neighbor, next);
       }
     }
 
@@ -1131,6 +1221,71 @@ export function isHomeTileOpeningObjective(
     isHomeTileSweepObjective(state, hero, objective, field) &&
     Boolean(field && HOME_OPENING_LOCATIONS.has(field.location))
   );
+}
+
+/**
+ * ALLIED-SEAT DEDUP: two allied computer seats used to pick the SAME free
+ * mine / settlement / guard / doorway and march there in lockstep — pure waste
+ * for the team (only one of them can collect it). When an ALLIED COMPUTER
+ * seat's main hero stands strictly closer to a collectible objective, this
+ * seat discounts it and picks the next-best target instead. Straight-line hex
+ * distance only (cheap, public hero positions); enemy-facing kinds (victory /
+ * enemy-hero) are deliberately never discounted — converging on the enemy is
+ * cooperation, not duplication. Human allies are not read: their plans are
+ * unknowable, and shadowing them out of objectives would just idle the AI.
+ */
+const ALLY_CLAIM_KINDS: ReadonlySet<MapObjectiveKind> = new Set([
+  "guard",
+  "flaggable",
+  "visitable",
+  "town",
+  "explore",
+]);
+const ALLY_CLAIM_PENALTY = 140;
+
+export function alliedComputerSeatCloser(
+  state: GameState,
+  hero: HeroState,
+  spaceId: MapSpaceId,
+): boolean {
+  if (!hero.spaceId) return false;
+  const target = parseHexSpaceId(spaceId);
+  const heroCell = parseHexSpaceId(hero.spaceId);
+  if (!target || !heroCell) return false;
+  const own = hexDistance(heroCell, target);
+  for (const other of Object.values(state.heroes)) {
+    if (
+      other.id === hero.id ||
+      other.kind !== "main" ||
+      !other.spaceId ||
+      other.controllerId === hero.controllerId ||
+      !playersAreAllied(state, other.controllerId, hero.controllerId) ||
+      !isComputerPlayer(state, other.controllerId)
+    ) {
+      continue;
+    }
+    const otherCell = parseHexSpaceId(other.spaceId);
+    if (otherCell && hexDistance(otherCell, target) < own) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * CO-OP HUMAN HUNT: a co-op computer seat can only win by ELIMINATING the
+ * humans (checkCustomWinConditions skips AI seats in co-op, and the mode's own
+ * win is last-alliance-standing), yet nothing in the map policy pushed toward
+ * that — the AI played its economy game and only fought a human who wandered
+ * into range. Once the army reads READY, a human hero / enemy town outranks
+ * yet another neutral pickup. Zero on clash tables and for human seats
+ * (CONTROL-pinned); the shouldEngageEnemy strength gate still applies, so an
+ * outmatched AI never suicides into the alliance.
+ */
+export function coopHumanHuntBonus(state: GameState, playerId: PlayerId): number {
+  if (state.gameMode !== "coop") return 0;
+  if (!isComputerPlayer(state, playerId)) return 0;
+  return 80;
 }
 
 function objectiveStrategicValue(
@@ -1312,6 +1467,23 @@ function objectiveStrategicValue(
       // tile keeps the ordinary same-tile sweep nudge.
       value += homeSweep ? HOME_TILE_SWEEP_BONUS : SAME_TILE_SWEEP_BONUS;
     }
+  }
+  // Co-op invaders press the human alliance once the army reads ready —
+  // a human hero / enemy town then outranks another neutral pickup.
+  if (
+    ready &&
+    (objective.kind === "enemy-hero" ||
+      (objective.kind === "victory" && mode === "conquest"))
+  ) {
+    value += coopHumanHuntBonus(state, hero.controllerId);
+  }
+  // Allied-seat dedup: an allied computer main hero strictly closer to a
+  // collectible objective claims it — this seat picks its next-best instead.
+  if (
+    ALLY_CLAIM_KINDS.has(objective.kind) &&
+    alliedComputerSeatCloser(state, hero, objective.spaceId)
+  ) {
+    value -= ALLY_CLAIM_PENALTY;
   }
   return value - distance * 18;
 }

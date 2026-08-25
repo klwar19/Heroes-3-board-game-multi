@@ -30,10 +30,22 @@ export type ComputerPolicyMemory = {
   visitedThisTurn: MapSpaceId[];
   lastMarketRound: number | null;
   stagnantArmyTurns: number;
+  /**
+   * Hashes of progress-fingerprint states this seat already LEFT this turn —
+   * the cross-tick cycle guard. The live pump paces ONE action per tick with a
+   * fresh runner each time, so its in-call retry sets cannot see a loop that
+   * spans ticks. Only zero-cost reversible actions can return the seat to an
+   * earlier state (e.g. the free Subterranean-Gate twin hop, which cost the
+   * table an infinite A↔B shuffle); the runner refuses any candidate whose
+   * post-state hash is already listed here. Cleared with visitedThisTurn.
+   * Optional in serialized form: legacy snapshots read as an empty list.
+   */
+  recentStateHashes?: number[];
 };
 
 const TRAIL_CAP = 8;
 const VISIT_CAP = 12;
+const STATE_HASH_CAP = 16;
 /** Keep a sticky objective for at most this many rounds without revalidation. */
 export const STICKY_OBJECTIVE_MAX_ROUNDS = 4;
 
@@ -47,6 +59,7 @@ export function emptyComputerMemory(round = 0): ComputerPolicyMemory {
     visitedThisTurn: [],
     lastMarketRound: null,
     stagnantArmyTurns: 0,
+    recentStateHashes: [],
   };
 }
 
@@ -63,6 +76,7 @@ export function getComputerMemory(
     ...raw,
     resourceTrail: [...(raw.resourceTrail ?? [])],
     visitedThisTurn: [...(raw.visitedThisTurn ?? [])],
+    recentStateHashes: [...(raw.recentStateHashes ?? [])],
   };
 }
 
@@ -149,6 +163,7 @@ export function refreshComputerMemory(
   const key = turnKey(state, playerId);
   if (mem.lastTurnKey !== key) {
     mem.visitedThisTurn = [];
+    mem.recentStateHashes = [];
     mem.lastTurnKey = key;
   }
 
@@ -257,8 +272,8 @@ export function noteComputerAction(
       break;
     case "END_TURN":
     case "COMPLETE_SIMULTANEOUS_TURN":
-      // Clear per-turn visit thrash list at end of turn.
-      mem = { ...mem, visitedThisTurn: [] };
+      // Clear per-turn visit thrash list + the cycle guard at end of turn.
+      mem = { ...mem, visitedThisTurn: [], recentStateHashes: [] };
       break;
     default:
       break;
@@ -316,6 +331,31 @@ export function economyFocusBias(
       if (kind === "recruit" && memory.stagnantArmyTurns >= 2) return 20;
       return 0;
   }
+}
+
+/** True when the seat already LEFT a state with this fingerprint hash this turn. */
+export function recentStateHashSeen(
+  state: GameState,
+  playerId: PlayerId,
+  hash: number,
+): boolean {
+  return Boolean(
+    state.computerMemory?.[playerId]?.recentStateHashes?.includes(hash),
+  );
+}
+
+/** Record a departed state's fingerprint hash for the cross-tick cycle guard. */
+export function noteRecentStateHash(
+  state: GameState,
+  playerId: PlayerId,
+  hash: number,
+): GameState {
+  const mem = getComputerMemory(state, playerId);
+  const hashes = [...(mem.recentStateHashes ?? []), hash].slice(-STATE_HASH_CAP);
+  return writeComputerMemory(state, playerId, {
+    ...mem,
+    recentStateHashes: hashes,
+  });
 }
 
 /** True when this field was already stepped on this map turn (revisit thrash). */

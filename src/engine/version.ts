@@ -766,7 +766,12 @@ import { coreUnitDefinitions } from "@/data/factions/units";
 // now use printed Power costs instead of fixed discard counts. A v60 worker
 // would reject the new action and resolve these instants at different tiers,
 // so client/server compatibility must fail visibly.
-export const ENGINE_PROTOCOL_VERSION = 61;
+// v62 (2026-08-25, AI navigation fixes): `ComputerPolicyMemoryState` gains the
+// optional `recentStateHashes` list — the computer runner's cross-tick cycle
+// guard (the Subterranean-Gate A↔B shuffle fix). AI-private and self-healing
+// (a stale worker drops the field and only loses the guard), but the runner's
+// behaviour on the same snapshot differs, so the fingerprint moves with it.
+export const ENGINE_PROTOCOL_VERSION = 62;
 
 
 /** FNV-1a (32-bit) — small, dependency-free, and identical under every V8

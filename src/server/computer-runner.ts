@@ -17,6 +17,8 @@ import {
 } from "@/engine";
 import {
   noteComputerAction,
+  noteRecentStateHash,
+  recentStateHashSeen,
   refreshComputerMemory,
   setStickyObjective,
 } from "@/engine/computer/memory";
@@ -161,6 +163,16 @@ export function progressFingerprint(state: GameState, playerId: PlayerId): strin
   });
 }
 
+/** FNV-1a hash of a progress fingerprint, small enough to persist in memory. */
+function fingerprintHash(fingerprint: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < fingerprint.length; i += 1) {
+    hash ^= fingerprint.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
 const defaultApply: ComputerApply = (state, action, playerId) =>
   applyAction(state, action, { computerActorPlayerId: playerId });
 
@@ -258,6 +270,18 @@ export function driveComputerPlayers(
       continue;
     }
     const nextFingerprint = progressFingerprint(result.state, playerId);
+    // CROSS-TICK CYCLE GUARD: the live pump paces ONE action per tick with a
+    // fresh runner each time, so the in-call `attempted` sets cannot see a
+    // loop that spans ticks. Only a zero-cost reversible action can return the
+    // seat to a state it already left this turn (the free Subterranean-Gate
+    // twin hop was measured doing exactly that — an infinite A↔B shuffle on a
+    // live table). Such a candidate is discarded like a no-progress attempt;
+    // the hash trail lives in the seat's persisted memory and clears each turn.
+    if (
+      recentStateHashSeen(state, playerId, fingerprintHash(nextFingerprint))
+    ) {
+      continue;
+    }
     if (nextFingerprint === fingerprint) {
       // The action applied cleanly but moved no fingerprinted field — a no-op
       // for progress purposes (e.g. an in-combat ability play that only sets a
@@ -272,8 +296,15 @@ export function driveComputerPlayers(
       // so this always terminates (and the maxSteps cap backstops it).
       continue;
     }
-    // Persist action notes (visits, market, recruit) on the settled state.
-    state = noteComputerAction(result.state, playerId, decision.action);
+    // Persist the departed state's hash for the cross-tick cycle guard FIRST,
+    // then the action notes — an END_TURN note clears the whole per-turn
+    // memory (visit list + hash trail), and the order keeps that wipe final.
+    state = noteRecentStateHash(
+      result.state,
+      playerId,
+      fingerprintHash(fingerprint),
+    );
+    state = noteComputerAction(state, playerId, decision.action);
     decisions.push(decision);
   }
 

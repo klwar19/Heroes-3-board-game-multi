@@ -12,6 +12,7 @@ import {
   canHeroImmediatelyReachPlacementCenter,
   canHeroReachPlacementCenter,
   canHeroReachPlacedTile,
+  gateFieldsLinked,
   getAdjacentSpaceIds,
   getUnitSide,
   isFieldGuarded,
@@ -41,6 +42,7 @@ import { playersAreAllied } from "./control";
 import { cardTier } from "./card-values";
 import { isPremiumEconomyField, playerArmyStrength } from "./army-strength";
 import { polishArmyUnitStackCost, polishUnitStackCost } from "../polish-unit-stacks";
+import { armyUnitRankInfo } from "../unit-experience";
 import {
   armyDevelopmentProfile,
   armyReadyForContestedFight,
@@ -654,6 +656,11 @@ const OWN_TOWN_DETOUR_SCORE = 240;
 // noise so the blocker actually moves, below a real march/enter step so a
 // secondary with an objective of its own never abandons it to shuffle around.
 const ALLY_UNBLOCK_SCORE = 620;
+// Standing ON a live guard we can beat (a Subterranean-Gate hop slipped past
+// it): the only way to open that fight is stepping OFF to a non-twin neighbor
+// and walking back on. Above END_TURN so the setup step happens, below a real
+// march/enter step so it never outranks live progress elsewhere.
+const GUARD_REENTRY_SETUP_SCORE = 640;
 // Home (Ⅰ) rotation bonus for leaving a Ⅱ–Ⅲ expansion doorway open — larger
 // than the whole band-blind doorway-count spread (3*9 + 3*6 = 45) so a
 // qualifying rotation always wins, per the user rule. See
@@ -723,9 +730,21 @@ function moveScore(
   const ownTown = ownTownSpaceId(state, observation.playerId);
   const steppingOntoOwnTown = ownTown !== null && action.to === ownTown;
 
+  // The free hop between the two linked halves of a Subterranean Gate SLIPS
+  // PAST a live guard on the far half (engine rule 2026-08-07): this step can
+  // never open that fight. It must not read as "arriving" at a guard objective
+  // (measured: the hero slipped on, believed the fight resolved, and parked on
+  // the guarded half for the rest of the game) — but it IS a legal, free,
+  // combat-less corridor step, so it keeps the ordinary march-progress scoring.
+  const hereField = hero.spaceId ? state.adventure?.fields[hero.spaceId] : undefined;
+  const gateSlipHop =
+    gateFieldsLinked(hereField, field) &&
+    isFieldGuarded(field) &&
+    field.flagOwnerId !== observation.playerId;
+
   // The destination IS the sticky objective (or any objective if none sticky).
   const arriving = marchTargets.find((objective) => objective.spaceId === action.to);
-  if (to === 0 && arriving) {
+  if (to === 0 && arriving && !gateSlipHop) {
     // A STAGED premium guard (listed as a march target while the army cannot
     // cover it yet — see premiumEconomyWorthStaging) must never be ENTERED:
     // stepping on would open the very fight the staging is waiting out. The
@@ -767,7 +786,7 @@ function moveScore(
   // read walled the hero off behind its OWN beaten guards — measured on the
   // Impossible premium-rush seeds as a multi-round park at h:10:7 while the
   // beatable settlement sat 4 cells away behind two cleared guard fields.
-  if (isFieldGuarded(field)) {
+  if (isFieldGuarded(field) && !gateSlipHop) {
     return 250;
   }
 
@@ -828,6 +847,21 @@ function moveScore(
       return OBJECTIVE_PROGRESS_BASE - 40 + Math.max(0, 10 - to);
     }
     return OBJECTIVE_PROGRESS_BASE + Math.max(0, 10 - to);
+  }
+
+  // SLIP-PAST RE-ENTRY SETUP: the hero stands ON a live guard it can beat —
+  // it slipped past through the Subterranean-Gate hop, and the fight only
+  // opens on an ordinary re-entry from a NON-TWIN neighbor. Score the step
+  // off above END_TURN; the walk back on then takes the normal guard-arrival
+  // score and finally starts the battle.
+  if (
+    hereField &&
+    isFieldGuarded(hereField) &&
+    hereField.flagOwnerId !== observation.playerId &&
+    action.to !== hereField.gateLinkSpaceId &&
+    canBeatGuardedField(state, hero, hereField)
+  ) {
+    return GUARD_REENTRY_SETUP_SCORE;
   }
 
   if (steppingOntoOwnTown) {
@@ -2564,8 +2598,17 @@ export function scoreMapAction(
       const tier = unit ? coreUnitDefinitions[unit.unitDefId]?.tier : undefined;
       const tierNudge =
         tier === "gold" || tier === "azure" ? 18 : tier === "silver" ? 12 : 4;
+      // Rank proximity — actually read the veteran track (the old score only
+      // CLAIMED to): a card 1-2 XP short of its next rank converts this drill
+      // straight into a stat/ability step, worth taking over idle turns.
+      const rankInfo = unit ? armyUnitRankInfo(unit) : null;
+      const toNextRank =
+        rankInfo && rankInfo.nextThreshold !== null
+          ? rankInfo.nextThreshold - rankInfo.experience
+          : null;
+      const proximityNudge = toNextRank !== null && toNextRank <= 2 ? 40 : 0;
       return {
-        score: 325 + tierNudge,
+        score: 325 + tierNudge + proximityNudge,
         policy: "map.drill-unit",
       };
     }

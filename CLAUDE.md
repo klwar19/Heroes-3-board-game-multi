@@ -694,6 +694,41 @@ after the AFK settle. Contract:
   never freezes; `computerDecisionOwner` falls through to drive
   `ACKNOWLEDGE_COMBAT_END`. Deferred: hiding multiplayer-only invite affordances on
   the SP table page.
+- **Subterranean-Gate awareness + the cross-tick CYCLE GUARD (2026-08-25, v62)**:
+  the free twin hop SLIPS PAST a guard on the far half (engine rule 2026-08-07),
+  so the policy never scores it as the guard ARRIVAL — it is a corridor step; a
+  hero standing on a beatable slipped-past guard steps OFF to a non-twin cell and
+  walks back on to open the real fight; a guarded gate half with NO non-twin
+  approach is never an objective; and the BFS treats a guarded linked half as the
+  slip corridor it really is (`relaxGateTwinSlip`). Pre-fix the AI slipped on,
+  believed it had arrived, and parked/shuffled between the two gate fields
+  forever (the live pump paces one action per tick with a FRESH runner, so no
+  in-call guard could see the loop). The generic backstop:
+  `ComputerPolicyMemory.recentStateHashes` (optional serialized field, cleared
+  per turn) — `driveComputerPlayers` DISCARDS any candidate whose post-state
+  fingerprint hash the seat already departed this turn, killing every zero-cost
+  reversible loop class at once. `subterranean-gate-ai.test.ts`,
+  `src/server/computer-cycle-guard.test.ts`.
+- **Alliance-aware objectives + co-op hunt (2026-08-25)**: an ALLY's town /
+  flagged mine / captured Utopia is never a march objective in ANY victory mode
+  (`fieldFlaggedByAlly` folded into `ownedByUs` and every victory branch —
+  pre-fix each co-op AI ranked its ally's town as top-priority conquest
+  "victory" and parked beside it); `shouldAssaultEnemyHolding` refuses allied
+  owners on its own; allied COMPUTER seats dedup collectible objectives
+  (`alliedComputerSeatCloser`, −140 when the ally's main hero is strictly
+  closer; human allies are never read); and a co-op computer seat presses the
+  humans once its army reads ready (`coopHumanHuntBonus` +80 on enemy-hero /
+  conquest-victory objectives — zero on clash tables, CONTROL-pinned).
+  `coop-ai-alliance.test.ts`. LIMITS: no shared planning beyond the closer-seat
+  dedup; the free-seize-this-turn shortcut deliberately ignores the dedup (a
+  grab within reach is never waste).
+- **Neutral-control side fix (2026-08-25)**: MOVE / DEFEND / targeted-ability
+  scoring now reads the ACTING unit's side exactly like the attack branch
+  always did — an AI seat driving the guards under PvP Neutral Control no
+  longer counts sibling guards as "enemies" (which zeroed every distance read,
+  scored closing moves as holds and read a supported guard as besieged).
+  `neutral-control-combat-policy.test.ts`, with own-army CONTROLs pinning
+  ordinary fights byte-identical.
 - **Everything else is a SCORE LAYER over already-legal actions** (so nothing can
   produce an illegal move): expansion tempo, dwelling-first economy
   (`development.test.ts`), crown discipline (`expertCrownNudge`), printed-ladder

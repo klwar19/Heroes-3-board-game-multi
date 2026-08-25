@@ -643,16 +643,15 @@ function moveUnitScore(
   const mover = combat.units[action.unitId];
   if (!mover) return null;
 
-  const current = distanceToNearestEnemy(
-    combat,
-    observation.playerId,
-    mover.position,
-  );
-  const next = distanceToNearestEnemy(
-    combat,
-    observation.playerId,
-    action.destination,
-  );
+  // In player-controlled-neutrals mode the decision owner is a player, but the
+  // acting guard remains controlled by the neutral side. Score allies, enemies
+  // and distances from the unit's ACTUAL side (the attack branch already did;
+  // this scorer read observation.playerId, so an AI seat driving the guards
+  // counted its own guards as "enemies" and every distance read was noise).
+  const side = mover.controllerId;
+
+  const current = distanceToNearestEnemy(combat, side, mover.position);
+  const next = distanceToNearestEnemy(combat, side, action.destination);
   if (current === null || next === null) return null;
 
   const role = unitRole(mover);
@@ -669,7 +668,7 @@ function moveUnitScore(
 
   // Ranged: strong penalty for walking adjacent to an enemy (melee range).
   if (role === "ranged") {
-    const enemies = livingEnemyUnits(combat, observation.playerId);
+    const enemies = livingEnemyUnits(combat, side);
     const wouldTouch = enemies.some((enemy) =>
       isAdjacent(action.destination, enemy.position),
     );
@@ -681,7 +680,7 @@ function moveUnitScore(
     }
     // Prefer staying put-ish in backline if already back and not threatened.
     if (
-      isBacklineCell(combat, observation.playerId, action.destination) &&
+      isBacklineCell(combat, side, action.destination) &&
       !wouldTouch
     ) {
       score += 15;
@@ -691,7 +690,7 @@ function moveUnitScore(
   // Melee tank: reward moves that put us adjacent to a friendly ranged that is
   // threatened (screen), or between enemy and that ranged.
   if (role === "melee" || role === "flying") {
-    const friends = livingFriendlies(combat, observation.playerId).filter(
+    const friends = livingFriendlies(combat, side).filter(
       (unit) => unit.id !== mover.id && unitRole(unit) === "ranged",
     );
     for (const ranged of friends) {
@@ -700,7 +699,7 @@ function moveUnitScore(
       // clause was constant across the filter (every enemy in, or none), never
       // the intended "enemies within 2 of this ally". Distance ≤ 2 already
       // subsumes adjacency (adjacent = distance 1).
-      const enemiesNearRanged = livingEnemyUnits(combat, observation.playerId).filter(
+      const enemiesNearRanged = livingEnemyUnits(combat, side).filter(
         (enemy) => getBattlefieldDistance(enemy.position, ranged.position) <= 2,
       );
       if (enemiesNearRanged.length === 0) continue;
@@ -734,7 +733,7 @@ function moveUnitScore(
   // not merely the nearest — so the army collapses onto one worthwhile unit
   // instead of chasing whatever chaff is closest. Value primary, wounds break
   // ties. Stepping toward it is rewarded; stepping away is mildly penalised.
-  const enemies = livingEnemyUnits(combat, observation.playerId);
+  const enemies = livingEnemyUnits(combat, side);
   if (enemies.length > 0) {
     const focus = [...enemies].sort(
       (a, b) =>
@@ -747,19 +746,9 @@ function moveUnitScore(
     else if (after > before) score -= FOCUS_MARCH_AWAY_PENALTY;
   }
 
-  score += surroundOpportunityBonus(
-    combat,
-    observation.playerId,
-    mover,
-    action.destination,
-  );
+  score += surroundOpportunityBonus(combat, side, mover, action.destination);
 
-  score -= positionalExposurePenalty(
-    combat,
-    observation.playerId,
-    mover,
-    action.destination,
-  );
+  score -= positionalExposurePenalty(combat, side, mover, action.destination);
 
   if (next >= current && score < 400) {
     return { score: Math.min(score, 260), policy: "combat.hold-position" };
@@ -920,13 +909,16 @@ export function scoreCombatAction(
       // Targeted abilities that name a high-threat enemy score higher.
       if (action.target?.type === "unit") {
         const target = combat.units[action.target.unitId];
-        if (target && target.controllerId !== observation.playerId) {
+        // Ally/enemy from the ACTING unit's side (a controlled neutral's ally
+        // is another guard, never the controller's own army).
+        const actingSide = actor?.controllerId ?? observation.playerId;
+        if (target && target.controllerId !== actingSide) {
           return {
             score: 560 + Math.min(40, Math.round(unitThreatValue(target) / 3)),
             policy: "combat.use-ability-enemy",
           };
         }
-        if (target && target.controllerId === observation.playerId) {
+        if (target && target.controllerId === actingSide) {
           const missing = unitRemainingHealth(target) < target.maxHealth;
           return {
             score: missing ? 580 : 545,
@@ -979,19 +971,15 @@ export function scoreCombatAction(
       // surrounded, valuable unit the enemy would otherwise kill — a deliberate
       // save, so a marginal strike just under that yields to preserving it;
       // stronger real strikes (well above ~655) still win and chaff keeps trading.
-      const incoming = pendingIncomingDamage(
-        combat,
-        observation.playerId,
-        defender,
-      );
-      const adjacentEnemies = livingEnemyUnits(
-        combat,
-        observation.playerId,
-      ).filter((enemy) => isAdjacent(enemy.position, defender.position)).length;
-      const adjacentSupport = livingFriendlies(
-        combat,
-        observation.playerId,
-      ).filter(
+      // Score threats and support from the DEFENDING unit's actual side —
+      // under player-controlled neutrals the decision owner is a player while
+      // the guard stays neutral-side (the attack branch's rule).
+      const defenderSide = defender.controllerId;
+      const incoming = pendingIncomingDamage(combat, defenderSide, defender);
+      const adjacentEnemies = livingEnemyUnits(combat, defenderSide).filter(
+        (enemy) => isAdjacent(enemy.position, defender.position),
+      ).length;
+      const adjacentSupport = livingFriendlies(combat, defenderSide).filter(
         (friend) =>
           friend.id !== defender.id &&
           isAdjacent(friend.position, defender.position),

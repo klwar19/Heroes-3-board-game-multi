@@ -7,6 +7,7 @@ import {
 import { coreBuildingDefinitions, coreFactionDefinitions } from "@/data/factions/core";
 import { coreUnitDefinitions } from "@/data/factions/units";
 import { assessDwellingRush } from "./development";
+import { playersAreAllied } from "./control";
 import type { UnitTier } from "@/data/factions/types";
 import { getUnitSide, NEUTRAL_ARMY_TABLE, neutralArmyDifficulty } from "../adventure";
 import { armyUnitRankInfo } from "../unit-experience";
@@ -507,5 +508,8 @@ export function shouldAssaultEnemyHolding(
 ): boolean {
   const ownerId = field.flagOwnerId;
   if (!ownerId || ownerId === playerId) return false;
+  // An ALLY's holding is never assaulted (defense in depth — callers filter
+  // allies too, but this read must be safe to reuse on its own).
+  if (playersAreAllied(state, ownerId, playerId)) return false;
   return shouldEngageEnemy(state, playerId, ownerId);
 }
