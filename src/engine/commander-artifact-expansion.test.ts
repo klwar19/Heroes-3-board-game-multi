@@ -278,6 +278,24 @@ describe("expanded commander artifact behavior", () => {
     expect(reflected.combat!.units[commander.id].damage).toBe(4);
     expect(reflected.combat!.units[attacker.id].damage).toBe(2);
 
+    // CAP: the reflect can never exceed the damage actually taken. A 1-attack
+    // hit (vs Defense 1 ⇒ 1 damage) reflects only 1, not the full 2.
+    const capped = combatWithArtifact("wog.artifact.barbed_carapace", "armor");
+    const cappedCommander = capped.combat!.units[commanderUnitId("p1")];
+    cappedCommander.maxHealth = 30;
+    cappedCommander.retaliatedThisRound = true;
+    const weakAttacker = capped.combat!.units.unit_p2_skeletons;
+    weakAttacker.abilities = [];
+    weakAttacker.attack = 2;
+    weakAttacker.maxHealth = 30;
+    weakAttacker.position = 10;
+    capped.combat!.activeUnitId = weakAttacker.id;
+    capped.activePlayerId = "p2";
+    capped.combat!.dice.scriptedRolls = [0];
+    const cappedResult = settle(apply(capped, { type: "ATTACK_UNIT", playerId: "p2", attackerId: weakAttacker.id, defenderId: cappedCommander.id }));
+    expect(cappedResult.combat!.units[cappedCommander.id].damage).toBe(1);
+    expect(cappedResult.combat!.units[weakAttacker.id].damage).toBe(1);
+
     const cleave = combatWithArtifact("wog.artifact.stormcleaver", "weapon");
     const cleaver = cleave.combat!.units[commanderUnitId("p1")];
     const target = cleave.combat!.units.unit_p2_skeletons;

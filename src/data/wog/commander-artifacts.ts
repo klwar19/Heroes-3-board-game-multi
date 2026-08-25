@@ -318,7 +318,7 @@ export const COMMANDER_ARTIFACT_SPECS: Record<string, CommanderArtifactSpec> = {
     name: "Barbed Carapace",
     slot: "armor",
     tier: "major",
-    effectText: "Thorn Aura: after an attack damages the commander, return 2 damage to the attacker.",
+    effectText: "Thorn Aura: after an attack damages the commander, return 2 damage to the attacker (never more than the damage taken).",
     reflectDamage: 2
   },
   "wog.artifact.plague_censer": {

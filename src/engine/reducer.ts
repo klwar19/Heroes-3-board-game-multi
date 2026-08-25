@@ -6173,7 +6173,8 @@ function applyCommanderArtifactAfterAttack(
 
   const defenderArtifact = commanderArtifactBonusesForUnit(state, defender);
   if (damageDealt > 0 && defenderArtifact.reflectDamage > 0 && isUnitAlive(attacker)) {
-    const reflected = defenderArtifact.reflectDamage;
+    // The reflect can never exceed the damage actually taken (0 taken ⇒ 0 back).
+    const reflected = Math.min(defenderArtifact.reflectDamage, damageDealt);
     attacker.damage += reflected;
     appendEvent(state, {
       type: "UNIT_ABILITY_TRIGGERED",
